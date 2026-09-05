@@ -6,7 +6,10 @@
 
 #![cfg(feature = "serde")]
 
-use super::parse::{OperationDef, OperationInputs, OperationOutcome, ServiceDef, parse_service};
+use super::parse::{
+    BodyKind, HttpMethod, OperationDef, OperationInputs, OperationOutcome, PathSegment, ServiceDef,
+    parse_service,
+};
 use super::{emitted_trait, exec_service_schema};
 use crate::model_schema::exec_model_schema;
 use core::mem::take;
@@ -61,6 +64,41 @@ const ONE_WAY_SERVICE: &str = "
     }
 ";
 
+/// A service exercising every arm of the `http(...)` grammar: a full group with a path
+/// placeholder, a claimed header, a written-out header and a complete status table; a group
+/// naming only `method` and `path`, to read the defaults the rest falls back to; a one-way
+/// operation whose group also falls back to a default; and an operation naming no group at all.
+const HTTP_SERVICE: &str = r#"
+    pub trait DocumentService<Ctx> {
+        #[service_schema_op(http(
+            method = "GET",
+            path = "/documents/{document_id}/versions/{version_id}",
+            ok_status = 200,
+            header_in("range" = byte_range),
+            header_out("etag"),
+            error_status(NotFound = 404, VersionGone = 410),
+        ))]
+        async fn get_version(
+            &self,
+            ctx: &Ctx,
+            req: GetVersionRequest,
+            byte_range: Option<String>,
+        ) -> Result<(VersionResponse, String), GetVersionError>;
+
+        #[service_schema_op(http(method = "POST", path = "/documents"))]
+        async fn create_document(
+            &self,
+            ctx: &Ctx,
+            req: CreateDocumentRequest,
+        ) -> Result<CreateDocumentResponse, DocumentError>;
+
+        #[service_schema_op(one_way, http(method = "DELETE", path = "/documents/{document_id}"))]
+        async fn purge_document(&self, ctx: &Ctx, document_id: String);
+
+        async fn sweep(&self, ctx: &Ctx) -> Result<SweepReport, DocumentError>;
+    }
+"#;
+
 /// One item as either macro body emits it: what its doc attributes said, everything ahead of the
 /// block it opens, the keyword that opened it, and that block.
 struct EmittedItem {
@@ -78,8 +116,8 @@ fn expanded(source: &str) -> String {
     exec_service_schema(TokenStream::new(), declared(source).to_token_stream()).to_string()
 }
 
-/// The same expansion for a service that asked for the one transport this version has, which is
-/// what carries both a dispatcher and a client.
+/// The same expansion for a service that asked for `amqp_rpc`, which is what carries both a
+/// dispatcher and a client.
 fn expanded_over_amqp_rpc(source: &str) -> String {
     expansion_over_amqp_rpc(source).to_string()
 }
@@ -2184,4 +2222,311 @@ fn the_transport_module_header_prescribes_the_same_placement_the_macros_do() {
              dirty"
         );
     }
+}
+
+/// An operation naming no `http(...)` group is bound to no `HttpBinding` at all — a transport
+/// defaults it on its own, and nothing here manufactures one to default.
+#[test]
+fn an_operation_naming_no_http_group_is_bound_to_no_http_at_all() {
+    let read = service(HTTP_SERVICE);
+    assert!(
+        read.operations[3].http.is_none(),
+        "`sweep` names no `http(...)` group"
+    );
+}
+
+/// A full `http(...)` group records its method, its path split into literal and placeholder
+/// segments, and the declared status table, the variant idents included.
+#[test]
+fn a_full_http_group_records_the_method_the_path_and_the_status_table() {
+    let read = service(HTTP_SERVICE);
+    let binding = read.operations[0].http.as_ref().unwrap();
+    assert_eq!(binding.method, HttpMethod::Get);
+    assert_eq!(binding.ok_status, 200);
+    assert_eq!(
+        binding.path,
+        vec![
+            PathSegment::Literal("/documents/".to_owned()),
+            PathSegment::Placeholder("document_id".to_owned()),
+            PathSegment::Literal("/versions/".to_owned()),
+            PathSegment::Placeholder("version_id".to_owned()),
+        ]
+    );
+    let mapped: Vec<(String, u16)> = binding
+        .error_status
+        .iter()
+        .map(|(variant, code)| (variant.to_string(), *code))
+        .collect();
+    assert_eq!(
+        mapped,
+        vec![
+            ("NotFound".to_owned(), 404),
+            ("VersionGone".to_owned(), 410),
+        ]
+    );
+    assert!(matches!(binding.body_kind, BodyKind::Json));
+}
+
+/// `header_in` claims one ordinary argument beside the message, by name, and the message it
+/// leaves behind is still the author's own type — the claimed argument never becomes a field.
+#[test]
+fn a_header_in_binding_claims_one_argument_beside_the_message() {
+    let read = service(HTTP_SERVICE);
+    let operation = &read.operations[0];
+    let binding = operation.http.as_ref().unwrap();
+    assert_eq!(binding.header_in.len(), 1);
+    assert_eq!(binding.header_in[0].name, "range");
+    assert_eq!(binding.header_in[0].parameter.to_string(), "byte_range");
+    assert_eq!(
+        spelled(named_input(operation).unwrap()),
+        "GetVersionRequest",
+        "the claimed argument is excluded from the message, which stays the author's own type"
+    );
+}
+
+/// A bare `header_out(\"name\")` is recorded in declaration order, matching the tuple the success
+/// type is checked against.
+#[test]
+fn a_header_out_binding_is_recorded_in_declaration_order() {
+    let read = service(HTTP_SERVICE);
+    let binding = read.operations[0].http.as_ref().unwrap();
+    assert_eq!(binding.header_out, vec!["etag".to_owned()]);
+}
+
+/// A group naming only `method` and `path` gets 200 for a reply that is not empty, and claims no
+/// header in either direction.
+#[test]
+fn an_http_group_naming_no_ok_status_defaults_to_200_for_a_reply() {
+    let read = service(HTTP_SERVICE);
+    let binding = read.operations[1].http.as_ref().unwrap();
+    assert_eq!(binding.method, HttpMethod::Post);
+    assert_eq!(binding.ok_status, 200);
+    assert!(
+        binding.header_in.is_empty() && binding.header_out.is_empty(),
+        "the group named neither"
+    );
+    assert!(binding.error_status.is_empty(), "the group named none");
+}
+
+/// A one-way operation's group falls back to 204, there being nothing for it to serialize.
+#[test]
+fn an_http_group_naming_no_ok_status_defaults_to_204_for_a_one_way_operation() {
+    let read = service(HTTP_SERVICE);
+    let binding = read.operations[2].http.as_ref().unwrap();
+    assert_eq!(binding.method, HttpMethod::Delete);
+    assert_eq!(binding.ok_status, 204);
+}
+
+/// `http(...)` takes exactly six arguments, and a key spelled otherwise is refused naming them.
+#[test]
+fn an_unknown_http_argument_is_refused_naming_the_ones_that_exist() {
+    let reported = refusals(
+        "pub trait WidgetService<Ctx> {
+            #[service_schema_op(http(nonsense = 1))]
+            async fn get_widget(&self, ctx: &Ctx, req: WidgetRequest) -> Result<WidgetResponse, WidgetError>;
+        }",
+    );
+    assert_eq!(reported.len(), 1, "got: {reported:?}");
+    assert!(
+        reported[0].contains("unknown `http` argument"),
+        "got: {}",
+        reported[0]
+    );
+}
+
+/// `method` is not optional inside an explicit `http(...)` group.
+#[test]
+fn an_http_group_naming_no_method_is_refused() {
+    assert_eq!(
+        refusals(
+            "pub trait WidgetService<Ctx> {
+                #[service_schema_op(http(path = \"/widgets\"))]
+                async fn get_widget(&self, ctx: &Ctx, req: WidgetRequest) -> Result<WidgetResponse, WidgetError>;
+            }"
+        ),
+        vec![
+            "service_schema: `http(...)` declares no `method`\n       \
+             write `method = \"GET\"` (or `\"POST\"`, `\"PUT\"`, `\"DELETE\"`, `\"PATCH\"`)"
+        ]
+    );
+}
+
+/// `path` is not optional inside an explicit `http(...)` group.
+#[test]
+fn an_http_group_naming_no_path_is_refused() {
+    assert_eq!(
+        refusals(
+            "pub trait WidgetService<Ctx> {
+                #[service_schema_op(http(method = \"GET\"))]
+                async fn get_widget(&self, ctx: &Ctx, req: WidgetRequest) -> Result<WidgetResponse, WidgetError>;
+            }"
+        ),
+        vec![
+            "service_schema: `http(...)` declares no `path`\n       \
+             write `path = \"/resource/{field}\"`"
+        ]
+    );
+}
+
+/// A method outside the five this version knows is refused naming what is known instead.
+#[test]
+fn an_http_group_naming_an_unknown_method_is_refused() {
+    assert_eq!(
+        refusals(
+            "pub trait WidgetService<Ctx> {
+                #[service_schema_op(http(method = \"TRACE\", path = \"/widgets\"))]
+                async fn get_widget(&self, ctx: &Ctx, req: WidgetRequest) -> Result<WidgetResponse, WidgetError>;
+            }"
+        ),
+        vec![
+            "service_schema: `TRACE` is not an HTTP method this version knows\n       \
+             write one of `GET`, `POST`, `PUT`, `DELETE`, `PATCH`"
+        ]
+    );
+}
+
+/// A path placeholder naming no field the message has is refused, naming the placeholder — read
+/// off a `Generated` message, whose field names this macro can see directly.
+#[test]
+fn a_path_placeholder_naming_no_field_is_refused() {
+    assert_eq!(
+        refusals(
+            "pub trait WidgetService<Ctx> {
+                #[service_schema_op(http(method = \"POST\", path = \"/widgets/{item_id}\", ok_status = 200))]
+                async fn get_widget(
+                    &self,
+                    ctx: &Ctx,
+                    widget_id: String,
+                    label: String,
+                ) -> Result<WidgetResponse, WidgetError>;
+            }"
+        ),
+        vec![
+            "service_schema: operation `get_widget`'s path names `{item_id}`, and its message \
+             has no field named `item_id`\n       \
+             a path placeholder binds a same-named field on the message"
+        ]
+    );
+}
+
+/// A required field a bodyless method has no query support to carry is refused, naming the field.
+#[test]
+fn a_required_field_unbound_by_the_path_of_a_bodyless_method_is_refused() {
+    assert_eq!(
+        refusals(
+            "pub trait WidgetService<Ctx> {
+                #[service_schema_op(http(method = \"GET\", path = \"/widgets/{widget_id}\", ok_status = 200))]
+                async fn get_widget(
+                    &self,
+                    ctx: &Ctx,
+                    widget_id: String,
+                    filter: String,
+                ) -> Result<WidgetResponse, WidgetError>;
+            }"
+        ),
+        vec![
+            "service_schema: operation `get_widget`'s field `filter` is required and is bound \
+             by no path placeholder\n       \
+             `GET` carries no body, so a required field must appear in the path"
+        ]
+    );
+}
+
+/// An optional field a bodyless method leaves unbound is not refused — `Option<T>` already reads
+/// as "may be absent" on every other surface, and a query-less `GET` is exactly that.
+#[test]
+fn an_optional_field_unbound_by_the_path_of_a_bodyless_method_is_not_refused() {
+    assert!(
+        refusals(
+            "pub trait WidgetService<Ctx> {
+                #[service_schema_op(http(method = \"GET\", path = \"/widgets/{widget_id}\", ok_status = 200))]
+                async fn get_widget(
+                    &self,
+                    ctx: &Ctx,
+                    widget_id: String,
+                    filter: Option<String>,
+                ) -> Result<WidgetResponse, WidgetError>;
+            }"
+        )
+        .is_empty()
+    );
+}
+
+/// `header_in` naming a parameter that answers to no argument in the signature is refused, naming
+/// the parameter.
+#[test]
+fn a_header_in_naming_no_real_argument_is_refused() {
+    assert_eq!(
+        refusals(
+            "pub trait WidgetService<Ctx> {
+                #[service_schema_op(http(
+                    method = \"GET\",
+                    path = \"/widgets/{widget_id}\",
+                    ok_status = 200,
+                    header_in(\"range\" = byte_range),
+                ))]
+                async fn get_widget(&self, ctx: &Ctx, widget_id: String) -> Result<WidgetResponse, WidgetError>;
+            }"
+        ),
+        vec![
+            "service_schema: operation `get_widget` binds header \"range\" to a parameter named \
+             `byte_range`, and `get_widget` takes no argument by that name\n       \
+             `header_in` binds one ordinary argument beside the message; name it in the \
+             signature, or remove the binding"
+        ]
+    );
+}
+
+/// A tuple success type with no `header_out` to explain it is refused.
+#[test]
+fn a_tuple_success_type_with_no_header_out_is_refused() {
+    assert_eq!(
+        refusals(
+            "pub trait WidgetService<Ctx> {
+                #[service_schema_op(http(method = \"GET\", path = \"/widgets/{widget_id}\", ok_status = 200))]
+                async fn get_widget(&self, ctx: &Ctx, widget_id: String) -> Result<(WidgetResponse, String), WidgetError>;
+            }"
+        ),
+        vec![
+            "service_schema: operation `get_widget` returns a tuple success type and declares \
+             no `header_out`\n       \
+             name what each element after the first is with `header_out(\"name\")`, or return \
+             the type directly"
+        ]
+    );
+}
+
+/// The completeness check `support::emit` builds for `error_status` is a plain-function-pointer
+/// const naming the operation's own error type, with exactly the declared arms — read off the
+/// service module's own tokens, the same way every other emitted item in this file is.
+#[test]
+fn the_service_module_carries_one_completeness_check_per_http_error_status() {
+    let expanded =
+        exec_service_schema(TokenStream::new(), declared(HTTP_SERVICE).to_token_stream());
+    let body = module_body(expanded, "document_service_schema").to_string();
+    assert!(
+        body.contains(
+            "const _ : fn (& GetVersionError) -> u16 = | reported | match reported \
+             { GetVersionError :: NotFound => 404u16 , GetVersionError :: VersionGone => 410u16 \
+             , } ;"
+        ),
+        "got: {body}"
+    );
+}
+
+/// Only a `Reply` operation naming `http(...)` carries a completeness check at all: `sweep` names
+/// no group and `purge_document` is one-way, so between the four operations exactly two checks
+/// are published, one per `Reply` operation that named a group — `create_document`'s carries no
+/// arms at all, its group having declared no `error_status`, which is rustc's own problem to
+/// raise against `DocumentError` rather than this crate's to guess at.
+#[test]
+fn only_a_reply_operation_naming_http_carries_a_completeness_check() {
+    let expanded =
+        exec_service_schema(TokenStream::new(), declared(HTTP_SERVICE).to_token_stream());
+    let body = module_body(expanded, "document_service_schema").to_string();
+    assert_eq!(body.matches("const _ : fn (&").count(), 2, "got: {body}");
+    assert!(
+        body.contains("const _ : fn (& DocumentError) -> u16 = | reported | match reported {"),
+        "got: {body}"
+    );
 }

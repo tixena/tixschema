@@ -67,7 +67,7 @@ fn an_unknown_transport_names_itself_and_what_is_known() {
     assert_eq!(
         refusal(r#"transports = ["grpc"]"#).to_string(),
         "service_schema: `grpc` is not a transport this version knows\n       \
-         known transports: `amqp_rpc`"
+         known transports: `amqp_rpc`, `http_rest`"
     );
 }
 
