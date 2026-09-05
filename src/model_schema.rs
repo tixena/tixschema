@@ -119,6 +119,9 @@ use crate::features::jsonschema::{
 #[cfg(feature = "jsonschema")]
 use crate::utils::json_argument_binding;
 
+#[cfg(feature = "dart")]
+use crate::features::dart::dart_schema_dispatch;
+
 #[cfg(any(
     feature = "typescript",
     feature = "zod",
@@ -1179,6 +1182,13 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // declaration left its consult for whichever expansion registers the name, and this is that
     // expansion.
     let registering = item_schema_ident(&item).cloned();
+    // Fully independent of the struct/enum/alias dispatch below: it reads its own borrow of `item`
+    // ahead of the move into that dispatch, and needs none of the module-and-delegate machinery the
+    // other three surfaces share (a Dart class has no forward-reference or cycle problem to solve,
+    // unlike a JavaScript module's top-to-bottom `const` evaluation, so it carries no factory-cache
+    // or `z.lazy`-style deferral of its own to wire in).
+    #[cfg(feature = "dart")]
+    let dart_tokens = dart_schema_dispatch(&item, parsed_args.name_override.as_deref());
     let expanded = if let Item::Struct(item_struct) = item {
         process_struct(item_struct, &parsed_args)
     } else if let Item::Enum(item_enum) = item {
@@ -1192,8 +1202,16 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
         )
         .to_compile_error()
     };
-    let answered = with_prefixed_tokens(expanded, &deferred_shape_refusals(registering.as_ref()));
-    with_prefixed_tokens(answered, &filling_bound_checks)
+    let deferred = with_prefixed_tokens(expanded, &deferred_shape_refusals(registering.as_ref()));
+    let bound = with_prefixed_tokens(deferred, &filling_bound_checks);
+    #[cfg(feature = "dart")]
+    {
+        quote! { #bound #dart_tokens }
+    }
+    #[cfg(not(feature = "dart"))]
+    {
+        bound
+    }
 }
 
 /// Classifies what an alias resolves to, for the registry.
