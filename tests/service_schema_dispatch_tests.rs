@@ -50,6 +50,12 @@ mod second_amqp_transport;
 #[path = "service_schema_dispatch_tests/gate_amqp_transport.rs"]
 mod gate_amqp_transport;
 
+/// The `http_rest` dispatcher, in a module of its own — the same placement rules apply to this
+/// transport's macro as to `amqp_rpc`'s.
+#[cfg(all(test, feature = "serde"))]
+#[path = "service_schema_dispatch_tests/http_rest_transport.rs"]
+mod http_rest_transport;
+
 // A transport's dispatcher reaches what the service declared through `$crate`, which is this
 // binary's root: a service written in a submodule is named here for the expansion to resolve.
 #[cfg(all(
@@ -59,4 +65,4 @@ mod gate_amqp_transport;
 ))]
 use tests::a_message_annotated_with_a_constraint::{GateService, gate_service_schema};
 #[cfg(all(test, feature = "serde"))]
-use tests::{ProbeService, probe_service_schema};
+use tests::{DocumentService, ProbeService, document_service_schema, probe_service_schema};

@@ -224,14 +224,17 @@ use syn::{Ident, Type};
 
 /// The names the service's own module publishes that the client writes, each spelled so it resolves
 /// from the crate the macro is invoked in.
-struct Generated {
-    call_error: TokenStream,
-    fault: TokenStream,
-    module: Ident,
+///
+/// `pub(super)`: a client answers a call the same three ways whatever the wire underneath it, so
+/// `http_rest`'s own client builds this the same way rather than restating the three paths.
+pub(super) struct Generated {
+    pub call_error: TokenStream,
+    pub fault: TokenStream,
+    pub module: Ident,
 }
 
 impl Generated {
-    fn of(module: Ident) -> Self {
+    pub(super) fn of(module: Ident) -> Self {
         Self {
             call_error: quote! { $crate::#module::CallError },
             fault: quote! { $crate::#module::ServiceFault },
@@ -299,8 +302,9 @@ fn answer_reader(generated: &Generated) -> TokenStream {
     }
 }
 
-/// What one operation's client method answers.
-fn answers(operation: &OperationDef, generated: &Generated) -> TokenStream {
+/// What one operation's client method answers. `pub(super)`: the shape does not turn on the wire
+/// underneath it, so `http_rest`'s client reads the same answer type off the same declaration.
+pub(super) fn answers(operation: &OperationDef, generated: &Generated) -> TokenStream {
     let Generated {
         call_error, fault, ..
     } = generated;
@@ -420,8 +424,9 @@ fn arm(module: &Ident, operation: &OperationDef) -> TokenStream {
 /// What the implementation is handed after the context: the message itself where the operation
 /// named one, and otherwise the fields of the message declared for it, unpacked back into the
 /// arguments the operation was written with — followed by one more argument per `header_in`
-/// binding, decoded off the incoming headers by [`header_in_reads`] into a local of the same name.
-fn call_arguments(operation: &OperationDef) -> Vec<TokenStream> {
+/// binding, decoded into a local of the same name ahead of the call: by [`header_in_reads`] here,
+/// and by `http_rest`'s own header decode where that dispatcher reuses this (`pub(super)` for it).
+pub(super) fn call_arguments(operation: &OperationDef) -> Vec<TokenStream> {
     let mut arguments: Vec<TokenStream> = match &operation.inputs {
         OperationInputs::Empty => Vec::new(),
         OperationInputs::Generated(arguments) => arguments
@@ -443,7 +448,13 @@ fn call_arguments(operation: &OperationDef) -> Vec<TokenStream> {
 /// A message the macro declared is built through the alias its own module publishes, the same path
 /// the dispatcher deserializes into, so the client reaches nothing at the declaring crate's root
 /// beyond the module itself.
-fn call_message(operation: &OperationDef, module: &Ident) -> (Vec<TokenStream>, TokenStream) {
+///
+/// `pub(super)`: an operation's arguments pack into its message the same way for every client, so
+/// `http_rest`'s client builds `sending` through this one emitter rather than a second copy of it.
+pub(super) fn call_message(
+    operation: &OperationDef,
+    module: &Ident,
+) -> (Vec<TokenStream>, TokenStream) {
     match &operation.inputs {
         OperationInputs::Empty => {
             let declared = message_alias_ident(operation);
@@ -1515,7 +1526,11 @@ fn method_doc(operation: &OperationDef) -> String {
 
 /// What a message failing its own validation answers, which is a fault either way and never a
 /// transport call.
-fn outbound_refusal(operation: &OperationDef, generated: &Generated) -> TokenStream {
+///
+/// `pub(super)`: a client refuses its own outgoing message before reaching the transport the same
+/// way regardless of which transport that is, so `http_rest`'s client answers through this emitter
+/// too.
+pub(super) fn outbound_refusal(operation: &OperationDef, generated: &Generated) -> TokenStream {
     let Generated {
         call_error,
         fault,
@@ -1549,7 +1564,12 @@ fn outbound_refusal(operation: &OperationDef, generated: &Generated) -> TokenStr
 /// every caught panic is recorded through `tracing::error!`. `tracing` is one of the runtime crates
 /// the *invoking* crate names in its own manifest, beside `serde` and `serde_json`, and it is named
 /// for the same reason: the tokens below call it.
-fn panic_guard() -> TokenStream {
+///
+/// `pub(super)`: `http_rest`'s dispatcher answers a handler panic the same way, and calls this same
+/// emitter to say so — one runtime copy per macro invocation either way, since a `macro_rules!` body
+/// is tokens rather than a link, so the two transports still cannot answer one panic two different
+/// ways.
+pub(super) fn panic_guard() -> TokenStream {
     quote! {
         /// Runs a handler, answering `Err` with what it said where it panicked rather than letting
         /// the panic unwind out through `dispatch`.
@@ -1634,7 +1654,7 @@ fn panic_guard() -> TokenStream {
 /// diagnostics a placement decides — an inline module, a `mod` below a `use`, a glob import — are
 /// the consumer's to avoid and nobody else's to fix. `placed` is what the module's own file holds,
 /// ending in the path the invocation is written under so the macro name follows it.
-fn placement_doc(macro_name: &Ident, module: &str, placed: &str) -> String {
+pub(super) fn placement_doc(macro_name: &Ident, module: &str, placed: &str) -> String {
     format!(
         "# Where to put it\n\n\
          In a module of its own file, with the `mod` declaration above the crate's `use` \
@@ -1667,7 +1687,11 @@ fn placement_doc(macro_name: &Ident, module: &str, placed: &str) -> String {
 ///
 /// Both travel with the dispatcher rather than sitting in the generated module, because the
 /// refusal they read is a `serde_json::Error` belonging to the crate that read the payload.
-fn refusal_reader(module: &Ident) -> TokenStream {
+///
+/// `pub(super)`: the classification is about `serde_json::Error` alone and names nothing AMQP-
+/// specific, so `http_rest`'s dispatcher reads a body's own refusal through this same emitter
+/// rather than reclassifying it in different words.
+pub(super) fn refusal_reader(module: &Ident) -> TokenStream {
     quote! {
         /// The field serde names in its own words. It writes one into exactly two sentences —
         /// `missing field \u{60}creditCount\u{60}` and
