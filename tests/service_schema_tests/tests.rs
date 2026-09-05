@@ -165,7 +165,7 @@ impl amqp_transport::Reply for Capture {
             .push(serde_json::to_vec(&framed).unwrap());
     }
 
-    async fn send<T>(&self, value: T)
+    async fn send<T>(&self, value: T, _headers: Vec<(String, String)>)
     where
         T: Serialize + Send,
     {
@@ -178,7 +178,12 @@ impl amqp_transport::Reply for Capture {
 }
 
 impl amqp_client::Transport for Loopback {
-    async fn notify<T>(&self, operation: &str, payload: T) -> Result<(), String>
+    async fn notify<T>(
+        &self,
+        operation: &str,
+        payload: T,
+        _headers: Vec<(String, String)>,
+    ) -> Result<(), String>
     where
         T: Serialize + Send,
     {
@@ -195,7 +200,12 @@ impl amqp_client::Transport for Loopback {
         Ok(())
     }
 
-    async fn request<T>(&self, operation: &str, payload: T) -> Result<Vec<u8>, String>
+    async fn request<T>(
+        &self,
+        operation: &str,
+        payload: T,
+        _headers: Vec<(String, String)>,
+    ) -> Result<(Vec<u8>, Vec<(String, String)>), String>
     where
         T: Serialize + Send,
     {
@@ -209,7 +219,7 @@ impl amqp_client::Transport for Loopback {
             &capture,
         )
         .await;
-        Ok(capture.answered())
+        Ok((capture.answered(), Vec::new()))
     }
 }
 
@@ -234,7 +244,11 @@ fn answered(operation: &str, payload: &str) -> String {
         &ProbeContext {
             logger_name: "probe".to_owned(),
         },
-        &amqp_transport::IncomingMessage::new(operation.to_owned(), payload.as_bytes().to_vec()),
+        &amqp_transport::IncomingMessage::new(
+            operation.to_owned(),
+            payload.as_bytes().to_vec(),
+            Vec::new(),
+        ),
         &capture,
     ))
     .unwrap();
@@ -246,7 +260,11 @@ fn incoming<T>(operation: &str, payload: &T) -> amqp_transport::IncomingMessage
 where
     T: Serialize,
 {
-    amqp_transport::IncomingMessage::new(operation.to_owned(), serde_json::to_vec(payload).unwrap())
+    amqp_transport::IncomingMessage::new(
+        operation.to_owned(),
+        serde_json::to_vec(payload).unwrap(),
+        Vec::new(),
+    )
 }
 
 /// The probe never suspends, so one poll answers it; `None` says an assumption about the bodies

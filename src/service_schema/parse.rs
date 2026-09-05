@@ -270,6 +270,10 @@ pub struct HeaderIn {
     pub name: String,
     /// The operation's own argument it fills, keeping the argument's real span.
     pub parameter: Ident,
+    /// The argument's declared type, read off the same signature `parameter` names — a transport
+    /// carrying the header over its own channel types its extra parameter with this rather than
+    /// reading the signature a second time.
+    pub ty: Type,
 }
 
 /// How `http(...)` carries the body. `Json` is the only kind this version emits.
@@ -637,10 +641,11 @@ fn parse_operation(operation: &TraitItemFn, context: &Ident) -> Result<Operation
     })
 }
 
-/// Every argument's name beyond `&self` and the context, whatever it ends up bound to — checked
-/// against a `header_in` claim, since [`operation_inputs`] has already removed its own claims from
-/// what it returns and cannot itself say whether one named nothing real.
-fn extra_argument_names(operation: &TraitItemFn) -> HashSet<String> {
+/// Every argument's name and declared type beyond `&self` and the context — checked against a
+/// `header_in` claim, since [`operation_inputs`] has already removed its own claims from what it
+/// returns and cannot itself say whether one named nothing real, and read again here for the type
+/// a `header_in` binding carries forward so a transport need not read the signature a second time.
+fn extra_arguments(operation: &TraitItemFn) -> HashMap<String, Type> {
     operation
         .sig
         .inputs
@@ -653,7 +658,7 @@ fn extra_argument_names(operation: &TraitItemFn) -> HashSet<String> {
             let Pat::Ident(named) = typed.pat.as_ref() else {
                 return None;
             };
-            Some(named.ident.to_string())
+            Some((named.ident.to_string(), typed.ty.as_ref().clone()))
         })
         .collect()
 }
@@ -908,9 +913,9 @@ fn build_http_binding(
 ) -> Result<HttpBinding, syn::Error> {
     let mut refusals: Option<syn::Error> = None;
 
-    let existing = extra_argument_names(operation);
+    let existing = extra_arguments(operation);
     for (name, parameter) in &raw.header_in {
-        if !existing.contains(&parameter.to_string()) {
+        if !existing.contains_key(&parameter.to_string()) {
             refusals = Some(combined(
                 refusals.take(),
                 syn::Error::new(
@@ -939,12 +944,19 @@ fn build_http_binding(
     Ok(HttpBinding {
         body_kind: BodyKind::Json,
         error_status: raw.error_status,
+        // A parameter absent from `existing` was already refused above, and `refusals` returned
+        // `Err` before this point ran — `filter_map` drops it here rather than asserting an
+        // invariant this function has already checked once.
         header_in: raw
             .header_in
             .into_iter()
-            .map(|(name, parameter)| HeaderIn {
-                name: name.value(),
-                parameter,
+            .filter_map(|(name, parameter)| {
+                let ty = existing.get(&parameter.to_string())?.clone();
+                Some(HeaderIn {
+                    name: name.value(),
+                    parameter,
+                    ty,
+                })
             })
             .collect(),
         header_out: raw

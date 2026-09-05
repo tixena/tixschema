@@ -1063,7 +1063,7 @@ impl amqp_transport::Reply for Capture {
             .push(serde_json::to_vec(&fault).unwrap());
     }
 
-    async fn send<T>(&self, value: T)
+    async fn send<T>(&self, value: T, _headers: Vec<(String, String)>)
     where
         T: serde::Serialize + Send,
     {
@@ -1088,7 +1088,12 @@ pub struct PreparedAnswer {
 // those are published only where the Zod surface they parse against is.
 #[cfg(all(feature = "typescript", feature = "zod"))]
 impl amqp_client::Transport for PreparedAnswer {
-    async fn notify<T>(&self, _operation: &str, _payload: T) -> Result<(), String>
+    async fn notify<T>(
+        &self,
+        _operation: &str,
+        _payload: T,
+        _headers: Vec<(String, String)>,
+    ) -> Result<(), String>
     where
         T: serde::Serialize + Send,
     {
@@ -1096,12 +1101,17 @@ impl amqp_client::Transport for PreparedAnswer {
         Ok(())
     }
 
-    async fn request<T>(&self, _operation: &str, _payload: T) -> Result<Vec<u8>, String>
+    async fn request<T>(
+        &self,
+        _operation: &str,
+        _payload: T,
+        _headers: Vec<(String, String)>,
+    ) -> Result<(Vec<u8>, Vec<(String, String)>), String>
     where
         T: serde::Serialize + Send,
     {
         ready(()).await;
-        Ok(self.encoded.clone())
+        Ok((self.encoded.clone(), Vec::new()))
     }
 }
 
@@ -1384,7 +1394,7 @@ fn settlements(operation: &str, payload: &[u8]) -> Vec<Vec<u8>> {
         &ProbeContext {
             logger_name: "probe".to_owned(),
         },
-        &amqp_transport::IncomingMessage::new(operation.to_owned(), payload.to_vec()),
+        &amqp_transport::IncomingMessage::new(operation.to_owned(), payload.to_vec(), Vec::new()),
         &capture,
     ));
     assert!(settled.is_some(), "the probe never suspends");
@@ -1401,7 +1411,7 @@ fn dispatched(operation: &str, payload: &[u8], logger_name: &str) -> Vec<u8> {
         &ProbeContext {
             logger_name: logger_name.to_owned(),
         },
-        &amqp_transport::IncomingMessage::new(operation.to_owned(), payload.to_vec()),
+        &amqp_transport::IncomingMessage::new(operation.to_owned(), payload.to_vec(), Vec::new()),
         &capture,
     ));
     assert!(settled.is_some(), "the probe never suspends");
