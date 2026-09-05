@@ -20,6 +20,9 @@ pub mod object_id;
 #[cfg(feature = "chrono")]
 pub mod chrono;
 
+#[cfg(feature = "dart")]
+pub mod dart;
+
 /// Module for parsing model_schema_prop attributes
 pub mod model_schema_prop;
 
@@ -56,6 +59,9 @@ impl Features {
         if Self::has_chrono() {
             features.push("chrono");
         }
+        if Self::has_dart() {
+            features.push("dart");
+        }
 
         if features.is_empty() {
             features.push("minimal");
@@ -67,6 +73,11 @@ impl Features {
     /// Check if `chrono` feature is enabled.
     pub const fn has_chrono() -> bool {
         cfg!(feature = "chrono")
+    }
+
+    /// Check if `dart` feature is enabled.
+    pub const fn has_dart() -> bool {
+        cfg!(feature = "dart")
     }
 
     /// Check if jsonschema feature is enabled.

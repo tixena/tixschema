@@ -1329,6 +1329,33 @@ impl FieldDef {
     }
 }
 
+/// The identifier a generic type parameter's `fromJson` converter argument binds to — `itemTypeFromJson`
+/// for `ItemType`, mirroring [`zod_factory_argument`]'s lower-camel naming for the same reason: a
+/// Dart `const` field position cannot itself be parameterised, so a generic type's codec takes one
+/// converter function per parameter instead.
+#[cfg(feature = "dart")]
+pub fn dart_from_json_argument(parameter: &str) -> String {
+    format!("{}FromJson", dart_lower_camel(parameter))
+}
+
+/// The identifier a generic type parameter's `toJson` converter argument binds to — the encode
+/// counterpart of [`dart_from_json_argument`].
+#[cfg(feature = "dart")]
+pub fn dart_to_json_argument(parameter: &str) -> String {
+    format!("{}ToJson", dart_lower_camel(parameter))
+}
+
+/// `parameter`, lower-camel-cased: `IdType` -> `idType`. `pub` (rather than private, like every
+/// other helper on this page) because the plain-enum builder in `features::dart` also needs it, to
+/// turn a Rust variant ident into a valid Dart enhanced-enum member name.
+#[cfg(feature = "dart")]
+pub fn dart_lower_camel(parameter: &str) -> String {
+    let mut characters = parameter.chars();
+    characters.next().map_or_else(String::new, |first| {
+        format!("{}{}", first.to_lowercase(), characters.as_str())
+    })
+}
+
 /// The `f64` a `literal = N` was written with, formatted the way TypeScript and Zod read a numeric
 /// literal type: a whole value renders without the trailing `.0` `f64`'s own `Display` carries.
 pub fn format_number_literal(value: f64) -> String {
