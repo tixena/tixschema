@@ -108,7 +108,7 @@ pub mod a_bound_the_fields_own_type_declares {
                 .push(serde_json::to_vec(&framed).unwrap());
         }
 
-        async fn send<T>(&self, value: T)
+        async fn send<T>(&self, value: T, _headers: Vec<(String, String)>)
         where
             T: Serialize + Send,
         {
@@ -121,7 +121,12 @@ pub mod a_bound_the_fields_own_type_declares {
     }
 
     impl enrol_amqp_client::Transport for EnrolLoopback {
-        async fn notify<T>(&self, operation: &str, payload: T) -> Result<(), String>
+        async fn notify<T>(
+            &self,
+            operation: &str,
+            payload: T,
+            _headers: Vec<(String, String)>,
+        ) -> Result<(), String>
         where
             T: Serialize + Send,
         {
@@ -136,7 +141,12 @@ pub mod a_bound_the_fields_own_type_declares {
             Ok(())
         }
 
-        async fn request<T>(&self, operation: &str, payload: T) -> Result<Vec<u8>, String>
+        async fn request<T>(
+            &self,
+            operation: &str,
+            payload: T,
+            _headers: Vec<(String, String)>,
+        ) -> Result<(Vec<u8>, Vec<(String, String)>), String>
         where
             T: Serialize + Send,
         {
@@ -148,14 +158,19 @@ pub mod a_bound_the_fields_own_type_declares {
                 &capture,
             )
             .await;
-            Ok(capture.answered())
+            Ok((capture.answered(), Vec::new()))
         }
     }
 
     /// The file's probe transport, answering a second service: a `Transport` is generated per
     /// service, so serving another one means implementing another.
     impl enrol_amqp_client::Transport for ProbeTransport {
-        async fn notify<T>(&self, operation: &str, payload: T) -> Result<(), String>
+        async fn notify<T>(
+            &self,
+            operation: &str,
+            payload: T,
+            _headers: Vec<(String, String)>,
+        ) -> Result<(), String>
         where
             T: Serialize + Send,
         {
@@ -165,13 +180,18 @@ pub mod a_bound_the_fields_own_type_declares {
             Ok(())
         }
 
-        async fn request<T>(&self, operation: &str, payload: T) -> Result<Vec<u8>, String>
+        async fn request<T>(
+            &self,
+            operation: &str,
+            payload: T,
+            _headers: Vec<(String, String)>,
+        ) -> Result<(Vec<u8>, Vec<(String, String)>), String>
         where
             T: Serialize + Send,
         {
             ready(()).await;
             self.record(operation, &payload);
-            Ok(self.answer())
+            Ok((self.answer(), Vec::new()))
         }
     }
 
@@ -195,6 +215,7 @@ pub mod a_bound_the_fields_own_type_declares {
         enrol_amqp_transport::IncomingMessage::new(
             operation.to_owned(),
             serde_json::to_vec(payload).unwrap(),
+            Vec::new(),
         )
     }
 
@@ -444,7 +465,7 @@ impl amqp_transport::Reply for Capture {
             .push(serde_json::to_vec(&framed).unwrap());
     }
 
-    async fn send<T>(&self, value: T)
+    async fn send<T>(&self, value: T, _headers: Vec<(String, String)>)
     where
         T: Serialize + Send,
     {
@@ -457,7 +478,12 @@ impl amqp_transport::Reply for Capture {
 }
 
 impl amqp_client::Transport for DeadlineTransport {
-    async fn notify<T>(&self, operation: &str, _payload: T) -> Result<(), String>
+    async fn notify<T>(
+        &self,
+        operation: &str,
+        _payload: T,
+        _headers: Vec<(String, String)>,
+    ) -> Result<(), String>
     where
         T: Serialize + Send,
     {
@@ -466,7 +492,12 @@ impl amqp_client::Transport for DeadlineTransport {
         Err("no confirmation within 30s".to_owned())
     }
 
-    async fn request<T>(&self, operation: &str, _payload: T) -> Result<Vec<u8>, String>
+    async fn request<T>(
+        &self,
+        operation: &str,
+        _payload: T,
+        _headers: Vec<(String, String)>,
+    ) -> Result<(Vec<u8>, Vec<(String, String)>), String>
     where
         T: Serialize + Send,
     {
@@ -477,7 +508,12 @@ impl amqp_client::Transport for DeadlineTransport {
 }
 
 impl amqp_client::Transport for Loopback {
-    async fn notify<T>(&self, operation: &str, payload: T) -> Result<(), String>
+    async fn notify<T>(
+        &self,
+        operation: &str,
+        payload: T,
+        _headers: Vec<(String, String)>,
+    ) -> Result<(), String>
     where
         T: Serialize + Send,
     {
@@ -492,7 +528,12 @@ impl amqp_client::Transport for Loopback {
         Ok(())
     }
 
-    async fn request<T>(&self, operation: &str, payload: T) -> Result<Vec<u8>, String>
+    async fn request<T>(
+        &self,
+        operation: &str,
+        payload: T,
+        _headers: Vec<(String, String)>,
+    ) -> Result<(Vec<u8>, Vec<(String, String)>), String>
     where
         T: Serialize + Send,
     {
@@ -504,12 +545,17 @@ impl amqp_client::Transport for Loopback {
             &capture,
         )
         .await;
-        Ok(capture.answered())
+        Ok((capture.answered(), Vec::new()))
     }
 }
 
 impl amqp_client::Transport for ProbeTransport {
-    async fn notify<T>(&self, operation: &str, payload: T) -> Result<(), String>
+    async fn notify<T>(
+        &self,
+        operation: &str,
+        payload: T,
+        _headers: Vec<(String, String)>,
+    ) -> Result<(), String>
     where
         T: Serialize + Send,
     {
@@ -519,18 +565,28 @@ impl amqp_client::Transport for ProbeTransport {
         Ok(())
     }
 
-    async fn request<T>(&self, operation: &str, payload: T) -> Result<Vec<u8>, String>
+    async fn request<T>(
+        &self,
+        operation: &str,
+        payload: T,
+        _headers: Vec<(String, String)>,
+    ) -> Result<(Vec<u8>, Vec<(String, String)>), String>
     where
         T: Serialize + Send,
     {
         ready(()).await;
         self.record(operation, &payload);
-        Ok(self.answer())
+        Ok((self.answer(), Vec::new()))
     }
 }
 
 impl spare_amqp_client::Transport for ProbeTransport {
-    async fn notify<T>(&self, operation: &str, payload: T) -> Result<(), String>
+    async fn notify<T>(
+        &self,
+        operation: &str,
+        payload: T,
+        _headers: Vec<(String, String)>,
+    ) -> Result<(), String>
     where
         T: Serialize + Send,
     {
@@ -540,13 +596,18 @@ impl spare_amqp_client::Transport for ProbeTransport {
         Ok(())
     }
 
-    async fn request<T>(&self, operation: &str, payload: T) -> Result<Vec<u8>, String>
+    async fn request<T>(
+        &self,
+        operation: &str,
+        payload: T,
+        _headers: Vec<(String, String)>,
+    ) -> Result<(Vec<u8>, Vec<(String, String)>), String>
     where
         T: Serialize + Send,
     {
         ready(()).await;
         self.record(operation, &payload);
-        Ok(self.answer())
+        Ok((self.answer(), Vec::new()))
     }
 }
 
@@ -647,7 +708,11 @@ fn incoming<T>(operation: &str, payload: &T) -> amqp_transport::IncomingMessage
 where
     T: Serialize,
 {
-    amqp_transport::IncomingMessage::new(operation.to_owned(), serde_json::to_vec(payload).unwrap())
+    amqp_transport::IncomingMessage::new(
+        operation.to_owned(),
+        serde_json::to_vec(payload).unwrap(),
+        Vec::new(),
+    )
 }
 
 /// The probe never suspends, so one poll answers it; `None` says an assumption about the bodies

@@ -801,11 +801,7 @@ fn dispatch_arm(module: &Ident, operation: &OperationDef) -> TokenStream {
         }
     };
 
-    let mut call_args = call_arguments(operation);
-    call_args.extend(shape.header_in.iter().map(|header| {
-        let parameter = &header.parameter;
-        quote! { #parameter }
-    }));
+    let call_args = call_arguments(operation);
     let method_ident = &operation.ident;
     let called = quote! { caught(move || svc.#method_ident(ctx #(, #call_args)*)).await };
 
@@ -832,7 +828,7 @@ fn dispatch_arm(module: &Ident, operation: &OperationDef) -> TokenStream {
 fn header_in_let(wire: &str, header: &HeaderIn) -> TokenStream {
     let name = &header.name;
     let parameter = &header.parameter;
-    let declared_type = &header.parameter_type;
+    let declared_type = &header.ty;
     let decode = decode_expr(declared_type, &quote! { text });
     quote! {
         let #parameter: #declared_type = {
@@ -1393,8 +1389,8 @@ fn client_method(operation: &OperationDef, generated: &Generated) -> TokenStream
     // ordinary parameter per binding, in the same order the dispatcher reads them back out of.
     taken.extend(shape.header_in.iter().map(|header| {
         let parameter = &header.parameter;
-        let parameter_type = &header.parameter_type;
-        quote! { #parameter: #parameter_type }
+        let ty = &header.ty;
+        quote! { #parameter: #ty }
     }));
     let refusal = outbound_refusal(operation, generated);
 

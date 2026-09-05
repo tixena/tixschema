@@ -77,7 +77,12 @@ impl NoteService<()> for NoteBackEnd {
 }
 
 impl bare_amqp_client::Transport for RefusingTransport {
-    async fn notify<T>(&self, _operation: &str, _payload: T) -> Result<(), String>
+    async fn notify<T>(
+        &self,
+        _operation: &str,
+        _payload: T,
+        _headers: Vec<(String, String)>,
+    ) -> Result<(), String>
     where
         T: Serialize + Send,
     {
@@ -85,7 +90,12 @@ impl bare_amqp_client::Transport for RefusingTransport {
         Err("the message never went out".to_owned())
     }
 
-    async fn request<T>(&self, _operation: &str, _payload: T) -> Result<Vec<u8>, String>
+    async fn request<T>(
+        &self,
+        _operation: &str,
+        _payload: T,
+        _headers: Vec<(String, String)>,
+    ) -> Result<(Vec<u8>, Vec<(String, String)>), String>
     where
         T: Serialize + Send,
     {
@@ -100,7 +110,7 @@ impl bare_amqp_transport::Reply for Recorder {
         self.record(&fault);
     }
 
-    async fn send<T>(&self, value: T)
+    async fn send<T>(&self, value: T, _headers: Vec<(String, String)>)
     where
         T: Serialize + Send,
     {
@@ -110,7 +120,12 @@ impl bare_amqp_transport::Reply for Recorder {
 }
 
 impl note_amqp_client::Transport for RefusingTransport {
-    async fn notify<T>(&self, _operation: &str, _payload: T) -> Result<(), String>
+    async fn notify<T>(
+        &self,
+        _operation: &str,
+        _payload: T,
+        _headers: Vec<(String, String)>,
+    ) -> Result<(), String>
     where
         T: Serialize + Send,
     {
@@ -118,7 +133,12 @@ impl note_amqp_client::Transport for RefusingTransport {
         Err("the message never went out".to_owned())
     }
 
-    async fn request<T>(&self, _operation: &str, _payload: T) -> Result<Vec<u8>, String>
+    async fn request<T>(
+        &self,
+        _operation: &str,
+        _payload: T,
+        _headers: Vec<(String, String)>,
+    ) -> Result<(Vec<u8>, Vec<(String, String)>), String>
     where
         T: Serialize + Send,
     {
@@ -133,7 +153,7 @@ impl note_amqp_transport::Reply for Recorder {
         self.record(&fault);
     }
 
-    async fn send<T>(&self, value: T)
+    async fn send<T>(&self, value: T, _headers: Vec<(String, String)>)
     where
         T: Serialize + Send,
     {
@@ -190,6 +210,7 @@ fn a_one_way_service_dispatches_into_its_implementation_and_settles_nothing() {
         &note_amqp_transport::IncomingMessage::new(
             "note".to_owned(),
             br#"{"slug":"acme","detail":"read"}"#.to_vec(),
+            Vec::new(),
         ),
         &reply,
     ))
@@ -235,7 +256,11 @@ fn a_service_declaring_no_operation_still_settles_a_delivery_that_names_one() {
     poll_once(bare_amqp_transport::dispatch(
         &BareBackEnd,
         &(),
-        &bare_amqp_transport::IncomingMessage::new("anything".to_owned(), b"{}".to_vec()),
+        &bare_amqp_transport::IncomingMessage::new(
+            "anything".to_owned(),
+            b"{}".to_vec(),
+            Vec::new(),
+        ),
         &reply,
     ))
     .unwrap();
@@ -263,9 +288,19 @@ fn a_client_for_a_service_declaring_no_operation_still_binds_a_transport() {
 #[test]
 fn the_reply_handle_carries_an_answer_arm_neither_lean_service_ever_reaches() {
     let bare = Recorder::default();
-    poll_once(bare_amqp_transport::Reply::send(&bare, "answered")).unwrap();
+    poll_once(bare_amqp_transport::Reply::send(
+        &bare,
+        "answered",
+        Vec::new(),
+    ))
+    .unwrap();
     let note = Recorder::default();
-    poll_once(note_amqp_transport::Reply::send(&note, "answered")).unwrap();
+    poll_once(note_amqp_transport::Reply::send(
+        &note,
+        "answered",
+        Vec::new(),
+    ))
+    .unwrap();
     for settled in [bare.settled(), note.settled()] {
         assert_eq!(settled, vec![serde_json::json!("answered")]);
     }
@@ -280,12 +315,14 @@ fn the_transport_seam_carries_the_arms_neither_lean_client_ever_reaches() {
             &RefusingTransport,
             "anything",
             (),
+            Vec::new(),
         ))
         .unwrap(),
         poll_once(note_amqp_client::Transport::request(
             &RefusingTransport,
             "anything",
             (),
+            Vec::new(),
         ))
         .unwrap(),
     ] {
@@ -295,6 +332,7 @@ fn the_transport_seam_carries_the_arms_neither_lean_client_ever_reaches() {
         &RefusingTransport,
         "anything",
         (),
+        Vec::new(),
     ))
     .unwrap();
     assert_eq!(sent, Err("the message never went out".to_owned()));
@@ -304,8 +342,11 @@ fn the_transport_seam_carries_the_arms_neither_lean_client_ever_reaches() {
 /// has no arm to read them.
 #[test]
 fn a_delivery_hands_its_bytes_back_where_no_arm_reads_them() {
-    let delivered =
-        bare_amqp_transport::IncomingMessage::new("anything".to_owned(), b"{}".to_vec());
+    let delivered = bare_amqp_transport::IncomingMessage::new(
+        "anything".to_owned(),
+        b"{}".to_vec(),
+        Vec::new(),
+    );
     assert_eq!(delivered.operation(), "anything");
     assert_eq!(delivered.payload(), b"{}");
 }

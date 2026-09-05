@@ -86,7 +86,7 @@ impl amqp_transport::Reply for ProbeTransport {
         self.record(fault.to_string());
     }
 
-    async fn send<T>(&self, value: T)
+    async fn send<T>(&self, value: T, _headers: Vec<(String, String)>)
     where
         T: Serialize + Send,
     {
@@ -99,7 +99,7 @@ impl usage_amqp_transport::Reply for ProbeTransport {
         self.record(fault.to_string());
     }
 
-    async fn send<T>(&self, value: T)
+    async fn send<T>(&self, value: T, _headers: Vec<(String, String)>)
     where
         T: Serialize + Send,
     {
@@ -161,6 +161,7 @@ fn a_one_way_operation_runs_and_leaves_the_handle_it_was_given_untouched() {
         &amqp_transport::IncomingMessage::new(
             "purge".to_owned(),
             br#"{"organization_id":"acme"}"#.to_vec(),
+            Vec::new(),
         ),
         &transport,
     ))
@@ -186,7 +187,7 @@ fn a_reply_is_handed_the_value_and_the_transport_serializes_it() {
     let transport = ProbeTransport::new();
     let ctx = "probe".to_owned();
     let answered = poll_once(service.sweep(&ctx)).unwrap().unwrap();
-    poll_once(transport.send(answered)).unwrap();
+    poll_once(transport.send(answered, Vec::new())).unwrap();
     assert_eq!(
         transport.settled(),
         vec![r#"{"swept":12}"#.to_owned()],
@@ -200,10 +201,16 @@ fn one_transport_serves_two_services_through_two_reply_handles() {
     let transport = ProbeTransport::new();
     let ctx = "probe".to_owned();
     let counted = poll_once(service.count(&ctx)).unwrap().unwrap();
-    poll_once(usage_amqp_transport::Reply::send(&transport, counted)).unwrap();
+    poll_once(usage_amqp_transport::Reply::send(
+        &transport,
+        counted,
+        Vec::new(),
+    ))
+    .unwrap();
     poll_once(amqp_transport::Reply::send(
         &transport,
         SweepReport { swept: 7 },
+        Vec::new(),
     ))
     .unwrap();
     assert_eq!(
@@ -221,7 +228,7 @@ fn a_second_service_s_dispatcher_stands_beside_the_first_in_one_crate() {
     poll_once(usage_amqp_transport::dispatch(
         &service,
         &ctx,
-        &usage_amqp_transport::IncomingMessage::new("count".to_owned(), b"{}".to_vec()),
+        &usage_amqp_transport::IncomingMessage::new("count".to_owned(), b"{}".to_vec(), Vec::new()),
         &transport,
     ))
     .unwrap();

@@ -41,6 +41,26 @@
 //! against has no `nack`, no dead-letter exchange, no message TTL and no timeout to settle the
 //! delivery in its place.
 //!
+//! # The headers channel: `header_in` and `header_out` over the AMQP headers table
+//!
+//! `#[service_schema_op(http(...))]`'s `header_in`/`header_out` bindings are not HTTP-only: every
+//! transport carries them over whatever header-shaped channel it has, and AMQP's is the message's
+//! own basic-properties headers table. [`Transport::notify`](super::Transport) and `::request`
+//! carry a `headers: Vec<(String, String)>` beside the payload for exactly this — one JSON-encoded
+//! entry per `header_in` binding outbound, and `request`'s answer carries the reply's own headers
+//! back the same way. `IncomingMessage` carries the request leg's headers alongside its payload,
+//! and `Reply::send` carries the reply leg's headers alongside its value.
+//!
+//! An arm reads each `header_in` value off the incoming headers before calling the implementation
+//! — a value that will not decode as the bound argument's declared type is refused the same way an
+//! invalid payload is, naming the header rather than a payload field — and passes it as the extra
+//! argument the operation declared beside its message. A `header_out`-bound success type is a
+//! tuple; the arm sends the response alone as the value and writes every element after it into the
+//! reply's headers, JSON-encoded. The client mirrors both directions: it encodes each `header_in`
+//! argument into `headers` before the call, and decodes `request`'s returned headers back into the
+//! tuple `header_out` declared. An operation naming no `http(...)` group carries an empty
+//! `headers` list either way — the channel exists, but nothing reads or writes it.
+//!
 //! # The client
 //!
 //! One method per operation, returning the operation's success type or a call error that is either
@@ -194,11 +214,13 @@
 //! whole of what it reaches. A service declared at the crate root hoists nothing.
 
 use super::Transport;
-use crate::service_schema::parse::{OperationDef, OperationInputs, OperationOutcome, ServiceDef};
+use crate::service_schema::parse::{
+    HeaderIn, OperationDef, OperationInputs, OperationOutcome, ServiceDef,
+};
 use crate::service_schema::support::{message_alias_ident, message_validator_ident, module_ident};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::Ident;
+use syn::{Ident, Type};
 
 /// The names the service's own module publishes that the client writes, each spelled so it resolves
 /// from the crate the macro is invoked in.
@@ -308,26 +330,71 @@ fn arm(module: &Ident, operation: &OperationDef) -> TokenStream {
     let validator = message_validator_ident(operation);
     let call = call_arguments(operation);
     let method = &operation.ident;
+    let header_reads = header_in_reads(module, operation);
     let called = quote! { caught(move || svc.#method(ctx #(, #call)*)).await };
-    let settled = match operation.outcome {
+    let settled = match &operation.outcome {
         OperationOutcome::OneWay => quote! {
             if let Err(panicked) = #called {
                 record_panic(#wire, &panicked);
             }
         },
-        OperationOutcome::Reply { .. } => quote! {
-            match #called {
-                Ok(answered) => {
-                    reply.send($crate::#module::Answered::answering(answered)).await
+        OperationOutcome::Reply { .. } => {
+            let names = header_out_names(operation);
+            if names.is_empty() {
+                quote! {
+                    match #called {
+                        Ok(answered) => {
+                            reply
+                                .send($crate::#module::Answered::answering(answered), Vec::new())
+                                .await
+                        }
+                        Err(panicked) => {
+                            record_panic(#wire, &panicked);
+                            reply
+                                .fault($crate::#module::ServiceFault::handler_panic(#wire, &panicked))
+                                .await
+                        }
+                    }
                 }
-                Err(panicked) => {
-                    record_panic(#wire, &panicked);
-                    reply
-                        .fault($crate::#module::ServiceFault::handler_panic(#wire, &panicked))
-                        .await
+            } else {
+                let idents = header_out_idents(names);
+                let pushed = names.iter().zip(&idents).map(|(name, ident)| {
+                    quote! {
+                        if let Some(pair) = encoded_header(#name, &#ident) {
+                            headers.push(pair);
+                        }
+                    }
+                });
+                quote! {
+                    match #called {
+                        Ok(answered) => {
+                            let mut headers: Vec<(String, String)> = Vec::new();
+                            // Neither arm names the operation's success or error type: unifying
+                            // the two arms of this `match` is what lets `Answered::answering`
+                            // below infer both from `answered` alone, exactly as it does where no
+                            // `header_out` splits the tuple apart — the dispatcher never needs the
+                            // author's own types in scope, only `$crate`-qualified ones.
+                            let answered = match answered {
+                                Ok((value, #(#idents),*)) => {
+                                    #(#pushed)*
+                                    Ok(value)
+                                }
+                                Err(declared) => Err(declared),
+                            };
+                            reply
+                                .send($crate::#module::Answered::answering(answered), headers)
+                                .await
+                        }
+                        Err(panicked) => {
+                            record_panic(#wire, &panicked);
+                            reply
+                                .fault($crate::#module::ServiceFault::handler_panic(#wire, &panicked))
+                                .await
+                        }
+                    }
                 }
             }
-        },
+        }
     };
     quote! {
         #wire => {
@@ -348,6 +415,7 @@ fn arm(module: &Ident, operation: &OperationDef) -> TokenStream {
                     ))
                     .await;
             }
+            #header_reads
             #settled
         }
     }
@@ -355,19 +423,23 @@ fn arm(module: &Ident, operation: &OperationDef) -> TokenStream {
 
 /// What the implementation is handed after the context: the message itself where the operation
 /// named one, and otherwise the fields of the message declared for it, unpacked back into the
-/// arguments the operation was written with.
-///
-/// `pub(super)`: `http_rest`'s dispatcher unpacks the very same message the very same way, appending
-/// its own header-bound arguments after what this returns.
+/// arguments the operation was written with — followed by one more argument per `header_in`
+/// binding, decoded into a local of the same name ahead of the call: by [`header_in_reads`] here,
+/// and by `http_rest`'s own header decode where that dispatcher reuses this (`pub(super)` for it).
 pub(super) fn call_arguments(operation: &OperationDef) -> Vec<TokenStream> {
-    match &operation.inputs {
+    let mut arguments: Vec<TokenStream> = match &operation.inputs {
         OperationInputs::Empty => Vec::new(),
         OperationInputs::Generated(arguments) => arguments
             .iter()
             .map(|(field, _)| quote! { received.#field })
             .collect(),
         OperationInputs::Named(_) => vec![quote! { received }],
-    }
+    };
+    arguments.extend(header_in_bindings(operation).iter().map(|header| {
+        let parameter = &header.parameter;
+        quote! { #parameter }
+    }));
+    arguments
 }
 
 /// The arguments an operation's client method takes, and the message they are packed into before it
@@ -464,6 +536,12 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
     } else {
         (TokenStream::new(), TokenStream::new(), TokenStream::new())
     };
+    // The decoder reads a `header_out` value off the reply's own headers, once the response has
+    // come back. Emitted only where an operation reaches it, `dead_code` being an error in plenty
+    // of consumers' builds.
+    let header_decode = declares_header_out(service)
+        .then(header_decoder)
+        .unwrap_or_default();
     quote! {
         #[doc = #macro_doc]
         #[macro_export]
@@ -499,6 +577,7 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
                 }
 
                 #reader
+                #header_decode
             };
         }
     }
@@ -599,7 +678,8 @@ fn consumer_loop(contract: &Ident) -> TokenStream {
                                 operation = operation.as_str()
                             ),
                         };
-                        let message = IncomingMessage::new(operation, payload);
+                        let headers = incoming_headers(&delivery);
+                        let message = IncomingMessage::new(operation, payload, headers);
                         dispatch(service, &ctx, &message, &reply).await;
                         acknowledge(&delivery).await;
                     }
@@ -715,6 +795,27 @@ fn consumer_loop_helpers() -> TokenStream {
                 _ => None,
             }
         }
+
+        /// Every header this delivery carried, as `(name, value)` text pairs — what a `header_in`
+        /// binding reads from. A value not carried as text is left out rather than guessed at,
+        /// there being no header binding this bus writes any other way.
+        fn incoming_headers(delivery: &::lapin::message::Delivery) -> Vec<(String, String)> {
+            let Some(headers) = delivery.properties.headers().as_ref() else {
+                return Vec::new();
+            };
+            headers
+                .inner()
+                .iter()
+                .filter_map(|(name, value)| {
+                    let text = match value {
+                        ::lapin::types::AMQPValue::LongString(text) => text.to_string(),
+                        ::lapin::types::AMQPValue::ShortString(text) => text.to_string(),
+                        _ => return None,
+                    };
+                    Some((name.to_string(), text))
+                })
+                .collect()
+        }
     }
 }
 
@@ -725,6 +826,28 @@ fn declares_a_reply(service: &ServiceDef) -> bool {
         .operations
         .iter()
         .any(|operation| matches!(operation.outcome, OperationOutcome::Reply { .. }))
+}
+
+/// Whether the service declares an operation whose `http(...)` group claims at least one
+/// incoming header, which is what needs a decoder for it on whichever side reads one.
+fn declares_header_in(service: &ServiceDef) -> bool {
+    service.operations.iter().any(|operation| {
+        operation
+            .http
+            .as_ref()
+            .is_some_and(|binding| !binding.header_in.is_empty())
+    })
+}
+
+/// Whether the service declares an operation whose `http(...)` group writes at least one outgoing
+/// header, which is what needs an encoder for it on whichever side writes one.
+fn declares_header_out(service: &ServiceDef) -> bool {
+    service.operations.iter().any(|operation| {
+        operation
+            .http
+            .as_ref()
+            .is_some_and(|binding| !binding.header_out.is_empty())
+    })
 }
 
 /// Everything a dispatcher emits between its macro's opening brace and its closing one:
@@ -738,7 +861,7 @@ fn declares_a_reply(service: &ServiceDef) -> bool {
 /// definitions.
 fn dispatcher_items(service: &ServiceDef) -> TokenStream {
     let types = dispatcher_types(service);
-    let impls = dispatcher_impls();
+    let impls = dispatcher_impls(service);
     let fns = dispatcher_fns(service);
     quote! {
         #types
@@ -752,7 +875,7 @@ fn dispatcher_items(service: &ServiceDef) -> TokenStream {
 fn dispatcher_types(service: &ServiceDef) -> TokenStream {
     let contract = &service.ident;
     let module = module_ident(service);
-    let incoming = incoming_message();
+    let incoming = incoming_message(declares_header_in(service));
     let reply = reply_trait(contract, &module);
     quote! {
         #incoming
@@ -761,8 +884,12 @@ fn dispatcher_types(service: &ServiceDef) -> TokenStream {
 }
 
 /// The one impl a dispatcher emits: the accessors `IncomingMessage`'s fields are read through.
-fn dispatcher_impls() -> TokenStream {
-    incoming_message_accessors()
+///
+/// The `headers` accessor travels with the field it reads, gated the same way: a service with no
+/// `header_in` binding reads no header off an incoming message anywhere in its own dispatch, and
+/// an unread accessor over an unread field is `dead_code` in plenty of consumers' builds.
+fn dispatcher_impls(service: &ServiceDef) -> TokenStream {
+    incoming_message_accessors(declares_header_in(service))
 }
 
 /// The readers an arm needs, and `dispatch` itself.
@@ -799,9 +926,20 @@ fn dispatcher_fns(service: &ServiceDef) -> TokenStream {
             quote!(ctx),
         )
     };
+    // The decoder reads a `header_in` value off the incoming headers; the encoder writes a
+    // `header_out` value into the reply's. Neither is emitted where no operation reaches it,
+    // `dead_code` being an error in plenty of consumers' builds.
+    let header_decode = declares_header_in(service)
+        .then(header_decoder)
+        .unwrap_or_default();
+    let header_encode = declares_header_out(service)
+        .then(header_encoder)
+        .unwrap_or_default();
     quote! {
         #reader
         #guard
+        #header_decode
+        #header_encode
 
         #[doc = #dispatch_doc]
         pub fn dispatch<S, Ctx, R>(
@@ -962,41 +1100,225 @@ fn fault_mirror_readers(generated: &Generated) -> TokenStream {
     }
 }
 
-/// `IncomingMessage`: everything the dispatcher reads off the wire, which is the operation and the
-/// bytes.
-///
-/// The two are private, read through the accessors [`incoming_message_accessors`] emits. A struct
-/// whose every field is public is one a consumer publishing this module has their own lint refuse,
-/// and the only fix from where they stand would be an `#[allow]` over an attribute they did not
-/// write. `ServiceFault` is already shaped this way, so the constructor and the two readers are
-/// what the rest of the generated surface already looks like.
-fn incoming_message() -> TokenStream {
+/// Reads and decodes one header a `header_in` or `header_out` binding claims. A header nothing
+/// carried decodes as JSON `null`, which succeeds only where the declared type is an `Option` —
+/// anything else surfaces as the decode failure a missing required header is.
+fn header_decoder() -> TokenStream {
     quote! {
-        /// One message as the transport read it: the operation it names, and the payload it
-        /// carries.
-        ///
-        /// The operation travels beside the payload rather than inside it — the `operation-name`
-        /// header on AMQP, the method name on gRPC, the path on HTTP — so no message type has to
-        /// reserve a key for routing.
-        ///
-        /// Built through [`new`](IncomingMessage::new) by whichever crate owns the bus, and read
-        /// through [`operation`](IncomingMessage::operation) and
-        /// [`payload`](IncomingMessage::payload).
-        pub struct IncomingMessage {
-            operation: String,
-            payload: Vec<u8>,
+        fn decoded_header<T>(headers: &[(String, String)], name: &str) -> Result<T, String>
+        where
+            T: ::serde::de::DeserializeOwned,
+        {
+            let raw = headers
+                .iter()
+                .find(|(candidate, _)| candidate == name)
+                .map_or("null", |(_, value)| value.as_str());
+            ::serde_json::from_str(raw).map_err(|rejected| rejected.to_string())
+        }
+    }
+}
+
+/// Encodes one `header_out` value for the reply's headers table. `None` says the value could not
+/// be represented as JSON at all — vanishingly rare for what a header carries — and is logged and
+/// dropped rather than losing the whole reply over one field that would not encode.
+fn header_encoder() -> TokenStream {
+    quote! {
+        fn encoded_header<T>(name: &str, value: &T) -> Option<(String, String)>
+        where
+            T: ::serde::Serialize,
+        {
+            match ::serde_json::to_string(value) {
+                Ok(encoded) => Some((name.to_owned(), encoded)),
+                Err(unrepresentable) => {
+                    ::tracing::error!(
+                        error = %unrepresentable,
+                        header = name,
+                        "a reply header would not encode",
+                    );
+                    None
+                }
+            }
+        }
+    }
+}
+
+/// The `header_in` bindings an operation declared, or none for an operation that named no `http`
+/// group at all.
+fn header_in_bindings(operation: &OperationDef) -> &[HeaderIn] {
+    operation
+        .http
+        .as_ref()
+        .map_or(&[], |binding| binding.header_in.as_slice())
+}
+
+/// Decodes each `header_in` binding off the incoming headers before the implementation is called,
+/// into a local of the same name [`call_arguments`] then passes straight through. A value that
+/// will not decode as the argument's declared type is the same class of failure a malformed
+/// payload is, and is refused the same way, naming the header rather than a payload field.
+fn header_in_reads(module: &Ident, operation: &OperationDef) -> TokenStream {
+    let wire = &operation.wire_name;
+    let reads = header_in_bindings(operation).iter().map(|header| {
+        let HeaderIn {
+            name, parameter, ..
+        } = header;
+        // No `: #ty` here: the argument's own type is the author's, and this arm is never the
+        // module it is nameable from. Its type is instead inferred entirely from
+        // [`call_arguments`]'s later use of `#parameter` as the exact argument
+        // `svc.#method(...)` declares it to be — the same way `received.#field` never spells its
+        // own field's type either.
+        quote! {
+            let #parameter = match decoded_header(message.headers(), #name) {
+                Ok(decoded) => decoded,
+                Err(detail) => {
+                    return reply
+                        .fault($crate::#module::ServiceFault::failed_validation(
+                            #wire,
+                            Some(#name),
+                            &detail,
+                        ))
+                        .await;
+                }
+            };
+        }
+    });
+    quote! { #(#reads)* }
+}
+
+/// Fresh local identifiers, one per `header_out` entry, in declaration order — the tuple pattern
+/// an arm destructures a bound success into, and a client rebuilds one from.
+fn header_out_idents(names: &[String]) -> Vec<Ident> {
+    (0..names.len())
+        .map(|position| format_ident!("header_out_{position}"))
+        .collect()
+}
+
+/// The `header_out` names an operation declared, or none for an operation that named no `http`
+/// group, or that named one with no `header_out` entry.
+fn header_out_names(operation: &OperationDef) -> &[String] {
+    operation
+        .http
+        .as_ref()
+        .map_or(&[], |binding| binding.header_out.as_slice())
+}
+
+/// The declared header names, the response type and the header types a `header_out`-bound success
+/// type carries beyond it — `None` for every operation that declared no `header_out`. Read by the
+/// client alone: the consumer that invokes the client macro already names the author's own types
+/// (the same requirement every message argument carries), where the dispatcher never does.
+///
+/// `parse_service` already refuses `header_out` on anything but a request-and-reply operation
+/// whose success type is a tuple with one element per declared name plus the response, so the two
+/// shapes this falls back to `None` on are unreachable for an operation that parsed at all —
+/// falling back rather than asserting it leaves a bug there reachable as "no `header_out`" instead
+/// of a panic reachable from a downstream crate's own build.
+fn header_out_shape(operation: &OperationDef) -> Option<(Vec<String>, Type, Vec<Type>)> {
+    let binding = operation.http.as_ref()?;
+    if binding.header_out.is_empty() {
+        return None;
+    }
+    let OperationOutcome::Reply { success, .. } = &operation.outcome else {
+        return None;
+    };
+    let Type::Tuple(tuple) = success.as_ref() else {
+        return None;
+    };
+    let mut elements = tuple.elems.iter().cloned();
+    let response = elements.next()?;
+    Some((binding.header_out.clone(), response, elements.collect()))
+}
+
+/// `IncomingMessage`: everything the dispatcher reads off the wire — the operation and the
+/// payload, plus the headers table it arrived beside where a `header_in` binding reads one.
+///
+/// The fields are private, read through the accessors [`incoming_message_accessors`] emits. A
+/// struct whose every field is public is one a consumer publishing this module has their own lint
+/// refuse, and the only fix from where they stand would be an `#[allow]` over an attribute they
+/// did not write. `ServiceFault` is already shaped this way, so the constructor and the readers
+/// are what the rest of the generated surface already looks like.
+///
+/// `declares_header_in` is the service's, not this one operation's: every operation's `dispatch`
+/// arm reads the same `IncomingMessage`, so the type carries a `headers` field the moment any
+/// operation needs one. Carrying it and never reading it — the case a service with no `header_in`
+/// binding would be in — is `dead_code` in plenty of consumers' builds, so the field is left off
+/// entirely there instead.
+fn incoming_message(declares_header_in: bool) -> TokenStream {
+    if declares_header_in {
+        quote! {
+            /// One message as the transport read it: the operation it names, the headers it
+            /// carried beside the payload, and the payload itself.
+            ///
+            /// The operation travels beside the payload rather than inside it — the
+            /// `operation-name` header on AMQP, the method name on gRPC, the path on HTTP — so no
+            /// message type has to reserve a key for routing. The headers are what a `header_in`
+            /// binding reads from.
+            ///
+            /// Built through [`new`](IncomingMessage::new) by whichever crate owns the bus, and
+            /// read through [`operation`](IncomingMessage::operation),
+            /// [`payload`](IncomingMessage::payload) and [`headers`](IncomingMessage::headers).
+            pub struct IncomingMessage {
+                headers: Vec<(String, String)>,
+                operation: String,
+                payload: Vec<u8>,
+            }
+        }
+    } else {
+        quote! {
+            /// One message as the transport read it: the operation it names, and the payload it
+            /// carries.
+            ///
+            /// The operation travels beside the payload rather than inside it — the
+            /// `operation-name` header on AMQP, the method name on gRPC, the path on HTTP — so no
+            /// message type has to reserve a key for routing.
+            ///
+            /// Built through [`new`](IncomingMessage::new) by whichever crate owns the bus, and
+            /// read through [`operation`](IncomingMessage::operation) and
+            /// [`payload`](IncomingMessage::payload).
+            pub struct IncomingMessage {
+                operation: String,
+                payload: Vec<u8>,
+            }
         }
     }
 }
 
 /// How one delivery is built and read: the constructor a transport adapter calls per delivery, and
-/// the two readers the arms go through.
-fn incoming_message_accessors() -> TokenStream {
+/// the readers the arms go through.
+///
+/// `new` always takes `headers` — the transport adapter reads them off every delivery whether or
+/// not this service declares a `header_in` binding — but a service with none never reads the
+/// argument back: [`incoming_message`] left the field off, so it is dropped here instead of
+/// stored.
+fn incoming_message_accessors(declares_header_in: bool) -> TokenStream {
+    // `headers` is moved into `Self` where the field exists, so `new` never drops it and stays
+    // `const`. Where the field is absent, the argument goes unused and is dropped when `new`
+    // returns instead — and `Vec`'s destructor cannot run in a `const fn`, so `new` cannot be one
+    // there either. That is the language's own rule, not a choice made here.
+    let (bound, stored, constness) = if declares_header_in {
+        (quote! { headers }, quote! { headers, }, quote! { const })
+    } else {
+        (quote! { _headers }, TokenStream::new(), TokenStream::new())
+    };
+    let headers_accessor = declares_header_in.then(|| {
+        quote! {
+            /// The headers this message carried beside its payload, which is what a `header_in`
+            /// binding reads from.
+            pub fn headers(&self) -> &[(String, String)] {
+                &self.headers
+            }
+        }
+    });
     quote! {
         impl IncomingMessage {
-            /// Binds the operation name the transport read off the wire to the bytes beside it.
-            pub const fn new(operation: String, payload: Vec<u8>) -> Self {
-                Self { operation, payload }
+            #headers_accessor
+
+            /// Binds the operation name and headers the transport read off the wire to the bytes
+            /// beside them.
+            pub #constness fn new(
+                operation: String,
+                payload: Vec<u8>,
+                #bound: Vec<(String, String)>,
+            ) -> Self {
+                Self { #stored operation, payload }
             }
 
             /// The wire name of the operation this message is for.
@@ -1017,33 +1339,18 @@ fn incoming_message_accessors() -> TokenStream {
 /// message has passed its own validator, which is what makes the never-called-transport case
 /// observable.
 fn method(operation: &OperationDef, generated: &Generated) -> TokenStream {
-    let Generated {
-        call_error,
-        fault,
-        module,
-    } = generated;
-    let wire = &operation.wire_name;
+    let Generated { module, .. } = generated;
     let named = &operation.ident;
     let check = message_validator_ident(operation);
-    let (taken, packed) = call_message(operation, module);
+    let (message_taken, packed) = call_message(operation, module);
+    let header_taken = header_in_bindings(operation).iter().map(|header| {
+        let HeaderIn { parameter, ty, .. } = header;
+        quote! { #parameter: #ty }
+    });
+    let taken: Vec<TokenStream> = message_taken.into_iter().chain(header_taken).collect();
     let refusal = outbound_refusal(operation, generated);
-    let answered = match &operation.outcome {
-        OperationOutcome::OneWay => quote! {
-            self.transport
-                .notify(#wire, sending)
-                .await
-                .map_err(|uncarried| #fault::transport_failure(#wire, &uncarried))
-        },
-        OperationOutcome::Reply { .. } => quote! {
-            match self.transport.request(#wire, sending).await {
-                Ok(encoded) => read_answer(#wire, &encoded),
-                Err(uncarried) => Err(#call_error::Fault(#fault::transport_failure(
-                    #wire,
-                    &uncarried,
-                ))),
-            }
-        },
-    };
+    let headers = outbound_headers(operation, generated);
+    let answered = client_answer(operation, generated);
     let answers = answers(operation, generated);
     let doc = method_doc(operation);
     quote! {
@@ -1056,9 +1363,130 @@ fn method(operation: &OperationDef, generated: &Generated) -> TokenStream {
                 if let Err(violations) = $crate::#module::#check(&sending) {
                     #refusal
                 }
+                #headers
                 #answered
             }
         }
+    }
+}
+
+/// The headers an operation's client method sends beside its message: one JSON-encoded entry per
+/// `header_in` binding. A value that will not encode as JSON is refused before the transport is
+/// reached, exactly like a message that fails its own validator — the client has no `tracing` to
+/// log it to instead, so it cannot merely drop the one header and carry on.
+fn outbound_headers(operation: &OperationDef, generated: &Generated) -> TokenStream {
+    let bindings = header_in_bindings(operation);
+    if bindings.is_empty() {
+        return quote! { let headers: Vec<(String, String)> = Vec::new(); };
+    }
+    let pushes = bindings.iter().map(|header| {
+        let HeaderIn {
+            name, parameter, ..
+        } = header;
+        let refusal = header_encode_refusal(operation, generated, name);
+        quote! {
+            match ::serde_json::to_string(&#parameter) {
+                Ok(encoded) => headers.push((#name.to_owned(), encoded)),
+                Err(unrepresentable) => {
+                    let detail = unrepresentable.to_string();
+                    #refusal
+                }
+            }
+        }
+    });
+    quote! {
+        let mut headers: Vec<(String, String)> = Vec::new();
+        #(#pushes)*
+    }
+}
+
+/// What a `header_in` value failing to encode answers, which is a fault either way and never a
+/// transport call — the mirror of [`outbound_refusal`] for one named header instead of the whole
+/// message.
+fn header_encode_refusal(
+    operation: &OperationDef,
+    generated: &Generated,
+    name: &str,
+) -> TokenStream {
+    let Generated {
+        call_error, fault, ..
+    } = generated;
+    let wire = &operation.wire_name;
+    let built = quote! { #fault::failed_validation(#wire, Some(#name), &detail) };
+    match operation.outcome {
+        OperationOutcome::OneWay => quote! { return Err(#built); },
+        OperationOutcome::Reply { .. } => quote! { return Err(#call_error::Fault(#built)); },
+    }
+}
+
+/// What one operation's client method answers, once the transport call itself has returned.
+///
+/// A `header_out`-bound success type carries its extra values beside the response rather than
+/// inside it: the payload is decoded as the response alone, and each header value is decoded off
+/// the reply's own headers and rejoined into the tuple the trait declared.
+fn client_answer(operation: &OperationDef, generated: &Generated) -> TokenStream {
+    let Generated {
+        call_error,
+        fault,
+        module,
+    } = generated;
+    let wire = &operation.wire_name;
+    match &operation.outcome {
+        OperationOutcome::OneWay => quote! {
+            self.transport
+                .notify(#wire, sending, headers)
+                .await
+                .map_err(|uncarried| #fault::transport_failure(#wire, &uncarried))
+        },
+        OperationOutcome::Reply { error, .. } => match header_out_shape(operation) {
+            None => quote! {
+                match self.transport.request(#wire, sending, headers).await {
+                    Ok((encoded, _headers)) => read_answer(#wire, &encoded),
+                    Err(uncarried) => Err(#call_error::Fault(#fault::transport_failure(
+                        #wire,
+                        &uncarried,
+                    ))),
+                }
+            },
+            Some((names, response, header_types)) => {
+                let idents = header_out_idents(&names);
+                let decodes = names.iter().zip(header_types.iter()).zip(&idents).map(
+                    |((name, ty), ident)| {
+                        quote! {
+                            let #ident: #ty = match decoded_header(&incoming, #name) {
+                                Ok(decoded) => decoded,
+                                Err(detail) => {
+                                    return Err(#call_error::Fault(
+                                        $crate::#module::ServiceFault::failed_validation(
+                                            #wire,
+                                            Some(#name),
+                                            &detail,
+                                        ),
+                                    ));
+                                }
+                            };
+                        }
+                    },
+                );
+                quote! {
+                    match self.transport.request(#wire, sending, headers).await {
+                        Ok((encoded, incoming)) => {
+                            match read_answer::<#response, #error>(#wire, &encoded) {
+                                Ok(value) => {
+                                    #(#decodes)*
+                                    Ok((value, #(#idents),*))
+                                }
+                                Err(refused) => Err(refused),
+                            }
+                        }
+                        Err(uncarried) => Err(#call_error::Fault(#fault::transport_failure(
+                            #wire,
+                            &uncarried,
+                        ))),
+                    }
+                }
+            }
+        },
     }
 }
 
@@ -1340,8 +1768,11 @@ fn reply_handle_impls(module: &Ident) -> TokenStream {
             async fn fault(&self, fault: $crate::#module::ServiceFault) {
                 match ::serde_json::to_value(fault) {
                     Ok(fault) => {
-                        self.publish(&legacy_reply(&framed_fault(&fault), self.correlation()))
-                            .await;
+                        self.publish(
+                            &legacy_reply(&framed_fault(&fault), self.correlation()),
+                            Vec::new(),
+                        )
+                        .await;
                     }
                     Err(unserializable) => ::tracing::error!(
                         error = %unserializable,
@@ -1350,13 +1781,14 @@ fn reply_handle_impls(module: &Ident) -> TokenStream {
                 }
             }
 
-            async fn send<T>(&self, value: T)
+            async fn send<T>(&self, value: T, headers: Vec<(String, String)>)
             where
                 T: ::serde::Serialize + Send,
             {
                 match ::serde_json::to_value(value) {
                     Ok(answered) => {
-                        self.publish(&legacy_reply(&answered, self.correlation())).await;
+                        self.publish(&legacy_reply(&answered, self.correlation()), headers)
+                            .await;
                     }
                     Err(unserializable) => ::tracing::error!(
                         error = %unserializable,
@@ -1371,8 +1803,10 @@ fn reply_handle_impls(module: &Ident) -> TokenStream {
                 self.correlation_id.as_ref().map(::lapin::types::ShortString::as_str)
             }
 
-            /// Publishes to the reply queue, or to nowhere when the delivery named none.
-            async fn publish(&self, reply: &::serde_json::Value) {
+            /// Publishes to the reply queue, or to nowhere when the delivery named none. `headers`
+            /// carries every `header_out` value, JSON-encoded, into the AMQP basic-properties
+            /// headers table this bus reads a request's own `header_in` values off of.
+            async fn publish(&self, reply: &::serde_json::Value, headers: Vec<(String, String)>) {
                 let Some(reply_to) = self.reply_to.clone() else {
                     return;
                 };
@@ -1386,6 +1820,18 @@ fn reply_handle_impls(module: &Ident) -> TokenStream {
                 let mut properties = ::lapin::BasicProperties::default();
                 if let Some(correlation_id) = self.correlation_id.clone() {
                     properties = properties.with_correlation_id(correlation_id);
+                }
+                if !headers.is_empty() {
+                    let mut table = ::lapin::types::FieldTable::default();
+                    for (name, value) in headers {
+                        table.insert(
+                            ::lapin::types::ShortString::from(name),
+                            ::lapin::types::AMQPValue::LongString(
+                                ::lapin::types::LongString::from(value),
+                            ),
+                        );
+                    }
+                    properties = properties.with_headers(table);
                 }
                 if let Err(refused) = self
                     .channel
@@ -1420,7 +1866,8 @@ fn reply_trait(contract: &Ident, module: &Ident) -> TokenStream {
          A request-and-reply operation answers with [`send`](Reply::send) or \
          [`fault`](Reply::fault). A one-way operation calls neither, and the transport \
          acknowledges the delivery after dispatch returns. Encoding sits behind the trait, which \
-         is what keeps the generator out of the wire format."
+         is what keeps the generator out of the wire format. `send`'s `headers` carries every \
+         `header_out` value a bound operation declared, and is empty for every other one."
     );
     quote! {
         #[doc = #reply_doc]
@@ -1431,9 +1878,14 @@ fn reply_trait(contract: &Ident, module: &Ident) -> TokenStream {
                 fault: $crate::#module::ServiceFault,
             ) -> impl ::core::future::Future<Output = ()> + Send;
 
-            /// Answer with a value. The transport serializes it, which is why it is handed the
-            /// value rather than an encoded buffer.
-            fn send<T>(&self, value: T) -> impl ::core::future::Future<Output = ()> + Send
+            /// Answer with a value and the headers a `header_out` binding wrote beside it. The
+            /// transport serializes the value, which is why it is handed over rather than an
+            /// encoded buffer.
+            fn send<T>(
+                &self,
+                value: T,
+                headers: Vec<(String, String)>,
+            ) -> impl ::core::future::Future<Output = ()> + Send
             where
                 T: ::serde::Serialize + Send;
         }
@@ -1502,7 +1954,7 @@ fn server_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
     let dispatch_types = dispatcher_types(service);
     let reply_type = reply_handle_type();
     let loop_type = consumer_loop_type();
-    let dispatch_impls = dispatcher_impls();
+    let dispatch_impls = dispatcher_impls(service);
     let reply_impls = reply_handle_impls(&module);
     let dispatch_fns = dispatcher_fns(service);
     let framing_fns = wire_framing_fns();
@@ -1543,12 +1995,16 @@ fn transport_trait(contract: &Ident) -> TokenStream {
          has to reserve a key for routing. The payload is handed over as a value rather than as \
          bytes, for the same reason `Reply::send` is: a transport merges its own fields — a \
          correlation id, an error flag — into the object before serializing it, and neither is \
-         reachable behind an encoded buffer.\n\n\
+         reachable behind an encoded buffer. `headers` carries one JSON-encoded entry per \
+         `header_in` binding a bound operation declared, and is empty for every other one — on \
+         AMQP these ride the message's own basic-properties headers table, beside whatever the \
+         transport merges in.\n\n\
          Both methods answer a `Result`. `Err` is for a call that did not travel — a deadline the \
          transport imposed, a connection that went away — and carries whatever the transport wants \
          to say about it in words; the client turns it into a fault of kind `transport-failure`. \
          Deadlines, retries and backpressure are the transport's own: this arm is where the answer \
-         is reported, not where it is decided."
+         is reported, not where it is decided. `request`'s answer carries the reply's own headers \
+         back beside its payload, which is where a `header_out` value is read from."
     );
     quote! {
         #[doc = #transport_doc]
@@ -1559,17 +2015,21 @@ fn transport_trait(contract: &Ident) -> TokenStream {
                 &self,
                 operation: &str,
                 payload: T,
+                headers: Vec<(String, String)>,
             ) -> impl ::core::future::Future<Output = Result<(), String>> + Send
             where
                 T: ::serde::Serialize + Send;
 
-            /// Sends a message and answers with the encoded reply, or `Err` with what stopped it
-            /// in words if the call never landed and no reply is coming.
+            /// Sends a message and answers with the encoded reply and the headers it carried, or
+            /// `Err` with what stopped it in words if the call never landed and no reply is
+            /// coming.
             fn request<T>(
                 &self,
                 operation: &str,
                 payload: T,
-            ) -> impl ::core::future::Future<Output = Result<Vec<u8>, String>> + Send
+                headers: Vec<(String, String)>,
+            ) -> impl ::core::future::Future<Output = Result<(Vec<u8>, Vec<(String, String)>), String>>
+            + Send
             where
                 T: ::serde::Serialize + Send;
         }
