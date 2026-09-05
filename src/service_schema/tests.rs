@@ -1509,12 +1509,14 @@ fn the_client_carries_one_method_per_operation_under_the_operation_s_own_wire_na
         assert!(emitted.contains(named), "got: {emitted}");
     }
     assert!(
-        emitted.contains("self . transport . request (\"usage-generation-request\" , sending)"),
+        emitted.contains(
+            "self . transport . request (\"usage-generation-request\" , sending , headers)"
+        ),
         "the name the wire carries is the one the transport is handed, beside the payload. Got: \
          {emitted}"
     );
     assert!(
-        emitted.contains("self . transport . notify (\"apply-bundle\" , sending)"),
+        emitted.contains("self . transport . notify (\"apply-bundle\" , sending , headers)"),
         "a one-way operation is sent rather than called. Got: {emitted}"
     );
 }
@@ -1578,7 +1580,7 @@ fn the_transport_seam_gives_a_call_that_never_landed_somewhere_to_be_reported() 
     let client = published_macro(MIXED_SERVICE, "usage_service_amqp_rpc_client");
     for answered in [
         "Output = Result < () , String >",
-        "Output = Result < Vec < u8 > , String >",
+        "Output = Result < (Vec < u8 > , Vec < (String , String) >) , String >",
     ] {
         assert!(
             client.contains(answered),
@@ -1910,13 +1912,24 @@ fn both_halves_ask_one_operation_s_check_rather_than_a_copy_each() {
 /// `#[non_exhaustive]` would have taken away from exactly the crate that needs it.
 #[test]
 fn the_incoming_message_publishes_a_constructor_and_two_readers_rather_than_its_fields() {
+    // MIXED_SERVICE declares no `http(...)` group at all, so it claims no `header_in` binding:
+    // `IncomingMessage` carries no `headers` field and publishes no accessor for one, `dead_code`
+    // being an error in plenty of consumers' builds for a field nothing in this expansion reads.
+    // The constructor still takes `headers` — every delivery carries them regardless of whether
+    // this service reads any — and drops the argument instead of storing it, which is also why
+    // it is no longer `const`: a `Vec`'s destructor cannot run inside a `const fn`.
     let body = published_macro(MIXED_SERVICE, "usage_service_amqp_rpc_dispatcher");
     assert!(
         body.contains("pub struct IncomingMessage { operation : String , payload : Vec < u8 > , }"),
         "neither field is published, so nothing outside reads or writes one directly. Got: {body}"
     );
+    assert!(
+        !body.contains("fn headers (& self)"),
+        "no operation here binds a header, so nothing reads one off the message. Got: {body}"
+    );
     for published in [
-        "pub const fn new (operation : String , payload : Vec < u8 >) -> Self",
+        "pub fn new (operation : String , payload : Vec < u8 > , _headers : Vec < (String , \
+         String) > ,) -> Self",
         "pub fn operation (& self) -> & str",
         "pub fn payload (& self) -> & [u8]",
     ] {

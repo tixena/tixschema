@@ -88,7 +88,7 @@ impl amqp_server::Reply for ProbeReply {
         self.record(Settled::Fault(fault));
     }
 
-    async fn send<T>(&self, value: T)
+    async fn send<T>(&self, value: T, _headers: Vec<(String, String)>)
     where
         T: Serialize + Send,
     {
@@ -135,7 +135,11 @@ fn dispatched(operation: &str, payload: &str) -> Vec<Settled> {
         &amqp_server::Context {
             logger: tracing::Span::none(),
         },
-        &amqp_server::IncomingMessage::new(operation.to_owned(), payload.as_bytes().to_vec()),
+        &amqp_server::IncomingMessage::new(
+            operation.to_owned(),
+            payload.as_bytes().to_vec(),
+            Vec::new(),
+        ),
         &reply,
     ))
     .unwrap();

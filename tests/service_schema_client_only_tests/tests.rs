@@ -80,7 +80,12 @@ impl CallService<()> for CallBackEnd {
 }
 
 impl amqp_client::Transport for ProbeTransport {
-    async fn notify<T>(&self, operation: &str, payload: T) -> Result<(), String>
+    async fn notify<T>(
+        &self,
+        operation: &str,
+        payload: T,
+        _headers: Vec<(String, String)>,
+    ) -> Result<(), String>
     where
         T: Serialize + Send,
     {
@@ -90,18 +95,28 @@ impl amqp_client::Transport for ProbeTransport {
         Ok(())
     }
 
-    async fn request<T>(&self, operation: &str, payload: T) -> Result<Vec<u8>, String>
+    async fn request<T>(
+        &self,
+        operation: &str,
+        payload: T,
+        _headers: Vec<(String, String)>,
+    ) -> Result<(Vec<u8>, Vec<(String, String)>), String>
     where
         T: Serialize + Send,
     {
         ready(()).await;
         self.record(operation, &payload);
-        Ok(self.answer())
+        Ok((self.answer(), Vec::new()))
     }
 }
 
 impl amqp_client::Transport for RefusingTransport {
-    async fn notify<T>(&self, _operation: &str, _payload: T) -> Result<(), String>
+    async fn notify<T>(
+        &self,
+        _operation: &str,
+        _payload: T,
+        _headers: Vec<(String, String)>,
+    ) -> Result<(), String>
     where
         T: Serialize + Send,
     {
@@ -109,7 +124,12 @@ impl amqp_client::Transport for RefusingTransport {
         Err("the deadline passed with no reply".to_owned())
     }
 
-    async fn request<T>(&self, _operation: &str, _payload: T) -> Result<Vec<u8>, String>
+    async fn request<T>(
+        &self,
+        _operation: &str,
+        _payload: T,
+        _headers: Vec<(String, String)>,
+    ) -> Result<(Vec<u8>, Vec<(String, String)>), String>
     where
         T: Serialize + Send,
     {

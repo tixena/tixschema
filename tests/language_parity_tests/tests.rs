@@ -168,7 +168,7 @@ pub mod refusals {
                 .push(serde_json::to_value(&fault).unwrap());
         }
 
-        async fn send<T>(&self, value: T)
+        async fn send<T>(&self, value: T, _headers: Vec<(String, String)>)
         where
             T: Serialize + Send,
         {
@@ -210,7 +210,11 @@ pub mod refusals {
         poll_once(amqp_transport::dispatch(
             &service,
             &(),
-            &amqp_transport::IncomingMessage::new("admit".to_owned(), payload.as_bytes().to_vec()),
+            &amqp_transport::IncomingMessage::new(
+                "admit".to_owned(),
+                payload.as_bytes().to_vec(),
+                Vec::new(),
+            ),
             &reply,
         ))
         .unwrap();
