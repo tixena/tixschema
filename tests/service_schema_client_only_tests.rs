@@ -20,9 +20,15 @@ mod tests;
 #[path = "service_schema_client_only_tests/amqp_client.rs"]
 mod amqp_client;
 
+#[cfg(all(test, feature = "serde"))]
+#[path = "service_schema_client_only_tests/http_rest_client.rs"]
+mod http_rest_client;
+
 // The client reaches what the service declared through `$crate`, which is this binary's root: the
 // service's own module, which every message it sends is built through. The trait is named beside it
 // although no client body reaches it: the declaration anchors both root names a transport can
 // reach, whichever half of it this crate goes on to place.
 #[cfg(all(test, feature = "serde"))]
-use tests::{CallService, call_service_schema};
+use tests::{
+    CallService, DocumentClientService, call_service_schema, document_client_service_schema,
+};

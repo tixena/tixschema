@@ -860,7 +860,7 @@ pub mod a_message_annotated_with_a_constraint {
     }
 }
 
-use crate::{amqp_transport, second_amqp_transport};
+use crate::{amqp_transport, http_rest_transport, second_amqp_transport};
 use core::cell::RefCell;
 use core::fmt::{self, Debug, Display, Write as _};
 use core::future::{Future, ready};
@@ -1204,6 +1204,269 @@ impl ReadFields {
             "operation" => self.operation = value,
             _ => {}
         }
+    }
+}
+
+// -------------------------------------------------------------------------------------------
+// The `http_rest` transport
+// -------------------------------------------------------------------------------------------
+
+/// A document service exercising every arm of the `http_rest` dispatcher's JSON path: a path
+/// placeholder bound to a Named message with a header claimed beside it and a header written out
+/// beside the response; a whole-body POST with a mapped error; a one-way DELETE answering the
+/// bodyless default; a no-payload POST overriding its default status; a handler that panics; a
+/// bodyless GET reading its own fields off the query string; and an operation naming no
+/// `http(...)` group at all.
+#[model_schema()]
+#[derive(Deserialize, Serialize)]
+pub struct GetVersionRequest {
+    pub document_id: String,
+    pub version_id: String,
+}
+
+#[model_schema()]
+#[derive(Deserialize, Serialize)]
+pub struct VersionResponse {
+    pub content: String,
+}
+
+#[model_schema()]
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum GetVersionError {
+    NotFound,
+    VersionGone,
+}
+
+#[model_schema()]
+#[derive(Deserialize, Serialize)]
+pub struct CreateDocumentRequest {
+    pub title: String,
+}
+
+#[model_schema()]
+#[derive(Deserialize, Serialize)]
+pub struct CreateDocumentResponse {
+    pub document_id: String,
+}
+
+#[model_schema()]
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum CreateDocumentError {
+    TitleTaken,
+}
+
+#[model_schema()]
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum ArchiveError {
+    AlreadyArchived,
+}
+
+#[model_schema()]
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum ExplodeError {
+    Broken,
+}
+
+#[model_schema()]
+#[derive(Deserialize, Serialize)]
+pub struct SearchDocumentsResult {
+    pub matches: Vec<String>,
+}
+
+#[model_schema()]
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum SearchError {
+    DbError,
+}
+
+#[model_schema()]
+#[derive(Deserialize, Serialize)]
+pub struct SweepReport {
+    pub swept: u32,
+}
+
+#[model_schema()]
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum SweepError {
+    DbError,
+}
+
+/// Writes down every operation that reached it, so a test can say what the dispatcher let through.
+pub struct DocumentBackEnd {
+    reached: Mutex<Vec<String>>,
+}
+
+#[service_schema(transports = ["http_rest"])]
+pub trait DocumentService<Ctx> {
+    #[service_schema_op(http(
+        method = "POST",
+        path = "/documents/{document_id}/archive",
+        ok_status = 202,
+        error_status(AlreadyArchived = 409),
+    ))]
+    async fn archive_document(&self, ctx: &Ctx, document_id: String) -> Result<(), ArchiveError>;
+
+    #[service_schema_op(http(
+        method = "POST",
+        path = "/documents",
+        error_status(TitleTaken = 409)
+    ))]
+    async fn create_document(
+        &self,
+        ctx: &Ctx,
+        req: CreateDocumentRequest,
+    ) -> Result<CreateDocumentResponse, CreateDocumentError>;
+
+    #[service_schema_op(http(
+        method = "POST",
+        path = "/documents/{document_id}/explode",
+        error_status(Broken = 400),
+    ))]
+    async fn explode(
+        &self,
+        ctx: &Ctx,
+        document_id: String,
+    ) -> Result<CreateDocumentResponse, ExplodeError>;
+
+    #[service_schema_op(http(
+        method = "GET",
+        path = "/documents/{document_id}/versions/{version_id}",
+        ok_status = 200,
+        header_in("range" = byte_range),
+        header_out("etag"),
+        error_status(NotFound = 404, VersionGone = 410),
+    ))]
+    async fn get_version(
+        &self,
+        ctx: &Ctx,
+        req: GetVersionRequest,
+        byte_range: Option<String>,
+    ) -> Result<(VersionResponse, String), GetVersionError>;
+
+    #[service_schema_op(one_way, http(method = "DELETE", path = "/documents/{document_id}"))]
+    async fn purge_document(&self, ctx: &Ctx, document_id: String);
+
+    #[service_schema_op(http(
+        method = "GET",
+        path = "/documents/search",
+        error_status(DbError = 500),
+    ))]
+    async fn search_documents(
+        &self,
+        ctx: &Ctx,
+        verified: Option<bool>,
+        limit: Option<u32>,
+    ) -> Result<SearchDocumentsResult, SearchError>;
+
+    /// Names no `http(...)` group at all: the transport defaults it to `POST /sweep-documents`.
+    async fn sweep_documents(&self, ctx: &Ctx) -> Result<SweepReport, SweepError>;
+}
+
+impl DocumentService<()> for DocumentBackEnd {
+    async fn archive_document(&self, _ctx: &(), document_id: String) -> Result<(), ArchiveError> {
+        ready(()).await;
+        self.reach(format!("archive_document {document_id}"));
+        if document_id == "already" {
+            return Err(ArchiveError::AlreadyArchived);
+        }
+        Ok(())
+    }
+
+    async fn create_document(
+        &self,
+        _ctx: &(),
+        req: CreateDocumentRequest,
+    ) -> Result<CreateDocumentResponse, CreateDocumentError> {
+        ready(()).await;
+        self.reach(format!("create_document {}", req.title));
+        if req.title == "taken" {
+            return Err(CreateDocumentError::TitleTaken);
+        }
+        Ok(CreateDocumentResponse {
+            document_id: format!("doc-{}", req.title),
+        })
+    }
+
+    async fn explode(
+        &self,
+        _ctx: &(),
+        document_id: String,
+    ) -> Result<CreateDocumentResponse, ExplodeError> {
+        ready(()).await;
+        self.reach(format!("explode {document_id}"));
+        came_apart(&document_id);
+        Ok(CreateDocumentResponse { document_id })
+    }
+
+    async fn get_version(
+        &self,
+        _ctx: &(),
+        req: GetVersionRequest,
+        byte_range: Option<String>,
+    ) -> Result<(VersionResponse, String), GetVersionError> {
+        ready(()).await;
+        self.reach(format!(
+            "get_version {} {} {byte_range:?}",
+            req.document_id, req.version_id
+        ));
+        if req.document_id == "missing" {
+            return Err(GetVersionError::NotFound);
+        }
+        if req.document_id == "gone" {
+            return Err(GetVersionError::VersionGone);
+        }
+        Ok((
+            VersionResponse {
+                content: format!("{}@{}", req.document_id, req.version_id),
+            },
+            "v7".to_owned(),
+        ))
+    }
+
+    async fn purge_document(&self, _ctx: &(), document_id: String) {
+        ready(()).await;
+        self.reach(format!("purge_document {document_id}"));
+    }
+
+    async fn search_documents(
+        &self,
+        _ctx: &(),
+        verified: Option<bool>,
+        limit: Option<u32>,
+    ) -> Result<SearchDocumentsResult, SearchError> {
+        ready(()).await;
+        self.reach(format!("search_documents {verified:?} {limit:?}"));
+        Ok(SearchDocumentsResult {
+            matches: vec![format!("verified={verified:?}"), format!("limit={limit:?}")],
+        })
+    }
+
+    async fn sweep_documents(&self, _ctx: &()) -> Result<SweepReport, SweepError> {
+        ready(()).await;
+        self.reach("sweep_documents".to_owned());
+        Ok(SweepReport { swept: 3 })
+    }
+}
+
+impl DocumentBackEnd {
+    fn new() -> Self {
+        Self {
+            reached: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn reach(&self, what: String) {
+        self.reached.lock().unwrap().push(what);
+    }
+
+    fn reached(&self) -> Vec<String> {
+        self.reached.lock().unwrap().clone()
     }
 }
 
@@ -1684,5 +1947,230 @@ fn the_same_macro_invoked_in_a_second_module_dispatches_the_same_way() {
     assert!(
         matches!(settled_again.as_slice(), [Settled::Sent(_)]),
         "an answer rather than a fault, or the two agree about nothing. Got: {settled_again:?}"
+    );
+}
+
+/// Comes apart the way a handler does when something the compiler was expected to prevent gets
+/// through — mirroring the AMQP probe's own `come_apart`, since `clippy::panic` refuses a literal
+/// `panic!` and the two asserts below are complementary on a value the compiler cannot see is
+/// constant, so exactly one always fires.
+fn came_apart(document_id: &str) {
+    let broken = !document_id.is_empty();
+    assert!(!broken, "the document {document_id} came apart");
+    assert!(broken, "unreachable");
+}
+
+/// Dispatches one plain-terms HTTP request by hand — no server — and answers with what the
+/// implementation saw and the response the dispatcher wrote back.
+fn http_dispatched(
+    method: &str,
+    path: &str,
+    query: &str,
+    headers: &[(&str, &str)],
+    body: &[u8],
+) -> (Vec<String>, http_rest_transport::OutgoingResponse) {
+    let service = DocumentBackEnd::new();
+    let request = http_rest_transport::IncomingRequest::new(
+        method.to_owned(),
+        path.to_owned(),
+        query.to_owned(),
+        headers
+            .iter()
+            .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+            .collect(),
+        body.to_vec(),
+    );
+    let response = poll_once(http_rest_transport::dispatch(&service, &(), &request)).unwrap();
+    (service.reached(), response)
+}
+
+#[test]
+fn a_declared_status_success_answers_bare_json_with_no_envelope() {
+    let (reached, response) = http_dispatched(
+        "GET",
+        "/documents/present/versions/v1",
+        "",
+        &[("range", "bytes=0-10")],
+        b"",
+    );
+    assert_eq!(
+        reached,
+        vec![r#"get_version present v1 Some("bytes=0-10")"#.to_owned()]
+    );
+    assert_eq!(response.status(), 200);
+    assert_eq!(
+        response.body(),
+        br#"{"content":"present@v1"}"#,
+        "bare JSON, no `{{ ok, value }}` envelope"
+    );
+    assert_eq!(
+        response
+            .headers()
+            .iter()
+            .find(|(name, _)| name == "etag")
+            .map(|(_, value)| value.as_str()),
+        Some("v7"),
+        "got: {:?}",
+        response.headers()
+    );
+}
+
+#[test]
+fn a_mapped_error_answers_its_declared_status_with_the_error_enum_as_the_body() {
+    let (_not_found_reached, not_found_response) =
+        http_dispatched("GET", "/documents/missing/versions/v1", "", &[], b"");
+    assert_eq!(not_found_response.status(), 404);
+    assert_eq!(not_found_response.body(), br#"{"errorCode":"not-found"}"#);
+
+    let (_gone_reached, gone_response) =
+        http_dispatched("GET", "/documents/gone/versions/v1", "", &[], b"");
+    assert_eq!(gone_response.status(), 410);
+    assert_eq!(gone_response.body(), br#"{"errorCode":"version-gone"}"#);
+}
+
+#[test]
+fn a_request_no_route_answers_to_is_a_404_fault() {
+    let (reached, response) = http_dispatched("GET", "/nowhere", "", &[], b"");
+    assert!(reached.is_empty(), "got: {reached:?}");
+    assert_eq!(response.status(), 404);
+    let fault: serde_json::Value = serde_json::from_slice(response.body()).unwrap();
+    assert_eq!(fault["kind"], "unknown-operation");
+    assert_eq!(fault["operation"], "GET /nowhere");
+}
+
+#[test]
+fn an_invalid_payload_is_a_400_fault() {
+    let (reached, response) =
+        http_dispatched("POST", "/documents", "", &[], b"not a document at all");
+    assert!(reached.is_empty(), "got: {reached:?}");
+    assert_eq!(response.status(), 400);
+    let fault: serde_json::Value = serde_json::from_slice(response.body()).unwrap();
+    assert_eq!(fault["kind"], "undeserializable-payload");
+}
+
+#[test]
+fn a_handler_that_panics_answers_a_500_fault() {
+    let (reached, response) =
+        http_dispatched("POST", "/documents/anything/explode", "", &[], b"{}");
+    assert_eq!(reached, vec!["explode anything".to_owned()]);
+    assert_eq!(response.status(), 500);
+    let fault: serde_json::Value = serde_json::from_slice(response.body()).unwrap();
+    assert_eq!(fault["kind"], "handler-panic");
+    assert_eq!(fault["detail"], "the document anything came apart");
+}
+
+#[test]
+fn a_no_payload_operation_answers_its_declared_status_and_no_body() {
+    let (reached, response) = http_dispatched("DELETE", "/documents/d1", "", &[], b"");
+    assert_eq!(reached, vec!["purge_document d1".to_owned()]);
+    assert_eq!(
+        response.status(),
+        204,
+        "the default for a no-payload operation"
+    );
+    assert!(response.body().is_empty());
+}
+
+#[test]
+fn a_no_payload_operation_may_override_its_declared_status() {
+    let (reached, response) = http_dispatched("POST", "/documents/d1/archive", "", &[], b"{}");
+    assert_eq!(reached, vec!["archive_document d1".to_owned()]);
+    assert_eq!(response.status(), 202);
+    assert!(response.body().is_empty());
+}
+
+#[test]
+fn a_bodyless_query_field_is_read_off_the_query_string_with_its_own_coercion() {
+    let (reached, response) = http_dispatched(
+        "GET",
+        "/documents/search",
+        "verified=true&limit=5",
+        &[],
+        b"",
+    );
+    assert_eq!(
+        reached,
+        vec!["search_documents Some(true) Some(5)".to_owned()]
+    );
+    assert_eq!(response.status(), 200);
+}
+
+#[test]
+fn an_operation_naming_no_http_group_defaults_to_a_plain_post() {
+    let (reached, response) = http_dispatched("POST", "/sweep-documents", "", &[], b"{}");
+    assert_eq!(reached, vec!["sweep_documents".to_owned()]);
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.body(), br#"{"swept":3}"#);
+}
+
+/// The route table an adapter iterates to register a handler per operation: one row each, method
+/// and path template as declared (or defaulted), and every status a caller can be answered with.
+#[test]
+fn the_route_table_lists_one_row_per_operation_with_its_own_statuses() {
+    let routes = http_rest_transport::ROUTES;
+    assert_eq!(routes.len(), 7, "one row per operation. Got: {:?}", {
+        routes
+            .iter()
+            .map(http_rest_transport::Route::operation)
+            .collect::<Vec<_>>()
+    });
+
+    let get_version = routes
+        .iter()
+        .find(|route| route.operation() == "get-version")
+        .unwrap();
+    assert_eq!(get_version.method(), "GET");
+    assert_eq!(
+        get_version.path(),
+        "/documents/{document_id}/versions/{version_id}"
+    );
+    assert_eq!(get_version.ok_status(), 200);
+    assert_eq!(get_version.error_statuses(), &[404, 410]);
+
+    let purge = routes
+        .iter()
+        .find(|route| route.operation() == "purge-document")
+        .unwrap();
+    assert_eq!(purge.method(), "DELETE");
+    assert_eq!(purge.path(), "/documents/{document_id}");
+    assert_eq!(purge.ok_status(), 204);
+    assert!(
+        purge.error_statuses().is_empty(),
+        "a one-way operation declares no error"
+    );
+
+    let sweep = routes
+        .iter()
+        .find(|route| route.operation() == "sweep-documents")
+        .unwrap();
+    assert_eq!(sweep.method(), "POST");
+    assert_eq!(sweep.path(), "/sweep-documents");
+    assert_eq!(
+        sweep.error_statuses(),
+        &[422],
+        "an operation naming no `http(...)` group answers every declared error at the fixed \
+         default-binding status"
+    );
+}
+
+/// `IncomingRequest` reads back every header it was built with, not only the one `dispatch` reads
+/// through `header()`.
+#[test]
+fn an_incoming_request_reads_back_every_header_it_was_built_with() {
+    let request = http_rest_transport::IncomingRequest::new(
+        "GET".to_owned(),
+        "/documents/x/versions/y".to_owned(),
+        String::new(),
+        vec![("Range".to_owned(), "bytes=0-1".to_owned())],
+        Vec::new(),
+    );
+    assert_eq!(
+        request.headers(),
+        &[("Range".to_owned(), "bytes=0-1".to_owned())]
+    );
+    assert_eq!(
+        request.header("range"),
+        Some("bytes=0-1"),
+        "a header is read case-insensitively"
     );
 }

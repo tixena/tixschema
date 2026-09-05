@@ -16,6 +16,7 @@
 use super::parse::{GeneratedMessage, ServiceDef};
 use proc_macro2::TokenStream;
 use quote::quote;
+use syn::Type;
 
 /// A generated message publishes under the operation's own name, with no service prefix.
 ///
@@ -141,10 +142,20 @@ fn cost_note(operation: &str, empty: bool) -> Vec<String> {
 
 fn message(declared: &GeneratedMessage) -> TokenStream {
     let named = &declared.ident;
-    let members = declared
-        .fields
-        .iter()
-        .map(|(field, carried)| quote! { pub #field: #carried });
+    let members = declared.fields.iter().map(|(field, carried)| {
+        if is_option_type(carried) {
+            // `#[model_schema()]` requires an `Option<T>` field to say what an absent value does
+            // on the wire, the same declaration a hand-written `Option<T>` field would carry — so
+            // a query parameter or an unclaimed header the caller left out defaults to `None`
+            // rather than being written as a `null` nothing here declared.
+            quote! {
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub #field: #carried
+            }
+        } else {
+            quote! { pub #field: #carried }
+        }
+    });
     let rustdoc = cost_note(
         &declared.declared_for.to_string(),
         declared.fields.is_empty(),
@@ -158,4 +169,18 @@ fn message(declared: &GeneratedMessage) -> TokenStream {
             #(#members,)*
         }
     }
+}
+
+/// Whether a field's declared type is `Option<...>`, read syntactically off the written type —
+/// there being no type resolution available to a proc macro, this is the same shallow check every
+/// other optional-field convention in this crate makes.
+fn is_option_type(ty: &Type) -> bool {
+    let Type::Path(named) = ty else {
+        return false;
+    };
+    named
+        .path
+        .segments
+        .last()
+        .is_some_and(|segment| segment.ident == "Option")
 }

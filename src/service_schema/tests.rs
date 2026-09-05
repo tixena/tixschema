@@ -129,6 +129,22 @@ fn expansion_over_amqp_rpc(source: &str) -> TokenStream {
     )
 }
 
+/// The same expansion for a service that asked for `http_rest`, which is what carries both a
+/// dispatcher and a client for that transport instead.
+fn expansion_over_http_rest(source: &str) -> TokenStream {
+    exec_service_schema(
+        quote! { transports = ["http_rest"] },
+        declared(source).to_token_stream(),
+    )
+}
+
+/// One published `http_rest` macro's stored tokens and nothing beside them, with every literal
+/// blanked so a name a doc comment mentions is not read as a path — the `http_rest` counterpart of
+/// [`macro_body`].
+fn macro_body_over_http_rest(source: &str, named: &str) -> String {
+    macro_rules_stream(without_literals(expansion_over_http_rest(source)), named).to_string()
+}
+
 /// Whether every mention of `named` in the macro body is written under `qualifier`. A mention that
 /// is part of a longer identifier — `serde_named_field` carrying `named_field` — is not one.
 fn every_mention_is_qualified(body: &str, named: &str, qualifier: &str) -> bool {
@@ -2146,6 +2162,25 @@ fn neither_macro_body_carries_an_attribute_that_quiets_a_lint() {
     ] {
         // Literals blanked, so a doc comment saying the word `allow` is not read as an attribute.
         let body = macro_body(source, half);
+        for quieting in ["allow", "expect", "doc (hidden)", "automatically_derived"] {
+            assert!(
+                !body.contains(quieting),
+                "`{half}` writes `{quieting}` into a consumer's build, where nothing in their own \
+                 source explains it. Got: {body}"
+            );
+        }
+    }
+}
+
+/// The `http_rest` transport's own two macros, held to the same standard: neither writes an
+/// attribute into a consumer's build that quiets a lint the consumer never chose to quiet.
+#[test]
+fn neither_http_rest_macro_body_carries_an_attribute_that_quiets_a_lint() {
+    for half in [
+        "document_service_http_rest_dispatcher",
+        "document_service_http_rest_client",
+    ] {
+        let body = macro_body_over_http_rest(HTTP_SERVICE, half);
         for quieting in ["allow", "expect", "doc (hidden)", "automatically_derived"] {
             assert!(
                 !body.contains(quieting),

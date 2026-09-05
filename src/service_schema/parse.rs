@@ -227,7 +227,10 @@ impl HttpMethod {
     /// Whether this method carries a JSON body. `GET` and `DELETE` do not, so a field the path
     /// leaves unbound has nowhere left to go — [`build_http_binding`] refuses it rather than
     /// silently dropping it.
-    const fn carries_a_body(self) -> bool {
+    ///
+    /// `pub(crate)`: the `http_rest` transport reads the same fact to decide whether a field
+    /// belongs in the body or the query string, on the wire rather than in this parser.
+    pub(crate) const fn carries_a_body(self) -> bool {
         matches!(self, Self::Patch | Self::Post | Self::Put)
     }
 
@@ -255,7 +258,7 @@ impl HttpMethod {
 }
 
 /// One segment of an `http(...)` path template.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PathSegment {
     /// Written exactly as it appears in the template, slashes included.
     Literal(String),
@@ -264,12 +267,15 @@ pub enum PathSegment {
 }
 
 /// One `header_in("name" = parameter)` binding.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct HeaderIn {
     /// The header name, as written.
     pub name: String,
     /// The operation's own argument it fills, keeping the argument's real span.
     pub parameter: Ident,
+    /// The type that argument was declared with, read off the operation's own signature so a
+    /// transport can coerce a header's text into it without re-parsing the trait.
+    pub parameter_type: Type,
 }
 
 /// How `http(...)` carries the body. `Json` is the only kind this version emits.
@@ -942,9 +948,18 @@ fn build_http_binding(
         header_in: raw
             .header_in
             .into_iter()
-            .map(|(name, parameter)| HeaderIn {
-                name: name.value(),
-                parameter,
+            .map(|(name, parameter)| {
+                // `refusals` above has already returned `Err` for a `parameter` naming no real
+                // argument, so a lookup reaching the fallback here never happens for a program
+                // that compiles; the fallback only keeps this from panicking on its way there.
+                let parameter_type = argument_type(operation, &parameter)
+                    .cloned()
+                    .unwrap_or_else(|| syn::parse_quote!(String));
+                HeaderIn {
+                    name: name.value(),
+                    parameter,
+                    parameter_type,
+                }
             })
             .collect(),
         header_out: raw
@@ -1023,9 +1038,35 @@ fn is_unit_type(ty: &Type) -> bool {
     matches!(ty, Type::Tuple(tuple) if tuple.elems.is_empty())
 }
 
+/// The declared type of one argument beyond `&self` and the context, by name — read off the
+/// operation's own signature so [`build_http_binding`] can hand a transport a header binding's
+/// argument type without that transport ever re-reading the trait itself.
+fn argument_type<'operation>(
+    operation: &'operation TraitItemFn,
+    wanted: &Ident,
+) -> Option<&'operation Type> {
+    operation.sig.inputs.iter().skip(2).find_map(|input| {
+        let FnArg::Typed(typed) = input else {
+            return None;
+        };
+        let Pat::Ident(named) = typed.pat.as_ref() else {
+            return None;
+        };
+        (named.ident == *wanted).then(|| typed.ty.as_ref())
+    })
+}
+
 /// The status a success answers with where the author wrote no `ok_status`: 204 for an operation
 /// with nothing to serialize, 200 for every other one.
-fn default_ok_status(outcome: &OperationOutcome) -> u16 {
+///
+/// `pub` rather than private: an operation naming no `http(...)` group carries no [`HttpBinding`]
+/// at all — "a transport defaults it on its own, and nothing here manufactures one to default" —
+/// and the `http_rest` transport reaches for the very same rule this file already applies to a
+/// group that named no `ok_status`, so the two cases cannot silently drift apart into two
+/// different defaults. `pub` rather than `pub(crate)`: this module is private, so nothing wider
+/// than the crate can reach it regardless, and `clippy::redundant_pub_crate` asks for the plainer
+/// spelling wherever that is already true.
+pub fn default_ok_status(outcome: &OperationOutcome) -> u16 {
     match outcome {
         OperationOutcome::OneWay => 204,
         OperationOutcome::Reply { success, .. } if is_unit_type(success) => 204,

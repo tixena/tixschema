@@ -7,6 +7,7 @@
 #![cfg(feature = "serde")]
 
 use crate::amqp_client;
+use crate::http_rest_client;
 use core::future::{Future, ready};
 use core::pin::pin;
 use core::task::{Context as PollContext, Poll, Waker};
@@ -33,6 +34,46 @@ pub struct CallRequest {
     pub organization_id: String,
 }
 
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CreateDocumentResponse {
+    pub document_id: String,
+}
+
+#[model_schema()]
+#[derive(Deserialize, Serialize)]
+pub struct CreateDocumentRequest {
+    pub title: String,
+}
+
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum CreateDocumentError {
+    TitleTaken,
+}
+
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum GetVersionError {
+    NotFound,
+    VersionGone,
+}
+
+#[model_schema()]
+#[derive(Deserialize, Serialize)]
+pub struct GetVersionRequest {
+    pub document_id: String,
+    pub version_id: String,
+}
+
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct VersionResponse {
+    pub content: String,
+}
+
 #[service_schema(transports = ["amqp_rpc"])]
 pub trait CallService<Ctx> {
     /// No reply, so the send half of the seam is placed beside the call half.
@@ -46,9 +87,45 @@ pub trait CallService<Ctx> {
     async fn sweep(&self, ctx: &Ctx) -> Result<CallAnswer, CallFailure>;
 }
 
+#[service_schema(transports = ["http_rest"])]
+pub trait DocumentClientService<Ctx> {
+    #[service_schema_op(http(
+        method = "POST",
+        path = "/documents",
+        error_status(TitleTaken = 409)
+    ))]
+    async fn create_document(
+        &self,
+        ctx: &Ctx,
+        req: CreateDocumentRequest,
+    ) -> Result<CreateDocumentResponse, CreateDocumentError>;
+
+    #[service_schema_op(http(
+        method = "GET",
+        path = "/documents/{document_id}/versions/{version_id}",
+        ok_status = 200,
+        header_in("range" = byte_range),
+        header_out("etag"),
+        error_status(NotFound = 404, VersionGone = 410),
+    ))]
+    async fn get_version(
+        &self,
+        ctx: &Ctx,
+        req: GetVersionRequest,
+        byte_range: Option<String>,
+    ) -> Result<(VersionResponse, String), GetVersionError>;
+
+    #[service_schema_op(one_way, http(method = "DELETE", path = "/documents/{document_id}"))]
+    async fn purge_document(&self, ctx: &Ctx, document_id: String);
+}
+
 /// A backend answering the contract, with no dispatcher in sight: the trait is the contract, and a
 /// crate that placed only the client can still name and implement it.
 pub struct CallBackEnd;
+
+/// The contract stands on its own here too: implementing it takes the trait and nothing else, and
+/// nothing in this binary placed a dispatcher for it.
+pub struct DocumentClientBackEnd;
 
 /// A transport that refuses everything it is handed, in the words a bus reports a call that never
 /// landed in.
@@ -59,6 +136,29 @@ pub struct RefusingTransport;
 pub struct ProbeTransport {
     answers: Mutex<Vec<Vec<u8>>>,
     calls: Mutex<Vec<String>>,
+}
+
+/// One queued response: status, headers and body, in that order — the same order
+/// `IncomingResponse::new` takes them.
+type QueuedResponse = (u16, Vec<(String, String)>, Vec<u8>);
+
+/// One request the seam recorded, read back through the generated `OutgoingRequest`'s own
+/// accessors rather than by destructuring it — there is nothing else the seam implementation could
+/// reach for either.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RecordedRequest {
+    body: Vec<u8>,
+    headers: Vec<(String, String)>,
+    method: String,
+    path: String,
+    query: String,
+}
+
+/// A hand-written in-memory seam: records every request it is handed and hands back whichever
+/// response was queued for it, in order.
+pub struct RecordingTransport {
+    requests: Mutex<Vec<RecordedRequest>>,
+    responses: Mutex<Vec<QueuedResponse>>,
 }
 
 impl CallService<()> for CallBackEnd {
@@ -76,6 +176,38 @@ impl CallService<()> for CallBackEnd {
     async fn sweep(&self, _ctx: &()) -> Result<CallAnswer, CallFailure> {
         ready(()).await;
         Ok(CallAnswer { credits: 0 })
+    }
+}
+
+impl DocumentClientService<()> for DocumentClientBackEnd {
+    async fn create_document(
+        &self,
+        _ctx: &(),
+        req: CreateDocumentRequest,
+    ) -> Result<CreateDocumentResponse, CreateDocumentError> {
+        ready(()).await;
+        Ok(CreateDocumentResponse {
+            document_id: format!("doc-{}", req.title),
+        })
+    }
+
+    async fn get_version(
+        &self,
+        _ctx: &(),
+        req: GetVersionRequest,
+        _byte_range: Option<String>,
+    ) -> Result<(VersionResponse, String), GetVersionError> {
+        ready(()).await;
+        Ok((
+            VersionResponse {
+                content: format!("{}@{}", req.document_id, req.version_id),
+            },
+            "v1".to_owned(),
+        ))
+    }
+
+    async fn purge_document(&self, _ctx: &(), _document_id: String) {
+        ready(()).await;
     }
 }
 
@@ -118,6 +250,26 @@ impl amqp_client::Transport for RefusingTransport {
     }
 }
 
+impl http_rest_client::Transport for RecordingTransport {
+    async fn send(
+        &self,
+        request: http_rest_client::OutgoingRequest,
+    ) -> Result<http_rest_client::IncomingResponse, String> {
+        ready(()).await;
+        self.requests.lock().unwrap().push(RecordedRequest {
+            method: request.method().to_owned(),
+            path: request.path().to_owned(),
+            query: request.query().to_owned(),
+            headers: request.headers().to_vec(),
+            body: request.body().to_vec(),
+        });
+        let (status, headers, body) = self.responses.lock().unwrap().remove(0);
+        Ok(http_rest_client::IncomingResponse::new(
+            status, headers, body,
+        ))
+    }
+}
+
 impl ProbeTransport {
     /// The next prepared answer. A transport built with none never returns from here, which is the
     /// failure a test that reaches the transport is meant to report.
@@ -149,6 +301,20 @@ impl ProbeTransport {
     {
         let _written = serde_json::to_string(payload).unwrap();
         self.calls.lock().unwrap().push(operation.to_owned());
+    }
+}
+
+impl RecordingTransport {
+    /// The responses this transport will give, in the order it will give them.
+    fn queued(responses: Vec<QueuedResponse>) -> Self {
+        Self {
+            requests: Mutex::new(Vec::new()),
+            responses: Mutex::new(responses),
+        }
+    }
+
+    fn requests(&self) -> Vec<RecordedRequest> {
+        self.requests.lock().unwrap().clone()
     }
 }
 
@@ -249,4 +415,197 @@ fn the_contract_is_implementable_where_no_dispatcher_was_placed() {
         },
     ))
     .unwrap();
+}
+
+#[test]
+fn a_call_records_the_exact_request_method_path_query_headers_and_body() {
+    let transport = RecordingTransport::queued(vec![(
+        200,
+        vec![("etag".to_owned(), "v9".to_owned())],
+        br#"{"content":"d1@v1"}"#.to_vec(),
+    )]);
+    let client = http_rest_client::DocumentClientServiceClient::new(transport);
+    let answered = poll_once(client.get_version(
+        GetVersionRequest {
+            document_id: "d1".to_owned(),
+            version_id: "v1".to_owned(),
+        },
+        Some("bytes=0-1".to_owned()),
+    ))
+    .unwrap();
+    assert_eq!(
+        answered,
+        Ok((
+            VersionResponse {
+                content: "d1@v1".to_owned()
+            },
+            "v9".to_owned()
+        ))
+    );
+    assert_eq!(
+        client.transport().requests(),
+        vec![RecordedRequest {
+            method: "GET".to_owned(),
+            path: "/documents/d1/versions/v1".to_owned(),
+            query: String::new(),
+            headers: vec![("range".to_owned(), "bytes=0-1".to_owned())],
+            body: Vec::new(),
+        }],
+        "a placeholder is filled by exact segment substitution, never by splitting a shared prefix"
+    );
+}
+
+#[test]
+fn a_bodied_call_carries_the_message_as_the_json_body() {
+    let transport = RecordingTransport::queued(vec![(
+        200,
+        Vec::new(),
+        br#"{"document_id":"doc-report"}"#.to_vec(),
+    )]);
+    let client = http_rest_client::DocumentClientServiceClient::new(transport);
+    let answered = poll_once(client.create_document(CreateDocumentRequest {
+        title: "report".to_owned(),
+    }))
+    .unwrap();
+    assert_eq!(
+        answered,
+        Ok(CreateDocumentResponse {
+            document_id: "doc-report".to_owned()
+        })
+    );
+    let requests = client.transport().requests();
+    assert_eq!(requests.len(), 1, "got: {requests:?}");
+    assert_eq!(requests[0].method, "POST");
+    assert_eq!(requests[0].path, "/documents");
+    assert_eq!(requests[0].body, br#"{"title":"report"}"#);
+}
+
+#[test]
+fn a_mapped_status_decodes_into_the_declared_error() {
+    let transport = RecordingTransport::queued(vec![(
+        404,
+        Vec::new(),
+        br#"{"errorCode":"not-found"}"#.to_vec(),
+    )]);
+    let client = http_rest_client::DocumentClientServiceClient::new(transport);
+    let answered = poll_once(client.get_version(
+        GetVersionRequest {
+            document_id: "missing".to_owned(),
+            version_id: "v1".to_owned(),
+        },
+        None,
+    ))
+    .unwrap();
+    assert_eq!(
+        answered,
+        Err(document_client_service_schema::CallError::Operation(
+            GetVersionError::NotFound
+        ))
+    );
+}
+
+#[test]
+fn a_fixed_fault_status_decodes_through_the_private_mirror() {
+    let transport = RecordingTransport::queued(vec![(
+        500,
+        Vec::new(),
+        br#"{"detail":"the handler came apart","kind":"handler-panic","operation":"get-version"}"#
+            .to_vec(),
+    )]);
+    let client = http_rest_client::DocumentClientServiceClient::new(transport);
+    let answered = poll_once(client.get_version(
+        GetVersionRequest {
+            document_id: "d1".to_owned(),
+            version_id: "v1".to_owned(),
+        },
+        None,
+    ))
+    .unwrap();
+    let reported = match &answered {
+        Err(document_client_service_schema::CallError::Fault(reported)) => Some(reported),
+        Ok(_) | Err(document_client_service_schema::CallError::Operation(_)) => None,
+    }
+    .unwrap();
+    assert_eq!(
+        reported.kind(),
+        document_client_service_schema::ServiceFaultKind::HandlerPanic
+    );
+    assert_eq!(reported.detail(), "the handler came apart");
+}
+
+#[test]
+fn a_status_naming_neither_a_declared_error_nor_a_fixed_fault_is_an_undeserializable_payload_fault()
+{
+    let transport = RecordingTransport::queued(vec![(599, Vec::new(), b"{}".to_vec())]);
+    let client = http_rest_client::DocumentClientServiceClient::new(transport);
+    let answered = poll_once(client.get_version(
+        GetVersionRequest {
+            document_id: "d1".to_owned(),
+            version_id: "v1".to_owned(),
+        },
+        None,
+    ))
+    .unwrap();
+    let reported = match &answered {
+        Err(document_client_service_schema::CallError::Fault(reported)) => Some(reported),
+        Ok(_) | Err(document_client_service_schema::CallError::Operation(_)) => None,
+    }
+    .unwrap();
+    assert_eq!(
+        reported.kind(),
+        document_client_service_schema::ServiceFaultKind::UndeserializablePayload
+    );
+    assert!(
+        reported.detail().contains("599"),
+        "got: {}",
+        reported.detail()
+    );
+}
+
+#[test]
+fn a_no_payload_operation_resolves_on_its_declared_status_without_reading_a_body() {
+    let transport = RecordingTransport::queued(vec![(204, Vec::new(), Vec::new())]);
+    let client = http_rest_client::DocumentClientServiceClient::new(transport);
+    poll_once(client.purge_document("d1".to_owned()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(client.transport().requests()[0].method, "DELETE");
+    assert_eq!(client.transport().requests()[0].path, "/documents/d1");
+}
+
+/// The contract stands on its own: implementing it takes a trait and nothing else, and nothing in
+/// this binary placed a dispatcher for it.
+#[test]
+fn the_document_contract_is_implementable_where_no_dispatcher_was_placed() {
+    let answered = poll_once(DocumentClientBackEnd.get_version(
+        &(),
+        GetVersionRequest {
+            document_id: "d1".to_owned(),
+            version_id: "v1".to_owned(),
+        },
+        None,
+    ))
+    .unwrap();
+    assert_eq!(
+        answered,
+        Ok((
+            VersionResponse {
+                content: "d1@v1".to_owned()
+            },
+            "v1".to_owned()
+        ))
+    );
+    poll_once(DocumentClientBackEnd.purge_document(&(), "d1".to_owned())).unwrap();
+    assert_eq!(
+        poll_once(DocumentClientBackEnd.create_document(
+            &(),
+            CreateDocumentRequest {
+                title: "report".to_owned()
+            }
+        ))
+        .unwrap(),
+        Ok(CreateDocumentResponse {
+            document_id: "doc-report".to_owned()
+        })
+    );
 }
