@@ -22,6 +22,11 @@
 //!   each emitter so the messages, the dispatcher and the client cannot disagree about the name.
 //! - **What it answers with.** [`OperationOutcome::Reply`] carries the two declared arms, or
 //!   [`OperationOutcome::OneWay`] says there is no reply to carry.
+//! - **What it answers as HTTP.** [`OperationDef::http`] carries what
+//!   `#[service_schema_op(http(...))]` declared — method, path, the status table, and the header
+//!   bindings — or `None` for an operation that named no group, which defaults to `POST
+//!   /{wire-name}`, status 200, the whole message as the body. A transport reads this one parsed
+//!   shape and never re-parses the attribute.
 //!
 //! The context is on [`ServiceDef`], not on any operation: every operation takes it, it is the
 //! same type for all of them, and it reaches no message and no schema.
@@ -35,11 +40,12 @@
 use crate::rename_rule::RenameRule;
 use proc_macro2::TokenTree;
 use quote::{ToTokens as _, format_ident};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use syn::meta::ParseNestedMeta;
 use syn::spanned::Spanned as _;
 use syn::{
-    Attribute, FnArg, GenericArgument, GenericParam, Ident, ItemTrait, Pat, PathArguments,
-    ReturnType, TraitItem, TraitItemFn, Type,
+    Attribute, FnArg, GenericArgument, GenericParam, Ident, ItemTrait, LitInt, LitStr, Pat,
+    PathArguments, ReturnType, Token, TraitItem, TraitItemFn, Type,
 };
 
 /// The per-operation directive, read and then stripped before the trait is emitted.
@@ -47,7 +53,43 @@ pub const OPERATION_DIRECTIVE: &str = "service_schema_op";
 
 const UNKNOWN_DIRECTIVE_MESSAGE: &str = concat!(
     "service_schema: unknown `service_schema_op` directive\n",
-    "       the directives are `message = \"<wire name>\"` and `one_way`"
+    "       the directives are `message = \"<wire name>\"`, `one_way` and `http(...)`"
+);
+
+const UNKNOWN_HTTP_ARGUMENT_MESSAGE: &str = concat!(
+    "service_schema: unknown `http` argument\n",
+    "       the arguments are `method`, `path`, `ok_status`, `error_status`, `header_in` and \
+     `header_out`"
+);
+
+const MISSING_HTTP_METHOD_MESSAGE: &str = concat!(
+    "service_schema: `http(...)` declares no `method`\n",
+    "       write `method = \"GET\"` (or `\"POST\"`, `\"PUT\"`, `\"DELETE\"`, `\"PATCH\"`)"
+);
+
+const MISSING_HTTP_PATH_MESSAGE: &str = concat!(
+    "service_schema: `http(...)` declares no `path`\n",
+    "       write `path = \"/resource/{field}\"`"
+);
+
+const HTTP_ERROR_STATUS_SHAPE_MESSAGE: &str = concat!(
+    "service_schema: `error_status` entries are `Variant = code`\n",
+    "       write `error_status(NotFound = 404, ...)`"
+);
+
+const UNTERMINATED_PLACEHOLDER_MESSAGE: &str = concat!(
+    "service_schema: `http(...)`'s path opens `{` with no matching `}`\n",
+    "       write `{field}`, closed before the path ends"
+);
+
+const EMPTY_PLACEHOLDER_MESSAGE: &str = concat!(
+    "service_schema: `http(...)`'s path has an empty `{}`\n",
+    "       name the field it binds: `{field}`"
+);
+
+const UNMATCHED_CLOSING_BRACE_MESSAGE: &str = concat!(
+    "service_schema: `http(...)`'s path has a `}` with no matching `{`\n",
+    "       write `{field}`, or escape a literal brace some other way"
 );
 
 /// One service, read once.
@@ -78,6 +120,8 @@ pub struct GeneratedMessage {
 
 /// One operation: a name in three spellings, a message in, and either a reply or nothing.
 pub struct OperationDef {
+    /// What `http(...)` declared, or `None` for an operation that named no group.
+    pub http: Option<HttpBinding>,
     /// The trait method as declared: `get_available_balance`.
     pub ident: Ident,
     pub inputs: OperationInputs,
@@ -136,8 +180,117 @@ pub enum OperationOutcome {
     },
 }
 
+/// What `http(...)` declared on one operation, checked against its signature and its outcome.
+///
+/// An operation that named no group carries `None` on [`OperationDef::http`] instead of one of
+/// these — the default (`POST /{wire-name}`, status 200, the whole message as the body) needs
+/// nothing checked against the signature, so a transport computes it on its own rather than
+/// reading it off a materialized value here.
+#[derive(Debug)]
+pub struct HttpBinding {
+    /// How the body is carried. `Json` is the only kind this version emits; a later task extends
+    /// this for bytes-with-content-type and streamed bodies.
+    pub body_kind: BodyKind,
+    /// One entry per declared `error_status(Variant = code)`, in declaration order. Each variant
+    /// keeps its own span from the attribute, so a misspelling is rustc's own "no variant" error
+    /// rather than one this crate wrote, and a variant the mapping left out is rustc's own
+    /// `E0004` naming it — see [`crate::service_schema::support`]'s completeness check.
+    pub error_status: Vec<(Ident, u16)>,
+    /// One entry per `header_in("name" = parameter)`, naming the request header and the
+    /// operation's own argument it fills.
+    pub header_in: Vec<HeaderIn>,
+    /// One entry per bare `header_out("name")`, in declaration order. The success type is a
+    /// tuple of exactly this many elements plus the response, and this is the response header
+    /// each element after the first is written out as.
+    pub header_out: Vec<String>,
+    /// The method the operation answers to.
+    pub method: HttpMethod,
+    /// The status a success answers with: the declared `ok_status`, or 204 for a no-payload
+    /// operation and 200 for every other one where the author wrote neither.
+    pub ok_status: u16,
+    /// The path template, walked left to right: a literal segment as written, or a `{field}`
+    /// placeholder naming a field the path binds.
+    pub path: Vec<PathSegment>,
+}
+
+/// The five methods `http(...)` answers to.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HttpMethod {
+    Delete,
+    Get,
+    Patch,
+    Post,
+    Put,
+}
+
+impl HttpMethod {
+    /// Whether this method carries a JSON body. `GET` and `DELETE` do not, so a field the path
+    /// leaves unbound has nowhere left to go — [`build_http_binding`] refuses it rather than
+    /// silently dropping it.
+    const fn carries_a_body(self) -> bool {
+        matches!(self, Self::Patch | Self::Post | Self::Put)
+    }
+
+    fn from_name(written: &str) -> Option<Self> {
+        match written {
+            "DELETE" => Some(Self::Delete),
+            "GET" => Some(Self::Get),
+            "PATCH" => Some(Self::Patch),
+            "POST" => Some(Self::Post),
+            "PUT" => Some(Self::Put),
+            _ => None,
+        }
+    }
+
+    /// The name an operation writes for it, for a refusal to quote back.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Delete => "DELETE",
+            Self::Get => "GET",
+            Self::Patch => "PATCH",
+            Self::Post => "POST",
+            Self::Put => "PUT",
+        }
+    }
+}
+
+/// One segment of an `http(...)` path template.
+#[derive(Debug, Eq, PartialEq)]
+pub enum PathSegment {
+    /// Written exactly as it appears in the template, slashes included.
+    Literal(String),
+    /// A `{field}` placeholder, holding the name between the braces.
+    Placeholder(String),
+}
+
+/// One `header_in("name" = parameter)` binding.
+#[derive(Debug)]
+pub struct HeaderIn {
+    /// The header name, as written.
+    pub name: String,
+    /// The operation's own argument it fills, keeping the argument's real span.
+    pub parameter: Ident,
+}
+
+/// How `http(...)` carries the body. `Json` is the only kind this version emits.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BodyKind {
+    Json,
+}
+
+/// What `http(...)` said, before it is checked against the operation's signature and outcome.
+struct RawHttp {
+    error_status: Vec<(Ident, u16)>,
+    header_in: Vec<(LitStr, Ident)>,
+    header_out: Vec<LitStr>,
+    method: (HttpMethod, LitStr),
+    ok_status: Option<u16>,
+    path: LitStr,
+}
+
 /// What one `#[service_schema_op(...)]` said, before anything is derived from it.
 struct OperationDirective {
+    http: Option<RawHttp>,
     message: Option<String>,
     one_way: bool,
 }
@@ -145,6 +298,7 @@ struct OperationDirective {
 impl OperationDirective {
     fn read(attrs: &[Attribute]) -> Result<Self, syn::Error> {
         let mut directive = Self {
+            http: None,
             message: None,
             one_way: false,
         };
@@ -161,11 +315,101 @@ impl OperationDirective {
                     directive.message = Some(meta.value()?.parse::<syn::LitStr>()?.value());
                     return Ok(());
                 }
+                if meta.path.is_ident("http") {
+                    directive.http = Some(read_http_directive(&meta)?);
+                    return Ok(());
+                }
                 Err(meta.error(UNKNOWN_DIRECTIVE_MESSAGE))
             })?;
         }
         Ok(directive)
     }
+}
+
+fn unknown_http_method_message(written: &str) -> String {
+    format!(
+        "service_schema: `{written}` is not an HTTP method this version knows\n       \
+         write one of `GET`, `POST`, `PUT`, `DELETE`, `PATCH`"
+    )
+}
+
+/// Reads the content of one `http(...)` group: `method`, `path` and `ok_status` parse by plain
+/// recursion, every key there opening with a bare ident — `Meta`-shaped syntax `parse_nested_meta`
+/// already handles. `header_in` and `header_out` cannot: their first token is a string literal,
+/// which `parse_nested_meta` rejects before it ever reaches the `=`, so each is instead read by
+/// hand out of the parenthesized group its key opens, one string literal and (for `header_in`) one
+/// `= parameter` after it.
+fn read_http_directive(meta: &ParseNestedMeta<'_>) -> Result<RawHttp, syn::Error> {
+    let mut method_written: Option<(HttpMethod, LitStr)> = None;
+    let mut path_written: Option<LitStr> = None;
+    let mut ok_status: Option<u16> = None;
+    let mut error_status: Vec<(Ident, u16)> = Vec::new();
+    let mut header_in: Vec<(LitStr, Ident)> = Vec::new();
+    let mut header_out: Vec<LitStr> = Vec::new();
+
+    meta.parse_nested_meta(|inner| {
+        if inner.path.is_ident("method") {
+            let written: LitStr = inner.value()?.parse()?;
+            let Some(parsed) = HttpMethod::from_name(&written.value()) else {
+                return Err(syn::Error::new(
+                    written.span(),
+                    unknown_http_method_message(&written.value()),
+                ));
+            };
+            method_written = Some((parsed, written));
+            return Ok(());
+        }
+        if inner.path.is_ident("path") {
+            path_written = Some(inner.value()?.parse()?);
+            return Ok(());
+        }
+        if inner.path.is_ident("ok_status") {
+            let written: LitInt = inner.value()?.parse()?;
+            ok_status = Some(written.base10_parse()?);
+            return Ok(());
+        }
+        if inner.path.is_ident("error_status") {
+            inner.parse_nested_meta(|deepest| {
+                let Some(variant) = deepest.path.get_ident().cloned() else {
+                    return Err(deepest.error(HTTP_ERROR_STATUS_SHAPE_MESSAGE));
+                };
+                let code: LitInt = deepest.value()?.parse()?;
+                error_status.push((variant, code.base10_parse()?));
+                Ok(())
+            })?;
+            return Ok(());
+        }
+        if inner.path.is_ident("header_in") {
+            let content;
+            syn::parenthesized!(content in inner.input);
+            let name: LitStr = content.parse()?;
+            content.parse::<Token![=]>()?;
+            let parameter: Ident = content.parse()?;
+            header_in.push((name, parameter));
+            return Ok(());
+        }
+        if inner.path.is_ident("header_out") {
+            let content;
+            syn::parenthesized!(content in inner.input);
+            header_out.push(content.parse()?);
+            return Ok(());
+        }
+        Err(inner.error(UNKNOWN_HTTP_ARGUMENT_MESSAGE))
+    })?;
+
+    let resolved_method = method_written
+        .ok_or_else(|| syn::Error::new(meta.path.span(), MISSING_HTTP_METHOD_MESSAGE))?;
+    let resolved_path =
+        path_written.ok_or_else(|| syn::Error::new(meta.path.span(), MISSING_HTTP_PATH_MESSAGE))?;
+
+    Ok(RawHttp {
+        error_status,
+        header_in,
+        header_out,
+        method: resolved_method,
+        ok_status,
+        path: resolved_path,
+    })
 }
 
 /// Reads and validates a declared trait into the representation every emitter consumes.
@@ -279,10 +523,13 @@ fn one_way_returns_a_value_message(operation: &Ident) -> String {
     )
 }
 
-/// Everything the operation takes after `&self` and the context, in declaration order.
+/// Everything the operation takes after `&self` and the context, in declaration order, less
+/// whatever `header_in` claimed. An operation with no `http(...)` group claims nothing, so this is
+/// exactly the pre-`http` behavior for it: every argument still becomes a field on the message.
 fn operation_inputs(
     operation: &TraitItemFn,
     context: &Ident,
+    header_claims: &HashSet<String>,
 ) -> Result<OperationInputs, syn::Error> {
     let named = &operation.sig.ident;
     let mut positional = operation.sig.inputs.iter();
@@ -316,6 +563,9 @@ fn operation_inputs(
                 plain_argument_name_message(named),
             ));
         };
+        if header_claims.contains(&argument.ident.to_string()) {
+            continue;
+        }
         carried.push((argument.ident.clone(), typed.ty.as_ref().clone()));
     }
 
@@ -357,11 +607,27 @@ fn operation_outcome(
 
 fn parse_operation(operation: &TraitItemFn, context: &Ident) -> Result<OperationDef, syn::Error> {
     let directive = OperationDirective::read(&operation.attrs)?;
-    let inputs = operation_inputs(operation, context)?;
+    let header_claims: HashSet<String> = directive
+        .http
+        .as_ref()
+        .map(|raw| {
+            raw.header_in
+                .iter()
+                .map(|(_, parameter)| parameter.to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+    let inputs = operation_inputs(operation, context, &header_claims)?;
     let outcome = operation_outcome(operation, directive.one_way)?;
-    let declared = operation.sig.ident.to_string();
+    let ident = operation.sig.ident.clone();
+    let http = directive
+        .http
+        .map(|raw| build_http_binding(&ident, operation, raw, &inputs, &outcome))
+        .transpose()?;
+    let declared = ident.to_string();
     Ok(OperationDef {
-        ident: operation.sig.ident.clone(),
+        http,
+        ident,
         inputs,
         outcome,
         ts_name: RenameRule::CamelCase.apply_to_field(&declared),
@@ -369,6 +635,551 @@ fn parse_operation(operation: &TraitItemFn, context: &Ident) -> Result<Operation
             .message
             .unwrap_or_else(|| RenameRule::KebabCase.apply_to_field(&declared)),
     })
+}
+
+/// Every argument's name beyond `&self` and the context, whatever it ends up bound to — checked
+/// against a `header_in` claim, since [`operation_inputs`] has already removed its own claims from
+/// what it returns and cannot itself say whether one named nothing real.
+fn extra_argument_names(operation: &TraitItemFn) -> HashSet<String> {
+    operation
+        .sig
+        .inputs
+        .iter()
+        .skip(2)
+        .filter_map(|input| {
+            let FnArg::Typed(typed) = input else {
+                return None;
+            };
+            let Pat::Ident(named) = typed.pat.as_ref() else {
+                return None;
+            };
+            Some(named.ident.to_string())
+        })
+        .collect()
+}
+
+/// Checks `http(...)` against the operation it was written on: every `header_in` claims a real
+/// argument, every path placeholder matches a field the message actually has, a required field a
+/// bodyless method cannot carry any other way is bound in the path, and a tuple success type is
+/// exactly explained by `header_out`.
+///
+/// The error-variant mapping is deliberately not checked here — this function cannot see the
+/// error type's own declaration, that type being an ordinary sibling item rather than one this
+/// macro reads, the same problem `error_status` completeness always has. `support::emit` answers
+/// it instead, with a match carrying exactly the declared arms and no wildcard, so rustc's own
+/// exhaustiveness check is what refuses a variant the mapping left out — see
+/// `http_error_status_completeness` in [`crate::service_schema::support`] for that one.
+///
+/// # A full declaration, compiling
+///
+/// Every grammar arm at once: a path placeholder bound to a message field, one header claimed
+/// beside the message, one header written out beside the response, and a complete status table.
+///
+/// ```rust
+/// use tixschema::service_schema;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub struct GetVersionRequest {
+///     pub document_id: String,
+///     pub version_id: String,
+/// }
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub struct VersionResponse {
+///     pub content: String,
+/// }
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub enum GetVersionError {
+///     NotFound,
+///     VersionGone,
+/// }
+///
+/// #[service_schema(transports = ["http_rest"])]
+/// pub trait DocumentService<Ctx> {
+///     #[service_schema_op(http(
+///         method = "GET",
+///         path = "/documents/{document_id}/versions/{version_id}",
+///         ok_status = 200,
+///         header_in("range" = byte_range),
+///         header_out("etag"),
+///         error_status(NotFound = 404, VersionGone = 410),
+///     ))]
+///     async fn get_version(
+///         &self,
+///         ctx: &Ctx,
+///         req: GetVersionRequest,
+///         byte_range: Option<String>,
+///     ) -> Result<(VersionResponse, String), GetVersionError>;
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// # A path placeholder naming no field is refused, naming the placeholder
+///
+/// The message below has fields `widget_id` and `label`; the path names neither:
+///
+/// ```rust,compile_fail
+/// use tixschema::service_schema;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub struct WidgetResponse;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub enum WidgetError {
+///     NotFound,
+/// }
+///
+/// #[service_schema()]
+/// pub trait WidgetService<Ctx> {
+///     #[service_schema_op(http(
+///         method = "POST",
+///         path = "/widgets/{item_id}",
+///         ok_status = 200,
+///         error_status(NotFound = 404),
+///     ))]
+///     async fn get_widget(
+///         &self,
+///         ctx: &Ctx,
+///         widget_id: String,
+///         label: String,
+///     ) -> Result<WidgetResponse, WidgetError>;
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// A `compile_fail` doctest asserts only that *something* was refused, so the file above was
+/// compiled standalone and the diagnostic read off that run, verbatim, and it was the only error
+/// the file earned:
+///
+/// ```text
+/// error: service_schema: operation `get_widget`'s path names `{item_id}`, and its message has no field named `item_id`
+///               a path placeholder binds a same-named field on the message
+///   --> tests/zz_probe.rs:15:16
+///    |
+/// 15 |         path = "/widgets/{item_id}",
+///    |                ^^^^^^^^^^^^^^^^^^^^
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
+///
+/// # A required field a bodyless method cannot carry is refused, naming the field
+///
+/// The same shape with the path corrected to name `widget_id`, `method` changed to `GET`, and
+/// `label` left unbound — `GET` carries no body, so `label` has nowhere left to go:
+///
+/// ```rust,compile_fail
+/// use tixschema::service_schema;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub struct WidgetResponse;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub enum WidgetError {
+///     NotFound,
+/// }
+///
+/// #[service_schema()]
+/// pub trait WidgetService<Ctx> {
+///     #[service_schema_op(http(
+///         method = "GET",
+///         path = "/widgets/{widget_id}",
+///         ok_status = 200,
+///         error_status(NotFound = 404),
+///     ))]
+///     async fn get_widget(
+///         &self,
+///         ctx: &Ctx,
+///         widget_id: String,
+///         filter: String,
+///     ) -> Result<WidgetResponse, WidgetError>;
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: service_schema: operation `get_widget`'s field `filter` is required and is bound by no path placeholder
+///               `GET` carries no body, so a required field must appear in the path
+///   --> tests/zz_probe.rs:15:16
+///    |
+/// 15 |         path = "/widgets/{widget_id}",
+///    |                ^^^^^^^^^^^^^^^^^^^^^^
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
+///
+/// # `header_in` naming an argument that does not exist is refused, naming the parameter
+///
+/// `byte_range` is written nowhere in the signature:
+///
+/// ```rust,compile_fail
+/// use tixschema::service_schema;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub struct WidgetResponse;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub enum WidgetError {
+///     NotFound,
+/// }
+///
+/// #[service_schema()]
+/// pub trait WidgetService<Ctx> {
+///     #[service_schema_op(http(
+///         method = "GET",
+///         path = "/widgets/{widget_id}",
+///         ok_status = 200,
+///         header_in("range" = byte_range),
+///         error_status(NotFound = 404),
+///     ))]
+///     async fn get_widget(
+///         &self,
+///         ctx: &Ctx,
+///         widget_id: String,
+///     ) -> Result<WidgetResponse, WidgetError>;
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: service_schema: operation `get_widget` binds header "range" to a parameter named `byte_range`, and `get_widget` takes no argument by that name
+///               `header_in` binds one ordinary argument beside the message; name it in the signature, or remove the binding
+///   --> tests/zz_probe.rs:17:29
+///    |
+/// 17 |         header_in("range" = byte_range),
+///    |                             ^^^^^^^^^^
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
+///
+/// # A tuple success type with no `header_out` is refused, naming the requirement
+///
+/// The same shape returning a two-element tuple and declaring no `header_out`:
+///
+/// ```rust,compile_fail
+/// use tixschema::service_schema;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub struct WidgetResponse;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub enum WidgetError {
+///     NotFound,
+/// }
+///
+/// #[service_schema()]
+/// pub trait WidgetService<Ctx> {
+///     #[service_schema_op(http(
+///         method = "GET",
+///         path = "/widgets/{widget_id}",
+///         ok_status = 200,
+///         error_status(NotFound = 404),
+///     ))]
+///     async fn get_widget(
+///         &self,
+///         ctx: &Ctx,
+///         widget_id: String,
+///     ) -> Result<(WidgetResponse, String), WidgetError>;
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: service_schema: operation `get_widget` returns a tuple success type and declares no `header_out`
+///               name what each element after the first is with `header_out("name")`, or return the type directly
+///   --> tests/zz_probe.rs:23:17
+///    |
+/// 23 |     ) -> Result<(WidgetResponse, String), WidgetError>;
+///    |                 ^^^^^^^^^^^^^^^^^^^^^^^^
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
+fn build_http_binding(
+    operation_ident: &Ident,
+    operation: &TraitItemFn,
+    raw: RawHttp,
+    inputs: &OperationInputs,
+    outcome: &OperationOutcome,
+) -> Result<HttpBinding, syn::Error> {
+    let mut refusals: Option<syn::Error> = None;
+
+    let existing = extra_argument_names(operation);
+    for (name, parameter) in &raw.header_in {
+        if !existing.contains(&parameter.to_string()) {
+            refusals = Some(combined(
+                refusals.take(),
+                syn::Error::new(
+                    parameter.span(),
+                    unclaimed_extra_parameter_message(operation_ident, &name.value(), parameter),
+                ),
+            ));
+        }
+    }
+
+    let path = parse_path_template(&raw.path)?;
+    if let Some(refusal) =
+        placeholder_refusals(operation_ident, &raw.path, raw.method.0, &path, inputs)
+    {
+        refusals = Some(combined(refusals.take(), refusal));
+    }
+
+    if let Some(refusal) = header_out_refusals(operation_ident, &raw, outcome) {
+        refusals = Some(combined(refusals.take(), refusal));
+    }
+
+    if let Some(built) = refusals {
+        return Err(built);
+    }
+
+    Ok(HttpBinding {
+        body_kind: BodyKind::Json,
+        error_status: raw.error_status,
+        header_in: raw
+            .header_in
+            .into_iter()
+            .map(|(name, parameter)| HeaderIn {
+                name: name.value(),
+                parameter,
+            })
+            .collect(),
+        header_out: raw
+            .header_out
+            .into_iter()
+            .map(|name| name.value())
+            .collect(),
+        method: raw.method.0,
+        ok_status: raw.ok_status.unwrap_or_else(|| default_ok_status(outcome)),
+        path,
+    })
+}
+
+/// Splits a path template into its literal runs and `{field}` placeholders, left to right.
+fn parse_path_template(path: &LitStr) -> Result<Vec<PathSegment>, syn::Error> {
+    let written = path.value();
+    let mut segments = Vec::new();
+    let mut literal = String::new();
+    let mut chars = written.chars();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '{' => {
+                if !literal.is_empty() {
+                    segments.push(PathSegment::Literal(literal));
+                    literal = String::new();
+                }
+                let mut name = String::new();
+                loop {
+                    match chars.next() {
+                        Some('}') => break,
+                        Some(inner) => name.push(inner),
+                        None => {
+                            return Err(syn::Error::new(
+                                path.span(),
+                                UNTERMINATED_PLACEHOLDER_MESSAGE,
+                            ));
+                        }
+                    }
+                }
+                if name.is_empty() {
+                    return Err(syn::Error::new(path.span(), EMPTY_PLACEHOLDER_MESSAGE));
+                }
+                segments.push(PathSegment::Placeholder(name));
+            }
+            '}' => {
+                return Err(syn::Error::new(
+                    path.span(),
+                    UNMATCHED_CLOSING_BRACE_MESSAGE,
+                ));
+            }
+            other => literal.push(other),
+        }
+    }
+    if !literal.is_empty() {
+        segments.push(PathSegment::Literal(literal));
+    }
+    Ok(segments)
+}
+
+/// Whether a field's declared type is `Option<...>`, read syntactically off the written type —
+/// there being no type resolution available to a proc macro, this is the same shallow check every
+/// other optional-field convention in this crate makes.
+fn is_option_type(ty: &Type) -> bool {
+    let Type::Path(named) = ty else {
+        return false;
+    };
+    named
+        .path
+        .segments
+        .last()
+        .is_some_and(|segment| segment.ident == "Option")
+}
+
+/// Whether a type is the unit type `()`, which is what "an empty declared reply" writes.
+fn is_unit_type(ty: &Type) -> bool {
+    matches!(ty, Type::Tuple(tuple) if tuple.elems.is_empty())
+}
+
+/// The status a success answers with where the author wrote no `ok_status`: 204 for an operation
+/// with nothing to serialize, 200 for every other one.
+fn default_ok_status(outcome: &OperationOutcome) -> u16 {
+    match outcome {
+        OperationOutcome::OneWay => 204,
+        OperationOutcome::Reply { success, .. } if is_unit_type(success) => 204,
+        OperationOutcome::Reply { .. } => 200,
+    }
+}
+
+fn unclaimed_extra_parameter_message(operation: &Ident, name: &str, parameter: &Ident) -> String {
+    format!(
+        "service_schema: operation `{operation}` binds header \"{name}\" to a parameter named \
+         `{parameter}`, and `{operation}` takes no argument by that name\n       \
+         `header_in` binds one ordinary argument beside the message; name it in the signature, \
+         or remove the binding"
+    )
+}
+
+fn unmatched_placeholder_message(operation: &Ident, placeholder: &str) -> String {
+    format!(
+        "service_schema: operation `{operation}`'s path names `{{{placeholder}}}`, and its \
+         message has no field named `{placeholder}`\n       \
+         a path placeholder binds a same-named field on the message"
+    )
+}
+
+fn unbound_required_field_message(operation: &Ident, field: &str, method: HttpMethod) -> String {
+    format!(
+        "service_schema: operation `{operation}`'s field `{field}` is required and is bound by \
+         no path placeholder\n       \
+         `{}` carries no body, so a required field must appear in the path",
+        method.name(),
+    )
+}
+
+/// Every placeholder the path names must match a field the message actually has, and — on a
+/// method with no body to fall back to — every required field must be named by one.
+///
+/// Only checked where the message's fields are visible to this macro: [`OperationInputs::Empty`]
+/// (there are none) and [`OperationInputs::Generated`] (the operation's own argument list, read
+/// directly). [`OperationInputs::Named`] is an author's own type declared elsewhere, and this
+/// macro cannot see its fields any more than [`build_http_binding`] can see an error enum's
+/// variants — checking it is future work.
+fn placeholder_refusals(
+    operation_ident: &Ident,
+    path_literal: &LitStr,
+    method: HttpMethod,
+    path: &[PathSegment],
+    inputs: &OperationInputs,
+) -> Option<syn::Error> {
+    let fields: &[(Ident, Type)] = match inputs {
+        OperationInputs::Generated(fields) => fields,
+        OperationInputs::Empty => &[],
+        OperationInputs::Named(_) => return None,
+    };
+    let placeholders: Vec<&str> = path
+        .iter()
+        .filter_map(|segment| match segment {
+            PathSegment::Placeholder(name) => Some(name.as_str()),
+            PathSegment::Literal(_) => None,
+        })
+        .collect();
+
+    let mut refusals: Option<syn::Error> = None;
+    for &placeholder in &placeholders {
+        if !fields.iter().any(|(field, _)| field == placeholder) {
+            refusals = Some(combined(
+                refusals.take(),
+                syn::Error::new(
+                    path_literal.span(),
+                    unmatched_placeholder_message(operation_ident, placeholder),
+                ),
+            ));
+        }
+    }
+
+    if !method.carries_a_body() {
+        for (field, ty) in fields {
+            let named = field.to_string();
+            if placeholders.contains(&named.as_str()) || is_option_type(ty) {
+                continue;
+            }
+            refusals = Some(combined(
+                refusals.take(),
+                syn::Error::new(
+                    path_literal.span(),
+                    unbound_required_field_message(operation_ident, &named, method),
+                ),
+            ));
+        }
+    }
+    refusals
+}
+
+fn tuple_without_header_out_message(operation: &Ident) -> String {
+    format!(
+        "service_schema: operation `{operation}` returns a tuple success type and declares no \
+         `header_out`\n       \
+         name what each element after the first is with `header_out(\"name\")`, or return the \
+         type directly"
+    )
+}
+
+fn header_out_arity_message(operation: &Ident, declared: usize) -> String {
+    let expected = declared + 1;
+    let plural = if declared == 1 { "entry" } else { "entries" };
+    format!(
+        "service_schema: operation `{operation}` declares {declared} `header_out` {plural}, and \
+         its success type is not a tuple of {expected} elements\n       \
+         the tuple carries the response first, then one element per `header_out`, in declaration \
+         order"
+    )
+}
+
+fn header_out_on_one_way_message(operation: &Ident) -> String {
+    format!(
+        "service_schema: operation `{operation}` is marked `one_way` and declares `header_out`\n       \
+         a one-way operation produces no reply to carry a header in"
+    )
+}
+
+/// A tuple success type is explained only by `header_out`: as many entries as elements after the
+/// first, in declaration order. A one-way operation has no reply to carry one in at all.
+fn header_out_refusals(
+    operation_ident: &Ident,
+    raw: &RawHttp,
+    outcome: &OperationOutcome,
+) -> Option<syn::Error> {
+    match outcome {
+        OperationOutcome::OneWay => raw.header_out.first().map(|first| {
+            syn::Error::new(first.span(), header_out_on_one_way_message(operation_ident))
+        }),
+        OperationOutcome::Reply { success, .. } => {
+            let tuple_arity = if let Type::Tuple(tuple) = success.as_ref() {
+                (!tuple.elems.is_empty()).then(|| tuple.elems.len())
+            } else {
+                None
+            };
+            let declared = raw.header_out.len();
+            let explained =
+                (tuple_arity.is_none() && declared == 0) || tuple_arity == Some(declared + 1);
+            if explained {
+                None
+            } else if tuple_arity.is_some() && declared == 0 {
+                Some(syn::Error::new(
+                    success.span(),
+                    tuple_without_header_out_message(operation_ident),
+                ))
+            } else {
+                Some(syn::Error::new(
+                    success.span(),
+                    header_out_arity_message(operation_ident, declared),
+                ))
+            }
+        }
+    }
 }
 
 fn context_on_the_wire_message(operation: &Ident, context: &Ident) -> String {

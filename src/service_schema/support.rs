@@ -53,7 +53,9 @@
 //! value or a defect — so it travels inside a transport's own macro, and a service that asks for no
 //! transport is emitted none of it.
 
-use super::parse::{OperationDef, OperationInputs, ServiceDef};
+use super::parse::{
+    HttpBinding, OperationDef, OperationInputs, OperationOutcome, PathSegment, ServiceDef,
+};
 use super::transport::Transport;
 use crate::rename_rule::RenameRule;
 use proc_macro2::{Span, TokenStream};
@@ -192,6 +194,7 @@ pub fn emit(service: &ServiceDef, asked: &[Transport]) -> TokenStream {
     let validators = message_validators(service);
     let readers = violation_readers();
     let anchors = root_anchors(service, asked);
+    let http_completeness = http_error_status_completeness(service);
     quote! {
         #[doc = #module_doc]
         pub mod #module {
@@ -208,8 +211,144 @@ pub fn emit(service: &ServiceDef, asked: &[Transport]) -> TokenStream {
             #validators
             #readers
             #anchors
+            #http_completeness
         }
     }
+}
+
+/// One completeness probe per operation that declared `http(...)`: a closure built from exactly
+/// the declared `error_status` arms and no wildcard, coerced to a plain function pointer over the
+/// operation's own error type. Type-checking that closure is what runs rustc's exhaustiveness
+/// check — a variant `error_status` left unmapped is refused with rustc's own `E0004`, naming it,
+/// with no cross-item lookahead of our own: the operation's parser cannot see the error enum's
+/// declaration, that type being an ordinary sibling item, so the compiler is the only thing here
+/// that can answer for it.
+///
+/// Emitted unconditionally wherever `http(...)` was written, regardless of whether the service
+/// also asked for the `http_rest` transport — the mapping is either complete or it is not, and
+/// nothing about that turns on which transports were requested. The const is unnamed (`_`) so an
+/// author who reaches for neither the emitted dispatcher nor the client is never told the check
+/// itself is unused, the same reasoning `root_anchors` above already relies on.
+///
+/// # A variant `error_status` leaves out is refused, naming it
+///
+/// `WidgetError` declares two variants; the mapping names only one:
+///
+/// ```rust,compile_fail
+/// use tixschema::service_schema;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub struct WidgetResponse;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub enum WidgetError {
+///     Gone,
+///     NotFound,
+/// }
+///
+/// #[service_schema()]
+/// pub trait WidgetService<Ctx> {
+///     #[service_schema_op(http(
+///         method = "GET",
+///         path = "/widgets/{widget_id}",
+///         ok_status = 200,
+///         error_status(NotFound = 404),
+///     ))]
+///     async fn get_widget(
+///         &self,
+///         ctx: &Ctx,
+///         widget_id: String,
+///     ) -> Result<WidgetResponse, WidgetError>;
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// A `compile_fail` doctest asserts only that *something* was refused, so the file above was
+/// compiled standalone and the diagnostic read off that run, verbatim, and it was the only error
+/// the file earned. Nothing here wrote this sentence — it is rustc's own exhaustiveness check,
+/// naming the variant the mapping left out:
+///
+/// ```text
+/// error[E0004]: non-exhaustive patterns: `&WidgetError::Gone` not covered
+///   --> tests/zz_probe.rs:12:1
+///    |
+/// 12 | #[service_schema()]
+///    | ^^^^^^^^^^^^^^^^^^^ pattern `&WidgetError::Gone` not covered
+///    |
+/// note: `WidgetError` defined here
+///   --> tests/zz_probe.rs:7:10
+///    |
+///  7 | pub enum WidgetError {
+///    |          ^^^^^^^^^^^
+///  8 |     Gone,
+///    |     ---- not covered
+///    = note: the matched value is of type `&WidgetError`
+///    = note: this error originates in the attribute macro `service_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+/// help: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern or an explicit pattern as shown
+///    |
+/// 12 ~ #[service_schema()],
+/// 13 + &WidgetError::Gone => todo!()
+///    |
+///
+/// For more information about this error, try `rustc --explain E0004`.
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
+fn http_error_status_completeness(service: &ServiceDef) -> TokenStream {
+    let checks = service.operations.iter().filter_map(|operation| {
+        let binding = operation.http.as_ref()?;
+        let OperationOutcome::Reply { error, .. } = &operation.outcome else {
+            return None;
+        };
+        let summary = http_binding_summary(binding);
+        let arms = binding
+            .error_status
+            .iter()
+            .map(|(variant, code)| quote! { #error::#variant => #code, });
+        Some(quote! {
+            #[doc = #summary]
+            const _: fn(&#error) -> u16 = |reported| match reported {
+                #(#arms)*
+            };
+        })
+    });
+    quote! { #(#checks)* }
+}
+
+/// One line describing the whole binding, folded into the completeness check's own doc comment
+/// so the shape `http(...)` declared is visible next to the one check this module generates for
+/// it — the dispatcher and the route table are separate work, so this is the only place the rest
+/// of the binding (beside `error_status`) is read before then.
+fn http_binding_summary(binding: &HttpBinding) -> String {
+    let path: String = binding
+        .path
+        .iter()
+        .map(|segment| match segment {
+            PathSegment::Literal(written) => written.clone(),
+            PathSegment::Placeholder(name) => format!("{{{name}}}"),
+        })
+        .collect();
+    let header_in: String = if binding.header_in.is_empty() {
+        String::new()
+    } else {
+        let claimed: Vec<String> = binding
+            .header_in
+            .iter()
+            .map(|bound| format!("`{}` <- `{}`", bound.name, bound.parameter))
+            .collect();
+        format!(", reading {}", claimed.join(", "))
+    };
+    let header_out: String = if binding.header_out.is_empty() {
+        String::new()
+    } else {
+        format!(", writing `{}`", binding.header_out.join("`, `"))
+    };
+    format!(
+        "`{method} {path}` answers `{ok_status}` with a {body_kind:?} body{header_in}{header_out}.",
+        method = binding.method.name(),
+        ok_status = binding.ok_status,
+        body_kind = binding.body_kind,
+    )
 }
 
 /// The two root names a transport's macro reaches through `$crate`, resolved here so a declaration
