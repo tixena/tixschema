@@ -215,7 +215,7 @@
 
 use super::Transport;
 use crate::service_schema::parse::{
-    HeaderIn, OperationDef, OperationInputs, OperationOutcome, ServiceDef,
+    HeaderIn, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
 };
 use crate::service_schema::support::{message_alias_ident, message_validator_ident, module_ident};
 use proc_macro2::TokenStream;
@@ -254,51 +254,100 @@ pub fn emit(service: &ServiceDef, transport: Transport) -> TokenStream {
     }
 }
 
-/// The reader that turns one answer off the wire into the three outcomes a call has.
-fn answer_reader(generated: &Generated) -> TokenStream {
+/// The readers that turn one answer off the wire into the three outcomes a call has: the ordinary
+/// one, for every success type but the unit type; and the unit-only one, `ok` alone answering it
+/// since `()` needs nothing carried to exist. Each is emitted only where an operation reaches it —
+/// `declares_an_ordinary_reply` and `declares_a_unit_reply` read the same [`takes_unit_answer`]
+/// judgement [`client_answer`] branches on, so the two cannot drift apart into one reader emitted
+/// dead or a branch calling one that was never written.
+fn answer_reader(service: &ServiceDef, generated: &Generated) -> TokenStream {
     let Generated {
         call_error,
         fault,
         module,
     } = generated;
-    quote! {
-        /// The three outcomes, read out of one envelope: the value, the error the operation
-        /// declared, or a fault. An envelope that contradicts itself — `ok` with no value, or a
-        /// failure with no error — is itself a defect and becomes a fault.
-        fn read_answer<S, E>(operation: &str, encoded: &[u8]) -> Result<S, #call_error<E>>
-        where
-            S: ::serde::de::DeserializeOwned,
-            E: ::serde::de::DeserializeOwned,
-        {
-            let answered = match ::serde_json::from_slice::<
-                $crate::#module::Answered<S, ReportedError<E>>,
-            >(encoded) {
-                Ok(answered) => answered,
-                Err(rejected) => {
-                    return Err(#call_error::Fault(#fault::undeserializable_payload(
+    let ordinary = declares_an_ordinary_reply(service).then(|| {
+        quote! {
+            /// The three outcomes, read out of one envelope: the value, the error the operation
+            /// declared, or a fault. An envelope that contradicts itself — `ok` with no value, or
+            /// a failure with no error — is itself a defect and becomes a fault.
+            fn read_answer<S, E>(operation: &str, encoded: &[u8]) -> Result<S, #call_error<E>>
+            where
+                S: ::serde::de::DeserializeOwned,
+                E: ::serde::de::DeserializeOwned,
+            {
+                let answered = match ::serde_json::from_slice::<
+                    $crate::#module::Answered<S, ReportedError<E>>,
+                >(encoded) {
+                    Ok(answered) => answered,
+                    Err(rejected) => {
+                        return Err(#call_error::Fault(#fault::undeserializable_payload(
+                            operation,
+                            &rejected.to_string(),
+                        )));
+                    }
+                };
+                match answered.carried() {
+                    Ok(Some(value)) => Ok(value),
+                    Ok(None) => Err(#call_error::Fault(#fault::undeserializable_payload(
                         operation,
-                        &rejected.to_string(),
-                    )));
-                }
-            };
-            match answered.carried() {
-                Ok(Some(value)) => Ok(value),
-                Ok(None) => Err(#call_error::Fault(#fault::undeserializable_payload(
-                    operation,
-                    "the answer said `ok` and carried no value",
-                ))),
-                Err(None) => Err(#call_error::Fault(#fault::undeserializable_payload(
-                    operation,
-                    "the answer said it had failed and carried no error",
-                ))),
-                Err(Some(ReportedError::Fault(tagged))) => {
-                    Err(#call_error::Fault(tagged.reported(operation)))
-                }
-                Err(Some(ReportedError::Operation(declared))) => {
-                    Err(#call_error::Operation(declared))
+                        "the answer said `ok` and carried no value",
+                    ))),
+                    Err(None) => Err(#call_error::Fault(#fault::undeserializable_payload(
+                        operation,
+                        "the answer said it had failed and carried no error",
+                    ))),
+                    Err(Some(ReportedError::Fault(tagged))) => {
+                        Err(#call_error::Fault(tagged.reported(operation)))
+                    }
+                    Err(Some(ReportedError::Operation(declared))) => {
+                        Err(#call_error::Operation(declared))
+                    }
                 }
             }
         }
+    });
+    let unit = declares_a_unit_reply(service).then(|| {
+        quote! {
+            /// The unit-success outcome, read out of one envelope: `ok` alone, the error the
+            /// operation declared, or a fault. `value` is never read — `()` serializes to `null`
+            /// exactly like an absent value, so the wire cannot tell the two apart, and unlike
+            /// [`read_answer`] there is no carried value this reader would be losing by not
+            /// reading it.
+            fn read_unit_answer<E>(operation: &str, encoded: &[u8]) -> Result<(), #call_error<E>>
+            where
+                E: ::serde::de::DeserializeOwned,
+            {
+                let answered = match ::serde_json::from_slice::<
+                    $crate::#module::Answered<(), ReportedError<E>>,
+                >(encoded) {
+                    Ok(answered) => answered,
+                    Err(rejected) => {
+                        return Err(#call_error::Fault(#fault::undeserializable_payload(
+                            operation,
+                            &rejected.to_string(),
+                        )));
+                    }
+                };
+                match answered.carried_unit() {
+                    Ok(()) => Ok(()),
+                    Err(None) => Err(#call_error::Fault(#fault::undeserializable_payload(
+                        operation,
+                        "the answer said it had failed and carried no error",
+                    ))),
+                    Err(Some(ReportedError::Fault(tagged))) => {
+                        Err(#call_error::Fault(tagged.reported(operation)))
+                    }
+                    Err(Some(ReportedError::Operation(declared))) => {
+                        Err(#call_error::Operation(declared))
+                    }
+                }
+            }
+        }
+    });
+    quote! {
+        #ordinary
+        #unit
     }
 }
 
@@ -531,7 +580,7 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
         (
             fault_mirror(),
             fault_mirror_readers(&generated),
-            answer_reader(&generated),
+            answer_reader(service, &generated),
         )
     } else {
         (TokenStream::new(), TokenStream::new(), TokenStream::new())
@@ -826,6 +875,29 @@ fn declares_a_reply(service: &ServiceDef) -> bool {
         .operations
         .iter()
         .any(|operation| matches!(operation.outcome, OperationOutcome::Reply { .. }))
+}
+
+/// Whether a request-and-reply operation's success is the unit type and it carries no
+/// `header_out` — the one shape whose client answer reads `ok` alone, `()` needing nothing
+/// carried to exist. A `header_out` success is a tuple regardless of its first element, so that
+/// shape always reads through the ordinary answer reader instead.
+fn takes_unit_answer(operation: &OperationDef) -> bool {
+    matches!(&operation.outcome, OperationOutcome::Reply { success, .. } if is_unit_type(success))
+        && header_out_shape(operation).is_none()
+}
+
+/// Whether the service declares an operation [`takes_unit_answer`] of, which is what needs the
+/// client's unit-only answer reader.
+fn declares_a_unit_reply(service: &ServiceDef) -> bool {
+    service.operations.iter().any(takes_unit_answer)
+}
+
+/// Whether the service declares a request-and-reply operation that does not
+/// [`take a unit answer`](takes_unit_answer), which is what needs the ordinary answer reader.
+fn declares_an_ordinary_reply(service: &ServiceDef) -> bool {
+    service.operations.iter().any(|operation| {
+        matches!(operation.outcome, OperationOutcome::Reply { .. }) && !takes_unit_answer(operation)
+    })
 }
 
 /// Whether the service declares an operation whose `http(...)` group claims at least one
@@ -1438,7 +1510,16 @@ fn client_answer(operation: &OperationDef, generated: &Generated) -> TokenStream
                 .await
                 .map_err(|uncarried| #fault::transport_failure(#wire, &uncarried))
         },
-        OperationOutcome::Reply { error, .. } => match header_out_shape(operation) {
+        OperationOutcome::Reply { error, success } => match header_out_shape(operation) {
+            None if is_unit_type(success) => quote! {
+                match self.transport.request(#wire, sending, headers).await {
+                    Ok((encoded, _headers)) => read_unit_answer(#wire, &encoded),
+                    Err(uncarried) => Err(#call_error::Fault(#fault::transport_failure(
+                        #wire,
+                        &uncarried,
+                    ))),
+                }
+            },
             None => quote! {
                 match self.transport.request(#wire, sending, headers).await {
                     Ok((encoded, _headers)) => read_answer(#wire, &encoded),
