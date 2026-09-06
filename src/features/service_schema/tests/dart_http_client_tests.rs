@@ -4,7 +4,10 @@
 //! tests read structure, the same way `tests/dart_tests/tests.rs` reads the plain `dart` backend's
 //! own output: a substring that must appear, and a name that must not.
 
-use super::{DART_HTTP_SERVICE, dart_http_client_of};
+use super::{
+    DART_BYTES_HEADER_OUT_SERVICE, DART_HTTP_SERVICE, DART_MULTIPART_HTTP_SERVICE,
+    DART_STREAM_HTTP_SERVICE, dart_http_client_of,
+};
 
 /// The body of one method, from its own doc comment through the closing brace of the method
 /// following it (or the end of the class) — mirrors `http_client_tests`'s own `method_body`.
@@ -314,4 +317,158 @@ fn the_client_class_holds_one_constructor_and_every_operation_as_a_method() {
             "operation `{call}` should have a method on the client. Got: {written}"
         );
     }
+}
+
+#[test]
+fn a_bytes_operation_with_header_out_composes_body_content_type_and_the_header() {
+    let written = dart_http_client_of(DART_BYTES_HEADER_OUT_SERVICE);
+    assert!(
+        written.contains("Future<(List<int>, String, String)> getThumbnail(String req) async {"),
+        "the return type is the bytes-and-content-type pair, with one more slot per declared \
+         `header_out` entry. Got: {written}"
+    );
+    let method = method_body(&written, "getThumbnail");
+    assert!(
+        method.contains("final contentType = _findHeader(response.headers, 'content-type') ?? '';")
+            && method
+                .contains("final rawHeaderOut0 = _findHeader(response.headers, 'x-document-id');")
+            && method.contains("if (rawHeaderOut0 == null) {")
+            && method.contains("final headerOut0 = rawHeaderOut0;")
+            && method.contains("return (response.body, contentType, headerOut0);"),
+        "the declared header is read back the same way the JSON and stream paths read one, after \
+         the bytes and their content type. Got: {method}"
+    );
+}
+
+#[test]
+fn a_stream_operation_answers_a_content_range_and_body_record_at_200_and_206() {
+    let written = dart_http_client_of(DART_STREAM_HTTP_SERVICE);
+    assert!(
+        written.contains(
+            "Future<({String? contentRange, Stream<List<int>> body})> getFile(String req) async {"
+        ),
+        "a bare `StreamedAnswer` renders as a record pairing a nullable `contentRange` with a lazy \
+         `Stream<List<int>>` body. Got: {written}"
+    );
+    let method = method_body(&written, "getFile");
+    assert!(
+        method.contains("if (status == 206) {")
+            && method.contains(
+                "final contentRange = _findHeader(response.headers, 'content-range') ?? '';"
+            )
+            && method.contains(
+                "final answer = (contentRange: contentRange, body: response.bodyStream);"
+            )
+            && method.contains("return answer;"),
+        "a `206` answers the record with `contentRange` read back off the response. Got: {method}"
+    );
+    assert!(
+        method.contains("if (status == 200) {")
+            && method.contains("const String? contentRange = null;"),
+        "the declared `ok_status` answers the same record with `contentRange` left `null`. \
+         Got: {method}"
+    );
+}
+
+#[test]
+fn a_stream_operation_with_header_out_wraps_the_record_in_a_tuple() {
+    let written = dart_http_client_of(DART_STREAM_HTTP_SERVICE);
+    assert!(
+        written.contains(
+            "Future<(({String? contentRange, Stream<List<int>> body}), String)> getTaggedFile(String req) async {"
+        ),
+        "a declared `header_out` wraps the streamed record in a tuple, exactly as the bytes and \
+         JSON paths compose theirs. Got: {written}"
+    );
+    let method = method_body(&written, "getTaggedFile");
+    assert!(
+        method.contains("final rawHeaderOut0 = _findHeader(response.headers, 'x-checksum');")
+            && method.contains("final headerOut0 = rawHeaderOut0;")
+            && method.contains("return (answer, headerOut0);"),
+        "the header is read back once the record is built, in both the `206` and `200` arms. \
+         Got: {method}"
+    );
+}
+
+#[test]
+fn the_seam_carries_a_lazy_body_stream_only_where_a_service_declares_one() {
+    let plain = dart_http_client_of(DART_HTTP_SERVICE);
+    assert!(
+        !plain.contains("bodyStream"),
+        "a service with no streamed operation carries no `bodyStream` field. Got: {plain}"
+    );
+    let streamed = dart_http_client_of(DART_STREAM_HTTP_SERVICE);
+    assert!(
+        streamed.contains(
+            "Future<({int status, List<(String, String)> headers, List<int> body, \
+             Stream<List<int>> bodyStream})> send("
+        ),
+        "a service with a streamed operation carries `bodyStream` on the seam's own response \
+         record, and no HTTP package is named to spell `Stream`. Got: {streamed}"
+    );
+    for named in [
+        "package:http",
+        "package:dio",
+        "package:chopper",
+        "dart:io",
+        "import '",
+    ] {
+        assert!(
+            !streamed.contains(named),
+            "the seam still names no HTTP package once it carries a stream. Got: {streamed}"
+        );
+    }
+}
+
+#[test]
+fn a_multipart_operation_carries_parts_on_the_seam_and_takes_an_extra_file_argument() {
+    let written = dart_http_client_of(DART_MULTIPART_HTTP_SERVICE);
+    assert!(
+        written.contains(
+            "({String method, String path, String query, List<(String, String)> headers, \
+             List<int> body, List<(String, dynamic)> parts}) request,"
+        ),
+        "the seam's own request record carries `parts` for a multipart-declaring service. \
+         Got: {written}"
+    );
+    assert!(
+        written.contains(
+            "Future<UploadResponse> uploadDocument(UploadDocumentRequest req, dynamic attachment) async {"
+        ),
+        "the client method spells the extra file argument beside the message, under its own Rust \
+         spelling and Dart's own opaque type. Got: {written}"
+    );
+}
+
+#[test]
+fn a_multipart_method_builds_one_text_part_per_field_and_one_file_part_per_binding() {
+    let written = dart_http_client_of(DART_MULTIPART_HTTP_SERVICE);
+    let method = method_body(&written, "uploadDocument");
+    assert!(
+        method.contains("const body = <int>[];"),
+        "a multipart method's content rides in `parts`, never `body`. Got: {method}"
+    );
+    assert!(
+        method.contains("final parts = <(String, dynamic)>[];")
+            && method.contains("parts.add(('title', '${req.title}'));")
+            && method.contains(
+                "if (req.description != null) {\n      \
+                 parts.add(('description', '${req.description!}'));\n    \
+                 }"
+            )
+            && method.contains("parts.add(('file', attachment));"),
+        "one text part per carried field not otherwise placeholder-bound, then one file part per \
+         `part` binding. Got: {method}"
+    );
+    assert!(
+        !method.contains("parts.add(('folder_id'"),
+        "the path-bound field is read off the path, not sent as a text part too. Got: {method}"
+    );
+    assert!(
+        method.contains(
+            "response = await _transport.send((method: 'POST', path: path, query: query, \
+             headers: headers, body: body, parts: parts));"
+        ),
+        "`parts` rides beside `body` in the request the seam is handed. Got: {method}"
+    );
 }
