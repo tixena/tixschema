@@ -34,6 +34,10 @@
 //!   factory that binds one.
 //! - `ts_service()`: the interface an implementation satisfies in full, the outcome types it
 //!   answers with, and the dispatcher factory.
+//! - `dart_http_client()`: the Dart sibling of `ts_http_client()` — the same `http_rest` seam and
+//!   per-operation client, in Dart, over the `dart` feature's own types and codec rather than Zod,
+//!   and throwing on failure rather than returning a result union (published only where the `dart`
+//!   feature is on).
 //!
 //! # The client and the dispatcher exist only where the Zod surface does
 //!
@@ -77,6 +81,8 @@
 
 #[cfg(feature = "zod")]
 mod client;
+#[cfg(feature = "dart")]
+mod dart_http_client;
 mod fault;
 #[cfg(feature = "zod")]
 mod http_client;
@@ -97,6 +103,7 @@ pub fn emit(service: &ServiceDef) -> TokenStream {
     let rustdoc = registry_rustdoc(&named);
     let published = published(service);
     let seam = seam(service);
+    let dart_seam = dart_seam(service);
     quote! {
         #(#[doc = #rustdoc])*
         pub struct #registry;
@@ -110,8 +117,30 @@ pub fn emit(service: &ServiceDef) -> TokenStream {
             }
 
             #seam
+            #dart_seam
         }
     }
+}
+
+/// The service's generated Dart `http_rest` client: the transport seam, the exceptions a call
+/// throws, the client class, and the fault helpers every method reaches for — published only where
+/// the `dart` feature publishes the Dart types and codec this client's messages, successes and
+/// errors are written in.
+#[cfg(feature = "dart")]
+fn dart_seam(service: &ServiceDef) -> TokenStream {
+    let client = dart_http_client::emit(service).join("\n\n");
+    quote! {
+        #[doc = " The service's generated Dart `http_rest` client: the transport seam, the"]
+        #[doc = " exceptions a call throws, and the client class."]
+        pub fn dart_http_client() -> String {
+            #client.to_owned()
+        }
+    }
+}
+
+#[cfg(not(feature = "dart"))]
+fn dart_seam(_service: &ServiceDef) -> TokenStream {
+    TokenStream::new()
 }
 
 /// The two artifacts that carry the validation decision D11 binds: the client that checks a
