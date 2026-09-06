@@ -1994,6 +1994,217 @@ tixschema generates no transport of its own -- what it emits is the seam either 
 
 A request-and-reply arm answers exactly once, through `send` or `fault`, whichever way it goes. A one-way arm that reached its implementation calls neither; one whose payload was refused before it got there answers with a fault, that being the only thing it can say about a message it never ran.
 
+#### The `http_rest` Transport
+
+`#[service_schema(transports = ["http_rest"])]` asks for a real REST surface instead of (or beside) `amqp_rpc`: owner-declared methods, paths, statuses and header bindings, served through whatever HTTP stack the hosting application already uses. It contributes **two** macros rather than three -- `{service_snake_case}_http_rest_dispatcher!()` and `{service_snake_case}_http_rest_client!()` -- because there is no third: `amqp_rpc`'s server macro exists because AMQP's own request-and-reply shape is fixed enough that one consumer loop over `lapin` serves every service that places it, and no such fixed loop exists for HTTP. What an HTTP server looks like is the hosting application's own router, so `http_rest` stops at the dispatcher and leaves registering routes on a real listener to a small hand-written adapter -- see "Adapters carry no tixschema runtime crate" below.
+
+There is no envelope on this transport. `amqp_rpc` answers every reply through `{ ok, value?, error? }`; `http_rest` answers a success with the declared `ok_status` and the success type serialized directly as the body, a declared error with its mapped status and the error type itself as the body, and a fault -- a defect no operation declared -- through the fault catch-all described below. The status line carries what the `ok` flag carries on the bus.
+
+**The `http(...)` grammar.** Every grammar arm at once, on one operation:
+
+```rust,ignore
+#[service_schema(transports = ["http_rest"])]
+pub trait DocumentService<Ctx> {
+    #[service_schema_op(http(
+        method = "GET",
+        path = "/documents/{document_id}/versions/{version_id}",
+        ok_status = 200,
+        header_in("range" = byte_range),
+        header_out("etag"),
+        error_status(NotFound = 404, VersionGone = 410),
+    ))]
+    async fn get_version(
+        &self,
+        ctx: &Ctx,
+        req: GetVersionRequest,
+        byte_range: Option<String>,
+    ) -> Result<(VersionResponse, String), GetVersionError>;
+}
+```
+
+`method` is one of `"GET"`, `"POST"`, `"PUT"`, `"DELETE"`, `"PATCH"`; `path` is a template walked left to right, `{field}` placeholders included; `ok_status` is the success status (default 200, or 204 where the reply carries nothing -- see below); `error_status(Variant = code, ...)` maps the operation's own declared error variants to the statuses they answer at; `header_in`/`header_out` bind request and response headers (covered on its own below); `body` picks the body kind (`"json"`, the default; `"bytes"`; `"multipart"`; or `"stream"` -- covered on its own below); and `part("name" = parameter)` claims one multipart file part, only meaningful under `body = "multipart"`. Writing an argument this grammar does not recognise is refused naming the arguments it does:
+
+```text
+service_schema: unknown `http` argument
+       the arguments are `method`, `path`, `ok_status`, `error_status`, `header_in`, `header_out`, `part` and `body`
+```
+
+**An operation naming no `http(...)` group at all** still gets one, defaulted rather than left unhandled: `POST /{wire-name}`, the same `ok_status` default every annotated operation gets (200, or 204 for nothing to serialize), no header bindings, and every declared error answered at one fixed status, `422`, rather than a per-variant table -- there being no annotation to read one from. So an internal service pays no attribute cost and still answers real HTTP:
+
+```rust,ignore
+    // Names no `http(...)` group: defaults to `POST /sweep-documents`, 200 on success,
+    // every declared error of `SweepError` at 422.
+    async fn sweep_documents(&self, ctx: &Ctx) -> Result<SweepReport, SweepError>;
+```
+
+**Path placeholders and the query string.** A `{field}` placeholder binds a same-named field on the operation's own message; naming one the message does not have is refused on the placeholder:
+
+```text
+service_schema: operation `get_widget`'s path names `{item_id}`, and its message has no field named `item_id`
+              a path placeholder binds a same-named field on the message
+```
+
+`GET` and `DELETE` carry no request body, so a required field the path did not bind has nowhere left to go and is refused on the field rather than silently dropped:
+
+```text
+service_schema: operation `get_widget`'s field `filter` is required and is bound by no path placeholder
+              `GET` carries no body, so a required field must appear in the path
+```
+
+An *optional* field a bodyless method leaves unbound becomes a query parameter instead, read out of the parsed query string on the way in and appended to it on the way out. A path placeholder, a query parameter and a `header_in` value are all read the same way, off the operation argument's own declared type: `true`/`false` become a JSON boolean, anything that parses as a number becomes a JSON number, anything else stays a JSON string, and a `Vec<T>` splits its raw text on `,` and coerces each piece the same way -- the dispatcher and the TypeScript client apply this judgement identically, from one shared rule, so the two sides of the wire cannot read a query string two different ways.
+
+**`header_in`/`header_out` on `http_rest` are the same grammar already introduced above for `amqp_rpc`'s headers-table channel, realized over real HTTP request and response headers instead.** `header_in("range" = byte_range)` binds the request's own `range` header to an ordinary argument beside the message; naming a parameter the operation does not take is refused on the parameter:
+
+```text
+service_schema: operation `get_widget` binds header "range" to a parameter named `byte_range`, and `get_widget` takes no argument by that name
+              `header_in` binds one ordinary argument beside the message; name it in the signature, or remove the binding
+```
+
+`header_out("etag")` makes the operation's success type a tuple: the body first, then one element per declared `header_out` entry, in declaration order, each written out as a response header and read back the same way by the client. A tuple success type with no `header_out` to explain it is refused naming the requirement, and so is a `header_out` whose count does not match the tuple's own arity:
+
+```text
+service_schema: operation `get_widget` returns a tuple success type and declares no `header_out`
+              name what each element after the first is with `header_out("name")`, or return the type directly
+```
+
+**Statuses.** `ok_status` and `error_status` are owner-chosen, exactly as `amqp_rpc`'s own message contract stays HTTP-free -- neither lives on a type, only on the operation. `error_status`'s completeness against the operation's own declared error type is checked unconditionally, by a `match` over exactly the declared arms and no wildcard: a variant the table leaves out is refused with rustc's own exhaustiveness check, naming it, and the refusal is spanned on the trait's own `#[service_schema]` attribute rather than invented by this crate:
+
+```text
+error[E0004]: non-exhaustive patterns: `&WidgetError::Gone` not covered
+```
+
+An operation whose reply carries nothing to serialize -- `one_way`, or a declared reply of `()` -- answers a bodyless status: 204 by default, or whatever `ok_status` the owner wrote (202 Accepted for queued work, say). Nothing about the *shape* of that case is special: the dispatcher decodes, validates and calls the implementation exactly as any other arm does, and only the answer has nothing in it.
+
+**Body kinds.** `body = "json"` is the default: the message is the whole body on a bodied method, and the success/error types are the whole JSON body coming back. `body = "bytes"` says the response is not JSON: the reply's success type must be exactly `(Vec<u8>, String)` -- the raw bytes and their content type -- plus one further tuple element per declared `header_out` entry, in that order. A reply that still claims a JSON success type is refused naming the required shape:
+
+```text
+service_schema: `body = "bytes"` requires a success type of `(Vec<u8>, String)`
+              the operation's signature still claims a JSON success type - answer `Result<(Vec<u8>, String), Error>`, the bytes and their content type
+```
+
+`body = "stream"` answers an undrained body instead of a materialized one: the reply's success type must name `StreamedAnswer` -- the seam type `#[service_schema]` publishes beside the trait wherever any operation needs it -- again plus one tuple element per `header_out` entry:
+
+```rust,ignore
+async fn get_content(
+    &self,
+    ctx: &Ctx,
+    document_id: String,
+    byte_range: Option<String>,
+) -> Result<content_service_schema::StreamedAnswer, ContentError>;
+```
+
+`StreamedAnswer::Full(source)` answers the declared `ok_status` with the whole body; `StreamedAnswer::Partial { source, content_range }` answers `206` with `content-range` set to what the handler built (`bytes {start}-{end}/{total}`, RFC 9110 section 14.4), the declared headers (if any) riding beside it rather than being replaced by it. `source` is a `Box<dyn BodySource + Send>` -- `BodySource::pull(&mut self, buf) -> io::Result<usize>` pulled one chunk at a time, blanket-implemented for every `std::io::Read` so a `File` or any other reader an author already has satisfies it for free, and named through no runtime crate beyond `std::io`. The dispatcher never buffers a streamed body whole; it hands `OutgoingBody::Stream(source)` to the adapter, which drains it onto the wire a chunk at a time.
+
+`body = "multipart"` reads the *request* as named parts instead of one JSON object -- it says nothing about the response, whose success and error types stay ordinary JSON, `header_out` included, exactly like `body = "json"`. A scalar field is read straight off the same-named part, the same way a bodyless method's field is read off the query string; a `part("name" = parameter)` binding claims one file part and hands it through as the same `BodySource` handle a streamed response pulls from, undecoded -- a message field never carries one, `BodySource` publishing no `Deserialize` for it to fall back to. `GET` and `DELETE` carry no request body for parts to travel in, so `body = "multipart"` on either is refused naming the method:
+
+```text
+service_schema: operation `upload_document` declares `body = "multipart"` on a `GET`
+              `GET` carries no request body for parts to travel in; write `POST`, `PUT` or `PATCH`
+```
+
+and a `part(...)` naming a parameter the operation does not take is refused exactly as an unclaimed `header_in` is:
+
+```text
+service_schema: operation `upload_document` binds part "file" to a parameter named `attachment`, and `upload_document` takes no argument by that name
+              `part` binds one ordinary argument beside the message; name it in the signature, or remove the binding
+```
+
+Verified end to end, no server involved: a multipart upload dispatched by hand decodes its scalar parts into the generated message and hands the file part through as an undrained `BodySource`, draining to exactly the bytes it was built with, before `validate()` runs; a streamed download answers `200` with the whole body pulled across more than one `BodySource::pull()` call for a body larger than the reader's own chunk cap, and a `range` header answers `206` with `content-range` and the sliced body, the declared `header_out` riding beside either arm.
+
+**What the dispatcher macro emits.** `IncomingRequest` -- one plain-terms request, built with `IncomingRequest::new(method, path, query, headers, body)` by whichever adapter owns the socket, and read back through `method()`, `path()`, `query()` (the query string, unparsed, `dispatch` reading it itself), `header(name)` (case-insensitive) and `headers()`. `OutgoingResponse` -- `status()`, `headers()`, `body()` (or, on a service with at least one streamed operation, `into_body()` answering an `OutgoingBody` of `Bytes(Vec<u8>)` or `Stream(Box<dyn BodySource + Send>)` instead of a bare `body()`, since materializing every answer into bytes is exactly what a streamed body must not do). `Route`/`ROUTES` -- every operation's method, path template (`{field}` placeholders written exactly as declared), `ok_status()` and `error_statuses()`, for an adapter to iterate when it registers one handler per route. `FaultHandler` -- the fault catch-all, covered next -- and `dispatch(service, ctx, request, [parts,] handler) -> impl Future<Output = OutgoingResponse>`, generic over the implementing type (a trait with `async` methods is not `dyn`-compatible), which matches the method and path itself, decodes path, query, headers and body into the operation's own arguments, validates, calls the implementation behind the same panic guard every transport uses, and answers through `FaultHandler` for anything the operation itself did not declare. A service with at least one `body = "multipart"` operation gives `dispatch` one further argument, `parts: Vec<(String, IncomingPart)>` -- `IncomingPart::Text(String)` or `IncomingPart::File(Box<dyn BodySource + Send>)`, one entry per part the adapter already split off the wire.
+
+**What the client macro emits.** `OutgoingRequest` -- `method()`, `path()` (placeholders already filled in), `query()`, `headers()`, `body()`, plus `into_parts()` on a service with a multipart operation, answering the `Vec<(String, OutgoingPart)>` a `body = "multipart"` method built (`OutgoingPart::Text`/`OutgoingPart::File`, the file variant carrying an owned `BodySource` handle). `IncomingResponse` -- `status()`, `header(name)`, `body()` (or `into_body()` answering `IncomingBody::Bytes`/`IncomingBody::Stream` where the service streams). `Transport` -- what an adapter implements: one method, `send(&self, request: OutgoingRequest) -> impl Future<Output = Result<IncomingResponse, String>> + Send`, sending a whole request and answering with a whole response or with what stopped it in words. `{Service}Client<T: Transport>` -- `new(transport)`, `transport()`, and one method per operation, over any `T: Transport + Sync`, each building the request from the operation's own validated message (path, query, headers filled from it) and decoding the answer by status exactly as the dispatcher answers it: the declared `ok_status` into the success type (or tuple, `header_out` elements read back off response headers; or the bytes and content type for `body = "bytes"`; or a `StreamedAnswer` pulling from the response body for `body = "stream"`, `Full` at `200`, `Partial` with `content-range` at `206`), a mapped status into the declared error, and anything else -- including a fixed fault status this build did not expect at that code -- into a fault.
+
+**Placement follows the same doctrine as `amqp_rpc`'s three macros** -- see "Where each goes, and why placement is fussy" above: each invocation in a module of its own file, the `mod` declaration above the crate's `use` items, invoked by name (not by path) from inside the declaring crate:
+
+```text
+// the crate that serves it -- src/lib.rs
+mod http_transport;
+
+// src/http_transport.rs
+declaring_crate::document_service_http_rest_dispatcher!();
+```
+
+```text
+// a crate that calls it -- src/lib.rs
+mod http_client;
+
+// src/http_client.rs
+use declaring_crate::{GetVersionRequest, VersionResponse};
+
+declaring_crate::document_service_http_rest_client!();
+```
+
+The invoking crate names its own subset of the runtime crates the macro's body reaches through `::`: the dispatcher's crate names `serde`, `serde_json` and `tracing` (the panic guard logs through it); the client's crate names `serde` and `serde_json` and not `tracing` -- nothing in a client catches a panic.
+
+**The fault catch-all.** A payload that will not deserialize or fails `validate()`, a request no route answers to, and a handler that panicked are none of the things an operation declared it could fail at, so they answer through `FaultHandler` rather than through any declared error:
+
+```rust,ignore
+pub trait FaultHandler {
+    fn on_fault(&self, fault: &ServiceFault) -> OutgoingResponse {
+        // the provided default
+    }
+}
+
+pub struct DefaultFaultHandler;
+impl FaultHandler for DefaultFaultHandler {}
+```
+
+The provided default answers 404 for `ServiceFaultKind::UnknownOperation`, 500 for `ServiceFaultKind::HandlerPanic`, and 400 for everything else (an undeserializable payload, a validation failure), each as the fault itself serialized under `json_response`. `dispatch` takes a `&H: FaultHandler` argument, so an owner installs their own by implementing the trait on a type of their own and handing it to `dispatch` in place of `DefaultFaultHandler`; overriding `on_fault` replaces the default for every kind at once, `fault.kind()` being how an override tells one kind from another:
+
+```rust,ignore
+struct RecordingFaultHandler;
+
+impl FaultHandler for RecordingFaultHandler {
+    fn on_fault(&self, fault: &ServiceFault) -> OutgoingResponse {
+        let status = match fault.kind() {
+            ServiceFaultKind::UnknownOperation => 490,
+            ServiceFaultKind::FailedValidation | ServiceFaultKind::UndeserializablePayload => 491,
+            ServiceFaultKind::HandlerPanic => 492,
+            ServiceFaultKind::TransportFailure => 493,
+        };
+        OutgoingResponse::new(
+            status,
+            vec![("x-fault-kind".to_owned(), format!("{}", fault.kind()))],
+            format!("recorded: {}", fault.detail()).into_bytes(),
+        )
+    }
+}
+```
+
+A `dispatch` built on `RecordingFaultHandler` answers a request to an unmatched route with status 490 and an `x-fault-kind: unknown operation` header instead of the default's 404 -- nothing about the numbers above is the contract; the seam is.
+
+**Adapters carry no tixschema runtime crate.** `IncomingRequest`, `OutgoingResponse`, `Route`/`ROUTES`, `FaultHandler` and `dispatch` on one side, and `OutgoingRequest`, `IncomingResponse` and `Transport` on the other, are plain terms: a method, a path, headers and a body in, a status, headers and a body out. Nothing generated here names Axum, reqwest or fetch. A server adapter is a small hand-written loop, living with the hosting application, that iterates `ROUTES` to register one handler per route on its own router, and inside each handler builds an `IncomingRequest` from whatever its framework handed it, calls `dispatch`, and writes the answered `OutgoingResponse` back exactly as its own framework answers a request -- the same shape this crate's own dual-transport test harness proves by joining a client straight back to a dispatcher with no socket at all:
+
+```rust,ignore
+impl<H: FaultHandler + Sync> http_rest_client::Transport for HttpLoop<'_, H> {
+    async fn send(
+        &self,
+        request: http_rest_client::OutgoingRequest,
+    ) -> Result<http_rest_client::IncomingResponse, String> {
+        let incoming = http_rest_transport::IncomingRequest::new(
+            request.method().to_owned(),
+            request.path().to_owned(),
+            request.query().to_owned(),
+            request.headers().to_vec(),
+            request.body().to_vec(),
+        );
+        let answered = http_rest_transport::dispatch(self.service, &(), &incoming, &self.handler).await;
+        Ok(http_rest_client::IncomingResponse::new(
+            answered.status(),
+            answered.headers().to_vec(),
+            answered.body().to_vec(),
+        ))
+    }
+}
+```
+
+A client adapter is the mirror: a small hand-written `Transport` implementation over a real HTTP stack (reqwest in Rust; a service-agnostic `fetch` helper in TypeScript; a service-agnostic `send` implementation in Dart), living with whichever codebase calls the service, doing exactly one job -- carry the plain-terms request across a real connection and hand the plain-terms response back. Timeouts, cancellation, retries, connection handling, mutual TLS and authentication are that adapter's own concerns, never the generated seam's, exactly as `amqp_rpc`'s own adapter split already works: the generator emits the seam, the application implements it against its own libraries, and a workspace that wants to share one adapter across services keeps it in its own crate under its own name -- never a `tixschema`-branded runtime dependency.
+
+**The TypeScript and Dart clients.** `<Service>Schema::ts_http_client()` publishes the `http_rest` half beside `ts_client()`'s AMQP-shaped one: a service-agnostic `{Service}HttpTransport` seam (`send(request): Promise<response>`, both the request and the response carrying `method`/`path`/`query`/`headers`/`body` as plain strings, plus `parts` where the service declares a multipart operation), the `{Service}HttpClient` interface, and `create{Service}HttpClient(transport)`. It needs the `zod` feature exactly as `ts_client()` and `ts_service()` do -- outbound validation before a byte goes out is what a `safeParse` against the message's own `$Schema` gives it, and a build without Zod cannot write that check truthfully, so it publishes none of the three rather than one without it. `<Service>Schema::dart_http_client()` is the Dart sibling -- the same seam and per-operation client, over the `dart` feature's own generated types and JSON codec rather than Zod, needing no separate outbound check because a Dart message is a real class with `required` constructor parameters and cannot be built malformed in the first place. Where TypeScript answers a reply with an `{ ok, value | error }` union, Dart throws: a reply method answers `Future<Success>` directly and throws `{Service}HttpError<Declared>` (the declared error, or a fault behind `isServiceFault`), and a one-way method answers `Future<void>` and throws the fault-only `{Service}HttpRefusal` -- Dart's own idiom for a `Future`, mirroring exactly how its own one-way AMQP methods already throw.
+
+Both language backends cover `body = "json"` and `body = "bytes"` in full. Neither covers `body = "stream"`: only the Rust dispatcher and the Rust client understand `StreamedAnswer`, so a streamed operation's generated TypeScript or Dart client method is not part of what this version writes correctly -- keep a streamed operation's callers in Rust, or hand-write that one call against the plain-terms transport seam directly, until a later version teaches these two backends the same seam. `body = "multipart"` is covered on the TypeScript side (the client builds `parts` from the message's own fields and the declared `part` bindings) but not on the Dart side, which always JSON-encodes the whole message as the body regardless of the declared body kind -- a multipart operation reached through `dart_http_client()` is the same open gap as a streamed one.
+
 ## Field Validation (`model_schema_prop`)
 
 Use `#[model_schema_prop(...)]` on individual fields to add validation constraints, override types, or apply Zod preprocessing. Constraints are enforced in both Zod (frontend) and a generated `validate()` method (Rust).
