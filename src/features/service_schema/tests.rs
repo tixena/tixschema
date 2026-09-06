@@ -13,6 +13,8 @@
 
 #[cfg(feature = "zod")]
 mod client_tests;
+#[cfg(feature = "dart")]
+mod dart_http_client_tests;
 #[cfg(feature = "zod")]
 mod http_client_tests;
 #[cfg(feature = "zod")]
@@ -20,6 +22,8 @@ mod service_tests;
 
 #[cfg(feature = "zod")]
 use super::client;
+#[cfg(feature = "dart")]
+use super::dart_http_client;
 #[cfg(feature = "zod")]
 use super::http_client;
 #[cfg(feature = "zod")]
@@ -94,6 +98,73 @@ const MIXED_HTTP_SERVICE: &str = "
     }
 ";
 
+/// A service exercising every `http(...)` shape the Dart client answers for: a bodied `POST`
+/// naming its own message with a mapped error, a bodyless `GET` with a path carrying two
+/// placeholders on a `Named` message plus a `header_in` binding and a `header_out` tuple success,
+/// a bodyless `GET` whose unbound optional fields (a scalar and a `Vec`) build a query string, a
+/// `body = \"bytes\"` `GET` whose one argument is the message and the whole placeholder at once, a
+/// one-way `DELETE` in that same single-placeholder shape, and an operation naming no `http(...)`
+/// group at all.
+#[cfg(feature = "dart")]
+const DART_HTTP_SERVICE: &str = "
+    pub trait DocumentClientService<Ctx> {
+        #[service_schema_op(http(
+            method = \"POST\",
+            path = \"/documents\",
+            error_status(TitleTaken = 409)
+        ))]
+        async fn create_document(
+            &self,
+            ctx: &Ctx,
+            req: CreateDocumentRequest,
+        ) -> Result<CreateDocumentResponse, CreateDocumentError>;
+
+        #[service_schema_op(http(
+            method = \"GET\",
+            path = \"/documents/{document_id}/versions/{version_id}\",
+            ok_status = 200,
+            header_in(\"range\" = byte_range),
+            header_out(\"etag\"),
+            error_status(NotFound = 404, VersionGone = 410),
+        ))]
+        async fn get_version(
+            &self,
+            ctx: &Ctx,
+            req: GetVersionRequest,
+            byte_range: Option<String>,
+        ) -> Result<(VersionResponse, String), GetVersionError>;
+
+        #[service_schema_op(http(
+            method = \"GET\",
+            path = \"/documents/search\",
+            error_status(SearchFailed = 500),
+        ))]
+        async fn search_documents(
+            &self,
+            ctx: &Ctx,
+            q: Option<String>,
+            tags: Option<Vec<String>>,
+        ) -> Result<SearchResponse, SearchError>;
+
+        #[service_schema_op(http(
+            method = \"GET\",
+            path = \"/documents/{document_id}/thumbnail\",
+            error_status(NotFound = 404),
+            body = \"bytes\",
+        ))]
+        async fn get_thumbnail(
+            &self,
+            ctx: &Ctx,
+            document_id: String,
+        ) -> Result<(Vec<u8>, String), ThumbnailError>;
+
+        #[service_schema_op(one_way, http(method = \"DELETE\", path = \"/documents/{document_id}\"))]
+        async fn purge_document(&self, ctx: &Ctx, document_id: String);
+
+        async fn sweep_documents(&self, ctx: &Ctx) -> Result<SweepReport, SweepError>;
+    }
+";
+
 #[cfg(feature = "zod")]
 fn client_of(source: &str) -> String {
     client::emit(&parsed(source)).join("\n\n")
@@ -102,6 +173,11 @@ fn client_of(source: &str) -> String {
 #[cfg(feature = "zod")]
 fn http_client_of(source: &str) -> String {
     http_client::emit(&parsed(source)).join("\n\n")
+}
+
+#[cfg(feature = "dart")]
+fn dart_http_client_of(source: &str) -> String {
+    dart_http_client::emit(&parsed(source)).join("\n\n")
 }
 
 fn parsed(source: &str) -> ServiceDef {
@@ -335,14 +411,14 @@ fn a_build_that_publishes_no_schema_publishes_no_client_and_no_dispatcher() {
          Got: {rendered}"
     );
     // The README states the consequence where it documents the requirement, so the two cannot
-    // drift.
-    let readme = include_str!("../../../README.md");
+    // drift. Newlines collapse to spaces first: the sentence may wrap anywhere in the source.
+    let readme = include_str!("../../../README.md").replace('\n', " ");
     assert!(
         readme.contains("**A service that publishes TypeScript needs the `zod` feature too.**")
             && readme.contains(
-                "no `<Service>Schema::ts_client()`, no `<Service>Schema::ts_http_client()`, and \
-                 no `<Service>Schema::ts_service()`"
-            ),
+                "no `<Service>Schema::ts_client()`, no `<Service>Schema::ts_http_client()`, and"
+            )
+            && readme.contains("no `<Service>Schema::ts_service()`"),
         "the README no longer says what a build without the Zod surface publishes"
     );
 }
