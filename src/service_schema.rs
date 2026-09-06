@@ -76,7 +76,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::ItemTrait;
 #[cfg(feature = "serde")]
-use syn::{ReturnType, TraitItem};
+use syn::{Ident, ReturnType, TraitItem};
 
 /// A build without the `serde` feature answers a declaration with refusals and nothing else.
 ///
@@ -108,27 +108,38 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
     // Both readings are answered together, so a service that asks for a transport nobody has and
     // declares a bad operation is told about each rather than about whichever was read first.
     match (asked, parse::parse_service(&declared)) {
-        (Ok(wanted), Ok(service)) => {
-            let messages = messages::emit(&service);
-            // The module is handed the asked-for list as well: it anchors, at the declaration, the
-            // root names a transport's macro reaches through `$crate`, and a service that asked
-            // for no transport publishes no macro and so owes no root anything.
-            let support = support::emit(&service, &wanted);
-            // Both halves a transport contributes are `macro_rules!` bodies rather than compiled
-            // items, so they stay at the trait's scope; `#[macro_export]` hoists each name to the
-            // crate root from wherever the service was written.
-            let transports = transport::emit(&service, &wanted);
-            // The TypeScript artifacts are strings rather than callers of anything private, so they
-            // stay at the trait's scope where a bundle can name them.
-            let typescript = typescript(&service);
-            quote! {
-                #messages
-                #support
-                #contract
-                #transports
-                #typescript
-            }
-        }
+        (Ok(wanted), Ok(service)) => multipart_amqp_refusal(&service, &wanted).map_or_else(
+            || {
+                let messages = messages::emit(&service);
+                // The module is handed the asked-for list as well: it anchors, at the declaration,
+                // the root names a transport's macro reaches through `$crate`, and a service that
+                // asked for no transport publishes no macro and so owes no root anything.
+                let support = support::emit(&service, &wanted);
+                // Both halves a transport contributes are `macro_rules!` bodies rather than
+                // compiled items, so they stay at the trait's scope; `#[macro_export]` hoists each
+                // name to the crate root from wherever the service was written.
+                let transports = transport::emit(&service, &wanted);
+                // The TypeScript artifacts are strings rather than callers of anything private, so
+                // they stay at the trait's scope where a bundle can name them.
+                let typescript = typescript(&service);
+                quote! {
+                    #messages
+                    #support
+                    #contract
+                    #transports
+                    #typescript
+                }
+            },
+            // Caught here, ahead of every transport's own macros, rather than left for
+            // `{service}_amqp_rpc_dispatcher!()`'s own expansion to fail on when it is invoked.
+            |refusal| {
+                let refused = refusal.to_compile_error();
+                quote! {
+                    #refused
+                    #contract
+                }
+            },
+        ),
         (transports, read) => {
             let refusals: TokenStream = [transports.err(), read.err()]
                 .into_iter()
@@ -141,6 +152,110 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
             }
         }
     }
+}
+
+/// Refuses a `body = "multipart"` operation's file part on a service that also asks for the
+/// `amqp_rpc` transport.
+///
+/// A `part("name" = parameter)` binding claims its value out of a named request part — the
+/// mechanism `http_rest`'s own dispatcher reads through, never a field a deserialized message
+/// could carry, since `BodySource` publishes no `Deserialize` for one to fall back to. `amqp_rpc`'s
+/// dispatcher has no multipart channel of its own and creates no local binding for a
+/// `part(...)`-claimed identifier — its own `call_arguments` reuses the identifier verbatim — so
+/// `{service}_amqp_rpc_dispatcher!()`'s own expansion would fail with a bare "cannot find value in
+/// this scope" the moment it is invoked, naming neither the operation nor the reason. This is
+/// checked here instead, once both the requested transports and every operation's own bindings are
+/// known, ahead of every transport's own macros.
+///
+/// A `body = "multipart"` operation with no `part(...)` binding at all is untouched: every field is
+/// then a plain scalar with no file part to carry, read straight off the deserialized message
+/// exactly like any other field — `amqp_rpc`'s own `call_arguments` never reaches for a part in
+/// that case, so the combination compiles and dispatches exactly as a `body = "json"` operation
+/// would.
+///
+/// # A file part is refused where the service also asks for `amqp_rpc`
+///
+/// ```rust,compile_fail
+/// use tixschema::service_schema;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub struct UploadResponse {
+///     pub document_id: String,
+/// }
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub enum UploadError {
+///     TooLarge,
+/// }
+///
+/// #[service_schema(transports = ["amqp_rpc", "http_rest"])]
+/// pub trait UploadService<Ctx> {
+///     #[service_schema_op(http(
+///         method = "POST",
+///         path = "/documents",
+///         body = "multipart",
+///         part("file" = attachment),
+///         error_status(TooLarge = 413),
+///     ))]
+///     async fn upload_document(
+///         &self,
+///         ctx: &Ctx,
+///         title: String,
+///         attachment: Box<dyn upload_service_schema::BodySource + Send>,
+///     ) -> Result<UploadResponse, UploadError>;
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: service_schema: operation `upload_document` declares a multipart file part, and this service also asks for the `amqp_rpc` transport
+///               a file part has no carrier on the bus wire; amqp_rpc has no multipart channel to read it from - drop `amqp_rpc` from `transports`, or drop the `part(...)` binding and `body = "multipart"` from this operation
+///   --> tests/zz_probe.rs:22:14
+///    |
+/// 22 |     async fn upload_document(
+///    |              ^^^^^^^^^^^^^^^
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
+#[cfg(feature = "serde")]
+fn multipart_amqp_refusal(
+    service: &parse::ServiceDef,
+    wanted: &[transport::Transport],
+) -> Option<syn::Error> {
+    if !wanted.contains(&transport::Transport::AmqpRpc) {
+        return None;
+    }
+    service
+        .operations
+        .iter()
+        .filter(|operation| {
+            operation.http.as_ref().is_some_and(|binding| {
+                binding.body_kind == parse::BodyKind::Multipart
+                    && !binding.multipart_parts.is_empty()
+            })
+        })
+        .map(|operation| {
+            syn::Error::new(
+                operation.ident.span(),
+                multipart_amqp_message(&operation.ident),
+            )
+        })
+        .reduce(|mut collected, refusal| {
+            collected.combine(refusal);
+            collected
+        })
+}
+
+#[cfg(feature = "serde")]
+fn multipart_amqp_message(operation: &Ident) -> String {
+    format!(
+        "service_schema: operation `{operation}` declares a multipart file part, and this \
+         service also asks for the `amqp_rpc` transport\n       \
+         a file part has no carrier on the bus wire; amqp_rpc has no multipart channel to read it \
+         from - drop `amqp_rpc` from `transports`, or drop the `part(...)` binding and \
+         `body = \"multipart\"` from this operation"
+    )
 }
 
 /// What a build without the `serde` feature is told, and why it is told rather than worked around.
