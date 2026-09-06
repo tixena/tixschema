@@ -108,38 +108,55 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
     // Both readings are answered together, so a service that asks for a transport nobody has and
     // declares a bad operation is told about each rather than about whichever was read first.
     match (asked, parse::parse_service(&declared)) {
-        (Ok(wanted), Ok(service)) => multipart_amqp_refusal(&service, &wanted).map_or_else(
-            || {
-                let messages = messages::emit(&service);
-                // The module is handed the asked-for list as well: it anchors, at the declaration,
-                // the root names a transport's macro reaches through `$crate`, and a service that
-                // asked for no transport publishes no macro and so owes no root anything.
-                let support = support::emit(&service, &wanted);
-                // Both halves a transport contributes are `macro_rules!` bodies rather than
-                // compiled items, so they stay at the trait's scope; `#[macro_export]` hoists each
-                // name to the crate root from wherever the service was written.
-                let transports = transport::emit(&service, &wanted);
-                // The TypeScript artifacts are strings rather than callers of anything private, so
-                // they stay at the trait's scope where a bundle can name them.
-                let typescript = typescript(&service);
-                quote! {
-                    #messages
-                    #support
-                    #contract
-                    #transports
-                    #typescript
-                }
-            },
-            // Caught here, ahead of every transport's own macros, rather than left for
-            // `{service}_amqp_rpc_dispatcher!()`'s own expansion to fail on when it is invoked.
-            |refusal| {
-                let refused = refusal.to_compile_error();
-                quote! {
-                    #refused
-                    #contract
-                }
-            },
-        ),
+        (Ok(wanted), Ok(service)) => {
+            // Both wire-carrier gaps are answered together, for the same reason as above: a
+            // service tripping both is told about each rather than about whichever was read
+            // first.
+            let combined_refusal = [
+                multipart_amqp_refusal(&service, &wanted),
+                stream_amqp_refusal(&service, &wanted),
+            ]
+            .into_iter()
+            .flatten()
+            .reduce(|mut collected, refusal| {
+                collected.combine(refusal);
+                collected
+            });
+            combined_refusal.map_or_else(
+                || {
+                    let messages = messages::emit(&service);
+                    // The module is handed the asked-for list as well: it anchors, at the
+                    // declaration, the root names a transport's macro reaches through `$crate`,
+                    // and a service that asked for no transport publishes no macro and so owes no
+                    // root anything.
+                    let support = support::emit(&service, &wanted);
+                    // Both halves a transport contributes are `macro_rules!` bodies rather than
+                    // compiled items, so they stay at the trait's scope; `#[macro_export]` hoists
+                    // each name to the crate root from wherever the service was written.
+                    let transports = transport::emit(&service, &wanted);
+                    // The TypeScript artifacts are strings rather than callers of anything
+                    // private, so they stay at the trait's scope where a bundle can name them.
+                    let typescript = typescript(&service);
+                    quote! {
+                        #messages
+                        #support
+                        #contract
+                        #transports
+                        #typescript
+                    }
+                },
+                // Caught here, ahead of every transport's own macros, rather than left for
+                // `{service}_amqp_rpc_dispatcher!()`'s own expansion to fail on when it is
+                // invoked.
+                |refusal| {
+                    let refused = refusal.to_compile_error();
+                    quote! {
+                        #refused
+                        #contract
+                    }
+                },
+            )
+        }
         (transports, read) => {
             let refusals: TokenStream = [transports.err(), read.err()]
                 .into_iter()
@@ -255,6 +272,100 @@ fn multipart_amqp_message(operation: &Ident) -> String {
          a file part has no carrier on the bus wire; amqp_rpc has no multipart channel to read it \
          from - drop `amqp_rpc` from `transports`, or drop the `part(...)` binding and \
          `body = \"multipart\"` from this operation"
+    )
+}
+
+/// Refuses a `body = "stream"` operation on a service that also asks for the `amqp_rpc`
+/// transport.
+///
+/// Such an operation answers with `StreamedAnswer` — a `Box<dyn BodySource + Send>`, pulled one
+/// chunk at a time, wrapped in `Full` or `Partial`. It publishes neither `Serialize` nor
+/// `Deserialize` and cannot: a trait object pulled incrementally has no whole value to write.
+/// `amqp_rpc`'s own envelope (`Answered<T, E>`) carries every success value through
+/// `serde_json`, so an `amqp_rpc` dispatcher answering a `body = "stream"` operation would fail
+/// where `{service}_amqp_rpc_dispatcher!()` is invoked, with rustc's own `E0277` naming
+/// `Answered<StreamedAnswer, _>`'s unmet `Serialize` bound — an error naming neither the
+/// operation nor the reason. This is checked here instead, at the declaration, ahead of every
+/// transport's own macros.
+///
+/// A service with no `body = "stream"` operation at all is untouched: an ordinary `Json` or
+/// `Bytes` success answers through the same envelope with no such bound to fail.
+///
+/// # A streamed body is refused where the service also asks for `amqp_rpc`
+///
+/// ```rust,compile_fail
+/// use tixschema::service_schema;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub enum ContentError {
+///     NotFound,
+/// }
+///
+/// #[service_schema(transports = ["amqp_rpc", "http_rest"])]
+/// pub trait ContentService<Ctx> {
+///     #[service_schema_op(http(
+///         method = "GET",
+///         path = "/documents/{document_id}/content",
+///         body = "stream",
+///         error_status(NotFound = 404),
+///     ))]
+///     async fn get_content(
+///         &self,
+///         ctx: &Ctx,
+///         document_id: String,
+///     ) -> Result<content_service_schema::StreamedAnswer, ContentError>;
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: service_schema: operation `get_content` declares a streamed body, and this service also asks for the `amqp_rpc` transport
+///               a streamed body has no carrier on the bus wire; amqp_rpc has no streaming channel to carry it - drop `amqp_rpc` from `transports`, or drop `body = "stream"` from this operation
+///   --> tests/zz_probe.rs:16:14
+///    |
+/// 16 |     async fn get_content(
+///    |              ^^^^^^^^^^^
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
+#[cfg(feature = "serde")]
+fn stream_amqp_refusal(
+    service: &parse::ServiceDef,
+    wanted: &[transport::Transport],
+) -> Option<syn::Error> {
+    if !wanted.contains(&transport::Transport::AmqpRpc) {
+        return None;
+    }
+    service
+        .operations
+        .iter()
+        .filter(|operation| {
+            operation
+                .http
+                .as_ref()
+                .is_some_and(|binding| binding.body_kind == parse::BodyKind::Stream)
+        })
+        .map(|operation| {
+            syn::Error::new(
+                operation.ident.span(),
+                stream_amqp_message(&operation.ident),
+            )
+        })
+        .reduce(|mut collected, refusal| {
+            collected.combine(refusal);
+            collected
+        })
+}
+
+#[cfg(feature = "serde")]
+fn stream_amqp_message(operation: &Ident) -> String {
+    format!(
+        "service_schema: operation `{operation}` declares a streamed body, and this service \
+         also asks for the `amqp_rpc` transport\n       \
+         a streamed body has no carrier on the bus wire; amqp_rpc has no streaming channel to \
+         carry it - drop `amqp_rpc` from `transports`, or drop `body = \"stream\"` from this \
+         operation"
     )
 }
 
