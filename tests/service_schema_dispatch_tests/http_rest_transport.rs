@@ -8,6 +8,8 @@
 //! macro is *invoked*, so every operation's error type that carries an `error_status` table has to
 //! be in scope here, precisely as a client placement already needs the messages it sends.
 
-use crate::tests::{ArchiveError, CreateDocumentError, ExplodeError, GetVersionError, SearchError};
+use crate::tests::{
+    ArchiveError, CreateDocumentError, ExplodeError, GetVersionError, SearchError, ThumbnailError,
+};
 
 document_service_http_rest_dispatcher!();

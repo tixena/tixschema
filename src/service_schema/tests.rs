@@ -99,6 +99,24 @@ const HTTP_SERVICE: &str = r#"
     }
 "#;
 
+/// A service declaring one `body = "bytes"` operation, its reply the fixed `(Vec<u8>, String)`
+/// shape `body = "bytes"` requires.
+const BYTES_SERVICE: &str = r#"
+    pub trait ThumbnailService<Ctx> {
+        #[service_schema_op(http(
+            method = "GET",
+            path = "/thumbnails/{document_id}",
+            body = "bytes",
+            error_status(NotFound = 404),
+        ))]
+        async fn get_thumbnail(
+            &self,
+            ctx: &Ctx,
+            document_id: String,
+        ) -> Result<(Vec<u8>, String), ThumbnailError>;
+    }
+"#;
+
 /// One item as either macro body emits it: what its doc attributes said, everything ahead of the
 /// block it opens, the keyword that opened it, and that block.
 struct EmittedItem {
@@ -164,6 +182,11 @@ fn macro_body(source: &str, named: &str) -> String {
 /// rather than which names it reaches.
 fn published_macro(source: &str, named: &str) -> String {
     macro_rules_stream(expansion_over_amqp_rpc(source), named).to_string()
+}
+
+/// The `http_rest` counterpart of [`published_macro`]: literals left as written.
+fn published_macro_over_http_rest(source: &str, named: &str) -> String {
+    macro_rules_stream(expansion_over_http_rest(source), named).to_string()
 }
 
 /// Every item a token stream declares, in the order it declares them.
@@ -2190,7 +2213,7 @@ fn neither_macro_body_carries_an_attribute_that_quiets_a_lint() {
 #[test]
 fn neither_http_rest_macro_body_carries_an_attribute_that_quiets_a_lint() {
     for half in [
-        "document_service_http_rest_dispatcher",
+        "document_service_http_rest_client",
         "document_service_http_rest_client",
     ] {
         let body = macro_body_over_http_rest(HTTP_SERVICE, half);
@@ -2313,6 +2336,15 @@ fn a_full_http_group_records_the_method_the_path_and_the_status_table() {
         ]
     );
     assert!(matches!(binding.body_kind, BodyKind::Json));
+}
+
+/// A `body = "bytes"` group whose reply already answers the fixed `(Vec<u8>, String)` shape
+/// records `BodyKind::Bytes` and earns no refusal.
+#[test]
+fn a_bytes_body_kind_is_recorded_on_the_binding() {
+    let read = service(BYTES_SERVICE);
+    let binding = read.operations[0].http.as_ref().unwrap();
+    assert!(matches!(binding.body_kind, BodyKind::Bytes));
 }
 
 /// `header_in` claims one ordinary argument beside the message, by name, and the message it
@@ -2577,4 +2609,64 @@ fn only_a_reply_operation_naming_http_carries_a_completeness_check() {
         body.contains("const _ : fn (& DocumentError) -> u16 = | reported | match reported {"),
         "got: {body}"
     );
+}
+
+/// Adding the bytes body kind changes nothing about a JSON operation's own answer arm, character
+/// for character: `answer_block` and `reply_decode` grow a new branch for `BodyKind::Bytes`
+/// alongside the one already here for `BodyKind::Json`, but the JSON branch itself is untouched.
+/// `HTTP_SERVICE` declares no bytes operation, so its whole expansion is this claim's witness.
+///
+/// The four fragments below were captured from the dispatcher and the client before the bytes kind
+/// existed - a non-unit, header-out-free success (`create_document`), a header-out tuple success
+/// (`get_version`'s dispatcher arm and its client-side decode) and the client's own non-tuple
+/// decode (`create_document`) - the shapes `answer_block` and `reply_decode` branch over.
+#[test]
+fn a_json_operations_expansion_is_unchanged_at_the_token_level() {
+    let dispatcher =
+        published_macro_over_http_rest(HTTP_SERVICE, "document_service_http_rest_dispatcher");
+    for fragment in [
+        "Ok (Ok (value)) => { return json_response (200u16 , :: std :: vec :: Vec :: new () , & \
+         value) ; } Ok (Err (declared_error)) => { let status = 422u16 ; return json_response \
+         (status , :: std :: vec :: Vec :: new () , & declared_error) ; } Err (panicked) => { \
+         record_panic (\"create-document\" , & panicked) ; return handler . on_fault (& $ crate \
+         :: document_service_schema :: ServiceFault :: handler_panic (\"create-document\" , & \
+         panicked)) ; }",
+        "Ok (Ok ((value , header_out_0))) => { let headers : Vec < (String , String) > = :: std \
+         :: vec ! [(\"etag\" . to_owned () , match :: serde_json :: to_value (& (header_out_0)) \
+         { Ok (:: serde_json :: Value :: String (rendered)) => rendered , Ok (:: serde_json :: \
+         Value :: Bool (rendered)) => rendered . to_string () , Ok (:: serde_json :: Value :: \
+         Number (rendered)) => rendered . to_string () , Ok (rendered) => rendered . to_string \
+         () , Err (_unserializable) => :: std :: string :: String :: new () , }) ,] ; return \
+         json_response (200u16 , headers , & value) ; }",
+    ] {
+        assert!(
+            dispatcher.contains(fragment),
+            "the JSON answer arm changed. Got: {dispatcher}"
+        );
+    }
+
+    let client = published_macro_over_http_rest(HTTP_SERVICE, "document_service_http_rest_client");
+    for fragment in [
+        "let status = response . status () ; if status == 200u16 { return match :: serde_json \
+         :: from_slice :: < VersionResponse > (response . body ()) { Ok (value) => { let \
+         header_out_0 : String = match response . header (\"etag\") { Some (text) => match :: \
+         serde_json :: from_value (:: serde_json :: Value :: String ((text) . to_owned ())) { Ok \
+         (value) => value , Err (_rejected) => return Err ($ crate :: document_service_schema :: \
+         CallError :: Fault ($ crate :: document_service_schema :: ServiceFault :: \
+         undeserializable_payload (\"get-version\" , \"a response header did not match its \
+         declared type\" ,) ,)) , } , None => return Err ($ crate :: document_service_schema :: \
+         CallError :: Fault ($ crate :: document_service_schema :: ServiceFault :: \
+         undeserializable_payload (\"get-version\" , \"a declared response header was missing\" \
+         ,))) , } ; Ok ((value , header_out_0)) }",
+        "let status = response . status () ; if status == 200u16 { return match :: serde_json \
+         :: from_slice :: < CreateDocumentResponse > (response . body ()) { Ok (value) => Ok \
+         (value) , Err (rejected) => Err ($ crate :: document_service_schema :: CallError :: \
+         Fault ($ crate :: document_service_schema :: ServiceFault :: undeserializable_payload \
+         (\"create-document\" , & rejected . to_string ()) ,)) , } ; }",
+    ] {
+        assert!(
+            client.contains(fragment),
+            "the JSON decode changed. Got: {client}"
+        );
+    }
 }
