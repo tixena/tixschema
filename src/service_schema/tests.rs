@@ -117,6 +117,27 @@ const BYTES_SERVICE: &str = r#"
     }
 "#;
 
+/// A service declaring one `body = "stream"` operation, its reply the `StreamedAnswer` shape
+/// `body = "stream"` requires, reading a range header through `header_in` exactly like any other
+/// bound header.
+const STREAM_SERVICE: &str = r#"
+    pub trait ContentService<Ctx> {
+        #[service_schema_op(http(
+            method = "GET",
+            path = "/documents/{document_id}/content",
+            body = "stream",
+            header_in("range" = byte_range),
+            error_status(NotFound = 404, RangeNotSatisfiable = 416),
+        ))]
+        async fn get_content(
+            &self,
+            ctx: &Ctx,
+            document_id: String,
+            byte_range: Option<String>,
+        ) -> Result<content_service_schema::StreamedAnswer, ContentError>;
+    }
+"#;
+
 /// One item as either macro body emits it: what its doc attributes said, everything ahead of the
 /// block it opens, the keyword that opened it, and that block.
 struct EmittedItem {
@@ -2347,6 +2368,18 @@ fn a_bytes_body_kind_is_recorded_on_the_binding() {
     assert!(matches!(binding.body_kind, BodyKind::Bytes));
 }
 
+/// A `body = "stream"` group whose reply already names `StreamedAnswer` records `BodyKind::Stream`
+/// and earns no refusal, `header_in("range" = byte_range)` composing with it exactly like it does
+/// for any other body kind.
+#[test]
+fn a_stream_body_kind_is_recorded_on_the_binding() {
+    let read = service(STREAM_SERVICE);
+    let binding = read.operations[0].http.as_ref().unwrap();
+    assert!(matches!(binding.body_kind, BodyKind::Stream));
+    assert_eq!(binding.header_in.len(), 1);
+    assert_eq!(binding.header_in[0].name, "range");
+}
+
 /// `header_in` claims one ordinary argument beside the message, by name, and the message it
 /// leaves behind is still the author's own type — the claimed argument never becomes a field.
 #[test]
@@ -2669,4 +2702,24 @@ fn a_json_operations_expansion_is_unchanged_at_the_token_level() {
             "the JSON decode changed. Got: {client}"
         );
     }
+}
+
+/// The streamed body kind's whole expansion — the seam `support` publishes beside the trait, the
+/// dispatcher and the client — names no runtime crate: `BodySource` composes over `std::io::Read`
+/// alone, and every plain-terms type around it reaches nothing but `std`, `core`, `serde` and
+/// `serde_json`, exactly as the JSON and bytes kinds already did.
+///
+/// A bare `contains("bytes")` would also catch this expansion's own `bytes` pattern binding
+/// (`IncomingBody::Bytes(bytes) => ...`, naming the variant's payload) as a false positive, so the
+/// check instead looks for `bytes` sitting beside a path separator - the shape an actual `::bytes`
+/// crate reference renders as, once `TokenStream::to_string()` has spaced every token out.
+#[test]
+fn a_streamed_operations_expansion_names_no_runtime_crate() {
+    let expanded = expansion_over_http_rest(STREAM_SERVICE).to_string();
+    assert!(!expanded.contains("tokio"), "got: {expanded}");
+    assert!(!expanded.contains("futures"), "got: {expanded}");
+    assert!(
+        !expanded.contains(":: bytes") && !expanded.contains("bytes ::"),
+        "a path segment named the `bytes` crate leaked into the expansion. got: {expanded}"
+    );
 }

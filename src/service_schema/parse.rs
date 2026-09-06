@@ -75,6 +75,19 @@ const BYTES_BODY_HEADER_OUT_MESSAGE: &str = concat!(
      header"
 );
 
+const STREAM_BODY_SUCCESS_SHAPE_MESSAGE: &str = concat!(
+    "service_schema: `body = \"stream\"` requires a success type naming `StreamedAnswer`\n",
+    "       answer `Result<StreamedAnswer, Error>` - the module `#[service_schema]` generates \
+     beside this trait publishes that type; reach it with a `use`, or write the module-qualified \
+     path directly"
+);
+
+const STREAM_BODY_HEADER_OUT_MESSAGE: &str = concat!(
+    "service_schema: `body = \"stream\"` declares no `header_out`\n",
+    "       a streamed answer's own `Partial` case already carries `content-range`; composing a \
+     further declared header with a streamed body is not yet implemented"
+);
+
 const MISSING_HTTP_METHOD_MESSAGE: &str = concat!(
     "service_schema: `http(...)` declares no `method`\n",
     "       write `method = \"GET\"` (or `\"POST\"`, `\"PUT\"`, `\"DELETE\"`, `\"PATCH\"`)"
@@ -210,9 +223,8 @@ pub enum OperationOutcome {
 /// reading it off a materialized value here.
 #[derive(Debug)]
 pub struct HttpBinding {
-    /// How the body is carried: `Json` (the default), or `Bytes`, declared with `body = "bytes"`
-    /// and checked against the signature by [`build_http_binding`]. A later task extends this for
-    /// the streamed kind.
+    /// How the body is carried: `Json` (the default), `Bytes` (`body = "bytes"`) or `Stream`
+    /// (`body = "stream"`), each checked against the signature by [`build_http_binding`].
     pub body_kind: BodyKind,
     /// One entry per declared `error_status(Variant = code)`, in declaration order. Each variant
     /// keeps its own span from the attribute, so a misspelling is rustc's own "no variant" error
@@ -303,12 +315,14 @@ pub struct HeaderIn {
 }
 
 /// How `http(...)` carries the body. `Json` is the default a group that writes no `body` gets.
-/// `Bytes` is the other kind this version emits; the streamed kind is later work, its grammar slot
-/// left for it.
+/// `Bytes` answers raw bytes under a declared content type. `Stream` answers a pulled body source,
+/// full or (through `StreamedAnswer::Partial`) a `206` range slice with `content-range`, through
+/// the seam `#[service_schema]` publishes beside the trait.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BodyKind {
     Bytes,
     Json,
+    Stream,
 }
 
 impl BodyKind {
@@ -316,6 +330,7 @@ impl BodyKind {
         match written {
             "bytes" => Some(Self::Bytes),
             "json" => Some(Self::Json),
+            "stream" => Some(Self::Stream),
             _ => None,
         }
     }
@@ -446,6 +461,22 @@ impl OperationDirective {
     }
 }
 
+/// Whether any operation in `service` declares `body = "stream"` — the body-source seam
+/// (`BodySource`, `StreamedAnswer`) is published beside the trait only where at least one
+/// operation needs it.
+///
+/// `pub`: read identically by `support` (which publishes the seam) and by the `http_rest`
+/// transport (which reaches for it through `$crate`), so the two cannot disagree about whether a
+/// service carries it.
+pub fn service_declares_a_stream(service: &ServiceDef) -> bool {
+    service.operations.iter().any(|operation| {
+        operation
+            .http
+            .as_ref()
+            .is_some_and(|binding| matches!(binding.body_kind, BodyKind::Stream))
+    })
+}
+
 pub fn scalar_kind(ty: &Type) -> ScalarKind {
     let Type::Path(named) = ty else {
         return ScalarKind::Text;
@@ -553,7 +584,7 @@ fn unknown_http_method_message(written: &str) -> String {
 fn unknown_body_kind_message(written: &str) -> String {
     format!(
         "service_schema: `{written}` is not a body kind this version knows\n       \
-         write `\"json\"` (the default) or `\"bytes\"`"
+         write `\"json\"` (the default), `\"bytes\"` or `\"stream\"`"
     )
 }
 
@@ -1228,6 +1259,98 @@ fn extra_arguments(operation: &TraitItemFn) -> HashMap<String, Type> {
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
+///
+/// # A `body = "stream"` declaration whose signature still claims a JSON success type is refused
+///
+/// `body = "stream"` requires a reply's success type to name `StreamedAnswer`, the seam type
+/// `#[service_schema]` publishes beside the trait. The operation below still answers its own JSON
+/// type:
+///
+/// ```rust,compile_fail
+/// use tixschema::service_schema;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub struct ThumbnailResponse {
+///     pub url: String,
+/// }
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub enum ContentError {
+///     NotFound,
+/// }
+///
+/// #[service_schema()]
+/// pub trait ContentService<Ctx> {
+///     #[service_schema_op(http(
+///         method = "GET",
+///         path = "/documents/{document_id}/content",
+///         body = "stream",
+///         error_status(NotFound = 404),
+///     ))]
+///     async fn get_content(
+///         &self,
+///         ctx: &Ctx,
+///         document_id: String,
+///     ) -> Result<ThumbnailResponse, ContentError>;
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: service_schema: `body = "stream"` requires a success type naming `StreamedAnswer`
+///               answer `Result<StreamedAnswer, Error>` - the module `#[service_schema]` generates beside this trait publishes that type; reach it with a `use`, or write the module-qualified path directly
+///   --> tests/zz_probe.rs:25:17
+///    |
+/// 25 |     ) -> Result<ThumbnailResponse, ContentError>;
+///    |                 ^^^^^^^^^^^^^^^^^
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
+///
+/// # A `body = "stream"` declaration combined with `header_out` is refused
+///
+/// A streamed answer's own `Partial` case already carries `content-range`, and composing a further
+/// declared header with a streamed body is not yet implemented - refused rather than silently
+/// ignored, naming the entry:
+///
+/// ```rust,compile_fail
+/// use tixschema::service_schema;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub enum ContentError {
+///     NotFound,
+/// }
+///
+/// #[service_schema()]
+/// pub trait ContentService<Ctx> {
+///     #[service_schema_op(http(
+///         method = "GET",
+///         path = "/documents/{document_id}/content",
+///         body = "stream",
+///         header_out("etag"),
+///         error_status(NotFound = 404),
+///     ))]
+///     async fn get_content(
+///         &self,
+///         ctx: &Ctx,
+///         document_id: String,
+///     ) -> Result<content_service_schema::StreamedAnswer, ContentError>;
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: service_schema: `body = "stream"` declares no `header_out`
+///               a streamed answer's own `Partial` case already carries `content-range`; composing a further declared header with a streamed body is not yet implemented
+///   --> tests/zz_probe.rs:14:20
+///    |
+/// 14 |         header_out("etag"),
+///    |                    ^^^^^^
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
 fn build_http_binding(
     operation_ident: &Ident,
     operation: &TraitItemFn,
@@ -1413,28 +1536,57 @@ fn is_bytes_success_shape(ty: &Type) -> bool {
     }
 }
 
-/// Refuses a `body = "bytes"` declaration that cannot hold: combined with `header_out` (the
-/// success type's second element already answers as the fixed `content-type` response header, so
-/// a separately declared one would be silently ignored rather than honored), or on an operation
-/// whose reply does not answer `Result<(Vec<u8>, String), Error>` — the bytes and their content
-/// type, which is `body = "bytes"`'s own fixed shape. A one-way operation, having no reply to
-/// shape at all, is refused under the same message: there is no success type for the bytes and
-/// their content type to be.
+/// Whether `ty`'s last path segment is `StreamedAnswer` — the seam type `support` publishes
+/// beside the trait, named either bare (`StreamedAnswer`, in scope through `use super::*` inside
+/// that module) or module-qualified (`{module}::StreamedAnswer`) from the trait's own signature.
+/// Read by its last segment rather than [`is_named_type`]'s single-segment match for exactly that
+/// reason: `body = "bytes"`'s own tuple elements are always bare stdlib names, this one is not.
+fn is_streamed_answer_type(ty: &Type) -> bool {
+    let Type::Path(named) = ty else {
+        return false;
+    };
+    named
+        .path
+        .segments
+        .last()
+        .is_some_and(|segment| segment.ident == "StreamedAnswer")
+}
+
+/// Refuses a `body = "bytes"` or `body = "stream"` declaration that cannot hold. Both kinds refuse
+/// a `header_out` declared alongside them — bytes because its success type's second element
+/// already answers as `content-type`, stream because composing a further declared header with a
+/// streamed body is not yet implemented, `content-range` travelling through `StreamedAnswer`'s own
+/// `Partial` case instead — and both require their own fixed success shape: `(Vec<u8>, String)`
+/// for bytes, a bare or module-qualified `StreamedAnswer` for stream. A one-way operation, having
+/// no reply to shape at all, is refused under the same success-shape message either way.
 fn body_kind_refusals(raw: &RawHttp, outcome: &OperationOutcome) -> Option<syn::Error> {
-    let (BodyKind::Bytes, declared) = raw.body.as_ref()? else {
-        return None;
+    let (kind, declared) = raw.body.as_ref()?;
+    let (header_out_message, shape_message, shaped_correctly): (&str, &str, bool) = match kind {
+        BodyKind::Json => return None,
+        BodyKind::Bytes => (
+            BYTES_BODY_HEADER_OUT_MESSAGE,
+            BYTES_BODY_SUCCESS_SHAPE_MESSAGE,
+            match outcome {
+                OperationOutcome::OneWay => false,
+                OperationOutcome::Reply { success, .. } => is_bytes_success_shape(success),
+            },
+        ),
+        BodyKind::Stream => (
+            STREAM_BODY_HEADER_OUT_MESSAGE,
+            STREAM_BODY_SUCCESS_SHAPE_MESSAGE,
+            match outcome {
+                OperationOutcome::OneWay => false,
+                OperationOutcome::Reply { success, .. } => is_streamed_answer_type(success),
+            },
+        ),
     };
     let mut refusals: Option<syn::Error> = None;
     if let Some(first) = raw.header_out.first() {
         refusals = Some(combined(
             refusals.take(),
-            syn::Error::new(first.span(), BYTES_BODY_HEADER_OUT_MESSAGE),
+            syn::Error::new(first.span(), header_out_message),
         ));
     }
-    let shaped_correctly = match outcome {
-        OperationOutcome::OneWay => false,
-        OperationOutcome::Reply { success, .. } => is_bytes_success_shape(success),
-    };
     if !shaped_correctly {
         let spanned = match outcome {
             OperationOutcome::OneWay => declared.span(),
@@ -1442,7 +1594,7 @@ fn body_kind_refusals(raw: &RawHttp, outcome: &OperationOutcome) -> Option<syn::
         };
         refusals = Some(combined(
             refusals.take(),
-            syn::Error::new(spanned, BYTES_BODY_SUCCESS_SHAPE_MESSAGE),
+            syn::Error::new(spanned, shape_message),
         ));
     }
     refusals
@@ -1591,11 +1743,12 @@ fn header_out_refusals(
         }),
         OperationOutcome::Reply { success, .. } => {
             // `body = "bytes"` requires its own fixed `(Vec<u8>, String)` tuple, whose second
-            // element answers as the content type rather than a `header_out` entry —
-            // `body_kind_refusals` is what checks that combination, with its own message naming
-            // the requirement, so this check stands down rather than reading the same tuple as an
-            // unexplained `header_out` arity.
-            if matches!(raw.body, Some((BodyKind::Bytes, _))) {
+            // element answers as the content type rather than a `header_out` entry, and
+            // `body = "stream"` composes no declared header with its body at all yet — both
+            // combinations are `body_kind_refusals`'s own to check, with their own message naming
+            // the requirement, so this check stands down rather than reading the same success type
+            // as an unexplained `header_out` arity.
+            if matches!(raw.body, Some((BodyKind::Bytes | BodyKind::Stream, _))) {
                 return None;
             }
             let tuple_arity = if let Type::Tuple(tuple) = success.as_ref() {

@@ -55,6 +55,7 @@
 
 use super::parse::{
     HttpBinding, OperationDef, OperationInputs, OperationOutcome, PathSegment, ServiceDef,
+    service_declares_a_stream,
 };
 use super::transport::Transport;
 use crate::rename_rule::RenameRule;
@@ -195,6 +196,11 @@ pub fn emit(service: &ServiceDef, asked: &[Transport]) -> TokenStream {
     let readers = violation_readers();
     let anchors = root_anchors(service, asked);
     let http_completeness = http_error_status_completeness(service);
+    let stream_seam = if service_declares_a_stream(service) {
+        stream_seam()
+    } else {
+        TokenStream::new()
+    };
     quote! {
         #[doc = #module_doc]
         pub mod #module {
@@ -212,6 +218,51 @@ pub fn emit(service: &ServiceDef, asked: &[Transport]) -> TokenStream {
             #readers
             #anchors
             #http_completeness
+            #stream_seam
+        }
+    }
+}
+
+/// The body-source seam a `body = "stream"` operation's signature names: `BodySource`, pulled
+/// rather than pushed so it composes for free with any `std::io::Read` a handler already has, and
+/// `StreamedAnswer`, the fixed two-case answer every streamed operation returns regardless of what
+/// it streams — `Full` for a `200` body, `Partial` for a `206` range slice carrying its own
+/// `content-range`. Emitted here, eagerly, rather than deferred into the `http_rest` dispatcher's
+/// own `macro_rules!` body: the author's own trait signature names `StreamedAnswer` directly, and a
+/// deferred macro is not expanded until a transport is placed, possibly in another crate.
+///
+/// Names no runtime crate — `std::io` alone — so `dispatch` (`http_rest`'s own emitted item, which
+/// reaches this seam through `$crate`) answers a stream without naming `tokio`, `bytes` or
+/// `futures` either.
+fn stream_seam() -> TokenStream {
+    quote! {
+        /// A response body source, pulled one chunk at a time by whatever drains it onto the
+        /// wire. Blanket-implemented for every [`std::io::Read`], so a `File`, a chunked cursor, or
+        /// any other reader an author already has satisfies this for free.
+        pub trait BodySource {
+            /// Pulls the next chunk into `buf`. `Ok(0)` means exhausted, exactly [`std::io::Read::read`]'s
+            /// own contract.
+            fn pull(&mut self, buf: &mut [u8]) -> ::std::io::Result<usize>;
+        }
+
+        impl<R: ::std::io::Read> BodySource for R {
+            fn pull(&mut self, buf: &mut [u8]) -> ::std::io::Result<usize> {
+                self.read(buf)
+            }
+        }
+
+        /// What a `body = "stream"` operation answers with. Every such operation returns this same
+        /// type regardless of what it streams: `Full` answers the declared `ok_status` with the
+        /// whole body; `Partial` answers `206` with `content-range` set to the given string
+        /// (`bytes {start}-{end}/{total}`, RFC 9110 §14.4) and the body limited to that slice.
+        pub enum StreamedAnswer {
+            /// The whole body.
+            Full(::std::boxed::Box<dyn BodySource + Send>),
+            /// A byte-range slice, with the `content-range` header it answers under.
+            Partial {
+                source: ::std::boxed::Box<dyn BodySource + Send>,
+                content_range: ::std::string::String,
+            },
         }
     }
 }

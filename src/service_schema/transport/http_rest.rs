@@ -1,11 +1,12 @@
 //! The HTTP/REST transport: two inert macros, `{service}_http_rest_dispatcher!` and
 //! `{service}_http_rest_client!`, and nothing compiled where the service is declared.
 //!
-//! This version covers JSON and bytes bodies, declared statuses, header bindings, no-payload
-//! operations, a panic guard, and an owner-overridable [`FaultHandler`] seam whose provided
-//! default answers the fixed behavior this dispatcher always answered (400 validation, 404
-//! unmatched route, 500 panic). The streamed body kind, multipart and the TypeScript half are
-//! separate, later work — nothing here stands in their way.
+//! This version covers JSON, bytes and streamed bodies (the last with 206/`content-range` range
+//! answers), declared statuses, header bindings, no-payload operations, a panic guard, and an
+//! owner-overridable [`FaultHandler`] seam whose provided default answers the fixed behavior this
+//! dispatcher always answered (400 validation, 404 unmatched route, 500 panic). Multipart and the
+//! TypeScript client's own streamed-body coverage are separate, later work — nothing here stands
+//! in their way.
 //!
 //! # Why the flat AMQP seam cannot carry this
 //!
@@ -60,7 +61,7 @@ use super::amqp_rpc::{
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HeaderIn, HttpShape, OperationDef, OperationInputs,
     OperationOutcome, PathSegment, ScalarKind, ServiceDef, is_scalar_named_type, is_unit_type,
-    option_inner, scalar_kind, tuple_elements, vec_inner, wire_key,
+    option_inner, scalar_kind, service_declares_a_stream, tuple_elements, vec_inner, wire_key,
 };
 use crate::service_schema::support::{message_alias_ident, message_validator_ident, module_ident};
 use proc_macro2::TokenStream;
@@ -238,8 +239,10 @@ fn dispatcher_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
          `validate()`, calls the implementation behind a panic guard, and answers a status, \
          response headers and a body - the declared `ok_status` with the success type as bare \
          JSON (or as raw bytes with its content type, for an operation declaring `body = \
-         \"bytes\"`), a declared error at its mapped status with the error type itself as the \
-         body, or a fault the caller's own installed `FaultHandler` decides the answer for. The \
+         \"bytes\"`; or, for `body = \"stream\"`, an undrained body source, `200` for the whole \
+         body or `206` with `content-range` for a range slice), a declared error at its mapped \
+         status with the error type itself as the body, or a fault the caller's own installed \
+         `FaultHandler` decides the answer for. The \
          invoking crate names `serde`, `serde_json` and `tracing` in its own manifest, because \
          the items below call them.\n\n\
          {placement}",
@@ -258,11 +261,17 @@ fn dispatcher_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
 }
 
 fn dispatcher_items(service: &ServiceDef) -> TokenStream {
+    let module = module_ident(service);
+    // Whether `OutgoingResponse` carries a plain `Vec<u8>` body (every service until this one, and
+    // every service with no streamed operation from here on — unchanged tokens either way) or the
+    // `OutgoingBody` enum a streamed operation's undrained body needs: `dispatch` is one function
+    // with one return type, so the choice is the whole service's rather than one operation's.
+    let has_stream = service_declares_a_stream(service);
     let incoming = incoming_request_items();
-    let outgoing = outgoing_response_items();
+    let outgoing = outgoing_response_items(has_stream, &module);
     let route = route_type();
     let routes = route_table(service);
-    let fault_handler = fault_handler_trait(&module_ident(service));
+    let fault_handler = fault_handler_trait(&module);
     // `match_path` is an arm's, and a service declaring no operation has no arm to call it from.
     let path_token = if service.operations.is_empty() {
         TokenStream::new()
@@ -280,7 +289,7 @@ fn dispatcher_items(service: &ServiceDef) -> TokenStream {
     } else {
         TokenStream::new()
     };
-    let dispatch = dispatch_fn(service);
+    let dispatch = dispatch_fn(service, has_stream, &module);
     // Every type, trait and impl ahead of every function: `fault_handler` declares a trait and an
     // impl, so it sits with `incoming`/`outgoing`/`route` rather than beside `path_token` and
     // `query_helpers`, both of which are functions a strict consumer's lints would otherwise see
@@ -366,31 +375,82 @@ fn incoming_request_items() -> TokenStream {
     }
 }
 
-fn outgoing_response_items() -> TokenStream {
+/// `OutgoingResponse` and, only where a streamed operation needs it, the `OutgoingBody` its body
+/// is carried in. A service with no streamed operation keeps the plain `Vec<u8>` body — the exact
+/// tokens every service answered before this kind existed — since materializing every answer into
+/// bytes is exactly what a streamed body must not do.
+fn outgoing_response_items(has_stream: bool, module: &Ident) -> TokenStream {
+    if !has_stream {
+        return quote! {
+            /// One HTTP response in plain terms, for an adapter to write back however its own
+            /// framework answers a request.
+            pub struct OutgoingResponse {
+                body: Vec<u8>,
+                headers: Vec<(String, String)>,
+                status: u16,
+            }
+
+            impl OutgoingResponse {
+                /// The response body.
+                pub fn body(&self) -> &[u8] {
+                    &self.body
+                }
+
+                /// Every header this response carries, in the order they were written.
+                pub fn headers(&self) -> &[(String, String)] {
+                    &self.headers
+                }
+
+                /// Binds one response - what a `FaultHandler` an owner installed builds its answer
+                /// with, there being no other way to fill this type's private fields from outside
+                /// the module `dispatch` was placed in.
+                pub const fn new(status: u16, headers: Vec<(String, String)>, body: Vec<u8>) -> Self {
+                    Self {
+                        status,
+                        headers,
+                        body,
+                    }
+                }
+
+                /// The status this response answers with.
+                pub const fn status(&self) -> u16 {
+                    self.status
+                }
+            }
+        };
+    }
     quote! {
+        /// One HTTP response body, undrained: bytes already in hand, or a source an adapter pulls
+        /// from a chunk at a time on the way to the wire.
+        pub enum OutgoingBody {
+            Bytes(Vec<u8>),
+            Stream(::std::boxed::Box<dyn $crate::#module::BodySource + Send>),
+        }
+
         /// One HTTP response in plain terms, for an adapter to write back however its own
         /// framework answers a request.
         pub struct OutgoingResponse {
-            body: Vec<u8>,
+            body: OutgoingBody,
             headers: Vec<(String, String)>,
             status: u16,
         }
 
         impl OutgoingResponse {
-            /// The response body.
-            pub fn body(&self) -> &[u8] {
-                &self.body
-            }
-
             /// Every header this response carries, in the order they were written.
             pub fn headers(&self) -> &[(String, String)] {
                 &self.headers
             }
 
+            /// Takes the body, for an adapter to drain onto the wire - by value, since pulling
+            /// from a boxed body source needs to own it.
+            pub fn into_body(self) -> OutgoingBody {
+                self.body
+            }
+
             /// Binds one response - what a `FaultHandler` an owner installed builds its answer
             /// with, there being no other way to fill this type's private fields from outside the
             /// module `dispatch` was placed in.
-            pub const fn new(status: u16, headers: Vec<(String, String)>, body: Vec<u8>) -> Self {
+            pub const fn new(status: u16, headers: Vec<(String, String)>, body: OutgoingBody) -> Self {
                 Self {
                     status,
                     headers,
@@ -512,8 +572,28 @@ fn path_token_tokens(path: &[PathSegment]) -> Vec<TokenStream> {
         .collect()
 }
 
+/// The `body: <expr>` field initializer for an `OutgoingResponse` (or `OutgoingResponse`-shaped)
+/// literal: wrapped in `OutgoingBody::Bytes(...)` where the service carries the enum (a streamed
+/// operation is somewhere in it), or, where it does not, written as `body: <expr>` - except when
+/// `body_expr` is itself the bare identifier `body`, in which case it is written as the field-init
+/// shorthand `body` instead, exactly as every one of these call sites wrote it before the streamed
+/// kind existed. The one seam every JSON- and bytes-body-writing call site reads through, so the
+/// two shapes never drift apart by a forgotten call site, and the unwrapped path never regresses
+/// into a `clippy::redundant_field_names` a byte-for-byte-unchanged expansion cannot carry.
+fn body_field(has_stream: bool, body_expr: &TokenStream) -> TokenStream {
+    if has_stream {
+        quote! { body: OutgoingBody::Bytes(#body_expr) }
+    } else if body_expr.to_string() == "body" {
+        quote! { body }
+    } else {
+        quote! { body: #body_expr }
+    }
+}
+
 /// `json_response`, the one way `dispatch` and the default `FaultHandler` both write a body.
-fn response_builders() -> TokenStream {
+fn response_builders(has_stream: bool) -> TokenStream {
+    let ok_body = body_field(has_stream, &quote! { body });
+    let err_body = body_field(has_stream, &quote! { ::std::vec::Vec::new() });
     quote! {
         /// Serializes `value` as the body, under `status` and whatever `headers` the caller
         /// already built. A value that will not serialize is answered as a fault instead - the
@@ -528,7 +608,7 @@ fn response_builders() -> TokenStream {
                     OutgoingResponse {
                         status,
                         headers,
-                        body,
+                        #ok_body,
                     }
                 }
                 Err(unserializable) => {
@@ -539,7 +619,7 @@ fn response_builders() -> TokenStream {
                     OutgoingResponse {
                         status: 500,
                         headers: ::std::vec::Vec::new(),
-                        body: ::std::vec::Vec::new(),
+                        #err_body,
                     }
                 }
             }
@@ -578,20 +658,19 @@ fn fault_handler_trait(module: &Ident) -> TokenStream {
     }
 }
 
-fn dispatch_fn(service: &ServiceDef) -> TokenStream {
+fn dispatch_fn(service: &ServiceDef, has_stream: bool, module: &Ident) -> TokenStream {
     let contract = &service.ident;
-    let module = module_ident(service);
-    let builders = response_builders();
+    let builders = response_builders(has_stream);
     let arms = service
         .operations
         .iter()
-        .map(|operation| dispatch_arm(&module, operation));
+        .map(|operation| dispatch_arm(module, operation, has_stream));
     let (guard, refusal, implementation, context) = if service.operations.is_empty() {
         (TokenStream::new(), TokenStream::new(), quote!(_), quote!(_))
     } else {
         (
             panic_guard(),
-            refusal_reader(&module),
+            refusal_reader(module),
             quote!(svc),
             quote!(ctx),
         )
@@ -637,7 +716,7 @@ fn dispatch_fn(service: &ServiceDef) -> TokenStream {
 /// One operation's arm: match the method and the path template, decode path, query, headers and
 /// body into the operation's own arguments, validate, call the implementation behind the panic
 /// guard, and answer.
-fn dispatch_arm(module: &Ident, operation: &OperationDef) -> TokenStream {
+fn dispatch_arm(module: &Ident, operation: &OperationDef, has_stream: bool) -> TokenStream {
     let shape = HttpShape::of(operation);
     let wire = &operation.wire_name;
     let method_str = shape.method.name();
@@ -691,7 +770,7 @@ fn dispatch_arm(module: &Ident, operation: &OperationDef) -> TokenStream {
     let method_ident = &operation.ident;
     let called = quote! { caught(move || svc.#method_ident(ctx #(, #call_args)*)).await };
 
-    let answer = answer_block(wire, operation, &shape, &called, module);
+    let answer = answer_block(wire, operation, &shape, &called, module, has_stream);
     let captured_binding = if placeholder_idents.is_empty() {
         quote! { _captured }
     } else {
@@ -906,6 +985,7 @@ fn answer_block(
     shape: &HttpShape,
     called: &TokenStream,
     module: &Ident,
+    has_stream: bool,
 ) -> TokenStream {
     let ok_status = shape.ok_status;
     let panic_fault = quote! {
@@ -913,46 +993,34 @@ fn answer_block(
         return handler.on_fault(&$crate::#module::ServiceFault::handler_panic(#wire, &panicked));
     };
     match &operation.outcome {
-        OperationOutcome::OneWay => quote! {
-            match #called {
-                Ok(()) => return OutgoingResponse {
-                    status: #ok_status,
-                    headers: ::std::vec::Vec::new(),
-                    body: ::std::vec::Vec::new(),
-                },
-                Err(panicked) => { #panic_fault }
+        OperationOutcome::OneWay => {
+            let empty_body = body_field(has_stream, &quote! { ::std::vec::Vec::new() });
+            quote! {
+                match #called {
+                    Ok(()) => return OutgoingResponse {
+                        status: #ok_status,
+                        headers: ::std::vec::Vec::new(),
+                        #empty_body,
+                    },
+                    Err(panicked) => { #panic_fault }
+                }
             }
-        },
+        }
         OperationOutcome::Reply { error, success } => {
             let status_expr = error_status_expr(shape, error);
-            if matches!(shape.body_kind, BodyKind::Bytes) {
-                // `body_kind_refusals` (parse.rs) already requires this shape and refuses
-                // `header_out` alongside it, so `success` is `(Vec<u8>, String)` and there is no
-                // header-out tuple arity to branch on the way the JSON kind does below.
-                quote! {
-                    match #called {
-                        Ok(Ok((body, content_type))) => {
-                            return OutgoingResponse {
-                                status: #ok_status,
-                                headers: ::std::vec![("content-type".to_owned(), content_type)],
-                                body,
-                            };
-                        }
-                        Ok(Err(declared_error)) => {
-                            let status = #status_expr;
-                            return json_response(status, ::std::vec::Vec::new(), &declared_error);
-                        }
-                        Err(panicked) => { #panic_fault }
-                    }
-                }
+            if matches!(shape.body_kind, BodyKind::Stream) {
+                stream_answer_block(module, shape, called, &status_expr, &panic_fault)
+            } else if matches!(shape.body_kind, BodyKind::Bytes) {
+                bytes_answer_block(shape, called, &status_expr, &panic_fault, has_stream)
             } else if shape.header_out.is_empty() {
                 if is_unit_type(success) {
+                    let empty_body = body_field(has_stream, &quote! { ::std::vec::Vec::new() });
                     quote! {
                         match #called {
                             Ok(Ok(())) => return OutgoingResponse {
                                 status: #ok_status,
                                 headers: ::std::vec::Vec::new(),
-                                body: ::std::vec::Vec::new(),
+                                #empty_body,
                             },
                             Ok(Err(declared_error)) => {
                                 let status = #status_expr;
@@ -1006,6 +1074,75 @@ fn answer_block(
     }
 }
 
+/// A `body = "bytes"` operation's own arm: `body_kind_refusals` (parse.rs) already requires this
+/// shape and refuses `header_out` alongside it, so `success` is `(Vec<u8>, String)` and there is no
+/// header-out tuple arity to branch on the way the JSON kind does.
+fn bytes_answer_block(
+    shape: &HttpShape,
+    called: &TokenStream,
+    status_expr: &TokenStream,
+    panic_fault: &TokenStream,
+    has_stream: bool,
+) -> TokenStream {
+    let ok_status = shape.ok_status;
+    let raw_body = body_field(has_stream, &quote! { body });
+    quote! {
+        match #called {
+            Ok(Ok((body, content_type))) => {
+                return OutgoingResponse {
+                    status: #ok_status,
+                    headers: ::std::vec![("content-type".to_owned(), content_type)],
+                    #raw_body,
+                };
+            }
+            Ok(Err(declared_error)) => {
+                let status = #status_expr;
+                return json_response(status, ::std::vec::Vec::new(), &declared_error);
+            }
+            Err(panicked) => { #panic_fault }
+        }
+    }
+}
+
+/// A `body = "stream"` operation's own arm: `body_kind_refusals` (parse.rs) already requires the
+/// success type to name `StreamedAnswer` and refuses `header_out` alongside it, so the status and
+/// the one header a streamed answer carries come from the variant itself rather than from a
+/// declared table - `Full` answers the declared `ok_status` with no extra header, `Partial`
+/// answers `206` with `content-range` set to what the handler built. Either way the body is handed
+/// on undrained, in `OutgoingBody::Stream`, for an adapter to pull onto the wire.
+fn stream_answer_block(
+    module: &Ident,
+    shape: &HttpShape,
+    called: &TokenStream,
+    status_expr: &TokenStream,
+    panic_fault: &TokenStream,
+) -> TokenStream {
+    let ok_status = shape.ok_status;
+    quote! {
+        match #called {
+            Ok(Ok($crate::#module::StreamedAnswer::Full(source))) => {
+                return OutgoingResponse {
+                    status: #ok_status,
+                    headers: ::std::vec::Vec::new(),
+                    body: OutgoingBody::Stream(source),
+                };
+            }
+            Ok(Ok($crate::#module::StreamedAnswer::Partial { source, content_range })) => {
+                return OutgoingResponse {
+                    status: 206,
+                    headers: ::std::vec![("content-range".to_owned(), content_range)],
+                    body: OutgoingBody::Stream(source),
+                };
+            }
+            Ok(Err(declared_error)) => {
+                let status = #status_expr;
+                return json_response(status, ::std::vec::Vec::new(), &declared_error);
+            }
+            Err(panicked) => { #panic_fault }
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
 // The client
 // ---------------------------------------------------------------------------------------------
@@ -1025,7 +1162,9 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
          path template, query string and `header_in` headers from it, sends it over `Transport`, \
          and decodes the answer by status: the declared `ok_status` into the success type (or the \
          success tuple, `header_out` elements read back from response headers; or, for an \
-         operation declaring `body = \"bytes\"`, the response bytes and their `content-type`), a \
+         operation declaring `body = \"bytes\"`, the response bytes and their `content-type`; or, \
+         for `body = \"stream\"`, a `StreamedAnswer` pulling from the response body - `Full` at \
+         `200`, `Partial` with `content-range` at `206`), a \
          mapped status into the declared error, and anything else - including a fixed fault \
          status this crate did not expect at that code - into a fault.\n\n\
          The invoking crate names `serde` and `serde_json` in its own manifest. It names no \
@@ -1033,7 +1172,12 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
          {placement}",
         transport.name()
     );
-    let seam = transport_trait();
+    // Whether `IncomingResponse` carries a plain `Vec<u8>` body or the `IncomingBody` enum a
+    // streamed operation's undrained body needs - the same whole-service choice
+    // `dispatcher_items` makes for `OutgoingResponse`, so a mixed service's dispatcher and client
+    // agree about the shape a streamed answer travels in.
+    let has_stream = service_declares_a_stream(service);
+    let seam = transport_trait(has_stream, &generated.module);
     let declares_a_reply = !service.operations.is_empty();
     let fault_mirror_types = if declares_a_reply {
         client_fault_mirror_types(&generated)
@@ -1101,7 +1245,21 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
     }
 }
 
-fn transport_trait() -> TokenStream {
+/// `OutgoingRequest`, `IncomingResponse` and `Transport`. `IncomingResponse` carries a plain
+/// `Vec<u8>` body (the exact tokens every service answered before the streamed kind existed) unless
+/// the service declares a streamed operation, in which case its body is the `IncomingBody` enum a
+/// streamed answer's undrained source needs. The request side is unaffected either way - nothing
+/// here declares a streamed *request* body.
+fn transport_trait(has_stream: bool, module: &Ident) -> TokenStream {
+    let outgoing_request = outgoing_request_items();
+    if has_stream {
+        streamed_transport_items(&outgoing_request, module)
+    } else {
+        plain_transport_items(&outgoing_request)
+    }
+}
+
+fn outgoing_request_items() -> TokenStream {
     quote! {
         /// One outgoing HTTP request, in plain terms: nothing here names a framework.
         pub struct OutgoingRequest {
@@ -1138,6 +1296,14 @@ fn transport_trait() -> TokenStream {
                 &self.query
             }
         }
+    }
+}
+
+/// `IncomingResponse` and `Transport` for a service with no streamed operation - the exact tokens
+/// every service answered before the streamed kind existed.
+fn plain_transport_items(outgoing_request: &TokenStream) -> TokenStream {
+    quote! {
+        #outgoing_request
 
         /// One HTTP response as the seam read it back.
         pub struct IncomingResponse {
@@ -1162,6 +1328,79 @@ fn transport_trait() -> TokenStream {
 
             /// Binds one response as the seam implementation read it off the wire.
             pub const fn new(status: u16, headers: Vec<(String, String)>, body: Vec<u8>) -> Self {
+                Self {
+                    status,
+                    headers,
+                    body,
+                }
+            }
+
+            /// The status this response answered with.
+            pub const fn status(&self) -> u16 {
+                self.status
+            }
+        }
+
+        /// What binds a client to a real HTTP stack: one method, sending a whole request and
+        /// answering with a whole response or with what stopped it in words.
+        pub trait Transport {
+            /// Sends `request` and answers with the response, or `Err` with what stopped it in
+            /// words if the call never landed.
+            fn send(
+                &self,
+                request: OutgoingRequest,
+            ) -> impl ::core::future::Future<Output = Result<IncomingResponse, String>> + Send;
+        }
+    }
+}
+
+/// `IncomingResponse` and `Transport` for a service carrying a streamed operation: the body is
+/// `IncomingBody`, bytes already in hand or a source pulled from the wire a chunk at a time.
+fn streamed_transport_items(outgoing_request: &TokenStream, module: &Ident) -> TokenStream {
+    quote! {
+        #outgoing_request
+
+        /// One HTTP response body, as the seam read it back: bytes already in hand, or a source a
+        /// client pulls from a chunk at a time rather than buffering the whole answer first.
+        pub enum IncomingBody {
+            Bytes(Vec<u8>),
+            Stream(::std::boxed::Box<dyn $crate::#module::BodySource + Send>),
+        }
+
+        /// One HTTP response as the seam read it back.
+        pub struct IncomingResponse {
+            body: IncomingBody,
+            headers: Vec<(String, String)>,
+            status: u16,
+        }
+
+        impl IncomingResponse {
+            /// The response body's bytes - empty where the seam answered a `Stream` instead, which
+            /// only a streamed operation's own decode ever reaches for, through
+            /// [`into_body`](Self::into_body).
+            pub fn body(&self) -> &[u8] {
+                match &self.body {
+                    IncomingBody::Bytes(bytes) => bytes,
+                    IncomingBody::Stream(_source) => &[],
+                }
+            }
+
+            /// One response header, read case-insensitively as HTTP headers are.
+            pub fn header(&self, name: &str) -> Option<&str> {
+                self.headers
+                    .iter()
+                    .find(|(carried, _)| carried.eq_ignore_ascii_case(name))
+                    .map(|(_, value)| value.as_str())
+            }
+
+            /// Takes the body, for a streamed operation's own decode to read incrementally -
+            /// by value, since pulling from a boxed body source needs to own it.
+            pub fn into_body(self) -> IncomingBody {
+                self.body
+            }
+
+            /// Binds one response as the seam implementation read it off the wire.
+            pub const fn new(status: u16, headers: Vec<(String, String)>, body: IncomingBody) -> Self {
                 Self {
                     status,
                     headers,
@@ -1314,7 +1553,7 @@ fn client_method(operation: &OperationDef, generated: &Generated) -> TokenStream
         ),
         OperationOutcome::Reply { error, success } => (
             quote! { Err(#call_error::Fault(#fault::transport_failure(#wire, &uncarried))) },
-            reply_decode(wire, &shape, call_error, fault, error, success),
+            reply_decode(wire, &shape, call_error, fault, error, success, module),
         ),
     };
 
@@ -1513,7 +1752,11 @@ fn reply_decode(
     fault: &TokenStream,
     error: &Type,
     success: &Type,
+    module: &Ident,
 ) -> TokenStream {
+    if matches!(shape.body_kind, BodyKind::Stream) {
+        return stream_reply_decode(wire, shape, call_error, fault, error, module);
+    }
     let ok_status = shape.ok_status;
     let error_condition = client_error_condition(shape);
     let success_return = if matches!(shape.body_kind, BodyKind::Bytes) {
@@ -1588,6 +1831,59 @@ fn reply_decode(
         let status = response.status();
         if status == #ok_status {
             #success_return
+        }
+        if #error_condition {
+            return match ::serde_json::from_slice::<#error>(response.body()) {
+                Ok(declared) => Err(#call_error::Operation(declared)),
+                Err(rejected) => Err(#call_error::Fault(
+                    #fault::undeserializable_payload(#wire, &rejected.to_string()),
+                )),
+            };
+        }
+        if matches!(status, 400 | 404 | 500) {
+            return Err(#call_error::Fault(fault_from_body(#wire, response.body())));
+        }
+        Err(#call_error::Fault(#fault::undeserializable_payload(
+            #wire,
+            &format!("an unexpected status ({status}) answered"),
+        )))
+    }
+}
+
+/// A `body = "stream"` operation's own decode: `206` answers `StreamedAnswer::Partial` with
+/// `content-range` read back before the body is taken; the declared `ok_status` (`200` by default)
+/// answers `StreamedAnswer::Full`; everything else falls through the same declared-error,
+/// fixed-fault and unexpected-status ladder every other kind answers through. A response the seam
+/// already buffered still satisfies `BodySource` once wrapped in a `Cursor` - the same blanket
+/// `Read` impl a real chunked reader relies on, so the client answers a body source either way.
+fn stream_reply_decode(
+    wire: &str,
+    shape: &HttpShape,
+    call_error: &TokenStream,
+    fault: &TokenStream,
+    error: &Type,
+    module: &Ident,
+) -> TokenStream {
+    let ok_status = shape.ok_status;
+    let error_condition = client_error_condition(shape);
+    quote! {
+        let status = response.status();
+        if status == 206 {
+            let content_range = response.header("content-range").unwrap_or_default().to_owned();
+            let source: ::std::boxed::Box<dyn $crate::#module::BodySource + Send> =
+                match response.into_body() {
+                    IncomingBody::Bytes(bytes) => ::std::boxed::Box::new(::std::io::Cursor::new(bytes)),
+                    IncomingBody::Stream(source) => source,
+                };
+            return Ok($crate::#module::StreamedAnswer::Partial { source, content_range });
+        }
+        if status == #ok_status {
+            let source: ::std::boxed::Box<dyn $crate::#module::BodySource + Send> =
+                match response.into_body() {
+                    IncomingBody::Bytes(bytes) => ::std::boxed::Box::new(::std::io::Cursor::new(bytes)),
+                    IncomingBody::Stream(source) => source,
+                };
+            return Ok($crate::#module::StreamedAnswer::Full(source));
         }
         if #error_condition {
             return match ::serde_json::from_slice::<#error>(response.body()) {
