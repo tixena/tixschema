@@ -392,6 +392,49 @@ impl http_rest_transport::FaultHandler for RecordingFaultHandler {
     }
 }
 
+/// An `amqp_client::Transport` that answers every `request` with fixed bytes and never reaches a
+/// dispatcher, for pinning what the client's own decode does with an envelope no real dispatcher
+/// would ever write.
+struct StubTransport {
+    body: Vec<u8>,
+}
+
+impl StubTransport {
+    fn answering(value: &serde_json::Value) -> Self {
+        Self {
+            body: serde_json::to_vec(value).unwrap(),
+        }
+    }
+}
+
+impl amqp_client::Transport for StubTransport {
+    async fn notify<T>(
+        &self,
+        _operation: &str,
+        _payload: T,
+        _headers: Vec<(String, String)>,
+    ) -> Result<(), String>
+    where
+        T: Serialize + Send,
+    {
+        ready(()).await;
+        Ok(())
+    }
+
+    async fn request<T>(
+        &self,
+        _operation: &str,
+        _payload: T,
+        _headers: Vec<(String, String)>,
+    ) -> Result<(Vec<u8>, Vec<(String, String)>), String>
+    where
+        T: Serialize + Send,
+    {
+        ready(()).await;
+        Ok((self.body.clone(), Vec::new()))
+    }
+}
+
 /// The probes never suspend, so one poll answers them; `None` says an assumption about the bodies
 /// above stopped holding rather than that the runtime is missing.
 fn poll_once<Answered>(answering: Answered) -> Option<Answered::Output>
@@ -685,8 +728,8 @@ fn the_amqp_loop_answers_the_header_bound_operations_complete_error_mapping() {
 }
 
 /// The mapped-error arm of the no-payload operation round-trips over `amqp_rpc` exactly like any
-/// other declared error: nothing about this gap (below) touches the failure arm, which never
-/// carries the envelope's `value` at all.
+/// other declared error: the failure arm never carries the envelope's `value` at all, so the unit
+/// success fix below (which is about the success arm alone) never touches it.
 #[test]
 fn the_amqp_loop_answers_the_no_payload_operations_mapped_error() {
     let service = DocumentBackEnd::new();
@@ -704,34 +747,51 @@ fn the_amqp_loop_answers_the_no_payload_operations_mapped_error() {
     );
 }
 
-/// GAP in the published surface, not a round trip: the implementation genuinely answers `Ok(())`
-/// (see `service.reached()` below), but the reply is lost on the way back through the client.
+/// A unit success round-trips over `amqp_rpc`: the implementation answers `Ok(())`, the dispatcher
+/// writes `{"ok":true,"value":null}` through `Answered::answering` unconditionally (`arm`,
+/// `src/service_schema/transport/amqp_rpc.rs`), and the client reads it back as `Ok(())`.
 ///
-/// `amqp_rpc`'s dispatcher answers a reply-and-reply operation through
-/// `Answered::answering(answered)` unconditionally (`arm`, `src/service_schema/transport/amqp_rpc.rs`),
-/// and for `Ok(())` that is `Answered { ok: true, value: Some(()) }`. `Answered::value` is typed
-/// `Option<T>`, and `serde_json` reads `Option<T>` off a JSON `null` as `None` for *every* `T`
-/// without ever attempting to decode `T` from it — `()` itself serializes to `null`, so `Some(())`
-/// and `None` are indistinguishable on the wire. `Answered::carried()` (`support.rs`) then reports
-/// `Ok(None)`, which the client's generated `read_answer` (`amqp_rpc.rs`) treats as a defect: "the
-/// answer said `ok` and carried no value" — an `UndeserializablePayload` fault instead of `Ok(())`.
-///
-/// Reproduced with nothing but the published dispatcher's own encode and the published client's
-/// own decode either side of this harness's loop — no custom encoding of the fault or the value
-/// sits between them. Every `amqp_rpc` consumer with a reply-and-reply operation whose declared
-/// success is `()` hits this, not only this harness. Filed on the task as a published-surface gap
-/// this criterion cannot be proven against without a fix to `Answered<T, E>` or `read_answer`
-/// itself, both out of bounds for a test-only harness.
+/// The wire bytes are exactly what any success answers — `Answered::value` stays `Option<T>` and
+/// `()` still serializes to `null`, indistinguishable there from an absent value for any `T`. What
+/// changed is the read: an operation whose declared success is the unit type reads through
+/// `read_unit_answer`, which asks the envelope's `ok` flag alone, `()` needing nothing carried to
+/// exist. Every other success type still reads through `read_answer`, which still demands a
+/// carried value — pinned by
+/// `a_non_unit_success_with_a_genuinely_absent_value_still_faults`, below.
 #[test]
-fn the_amqp_loops_reply_and_reply_unit_success_cannot_be_carried_over_the_published_surface() {
+fn the_amqp_loop_round_trips_the_no_payload_operation_s_unit_success() {
     let service = DocumentBackEnd::new();
     let client = amqp_client::DocumentServiceClient::new(AmqpLoop::new(&service));
-    // If this now succeeds, the gap this test documents has been fixed upstream and this test
-    // should be rewritten as a real round trip.
     let answered = poll_once(client.archive_document("doc-1".to_owned())).unwrap();
+    assert_eq!(
+        answered,
+        Ok(()),
+        "a unit success is carried over amqp_rpc's own envelope, not lost as an undeserializable \
+         payload"
+    );
+    assert_eq!(
+        service.reached(),
+        vec!["archive_document doc-1".to_owned()],
+        "the implementation ran and its Ok(()) is what the client read back"
+    );
+}
+
+/// The mirror of the fix above: a success type that is not the unit type still demands a carried
+/// value, so an envelope answering `ok` with no `value` at all is still the fault it always was.
+///
+/// A real dispatcher never writes that envelope for a non-unit success — `sweep_documents`
+/// answers `SweepReport`, and `Answered::answering` always carries `Some(value)` on the `Ok` arm
+/// — so [`StubTransport`] stands in for the wire, answering the bytes directly and proving the
+/// client's own read, not a dispatcher that could never produce them.
+#[test]
+fn a_non_unit_success_with_a_genuinely_absent_value_still_faults() {
+    let client = amqp_client::DocumentServiceClient::new(StubTransport::answering(
+        &serde_json::json!({ "ok": true }),
+    ));
+    let answered = poll_once(client.sweep_documents()).unwrap();
     let reported = match &answered {
         Err(document_service_schema::CallError::Fault(reported)) => Some(reported),
-        Ok(()) | Err(document_service_schema::CallError::Operation(_)) => None,
+        Ok(_) | Err(document_service_schema::CallError::Operation(_)) => None,
     }
     .unwrap();
     assert_eq!(
@@ -741,13 +801,8 @@ fn the_amqp_loops_reply_and_reply_unit_success_cannot_be_carried_over_the_publis
     assert_eq!(
         reported.detail(),
         "the answer said `ok` and carried no value",
-        "this is `Answered<T, E>` losing a unit success on the way back, not a defect in the call \
-         itself"
-    );
-    assert_eq!(
-        service.reached(),
-        vec!["archive_document doc-1".to_owned()],
-        "the implementation ran and answered Ok(()); the defect is purely in decoding the reply"
+        "a non-unit success still demands a carried value; only the unit type reads an absent one \
+         as Ok(())"
     );
 }
 
