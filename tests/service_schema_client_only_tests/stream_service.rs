@@ -43,6 +43,24 @@ pub trait ContentClientService<Ctx> {
         document_id: String,
         byte_range: Option<String>,
     ) -> Result<content_client_service_schema::StreamedAnswer, ContentError>;
+
+    /// The same content, with a declared `header_out` composed onto the streamed answer - proving
+    /// the client reads it back off both `StreamedAnswer` arms, exactly as the dispatcher writes
+    /// it out.
+    #[service_schema_op(http(
+        method = "GET",
+        path = "/documents/{document_id}/content-with-etag",
+        header_in("range" = byte_range),
+        header_out("etag"),
+        body = "stream",
+        error_status(NotFound = 404),
+    ))]
+    async fn get_content_with_etag(
+        &self,
+        ctx: &Ctx,
+        document_id: String,
+        byte_range: Option<String>,
+    ) -> Result<(content_client_service_schema::StreamedAnswer, String), ContentError>;
 }
 
 /// A chunked [`Read`] source: every call answers at most [`CHUNK_CAP`] bytes. Blanket-implemented
@@ -160,6 +178,16 @@ impl ContentClientService<()> for ContentClientBackEnd {
             Box::new(ChunkedSlice::new(CONTENT)),
         ))
     }
+
+    async fn get_content_with_etag(
+        &self,
+        ctx: &(),
+        document_id: String,
+        byte_range: Option<String>,
+    ) -> Result<(content_client_service_schema::StreamedAnswer, String), ContentError> {
+        let answered = self.get_content(ctx, document_id, byte_range).await?;
+        Ok((answered, "v9".to_owned()))
+    }
 }
 
 /// The `Full` source, or `None` for `Partial` - extracted through `Option` rather than a match arm
@@ -245,9 +273,8 @@ fn a_full_answer_streams_back_through_the_seam_in_more_than_one_pull() {
             method: "GET".to_owned(),
             path: "/documents/present/content".to_owned(),
             query: String::new(),
-            // A `header_in` bound to `None` still sends the header, rendered "null" - a
-            // pre-existing `encode_expr` gap this task did not touch, tracked separately.
-            headers: vec![("range".to_owned(), "null".to_owned())],
+            // A `header_in` bound to `None` sends no header at all.
+            headers: Vec::new(),
             body: Vec::new(),
         }]
     );
@@ -276,6 +303,47 @@ fn a_206_answer_carries_its_content_range_into_the_partial_variant() {
         client.transport().requests()[0].headers,
         vec![("range".to_owned(), "bytes=4-8".to_owned())]
     );
+}
+
+/// A declared `header_out` reads back off the `Full` arm alongside the whole streamed body.
+#[test]
+fn a_header_out_entry_reads_back_off_the_full_streamed_answer() {
+    let transport = StreamingTransport::queued(vec![(
+        200,
+        vec![("etag".to_owned(), "v9".to_owned())],
+        QueuedBody::Stream(ChunkedSlice::new(CONTENT)),
+    )]);
+    let client = stream_http_rest_client::ContentClientServiceClient::new(transport);
+    let (answered, etag) = poll_once(client.get_content_with_etag("present".to_owned(), None))
+        .unwrap()
+        .unwrap();
+    assert_eq!(etag, "v9");
+    let (drained, _pulls) = drain(full_source(answered).unwrap());
+    assert_eq!(drained, CONTENT);
+}
+
+/// A declared `header_out` reads back off the `206` `Partial` arm, composed alongside the
+/// `content-range` that arm already carries.
+#[test]
+fn a_header_out_entry_reads_back_off_the_partial_streamed_answer() {
+    let transport = StreamingTransport::queued(vec![(
+        206,
+        vec![
+            ("content-range".to_owned(), "bytes 4-8/44".to_owned()),
+            ("etag".to_owned(), "v9".to_owned()),
+        ],
+        QueuedBody::Stream(ChunkedSlice::new(b"quick")),
+    )]);
+    let client = stream_http_rest_client::ContentClientServiceClient::new(transport);
+    let (answered, etag) =
+        poll_once(client.get_content_with_etag("present".to_owned(), Some("bytes=4-8".to_owned())))
+            .unwrap()
+            .unwrap();
+    assert_eq!(etag, "v9");
+    let (source, content_range) = partial_source(answered).unwrap();
+    assert_eq!(content_range, "bytes 4-8/44");
+    let (drained, _pulls) = drain(source);
+    assert_eq!(drained, b"quick");
 }
 
 /// A response the seam already buffered still satisfies `BodySource` once wrapped in a `Cursor` -
@@ -327,4 +395,11 @@ fn the_contract_is_implementable_where_no_dispatcher_was_placed() {
         poll_once(ContentClientBackEnd.get_content(&(), "missing".to_owned(), None)).unwrap(),
         Err(ContentError::NotFound)
     ));
+    let (with_etag, etag) =
+        poll_once(ContentClientBackEnd.get_content_with_etag(&(), "present".to_owned(), None))
+            .unwrap()
+            .unwrap();
+    assert_eq!(etag, "v9");
+    let (drained, _pulls) = drain(full_source(with_etag).unwrap());
+    assert_eq!(drained, CONTENT);
 }

@@ -60,32 +60,23 @@ const UNKNOWN_DIRECTIVE_MESSAGE: &str = concat!(
 const UNKNOWN_HTTP_ARGUMENT_MESSAGE: &str = concat!(
     "service_schema: unknown `http` argument\n",
     "       the arguments are `method`, `path`, `ok_status`, `error_status`, `header_in`, \
-     `header_out` and `body`"
+     `header_out`, `part` and `body`"
 );
 
 const BYTES_BODY_SUCCESS_SHAPE_MESSAGE: &str = concat!(
-    "service_schema: `body = \"bytes\"` requires a success type of `(Vec<u8>, String)`\n",
-    "       the operation's signature still claims a JSON success type - answer \
-     `Result<(Vec<u8>, String), Error>`, the bytes and their content type"
-);
-
-const BYTES_BODY_HEADER_OUT_MESSAGE: &str = concat!(
-    "service_schema: `body = \"bytes\"` declares no `header_out`\n",
-    "       its success type's second element already answers as the `content-type` response \
-     header"
+    "service_schema: `body = \"bytes\"` requires a success type of `(Vec<u8>, String)`, plus one \
+     more element per declared `header_out` entry\n",
+    "       answer `Result<(Vec<u8>, String, ...), Error>` - the bytes, their content type, then \
+     each declared header's own value, in declaration order"
 );
 
 const STREAM_BODY_SUCCESS_SHAPE_MESSAGE: &str = concat!(
-    "service_schema: `body = \"stream\"` requires a success type naming `StreamedAnswer`\n",
+    "service_schema: `body = \"stream\"` requires a success type naming `StreamedAnswer`, plus \
+     one more element per declared `header_out` entry\n",
     "       answer `Result<StreamedAnswer, Error>` - the module `#[service_schema]` generates \
      beside this trait publishes that type; reach it with a `use`, or write the module-qualified \
-     path directly"
-);
-
-const STREAM_BODY_HEADER_OUT_MESSAGE: &str = concat!(
-    "service_schema: `body = \"stream\"` declares no `header_out`\n",
-    "       a streamed answer's own `Partial` case already carries `content-range`; composing a \
-     further declared header with a streamed body is not yet implemented"
+     path directly; declaring `header_out` entries wraps it in a tuple with one more element per \
+     entry, in declaration order"
 );
 
 const MISSING_HTTP_METHOD_MESSAGE: &str = concat!(
@@ -240,6 +231,10 @@ pub struct HttpBinding {
     pub header_out: Vec<String>,
     /// The method the operation answers to.
     pub method: HttpMethod,
+    /// One entry per `part("name" = parameter)`, naming a `body = "multipart"` operation's own
+    /// file part and the operation's own argument it fills. Empty for every body kind but
+    /// `Multipart`.
+    pub multipart_parts: Vec<MultipartPart>,
     /// The status a success answers with: the declared `ok_status`, or 204 for a no-payload
     /// operation and 200 for every other one where the author wrote neither.
     pub ok_status: u16,
@@ -314,14 +309,34 @@ pub struct HeaderIn {
     pub ty: Type,
 }
 
+/// One `part("name" = parameter)` binding — a `body = "multipart"` operation's own file part,
+/// claimed out of the message's own fields exactly as [`HeaderIn`] claims a header-bound one. A
+/// scalar field carries no binding of its own: it is read straight off the same-named part, the
+/// same way a bodyless method's field is read off the query string.
+#[derive(Clone, Debug)]
+pub struct MultipartPart {
+    /// The part name, as written.
+    pub name: String,
+    /// The operation's own argument it fills, keeping the argument's real span.
+    pub parameter: Ident,
+    /// The argument's declared type, read off the same signature `parameter` names.
+    pub ty: Type,
+}
+
 /// How `http(...)` carries the body. `Json` is the default a group that writes no `body` gets.
 /// `Bytes` answers raw bytes under a declared content type. `Stream` answers a pulled body source,
 /// full or (through `StreamedAnswer::Partial`) a `206` range slice with `content-range`, through
-/// the seam `#[service_schema]` publishes beside the trait.
+/// the seam `#[service_schema]` publishes beside the trait. `Multipart` reads the *request* as
+/// named parts instead of one JSON object: a scalar field is read off the same-named part exactly
+/// as a bodyless method's field is read off the query string, and a `part("name" = parameter)`
+/// binding hands a file part through as a [`crate::service_schema::support`] `BodySource` handle,
+/// undecoded. `Multipart` says nothing about the *response* — its success and error types are
+/// ordinary JSON, `header_out` included, exactly like `Json`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BodyKind {
     Bytes,
     Json,
+    Multipart,
     Stream,
 }
 
@@ -330,6 +345,7 @@ impl BodyKind {
         match written {
             "bytes" => Some(Self::Bytes),
             "json" => Some(Self::Json),
+            "multipart" => Some(Self::Multipart),
             "stream" => Some(Self::Stream),
             _ => None,
         }
@@ -360,6 +376,7 @@ pub struct HttpShape {
     pub header_in: Vec<HeaderIn>,
     pub header_out: Vec<String>,
     pub method: HttpMethod,
+    pub multipart_parts: Vec<MultipartPart>,
     pub ok_status: u16,
     pub path: Vec<PathSegment>,
 }
@@ -373,6 +390,7 @@ impl HttpShape {
                 header_in: Vec::new(),
                 header_out: Vec::new(),
                 method: HttpMethod::Post,
+                multipart_parts: Vec::new(),
                 ok_status: default_ok_status(&operation.outcome),
                 path: vec![PathSegment::Literal(format!("/{}", operation.wire_name))],
             },
@@ -382,6 +400,7 @@ impl HttpShape {
                 header_in: binding.header_in.clone(),
                 header_out: binding.header_out.clone(),
                 method: binding.method,
+                multipart_parts: binding.multipart_parts.clone(),
                 ok_status: binding.ok_status,
                 path: binding.path.clone(),
             },
@@ -419,6 +438,7 @@ struct RawHttp {
     header_in: Vec<(LitStr, Ident)>,
     header_out: Vec<LitStr>,
     method: (HttpMethod, LitStr),
+    multipart_parts: Vec<(LitStr, Ident)>,
     ok_status: Option<u16>,
     path: LitStr,
 }
@@ -475,6 +495,29 @@ pub fn service_declares_a_stream(service: &ServiceDef) -> bool {
             .as_ref()
             .is_some_and(|binding| matches!(binding.body_kind, BodyKind::Stream))
     })
+}
+
+/// Whether any operation in `service` declares `body = "multipart"` — the request is read as
+/// named parts rather than one JSON object, and a file part's own `BodySource` handle is the same
+/// seam type a streamed *response* uses.
+///
+/// `pub`: read identically by `support` (which publishes the seam `BodySource` belongs to) and by
+/// the `http_rest` transport, so the two cannot disagree about whether a service carries it.
+pub fn service_declares_multipart(service: &ServiceDef) -> bool {
+    service.operations.iter().any(|operation| {
+        operation
+            .http
+            .as_ref()
+            .is_some_and(|binding| matches!(binding.body_kind, BodyKind::Multipart))
+    })
+}
+
+/// Whether `service` needs the `BodySource` seam published at all — either body direction reaches
+/// for it: a streamed *response* pulls from one, and a multipart *request*'s own file part hands
+/// one through. The one gate [`crate::service_schema::support`]'s own `stream_seam` reads, so
+/// declaring either kind alone is enough to publish it.
+pub fn service_needs_body_source_seam(service: &ServiceDef) -> bool {
+    service_declares_a_stream(service) || service_declares_multipart(service)
 }
 
 pub fn scalar_kind(ty: &Type) -> ScalarKind {
@@ -584,16 +627,67 @@ fn unknown_http_method_message(written: &str) -> String {
 fn unknown_body_kind_message(written: &str) -> String {
     format!(
         "service_schema: `{written}` is not a body kind this version knows\n       \
-         write `\"json\"` (the default), `\"bytes\"` or `\"stream\"`"
+         write `\"json\"` (the default), `\"bytes\"`, `\"multipart\"` or `\"stream\"`"
     )
+}
+
+fn parse_method_arg(inner: &ParseNestedMeta<'_>) -> Result<(HttpMethod, LitStr), syn::Error> {
+    let written: LitStr = inner.value()?.parse()?;
+    let Some(parsed) = HttpMethod::from_name(&written.value()) else {
+        return Err(syn::Error::new(
+            written.span(),
+            unknown_http_method_message(&written.value()),
+        ));
+    };
+    Ok((parsed, written))
+}
+
+fn parse_body_arg(inner: &ParseNestedMeta<'_>) -> Result<(BodyKind, LitStr), syn::Error> {
+    let written: LitStr = inner.value()?.parse()?;
+    let Some(parsed) = BodyKind::from_name(&written.value()) else {
+        return Err(syn::Error::new(
+            written.span(),
+            unknown_body_kind_message(&written.value()),
+        ));
+    };
+    Ok((parsed, written))
+}
+
+fn parse_error_status_arg(inner: &ParseNestedMeta<'_>) -> Result<Vec<(Ident, u16)>, syn::Error> {
+    let mut error_status = Vec::new();
+    inner.parse_nested_meta(|deepest| {
+        let Some(variant) = deepest.path.get_ident().cloned() else {
+            return Err(deepest.error(HTTP_ERROR_STATUS_SHAPE_MESSAGE));
+        };
+        let code: LitInt = deepest.value()?.parse()?;
+        error_status.push((variant, code.base10_parse()?));
+        Ok(())
+    })?;
+    Ok(error_status)
+}
+
+/// Reads a `("name" = parameter)` group out of `inner` - the shape `header_in` and `part` share.
+fn parse_named_parameter_arg(inner: &ParseNestedMeta<'_>) -> Result<(LitStr, Ident), syn::Error> {
+    let content;
+    syn::parenthesized!(content in inner.input);
+    let name: LitStr = content.parse()?;
+    content.parse::<Token![=]>()?;
+    let parameter: Ident = content.parse()?;
+    Ok((name, parameter))
+}
+
+fn parse_header_out_arg(inner: &ParseNestedMeta<'_>) -> Result<LitStr, syn::Error> {
+    let content;
+    syn::parenthesized!(content in inner.input);
+    content.parse()
 }
 
 /// Reads the content of one `http(...)` group: `method`, `path` and `ok_status` parse by plain
 /// recursion, every key there opening with a bare ident — `Meta`-shaped syntax `parse_nested_meta`
-/// already handles. `header_in` and `header_out` cannot: their first token is a string literal,
-/// which `parse_nested_meta` rejects before it ever reaches the `=`, so each is instead read by
-/// hand out of the parenthesized group its key opens, one string literal and (for `header_in`) one
-/// `= parameter` after it.
+/// already handles. `header_in`, `header_out` and `part` cannot: their first token is a string
+/// literal, which `parse_nested_meta` rejects before it ever reaches the `=`, so each is instead
+/// read by hand out of the parenthesized group its key opens, one string literal and (for
+/// `header_in` and `part`) one `= parameter` after it.
 fn read_http_directive(meta: &ParseNestedMeta<'_>) -> Result<RawHttp, syn::Error> {
     let mut method_written: Option<(HttpMethod, LitStr)> = None;
     let mut path_written: Option<LitStr> = None;
@@ -602,17 +696,11 @@ fn read_http_directive(meta: &ParseNestedMeta<'_>) -> Result<RawHttp, syn::Error
     let mut error_status: Vec<(Ident, u16)> = Vec::new();
     let mut header_in: Vec<(LitStr, Ident)> = Vec::new();
     let mut header_out: Vec<LitStr> = Vec::new();
+    let mut multipart_parts: Vec<(LitStr, Ident)> = Vec::new();
 
     meta.parse_nested_meta(|inner| {
         if inner.path.is_ident("method") {
-            let written: LitStr = inner.value()?.parse()?;
-            let Some(parsed) = HttpMethod::from_name(&written.value()) else {
-                return Err(syn::Error::new(
-                    written.span(),
-                    unknown_http_method_message(&written.value()),
-                ));
-            };
-            method_written = Some((parsed, written));
+            method_written = Some(parse_method_arg(&inner)?);
             return Ok(());
         }
         if inner.path.is_ident("path") {
@@ -625,40 +713,23 @@ fn read_http_directive(meta: &ParseNestedMeta<'_>) -> Result<RawHttp, syn::Error
             return Ok(());
         }
         if inner.path.is_ident("body") {
-            let written: LitStr = inner.value()?.parse()?;
-            let Some(parsed) = BodyKind::from_name(&written.value()) else {
-                return Err(syn::Error::new(
-                    written.span(),
-                    unknown_body_kind_message(&written.value()),
-                ));
-            };
-            body_written = Some((parsed, written));
+            body_written = Some(parse_body_arg(&inner)?);
             return Ok(());
         }
         if inner.path.is_ident("error_status") {
-            inner.parse_nested_meta(|deepest| {
-                let Some(variant) = deepest.path.get_ident().cloned() else {
-                    return Err(deepest.error(HTTP_ERROR_STATUS_SHAPE_MESSAGE));
-                };
-                let code: LitInt = deepest.value()?.parse()?;
-                error_status.push((variant, code.base10_parse()?));
-                Ok(())
-            })?;
+            error_status = parse_error_status_arg(&inner)?;
+            return Ok(());
+        }
+        if inner.path.is_ident("part") {
+            multipart_parts.push(parse_named_parameter_arg(&inner)?);
             return Ok(());
         }
         if inner.path.is_ident("header_in") {
-            let content;
-            syn::parenthesized!(content in inner.input);
-            let name: LitStr = content.parse()?;
-            content.parse::<Token![=]>()?;
-            let parameter: Ident = content.parse()?;
-            header_in.push((name, parameter));
+            header_in.push(parse_named_parameter_arg(&inner)?);
             return Ok(());
         }
         if inner.path.is_ident("header_out") {
-            let content;
-            syn::parenthesized!(content in inner.input);
-            header_out.push(content.parse()?);
+            header_out.push(parse_header_out_arg(&inner)?);
             return Ok(());
         }
         Err(inner.error(UNKNOWN_HTTP_ARGUMENT_MESSAGE))
@@ -675,6 +746,7 @@ fn read_http_directive(meta: &ParseNestedMeta<'_>) -> Result<RawHttp, syn::Error
         header_in,
         header_out,
         method: resolved_method,
+        multipart_parts,
         ok_status,
         path: resolved_path,
     })
@@ -792,12 +864,13 @@ fn one_way_returns_a_value_message(operation: &Ident) -> String {
 }
 
 /// Everything the operation takes after `&self` and the context, in declaration order, less
-/// whatever `header_in` claimed. An operation with no `http(...)` group claims nothing, so this is
-/// exactly the pre-`http` behavior for it: every argument still becomes a field on the message.
+/// whatever `header_in` or `part` claimed. An operation with no `http(...)` group claims nothing,
+/// so this is exactly the pre-`http` behavior for it: every argument still becomes a field on the
+/// message.
 fn operation_inputs(
     operation: &TraitItemFn,
     context: &Ident,
-    header_claims: &HashSet<String>,
+    extra_claims: &HashSet<String>,
 ) -> Result<OperationInputs, syn::Error> {
     let named = &operation.sig.ident;
     let mut positional = operation.sig.inputs.iter();
@@ -831,7 +904,7 @@ fn operation_inputs(
                 plain_argument_name_message(named),
             ));
         };
-        if header_claims.contains(&argument.ident.to_string()) {
+        if extra_claims.contains(&argument.ident.to_string()) {
             continue;
         }
         carried.push((argument.ident.clone(), typed.ty.as_ref().clone()));
@@ -875,17 +948,24 @@ fn operation_outcome(
 
 fn parse_operation(operation: &TraitItemFn, context: &Ident) -> Result<OperationDef, syn::Error> {
     let directive = OperationDirective::read(&operation.attrs)?;
-    let header_claims: HashSet<String> = directive
+    // `header_in` and `part` each claim one ordinary argument beside the message, out of the same
+    // pool: neither becomes a field on the message [`operation_inputs`] declares one from.
+    let extra_claims: HashSet<String> = directive
         .http
         .as_ref()
         .map(|raw| {
             raw.header_in
                 .iter()
                 .map(|(_, parameter)| parameter.to_string())
+                .chain(
+                    raw.multipart_parts
+                        .iter()
+                        .map(|(_, parameter)| parameter.to_string()),
+                )
                 .collect()
         })
         .unwrap_or_default();
-    let inputs = operation_inputs(operation, context, &header_claims)?;
+    let inputs = operation_inputs(operation, context, &extra_claims)?;
     let outcome = operation_outcome(operation, directive.one_way)?;
     let ident = operation.sig.ident.clone();
     let http = directive
@@ -1216,11 +1296,43 @@ fn extra_arguments(operation: &TraitItemFn) -> HashMap<String, Type> {
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
 ///
-/// # A `body = "bytes"` declaration combined with `header_out` is refused
+/// # A `body = "bytes"` declaration composes `header_out` onto its own tuple, body pair first
 ///
-/// The success type's second element already answers as the `content-type` response header, so a
-/// separately declared `header_out` would be silently ignored rather than honored — refused
-/// instead, naming the entry:
+/// `header_out` appends one more element per entry after the bytes and their content type, in
+/// declaration order — the dispatcher writes each as a response header exactly as the JSON path
+/// does, and the client reads them back the same way:
+///
+/// ```rust
+/// use tixschema::service_schema;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub enum ThumbnailError {
+///     NotFound,
+/// }
+///
+/// #[service_schema()]
+/// pub trait ThumbnailService<Ctx> {
+///     #[service_schema_op(http(
+///         method = "GET",
+///         path = "/thumbnails/{document_id}",
+///         body = "bytes",
+///         header_out("etag"),
+///         error_status(NotFound = 404),
+///     ))]
+///     async fn get_thumbnail(
+///         &self,
+///         ctx: &Ctx,
+///         document_id: String,
+///     ) -> Result<(Vec<u8>, String, String), ThumbnailError>;
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// # A `body = "bytes"` declaration with `header_out` but the wrong tuple arity is refused
+///
+/// One `header_out` entry requires a three-element tuple; the signature below still answers only
+/// the bytes and their content type:
 ///
 /// ```rust,compile_fail
 /// use tixschema::service_schema;
@@ -1250,12 +1362,12 @@ fn extra_arguments(operation: &TraitItemFn) -> HashMap<String, Type> {
 /// ```
 ///
 /// ```text
-/// error: service_schema: `body = "bytes"` declares no `header_out`
-///               its success type's second element already answers as the `content-type` response header
-///   --> tests/zz_probe.rs:14:20
+/// error: service_schema: `body = "bytes"` requires a success type of `(Vec<u8>, String)`, plus one more element per declared `header_out` entry
+///               answer `Result<(Vec<u8>, String, ...), Error>` - the bytes, their content type, then each declared header's own value, in declaration order
+///   --> tests/zz_probe.rs:25:17
 ///    |
-/// 14 |         header_out("etag"),
-///    |                    ^^^^^^
+/// 25 |     ) -> Result<(Vec<u8>, String), ThumbnailError>;
+///    |                 ^^^^^^^^^^^^^^^^^
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
@@ -1298,8 +1410,8 @@ fn extra_arguments(operation: &TraitItemFn) -> HashMap<String, Type> {
 /// ```
 ///
 /// ```text
-/// error: service_schema: `body = "stream"` requires a success type naming `StreamedAnswer`
-///               answer `Result<StreamedAnswer, Error>` - the module `#[service_schema]` generates beside this trait publishes that type; reach it with a `use`, or write the module-qualified path directly
+/// error: service_schema: `body = "stream"` requires a success type naming `StreamedAnswer`, plus one more element per declared `header_out` entry
+///               answer `Result<StreamedAnswer, Error>` - the module `#[service_schema]` generates beside this trait publishes that type; reach it with a `use`, or write the module-qualified path directly; declaring `header_out` entries wraps it in a tuple with one more element per entry, in declaration order
 ///   --> tests/zz_probe.rs:25:17
 ///    |
 /// 25 |     ) -> Result<ThumbnailResponse, ContentError>;
@@ -1308,11 +1420,43 @@ fn extra_arguments(operation: &TraitItemFn) -> HashMap<String, Type> {
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
 ///
-/// # A `body = "stream"` declaration combined with `header_out` is refused
+/// # A `body = "stream"` declaration composes `header_out` onto its own answer, wrapped in a tuple
 ///
-/// A streamed answer's own `Partial` case already carries `content-range`, and composing a further
-/// declared header with a streamed body is not yet implemented - refused rather than silently
-/// ignored, naming the entry:
+/// `header_out` wraps `StreamedAnswer` in a tuple with one more element per entry — the header
+/// travels beside whichever arm (`Full` or `Partial`) the handler answers with, exactly as the
+/// JSON path's own `header_out` composition works:
+///
+/// ```rust
+/// use tixschema::service_schema;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub enum ContentError {
+///     NotFound,
+/// }
+///
+/// #[service_schema()]
+/// pub trait ContentService<Ctx> {
+///     #[service_schema_op(http(
+///         method = "GET",
+///         path = "/documents/{document_id}/content",
+///         body = "stream",
+///         header_out("etag"),
+///         error_status(NotFound = 404),
+///     ))]
+///     async fn get_content(
+///         &self,
+///         ctx: &Ctx,
+///         document_id: String,
+///     ) -> Result<(content_service_schema::StreamedAnswer, String), ContentError>;
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// # A `body = "stream"` declaration with `header_out` but the wrong tuple arity is refused
+///
+/// One `header_out` entry requires a two-element tuple; the signature below still answers the
+/// bare `StreamedAnswer`:
 ///
 /// ```rust,compile_fail
 /// use tixschema::service_schema;
@@ -1342,12 +1486,153 @@ fn extra_arguments(operation: &TraitItemFn) -> HashMap<String, Type> {
 /// ```
 ///
 /// ```text
-/// error: service_schema: `body = "stream"` declares no `header_out`
-///               a streamed answer's own `Partial` case already carries `content-range`; composing a further declared header with a streamed body is not yet implemented
+/// error: service_schema: `body = "stream"` requires a success type naming `StreamedAnswer`, plus one more element per declared `header_out` entry
+///               answer `Result<StreamedAnswer, Error>` - the module `#[service_schema]` generates beside this trait publishes that type; reach it with a `use`, or write the module-qualified path directly; declaring `header_out` entries wraps it in a tuple with one more element per entry, in declaration order
 ///   --> tests/zz_probe.rs:14:20
 ///    |
 /// 14 |         header_out("etag"),
 ///    |                    ^^^^^^
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
+///
+/// # A `body = "multipart"` declaration on a bodyless method is refused
+///
+/// `GET` carries no request body for parts to travel in:
+///
+/// ```rust,compile_fail
+/// use tixschema::service_schema;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub struct UploadResponse {
+///     pub document_id: String,
+/// }
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub enum UploadError {
+///     TooLarge,
+/// }
+///
+/// #[service_schema()]
+/// pub trait UploadService<Ctx> {
+///     #[service_schema_op(http(
+///         method = "GET",
+///         path = "/documents",
+///         body = "multipart",
+///         error_status(TooLarge = 413),
+///     ))]
+///     async fn upload_document(
+///         &self,
+///         ctx: &Ctx,
+///         title: String,
+///     ) -> Result<UploadResponse, UploadError>;
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: service_schema: operation `upload_document` declares `body = "multipart"` on a `GET`
+///               `GET` carries no request body for parts to travel in; write `POST`, `PUT` or `PATCH`
+///   --> tests/zz_probe.rs:16:16
+///    |
+/// 16 |         body = "multipart",
+///    |                ^^^^^^^^^^^
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
+///
+/// # A `part` naming an argument the operation does not have is refused
+///
+/// `attachment` is written nowhere in the signature:
+///
+/// ```rust,compile_fail
+/// use tixschema::service_schema;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub struct UploadResponse {
+///     pub document_id: String,
+/// }
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub enum UploadError {
+///     TooLarge,
+/// }
+///
+/// #[service_schema()]
+/// pub trait UploadService<Ctx> {
+///     #[service_schema_op(http(
+///         method = "POST",
+///         path = "/documents",
+///         body = "multipart",
+///         part("file" = attachment),
+///         error_status(TooLarge = 413),
+///     ))]
+///     async fn upload_document(
+///         &self,
+///         ctx: &Ctx,
+///         title: String,
+///     ) -> Result<UploadResponse, UploadError>;
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: service_schema: operation `upload_document` binds part "file" to a parameter named `attachment`, and `upload_document` takes no argument by that name
+///               `part` binds one ordinary argument beside the message; name it in the signature, or remove the binding
+///   --> tests/zz_probe.rs:18:24
+///    |
+/// 18 |         part("file" = attachment),
+///    |                       ^^^^^^^^^^
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
+///
+/// # A body-source-shaped argument with no `part` binding is refused
+///
+/// `attachment` looks like a file part - its type names `BodySource` - but nothing declares which
+/// multipart part fills it, and a generated message has no `Deserialize` for it to fall back to:
+///
+/// ```rust,compile_fail
+/// use tixschema::service_schema;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub struct UploadResponse {
+///     pub document_id: String,
+/// }
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub enum UploadError {
+///     TooLarge,
+/// }
+///
+/// #[service_schema()]
+/// pub trait UploadService<Ctx> {
+///     #[service_schema_op(http(
+///         method = "POST",
+///         path = "/documents",
+///         body = "multipart",
+///         error_status(TooLarge = 413),
+///     ))]
+///     async fn upload_document(
+///         &self,
+///         ctx: &Ctx,
+///         title: String,
+///         attachment: Box<dyn upload_service_schema::BodySource + Send>,
+///     ) -> Result<UploadResponse, UploadError>;
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: service_schema: operation `upload_document`'s argument `attachment` is a body-source handle with no `part(...)` binding
+///               name it with `part("..." = attachment)`, or it has nowhere to read its bytes from - a generated message has no `Deserialize` for it to fall back to
+///   --> tests/zz_probe.rs:20:21
+///    |
+/// 20 |         attachment: Box<dyn upload_service_schema::BodySource + Send>,
+///    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
@@ -1371,6 +1656,10 @@ fn build_http_binding(
                 ),
             ));
         }
+    }
+
+    if let Some(refusal) = multipart_refusals(operation_ident, &raw, &existing) {
+        refusals = Some(combined(refusals.take(), refusal));
     }
 
     let path = parse_path_template(&raw.path)?;
@@ -1416,6 +1705,18 @@ fn build_http_binding(
             .map(|name| name.value())
             .collect(),
         method: raw.method.0,
+        multipart_parts: raw
+            .multipart_parts
+            .into_iter()
+            .filter_map(|(name, parameter)| {
+                let ty = existing.get(&parameter.to_string())?.clone();
+                Some(MultipartPart {
+                    name: name.value(),
+                    parameter,
+                    ty,
+                })
+            })
+            .collect(),
         ok_status: raw.ok_status.unwrap_or_else(|| default_ok_status(outcome)),
         path,
     })
@@ -1521,16 +1822,20 @@ fn is_vec_u8_type(ty: &Type) -> bool {
     }
 }
 
-/// Whether `ty` is written exactly as `(Vec<u8>, String)` — the one shape `body = "bytes"`
-/// requires of a reply's success type: the bytes, then their content type.
-fn is_bytes_success_shape(ty: &Type) -> bool {
+/// Whether `ty` is `(Vec<u8>, String)` — the shape `body = "bytes"` requires of a reply's success
+/// type with no declared `header_out` — followed by exactly `header_out_len` further elements
+/// where one was declared: the bytes, their content type, then each declared header's own value,
+/// in declaration order.
+fn is_bytes_success_shape(ty: &Type, header_out_len: usize) -> bool {
     let Type::Tuple(tuple) = ty else {
         return false;
     };
     let mut elements = tuple.elems.iter();
-    match (elements.next(), elements.next(), elements.next()) {
-        (Some(first), Some(second), None) => {
-            is_vec_u8_type(first) && is_named_type(second, "String")
+    match (elements.next(), elements.next()) {
+        (Some(first), Some(second)) => {
+            is_vec_u8_type(first)
+                && is_named_type(second, "String")
+                && elements.len() == header_out_len
         }
         _ => false,
     }
@@ -1552,52 +1857,62 @@ fn is_streamed_answer_type(ty: &Type) -> bool {
         .is_some_and(|segment| segment.ident == "StreamedAnswer")
 }
 
-/// Refuses a `body = "bytes"` or `body = "stream"` declaration that cannot hold. Both kinds refuse
-/// a `header_out` declared alongside them — bytes because its success type's second element
-/// already answers as `content-type`, stream because composing a further declared header with a
-/// streamed body is not yet implemented, `content-range` travelling through `StreamedAnswer`'s own
-/// `Partial` case instead — and both require their own fixed success shape: `(Vec<u8>, String)`
-/// for bytes, a bare or module-qualified `StreamedAnswer` for stream. A one-way operation, having
-/// no reply to shape at all, is refused under the same success-shape message either way.
+/// Whether `ty` is `StreamedAnswer` (bare or module-qualified) — the shape `body = "stream"`
+/// requires with no declared `header_out` — or, where one was declared, a tuple whose first
+/// element is that same shape, followed by exactly `header_out_len` further elements: the answer,
+/// then each declared header's own value, in declaration order.
+fn is_stream_success_shape(ty: &Type, header_out_len: usize) -> bool {
+    if header_out_len == 0 {
+        return is_streamed_answer_type(ty);
+    }
+    let Type::Tuple(tuple) = ty else {
+        return false;
+    };
+    let mut elements = tuple.elems.iter();
+    elements
+        .next()
+        .is_some_and(|first| is_streamed_answer_type(first) && elements.len() == header_out_len)
+}
+
+/// Refuses a `body = "bytes"` or `body = "stream"` declaration whose success type does not match
+/// what that body kind requires: `(Vec<u8>, String)` for bytes, a bare or module-qualified
+/// `StreamedAnswer` for stream — either one followed by exactly one further tuple element per
+/// declared `header_out` entry, in declaration order, where one was declared. A one-way operation,
+/// having no reply to shape at all, is refused under the same message either way.
 fn body_kind_refusals(raw: &RawHttp, outcome: &OperationOutcome) -> Option<syn::Error> {
     let (kind, declared) = raw.body.as_ref()?;
-    let (header_out_message, shape_message, shaped_correctly): (&str, &str, bool) = match kind {
-        BodyKind::Json => return None,
+    let header_out_len = raw.header_out.len();
+    let (shape_message, shaped_correctly): (&str, bool) = match kind {
+        // Neither says anything about the *response* shape: `Json` never did, and `Multipart`
+        // only changes how the *request* is read - its own refusals are `multipart_refusals`'s.
+        BodyKind::Json | BodyKind::Multipart => return None,
         BodyKind::Bytes => (
-            BYTES_BODY_HEADER_OUT_MESSAGE,
             BYTES_BODY_SUCCESS_SHAPE_MESSAGE,
             match outcome {
                 OperationOutcome::OneWay => false,
-                OperationOutcome::Reply { success, .. } => is_bytes_success_shape(success),
+                OperationOutcome::Reply { success, .. } => {
+                    is_bytes_success_shape(success, header_out_len)
+                }
             },
         ),
         BodyKind::Stream => (
-            STREAM_BODY_HEADER_OUT_MESSAGE,
             STREAM_BODY_SUCCESS_SHAPE_MESSAGE,
             match outcome {
                 OperationOutcome::OneWay => false,
-                OperationOutcome::Reply { success, .. } => is_streamed_answer_type(success),
+                OperationOutcome::Reply { success, .. } => {
+                    is_stream_success_shape(success, header_out_len)
+                }
             },
         ),
     };
-    let mut refusals: Option<syn::Error> = None;
-    if let Some(first) = raw.header_out.first() {
-        refusals = Some(combined(
-            refusals.take(),
-            syn::Error::new(first.span(), header_out_message),
-        ));
+    if shaped_correctly {
+        return None;
     }
-    if !shaped_correctly {
-        let spanned = match outcome {
-            OperationOutcome::OneWay => declared.span(),
-            OperationOutcome::Reply { success, .. } => success.span(),
-        };
-        refusals = Some(combined(
-            refusals.take(),
-            syn::Error::new(spanned, shape_message),
-        ));
-    }
-    refusals
+    let spanned = match outcome {
+        OperationOutcome::OneWay => declared.span(),
+        OperationOutcome::Reply { success, .. } => success.span(),
+    };
+    Some(syn::Error::new(spanned, shape_message))
 }
 
 /// The status a success answers with where the author wrote no `ok_status`: 204 for an operation
@@ -1625,6 +1940,112 @@ fn unclaimed_extra_parameter_message(operation: &Ident, name: &str, parameter: &
          `header_in` binds one ordinary argument beside the message; name it in the signature, \
          or remove the binding"
     )
+}
+
+fn unclaimed_part_parameter_message(operation: &Ident, name: &str, parameter: &Ident) -> String {
+    format!(
+        "service_schema: operation `{operation}` binds part \"{name}\" to a parameter named \
+         `{parameter}`, and `{operation}` takes no argument by that name\n       \
+         `part` binds one ordinary argument beside the message; name it in the signature, or \
+         remove the binding"
+    )
+}
+
+fn multipart_on_bodyless_method_message(operation: &Ident, method: HttpMethod) -> String {
+    format!(
+        "service_schema: operation `{operation}` declares `body = \"multipart\"` on a `{}`\n       \
+         `{}` carries no request body for parts to travel in; write `POST`, `PUT` or `PATCH`",
+        method.name(),
+        method.name(),
+    )
+}
+
+fn unbound_body_source_message(operation: &Ident, parameter: &str) -> String {
+    format!(
+        "service_schema: operation `{operation}`'s argument `{parameter}` is a body-source \
+         handle with no `part(...)` binding\n       \
+         name it with `part(\"...\" = {parameter})`, or it has nowhere to read its bytes from - \
+         a generated message has no `Deserialize` for it to fall back to"
+    )
+}
+
+/// Whether `ty` mentions `BodySource` anywhere in its written tokens — shallow and syntactic, the
+/// same way [`names_the_context`] reads for the trait's own type parameter. What this catches: an
+/// argument typed `Box<dyn BodySource + Send>` (or any wrapper naming it) that no `part(...)`
+/// binding claims, which would otherwise fall through to becoming an ordinary field on the
+/// generated message — and `BodySource` publishes no `Deserialize` for that field's own derive to
+/// find.
+fn mentions_body_source(ty: &Type) -> bool {
+    fn mentions(tree: &TokenTree) -> bool {
+        match tree {
+            TokenTree::Group(group) => group.stream().into_iter().any(|inner| mentions(&inner)),
+            TokenTree::Ident(named) => named == "BodySource",
+            TokenTree::Literal(_) | TokenTree::Punct(_) => false,
+        }
+    }
+    ty.to_token_stream().into_iter().any(|tree| mentions(&tree))
+}
+
+/// The three ways a multipart declaration can be wrong at compile time, checked together since
+/// none needs the others' guarantee first: a `part(...)` naming an argument the operation does not
+/// have, `body = "multipart"` on a method with no request body for parts to travel in, and a
+/// body-source-shaped argument no `part(...)` binding claims.
+fn multipart_refusals(
+    operation_ident: &Ident,
+    raw: &RawHttp,
+    existing: &HashMap<String, Type>,
+) -> Option<syn::Error> {
+    let mut refusals: Option<syn::Error> = None;
+    for (name, parameter) in &raw.multipart_parts {
+        if !existing.contains_key(&parameter.to_string()) {
+            refusals = Some(combined(
+                refusals.take(),
+                syn::Error::new(
+                    parameter.span(),
+                    unclaimed_part_parameter_message(operation_ident, &name.value(), parameter),
+                ),
+            ));
+        }
+    }
+    if let Some((BodyKind::Multipart, declared)) = &raw.body
+        && !raw.method.0.carries_a_body()
+    {
+        refusals = Some(combined(
+            refusals.take(),
+            syn::Error::new(
+                declared.span(),
+                multipart_on_bodyless_method_message(operation_ident, raw.method.0),
+            ),
+        ));
+    }
+    let claimed: HashSet<String> = raw
+        .header_in
+        .iter()
+        .map(|(_, parameter)| parameter.to_string())
+        .chain(
+            raw.multipart_parts
+                .iter()
+                .map(|(_, parameter)| parameter.to_string()),
+        )
+        .collect();
+    // A sorted, owned snapshot rather than iterating `existing` (a `HashMap`) directly: the
+    // arguments this walks are the operation's own signature, few enough that cloning them is
+    // free, and a refusal's own ordering must not depend on the hasher's arbitrary bucket order.
+    let mut candidates: Vec<(&String, &Type)> = existing.iter().collect();
+    candidates.sort_by_key(|(name, _)| (*name).clone());
+    for (name, ty) in candidates {
+        if claimed.contains(name) || !mentions_body_source(ty) {
+            continue;
+        }
+        refusals = Some(combined(
+            refusals.take(),
+            syn::Error::new(
+                ty.span(),
+                unbound_body_source_message(operation_ident, name),
+            ),
+        ));
+    }
+    refusals
 }
 
 fn unmatched_placeholder_message(operation: &Ident, placeholder: &str) -> String {
@@ -1742,12 +2163,11 @@ fn header_out_refusals(
             syn::Error::new(first.span(), header_out_on_one_way_message(operation_ident))
         }),
         OperationOutcome::Reply { success, .. } => {
-            // `body = "bytes"` requires its own fixed `(Vec<u8>, String)` tuple, whose second
-            // element answers as the content type rather than a `header_out` entry, and
-            // `body = "stream"` composes no declared header with its body at all yet — both
-            // combinations are `body_kind_refusals`'s own to check, with their own message naming
-            // the requirement, so this check stands down rather than reading the same success type
-            // as an unexplained `header_out` arity.
+            // `body = "bytes"` and `body = "stream"` each compose `header_out` onto their own
+            // fixed shape (the bytes pair, or the streamed answer) rather than an ordinary tuple
+            // with no further meaning of its own — `body_kind_refusals` checks the resulting arity
+            // itself, with a message naming that kind's own requirement, so this check stands down
+            // rather than reading the same success type as an unexplained `header_out` arity.
             if matches!(raw.body, Some((BodyKind::Bytes | BodyKind::Stream, _))) {
                 return None;
             }

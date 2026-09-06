@@ -215,7 +215,8 @@
 
 use super::Transport;
 use crate::service_schema::parse::{
-    HeaderIn, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
+    HeaderIn, MultipartPart, OperationDef, OperationInputs, OperationOutcome, ServiceDef,
+    is_unit_type,
 };
 use crate::service_schema::support::{message_alias_ident, message_validator_ident, module_ident};
 use proc_macro2::TokenStream;
@@ -474,7 +475,11 @@ fn arm(module: &Ident, operation: &OperationDef) -> TokenStream {
 /// named one, and otherwise the fields of the message declared for it, unpacked back into the
 /// arguments the operation was written with — followed by one more argument per `header_in`
 /// binding, decoded into a local of the same name ahead of the call: by [`header_in_reads`] here,
-/// and by `http_rest`'s own header decode where that dispatcher reuses this (`pub(super)` for it).
+/// and by `http_rest`'s own header decode where that dispatcher reuses this (`pub(super)` for it) —
+/// and, last, one more per `part` binding, `http_rest`'s own multipart decode building the local
+/// of the same name. AMQP carries no multipart channel of its own: a service asking for `amqp_rpc`
+/// beside a multipart operation is not refused here, and its own dispatcher's call to this
+/// argument would not resolve — a known gap, tracked separately from `http_rest`'s own support.
 pub(super) fn call_arguments(operation: &OperationDef) -> Vec<TokenStream> {
     let mut arguments: Vec<TokenStream> = match &operation.inputs {
         OperationInputs::Empty => Vec::new(),
@@ -486,6 +491,10 @@ pub(super) fn call_arguments(operation: &OperationDef) -> Vec<TokenStream> {
     };
     arguments.extend(header_in_bindings(operation).iter().map(|header| {
         let parameter = &header.parameter;
+        quote! { #parameter }
+    }));
+    arguments.extend(multipart_part_bindings(operation).iter().map(|part| {
+        let parameter = &part.parameter;
         quote! { #parameter }
     }));
     arguments
@@ -1221,6 +1230,15 @@ fn header_in_bindings(operation: &OperationDef) -> &[HeaderIn] {
         .http
         .as_ref()
         .map_or(&[], |binding| binding.header_in.as_slice())
+}
+
+/// The `part` bindings an operation declared, or none for an operation that named no `http` group
+/// at all — mirrors [`header_in_bindings`].
+fn multipart_part_bindings(operation: &OperationDef) -> &[MultipartPart] {
+    operation
+        .http
+        .as_ref()
+        .map_or(&[], |binding| binding.multipart_parts.as_slice())
 }
 
 /// Decodes each `header_in` binding off the incoming headers before the implementation is called,

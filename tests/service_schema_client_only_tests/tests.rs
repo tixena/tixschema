@@ -112,12 +112,13 @@ pub trait DocumentClientService<Ctx> {
         path = "/documents/{document_id}/thumbnail",
         error_status(NotFound = 404),
         body = "bytes",
+        header_out("x-document-id"),
     ))]
     async fn get_thumbnail(
         &self,
         ctx: &Ctx,
         document_id: String,
-    ) -> Result<(Vec<u8>, String), ThumbnailError>;
+    ) -> Result<(Vec<u8>, String, String), ThumbnailError>;
 
     #[service_schema_op(http(
         method = "GET",
@@ -213,10 +214,14 @@ impl DocumentClientService<()> for DocumentClientBackEnd {
     async fn get_thumbnail(
         &self,
         _ctx: &(),
-        _document_id: String,
-    ) -> Result<(Vec<u8>, String), ThumbnailError> {
+        document_id: String,
+    ) -> Result<(Vec<u8>, String, String), ThumbnailError> {
         ready(()).await;
-        Ok((vec![0x89, 0x50, 0x4e, 0x47], "image/png".to_owned()))
+        Ok((
+            vec![0x89, 0x50, 0x4e, 0x47],
+            "image/png".to_owned(),
+            format!("doc-{document_id}"),
+        ))
     }
 
     async fn get_version(
@@ -504,6 +509,36 @@ fn a_call_records_the_exact_request_method_path_query_headers_and_body() {
 }
 
 #[test]
+fn an_absent_option_header_in_omits_the_header_entirely_rather_than_sending_null() {
+    let transport = RecordingTransport::queued(vec![(
+        200,
+        vec![("etag".to_owned(), "v9".to_owned())],
+        br#"{"content":"d1@v1"}"#.to_vec(),
+    )]);
+    let client = http_rest_client::DocumentClientServiceClient::new(transport);
+    poll_once(client.get_version(
+        GetVersionRequest {
+            document_id: "d1".to_owned(),
+            version_id: "v1".to_owned(),
+        },
+        None,
+    ))
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        client.transport().requests(),
+        vec![RecordedRequest {
+            method: "GET".to_owned(),
+            path: "/documents/d1/versions/v1".to_owned(),
+            query: String::new(),
+            headers: Vec::new(),
+            body: Vec::new(),
+        }],
+        "a `None` header_in argument carries no header at all - not one holding the text \"null\""
+    );
+}
+
+#[test]
 fn a_bodied_call_carries_the_message_as_the_json_body() {
     let transport = RecordingTransport::queued(vec![(
         200,
@@ -621,10 +656,40 @@ fn a_no_payload_operation_resolves_on_its_declared_status_without_reading_a_body
     assert_eq!(client.transport().requests()[0].path, "/documents/d1");
 }
 
-/// A `body = "bytes"` operation reads the response body bare, and the `content-type` header back
-/// into the tuple's second element - no `serde_json` decode on the success path.
+/// A `body = "bytes"` operation reads the response body bare, the `content-type` header back into
+/// the tuple's second element, and its declared `header_out` entry back into the third - no
+/// `serde_json` decode anywhere on the success path.
 #[test]
-fn a_bytes_operation_reads_the_body_and_content_type_back() {
+fn a_bytes_operation_reads_the_body_content_type_and_header_out_back() {
+    let transport = RecordingTransport::queued(vec![(
+        200,
+        vec![
+            ("content-type".to_owned(), "image/png".to_owned()),
+            ("x-document-id".to_owned(), "doc-d1".to_owned()),
+        ],
+        vec![0x89, 0x50, 0x4e, 0x47],
+    )]);
+    let client = http_rest_client::DocumentClientServiceClient::new(transport);
+    let answered = poll_once(client.get_thumbnail("d1".to_owned())).unwrap();
+    assert_eq!(
+        answered,
+        Ok((
+            vec![0x89, 0x50, 0x4e, 0x47],
+            "image/png".to_owned(),
+            "doc-d1".to_owned()
+        ))
+    );
+    assert_eq!(client.transport().requests()[0].method, "GET");
+    assert_eq!(
+        client.transport().requests()[0].path,
+        "/documents/d1/thumbnail"
+    );
+}
+
+/// A `header_out` entry a bytes response never carries is a defect, not a silently absent value -
+/// exactly like the JSON path's own missing-header refusal.
+#[test]
+fn a_bytes_operation_missing_its_declared_header_out_answers_a_fault() {
     let transport = RecordingTransport::queued(vec![(
         200,
         vec![("content-type".to_owned(), "image/png".to_owned())],
@@ -632,14 +697,14 @@ fn a_bytes_operation_reads_the_body_and_content_type_back() {
     )]);
     let client = http_rest_client::DocumentClientServiceClient::new(transport);
     let answered = poll_once(client.get_thumbnail("d1".to_owned())).unwrap();
-    assert_eq!(
-        answered,
-        Ok((vec![0x89, 0x50, 0x4e, 0x47], "image/png".to_owned()))
-    );
-    assert_eq!(client.transport().requests()[0].method, "GET");
-    assert_eq!(
-        client.transport().requests()[0].path,
-        "/documents/d1/thumbnail"
+    assert!(
+        matches!(
+            &answered,
+            Err(document_client_service_schema::CallError::Fault(reported))
+                if reported.kind()
+                    == document_client_service_schema::ServiceFaultKind::UndeserializablePayload
+        ),
+        "expected a fault, got: {answered:?}"
     );
 }
 
@@ -699,6 +764,10 @@ fn the_document_contract_is_implementable_where_no_dispatcher_was_placed() {
     );
     assert_eq!(
         poll_once(DocumentClientBackEnd.get_thumbnail(&(), "d1".to_owned())).unwrap(),
-        Ok((vec![0x89, 0x50, 0x4e, 0x47], "image/png".to_owned()))
+        Ok((
+            vec![0x89, 0x50, 0x4e, 0x47],
+            "image/png".to_owned(),
+            "doc-d1".to_owned()
+        ))
     );
 }

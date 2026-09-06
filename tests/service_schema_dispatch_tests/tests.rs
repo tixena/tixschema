@@ -1359,12 +1359,13 @@ pub trait DocumentService<Ctx> {
         path = "/documents/{document_id}/thumbnail",
         error_status(NotFound = 404),
         body = "bytes",
+        header_out("x-document-id"),
     ))]
     async fn get_thumbnail(
         &self,
         ctx: &Ctx,
         document_id: String,
-    ) -> Result<(Vec<u8>, String), ThumbnailError>;
+    ) -> Result<(Vec<u8>, String, String), ThumbnailError>;
 
     #[service_schema_op(http(
         method = "GET",
@@ -1440,13 +1441,17 @@ impl DocumentService<()> for DocumentBackEnd {
         &self,
         _ctx: &(),
         document_id: String,
-    ) -> Result<(Vec<u8>, String), ThumbnailError> {
+    ) -> Result<(Vec<u8>, String, String), ThumbnailError> {
         ready(()).await;
         self.reach(format!("get_thumbnail {document_id}"));
         if document_id == "missing" {
             return Err(ThumbnailError::NotFound);
         }
-        Ok((vec![0x89, 0x50, 0x4e, 0x47], "image/png".to_owned()))
+        Ok((
+            vec![0x89, 0x50, 0x4e, 0x47],
+            "image/png".to_owned(),
+            format!("doc-{document_id}"),
+        ))
     }
 
     async fn get_version(
@@ -2123,6 +2128,18 @@ fn a_declared_status_success_answers_bare_json_with_no_envelope() {
 }
 
 #[test]
+fn an_absent_option_header_in_decodes_as_the_arguments_own_none_rather_than_a_null_string() {
+    let (reached, response) =
+        http_dispatched("GET", "/documents/present/versions/v1", "", &[], b"");
+    assert_eq!(
+        reached,
+        vec!["get_version present v1 None".to_owned()],
+        "a header the request never carried is the same as the caller writing no value at all"
+    );
+    assert_eq!(response.status(), 200);
+}
+
+#[test]
 fn a_mapped_error_answers_its_declared_status_with_the_error_enum_as_the_body() {
     let (_not_found_reached, not_found_response) =
         http_dispatched("GET", "/documents/missing/versions/v1", "", &[], b"");
@@ -2262,9 +2279,10 @@ fn an_operation_naming_no_http_group_defaults_to_a_plain_post() {
 }
 
 /// A `body = "bytes"` operation answers the bytes bare, under `content-type`, rather than the
-/// JSON envelope every other declared status writes.
+/// JSON envelope every other declared status writes - and its declared `header_out` entry rides
+/// beside them as an ordinary response header, exactly as the JSON path composes one.
 #[test]
-fn a_bytes_operation_answers_raw_bytes_under_its_own_content_type() {
+fn a_bytes_operation_answers_raw_bytes_under_its_own_content_type_and_header_out() {
     let (reached, response) = http_dispatched("GET", "/documents/present/thumbnail", "", &[], b"");
     assert_eq!(reached, vec!["get_thumbnail present".to_owned()]);
     assert_eq!(response.status(), 200);
@@ -2277,6 +2295,16 @@ fn a_bytes_operation_answers_raw_bytes_under_its_own_content_type() {
             .map(|(_, value)| value.as_str()),
         Some("image/png"),
         "got: {:?}",
+        response.headers()
+    );
+    assert_eq!(
+        response
+            .headers()
+            .iter()
+            .find(|(name, _)| name == "x-document-id")
+            .map(|(_, value)| value.as_str()),
+        Some("doc-present"),
+        "the declared `header_out` entry rides beside content-type. Got: {:?}",
         response.headers()
     );
 }

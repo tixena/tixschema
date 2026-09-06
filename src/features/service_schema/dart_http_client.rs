@@ -313,20 +313,30 @@ fn query_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
     format!("    final queryParts = <String>[];\n{pushes}    final query = queryParts.join('&');\n")
 }
 
+/// Builds the outgoing header list, one entry per `header_in` binding — except a `null` optional
+/// binding, which is added nowhere rather than as the empty string [`dart_wire_text`] renders for
+/// it. A header the request never meant to carry is omitted, not sent empty. Mirrors the Rust and
+/// TypeScript clients' own `header_in_build_stmts`/`header_in_build_stmt`.
 fn header_in_build_stmt(shape: &HttpShape) -> String {
     if shape.header_in.is_empty() {
         return "    const headers = <(String, String)>[];\n".to_owned();
     }
-    let entries = shape
-        .header_in
-        .iter()
-        .map(|header| {
-            let text = dart_wire_text(&header.ty, &header.parameter.to_string());
-            format!("('{}', {text})", header.name)
-        })
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!("    final headers = <(String, String)>[{entries}];\n")
+    let mut stmt = String::from("    final headers = <(String, String)>[];\n");
+    for header in &shape.header_in {
+        let name = &header.name;
+        let parameter = &header.parameter;
+        if let Some(inner) = option_inner(&header.ty) {
+            let text = dart_wire_text(inner, &format!("{parameter}!"));
+            let _ = writeln!(
+                stmt,
+                "    if ({parameter} != null) {{\n      headers.add(('{name}', {text}));\n    }}"
+            );
+        } else {
+            let text = dart_wire_text(&header.ty, &parameter.to_string());
+            let _ = writeln!(stmt, "    headers.add(('{name}', {text}));");
+        }
+    }
+    stmt
 }
 
 fn body_build_stmt(shape: &HttpShape) -> String {

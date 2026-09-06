@@ -55,7 +55,7 @@
 
 use super::parse::{
     HttpBinding, OperationDef, OperationInputs, OperationOutcome, PathSegment, ServiceDef,
-    service_declares_a_stream,
+    service_declares_a_stream, service_needs_body_source_seam,
 };
 use super::transport::Transport;
 use crate::rename_rule::RenameRule;
@@ -196,8 +196,13 @@ pub fn emit(service: &ServiceDef, asked: &[Transport]) -> TokenStream {
     let readers = violation_readers();
     let anchors = root_anchors(service, asked);
     let http_completeness = http_error_status_completeness(service);
-    let stream_seam = if service_declares_a_stream(service) {
-        stream_seam()
+    let body_source = if service_needs_body_source_seam(service) {
+        body_source_trait()
+    } else {
+        TokenStream::new()
+    };
+    let streamed_answer = if service_declares_a_stream(service) {
+        streamed_answer_type()
     } else {
         TokenStream::new()
     };
@@ -218,27 +223,29 @@ pub fn emit(service: &ServiceDef, asked: &[Transport]) -> TokenStream {
             #readers
             #anchors
             #http_completeness
-            #stream_seam
+            #body_source
+            #streamed_answer
         }
     }
 }
 
-/// The body-source seam a `body = "stream"` operation's signature names: `BodySource`, pulled
-/// rather than pushed so it composes for free with any `std::io::Read` a handler already has, and
-/// `StreamedAnswer`, the fixed two-case answer every streamed operation returns regardless of what
-/// it streams — `Full` for a `200` body, `Partial` for a `206` range slice carrying its own
-/// `content-range`. Emitted here, eagerly, rather than deferred into the `http_rest` dispatcher's
-/// own `macro_rules!` body: the author's own trait signature names `StreamedAnswer` directly, and a
-/// deferred macro is not expanded until a transport is placed, possibly in another crate.
+/// The body-source trait a `body = "stream"` response and a `body = "multipart"` request's own
+/// file part both name: pulled rather than pushed so it composes for free with any
+/// `std::io::Read` a handler already has. Emitted wherever either kind reaches for it
+/// ([`crate::service_schema::parse::service_needs_body_source_seam`]), eagerly, rather than
+/// deferred into a transport's own `macro_rules!` body: the author's own trait signature names it
+/// directly, and a deferred macro is not expanded until a transport is placed, possibly in another
+/// crate.
 ///
-/// Names no runtime crate — `std::io` alone — so `dispatch` (`http_rest`'s own emitted item, which
-/// reaches this seam through `$crate`) answers a stream without naming `tokio`, `bytes` or
-/// `futures` either.
-fn stream_seam() -> TokenStream {
+/// Names no runtime crate — `std::io` alone — so `dispatch` (a transport's own emitted item, which
+/// reaches this seam through `$crate`) answers a stream, or hands a file part through, without
+/// naming `tokio`, `bytes` or `futures` either.
+fn body_source_trait() -> TokenStream {
     quote! {
-        /// A response body source, pulled one chunk at a time by whatever drains it onto the
-        /// wire. Blanket-implemented for every [`std::io::Read`], so a `File`, a chunked cursor, or
-        /// any other reader an author already has satisfies this for free.
+        /// A body source, pulled one chunk at a time rather than buffered whole: a streamed
+        /// response's own body, or a multipart request's own file part. Blanket-implemented for
+        /// every [`std::io::Read`], so a `File`, a chunked cursor, or any other reader an author
+        /// already has satisfies this for free.
         pub trait BodySource {
             /// Pulls the next chunk into `buf`. `Ok(0)` means exhausted, exactly [`std::io::Read::read`]'s
             /// own contract.
@@ -250,7 +257,14 @@ fn stream_seam() -> TokenStream {
                 self.read(buf)
             }
         }
+    }
+}
 
+/// What a `body = "stream"` operation answers with, published only where one exists
+/// ([`crate::service_schema::parse::service_declares_a_stream`]) — a multipart request's own file
+/// part needs [`body_source_trait`] alone, never this.
+fn streamed_answer_type() -> TokenStream {
+    quote! {
         /// What a `body = "stream"` operation answers with. Every such operation returns this same
         /// type regardless of what it streams: `Full` answers the declared `ok_status` with the
         /// whole body; `Partial` answers `206` with `content-range` set to the given string

@@ -69,8 +69,23 @@ mod stream_service;
 #[path = "service_schema_dispatch_tests/stream_http_rest_transport.rs"]
 mod stream_http_rest_transport;
 
+/// `UploadService`, its `body = "multipart"` operation and the tests driving it - a service of
+/// its own rather than an operation added to `DocumentService`, so a multipart request's own
+/// extra `parts` argument never reaches a body kind this file already exercises.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_dispatch_tests/multipart_service.rs"]
+mod multipart_service;
+
+/// The `http_rest` dispatcher for `UploadService`, in a module of its own.
+#[cfg(all(test, feature = "serde"))]
+#[path = "service_schema_dispatch_tests/multipart_http_rest_transport.rs"]
+mod multipart_http_rest_transport;
+
 // A transport's dispatcher reaches what the service declared through `$crate`, which is this
 // binary's root: a service written in a submodule is named here for the expansion to resolve.
+#[cfg(all(test, feature = "serde"))]
+use multipart_service::{UploadService, upload_service_schema};
 #[cfg(all(test, feature = "serde"))]
 use stream_service::{ContentService, content_service_schema};
 #[cfg(all(

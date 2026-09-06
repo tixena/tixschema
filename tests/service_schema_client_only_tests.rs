@@ -36,10 +36,24 @@ mod stream_service;
 #[path = "service_schema_client_only_tests/stream_http_rest_client.rs"]
 mod stream_http_rest_client;
 
+/// `UploadClientService`, its `body = "multipart"` operation and the tests calling it - a service
+/// of its own rather than an operation added to `DocumentClientService`, so a multipart request's
+/// own `OutgoingRequest::into_parts` never reaches a body kind this file already exercises.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_client_only_tests/multipart_service.rs"]
+mod multipart_service;
+
+#[cfg(all(test, feature = "serde"))]
+#[path = "service_schema_client_only_tests/multipart_http_rest_client.rs"]
+mod multipart_http_rest_client;
+
 // The client reaches what the service declared through `$crate`, which is this binary's root: the
 // service's own module, which every message it sends is built through. The trait is named beside it
 // although no client body reaches it: the declaration anchors both root names a transport can
 // reach, whichever half of it this crate goes on to place.
+#[cfg(all(test, feature = "serde"))]
+use multipart_service::{UploadClientService, upload_client_service_schema};
 #[cfg(all(test, feature = "serde"))]
 use stream_service::{ContentClientService, content_client_service_schema};
 #[cfg(all(test, feature = "serde"))]

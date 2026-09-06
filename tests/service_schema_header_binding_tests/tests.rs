@@ -419,6 +419,53 @@ fn the_client_encodes_a_claimed_header_outbound_and_decodes_a_declared_one_from_
 }
 
 #[test]
+fn a_none_header_in_argument_round_trips_through_the_amqp_headers_table_as_json_null() {
+    // The client encodes `None` as the JSON text "null" - not this crate's own placeholder - and
+    // the dispatcher's own decoder reads that text back as `None` for an `Option<String>`
+    // argument, the same outcome an omitted header already decodes to. AMQP's headers channel
+    // carries full JSON (a string is quoted), so the four-character text "null" is never confused
+    // with a caller-chosen string the way a bare, unquoted HTTP header value could be - unlike
+    // `http_rest`, which omits the header instead rather than relying on that distinction.
+    let transport = ProbeTransport::new();
+    let client = amqp_client::DocumentServiceClient::new(transport);
+    poll_once(client.get_version(
+        GetVersionRequest {
+            document_id: "doc-1".to_owned(),
+        },
+        None,
+    ))
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        client.transport().calls(),
+        vec![(
+            "get-version".to_owned(),
+            vec![("range".to_owned(), "null".to_owned())],
+        )],
+        "a `None` header_in argument still encodes an entry, its value the JSON text \"null\""
+    );
+
+    let service = DocumentBackEnd::new();
+    let reply = ProbeReply::new();
+    poll_once(amqp_transport::dispatch(
+        &service,
+        &(),
+        &amqp_transport::IncomingMessage::new(
+            "get-version".to_owned(),
+            br#"{"document_id":"doc-1"}"#.to_vec(),
+            vec![("range".to_owned(), "null".to_owned())],
+        ),
+        &reply,
+    ))
+    .unwrap();
+    assert_eq!(
+        service.reached(),
+        vec![("doc-1".to_owned(), None)],
+        "the literal text \"null\" decodes back to `None`, exactly as an omitted header does"
+    );
+}
+
+#[test]
 fn a_one_way_operation_still_decodes_its_claimed_header_before_calling_the_implementation() {
     let service = DocumentBackEnd::new();
     let reply = ProbeReply::new();

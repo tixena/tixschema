@@ -59,9 +59,10 @@ use super::amqp_rpc::{
     refusal_reader,
 };
 use crate::service_schema::parse::{
-    BodyKind, DEFAULT_BINDING_ERROR_STATUS, HeaderIn, HttpShape, OperationDef, OperationInputs,
-    OperationOutcome, PathSegment, ScalarKind, ServiceDef, is_scalar_named_type, is_unit_type,
-    option_inner, scalar_kind, service_declares_a_stream, tuple_elements, vec_inner, wire_key,
+    BodyKind, DEFAULT_BINDING_ERROR_STATUS, HeaderIn, HttpShape, MultipartPart, OperationDef,
+    OperationInputs, OperationOutcome, PathSegment, ScalarKind, ServiceDef, is_scalar_named_type,
+    is_unit_type, option_inner, scalar_kind, service_declares_a_stream, service_declares_multipart,
+    tuple_elements, vec_inner, wire_key,
 };
 use crate::service_schema::support::{message_alias_ident, message_validator_ident, module_ident};
 use proc_macro2::TokenStream;
@@ -267,7 +268,15 @@ fn dispatcher_items(service: &ServiceDef) -> TokenStream {
     // `OutgoingBody` enum a streamed operation's undrained body needs: `dispatch` is one function
     // with one return type, so the choice is the whole service's rather than one operation's.
     let has_stream = service_declares_a_stream(service);
+    // Whether `dispatch` takes an extra `parts` argument at all: a whole-service decision exactly
+    // like `has_stream`, so a service with no multipart operation reaches for none of this.
+    let has_multipart = service_declares_multipart(service);
     let incoming = incoming_request_items();
+    let incoming_part = if has_multipart {
+        incoming_part_type(&module)
+    } else {
+        TokenStream::new()
+    };
     let outgoing = outgoing_response_items(has_stream, &module);
     let route = route_type();
     let routes = route_table(service);
@@ -289,7 +298,7 @@ fn dispatcher_items(service: &ServiceDef) -> TokenStream {
     } else {
         TokenStream::new()
     };
-    let dispatch = dispatch_fn(service, has_stream, &module);
+    let dispatch = dispatch_fn(service, has_stream, has_multipart, &module);
     // Every type, trait and impl ahead of every function: `fault_handler` declares a trait and an
     // impl, so it sits with `incoming`/`outgoing`/`route` rather than beside `path_token` and
     // `query_helpers`, both of which are functions a strict consumer's lints would otherwise see
@@ -297,6 +306,7 @@ fn dispatcher_items(service: &ServiceDef) -> TokenStream {
     quote! {
         #routes
         #incoming
+        #incoming_part
         #outgoing
         #route
         #fault_handler
@@ -371,6 +381,21 @@ fn incoming_request_items() -> TokenStream {
             pub fn query(&self) -> &str {
                 &self.query
             }
+        }
+    }
+}
+
+/// One multipart request part, already split off the wire by an adapter: text content, or a file
+/// part's undrained bytes through the same seam a streamed response pulls from. Handed to
+/// `dispatch` as its own argument rather than a field on `IncomingRequest` — a file part's own
+/// handle has to be owned by whichever call argument it fills, and `IncomingRequest` is read by
+/// shared reference throughout the rest of dispatch, path and header decoding included.
+fn incoming_part_type(module: &Ident) -> TokenStream {
+    quote! {
+        /// One multipart request part: text content, or a file part's undrained bytes.
+        pub enum IncomingPart {
+            File(::std::boxed::Box<dyn $crate::#module::BodySource + Send>),
+            Text(::std::string::String),
         }
     }
 }
@@ -658,7 +683,12 @@ fn fault_handler_trait(module: &Ident) -> TokenStream {
     }
 }
 
-fn dispatch_fn(service: &ServiceDef, has_stream: bool, module: &Ident) -> TokenStream {
+fn dispatch_fn(
+    service: &ServiceDef,
+    has_stream: bool,
+    has_multipart: bool,
+    module: &Ident,
+) -> TokenStream {
     let contract = &service.ident;
     let builders = response_builders(has_stream);
     let arms = service
@@ -674,6 +704,15 @@ fn dispatch_fn(service: &ServiceDef, has_stream: bool, module: &Ident) -> TokenS
             quote!(svc),
             quote!(ctx),
         )
+    };
+    // A `body = "multipart"` operation reads its parts out of this extra argument rather than off
+    // `IncomingRequest` - a file part's own handle has to be owned by whichever call argument it
+    // fills, where `request` is read by shared reference throughout the rest of dispatch, and
+    // `mut` is what lets the one matching arm remove entries from it as it claims them.
+    let parts_param = if has_multipart {
+        quote! { mut parts: ::std::vec::Vec<(::std::string::String, IncomingPart)>, }
+    } else {
+        TokenStream::new()
     };
     let dispatch_doc = format!(
         "Matches `request` against every route `{contract}` declares and answers it: a declared \
@@ -694,6 +733,7 @@ fn dispatch_fn(service: &ServiceDef, has_stream: bool, module: &Ident) -> TokenS
             #implementation: &S,
             #context: &Ctx,
             request: &IncomingRequest,
+            #parts_param
             handler: &H,
         ) -> impl ::core::future::Future<Output = OutgoingResponse> + Send
         where
@@ -742,6 +782,12 @@ fn dispatch_arm(module: &Ident, operation: &OperationDef, has_stream: bool) -> T
         .map(|header| header_in_let(wire, header))
         .collect();
 
+    let multipart_part_lets: TokenStream = shape
+        .multipart_parts
+        .iter()
+        .map(|part| multipart_part_let(module, wire, part))
+        .collect();
+
     let (value_stmts, value_expr) = message_value(
         wire,
         operation,
@@ -782,11 +828,54 @@ fn dispatch_arm(module: &Ident, operation: &OperationDef, has_stream: bool) -> T
             if let Some(#captured_binding) = match_path(&[#(#path_tokens),*], path) {
                 #placeholder_lets
                 #header_in_lets
+                #multipart_part_lets
                 #value_stmts
                 #decode_and_validate
                 #answer
             }
         }
+    }
+}
+
+/// Removes and returns the multipart part named `name` from `parts` (the dispatcher's own extra
+/// argument), or answers `None` where the request never carried one by that name. Each name is
+/// claimed at most once - a scalar field by its own wire key, a `part` binding by its declared
+/// name - so nothing here reads the same part twice.
+fn take_part_expr(name: &str) -> TokenStream {
+    quote! {
+        parts
+            .iter()
+            .position(|(carried, _)| carried == #name)
+            .map(|index| parts.remove(index).1)
+    }
+}
+
+/// One `part("name" = parameter)` binding's own local: the named part's file handle, handed
+/// through undecoded before `validate()` runs - a message field never carries one, `BodySource`
+/// publishing no `Deserialize` for it to be read back through.
+fn multipart_part_let(module: &Ident, wire: &str, part: &MultipartPart) -> TokenStream {
+    let name = &part.name;
+    let parameter = &part.parameter;
+    let declared_type = &part.ty;
+    let take = take_part_expr(name);
+    quote! {
+        let #parameter: #declared_type = match #take {
+            Some(IncomingPart::File(source)) => source,
+            Some(IncomingPart::Text(_)) => {
+                return handler.on_fault(&$crate::#module::ServiceFault::failed_validation(
+                    #wire,
+                    Some(#name),
+                    "expected a file part, found a text part",
+                ));
+            }
+            None => {
+                return handler.on_fault(&$crate::#module::ServiceFault::failed_validation(
+                    #wire,
+                    Some(#name),
+                    "a required multipart part was not carried",
+                ));
+            }
+        };
     }
 }
 
@@ -825,9 +914,12 @@ fn message_value(
     let bodied = shape.method.carries_a_body();
     match &operation.inputs {
         OperationInputs::Empty => {
-            if bodied {
+            if bodied && !matches!(shape.body_kind, BodyKind::Multipart) {
                 (TokenStream::new(), from_body_expr(wire))
             } else {
+                // A multipart request's body is not itself the message - every field, if there
+                // were any, would be read off a named part instead - and an operation with no
+                // carried field at all (every argument claimed by `part`) has nothing to read.
                 (
                     TokenStream::new(),
                     quote! { ::serde_json::Value::Object(::serde_json::Map::new()) },
@@ -842,7 +934,7 @@ fn message_value(
             placeholder_names,
         ),
         OperationInputs::Generated(fields) => {
-            message_value_for_generated(fields, bodied, placeholder_names)
+            message_value_for_generated(fields, shape, placeholder_names)
         }
     }
 }
@@ -900,13 +992,18 @@ fn message_value_for_named(
 
 /// A `OperationInputs::Generated` message: each field is path-bound (its own coerced value,
 /// inserted under its wire key), query-bound (a bodyless method's field the path left unbound,
-/// read out of the parsed query string) or left exactly as the parsed body already has it.
+/// read out of the parsed query string), part-bound (a `body = "multipart"` method's field, read
+/// out of the same-named part) or left exactly as the parsed JSON body already has it.
 fn message_value_for_generated(
     fields: &[(Ident, Type)],
-    bodied: bool,
+    shape: &HttpShape,
     placeholder_names: &[String],
 ) -> (TokenStream, TokenStream) {
-    let base = if bodied {
+    let bodied = shape.method.carries_a_body();
+    let multipart = matches!(shape.body_kind, BodyKind::Multipart);
+    let base = if multipart {
+        quote! { let mut object = ::serde_json::Map::new(); }
+    } else if bodied {
         object_base(true)
     } else {
         quote! {
@@ -923,6 +1020,18 @@ fn message_value_for_generated(
                 let ident = format_ident!("{field_name}");
                 let decode = decode_expr(ty, &quote! { #ident.as_str() });
                 quote! { object.insert(#key.to_owned(), #decode); }
+            } else if multipart {
+                let take = take_part_expr(&key);
+                let decode = decode_expr(ty, &quote! { text });
+                quote! {
+                    object.insert(#key.to_owned(), match #take {
+                        Some(IncomingPart::Text(text)) => {
+                            let text = text.as_str();
+                            #decode
+                        }
+                        Some(IncomingPart::File(_)) | None => ::serde_json::Value::Null,
+                    });
+                }
             } else if bodied {
                 TokenStream::new()
             } else {
@@ -1044,18 +1153,8 @@ fn answer_block(
                     }
                 }
             } else {
-                let header_idents: Vec<Ident> = (0..shape.header_out.len())
-                    .map(|index| format_ident!("header_out_{index}"))
-                    .collect();
-                let header_entries: TokenStream = shape
-                    .header_out
-                    .iter()
-                    .zip(&header_idents)
-                    .map(|(name, ident)| {
-                        let render = encode_expr(&quote! { #ident });
-                        quote! { (#name.to_owned(), #render), }
-                    })
-                    .collect();
+                let header_idents = header_out_idents(shape.header_out.len());
+                let header_entries = header_out_entries(shape, &header_idents);
                 quote! {
                     match #called {
                         Ok(Ok((value, #(#header_idents),*))) => {
@@ -1074,9 +1173,33 @@ fn answer_block(
     }
 }
 
-/// A `body = "bytes"` operation's own arm: `body_kind_refusals` (parse.rs) already requires this
-/// shape and refuses `header_out` alongside it, so `success` is `(Vec<u8>, String)` and there is no
-/// header-out tuple arity to branch on the way the JSON kind does.
+/// Fresh local identifiers, one per `header_out` entry, in declaration order - the tuple pattern
+/// an arm destructures a bound success into, and a client rebuilds one from.
+fn header_out_idents(count: usize) -> Vec<Ident> {
+    (0..count)
+        .map(|index| format_ident!("header_out_{index}"))
+        .collect()
+}
+
+/// One `(name, rendered)` push-ready entry per `header_out` binding, each already bound to that
+/// entry's own local. The one seam every response-header-writing arm - JSON, bytes, stream - builds
+/// its extra headers through, so the three cannot render one differently from another.
+fn header_out_entries(shape: &HttpShape, idents: &[Ident]) -> TokenStream {
+    shape
+        .header_out
+        .iter()
+        .zip(idents)
+        .map(|(name, ident)| {
+            let render = encode_expr(&quote! { #ident });
+            quote! { (#name.to_owned(), #render), }
+        })
+        .collect()
+}
+
+/// A `body = "bytes"` operation's own arm: with no declared `header_out`, `success` is
+/// `(Vec<u8>, String)`; with one declared, `parse.rs`'s own `is_bytes_success_shape` has already
+/// required `success` to carry one more element per entry after the content type, and each is
+/// written out as a response header exactly as the JSON path's own `header_out` composition does.
 fn bytes_answer_block(
     shape: &HttpShape,
     called: &TokenStream,
@@ -1086,30 +1209,55 @@ fn bytes_answer_block(
 ) -> TokenStream {
     let ok_status = shape.ok_status;
     let raw_body = body_field(has_stream, &quote! { body });
-    quote! {
-        match #called {
-            Ok(Ok((body, content_type))) => {
-                return OutgoingResponse {
-                    status: #ok_status,
-                    headers: ::std::vec![("content-type".to_owned(), content_type)],
-                    #raw_body,
-                };
+    let error_arm = quote! {
+        Ok(Err(declared_error)) => {
+            let status = #status_expr;
+            return json_response(status, ::std::vec::Vec::new(), &declared_error);
+        }
+        Err(panicked) => { #panic_fault }
+    };
+    if shape.header_out.is_empty() {
+        quote! {
+            match #called {
+                Ok(Ok((body, content_type))) => {
+                    return OutgoingResponse {
+                        status: #ok_status,
+                        headers: ::std::vec![("content-type".to_owned(), content_type)],
+                        #raw_body,
+                    };
+                }
+                #error_arm
             }
-            Ok(Err(declared_error)) => {
-                let status = #status_expr;
-                return json_response(status, ::std::vec::Vec::new(), &declared_error);
+        }
+    } else {
+        let header_idents = header_out_idents(shape.header_out.len());
+        let header_entries = header_out_entries(shape, &header_idents);
+        quote! {
+            match #called {
+                Ok(Ok((body, content_type, #(#header_idents),*))) => {
+                    let mut headers: Vec<(String, String)> =
+                        ::std::vec![("content-type".to_owned(), content_type)];
+                    headers.extend(::std::vec![#header_entries]);
+                    return OutgoingResponse {
+                        status: #ok_status,
+                        headers,
+                        #raw_body,
+                    };
+                }
+                #error_arm
             }
-            Err(panicked) => { #panic_fault }
         }
     }
 }
 
-/// A `body = "stream"` operation's own arm: `body_kind_refusals` (parse.rs) already requires the
-/// success type to name `StreamedAnswer` and refuses `header_out` alongside it, so the status and
-/// the one header a streamed answer carries come from the variant itself rather than from a
-/// declared table - `Full` answers the declared `ok_status` with no extra header, `Partial`
-/// answers `206` with `content-range` set to what the handler built. Either way the body is handed
-/// on undrained, in `OutgoingBody::Stream`, for an adapter to pull onto the wire.
+/// A `body = "stream"` operation's own arm: with no declared `header_out`, the status and the one
+/// header a streamed answer carries come from the variant itself - `Full` answers the declared
+/// `ok_status` with no extra header, `Partial` answers `206` with `content-range` set to what the
+/// handler built. With one declared, `parse.rs`'s own `is_stream_success_shape` has already
+/// required `success` to wrap the answer in a tuple carrying one more element per entry, composed
+/// onto both arms exactly as the JSON path's own `header_out` composition does - `content-range`
+/// stands beside the declared headers on `Partial` rather than being replaced by them. Either way
+/// the body is handed on undrained, in `OutgoingBody::Stream`, for an adapter to pull onto the wire.
 fn stream_answer_block(
     module: &Ident,
     shape: &HttpShape,
@@ -1118,27 +1266,61 @@ fn stream_answer_block(
     panic_fault: &TokenStream,
 ) -> TokenStream {
     let ok_status = shape.ok_status;
-    quote! {
-        match #called {
-            Ok(Ok($crate::#module::StreamedAnswer::Full(source))) => {
-                return OutgoingResponse {
-                    status: #ok_status,
-                    headers: ::std::vec::Vec::new(),
-                    body: OutgoingBody::Stream(source),
-                };
+    let error_arm = quote! {
+        Ok(Err(declared_error)) => {
+            let status = #status_expr;
+            return json_response(status, ::std::vec::Vec::new(), &declared_error);
+        }
+        Err(panicked) => { #panic_fault }
+    };
+    if shape.header_out.is_empty() {
+        quote! {
+            match #called {
+                Ok(Ok($crate::#module::StreamedAnswer::Full(source))) => {
+                    return OutgoingResponse {
+                        status: #ok_status,
+                        headers: ::std::vec::Vec::new(),
+                        body: OutgoingBody::Stream(source),
+                    };
+                }
+                Ok(Ok($crate::#module::StreamedAnswer::Partial { source, content_range })) => {
+                    return OutgoingResponse {
+                        status: 206,
+                        headers: ::std::vec![("content-range".to_owned(), content_range)],
+                        body: OutgoingBody::Stream(source),
+                    };
+                }
+                #error_arm
             }
-            Ok(Ok($crate::#module::StreamedAnswer::Partial { source, content_range })) => {
-                return OutgoingResponse {
-                    status: 206,
-                    headers: ::std::vec![("content-range".to_owned(), content_range)],
-                    body: OutgoingBody::Stream(source),
-                };
+        }
+    } else {
+        let header_idents = header_out_idents(shape.header_out.len());
+        let header_entries = header_out_entries(shape, &header_idents);
+        quote! {
+            match #called {
+                Ok(Ok(($crate::#module::StreamedAnswer::Full(source), #(#header_idents),*))) => {
+                    let headers: Vec<(String, String)> = ::std::vec![#header_entries];
+                    return OutgoingResponse {
+                        status: #ok_status,
+                        headers,
+                        body: OutgoingBody::Stream(source),
+                    };
+                }
+                Ok(Ok((
+                    $crate::#module::StreamedAnswer::Partial { source, content_range },
+                    #(#header_idents),*
+                ))) => {
+                    let mut headers: Vec<(String, String)> =
+                        ::std::vec![("content-range".to_owned(), content_range)];
+                    headers.extend(::std::vec![#header_entries]);
+                    return OutgoingResponse {
+                        status: 206,
+                        headers,
+                        body: OutgoingBody::Stream(source),
+                    };
+                }
+                #error_arm
             }
-            Ok(Err(declared_error)) => {
-                let status = #status_expr;
-                return json_response(status, ::std::vec::Vec::new(), &declared_error);
-            }
-            Err(panicked) => { #panic_fault }
         }
     }
 }
@@ -1177,7 +1359,8 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
     // `dispatcher_items` makes for `OutgoingResponse`, so a mixed service's dispatcher and client
     // agree about the shape a streamed answer travels in.
     let has_stream = service_declares_a_stream(service);
-    let seam = transport_trait(has_stream, &generated.module);
+    let has_multipart = service_declares_multipart(service);
+    let seam = transport_trait(has_stream, has_multipart, &generated.module);
     let declares_a_reply = !service.operations.is_empty();
     let fault_mirror_types = if declares_a_reply {
         client_fault_mirror_types(&generated)
@@ -1203,7 +1386,7 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
     let methods = service
         .operations
         .iter()
-        .map(|operation| client_method(operation, &generated));
+        .map(|operation| client_method(operation, &generated, has_multipart));
     let client_doc = format!(
         "A `{contract}` caller over `http_rest`.\n\n\
          Every operation on the trait has a method here, taking that operation's arguments and \
@@ -1248,10 +1431,11 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
 /// `OutgoingRequest`, `IncomingResponse` and `Transport`. `IncomingResponse` carries a plain
 /// `Vec<u8>` body (the exact tokens every service answered before the streamed kind existed) unless
 /// the service declares a streamed operation, in which case its body is the `IncomingBody` enum a
-/// streamed answer's undrained source needs. The request side is unaffected either way - nothing
-/// here declares a streamed *request* body.
-fn transport_trait(has_stream: bool, module: &Ident) -> TokenStream {
-    let outgoing_request = outgoing_request_items();
+/// streamed answer's undrained source needs. `OutgoingRequest` carries `parts` only where the
+/// service declares a multipart operation - a `body = "bytes"`/`"json"`/`"stream"` method still
+/// carries its content as `body`, unaffected either way.
+fn transport_trait(has_stream: bool, has_multipart: bool, module: &Ident) -> TokenStream {
+    let outgoing_request = outgoing_request_items(has_multipart, module);
     if has_stream {
         streamed_transport_items(&outgoing_request, module)
     } else {
@@ -1259,19 +1443,51 @@ fn transport_trait(has_stream: bool, module: &Ident) -> TokenStream {
     }
 }
 
-fn outgoing_request_items() -> TokenStream {
+fn outgoing_request_items(has_multipart: bool, module: &Ident) -> TokenStream {
+    let outgoing_part = if has_multipart {
+        quote! {
+            /// One outgoing multipart part: text content, or a file part's own undrained handle.
+            pub enum OutgoingPart {
+                File(::std::boxed::Box<dyn $crate::#module::BodySource + Send>),
+                Text(::std::string::String),
+            }
+        }
+    } else {
+        TokenStream::new()
+    };
+    let parts_field = if has_multipart {
+        quote! { parts: Vec<(String, OutgoingPart)>, }
+    } else {
+        TokenStream::new()
+    };
+    let parts_accessor = if has_multipart {
+        quote! {
+            /// Takes every part a `body = "multipart"` method built - by value, since a file
+            /// part's own handle has to be owned by whichever adapter finally sends it. Empty
+            /// for any other body kind.
+            pub fn into_parts(self) -> Vec<(String, OutgoingPart)> {
+                self.parts
+            }
+        }
+    } else {
+        TokenStream::new()
+    };
     quote! {
+        #outgoing_part
+
         /// One outgoing HTTP request, in plain terms: nothing here names a framework.
         pub struct OutgoingRequest {
             body: Vec<u8>,
             headers: Vec<(String, String)>,
             method: String,
+            #parts_field
             path: String,
             query: String,
         }
 
         impl OutgoingRequest {
-            /// The request body; empty for a method that carries none.
+            /// The request body; empty for a method that carries none, and for a `body =
+            /// "multipart"` method, whose content is [`into_parts`](Self::into_parts) instead.
             pub fn body(&self) -> &[u8] {
                 &self.body
             }
@@ -1280,6 +1496,8 @@ fn outgoing_request_items() -> TokenStream {
             pub fn headers(&self) -> &[(String, String)] {
                 &self.headers
             }
+
+            #parts_accessor
 
             /// The method this request answers to.
             pub fn method(&self) -> &str {
@@ -1515,7 +1733,11 @@ fn percent_encode_helper() -> TokenStream {
     }
 }
 
-fn client_method(operation: &OperationDef, generated: &Generated) -> TokenStream {
+fn client_method(
+    operation: &OperationDef,
+    generated: &Generated,
+    has_multipart: bool,
+) -> TokenStream {
     let Generated {
         call_error,
         fault,
@@ -1526,12 +1748,18 @@ fn client_method(operation: &OperationDef, generated: &Generated) -> TokenStream
     let named = &operation.ident;
     let validator = message_validator_ident(operation);
     let (mut taken, packed) = call_message(operation, module);
-    // `header_in` claimed these arguments out of the message `call_message` builds, so the
-    // signature it returns carries none of them; the caller still has to supply them, one
-    // ordinary parameter per binding, in the same order the dispatcher reads them back out of.
+    // `header_in` and `part` each claim their own argument out of the message `call_message`
+    // builds, so the signature it returns carries neither; the caller still has to supply them,
+    // one ordinary parameter per binding, in the same order the dispatcher reads them back out
+    // of - `header_in` first, then `part`.
     taken.extend(shape.header_in.iter().map(|header| {
         let parameter = &header.parameter;
         let ty = &header.ty;
+        quote! { #parameter: #ty }
+    }));
+    taken.extend(shape.multipart_parts.iter().map(|part| {
+        let parameter = &part.parameter;
+        let ty = &part.ty;
         quote! { #parameter: #ty }
     }));
     let refusal = outbound_refusal(operation, generated);
@@ -1539,10 +1767,21 @@ fn client_method(operation: &OperationDef, generated: &Generated) -> TokenStream
     let path_build = path_build_stmts(operation, &shape);
     let query_build = query_build_stmts(operation, &shape);
     let headers_build = header_in_build_stmts(&shape);
-    let body_build = if shape.method.carries_a_body() {
-        quote! { let body = ::serde_json::to_vec(&sending).unwrap_or_default(); }
-    } else {
+    let is_multipart = matches!(shape.body_kind, BodyKind::Multipart);
+    let body_build = if is_multipart || !shape.method.carries_a_body() {
         quote! { let body = ::std::vec::Vec::new(); }
+    } else {
+        quote! { let body = ::serde_json::to_vec(&sending).unwrap_or_default(); }
+    };
+    let parts_build = if has_multipart {
+        multipart_parts_build_stmt(operation, &shape)
+    } else {
+        TokenStream::new()
+    };
+    let parts_field = if has_multipart {
+        quote! { parts, }
+    } else {
+        TokenStream::new()
     };
     let method_str = shape.method.name();
 
@@ -1579,12 +1818,14 @@ fn client_method(operation: &OperationDef, generated: &Generated) -> TokenStream
                 #query_build
                 #headers_build
                 #body_build
+                #parts_build
                 let request = OutgoingRequest {
                     method: #method_str.to_owned(),
                     path,
                     query,
                     headers,
                     body,
+                    #parts_field
                 };
                 let response = match self.transport.send(request).await {
                     Ok(response) => response,
@@ -1697,15 +1938,112 @@ fn query_build_stmts(operation: &OperationDef, shape: &HttpShape) -> TokenStream
     }
 }
 
+/// Builds the outgoing header list, one entry per `header_in` binding — except an `Option<T>`
+/// binding holding `None`, which pushes nothing at all rather than the text `encode_expr` would
+/// otherwise render for a JSON `null` (`"null"`, indistinguishable on the wire from a header a
+/// caller actually meant to send). Mirrors [`query_build_stmts`]'s own `Option` handling: an absent
+/// value is a header the request never carries, not one carrying a placeholder word.
 fn header_in_build_stmts(shape: &HttpShape) -> TokenStream {
-    let entries = shape.header_in.iter().map(|header| {
-        let name = &header.name;
-        let parameter = &header.parameter;
-        let rendered = encode_expr(&quote! { #parameter });
-        quote! { (#name.to_owned(), #rendered) }
-    });
+    if shape.header_in.is_empty() {
+        return quote! { let headers: Vec<(String, String)> = ::std::vec::Vec::new(); };
+    }
+    let pushes: TokenStream = shape
+        .header_in
+        .iter()
+        .map(|header| {
+            let name = &header.name;
+            let parameter = &header.parameter;
+            if option_inner(&header.ty).is_some() {
+                let rendered = encode_expr(&quote! { value });
+                quote! {
+                    if let Some(value) = &#parameter {
+                        headers.push((#name.to_owned(), #rendered));
+                    }
+                }
+            } else {
+                let rendered = encode_expr(&quote! { #parameter });
+                quote! { headers.push((#name.to_owned(), #rendered)); }
+            }
+        })
+        .collect();
     quote! {
-        let headers: Vec<(String, String)> = ::std::vec![#(#entries),*];
+        let mut headers: Vec<(String, String)> = ::std::vec::Vec::new();
+        #pushes
+    }
+}
+
+/// One `body = "multipart"` field's own text-part push: an `Option<T>` is omitted entirely when
+/// absent (the same convention [`header_in_build_stmts`] uses), a `Vec<T>` joins each element's
+/// own rendered text with a comma (mirroring `decode_expr`'s reverse reading on the dispatcher
+/// side), and anything else renders through [`encode_expr`] directly.
+fn multipart_field_push(field: &Ident, ty: &Type) -> TokenStream {
+    let key = wire_key(field);
+    let inner = option_inner(ty).unwrap_or(ty);
+    let push = vec_inner(inner).map_or_else(
+        || {
+            let rendered = encode_expr(&quote! { value });
+            quote! { parts.push((#key.to_owned(), OutgoingPart::Text(#rendered))); }
+        },
+        |_element| {
+            let rendered = encode_expr(&quote! { element });
+            quote! {
+                let joined = value
+                    .iter()
+                    .map(|element| #rendered)
+                    .collect::<::std::vec::Vec<String>>()
+                    .join(",");
+                parts.push((#key.to_owned(), OutgoingPart::Text(joined)));
+            }
+        },
+    );
+    if option_inner(ty).is_some() {
+        quote! {
+            if let Some(value) = &sending.#field {
+                #push
+            }
+        }
+    } else {
+        quote! {
+            let value = &sending.#field;
+            #push
+        }
+    }
+}
+
+/// The `parts` a `body = "multipart"` method sends: one text entry per carried `Generated` field
+/// (under its own wire key), then one file entry per declared `part` binding (under its own
+/// declared name, its handle taken from the client's own extra argument) - the body pair the
+/// dispatcher's own decode reads back the same way. Every other body kind sends an empty `parts`
+/// list, `body` carrying its content instead.
+fn multipart_parts_build_stmt(operation: &OperationDef, shape: &HttpShape) -> TokenStream {
+    if !matches!(shape.body_kind, BodyKind::Multipart) {
+        return quote! {
+            let parts: ::std::vec::Vec<(::std::string::String, OutgoingPart)> = ::std::vec::Vec::new();
+        };
+    }
+    let placeholder_names = shape.placeholder_names();
+    let field_pushes: TokenStream = if let OperationInputs::Generated(fields) = &operation.inputs {
+        fields
+            .iter()
+            .filter(|(field, _)| !placeholder_names.contains(&field.to_string()))
+            .map(|(field, ty)| multipart_field_push(field, ty))
+            .collect()
+    } else {
+        TokenStream::new()
+    };
+    let part_pushes: TokenStream = shape
+        .multipart_parts
+        .iter()
+        .map(|part| {
+            let name = &part.name;
+            let parameter = &part.parameter;
+            quote! { parts.push((#name.to_owned(), OutgoingPart::File(#parameter))); }
+        })
+        .collect();
+    quote! {
+        let mut parts: ::std::vec::Vec<(::std::string::String, OutgoingPart)> = ::std::vec::Vec::new();
+        #field_pushes
+        #part_pushes
     }
 }
 
@@ -1722,6 +2060,48 @@ fn client_error_condition(shape: &HttpShape) -> TokenStream {
         condition.extend(quote! { status == #code });
     }
     condition
+}
+
+/// The client's own `header_out` read-back: one `let` per declared entry, decoding the response
+/// header named for it into the type `elements` carries at the same position - `elements` being
+/// the full success tuple, `body_elements` the count that ride the body itself (the JSON path's
+/// bare value, or the bytes pair) rather than a header. The one seam every reply-decoding arm
+/// builds its header reads through, `idents` already named by [`header_out_idents`].
+fn header_out_read_lets(
+    wire: &str,
+    shape: &HttpShape,
+    call_error: &TokenStream,
+    fault: &TokenStream,
+    idents: &[Ident],
+    elements: &[&Type],
+    body_elements: usize,
+) -> TokenStream {
+    shape
+        .header_out
+        .iter()
+        .zip(idents)
+        .zip(elements.iter().skip(body_elements))
+        .map(|((name, ident), element_ty)| {
+            let decode = decode_expr(element_ty, &quote! { text });
+            quote! {
+                let #ident: #element_ty = match response.header(#name) {
+                    Some(text) => match ::serde_json::from_value(#decode) {
+                        Ok(value) => value,
+                        Err(_rejected) => return Err(#call_error::Fault(
+                            #fault::undeserializable_payload(
+                                #wire,
+                                "a response header did not match its declared type",
+                            ),
+                        )),
+                    },
+                    None => return Err(#call_error::Fault(#fault::undeserializable_payload(
+                        #wire,
+                        "a declared response header was missing",
+                    ))),
+                };
+            }
+        })
+        .collect()
 }
 
 fn one_way_decode(wire: &str, shape: &HttpShape, fault: &TokenStream) -> TokenStream {
@@ -1755,18 +2135,36 @@ fn reply_decode(
     module: &Ident,
 ) -> TokenStream {
     if matches!(shape.body_kind, BodyKind::Stream) {
-        return stream_reply_decode(wire, shape, call_error, fault, error, module);
+        return stream_reply_decode(wire, shape, call_error, fault, error, success, module);
     }
     let ok_status = shape.ok_status;
     let error_condition = client_error_condition(shape);
     let success_return = if matches!(shape.body_kind, BodyKind::Bytes) {
         // The dispatcher writes the bytes bare and the content type as a response header; the
         // client reads both straight back, no `serde_json` involved on the success path.
-        quote! {
-            return Ok((
-                response.body().to_vec(),
-                response.header("content-type").unwrap_or_default().to_owned(),
-            ));
+        if shape.header_out.is_empty() {
+            quote! {
+                return Ok((
+                    response.body().to_vec(),
+                    response.header("content-type").unwrap_or_default().to_owned(),
+                ));
+            }
+        } else {
+            // `is_bytes_success_shape` (parse.rs) already requires `success` to carry one more
+            // element per declared `header_out` entry after the bytes and their content type, so
+            // the lookups below never miss.
+            let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
+            let header_idents = header_out_idents(shape.header_out.len());
+            let header_lets =
+                header_out_read_lets(wire, shape, call_error, fault, &header_idents, &elements, 2);
+            quote! {
+                #header_lets
+                return Ok((
+                    response.body().to_vec(),
+                    response.header("content-type").unwrap_or_default().to_owned(),
+                    #(#header_idents),*
+                ));
+            }
         }
     } else if shape.header_out.is_empty() {
         if is_unit_type(success) {
@@ -1786,35 +2184,9 @@ fn reply_decode(
         // elements, so the lookups below never miss.
         let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
         let first = elements.first().copied().unwrap_or(success);
-        let header_idents: Vec<Ident> = (0..shape.header_out.len())
-            .map(|index| format_ident!("header_out_{index}"))
-            .collect();
-        let header_lets: TokenStream = shape
-            .header_out
-            .iter()
-            .zip(&header_idents)
-            .zip(elements.iter().skip(1))
-            .map(|((name, ident), element_ty)| {
-                let decode = decode_expr(element_ty, &quote! { text });
-                quote! {
-                    let #ident: #element_ty = match response.header(#name) {
-                        Some(text) => match ::serde_json::from_value(#decode) {
-                            Ok(value) => value,
-                            Err(_rejected) => return Err(#call_error::Fault(
-                                #fault::undeserializable_payload(
-                                    #wire,
-                                    "a response header did not match its declared type",
-                                ),
-                            )),
-                        },
-                        None => return Err(#call_error::Fault(#fault::undeserializable_payload(
-                            #wire,
-                            "a declared response header was missing",
-                        ))),
-                    };
-                }
-            })
-            .collect();
+        let header_idents = header_out_idents(shape.header_out.len());
+        let header_lets =
+            header_out_read_lets(wire, shape, call_error, fault, &header_idents, &elements, 1);
         quote! {
             return match ::serde_json::from_slice::<#first>(response.body()) {
                 Ok(value) => {
@@ -1856,35 +2228,24 @@ fn reply_decode(
 /// fixed-fault and unexpected-status ladder every other kind answers through. A response the seam
 /// already buffered still satisfies `BodySource` once wrapped in a `Cursor` - the same blanket
 /// `Read` impl a real chunked reader relies on, so the client answers a body source either way.
+///
+/// With a declared `header_out`, `is_stream_success_shape` (parse.rs) has already required
+/// `success` to wrap the answer in a tuple carrying one more element per entry; each is read back
+/// off its own response header before the body is taken - `into_body` consumes `response`, so
+/// nothing can be read off it afterward - and composed onto both `Full` and `Partial` exactly as
+/// the JSON and bytes kinds compose theirs.
 fn stream_reply_decode(
     wire: &str,
     shape: &HttpShape,
     call_error: &TokenStream,
     fault: &TokenStream,
     error: &Type,
+    success: &Type,
     module: &Ident,
 ) -> TokenStream {
     let ok_status = shape.ok_status;
     let error_condition = client_error_condition(shape);
-    quote! {
-        let status = response.status();
-        if status == 206 {
-            let content_range = response.header("content-range").unwrap_or_default().to_owned();
-            let source: ::std::boxed::Box<dyn $crate::#module::BodySource + Send> =
-                match response.into_body() {
-                    IncomingBody::Bytes(bytes) => ::std::boxed::Box::new(::std::io::Cursor::new(bytes)),
-                    IncomingBody::Stream(source) => source,
-                };
-            return Ok($crate::#module::StreamedAnswer::Partial { source, content_range });
-        }
-        if status == #ok_status {
-            let source: ::std::boxed::Box<dyn $crate::#module::BodySource + Send> =
-                match response.into_body() {
-                    IncomingBody::Bytes(bytes) => ::std::boxed::Box::new(::std::io::Cursor::new(bytes)),
-                    IncomingBody::Stream(source) => source,
-                };
-            return Ok($crate::#module::StreamedAnswer::Full(source));
-        }
+    let tail = quote! {
         if #error_condition {
             return match ::serde_json::from_slice::<#error>(response.body()) {
                 Ok(declared) => Err(#call_error::Operation(declared)),
@@ -1900,5 +2261,59 @@ fn stream_reply_decode(
             #wire,
             &format!("an unexpected status ({status}) answered"),
         )))
+    };
+    if shape.header_out.is_empty() {
+        quote! {
+            let status = response.status();
+            if status == 206 {
+                let content_range = response.header("content-range").unwrap_or_default().to_owned();
+                let source: ::std::boxed::Box<dyn $crate::#module::BodySource + Send> =
+                    match response.into_body() {
+                        IncomingBody::Bytes(bytes) => ::std::boxed::Box::new(::std::io::Cursor::new(bytes)),
+                        IncomingBody::Stream(source) => source,
+                    };
+                return Ok($crate::#module::StreamedAnswer::Partial { source, content_range });
+            }
+            if status == #ok_status {
+                let source: ::std::boxed::Box<dyn $crate::#module::BodySource + Send> =
+                    match response.into_body() {
+                        IncomingBody::Bytes(bytes) => ::std::boxed::Box::new(::std::io::Cursor::new(bytes)),
+                        IncomingBody::Stream(source) => source,
+                    };
+                return Ok($crate::#module::StreamedAnswer::Full(source));
+            }
+            #tail
+        }
+    } else {
+        let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
+        let header_idents = header_out_idents(shape.header_out.len());
+        let header_lets =
+            header_out_read_lets(wire, shape, call_error, fault, &header_idents, &elements, 1);
+        quote! {
+            let status = response.status();
+            if status == 206 {
+                let content_range = response.header("content-range").unwrap_or_default().to_owned();
+                #header_lets
+                let source: ::std::boxed::Box<dyn $crate::#module::BodySource + Send> =
+                    match response.into_body() {
+                        IncomingBody::Bytes(bytes) => ::std::boxed::Box::new(::std::io::Cursor::new(bytes)),
+                        IncomingBody::Stream(source) => source,
+                    };
+                return Ok((
+                    $crate::#module::StreamedAnswer::Partial { source, content_range },
+                    #(#header_idents),*
+                ));
+            }
+            if status == #ok_status {
+                #header_lets
+                let source: ::std::boxed::Box<dyn $crate::#module::BodySource + Send> =
+                    match response.into_body() {
+                        IncomingBody::Bytes(bytes) => ::std::boxed::Box::new(::std::io::Cursor::new(bytes)),
+                        IncomingBody::Stream(source) => source,
+                    };
+                return Ok(($crate::#module::StreamedAnswer::Full(source), #(#header_idents),*));
+            }
+            #tail
+        }
     }
 }
