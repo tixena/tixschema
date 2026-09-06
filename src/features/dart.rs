@@ -545,7 +545,12 @@ fn dart_map_key_encode(key: &FieldDef, expr: &str) -> String {
 /// carries — Dart has one nullable spelling for all three of a bare `Option<T>`,
 /// `#[model_schema_prop(ts_optional)]` and `#[model_schema_prop(nullable)]`, since a Dart
 /// `Map<String, dynamic>` answers a dropped key and an explicit `null` alike.
-fn dart_typename(field: &FieldDef) -> String {
+///
+/// `pub`, like [`lookup_dart_name`]: the `http_rest` Dart client
+/// (`features::service_schema::dart_http_client`) reads the same type name for a message, a
+/// success, an error and a `header_in`/`header_out` binding, rather than a second copy of this
+/// dispatch.
+pub fn dart_typename(field: &FieldDef) -> String {
     let base = dart_base(field);
     if field.is_optional() {
         format!("{base}?")
