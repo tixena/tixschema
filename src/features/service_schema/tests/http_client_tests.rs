@@ -5,7 +5,10 @@
 //! success, a declared error or a fault. No TypeScript toolchain is reachable here, so none of them
 //! type-checks the bundle.
 
-use super::{BYTES_HTTP_SERVICE, MIXED_HTTP_SERVICE, MULTIPART_HTTP_SERVICE, http_client_of};
+use super::{
+    BYTES_HTTP_SERVICE, MIXED_HTTP_SERVICE, MULTIPART_HTTP_SERVICE, STREAM_HTTP_SERVICE,
+    http_client_of,
+};
 
 #[test]
 fn exactly_one_seam_type_is_emitted_and_it_names_no_http_library() {
@@ -364,6 +367,100 @@ fn a_multipart_method_builds_one_text_part_per_field_and_one_file_part_per_bindi
         method.contains("parts,\n        });"),
         "`parts` rides beside `body` in the request the seam is handed. Got: {method}"
     );
+}
+
+#[test]
+fn a_stream_operation_answers_a_content_range_and_body_record_at_200_and_206() {
+    let written = http_client_of(STREAM_HTTP_SERVICE);
+    let method = method_body(&written, "getFile");
+    assert!(
+        method.contains("if (status === 206) {")
+            && method.contains(
+                "const contentRange =\n          \
+                 response.headers.find(\n            \
+                 ([name]) => name.toLowerCase() === \"content-range\",\n          \
+                 )?.[1] ?? \"\";"
+            )
+            && method.contains("const answer = { contentRange, body: response.bodyStream };")
+            && method.contains("return { ok: true, value: answer };"),
+        "a `206` answers the record with `contentRange` read back off the response. Got: {method}"
+    );
+    assert!(
+        method.contains("if (status === 200) {")
+            && method.contains("const contentRange: string | undefined = undefined;"),
+        "the declared `ok_status` answers the same record with `contentRange` left `undefined`. \
+         Got: {method}"
+    );
+}
+
+#[test]
+fn a_206_answer_reads_content_range_ahead_of_naming_the_body() {
+    let written = http_client_of(STREAM_HTTP_SERVICE);
+    let method = method_body(&written, "getFile");
+    let read_at = method.find("name.toLowerCase() === \"content-range\"");
+    let consumed_at = method.find("response.bodyStream");
+    assert!(read_at.is_some() && consumed_at.is_some(), "got: {method}");
+    assert!(
+        read_at.unwrap() < consumed_at.unwrap(),
+        "`content-range` is read back off the response before the stream body is ever named, \
+         mirroring the Rust client's own `into_body` (which consumes the response and so must run \
+         last). Got: {method}"
+    );
+}
+
+#[test]
+fn a_stream_operation_with_header_out_composes_the_answer_and_the_header() {
+    let written = http_client_of(STREAM_HTTP_SERVICE);
+    let method = method_body(&written, "getTaggedFile");
+    assert!(
+        method.contains(
+            "const rawHeaderOut0 = response.headers.find(\n          \
+             ([name]) => name.toLowerCase() === \"x-checksum\",\n        \
+             );"
+        ),
+        "the declared header is read back the same way the JSON and bytes paths read one. \
+         Got: {method}"
+    );
+    assert!(
+        method.contains("const headerOut0 = rawHeaderOut0[1] as string;"),
+        "got: {method}"
+    );
+    assert_eq!(
+        method
+            .matches("return { ok: true, value: [answer, headerOut0] };")
+            .count(),
+        2,
+        "the header composes onto the answer in both the `206` and `200` arms. Got: {method}"
+    );
+}
+
+#[test]
+fn the_seam_carries_a_body_stream_field_only_where_a_service_declares_one() {
+    let plain = http_client_of(MIXED_HTTP_SERVICE);
+    assert!(
+        !plain.contains("bodyStream"),
+        "a service with no streamed operation carries no `bodyStream` field. Got: {plain}"
+    );
+    let streamed = http_client_of(STREAM_HTTP_SERVICE);
+    assert!(
+        streamed.contains(
+            "}): Promise<{\n    \
+             status: number;\n    \
+             headers: ReadonlyArray<readonly [string, string]>;\n    \
+             body: string;\n    \
+             bodyStream: ReadableStream<Uint8Array>;\n  \
+             }>;"
+        ),
+        "a service with a streamed operation carries `bodyStream` on the seam's own response \
+         type. Got: {streamed}"
+    );
+    for named in ["fetch", "axios", "Fetch", "Axios"] {
+        assert!(
+            !streamed.contains(named),
+            "the seam still names no HTTP library once it carries a stream - `ReadableStream` is \
+             the platform's own type. Got: {streamed}"
+        );
+    }
 }
 
 /// One method's body, read out of the factory's own object literal by the call it is declared

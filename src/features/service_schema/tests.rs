@@ -185,6 +185,39 @@ const BYTES_HTTP_SERVICE: &str = "
     }
 ";
 
+/// A service declaring two `body = \"stream\"` operations: one answering the bare streamed answer,
+/// one composing a declared `header_out` onto it. Zod-gated mirror of `DART_STREAM_HTTP_SERVICE`,
+/// since a build can carry `zod` without `dart`.
+#[cfg(feature = "zod")]
+const STREAM_HTTP_SERVICE: &str = "
+    pub trait ContentClientService<Ctx> {
+        #[service_schema_op(http(
+            method = \"GET\",
+            path = \"/files/{file_id}\",
+            body = \"stream\",
+            error_status(NotFound = 404),
+        ))]
+        async fn get_file(
+            &self,
+            ctx: &Ctx,
+            file_id: String,
+        ) -> Result<StreamedAnswer, ContentError>;
+
+        #[service_schema_op(http(
+            method = \"GET\",
+            path = \"/files/{file_id}/tagged\",
+            body = \"stream\",
+            header_out(\"x-checksum\"),
+            error_status(NotFound = 404),
+        ))]
+        async fn get_tagged_file(
+            &self,
+            ctx: &Ctx,
+            file_id: String,
+        ) -> Result<(StreamedAnswer, String), ContentError>;
+    }
+";
+
 /// A service declaring one `body = \"multipart\"` operation: a path placeholder, two scalar
 /// `Generated` fields (one required, one optional) and a `part` binding for the file itself.
 #[cfg(feature = "zod")]
@@ -437,6 +470,51 @@ fn the_result_joins_the_two_declared_arms_and_adds_nothing_to_either() {
              UsageServiceFault } };"
         ),
         "got: {balance}"
+    );
+}
+
+/// `StreamedAnswer` carries no `#[model_schema()]` of its own, so a bare `value: StreamedAnswer`
+/// would publish a TypeScript reference nothing declares. The result type stands in the fixed
+/// streamed record instead.
+#[cfg(feature = "zod")]
+#[test]
+fn the_result_answers_the_streamed_record_rather_than_the_undescribable_rust_type() {
+    let published = result::emit(&parsed(STREAM_HTTP_SERVICE));
+    let found = published
+        .iter()
+        .find(|ts| ts.contains("export type ContentClientServiceGetFileResult ="));
+    assert!(found.is_some(), "got: {published:?}");
+    let result = found.unwrap();
+    assert!(
+        result.contains(
+            "| { ok: true; value: { contentRange: string | undefined; body: \
+             ReadableStream<Uint8Array> } }"
+        ),
+        "got: {result}"
+    );
+    assert!(
+        !result.contains("StreamedAnswer"),
+        "the Rust-only seam type never leaks into the published TypeScript. Got: {result}"
+    );
+}
+
+/// A declared `header_out` wraps the streamed record in a tuple, exactly as the JSON and bytes
+/// paths compose theirs.
+#[cfg(feature = "zod")]
+#[test]
+fn the_result_composes_header_out_onto_the_streamed_record_in_a_tuple() {
+    let published = result::emit(&parsed(STREAM_HTTP_SERVICE));
+    let found = published
+        .iter()
+        .find(|ts| ts.contains("export type ContentClientServiceGetTaggedFileResult ="));
+    assert!(found.is_some(), "got: {published:?}");
+    let result = found.unwrap();
+    assert!(
+        result.contains(
+            "| { ok: true; value: [{ contentRange: string | undefined; body: \
+             ReadableStream<Uint8Array> }, string] }"
+        ),
+        "got: {result}"
     );
 }
 
