@@ -74,6 +74,13 @@ pub struct VersionResponse {
     pub content: String,
 }
 
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum ThumbnailError {
+    NotFound,
+}
+
 #[service_schema(transports = ["amqp_rpc"])]
 pub trait CallService<Ctx> {
     /// No reply, so the send half of the seam is placed beside the call half.
@@ -99,6 +106,18 @@ pub trait DocumentClientService<Ctx> {
         ctx: &Ctx,
         req: CreateDocumentRequest,
     ) -> Result<CreateDocumentResponse, CreateDocumentError>;
+
+    #[service_schema_op(http(
+        method = "GET",
+        path = "/documents/{document_id}/thumbnail",
+        error_status(NotFound = 404),
+        body = "bytes",
+    ))]
+    async fn get_thumbnail(
+        &self,
+        ctx: &Ctx,
+        document_id: String,
+    ) -> Result<(Vec<u8>, String), ThumbnailError>;
 
     #[service_schema_op(http(
         method = "GET",
@@ -189,6 +208,15 @@ impl DocumentClientService<()> for DocumentClientBackEnd {
         Ok(CreateDocumentResponse {
             document_id: format!("doc-{}", req.title),
         })
+    }
+
+    async fn get_thumbnail(
+        &self,
+        _ctx: &(),
+        _document_id: String,
+    ) -> Result<(Vec<u8>, String), ThumbnailError> {
+        ready(()).await;
+        Ok((vec![0x89, 0x50, 0x4e, 0x47], "image/png".to_owned()))
     }
 
     async fn get_version(
@@ -593,6 +621,47 @@ fn a_no_payload_operation_resolves_on_its_declared_status_without_reading_a_body
     assert_eq!(client.transport().requests()[0].path, "/documents/d1");
 }
 
+/// A `body = "bytes"` operation reads the response body bare, and the `content-type` header back
+/// into the tuple's second element - no `serde_json` decode on the success path.
+#[test]
+fn a_bytes_operation_reads_the_body_and_content_type_back() {
+    let transport = RecordingTransport::queued(vec![(
+        200,
+        vec![("content-type".to_owned(), "image/png".to_owned())],
+        vec![0x89, 0x50, 0x4e, 0x47],
+    )]);
+    let client = http_rest_client::DocumentClientServiceClient::new(transport);
+    let answered = poll_once(client.get_thumbnail("d1".to_owned())).unwrap();
+    assert_eq!(
+        answered,
+        Ok((vec![0x89, 0x50, 0x4e, 0x47], "image/png".to_owned()))
+    );
+    assert_eq!(client.transport().requests()[0].method, "GET");
+    assert_eq!(
+        client.transport().requests()[0].path,
+        "/documents/d1/thumbnail"
+    );
+}
+
+/// A bytes operation's mapped error status still decodes into the declared error, exactly like any
+/// other operation's.
+#[test]
+fn a_bytes_operations_mapped_status_still_decodes_into_the_declared_error() {
+    let transport = RecordingTransport::queued(vec![(
+        404,
+        Vec::new(),
+        br#"{"errorCode":"not-found"}"#.to_vec(),
+    )]);
+    let client = http_rest_client::DocumentClientServiceClient::new(transport);
+    let answered = poll_once(client.get_thumbnail("missing".to_owned())).unwrap();
+    assert_eq!(
+        answered,
+        Err(document_client_service_schema::CallError::Operation(
+            ThumbnailError::NotFound
+        ))
+    );
+}
+
 /// The contract stands on its own: implementing it takes a trait and nothing else, and nothing in
 /// this binary placed a dispatcher for it.
 #[test]
@@ -627,5 +696,9 @@ fn the_document_contract_is_implementable_where_no_dispatcher_was_placed() {
         Ok(CreateDocumentResponse {
             document_id: "doc-report".to_owned()
         })
+    );
+    assert_eq!(
+        poll_once(DocumentClientBackEnd.get_thumbnail(&(), "d1".to_owned())).unwrap(),
+        Ok((vec![0x89, 0x50, 0x4e, 0x47], "image/png".to_owned()))
     );
 }
