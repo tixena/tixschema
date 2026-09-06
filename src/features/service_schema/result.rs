@@ -17,10 +17,25 @@
 //! Both names carry the service: `UsageServiceGetBalanceResult`, and the fault it can hold is
 //! `UsageServiceFault`. Two services declaring a `get_balance` each would otherwise publish one
 //! `GetBalanceResult` twice into the one flat file a bundle is.
+//!
+//! A `body = "stream"` operation's own success is declared in Rust as `StreamedAnswer`, a type with
+//! no `#[model_schema()]` of its own — the ordinary `value` rendering would publish that bare name
+//! as a TypeScript reference nothing declares. [`stream_success_ts_type`] stands in for it instead,
+//! mirroring the Rust and Dart clients' own streamed record.
 
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
-use crate::service_schema::parse::{OperationDef, OperationOutcome, ServiceDef};
+use crate::service_schema::parse::{
+    BodyKind, HttpShape, OperationDef, OperationOutcome, ServiceDef, tuple_elements,
+};
+use syn::Type;
+
+/// The TypeScript record a `body = "stream"` operation's own success answers with: a `contentRange`
+/// left `undefined` at the operation's own `ok_status`, set to the range text at `206`, paired with
+/// the body as the platform's own `ReadableStream<Uint8Array>` — mirrors the Rust client's own
+/// `StreamedAnswer::Full`/`Partial` and the Dart client's own streamed record.
+const STREAMED_ANSWER_TS_TYPE: &str =
+    "{ contentRange: string | undefined; body: ReadableStream<Uint8Array> }";
 
 pub fn emit(service: &ServiceDef) -> Vec<String> {
     let named = service.ident.to_string();
@@ -48,7 +63,12 @@ fn result_type(service: &str, operation: &OperationDef) -> Option<String> {
         return None;
     };
     let published = result_name(service, operation)?;
-    let value = get_field_def("value", success, "").typescript_typename();
+    let shape = HttpShape::of(operation);
+    let value = if matches!(shape.body_kind, BodyKind::Stream) {
+        stream_success_ts_type(&shape, success)
+    } else {
+        get_field_def("value", success, "").typescript_typename()
+    };
     let failure = get_field_def("error", error, "").typescript_typename();
     let called = &operation.ts_name;
     Some(format!(
@@ -61,4 +81,24 @@ fn result_type(service: &str, operation: &OperationDef) -> Option<String> {
          | {{ ok: true; value: {value} }}\n  \
          | {{ ok: false; error: {failure} | {{ isServiceFault: true; fault: {service}Fault }} }};"
     ))
+}
+
+/// [`STREAMED_ANSWER_TS_TYPE`], wrapped in a tuple with one more element per declared `header_out`
+/// entry — mirrors the JSON and bytes paths' own composition, and the Dart client's own
+/// `stream_success_dart_type`. `success` is read only for the header types after the first slot;
+/// the first slot is always the fixed streamed record; `StreamedAnswer` carries no
+/// `#[model_schema()]` to resolve a TypeScript type from.
+fn stream_success_ts_type(shape: &HttpShape, success: &Type) -> String {
+    if shape.header_out.is_empty() {
+        return STREAMED_ANSWER_TS_TYPE.to_owned();
+    }
+    let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
+    let mut parts = vec![STREAMED_ANSWER_TS_TYPE.to_owned()];
+    parts.extend(
+        elements
+            .iter()
+            .skip(1)
+            .map(|ty| get_field_def("value", ty, "").typescript_typename()),
+    );
+    format!("[{}]", parts.join(", "))
 }

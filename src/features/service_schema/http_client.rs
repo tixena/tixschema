@@ -36,6 +36,15 @@
 //! fixed fault statuses (400 validation, 404 unmatched route, 500 panic) all become the same
 //! [`crate::service_schema::support`]-published fault type every other surface answers faults
 //! through.
+//!
+//! # `body = "stream"` reads two success statuses, not one
+//!
+//! `reply_decode_stmt` peels `BodyKind::Stream` off first into its own status ladder (`206` reads
+//! `content-range` back before the body is ever named; the declared `ok_status` leaves it
+//! `undefined`; either way the answer carries `response.bodyStream` — the seam's own
+//! `ReadableStream<Uint8Array>`, present only where the service declares a streamed operation) —
+//! mirroring the Rust and Dart clients' own split. What is left (`success_decode_block`) only ever
+//! sees `Bytes`, `Json` and `Multipart`.
 
 use super::fault;
 use super::message;
@@ -45,15 +54,16 @@ use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
     OperationOutcome, PathSegment, ScalarKind, ServiceDef, is_unit_type, option_inner, scalar_kind,
-    service_declares_multipart, tuple_elements, vec_inner, wire_key,
+    service_declares_a_stream, service_declares_multipart, tuple_elements, vec_inner, wire_key,
 };
 use core::fmt::Write as _;
 use syn::Type;
 
 pub fn emit(service: &ServiceDef) -> Vec<String> {
+    let has_stream = service_declares_a_stream(service);
     let has_multipart = service_declares_multipart(service);
     let mut published = vec![
-        transport_type(&service.ident.to_string(), has_multipart),
+        transport_type(&service.ident.to_string(), has_stream, has_multipart),
         client_type(service),
     ];
     published.extend(fault_helpers(service));
@@ -68,10 +78,19 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
 /// The one seam type a `{service}` client sends through: a request record in, a response record
 /// out, nothing service-specific in either and nothing here naming the library that finally
 /// carries the call. The request record carries `parts` only where the service declares a
-/// multipart operation - every other body kind still carries its content as `body`.
-fn transport_type(service: &str, has_multipart: bool) -> String {
+/// multipart operation - every other body kind still carries its content as `body`. The response
+/// record carries `bodyStream` only where the service declares a streamed operation - a real
+/// implementation can fill it a chunk at a time rather than buffering the whole answer first, while
+/// `body` keeps answering eagerly for every other operation. `ReadableStream` is the platform's own
+/// type, not a naming of `fetch`: the seam stays library-agnostic either way.
+fn transport_type(service: &str, has_stream: bool, has_multipart: bool) -> String {
     let parts_field = if has_multipart {
         "\n    parts: ReadonlyArray<readonly [string, unknown]>;"
+    } else {
+        ""
+    };
+    let stream_field = if has_stream {
+        "\n    bodyStream: ReadableStream<Uint8Array>;"
     } else {
         ""
     };
@@ -95,7 +114,7 @@ fn transport_type(service: &str, has_multipart: bool) -> String {
          }}): Promise<{{\n    \
          status: number;\n    \
          headers: ReadonlyArray<readonly [string, string]>;\n    \
-         body: string;\n  \
+         body: string;{stream_field}\n  \
          }}>;\n\
          }};"
     )
@@ -535,6 +554,9 @@ fn reply_decode_stmt(
     error: &Type,
     success: &Type,
 ) -> String {
+    if matches!(shape.body_kind, BodyKind::Stream) {
+        return stream_reply_decode_stmt(prefix, shape, wire, error, success);
+    }
     let ok_status = shape.ok_status;
     let error_condition = error_condition_expr(shape);
     let error_ty = get_field_def("error", error, "").typescript_typename();
@@ -584,7 +606,9 @@ fn reply_decode_stmt(
 /// The statements that read a success answer off the response, once its status has already
 /// matched: nothing at all for a unit reply, the body alone for an ordinary reply, the response
 /// bytes and their content type for a `body = "bytes"` operation, or the body plus every
-/// `header_out` element read back from the response's own headers.
+/// `header_out` element read back from the response's own headers. `body = "stream"` never reaches
+/// here — [`reply_decode_stmt`] answers it through [`stream_reply_decode_stmt`] instead, since a
+/// streamed answer has two success statuses (`200` and `206`), not one.
 fn success_decode_block(prefix: &str, wire: &str, shape: &HttpShape, success: &Type) -> String {
     if matches!(shape.body_kind, BodyKind::Bytes) {
         return bytes_success_decode_block(prefix, wire, shape, success);
@@ -629,41 +653,8 @@ fn success_decode_block(prefix: &str, wire: &str, shape: &HttpShape, success: &T
          }};\n        \
          }}\n"
     );
-    let mut header_idents = Vec::new();
-    for (index, (name, element_ty)) in shape
-        .header_out
-        .iter()
-        .zip(elements.iter().skip(1))
-        .enumerate()
-    {
-        let raw_ident = format!("rawHeaderOut{index}");
-        let ident = format!("headerOut{index}");
-        let element_typename = get_field_def("value", element_ty, "").typescript_typename();
-        let _ = write!(
-            stmt,
-            "        const {raw_ident} = response.headers.find(\n          \
-             ([name]) => name.toLowerCase() === \"{name}\",\n        \
-             );\n        \
-             if ({raw_ident} === undefined) {{\n          \
-             return {{\n            \
-             ok: false,\n            \
-             error: {{\n              \
-             isServiceFault: true,\n              \
-             fault: {prefix}HttpUndeserializablePayload(\n                \
-             \"{wire}\",\n                \
-             \"a declared response header was missing\",\n              \
-             ),\n            \
-             }},\n          \
-             }};\n        \
-             }}\n"
-        );
-        let value_expr = header_out_value_expr(element_ty, &format!("{raw_ident}[1]"));
-        let _ = writeln!(
-            stmt,
-            "        const {ident} = {value_expr} as {element_typename};"
-        );
-        header_idents.push(ident);
-    }
+    let (header_stmts, header_idents) = header_out_read_stmts(prefix, wire, shape, &elements, 1);
+    stmt.push_str(&header_stmts);
     let _ = writeln!(
         stmt,
         "        return {{ ok: true, value: [value, {}] }};",
@@ -694,11 +685,131 @@ fn bytes_success_decode_block(
         return stmt;
     }
     let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
-    let mut header_idents = Vec::new();
+    let (header_stmts, header_idents) = header_out_read_stmts(prefix, wire, shape, &elements, 2);
+    stmt.push_str(&header_stmts);
+    let _ = writeln!(
+        stmt,
+        "        return {{ ok: true, value: [response.body, contentType, {}] }};",
+        header_idents.join(", ")
+    );
+    stmt
+}
+
+/// A `body = "stream"` operation's own decode: `206` answers the streamed record with its own
+/// `contentRange` read back off the response ahead of the body; the declared `ok_status` answers
+/// the same record with `contentRange` left `undefined`; everything else falls through the same
+/// declared-error, fixed-fault and unexpected-status ladder every other kind answers through —
+/// mirrors the Rust and Dart clients' own stream decode.
+fn stream_reply_decode_stmt(
+    prefix: &str,
+    shape: &HttpShape,
+    wire: &str,
+    error: &Type,
+    success: &Type,
+) -> String {
+    let ok_status = shape.ok_status;
+    let error_condition = error_condition_expr(shape);
+    let error_ty = get_field_def("error", error, "").typescript_typename();
+    let partial = stream_success_arm(prefix, wire, shape, success, true);
+    let full = stream_success_arm(prefix, wire, shape, success, false);
+    format!(
+        "      const status = response.status;\n      \
+         if (status === 206) {{\n\
+{partial}      \
+         }}\n      \
+         if (status === {ok_status}) {{\n\
+{full}      \
+         }}\n      \
+         if ({error_condition}) {{\n        \
+         let declared: {error_ty};\n        \
+         try {{\n          \
+         declared = JSON.parse(response.body) as {error_ty};\n        \
+         }} catch (rejected) {{\n          \
+         return {{\n            \
+         ok: false,\n            \
+         error: {{\n              \
+         isServiceFault: true,\n              \
+         fault: {prefix}HttpUndeserializablePayload(\"{wire}\", String(rejected)),\n            \
+         }},\n          \
+         }};\n        \
+         }}\n        \
+         return {{ ok: false, error: declared }};\n      \
+         }}\n      \
+         if (status === 400 || status === 404 || status === 500) {{\n        \
+         return {{\n          \
+         ok: false,\n          \
+         error: {{\n            \
+         isServiceFault: true,\n            \
+         fault: {prefix}HttpFaultFromBody(\"{wire}\", response.body),\n          \
+         }},\n        \
+         }};\n      \
+         }}\n      \
+         return {{\n        \
+         ok: false,\n        \
+         error: {{\n          \
+         isServiceFault: true,\n          \
+         fault: {prefix}HttpUndeserializablePayload(\n            \
+         \"{wire}\",\n            \
+         `an unexpected status (${{status}}) answered`,\n          \
+         ),\n        \
+         }},\n      \
+         }};\n"
+    )
+}
+
+/// One status arm of [`stream_reply_decode_stmt`]: `contentRange` read back off the response for a
+/// `206` partial answer, left `undefined` for the declared `ok_status`'s whole-body answer — both
+/// paired with `response.bodyStream`, the seam's own lazily-pulled source — then every declared
+/// `header_out` element read back exactly as the bytes and JSON paths do.
+fn stream_success_arm(
+    prefix: &str,
+    wire: &str,
+    shape: &HttpShape,
+    success: &Type,
+    partial: bool,
+) -> String {
+    let mut stmt = if partial {
+        "        const contentRange =\n          \
+         response.headers.find(\n            \
+         ([name]) => name.toLowerCase() === \"content-range\",\n          \
+         )?.[1] ?? \"\";\n"
+            .to_owned()
+    } else {
+        "        const contentRange: string | undefined = undefined;\n".to_owned()
+    };
+    stmt.push_str("        const answer = { contentRange, body: response.bodyStream };\n");
+    if shape.header_out.is_empty() {
+        stmt.push_str("        return { ok: true, value: answer };\n");
+        return stmt;
+    }
+    let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
+    let (header_stmts, header_idents) = header_out_read_stmts(prefix, wire, shape, &elements, 1);
+    stmt.push_str(&header_stmts);
+    let _ = writeln!(
+        stmt,
+        "        return {{ ok: true, value: [answer, {}] }};",
+        header_idents.join(", ")
+    );
+    stmt
+}
+
+/// Reads every declared `header_out` element back off the response headers, in declaration order,
+/// skipping `body_elements` positions in `elements` to reach the first header slot — 1 for the
+/// ordinary JSON and streamed shapes (the value or answer alone), 2 for `body = "bytes"` (the bytes
+/// and their content type). Shared by every success-decoding arm so the copies cannot drift.
+fn header_out_read_stmts(
+    prefix: &str,
+    wire: &str,
+    shape: &HttpShape,
+    elements: &[&Type],
+    body_elements: usize,
+) -> (String, Vec<String>) {
+    let mut stmt = String::new();
+    let mut idents = Vec::new();
     for (index, (name, element_ty)) in shape
         .header_out
         .iter()
-        .zip(elements.iter().skip(2))
+        .zip(elements.iter().skip(body_elements))
         .enumerate()
     {
         let raw_ident = format!("rawHeaderOut{index}");
@@ -727,14 +838,9 @@ fn bytes_success_decode_block(
             stmt,
             "        const {ident} = {value_expr} as {element_typename};"
         );
-        header_idents.push(ident);
+        idents.push(ident);
     }
-    let _ = writeln!(
-        stmt,
-        "        return {{ ok: true, value: [response.body, contentType, {}] }};",
-        header_idents.join(", ")
-    );
-    stmt
+    (stmt, idents)
 }
 
 /// The expression that reads a `header_out` element's declared type back off `raw` — a `string`
