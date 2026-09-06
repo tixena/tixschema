@@ -98,11 +98,21 @@ fn a_header_in_binding_becomes_an_extra_parameter_and_a_built_header() {
     );
     let method = method_body(&written, "getVersion");
     assert!(
-        method.contains(
-            "final headers = <(String, String)>[('range', (byte_range == null ? '' : \
-             '${byte_range!}'))];"
-        ),
+        method.contains("final headers = <(String, String)>[];")
+            && method.contains(
+                "if (byte_range != null) {\n      headers.add(('range', '${byte_range!}'));\n    }"
+            ),
         "the header is built from the extra argument, never from the message. Got: {method}"
+    );
+}
+
+#[test]
+fn an_absent_option_header_in_is_omitted_rather_than_sent_as_an_empty_string() {
+    let written = dart_http_client_of(DART_HTTP_SERVICE);
+    let method = method_body(&written, "getVersion");
+    assert!(
+        !method.contains("== null ? ''"),
+        "a header the caller never bound must not travel as an empty-string value. Got: {method}"
     );
 }
 

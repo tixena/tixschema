@@ -5,7 +5,7 @@
 //! success, a declared error or a fault. No TypeScript toolchain is reachable here, so none of them
 //! type-checks the bundle.
 
-use super::{MIXED_HTTP_SERVICE, http_client_of};
+use super::{BYTES_HTTP_SERVICE, MIXED_HTTP_SERVICE, MULTIPART_HTTP_SERVICE, http_client_of};
 
 #[test]
 fn exactly_one_seam_type_is_emitted_and_it_names_no_http_library() {
@@ -93,8 +93,12 @@ fn a_header_in_binding_becomes_an_extra_argument_and_a_built_header() {
     );
     let method = method_body(&written, "getVersion");
     assert!(
-        method
-            .contains("const headers: Array<[string, string]> = [[\"range\", String(byteRange)]];"),
+        method.contains("const headers: Array<[string, string]> = [];")
+            && method.contains(
+                "if (byteRange !== undefined) {\n        \
+                 headers.push([\"range\", String(byteRange)]);\n      \
+                 }"
+            ),
         "the header is built from the extra argument, never from the message. Got: {method}"
     );
 }
@@ -286,6 +290,79 @@ fn the_factory_binds_a_transport_and_answers_with_the_client() {
              ): DocumentClientServiceHttpClient {"
         ),
         "got: {written}"
+    );
+}
+
+#[test]
+fn a_bytes_operation_reads_the_body_content_type_and_header_out_back() {
+    let written = http_client_of(BYTES_HTTP_SERVICE);
+    let method = method_body(&written, "getThumbnail");
+    assert!(
+        method.contains(
+            "const contentType = response.headers.find(\n          \
+             ([name]) => name.toLowerCase() === \"content-type\",\n        \
+             )?.[1] ?? \"\";"
+        ),
+        "content-type is read back off the response headers. Got: {method}"
+    );
+    assert!(
+        method.contains(
+            "const rawHeaderOut0 = response.headers.find(\n          \
+             ([name]) => name.toLowerCase() === \"x-document-id\",\n        \
+             );"
+        ),
+        "the declared header_out entry is read back the same way the JSON path reads one. \
+         Got: {method}"
+    );
+    assert!(
+        method.contains("return { ok: true, value: [response.body, contentType, headerOut0] };"),
+        "the body pair rides first, then the declared header - body-pair-first ordering. \
+         Got: {method}"
+    );
+}
+
+#[test]
+fn a_multipart_operation_carries_parts_on_the_seam_and_takes_an_extra_file_argument() {
+    let written = http_client_of(MULTIPART_HTTP_SERVICE);
+    assert!(
+        written.contains("parts: ReadonlyArray<readonly [string, unknown]>;"),
+        "the seam's own request record carries `parts` for a multipart-declaring service. \
+         Got: {written}"
+    );
+    assert!(
+        written
+            .contains("uploadDocument(req: UploadDocumentRequest, attachment: unknown): Promise<"),
+        "the client type spells the extra file argument beside the message. Got: {written}"
+    );
+}
+
+#[test]
+fn a_multipart_method_builds_one_text_part_per_field_and_one_file_part_per_binding() {
+    let written = http_client_of(MULTIPART_HTTP_SERVICE);
+    let method = method_body(&written, "uploadDocument");
+    assert!(
+        method.contains("const body = \"\";"),
+        "a multipart method's content rides in `parts`, never `body`. Got: {method}"
+    );
+    assert!(
+        method.contains("const parts: Array<[string, unknown]> = [];")
+            && method.contains("parts.push([\"title\", String(sending.title)]);")
+            && method.contains(
+                "if (sending.description !== undefined) {\n        \
+                 parts.push([\"description\", String(sending.description)]);\n      \
+                 }"
+            )
+            && method.contains("parts.push([\"file\", attachment]);"),
+        "one text part per carried field not otherwise placeholder-bound, then one file part per \
+         `part` binding. Got: {method}"
+    );
+    assert!(
+        !method.contains("parts.push([\"folderId\""),
+        "the path-bound field is read off the path, not sent as a text part too. Got: {method}"
+    );
+    assert!(
+        method.contains("parts,\n        });"),
+        "`parts` rides beside `body` in the request the seam is handed. Got: {method}"
     );
 }
 

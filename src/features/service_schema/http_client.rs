@@ -43,16 +43,17 @@ use super::result::result_name;
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
-    DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs, OperationOutcome,
-    PathSegment, ScalarKind, ServiceDef, is_unit_type, option_inner, scalar_kind, tuple_elements,
-    vec_inner, wire_key,
+    BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
+    OperationOutcome, PathSegment, ScalarKind, ServiceDef, is_unit_type, option_inner, scalar_kind,
+    service_declares_multipart, tuple_elements, vec_inner, wire_key,
 };
 use core::fmt::Write as _;
 use syn::Type;
 
 pub fn emit(service: &ServiceDef) -> Vec<String> {
+    let has_multipart = service_declares_multipart(service);
     let mut published = vec![
-        transport_type(&service.ident.to_string()),
+        transport_type(&service.ident.to_string(), has_multipart),
         client_type(service),
     ];
     published.extend(fault_helpers(service));
@@ -66,8 +67,14 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
 
 /// The one seam type a `{service}` client sends through: a request record in, a response record
 /// out, nothing service-specific in either and nothing here naming the library that finally
-/// carries the call.
-fn transport_type(service: &str) -> String {
+/// carries the call. The request record carries `parts` only where the service declares a
+/// multipart operation - every other body kind still carries its content as `body`.
+fn transport_type(service: &str, has_multipart: bool) -> String {
+    let parts_field = if has_multipart {
+        "\n    parts: ReadonlyArray<readonly [string, unknown]>;"
+    } else {
+        ""
+    };
     format!(
         "/**\n \
          * What binds a `{service}` client to a real HTTP stack.\n \
@@ -84,7 +91,7 @@ fn transport_type(service: &str) -> String {
          path: string;\n    \
          query: string;\n    \
          headers: ReadonlyArray<readonly [string, string]>;\n    \
-         body: string;\n  \
+         body: string;{parts_field}\n  \
          }}): Promise<{{\n    \
          status: number;\n    \
          headers: ReadonlyArray<readonly [string, string]>;\n    \
@@ -135,10 +142,11 @@ fn client_type(service: &ServiceDef) -> String {
 /// validate, build the request, send, decode by status.
 fn factory(service: &ServiceDef) -> String {
     let named = service.ident.to_string();
+    let has_multipart = service_declares_multipart(service);
     let methods = service
         .operations
         .iter()
-        .map(|operation| method(service, operation))
+        .map(|operation| method(service, operation, has_multipart))
         .collect::<Vec<_>>()
         .join("\n");
     format!(
@@ -161,12 +169,17 @@ fn answers(service: &str, operation: &OperationDef) -> String {
 }
 
 /// The parameter list a method (and the client type's own member) takes: the message first, then
-/// one argument per `header_in` binding, in declaration order.
+/// one argument per `header_in` binding, then one per `part` binding, in declaration order.
 fn method_params(operation: &OperationDef, shape: &HttpShape) -> String {
     let mut params = vec![format!("req: {}", message::typename(operation))];
     for header in &shape.header_in {
         let name = RenameRule::CamelCase.apply_to_field(&header.parameter.to_string());
         let ty = get_field_def(&name, &header.ty, "").typescript_typename();
+        params.push(format!("{name}: {ty}"));
+    }
+    for part in &shape.multipart_parts {
+        let name = RenameRule::CamelCase.apply_to_field(&part.parameter.to_string());
+        let ty = get_field_def(&name, &part.ty, "").typescript_typename();
         params.push(format!("{name}: {ty}"));
     }
     params.join(", ")
@@ -187,7 +200,7 @@ fn method_doc(operation: &OperationDef, shape: &HttpShape) -> String {
 
 /// One method on the factory's returned object: validate, build the request from the validated
 /// message, send it, decode the answer by status.
-fn method(service: &ServiceDef, operation: &OperationDef) -> String {
+fn method(service: &ServiceDef, operation: &OperationDef, has_multipart: bool) -> String {
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
     let wire = &operation.wire_name;
@@ -199,7 +212,8 @@ fn method(service: &ServiceDef, operation: &OperationDef) -> String {
     let query_build = query_build_stmt(operation, &shape);
     let headers_build = header_in_build_stmt(&shape);
     let body_build = body_build_stmt(&shape);
-    let send = send_stmt(&prefix, operation, wire, shape.method.name());
+    let parts_build = multipart_parts_build_stmt(operation, &shape, has_multipart);
+    let send = send_stmt(&prefix, operation, wire, shape.method.name(), has_multipart);
     let decode = decode_stmt(&prefix, operation, &shape, wire);
     format!(
         "    async {call}({params}) {{\n\
@@ -209,6 +223,7 @@ fn method(service: &ServiceDef, operation: &OperationDef) -> String {
 {query_build}\
 {headers_build}\
 {body_build}\
+{parts_build}\
 {send}\
 {decode}\
     }},"
@@ -334,32 +349,99 @@ fn query_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
     )
 }
 
+/// Builds the outgoing header array, one entry per `header_in` binding — except an optional
+/// binding holding `undefined`, which is pushed nowhere rather than as the text `String(undefined)`
+/// would otherwise render (`"undefined"`, a header the request never meant to carry). Mirrors the
+/// Rust client's own `header_in_build_stmts`.
 fn header_in_build_stmt(shape: &HttpShape) -> String {
-    if shape.header_in.is_empty() {
-        return "      const headers: Array<[string, string]> = [];\n".to_owned();
+    let mut stmt = String::from("      const headers: Array<[string, string]> = [];\n");
+    for header in &shape.header_in {
+        let name = &header.name;
+        let parameter = RenameRule::CamelCase.apply_to_field(&header.parameter.to_string());
+        if option_inner(&header.ty).is_some() {
+            let _ = write!(
+                stmt,
+                "      if ({parameter} !== undefined) {{\n        \
+                 headers.push([\"{name}\", String({parameter})]);\n      \
+                 }}\n"
+            );
+        } else {
+            let _ = writeln!(
+                stmt,
+                "      headers.push([\"{name}\", String({parameter})]);"
+            );
+        }
     }
-    let entries = shape
-        .header_in
-        .iter()
-        .map(|header| {
-            let name = &header.name;
-            let parameter = RenameRule::CamelCase.apply_to_field(&header.parameter.to_string());
-            format!("[\"{name}\", String({parameter})]")
-        })
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!("      const headers: Array<[string, string]> = [{entries}];\n")
+    stmt
 }
 
 fn body_build_stmt(shape: &HttpShape) -> String {
-    if shape.method.carries_a_body() {
+    if matches!(shape.body_kind, BodyKind::Multipart) {
+        "      const body = \"\";\n".to_owned()
+    } else if shape.method.carries_a_body() {
         "      const body = JSON.stringify(sending);\n".to_owned()
     } else {
         "      const body = \"\";\n".to_owned()
     }
 }
 
-fn send_stmt(prefix: &str, operation: &OperationDef, wire: &str, method_str: &str) -> String {
+/// The `parts` a `body = "multipart"` method sends: one text entry per carried `Generated` field
+/// not otherwise placeholder-bound (under its own wire key), then one entry per declared `part`
+/// binding (under its own declared name, its value the client's own extra argument, passed
+/// through untouched) - mirrors the Rust client's own `multipart_parts_build_stmt`. Every other
+/// body kind on a service that declares multipart still builds an empty `parts` so the request
+/// literal has a value for the field; a service with no multipart operation at all builds nothing.
+fn multipart_parts_build_stmt(
+    operation: &OperationDef,
+    shape: &HttpShape,
+    has_multipart: bool,
+) -> String {
+    if !has_multipart {
+        return String::new();
+    }
+    if !matches!(shape.body_kind, BodyKind::Multipart) {
+        return "      const parts: Array<[string, unknown]> = [];\n".to_owned();
+    }
+    let placeholders = shape.placeholder_names();
+    let mut stmt = String::from("      const parts: Array<[string, unknown]> = [];\n");
+    if let OperationInputs::Generated(fields) = &operation.inputs {
+        for (field, ty) in fields {
+            let field_name = field.to_string();
+            if placeholders.contains(&field_name) {
+                continue;
+            }
+            let key = wire_key(field);
+            let field_key = RenameRule::CamelCase.apply_to_field(&field_name);
+            if option_inner(ty).is_some() {
+                let _ = write!(
+                    stmt,
+                    "      if (sending.{field_key} !== undefined) {{\n        \
+                     parts.push([\"{key}\", String(sending.{field_key})]);\n      \
+                     }}\n"
+                );
+            } else {
+                let _ = writeln!(
+                    stmt,
+                    "      parts.push([\"{key}\", String(sending.{field_key})]);"
+                );
+            }
+        }
+    }
+    for part in &shape.multipart_parts {
+        let name = &part.name;
+        let parameter = RenameRule::CamelCase.apply_to_field(&part.parameter.to_string());
+        let _ = writeln!(stmt, "      parts.push([\"{name}\", {parameter}]);");
+    }
+    stmt
+}
+
+fn send_stmt(
+    prefix: &str,
+    operation: &OperationDef,
+    wire: &str,
+    method_str: &str,
+    has_multipart: bool,
+) -> String {
     let failure = match operation.outcome {
         OperationOutcome::OneWay => format!(
             "        throw {prefix}HttpRefused(\n          \
@@ -376,6 +458,11 @@ fn send_stmt(prefix: &str, operation: &OperationDef, wire: &str, method_str: &st
              }};\n"
         ),
     };
+    let parts_field = if has_multipart {
+        "\n          parts,"
+    } else {
+        ""
+    };
     format!(
         "      let response;\n      \
          try {{\n        \
@@ -384,7 +471,7 @@ fn send_stmt(prefix: &str, operation: &OperationDef, wire: &str, method_str: &st
          path,\n          \
          query,\n          \
          headers,\n          \
-         body,\n        \
+         body,{parts_field}\n        \
          }});\n      \
          }} catch (uncarried) {{\n{failure}      \
          }}\n"
@@ -495,9 +582,13 @@ fn reply_decode_stmt(
 }
 
 /// The statements that read a success answer off the response, once its status has already
-/// matched: nothing at all for a unit reply, the body alone for an ordinary reply, or the body
-/// plus every `header_out` element read back from the response's own headers.
+/// matched: nothing at all for a unit reply, the body alone for an ordinary reply, the response
+/// bytes and their content type for a `body = "bytes"` operation, or the body plus every
+/// `header_out` element read back from the response's own headers.
 fn success_decode_block(prefix: &str, wire: &str, shape: &HttpShape, success: &Type) -> String {
+    if matches!(shape.body_kind, BodyKind::Bytes) {
+        return bytes_success_decode_block(prefix, wire, shape, success);
+    }
     if shape.header_out.is_empty() {
         if is_unit_type(success) {
             return "        return { ok: true, value: undefined };\n".to_owned();
@@ -576,6 +667,71 @@ fn success_decode_block(prefix: &str, wire: &str, shape: &HttpShape, success: &T
     let _ = writeln!(
         stmt,
         "        return {{ ok: true, value: [value, {}] }};",
+        header_idents.join(", ")
+    );
+    stmt
+}
+
+/// A `body = "bytes"` operation's own success decode: the raw response body stands in for the
+/// bytes - the seam already carries it as a plain `string`, so there is no `JSON.parse` on the
+/// success path at all, mirroring the Rust client's own bytes decode, which reaches for no
+/// `serde_json` either - `content-type` read back from the response headers, then any declared
+/// `header_out` element after it, the same composition the JSON path performs, shifted one slot
+/// for the content type.
+fn bytes_success_decode_block(
+    prefix: &str,
+    wire: &str,
+    shape: &HttpShape,
+    success: &Type,
+) -> String {
+    let mut stmt = String::from(
+        "        const contentType = response.headers.find(\n          \
+         ([name]) => name.toLowerCase() === \"content-type\",\n        \
+         )?.[1] ?? \"\";\n",
+    );
+    if shape.header_out.is_empty() {
+        stmt.push_str("        return { ok: true, value: [response.body, contentType] };\n");
+        return stmt;
+    }
+    let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
+    let mut header_idents = Vec::new();
+    for (index, (name, element_ty)) in shape
+        .header_out
+        .iter()
+        .zip(elements.iter().skip(2))
+        .enumerate()
+    {
+        let raw_ident = format!("rawHeaderOut{index}");
+        let ident = format!("headerOut{index}");
+        let element_typename = get_field_def("value", element_ty, "").typescript_typename();
+        let _ = write!(
+            stmt,
+            "        const {raw_ident} = response.headers.find(\n          \
+             ([name]) => name.toLowerCase() === \"{name}\",\n        \
+             );\n        \
+             if ({raw_ident} === undefined) {{\n          \
+             return {{\n            \
+             ok: false,\n            \
+             error: {{\n              \
+             isServiceFault: true,\n              \
+             fault: {prefix}HttpUndeserializablePayload(\n                \
+             \"{wire}\",\n                \
+             \"a declared response header was missing\",\n              \
+             ),\n            \
+             }},\n          \
+             }};\n        \
+             }}\n"
+        );
+        let value_expr = header_out_value_expr(element_ty, &format!("{raw_ident}[1]"));
+        let _ = writeln!(
+            stmt,
+            "        const {ident} = {value_expr} as {element_typename};"
+        );
+        header_idents.push(ident);
+    }
+    let _ = writeln!(
+        stmt,
+        "        return {{ ok: true, value: [response.body, contentType, {}] }};",
         header_idents.join(", ")
     );
     stmt

@@ -43,6 +43,24 @@ pub trait ContentService<Ctx> {
         document_id: String,
         byte_range: Option<String>,
     ) -> Result<content_service_schema::StreamedAnswer, ContentError>;
+
+    /// The same content, with a declared `header_out` composed onto the streamed answer - proving
+    /// the composition parse.rs now permits reaches both `StreamedAnswer` arms, `Full` and
+    /// `Partial` alike, rather than only the JSON and bytes kinds.
+    #[service_schema_op(http(
+        method = "GET",
+        path = "/documents/{document_id}/content-with-etag",
+        header_in("range" = byte_range),
+        header_out("etag"),
+        body = "stream",
+        error_status(NotFound = 404, RangeNotSatisfiable = 416),
+    ))]
+    async fn get_content_with_etag(
+        &self,
+        ctx: &Ctx,
+        document_id: String,
+        byte_range: Option<String>,
+    ) -> Result<(content_service_schema::StreamedAnswer, String), ContentError>;
 }
 
 /// A chunked [`Read`] source: every call answers at most [`CHUNK_CAP`] bytes, whatever the
@@ -101,6 +119,16 @@ impl ContentService<()> for DocumentStore {
             source: Box::new(ChunkedSlice::new(&CONTENT[start..=end])),
             content_range: format!("bytes {start}-{end}/{}", CONTENT.len()),
         })
+    }
+
+    async fn get_content_with_etag(
+        &self,
+        ctx: &(),
+        document_id: String,
+        byte_range: Option<String>,
+    ) -> Result<(content_service_schema::StreamedAnswer, String), ContentError> {
+        let answered = self.get_content(ctx, document_id, byte_range).await?;
+        Ok((answered, "v9".to_owned()))
     }
 }
 
@@ -263,22 +291,65 @@ fn an_unknown_document_answers_the_declared_404() {
     assert_eq!(body, br#"{"errorCode":"not-found"}"#);
 }
 
-/// The route table an adapter iterates to register a handler: one row for the one streamed
-/// operation, its statuses included - mirrors the same claim `DocumentService`'s own harness
-/// makes, for a service whose one operation streams instead of answering JSON.
+/// The route table an adapter iterates to register a handler: one row per streamed operation, its
+/// statuses included - mirrors the same claim `DocumentService`'s own harness makes, for a service
+/// whose operations stream instead of answering JSON.
 #[test]
-fn the_route_table_lists_the_one_streamed_route() {
+fn the_route_table_lists_both_streamed_routes() {
     let routes = stream_http_rest_transport::ROUTES;
     let paths: Vec<&str> = routes
         .iter()
         .map(stream_http_rest_transport::Route::path)
         .collect();
-    assert_eq!(routes.len(), 1, "got: {paths:?}");
+    assert_eq!(routes.len(), 2, "got: {paths:?}");
     assert_eq!(routes[0].method(), "GET");
     assert_eq!(routes[0].path(), "/documents/{document_id}/content");
     assert_eq!(routes[0].operation(), "get-content");
     assert_eq!(routes[0].ok_status(), 200);
     assert_eq!(routes[0].error_statuses(), &[404, 416]);
+}
+
+/// A declared `header_out` composed onto a streamed answer rides beside `content-range` on `206`
+/// and alone on the full `200` answer - the same composition the bytes kind now carries, reached
+/// through both `StreamedAnswer` arms rather than only one.
+#[test]
+fn a_header_out_entry_composes_onto_both_streamed_answer_arms() {
+    let (full_status, full_headers, full_body, _full_pulls) =
+        dispatched("GET", "/documents/present/content-with-etag", &[]);
+    assert_eq!(full_status, 200);
+    assert_eq!(full_body, CONTENT);
+    assert_eq!(
+        full_headers
+            .iter()
+            .find(|(name, _)| name == "etag")
+            .map(|(_, value)| value.as_str()),
+        Some("v9"),
+        "got: {full_headers:?}"
+    );
+
+    let (partial_status, partial_headers, partial_body, _partial_pulls) = dispatched(
+        "GET",
+        "/documents/present/content-with-etag",
+        &[("range", "bytes=4-8")],
+    );
+    assert_eq!(partial_status, 206);
+    assert_eq!(partial_body, b"quick");
+    assert_eq!(
+        partial_headers
+            .iter()
+            .find(|(name, _)| name == "content-range")
+            .map(|(_, value)| value.as_str()),
+        Some(format!("bytes 4-8/{}", CONTENT.len())).as_deref(),
+        "content-range still rides beside the declared header. got: {partial_headers:?}"
+    );
+    assert_eq!(
+        partial_headers
+            .iter()
+            .find(|(name, _)| name == "etag")
+            .map(|(_, value)| value.as_str()),
+        Some("v9"),
+        "got: {partial_headers:?}"
+    );
 }
 
 /// `IncomingRequest` reads back everything it was built with - the same accessors every other
