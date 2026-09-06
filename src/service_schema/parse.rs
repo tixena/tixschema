@@ -42,6 +42,7 @@ use proc_macro2::TokenTree;
 use quote::{ToTokens as _, format_ident};
 use std::collections::{HashMap, HashSet};
 use syn::meta::ParseNestedMeta;
+use syn::punctuated::Punctuated;
 use syn::spanned::Spanned as _;
 use syn::{
     Attribute, FnArg, GenericArgument, GenericParam, Ident, ItemTrait, LitInt, LitStr, Pat,
@@ -103,6 +104,15 @@ const UNMATCHED_CLOSING_BRACE_MESSAGE: &str = concat!(
     "service_schema: `http(...)`'s path has a `}` with no matching `{`\n",
     "       write `{field}`, or escape a literal brace some other way"
 );
+
+/// The status a declared error answers at when its operation named no `http(...)` group at all,
+/// and so declared no `error_status` table to read a code from. Distinct from every fixed fault
+/// status (400, 404, 500) so a caller can tell "the operation declared this failure" from "a
+/// defect answered instead" even on an operation that paid no annotation cost.
+///
+/// `pub`: read identically by the Rust `http_rest` transport and its TypeScript client, so a
+/// second copy of the number could only drift from this one.
+pub const DEFAULT_BINDING_ERROR_STATUS: u16 = 422;
 
 /// One service, read once.
 pub struct ServiceDef {
@@ -311,6 +321,82 @@ impl BodyKind {
     }
 }
 
+/// The three shapes a query, path or header value coerces to. Anything this crate does not
+/// recognise coerces as [`Text`](ScalarKind::Text) — a custom type, a `chrono` type, a plain
+/// `String` — since a JSON string is what every one of those already reads from serde.
+///
+/// `pub`: the Rust `http_rest` transport and its TypeScript client both coerce a raw wire
+/// string the same way, from the same declared type, so both read this judgement rather than a
+/// second copy of it.
+#[derive(Clone, Copy)]
+pub enum ScalarKind {
+    Bool,
+    Number,
+    Text,
+}
+
+/// What `http(...)` resolves to for one operation, whether it was written or defaulted. Every
+/// renderer over HTTP — the Rust dispatcher, the Rust client, the TypeScript client — reads this
+/// rather than [`OperationDef::http`] itself, so the default case is computed in exactly one
+/// place.
+pub struct HttpShape {
+    pub body_kind: BodyKind,
+    pub error_status: Vec<(Ident, u16)>,
+    pub header_in: Vec<HeaderIn>,
+    pub header_out: Vec<String>,
+    pub method: HttpMethod,
+    pub ok_status: u16,
+    pub path: Vec<PathSegment>,
+}
+
+impl HttpShape {
+    pub fn of(operation: &OperationDef) -> Self {
+        operation.http.as_ref().map_or_else(
+            || Self {
+                body_kind: BodyKind::Json,
+                error_status: Vec::new(),
+                header_in: Vec::new(),
+                header_out: Vec::new(),
+                method: HttpMethod::Post,
+                ok_status: default_ok_status(&operation.outcome),
+                path: vec![PathSegment::Literal(format!("/{}", operation.wire_name))],
+            },
+            |binding| Self {
+                body_kind: binding.body_kind,
+                error_status: binding.error_status.clone(),
+                header_in: binding.header_in.clone(),
+                header_out: binding.header_out.clone(),
+                method: binding.method,
+                ok_status: binding.ok_status,
+                path: binding.path.clone(),
+            },
+        )
+    }
+
+    /// The template written back out as `http(...)` would have declared it: `{field}` for a
+    /// placeholder, the literal text otherwise.
+    pub fn path_template(&self) -> String {
+        self.path
+            .iter()
+            .map(|segment| match segment {
+                PathSegment::Literal(text) => text.clone(),
+                PathSegment::Placeholder(name) => format!("{{{name}}}"),
+            })
+            .collect()
+    }
+
+    /// Every placeholder's name, in the template's own order.
+    pub fn placeholder_names(&self) -> Vec<String> {
+        self.path
+            .iter()
+            .filter_map(|segment| match segment {
+                PathSegment::Placeholder(name) => Some(name.clone()),
+                PathSegment::Literal(_) => None,
+            })
+            .collect()
+    }
+}
+
 /// What `http(...)` said, before it is checked against the operation's signature and outcome.
 struct RawHttp {
     body: Option<(BodyKind, LitStr)>,
@@ -358,6 +444,103 @@ impl OperationDirective {
         }
         Ok(directive)
     }
+}
+
+pub fn scalar_kind(ty: &Type) -> ScalarKind {
+    let Type::Path(named) = ty else {
+        return ScalarKind::Text;
+    };
+    let Some(leaf) = named.path.segments.last() else {
+        return ScalarKind::Text;
+    };
+    match leaf.ident.to_string().as_str() {
+        "bool" => ScalarKind::Bool,
+        "u8" | "u16" | "u32" | "u64" | "u128" | "usize" | "i8" | "i16" | "i32" | "i64" | "i128"
+        | "isize" | "f32" | "f64" => ScalarKind::Number,
+        _ => ScalarKind::Text,
+    }
+}
+
+/// Whether a Named type's own declared type is one of the wire-scalar shapes this crate
+/// recognises — the only case a whole message may be read back from a single path placeholder
+/// rather than an object.
+pub fn is_scalar_named_type(ty: &Type) -> bool {
+    let Type::Path(named) = ty else {
+        return false;
+    };
+    let Some(leaf) = named.path.segments.last() else {
+        return false;
+    };
+    matches!(
+        leaf.ident.to_string().as_str(),
+        "String"
+            | "str"
+            | "bool"
+            | "u8"
+            | "u16"
+            | "u32"
+            | "u64"
+            | "u128"
+            | "usize"
+            | "i8"
+            | "i16"
+            | "i32"
+            | "i64"
+            | "i128"
+            | "isize"
+            | "f32"
+            | "f64"
+            | "NaiveDate"
+            | "NaiveDateTime"
+            | "NaiveTime"
+    )
+}
+
+/// The one generic argument inside `Option<...>` or `Vec<...>`, if `ty` is written as that generic.
+pub fn generic_inner<'ty>(ty: &'ty Type, wanted: &str) -> Option<&'ty Type> {
+    let Type::Path(named) = ty else {
+        return None;
+    };
+    let last = named.path.segments.last()?;
+    if last.ident != wanted {
+        return None;
+    }
+    let PathArguments::AngleBracketed(generic) = &last.arguments else {
+        return None;
+    };
+    generic.args.iter().find_map(|argument| {
+        if let GenericArgument::Type(inner) = argument {
+            Some(inner)
+        } else {
+            None
+        }
+    })
+}
+
+pub fn option_inner(ty: &Type) -> Option<&Type> {
+    generic_inner(ty, "Option")
+}
+
+pub fn vec_inner(ty: &Type) -> Option<&Type> {
+    generic_inner(ty, "Vec")
+}
+
+/// The elements of a tuple type with at least one element, or `None` for anything else (unit
+/// included). A [`HttpBinding::header_out`] binding's own arity check guarantees a success type
+/// naming one is exactly this shape, so a caller holding that guarantee reads the first element as
+/// the body and the rest as the declared headers, in order.
+pub fn tuple_elements(ty: &Type) -> Option<&Punctuated<Type, Token![,]>> {
+    let Type::Tuple(tuple) = ty else {
+        return None;
+    };
+    (!tuple.elems.is_empty()).then_some(&tuple.elems)
+}
+
+/// The camelCase wire key one of an operation's own generated fields is read or written under:
+/// a path segment, a query parameter and a header value all coerce against the same key a JSON
+/// body would carry the field under.
+pub fn wire_key(field: &Ident) -> String {
+    RenameRule::CamelCase.apply_to_field(&field.to_string())
 }
 
 fn unknown_http_method_message(written: &str) -> String {
@@ -1176,7 +1359,12 @@ fn is_option_type(ty: &Type) -> bool {
 }
 
 /// Whether a type is the unit type `()`, which is what "an empty declared reply" writes.
-fn is_unit_type(ty: &Type) -> bool {
+///
+/// `pub`: the `http_rest` transport and its TypeScript client both answer a unit success with no
+/// payload the same way, so both read this judgement rather than a second copy of it. `pub` rather
+/// than `pub(crate)` for the same reason [`default_ok_status`] is: this module is private, so
+/// nothing wider than the crate can reach it regardless.
+pub fn is_unit_type(ty: &Type) -> bool {
     matches!(ty, Type::Tuple(tuple) if tuple.elems.is_empty())
 }
 

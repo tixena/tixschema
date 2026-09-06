@@ -28,7 +28,10 @@
 //!
 //! - `ts_definition()`: every generated message's type and schema, the fault type and the kind it
 //!   reports, and one [`result`] type per operation that answers.
-//! - `ts_client()`: the transport seam, the client type and the factory that binds one.
+//! - `ts_client()`: the AMQP-shaped transport seam, the client type and the factory that binds one.
+//! - `ts_http_client()`: the `http_rest` transport seam — a plain-terms request in, response out,
+//!   nothing here naming the library that finally carries the call — the client type, and the
+//!   factory that binds one.
 //! - `ts_service()`: the interface an implementation satisfies in full, the outcome types it
 //!   answers with, and the dispatcher factory.
 //!
@@ -76,6 +79,8 @@
 mod client;
 mod fault;
 #[cfg(feature = "zod")]
+mod http_client;
+#[cfg(feature = "zod")]
 mod message;
 mod result;
 #[cfg(feature = "zod")]
@@ -117,12 +122,19 @@ pub fn emit(service: &ServiceDef) -> TokenStream {
 #[cfg(feature = "zod")]
 fn seam(service: &ServiceDef) -> TokenStream {
     let client = client::emit(service).join("\n\n");
+    let http_client = http_client::emit(service).join("\n\n");
     let service_side = service::emit(service).join("\n\n");
     quote! {
         #[doc = " The service's generated TypeScript client: the transport seam it is bound"]
         #[doc = " to, the type its methods are declared on, and the factory that binds one."]
         pub fn ts_client() -> String {
             #client.to_owned()
+        }
+
+        #[doc = " The service's generated `http_rest` TypeScript client: the plain-terms request"]
+        #[doc = " and response seam, the client type, and the factory that binds one to it."]
+        pub fn ts_http_client() -> String {
+            #http_client.to_owned()
         }
 
         #[doc = " The service's implementable TypeScript interface, the outcome types an"]
@@ -208,12 +220,13 @@ fn seam_rustdoc(service: &str) -> Vec<String> {
     vec![
         String::new(),
         format!(
-            " This build publishes no `{service}Schema::ts_client()` and no \
-             `{service}Schema::ts_service()`. Both parse a message against the schema \
-             `#[model_schema()]` writes for it, and only a build with tixschema's `zod` feature \
-             writes one — so rather than a client and a dispatcher that check nothing, this build \
-             publishes the service's types and leaves the two seam artifacts out. Add `features = \
-             [\"zod\"]` to the tixschema dependency to get them."
+            " This build publishes no `{service}Schema::ts_client()`, no \
+             `{service}Schema::ts_http_client()`, and no `{service}Schema::ts_service()`. All \
+             three parse a message against the schema `#[model_schema()]` writes for it, and only \
+             a build with tixschema's `zod` feature writes one — so rather than a client and a \
+             dispatcher that check nothing, this build publishes the service's types and leaves \
+             the three seam artifacts out. Add `features = [\"zod\"]` to the tixschema dependency \
+             to get them."
         ),
     ]
 }
