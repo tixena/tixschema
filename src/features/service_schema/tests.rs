@@ -335,8 +335,8 @@ fn a_build_that_publishes_no_schema_publishes_no_client_and_no_dispatcher() {
          Got: {rendered}"
     );
     // The README states the consequence where it documents the requirement, so the two cannot
-    // drift.
-    let readme = include_str!("../../../README.md");
+    // drift. Newlines collapse to spaces first: the sentence may wrap anywhere in the source.
+    let readme = include_str!("../../../README.md").replace('\n', " ");
     assert!(
         readme.contains("**A service that publishes TypeScript needs the `zod` feature too.**")
             && readme.contains(
