@@ -208,6 +208,83 @@ const MULTIPART_HTTP_SERVICE: &str = "
     }
 ";
 
+/// A service declaring one `body = "bytes"` operation composing `header_out` onto its own tuple:
+/// the bytes, their content type, then the declared header. Dart-gated mirror of
+/// `BYTES_HTTP_SERVICE`, since a build can carry `dart` without `zod`.
+#[cfg(feature = "dart")]
+const DART_BYTES_HEADER_OUT_SERVICE: &str = "
+    pub trait ThumbnailClientService<Ctx> {
+        #[service_schema_op(http(
+            method = \"GET\",
+            path = \"/documents/{document_id}/thumbnail\",
+            body = \"bytes\",
+            header_out(\"x-document-id\"),
+            error_status(NotFound = 404),
+        ))]
+        async fn get_thumbnail(
+            &self,
+            ctx: &Ctx,
+            document_id: String,
+        ) -> Result<(Vec<u8>, String, String), ThumbnailError>;
+    }
+";
+
+/// A service declaring two `body = "stream"` operations: one answering the bare streamed answer,
+/// one composing a declared `header_out` onto it.
+#[cfg(feature = "dart")]
+const DART_STREAM_HTTP_SERVICE: &str = "
+    pub trait ContentClientService<Ctx> {
+        #[service_schema_op(http(
+            method = \"GET\",
+            path = \"/files/{file_id}\",
+            body = \"stream\",
+            error_status(NotFound = 404),
+        ))]
+        async fn get_file(
+            &self,
+            ctx: &Ctx,
+            file_id: String,
+        ) -> Result<StreamedAnswer, ContentError>;
+
+        #[service_schema_op(http(
+            method = \"GET\",
+            path = \"/files/{file_id}/tagged\",
+            body = \"stream\",
+            header_out(\"x-checksum\"),
+            error_status(NotFound = 404),
+        ))]
+        async fn get_tagged_file(
+            &self,
+            ctx: &Ctx,
+            file_id: String,
+        ) -> Result<(StreamedAnswer, String), ContentError>;
+    }
+";
+
+/// A service declaring one `body = "multipart"` operation: a path placeholder, two scalar
+/// `Generated` fields (one required, one optional) and a `part` binding for the file itself.
+/// Dart-gated mirror of `MULTIPART_HTTP_SERVICE`.
+#[cfg(feature = "dart")]
+const DART_MULTIPART_HTTP_SERVICE: &str = "
+    pub trait UploadClientService<Ctx> {
+        #[service_schema_op(http(
+            method = \"POST\",
+            path = \"/folders/{folder_id}/documents\",
+            body = \"multipart\",
+            part(\"file\" = attachment),
+            error_status(TooLarge = 413),
+        ))]
+        async fn upload_document(
+            &self,
+            ctx: &Ctx,
+            folder_id: String,
+            title: String,
+            description: Option<String>,
+            attachment: Box<dyn upload_client_service_schema::BodySource + Send>,
+        ) -> Result<UploadResponse, UploadError>;
+    }
+";
+
 #[cfg(feature = "zod")]
 fn client_of(source: &str) -> String {
     client::emit(&parsed(source)).join("\n\n")
