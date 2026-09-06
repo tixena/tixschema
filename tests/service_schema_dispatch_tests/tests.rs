@@ -1310,6 +1310,13 @@ pub enum SweepError {
     DbError,
 }
 
+#[model_schema()]
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum ThumbnailError {
+    NotFound,
+}
+
 /// Writes down every operation that reached it, so a test can say what the dispatcher let through.
 pub struct DocumentBackEnd {
     reached: Mutex<Vec<String>>,
@@ -1346,6 +1353,18 @@ pub trait DocumentService<Ctx> {
         ctx: &Ctx,
         document_id: String,
     ) -> Result<CreateDocumentResponse, ExplodeError>;
+
+    #[service_schema_op(http(
+        method = "GET",
+        path = "/documents/{document_id}/thumbnail",
+        error_status(NotFound = 404),
+        body = "bytes",
+    ))]
+    async fn get_thumbnail(
+        &self,
+        ctx: &Ctx,
+        document_id: String,
+    ) -> Result<(Vec<u8>, String), ThumbnailError>;
 
     #[service_schema_op(http(
         method = "GET",
@@ -1417,6 +1436,19 @@ impl DocumentService<()> for DocumentBackEnd {
         Ok(CreateDocumentResponse { document_id })
     }
 
+    async fn get_thumbnail(
+        &self,
+        _ctx: &(),
+        document_id: String,
+    ) -> Result<(Vec<u8>, String), ThumbnailError> {
+        ready(()).await;
+        self.reach(format!("get_thumbnail {document_id}"));
+        if document_id == "missing" {
+            return Err(ThumbnailError::NotFound);
+        }
+        Ok((vec![0x89, 0x50, 0x4e, 0x47], "image/png".to_owned()))
+    }
+
     async fn get_version(
         &self,
         _ctx: &(),
@@ -1480,6 +1512,32 @@ impl DocumentBackEnd {
 
     fn reached(&self) -> Vec<String> {
         self.reached.lock().unwrap().clone()
+    }
+}
+
+/// A `FaultHandler` that answers every kind with its own status, a marker header and a plain-text
+/// body naming the kind, rather than the default's fixed status and small fault JSON — proving an
+/// owner's override reaches every kind [`dispatch`](http_rest_transport::dispatch) meets, not only
+/// one.
+struct RecordingFaultHandler;
+
+impl http_rest_transport::FaultHandler for RecordingFaultHandler {
+    fn on_fault(
+        &self,
+        fault: &document_service_schema::ServiceFault,
+    ) -> http_rest_transport::OutgoingResponse {
+        use document_service_schema::ServiceFaultKind;
+        let status = match fault.kind() {
+            ServiceFaultKind::UnknownOperation => 490,
+            ServiceFaultKind::FailedValidation | ServiceFaultKind::UndeserializablePayload => 491,
+            ServiceFaultKind::HandlerPanic => 492,
+            ServiceFaultKind::TransportFailure => 493,
+        };
+        http_rest_transport::OutgoingResponse::new(
+            status,
+            vec![("x-fault-kind".to_owned(), format!("{}", fault.kind()))],
+            format!("handled: {}", fault.detail()).into_bytes(),
+        )
     }
 }
 
@@ -1980,7 +2038,8 @@ fn came_apart(document_id: &str) {
 }
 
 /// Dispatches one plain-terms HTTP request by hand — no server — and answers with what the
-/// implementation saw and the response the dispatcher wrote back.
+/// implementation saw and the response the dispatcher wrote back, faults included through the
+/// default `FaultHandler`.
 fn http_dispatched(
     method: &str,
     path: &str,
@@ -1988,6 +2047,29 @@ fn http_dispatched(
     headers: &[(&str, &str)],
     body: &[u8],
 ) -> (Vec<String>, http_rest_transport::OutgoingResponse) {
+    http_dispatched_with(
+        method,
+        path,
+        query,
+        headers,
+        body,
+        &http_rest_transport::DefaultFaultHandler,
+    )
+}
+
+/// [`http_dispatched`], with the fault handler installed left to the caller — what a test
+/// exercising a custom `FaultHandler` reaches for instead.
+fn http_dispatched_with<H>(
+    method: &str,
+    path: &str,
+    query: &str,
+    headers: &[(&str, &str)],
+    body: &[u8],
+    handler: &H,
+) -> (Vec<String>, http_rest_transport::OutgoingResponse)
+where
+    H: http_rest_transport::FaultHandler + Sync,
+{
     let service = DocumentBackEnd::new();
     let request = http_rest_transport::IncomingRequest::new(
         method.to_owned(),
@@ -1999,7 +2081,13 @@ fn http_dispatched(
             .collect(),
         body.to_vec(),
     );
-    let response = poll_once(http_rest_transport::dispatch(&service, &(), &request)).unwrap();
+    let response = poll_once(http_rest_transport::dispatch(
+        &service,
+        &(),
+        &request,
+        handler,
+    ))
+    .unwrap();
     (service.reached(), response)
 }
 
@@ -2079,6 +2167,57 @@ fn a_handler_that_panics_answers_a_500_fault() {
 }
 
 #[test]
+fn an_installed_fault_handler_chooses_its_own_status_headers_and_payload_per_kind() {
+    let (_unmatched_reached, unmatched) =
+        http_dispatched_with("GET", "/nowhere", "", &[], b"", &RecordingFaultHandler);
+    assert_eq!(unmatched.status(), 490);
+    assert_eq!(
+        unmatched.headers(),
+        &[("x-fault-kind".to_owned(), "unknown operation".to_owned())]
+    );
+    assert_eq!(
+        unmatched.body(),
+        b"handled: the service answers to no operation by that name"
+    );
+
+    let (_invalid_reached, invalid) = http_dispatched_with(
+        "POST",
+        "/documents",
+        "",
+        &[],
+        b"not a document at all",
+        &RecordingFaultHandler,
+    );
+    assert_eq!(invalid.status(), 491);
+    assert_eq!(
+        invalid.headers(),
+        &[(
+            "x-fault-kind".to_owned(),
+            "undeserializable payload".to_owned()
+        )]
+    );
+
+    let (reached, panicked) = http_dispatched_with(
+        "POST",
+        "/documents/anything/explode",
+        "",
+        &[],
+        b"{}",
+        &RecordingFaultHandler,
+    );
+    assert_eq!(reached, vec!["explode anything".to_owned()]);
+    assert_eq!(panicked.status(), 492);
+    assert_eq!(
+        panicked.headers(),
+        &[("x-fault-kind".to_owned(), "handler panic".to_owned())]
+    );
+    assert_eq!(
+        panicked.body(),
+        b"handled: the document anything came apart"
+    );
+}
+
+#[test]
 fn a_no_payload_operation_answers_its_declared_status_and_no_body() {
     let (reached, response) = http_dispatched("DELETE", "/documents/d1", "", &[], b"");
     assert_eq!(reached, vec!["purge_document d1".to_owned()]);
@@ -2122,12 +2261,41 @@ fn an_operation_naming_no_http_group_defaults_to_a_plain_post() {
     assert_eq!(response.body(), br#"{"swept":3}"#);
 }
 
+/// A `body = "bytes"` operation answers the bytes bare, under `content-type`, rather than the
+/// JSON envelope every other declared status writes.
+#[test]
+fn a_bytes_operation_answers_raw_bytes_under_its_own_content_type() {
+    let (reached, response) = http_dispatched("GET", "/documents/present/thumbnail", "", &[], b"");
+    assert_eq!(reached, vec!["get_thumbnail present".to_owned()]);
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.body(), [0x89, 0x50, 0x4e, 0x47]);
+    assert_eq!(
+        response
+            .headers()
+            .iter()
+            .find(|(name, _)| name == "content-type")
+            .map(|(_, value)| value.as_str()),
+        Some("image/png"),
+        "got: {:?}",
+        response.headers()
+    );
+}
+
+/// A bytes operation's declared error still answers JSON, exactly like any other declared error.
+#[test]
+fn a_bytes_operations_declared_error_still_answers_json() {
+    let (reached, response) = http_dispatched("GET", "/documents/missing/thumbnail", "", &[], b"");
+    assert_eq!(reached, vec!["get_thumbnail missing".to_owned()]);
+    assert_eq!(response.status(), 404);
+    assert_eq!(response.body(), br#"{"errorCode":"not-found"}"#);
+}
+
 /// The route table an adapter iterates to register a handler per operation: one row each, method
 /// and path template as declared (or defaulted), and every status a caller can be answered with.
 #[test]
 fn the_route_table_lists_one_row_per_operation_with_its_own_statuses() {
     let routes = http_rest_transport::ROUTES;
-    assert_eq!(routes.len(), 7, "one row per operation. Got: {:?}", {
+    assert_eq!(routes.len(), 8, "one row per operation. Got: {:?}", {
         routes
             .iter()
             .map(http_rest_transport::Route::operation)

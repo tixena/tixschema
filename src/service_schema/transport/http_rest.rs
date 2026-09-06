@@ -1,10 +1,11 @@
 //! The HTTP/REST transport: two inert macros, `{service}_http_rest_dispatcher!` and
 //! `{service}_http_rest_client!`, and nothing compiled where the service is declared.
 //!
-//! This version covers the JSON path only: JSON bodies, declared statuses, header bindings and
-//! no-payload operations, with a panic guard and FIXED fault defaults (validation 400, unmatched
-//! route 404, panic 500). An owner-overridable fault catch-all, non-JSON body kinds and the
-//! TypeScript half are separate, later work — nothing here stands in their way.
+//! This version covers JSON and bytes bodies, declared statuses, header bindings, no-payload
+//! operations, a panic guard, and an owner-overridable [`FaultHandler`] seam whose provided
+//! default answers the fixed behavior this dispatcher always answered (400 validation, 404
+//! unmatched route, 500 panic). The streamed body kind, multipart and the TypeScript half are
+//! separate, later work — nothing here stands in their way.
 //!
 //! # Why the flat AMQP seam cannot carry this
 //!
@@ -19,8 +20,8 @@
 //!
 //! Unlike `amqp_rpc`'s `{ ok, value, error }`, a REST answer carries no envelope: a success is the
 //! declared `ok_status` with the success type serialized directly as the body; a declared error is
-//! its mapped `error_status` with the error type itself serialized as the body; a fault is a small
-//! fixed JSON naming it, under a fixed status this version does not let an owner override.
+//! its mapped `error_status` with the error type itself serialized as the body; a fault answers
+//! through the installed [`FaultHandler`], whose provided default is a small fixed JSON naming it.
 //!
 //! # An operation naming no `http(...)` group
 //!
@@ -57,7 +58,7 @@ use super::amqp_rpc::{
     refusal_reader,
 };
 use crate::service_schema::parse::{
-    DEFAULT_BINDING_ERROR_STATUS, HeaderIn, HttpShape, OperationDef, OperationInputs,
+    BodyKind, DEFAULT_BINDING_ERROR_STATUS, HeaderIn, HttpShape, OperationDef, OperationInputs,
     OperationOutcome, PathSegment, ScalarKind, ServiceDef, is_scalar_named_type, is_unit_type,
     option_inner, scalar_kind, tuple_elements, vec_inner, wire_key,
 };
@@ -230,16 +231,17 @@ fn dispatcher_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
         "The `{contract}` dispatcher for the `{}` transport, held as tokens rather than compiled \
          here.\n\n\
          It takes no arguments and emits bare items - `IncomingRequest`, `OutgoingResponse`, the \
-         route table and `dispatch` - so the caller supplies the module they land in and two \
-         transports in one crate cannot collide. `dispatch` matches the method and path itself \
-         (no server sits behind it), decodes the path, the query string, request headers and the \
-         JSON body into the operation's own arguments, runs the message's own `validate()`, calls \
-         the implementation behind a panic guard, and answers a status, response headers and a \
-         body - the declared `ok_status` with the success type as bare JSON, a declared error at \
-         its mapped status with the error type itself as the body, or a fixed fault (400 \
-         validation, 404 unmatched route, 500 panic) naming the defect. The invoking crate names \
-         `serde`, `serde_json` and `tracing` in its own manifest, because the items below call \
-         them.\n\n\
+         route table, `FaultHandler` and `dispatch` - so the caller supplies the module they land \
+         in and two transports in one crate cannot collide. `dispatch` matches the method and \
+         path itself (no server sits behind it), decodes the path, the query string, request \
+         headers and the JSON body into the operation's own arguments, runs the message's own \
+         `validate()`, calls the implementation behind a panic guard, and answers a status, \
+         response headers and a body - the declared `ok_status` with the success type as bare \
+         JSON (or as raw bytes with its content type, for an operation declaring `body = \
+         \"bytes\"`), a declared error at its mapped status with the error type itself as the \
+         body, or a fault the caller's own installed `FaultHandler` decides the answer for. The \
+         invoking crate names `serde`, `serde_json` and `tracing` in its own manifest, because \
+         the items below call them.\n\n\
          {placement}",
         transport.name()
     );
@@ -260,6 +262,7 @@ fn dispatcher_items(service: &ServiceDef) -> TokenStream {
     let outgoing = outgoing_response_items();
     let route = route_type();
     let routes = route_table(service);
+    let fault_handler = fault_handler_trait(&module_ident(service));
     // `match_path` is an arm's, and a service declaring no operation has no arm to call it from.
     let path_token = if service.operations.is_empty() {
         TokenStream::new()
@@ -278,11 +281,16 @@ fn dispatcher_items(service: &ServiceDef) -> TokenStream {
         TokenStream::new()
     };
     let dispatch = dispatch_fn(service);
+    // Every type, trait and impl ahead of every function: `fault_handler` declares a trait and an
+    // impl, so it sits with `incoming`/`outgoing`/`route` rather than beside `path_token` and
+    // `query_helpers`, both of which are functions a strict consumer's lints would otherwise see
+    // declared ahead of a type.
     quote! {
         #routes
         #incoming
         #outgoing
         #route
+        #fault_handler
         #path_token
         #query_helpers
         #dispatch
@@ -377,6 +385,17 @@ fn outgoing_response_items() -> TokenStream {
             /// Every header this response carries, in the order they were written.
             pub fn headers(&self) -> &[(String, String)] {
                 &self.headers
+            }
+
+            /// Binds one response - what a `FaultHandler` an owner installed builds its answer
+            /// with, there being no other way to fill this type's private fields from outside the
+            /// module `dispatch` was placed in.
+            pub const fn new(status: u16, headers: Vec<(String, String)>, body: Vec<u8>) -> Self {
+                Self {
+                    status,
+                    headers,
+                    body,
+                }
             }
 
             /// The status this response answers with.
@@ -493,8 +512,8 @@ fn path_token_tokens(path: &[PathSegment]) -> Vec<TokenStream> {
         .collect()
 }
 
-/// `json_response` and `fault_response`, the two ways `dispatch` answers with a body.
-fn response_builders(module: &Ident) -> TokenStream {
+/// `json_response`, the one way `dispatch` and the default `FaultHandler` both write a body.
+fn response_builders() -> TokenStream {
     quote! {
         /// Serializes `value` as the body, under `status` and whatever `headers` the caller
         /// already built. A value that will not serialize is answered as a fault instead - the
@@ -525,18 +544,44 @@ fn response_builders(module: &Ident) -> TokenStream {
                 }
             }
         }
+    }
+}
 
-        /// A fault, answered at a fixed status this version does not let an owner override.
-        fn fault_response(status: u16, fault: $crate::#module::ServiceFault) -> OutgoingResponse {
-            json_response(status, ::std::vec::Vec::new(), &fault)
+/// The seam every fault `dispatch` meets answers through: `on_fault` decides its status, headers
+/// and body. The provided default matches the fixed behavior this dispatcher answered before this
+/// seam existed - 400 for a payload that failed to decode or to `validate()`, 404 for a request no
+/// route answers to, 500 for a handler that panicked - each as the fault itself under
+/// `json_response`.
+///
+/// An owner installs their own handler by implementing this trait on a type of their own and
+/// passing it to `dispatch`; overriding `on_fault` replaces the default for every kind at once,
+/// `fault.kind()` being how an override tells one kind from another.
+fn fault_handler_trait(module: &Ident) -> TokenStream {
+    quote! {
+        /// Decides what one fault answers with, for a `dispatch` it was installed on.
+        pub trait FaultHandler {
+            /// Turns `fault` into the response `dispatch` answers a request with.
+            fn on_fault(&self, fault: &$crate::#module::ServiceFault) -> OutgoingResponse {
+                let status = match fault.kind() {
+                    $crate::#module::ServiceFaultKind::UnknownOperation => 404,
+                    $crate::#module::ServiceFaultKind::HandlerPanic => 500,
+                    _ => 400,
+                };
+                json_response(status, ::std::vec::Vec::new(), fault)
+            }
         }
+
+        /// A `FaultHandler` that overrides nothing: every fault answers the fixed default.
+        pub struct DefaultFaultHandler;
+
+        impl FaultHandler for DefaultFaultHandler {}
     }
 }
 
 fn dispatch_fn(service: &ServiceDef) -> TokenStream {
     let contract = &service.ident;
     let module = module_ident(service);
-    let builders = response_builders(&module);
+    let builders = response_builders();
     let arms = service
         .operations
         .iter()
@@ -553,9 +598,10 @@ fn dispatch_fn(service: &ServiceDef) -> TokenStream {
     };
     let dispatch_doc = format!(
         "Matches `request` against every route `{contract}` declares and answers it: a declared \
-         status with the success or error type as bare JSON, or a fixed fault - 400 for a payload \
-         that fails to decode or to validate, 404 for a request no route answers to, 500 for a \
-         handler that panicked.\n\n\
+         status with the success or error type as bare JSON, or a fault the installed \
+         `FaultHandler` decides the answer for - by default the fixed behavior this dispatcher \
+         always answered: 400 for a payload that fails to decode or to validate, 404 for a \
+         request no route answers to, 500 for a handler that panicked.\n\n\
          Generic over the implementing type rather than taking `&dyn {contract}`: a trait whose \
          methods are `async` is not dyn compatible."
     );
@@ -565,23 +611,24 @@ fn dispatch_fn(service: &ServiceDef) -> TokenStream {
         #guard
 
         #[doc = #dispatch_doc]
-        pub fn dispatch<S, Ctx>(
+        pub fn dispatch<S, Ctx, H>(
             #implementation: &S,
             #context: &Ctx,
             request: &IncomingRequest,
+            handler: &H,
         ) -> impl ::core::future::Future<Output = OutgoingResponse> + Send
         where
             S: $crate::#contract<Ctx> + Sync,
             Ctx: Sync,
+            H: FaultHandler + Sync,
         {
             async move {
                 let method = request.method();
                 let path = request.path();
                 #(#arms)*
-                fault_response(
-                    404,
-                    $crate::#module::ServiceFault::unknown_operation(&format!("{method} {path}")),
-                )
+                handler.on_fault(&$crate::#module::ServiceFault::unknown_operation(&format!(
+                    "{method} {path}"
+                )))
             }
         }
     }
@@ -629,17 +676,14 @@ fn dispatch_arm(module: &Ident, operation: &OperationDef) -> TokenStream {
     let decode_and_validate = quote! {
         let received: $crate::#module::#message_alias = match ::serde_json::from_value(#value_expr) {
             Ok(received) => received,
-            Err(rejected) => return fault_response(400, refused_payload(#wire, &rejected)),
+            Err(rejected) => return handler.on_fault(&refused_payload(#wire, &rejected)),
         };
         if let Err(violations) = $crate::#module::#validator(&received) {
-            return fault_response(
-                400,
-                $crate::#module::ServiceFault::failed_validation(
-                    #wire,
-                    $crate::#module::violated_field(&violations),
-                    &$crate::#module::violation_detail(&violations),
-                ),
-            );
+            return handler.on_fault(&$crate::#module::ServiceFault::failed_validation(
+                #wire,
+                $crate::#module::violated_field(&violations),
+                &$crate::#module::violation_detail(&violations),
+            ));
         }
     };
 
@@ -680,7 +724,7 @@ fn header_in_let(wire: &str, header: &HeaderIn) -> TokenStream {
             };
             match ::serde_json::from_value(source) {
                 Ok(value) => value,
-                Err(rejected) => return fault_response(400, refused_payload(#wire, &rejected)),
+                Err(rejected) => return handler.on_fault(&refused_payload(#wire, &rejected)),
             }
         };
     }
@@ -724,13 +768,13 @@ fn message_value(
     }
 }
 
-/// The message value the raw request body parses to, or the fixed 400 fault a body that will not
-/// parse answers instead.
+/// The message value the raw request body parses to, or the fault a body that will not parse
+/// answers through the installed `FaultHandler` instead.
 fn from_body_expr(wire: &str) -> TokenStream {
     quote! {
         match ::serde_json::from_slice(request.body()) {
             Ok(value) => value,
-            Err(rejected) => return fault_response(400, refused_payload(#wire, &rejected)),
+            Err(rejected) => return handler.on_fault(&refused_payload(#wire, &rejected)),
         }
     }
 }
@@ -866,7 +910,7 @@ fn answer_block(
     let ok_status = shape.ok_status;
     let panic_fault = quote! {
         record_panic(#wire, &panicked);
-        return fault_response(500, $crate::#module::ServiceFault::handler_panic(#wire, &panicked));
+        return handler.on_fault(&$crate::#module::ServiceFault::handler_panic(#wire, &panicked));
     };
     match &operation.outcome {
         OperationOutcome::OneWay => quote! {
@@ -881,7 +925,27 @@ fn answer_block(
         },
         OperationOutcome::Reply { error, success } => {
             let status_expr = error_status_expr(shape, error);
-            if shape.header_out.is_empty() {
+            if matches!(shape.body_kind, BodyKind::Bytes) {
+                // `body_kind_refusals` (parse.rs) already requires this shape and refuses
+                // `header_out` alongside it, so `success` is `(Vec<u8>, String)` and there is no
+                // header-out tuple arity to branch on the way the JSON kind does below.
+                quote! {
+                    match #called {
+                        Ok(Ok((body, content_type))) => {
+                            return OutgoingResponse {
+                                status: #ok_status,
+                                headers: ::std::vec![("content-type".to_owned(), content_type)],
+                                body,
+                            };
+                        }
+                        Ok(Err(declared_error)) => {
+                            let status = #status_expr;
+                            return json_response(status, ::std::vec::Vec::new(), &declared_error);
+                        }
+                        Err(panicked) => { #panic_fault }
+                    }
+                }
+            } else if shape.header_out.is_empty() {
                 if is_unit_type(success) {
                     quote! {
                         match #called {
@@ -960,9 +1024,10 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
          method builds and validates the operation's own message first, then fills the declared \
          path template, query string and `header_in` headers from it, sends it over `Transport`, \
          and decodes the answer by status: the declared `ok_status` into the success type (or the \
-         success tuple, `header_out` elements read back from response headers), a mapped status \
-         into the declared error, and anything else - including a fixed fault status this crate \
-         did not expect at that code - into a fault.\n\n\
+         success tuple, `header_out` elements read back from response headers; or, for an \
+         operation declaring `body = \"bytes\"`, the response bytes and their `content-type`), a \
+         mapped status into the declared error, and anything else - including a fixed fault \
+         status this crate did not expect at that code - into a fault.\n\n\
          The invoking crate names `serde` and `serde_json` in its own manifest. It names no \
          `tracing`: nothing here catches a panic, so nothing here has anything to write down.\n\n\
          {placement}",
@@ -1451,7 +1516,16 @@ fn reply_decode(
 ) -> TokenStream {
     let ok_status = shape.ok_status;
     let error_condition = client_error_condition(shape);
-    let success_return = if shape.header_out.is_empty() {
+    let success_return = if matches!(shape.body_kind, BodyKind::Bytes) {
+        // The dispatcher writes the bytes bare and the content type as a response header; the
+        // client reads both straight back, no `serde_json` involved on the success path.
+        quote! {
+            return Ok((
+                response.body().to_vec(),
+                response.header("content-type").unwrap_or_default().to_owned(),
+            ));
+        }
+    } else if shape.header_out.is_empty() {
         if is_unit_type(success) {
             quote! { return Ok(()); }
         } else {

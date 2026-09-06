@@ -59,8 +59,20 @@ const UNKNOWN_DIRECTIVE_MESSAGE: &str = concat!(
 
 const UNKNOWN_HTTP_ARGUMENT_MESSAGE: &str = concat!(
     "service_schema: unknown `http` argument\n",
-    "       the arguments are `method`, `path`, `ok_status`, `error_status`, `header_in` and \
-     `header_out`"
+    "       the arguments are `method`, `path`, `ok_status`, `error_status`, `header_in`, \
+     `header_out` and `body`"
+);
+
+const BYTES_BODY_SUCCESS_SHAPE_MESSAGE: &str = concat!(
+    "service_schema: `body = \"bytes\"` requires a success type of `(Vec<u8>, String)`\n",
+    "       the operation's signature still claims a JSON success type - answer \
+     `Result<(Vec<u8>, String), Error>`, the bytes and their content type"
+);
+
+const BYTES_BODY_HEADER_OUT_MESSAGE: &str = concat!(
+    "service_schema: `body = \"bytes\"` declares no `header_out`\n",
+    "       its success type's second element already answers as the `content-type` response \
+     header"
 );
 
 const MISSING_HTTP_METHOD_MESSAGE: &str = concat!(
@@ -198,8 +210,9 @@ pub enum OperationOutcome {
 /// reading it off a materialized value here.
 #[derive(Debug)]
 pub struct HttpBinding {
-    /// How the body is carried. `Json` is the only kind this version emits; a later task extends
-    /// this for bytes-with-content-type and streamed bodies.
+    /// How the body is carried: `Json` (the default), or `Bytes`, declared with `body = "bytes"`
+    /// and checked against the signature by [`build_http_binding`]. A later task extends this for
+    /// the streamed kind.
     pub body_kind: BodyKind,
     /// One entry per declared `error_status(Variant = code)`, in declaration order. Each variant
     /// keeps its own span from the attribute, so a misspelling is rustc's own "no variant" error
@@ -289,10 +302,23 @@ pub struct HeaderIn {
     pub ty: Type,
 }
 
-/// How `http(...)` carries the body. `Json` is the only kind this version emits.
+/// How `http(...)` carries the body. `Json` is the default a group that writes no `body` gets.
+/// `Bytes` is the other kind this version emits; the streamed kind is later work, its grammar slot
+/// left for it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BodyKind {
+    Bytes,
     Json,
+}
+
+impl BodyKind {
+    fn from_name(written: &str) -> Option<Self> {
+        match written {
+            "bytes" => Some(Self::Bytes),
+            "json" => Some(Self::Json),
+            _ => None,
+        }
+    }
 }
 
 /// The three shapes a query, path or header value coerces to. Anything this crate does not
@@ -314,6 +340,7 @@ pub enum ScalarKind {
 /// rather than [`OperationDef::http`] itself, so the default case is computed in exactly one
 /// place.
 pub struct HttpShape {
+    pub body_kind: BodyKind,
     pub error_status: Vec<(Ident, u16)>,
     pub header_in: Vec<HeaderIn>,
     pub header_out: Vec<String>,
@@ -326,6 +353,7 @@ impl HttpShape {
     pub fn of(operation: &OperationDef) -> Self {
         operation.http.as_ref().map_or_else(
             || Self {
+                body_kind: BodyKind::Json,
                 error_status: Vec::new(),
                 header_in: Vec::new(),
                 header_out: Vec::new(),
@@ -334,6 +362,7 @@ impl HttpShape {
                 path: vec![PathSegment::Literal(format!("/{}", operation.wire_name))],
             },
             |binding| Self {
+                body_kind: binding.body_kind,
                 error_status: binding.error_status.clone(),
                 header_in: binding.header_in.clone(),
                 header_out: binding.header_out.clone(),
@@ -370,6 +399,7 @@ impl HttpShape {
 
 /// What `http(...)` said, before it is checked against the operation's signature and outcome.
 struct RawHttp {
+    body: Option<(BodyKind, LitStr)>,
     error_status: Vec<(Ident, u16)>,
     header_in: Vec<(LitStr, Ident)>,
     header_out: Vec<LitStr>,
@@ -520,6 +550,13 @@ fn unknown_http_method_message(written: &str) -> String {
     )
 }
 
+fn unknown_body_kind_message(written: &str) -> String {
+    format!(
+        "service_schema: `{written}` is not a body kind this version knows\n       \
+         write `\"json\"` (the default) or `\"bytes\"`"
+    )
+}
+
 /// Reads the content of one `http(...)` group: `method`, `path` and `ok_status` parse by plain
 /// recursion, every key there opening with a bare ident — `Meta`-shaped syntax `parse_nested_meta`
 /// already handles. `header_in` and `header_out` cannot: their first token is a string literal,
@@ -530,6 +567,7 @@ fn read_http_directive(meta: &ParseNestedMeta<'_>) -> Result<RawHttp, syn::Error
     let mut method_written: Option<(HttpMethod, LitStr)> = None;
     let mut path_written: Option<LitStr> = None;
     let mut ok_status: Option<u16> = None;
+    let mut body_written: Option<(BodyKind, LitStr)> = None;
     let mut error_status: Vec<(Ident, u16)> = Vec::new();
     let mut header_in: Vec<(LitStr, Ident)> = Vec::new();
     let mut header_out: Vec<LitStr> = Vec::new();
@@ -553,6 +591,17 @@ fn read_http_directive(meta: &ParseNestedMeta<'_>) -> Result<RawHttp, syn::Error
         if inner.path.is_ident("ok_status") {
             let written: LitInt = inner.value()?.parse()?;
             ok_status = Some(written.base10_parse()?);
+            return Ok(());
+        }
+        if inner.path.is_ident("body") {
+            let written: LitStr = inner.value()?.parse()?;
+            let Some(parsed) = BodyKind::from_name(&written.value()) else {
+                return Err(syn::Error::new(
+                    written.span(),
+                    unknown_body_kind_message(&written.value()),
+                ));
+            };
+            body_written = Some((parsed, written));
             return Ok(());
         }
         if inner.path.is_ident("error_status") {
@@ -590,6 +639,7 @@ fn read_http_directive(meta: &ParseNestedMeta<'_>) -> Result<RawHttp, syn::Error
         path_written.ok_or_else(|| syn::Error::new(meta.path.span(), MISSING_HTTP_PATH_MESSAGE))?;
 
     Ok(RawHttp {
+        body: body_written,
         error_status,
         header_in,
         header_out,
@@ -1087,6 +1137,97 @@ fn extra_arguments(operation: &TraitItemFn) -> HashMap<String, Type> {
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
+///
+/// # A `body = "bytes"` declaration whose signature still claims a JSON success type is refused
+///
+/// `body = "bytes"` requires a reply's success type to be exactly `(Vec<u8>, String)` — the bytes,
+/// then their content type. The operation below still answers its own JSON type:
+///
+/// ```rust,compile_fail
+/// use tixschema::service_schema;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub struct ThumbnailResponse {
+///     pub url: String,
+/// }
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub enum ThumbnailError {
+///     NotFound,
+/// }
+///
+/// #[service_schema()]
+/// pub trait ThumbnailService<Ctx> {
+///     #[service_schema_op(http(
+///         method = "GET",
+///         path = "/thumbnails/{document_id}",
+///         body = "bytes",
+///         error_status(NotFound = 404),
+///     ))]
+///     async fn get_thumbnail(
+///         &self,
+///         ctx: &Ctx,
+///         document_id: String,
+///     ) -> Result<ThumbnailResponse, ThumbnailError>;
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: service_schema: `body = "bytes"` requires a success type of `(Vec<u8>, String)`
+///               the operation's signature still claims a JSON success type - answer `Result<(Vec<u8>, String), Error>`, the bytes and their content type
+///   --> tests/zz_probe.rs:25:17
+///    |
+/// 25 |     ) -> Result<ThumbnailResponse, ThumbnailError>;
+///    |                 ^^^^^^^^^^^^^^^^^
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
+///
+/// # A `body = "bytes"` declaration combined with `header_out` is refused
+///
+/// The success type's second element already answers as the `content-type` response header, so a
+/// separately declared `header_out` would be silently ignored rather than honored — refused
+/// instead, naming the entry:
+///
+/// ```rust,compile_fail
+/// use tixschema::service_schema;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub enum ThumbnailError {
+///     NotFound,
+/// }
+///
+/// #[service_schema()]
+/// pub trait ThumbnailService<Ctx> {
+///     #[service_schema_op(http(
+///         method = "GET",
+///         path = "/thumbnails/{document_id}",
+///         body = "bytes",
+///         header_out("etag"),
+///         error_status(NotFound = 404),
+///     ))]
+///     async fn get_thumbnail(
+///         &self,
+///         ctx: &Ctx,
+///         document_id: String,
+///     ) -> Result<(Vec<u8>, String), ThumbnailError>;
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: service_schema: `body = "bytes"` declares no `header_out`
+///               its success type's second element already answers as the `content-type` response header
+///   --> tests/zz_probe.rs:14:20
+///    |
+/// 14 |         header_out("etag"),
+///    |                    ^^^^^^
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
 fn build_http_binding(
     operation_ident: &Ident,
     operation: &TraitItemFn,
@@ -1120,12 +1261,16 @@ fn build_http_binding(
         refusals = Some(combined(refusals.take(), refusal));
     }
 
+    if let Some(refusal) = body_kind_refusals(&raw, outcome) {
+        refusals = Some(combined(refusals.take(), refusal));
+    }
+
     if let Some(built) = refusals {
         return Err(built);
     }
 
     Ok(HttpBinding {
-        body_kind: BodyKind::Json,
+        body_kind: raw.body.as_ref().map_or(BodyKind::Json, |(kind, _)| *kind),
         error_status: raw.error_status,
         // A parameter absent from `existing` was already refused above, and `refusals` returned
         // `Err` before this point ran — `filter_map` drops it here rather than asserting an
@@ -1221,6 +1366,86 @@ fn is_option_type(ty: &Type) -> bool {
 /// nothing wider than the crate can reach it regardless.
 pub fn is_unit_type(ty: &Type) -> bool {
     matches!(ty, Type::Tuple(tuple) if tuple.elems.is_empty())
+}
+
+/// Whether `ty` is written as the bare path `name`, read the same shallow, syntactic way every
+/// other check here reads a type.
+fn is_named_type(ty: &Type, name: &str) -> bool {
+    let Type::Path(named) = ty else {
+        return false;
+    };
+    named.path.is_ident(name)
+}
+
+/// Whether `ty` is written exactly as `Vec<u8>`.
+fn is_vec_u8_type(ty: &Type) -> bool {
+    let Type::Path(named) = ty else {
+        return false;
+    };
+    let Some(last) = named.path.segments.last() else {
+        return false;
+    };
+    if last.ident != "Vec" {
+        return false;
+    }
+    let PathArguments::AngleBracketed(generic) = &last.arguments else {
+        return false;
+    };
+    let mut arguments = generic.args.iter();
+    match (arguments.next(), arguments.next()) {
+        (Some(GenericArgument::Type(inner)), None) => is_named_type(inner, "u8"),
+        _ => false,
+    }
+}
+
+/// Whether `ty` is written exactly as `(Vec<u8>, String)` — the one shape `body = "bytes"`
+/// requires of a reply's success type: the bytes, then their content type.
+fn is_bytes_success_shape(ty: &Type) -> bool {
+    let Type::Tuple(tuple) = ty else {
+        return false;
+    };
+    let mut elements = tuple.elems.iter();
+    match (elements.next(), elements.next(), elements.next()) {
+        (Some(first), Some(second), None) => {
+            is_vec_u8_type(first) && is_named_type(second, "String")
+        }
+        _ => false,
+    }
+}
+
+/// Refuses a `body = "bytes"` declaration that cannot hold: combined with `header_out` (the
+/// success type's second element already answers as the fixed `content-type` response header, so
+/// a separately declared one would be silently ignored rather than honored), or on an operation
+/// whose reply does not answer `Result<(Vec<u8>, String), Error>` — the bytes and their content
+/// type, which is `body = "bytes"`'s own fixed shape. A one-way operation, having no reply to
+/// shape at all, is refused under the same message: there is no success type for the bytes and
+/// their content type to be.
+fn body_kind_refusals(raw: &RawHttp, outcome: &OperationOutcome) -> Option<syn::Error> {
+    let (BodyKind::Bytes, declared) = raw.body.as_ref()? else {
+        return None;
+    };
+    let mut refusals: Option<syn::Error> = None;
+    if let Some(first) = raw.header_out.first() {
+        refusals = Some(combined(
+            refusals.take(),
+            syn::Error::new(first.span(), BYTES_BODY_HEADER_OUT_MESSAGE),
+        ));
+    }
+    let shaped_correctly = match outcome {
+        OperationOutcome::OneWay => false,
+        OperationOutcome::Reply { success, .. } => is_bytes_success_shape(success),
+    };
+    if !shaped_correctly {
+        let spanned = match outcome {
+            OperationOutcome::OneWay => declared.span(),
+            OperationOutcome::Reply { success, .. } => success.span(),
+        };
+        refusals = Some(combined(
+            refusals.take(),
+            syn::Error::new(spanned, BYTES_BODY_SUCCESS_SHAPE_MESSAGE),
+        ));
+    }
+    refusals
 }
 
 /// The status a success answers with where the author wrote no `ok_status`: 204 for an operation
@@ -1365,6 +1590,14 @@ fn header_out_refusals(
             syn::Error::new(first.span(), header_out_on_one_way_message(operation_ident))
         }),
         OperationOutcome::Reply { success, .. } => {
+            // `body = "bytes"` requires its own fixed `(Vec<u8>, String)` tuple, whose second
+            // element answers as the content type rather than a `header_out` entry —
+            // `body_kind_refusals` is what checks that combination, with its own message naming
+            // the requirement, so this check stands down rather than reading the same tuple as an
+            // unexplained `header_out` arity.
+            if matches!(raw.body, Some((BodyKind::Bytes, _))) {
+                return None;
+            }
             let tuple_arity = if let Type::Tuple(tuple) = success.as_ref() {
                 (!tuple.elems.is_empty()).then(|| tuple.elems.len())
             } else {
