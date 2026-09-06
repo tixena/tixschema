@@ -1470,14 +1470,15 @@ implementation, so an implementation may assume its message is valid. On the Typ
 checks are the same parse, against the `<Message>$Schema` const `#[model_schema()]` publishes — and
 only a build with the `zod` feature publishes one.
 
-So a build with `typescript` on and `zod` off publishes the service's **types** and neither seam
-artifact: no `<Service>Schema::ts_client()` and no `<Service>Schema::ts_service()`. The types are
-published as they always are, because they describe what the Rust dispatcher and the Rust client put
-on the wire, and that half validates in either build. The two that are withheld are withheld rather
-than emitted without their check: a client that forwards whatever it is handed and a dispatcher that
-narrows an unread payload with `as` both compile and both read exactly like the checked ones, while
-the Rust half of the same service goes on validating — two halves of one service disagreeing about
-what they accept, with nothing to say so.
+So a build with `typescript` on and `zod` off publishes the service's **types** and none of the
+three seam artifacts: no `<Service>Schema::ts_client()`, no `<Service>Schema::ts_http_client()`, and
+no `<Service>Schema::ts_service()`. The types are published as they always are, because they
+describe what the Rust dispatcher and the Rust client put on the wire, and that half validates in
+either build. The three that are withheld are withheld rather than emitted without their check: a
+client that forwards whatever it is handed and a dispatcher that narrows an unread payload with `as`
+both compile and both read exactly like the checked ones, while the Rust half of the same service
+goes on validating — two halves of one service disagreeing about what they accept, with nothing to
+say so.
 
 A bundle that names either one in such a build is refused where it names it, which is the one place
 the choice of features can still be acted on:

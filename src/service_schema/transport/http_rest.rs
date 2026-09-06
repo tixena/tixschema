@@ -56,90 +56,15 @@ use super::amqp_rpc::{
     Generated, answers, call_arguments, call_message, outbound_refusal, panic_guard, placement_doc,
     refusal_reader,
 };
-use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
-    self, HeaderIn, HttpMethod, OperationDef, OperationInputs, OperationOutcome, PathSegment,
-    ServiceDef,
+    DEFAULT_BINDING_ERROR_STATUS, HeaderIn, HttpShape, OperationDef, OperationInputs,
+    OperationOutcome, PathSegment, ScalarKind, ServiceDef, is_scalar_named_type, is_unit_type,
+    option_inner, scalar_kind, tuple_elements, vec_inner, wire_key,
 };
 use crate::service_schema::support::{message_alias_ident, message_validator_ident, module_ident};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::punctuated::Punctuated;
-use syn::{GenericArgument, Ident, PathArguments, Token, Type};
-
-/// The status a declared error answers at when its operation named no `http(...)` group at all, and
-/// so declared no `error_status` table for this to read a code from. Distinct from every fixed fault
-/// status (400, 404, 500) so a caller can tell "the operation declared this failure" from "a defect
-/// answered instead" even on an operation that paid no annotation cost.
-const DEFAULT_BINDING_ERROR_STATUS: u16 = 422;
-
-/// What `http(...)` resolves to for one operation, whether it was written or defaulted. Every
-/// downstream function reads this rather than `operation.http` itself, so the default case is
-/// computed in exactly one place.
-struct HttpShape {
-    error_status: Vec<(Ident, u16)>,
-    header_in: Vec<HeaderIn>,
-    header_out: Vec<String>,
-    method: HttpMethod,
-    ok_status: u16,
-    path: Vec<PathSegment>,
-}
-
-/// The three shapes a query, path or header value coerces to. Anything this crate does not
-/// recognise coerces as [`Text`](ScalarKind::Text) — a custom type, a `chrono` type, a plain
-/// `String` — since a JSON string is what every one of those already reads from serde.
-#[derive(Clone, Copy)]
-enum ScalarKind {
-    Bool,
-    Number,
-    Text,
-}
-
-impl HttpShape {
-    fn of(operation: &OperationDef) -> Self {
-        operation.http.as_ref().map_or_else(
-            || Self {
-                error_status: Vec::new(),
-                header_in: Vec::new(),
-                header_out: Vec::new(),
-                method: HttpMethod::Post,
-                ok_status: parse::default_ok_status(&operation.outcome),
-                path: vec![PathSegment::Literal(format!("/{}", operation.wire_name))],
-            },
-            |binding| Self {
-                error_status: binding.error_status.clone(),
-                header_in: binding.header_in.clone(),
-                header_out: binding.header_out.clone(),
-                method: binding.method,
-                ok_status: binding.ok_status,
-                path: binding.path.clone(),
-            },
-        )
-    }
-
-    /// The template written back out as `http(...)` would have declared it: `{field}` for a
-    /// placeholder, the literal text otherwise.
-    fn path_template(&self) -> String {
-        self.path
-            .iter()
-            .map(|segment| match segment {
-                PathSegment::Literal(text) => text.clone(),
-                PathSegment::Placeholder(name) => format!("{{{name}}}"),
-            })
-            .collect()
-    }
-
-    /// Every placeholder's name, in the template's own order.
-    fn placeholder_names(&self) -> Vec<String> {
-        self.path
-            .iter()
-            .filter_map(|segment| match segment {
-                PathSegment::Placeholder(name) => Some(name.clone()),
-                PathSegment::Literal(_) => None,
-            })
-            .collect()
-    }
-}
+use syn::{Ident, Type};
 
 pub fn emit(service: &ServiceDef, transport: Transport) -> TokenStream {
     let dispatcher = dispatcher_macro(service, transport);
@@ -153,85 +78,6 @@ pub fn emit(service: &ServiceDef, transport: Transport) -> TokenStream {
 // ---------------------------------------------------------------------------------------------
 // Reading a Rust type as a wire scalar
 // ---------------------------------------------------------------------------------------------
-
-fn scalar_kind(ty: &Type) -> ScalarKind {
-    let Type::Path(named) = ty else {
-        return ScalarKind::Text;
-    };
-    let Some(leaf) = named.path.segments.last() else {
-        return ScalarKind::Text;
-    };
-    match leaf.ident.to_string().as_str() {
-        "bool" => ScalarKind::Bool,
-        "u8" | "u16" | "u32" | "u64" | "u128" | "usize" | "i8" | "i16" | "i32" | "i64" | "i128"
-        | "isize" | "f32" | "f64" => ScalarKind::Number,
-        _ => ScalarKind::Text,
-    }
-}
-
-/// Whether a Named type's own declared type is one of the wire-scalar shapes this crate recognises
-/// — the only case a whole message may be read back from a single path placeholder rather than an
-/// object.
-fn is_scalar_named_type(ty: &Type) -> bool {
-    let Type::Path(named) = ty else {
-        return false;
-    };
-    let Some(leaf) = named.path.segments.last() else {
-        return false;
-    };
-    matches!(
-        leaf.ident.to_string().as_str(),
-        "String"
-            | "str"
-            | "bool"
-            | "u8"
-            | "u16"
-            | "u32"
-            | "u64"
-            | "u128"
-            | "usize"
-            | "i8"
-            | "i16"
-            | "i32"
-            | "i64"
-            | "i128"
-            | "isize"
-            | "f32"
-            | "f64"
-            | "NaiveDate"
-            | "NaiveDateTime"
-            | "NaiveTime"
-    )
-}
-
-/// The one generic argument inside `Option<...>` or `Vec<...>`, if `ty` is written as that generic.
-fn generic_inner<'ty>(ty: &'ty Type, wanted: &str) -> Option<&'ty Type> {
-    let Type::Path(named) = ty else {
-        return None;
-    };
-    let last = named.path.segments.last()?;
-    if last.ident != wanted {
-        return None;
-    }
-    let PathArguments::AngleBracketed(generic) = &last.arguments else {
-        return None;
-    };
-    generic.args.iter().find_map(|argument| {
-        if let GenericArgument::Type(inner) = argument {
-            Some(inner)
-        } else {
-            None
-        }
-    })
-}
-
-fn option_inner(ty: &Type) -> Option<&Type> {
-    generic_inner(ty, "Option")
-}
-
-fn vec_inner(ty: &Type) -> Option<&Type> {
-    generic_inner(ty, "Vec")
-}
 
 /// The runtime expression that turns `raw` — a `&str` expression — into the `serde_json::Value` a
 /// field of type `ty` deserializes from: `Option<...>` and `Vec<...>` are read through to the
@@ -290,10 +136,6 @@ fn encode_expr(value: &TokenStream) -> TokenStream {
             Err(_unserializable) => ::std::string::String::new(),
         }
     }
-}
-
-fn wire_key(field: &Ident) -> String {
-    RenameRule::CamelCase.apply_to_field(&field.to_string())
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -993,10 +835,6 @@ fn object_base(bodied: bool) -> TokenStream {
     }
 }
 
-fn is_unit_type(ty: &Type) -> bool {
-    matches!(ty, Type::Tuple(tuple) if tuple.elems.is_empty())
-}
-
 /// The status a declared error answers at, read off `error_status` where the operation named an
 /// `http(...)` group, or the fixed [`DEFAULT_BINDING_ERROR_STATUS`] where it named none. The match
 /// is exhaustive by construction wherever it is written at all: `error_status`'s own completeness
@@ -1597,17 +1435,6 @@ fn one_way_decode(wire: &str, shape: &HttpShape, fault: &TokenStream) -> TokenSt
             &format!("an unexpected status ({status}) answered"),
         ))
     }
-}
-
-/// The elements of a tuple type with at least one element, or `None` for anything else (unit
-/// included). [`crate::service_schema::parse`]'s own `header_out` check guarantees `success` is
-/// exactly this shape whenever `header_out` is non-empty, so a caller holding that guarantee reads
-/// the first element as the body and the rest as the declared response headers, in order.
-fn tuple_elements(ty: &Type) -> Option<&Punctuated<Type, Token![,]>> {
-    let Type::Tuple(tuple) = ty else {
-        return None;
-    };
-    (!tuple.elems.is_empty()).then_some(&tuple.elems)
 }
 
 /// What one operation's client method answers once the response has come back: the declared status
