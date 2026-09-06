@@ -9,10 +9,9 @@ use super::{DART_HTTP_SERVICE, dart_http_client_of};
 /// The body of one method, from its own doc comment through the closing brace of the method
 /// following it (or the end of the class) — mirrors `http_client_tests`'s own `method_body`.
 fn method_body<'written>(written: &'written str, call: &str) -> &'written str {
-    let start = written
-        .find(&format!(" {call}("))
-        .unwrap_or_else(|| panic!("no method named `{call}` in: {written}"));
-    let rest = &written[start..];
+    let start = written.find(&format!(" {call}("));
+    assert!(start.is_some(), "no method named `{call}` in: {written}");
+    let rest = &written[start.unwrap()..];
     let end = rest.find("\n\n").unwrap_or(rest.len());
     &rest[..end]
 }
