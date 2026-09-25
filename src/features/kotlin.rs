@@ -972,7 +972,10 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, name_override: Option<&str>) -
     let fields = collect_kotlin_fields(&item_struct.fields, rule, &type_parameters);
     let generic_params = kotlin_generic_params(&item_struct.generics);
     let alias = ident_typealias(&rust_ident, &export_name, &generic_params);
-    let body = if fields.is_empty() {
+    let body = if matches!(item_struct.fields, Fields::Unit) {
+        // A unit struct is Kotlin's own no-data type: `object`, not `class` below.
+        format!("object {export_name}{generic_params}")
+    } else if fields.is_empty() {
         format!("class {export_name}{generic_params}")
     } else {
         format!(
@@ -1508,3 +1511,6 @@ fn plain_enum_kotlin_source(item_enum: &ItemEnum, export_name: &str) -> String {
         .join(", ");
     format!("@Serializable enum class {export_name} {{ {members} }}")
 }
+
+#[cfg(test)]
+mod tests;

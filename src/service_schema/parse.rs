@@ -38,7 +38,7 @@
 //! attributes a generated message needs onto them.
 
 use crate::rename_rule::RenameRule;
-use crate::utils::{is_recorded_untagged_enum, is_wire_scalar_type};
+use crate::utils::{is_recorded_unit_struct_type, is_recorded_untagged_enum, is_wire_scalar_type};
 use proc_macro2::TokenTree;
 use quote::{ToTokens as _, format_ident};
 use std::collections::{HashMap, HashSet};
@@ -2079,14 +2079,15 @@ fn is_option_type(ty: &Type) -> bool {
         .is_some_and(|segment| segment.ident == "Option")
 }
 
-/// Whether a type is the unit type `()`, which is what "an empty declared reply" writes.
+/// Whether a type is the unit type `()`, or a unit struct recorded by
+/// [`record_unit_struct`](crate::utils::record_unit_struct) — both write as an empty declared reply.
 ///
 /// `pub`: the `http_rest` transport and its TypeScript client both answer a unit success with no
 /// payload the same way, so both read this judgement rather than a second copy of it. `pub` rather
 /// than `pub(crate)` for the same reason [`default_ok_status`] is: this module is private, so
 /// nothing wider than the crate can reach it regardless.
 pub fn is_unit_type(ty: &Type) -> bool {
-    matches!(ty, Type::Tuple(tuple) if tuple.elems.is_empty())
+    matches!(ty, Type::Tuple(tuple) if tuple.elems.is_empty()) || is_recorded_unit_struct_type(ty)
 }
 
 /// Whether `ty` is written as the bare path `name`, read the same shallow, syntactic way every

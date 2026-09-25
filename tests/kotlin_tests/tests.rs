@@ -128,6 +128,14 @@ pub struct HoldsTuple {
 }
 
 // ---------------------------------------------------------------------------------------------
+// A unit struct: no data, `{}` on the wire, `object` in Kotlin — see `test_unit_struct_is_an_object`.
+// ---------------------------------------------------------------------------------------------
+
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Ping;
+
+// ---------------------------------------------------------------------------------------------
 // Non-string map keys: a numeric key and a plain-enum key.
 // ---------------------------------------------------------------------------------------------
 
@@ -515,6 +523,18 @@ fn test_struct_rename_and_optional() {
     assert!(kotlin.contains("val limit: Int? = null"), "got: {kotlin}");
     // The wire spelling already matches the Kotlin property, so no annotation is written for it.
     assert!(!kotlin.contains("@SerialName(\"limit\")"), "got: {kotlin}");
+}
+
+#[test]
+fn test_unit_struct_is_an_object() {
+    let ping = Ping;
+    assert_eq!(ping, ping.clone());
+    let kotlin = ping_kotlin::kotlin_definition();
+    assert!(
+        kotlin.contains("@Serializable object Ping"),
+        "got: {kotlin}"
+    );
+    assert!(!kotlin.contains("class Ping"), "got: {kotlin}");
 }
 
 #[test]

@@ -86,6 +86,22 @@ pub struct UserProfile {
 }
 ```
 
+#### Unit Structs
+
+A unit struct -- `pub struct Ping;`, no braces, no fields -- crosses the wire as `{}`. Serde's own derive would write and read it as `null`, disagreeing with every other surface, which already describes an empty struct as an object; the macro replaces the author's own `Serialize`/`Deserialize` derive with impls that write `{}` and read it back (ignoring unknown keys, refusing `null`), keeping every other derive and attribute exactly as written:
+
+```rust
+#[model_schema()]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Ping;
+
+assert_eq!(serde_json::to_string(&Ping).unwrap(), "{}");
+serde_json::from_str::<Ping>("{}").unwrap();
+serde_json::from_str::<Ping>("null").unwrap_err();
+```
+
+TypeScript, Zod and JSON Schema describe it exactly as a braced empty struct already does: `Record<string, never>`, `z.strictObject({})`, `{"type": "object", "additionalProperties": false, "properties": {}, "required": []}`. Dart, Swift and Kotlin each publish their own no-data type -- Dart a `const` class, Swift an empty `Codable` struct, and Kotlin `@Serializable object Ping` rather than a `class` (a braced `struct Ping {}` still publishes a `class`, since it is a different shape). Declared above a service as an operation's success, `Result<Ping, E>`, a unit struct reads like a `()` success on every client -- the limit is a registry's own: the struct must be declared in the same crate, above the service, or the client sees the field-position type instead (and the call still succeeds, since both sides still agree the wire is `{}`).
+
 ### Published Names (`name`)
 
 A type publishes under the Rust ident it is declared with, spelled exactly as written. Nothing is read off that spelling -- no suffix is taken off it and no part of it is rewritten -- so `UserData` publishes as `UserData` on all three surfaces.
@@ -1994,7 +2010,7 @@ export function createUsageServiceDispatcher<Ctx>(
 
 Every member is required, so an implementation missing one is refused where it reaches `createUsageServiceDispatcher`. Every emitted name carries the service -- `UsageServiceFault`, `UsageServiceGetAvailableBalanceResult`, `UsageServiceClient`, and the fault's own brand symbol `usageServiceFaultSeal` -- because TypeScript has no per-service scope and a bundle is one flat file. Rust needs no such prefix, the generated module being the scope TypeScript lacks.
 
-Every reader ignores `value` for a `Result<(), E>` operation. `ts_client()`'s result type reads `{ ok: true; value: undefined }`, and `ts_service()`'s outcome type reads `{ ok: true }` with no `value` member at all.
+Every reader ignores `value` for a `Result<(), E>` operation, and for a `Result<T, E>` operation whose declared success `T` is a unit struct declared above the service. `ts_client()`'s result type reads `{ ok: true; value: undefined }`, and `ts_service()`'s outcome type reads `{ ok: true }` with no `value` member at all.
 
 #### Transports
 

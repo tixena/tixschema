@@ -612,6 +612,13 @@ thread_local! {
     static UNTAGGED_ENUMS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
 }
 
+#[cfg(feature = "serde")]
+thread_local! {
+    /// The names of unit structs `process_struct` has rewritten to write and read `{}`. Read by
+    /// `is_unit_type` (`service_schema::parse`) to answer a unit struct's success like `()`'s own.
+    static UNIT_STRUCTS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+}
+
 thread_local! {
     static ALIAS_INFO: RefCell<HashMap<String, AliasInfo>> = RefCell::new(HashMap::new());
     /// The Rust ident holding each published name — see [`claim_published_name`]. Kept out of
@@ -885,6 +892,27 @@ pub fn is_recorded_untagged_enum(ty: &Type) -> bool {
         return false;
     };
     UNTAGGED_ENUMS.with(|names| names.borrow().contains(&leaf.ident.to_string()))
+}
+
+/// Records that `rust_ident` names a unit struct.
+#[cfg(feature = "serde")]
+pub fn record_unit_struct(rust_ident: &str) {
+    UNIT_STRUCTS.with(|names| {
+        names.borrow_mut().insert(rust_ident.to_owned());
+    });
+}
+
+/// Whether `ty`'s own name is one [`record_unit_struct`] has seen. `false` for a type declared
+/// below the item asking — the same limit [`is_recorded_untagged_enum`] answers under.
+#[cfg(feature = "serde")]
+pub fn is_recorded_unit_struct_type(ty: &Type) -> bool {
+    let Type::Path(named) = ty else {
+        return false;
+    };
+    let Some(leaf) = named.path.segments.last() else {
+        return false;
+    };
+    UNIT_STRUCTS.with(|names| names.borrow().contains(&leaf.ident.to_string()))
 }
 
 pub fn lookup_alias_info(rust_ident: &str) -> Option<AliasInfo> {

@@ -72,6 +72,8 @@ use super::ws_server;
 #[cfg(all(feature = "typescript", feature = "zod"))]
 use super::ws_service;
 use crate::service_schema::parse::{ServiceDef, parse_service};
+#[cfg(all(feature = "typescript", feature = "zod"))]
+use crate::utils::record_unit_struct;
 #[cfg(any(feature = "swift", feature = "kotlin"))]
 use crate::utils::record_wire_scalar;
 use quote::ToTokens as _;
@@ -525,6 +527,17 @@ const TS_UNIT_SUCCESS_SERVICE: &str = "
     pub trait PingClientService<Ctx> {
         #[service_schema_op(http(method = \"POST\", path = \"/v1/ping\"))]
         async fn ping(&self, ctx: &Ctx, req: PingRequest) -> Result<(), PingError>;
+    }
+";
+
+/// A reply operation whose success is a unit struct, `PingAck` — reads as a `()` success just as
+/// `TS_UNIT_SUCCESS_SERVICE` does, once the struct is recorded the way a declared-above
+/// `#[model_schema()]` unit struct would be.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+const TS_UNIT_STRUCT_SUCCESS_SERVICE: &str = "
+    pub trait PingClientService<Ctx> {
+        #[service_schema_op(http(method = \"POST\", path = \"/v1/ping\"))]
+        async fn ping(&self, ctx: &Ctx, req: PingRequest) -> Result<PingAck, PingError>;
     }
 ";
 
@@ -1191,6 +1204,40 @@ fn the_result_joins_the_two_declared_arms_and_adds_nothing_to_either() {
 #[test]
 fn a_unit_success_result_type_says_the_value_is_undefined() {
     let published = result::emit(&parsed(TS_UNIT_SUCCESS_SERVICE));
+    let found = published
+        .iter()
+        .find(|ts| ts.contains("export type PingClientServicePingResult ="));
+    assert!(found.is_some(), "got: {published:?}");
+    assert!(
+        found.unwrap().contains("| { ok: true; value: undefined }"),
+        "got: {found:?}"
+    );
+}
+
+/// The registry's own limit: a name nothing recorded reads as the field-position type, not a unit
+/// success — the wire still agrees either way, since both sides write and read `{}` regardless.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+#[test]
+fn an_unrecorded_success_type_is_not_treated_as_a_unit_success() {
+    let published = result::emit(&parsed(TS_UNIT_STRUCT_SUCCESS_SERVICE));
+    let found = published
+        .iter()
+        .find(|ts| ts.contains("export type PingClientServicePingResult ="));
+    assert!(found.is_some(), "got: {published:?}");
+    assert!(
+        found.unwrap().contains("| { ok: true; value: PingAck }"),
+        "got: {found:?}"
+    );
+}
+
+/// A unit struct's success position reads exactly like `()`'s own, once the struct is recorded —
+/// this fixture is a parsed string rather than a real macro expansion, so the registry needs
+/// poking by hand, mirroring `record_wire_scalar`'s own test precedent.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+#[test]
+fn a_unit_struct_success_result_type_says_the_value_is_undefined() {
+    record_unit_struct("PingAck");
+    let published = result::emit(&parsed(TS_UNIT_STRUCT_SUCCESS_SERVICE));
     let found = published
         .iter()
         .find(|ts| ts.contains("export type PingClientServicePingResult ="));

@@ -7,12 +7,24 @@
 #![cfg(feature = "dart")]
 
 use super::runtime::ran;
+use super::tests::swift_codec_fixture::{codec_unit_field_dart, codec_unit_payload_dart};
 use super::tests::{
     ConversationClientServiceSchema, conversation_id_dart, window_error_dart, window_page_dart,
 };
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
 const RUNTIME_VAR: &str = "TIXSCHEMA_DART";
+
+/// The unit-field group's own driver: constructs a `CodecUnitField`, writes it to JSON, decodes it
+/// back, and re-encodes — proving the round trip stays `{}` both ways.
+const UNIT_FIELD_DRIVER: &str = "
+void main() {
+  final value = CodecUnitField(label: 'marker', payload: CodecUnitPayload());
+  final encoded = jsonEncode(value.toJson());
+  final decoded = CodecUnitField.fromJson(jsonDecode(encoded) as Map<String, dynamic>);
+  print(jsonEncode(decoded.toJson()));
+}
+";
 
 /// Records the request it is handed and answers each operation's own declared status.
 const DRIVER: &str = "
@@ -190,5 +202,39 @@ fn a_scalar_message_is_still_the_whole_segment() {
     assert_eq!(
         sent[2]["query"], "",
         "and no key is left over for a query. Got: {sent:#?}"
+    );
+}
+
+// -------------------------------------------------------------------------------------------
+// A unit-struct field's own round trip: construct it, write it to JSON, decode it back, and
+// re-encode — `{}` both ways, through the pair's own generated `fromJson`/`toJson`.
+// -------------------------------------------------------------------------------------------
+
+fn unit_field_module() -> String {
+    [
+        "import 'dart:convert';".to_owned(),
+        codec_unit_payload_dart::dart_definition(),
+        codec_unit_field_dart::dart_definition(),
+        UNIT_FIELD_DRIVER.to_owned(),
+    ]
+    .join("\n\n")
+}
+
+#[test]
+fn a_unit_struct_field_round_trips_as_an_empty_object() {
+    let Some(written) = ran(
+        "dart",
+        RUNTIME_VAR,
+        "dart",
+        "unit_field.dart",
+        &unit_field_module(),
+    ) else {
+        return;
+    };
+    let value: serde_json::Value = serde_json::from_str(written.trim()).unwrap();
+    assert_eq!(
+        value,
+        serde_json::json!({"label": "marker", "payload": {}}),
+        "got: {value:#?}"
     );
 }

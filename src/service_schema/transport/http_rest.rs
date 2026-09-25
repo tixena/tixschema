@@ -1153,7 +1153,7 @@ fn answer_block(
                     let empty_body = body_field(has_stream, &quote! { ::std::vec::Vec::new() });
                     quote! {
                         match #called {
-                            Ok(Ok(())) => return OutgoingResponse {
+                            Ok(Ok(_)) => return OutgoingResponse {
                                 status: #ok_status,
                                 headers: ::std::vec::Vec::new(),
                                 #empty_body,
@@ -2203,7 +2203,8 @@ fn reply_decode(
         }
     } else if shape.header_out.is_empty() {
         if is_unit_type(success) {
-            quote! { return Ok(()); }
+            // `#success`, not a literal `()`: answers a recorded unit struct by name too.
+            quote! { return Ok(#success); }
         } else {
             quote! {
                 return match ::serde_json::from_slice::<#success>(response.body()) {

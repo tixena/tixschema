@@ -666,13 +666,8 @@ fn answered_envelope() -> TokenStream {
                     Err(self.error)
                 }
             }
-        }
 
-        impl<E> Answered<(), E> {
-            /// What the envelope said, when the operation's declared success is the unit type:
-            /// `ok` alone answers it. `value` is not read — `()` serializes to `null` exactly like
-            /// an absent value, so the wire cannot tell the two apart, and `()` needs nothing
-            /// carried to exist anyway.
+            /// What the envelope said, `ok` alone: `value` is never read, whatever it holds.
             pub fn carried_unit(self) -> Result<(), Option<E>> {
                 if self.ok { Ok(()) } else { Err(self.error) }
             }

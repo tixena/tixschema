@@ -999,7 +999,13 @@ fn field_is_nullable_flag(field: &SwiftField) -> bool {
 /// The `enum CodingKeys: String, CodingKey { ... }` a struct or a struct-shaped variant payload
 /// earns — every field listed, a `= "wire"` suffix only where the wire spelling differs from the
 /// Swift property name, `extra` cases (a merged tag key) listed first.
+///
+/// Empty for a shape with no field and no extra case — Swift refuses a raw-typed enum with no
+/// cases, and needs none: `Codable`'s own synthesis already writes and reads `{}` for it.
 fn swift_coding_keys(fields: &[SwiftField], extra: &[(String, String)]) -> String {
+    if fields.is_empty() && extra.is_empty() {
+        return String::new();
+    }
     let mut cases = String::new();
     for (name, wire) in extra {
         write!(cases, "case {name} = \"{wire}\"; ").unwrap();

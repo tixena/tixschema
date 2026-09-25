@@ -35,6 +35,41 @@ struct BasicUser {
 #[derive(Debug, Clone, PartialEq)]
 struct EmptyStruct;
 
+/// A unit struct declaring only `Serialize` — proves the macro emits only the impl whose derive
+/// was present, not the pair.
+#[cfg(all(
+    test,
+    feature = "serde",
+    any(feature = "typescript", feature = "jsonschema", feature = "zod")
+))]
+#[model_schema()]
+#[derive(Serialize, Debug, Clone, PartialEq)]
+struct WriteOnlyMarker;
+
+/// The read-only twin of [`WriteOnlyMarker`].
+#[cfg(all(
+    test,
+    feature = "serde",
+    any(feature = "typescript", feature = "jsonschema", feature = "zod")
+))]
+#[model_schema()]
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+struct ReadOnlyMarker;
+
+/// A field typed as a unit struct — proves the field position round-trips `{}` too, not just the
+/// bare type.
+#[cfg(all(
+    test,
+    feature = "serde",
+    any(feature = "typescript", feature = "jsonschema", feature = "zod")
+))]
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct HoldsMarker {
+    label: String,
+    marker: EmptyStruct,
+}
+
 #[cfg(all(
     test,
     any(feature = "typescript", feature = "jsonschema", feature = "zod")
@@ -228,4 +263,73 @@ fn test_empty_struct_ts_definition() {
     let ts_definition = EmptyStruct::ts_definition();
 
     assert!(ts_definition.contains("export type EmptyStruct = Record<string, never>;"));
+}
+
+#[test]
+#[cfg(all(feature = "serde", feature = "typescript"))]
+fn test_field_typed_as_a_unit_struct_ts_definition() {
+    let ts_definition = HoldsMarker::ts_definition();
+
+    assert!(
+        ts_definition.contains("marker: EmptyStruct;"),
+        "got: {ts_definition}"
+    );
+}
+
+#[test]
+#[cfg(all(feature = "serde", feature = "zod"))]
+fn test_field_typed_as_a_unit_struct_zod_schema() {
+    let zod_schema = HoldsMarker::zod_schema();
+
+    assert!(
+        zod_schema.contains("marker: EmptyStruct$Schema"),
+        "got: {zod_schema}"
+    );
+}
+
+#[test]
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "jsonschema", feature = "zod")
+))]
+fn test_field_typed_as_a_unit_struct_round_trips_as_an_empty_object() {
+    let value = HoldsMarker {
+        label: "widget".to_owned(),
+        marker: EmptyStruct,
+    };
+    let written = serde_json::to_string(&value).unwrap();
+    assert_eq!(written, r#"{"label":"widget","marker":{}}"#);
+    let read: HoldsMarker = serde_json::from_str(&written).unwrap();
+    assert_eq!(read, value);
+}
+
+#[test]
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "jsonschema", feature = "zod")
+))]
+fn test_empty_struct_writes_and_reads_an_empty_object() {
+    assert_eq!(serde_json::to_string(&EmptyStruct).unwrap(), "{}");
+    serde_json::from_str::<EmptyStruct>("{}").unwrap();
+    serde_json::from_str::<EmptyStruct>(r#"{"extra":1}"#).unwrap();
+    serde_json::from_str::<EmptyStruct>("null").unwrap_err();
+}
+
+#[test]
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "jsonschema", feature = "zod")
+))]
+fn test_serialize_only_unit_struct_writes_an_empty_object() {
+    assert_eq!(serde_json::to_string(&WriteOnlyMarker).unwrap(), "{}");
+}
+
+#[test]
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "jsonschema", feature = "zod")
+))]
+fn test_deserialize_only_unit_struct_reads_an_empty_object() {
+    serde_json::from_str::<ReadOnlyMarker>("{}").unwrap();
+    serde_json::from_str::<ReadOnlyMarker>("null").unwrap_err();
 }
