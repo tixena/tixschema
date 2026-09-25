@@ -61,7 +61,7 @@ const UNKNOWN_DIRECTIVE_MESSAGE: &str = concat!(
 const UNKNOWN_HTTP_ARGUMENT_MESSAGE: &str = concat!(
     "service_schema: unknown `http` argument\n",
     "       the arguments are `method`, `path`, `ok_status`, `error_status`, `header_in`, \
-     `header_out`, `part` and `body`"
+     `header_out`, `error_header_out`, `part` and `body`"
 );
 
 const BYTES_BODY_SUCCESS_SHAPE_MESSAGE: &str = concat!(
@@ -218,6 +218,11 @@ pub struct HttpBinding {
     /// How the body is carried: `Json` (the default), `Bytes` (`body = "bytes"`) or `Stream`
     /// (`body = "stream"`), each checked against the signature by [`build_http_binding`].
     pub body_kind: BodyKind,
+    /// One entry per bare `error_header_out("name")`, in declaration order - [`header_out`]'s own
+    /// twin on the error side.
+    ///
+    /// [`header_out`]: HttpBinding::header_out
+    pub error_header_out: Vec<String>,
     /// One entry per declared `error_status(Variant = code)`, in declaration order. Each variant
     /// keeps its own span from the attribute, so a misspelling is rustc's own "no variant" error
     /// rather than one this crate wrote, and a variant the mapping left out is rustc's own
@@ -373,6 +378,7 @@ pub enum ScalarKind {
 /// place.
 pub struct HttpShape {
     pub body_kind: BodyKind,
+    pub error_header_out: Vec<String>,
     pub error_status: Vec<(Ident, u16)>,
     pub header_in: Vec<HeaderIn>,
     pub header_out: Vec<String>,
@@ -387,6 +393,7 @@ impl HttpShape {
         operation.http.as_ref().map_or_else(
             || Self {
                 body_kind: BodyKind::Json,
+                error_header_out: Vec::new(),
                 error_status: Vec::new(),
                 header_in: Vec::new(),
                 header_out: Vec::new(),
@@ -397,6 +404,7 @@ impl HttpShape {
             },
             |binding| Self {
                 body_kind: binding.body_kind,
+                error_header_out: binding.error_header_out.clone(),
                 error_status: binding.error_status.clone(),
                 header_in: binding.header_in.clone(),
                 header_out: binding.header_out.clone(),
@@ -435,6 +443,7 @@ impl HttpShape {
 /// What `http(...)` said, before it is checked against the operation's signature and outcome.
 struct RawHttp {
     body: Option<(BodyKind, LitStr)>,
+    error_header_out: Vec<LitStr>,
     error_status: Vec<(Ident, u16)>,
     header_in: Vec<(LitStr, Ident)>,
     header_out: Vec<LitStr>,
@@ -596,6 +605,17 @@ pub fn tuple_elements(ty: &Type) -> Option<&Punctuated<Type, Token![,]>> {
     (!tuple.elems.is_empty()).then_some(&tuple.elems)
 }
 
+/// The declared error's own type: the tuple's first element where `error_header_out` entries were
+/// declared, or `error` itself where none were.
+pub fn error_declared_type(error_header_out_len: usize, error: &Type) -> &Type {
+    if error_header_out_len == 0 {
+        return error;
+    }
+    tuple_elements(error)
+        .and_then(|elements| elements.first())
+        .unwrap_or(error)
+}
+
 /// The camelCase wire key one of an operation's own generated fields is read or written under:
 /// a path segment, a query parameter and a header value all coerce against the same key a JSON
 /// body would carry the field under.
@@ -693,12 +713,8 @@ fn parse_header_out_arg(inner: &ParseNestedMeta<'_>) -> Result<LitStr, syn::Erro
     content.parse()
 }
 
-/// Reads the content of one `http(...)` group: `method`, `path` and `ok_status` parse by plain
-/// recursion, every key there opening with a bare ident — `Meta`-shaped syntax `parse_nested_meta`
-/// already handles. `header_in`, `header_out` and `part` cannot: their first token is a string
-/// literal, which `parse_nested_meta` rejects before it ever reaches the `=`, so each is instead
-/// read by hand out of the parenthesized group its key opens, one string literal and (for
-/// `header_in` and `part`) one `= parameter` after it.
+/// Reads the content of one `http(...)` group. `header_in`, `header_out`, `error_header_out` and
+/// `part` are read by hand: their first token is a string literal, not a bare ident.
 fn read_http_directive(meta: &ParseNestedMeta<'_>) -> Result<RawHttp, syn::Error> {
     let mut method_written: Option<(HttpMethod, LitStr)> = None;
     let mut path_written: Option<LitStr> = None;
@@ -707,6 +723,7 @@ fn read_http_directive(meta: &ParseNestedMeta<'_>) -> Result<RawHttp, syn::Error
     let mut error_status: Vec<(Ident, u16)> = Vec::new();
     let mut header_in: Vec<(LitStr, Ident)> = Vec::new();
     let mut header_out: Vec<LitStr> = Vec::new();
+    let mut error_header_out: Vec<LitStr> = Vec::new();
     let mut multipart_parts: Vec<(LitStr, Ident)> = Vec::new();
 
     meta.parse_nested_meta(|inner| {
@@ -743,6 +760,10 @@ fn read_http_directive(meta: &ParseNestedMeta<'_>) -> Result<RawHttp, syn::Error
             header_out.push(parse_header_out_arg(&inner)?);
             return Ok(());
         }
+        if inner.path.is_ident("error_header_out") {
+            error_header_out.push(parse_header_out_arg(&inner)?);
+            return Ok(());
+        }
         Err(inner.error(UNKNOWN_HTTP_ARGUMENT_MESSAGE))
     })?;
 
@@ -753,6 +774,7 @@ fn read_http_directive(meta: &ParseNestedMeta<'_>) -> Result<RawHttp, syn::Error
 
     Ok(RawHttp {
         body: body_written,
+        error_header_out,
         error_status,
         header_in,
         header_out,
@@ -1894,15 +1916,17 @@ fn named_message_argument<'op>(operation: &'op TraitItemFn, raw: &RawHttp) -> Op
 fn untagged_multi_status_refusal(
     operation_ident: &Ident,
     error_status: &[(Ident, u16)],
+    error_header_out_len: usize,
     outcome: &OperationOutcome,
 ) -> Option<syn::Error> {
     let OperationOutcome::Reply {
-        error,
+        error: raw_error,
         success: _success,
     } = outcome
     else {
         return None;
     };
+    let error = error_declared_type(error_header_out_len, raw_error);
     if !is_recorded_untagged_enum(error) {
         return None;
     }
@@ -1964,13 +1988,24 @@ fn build_http_binding(
         refusals = Some(combined(refusals.take(), refusal));
     }
 
+    if let Some(refusal) = error_header_out_refusals(operation_ident, &raw, outcome) {
+        refusals = Some(combined(refusals.take(), refusal));
+    }
+
+    if let Some(refusal) = header_name_safety_refusals(operation_ident, &raw) {
+        refusals = Some(combined(refusals.take(), refusal));
+    }
+
     if let Some(refusal) = body_kind_refusals(&raw, outcome) {
         refusals = Some(combined(refusals.take(), refusal));
     }
 
-    if let Some(refusal) =
-        untagged_multi_status_refusal(operation_ident, &raw.error_status, outcome)
-    {
+    if let Some(refusal) = untagged_multi_status_refusal(
+        operation_ident,
+        &raw.error_status,
+        raw.error_header_out.len(),
+        outcome,
+    ) {
         refusals = Some(combined(refusals.take(), refusal));
     }
 
@@ -1980,6 +2015,11 @@ fn build_http_binding(
 
     Ok(HttpBinding {
         body_kind: raw.body.as_ref().map_or(BodyKind::Json, |(kind, _)| *kind),
+        error_header_out: raw
+            .error_header_out
+            .into_iter()
+            .map(|name| name.value())
+            .collect(),
         error_status: raw.error_status,
         // A parameter absent from `existing` was already refused above, and `refusals` returned
         // `Err` before this point ran — `filter_map` drops it here rather than asserting an
@@ -2573,6 +2613,221 @@ fn header_out_refusals(
                     header_out_arity_message(operation_ident, declared),
                 ))
             }
+        }
+    }
+}
+
+fn error_tuple_without_header_out_message(operation: &Ident) -> String {
+    format!(
+        "service_schema: operation `{operation}` returns a tuple error type and declares no \
+         `error_header_out`\n       \
+         name what each element after the first is with `error_header_out(\"name\")`, or return \
+         the type directly"
+    )
+}
+
+fn error_header_out_arity_message(operation: &Ident, declared: usize) -> String {
+    let expected = declared + 1;
+    let plural = if declared == 1 { "entry" } else { "entries" };
+    format!(
+        "service_schema: operation `{operation}` declares {declared} `error_header_out` \
+         {plural}, and its error type is not a tuple of {expected} elements\n       \
+         the tuple carries the declared error first, then one element per `error_header_out`, in \
+         declaration order"
+    )
+}
+
+fn error_header_out_on_one_way_message(operation: &Ident) -> String {
+    format!(
+        "service_schema: operation `{operation}` is marked `one_way` and declares \
+         `error_header_out`\n       \
+         a one-way operation produces no reply and therefore no declared error to carry a header \
+         in"
+    )
+}
+
+/// `error_header_out`'s own twin of [`header_out_refusals`], checked against the declared error
+/// instead of the success type; a one-way operation has no declared error to carry one in at all.
+fn error_header_out_refusals(
+    operation_ident: &Ident,
+    raw: &RawHttp,
+    outcome: &OperationOutcome,
+) -> Option<syn::Error> {
+    match outcome {
+        OperationOutcome::OneWay => raw.error_header_out.first().map(|first| {
+            syn::Error::new(
+                first.span(),
+                error_header_out_on_one_way_message(operation_ident),
+            )
+        }),
+        OperationOutcome::Reply {
+            error,
+            success: _success,
+        } => {
+            let tuple_arity = if let Type::Tuple(tuple) = error.as_ref() {
+                (!tuple.elems.is_empty()).then(|| tuple.elems.len())
+            } else {
+                None
+            };
+            let declared = raw.error_header_out.len();
+            let explained =
+                (tuple_arity.is_none() && declared == 0) || tuple_arity == Some(declared + 1);
+            if explained {
+                None
+            } else if tuple_arity.is_some() && declared == 0 {
+                Some(syn::Error::new(
+                    error.span(),
+                    error_tuple_without_header_out_message(operation_ident),
+                ))
+            } else {
+                Some(syn::Error::new(
+                    error.span(),
+                    error_header_out_arity_message(operation_ident, declared),
+                ))
+            }
+        }
+    }
+}
+
+// -------------------------------------------------------------------------------------------
+// Header name legality: an illegal token, a name the transport writes itself, or one declared
+// twice on one operation.
+// -------------------------------------------------------------------------------------------
+
+/// Whether every byte of `name` is a legal HTTP token character (RFC 9110 `tchar`): a letter, a
+/// digit, or one of ``!#$%&'*+-.^_`|~``.
+const fn is_tchar(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric()
+        || matches!(
+            byte,
+            b'!' | b'#'
+                | b'$'
+                | b'%'
+                | b'&'
+                | b'\''
+                | b'*'
+                | b'+'
+                | b'-'
+                | b'.'
+                | b'^'
+                | b'_'
+                | b'`'
+                | b'|'
+                | b'~'
+        )
+}
+
+/// Whether `name` is a legal HTTP header name: a non-empty run of `tchar`s and nothing else.
+fn is_http_token(name: &str) -> bool {
+    !name.is_empty() && name.bytes().all(is_tchar)
+}
+
+fn illegal_header_name_message(operation: &Ident, name: &str) -> String {
+    format!(
+        "service_schema: operation `{operation}` declares the header name \"{name}\", which is \
+         not a legal HTTP token\n       \
+         a header name is letters, digits and `!#$%&'*+-.^_`|~`, RFC 9110's own `tchar` set, and \
+         nothing else"
+    )
+}
+
+fn reserved_header_name_message(operation: &Ident, name: &str, writes_it: &str) -> String {
+    format!(
+        "service_schema: operation `{operation}` declares the header name \"{name}\", which \
+         {writes_it} writes itself\n       \
+         name a header this transport does not already control"
+    )
+}
+
+fn duplicate_header_name_message(operation: &Ident, name: &str) -> String {
+    format!(
+        "service_schema: operation `{operation}` declares the header name \"{name}\" twice in \
+         one list\n       \
+         one name cannot bind two headers within the same `header_in`, `header_out` or \
+         `error_header_out` list"
+    )
+}
+
+/// The reason `http_rest` already writes `name` itself, case-insensitively, or `None` where it
+/// writes nothing under that name. `content-range` is reserved only on `body = "stream"`.
+const fn transport_reserved_header_writer(name: &str, raw: &RawHttp) -> Option<&'static str> {
+    if name.eq_ignore_ascii_case("content-type") {
+        return Some("`json_response`, and a `body = \"bytes\"` reply's own content type,");
+    }
+    if name.eq_ignore_ascii_case("content-length") {
+        return Some("the HTTP transport itself");
+    }
+    if name.eq_ignore_ascii_case("content-range") && matches!(raw.body, Some((BodyKind::Stream, _)))
+    {
+        return Some("a `body = \"stream\"` reply's own range answer");
+    }
+    None
+}
+
+/// Every declared header name - `header_in`, `header_out` and `error_header_out` alike - refused
+/// for an illegal token or a name `http_rest` already writes itself.
+fn header_name_safety_refusals(operation_ident: &Ident, raw: &RawHttp) -> Option<syn::Error> {
+    let mut refusals: Option<syn::Error> = None;
+    let named: Vec<&LitStr> = raw
+        .header_in
+        .iter()
+        .map(|(name, _)| name)
+        .chain(raw.header_out.iter())
+        .chain(raw.error_header_out.iter())
+        .collect();
+    for literal in named {
+        let name = literal.value();
+        if !is_http_token(&name) {
+            refusals = Some(combined(
+                refusals.take(),
+                syn::Error::new(
+                    literal.span(),
+                    illegal_header_name_message(operation_ident, &name),
+                ),
+            ));
+            continue;
+        }
+        if let Some(writes_it) = transport_reserved_header_writer(&name, raw) {
+            refusals = Some(combined(
+                refusals.take(),
+                syn::Error::new(
+                    literal.span(),
+                    reserved_header_name_message(operation_ident, &name, writes_it),
+                ),
+            ));
+        }
+    }
+    let header_in_names: Vec<&LitStr> = raw.header_in.iter().map(|(name, _)| name).collect();
+    for list in [
+        header_in_names.as_slice(),
+        raw.header_out.iter().collect::<Vec<_>>().as_slice(),
+        raw.error_header_out.iter().collect::<Vec<_>>().as_slice(),
+    ] {
+        duplicate_within_list_refusals(operation_ident, list, &mut refusals);
+    }
+    refusals
+}
+
+/// A name declared twice within one `header_in`/`header_out`/`error_header_out` list is refused;
+/// the same name echoed across two different lists (an echoed request header) is legal.
+fn duplicate_within_list_refusals(
+    operation_ident: &Ident,
+    names: &[&LitStr],
+    refusals: &mut Option<syn::Error>,
+) {
+    let mut seen: Vec<String> = Vec::new();
+    for literal in names {
+        let lowered = literal.value().to_ascii_lowercase();
+        if seen.contains(&lowered) {
+            *refusals = Some(combined(
+                refusals.take(),
+                syn::Error::new(
+                    literal.span(),
+                    duplicate_header_name_message(operation_ident, &literal.value()),
+                ),
+            ));
+        } else {
+            seen.push(lowered);
         }
     }
 }

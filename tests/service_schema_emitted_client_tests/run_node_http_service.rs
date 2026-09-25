@@ -208,7 +208,9 @@ const BYTES_DRIVER: &str = r#"
 async function main() {
   const impl = {
     async getThumbnail(ctx, documentId) {
-      if (documentId === "missing") return { ok: false, error: { errorCode: "not-found" } };
+      if (documentId === "missing") return { ok: false, error: [{ errorCode: "not-found" }, "archived"] };
+      if (documentId === "gone") return { ok: false, error: [{ errorCode: "not-found" }, undefined] };
+      if (documentId === "anon") return { ok: true, value: [new Uint8Array([0x89, 0x50, 0x4e, 0x47]), "image/png", undefined] };
       return { ok: true, value: [new Uint8Array([0x89, 0x50, 0x4e, 0x47]), "image/png", `doc-${documentId}`] };
     },
   };
@@ -222,6 +224,8 @@ async function main() {
   const results = {
     ok: await answered("/thumbnails/present"),
     missing: await answered("/thumbnails/missing"),
+    gone: await answered("/thumbnails/gone"),
+    anon: await answered("/thumbnails/anon"),
   };
   console.log(JSON.stringify(results));
   process.exit(0);
@@ -395,6 +399,60 @@ async function main() {
   process.exit(0);
 }
 main().catch((error) => { console.error(error); process.exit(1); });
+"#;
+
+/// A stub `Transport` answering by path alone, driving the emitted client's own declared-error
+/// and `header_out` decode - the client-side twin of [`bytes_body_kind_agrees_with_rust`], which
+/// drives the same three cases through the server.
+const THUMBNAIL_CLIENT_DRIVER: &str = r#"
+const transport = {
+  async send(request) {
+    if (request.path === "/thumbnails/missing") {
+      return { status: 404, headers: [["x-thumbnail-reason", "archived"]], body: JSON.stringify({ errorCode: "not-found" }) };
+    }
+    if (request.path === "/thumbnails/gone") {
+      return { status: 404, headers: [], body: JSON.stringify({ errorCode: "not-found" }) };
+    }
+    return { status: 200, headers: [["content-type", "image/png"]], body: "PNGDATA" };
+  },
+};
+const client = createThumbnailClientServiceHttpClient(transport);
+const results = {
+  missing: await client.getThumbnail("missing"),
+  gone: await client.getThumbnail("gone"),
+  anon: await client.getThumbnail("anon"),
+};
+console.log(JSON.stringify(results));
+"#;
+
+/// A stub `Transport` recording whether `send` was ever called, driving the emitted client's own
+/// `header_in` legality check on a value carrying a line feed.
+const ECHO_CLIENT_DRIVER: &str = r#"
+let sendCalled = false;
+const transport = {
+  async send(request) {
+    sendCalled = true;
+    return { status: 200, headers: [], body: JSON.stringify({ received: "unreachable" }) };
+  },
+};
+const client = createEchoClientServiceHttpClient(transport);
+const refused = await client.echoRange("doc-1", "bytes=0-10\nX-Injected: yes");
+console.log(JSON.stringify({ refused, sendCalled }));
+"#;
+
+/// A legal value carrying a space and a quoted `ETag` together, driving the emitted client's own
+/// `header_in` legality check the other way: it must reach the transport unchanged.
+const ECHO_CLIENT_LEGAL_DRIVER: &str = r#"
+let sentHeaders = null;
+const transport = {
+  async send(request) {
+    sentHeaders = request.headers;
+    return { status: 200, headers: [], body: JSON.stringify({ received: "unreachable" }) };
+  },
+};
+const client = createEchoClientServiceHttpClient(transport);
+const answered = await client.echoRange("doc-1", "a \"etag\" b");
+console.log(JSON.stringify({ answered, sentHeaders }));
 "#;
 
 // -------------------------------------------------------------------------------------------
@@ -797,15 +855,91 @@ fn bytes_body_kind_agrees_with_rust() {
     };
     let node_ok = node_answered(&results["ok"]);
     let node_missing = node_answered(&results["missing"]);
+    let node_gone = node_answered(&results["gone"]);
+    let node_anon = node_answered(&results["anon"]);
     let rust_ok = thumbnail_rust_answered("present");
     let rust_missing = thumbnail_rust_answered("missing");
+    let rust_gone = thumbnail_rust_answered("gone");
+    let rust_anon = thumbnail_rust_answered("anon");
     assert_eq!(node_ok, rust_ok, "node: {node_ok:#?}, rust: {rust_ok:#?}");
     assert_eq!(
         node_missing, rust_missing,
         "node: {node_missing:#?}, rust: {rust_missing:#?}"
     );
+    assert_eq!(
+        node_gone, rust_gone,
+        "node: {node_gone:#?}, rust: {rust_gone:#?}"
+    );
+    assert_eq!(
+        node_anon, rust_anon,
+        "node: {node_anon:#?}, rust: {rust_anon:#?}"
+    );
     assert_eq!(rust_ok.status, 200, "got: {rust_ok:#?}");
     assert_eq!(rust_missing.status, 404, "got: {rust_missing:#?}");
+    assert!(
+        rust_missing
+            .headers
+            .contains(&("x-thumbnail-reason".to_owned(), "archived".to_owned())),
+        "the declared error's own `error_header_out` entry must reach the response. \
+         got: {rust_missing:#?}"
+    );
+    assert!(
+        rust_gone
+            .headers
+            .iter()
+            .all(|(name, _)| name != "x-thumbnail-reason"),
+        "a `None` `error_header_out` element must omit the header, on both the Rust and the \
+         Node-run TypeScript server. got: {rust_gone:#?}"
+    );
+    assert!(
+        rust_anon
+            .headers
+            .iter()
+            .all(|(name, _)| name != "x-document-id"),
+        "a `None` `header_out` element must omit the header, on both the Rust and the \
+         Node-run TypeScript server. got: {rust_anon:#?}"
+    );
+}
+
+fn thumbnail_client_emitted() -> String {
+    [
+        "import { z } from \"zod\";".to_owned(),
+        ThumbnailError::ts_definition(),
+        ThumbnailError::zod_schema(),
+        ThumbnailClientServiceSchema::ts_definition(),
+        ThumbnailClientServiceSchema::ts_http_client(),
+    ]
+    .join("\n\n")
+}
+
+#[test]
+fn the_client_decodes_the_declared_errors_own_header_and_omits_a_none_header_out_element() {
+    let module = format!(
+        "{}\n\n{THUMBNAIL_CLIENT_DRIVER}",
+        thumbnail_client_emitted()
+    );
+    let Some(results) = run_or_stand_down("http-client-thumbnail", "thumbnail-client.mts", &module)
+    else {
+        return;
+    };
+    assert_eq!(
+        results["missing"],
+        serde_json::json!({"ok": false, "error": [{"errorCode": "not-found"}, "archived"]}),
+        "the declared error's own head and its `error_header_out` element must both decode. \
+         got: {results:#?}"
+    );
+    assert_eq!(
+        results["gone"],
+        serde_json::json!({"ok": false, "error": [{"errorCode": "not-found"}, null]}),
+        "an absent `error_header_out` header must decode as the tuple's own `undefined`, not a \
+         string. got: {results:#?}"
+    );
+    assert_eq!(
+        results["anon"],
+        serde_json::json!({"ok": true, "value": ["PNGDATA", "image/png", null]}),
+        "an absent `header_out` header must decode as the tuple's own `undefined`, not a \
+         string. got: {results:#?}"
+    );
 }
 
 fn content_emitted() -> String {
@@ -1455,5 +1589,59 @@ fn a_fully_path_bound_generated_message_dispatches_with_no_query_reader() {
         results["missing"]["body"],
         serde_json::json!({"errorCode": "not-found"}),
         "got: {results:#?}"
+    );
+}
+
+fn echo_client_emitted() -> String {
+    [
+        "import { z } from \"zod\";".to_owned(),
+        EchoRangeResponse::ts_definition(),
+        EchoRangeResponse::zod_schema(),
+        EchoRangeError::ts_definition(),
+        EchoRangeError::zod_schema(),
+        EchoClientServiceSchema::ts_definition(),
+        EchoClientServiceSchema::ts_http_client(),
+    ]
+    .join("\n\n")
+}
+
+#[test]
+fn a_header_in_value_with_a_line_feed_is_refused_before_the_transport_is_ever_reached() {
+    let module = format!("{}\n\n{ECHO_CLIENT_DRIVER}", echo_client_emitted());
+    let Some(results) = run_or_stand_down("http-client-echo", "echo-client.mts", &module) else {
+        return;
+    };
+    assert_eq!(
+        results["sendCalled"], false,
+        "an illegal `header_in` value must refuse before the transport is ever reached. \
+         got: {results:#?}"
+    );
+    assert_eq!(results["refused"]["ok"], false, "got: {results:#?}");
+    assert_eq!(
+        results["refused"]["error"]["fault"]["kind"], "failed-validation",
+        "got: {results:#?}"
+    );
+}
+
+/// A legal `header_in` value carrying a space and a quoted `ETag` reaches the transport unchanged
+/// rather than being refused as if it were illegal.
+#[test]
+fn a_legal_header_in_value_with_a_space_and_a_quoted_etag_reaches_the_transport_unchanged() {
+    let module = format!("{}\n\n{ECHO_CLIENT_LEGAL_DRIVER}", echo_client_emitted());
+    let Some(results) =
+        run_or_stand_down("http-client-echo-legal", "echo-client-legal.mts", &module)
+    else {
+        return;
+    };
+    assert_eq!(results["answered"]["ok"], true, "got: {results:#?}");
+    let headers = results["sentHeaders"].as_array().unwrap();
+    assert!(
+        headers.iter().any(|entry| entry[0] == "range"),
+        "no `range` header was sent. got: {results:#?}"
+    );
+    let range_header = headers.iter().find(|entry| entry[0] == "range").unwrap();
+    assert_eq!(
+        range_header[1], "a \"etag\" b",
+        "a legal value must reach the transport unchanged. got: {results:#?}"
     );
 }

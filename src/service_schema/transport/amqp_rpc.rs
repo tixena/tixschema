@@ -216,7 +216,7 @@
 use super::Transport;
 use crate::service_schema::parse::{
     HeaderIn, MultipartPart, OperationDef, OperationInputs, OperationOutcome, ServiceDef,
-    is_unit_type,
+    is_unit_type, option_inner, tuple_elements,
 };
 use crate::service_schema::support::{message_alias_ident, message_validator_ident, module_ident};
 use proc_macro2::TokenStream;
@@ -365,6 +365,87 @@ pub(super) fn answers(operation: &OperationDef, generated: &Generated) -> TokenS
     }
 }
 
+/// The `Reply` outcome's own `settled` arm: send on success, splitting the declared `header_out`
+/// and `error_header_out` tuples back apart first where either is non-empty; fault on panic.
+fn reply_settled_block(
+    module: &Ident,
+    wire: &str,
+    called: &TokenStream,
+    operation: &OperationDef,
+    error: &Type,
+    success: &Type,
+) -> TokenStream {
+    let success_names = header_out_names(operation);
+    let error_names = error_header_out_names(operation);
+    if success_names.is_empty() && error_names.is_empty() {
+        return quote! {
+            match #called {
+                Ok(answered) => {
+                    reply
+                        .send($crate::#module::Answered::answering(answered), Vec::new())
+                        .await
+                }
+                Err(panicked) => {
+                    record_panic(#wire, &panicked);
+                    reply
+                        .fault($crate::#module::ServiceFault::handler_panic(#wire, &panicked))
+                        .await
+                }
+            }
+        };
+    }
+    let ok_arm = if success_names.is_empty() {
+        quote! { Ok(value) => Ok(value), }
+    } else {
+        let idents = header_out_idents(success_names);
+        let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
+        let element_types: Vec<&Type> = elements.iter().skip(1).copied().collect();
+        let pushed = header_pushed_stmts(success_names, &idents, &element_types);
+        quote! {
+            Ok((value, #(#idents),*)) => {
+                #(#pushed)*
+                Ok(value)
+            }
+        }
+    };
+    let err_arm = if error_names.is_empty() {
+        quote! { Err(declared) => Err(declared), }
+    } else {
+        let idents = header_out_idents(error_names);
+        let elements: Vec<&Type> = tuple_elements(error).into_iter().flatten().collect();
+        let element_types: Vec<&Type> = elements.iter().skip(1).copied().collect();
+        let pushed = header_pushed_stmts(error_names, &idents, &element_types);
+        quote! {
+            Err((declared, #(#idents),*)) => {
+                #(#pushed)*
+                Err(declared)
+            }
+        }
+    };
+    quote! {
+        match #called {
+            Ok(answered) => {
+                let mut headers: Vec<(String, String)> = Vec::new();
+                // Neither arm names the operation's success or error type, so
+                // `Answered::answering` below infers both from `answered` alone.
+                let answered = match answered {
+                    #ok_arm
+                    #err_arm
+                };
+                reply
+                    .send($crate::#module::Answered::answering(answered), headers)
+                    .await
+            }
+            Err(panicked) => {
+                record_panic(#wire, &panicked);
+                reply
+                    .fault($crate::#module::ServiceFault::handler_panic(#wire, &panicked))
+                    .await
+            }
+        }
+    }
+}
+
 /// One arm: deserialize, validate, call behind the panic guard, record and answer. Every fault path
 /// names the wire name rather than what arrived, this arm being the one that answered to it.
 ///
@@ -387,65 +468,8 @@ pub(super) fn arm(module: &Ident, operation: &OperationDef) -> TokenStream {
                 record_panic(#wire, &panicked);
             }
         },
-        OperationOutcome::Reply {
-            error: _error,
-            success: _success,
-        } => {
-            let names = header_out_names(operation);
-            if names.is_empty() {
-                quote! {
-                    match #called {
-                        Ok(answered) => {
-                            reply
-                                .send($crate::#module::Answered::answering(answered), Vec::new())
-                                .await
-                        }
-                        Err(panicked) => {
-                            record_panic(#wire, &panicked);
-                            reply
-                                .fault($crate::#module::ServiceFault::handler_panic(#wire, &panicked))
-                                .await
-                        }
-                    }
-                }
-            } else {
-                let idents = header_out_idents(names);
-                let pushed = names.iter().zip(&idents).map(|(name, ident)| {
-                    quote! {
-                        if let Some(pair) = encoded_header(#name, &#ident) {
-                            headers.push(pair);
-                        }
-                    }
-                });
-                quote! {
-                    match #called {
-                        Ok(answered) => {
-                            let mut headers: Vec<(String, String)> = Vec::new();
-                            // Neither arm names the operation's success or error type: unifying
-                            // the two arms of this `match` is what lets `Answered::answering`
-                            // below infer both from `answered` alone, exactly as it does where no
-                            // `header_out` splits the tuple apart — the dispatcher never needs the
-                            // author's own types in scope, only `$crate`-qualified ones.
-                            let answered = match answered {
-                                Ok((value, #(#idents),*)) => {
-                                    #(#pushed)*
-                                    Ok(value)
-                                }
-                                Err(declared) => Err(declared),
-                            };
-                            reply
-                                .send($crate::#module::Answered::answering(answered), headers)
-                                .await
-                        }
-                        Err(panicked) => {
-                            record_panic(#wire, &panicked);
-                            reply
-                                .fault($crate::#module::ServiceFault::handler_panic(#wire, &panicked))
-                                .await
-                        }
-                    }
-                }
-            }
+        OperationOutcome::Reply { error, success } => {
+            reply_settled_block(module, wire, &called, operation, error, success)
         }
     };
     quote! {
@@ -934,14 +958,13 @@ pub(super) fn declares_header_in(service: &ServiceDef) -> bool {
     })
 }
 
-/// Whether the service declares an operation whose `http(...)` group writes at least one outgoing
-/// header, which is what needs an encoder for it on whichever side writes one.
+/// Whether the service declares an operation that writes at least one outgoing header - a
+/// success-side `header_out` or an error-side `error_header_out` alike.
 pub(super) fn declares_header_out(service: &ServiceDef) -> bool {
     service.operations.iter().any(|operation| {
-        operation
-            .http
-            .as_ref()
-            .is_some_and(|binding| !binding.header_out.is_empty())
+        operation.http.as_ref().is_some_and(|binding| {
+            !binding.header_out.is_empty() || !binding.error_header_out.is_empty()
+        })
     })
 }
 
@@ -1304,6 +1327,37 @@ fn header_out_idents(names: &[String]) -> Vec<Ident> {
         .collect()
 }
 
+/// One `encoded_header` push per declared name. An `Option<T>` entry pushes nothing for `None`,
+/// rather than the JSON text `"null"` `encoded_header` would otherwise happily write.
+fn header_pushed_stmts(
+    names: &[String],
+    idents: &[Ident],
+    element_types: &[&Type],
+) -> Vec<TokenStream> {
+    names
+        .iter()
+        .zip(idents)
+        .zip(element_types)
+        .map(|((name, ident), ty)| {
+            if option_inner(ty).is_some() {
+                quote! {
+                    if let Some(value) = &#ident {
+                        if let Some(pair) = encoded_header(#name, value) {
+                            headers.push(pair);
+                        }
+                    }
+                }
+            } else {
+                quote! {
+                    if let Some(pair) = encoded_header(#name, &#ident) {
+                        headers.push(pair);
+                    }
+                }
+            }
+        })
+        .collect()
+}
+
 /// The `header_out` names an operation declared, or none for an operation that named no `http`
 /// group, or that named one with no `header_out` entry.
 fn header_out_names(operation: &OperationDef) -> &[String] {
@@ -1311,6 +1365,14 @@ fn header_out_names(operation: &OperationDef) -> &[String] {
         .http
         .as_ref()
         .map_or(&[], |binding| binding.header_out.as_slice())
+}
+
+/// [`header_out_names`]'s own twin on the error side.
+fn error_header_out_names(operation: &OperationDef) -> &[String] {
+    operation
+        .http
+        .as_ref()
+        .map_or(&[], |binding| binding.error_header_out.as_slice())
 }
 
 /// The declared header names, the response type and the header types a `header_out`-bound success
@@ -1341,6 +1403,28 @@ fn header_out_shape(operation: &OperationDef) -> Option<(Vec<String>, Type, Vec<
     let mut elements = tuple.elems.iter().cloned();
     let response = elements.next()?;
     Some((binding.header_out.clone(), response, elements.collect()))
+}
+
+/// [`header_out_shape`]'s own twin on the error side: `None` where the operation declared no
+/// `error_header_out`, else its names, the error's own head type, and its trailing header types.
+fn error_header_out_shape(operation: &OperationDef) -> Option<(Vec<String>, Type, Vec<Type>)> {
+    let binding = operation.http.as_ref()?;
+    if binding.error_header_out.is_empty() {
+        return None;
+    }
+    let OperationOutcome::Reply {
+        error,
+        success: _success,
+    } = &operation.outcome
+    else {
+        return None;
+    };
+    let Type::Tuple(tuple) = error.as_ref() else {
+        return None;
+    };
+    let mut elements = tuple.elems.iter().cloned();
+    let head = elements.next()?;
+    Some((binding.error_header_out.clone(), head, elements.collect()))
 }
 
 /// `IncomingMessage`: everything the dispatcher reads off the wire — the operation and the
@@ -1552,6 +1636,39 @@ fn header_encode_refusal(
     }
 }
 
+/// One `decoded_header` read per declared name, bound to a local under `idents`' own spelling -
+/// shared between the success-side and error-side splits.
+fn header_value_decode_lets(
+    wire: &str,
+    call_error: &TokenStream,
+    module: &Ident,
+    names: &[String],
+    header_types: &[Type],
+    idents: &[Ident],
+) -> TokenStream {
+    names
+        .iter()
+        .zip(header_types.iter())
+        .zip(idents)
+        .map(|((name, ty), ident)| {
+            quote! {
+                let #ident: #ty = match decoded_header(&incoming, #name) {
+                    Ok(decoded) => decoded,
+                    Err(detail) => {
+                        return Err(#call_error::Fault(
+                            $crate::#module::ServiceFault::failed_validation(
+                                #wire,
+                                Some(#name),
+                                &detail,
+                            ),
+                        ));
+                    }
+                };
+            }
+        })
+        .collect()
+}
+
 /// What one operation's client method answers, once the transport call itself has returned.
 ///
 /// A `header_out`-bound success type carries its extra values beside the response rather than
@@ -1571,64 +1688,160 @@ pub(super) fn client_answer(operation: &OperationDef, generated: &Generated) -> 
                 .await
                 .map_err(|uncarried| #fault::transport_failure(#wire, &uncarried))
         },
-        OperationOutcome::Reply { error, success } => match header_out_shape(operation) {
-            None if is_unit_type(success) => quote! {
-                match self.transport.request(#wire, sending, headers).await {
-                    Ok((encoded, _headers)) => read_unit_answer(#wire, &encoded).map(|()| #success),
-                    Err(uncarried) => Err(#call_error::Fault(#fault::transport_failure(
-                        #wire,
-                        &uncarried,
-                    ))),
-                }
-            },
-            None => quote! {
-                match self.transport.request(#wire, sending, headers).await {
-                    Ok((encoded, _headers)) => read_answer(#wire, &encoded),
-                    Err(uncarried) => Err(#call_error::Fault(#fault::transport_failure(
-                        #wire,
-                        &uncarried,
-                    ))),
-                }
-            },
-            Some((names, response, header_types)) => {
-                let idents = header_out_idents(&names);
-                let decodes = names.iter().zip(header_types.iter()).zip(&idents).map(
-                    |((name, ty), ident)| {
-                        quote! {
-                            let #ident: #ty = match decoded_header(&incoming, #name) {
-                                Ok(decoded) => decoded,
-                                Err(detail) => {
-                                    return Err(#call_error::Fault(
-                                        $crate::#module::ServiceFault::failed_validation(
-                                            #wire,
-                                            Some(#name),
-                                            &detail,
-                                        ),
-                                    ));
-                                }
-                            };
-                        }
-                    },
-                );
-                quote! {
-                    match self.transport.request(#wire, sending, headers).await {
-                        Ok((encoded, incoming)) => {
-                            match read_answer::<#response, #error>(#wire, &encoded) {
-                                Ok(value) => {
-                                    #(#decodes)*
-                                    Ok((value, #(#idents),*))
-                                }
-                                Err(refused) => Err(refused),
-                            }
-                        }
-                        Err(uncarried) => Err(#call_error::Fault(#fault::transport_failure(
-                            #wire,
-                            &uncarried,
-                        ))),
-                    }
-                }
+        OperationOutcome::Reply { error, success } => error_header_out_shape(operation)
+            .map_or_else(
+                || client_answer_reply(wire, call_error, fault, module, operation, error, success),
+                |error_shape| {
+                    client_answer_reply_with_error_headers(
+                        wire,
+                        call_error,
+                        fault,
+                        module,
+                        operation,
+                        success,
+                        &error_shape,
+                    )
+                },
+            ),
+    }
+}
+
+/// [`client_answer`]'s own `Reply` arm where the operation declared no `error_header_out` —
+/// unchanged from before that entry existed.
+fn client_answer_reply(
+    wire: &str,
+    call_error: &TokenStream,
+    fault: &TokenStream,
+    module: &Ident,
+    operation: &OperationDef,
+    error: &Type,
+    success: &Type,
+) -> TokenStream {
+    match header_out_shape(operation) {
+        None if is_unit_type(success) => quote! {
+            match self.transport.request(#wire, sending, headers).await {
+                Ok((encoded, _headers)) => read_unit_answer(#wire, &encoded).map(|()| #success),
+                Err(uncarried) => Err(#call_error::Fault(#fault::transport_failure(
+                    #wire,
+                    &uncarried,
+                ))),
             }
         },
+        None => quote! {
+            match self.transport.request(#wire, sending, headers).await {
+                Ok((encoded, _headers)) => read_answer(#wire, &encoded),
+                Err(uncarried) => Err(#call_error::Fault(#fault::transport_failure(
+                    #wire,
+                    &uncarried,
+                ))),
+            }
+        },
+        Some((names, response, header_types)) => {
+            let idents = header_out_idents(&names);
+            let decodes =
+                header_value_decode_lets(wire, call_error, module, &names, &header_types, &idents);
+            quote! {
+                match self.transport.request(#wire, sending, headers).await {
+                    Ok((encoded, incoming)) => {
+                        match read_answer::<#response, #error>(#wire, &encoded) {
+                            Ok(value) => {
+                                #decodes
+                                Ok((value, #(#idents),*))
+                            }
+                            Err(refused) => Err(refused),
+                        }
+                    }
+                    Err(uncarried) => Err(#call_error::Fault(#fault::transport_failure(
+                        #wire,
+                        &uncarried,
+                    ))),
+                }
+            }
+        }
+    }
+}
+
+/// [`client_answer`]'s own `Reply` arm where the operation declared `error_header_out`:
+/// [`client_answer_reply`]'s own three shapes, plus rejoining a declared error's extra headers.
+fn client_answer_reply_with_error_headers(
+    wire: &str,
+    call_error: &TokenStream,
+    fault: &TokenStream,
+    module: &Ident,
+    operation: &OperationDef,
+    success: &Type,
+    error_shape: &(Vec<String>, Type, Vec<Type>),
+) -> TokenStream {
+    let (error_names, error_head, error_header_types) = error_shape;
+    let reconstruct = {
+        let idents = header_out_idents(error_names);
+        let decodes = header_value_decode_lets(
+            wire,
+            call_error,
+            module,
+            error_names,
+            error_header_types,
+            &idents,
+        );
+        quote! {
+            match raw {
+                Ok(value) => Ok(value),
+                Err(#call_error::Fault(reported)) => Err(#call_error::Fault(reported)),
+                Err(#call_error::Operation(head)) => {
+                    #decodes
+                    Err(#call_error::Operation((head, #(#idents),*)))
+                }
+            }
+        }
+    };
+    match header_out_shape(operation) {
+        None if is_unit_type(success) => quote! {
+            match self.transport.request(#wire, sending, headers).await {
+                Ok((encoded, incoming)) => {
+                    let raw = read_unit_answer::<#error_head>(#wire, &encoded);
+                    #reconstruct
+                }
+                Err(uncarried) => Err(#call_error::Fault(#fault::transport_failure(
+                    #wire,
+                    &uncarried,
+                ))),
+            }
+        },
+        None => quote! {
+            match self.transport.request(#wire, sending, headers).await {
+                Ok((encoded, incoming)) => {
+                    let raw = read_answer::<#success, #error_head>(#wire, &encoded);
+                    #reconstruct
+                }
+                Err(uncarried) => Err(#call_error::Fault(#fault::transport_failure(
+                    #wire,
+                    &uncarried,
+                ))),
+            }
+        },
+        Some((names, response, header_types)) => {
+            let idents = header_out_idents(&names);
+            let decodes =
+                header_value_decode_lets(wire, call_error, module, &names, &header_types, &idents);
+            quote! {
+                match self.transport.request(#wire, sending, headers).await {
+                    Ok((encoded, incoming)) => {
+                        let raw = match read_answer::<#response, #error_head>(#wire, &encoded) {
+                            Ok(value) => {
+                                #decodes
+                                Ok((value, #(#idents),*))
+                            }
+                            Err(refused) => Err(refused),
+                        };
+                        #reconstruct
+                    }
+                    Err(uncarried) => Err(#call_error::Fault(#fault::transport_failure(
+                        #wire,
+                        &uncarried,
+                    ))),
+                }
+            }
+        }
     }
 }
 

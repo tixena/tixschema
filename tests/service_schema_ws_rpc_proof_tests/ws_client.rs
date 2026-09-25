@@ -5,8 +5,8 @@
 //! they were written, no crate prefix being true of any of them.
 
 use crate::tests::{
-    RangeError, RangeResult, TouchRequest, UnwatchError, UnwatchRequest, WatchError, WatchRequest,
-    WatchResult,
+    CheckRangeError, RangeError, RangeResult, TouchRequest, UnwatchError, UnwatchRequest,
+    WatchError, WatchRequest, WatchResult,
 };
 
 document_session_ws_rpc_client!();

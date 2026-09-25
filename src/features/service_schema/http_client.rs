@@ -225,7 +225,7 @@ fn method(service: &ServiceDef, operation: &OperationDef, has_multipart: bool) -
     let validated = validation_stmt(&prefix, operation, wire);
     let path_build = path_build_stmt(operation, &shape);
     let query_build = query_build_stmt(operation, &shape);
-    let headers_build = header_in_build_stmt(&shape);
+    let headers_build = header_in_build_stmt(&prefix, operation, &shape);
     let body_build = body_build_stmt(&shape);
     let parts_build = multipart_parts_build_stmt(operation, &shape, has_multipart);
     let send = send_stmt(&prefix, operation, wire, shape.method.name(), has_multipart);
@@ -245,14 +245,13 @@ fn method(service: &ServiceDef, operation: &OperationDef, has_multipart: bool) -
     )
 }
 
-/// The outbound check and the refusal it leads to: a failure answers before the transport is ever
-/// named, exactly as the AMQP client's own outbound check does.
-fn validation_stmt(prefix: &str, operation: &OperationDef, wire: &str) -> String {
-    let schema = message::schema(operation);
-    let refusal = match &operation.outcome {
+/// What an outbound fault answers, before the transport is ever reached: a thrown refusal for a
+/// one-way operation, or the failure arm of the result envelope for a reply.
+fn outbound_fault_stmt(prefix: &str, operation: &OperationDef, fault_expr: &str) -> String {
+    match &operation.outcome {
         OperationOutcome::OneWay => format!(
             "        throw {prefix}HttpRefused(\n          \
-             {prefix}HttpOutboundFault(\"{wire}\", validated.error.issues),\n        \
+             {fault_expr},\n        \
              );\n"
         ),
         OperationOutcome::Reply {
@@ -263,11 +262,19 @@ fn validation_stmt(prefix: &str, operation: &OperationDef, wire: &str) -> String
              ok: false,\n          \
              error: {{\n            \
              isServiceFault: true,\n            \
-             fault: {prefix}HttpOutboundFault(\"{wire}\", validated.error.issues),\n          \
+             fault: {fault_expr},\n          \
              }},\n        \
              }};\n"
         ),
-    };
+    }
+}
+
+/// The outbound check and the refusal it leads to: a failure answers before the transport is ever
+/// named, exactly as the AMQP client's own outbound check does.
+fn validation_stmt(prefix: &str, operation: &OperationDef, wire: &str) -> String {
+    let schema = message::schema(operation);
+    let fault_expr = format!("{prefix}HttpOutboundFault(\"{wire}\", validated.error.issues)");
+    let refusal = outbound_fault_stmt(prefix, operation, &fault_expr);
     format!(
         "      const validated = {schema}.safeParse(req);\n      \
          if (!validated.success) {{\n{refusal}      \
@@ -366,27 +373,33 @@ fn query_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
     )
 }
 
-/// Builds the outgoing header array, one entry per `header_in` binding — except an optional
-/// binding holding `undefined`, which is pushed nowhere rather than as the text `String(undefined)`
-/// would otherwise render (`"undefined"`, a header the request never meant to carry). Mirrors the
-/// Rust client's own `header_in_build_stmts`.
-fn header_in_build_stmt(shape: &HttpShape) -> String {
+/// Builds the outgoing header array, one entry per `header_in` binding - an optional binding
+/// holding `undefined` is pushed nowhere, and every rendered value is checked before it is pushed.
+fn header_in_build_stmt(prefix: &str, operation: &OperationDef, shape: &HttpShape) -> String {
     let mut stmt = String::from("      const headers: Array<[string, string]> = [];\n");
     for header in &shape.header_in {
         let name = &header.name;
         let parameter = RenameRule::CamelCase.apply_to_field(&header.parameter.to_string());
+        let fault_expr = format!(
+            "{prefix}HttpOutboundFault(\"{}\", [{{ path: [\"{name}\"], message: \"a header \
+             value contains a character illegal in an HTTP header\" }}])",
+            operation.wire_name,
+        );
+        let refusal = outbound_fault_stmt(prefix, operation, &fault_expr);
+        let checked = format!(
+            "        const rendered = String({parameter});\n        \
+             if (!{prefix}HttpLegalHeaderValue(rendered)) {{\n{refusal}        \
+             }}\n        \
+             headers.push([\"{name}\", rendered]);\n"
+        );
         if option_inner(&header.ty).is_some() {
             let _ = write!(
                 stmt,
-                "      if ({parameter} !== undefined) {{\n        \
-                 headers.push([\"{name}\", String({parameter})]);\n      \
+                "      if ({parameter} !== undefined) {{\n{checked}      \
                  }}\n"
             );
         } else {
-            let _ = writeln!(
-                stmt,
-                "      headers.push([\"{name}\", String({parameter})]);"
-            );
+            let _ = write!(stmt, "      {{\n{checked}      }}\n");
         }
     }
     stmt
@@ -544,10 +557,65 @@ fn error_condition_expr(shape: &HttpShape) -> String {
     }
 }
 
-/// A request-and-reply operation's decode: the declared status into the success type (or the
-/// success tuple, `header_out` elements read back from response headers), a mapped status into
-/// the declared error, a fixed fault status into a decoded fault, anything else into a fault
-/// naming the status this client did not expect — mirroring the Rust client's own `reply_decode`.
+/// The declared-error read every reply-decoding arm shares: the error's own head off the body,
+/// plus each `error_header_out` element off its own response header where any were declared.
+fn error_decode_block(prefix: &str, wire: &str, shape: &HttpShape, error: &Type) -> String {
+    if shape.error_header_out.is_empty() {
+        let error_ty = get_field_def("error", error, "").typescript_typename();
+        return format!(
+            "        let declared: {error_ty};\n        \
+             try {{\n          \
+             declared = JSON.parse(response.body) as {error_ty};\n        \
+             }} catch (rejected) {{\n          \
+             return {{\n            \
+             ok: false,\n            \
+             error: {{\n              \
+             isServiceFault: true,\n              \
+             fault: {prefix}HttpUndeserializablePayload(\"{wire}\", String(rejected)),\n            \
+             }},\n          \
+             }};\n        \
+             }}\n        \
+             return {{ ok: false, error: declared }};\n"
+        );
+    }
+    let elements: Vec<&Type> = tuple_elements(error).into_iter().flatten().collect();
+    let head_ty = elements.first().map_or_else(
+        || get_field_def("error", error, "").typescript_typename(),
+        |ty| get_field_def("error", ty, "").typescript_typename(),
+    );
+    let mut stmt = format!(
+        "        let declared: {head_ty};\n        \
+         try {{\n          \
+         declared = JSON.parse(response.body) as {head_ty};\n        \
+         }} catch (rejected) {{\n          \
+         return {{\n            \
+         ok: false,\n            \
+         error: {{\n              \
+         isServiceFault: true,\n              \
+         fault: {prefix}HttpUndeserializablePayload(\"{wire}\", String(rejected)),\n            \
+         }},\n          \
+         }};\n        \
+         }}\n"
+    );
+    let (header_stmts, header_idents) = header_value_read_stmts(
+        prefix,
+        wire,
+        &shape.error_header_out,
+        &elements,
+        1,
+        "errorHeaderOut",
+    );
+    stmt.push_str(&header_stmts);
+    let _ = writeln!(
+        stmt,
+        "        return {{ ok: false, error: [declared, {}] }};",
+        header_idents.join(", ")
+    );
+    stmt
+}
+
+/// A request-and-reply operation's decode: the declared status into the success (tuple), a
+/// mapped status into the declared error (tuple), a fixed fault status into a decoded fault.
 fn reply_decode_stmt(
     prefix: &str,
     shape: &HttpShape,
@@ -560,27 +628,15 @@ fn reply_decode_stmt(
     }
     let ok_status = shape.ok_status;
     let error_condition = error_condition_expr(shape);
-    let error_ty = get_field_def("error", error, "").typescript_typename();
     let success_block = success_decode_block(prefix, wire, shape, success);
+    let error_block = error_decode_block(prefix, wire, shape, error);
     format!(
         "      const status = response.status;\n      \
          if (status === {ok_status}) {{\n\
 {success_block}      \
          }}\n      \
-         if ({error_condition}) {{\n        \
-         let declared: {error_ty};\n        \
-         try {{\n          \
-         declared = JSON.parse(response.body) as {error_ty};\n        \
-         }} catch (rejected) {{\n          \
-         return {{\n            \
-         ok: false,\n            \
-         error: {{\n              \
-         isServiceFault: true,\n              \
-         fault: {prefix}HttpUndeserializablePayload(\"{wire}\", String(rejected)),\n            \
-         }},\n          \
-         }};\n        \
-         }}\n        \
-         return {{ ok: false, error: declared }};\n      \
+         if ({error_condition}) {{\n\
+{error_block}      \
          }}\n      \
          if (status === 400 || status === 404 || status === 500) {{\n        \
          return {{\n          \
@@ -710,9 +766,9 @@ fn stream_reply_decode_stmt(
 ) -> String {
     let ok_status = shape.ok_status;
     let error_condition = error_condition_expr(shape);
-    let error_ty = get_field_def("error", error, "").typescript_typename();
     let partial = stream_success_arm(prefix, wire, shape, success, true);
     let full = stream_success_arm(prefix, wire, shape, success, false);
+    let error_block = error_decode_block(prefix, wire, shape, error);
     format!(
         "      const status = response.status;\n      \
          if (status === 206) {{\n\
@@ -721,20 +777,8 @@ fn stream_reply_decode_stmt(
          if (status === {ok_status}) {{\n\
 {full}      \
          }}\n      \
-         if ({error_condition}) {{\n        \
-         let declared: {error_ty};\n        \
-         try {{\n          \
-         declared = JSON.parse(response.body) as {error_ty};\n        \
-         }} catch (rejected) {{\n          \
-         return {{\n            \
-         ok: false,\n            \
-         error: {{\n              \
-         isServiceFault: true,\n              \
-         fault: {prefix}HttpUndeserializablePayload(\"{wire}\", String(rejected)),\n            \
-         }},\n          \
-         }};\n        \
-         }}\n        \
-         return {{ ok: false, error: declared }};\n      \
+         if ({error_condition}) {{\n\
+{error_block}      \
          }}\n      \
          if (status === 400 || status === 404 || status === 500) {{\n        \
          return {{\n          \
@@ -805,40 +849,73 @@ fn header_out_read_stmts(
     elements: &[&Type],
     body_elements: usize,
 ) -> (String, Vec<String>) {
+    header_value_read_stmts(
+        prefix,
+        wire,
+        &shape.header_out,
+        elements,
+        body_elements,
+        "headerOut",
+    )
+}
+
+/// [`header_out_read_stmts`]'s own general form, shared with the error side: `ident_prefix`
+/// names the locals apart so an operation declaring both never binds two under one name.
+fn header_value_read_stmts(
+    prefix: &str,
+    wire: &str,
+    names: &[String],
+    elements: &[&Type],
+    body_elements: usize,
+    ident_prefix: &str,
+) -> (String, Vec<String>) {
     let mut stmt = String::new();
     let mut idents = Vec::new();
-    for (index, (name, element_ty)) in shape
-        .header_out
+    let capitalized_prefix = RenameRule::PascalCase.apply_to_field(ident_prefix);
+    for (index, (name, element_ty)) in names
         .iter()
         .zip(elements.iter().skip(body_elements))
         .enumerate()
     {
-        let raw_ident = format!("rawHeaderOut{index}");
-        let ident = format!("headerOut{index}");
+        let raw_ident = format!("raw{capitalized_prefix}{index}");
+        let ident = format!("{ident_prefix}{index}");
         let element_typename = get_field_def("value", element_ty, "").typescript_typename();
-        let _ = write!(
+        let _ = writeln!(
             stmt,
             "        const {raw_ident} = response.headers.find(\n          \
              ([name]) => name.toLowerCase() === \"{name}\",\n        \
-             );\n        \
-             if ({raw_ident} === undefined) {{\n          \
-             return {{\n            \
-             ok: false,\n            \
-             error: {{\n              \
-             isServiceFault: true,\n              \
-             fault: {prefix}HttpUndeserializablePayload(\n                \
-             \"{wire}\",\n                \
-             \"a declared response header was missing\",\n              \
-             ),\n            \
-             }},\n          \
-             }};\n        \
-             }}\n"
+             );"
         );
-        let value_expr = header_out_value_expr(element_ty, &format!("{raw_ident}[1]"));
-        let _ = writeln!(
-            stmt,
-            "        const {ident} = {value_expr} as {element_typename};"
-        );
+        // An `Option<T>` element reads a missing header as `undefined`; anything else faults.
+        if option_inner(element_ty).is_some() {
+            let value_expr = header_out_value_expr(element_ty, &format!("{raw_ident}[1]"));
+            let _ = writeln!(
+                stmt,
+                "        const {ident} = {raw_ident} === undefined ? undefined : ({value_expr} \
+                 as {element_typename});"
+            );
+        } else {
+            let _ = write!(
+                stmt,
+                "        if ({raw_ident} === undefined) {{\n          \
+                 return {{\n            \
+                 ok: false,\n            \
+                 error: {{\n              \
+                 isServiceFault: true,\n              \
+                 fault: {prefix}HttpUndeserializablePayload(\n                \
+                 \"{wire}\",\n                \
+                 \"a declared response header was missing\",\n              \
+                 ),\n            \
+                 }},\n          \
+                 }};\n        \
+                 }}\n"
+            );
+            let value_expr = header_out_value_expr(element_ty, &format!("{raw_ident}[1]"));
+            let _ = writeln!(
+                stmt,
+                "        const {ident} = {value_expr} as {element_typename};"
+            );
+        }
         idents.push(ident);
     }
     (stmt, idents)
@@ -867,7 +944,8 @@ fn header_out_value_expr(ty: &Type, raw: &str) -> String {
 // ---------------------------------------------------------------------------------------------
 
 /// The four fault-building readers every method reaches for, plus the one-way throw pair where the
-/// service declares at least one one-way operation.
+/// service declares at least one one-way operation, plus the header-value checker where the
+/// service declares at least one `header_in` binding.
 fn fault_helpers(service: &ServiceDef) -> Vec<String> {
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
@@ -885,7 +963,30 @@ fn fault_helpers(service: &ServiceDef) -> Vec<String> {
         helpers.push(refusal_type(&named));
         helpers.push(refused_fn(&named, &prefix));
     }
+    if service
+        .operations
+        .iter()
+        .any(|operation| !HttpShape::of(operation).header_in.is_empty())
+    {
+        helpers.push(legal_header_value_fn(&prefix));
+    }
     helpers
+}
+
+/// Whether every byte of `value` is legal as an HTTP header value: visible ASCII (`0x21`-`0x7E`),
+/// a space, or a tab.
+fn legal_header_value_fn(prefix: &str) -> String {
+    format!(
+        "/** Whether every byte of `value` is legal as an HTTP header value: visible ASCII\n \
+         * (`0x21`-`0x7E`), a space, or a tab. */\n\
+         function {prefix}HttpLegalHeaderValue(value: string): boolean {{\n  \
+         for (let index = 0; index < value.length; index += 1) {{\n    \
+         const code = value.charCodeAt(index);\n    \
+         if (code !== 0x09 && code !== 0x20 && (code < 0x21 || code > 0x7e)) return false;\n  \
+         }}\n  \
+         return true;\n\
+         }}"
+    )
 }
 
 fn outbound_fault_fn(named: &str, prefix: &str) -> String {

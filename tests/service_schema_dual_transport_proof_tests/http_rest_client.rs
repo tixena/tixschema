@@ -6,7 +6,7 @@
 //! where the service was declared.
 
 use crate::tests::{
-    ArchiveError, GetVersionError, SealAck, SweepError, SweepReport, ThumbnailError,
+    ArchiveError, GetVersionError, RangeError, SealAck, SweepError, SweepReport, ThumbnailError,
     VersionResponse,
 };
 

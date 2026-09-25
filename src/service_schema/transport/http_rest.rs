@@ -60,14 +60,24 @@ use super::amqp_rpc::{
 };
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HeaderIn, HttpShape, MultipartPart, OperationDef,
-    OperationInputs, OperationOutcome, PathSegment, ScalarKind, ServiceDef, is_scalar_named_type,
-    is_unit_type, option_inner, scalar_kind, service_declares_a_placeholder,
+    OperationInputs, OperationOutcome, PathSegment, ScalarKind, ServiceDef, error_declared_type,
+    is_scalar_named_type, is_unit_type, option_inner, scalar_kind, service_declares_a_placeholder,
     service_declares_a_stream, service_declares_multipart, tuple_elements, vec_inner, wire_key,
 };
 use crate::service_schema::support::{message_alias_ident, message_validator_ident, module_ident};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Ident, Type};
+
+/// The fragments [`bytes_answer_block`] and [`stream_answer_block`] both need, bundled into one
+/// argument instead of five.
+struct AnswerArm<'answer> {
+    called: &'answer TokenStream,
+    error_arm: &'answer TokenStream,
+    module: &'answer Ident,
+    panic_fault: &'answer TokenStream,
+    wire: &'answer str,
+}
 
 pub fn emit(service: &ServiceDef, transport: Transport) -> TokenStream {
     let dispatcher = dispatcher_macro(service, transport);
@@ -636,11 +646,40 @@ fn body_field(has_stream: bool, body_expr: &TokenStream) -> TokenStream {
     }
 }
 
+/// Whether any operation ever pushes a runtime-computed value onto the response's headers.
+/// Gates [`legal_header_value_fn`]'s own emission, to avoid a `dead_code` error where none does.
+fn service_writes_a_response_header(service: &ServiceDef) -> bool {
+    service.operations.iter().any(|operation| {
+        operation.http.as_ref().is_some_and(|binding| {
+            !binding.header_out.is_empty()
+                || !binding.error_header_out.is_empty()
+                || matches!(binding.body_kind, BodyKind::Bytes | BodyKind::Stream)
+        })
+    })
+}
+
+/// Whether every byte of `value` is legal as an HTTP header value: visible ASCII (`0x21`-`0x7E`),
+/// a space, or a tab. Emitted once per module, not once per header.
+fn legal_header_value_fn() -> TokenStream {
+    quote! {
+        fn legal_header_value(value: &str) -> bool {
+            value.bytes().all(|byte| matches!(byte, 0x09 | 0x20 | 0x21..=0x7E))
+        }
+    }
+}
+
 /// `json_response`, the one way `dispatch` and the default `FaultHandler` both write a body.
-fn response_builders(has_stream: bool) -> TokenStream {
+fn response_builders(has_stream: bool, writes_response_header: bool) -> TokenStream {
     let ok_body = body_field(has_stream, &quote! { body });
     let err_body = body_field(has_stream, &quote! { ::std::vec::Vec::new() });
+    let legal_header_value = if writes_response_header {
+        legal_header_value_fn()
+    } else {
+        TokenStream::new()
+    };
     quote! {
+        #legal_header_value
+
         /// Serializes `value` as the body, under `status` and whatever `headers` the caller
         /// already built. A value that will not serialize is answered as a fault instead - the
         /// dispatcher's own defect, not the caller's.
@@ -711,7 +750,7 @@ fn dispatch_fn(
     module: &Ident,
 ) -> TokenStream {
     let contract = &service.ident;
-    let builders = response_builders(has_stream);
+    let builders = response_builders(has_stream, service_writes_a_response_header(service));
     let arms = service
         .operations
         .iter()
@@ -1094,12 +1133,9 @@ fn object_base(bodied: bool) -> TokenStream {
     }
 }
 
-/// The status a declared error answers at, read off `error_status` where the operation named an
-/// `http(...)` group, or the fixed [`DEFAULT_BINDING_ERROR_STATUS`] where it named none. The match
-/// is exhaustive by construction wherever it is written at all: `error_status`'s own completeness
-/// against the error type is checked unconditionally, in every build, by
-/// [`crate::service_schema::support`]'s own probe.
-fn error_status_expr(shape: &HttpShape, error_type: &Type) -> TokenStream {
+/// The status a declared error answers at, read off `error_status`, or the fixed
+/// [`DEFAULT_BINDING_ERROR_STATUS`] where the operation named no `http(...)` group.
+fn error_status_expr(shape: &HttpShape, error_head: &Type) -> TokenStream {
     if shape.error_status.is_empty() {
         let fallback = DEFAULT_BINDING_ERROR_STATUS;
         quote! { #fallback }
@@ -1107,8 +1143,119 @@ fn error_status_expr(shape: &HttpShape, error_type: &Type) -> TokenStream {
         let arms = shape
             .error_status
             .iter()
-            .map(|(variant, code)| quote! { #error_type::#variant { .. } => #code, });
+            .map(|(variant, code)| quote! { #error_head::#variant { .. } => #code, });
         quote! { match &declared_error { #(#arms)* } }
+    }
+}
+
+/// One checked header push: an illegal `value_expr` answers a fault through the installed
+/// `FaultHandler` rather than reaching the response. `headers` is a local already in scope.
+fn checked_header_push(
+    wire: &str,
+    module: &Ident,
+    name: &str,
+    value_expr: &TokenStream,
+) -> TokenStream {
+    quote! {
+        {
+            let rendered: ::std::string::String = #value_expr;
+            if !legal_header_value(&rendered) {
+                ::tracing::error!(
+                    header = #name,
+                    "a response header value contained a character illegal in an HTTP header",
+                );
+                return handler.on_fault(&$crate::#module::ServiceFault::handler_panic(
+                    #wire,
+                    "a response header value contained a character illegal in an HTTP header",
+                ));
+            }
+            headers.push((#name.to_owned(), rendered));
+        }
+    }
+}
+
+/// One checked push per declared header entry. An `Option<T>` entry pushes nothing for `None`,
+/// rather than the literal text `encode_expr` would otherwise render for a JSON `null`.
+fn checked_header_pushes(
+    wire: &str,
+    module: &Ident,
+    names: &[String],
+    idents: &[Ident],
+    element_types: &[&Type],
+) -> TokenStream {
+    names
+        .iter()
+        .zip(idents)
+        .zip(element_types)
+        .map(|((name, ident), ty)| {
+            if option_inner(ty).is_some() {
+                let render = encode_expr(&quote! { value });
+                let push = checked_header_push(wire, module, name, &render);
+                quote! {
+                    if let Some(value) = &#ident {
+                        #push
+                    }
+                }
+            } else {
+                let render = encode_expr(&quote! { #ident });
+                checked_header_push(wire, module, name, &render)
+            }
+        })
+        .collect()
+}
+
+/// Fresh local identifiers, one per `header_out` entry, in declaration order - the tuple pattern
+/// an arm destructures a bound success into, and a client rebuilds one from.
+fn header_out_idents(count: usize) -> Vec<Ident> {
+    (0..count)
+        .map(|index| format_ident!("header_out_{index}"))
+        .collect()
+}
+
+/// [`header_out_idents`]'s own twin on the error side, named apart so a single operation
+/// declaring both never binds two locals under one name.
+fn error_header_out_idents(count: usize) -> Vec<Ident> {
+    (0..count)
+        .map(|index| format_ident!("error_header_out_{index}"))
+        .collect()
+}
+
+/// The `Ok(Err(...)) => {...}` arm every reply-answering block shares: splits the error tuple
+/// apart where `error_header_out` declared one, the same composition `header_out` performs.
+fn declared_error_arm(
+    wire: &str,
+    shape: &HttpShape,
+    error: &Type,
+    error_head: &Type,
+    module: &Ident,
+) -> TokenStream {
+    let status_expr = error_status_expr(shape, error_head);
+    if shape.error_header_out.is_empty() {
+        quote! {
+            Ok(Err(declared_error)) => {
+                let status = #status_expr;
+                return json_response(status, ::std::vec::Vec::new(), &declared_error);
+            }
+        }
+    } else {
+        let idents = error_header_out_idents(shape.error_header_out.len());
+        let elements: Vec<&Type> = tuple_elements(error).into_iter().flatten().collect();
+        let element_types: Vec<&Type> = elements.iter().skip(1).copied().collect();
+        let pushes = checked_header_pushes(
+            wire,
+            module,
+            &shape.error_header_out,
+            &idents,
+            &element_types,
+        );
+        quote! {
+            Ok(Err((declared_error, #(#idents),*))) => {
+                let status = #status_expr;
+                let mut headers: Vec<(String, String)> = ::std::vec::Vec::new();
+                #pushes
+                return json_response(status, headers, &declared_error);
+            }
+        }
     }
 }
 
@@ -1143,11 +1290,19 @@ fn answer_block(
             }
         }
         OperationOutcome::Reply { error, success } => {
-            let status_expr = error_status_expr(shape, error);
+            let error_head = error_declared_type(shape.error_header_out.len(), error);
+            let error_arm = declared_error_arm(wire, shape, error, error_head, module);
+            let arm = AnswerArm {
+                called,
+                error_arm: &error_arm,
+                module,
+                panic_fault: &panic_fault,
+                wire,
+            };
             if matches!(shape.body_kind, BodyKind::Stream) {
-                stream_answer_block(module, shape, called, &status_expr, &panic_fault)
+                stream_answer_block(&arm, shape, success)
             } else if matches!(shape.body_kind, BodyKind::Bytes) {
-                bytes_answer_block(shape, called, &status_expr, &panic_fault, has_stream)
+                bytes_answer_block(&arm, shape, success, has_stream)
             } else if shape.header_out.is_empty() {
                 if is_unit_type(success) {
                     let empty_body = body_field(has_stream, &quote! { ::std::vec::Vec::new() });
@@ -1158,10 +1313,7 @@ fn answer_block(
                                 headers: ::std::vec::Vec::new(),
                                 #empty_body,
                             },
-                            Ok(Err(declared_error)) => {
-                                let status = #status_expr;
-                                return json_response(status, ::std::vec::Vec::new(), &declared_error);
-                            }
+                            #error_arm
                             Err(panicked) => { #panic_fault }
                         }
                     }
@@ -1171,27 +1323,30 @@ fn answer_block(
                             Ok(Ok(value)) => {
                                 return json_response(#ok_status, ::std::vec::Vec::new(), &value);
                             }
-                            Ok(Err(declared_error)) => {
-                                let status = #status_expr;
-                                return json_response(status, ::std::vec::Vec::new(), &declared_error);
-                            }
+                            #error_arm
                             Err(panicked) => { #panic_fault }
                         }
                     }
                 }
             } else {
                 let header_idents = header_out_idents(shape.header_out.len());
-                let header_entries = header_out_entries(shape, &header_idents);
+                let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
+                let element_types: Vec<&Type> = elements.iter().skip(1).copied().collect();
+                let header_pushes = checked_header_pushes(
+                    wire,
+                    module,
+                    &shape.header_out,
+                    &header_idents,
+                    &element_types,
+                );
                 quote! {
                     match #called {
                         Ok(Ok((value, #(#header_idents),*))) => {
-                            let headers: Vec<(String, String)> = ::std::vec![#header_entries];
+                            let mut headers: Vec<(String, String)> = ::std::vec::Vec::new();
+                            #header_pushes
                             return json_response(#ok_status, headers, &value);
                         }
-                        Ok(Err(declared_error)) => {
-                            let status = #status_expr;
-                            return json_response(status, ::std::vec::Vec::new(), &declared_error);
-                        }
+                        #error_arm
                         Err(panicked) => { #panic_fault }
                     }
                 }
@@ -1200,71 +1355,35 @@ fn answer_block(
     }
 }
 
-/// Fresh local identifiers, one per `header_out` entry, in declaration order - the tuple pattern
-/// an arm destructures a bound success into, and a client rebuilds one from.
-fn header_out_idents(count: usize) -> Vec<Ident> {
-    (0..count)
-        .map(|index| format_ident!("header_out_{index}"))
-        .collect()
-}
-
-/// One `(name, rendered)` push-ready entry per `header_out` binding, each already bound to that
-/// entry's own local. The one seam every response-header-writing arm - JSON, bytes, stream - builds
-/// its extra headers through, so the three cannot render one differently from another.
-fn header_out_entries(shape: &HttpShape, idents: &[Ident]) -> TokenStream {
-    shape
-        .header_out
-        .iter()
-        .zip(idents)
-        .map(|(name, ident)| {
-            let render = encode_expr(&quote! { #ident });
-            quote! { (#name.to_owned(), #render), }
-        })
-        .collect()
-}
-
 /// A `body = "bytes"` operation's own arm: with no declared `header_out`, `success` is
 /// `(Vec<u8>, String)`; with one declared, `parse.rs`'s own `is_bytes_success_shape` has already
 /// required `success` to carry one more element per entry after the content type, and each is
 /// written out as a response header exactly as the JSON path's own `header_out` composition does.
+/// The content type itself is checked the same way, since it too is a value the implementation
+/// computed at runtime.
 fn bytes_answer_block(
+    arm: &AnswerArm<'_>,
     shape: &HttpShape,
-    called: &TokenStream,
-    status_expr: &TokenStream,
-    panic_fault: &TokenStream,
+    success: &Type,
     has_stream: bool,
 ) -> TokenStream {
+    let &AnswerArm {
+        called,
+        error_arm,
+        module,
+        panic_fault,
+        wire,
+    } = arm;
     let ok_status = shape.ok_status;
     let raw_body = body_field(has_stream, &quote! { body });
-    let error_arm = quote! {
-        Ok(Err(declared_error)) => {
-            let status = #status_expr;
-            return json_response(status, ::std::vec::Vec::new(), &declared_error);
-        }
-        Err(panicked) => { #panic_fault }
-    };
+    let content_type_push =
+        checked_header_push(wire, module, "content-type", &quote! { content_type });
     if shape.header_out.is_empty() {
         quote! {
             match #called {
                 Ok(Ok((body, content_type))) => {
-                    return OutgoingResponse {
-                        status: #ok_status,
-                        headers: ::std::vec![("content-type".to_owned(), content_type)],
-                        #raw_body,
-                    };
-                }
-                #error_arm
-            }
-        }
-    } else {
-        let header_idents = header_out_idents(shape.header_out.len());
-        let header_entries = header_out_entries(shape, &header_idents);
-        quote! {
-            match #called {
-                Ok(Ok((body, content_type, #(#header_idents),*))) => {
-                    let mut headers: Vec<(String, String)> =
-                        ::std::vec![("content-type".to_owned(), content_type)];
-                    headers.extend(::std::vec![#header_entries]);
+                    let mut headers: Vec<(String, String)> = ::std::vec::Vec::new();
+                    #content_type_push
                     return OutgoingResponse {
                         status: #ok_status,
                         headers,
@@ -1272,6 +1391,34 @@ fn bytes_answer_block(
                     };
                 }
                 #error_arm
+                Err(panicked) => { #panic_fault }
+            }
+        }
+    } else {
+        let header_idents = header_out_idents(shape.header_out.len());
+        let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
+        let element_types: Vec<&Type> = elements.iter().skip(2).copied().collect();
+        let header_pushes = checked_header_pushes(
+            wire,
+            module,
+            &shape.header_out,
+            &header_idents,
+            &element_types,
+        );
+        quote! {
+            match #called {
+                Ok(Ok((body, content_type, #(#header_idents),*))) => {
+                    let mut headers: Vec<(String, String)> = ::std::vec::Vec::new();
+                    #content_type_push
+                    #header_pushes
+                    return OutgoingResponse {
+                        status: #ok_status,
+                        headers,
+                        #raw_body,
+                    };
+                }
+                #error_arm
+                Err(panicked) => { #panic_fault }
             }
         }
     }
@@ -1284,22 +1431,19 @@ fn bytes_answer_block(
 /// required `success` to wrap the answer in a tuple carrying one more element per entry, composed
 /// onto both arms exactly as the JSON path's own `header_out` composition does - `content-range`
 /// stands beside the declared headers on `Partial` rather than being replaced by them. Either way
-/// the body is handed on undrained, in `OutgoingBody::Stream`, for an adapter to pull onto the wire.
-fn stream_answer_block(
-    module: &Ident,
-    shape: &HttpShape,
-    called: &TokenStream,
-    status_expr: &TokenStream,
-    panic_fault: &TokenStream,
-) -> TokenStream {
+/// the body is handed on undrained, in `OutgoingBody::Stream`, for an adapter to pull onto the
+/// wire. `content-range` is checked the same way every other runtime-computed header value is.
+fn stream_answer_block(arm: &AnswerArm<'_>, shape: &HttpShape, success: &Type) -> TokenStream {
+    let &AnswerArm {
+        called,
+        error_arm,
+        module,
+        panic_fault,
+        wire,
+    } = arm;
     let ok_status = shape.ok_status;
-    let error_arm = quote! {
-        Ok(Err(declared_error)) => {
-            let status = #status_expr;
-            return json_response(status, ::std::vec::Vec::new(), &declared_error);
-        }
-        Err(panicked) => { #panic_fault }
-    };
+    let content_range_push =
+        checked_header_push(wire, module, "content-range", &quote! { content_range });
     if shape.header_out.is_empty() {
         quote! {
             match #called {
@@ -1311,22 +1455,34 @@ fn stream_answer_block(
                     };
                 }
                 Ok(Ok($crate::#module::StreamedAnswer::Partial { source, content_range })) => {
+                    let mut headers: Vec<(String, String)> = ::std::vec::Vec::new();
+                    #content_range_push
                     return OutgoingResponse {
                         status: 206,
-                        headers: ::std::vec![("content-range".to_owned(), content_range)],
+                        headers,
                         body: OutgoingBody::Stream(source),
                     };
                 }
                 #error_arm
+                Err(panicked) => { #panic_fault }
             }
         }
     } else {
         let header_idents = header_out_idents(shape.header_out.len());
-        let header_entries = header_out_entries(shape, &header_idents);
+        let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
+        let element_types: Vec<&Type> = elements.iter().skip(1).copied().collect();
+        let header_pushes = checked_header_pushes(
+            wire,
+            module,
+            &shape.header_out,
+            &header_idents,
+            &element_types,
+        );
         quote! {
             match #called {
                 Ok(Ok(($crate::#module::StreamedAnswer::Full(source), #(#header_idents),*))) => {
-                    let headers: Vec<(String, String)> = ::std::vec![#header_entries];
+                    let mut headers: Vec<(String, String)> = ::std::vec::Vec::new();
+                    #header_pushes
                     return OutgoingResponse {
                         status: #ok_status,
                         headers,
@@ -1337,9 +1493,9 @@ fn stream_answer_block(
                     $crate::#module::StreamedAnswer::Partial { source, content_range },
                     #(#header_idents),*
                 ))) => {
-                    let mut headers: Vec<(String, String)> =
-                        ::std::vec![("content-range".to_owned(), content_range)];
-                    headers.extend(::std::vec![#header_entries]);
+                    let mut headers: Vec<(String, String)> = ::std::vec::Vec::new();
+                    #content_range_push
+                    #header_pushes
                     return OutgoingResponse {
                         status: 206,
                         headers,
@@ -1347,6 +1503,7 @@ fn stream_answer_block(
                     };
                 }
                 #error_arm
+                Err(panicked) => { #panic_fault }
             }
         }
     }
@@ -1410,6 +1567,17 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
     } else {
         TokenStream::new()
     };
+    // A `header_in` value is checked before it ever reaches the transport; a service with none
+    // never reaches for the checker, `dead_code` being an error in plenty of consumers' builds.
+    let needs_header_in_safety_check = service
+        .operations
+        .iter()
+        .any(|operation| !HttpShape::of(operation).header_in.is_empty());
+    let legal_header_value_fn_tokens = if needs_header_in_safety_check {
+        legal_header_value_fn()
+    } else {
+        TokenStream::new()
+    };
     let methods = service
         .operations
         .iter()
@@ -1450,6 +1618,7 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
 
                 #fault_mirror_fn
                 #percent_encode_fn
+                #legal_header_value_fn_tokens
             };
         }
     }
@@ -1801,7 +1970,7 @@ fn client_method(
 
     let path_build = path_build_stmts(operation, &shape);
     let query_build = query_build_stmts(operation, &shape);
-    let headers_build = header_in_build_stmts(&shape);
+    let headers_build = header_in_build_stmts(operation, generated, &shape);
     let is_multipart = matches!(shape.body_kind, BodyKind::Multipart);
     let body_build = if is_multipart || !shape.method.carries_a_body() {
         quote! { let body = ::std::vec::Vec::new(); }
@@ -1973,12 +2142,13 @@ fn query_build_stmts(operation: &OperationDef, shape: &HttpShape) -> TokenStream
     }
 }
 
-/// Builds the outgoing header list, one entry per `header_in` binding — except an `Option<T>`
-/// binding holding `None`, which pushes nothing at all rather than the text `encode_expr` would
-/// otherwise render for a JSON `null` (`"null"`, indistinguishable on the wire from a header a
-/// caller actually meant to send). Mirrors [`query_build_stmts`]'s own `Option` handling: an absent
-/// value is a header the request never carries, not one carrying a placeholder word.
-fn header_in_build_stmts(shape: &HttpShape) -> TokenStream {
+/// Builds the outgoing header list, one entry per `header_in` binding - an `Option<T>` binding
+/// holding `None` pushes nothing, and every rendered value is checked before it is pushed.
+fn header_in_build_stmts(
+    operation: &OperationDef,
+    generated: &Generated,
+    shape: &HttpShape,
+) -> TokenStream {
     if shape.header_in.is_empty() {
         return quote! { let headers: Vec<(String, String)> = ::std::vec::Vec::new(); };
     }
@@ -1988,22 +2158,62 @@ fn header_in_build_stmts(shape: &HttpShape) -> TokenStream {
         .map(|header| {
             let name = &header.name;
             let parameter = &header.parameter;
+            let refusal = header_value_refusal(operation, generated, name);
+            let checked = quote! {
+                if !legal_header_value(&rendered) {
+                    #refusal
+                }
+                headers.push((#name.to_owned(), rendered));
+            };
             if option_inner(&header.ty).is_some() {
                 let rendered = encode_expr(&quote! { value });
                 quote! {
                     if let Some(value) = &#parameter {
-                        headers.push((#name.to_owned(), #rendered));
+                        let rendered = #rendered;
+                        #checked
                     }
                 }
             } else {
                 let rendered = encode_expr(&quote! { #parameter });
-                quote! { headers.push((#name.to_owned(), #rendered)); }
+                quote! {
+                    let rendered = #rendered;
+                    #checked
+                }
             }
         })
         .collect();
     quote! {
         let mut headers: Vec<(String, String)> = ::std::vec::Vec::new();
         #pushes
+    }
+}
+
+/// What a `header_in` value that fails the header-safety check answers, before the transport is
+/// ever reached - mirrors [`outbound_refusal`]'s own `OneWay`/`Reply` split.
+fn header_value_refusal(
+    operation: &OperationDef,
+    generated: &Generated,
+    name: &str,
+) -> TokenStream {
+    let Generated {
+        call_error,
+        fault,
+        module: _module,
+    } = generated;
+    let wire = &operation.wire_name;
+    let built = quote! {
+        #fault::failed_validation(
+            #wire,
+            Some(#name),
+            "a header value contains a character illegal in an HTTP header",
+        )
+    };
+    match &operation.outcome {
+        OperationOutcome::OneWay => quote! { return Err(#built); },
+        OperationOutcome::Reply {
+            error: _error,
+            success: _success,
+        } => quote! { return Err(#call_error::Fault(#built)); },
     }
 }
 
@@ -2097,27 +2307,34 @@ fn client_error_condition(shape: &HttpShape) -> TokenStream {
     condition
 }
 
-/// The client's own `header_out` read-back: one `let` per declared entry, decoding the response
-/// header named for it into the type `elements` carries at the same position - `elements` being
-/// the full success tuple, `body_elements` the count that ride the body itself (the JSON path's
-/// bare value, or the bytes pair) rather than a header. The one seam every reply-decoding arm
-/// builds its header reads through, `idents` already named by [`header_out_idents`].
-fn header_out_read_lets(
+/// The client's own header read-back, `header_out` and `error_header_out` alike: one `let` per
+/// declared entry, decoding the response header named for it.
+fn header_value_read_lets(
     wire: &str,
-    shape: &HttpShape,
+    names: &[String],
     call_error: &TokenStream,
     fault: &TokenStream,
     idents: &[Ident],
     elements: &[&Type],
     body_elements: usize,
 ) -> TokenStream {
-    shape
-        .header_out
+    names
         .iter()
         .zip(idents)
         .zip(elements.iter().skip(body_elements))
         .map(|((name, ident), element_ty)| {
             let decode = decode_expr(element_ty, &quote! { text });
+            // An `Option<T>` element reads a missing header as `None`; anything else faults.
+            let absent = if option_inner(element_ty).is_some() {
+                quote! { None }
+            } else {
+                quote! {
+                    return Err(#call_error::Fault(#fault::undeserializable_payload(
+                        #wire,
+                        "a declared response header was missing",
+                    )))
+                }
+            };
             quote! {
                 let #ident: #element_ty = match response.header(#name) {
                     Some(text) => match ::serde_json::from_value(#decode) {
@@ -2129,14 +2346,58 @@ fn header_out_read_lets(
                             ),
                         )),
                     },
-                    None => return Err(#call_error::Fault(#fault::undeserializable_payload(
-                        #wire,
-                        "a declared response header was missing",
-                    ))),
+                    None => #absent,
                 };
             }
         })
         .collect()
+}
+
+/// The declared-error read every reply-decoding arm shares: the error's own head off the body,
+/// plus each `error_header_out` element off its own response header where any were declared.
+fn declared_error_read_block(
+    wire: &str,
+    shape: &HttpShape,
+    call_error: &TokenStream,
+    fault: &TokenStream,
+    error: &Type,
+) -> TokenStream {
+    if shape.error_header_out.is_empty() {
+        quote! {
+            return match ::serde_json::from_slice::<#error>(response.body()) {
+                Ok(declared) => Err(#call_error::Operation(declared)),
+                Err(rejected) => Err(#call_error::Fault(
+                    #fault::undeserializable_payload(#wire, &rejected.to_string()),
+                )),
+            };
+        }
+    } else {
+        let elements: Vec<&Type> = tuple_elements(error).into_iter().flatten().collect();
+        let head = elements.first().copied().unwrap_or(error);
+        let header_idents = error_header_out_idents(shape.error_header_out.len());
+        let header_lets = header_value_read_lets(
+            wire,
+            &shape.error_header_out,
+            call_error,
+            fault,
+            &header_idents,
+            &elements,
+            1,
+        );
+        quote! {
+            match ::serde_json::from_slice::<#head>(response.body()) {
+                Ok(declared_error) => {
+                    #header_lets
+                    return Err(#call_error::Operation((declared_error, #(#header_idents),*)));
+                }
+                Err(rejected) => {
+                    return Err(#call_error::Fault(
+                        #fault::undeserializable_payload(#wire, &rejected.to_string()),
+                    ));
+                }
+            }
+        }
+    }
 }
 
 fn one_way_decode(wire: &str, shape: &HttpShape, fault: &TokenStream) -> TokenStream {
@@ -2190,8 +2451,15 @@ fn reply_decode(
             // the lookups below never miss.
             let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
             let header_idents = header_out_idents(shape.header_out.len());
-            let header_lets =
-                header_out_read_lets(wire, shape, call_error, fault, &header_idents, &elements, 2);
+            let header_lets = header_value_read_lets(
+                wire,
+                &shape.header_out,
+                call_error,
+                fault,
+                &header_idents,
+                &elements,
+                2,
+            );
             quote! {
                 #header_lets
                 return Ok((
@@ -2221,8 +2489,15 @@ fn reply_decode(
         let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
         let first = elements.first().copied().unwrap_or(success);
         let header_idents = header_out_idents(shape.header_out.len());
-        let header_lets =
-            header_out_read_lets(wire, shape, call_error, fault, &header_idents, &elements, 1);
+        let header_lets = header_value_read_lets(
+            wire,
+            &shape.header_out,
+            call_error,
+            fault,
+            &header_idents,
+            &elements,
+            1,
+        );
         quote! {
             return match ::serde_json::from_slice::<#first>(response.body()) {
                 Ok(value) => {
@@ -2235,18 +2510,14 @@ fn reply_decode(
             };
         }
     };
+    let error_block = declared_error_read_block(wire, shape, call_error, fault, error);
     quote! {
         let status = response.status();
         if status == #ok_status {
             #success_return
         }
         if #error_condition {
-            return match ::serde_json::from_slice::<#error>(response.body()) {
-                Ok(declared) => Err(#call_error::Operation(declared)),
-                Err(rejected) => Err(#call_error::Fault(
-                    #fault::undeserializable_payload(#wire, &rejected.to_string()),
-                )),
-            };
+            #error_block
         }
         if matches!(status, 400 | 404 | 500) {
             return Err(#call_error::Fault(fault_from_body(#wire, response.body())));
@@ -2281,14 +2552,10 @@ fn stream_reply_decode(
 ) -> TokenStream {
     let ok_status = shape.ok_status;
     let error_condition = client_error_condition(shape);
+    let error_block = declared_error_read_block(wire, shape, call_error, fault, error);
     let tail = quote! {
         if #error_condition {
-            return match ::serde_json::from_slice::<#error>(response.body()) {
-                Ok(declared) => Err(#call_error::Operation(declared)),
-                Err(rejected) => Err(#call_error::Fault(
-                    #fault::undeserializable_payload(#wire, &rejected.to_string()),
-                )),
-            };
+            #error_block
         }
         if matches!(status, 400 | 404 | 500) {
             return Err(#call_error::Fault(fault_from_body(#wire, response.body())));
@@ -2323,8 +2590,15 @@ fn stream_reply_decode(
     } else {
         let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
         let header_idents = header_out_idents(shape.header_out.len());
-        let header_lets =
-            header_out_read_lets(wire, shape, call_error, fault, &header_idents, &elements, 1);
+        let header_lets = header_value_read_lets(
+            wire,
+            &shape.header_out,
+            call_error,
+            fault,
+            &header_idents,
+            &elements,
+            1,
+        );
         quote! {
             let status = response.status();
             if status == 206 {

@@ -8,6 +8,6 @@
 //! carrying an `error_status` table (or falling back to the fixed default binding) has to be in
 //! scope here.
 
-use crate::tests::{ArchiveError, GetVersionError, ThumbnailError};
+use crate::tests::{ArchiveError, GetVersionError, RangeError, ThumbnailError};
 
 document_service_http_rest_dispatcher!();

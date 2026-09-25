@@ -186,11 +186,18 @@ fn a_header_in_binding_becomes_an_extra_parameter_and_a_built_header() {
     assert!(
         method.contains("final headers = <(String, String)>[];")
             && method.contains(
-                "if (byte_range != null) {\n      headers.add(('range', '${byte_range}'));\n    }"
+                "if (byte_range != null) {\n      \
+                 final rendered = '${byte_range}';\n      \
+                 if (!_documentClientServiceHttpLegalHeaderValue(rendered)) {\n        \
+                 return DocumentClientServiceGetVersionResultFault(\
+                 _documentClientServiceHttpOutboundFault('get-version', 'range', 'a header \
+                 value contains a character illegal in an HTTP header'));\n      \
+                 }\n      \
+                 headers.add(('range', rendered));\n    }"
             ),
-        "the header is built from the extra argument, never from the message, and reads the \
+        "the header is built from the extra argument, never from the message, reads the \
          parameter the `!= null` test has already narrowed rather than spelling the `null` away a \
-         second time. Got: {method}"
+         second time, and checks the rendered value before it is added. Got: {method}"
     );
 }
 
@@ -634,9 +641,9 @@ fn a_header_vec_of_options_narrows_its_element_without_spelling_the_null_away() 
     );
     let method = method_body(&written, "listTags");
     assert!(
-        method.contains(
-            "headers.add(('x-tags', (tags).map((e) => (e == null ? '' : '${e}')).join(\",\")));"
-        ),
+        method
+            .contains("final rendered = (tags).map((e) => (e == null ? '' : '${e}')).join(\",\");")
+            && method.contains("headers.add(('x-tags', rendered));"),
         "`e` is the closure's own parameter, which Dart narrows inside the `== null` test — so a \
          `!` there is `unnecessary_non_null_assertion`, the same diagnostic the binding's own \
          parameter was changed to stop raising. Got: {method}"

@@ -542,12 +542,13 @@ pub trait ThumbnailClientService<Ctx> {
         body = "bytes",
         header_out("x-document-id"),
         error_status(NotFound = 404),
+        error_header_out("x-thumbnail-reason"),
     ))]
     async fn get_thumbnail(
         &self,
         ctx: &Ctx,
         document_id: String,
-    ) -> Result<(Vec<u8>, String, String), ThumbnailError>;
+    ) -> Result<(Vec<u8>, String, Option<String>), (ThumbnailError, Option<String>)>;
 }
 
 pub struct ThumbnailBackEnd;
@@ -557,15 +558,21 @@ impl ThumbnailClientService<()> for ThumbnailBackEnd {
         &self,
         _ctx: &(),
         document_id: String,
-    ) -> Result<(Vec<u8>, String, String), ThumbnailError> {
+    ) -> Result<(Vec<u8>, String, Option<String>), (ThumbnailError, Option<String>)> {
         ready(()).await;
         if document_id == "missing" {
-            return Err(ThumbnailError::NotFound);
+            return Err((ThumbnailError::NotFound, Some("archived".to_owned())));
+        }
+        if document_id == "gone" {
+            return Err((ThumbnailError::NotFound, None));
+        }
+        if document_id == "anon" {
+            return Ok((vec![0x89, 0x50, 0x4e, 0x47], "image/png".to_owned(), None));
         }
         Ok((
             vec![0x89, 0x50, 0x4e, 0x47],
             "image/png".to_owned(),
-            format!("doc-{document_id}"),
+            Some(format!("doc-{document_id}")),
         ))
     }
 }
@@ -821,11 +828,6 @@ impl WatchClientService<()> for WatchBackEnd {
 /// Every declared type is constructible — the groups beside this one read only emitted text.
 #[test]
 fn every_declared_type_is_constructible() {
-    let asked = WindowRequest {
-        conversation_id: "652f1a3b4c5d6e7f8a9b0c1d".to_owned(),
-        limit: Some(10),
-    };
-    assert_eq!(asked.limit, Some(10));
     assert_eq!(
         WindowPage {
             items: vec!["one".to_owned()]
@@ -841,7 +843,7 @@ fn every_declared_type_is_constructible() {
             .len(),
         24
     );
-    drop(ConversationBackEnd.window(&(), asked.conversation_id, asked.limit));
+    drop(ConversationBackEnd.window(&(), "652f1a3b4c5d6e7f8a9b0c1d".to_owned(), Some(10)));
     drop(
         ConversationBackEnd
             .purge_conversation(&(), ConversationId("652f1a3b4c5d6e7f8a9b0c1d".to_owned())),

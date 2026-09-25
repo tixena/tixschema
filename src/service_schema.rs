@@ -502,9 +502,8 @@ fn stream_envelope_message(operation: &Ident, envelopes: &[transport::Transport]
     )
 }
 
-/// Refuses `header_out("is_error")` on a service that also declares `amqp_rpc`: the transport's
-/// own reply handle writes that header itself on every failed reply, so a bound value with the
-/// same name would either collide with it or never reach the wire.
+/// Refuses `header_out("is_error")` or `error_header_out("is_error")` on a service that also
+/// declares `amqp_rpc`: the transport's own reply handle already writes that header itself.
 ///
 /// # `header_out("is_error")` is refused where the service also asks for `amqp_rpc`
 ///
@@ -531,7 +530,7 @@ fn stream_envelope_message(operation: &Ident, envelopes: &[transport::Transport]
 /// ```
 ///
 /// ```text
-/// error: service_schema: operation `ping` declares `header_out("is_error")`, and this service also declares `amqp_rpc`
+/// error: service_schema: operation `ping` binds the reserved name "is_error" on `header_out` or `error_header_out`, and this service also declares `amqp_rpc`
 ///               that name is reserved - amqp_rpc's own reply handle already writes it on every failed reply; bind the value under another name
 ///   --> tests/zz_probe.rs:12:14
 ///    |
@@ -556,6 +555,7 @@ fn reserved_header_out_refusal(
                 binding
                     .header_out
                     .iter()
+                    .chain(binding.error_header_out.iter())
                     .any(|name| name == RESERVED_AMQP_HEADER_OUT_NAME)
             })
         })
@@ -574,8 +574,8 @@ fn reserved_header_out_refusal(
 #[cfg(feature = "serde")]
 fn reserved_header_out_message(operation: &Ident) -> String {
     format!(
-        "service_schema: operation `{operation}` declares `header_out(\"is_error\")`, and this \
-         service also declares `amqp_rpc`\n       \
+        "service_schema: operation `{operation}` binds the reserved name \"is_error\" on \
+         `header_out` or `error_header_out`, and this service also declares `amqp_rpc`\n       \
          that name is reserved - amqp_rpc's own reply handle already writes it on every failed \
          reply; bind the value under another name"
     )
