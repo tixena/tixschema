@@ -7,7 +7,8 @@
 
 use super::runtime::{node_modules, ran_with_modules, stand_down_modules};
 use super::tests::{
-    ConversationClientServiceSchema, ConversationId, WindowError, WindowPage, WindowRequest,
+    ConversationClientServiceSchema, ConversationId, WatchClientServiceSchema, WatchError,
+    WatchRequest, WindowError, WindowPage, WindowRequest,
 };
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -398,6 +399,37 @@ async function main() {
 main().catch((error) => { console.error(error); process.exit(1); });
 "#;
 
+/// A hand-written peer that answers every `request` frame with `"value": null`.
+const UNIT_SUCCESS_DRIVER: &str = r#"
+async function main() {
+  const wss = new WebSocketServer({ port: 0 });
+  wss.on("connection", (socket) => {
+    socket.on("message", (data) => {
+      const frame = JSON.parse(String(data));
+      if (frame.kind !== "request") return;
+      socket.send(JSON.stringify({ kind: "reply", id: frame.id, service: frame.service, ok: true, value: null }));
+    });
+  });
+  await onceEmitter(wss, "listening");
+  const port = wss.address().port;
+
+  const rawSocket = new WebSocket(`ws://127.0.0.1:${port}`);
+  await onceEvent(rawSocket, "open");
+  const transport = createWatchClientServiceWsTransport(rawSocket);
+  const client = createWatchClientServiceClient(transport);
+  const result = await client.watch({ topic: "x" });
+  rawSocket.close();
+  wss.close();
+  console.log(JSON.stringify({
+    ok: result.ok,
+    hasValueKey: "value" in result,
+    valueIsUndefined: result.value === undefined,
+  }));
+  process.exit(0);
+}
+main().catch((error) => { console.error(error); process.exit(1); });
+"#;
+
 /// The service's own emitted surface: every message, the service's types, the implementable
 /// interface, the client, and the three `ws_rpc` artifacts a connection-accepting server needs.
 fn emitted() -> String {
@@ -453,6 +485,42 @@ fn run_share_scenario() -> Option<serde_json::Value> {
         RUNTIME_VAR,
         "node",
         "share.mts",
+        &module,
+        &modules,
+    )?;
+    Some(serde_json::from_str(wrote.trim()).unwrap())
+}
+
+/// `WatchClientService`'s message, client, and `ws_rpc` client transport -- no server.
+fn emitted_unit_success() -> String {
+    [
+        "import { z } from \"zod\";".to_owned(),
+        "import { WebSocketServer } from \"ws\";".to_owned(),
+        WatchRequest::ts_definition(),
+        WatchRequest::zod_schema(),
+        WatchError::ts_definition(),
+        WatchError::zod_schema(),
+        WatchClientServiceSchema::ts_definition(),
+        WatchClientServiceSchema::ts_client(),
+        WatchClientServiceSchema::ts_ws_client(),
+    ]
+    .join("\n\n")
+}
+
+fn run_unit_success_scenario() -> Option<serde_json::Value> {
+    let Some(modules) = node_modules(REQUIRED_PACKAGES) else {
+        stand_down_modules(REQUIRED_PACKAGES, "the emitted WebSocket client");
+        return None;
+    };
+    let module = format!(
+        "{}\n\n{HELPERS}\n\n{UNIT_SUCCESS_DRIVER}",
+        emitted_unit_success()
+    );
+    let wrote = ran_with_modules(
+        "ws-unit-success",
+        RUNTIME_VAR,
+        "node",
+        "unit-success.mts",
         &module,
         &modules,
     )?;
@@ -595,6 +663,19 @@ fn two_services_share_one_socket_through_the_connection() {
     assert_eq!(result["shareAfterCloseThrew"], true, "got: {result:#?}");
     assert_eq!(
         result["shareAfterCloseMessage"], "the connection is closed",
+        "got: {result:#?}"
+    );
+}
+
+/// A `"value": null` reply normalizes to `value: undefined`.
+#[test]
+fn a_rust_shaped_unit_success_reply_normalizes_to_value_undefined() {
+    let Some(result) = run_unit_success_scenario() else {
+        return;
+    };
+    assert_eq!(
+        result,
+        serde_json::json!({ "ok": true, "hasValueKey": true, "valueIsUndefined": true }),
         "got: {result:#?}"
     );
 }

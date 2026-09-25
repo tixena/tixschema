@@ -5,7 +5,7 @@
 //! one-way method answers nothing and publishes the shape it throws instead. No TypeScript
 //! toolchain is reachable here, so none of them type-checks the bundle.
 
-use super::{MIXED_SERVICE, client_of};
+use super::{MIXED_SERVICE, TS_UNIT_SUCCESS_SERVICE, client_of};
 
 #[test]
 fn a_one_way_method_answers_nothing_and_a_replying_one_answers_its_result() {
@@ -68,6 +68,30 @@ fn the_operation_name_travels_beside_the_payload() {
     assert!(
         written.contains("await transport.notify(\"apply-bundle\", "),
         "got: {written}"
+    );
+}
+
+/// A unit success normalizes `value` to `undefined`, whatever the transport handed back.
+#[test]
+fn a_unit_success_normalizes_value_to_undefined_whatever_the_transport_answered() {
+    let written = client_of(TS_UNIT_SUCCESS_SERVICE);
+    let method = written
+        .split("    async ping(req) {")
+        .nth(1)
+        .and_then(|rest| rest.split_once("\n    },"))
+        .map(|(body, _)| body.to_owned());
+    assert!(method.is_some(), "got: {written}");
+    let body = method.unwrap();
+    assert!(
+        body.contains(
+            "const answered = await transport.request<PingClientServicePingResult>(\"ping\", \
+             validated.data);"
+        ),
+        "got: {body}"
+    );
+    assert!(
+        body.contains("return answered.ok === true ? { ok: true, value: undefined } : answered;"),
+        "got: {body}"
     );
 }
 

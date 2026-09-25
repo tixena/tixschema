@@ -330,12 +330,16 @@ fn settle_all_stmt(prefix: &str) -> String {
 /// already sealed by the far side (`isServiceFault`) passes through unchecked, since it is not a
 /// declared error to validate against. A mismatch on either side becomes a `failed-validation`
 /// fault through [`issues_fault_fn`].
+///
+/// A unit success (no entry in the success table) normalizes to `{ ok: true, value: undefined }`.
 fn checked_reader_stmt(prefix: &str) -> String {
     format!(
         "  const checked = (operation: string, envelope: Record<string, unknown>): unknown => {{\n    \
          if (envelope.ok === true) {{\n      \
-         const parsed = {prefix}SuccessSchemas[operation]?.safeParse(envelope.value);\n      \
-         if (parsed !== undefined && !parsed.success) {{\n        \
+         const schema = {prefix}SuccessSchemas[operation];\n      \
+         if (schema === undefined) return {{ ok: true, value: undefined }};\n      \
+         const parsed = schema.safeParse(envelope.value);\n      \
+         if (!parsed.success) {{\n        \
          return {{ ok: false, error: {{ isServiceFault: true, fault: {prefix}IssuesFault(operation, \
          parsed.error.issues) }} }};\n      \
          }}\n      \

@@ -776,6 +776,20 @@ fn the_amqp_loop_round_trips_the_no_payload_operation_s_unit_success() {
     );
 }
 
+/// A `{"ok":true}` envelope, no `value` key, read through [`StubTransport`] as `Ok(())`.
+#[test]
+fn a_typescript_shaped_unit_success_envelope_with_no_value_key_reads_as_ok_unit() {
+    let client = amqp_client::DocumentServiceClient::new(StubTransport::answering(
+        &serde_json::json!({ "ok": true }),
+    ));
+    let answered = poll_once(client.archive_document("doc-1".to_owned())).unwrap();
+    assert_eq!(
+        answered,
+        Ok(()),
+        "a unit success reads as Ok(()) whether `value` arrives as `null` or is missing outright"
+    );
+}
+
 /// The mirror of the fix above: a success type that is not the unit type still demands a carried
 /// value, so an envelope answering `ok` with no `value` at all is still the fault it always was.
 ///

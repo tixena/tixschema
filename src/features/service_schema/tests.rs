@@ -476,6 +476,15 @@ const DART_UNIT_SUCCESS_HTTP_SERVICE: &str = "
     }
 ";
 
+/// A reply operation whose success is `()`. Mirror of `DART_UNIT_SUCCESS_HTTP_SERVICE`.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+const TS_UNIT_SUCCESS_SERVICE: &str = "
+    pub trait PingClientService<Ctx> {
+        #[service_schema_op(http(method = \"POST\", path = \"/v1/ping\"))]
+        async fn ping(&self, ctx: &Ctx, req: PingRequest) -> Result<(), PingError>;
+    }
+";
+
 /// A service exercising every `http(...)` shape the Kotlin client answers for. Kotlin-gated mirror
 /// of `DART_HTTP_SERVICE`, since a build can carry `kotlin` without `dart`.
 #[cfg(feature = "kotlin")]
@@ -1112,6 +1121,21 @@ fn the_result_joins_the_two_declared_arms_and_adds_nothing_to_either() {
              UsageServiceFault } };"
         ),
         "got: {balance}"
+    );
+}
+
+/// The caller-side result type says `value: undefined` for a unit success.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+#[test]
+fn a_unit_success_result_type_says_the_value_is_undefined() {
+    let published = result::emit(&parsed(TS_UNIT_SUCCESS_SERVICE));
+    let found = published
+        .iter()
+        .find(|ts| ts.contains("export type PingClientServicePingResult ="));
+    assert!(found.is_some(), "got: {published:?}");
+    assert!(
+        found.unwrap().contains("| { ok: true; value: undefined }"),
+        "got: {found:?}"
     );
 }
 

@@ -43,7 +43,7 @@ use super::fault;
 use super::message;
 use super::result::result_name;
 use crate::rename_rule::RenameRule;
-use crate::service_schema::parse::{OperationDef, OperationOutcome, ServiceDef};
+use crate::service_schema::parse::{OperationDef, OperationOutcome, ServiceDef, is_unit_type};
 
 pub fn emit(service: &ServiceDef) -> Vec<String> {
     let mut published = vec![
@@ -198,6 +198,8 @@ fn answers(service: &str, operation: &OperationDef) -> String {
 /// One method on the factory's returned object: parse the message, then reach the transport. The
 /// transport is named only on the far side of the check, which is what makes "the transport was
 /// never touched" something a test can observe.
+///
+/// A unit success normalizes `value` to `undefined` here, whatever the transport handed back.
 fn method(service: &ServiceDef, operation: &OperationDef) -> String {
     let named = service.ident.to_string();
     let wire = &operation.wire_name;
@@ -207,6 +209,15 @@ fn method(service: &ServiceDef, operation: &OperationDef) -> String {
         OperationOutcome::OneWay => {
             format!("      await transport.notify(\"{wire}\", validated.data);")
         }
+        OperationOutcome::Reply {
+            error: _error,
+            success,
+        } if is_unit_type(success) => format!(
+            "      const answered = await transport.request<{result}>(\"{wire}\", \
+             validated.data);\n      \
+             return answered.ok === true ? {{ ok: true, value: undefined }} : answered;",
+            result = answers(&named, operation)
+        ),
         OperationOutcome::Reply {
             error: _error,
             success: _success,

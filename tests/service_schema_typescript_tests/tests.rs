@@ -1333,6 +1333,38 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
     }
 }
 
+#[model_schema()]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct UnitPingRequest {
+    pub probe: String,
+}
+
+#[model_schema()]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "errorCode", rename_all = "kebab-case")]
+pub enum UnitPingError {
+    Unreachable,
+}
+
+/// A standalone one-operation unit-success service (`Result<(), E>`).
+#[service_schema(transports = [])]
+pub trait UnitPingService<Ctx> {
+    async fn ping(&self, ctx: &Ctx, req: UnitPingRequest) -> Result<(), UnitPingError>;
+}
+
+pub struct UnitPingBackEnd;
+
+impl UnitPingService<()> for UnitPingBackEnd {
+    async fn ping(&self, _ctx: &(), req: UnitPingRequest) -> Result<(), UnitPingError> {
+        ready(()).await;
+        if req.probe.is_empty() {
+            Err(UnitPingError::Unreachable)
+        } else {
+            Ok(())
+        }
+    }
+}
+
 /// The probe never suspends, so one poll answers it; `None` says an assumption about the bodies
 /// above stopped holding rather than that the runtime is missing.
 fn poll_once<Answered>(answering: Answered) -> Option<Answered::Output>
@@ -1361,6 +1393,18 @@ fn the_second_service_answers_the_operation_its_generated_message_was_declared_f
         "the operation whose message the macro declared for the *second* service is one the \
          second service answers"
     );
+}
+
+#[test]
+fn the_unit_success_service_is_still_implementable_and_callable() {
+    let answered = poll_once(UnitPingBackEnd.ping(
+        &(),
+        UnitPingRequest {
+            probe: "x".to_owned(),
+        },
+    ))
+    .unwrap();
+    assert!(answered.is_ok(), "got: {answered:?}");
 }
 
 #[test]
