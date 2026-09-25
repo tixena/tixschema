@@ -13,6 +13,9 @@ use super::runtime::ran;
 use super::tests::conversation_client_service_schema::{
     conversation_client_service_fault_fields_swift, conversation_client_service_fault_kind_swift,
 };
+use super::tests::stamp_client_service_schema::{
+    stamp_client_service_fault_fields_swift, stamp_client_service_fault_kind_swift,
+};
 use super::tests::swift_codec_fixture::{
     CodecAdjacentTagged, CodecEnvelope, CodecExternalTagged, CodecInternalTagged, CodecMapKeys,
     CodecOptionsRow, CodecPrimary, CodecTuplePoint, CodecUnitField, CodecUnitPayload,
@@ -22,10 +25,11 @@ use super::tests::swift_codec_fixture::{
     codec_untagged_swift,
 };
 use super::tests::{
-    ConversationClientServiceSchema, EchoClientServiceSchema, ThumbnailClientServiceSchema,
-    conversation_id_swift, echo_client_service_schema, echo_range_error_swift,
-    echo_range_response_swift, thumbnail_client_service_schema, thumbnail_error_swift,
-    window_error_swift, window_page_swift, window_request_swift,
+    ConversationClientServiceSchema, EchoClientServiceSchema, StampClientServiceSchema,
+    ThumbnailClientServiceSchema, conversation_id_swift, echo_client_service_schema,
+    echo_range_error_swift, echo_range_response_swift, stamp_error_swift, stamp_receipt_swift,
+    thumbnail_client_service_schema, thumbnail_error_swift, window_error_swift, window_page_swift,
+    window_request_swift,
 };
 use std::collections::HashMap;
 
@@ -257,6 +261,52 @@ struct EchoReport: Codable {
 }
 let echoReport = EchoReport(sendCalled: await echoRecorder.sendCalled, faultKind: echoFaultKind)
 print(String(data: try! JSONEncoder().encode(echoReport), encoding: .utf8)!)
+"##;
+
+/// A stub `StampClientServiceHttpTransport` answering with whatever response headers it is given,
+/// driving the emitted client's own numeric `header_out` decode: present, absent, and a value
+/// that will not parse as its declared `UInt32`.
+const STAMP_HEADER_WIDTH_DRIVER: &str = r##"
+struct StampRecorder: StampClientServiceHttpTransport {
+  let headers: [(String, String)]
+  func send(_ request: StampClientServiceHttpRequest) async throws -> StampClientServiceHttpResponse {
+    StampClientServiceHttpResponse(status: 200, headers: headers, body: Data(#"{"label":"a","tenant":"acme"}"#.utf8))
+  }
+}
+
+struct AgeReport: Codable {
+  let age: UInt32?
+  let ageIsNil: Bool
+  let faultKind: String?
+}
+
+func describeAge(_ result: Result<(StampReceipt, String, UInt32?), StampClientServiceStampFailure>) -> AgeReport {
+  switch result {
+  case .success(let value):
+    return AgeReport(age: value.2, ageIsNil: value.2 == nil, faultKind: nil)
+  case .failure(.declared):
+    return AgeReport(age: nil, ageIsNil: true, faultKind: nil)
+  case .failure(.fault(let fault)):
+    return AgeReport(age: nil, ageIsNil: true, faultKind: fault.kind.rawValue)
+  }
+}
+
+func ageResult(_ headers: [(String, String)]) async -> AgeReport {
+  let client = StampClientServiceHttpClient(transport: StampRecorder(headers: headers))
+  return describeAge(await client.stamp("a", tenant: "acme", trace: nil))
+}
+
+struct Report: Codable {
+  let present: AgeReport
+  let absent: AgeReport
+  let malformed: AgeReport
+}
+let report = Report(
+  present: await ageResult([("etag", "etag-acme"), ("x-age", "8")]),
+  absent: await ageResult([("etag", "etag-acme")]),
+  malformed: await ageResult([("etag", "etag-acme"), ("x-age", "soon")])
+)
+print(String(data: try! JSONEncoder().encode(report), encoding: .utf8)!)
 "##;
 
 // -------------------------------------------------------------------------------------------
@@ -656,5 +706,39 @@ fn a_header_in_value_with_a_line_feed_is_refused_before_the_transport_is_ever_re
     assert_eq!(
         results["faultKind"], "failed-validation",
         "got: {results:#?}"
+    );
+}
+
+fn stamp_module() -> String {
+    [
+        "import Foundation".to_owned(),
+        stamp_receipt_swift::swift_definition(),
+        stamp_error_swift::swift_definition(),
+        stamp_client_service_fault_fields_swift::swift_definition(),
+        stamp_client_service_fault_kind_swift::swift_definition(),
+        StampClientServiceSchema::swift_http_client(),
+        STAMP_HEADER_WIDTH_DRIVER.to_owned(),
+    ]
+    .join("\n\n")
+}
+
+#[test]
+fn a_numeric_header_out_element_reads_present_absent_and_a_value_that_will_not_parse() {
+    let Some(wrote) = ran(
+        "swift",
+        RUNTIME_VAR,
+        "swift",
+        "stamp.swift",
+        &stamp_module(),
+    ) else {
+        return;
+    };
+    let results: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
+    assert_eq!(results["present"]["age"], 8_u32, "got: {results:#?}");
+    assert_eq!(results["absent"]["ageIsNil"], true, "got: {results:#?}");
+    assert_eq!(
+        results["malformed"]["faultKind"], "undeserializable-payload",
+        "a present header that will not parse as its declared type must fault rather than \
+         default to 0. got: {results:#?}"
     );
 }

@@ -899,6 +899,25 @@ const SWIFT_BYTES_HEADER_OUT_SERVICE: &str = "
     }
 ";
 
+/// A service declaring one numeric `header_out` of each family Swift renders with its own width.
+#[cfg(feature = "swift")]
+const SWIFT_NUMERIC_HEADER_OUT_SERVICE: &str = "
+    pub trait MetricClientService<Ctx> {
+        #[service_schema_op(http(
+            method = \"GET\",
+            path = \"/metrics/{metric_id}\",
+            header_out(\"x-count\"),
+            header_out(\"x-ratio\"),
+            error_status(NotFound = 404),
+        ))]
+        async fn get_metric(
+            &self,
+            ctx: &Ctx,
+            metric_id: String,
+        ) -> Result<(MetricResponse, u32, f32), MetricError>;
+    }
+";
+
 /// A service declaring two `body = \"stream\"` operations: one answering the bare streamed answer,
 /// one composing a declared `header_out` onto it. Swift-gated mirror of `DART_STREAM_HTTP_SERVICE`.
 #[cfg(feature = "swift")]
@@ -1021,6 +1040,39 @@ const SWIFT_UNIT_SUCCESS_SERVICE: &str = "
     pub trait PingClientService<Ctx> {
         #[service_schema_op(http(method = \"POST\", path = \"/v1/ping\"))]
         async fn ping(&self, ctx: &Ctx, req: PingRequest) -> Result<(), PingError>;
+    }
+";
+
+/// Headers both ways over `ws_rpc`: `stamp` binds a required and an optional `header_in`, answers
+/// a `header_out` tuple with a required and an optional element, and declares an
+/// `error_header_out` tuple; `mark` is one-way, with a `header_in` of its own. Swift-gated mirror
+/// of the shared `StampClientService` fixture the emitted-client run drives.
+#[cfg(feature = "swift")]
+const SWIFT_WS_HEADERS_SERVICE: &str = "
+    pub trait StampClientService<Ctx> {
+        #[service_schema_op(
+            one_way,
+            http(method = \"POST\", path = \"/mark\", header_in(\"x-tenant\" = tenant))
+        )]
+        async fn mark(&self, ctx: &Ctx, label: String, tenant: String);
+
+        #[service_schema_op(http(
+            method = \"POST\",
+            path = \"/stamp\",
+            header_in(\"x-tenant\" = tenant),
+            header_in(\"x-trace\" = trace),
+            header_out(\"etag\"),
+            header_out(\"x-age\"),
+            error_status(Refused = 409),
+            error_header_out(\"x-reason\"),
+        ))]
+        async fn stamp(
+            &self,
+            ctx: &Ctx,
+            label: String,
+            tenant: String,
+            trace: Option<u32>,
+        ) -> Result<(StampReceipt, String, Option<u32>), (StampError, Option<String>)>;
     }
 ";
 
