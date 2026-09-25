@@ -199,7 +199,8 @@ fn kotlin_jar(libs: &Path, stem: &str) -> Option<PathBuf> {
     if found.is_none() {
         kotlin_stand_down(&format!(
             "\ntixschema: no `{stem}*.jar` under {KOTLIN_LIBS_VAR}, so the emitted Kotlin was NOT \
-             run.\n  Put one there and run `just test-emitted`, which refuses to stand down.\n\n"
+             run.\n  Run `just kotlin-libs` to install it, then `just test-emitted`, which refuses \
+             to stand down.\n\n"
         ));
     }
     found
@@ -211,10 +212,9 @@ fn kotlin_jar(libs: &Path, stem: &str) -> Option<PathBuf> {
 fn kotlin_toolchain() -> Option<KotlinToolchain> {
     let Ok(named_libs) = env::var(KOTLIN_LIBS_VAR) else {
         kotlin_stand_down(&format!(
-            "\ntixschema: {KOTLIN_LIBS_VAR} is not set, so the emitted Kotlin was NOT run.\n  Set \
-             it to a directory holding the serialization compiler plugin jar and the \
-             kotlinx-serialization-json, kotlinx-serialization-core and kotlinx-coroutines-core \
-             jars, and run `just test-emitted`, which refuses to stand down.\n\n"
+            "\ntixschema: {KOTLIN_LIBS_VAR} is not set, so the emitted Kotlin was NOT run.\n  Run \
+             `just kotlin-libs`, which installs the jars into ~/.local/share/tixschema/kotlin-libs, \
+             then `just test-emitted`, which reads that directory and refuses to stand down.\n\n"
         ));
         return None;
     };

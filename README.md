@@ -3406,6 +3406,11 @@ tixschema = { default-features = false, features = ["serde", "zod", "typescript"
 
 CI tests every combination of the feature sets (`web`, `mobile`, `mongo`) via `cargo-hack`; `just test` runs every combination of the plain features locally.
 
+`just test-emitted` runs the emitted clients under their own toolchains. Its Kotlin leg compiles
+against the serialization compiler plugin and the `kotlinx-serialization-json`,
+`kotlinx-serialization-core` and `kotlinx-coroutines-core` jars, which `just kotlin-libs` installs
+into `~/.local/share/tixschema/kotlin-libs`. Set `TIXSCHEMA_KOTLIN_LIBS` to use another directory.
+
 ## Generating TypeScript Files
 
 Create a utility function to generate TypeScript files with all your types:
