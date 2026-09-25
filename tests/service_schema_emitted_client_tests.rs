@@ -95,6 +95,10 @@ mod run_dart_ws_headers;
 mod run_swift;
 
 #[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_ws_headers.rs"]
+mod run_swift_ws_headers;
+
+#[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin.rs"]
 mod run_kotlin;
 

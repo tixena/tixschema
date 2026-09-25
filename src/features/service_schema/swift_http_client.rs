@@ -795,7 +795,9 @@ fn header_out_read_stmts(
 }
 
 /// [`header_out_read_stmts`]'s own general form, shared with the error side: `ident_prefix`
-/// names the locals apart so an operation declaring both never binds two under one name.
+/// names the locals apart so an operation declaring both never binds two under one name. A
+/// `Boolean` or numeric element (bare or the item type of a `Vec`) reads through
+/// [`fallible_header_read_stmt`] instead, since a present value there can still fail to decode.
 fn header_value_read_stmts(
     fn_prefix: &str,
     wire: &str,
@@ -814,8 +816,14 @@ fn header_value_read_stmts(
     {
         let ident = format!("{ident_prefix}{index}");
         let raw_ident = format!("raw{capitalized_prefix}{index}");
-        // An `Option<T>` element reads a missing header as `nil`; anything else faults.
-        if option_inner(element_ty).is_some() {
+        let bare_ty = option_inner(element_ty).unwrap_or(element_ty);
+        if header_read_is_fallible(bare_ty) {
+            let _ = write!(
+                stmt,
+                "{}",
+                fallible_header_read_stmt(fn_prefix, wire, name, &ident, &raw_ident, element_ty)
+            );
+        } else if option_inner(element_ty).is_some() {
             let decode = swift_header_out_decode(element_ty, "raw");
             let _ = write!(
                 stmt,
@@ -838,6 +846,115 @@ fn header_value_read_stmts(
         idents.push(ident);
     }
     (stmt, idents)
+}
+
+/// Whether `bare_ty` (an element's own type, its outer `Option` already stripped) can fail to
+/// decode from header text — every `Boolean` and numeric kind, bare or as a `Vec`'s own item type.
+fn header_read_is_fallible(bare_ty: &Type) -> bool {
+    let leaf = vec_inner(bare_ty).unwrap_or(bare_ty);
+    matches!(
+        get_field_def("value", leaf, "").field_type,
+        FieldDefType::Boolean
+            | FieldDefType::U8
+            | FieldDefType::U16
+            | FieldDefType::U32
+            | FieldDefType::U64
+            | FieldDefType::I8
+            | FieldDefType::I16
+            | FieldDefType::I32
+            | FieldDefType::I64
+            | FieldDefType::Usize
+            | FieldDefType::Isize
+            | FieldDefType::F32
+            | FieldDefType::F64
+    )
+}
+
+/// One `Boolean`/numeric `header_out` (or `error_header_out`) element: a present value that will
+/// not become the declared type answers the same `UndeserializablePayload` fault a missing
+/// required header does, rather than the silent `0`/`false` an earlier build fell back to.
+fn fallible_header_read_stmt(
+    fn_prefix: &str,
+    wire: &str,
+    name: &str,
+    ident: &str,
+    raw_ident: &str,
+    element_ty: &Type,
+) -> String {
+    let bad_type_fault = format!(
+        "return .failure(.fault(\n          \
+         {fn_prefix}UndeserializablePayload(\"{wire}\", \"a response header did not match its \
+         declared type\")\n        \
+         ))"
+    );
+    let bare_ty = option_inner(element_ty).unwrap_or(element_ty);
+    if option_inner(element_ty).is_some() {
+        let full_ty = swift_typename_of(element_ty);
+        let assign = fallible_assign_stmt(ident, bare_ty, raw_ident, &bad_type_fault, false);
+        format!(
+            "      let {raw_ident} = {fn_prefix}FindHeader(response.headers, \"{name}\")\n      \
+             let {ident}: {full_ty}\n      \
+             if let {raw_ident} {{\n\
+{assign}      \
+             }} else {{\n        \
+             {ident} = nil\n      \
+             }}\n"
+        )
+    } else {
+        let assign = fallible_assign_stmt(ident, bare_ty, raw_ident, &bad_type_fault, true);
+        format!(
+            "      guard let {raw_ident} = {fn_prefix}FindHeader(response.headers, \"{name}\") \
+             else {{\n        \
+             return .failure(.fault(\n          \
+             {fn_prefix}UndeserializablePayload(\"{wire}\", \"a declared response header was \
+             missing\")\n        \
+             ))\n      \
+             }}\n\
+{assign}"
+        )
+    }
+}
+
+/// The statements that give `{ident}` its value once `raw_ident` is known to hold the header's
+/// own text: a scalar `guard let`, or a `Vec` whose every piece decodes before any is trusted,
+/// faulting if one is `nil`. `declare` says whether this is `{ident}`'s own first appearance (a
+/// required element) or an assignment into an already-declared `Optional` (an optional one).
+fn fallible_assign_stmt(
+    ident: &str,
+    bare_ty: &Type,
+    raw_ident: &str,
+    fault_stmt: &str,
+    declare: bool,
+) -> String {
+    match vec_inner(bare_ty) {
+        Some(item_ty) => {
+            let keyword = if declare { "let " } else { "" };
+            let item = swift_typename_of(item_ty);
+            let item_expr = swift_header_out_decode(item_ty, "piece");
+            format!(
+                "      let {ident}Pieces = {raw_ident}.split(separator: \",\").map {{ piece -> \
+                 String in String(piece) }}\n      \
+                 let {ident}Decoded = {ident}Pieces.map {{ piece -> {item}? in {item_expr} \
+                 }}\n      \
+                 guard {ident}Decoded.allSatisfy({{ $0 != nil }}) else {{\n        \
+                 {fault_stmt}\n      \
+                 }}\n      \
+                 {keyword}{ident} = {ident}Decoded.map {{ $0! }}\n"
+            )
+        }
+        None if declare => {
+            let expr = swift_header_out_decode(bare_ty, raw_ident);
+            format!("      guard let {ident} = {expr} else {{\n        {fault_stmt}\n      }}\n")
+        }
+        None => {
+            let expr = swift_header_out_decode(bare_ty, raw_ident);
+            format!(
+                "      guard let {ident}Decoded = {expr} else {{\n        {fault_stmt}\n      \
+                 }}\n      \
+                 {ident} = {ident}Decoded\n"
+            )
+        }
+    }
 }
 
 /// The declared-error read every reply-decoding arm shares: the error's own head off the body,
@@ -1165,8 +1282,10 @@ fn swift_wire_text(ty: &Type, expr: &str) -> String {
 }
 
 /// The expression that reads one `header_out` element's declared type back off `raw`, a
-/// non-optional `String` already checked non-missing. A value this crate cannot parse back falls
-/// back to a fixed default rather than throwing: a reply method's return type carries no `throws`.
+/// non-optional `String` already checked non-missing. `Boolean` and every numeric kind answer an
+/// `Optional`, `nil` on a value that will not become the declared type — read through
+/// [`header_read_is_fallible`] before a scalar (non-`Vec`) slot of one is ever reached this way.
+/// Every other kind still answers the value directly, since it cannot fail to decode.
 fn swift_header_out_decode(ty: &Type, raw: &str) -> String {
     let base = option_inner(ty).unwrap_or(ty);
     if let Some(inner) = vec_inner(base) {
@@ -1177,7 +1296,9 @@ fn swift_header_out_decode(ty: &Type, raw: &str) -> String {
         );
     }
     match get_field_def("value", base, "").field_type {
-        FieldDefType::Boolean => format!("({raw} == \"true\")"),
+        FieldDefType::Boolean => {
+            format!("({raw} == \"true\" ? true : ({raw} == \"false\" ? false : nil))")
+        }
         FieldDefType::U8
         | FieldDefType::U16
         | FieldDefType::U32
@@ -1187,8 +1308,9 @@ fn swift_header_out_decode(ty: &Type, raw: &str) -> String {
         | FieldDefType::I32
         | FieldDefType::I64
         | FieldDefType::Usize
-        | FieldDefType::Isize => format!("(Int({raw}) ?? 0)"),
-        FieldDefType::F32 | FieldDefType::F64 => format!("(Double({raw}) ?? 0)"),
+        | FieldDefType::Isize
+        | FieldDefType::F32
+        | FieldDefType::F64 => format!("{}({raw})", swift_typename_of(base)),
         FieldDefType::BooleanLiteral(_)
         | FieldDefType::Char
         | FieldDefType::Map(_, _)

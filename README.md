@@ -2653,6 +2653,8 @@ if case .failure(.fault(let fault)) = outcome {
 }
 ```
 
+A method takes one argument per `header_in` binding after the message, exactly as `swift_http_client()`'s own methods do; an `Optional` holding `nil` is sent as JSON `null` rather than left out. A `header_out` or `error_header_out` reply answers the declared tuple: an absent optional element reads `nil`, and a missing required one answers a `failedValidation` fault.
+
 **The Kotlin client and mini server.** `<Service>Schema::kotlin_ws_client()` publishes `{Service}WsTransport(socket, options)` under the same preferred ownership shape: it correlates a `request` to its reply through a `CompletableDeferred`, answers an inbound `ping` with one `pong`, and runs its own heartbeat on a `CoroutineScope` it owns -- closing the transport cancels that scope, and with it every dispatcher reading the transport's own `frames`. `{Service}WsClient(transport)` wraps it and answers a reply method with the same sealed `{Service}{Operation}Result` `kotlin_http_client()` publishes; a one-way method still throws the fault-only `{Service}WsRefusal`, having no reply arm to carry a fault through.
 
 Kotlin is the one target that also emits a server-side surface for this transport: `{Service}WsFrames` (`inbound`, `send`, `scope`) is the structural seam `attach{Service}WsDispatcher(frames, handlers, onFault)` -- the mini server -- dispatches over rather than the socket itself, so a second service sharing the same connection reaches the same frames without naming the first service's transport class at all. The attachment's own `share(attach)` hands a second service's `attach*WsDispatcher` the transport's `send` and `scope`, and `detach()` tears down every service it shared the socket with along with itself:
