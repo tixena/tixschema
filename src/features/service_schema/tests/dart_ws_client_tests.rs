@@ -5,7 +5,8 @@
 //! output: a substring that must appear, and a name that must not.
 
 use super::{
-    DART_PRIMITIVE_SERVICE, DART_UNIT_SUCCESS_HTTP_SERVICE, DART_WS_SERVICE, dart_ws_client_of,
+    DART_HEADER_TUPLE_SERVICE, DART_PRIMITIVE_SERVICE, DART_UNIT_SUCCESS_HTTP_SERVICE,
+    DART_WS_SERVICE, dart_ws_client_of,
 };
 
 /// The body of one method or dispatch arm, from its own start marker through the closing brace of
@@ -448,4 +449,156 @@ fn a_primitive_message_and_success_ride_the_frame_as_their_own_json_values() {
         "got: {arm}"
     );
     assert!(arm.contains("'value': answered,"), "got: {arm}");
+}
+
+#[test]
+fn the_transport_writes_headers_into_the_frame_only_when_non_empty() {
+    let written = dart_ws_client_of(DART_HEADER_TUPLE_SERVICE);
+    assert!(
+        written.contains(
+            "Future<Map<String, dynamic>?> request(\n    \
+             String operation,\n    \
+             Object? payload,\n    \
+             Map<String, dynamic> headers,\n  \
+             )"
+        ) && written.contains("if (headers.isNotEmpty) 'headers': headers,"),
+        "got: {written}"
+    );
+    assert!(
+        written.contains(
+            "Future<void> notify(\n    \
+             String operation,\n    \
+             Object? payload,\n    \
+             Map<String, dynamic> headers,\n  \
+             ) async"
+        ),
+        "got: {written}"
+    );
+}
+
+#[test]
+fn a_client_method_takes_a_header_in_value_per_binding_and_sends_it_as_json() {
+    let written = dart_ws_client_of(DART_HEADER_TUPLE_SERVICE);
+    assert!(
+        written.contains(
+            "Future<VersionServiceGetResult> get(String req, String tenant, int? trace) async {"
+        ),
+        "a header_in binding is one more argument after the message, spelled with its own \
+         declared type. Got: {written}"
+    );
+    let method = body_from(&written, " get(String req");
+    assert!(
+        method.contains(
+            "final headers = <String, dynamic>{\n      \
+             'x-tenant': tenant,\n      \
+             'x-trace': (trace == null ? null : trace),\n    \
+             };"
+        ),
+        "every binding is written, an optional value included as `null` rather than left out. \
+         Got: {method}"
+    );
+    assert!(
+        method.contains("reply = await _transport.request('get', req, headers);"),
+        "got: {method}"
+    );
+    let one_way = body_from(&written, " touch(String req");
+    assert!(
+        one_way.contains("final headers = <String, dynamic>{\n      'x-tenant': tenant,\n    };")
+            && one_way.contains("await _transport.notify('touch', req, headers);"),
+        "a one-way method's own header_in binding is sent the same way. Got: {one_way}"
+    );
+}
+
+#[test]
+fn a_client_method_splits_a_header_tuple_reply_and_names_the_header_on_a_bad_decode() {
+    let written = dart_ws_client_of(DART_HEADER_TUPLE_SERVICE);
+    let method = body_from(&written, " get(String req");
+    assert!(
+        method.contains("final replyHeaders = reply['headers'] as Map<String, dynamic>?;")
+            && method.contains("value = Document.fromJson(reply['value']);")
+            && method.contains("headerOut0 = replyHeaders?['etag'] as String;")
+            && method.contains(
+                "headerOut1 = (replyHeaders?['x-age'] == null ? null : replyHeaders?['x-age'] as int);"
+            )
+            && method.contains("return VersionServiceGetResultOk((value, headerOut0, headerOut1));"),
+        "the response decodes alone, and each `header_out` element decodes off the reply's own \
+         `headers`, in declaration order. Got: {method}"
+    );
+    assert!(
+        method.contains("_versionServiceWsFailedValidation('get', '$rejected', field: 'etag')")
+            && method
+                .contains("_versionServiceWsFailedValidation('get', '$rejected', field: 'x-age')"),
+        "a header element that will not decode faults naming that header. Got: {method}"
+    );
+    assert!(
+        method.contains("declaredHead = DocError.fromJson(error);")
+            && method.contains(
+                "errorHeaderOut0 = (replyHeaders?['x-reason'] == null ? null : \
+                 replyHeaders?['x-reason'] as String);"
+            )
+            && method.contains(
+                "return VersionServiceGetResultOperation((declaredHead, errorHeaderOut0));"
+            )
+            && method.contains(
+                "_versionServiceWsFailedValidation('get', '$rejected', field: 'x-reason')"
+            ),
+        "the declared error's own head decodes off `error` alone, and its `error_header_out` \
+         element decodes off the reply's own `headers`, faulting under its own name. Got: {method}"
+    );
+}
+
+#[test]
+fn a_handler_takes_a_header_in_value_per_binding_read_off_the_request_frame() {
+    let written = dart_ws_client_of(DART_HEADER_TUPLE_SERVICE);
+    assert!(
+        written.contains(
+            "final Future<(Document, String, int?)> Function(Ctx ctx, String req, String tenant, \
+             int? trace) get;"
+        ) && written
+            .contains("final Future<void> Function(Ctx ctx, String req, String tenant) touch;"),
+        "a handler takes each header_in value as an argument after the message. Got: {written}"
+    );
+    let arm = body_from(&written, "case 'get':");
+    assert!(
+        arm.contains("final headersIn = frame['headers'] as Map<String, dynamic>?;")
+            && arm.contains("tenant = headersIn?['x-tenant'] as String;")
+            && arm.contains(
+                "trace = (headersIn?['x-trace'] == null ? null : headersIn?['x-trace'] as int);"
+            )
+            && arm.contains("await handlers.get(ctx, decoded, tenant, trace);"),
+        "each header_in value decodes off the request frame's own `headers` and is passed \
+         straight through to the handler. Got: {arm}"
+    );
+    assert!(
+        arm.contains("field: 'x-tenant'") && arm.contains("field: 'x-trace'"),
+        "a header_in value that will not decode faults naming that header. Got: {arm}"
+    );
+}
+
+#[test]
+fn the_attachment_splits_a_handler_s_header_tuple_answer_omitting_a_null_element() {
+    let written = dart_ws_client_of(DART_HEADER_TUPLE_SERVICE);
+    let arm = body_from(&written, "case 'get':");
+    assert!(
+        arm.contains("final (bodyOut, headersOut0, headersOut1) = answered;")
+            && arm.contains("final headersOut = <String, dynamic>{};")
+            && arm.contains("headersOut['etag'] = headersOut0;")
+            && arm.contains("if (headersOut1 != null) {\n              headersOut['x-age'] = headersOut1;\n            }")
+            && arm.contains("'value': (bodyOut).toJson(),")
+            && arm.contains("if (headersOut.isNotEmpty) 'headers': headersOut,"),
+        "the handler's own record is split: its head under `value`, every other element under \
+         `headers`, a null one omitted rather than written. Got: {arm}"
+    );
+    assert!(
+        arm.contains("} on (DocError, String?) catch (declared) {")
+            && arm.contains("final (declaredHead, errorHeadersOut0) = declared;")
+            && arm.contains("final errorHeadersOut = <String, dynamic>{};")
+            && arm.contains(
+                "if (errorHeadersOut0 != null) {\n              errorHeadersOut['x-reason'] = \
+                 errorHeadersOut0;\n            }"
+            )
+            && arm.contains("'error': (declaredHead).toJson(),")
+            && arm.contains("if (errorHeadersOut.isNotEmpty) 'headers': errorHeadersOut,"),
+        "the declared error a handler throws splits the same way. Got: {arm}"
+    );
 }
