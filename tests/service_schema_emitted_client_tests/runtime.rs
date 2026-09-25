@@ -241,9 +241,10 @@ fn kotlin_toolchain() -> Option<KotlinToolchain> {
     })
 }
 
-/// Compiles `source` as `main.kt` against the three library jars and runs the resulting jar
-/// under `java`. `None` says no toolchain piece was reachable; a piece named explicitly that
-/// still fails to start is a failure instead, matching [`run_in`]'s rule.
+/// Compiles `source` as `main.kt` against the three library jars, with `-Werror` so an emitted
+/// warning fails the build, and runs the resulting jar under `java`. `None` says no toolchain
+/// piece was reachable; a piece named explicitly that still fails to start is a failure instead,
+/// matching [`run_in`]'s rule.
 #[cfg(feature = "kotlin")]
 pub fn ran_kotlin(source: &str) -> Option<String> {
     let toolchain = kotlin_toolchain()?;
@@ -254,6 +255,7 @@ pub fn ran_kotlin(source: &str) -> Option<String> {
     let compile = Command::new(&toolchain.kotlinc)
         .arg(format!("-Xplugin={}", toolchain.plugin.display()))
         .args([
+            "-Werror",
             "-cp",
             &toolchain.classpath,
             "main.kt",

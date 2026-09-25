@@ -656,6 +656,25 @@ const KOTLIN_BYTES_HEADER_OUT_SERVICE: &str = "
     }
 ";
 
+/// A service declaring `header_out` entries typed `u32`, `i32` and `f32`, each needing its own
+/// `OrNull` conversion rather than a blanket `toLong()`/`toDouble()`.
+#[cfg(feature = "kotlin")]
+const KOTLIN_NUMERIC_HEADER_OUT_SERVICE: &str = "
+    pub trait MetricClientService<Ctx> {
+        #[service_schema_op(http(
+            method = \"GET\",
+            path = \"/metrics\",
+            header_out(\"x-count\"),
+            header_out(\"x-delta\"),
+            header_out(\"x-ratio\"),
+        ))]
+        async fn get_metric(
+            &self,
+            ctx: &Ctx,
+        ) -> Result<(MetricResponse, u32, i32, f32), MetricError>;
+    }
+";
+
 /// A service declaring two `body = \"stream\"` operations. Kotlin-gated mirror of
 /// `DART_STREAM_HTTP_SERVICE`.
 #[cfg(feature = "kotlin")]
