@@ -456,6 +456,58 @@ impl SearchClientService<()> for SearchBackEnd {
 }
 
 // -------------------------------------------------------------------------------------------
+// A bodyless `GET` whose macro-generated message's two fields are both bound by the path,
+// leaving nothing to read off the query string.
+// -------------------------------------------------------------------------------------------
+
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LabelStatus {
+    pub label: String,
+}
+
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum LabelError {
+    NotFound,
+}
+
+#[service_schema(transports = ["http_rest"])]
+pub trait LabelClientService<Ctx> {
+    #[service_schema_op(http(
+        method = "GET",
+        path = "/orgs/{org_id}/labels/{label_id}",
+        error_status(NotFound = 404),
+    ))]
+    async fn get_label(
+        &self,
+        ctx: &Ctx,
+        org_id: String,
+        label_id: String,
+    ) -> Result<LabelStatus, LabelError>;
+}
+
+struct LabelBackEnd;
+
+impl LabelClientService<()> for LabelBackEnd {
+    async fn get_label(
+        &self,
+        _ctx: &(),
+        org_id: String,
+        label_id: String,
+    ) -> Result<LabelStatus, LabelError> {
+        ready(()).await;
+        if label_id == "missing" {
+            return Err(LabelError::NotFound);
+        }
+        Ok(LabelStatus {
+            label: format!("{org_id}/{label_id}"),
+        })
+    }
+}
+
+// -------------------------------------------------------------------------------------------
 // The three body kinds: `bytes`, `stream` and `multipart`, dispatched through the Rust macro
 // and through the emitted TypeScript so the same request can be compared byte-for-byte.
 // -------------------------------------------------------------------------------------------
@@ -885,6 +937,17 @@ fn every_reader_form_and_query_backend_answers_as_declared() {
         Ok(SearchEcho {
             limit: None,
             verbose: None
+        })
+    );
+
+    assert_eq!(
+        poll_once(LabelBackEnd.get_label(&(), "acme".to_owned(), "missing".to_owned())).unwrap(),
+        Err(LabelError::NotFound)
+    );
+    assert_eq!(
+        poll_once(LabelBackEnd.get_label(&(), "acme".to_owned(), "priority".to_owned())).unwrap(),
+        Ok(LabelStatus {
+            label: "acme/priority".to_owned()
         })
     );
 }

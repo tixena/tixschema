@@ -9,8 +9,8 @@
 
 use super::{
     BYTES_HTTP_SERVICE, EMITTED_CLIENT_TEST_SERVICE, MIXED_HTTP_SERVICE, MULTIPART_HTTP_SERVICE,
-    QUERY_HTTP_SERVICE, REQUIRED_HEADER_HTTP_SERVICE, STREAM_HTTP_SERVICE, TS_UNIT_SUCCESS_SERVICE,
-    http_service_of,
+    PATH_BOUND_HTTP_SERVICE, QUERY_HTTP_SERVICE, REQUIRED_HEADER_HTTP_SERVICE, STREAM_HTTP_SERVICE,
+    TS_UNIT_SUCCESS_SERVICE, http_service_of,
 };
 use crate::utils::record_wire_scalar;
 
@@ -272,6 +272,24 @@ fn a_generated_bodyless_message_reads_its_unbound_fields_off_the_query_with_thei
     assert!(
         written.contains("message[\"verbose\"] = raw === undefined ? null : (raw === \"true\" ? true : raw === \"false\" ? false : raw);"),
         "a boolean field is coerced inline, exactly as the Rust `decode_expr` reads one. Got: {written}"
+    );
+}
+
+/// A macro-generated message with two or more fields, all bound by the path, carries no
+/// `queryMap` at all - beside an operation that does read the query, which still carries one.
+#[test]
+fn a_fully_path_bound_generated_message_reads_no_query_beside_one_that_does() {
+    let written = http_service_of(PATH_BOUND_HTTP_SERVICE);
+    assert!(
+        written.contains("message[\"org\"] = org;")
+            && written.contains("message[\"documentId\"] = document_id;"),
+        "both fields decode straight off the path. Got: {written}"
+    );
+    assert_eq!(
+        written.matches("HttpParseQuery(request.query)").count(),
+        1,
+        "only `list_documents` reads the query; `get_document` binds both its fields from the \
+         path. Got: {written}"
     );
 }
 

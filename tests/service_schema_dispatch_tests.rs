@@ -82,10 +82,43 @@ mod multipart_service;
 #[path = "service_schema_dispatch_tests/multipart_http_rest_transport.rs"]
 mod multipart_http_rest_transport;
 
+/// `SoloPathBoundService`, its fully path-bound `GET` and the tests driving it - the only
+/// operation in the service, so its dispatcher must compile with no `parse_query` reachable at
+/// all.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_dispatch_tests/solo_path_bound_service.rs"]
+mod solo_path_bound_service;
+
+/// The `http_rest` dispatcher for `SoloPathBoundService`, in a module of its own.
+#[cfg(all(test, feature = "serde"))]
+#[path = "service_schema_dispatch_tests/solo_path_bound_http_rest_transport.rs"]
+mod solo_path_bound_http_rest_transport;
+
+/// `PathBoundBesideQueryService`, the same fully path-bound `GET` beside one that reads the
+/// query, and the tests driving both - a service of its own rather than an operation added to
+/// `SoloPathBoundService`, so the "no query reader at all" service above keeps proving that shape
+/// undiluted.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_dispatch_tests/path_bound_beside_query_service.rs"]
+mod path_bound_beside_query_service;
+
+/// The `http_rest` dispatcher for `PathBoundBesideQueryService`, in a module of its own.
+#[cfg(all(test, feature = "serde"))]
+#[path = "service_schema_dispatch_tests/path_bound_beside_query_http_rest_transport.rs"]
+mod path_bound_beside_query_http_rest_transport;
+
 // A transport's dispatcher reaches what the service declared through `$crate`, which is this
 // binary's root: a service written in a submodule is named here for the expansion to resolve.
 #[cfg(all(test, feature = "serde"))]
 use multipart_service::{UploadService, upload_service_schema};
+#[cfg(all(test, feature = "serde"))]
+use path_bound_beside_query_service::{
+    PathBoundBesideQueryService, path_bound_beside_query_service_schema,
+};
+#[cfg(all(test, feature = "serde"))]
+use solo_path_bound_service::{SoloPathBoundService, solo_path_bound_service_schema};
 #[cfg(all(test, feature = "serde"))]
 use stream_service::{ContentService, content_service_schema};
 #[cfg(all(

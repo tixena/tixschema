@@ -446,15 +446,22 @@ fn generated_message_build(
     let bodied = shape.method.carries_a_body();
     let multipart = matches!(shape.body_kind, BodyKind::Multipart);
     let placeholder_names = shape.placeholder_names();
+    let reads_query = !bodied
+        && !multipart
+        && fields
+            .iter()
+            .any(|(field, _)| !placeholder_names.contains(&field.to_string()));
     let mut setup = if multipart {
         "        const message: Record<string, unknown> = {};\n".to_owned()
     } else if bodied {
         parsed_body_base_stmt()
-    } else {
+    } else if reads_query {
         format!(
             "        const queryMap = {prefix}HttpParseQuery(request.query);\n        \
              const message: Record<string, unknown> = {{}};\n"
         )
+    } else {
+        "        const message: Record<string, unknown> = {};\n".to_owned()
     };
     for (field, ty) in fields {
         let field_name = field.to_string();
