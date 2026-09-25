@@ -7,8 +7,18 @@
 
 use super::{
     BYTES_HTTP_SERVICE, MIXED_HTTP_SERVICE, MULTIPART_HTTP_SERVICE,
-    SINGLE_PLACEHOLDER_HTTP_SERVICE, STREAM_HTTP_SERVICE, http_client_of,
+    SINGLE_PLACEHOLDER_HTTP_SERVICE, STREAM_HTTP_SERVICE, TS_UNIT_SUCCESS_SERVICE, http_client_of,
 };
+
+/// A unit success reads no body and answers `value: undefined`.
+#[test]
+fn a_unit_success_reads_no_body_and_answers_value_undefined() {
+    let written = http_client_of(TS_UNIT_SUCCESS_SERVICE);
+    assert!(
+        written.contains("return { ok: true, value: undefined };"),
+        "got: {written}"
+    );
+}
 
 #[test]
 fn exactly_one_seam_type_is_emitted_and_it_names_no_http_library() {

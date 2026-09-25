@@ -188,8 +188,19 @@ fn the_heartbeat_defaults_to_thirty_and_ten_seconds_and_a_missed_pong_closes_the
 fn every_reply_is_checked_against_the_operation_s_own_table_before_a_caller_sees_it() {
     let written = ws_client_of(MIXED_SERVICE);
     assert!(
-        written.contains("usageServiceSuccessSchemas[operation]?.safeParse(envelope.value)")
+        written.contains("const schema = usageServiceSuccessSchemas[operation];")
+            && written.contains("schema.safeParse(envelope.value)")
             && written.contains("usageServiceErrorSchemas[operation]?.safeParse(error)"),
+        "got: {written}"
+    );
+}
+
+/// A unit success has no entry in the success table, and normalizes `value` to `undefined`.
+#[test]
+fn a_success_with_no_table_entry_normalizes_value_to_undefined() {
+    let written = ws_client_of(MIXED_SERVICE);
+    assert!(
+        written.contains("if (schema === undefined) return { ok: true, value: undefined };"),
         "got: {written}"
     );
 }

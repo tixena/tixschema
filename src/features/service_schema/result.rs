@@ -28,7 +28,7 @@ use crate::field_type::get_field_def;
 #[cfg(any(feature = "typescript", feature = "dart", feature = "kotlin"))]
 use crate::rename_rule::RenameRule;
 #[cfg(feature = "typescript")]
-use crate::service_schema::parse::{BodyKind, HttpShape, ServiceDef, tuple_elements};
+use crate::service_schema::parse::{BodyKind, HttpShape, ServiceDef, is_unit_type, tuple_elements};
 #[cfg(any(feature = "typescript", feature = "dart", feature = "kotlin"))]
 use crate::service_schema::parse::{OperationDef, OperationOutcome};
 #[cfg(feature = "typescript")]
@@ -79,6 +79,8 @@ fn result_type(service: &str, operation: &OperationDef) -> Option<String> {
     let shape = HttpShape::of(operation);
     let value = if matches!(shape.body_kind, BodyKind::Stream) {
         stream_success_ts_type(&shape, success)
+    } else if is_unit_type(success) {
+        "undefined".to_owned()
     } else {
         get_field_def("value", success, "").typescript_typename()
     };

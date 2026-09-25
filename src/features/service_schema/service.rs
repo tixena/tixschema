@@ -38,7 +38,7 @@ use super::result::result_name;
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
-    HttpShape, OperationDef, OperationOutcome, ServiceDef, option_inner,
+    HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type, option_inner,
 };
 use core::fmt::Write as _;
 
@@ -380,7 +380,12 @@ fn outcome_type(service: &str, operation: &OperationDef) -> Option<String> {
         return None;
     };
     let published = outcome_name(service, operation)?;
-    let value = get_field_def("value", success, "").typescript_typename();
+    let success_arm = if is_unit_type(success) {
+        "{ ok: true }".to_owned()
+    } else {
+        let value = get_field_def("value", success, "").typescript_typename();
+        format!("{{ ok: true; value: {value} }}")
+    };
     let failure = get_field_def("error", error, "").typescript_typename();
     let called = &operation.ts_name;
     Some(format!(
@@ -394,7 +399,7 @@ fn outcome_type(service: &str, operation: &OperationDef) -> Option<String> {
          * places entitled to build one are both generated — the dispatcher and the client.\n \
          */\n\
          export type {published} =\n  \
-         | {{ ok: true; value: {value} }}\n  \
+         | {success_arm}\n  \
          | {{ ok: false; error: {failure} }};"
     ))
 }

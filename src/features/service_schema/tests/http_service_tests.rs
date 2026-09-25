@@ -9,7 +9,8 @@
 
 use super::{
     BYTES_HTTP_SERVICE, EMITTED_CLIENT_TEST_SERVICE, MIXED_HTTP_SERVICE, MULTIPART_HTTP_SERVICE,
-    QUERY_HTTP_SERVICE, REQUIRED_HEADER_HTTP_SERVICE, STREAM_HTTP_SERVICE, http_service_of,
+    QUERY_HTTP_SERVICE, REQUIRED_HEADER_HTTP_SERVICE, STREAM_HTTP_SERVICE, TS_UNIT_SUCCESS_SERVICE,
+    http_service_of,
 };
 use crate::utils::record_wire_scalar;
 
@@ -374,4 +375,14 @@ fn a_bodyless_operation_with_no_field_assembles_the_empty_object_not_null() {
         "got: {written}"
     );
     assert!(!written.contains(", null,"), "got: {written}");
+}
+
+/// A unit success answers through the same shared `answer` closure as any other JSON reply.
+#[test]
+fn a_unit_success_reaches_the_same_answer_closure_as_any_other_reply() {
+    let written = http_service_of(TS_UNIT_SUCCESS_SERVICE);
+    assert!(
+        written.contains("return answer(ctx, request, \"ping\", message, 204, () => 422);"),
+        "got: {written}"
+    );
 }

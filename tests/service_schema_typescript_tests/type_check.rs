@@ -24,7 +24,7 @@ use super::the_bundle_one_registration_line_produces::{
 };
 use super::{
     ApplyBundleReceipt, AuditServiceSchema, BalanceRequest, BalanceResponse, CreditWriteError,
-    ProbeError, ProbeServiceSchema,
+    ProbeError, ProbeServiceSchema, UnitPingError, UnitPingRequest, UnitPingServiceSchema,
 };
 use std::env;
 use std::env::temp_dir;
@@ -283,6 +283,66 @@ export async function read(): Promise<number> {
 }
 "#;
 
+// ---------------------------------------------------------------------------------------------
+// `UnitPingService`: a standalone one-operation unit-success service, unrelated to `ProbeService`.
+// ---------------------------------------------------------------------------------------------
+
+/// A caller reading `result.value` as `undefined` once `result.ok` narrows the arm.
+#[cfg(feature = "zod")]
+const UNIT_SUCCESS_CALLER: &str = r#"import {
+  createUnitPingServiceClient,
+  type UnitPingServiceTransport,
+} from "./bundle";
+
+const transport: UnitPingServiceTransport = {
+  async notify(operation, payload): Promise<void> {
+    void `${operation}:${JSON.stringify(payload)}`;
+  },
+  async request<Answered>(operation: string, payload: unknown): Promise<Answered> {
+    throw new Error(`${operation}:${JSON.stringify(payload)}`);
+  },
+};
+
+export async function read(): Promise<boolean> {
+  const answered = await createUnitPingServiceClient(transport).ping({ probe: "x" });
+  if (answered.ok) {
+    const value: undefined = answered.value;
+    return value === undefined;
+  }
+  return false;
+}
+"#;
+
+/// Everything above the unit-success implementation's one member.
+#[cfg(feature = "zod")]
+const UNIT_SUCCESS_IMPLEMENTATION_HEAD: &str = r#"import {
+  createUnitPingServiceDispatcher,
+  type UnitPingServicePingOutcome,
+} from "./bundle";
+
+type PingContext = { loggerName: string };
+
+export const dispatch = createUnitPingServiceDispatcher<PingContext>({
+"#;
+
+#[cfg(feature = "zod")]
+const UNIT_SUCCESS_IMPLEMENTATION_TAIL: &str = "});\n";
+
+/// Answers `{ ok: true }`, which the outcome type declares.
+#[cfg(feature = "zod")]
+const UNIT_SUCCESS_MEMBER_OK: &str = "  async ping(ctx, req): Promise<UnitPingServicePingOutcome> {\n    \
+     void `${ctx.loggerName}:${req.probe}`;\n    \
+     return { ok: true };\n  \
+     },\n";
+
+/// Answers `{ ok: true, value: [] }`, which the outcome type refuses.
+#[cfg(feature = "zod")]
+const UNIT_SUCCESS_MEMBER_OK_WITH_ARRAY: &str = "  async ping(ctx, req): \
+     Promise<UnitPingServicePingOutcome> {\n    \
+     void `${ctx.loggerName}:${req.probe}`;\n    \
+     return { ok: true, value: [] };\n  \
+     },\n";
+
 /// The implementation fixture, with every named operation but the ones listed as left out.
 #[cfg(feature = "zod")]
 fn implementation(without: &[&str]) -> String {
@@ -341,6 +401,21 @@ fn http_implementation(without: &[&str]) -> String {
     }
     written.push_str(HTTP_IMPLEMENTATION_TAIL);
     written
+}
+
+/// `UnitPingService`'s message types, client, and implementable service.
+#[cfg(feature = "zod")]
+fn unit_ping_bundle() -> String {
+    [
+        UnitPingRequest::ts_definition(),
+        UnitPingRequest::zod_schema(),
+        UnitPingError::ts_definition(),
+        UnitPingError::zod_schema(),
+        UnitPingServiceSchema::ts_definition(),
+        UnitPingServiceSchema::ts_client(),
+        UnitPingServiceSchema::ts_service(),
+    ]
+    .join("\n\n")
 }
 
 /// Said on the process's own stderr rather than through `eprintln!`, which `cargo test` captures
@@ -620,5 +695,67 @@ fn an_implementation_missing_one_operation_is_refused_at_the_http_dispatcher_fac
     assert!(
         said.contains("is missing") && said.contains("ProbeServiceImpl"),
         "the refusal has to be a member missing from the service's own interface. Got:\n{said}"
+    );
+}
+
+/// A caller assigns `result.value` to a `const` typed `undefined`.
+#[cfg(feature = "zod")]
+#[test]
+fn a_unit_success_callers_value_narrows_to_undefined() {
+    let mut files = bundled(unit_ping_bundle());
+    files.push(("caller.ts", UNIT_SUCCESS_CALLER.to_owned()));
+    let Some((accepted, said)) = compiled("unit-success-caller", &files) else {
+        return;
+    };
+    assert!(
+        accepted,
+        "a caller reading a unit success's `value` as `undefined` does not compile:\n{said}"
+    );
+}
+
+/// `{ ok: true }` is accepted at the dispatcher factory.
+#[cfg(feature = "zod")]
+#[test]
+fn a_unit_success_implementation_answering_ok_true_is_accepted_at_the_dispatcher_factory() {
+    let written = format!(
+        "{UNIT_SUCCESS_IMPLEMENTATION_HEAD}{UNIT_SUCCESS_MEMBER_OK}{UNIT_SUCCESS_IMPLEMENTATION_TAIL}"
+    );
+    let mut files = bundled(unit_ping_bundle());
+    files.push(("implementation.ts", written));
+    let Some((accepted, said)) = compiled("unit-success-ok", &files) else {
+        return;
+    };
+    assert!(
+        accepted,
+        "an implementation answering `{{ ok: true }}` for a unit success does not compile against \
+         `createUnitPingServiceDispatcher`:\n{said}"
+    );
+}
+
+/// `{ ok: true, value: [] }` is refused. Recorded verbatim from tsc 7.0.2 under `--strict`:
+///
+/// ```text
+/// implementation.ts(11,24): error TS2353: Object literal may only specify known properties, and 'value' does not exist in type '{ ok: true; }'.
+/// ```
+#[cfg(feature = "zod")]
+#[test]
+fn a_unit_success_implementation_answering_ok_true_with_value_is_refused_at_the_dispatcher_factory()
+{
+    let written = format!(
+        "{UNIT_SUCCESS_IMPLEMENTATION_HEAD}{UNIT_SUCCESS_MEMBER_OK_WITH_ARRAY}{UNIT_SUCCESS_IMPLEMENTATION_TAIL}"
+    );
+    let mut files = bundled(unit_ping_bundle());
+    files.push(("implementation.ts", written));
+    let Some((accepted, said)) = compiled("unit-success-array", &files) else {
+        return;
+    };
+    assert!(
+        !accepted,
+        "an implementation answering `{{ ok: true, value: [] }}` for a unit success reached \
+         `createUnitPingServiceDispatcher` and the compiler allowed it:\n{said}"
+    );
+    assert!(
+        said.contains("'value' does not exist in type") && said.contains("{ ok: true; }"),
+        "the refusal has to be about the excess `value` member. Got:\n{said}"
     );
 }

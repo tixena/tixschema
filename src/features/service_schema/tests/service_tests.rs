@@ -8,7 +8,7 @@
 
 use super::{
     MIXED_HTTP_SERVICE, MIXED_SERVICE, MULTIPART_HTTP_SERVICE, REQUIRED_HEADER_HTTP_SERVICE,
-    service_of,
+    TS_UNIT_SUCCESS_SERVICE, service_of,
 };
 
 #[test]
@@ -28,6 +28,24 @@ fn an_implementation_answers_an_outcome_that_has_no_fault_in_it() {
     assert!(
         !outcome.contains("isServiceFault"),
         "a service that could name the member could fabricate the value. Got: {outcome}"
+    );
+}
+
+/// An implementation of a unit-success operation answers `{ ok: true }`, with no `value` member.
+#[test]
+fn a_unit_success_outcome_has_no_value_member() {
+    let written = service_of(TS_UNIT_SUCCESS_SERVICE);
+    let found = written
+        .split("export type PingClientServicePingOutcome =")
+        .nth(1)
+        .and_then(|rest| rest.split_once("\n\n"))
+        .map(|(body, _)| body.to_owned());
+    assert!(found.is_some(), "got: {written}");
+    let outcome = found.unwrap();
+    assert!(outcome.contains("| { ok: true }"), "got: {outcome}");
+    assert!(
+        !outcome.contains("value"),
+        "a unit success carries nothing to store under `value`. Got: {outcome}"
     );
 }
 

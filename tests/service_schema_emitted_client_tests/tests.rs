@@ -723,6 +723,34 @@ impl PulseClientService<()> for PulseBackEnd {
     }
 }
 
+/// A reply operation whose success is `()`.
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WatchRequest {
+    pub topic: String,
+}
+
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum WatchError {
+    Unavailable,
+}
+
+#[service_schema(transports = [])]
+pub trait WatchClientService<Ctx> {
+    async fn watch(&self, ctx: &Ctx, req: WatchRequest) -> Result<(), WatchError>;
+}
+
+pub struct WatchBackEnd;
+
+impl WatchClientService<()> for WatchBackEnd {
+    async fn watch(&self, _ctx: &(), _req: WatchRequest) -> Result<(), WatchError> {
+        ready(()).await;
+        Ok(())
+    }
+}
+
 /// Every declared type is constructible — the groups beside this one read only emitted text.
 #[test]
 fn every_declared_type_is_constructible() {
@@ -751,6 +779,18 @@ fn every_declared_type_is_constructible() {
         ConversationBackEnd
             .purge_conversation(&(), ConversationId("652f1a3b4c5d6e7f8a9b0c1d".to_owned())),
     );
+}
+
+#[test]
+fn the_watch_backend_answers_ok_unit() {
+    let answered = poll_once(WatchBackEnd.watch(
+        &(),
+        WatchRequest {
+            topic: "x".to_owned(),
+        },
+    ))
+    .unwrap();
+    assert_eq!(answered, Ok(()));
 }
 
 /// The transports never suspend, so one poll answers them.
