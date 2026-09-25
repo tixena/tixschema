@@ -56,8 +56,9 @@
 //! one-way handler returns, a fault reply for anything that goes wrong before or during dispatch,
 //! so a pending caller is never left hanging.
 
+use super::dart_http_client::message_type;
 use super::result::result_name;
-use crate::features::dart::dart_typename;
+use crate::features::dart::{dart_json_decode, dart_json_encode, dart_typename};
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
@@ -297,27 +298,30 @@ fn client_method(named: &str, operation: &OperationDef) -> String {
     let param = message_dart_typename(operation);
     let returns = return_type(named, operation);
     let doc = format!("  /// Calls `{wire}` over `ws_rpc`.");
+    let sent = message_encode(operation);
     match &operation.outcome {
         OperationOutcome::OneWay => format!(
             "{doc}\n  \
              {returns} {call}({param} req) async {{\n    \
              try {{\n      \
-             await _transport.notify('{wire}', req.toJson());\n    \
+             await _transport.notify('{wire}', {sent});\n    \
              }} catch (uncarried) {{\n      \
              throw {named}WsRefusal(_{fn_prefix}WsTransportFailure('{wire}', '$uncarried'));\n    \
              }}\n  \
              }}"
         ),
-        OperationOutcome::Reply { error, success } => {
+        OperationOutcome::Reply {
+            error: _error,
+            success: _success,
+        } => {
             let result = result_name(named, operation).unwrap();
-            let error_ty = dart_type_of(error);
-            let decode = reply_decode_stmt(named, &result, &fn_prefix, wire, &error_ty, success);
+            let decode = reply_decode_stmt(named, &result, &fn_prefix, wire, operation);
             format!(
                 "{doc}\n  \
                  {returns} {call}({param} req) async {{\n    \
                  final Map<String, dynamic>? reply;\n    \
                  try {{\n      \
-                 reply = await _transport.request('{wire}', req.toJson());\n    \
+                 reply = await _transport.request('{wire}', {sent});\n    \
                  }} catch (uncarried) {{\n      \
                  return {result}Fault(_{fn_prefix}WsTransportFailure('{wire}', '$uncarried'));\n    \
                  }}\n    \
@@ -341,11 +345,15 @@ fn reply_decode_stmt(
     result: &str,
     fn_prefix: &str,
     wire: &str,
-    error_ty: &str,
-    success: &Type,
+    operation: &OperationDef,
 ) -> String {
+    let OperationOutcome::Reply { error, success } = &operation.outcome else {
+        return String::new();
+    };
     let fields = fault_fields_typescript_name(named);
-    let success_block = success_decode_block(result, fn_prefix, wire, success);
+    let success_block = success_decode_block(result, fn_prefix, wire, operation, success);
+    let error_ty = dart_type_of(error);
+    let error_read = declared_decode(operation, error, "error");
     format!(
         "    if (reply['ok'] == true) {{\n{success_block}    }}\n    \
          final error = reply['error'];\n    \
@@ -360,7 +368,7 @@ fn reply_decode_stmt(
          }}\n    \
          late final {error_ty} declared;\n    \
          try {{\n      \
-         declared = {error_ty}.fromJson(error as Map<String, dynamic>);\n    \
+         declared = {error_read};\n    \
          }} catch (rejected) {{\n      \
          return {result}Fault(_{fn_prefix}WsFailedValidation('{wire}', '$rejected'));\n    \
          }}\n    \
@@ -368,14 +376,20 @@ fn reply_decode_stmt(
     )
 }
 
-fn success_decode_block(result: &str, fn_prefix: &str, wire: &str, success: &Type) -> String {
+fn success_decode_block(
+    result: &str,
+    fn_prefix: &str,
+    wire: &str,
+    operation: &OperationDef,
+    success: &Type,
+) -> String {
     if is_unit_type(success) {
         return format!("      return {result}Ok();\n");
     }
-    let success_ty = dart_type_of(success);
+    let success_read = success_decode(operation, success, "reply['value']");
     format!(
         "      try {{\n        \
-         return {result}Ok({success_ty}.fromJson(reply['value'] as Map<String, dynamic>));\n      \
+         return {result}Ok({success_read});\n      \
          }} catch (rejected) {{\n        \
          return {result}Fault(_{fn_prefix}WsFailedValidation('{wire}', '$rejected'));\n      \
          }}\n"
@@ -458,7 +472,7 @@ fn attach_dispatcher_fn(service: &ServiceDef) -> String {
         .join("\n");
     let mut written = format!(
         "/// Attaches `handlers` to `frames`, dispatching every inbound `{named}` frame, decoded\n\
-         /// through the generated `fromJson` codecs, to its own handler. A frame this cannot\n\
+         /// through each declared type's own codec, to its own handler. A frame this cannot\n\
          /// dispatch, or a handler raising anything but its own declared error, reaches `onFault`\n\
          /// rather than vanishing; a request left waiting on either is answered with the fault\n\
          /// instead of hanging. Answers with the function that detaches it.\n\
@@ -504,12 +518,13 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
     let wire = &operation.wire_name;
     let call = &operation.ts_name;
     let req_ty = message_dart_typename(operation);
+    let received = message_decode(operation, "frame['payload']");
     let mut arm = format!(
         "      case '{wire}':\n        \
          {{\n          \
          final {req_ty} decoded;\n          \
          try {{\n            \
-         decoded = {req_ty}.fromJson(frame['payload'] as Map<String, dynamic>);\n          \
+         decoded = {received};\n          \
          }} catch (rejected) {{\n            \
          final fault = _{fn_prefix}WsFailedValidation('{wire}', '$rejected');\n            \
          onFault(fault);\n"
@@ -554,7 +569,7 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
             let value_expr = if unit {
                 "null".to_owned()
             } else {
-                "answered.toJson()".to_owned()
+                success_encode(operation, success, "answered")
             };
             let _ = write!(
                 arm,
@@ -567,7 +582,7 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
                 named,
                 "error",
                 "false",
-                "declared.toJson()",
+                &declared_encode(operation, error, "declared"),
             ));
             let _ = write!(
                 arm,
@@ -610,7 +625,7 @@ fn fault_helpers(named: &str, fn_prefix: &str) -> Vec<String> {
             "failedValidation",
             &format!(
                 "The fault a `{named}` `ws_rpc` reply answers with when it will not become the \
-                 operation's own declared type through the generated `fromJson` codec."
+                 operation's own declared type through that type's own codec."
             ),
         ),
         fault_helper(
@@ -655,6 +670,74 @@ fn fault_helper(named: &str, fn_prefix: &str, suffix: &str, kind: &str, doc: &st
 
 /// The message's Dart type: the type the operation named, or the one the macro declared for an
 /// operation that named none — mirrors `dart_http_client`'s own `message_dart_typename`.
+/// The message `req` encoded for a frame's payload.
+fn message_encode(operation: &OperationDef) -> String {
+    message_type(operation).map_or_else(
+        || "req.toJson()".to_owned(),
+        |ty| dart_json_encode(&ty, "req", true),
+    )
+}
+
+/// The message decoded out of a frame's dynamically typed `payload`.
+fn message_decode(operation: &OperationDef, payload: &str) -> String {
+    let req_ty = message_dart_typename(operation);
+    message_type(operation).map_or_else(
+        || format!("{req_ty}.fromJson({payload} as Map<String, dynamic>)"),
+        |ty| dart_json_decode(&ty, payload),
+    )
+}
+
+/// Whether `http(...)` makes the success a tuple of body and `header_out` values, which this
+/// client renders as it did before rather than through the per-type codec.
+fn success_is_header_tuple(operation: &OperationDef) -> bool {
+    operation
+        .http
+        .as_ref()
+        .is_some_and(|binding| !binding.header_out.is_empty())
+}
+
+/// [`success_is_header_tuple`]'s twin for `error_header_out`.
+fn error_is_header_tuple(operation: &OperationDef) -> bool {
+    operation
+        .http
+        .as_ref()
+        .is_some_and(|binding| !binding.error_header_out.is_empty())
+}
+
+fn success_decode(operation: &OperationDef, success: &Type, value: &str) -> String {
+    if success_is_header_tuple(operation) {
+        return format!(
+            "{}.fromJson({value} as Map<String, dynamic>)",
+            dart_type_of(success)
+        );
+    }
+    dart_json_decode(success, value)
+}
+
+fn success_encode(operation: &OperationDef, success: &Type, value: &str) -> String {
+    if success_is_header_tuple(operation) {
+        return format!("{value}.toJson()");
+    }
+    dart_json_encode(success, value, true)
+}
+
+fn declared_decode(operation: &OperationDef, error: &Type, value: &str) -> String {
+    if error_is_header_tuple(operation) {
+        return format!(
+            "{}.fromJson({value} as Map<String, dynamic>)",
+            dart_type_of(error)
+        );
+    }
+    dart_json_decode(error, value)
+}
+
+fn declared_encode(operation: &OperationDef, error: &Type, value: &str) -> String {
+    if error_is_header_tuple(operation) {
+        return format!("{value}.toJson()");
+    }
+    dart_json_encode(error, value, true)
+}
+
 fn message_dart_typename(operation: &OperationDef) -> String {
     match &operation.inputs {
         OperationInputs::Named(declared) => dart_type_of(declared),

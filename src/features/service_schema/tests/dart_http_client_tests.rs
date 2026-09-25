@@ -6,8 +6,8 @@
 
 use super::{
     DART_BYTES_HEADER_OUT_SERVICE, DART_HTTP_SERVICE, DART_MULTIPART_HTTP_SERVICE,
-    DART_SINGLE_PLACEHOLDER_HTTP_SERVICE, DART_STREAM_HTTP_SERVICE, DART_UNIT_SUCCESS_HTTP_SERVICE,
-    dart_http_client_of,
+    DART_PRIMITIVE_SERVICE, DART_SINGLE_PLACEHOLDER_HTTP_SERVICE, DART_STREAM_HTTP_SERVICE,
+    DART_UNIT_SUCCESS_HTTP_SERVICE, dart_http_client_of,
 };
 
 /// The `send` signature every service's transport interface carries, whatever it declares.
@@ -97,7 +97,7 @@ fn a_bodied_operation_fills_a_literal_path_and_serializes_the_message_as_the_bod
         "a bodied method carries no query string. Got: {method}"
     );
     assert!(
-        method.contains("final body = utf8.encode(jsonEncode(req.toJson()));"),
+        method.contains("final body = utf8.encode(jsonEncode((req).toJson()));"),
         "the body is the message's own JSON codec, never re-derived. Got: {method}"
     );
     assert!(method.contains("method: 'POST'"), "got: {method}");
@@ -659,4 +659,19 @@ fn a_unit_success_answers_the_field_less_ok_member() {
         "got: {method}"
     );
     assert!(!method.contains("ResultOk(null)"), "got: {method}");
+}
+
+#[test]
+fn a_primitive_message_and_success_cross_as_their_own_json_values() {
+    let written = dart_http_client_of(DART_PRIMITIVE_SERVICE);
+    let method = method_body(&written, "tally");
+    assert!(
+        method.contains("final body = utf8.encode(jsonEncode(req));"),
+        "got: {method}"
+    );
+    assert!(
+        method.contains("value = jsonDecode(utf8.decode(response.body)) as int;"),
+        "got: {method}"
+    );
+    assert!(!method.contains("toJson"), "got: {method}");
 }

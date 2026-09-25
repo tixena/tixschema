@@ -4,7 +4,9 @@
 //! tests read structure, the same way `dart_http_client_tests` reads the `http_rest` sibling's own
 //! output: a substring that must appear, and a name that must not.
 
-use super::{DART_UNIT_SUCCESS_HTTP_SERVICE, DART_WS_SERVICE, dart_ws_client_of};
+use super::{
+    DART_PRIMITIVE_SERVICE, DART_UNIT_SUCCESS_HTTP_SERVICE, DART_WS_SERVICE, dart_ws_client_of,
+};
 
 /// The body of one method or dispatch arm, from its own start marker through the closing brace of
 /// whatever follows — mirrors `dart_http_client_tests`'s own `method_body`.
@@ -181,14 +183,13 @@ fn a_reply_operation_answers_future_of_the_result_pair_and_decodes_through_the_g
     );
     let method = body_from(&written, " listTransactions(");
     assert!(
-        method.contains("reply = await _transport.request('list-transactions', req.toJson());"),
+        method.contains("reply = await _transport.request('list-transactions', (req).toJson());"),
         "got: {method}"
     );
     assert!(
         method.contains("if (reply['ok'] == true) {")
             && method.contains(
-                "return LedgerListTransactionsResultOk(TransactionList.fromJson(reply['value'] \
-                 as Map<String, dynamic>));"
+                "return LedgerListTransactionsResultOk(TransactionList.fromJson(reply['value']));"
             ),
         "a successful reply decodes through the generated `fromJson` codec into the pair's own \
          `Ok` member. Got: {method}"
@@ -224,7 +225,7 @@ fn a_reply_operation_answers_the_declared_error_or_a_fault_behind_is_service_fau
          codec. Got: {method}"
     );
     assert!(
-        method.contains("declared = ListError.fromJson(error as Map<String, dynamic>);")
+        method.contains("declared = ListError.fromJson(error);")
             && method.contains("return LedgerListTransactionsResultOperation(declared);"),
         "otherwise the wire's `error` is the operation's own declared error. Got: {method}"
     );
@@ -256,7 +257,7 @@ fn a_one_way_operation_answers_future_void_and_throws_a_refusal() {
     );
     let method = body_from(&written, " applyBundle(");
     assert!(
-        method.contains("await _transport.notify('apply-bundle', req.toJson());")
+        method.contains("await _transport.notify('apply-bundle', (req).toJson());")
             && method.contains(
                 "throw LedgerWsRefusal(_ledgerWsTransportFailure('apply-bundle', '$uncarried'));"
             ),
@@ -357,13 +358,13 @@ fn a_reply_dispatch_arm_answers_a_reply_frame_on_every_outcome() {
     let written = dart_ws_client_of(DART_WS_SERVICE);
     let reply_arm = body_from(&written, "case 'list-transactions':");
     assert!(
-        reply_arm.contains(
-            "decoded = ListTransactionsRequest.fromJson(frame['payload'] as Map<String, dynamic>);"
-        ) && reply_arm.contains("final answered = await handlers.listTransactions(ctx, decoded);")
+        reply_arm.contains("decoded = ListTransactionsRequest.fromJson(frame['payload']);")
+            && reply_arm
+                .contains("final answered = await handlers.listTransactions(ctx, decoded);")
             && reply_arm.contains("'ok': true,")
-            && reply_arm.contains("'value': answered.toJson(),")
+            && reply_arm.contains("'value': (answered).toJson(),")
             && reply_arm.contains("} on ListError catch (declared) {")
-            && reply_arm.contains("'error': declared.toJson(),"),
+            && reply_arm.contains("'error': (declared).toJson(),"),
         "got: {reply_arm}"
     );
     assert!(
@@ -427,4 +428,24 @@ fn a_unit_success_answers_the_field_less_ok_member() {
         "got: {arm}"
     );
     assert!(!arm.contains("ResultOk(null)"), "got: {arm}");
+}
+
+#[test]
+fn a_primitive_message_and_success_ride_the_frame_as_their_own_json_values() {
+    let written = dart_ws_client_of(DART_PRIMITIVE_SERVICE);
+    let method = body_from(&written, "tally(String req)");
+    assert!(
+        method.contains("reply = await _transport.request('tally', req);"),
+        "got: {method}"
+    );
+    assert!(
+        method.contains("return ShelvesTallyResultOk(reply['value'] as int);"),
+        "got: {method}"
+    );
+    let arm = body_from(&written, "case 'tally':");
+    assert!(
+        arm.contains("decoded = frame['payload'] as String;"),
+        "got: {arm}"
+    );
+    assert!(arm.contains("'value': answered,"), "got: {arm}");
 }
