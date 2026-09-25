@@ -213,6 +213,12 @@ object PulseHandlers : PulseClientServiceHandlers {
         PulseClientServicePulseResult.Ok(PulseResponse(alive = true))
 }
 
+suspend fun until(timeoutMs: Long = 2000, predicate: () -> Boolean): Boolean {
+    val deadline = System.currentTimeMillis() + timeoutMs
+    while (!predicate() && System.currentTimeMillis() < deadline) delay(5)
+    return predicate()
+}
+
 fun main() = runBlocking {
     val (clientSocket, serverSocket) = connectedPair(this)
     val clientTransport = ConversationClientServiceWsTransport(clientSocket, ConversationClientServiceWsOptions(heartbeat = null))
@@ -238,8 +244,7 @@ fun main() = runBlocking {
 
     val faultsBeforeNotify = faults.size
     clientTransport.notify("window", JsonPrimitive(7))
-    delay(50)
-    val notifyFaultReached = faults.size > faultsBeforeNotify
+    val notifyFaultReached = until { faults.size > faultsBeforeNotify }
 
     var pulseDetachRan = false
     attachment.share { send, scope ->
@@ -249,20 +254,22 @@ fun main() = runBlocking {
     }
 
     val observed = mutableListOf<String>()
-    val collectJob = launch { clientTransport.frames.inbound.collect { observed.add(it) } }
-    clientSocket.send("""{"kind":"request","id":"cA","service":"ConversationClientService","operation":"window","payload":{"conversationId":"abc"}}""")
-    clientSocket.send("""{"kind":"request","id":"pA","service":"PulseClientService","operation":"pulse","payload":{}}""")
-    delay(50)
     fun serviceOf(id: String) = observed
         .map { Json.parseToJsonElement(it).jsonObject }
         .firstOrNull { (it["id"] as? JsonPrimitive)?.contentOrNull == id }
         ?.get("service")?.jsonPrimitive?.contentOrNull
+    val collectJob = launch { clientTransport.frames.inbound.collect { observed.add(it) } }
+    clientSocket.send("""{"kind":"request","id":"cA","service":"ConversationClientService","operation":"window","payload":{"conversationId":"abc"}}""")
+    clientSocket.send("""{"kind":"request","id":"pA","service":"PulseClientService","operation":"pulse","payload":{}}""")
+    until { serviceOf("cA") != null && serviceOf("pA") != null }
     val conversationAnsweredOwn = serviceOf("cA") == "ConversationClientService"
     val pulseAnsweredOwn = serviceOf("pA") == "PulseClientService"
     collectJob.cancel()
 
     val pongsBefore = serverSocket.sent.count { it == """{"kind":"pong"}""" }
     clientSocket.send("""{"kind":"ping"}""")
+    until { serverSocket.sent.count { it == """{"kind":"pong"}""" } > pongsBefore }
+    // A second pong would arrive after the first; the settle is what lets "exactly one" fail.
     delay(50)
     val onePongPerPing = serverSocket.sent.count { it == """{"kind":"pong"}""" } == pongsBefore + 1
 
