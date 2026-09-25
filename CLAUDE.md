@@ -45,6 +45,12 @@ just test-named-features   # Key combinations
 just test-name <TEST_NAME>
 # or
 cargo test <TEST_NAME>
+
+# Run the emitted clients under their own toolchains; refuses to stand down
+just test-emitted
+
+# Install the Kotlin jars test-emitted compiles against, into ~/.local/share/tixschema/kotlin-libs
+just kotlin-libs
 ```
 
 ### Code Quality

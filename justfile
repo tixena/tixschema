@@ -1,6 +1,10 @@
 # Justfile for tixschema
 # Run `just --list` to see all available commands
 
+kotlinx_serialization_version := "1.11.0"
+kotlinx_coroutines_version := "1.11.0"
+kotlin_libs := env("TIXSCHEMA_KOTLIN_LIBS", home_directory() / ".local/share/tixschema/kotlin-libs")
+
 # Default recipe - runs comprehensive tests
 default: test
 
@@ -108,6 +112,34 @@ typecheck-ts:
     TIXSCHEMA_TSC="$(command -v "${TIXSCHEMA_TSC:-tsc}")" cargo test --no-default-features --features "serde,typescript" --test service_schema_typescript_tests type_check
     @echo "✅ The emitted bundle type-checks!"
 
+# Install the jars the emitted Kotlin compiles and runs against into ~/.local/share/tixschema/kotlin-libs: the
+# serialization compiler plugin from kotlinc's own lib/, and the pinned JVM library jars from
+# Maven Central, each checked against its published SHA-256. Rerunning downloads nothing new.
+kotlin-libs:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    kotlinc="$(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}")" || { echo "No kotlinc: put \`kotlinc\` on PATH, or set TIXSCHEMA_KOTLINC to one." >&2; exit 1; }
+    libs="{{kotlin_libs}}"
+    mkdir -p "$libs"
+    cp -f "$(dirname "$(readlink -f "$kotlinc")")/../lib/kotlinx-serialization-compiler-plugin.jar" "$libs/"
+    fetch() {
+        local artifact="$1" version="$2"
+        local jar="$artifact-$version.jar"
+        local url="https://repo1.maven.org/maven2/org/jetbrains/kotlinx/$artifact/$version/$jar"
+        find "$libs" -maxdepth 1 -name "$artifact-*.jar" ! -name "$jar" -delete
+        [ -f "$libs/$jar" ] && return
+        curl -fsSL -o "$libs/$jar.part" "$url"
+        local expected actual
+        expected="$(curl -fsSL "$url.sha256" | cut -c1-64)"
+        actual="$(sha256sum "$libs/$jar.part" | cut -c1-64)"
+        [ "$expected" = "$actual" ] || { rm -f "$libs/$jar.part"; echo "Checksum mismatch for $jar" >&2; exit 1; }
+        mv -f "$libs/$jar.part" "$libs/$jar"
+    }
+    fetch kotlinx-serialization-json-jvm {{kotlinx_serialization_version}}
+    fetch kotlinx-serialization-core-jvm {{kotlinx_serialization_version}}
+    fetch kotlinx-coroutines-core-jvm {{kotlinx_coroutines_version}}
+    echo "Kotlin jars in $libs"
+
 # Run the emitted clients through their own language's runtime, with a real message object.
 #
 # What a string test cannot reach: `String(sending)` is well-formed TypeScript that renders every
@@ -116,8 +148,8 @@ typecheck-ts:
 # recipe refuses to stand down — it resolves each runtime up front and names it for the tests,
 # where a named runtime that cannot be started is a failure. Set TIXSCHEMA_NODE, TIXSCHEMA_DART,
 # TIXSCHEMA_SWIFT, TIXSCHEMA_KOTLINC or TIXSCHEMA_JAVA to use one that is not on PATH. The Kotlin
-# leg also needs TIXSCHEMA_KOTLIN_LIBS: a directory holding the serialization compiler plugin jar
-# and the kotlinx-serialization-json, kotlinx-serialization-core and kotlinx-coroutines-core jars.
+# leg reads TIXSCHEMA_KOTLIN_LIBS, defaulting to ~/.local/share/tixschema/kotlin-libs, which
+# `just kotlin-libs` fills.
 test-emitted:
     @command -v "${TIXSCHEMA_NODE:-node}" >/dev/null 2>&1 || { echo "No node: put \`node\` on PATH, or set TIXSCHEMA_NODE to one." >&2; exit 1; }
     @echo "Running the emitted TypeScript client with $(command -v "${TIXSCHEMA_NODE:-node}")..."
@@ -135,9 +167,9 @@ test-emitted:
     @echo "Running the emitted Swift client with $(command -v "${TIXSCHEMA_SWIFT:-swift}")..."
     TIXSCHEMA_SWIFT="$(command -v "${TIXSCHEMA_SWIFT:-swift}")" cargo test --all-features --test service_schema_emitted_client_tests run_swift
     @command -v "${TIXSCHEMA_KOTLINC:-kotlinc}" >/dev/null 2>&1 || { echo "No kotlinc: put \`kotlinc\` on PATH, or set TIXSCHEMA_KOTLINC to one." >&2; exit 1; }
-    @test -n "${TIXSCHEMA_KOTLIN_LIBS:-}" || { echo "Set TIXSCHEMA_KOTLIN_LIBS to a directory holding the serialization compiler plugin jar and the three library jars." >&2; exit 1; }
+    @[ -d "{{kotlin_libs}}" ] || { echo "No Kotlin jars at {{kotlin_libs}}: run \`just kotlin-libs\`, or set TIXSCHEMA_KOTLIN_LIBS to a directory holding them." >&2; exit 1; }
     @echo "Running the emitted Kotlin client with $(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}")..."
-    TIXSCHEMA_KOTLINC="$(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}")" cargo test --all-features --test service_schema_emitted_client_tests run_kotlin
+    TIXSCHEMA_KOTLIN_LIBS="{{kotlin_libs}}" TIXSCHEMA_KOTLINC="$(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}")" cargo test --all-features --test service_schema_emitted_client_tests run_kotlin
     @echo "✅ The emitted clients build the URLs they claim to!"
 
 # Check code without running tests

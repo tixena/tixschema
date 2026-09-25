@@ -78,6 +78,10 @@ use syn::ItemTrait;
 #[cfg(feature = "serde")]
 use syn::{Ident, ReturnType, TraitItem};
 
+/// The `header_out` name `amqp_rpc`'s own reply handle already writes on every failed reply.
+#[cfg(feature = "serde")]
+const RESERVED_AMQP_HEADER_OUT_NAME: &str = "is_error";
+
 /// A build without the `serde` feature answers a declaration with refusals and nothing else.
 ///
 /// Nothing further would be truthful. The emitters are gated out of this build, so there is no
@@ -115,6 +119,7 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
             let combined_refusal = [
                 multipart_envelope_refusal(&service, &wanted.transports),
                 stream_envelope_refusal(&service, &wanted.transports),
+                reserved_header_out_refusal(&service, &wanted.transports),
             ]
             .into_iter()
             .flatten()
@@ -494,6 +499,85 @@ fn stream_envelope_message(operation: &Ident, envelopes: &[transport::Transport]
          a streamed body has no carrier inside the `{{ ok, value, error }}` envelope those \
          transports answer with - drop them from `transports`, or drop `body = \"stream\"` from \
          this operation"
+    )
+}
+
+/// Refuses `header_out("is_error")` on a service that also declares `amqp_rpc`: the transport's
+/// own reply handle writes that header itself on every failed reply, so a bound value with the
+/// same name would either collide with it or never reach the wire.
+///
+/// # `header_out("is_error")` is refused where the service also asks for `amqp_rpc`
+///
+/// ```rust,compile_fail
+/// use tixschema::service_schema;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub enum PingError {
+///     Unreachable,
+/// }
+///
+/// #[service_schema(transports = ["amqp_rpc"])]
+/// pub trait PingService<Ctx> {
+///     #[service_schema_op(http(
+///         method = "GET",
+///         path = "/ping",
+///         header_out("is_error"),
+///         error_status(Unreachable = 503),
+///     ))]
+///     async fn ping(&self, ctx: &Ctx) -> Result<(String, bool), PingError>;
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: service_schema: operation `ping` declares `header_out("is_error")`, and this service also declares `amqp_rpc`
+///               that name is reserved - amqp_rpc's own reply handle already writes it on every failed reply; bind the value under another name
+///   --> tests/zz_probe.rs:12:14
+///    |
+/// 12 |     async fn ping(
+///    |              ^^^^
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
+#[cfg(feature = "serde")]
+fn reserved_header_out_refusal(
+    service: &parse::ServiceDef,
+    wanted: &[transport::Transport],
+) -> Option<syn::Error> {
+    if !wanted.contains(&transport::Transport::AmqpRpc) {
+        return None;
+    }
+    service
+        .operations
+        .iter()
+        .filter(|operation| {
+            operation.http.as_ref().is_some_and(|binding| {
+                binding
+                    .header_out
+                    .iter()
+                    .any(|name| name == RESERVED_AMQP_HEADER_OUT_NAME)
+            })
+        })
+        .map(|operation| {
+            syn::Error::new(
+                operation.ident.span(),
+                reserved_header_out_message(&operation.ident),
+            )
+        })
+        .reduce(|mut collected, refusal| {
+            collected.combine(refusal);
+            collected
+        })
+}
+
+#[cfg(feature = "serde")]
+fn reserved_header_out_message(operation: &Ident) -> String {
+    format!(
+        "service_schema: operation `{operation}` declares `header_out(\"is_error\")`, and this \
+         service also declares `amqp_rpc`\n       \
+         that name is reserved - amqp_rpc's own reply handle already writes it on every failed \
+         reply; bind the value under another name"
     )
 }
 

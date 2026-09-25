@@ -7,7 +7,7 @@
 mod tests {
     use serde_json::{Value, json};
 
-    use crate::amqp_server::{framed_fault, legacy_reply};
+    use crate::amqp_server::{framed_fault, legacy_reply, outgoing_headers};
 
     const CORRELATION: &str = "req-12345";
 
@@ -198,6 +198,63 @@ mod tests {
                 }],
                 "correlationId": CORRELATION,
             }),
+        );
+    }
+
+    #[test]
+    fn a_success_envelope_carries_no_is_error_header() {
+        assert_eq!(
+            outgoing_headers(&json!({ "ok": true, "value": {} }), Vec::new()),
+            Vec::new(),
+        );
+    }
+
+    #[test]
+    fn a_declared_error_envelope_carries_the_is_error_header() {
+        assert_eq!(
+            outgoing_headers(
+                &json!({ "ok": false, "error": { "errorCode": "db-error" } }),
+                Vec::new(),
+            ),
+            vec![("is_error".to_owned(), "true".to_owned())],
+        );
+    }
+
+    #[test]
+    fn a_framed_fault_carries_the_is_error_header() {
+        let framed = framed_fault(&json!({
+            "detail": "invalid type: string, expected u32",
+            "kind": "undeserializable-payload",
+            "operation": "add-generation-credit",
+        }));
+        assert_eq!(
+            outgoing_headers(&framed, Vec::new()),
+            vec![("is_error".to_owned(), "true".to_owned())],
+        );
+    }
+
+    #[test]
+    fn a_declared_header_out_still_arrives_beside_is_error_on_an_error_envelope() {
+        assert_eq!(
+            outgoing_headers(
+                &json!({ "ok": false, "error": { "errorCode": "db-error" } }),
+                vec![("etag".to_owned(), "v1".to_owned())],
+            ),
+            vec![
+                ("etag".to_owned(), "v1".to_owned()),
+                ("is_error".to_owned(), "true".to_owned()),
+            ],
+        );
+    }
+
+    #[test]
+    fn a_declared_header_out_is_alone_on_a_success_envelope() {
+        assert_eq!(
+            outgoing_headers(
+                &json!({ "ok": true, "value": {} }),
+                vec![("etag".to_owned(), "v1".to_owned())],
+            ),
+            vec![("etag".to_owned(), "v1".to_owned())],
         );
     }
 }
