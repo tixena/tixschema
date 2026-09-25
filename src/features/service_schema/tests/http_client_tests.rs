@@ -7,7 +7,8 @@
 
 use super::{
     BYTES_HTTP_SERVICE, MIXED_HTTP_SERVICE, MULTIPART_HTTP_SERVICE,
-    SINGLE_PLACEHOLDER_HTTP_SERVICE, STREAM_HTTP_SERVICE, TS_UNIT_SUCCESS_SERVICE, http_client_of,
+    OPTIONAL_HEADER_OUT_HTTP_SERVICE, SINGLE_PLACEHOLDER_HTTP_SERVICE, STREAM_HTTP_SERVICE,
+    TS_UNIT_SUCCESS_SERVICE, http_client_of,
 };
 
 /// A unit success reads no body and answers `value: undefined`.
@@ -290,6 +291,32 @@ fn a_tuple_success_reads_its_header_out_element_back_off_the_response() {
         method.contains("const headerOut0 = rawHeaderOut0[1] as string;")
             && method.contains("return { ok: true, value: [value, headerOut0] };"),
         "the body and the header ride the same tuple the result type declares. Got: {method}"
+    );
+}
+
+#[test]
+fn an_optional_header_out_element_reads_an_absent_header_as_null_typed_as_its_slot() {
+    let written = http_client_of(OPTIONAL_HEADER_OUT_HTTP_SERVICE);
+    let method = method_body(&written, "getVersion");
+    assert!(
+        method.contains("let headerOut1: number | null;")
+            && method.contains("if (rawHeaderOut1 === undefined) {")
+            && method.contains("headerOut1 = null;"),
+        "an absent optional header reads null, the value its tuple slot declares. Got: {method}"
+    );
+}
+
+#[test]
+fn an_optional_header_out_element_that_does_not_decode_answers_the_undeserializable_payload_fault()
+{
+    let written = http_client_of(OPTIONAL_HEADER_OUT_HTTP_SERVICE);
+    let method = method_body(&written, "getVersion");
+    assert!(
+        method.contains(
+            "if (Number.isNaN(Number(rawHeaderOut1[1])) || !Number.isInteger(Number(rawHeaderOut1[1]))) {"
+        ) && method.contains("\"a response header did not match its declared type\","),
+        "a present header failing to decode as its declared type faults the same way a required \
+         element does. Got: {method}"
     );
 }
 
