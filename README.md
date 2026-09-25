@@ -1770,7 +1770,8 @@ Outbound, the generated client validates the message it is about to send, so a m
           },
         };
       }
-      return transport.request<UsageServiceExpireCreditResult>("expire-credit", validated.data);
+      const { answered } = await transport.request<UsageServiceExpireCreditResult>("expire-credit", validated.data, []);
+      return answered;
     },
 ```
 
@@ -1782,7 +1783,7 @@ A one-way method runs the same check and has nowhere to put the result of it, so
       if (!validated.success) {
         throw usageServiceRefused(usageServiceOutboundFault("apply-bundle", validated.error.issues));
       }
-      await transport.notify("apply-bundle", validated.data);
+      await transport.notify("apply-bundle", validated.data, []);
     },
 ```
 
@@ -2011,10 +2012,37 @@ export interface UsageServiceImpl<Ctx> {
 ```typescript
 export function createUsageServiceDispatcher<Ctx>(
   impl: UsageServiceImpl<Ctx>,
-): (ctx: Ctx, operation: string, payload: unknown, headers?: ReadonlyArray<readonly [string, string]>, parts?: ReadonlyArray<readonly [string, unknown]>) => Promise<unknown> {
+): (
+  ctx: Ctx,
+  operation: string,
+  payload: unknown,
+  headers?: ReadonlyArray<readonly [string, string]>,
+  parts?: ReadonlyArray<readonly [string, unknown]>,
+) => Promise<UsageServiceDispatched | undefined> {
 ```
 
 Every member is required, so an implementation missing one is refused where it reaches `createUsageServiceDispatcher`. Every emitted name carries the service -- `UsageServiceFault`, `UsageServiceGetAvailableBalanceResult`, `UsageServiceClient`, and the fault's own brand symbol `usageServiceFaultSeal` -- because TypeScript has no per-service scope and a bundle is one flat file. Rust needs no such prefix, the generated module being the scope TypeScript lacks.
+
+**Headers cross the TypeScript seam both ways, each value JSON-encoded.** The client's transport seam carries them beside the payload, and `request` answers the reply's own headers beside the envelope:
+
+```typescript
+export type UsageServiceTransport = {
+  notify(
+    operation: string,
+    payload: unknown,
+    headers: ReadonlyArray<readonly [string, string]>,
+  ): Promise<void>;
+  request<Answered>(
+    operation: string,
+    payload: unknown,
+    headers: ReadonlyArray<readonly [string, string]>,
+  ): Promise<{ answered: Answered; headers: ReadonlyArray<readonly [string, string]> }>;
+};
+```
+
+The header text is the JSON encoding the Rust `amqp_rpc` transport writes into the AMQP headers table, so an AMQP transport hands the pairs over as they are. A transport written against the earlier seam -- `request` answering the reply alone -- answers `{ answered, headers }` now, with an empty list where the reply carried none. A client method takes one argument per `header_in` binding after the message and sends each JSON-encoded, an optional one holding `undefined` as `null`, which is what the Rust client writes for a `None`. A `header_out` or `error_header_out` reply is rejoined into the tuple the operation declared: the body off the envelope, each header off the reply's headers, checked against the element's own schema. An absent optional header reads as `null`, the value its tuple slot holds; a required one that is absent, is not JSON, or does not match its schema answers a `failed-validation` fault naming the header.
+
+The dispatcher reads each `header_in` value off the same JSON text, checked against the argument's own schema, and refuses a missing required one or a malformed one through the same framed fault a bad payload gets. It answers `UsageServiceDispatched` -- `{ answered, headers }`, the envelope that goes on the wire and the headers written beside it -- or `undefined` for a one-way operation that ran. A header tuple is split there: the body answers as the envelope's `value` or `error`, and each header element is written under its name, one holding `null` written nowhere. A transport that drove the dispatcher before writes `dispatched.answered` where it wrote the whole answer, and `dispatched.headers` into its own headers channel.
 
 Every reader ignores `value` for a `Result<(), E>` operation, and for a `Result<T, E>` operation whose declared success `T` is a unit struct declared above the service. `ts_client()`'s result type reads `{ ok: true; value: undefined }`, and `ts_service()`'s outcome type reads `{ ok: true }` with no `value` member at all.
 
@@ -2273,7 +2301,7 @@ A client adapter is the mirror: a small hand-written `Transport` implementation 
 
 **The TypeScript REST server.** `<Service>Schema::ts_http_service()` emits the route table, the plain-terms request and response shapes, a fault handler with the Rust defaults, and `create{Service}HttpDispatcher(impl, onFault?)` -- the TypeScript twin of `ROUTES`, `IncomingRequest`/`OutgoingResponse`, `FaultHandler` and `dispatch` above, doing its own method and path matching, placeholder and query coercion, and message assembly rather than taking an already-matched operation name. It names no framework: the adapter that binds it to a real listener is the hosting application's, exactly as the client adapter above is.
 
-Each bound `header_in` and `part(...)` arrives at the TypeScript implementation as its own argument after the message, in declaration order, the way the Rust trait method already receives it -- `create{Service}Dispatcher` looks it up, decodes it and refuses a missing required one through the same framed fault a bad payload gets, before the implementation is ever called, so an argument read there is as trustworthy as the message is. `get_version`'s `byte_range` above reaches its TypeScript implementation this way:
+Each bound `header_in` and `part(...)` arrives at the TypeScript implementation as its own argument after the message, in declaration order, the way the Rust trait method already receives it -- `create{Service}Dispatcher` looks it up, decodes it and refuses a missing required one through the same framed fault a bad payload gets, before the implementation is ever called, so an argument read there is as trustworthy as the message is. The REST server coerces each `header_in` value from its header text the way a query parameter is coerced, and hands it to the dispatcher JSON-encoded; a `header_out` or `error_header_out` value comes back from the dispatcher JSON-encoded and is written as header text again. `get_version`'s `byte_range` above reaches its TypeScript implementation this way:
 
 ```typescript
 // not compiled here
@@ -2286,7 +2314,7 @@ export interface DocumentServiceImpl<Ctx> {
 }
 ```
 
-The REST server itself keeps no presence check of its own: it passes the request's own `headers` and, on a service with at least one multipart operation, its own `parts` straight through to the dispatcher, exactly as it passes the assembled message.
+The REST server itself keeps no presence check of its own: it passes each `header_in` value it found and, on a service with at least one multipart operation, the request's own `parts` through to the dispatcher, exactly as it passes the assembled message.
 
 <!-- read from tests/service_schema_emitted_client_tests/run_node_http_service.rs, the Node `http` adapter driving the emitted dispatcher -->
 ```typescript
@@ -2502,7 +2530,7 @@ service_schema: operation `upload_document` declares a multipart file part, and 
 
 Both are checked at the declaration, ahead of every transport's own macros, so the mismatch never gets as far as a dispatcher whose `Reply::send` would not compile.
 
-**The TypeScript client and dispatcher attachment.** `<Service>Schema::ts_ws_client()` publishes the socket half beside `ts_client()`'s AMQP-shaped one: a `{Service}WsSocket` seam naming the four members every platform `WebSocket` already has (`send`, `close`, `addEventListener`/`removeEventListener` for `"message"` and `"close"`), so `new WebSocket(url)` plugs into `create{Service}WsTransport(socket, options)` with nothing written in between -- nothing generated here names `WebSocket` itself. `options.heartbeat` defaults to `{ intervalMs: 30_000, timeoutMs: 10_000 }`; `heartbeat: false` turns the probe off entirely. The returned transport owns that heartbeat and a per-socket correlation map, and checks every reply against the operation's own declared success or error schema before a caller sees it -- a mismatch folds into a `failed-validation` fault naming the first offending key, a unit success (having no schema to check) normalizes to `{ ok: true, value: undefined }` whatever `value` the reply carried -- and settles every request still waiting with a `transport-failure` fault on a missed `pong` or a closed socket, so no caller hangs. Binding is per socket: two request-and-reply services sharing one connection each call `create{Service}WsTransport(socket)` on their own, and each runs its own heartbeat.
+**The TypeScript client and dispatcher attachment.** `<Service>Schema::ts_ws_client()` publishes the socket half beside `ts_client()`'s AMQP-shaped one: a `{Service}WsSocket` seam naming the four members every platform `WebSocket` already has (`send`, `close`, `addEventListener`/`removeEventListener` for `"message"` and `"close"`), so `new WebSocket(url)` plugs into `create{Service}WsTransport(socket, options)` with nothing written in between -- nothing generated here names `WebSocket` itself. `options.heartbeat` defaults to `{ intervalMs: 30_000, timeoutMs: 10_000 }`; `heartbeat: false` turns the probe off entirely. The returned transport owns that heartbeat and a per-socket correlation map, and checks every reply against the operation's own declared success or error schema before a caller sees it -- a mismatch folds into a `failed-validation` fault naming the first offending key, a unit success (having no schema to check) normalizes to `{ ok: true, value: undefined }` whatever `value` the reply carried, and a header tuple is checked on its body alone -- and settles every request still waiting with a `transport-failure` fault on a missed `pong` or a closed socket, so no caller hangs. Binding is per socket: two request-and-reply services sharing one connection each call `create{Service}WsTransport(socket)` on their own, and each runs its own heartbeat.
 
 ```typescript
 import { createProbeServiceClient, createProbeServiceWsTransport } from "./bundle";
@@ -2519,7 +2547,9 @@ export async function read(): Promise<string> {
 }
 ```
 
-`<Service>Schema::ts_ws_service()` publishes the other half: `attach{Service}WsDispatcher(socket, ctx, impl, onFault)` reads every `notify` and `request` frame naming the service off `socket`, drives `impl` through the generated dispatcher, and answers a `request` with a `reply` frame -- `{ ok: true, value: null }` where the dispatcher answered nothing, which is what lets a `request` naming a one-way operation still get an answer instead of leaving its caller waiting. `onFault` is required rather than optional: a `notify` that fails inside the dispatcher has nobody waiting on a reply to carry the fault, so it has nowhere else to go.
+Headers ride the frame's own `headers` object both ways: the transport writes the seam's JSON-encoded pairs into a `request` or `notify` frame as the JSON values they encode, leaving the key off where there are none, and hands a `reply` frame's `headers` back beside the envelope -- what the Rust `headers_table` and `headers_of` do.
+
+`<Service>Schema::ts_ws_service()` publishes the other half: `attach{Service}WsDispatcher(socket, ctx, impl, onFault)` reads every `notify` and `request` frame naming the service off `socket`, drives `impl` through the generated dispatcher with the frame's own `headers`, and answers a `request` with a `reply` frame carrying the headers the dispatcher answered -- `{ ok: true, value: null }` where the dispatcher answered nothing, which is what lets a `request` naming a one-way operation still get an answer instead of leaving its caller waiting. `onFault` is required rather than optional: a `notify` that fails inside the dispatcher has nobody waiting on a reply to carry the fault, so it has nowhere else to go.
 
 ```typescript
 import {

@@ -113,15 +113,15 @@ export function createConversationClientServiceHttpDispatcher<Ctx>(
   onFault: ConversationClientServiceHttpFaultHandler = conversationClientServiceHttpDefaultFaultHandler,
 ): (ctx: Ctx, request: ConversationClientServiceHttpRequest) => Promise<ConversationClientServiceHttpResponse> {
   const dispatch = createConversationClientServiceDispatcher(impl);
-  const answer = async (ctx: Ctx, request: ConversationClientServiceHttpRequest, operation: string, payload: unknown, okStatus: number, errorStatus: (error: unknown) => number) => {
-    let answered: unknown;
+  const answer = async (ctx: Ctx, operation: string, payload: unknown, headers: ReadonlyArray<readonly [string, string]>, okStatus: number, errorStatus: (error: unknown) => number) => {
+    let dispatched: ConversationClientServiceDispatched | undefined;
     try {
-      answered = await dispatch(ctx, operation, payload, request.headers);
+      dispatched = await dispatch(ctx, operation, payload, headers);
     } catch (thrown) {
       return onFault(conversationClientServiceHttpFault(\"handler-panic\", operation, thrown instanceof Error ? thrown.message : String(thrown)));
     }
-    if (answered === undefined) return { status: okStatus, headers: [], body: new Uint8Array() };
-    const envelope = answered as { ok: true; value: unknown } | { ok: false; error: unknown };
+    if (dispatched === undefined) return { status: okStatus, headers: [], body: new Uint8Array() };
+    const envelope = dispatched.answered as { ok: true; value: unknown } | { ok: false; error: unknown };
     if (envelope.ok) return conversationClientServiceHttpJson(okStatus, [], envelope.value);
     const error = envelope.error as { isServiceFault?: true; fault?: ConversationClientServiceFault };
     if (typeof error === \"object\" && error !== null && error.isServiceFault === true && error.fault !== undefined) return onFault(error.fault);
@@ -134,7 +134,7 @@ export function createConversationClientServiceHttpDispatcher<Ctx>(
       const captured = conversationClientServiceHttpMatchPath([\"/v1/conversations/\", null], path);
       if (captured !== undefined) {
         const [conversation_id] = captured;
-        return answer(ctx, request, \"purge-conversation\", conversation_id, 204, () => 422);
+        return answer(ctx, \"purge-conversation\", conversation_id, [], 204, () => 422);
       }
     }
     // window: GET /v1/conversations/{conversation_id}/window \u{2014} a macro-generated message: placeholder-bound fields come from the path, the rest from the query string, each with its own coercion.
@@ -149,7 +149,7 @@ export function createConversationClientServiceHttpDispatcher<Ctx>(
           const raw = queryMap.get(\"limit\");
           message[\"limit\"] = raw === undefined ? null : conversationClientServiceHttpCoerceNumber(raw);
         }
-        return answer(ctx, request, \"window\", message, 200, (error) => {
+        return answer(ctx, \"window\", message, [], 200, (error) => {
           switch (WindowError$Variant(error)) {
             case \"NotFound\": return 404;
             default: return 422;
@@ -236,9 +236,8 @@ fn both_shapes_carry_uint8array_bodies_and_the_requests_own_content_type_is_neve
 fn a_single_scalar_placeholder_message_is_the_placeholder_itself() {
     let written = http_service_of(MIXED_HTTP_SERVICE);
     assert!(
-        written.contains(
-            "return answer(ctx, request, \"purge-document\", document_id, 204, () => 422);"
-        ),
+        written
+            .contains("return answer(ctx, \"purge-document\", document_id, [], 204, () => 422);"),
         "got: {written}"
     );
 }
@@ -301,7 +300,7 @@ fn a_fully_path_bound_generated_message_reads_no_query_beside_one_that_does() {
 fn an_operation_with_no_error_status_table_answers_422_and_calls_no_reader() {
     let written = http_service_of(QUERY_HTTP_SERVICE);
     assert!(
-        written.contains("return answer(ctx, request, \"search\", message, 200, () => 422);"),
+        written.contains("return answer(ctx, \"search\", message, [], 200, () => 422);"),
         "got: {written}"
     );
     assert!(
@@ -310,25 +309,32 @@ fn an_operation_with_no_error_status_table_answers_422_and_calls_no_reader() {
     );
 }
 
-/// Read and refused by the dispatcher itself, not this module — see `service_tests`.
+/// Coerced from its header text and JSON-encoded here, then read and refused by the dispatcher
+/// itself — see `service_tests`.
 #[test]
-fn a_header_in_binding_is_read_by_the_dispatcher_not_by_this_server() {
+fn a_header_in_binding_is_coerced_here_and_refused_by_the_dispatcher() {
     for source in [MIXED_HTTP_SERVICE, REQUIRED_HEADER_HTTP_SERVICE] {
         let written = http_service_of(source);
         assert!(
-            written.contains("operation: \"get-version\""),
-            "the route exists. Got: {written}"
-        );
-        assert!(
-            !written.contains("byte_range") && !written.contains("byteRange"),
-            "the header's own parameter is named nowhere in this module. Got: {written}"
+            written.contains(
+                "const byteRangeText = request.headers.find(([name]) => name.toLowerCase() === \
+                 \"range\")?.[1];\n        \
+                 if (byteRangeText !== undefined) headersIn.push([\"range\", \
+                 JSON.stringify(byteRangeText)]);"
+            ),
+            "the header's text is JSON-encoded for the dispatcher, and an absent one left out. \
+             Got: {written}"
         );
         assert!(
             !written.contains("a required header was not carried"),
             "this server keeps no presence check of its own: the dispatcher refuses a missing \
              required header. Got: {written}"
         );
-        assert!(written.contains("dispatch(ctx, "), "got: {written}");
+        assert!(
+            written.contains("dispatch(ctx, \"get-version\", message, headersIn);")
+                || written.contains("return answer(ctx, \"get-version\", message, headersIn, "),
+            "got: {written}"
+        );
     }
 }
 
@@ -337,9 +343,11 @@ fn a_header_in_binding_is_read_by_the_dispatcher_not_by_this_server() {
 fn a_bytes_reply_answers_the_raw_bytes_with_their_content_type_and_declared_headers() {
     let written = http_service_of(BYTES_HTTP_SERVICE);
     assert!(
-        written.contains("const [bytes, contentType, headerOut0] = envelope.value;")
+        written.contains("const [bytes, contentType] = envelope.value;")
             && written.contains(
-                "const headers: Array<[string, string]> = [];\n        \
+                "const headerOut0 = thumbnailClientServiceHttpRepliedHeader(replied, \
+                 \"x-document-id\") as string;\n        \
+                 const headers: Array<[string, string]> = [];\n        \
              {\n            \
              const rendered = contentType;\n            \
              if (!thumbnailClientServiceHttpLegalResponseHeaderValue(rendered)) {\n              \
@@ -393,7 +401,7 @@ fn a_multipart_operation_reads_its_own_fields_off_parts_and_hands_a_bound_part_t
         "the part's own parameter is named nowhere in this module. Got: {written}"
     );
     assert!(
-        written.contains("dispatch(ctx, operation, payload, request.headers, request.parts)"),
+        written.contains("dispatch(ctx, operation, payload, headers, parts)"),
         "a multipart service hands the request's own parts to the dispatcher beside its \
          headers. Got: {written}"
     );
@@ -411,7 +419,7 @@ fn a_bodyless_operation_with_no_field_assembles_the_empty_object_not_null() {
         ",
     );
     assert!(
-        written.contains("return answer(ctx, request, \"pulse\", {}, 200, () => 422);"),
+        written.contains("return answer(ctx, \"pulse\", {}, [], 200, () => 422);"),
         "got: {written}"
     );
     assert!(!written.contains(", null,"), "got: {written}");
@@ -422,7 +430,7 @@ fn a_bodyless_operation_with_no_field_assembles_the_empty_object_not_null() {
 fn a_unit_success_reaches_the_same_answer_closure_as_any_other_reply() {
     let written = http_service_of(TS_UNIT_SUCCESS_SERVICE);
     assert!(
-        written.contains("return answer(ctx, request, \"ping\", message, 204, () => 422);"),
+        written.contains("return answer(ctx, \"ping\", message, [], 204, () => 422);"),
         "got: {written}"
     );
 }

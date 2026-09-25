@@ -79,7 +79,7 @@ fn a_refused_notify_reaches_on_fault_and_a_notify_that_ran_replies_to_nobody() {
     assert!(found.is_some(), "no notify branch found. Got: {written}");
     let notify_branch = found.unwrap();
     assert!(
-        notify_branch.contains("if (answered === undefined) return;")
+        notify_branch.contains("if (dispatched === undefined) return;")
             && notify_branch.contains("onFault(error.fault);"),
         "a notify that the dispatcher answered nothing for is not a refusal; one that answered a \
          framed fault has nobody else to tell. Got: {notify_branch}"
@@ -96,15 +96,41 @@ fn a_request_is_answered_with_a_reply_frame_and_a_one_way_answer_is_synthesized(
     let written = ws_service_of(MIXED_SERVICE);
     assert!(
         written.contains(
-            "const envelope = answered === undefined ? { ok: true, value: null } : (answered as \
-             object);"
+            "const envelope = dispatched === undefined ? { ok: true, value: null } : \
+             (dispatched.answered as object);"
         ),
         "a one-way operation's dispatcher answers `undefined`, and a request naming it still \
          gets a reply rather than being left to hang. Got: {written}"
     );
     assert!(
         written.contains(
-            "socket.send(JSON.stringify({ kind: \"reply\", id, service, ...envelope }));"
+            "socket.send(JSON.stringify({ kind: \"reply\", id, service, ...envelope, ...replied \
+             }));"
+        ),
+        "got: {written}"
+    );
+}
+
+/// Headers cross both ways under the frame's own `headers`: read into the dispatcher's pairs off
+/// the inbound frame, and written back from the dispatcher's own onto the reply.
+#[test]
+fn the_frame_headers_reach_the_dispatcher_and_its_headers_reach_the_reply() {
+    let written = ws_service_of(MIXED_SERVICE);
+    assert!(
+        written.contains(
+            "const { kind, id, service: named, operation, payload, headers } = frame as \
+             Record<string, unknown>;"
+        ) && written.contains("const carried = usageServiceWsHeaderPairs(headers);")
+            && written
+                .matches("dispatch(ctx, operation, payload, carried)")
+                .count()
+                == 2,
+        "a notify and a request both hand the frame's headers to the dispatcher. Got: {written}"
+    );
+    assert!(
+        written.contains(
+            "const replied = usageServiceWsHeaderTable(dispatched === undefined ? [] : \
+             dispatched.headers);"
         ),
         "got: {written}"
     );

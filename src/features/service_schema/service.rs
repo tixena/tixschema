@@ -38,13 +38,69 @@ use super::result::result_name;
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
-    HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type, option_inner,
+    BodyKind, HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type, option_inner,
 };
 use core::fmt::Write as _;
+use syn::Type;
+
+/// One side of [`header_tuple_split`].
+struct SplitSide<'shape> {
+    /// The answered envelope around the tuple's body: what goes before it, and after it.
+    envelope: (&'static str, &'static str),
+    ident_prefix: &'static str,
+    indent: &'static str,
+    names: &'shape [String],
+    tuple: &'static str,
+    types: Vec<&'shape Type>,
+}
+
+impl SplitSide<'_> {
+    /// Destructures the tuple, pushes each named header, and answers the envelope with the body
+    /// in place of the tuple. With no header named, the outcome is answered as it is.
+    fn stmt(&self, body_width: usize) -> String {
+        let margin = self.indent;
+        if self.names.is_empty() {
+            return format!("{margin}return {{ answered: outcome, headers: [] }};\n");
+        }
+        let body: Vec<String> = (0..body_width)
+            .map(|index| format!("body{index}"))
+            .collect();
+        let idents: Vec<String> = (0..self.names.len())
+            .map(|index| format!("{}{index}", self.ident_prefix))
+            .collect();
+        let mut stmt = format!(
+            "{margin}const [{}, {}] = {};\n\
+             {margin}const replied: Array<[string, string]> = [];\n",
+            body.join(", "),
+            idents.join(", "),
+            self.tuple,
+        );
+        for ((name, ty), ident) in self.names.iter().zip(&self.types).zip(&idents) {
+            let push = format!("replied.push([\"{name}\", JSON.stringify({ident})]);");
+            if option_inner(ty).is_some() {
+                let _ = writeln!(stmt, "{margin}if ({ident} != null) {push}");
+            } else {
+                let _ = writeln!(stmt, "{margin}{push}");
+            }
+        }
+        let answered = if body_width == 1 {
+            body.join("")
+        } else {
+            format!("[{}]", body.join(", "))
+        };
+        let (before, after) = self.envelope;
+        let _ = writeln!(
+            stmt,
+            "{margin}return {{ answered: {before}{answered}{after}, headers: replied }};"
+        );
+        stmt
+    }
+}
 
 pub fn emit(service: &ServiceDef) -> Vec<String> {
     let mut published = outcome_types(service);
     published.push(interface(service));
+    published.push(dispatched_type(&service.ident.to_string()));
     published.extend(fault_helpers(service));
     published.push(dispatcher(service));
     published
@@ -66,19 +122,62 @@ fn arm(service: &ServiceDef, operation: &OperationDef) -> String {
         OperationOutcome::OneWay => {
             format!("        await impl.{call}({call_args});\n        return undefined;")
         }
+        OperationOutcome::Reply { error, success }
+            if !shape.header_out.is_empty() || !shape.error_header_out.is_empty() =>
+        {
+            let mut split = format!("        const outcome = await impl.{call}({call_args});\n");
+            split.push_str(header_tuple_split(&shape, error, success).trim_end());
+            split
+        }
         OperationOutcome::Reply {
             error: _error,
             success: _success,
         } => {
-            format!("        return impl.{call}({call_args});")
+            format!("        return {{ answered: await impl.{call}({call_args}), headers: [] }};")
         }
     };
     format!("      case \"{wire}\": {{\n{received}{bindings}{answering}\n      }}")
 }
 
+/// Splits an outcome whose success or declared error is a header tuple: the body answers as the
+/// envelope's `value` or `error`, and each header element is written JSON-encoded under its
+/// declared name, an optional one holding `null` written nowhere. A body two elements wide —
+/// `body = "bytes"`'s bytes and content type — stays a pair, the value the operation would answer
+/// with no header declared.
+fn header_tuple_split(shape: &HttpShape, error: &Type, success: &Type) -> String {
+    let body_width = if matches!(shape.body_kind, BodyKind::Bytes) {
+        2
+    } else {
+        1
+    };
+    let success_side = SplitSide {
+        envelope: ("{ ok: true, value: ", " }"),
+        ident_prefix: "headerOut",
+        indent: "          ",
+        names: &shape.header_out,
+        tuple: "outcome.value",
+        types: message::header_types(shape.header_out.len(), success),
+    };
+    let error_side = SplitSide {
+        envelope: ("{ ok: false, error: ", " }"),
+        ident_prefix: "errorHeaderOut",
+        indent: "        ",
+        names: &shape.error_header_out,
+        tuple: "outcome.error",
+        types: message::header_types(shape.error_header_out.len(), error),
+    };
+    format!(
+        "        if (outcome.ok) {{\n{}        }}\n{}",
+        success_side.stmt(body_width),
+        error_side.stmt(1),
+    )
+}
+
 /// The statements that look up and decode each `header_in` and `part` binding, refusing through
 /// the same framed fault a bad payload gets where a required one is missing — mirrors the Rust
-/// dispatcher's own `header_in_let`/`multipart_part_let`.
+/// dispatcher's own `header_in_reads`/`multipart_part_let`. A header's text is the JSON encoding
+/// both the `ws_rpc` frame and the AMQP headers table carry, checked against the header's own
+/// schema.
 fn binding_reads(
     service: &ServiceDef,
     operation: &OperationDef,
@@ -91,31 +190,18 @@ fn binding_reads(
     let mut bound = Vec::new();
     for header in &shape.header_in {
         let name = RenameRule::CamelCase.apply_to_field(&header.parameter.to_string());
-        let text = format!("{name}Text");
-        let lower = header.name.to_lowercase();
-        let _ = writeln!(
+        let read = format!("{name}Header");
+        let schema = get_field_def(&name, &header.ty, "").zod_type();
+        let _ = write!(
             stmt,
-            "        const {text} = headers.find(([name]) => name.toLowerCase() === \
-             \"{lower}\")?.[1];"
+            "        const {read} = {prefix}RequestHeader(\"{wire}\", headers, \"{header_name}\", \
+             {schema});\n        \
+             if (!{read}.ok) {{\n          \
+             return {prefix}Framed({read}.fault);\n        \
+             }}\n",
+            header_name = header.name,
         );
-        let decode = message::decode_ts_expr(&header.ty, &text, &prefix);
-        if option_inner(&header.ty).is_some() {
-            let _ = writeln!(
-                stmt,
-                "        const {name} = {text} === undefined ? undefined : {decode};"
-            );
-        } else {
-            let _ = write!(
-                stmt,
-                "        if ({text} === undefined) {{\n          \
-                 return {prefix}Framed({prefix}InboundFault(\"{wire}\", [{{ path: \
-                 [\"{header_name}\"], message: \"a required header was not carried\" }}]));\n        \
-                 }}\n",
-                header_name = header.name,
-            );
-            let _ = writeln!(stmt, "        const {name} = {decode};");
-        }
-        bound.push(name);
+        bound.push(format!("{read}.value"));
     }
     for part in &shape.multipart_parts {
         let name = RenameRule::CamelCase.apply_to_field(&part.parameter.to_string());
@@ -138,9 +224,29 @@ fn binding_reads(
     (stmt, bound)
 }
 
+/// What the dispatcher answers a request-and-reply operation with: the envelope that goes on the
+/// wire, and the headers written beside it.
+fn dispatched_type(named: &str) -> String {
+    format!(
+        "/**\n \
+         * What a `{named}` dispatcher answers a request with: the envelope that goes on the wire \
+         —\n \
+         * the operation's own result envelope, or a fault framed inside a failure arm — and the \
+         headers\n \
+         * written beside it, each value JSON-encoded. A transport writes both: a `ws_rpc` reply \
+         frame\n \
+         * under `headers`, an AMQP reply as the message's own headers.\n \
+         */\n\
+         export type {named}Dispatched = {{\n  \
+         answered: unknown;\n  \
+         headers: ReadonlyArray<readonly [string, string]>;\n\
+         }};"
+    )
+}
+
 /// The factory: an implementation in, a dispatch function out. It answers with what the transport
-/// puts on the wire — the operation's envelope, or a fault framed inside a failure arm — and with
-/// nothing at all for a one-way operation that ran.
+/// puts on the wire — the operation's envelope, or a fault framed inside a failure arm, beside the
+/// headers to write — and with nothing at all for a one-way operation that ran.
 fn dispatcher(service: &ServiceDef) -> String {
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
@@ -156,17 +262,22 @@ fn dispatcher(service: &ServiceDef) -> String {
          *\n \
          * The operation is read from the argument the transport passed beside the payload, never \
          out\n \
-         * of the payload itself. What comes back is what goes on the wire: the operation's own \
-         result\n \
-         * envelope, a fault framed inside a failure arm, or nothing at all where the operation \
-         expects\n \
-         * no reply.\n \
+         * of the payload itself, and each `header_in` value from the headers beside it, \
+         JSON-encoded as\n \
+         * a `ws_rpc` frame and an AMQP message both carry them. What comes back is what goes on \
+         the\n \
+         * wire: the envelope and its headers, or nothing at all where the operation expects no \
+         reply.\n \
          */\n\
          export function create{named}Dispatcher<Ctx>(\n  \
          impl: {named}Impl<Ctx>,\n\
-         ): (ctx: Ctx, operation: string, payload: unknown, headers?: ReadonlyArray<readonly \
-         [string, string]>, parts?: ReadonlyArray<readonly [string, unknown]>) => \
-         Promise<unknown> {{\n  \
+         ): (\n  \
+         ctx: Ctx,\n  \
+         operation: string,\n  \
+         payload: unknown,\n  \
+         headers?: ReadonlyArray<readonly [string, string]>,\n  \
+         parts?: ReadonlyArray<readonly [string, unknown]>,\n\
+         ) => Promise<{named}Dispatched | undefined> {{\n  \
          return async (ctx, operation, payload, headers = [], parts = []) => {{\n    \
          switch (operation) {{\n\
          {arms}\n      \
@@ -188,14 +299,13 @@ fn fault_helpers(service: &ServiceDef) -> Vec<String> {
             "/**\n \
              * How a fault reaches a caller: inside the failure arm, behind the literal a caller \
              in\n \
-             * either language narrows on. It is the shape every `{named}` result type declares, \
-             and\n \
-             * the shape the Rust dispatcher's transport frames.\n \
+             * either language narrows on, with no header beside it. It is the shape every \
+             `{named}`\n \
+             * result type declares, and the shape the Rust dispatcher's transport frames.\n \
              */\n\
-             function {prefix}Framed(\n  \
-             fault: {named}Fault,\n\
-             ): {{ ok: false; error: {{ isServiceFault: true; fault: {named}Fault }} }} {{\n  \
-             return {{ ok: false, error: {{ isServiceFault: true, fault }} }};\n\
+             function {prefix}Framed(fault: {named}Fault): {named}Dispatched {{\n  \
+             return {{ answered: {{ ok: false, error: {{ isServiceFault: true, fault }} }}, \
+             headers: [] }};\n\
              }}"
         ),
         format!(
@@ -217,7 +327,51 @@ fn fault_helpers(service: &ServiceDef) -> Vec<String> {
         ),
     ];
     helpers.extend(inbound_fault(service));
+    if service
+        .operations
+        .iter()
+        .any(|operation| !HttpShape::of(operation).header_in.is_empty())
+    {
+        helpers.push(request_header_fn(&named, &prefix));
+    }
     helpers
+}
+
+/// Reads one `header_in` value off the JSON text a transport handed over, checked against the
+/// header's own schema: an absent header reads as `undefined`, which only an optional binding
+/// accepts. Refuses through [`inbound_fault`], naming the header — the Rust dispatcher's own
+/// `decoded_header` read.
+fn request_header_fn(named: &str, prefix: &str) -> String {
+    format!(
+        "/**\n \
+         * Reads one `header_in` value off the JSON text the transport handed over, checked \
+         against\n \
+         * the header's own schema. An absent header reads as `undefined`, which only an optional\n \
+         * binding accepts.\n \
+         */\n\
+         function {prefix}RequestHeader<Parsed>(\n  \
+         operation: string,\n  \
+         headers: ReadonlyArray<readonly [string, string]>,\n  \
+         name: string,\n  \
+         schema: ZodType<Parsed>,\n\
+         ): {{ ok: true; value: Parsed }} | {{ ok: false; fault: {named}Fault }} {{\n  \
+         const carried = headers.find(([candidate]) => candidate.toLowerCase() === \
+         name.toLowerCase())?.[1];\n  \
+         let issues: ReadonlyArray<{{ path: ReadonlyArray<PropertyKey>; message: string }}>;\n  \
+         try {{\n    \
+         const parsed = schema.safeParse(carried === undefined ? undefined : \
+         JSON.parse(carried));\n    \
+         if (parsed.success) return {{ ok: true, value: parsed.data }};\n    \
+         issues = carried === undefined\n      \
+         ? [{{ path: [name], message: \"a required header was not carried\" }}]\n      \
+         : parsed.error.issues.map((issue) => ({{ path: [name, ...issue.path], message: \
+         issue.message }}));\n  \
+         }} catch (rejected) {{\n    \
+         issues = [{{ path: [name], message: String(rejected) }}];\n  \
+         }}\n  \
+         return {{ ok: false, fault: {prefix}InboundFault(operation, issues) }};\n\
+         }}"
+    )
 }
 
 /// The fault a payload that will not become the operation's message produces, under the one kind

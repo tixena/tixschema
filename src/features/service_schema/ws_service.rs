@@ -22,6 +22,7 @@
 //! only there too. The socket type it attaches to is [`super::ws_client`]'s own, so a bundle names
 //! `ts_ws_client()` before `ts_ws_service()`.
 
+use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::ServiceDef;
 
 pub fn emit(service: &ServiceDef) -> Vec<String> {
@@ -29,21 +30,25 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
 }
 
 /// Reads every `notify` and `request` frame naming this service off `socket`, drives `impl`
-/// through the generated dispatcher, and answers a `request` with a `reply` frame — `{ ok: true,
-/// value: null }` where the dispatcher answered nothing. A refused `notify` has nobody to reply to
-/// and reaches `onFault` instead. A frame naming another service, and text that is not JSON, are
-/// both dropped before either is asked. Returns the function that detaches the listener.
+/// through the generated dispatcher with the frame's own headers, and answers a `request` with a
+/// `reply` frame carrying the dispatcher's headers — `{ ok: true, value: null }` where the
+/// dispatcher answered nothing. A refused `notify` has nobody to reply to and reaches `onFault`
+/// instead. A frame naming another service, and text that is not JSON, are both dropped before
+/// either is asked. Returns the function that detaches the listener.
 fn attach_dispatcher_fn(service: &ServiceDef) -> String {
     let named = service.ident.to_string();
+    let prefix = RenameRule::CamelCase.apply_to_variant(&named);
     format!(
         "/**\n \
          * Reads every `notify` and `request` frame naming `{named}` off `socket`, drives `impl` \
          through\n \
          * the generated dispatcher, and answers a `request` with a `reply` frame — `{{ ok: true, \
          value:\n \
-         * null }}` where the dispatcher answered nothing. A refused `notify` has nobody to reply \
-         to and\n \
-         * reaches `onFault` instead. Returns the function that detaches the listener.\n \
+         * null }}` where the dispatcher answered nothing. Headers cross both ways under the \
+         frame's own\n \
+         * `headers`. A refused `notify` has nobody to reply to and reaches `onFault` instead. \
+         Returns\n \
+         * the function that detaches the listener.\n \
          */\n\
          export function attach{named}WsDispatcher<Ctx>(\n  \
          socket: {named}WsSocket,\n  \
@@ -57,23 +62,27 @@ fn attach_dispatcher_fn(service: &ServiceDef) -> String {
          let frame: unknown;\n    \
          try {{ frame = JSON.parse(String(event.data)); }} catch {{ return; }}\n    \
          if (typeof frame !== \"object\" || frame === null) return;\n    \
-         const {{ kind, id, service: named, operation, payload }} = frame as Record<string, \
-         unknown>;\n    \
+         const {{ kind, id, service: named, operation, payload, headers }} = frame as \
+         Record<string, unknown>;\n    \
          if (named !== service || typeof operation !== \"string\") return;\n    \
+         const carried = {prefix}WsHeaderPairs(headers);\n    \
          if (kind === \"notify\") {{\n      \
-         void dispatch(ctx, operation, payload).then((answered) => {{\n        \
-         if (answered === undefined) return;\n        \
-         const {{ error }} = answered as {{ error: {{ isServiceFault: true; fault: {named}Fault \
-         }} }};\n        \
+         void dispatch(ctx, operation, payload, carried).then((dispatched) => {{\n        \
+         if (dispatched === undefined) return;\n        \
+         const {{ error }} = dispatched.answered as {{ error: {{ isServiceFault: true; fault: \
+         {named}Fault }} }};\n        \
          onFault(error.fault);\n      \
          }});\n      \
          return;\n    \
          }}\n    \
          if (kind !== \"request\" || typeof id !== \"string\") return;\n    \
-         void dispatch(ctx, operation, payload).then((answered) => {{\n      \
-         const envelope = answered === undefined ? {{ ok: true, value: null }} : (answered as \
-         object);\n      \
-         socket.send(JSON.stringify({{ kind: \"reply\", id, service, ...envelope }}));\n    \
+         void dispatch(ctx, operation, payload, carried).then((dispatched) => {{\n      \
+         const envelope = dispatched === undefined ? {{ ok: true, value: null }} : \
+         (dispatched.answered as object);\n      \
+         const replied = {prefix}WsHeaderTable(dispatched === undefined ? [] : \
+         dispatched.headers);\n      \
+         socket.send(JSON.stringify({{ kind: \"reply\", id, service, ...envelope, ...replied \
+         }}));\n    \
          }});\n  \
          }};\n  \
          socket.addEventListener(\"message\", onMessage);\n  \

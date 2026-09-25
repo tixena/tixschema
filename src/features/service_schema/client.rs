@@ -42,8 +42,59 @@
 use super::fault;
 use super::message;
 use super::result::result_name;
+use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
-use crate::service_schema::parse::{OperationDef, OperationOutcome, ServiceDef, is_unit_type};
+use crate::service_schema::parse::{
+    HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type, option_inner,
+};
+use core::fmt::Write as _;
+use core::iter::once;
+use syn::Type;
+
+/// One side of a header-tuple reply: the body as it arrived, and the headers `names` binds,
+/// rejoined into the tuple the operation declared.
+struct Rejoined<'shape> {
+    /// The returned envelope around the rejoined tuple: what goes before it, and after it.
+    answered: (&'static str, &'static str),
+    body: &'static str,
+    ident_prefix: &'static str,
+    indent: &'static str,
+    names: &'shape [String],
+    types: Vec<&'shape Type>,
+}
+
+impl Rejoined<'_> {
+    /// Reads each named header back off `replied`, returning the fault a missing or malformed one
+    /// produces, then returns the envelope with the body rejoined to them. With no header named,
+    /// the body is returned as it arrived.
+    fn stmt(&self, prefix: &str, wire: &str) -> String {
+        let margin = self.indent;
+        let mut stmt = String::new();
+        let mut joined = vec![self.body.to_owned()];
+        for (index, (name, ty)) in self.names.iter().zip(&self.types).enumerate() {
+            let ident = format!("{}{index}", self.ident_prefix);
+            let schema = get_field_def("value", ty, "").zod_slot_type();
+            let _ = write!(
+                stmt,
+                "{margin}const {ident} = {prefix}ReplyHeader(\"{wire}\", replied, \"{name}\", \
+                 {schema});\n\
+                 {margin}if (!{ident}.ok) {{\n\
+                 {margin}  return {{ ok: false, error: {{ isServiceFault: true, fault: \
+                 {ident}.fault }} }};\n\
+                 {margin}}}\n"
+            );
+            joined.push(format!("{ident}.value"));
+        }
+        let rejoined = if self.names.is_empty() {
+            self.body.to_owned()
+        } else {
+            format!("[{}]", joined.join(", "))
+        };
+        let (before, after) = self.answered;
+        let _ = writeln!(stmt, "{margin}return {before}{rejoined}{after};");
+        stmt
+    }
+}
 
 pub fn emit(service: &ServiceDef) -> Vec<String> {
     let mut published = vec![
@@ -65,10 +116,10 @@ fn client_type(service: &ServiceDef) -> String {
         .iter()
         .map(|operation| {
             format!(
-                "{}\n  {}(req: {}): Promise<{}>;",
+                "{}\n  {}({}): Promise<{}>;",
                 method_doc(&named, operation),
                 operation.ts_name,
-                message::typename(operation),
+                method_params(operation),
                 answers(&named, operation)
             )
         })
@@ -79,9 +130,11 @@ fn client_type(service: &ServiceDef) -> String {
          * A `{named}` caller, over any transport that can send an operation name beside a \
          payload.\n \
          *\n \
-         * Every operation the service declares has a method here. A request-and-reply operation \
-         answers\n \
-         * its own result type; a one-way operation answers nothing beyond the send.\n \
+         * Every operation the service declares has a method here, taking the message and then \
+         one\n \
+         * argument per `header_in` binding. A request-and-reply operation answers its own result \
+         type;\n \
+         * a one-way operation answers nothing beyond the send.\n \
          */\n\
          export type {named}Client = {{\n\
          {methods}\n\
@@ -152,6 +205,12 @@ fn fault_helpers(service: &ServiceDef) -> Vec<String> {
              operation,"
         )
     )];
+    if service.operations.iter().any(|operation| {
+        let shape = HttpShape::of(operation);
+        !shape.header_out.is_empty() || !shape.error_header_out.is_empty()
+    }) {
+        helpers.extend(reply_header_helpers(&named, &prefix));
+    }
     if service
         .operations
         .iter()
@@ -202,19 +261,36 @@ fn answers(service: &str, operation: &OperationDef) -> String {
 /// A unit success normalizes `value` to `undefined` here, whatever the transport handed back.
 fn method(service: &ServiceDef, operation: &OperationDef) -> String {
     let named = service.ident.to_string();
+    let prefix = RenameRule::CamelCase.apply_to_variant(&named);
     let wire = &operation.wire_name;
     let call = &operation.ts_name;
+    let shape = HttpShape::of(operation);
+    let arguments = once("req".to_owned())
+        .chain(
+            shape
+                .header_in
+                .iter()
+                .map(|header| RenameRule::CamelCase.apply_to_field(&header.parameter.to_string())),
+        )
+        .collect::<Vec<_>>()
+        .join(", ");
     let checked = validation(service, operation);
+    let (headers_build, headers) = header_in_build_stmt(&shape);
     let sending = match &operation.outcome {
         OperationOutcome::OneWay => {
-            format!("      await transport.notify(\"{wire}\", validated.data);")
+            format!("      await transport.notify(\"{wire}\", validated.data, {headers});")
+        }
+        OperationOutcome::Reply { error, success }
+            if !shape.header_out.is_empty() || !shape.error_header_out.is_empty() =>
+        {
+            header_tuple_answer(&named, &prefix, wire, &shape, error, success, &headers)
         }
         OperationOutcome::Reply {
             error: _error,
             success,
         } if is_unit_type(success) => format!(
-            "      const answered = await transport.request<{result}>(\"{wire}\", \
-             validated.data);\n      \
+            "      const {{ answered }} = await transport.request<{result}>(\"{wire}\", \
+             validated.data, {headers});\n      \
              return answered.ok === true ? {{ ok: true, value: undefined }} : answered;",
             result = answers(&named, operation)
         ),
@@ -222,11 +298,112 @@ fn method(service: &ServiceDef, operation: &OperationDef) -> String {
             error: _error,
             success: _success,
         } => format!(
-            "      return transport.request<{}>(\"{wire}\", validated.data);",
+            "      const {{ answered }} = await transport.request<{}>(\"{wire}\", \
+             validated.data, {headers});\n      \
+             return answered;",
             answers(&named, operation)
         ),
     };
-    format!("    async {call}(req) {{\n{checked}{sending}\n    }},")
+    format!("    async {call}({arguments}) {{\n{checked}{headers_build}{sending}\n    }},")
+}
+
+/// The parameter list the client type's member declares: the message, then one argument per
+/// `header_in` binding, named and typed as the REST client's own method takes it.
+fn method_params(operation: &OperationDef) -> String {
+    let shape = HttpShape::of(operation);
+    once(format!("req: {}", message::typename(operation)))
+        .chain(shape.header_in.iter().map(|header| {
+            let name = RenameRule::CamelCase.apply_to_field(&header.parameter.to_string());
+            let ty = get_field_def(&name, &header.ty, "").typescript_typename();
+            format!("{name}: {ty}")
+        }))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// The outgoing header list, one JSON-encoded entry per `header_in` binding, and the expression
+/// the transport call passes: `headers`, or an empty list for an operation binding none. An
+/// optional binding holding `undefined` goes out as `null`, as the Rust client writes a `None`.
+fn header_in_build_stmt(shape: &HttpShape) -> (String, String) {
+    if shape.header_in.is_empty() {
+        return (String::new(), "[]".to_owned());
+    }
+    let mut stmt = String::from("      const headers: Array<[string, string]> = [];\n");
+    for header in &shape.header_in {
+        let name = &header.name;
+        let parameter = RenameRule::CamelCase.apply_to_field(&header.parameter.to_string());
+        let value = if option_inner(&header.ty).is_some() {
+            format!("{parameter} ?? null")
+        } else {
+            parameter
+        };
+        let _ = writeln!(
+            stmt,
+            "      headers.push([\"{name}\", JSON.stringify({value})]);"
+        );
+    }
+    (stmt, "headers".to_owned())
+}
+
+/// A reply whose success or declared error is a header tuple: the body arrives as the envelope's
+/// `value` or `error`, and each header element is read back off the reply's own headers and
+/// rejoined into the tuple the operation declared.
+fn header_tuple_answer(
+    named: &str,
+    prefix: &str,
+    wire: &str,
+    shape: &HttpShape,
+    error: &Type,
+    success: &Type,
+    headers: &str,
+) -> String {
+    let success_body = message::body_type(shape.header_out.len(), success);
+    let error_body = message::body_type(shape.error_header_out.len(), error);
+    let value_ty = if is_unit_type(success_body) {
+        "undefined".to_owned()
+    } else {
+        get_field_def("value", success_body, "").typescript_typename()
+    };
+    let error_ty = get_field_def("error", error_body, "").typescript_typename();
+    let mut stmt = format!(
+        "      const {{ answered, headers: replied }} = await transport.request<\n        \
+         | {{ ok: true; value: {value_ty} }}\n        \
+         | {{ ok: false; error: {error_ty} | {{ isServiceFault: true; fault: {named}Fault }} }}\n      \
+         >(\"{wire}\", validated.data, {headers});\n      \
+         if (answered.ok) {{\n"
+    );
+    let value = if is_unit_type(success_body) {
+        "undefined"
+    } else {
+        "answered.value"
+    };
+    let success_side = Rejoined {
+        answered: ("{ ok: true, value: ", " }"),
+        body: value,
+        ident_prefix: "headerOut",
+        indent: "        ",
+        names: &shape.header_out,
+        types: message::header_types(shape.header_out.len(), success),
+    };
+    stmt.push_str(&success_side.stmt(prefix, wire));
+    stmt.push_str(
+        "      }\n      \
+         const error = answered.error;\n      \
+         if (typeof error === \"object\" && error !== null && \"isServiceFault\" in error) {\n        \
+         return { ok: false, error };\n      \
+         }\n",
+    );
+    let error_side = Rejoined {
+        answered: ("{ ok: false, error: ", " }"),
+        body: "error",
+        ident_prefix: "errorHeaderOut",
+        indent: "      ",
+        names: &shape.error_header_out,
+        types: message::header_types(shape.error_header_out.len(), error),
+    };
+    stmt.push_str(&error_side.stmt(prefix, wire));
+    stmt.truncate(stmt.trim_end().len());
+    stmt
 }
 
 /// The method's own `JSDoc`: one line where the signature already says everything, a block where
@@ -309,9 +486,64 @@ fn throws_clause(service: &str, operation: &OperationDef) -> String {
     }
 }
 
-/// The transport seam: an operation name, a payload, and an answer. Emitted per service for the
-/// same reason the Rust side declares one `Transport` trait per service module — TypeScript has no
-/// per-service scope to keep two of them apart.
+/// The reader a header-tuple reply goes through for each declared header, and the fault it answers
+/// with where one is missing or will not parse as its declared type — the same failure the Rust
+/// client reports for a reply header it cannot decode.
+fn reply_header_helpers(named: &str, prefix: &str) -> Vec<String> {
+    vec![
+        format!(
+            "/**\n \
+             * The fault a `{named}` reply produces when a header its operation declared is \
+             missing, or\n \
+             * will not become the header's declared type.\n \
+             */\n\
+             function {prefix}ReplyHeaderFault(operation: string, name: string, detail: string): \
+             {named}Fault {{\n\
+             {minted}\n\
+             }}",
+            minted = fault::minted(
+                named,
+                "    detail,\n    \
+                 field: name,\n    \
+                 kind: \"failed-validation\",\n    \
+                 operation,"
+            )
+        ),
+        format!(
+            "/**\n \
+             * Reads one declared reply header off the JSON text the transport handed back, \
+             checked\n \
+             * against the header's own schema. An absent header reads as `null`, which only an\n \
+             * optional header accepts — the value its slot in the declared tuple holds.\n \
+             */\n\
+             function {prefix}ReplyHeader<Parsed>(\n  \
+             operation: string,\n  \
+             headers: ReadonlyArray<readonly [string, string]>,\n  \
+             name: string,\n  \
+             schema: ZodType<Parsed>,\n\
+             ): {{ ok: true; value: Parsed }} | {{ ok: false; fault: {named}Fault }} {{\n  \
+             const carried = headers.find(([candidate]) => candidate.toLowerCase() === \
+             name.toLowerCase())?.[1];\n  \
+             let detail: string;\n  \
+             try {{\n    \
+             const parsed = schema.safeParse(carried === undefined ? null : \
+             JSON.parse(carried));\n    \
+             if (parsed.success) return {{ ok: true, value: parsed.data }};\n    \
+             detail = carried === undefined\n      \
+             ? \"a declared reply header was missing\"\n      \
+             : parsed.error.issues.map((issue) => issue.message).join(\"; \");\n  \
+             }} catch (rejected) {{\n    \
+             detail = String(rejected);\n  \
+             }}\n  \
+             return {{ ok: false, fault: {prefix}ReplyHeaderFault(operation, name, detail) }};\n\
+             }}"
+        ),
+    ]
+}
+
+/// The transport seam: an operation name, a payload, the headers beside it, and an answer.
+/// Emitted per service for the same reason the Rust side declares one `Transport` trait per
+/// service module — TypeScript has no per-service scope to keep two of them apart.
 fn transport_type(service: &str) -> String {
     format!(
         "/**\n \
@@ -324,12 +556,26 @@ fn transport_type(service: &str) -> String {
          * a transport merges its own fields — a correlation id, an error flag — into the object \
          before\n \
          * serializing it, and neither is reachable behind an encoded buffer.\n \
+         *\n \
+         * Headers travel beside the payload both ways, each value JSON-encoded: a request's \
+         `header_in`\n \
+         * values out, and a reply's `header_out` or `error_header_out` values back. An AMQP \
+         transport\n \
+         * carries them as the message's own headers, as they are.\n \
          */\n\
          export type {service}Transport = {{\n  \
          /** Sends a message no reply is expected for. */\n  \
-         notify(operation: string, payload: unknown): Promise<void>;\n  \
-         /** Sends a message and answers with the reply the far side wrote. */\n  \
-         request<Answered>(operation: string, payload: unknown): Promise<Answered>;\n\
+         notify(\n    \
+         operation: string,\n    \
+         payload: unknown,\n    \
+         headers: ReadonlyArray<readonly [string, string]>,\n  \
+         ): Promise<void>;\n  \
+         /** Sends a message and answers with the reply the far side wrote, and its headers. */\n  \
+         request<Answered>(\n    \
+         operation: string,\n    \
+         payload: unknown,\n    \
+         headers: ReadonlyArray<readonly [string, string]>,\n  \
+         ): Promise<{{ answered: Answered; headers: ReadonlyArray<readonly [string, string]> }}>;\n\
          }};"
     )
 }

@@ -530,6 +530,38 @@ const TS_UNIT_SUCCESS_SERVICE: &str = "
     }
 ";
 
+/// A service binding headers both ways: a required and an optional `header_in`, a `header_out`
+/// tuple with a required and an optional element, an `error_header_out` tuple, and a one-way
+/// operation carrying a `header_in` of its own.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+const TS_HEADER_TUPLE_SERVICE: &str = "
+    pub trait VersionService<Ctx> {
+        #[service_schema_op(http(
+            method = \"POST\",
+            path = \"/get\",
+            header_in(\"x-tenant\" = tenant),
+            header_in(\"x-trace\" = trace),
+            header_out(\"etag\"),
+            header_out(\"x-age\"),
+            error_status(NotFound = 404),
+            error_header_out(\"x-reason\"),
+        ))]
+        async fn get(
+            &self,
+            ctx: &Ctx,
+            id: String,
+            tenant: String,
+            trace: Option<u32>,
+        ) -> Result<(Document, String, Option<u32>), (DocError, Option<String>)>;
+
+        #[service_schema_op(
+            one_way,
+            http(method = \"POST\", path = \"/touch\", header_in(\"x-tenant\" = tenant))
+        )]
+        async fn touch(&self, ctx: &Ctx, id: String, tenant: String);
+    }
+";
+
 /// A reply operation whose success is a unit struct, `PingAck` — reads as a `()` success just as
 /// `TS_UNIT_SUCCESS_SERVICE` does, once the struct is recorded the way a declared-above
 /// `#[model_schema()]` unit struct would be.

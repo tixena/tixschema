@@ -34,9 +34,12 @@
 //! nothing to check a reply against.
 
 use super::fault;
+use super::message;
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
-use crate::service_schema::parse::{OperationDef, OperationOutcome, ServiceDef, is_unit_type};
+use crate::service_schema::parse::{
+    HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type,
+};
 use core::fmt::Write as _;
 use syn::Type;
 
@@ -49,25 +52,26 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
         schemas_table(service, "Error", error_type),
         fault_fn(service),
         issues_fault_fn(service),
+        header_table_fn(&named),
+        header_pairs_fn(&named),
         transport_factory(service),
     ]
 }
 
 /// `None` for a one-way operation (no reply to check) and for a unit success: the envelope carries
 /// a unit success as `ok` alone, with no `value` to parse, so a table entry there would fail every
-/// valid reply against a schema nothing on the wire is meant to satisfy.
+/// valid reply against a schema nothing on the wire is meant to satisfy. A header tuple's `value`
+/// is its body alone, its headers riding the frame's own `headers`.
 fn success_type(operation: &OperationDef) -> Option<&Type> {
-    match &operation.outcome {
-        OperationOutcome::Reply {
-            success,
-            error: _error,
-        } if !is_unit_type(success) => Some(success),
-        OperationOutcome::Reply {
-            error: _error,
-            success: _success,
-        } => None,
-        OperationOutcome::OneWay => None,
-    }
+    let OperationOutcome::Reply {
+        success,
+        error: _error,
+    } = &operation.outcome
+    else {
+        return None;
+    };
+    let body = message::body_type(HttpShape::of(operation).header_out.len(), success);
+    (!is_unit_type(body)).then_some(body)
 }
 
 fn error_type(operation: &OperationDef) -> Option<&Type> {
@@ -75,7 +79,10 @@ fn error_type(operation: &OperationDef) -> Option<&Type> {
         OperationOutcome::Reply {
             error,
             success: _success,
-        } => Some(error),
+        } => Some(message::body_type(
+            HttpShape::of(operation).error_header_out.len(),
+            error,
+        )),
         OperationOutcome::OneWay => None,
     }
 }
@@ -231,6 +238,55 @@ fn issues_fault_fn(service: &ServiceDef) -> String {
 }
 
 // ---------------------------------------------------------------------------------------------
+// The frame's `headers` object and the seam's header pairs
+// ---------------------------------------------------------------------------------------------
+
+/// The seam's JSON-encoded header pairs as the `headers` object a frame carries — each value
+/// decoded back to the JSON it encodes, a text that is no JSON crossing as a string. Spread into
+/// the frame, so an empty list leaves the key off entirely. Mirrors the Rust `headers_table`.
+fn header_table_fn(named: &str) -> String {
+    let prefix = RenameRule::CamelCase.apply_to_variant(named);
+    format!(
+        "/**\n \
+         * The `headers` object a `{named}` frame carries, from the JSON-encoded pairs the \
+         seam\n \
+         * hands over. Spread into the frame: an empty list leaves the key off.\n \
+         */\n\
+         function {prefix}WsHeaderTable(\n  \
+         headers: ReadonlyArray<readonly [string, string]>,\n\
+         ): {{ headers?: Record<string, unknown> }} {{\n  \
+         if (headers.length === 0) return {{}};\n  \
+         const table: Record<string, unknown> = {{}};\n  \
+         for (const [name, encoded] of headers) {{\n    \
+         try {{\n      \
+         table[name] = JSON.parse(encoded);\n    \
+         }} catch {{\n      \
+         table[name] = encoded;\n    \
+         }}\n  \
+         }}\n  \
+         return {{ headers: table }};\n\
+         }}"
+    )
+}
+
+/// The inverse of [`header_table_fn`]: a frame's `headers` object read back into the seam's
+/// JSON-encoded pairs, anything that is not an object reading as none. Mirrors the Rust
+/// `headers_of`.
+fn header_pairs_fn(named: &str) -> String {
+    let prefix = RenameRule::CamelCase.apply_to_variant(named);
+    format!(
+        "/** The JSON-encoded header pairs a `{named}` frame's `headers` object carries. */\n\
+         function {prefix}WsHeaderPairs(table: unknown): ReadonlyArray<readonly [string, string]> \
+         {{\n  \
+         if (typeof table !== \"object\" || table === null || Array.isArray(table)) return \
+         [];\n  \
+         return Object.entries(table).map(([name, value]) => [name, JSON.stringify(value)] as \
+         const);\n\
+         }}"
+    )
+}
+
+// ---------------------------------------------------------------------------------------------
 // The transport factory
 // ---------------------------------------------------------------------------------------------
 
@@ -254,9 +310,9 @@ fn transport_factory(service: &ServiceDef) -> String {
         state = heartbeat_state_stmt(&named),
         settle_all = settle_all_stmt(&prefix),
         checked = checked_reader_stmt(&prefix),
-        on_message = on_message_stmt(),
+        on_message = on_message_stmt(&prefix),
         on_close = on_close_stmt(),
-        returned = returned_transport_stmt(),
+        returned = returned_transport_stmt(&prefix),
     )
 }
 
@@ -291,8 +347,14 @@ fn heartbeat_state_stmt(named: &str) -> String {
          const heartbeat = options.heartbeat === undefined ? {{ intervalMs: 30_000, timeoutMs: \
          10_000 }} : options.heartbeat;\n  \
          let next = 0;\n  \
-         const pending = new Map<string, {{ operation: string; settle: (answered: unknown) => \
-         void }}>();\n  \
+         const pending = new Map<\n    \
+         string,\n    \
+         {{\n      \
+         operation: string;\n      \
+         settle: (answered: unknown, headers: ReadonlyArray<readonly [string, string]>) => \
+         void;\n    \
+         }}\n  \
+         >();\n  \
          let nextPing: ReturnType<typeof setTimeout> | undefined;\n  \
          let pongDeadline: ReturnType<typeof setTimeout> | undefined;\n  \
          const stopHeartbeat = () => {{\n    \
@@ -319,7 +381,7 @@ fn settle_all_stmt(prefix: &str) -> String {
          for (const [id, waiting] of pending) {{\n      \
          pending.delete(id);\n      \
          waiting.settle({{ ok: false, error: {{ isServiceFault: true, fault: {prefix}Fault(\
-         \"transport-failure\", waiting.operation, detail) }} }});\n    \
+         \"transport-failure\", waiting.operation, detail) }} }}, []);\n    \
          }}\n  \
          }};\n"
     )
@@ -360,28 +422,31 @@ fn checked_reader_stmt(prefix: &str) -> String {
 
 /// The socket's `"message"` listener: reads one JSON frame, answers a `ping` with a `pong` and
 /// treats a `pong` as re-arming the next one, drops a frame naming another service or one nothing
-/// is waiting on, and otherwise settles the waiting request with the checked envelope. Non-JSON
-/// text and a frame that is not an object are both dropped at the top.
-fn on_message_stmt() -> String {
-    "  const onMessage = (event: { data: unknown }) => {\n    \
-     let frame: unknown;\n    \
-     try { frame = JSON.parse(String(event.data)); } catch { return; }\n    \
-     if (typeof frame !== \"object\" || frame === null) return;\n    \
-     const { kind, id, service: named, ...envelope } = frame as Record<string, unknown>;\n    \
-     if (kind === \"ping\") { socket.send(JSON.stringify({ kind: \"pong\" })); return; }\n    \
-     if (kind === \"pong\") {\n      \
-     if (pongDeadline !== undefined) clearTimeout(pongDeadline);\n      \
-     pongDeadline = undefined;\n      \
-     schedulePing();\n      \
-     return;\n    \
-     }\n    \
-     if (kind !== \"reply\" || named !== service || typeof id !== \"string\") return;\n    \
-     const waiting = pending.get(id);\n    \
-     if (waiting === undefined) return;\n    \
-     pending.delete(id);\n    \
-     waiting.settle(checked(waiting.operation, envelope));\n  \
-     };\n"
-        .to_owned()
+/// is waiting on, and otherwise settles the waiting request with the checked envelope and the
+/// frame's headers. Non-JSON text and a frame that is not an object are both dropped at the top.
+fn on_message_stmt(prefix: &str) -> String {
+    format!(
+        "  const onMessage = (event: {{ data: unknown }}) => {{\n    \
+         let frame: unknown;\n    \
+         try {{ frame = JSON.parse(String(event.data)); }} catch {{ return; }}\n    \
+         if (typeof frame !== \"object\" || frame === null) return;\n    \
+         const {{ kind, id, service: named, headers, ...envelope }} = frame as Record<string, \
+         unknown>;\n    \
+         if (kind === \"ping\") {{ socket.send(JSON.stringify({{ kind: \"pong\" }})); return; \
+         }}\n    \
+         if (kind === \"pong\") {{\n      \
+         if (pongDeadline !== undefined) clearTimeout(pongDeadline);\n      \
+         pongDeadline = undefined;\n      \
+         schedulePing();\n      \
+         return;\n    \
+         }}\n    \
+         if (kind !== \"reply\" || named !== service || typeof id !== \"string\") return;\n    \
+         const waiting = pending.get(id);\n    \
+         if (waiting === undefined) return;\n    \
+         pending.delete(id);\n    \
+         waiting.settle(checked(waiting.operation, envelope), {prefix}WsHeaderPairs(headers));\n  \
+         }};\n"
+    )
 }
 
 /// The socket's `"close"` listener, and the wiring that starts the transport listening and probing
@@ -399,24 +464,41 @@ fn on_close_stmt() -> String {
 
 /// The transport itself: `notify` writes a one-way frame, `request` writes a request frame and
 /// waits on the correlation map, `close` tears down the wiring and fails everything still waiting.
-fn returned_transport_stmt() -> String {
-    "  return {\n    \
-     async notify(operation, payload) {\n      \
-     socket.send(JSON.stringify({ kind: \"notify\", service, operation, payload }));\n    \
-     },\n    \
-     request<Answered>(operation: string, payload: unknown): Promise<Answered> {\n      \
-     const id = String(++next);\n      \
-     return new Promise<Answered>((resolve) => {\n        \
-     pending.set(id, { operation, settle: (answered) => resolve(answered as Answered) });\n        \
-     socket.send(JSON.stringify({ kind: \"request\", id, service, operation, payload }));\n      \
-     });\n    \
-     },\n    \
-     close() {\n      \
-     stopHeartbeat();\n      \
-     socket.removeEventListener(\"message\", onMessage);\n      \
-     socket.removeEventListener(\"close\", onClose);\n      \
-     settleAll(\"the transport was closed before the reply arrived\");\n    \
-     },\n  \
-     };\n"
-        .to_owned()
+/// Both frames carry the seam's headers under `headers`, left off where there are none.
+fn returned_transport_stmt(prefix: &str) -> String {
+    format!(
+        "  return {{\n    \
+         async notify(operation, payload, headers) {{\n      \
+         socket.send(\n        \
+         JSON.stringify({{ kind: \"notify\", service, operation, payload, \
+         ...{prefix}WsHeaderTable(headers) }}),\n      \
+         );\n    \
+         }},\n    \
+         request<Answered>(\n      \
+         operation: string,\n      \
+         payload: unknown,\n      \
+         headers: ReadonlyArray<readonly [string, string]>,\n    \
+         ): Promise<{{ answered: Answered; headers: ReadonlyArray<readonly [string, string]> \
+         }}> {{\n      \
+         const id = String(++next);\n      \
+         return new Promise((resolve) => {{\n        \
+         pending.set(id, {{\n          \
+         operation,\n          \
+         settle: (answered, replied) => resolve({{ answered: answered as Answered, headers: \
+         replied }}),\n        \
+         }});\n        \
+         socket.send(\n          \
+         JSON.stringify({{ kind: \"request\", id, service, operation, payload, \
+         ...{prefix}WsHeaderTable(headers) }}),\n        \
+         );\n      \
+         }});\n    \
+         }},\n    \
+         close() {{\n      \
+         stopHeartbeat();\n      \
+         socket.removeEventListener(\"message\", onMessage);\n      \
+         socket.removeEventListener(\"close\", onClose);\n      \
+         settleAll(\"the transport was closed before the reply arrived\");\n    \
+         }},\n  \
+         }};\n"
+    )
 }

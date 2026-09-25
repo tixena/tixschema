@@ -6,7 +6,7 @@
 //! here, so none of them type-checks the bundle; `tests/service_schema_typescript_tests/type_check.rs`
 //! is what proves a browser `WebSocket` satisfies the seam it names.
 
-use super::{MIXED_SERVICE, ws_client_of};
+use super::{MIXED_SERVICE, TS_HEADER_TUPLE_SERVICE, ws_client_of};
 
 #[test]
 fn the_seam_is_structural_and_names_no_platform_class() {
@@ -235,6 +235,61 @@ fn an_inbound_ping_is_answered_with_a_pong_and_an_inbound_pong_re_arms_the_next_
     );
     assert!(
         written.contains("if (kind === \"pong\") {") && written.contains("schedulePing();"),
+        "got: {written}"
+    );
+}
+
+/// A header tuple's table entries name its body alone: the headers ride the frame's own
+/// `headers`, not the `value` or `error` a table entry checks.
+#[test]
+fn a_header_tuple_s_table_entries_name_its_body_alone() {
+    let written = ws_client_of(TS_HEADER_TUPLE_SERVICE);
+    assert!(
+        table_of(&written, "versionServiceSuccessSchemas").contains("\"get\": Document$Schema,"),
+        "got: {written}"
+    );
+    assert!(
+        table_of(&written, "versionServiceErrorSchemas").contains("\"get\": DocError$Schema,"),
+        "got: {written}"
+    );
+}
+
+/// Both outbound frames carry the seam's headers under `headers`, left off where there are none,
+/// and a reply's `headers` reach the caller beside the checked envelope — mirrors the Rust
+/// `headers_table` and `headers_of`.
+#[test]
+fn headers_ride_the_frame_s_own_headers_object_both_ways() {
+    let written = ws_client_of(MIXED_SERVICE);
+    assert!(
+        written.contains(
+            "JSON.stringify({ kind: \"notify\", service, operation, payload, \
+             ...usageServiceWsHeaderTable(headers) })"
+        ) && written.contains(
+            "JSON.stringify({ kind: \"request\", id, service, operation, payload, \
+             ...usageServiceWsHeaderTable(headers) })"
+        ),
+        "got: {written}"
+    );
+    assert!(
+        written.contains("if (headers.length === 0) return {};")
+            && written.contains("table[name] = JSON.parse(encoded);")
+            && written.contains("table[name] = encoded;"),
+        "an empty list leaves the key off, and a text that is no JSON crosses as a string. \
+         Got: {written}"
+    );
+    assert!(
+        written.contains(
+            "const { kind, id, service: named, headers, ...envelope } = frame as Record<string, \
+             unknown>;"
+        ) && written.contains(
+            "waiting.settle(checked(waiting.operation, envelope), \
+             usageServiceWsHeaderPairs(headers));"
+        ),
+        "the reply's headers are taken out of the envelope and handed back beside it. \
+         Got: {written}"
+    );
+    assert!(
+        written.contains("[name, JSON.stringify(value)] as const"),
         "got: {written}"
     );
 }
