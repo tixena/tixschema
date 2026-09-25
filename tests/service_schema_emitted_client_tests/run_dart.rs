@@ -10,9 +10,10 @@ use super::runtime::ran;
 use super::tests::swift_codec_fixture::{codec_unit_field_dart, codec_unit_payload_dart};
 use super::tests::{
     ConversationClientServiceSchema, EchoClientServiceSchema, ShelfClientServiceSchema,
-    ThumbnailClientServiceSchema, conversation_id_dart, echo_range_error_dart,
-    echo_range_response_dart, shelf_dart, shelf_error_dart, thumbnail_error_dart,
-    window_error_dart, window_page_dart,
+    StampClientServiceSchema, ThumbnailClientServiceSchema, conversation_id_dart,
+    echo_range_error_dart, echo_range_response_dart, shelf_dart, shelf_error_dart,
+    stamp_error_dart, stamp_receipt_dart, thumbnail_error_dart, window_error_dart,
+    window_page_dart,
 };
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -119,6 +120,53 @@ void main() async {
     'missing': _describe(missing),
     'gone': _describe(gone),
     'anon': _describe(anon),
+  }));
+}
+";
+
+/// A stub `StampClientServiceHttpTransport` answering `x-age` by the sent `label` — malformed,
+/// valid, and absent — driving the emitted client's own `tryParse`-and-fault header read.
+const STAMP_DRIVER: &str = "
+class _StampRecorder implements StampClientServiceHttpTransport {
+  @override
+  Future<({int status, List<(String, String)> headers, List<int> body, Stream<List<int>> bodyStream})> send(
+    ({String method, String path, String query, List<(String, String)> headers, List<int> body, List<(String, dynamic)> parts}) request,
+  ) async {
+    final label = jsonDecode(utf8.decode(request.body)) as String;
+    final ageHeader = switch (label) {
+      'malformed' => [('etag', 'e1'), ('x-age', 'soon')],
+      'valid' => [('etag', 'e1'), ('x-age', '8')],
+      _ => [('etag', 'e1')],
+    };
+    return (
+      status: 200,
+      headers: ageHeader,
+      body: utf8.encode(jsonEncode(<String, dynamic>{'label': label, 'tenant': 'acme'})),
+      bodyStream: const Stream<List<int>>.empty(),
+    );
+  }
+}
+
+Map<String, dynamic> _describeStamp(StampClientServiceStampResult result) {
+  return switch (result) {
+    StampClientServiceStampResultOk(:final value) => {'kind': 'ok', 'age': value.$3},
+    StampClientServiceStampResultOperation() => {'kind': 'operation'},
+    StampClientServiceStampResultFault(:final fault) => {
+        'kind': 'fault',
+        'detail': fault.detail,
+      },
+  };
+}
+
+void main() async {
+  final client = StampClientServiceHttpClient(_StampRecorder());
+  final malformed = await client.stamp('malformed', 'acme', null);
+  final valid = await client.stamp('valid', 'acme', null);
+  final absent = await client.stamp('absent', 'acme', null);
+  print(jsonEncode(<String, dynamic>{
+    'malformed': _describeStamp(malformed),
+    'valid': _describeStamp(valid),
+    'absent': _describeStamp(absent),
   }));
 }
 ";
@@ -402,6 +450,46 @@ fn the_client_decodes_the_declared_errors_own_header_and_omits_a_none_header_out
         serde_json::json!({"kind": "ok", "headerOut": null}),
         "an absent `header_out` header must decode as `null` rather than a string. \
          got: {results:#?}"
+    );
+}
+
+fn stamp_module() -> String {
+    [
+        "import 'dart:convert';".to_owned(),
+        stamp_receipt_dart::dart_definition(),
+        stamp_error_dart::dart_definition(),
+        StampClientServiceSchema::dart_definition(),
+        StampClientServiceSchema::dart_http_client(),
+        STAMP_DRIVER.to_owned(),
+    ]
+    .join("\n\n")
+}
+
+#[test]
+fn a_present_header_that_will_not_parse_answers_the_fault_member_not_an_exception() {
+    let Some(wrote) = ran("dart", RUNTIME_VAR, "dart", "stamp.dart", &stamp_module()) else {
+        return;
+    };
+    let results: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
+    assert_eq!(
+        results["malformed"]["kind"],
+        serde_json::json!("fault"),
+        "`x-age: soon` answers the fault member rather than throwing. got: {results:#?}"
+    );
+    assert_eq!(
+        results["malformed"]["detail"],
+        serde_json::json!("a response header did not match its declared type"),
+        "got: {results:#?}"
+    );
+    assert_eq!(
+        results["valid"],
+        serde_json::json!({"kind": "ok", "age": 8_u32}),
+        "`x-age: 8` still decodes. got: {results:#?}"
+    );
+    assert_eq!(
+        results["absent"],
+        serde_json::json!({"kind": "ok", "age": null}),
+        "a missing optional `x-age` reads `null`. got: {results:#?}"
     );
 }
 
