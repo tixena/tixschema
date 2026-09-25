@@ -2,9 +2,10 @@
 //! is the author's own struct, bound to a path with one placeholder, carrying one field the path
 //! does not bind.
 
-/// Codec rows declared once so `run_swift.rs` and `run_kotlin.rs` can each round-trip them
-/// through their own emitted definition text and this file's own `serde_json` writes.
-#[cfg(any(feature = "swift", feature = "kotlin"))]
+/// Codec rows declared once so `run_dart.rs`, `run_swift.rs` and `run_kotlin.rs` can each
+/// round-trip them through their own emitted definition text and this file's own `serde_json`
+/// writes.
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 pub mod swift_codec_fixture {
     use serde::{Deserialize, Serialize};
     use std::collections::HashMap;
@@ -94,6 +95,19 @@ pub mod swift_codec_fixture {
     pub struct CodecMapKeys {
         pub counters: HashMap<u32, String>,
         pub tiers: HashMap<CodecPrimary, String>,
+    }
+
+    /// The wire's no-data type: serde writes and reads `{}` for it, never `null`.
+    #[model_schema()]
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct CodecUnitPayload;
+
+    /// Row 7: a unit-struct field, which every client sees as a no-data type.
+    #[model_schema()]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct CodecUnitField {
+        pub label: String,
+        pub payload: CodecUnitPayload,
     }
 }
 

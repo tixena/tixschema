@@ -19,10 +19,11 @@ use super::tests::pulse_client_service_schema::{
 };
 use super::tests::swift_codec_fixture::{
     CodecAdjacentTagged, CodecEnvelope, CodecExternalTagged, CodecInternalTagged, CodecMapKeys,
-    CodecOptionsRow, CodecPrimary, CodecTuplePoint, CodecUntagged, codec_adjacent_tagged_kotlin,
-    codec_envelope_kotlin, codec_external_tagged_kotlin, codec_internal_tagged_kotlin,
-    codec_map_keys_kotlin, codec_options_row_kotlin, codec_primary_kotlin,
-    codec_tuple_point_kotlin, codec_untagged_kotlin,
+    CodecOptionsRow, CodecPrimary, CodecTuplePoint, CodecUnitField, CodecUnitPayload,
+    CodecUntagged, codec_adjacent_tagged_kotlin, codec_envelope_kotlin,
+    codec_external_tagged_kotlin, codec_internal_tagged_kotlin, codec_map_keys_kotlin,
+    codec_options_row_kotlin, codec_primary_kotlin, codec_tuple_point_kotlin,
+    codec_unit_field_kotlin, codec_unit_payload_kotlin, codec_untagged_kotlin,
 };
 use super::tests::{
     ConversationClientServiceSchema, PulseClientServiceSchema, conversation_id_kotlin,
@@ -407,6 +408,15 @@ fn codec_rows() -> Vec<(&'static str, &'static str, serde_json::Value)> {
             })
             .unwrap(),
         ),
+        (
+            "unit_field",
+            "CodecUnitField",
+            serde_json::to_value(CodecUnitField {
+                label: "marker".to_owned(),
+                payload: CodecUnitPayload,
+            })
+            .unwrap(),
+        ),
     ]
 }
 
@@ -449,6 +459,8 @@ fn codec_module(driver: &str) -> String {
         codec_envelope_kotlin::kotlin_definition(),
         codec_primary_kotlin::kotlin_definition(),
         codec_map_keys_kotlin::kotlin_definition(),
+        codec_unit_payload_kotlin::kotlin_definition(),
+        codec_unit_field_kotlin::kotlin_definition(),
     ]);
     parts.push(driver.to_owned());
     parts.join("\n\n")

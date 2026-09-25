@@ -289,6 +289,7 @@ unaffected at every position: a stringified key describes as `{"type": "object",
 - `Vec<T>` → `Array<T>`
 - `HashMap<String, T>` → `Partial<Record<string, T>>`
 - Custom types → Reference by the name the referenced type publishes (its ident, or its `name` override)
+- A unit struct (`pub struct Ping;`, no braces) → `Record<string, never>` (unchanged); the wire is `{}` both ways: the macro replaces the author's own `Serialize`/`Deserialize` derive with impls writing and reading `{}` (serde's own derive writes and reads `null`, refusing `{}`). Kotlin renders `@Serializable object Ping` rather than a `class`; Dart and Swift render their own no-data type. Declared above a service as `Result<Ping, E>`, it reads like a `()` success on every client — a braced `struct Ping {}` is a different shape and is unaffected
 - `ObjectId` → `ObjectId` (with $oid validation)
 - `DateTime<Tz>` → `Date` (Zod `z.coerce.date()`); with `#[model_schema_prop(as_number)]` → `number` (inline epoch-ms coercer)
 - `NaiveTime` → `string` (Zod `z.iso.time()` wrapped in an inline preprocessor that also accepts millis-since-start-of-day)

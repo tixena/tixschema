@@ -45,6 +45,12 @@ pub enum ArchiveError {
     AlreadyArchived,
 }
 
+/// A unit-struct success: `seal_document` answers no data of its own, the same as `()` does for
+/// `archive_document`, but as a named type a service can declare above it.
+#[model_schema()]
+#[derive(Debug, Clone, Deserialize, Eq, PartialEq, Serialize)]
+pub struct SealAck;
+
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case", tag = "errorCode")]
@@ -113,6 +119,9 @@ pub trait DocumentService<Ctx> {
     #[service_schema_op(one_way, http(method = "DELETE", path = "/documents/{document_id}"))]
     async fn purge_document(&self, ctx: &Ctx, document_id: String);
 
+    /// A unit-struct success, read like `()`'s own: `ok` alone answers it, `value` never read.
+    async fn seal_document(&self, ctx: &Ctx, document_id: String) -> Result<SealAck, ArchiveError>;
+
     /// Names no `http(...)` group at all: both transports default it — `http_rest` to
     /// `POST /sweep-documents`, and every declared error to the fixed default-binding status.
     async fn sweep_documents(&self, ctx: &Ctx) -> Result<SweepReport, SweepError>;
@@ -179,6 +188,12 @@ impl DocumentService<()> for DocumentBackEnd {
     async fn purge_document(&self, _ctx: &(), document_id: String) {
         ready(()).await;
         self.reach(format!("purge_document {document_id}"));
+    }
+
+    async fn seal_document(&self, _ctx: &(), document_id: String) -> Result<SealAck, ArchiveError> {
+        ready(()).await;
+        self.reach(format!("seal_document {document_id}"));
+        Ok(SealAck)
     }
 
     async fn sweep_documents(&self, _ctx: &()) -> Result<SweepReport, SweepError> {
@@ -522,6 +537,20 @@ fn the_http_loop_round_trips_the_no_payload_operation_at_its_overridden_ok_statu
     );
 }
 
+/// `seal_document`'s success is `SealAck`, a recorded unit struct, over `http_rest` rather than
+/// `amqp_rpc` — the dispatcher writes an empty body and the client answers `Ok(SealAck)`.
+#[test]
+fn the_http_loop_round_trips_a_unit_struct_success() {
+    let service = DocumentBackEnd::new();
+    let client = http_rest_client::DocumentServiceClient::new(HttpLoop::new(
+        &service,
+        http_rest_transport::DefaultFaultHandler,
+    ));
+    let answered = poll_once(client.seal_document("doc-1".to_owned())).unwrap();
+    assert_eq!(answered, Ok(SealAck));
+    assert_eq!(service.reached(), vec!["seal_document doc-1".to_owned()]);
+}
+
 #[test]
 fn the_http_loop_round_trips_the_bytes_operation_and_its_content_type() {
     let service = DocumentBackEnd::new();
@@ -766,6 +795,39 @@ fn a_typescript_shaped_unit_success_envelope_with_no_value_key_reads_as_ok_unit(
         Ok(()),
         "a unit success reads as Ok(()) whether `value` arrives as `null` or is missing outright"
     );
+}
+
+/// `seal_document`'s success is `SealAck`, a recorded unit struct, not `()`. A real dispatcher
+/// carries `Some(SealAck)` through `Answered::answering` unconditionally, writing
+/// `{"ok":true,"value":{}}` — read back here as `Ok(SealAck)`.
+#[test]
+fn the_amqp_loop_round_trips_a_unit_struct_success() {
+    let service = DocumentBackEnd::new();
+    let client = amqp_client::DocumentServiceClient::new(AmqpLoop::new(&service));
+    let answered = poll_once(client.seal_document("doc-1".to_owned())).unwrap();
+    assert_eq!(answered, Ok(SealAck));
+}
+
+/// The TypeScript-shaped twin of the test above: a `{"ok":true}` envelope, no `value` key, still
+/// reads as `Ok(SealAck)` — the same reader `()` uses, answering the declared struct by name.
+#[test]
+fn a_typescript_shaped_unit_struct_success_envelope_with_no_value_key_reads_as_ok_seal_ack() {
+    let client = amqp_client::DocumentServiceClient::new(StubTransport::answering(
+        &serde_json::json!({ "ok": true }),
+    ));
+    let answered = poll_once(client.seal_document("doc-1".to_owned())).unwrap();
+    assert_eq!(answered, Ok(SealAck));
+}
+
+/// A Rust-shaped envelope naming the struct's own wire form, `{}`, also reads as `Ok(SealAck)` —
+/// the shape a real dispatcher writes, pinned directly rather than through the loop above.
+#[test]
+fn a_rust_shaped_unit_struct_success_envelope_with_an_empty_object_value_reads_as_ok_seal_ack() {
+    let client = amqp_client::DocumentServiceClient::new(StubTransport::answering(
+        &serde_json::json!({ "ok": true, "value": {} }),
+    ));
+    let answered = poll_once(client.seal_document("doc-1".to_owned())).unwrap();
+    assert_eq!(answered, Ok(SealAck));
 }
 
 /// The mirror of the fix above: a success type that is not the unit type still demands a carried

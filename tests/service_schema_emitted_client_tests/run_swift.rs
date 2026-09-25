@@ -15,9 +15,10 @@ use super::tests::conversation_client_service_schema::{
 };
 use super::tests::swift_codec_fixture::{
     CodecAdjacentTagged, CodecEnvelope, CodecExternalTagged, CodecInternalTagged, CodecMapKeys,
-    CodecOptionsRow, CodecPrimary, CodecTuplePoint, CodecUntagged, codec_adjacent_tagged_swift,
-    codec_envelope_swift, codec_external_tagged_swift, codec_internal_tagged_swift,
-    codec_map_keys_swift, codec_options_row_swift, codec_primary_swift, codec_tuple_point_swift,
+    CodecOptionsRow, CodecPrimary, CodecTuplePoint, CodecUnitField, CodecUnitPayload,
+    CodecUntagged, codec_adjacent_tagged_swift, codec_envelope_swift, codec_external_tagged_swift,
+    codec_internal_tagged_swift, codec_map_keys_swift, codec_options_row_swift,
+    codec_primary_swift, codec_tuple_point_swift, codec_unit_field_swift, codec_unit_payload_swift,
     codec_untagged_swift,
 };
 use super::tests::{
@@ -275,6 +276,15 @@ fn codec_rows() -> Vec<(&'static str, &'static str, serde_json::Value)> {
             })
             .unwrap(),
         ),
+        (
+            "unit_field",
+            "CodecUnitField",
+            serde_json::to_value(CodecUnitField {
+                label: "marker".to_owned(),
+                payload: CodecUnitPayload,
+            })
+            .unwrap(),
+        ),
     ]
 }
 
@@ -316,6 +326,8 @@ fn codec_module(driver: &str) -> String {
         codec_envelope_swift::swift_definition(),
         codec_primary_swift::swift_definition(),
         codec_map_keys_swift::swift_definition(),
+        codec_unit_payload_swift::swift_definition(),
+        codec_unit_field_swift::swift_definition(),
         driver.to_owned(),
     ]
     .join("\n\n")

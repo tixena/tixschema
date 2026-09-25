@@ -311,16 +311,13 @@ pub(super) fn answer_reader(service: &ServiceDef, generated: &Generated) -> Toke
     let unit = declares_a_unit_reply(service).then(|| {
         quote! {
             /// The unit-success outcome, read out of one envelope: `ok` alone, the error the
-            /// operation declared, or a fault. `value` is never read — `()` serializes to `null`
-            /// exactly like an absent value, so the wire cannot tell the two apart, and unlike
-            /// [`read_answer`] there is no carried value this reader would be losing by not
-            /// reading it.
+            /// operation declared, or a fault. `value` is never read, whatever it holds.
             fn read_unit_answer<E>(operation: &str, encoded: &[u8]) -> Result<(), #call_error<E>>
             where
                 E: ::serde::de::DeserializeOwned,
             {
                 let answered = match ::serde_json::from_slice::<
-                    $crate::#module::Answered<(), ReportedError<E>>,
+                    $crate::#module::Answered<::serde::de::IgnoredAny, ReportedError<E>>,
                 >(encoded) {
                     Ok(answered) => answered,
                     Err(rejected) => {
@@ -897,10 +894,8 @@ pub(super) fn declares_a_reply(service: &ServiceDef) -> bool {
     })
 }
 
-/// Whether a request-and-reply operation's success is the unit type and it carries no
-/// `header_out` — the one shape whose client answer reads `ok` alone, `()` needing nothing
-/// carried to exist. A `header_out` success is a tuple regardless of its first element, so that
-/// shape always reads through the ordinary answer reader instead.
+/// Whether a request-and-reply operation's success is a unit success (`()`, or a recorded unit
+/// struct) and carries no `header_out` — the shape whose client answer reads `ok` alone.
 fn takes_unit_answer(operation: &OperationDef) -> bool {
     matches!(
         &operation.outcome,
@@ -1579,7 +1574,7 @@ pub(super) fn client_answer(operation: &OperationDef, generated: &Generated) -> 
         OperationOutcome::Reply { error, success } => match header_out_shape(operation) {
             None if is_unit_type(success) => quote! {
                 match self.transport.request(#wire, sending, headers).await {
-                    Ok((encoded, _headers)) => read_unit_answer(#wire, &encoded),
+                    Ok((encoded, _headers)) => read_unit_answer(#wire, &encoded).map(|()| #success),
                     Err(uncarried) => Err(#call_error::Fault(#fault::transport_failure(
                         #wire,
                         &uncarried,

@@ -169,6 +169,9 @@ use crate::utils::{
 };
 
 #[cfg(feature = "serde")]
+use crate::utils::record_unit_struct;
+
+#[cfg(feature = "serde")]
 use crate::utils::to_snake_case;
 
 use crate::rename_rule::resolve_rename_rule;
@@ -4109,6 +4112,20 @@ fn struct_rename_all(item_struct: &syn::ItemStruct) -> Result<Option<String>, To
     Ok(serde_type_meta.rename_all)
 }
 
+/// The struct's own `JSDoc` body: [`build_jsdoc_body`] under `typescript`, empty text otherwise.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+fn struct_docs_body(doc_comment: Option<&[String]>, item_name: &str) -> String {
+    #[cfg(feature = "typescript")]
+    {
+        build_jsdoc_body(doc_comment, item_name)
+    }
+    #[cfg(not(feature = "typescript"))]
+    {
+        let _: (&_, &_) = (&doc_comment, &item_name);
+        String::new()
+    }
+}
+
 fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> TokenStream {
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     if is_branded_newtype(&item_struct) {
@@ -4179,13 +4196,13 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
         return output;
     }
 
-    #[cfg(feature = "typescript")]
-    let docs = build_jsdoc_body(docs_and_example.0.as_deref(), &item_name);
-    #[cfg(all(
-        not(feature = "typescript"),
-        any(feature = "zod", feature = "jsonschema")
-    ))]
-    let docs = String::new();
+    #[cfg(feature = "serde")]
+    let unit_struct_impls = unit_struct_impls_for(&mut item_struct);
+    #[cfg(not(feature = "serde"))]
+    let unit_struct_impls = unit_struct_impls_for(&item_struct);
+
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    let docs = struct_docs_body(docs_and_example.0.as_deref(), &item_name);
 
     #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     let schema_impl_items = struct_schema_impl_items(
@@ -4223,26 +4240,152 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
 
     #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     {
-        assemble_schema_output(&SchemaOutputParts {
-            default_types: &args.default_types,
-            delegate_impl_items: &delegate_impl_items,
-            generics: &item_struct.generics,
-            item: &item_struct,
-            module_ident: &module_ident,
-            name: &name,
-            schema_impl_items: &schema_impl_items,
-            validate_method: &validate_method,
-            validation_fns: &collected.2,
-        })
+        struct_output_with_unit_impls(
+            &SchemaOutputParts {
+                default_types: &args.default_types,
+                delegate_impl_items: &delegate_impl_items,
+                generics: &item_struct.generics,
+                item: &item_struct,
+                module_ident: &module_ident,
+                name: &name,
+                schema_impl_items: &schema_impl_items,
+                validate_method: &validate_method,
+                validation_fns: &collected.2,
+            },
+            &unit_struct_impls,
+        )
     }
 
     #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
     {
-        let output = quote! {
-            #item_struct
+        struct_output_with_unit_impls(&item_struct, &unit_struct_impls)
+    }
+}
+
+/// The assembled schema module, with a unit struct's own serde impls appended after it.
+#[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
+fn struct_output_with_unit_impls(
+    parts: &SchemaOutputParts<syn::ItemStruct>,
+    unit_struct_impls: &proc_macro2::TokenStream,
+) -> TokenStream {
+    let base = assemble_schema_output(parts);
+    quote! {
+        #base
+        #unit_struct_impls
+    }
+}
+
+/// [`struct_output_with_unit_impls`] where no schema surface is on: the item alone, unit impls
+/// still appended.
+#[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
+fn struct_output_with_unit_impls(
+    item_struct: &syn::ItemStruct,
+    unit_struct_impls: &proc_macro2::TokenStream,
+) -> TokenStream {
+    let output = quote! {
+        #item_struct
+        #unit_struct_impls
+    };
+    log::trace!("{output}");
+    output
+}
+
+/// Records a unit struct in the registry `is_unit_type` reads, then rewrites its derive.
+#[cfg(feature = "serde")]
+fn unit_struct_impls_for(item_struct: &mut syn::ItemStruct) -> proc_macro2::TokenStream {
+    if matches!(item_struct.fields, syn::Fields::Unit) {
+        record_unit_struct(&item_struct.ident.to_string());
+        return unit_struct_serde_impls(item_struct);
+    }
+    quote! {}
+}
+
+/// [`unit_struct_impls_for`] without the `serde` feature: nothing rewrites a derive that cannot be
+/// there, and nothing reads the registry it would have recorded into.
+#[cfg(not(feature = "serde"))]
+fn unit_struct_impls_for(_item_struct: &syn::ItemStruct) -> proc_macro2::TokenStream {
+    quote! {}
+}
+
+/// Strips `Serialize`/`Deserialize` from a unit struct's own `#[derive(...)]` and answers with
+/// impls that write and read `{}` in their place — only the impl whose derive was present.
+#[cfg(feature = "serde")]
+fn unit_struct_serde_impls(item_struct: &mut syn::ItemStruct) -> proc_macro2::TokenStream {
+    let name = &item_struct.ident;
+    let type_name = name.to_string();
+    let mut writes = false;
+    let mut reads = false;
+
+    let mut kept_attrs = Vec::with_capacity(item_struct.attrs.len());
+    for attr in item_struct.attrs.drain(..) {
+        if !attr.path().is_ident("derive") {
+            kept_attrs.push(attr);
+            continue;
+        }
+        let Ok(paths) = attr.parse_args_with(Punctuated::<syn::Path, Token![,]>::parse_terminated)
+        else {
+            kept_attrs.push(attr);
+            continue;
         };
-        log::trace!("{output}");
-        output
+        let kept_paths: Vec<syn::Path> = paths
+            .into_iter()
+            .filter(|path| match path.segments.last() {
+                Some(segment) if segment.ident == "Serialize" => {
+                    writes = true;
+                    false
+                }
+                Some(segment) if segment.ident == "Deserialize" => {
+                    reads = true;
+                    false
+                }
+                _ => true,
+            })
+            .collect();
+        if !kept_paths.is_empty() {
+            kept_attrs.push(syn::parse_quote! { #[derive(#(#kept_paths),*)] });
+        }
+    }
+    item_struct.attrs = kept_attrs;
+
+    let serialize_impl = writes.then(|| {
+        quote! {
+            impl ::serde::Serialize for #name {
+                fn serialize<S: ::serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                    use ::serde::ser::SerializeStruct as _;
+                    serializer.serialize_struct(#type_name, 0)?.end()
+                }
+            }
+        }
+    });
+
+    let deserialize_impl = reads.then(|| {
+        let expecting = format!("an empty object for `{type_name}`");
+        quote! {
+            impl<'de> ::serde::Deserialize<'de> for #name {
+                fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                    struct UnitStructVisitor;
+                    impl<'de> ::serde::de::Visitor<'de> for UnitStructVisitor {
+                        type Value = #name;
+                        fn expecting(&self, formatter: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                            formatter.write_str(#expecting)
+                        }
+                        fn visit_map<A: ::serde::de::MapAccess<'de>>(
+                            self,
+                            mut map: A,
+                        ) -> Result<Self::Value, A::Error> {
+                            while map.next_entry::<::serde::de::IgnoredAny, ::serde::de::IgnoredAny>()?.is_some() {}
+                            Ok(#name)
+                        }
+                    }
+                    deserializer.deserialize_struct(#type_name, &[], UnitStructVisitor)
+                }
+            }
+        }
+    });
+
+    quote! {
+        #serialize_impl
+        #deserialize_impl
     }
 }
 
