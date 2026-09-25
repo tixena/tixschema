@@ -693,14 +693,21 @@ fn header_value_read_stmts(
     {
         let raw_ident = format!("raw{capitalized_prefix}{index}");
         let ident = format!("{ident_prefix}{index}");
-        let decode = dart_header_out_decode(element_ty, &raw_ident);
+        let (decode, fallible) = dart_header_out_decode(element_ty, &raw_ident);
+        let find_header = find_header_call(fn_prefix);
+        let optional = option_inner(element_ty).is_some();
+        let malformed_check = if fallible {
+            malformed_header_check(result, fn_prefix, wire, &raw_ident, &ident, optional)
+        } else {
+            String::new()
+        };
         // An `Option<T>` element reads a missing header as `null`; anything else faults.
-        if option_inner(element_ty).is_some() {
+        if optional {
             let _ = write!(
                 stmt,
                 "      final {raw_ident} = {find_header}(response.headers, '{name}');\n      \
-                 final {ident} = {raw_ident} == null ? null : {decode};\n",
-                find_header = find_header_call(fn_prefix)
+                 final {ident} = {raw_ident} == null ? null : {decode};\n\
+{malformed_check}",
             );
         } else {
             let _ = write!(
@@ -711,13 +718,37 @@ fn header_value_read_stmts(
                  _{fn_prefix}HttpUndeserializablePayload('{wire}', 'a declared response header was missing'),\n        \
                  );\n      \
                  }}\n      \
-                 final {ident} = {decode};\n",
-                find_header = find_header_call(fn_prefix)
+                 final {ident} = {decode};\n\
+{malformed_check}",
             );
         }
         idents.push(ident);
     }
     (stmt, idents)
+}
+
+/// The check appended after a fallible decode: an optional element faults only when present but
+/// undecodable; a required element was already checked non-null, so a bare `null` means malformed.
+fn malformed_header_check(
+    result: &str,
+    fn_prefix: &str,
+    wire: &str,
+    raw_ident: &str,
+    ident: &str,
+    optional: bool,
+) -> String {
+    let condition = if optional {
+        format!("{raw_ident} != null && {ident} == null")
+    } else {
+        format!("{ident} == null")
+    };
+    format!(
+        "      if ({condition}) {{\n        \
+         return {result}Fault(\n          \
+         _{fn_prefix}HttpUndeserializablePayload('{wire}', 'a response header did not match its declared type'),\n        \
+         );\n      \
+         }}\n"
+    )
 }
 
 /// The declared-error read every reply-decoding arm shares: the error's own head off the body,
@@ -1102,16 +1133,32 @@ fn dart_wire_text(ty: &Type, expr: &str, promoted: bool) -> String {
 }
 
 /// The expression that reads one `header_out` element's declared type back off `raw` — a
-/// `String?` expression already checked non-null — mirroring the coercion the Rust and TypeScript
-/// clients perform on the way back from a response header.
-fn dart_header_out_decode(ty: &Type, raw: &str) -> String {
+/// `String?` expression already checked non-null. The second member says whether the expression
+/// itself reads as `null` on a bad `raw`, which is what tells the caller a check is worth emitting.
+fn dart_header_out_decode(ty: &Type, raw: &str) -> (String, bool) {
     let base = option_inner(ty).unwrap_or(ty);
     if let Some(inner) = vec_inner(base) {
-        let element = dart_header_out_decode(inner, "piece");
-        return format!("({raw}).split(\",\").map((piece) => {element}).toList()");
+        let (element, fallible) = dart_header_out_decode(inner, "piece");
+        let split = format!("({raw}).split(\",\").map((piece) => {element}).toList()");
+        if !fallible {
+            return (split, false);
+        }
+        let inner_ty = dart_type_of(inner);
+        return (
+            format!(
+                "(() {{\n          \
+                 final pieces = {split};\n          \
+                 return pieces.any((piece) => piece == null) ? null : pieces.cast<{inner_ty}>();\n        \
+                 }})()"
+            ),
+            true,
+        );
     }
     match get_field_def("value", base, "").field_type {
-        FieldDefType::Boolean => format!("({raw} == 'true')"),
+        FieldDefType::Boolean => (
+            format!("switch ({raw}) {{ 'true' => true, 'false' => false, _ => null }}"),
+            true,
+        ),
         FieldDefType::U8
         | FieldDefType::U16
         | FieldDefType::U32
@@ -1121,8 +1168,8 @@ fn dart_header_out_decode(ty: &Type, raw: &str) -> String {
         | FieldDefType::I32
         | FieldDefType::I64
         | FieldDefType::Usize
-        | FieldDefType::Isize => format!("int.parse({raw})"),
-        FieldDefType::F32 | FieldDefType::F64 => format!("double.parse({raw})"),
+        | FieldDefType::Isize => (format!("int.tryParse({raw})"), true),
+        FieldDefType::F32 | FieldDefType::F64 => (format!("double.tryParse({raw})"), true),
         FieldDefType::BooleanLiteral(_)
         | FieldDefType::Char
         | FieldDefType::Map(_, _)
@@ -1132,14 +1179,14 @@ fn dart_header_out_decode(ty: &Type, raw: &str) -> String {
         | FieldDefType::StringLiteral(_)
         | FieldDefType::Tuple(_)
         | FieldDefType::TypeParam(_)
-        | FieldDefType::Unknown => raw.to_owned(),
+        | FieldDefType::Unknown => (raw.to_owned(), false),
         #[cfg(feature = "object_id")]
-        FieldDefType::ObjectId => raw.to_owned(),
+        FieldDefType::ObjectId => (raw.to_owned(), false),
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate
         | FieldDefType::NaiveTime
         | FieldDefType::NaiveDateTime
-        | FieldDefType::DateTime => raw.to_owned(),
+        | FieldDefType::DateTime => (raw.to_owned(), false),
     }
 }
 

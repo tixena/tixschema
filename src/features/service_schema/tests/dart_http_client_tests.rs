@@ -675,3 +675,113 @@ fn a_primitive_message_and_success_cross_as_their_own_json_values() {
     );
     assert!(!method.contains("toJson"), "got: {method}");
 }
+
+#[test]
+fn a_present_numeric_header_that_will_not_parse_answers_the_fault_member() {
+    let written = dart_http_client_of(
+        "
+    pub trait GaugeClientService<Ctx> {
+        #[service_schema_op(http(
+            method = \"POST\",
+            path = \"/gauge\",
+            header_out(\"x-age\"),
+        ))]
+        async fn read_gauge(&self, ctx: &Ctx, req: String) -> Result<(GaugeResponse, u32), GaugeError>;
+    }
+    ",
+    );
+    let method = method_body(&written, "readGauge");
+    assert!(
+        method.contains(
+            "final rawHeaderOut0 = _gaugeClientServiceHttpFindHeader(response.headers, 'x-age');"
+        ) && method.contains("if (rawHeaderOut0 == null) {")
+            && method.contains("final headerOut0 = int.tryParse(rawHeaderOut0);")
+            && method.contains("if (headerOut0 == null) {")
+            && method.contains(
+                "_gaugeClientServiceHttpUndeserializablePayload('read-gauge', 'a response header did not match its declared type')"
+            ),
+        "a present header that will not parse as its declared type answers the fault member \
+         through a `tryParse` read, never an uncaught exception. Got: {method}"
+    );
+}
+
+#[test]
+fn a_present_bool_header_other_than_true_or_false_answers_the_fault_member() {
+    let written = dart_http_client_of(
+        "
+    pub trait BeaconClientService<Ctx> {
+        #[service_schema_op(http(
+            method = \"POST\",
+            path = \"/beacon\",
+            header_out(\"x-active\"),
+        ))]
+        async fn read_beacon(&self, ctx: &Ctx, req: String) -> Result<(BeaconResponse, bool), BeaconError>;
+    }
+    ",
+    );
+    let method = method_body(&written, "readBeacon");
+    assert!(
+        method.contains(
+            "final headerOut0 = switch (rawHeaderOut0) { 'true' => true, 'false' => false, _ => null };"
+        ) && method.contains(
+            "_beaconClientServiceHttpUndeserializablePayload('read-beacon', 'a response header did not match its declared type')"
+        ),
+        "a bool header reads only `true`/`false`; anything else faults rather than reading as \
+         `false`. Got: {method}"
+    );
+}
+
+#[test]
+fn an_absent_optional_numeric_header_reads_null_without_faulting() {
+    let written = dart_http_client_of(
+        "
+    pub trait GaugeClientService<Ctx> {
+        #[service_schema_op(http(
+            method = \"POST\",
+            path = \"/gauge\",
+            header_out(\"x-age\"),
+        ))]
+        async fn read_gauge(&self, ctx: &Ctx, req: String) -> Result<(GaugeResponse, Option<u32>), GaugeError>;
+    }
+    ",
+    );
+    let method = method_body(&written, "readGauge");
+    assert!(
+        method.contains(
+            "final headerOut0 = rawHeaderOut0 == null ? null : int.tryParse(rawHeaderOut0);"
+        ) && method.contains("if (rawHeaderOut0 != null && headerOut0 == null) {")
+            && method.contains(
+                "_gaugeClientServiceHttpUndeserializablePayload('read-gauge', 'a response header did not match its declared type')"
+            ),
+        "an absent optional header reads `null` without faulting; a present one that will not \
+         parse still faults. Got: {method}"
+    );
+}
+
+#[test]
+fn a_header_vec_element_that_will_not_parse_faults_the_whole_element() {
+    let written = dart_http_client_of(
+        "
+    pub trait MeterClientService<Ctx> {
+        #[service_schema_op(http(
+            method = \"POST\",
+            path = \"/meter\",
+            header_out(\"x-readings\"),
+        ))]
+        async fn read_meter(&self, ctx: &Ctx, req: String) -> Result<(MeterResponse, Vec<u32>), MeterError>;
+    }
+    ",
+    );
+    let method = method_body(&written, "readMeter");
+    assert!(
+        method.contains(
+            "final pieces = (rawHeaderOut0).split(\",\").map((piece) => int.tryParse(piece)).toList();"
+        ) && method.contains(
+            "return pieces.any((piece) => piece == null) ? null : pieces.cast<int>();"
+        ) && method.contains(
+            "_meterClientServiceHttpUndeserializablePayload('read-meter', 'a response header did not match its declared type')"
+        ),
+        "one bad piece faults the whole `Vec` element rather than silently dropping it. \
+         Got: {method}"
+    );
+}
