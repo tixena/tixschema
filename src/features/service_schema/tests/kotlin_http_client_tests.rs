@@ -7,8 +7,8 @@
 
 use super::{
     KOTLIN_BYTES_HEADER_OUT_SERVICE, KOTLIN_HTTP_SERVICE, KOTLIN_MULTIPART_HTTP_SERVICE,
-    KOTLIN_SINGLE_PLACEHOLDER_HTTP_SERVICE, KOTLIN_STREAM_HTTP_SERVICE,
-    KOTLIN_UNIT_SUCCESS_HTTP_SERVICE, kotlin_http_client_of,
+    KOTLIN_NUMERIC_HEADER_OUT_SERVICE, KOTLIN_SINGLE_PLACEHOLDER_HTTP_SERVICE,
+    KOTLIN_STREAM_HTTP_SERVICE, KOTLIN_UNIT_SUCCESS_HTTP_SERVICE, kotlin_http_client_of,
 };
 
 /// The body of one method, from its own doc comment through the closing brace of the method
@@ -187,6 +187,39 @@ fn a_bytes_operation_composes_content_type_and_header_out_into_a_named_class() {
         method
             .contains("thumbnailClientServiceHttpFindHeader(response.headers, \"x-document-id\")"),
         "got: {method}"
+    );
+    assert!(
+        method.contains("val headerOut0 = rawHeaderOut0\n")
+            && !method.contains("headerOut0 = rawHeaderOut0 ?:"),
+        "a string-shaped `header_out` element is already non-null, so it reads with no elvis for \
+         kotlinc to warn is unconditionally true. Got: {method}"
+    );
+}
+
+#[test]
+fn a_numeric_header_out_element_parses_with_its_own_declared_type() {
+    let written = kotlin_http_client_of(KOTLIN_NUMERIC_HEADER_OUT_SERVICE);
+    let method = method_body(&written, "getMetric");
+    for (raw, conversion) in [
+        ("rawHeaderOut0", "toUIntOrNull"),
+        ("rawHeaderOut1", "toIntOrNull"),
+        ("rawHeaderOut2", "toFloatOrNull"),
+    ] {
+        assert!(
+            method.contains(&format!("({raw}).{conversion}()")),
+            "got: {method}"
+        );
+    }
+    assert!(
+        !method.contains("toLong()") && !method.contains("toDouble()"),
+        "no numeric header element still parses through the old blanket conversion. Got: {method}"
+    );
+    assert!(
+        method.matches(
+            "metricClientServiceHttpUndeserializablePayload(\"get-metric\", \"a response header did not match its declared type\")"
+        ).count() >= 3,
+        "a present header that will not decode as its declared type answers the fault the Rust \
+         client answers, rather than throwing. Got: {method}"
     );
 }
 

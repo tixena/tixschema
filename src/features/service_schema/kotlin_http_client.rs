@@ -866,9 +866,21 @@ fn header_out_read_stmts(
     let mut idents = Vec::new();
     for field in extra {
         let raw_ident = format!("raw{}", capitalize(&field.kotlin_prop));
-        // An `Option<T>` field reads a missing header as `null`; anything else faults.
+        let malformed = format!(
+            "{fn_prefix}HttpUndeserializablePayload(\"{wire}\", \"a response header did not match its declared type\")"
+        );
+        let fallible = kotlin_header_out_decode_is_fallible(&field.ty);
+        // An `Option<T>` field reads a missing header as `null`; a present one that will not
+        // decode as its declared type faults the same way a missing required one does — an
+        // always-non-null decode (a string) gets no elvis to fault on, so kotlinc has nothing to
+        // warn is unconditionally true.
         if option_inner(&field.ty).is_some() {
-            let decode = kotlin_header_out_decode(&field.ty, "raw");
+            let bare_decode = kotlin_header_out_decode(&field.ty, "raw");
+            let decode = if fallible {
+                format!("{bare_decode} ?: return {result}.Fault({malformed})")
+            } else {
+                bare_decode
+            };
             let _ = write!(
                 stmt,
                 "      val {raw_ident} = {find_header}(response.headers, \"{header_name}\")\n      \
@@ -878,7 +890,12 @@ fn header_out_read_stmts(
                 prop = field.kotlin_prop,
             );
         } else {
-            let decode = kotlin_header_out_decode(&field.ty, &raw_ident);
+            let bare_decode = kotlin_header_out_decode(&field.ty, &raw_ident);
+            let decode = if fallible {
+                format!("{bare_decode} ?: return {result}.Fault({malformed})")
+            } else {
+                bare_decode
+            };
             let _ = write!(
                 stmt,
                 "      val {raw_ident} = {find_header}(response.headers, \"{header_name}\")\n      \
@@ -1210,17 +1227,22 @@ fn kotlin_wire_text(ty: &Type, expr: &str, promoted: bool) -> String {
     format!("\"${{{expr}}}\"")
 }
 
-/// The expression that reads one `header_out` element's declared type back off `raw` — a
-/// non-null `String` expression already checked — mirroring the coercion the Rust, TypeScript and
-/// Dart clients perform on the way back from a response header.
+/// The expression that reads one `header_out` element's declared type back off `raw`. A number,
+/// boolean or list piece reads through its own `OrNull` conversion and may answer `null`; a
+/// string-shaped element is always non-null.
 fn kotlin_header_out_decode(ty: &Type, raw: &str) -> String {
     let base = option_inner(ty).unwrap_or(ty);
     if let Some(inner) = vec_inner(base) {
         let element = kotlin_header_out_decode(inner, "piece");
-        return format!("({raw}).split(\",\").map {{ piece -> {element} }}");
+        return format!(
+            "({raw}).split(\",\").map {{ piece -> {element} }}.let {{ pieces -> \
+             if (pieces.any {{ it == null }}) null else pieces.filterNotNull() }}"
+        );
     }
     match get_field_def("value", base, "").field_type {
-        FieldDefType::Boolean => format!("({raw} == \"true\")"),
+        FieldDefType::Boolean => {
+            format!("(when ({raw}) {{ \"true\" -> true; \"false\" -> false; else -> null }})")
+        }
         FieldDefType::U8
         | FieldDefType::U16
         | FieldDefType::U32
@@ -1230,8 +1252,9 @@ fn kotlin_header_out_decode(ty: &Type, raw: &str) -> String {
         | FieldDefType::I32
         | FieldDefType::I64
         | FieldDefType::Usize
-        | FieldDefType::Isize => format!("({raw}).toLong()"),
-        FieldDefType::F32 | FieldDefType::F64 => format!("({raw}).toDouble()"),
+        | FieldDefType::Isize
+        | FieldDefType::F32
+        | FieldDefType::F64 => format!("({raw}).to{}OrNull()", kotlin_type_of(base)),
         FieldDefType::BooleanLiteral(_)
         | FieldDefType::Char
         | FieldDefType::Map(_, _)
@@ -1250,6 +1273,32 @@ fn kotlin_header_out_decode(ty: &Type, raw: &str) -> String {
         | FieldDefType::NaiveDateTime
         | FieldDefType::DateTime => raw.to_owned(),
     }
+}
+
+/// Whether [`kotlin_header_out_decode`]'s own expression for `ty` can answer `null` (a number, a
+/// `Boolean`, or a list of either) — an always-non-null one needs no elvis to fault on, and
+/// writing one anyway is an unconditionally-true elvis kotlinc warns about.
+fn kotlin_header_out_decode_is_fallible(ty: &Type) -> bool {
+    let base = option_inner(ty).unwrap_or(ty);
+    if let Some(inner) = vec_inner(base) {
+        return kotlin_header_out_decode_is_fallible(inner);
+    }
+    matches!(
+        get_field_def("value", base, "").field_type,
+        FieldDefType::Boolean
+            | FieldDefType::U8
+            | FieldDefType::U16
+            | FieldDefType::U32
+            | FieldDefType::U64
+            | FieldDefType::I8
+            | FieldDefType::I16
+            | FieldDefType::I32
+            | FieldDefType::I64
+            | FieldDefType::Usize
+            | FieldDefType::Isize
+            | FieldDefType::F32
+            | FieldDefType::F64
+    )
 }
 
 /// Escapes a path literal for a double-quoted Kotlin string: a backslash, a double quote and a
