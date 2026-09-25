@@ -12,7 +12,8 @@ use super::parse::{
 };
 use super::transport::Transport;
 use super::{
-    emitted_trait, exec_service_schema, multipart_envelope_refusal, stream_envelope_refusal,
+    emitted_trait, exec_service_schema, multipart_envelope_refusal, reserved_header_out_refusal,
+    stream_envelope_refusal,
 };
 use crate::model_schema::exec_model_schema;
 use crate::utils::record_untagged_enum;
@@ -172,6 +173,20 @@ const MULTIPART_SERVICE: &str = r#"
             title: String,
             attachment: Box<dyn upload_service_schema::BodySource + Send>,
         ) -> Result<UploadResponse, UploadError>;
+    }
+"#;
+
+/// A service declaring one `header_out("is_error")` operation — the name `amqp_rpc`'s own reply
+/// handle already writes on every failed reply.
+const RESERVED_HEADER_SERVICE: &str = r#"
+    pub trait PingService<Ctx> {
+        #[service_schema_op(http(
+            method = "GET",
+            path = "/ping",
+            header_out("is_error"),
+            error_status(Unreachable = 503),
+        ))]
+        async fn ping(&self, ctx: &Ctx) -> Result<(String, bool), PingError>;
     }
 "#;
 
@@ -1612,6 +1627,32 @@ fn a_multipart_file_part_beside_both_envelope_transports_is_refused_once_naming_
          a file part has no carrier inside the `{ ok, value, error }` envelope those \
          transports answer with - drop them from `transports`, or drop the `part(...)` binding \
          and `body = \"multipart\"` from this operation"
+    );
+}
+
+/// `amqp_rpc`'s own reply handle already writes `is_error` on every failed reply.
+#[test]
+fn header_out_is_error_is_refused_on_a_service_that_also_declares_amqp_rpc() {
+    let refused = reserved_header_out_refusal(
+        &service(RESERVED_HEADER_SERVICE),
+        &[Transport::AmqpRpc, Transport::HttpRest],
+    )
+    .unwrap();
+    assert_eq!(
+        refused.to_string(),
+        "service_schema: operation `ping` declares `header_out(\"is_error\")`, and this service \
+         also declares `amqp_rpc`\n       \
+         that name is reserved - amqp_rpc's own reply handle already writes it on every failed \
+         reply; bind the value under another name"
+    );
+}
+
+/// The reserved name is `amqp_rpc`'s own; a service asking only for `ws_rpc` is untouched.
+#[test]
+fn header_out_is_error_is_untouched_on_a_service_that_does_not_declare_amqp_rpc() {
+    assert!(
+        reserved_header_out_refusal(&service(RESERVED_HEADER_SERVICE), &[Transport::WsRpc])
+            .is_none()
     );
 }
 
