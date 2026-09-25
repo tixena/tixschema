@@ -192,6 +192,19 @@ const RESERVED_HEADER_SERVICE: &str = r#"
     }
 "#;
 
+/// [`RESERVED_HEADER_SERVICE`]'s own twin on the error side.
+const RESERVED_ERROR_HEADER_SERVICE: &str = r#"
+    pub trait PongService<Ctx> {
+        #[service_schema_op(http(
+            method = "GET",
+            path = "/pong",
+            error_status(Unreachable = 503),
+            error_header_out("is_error"),
+        ))]
+        async fn pong(&self, ctx: &Ctx) -> Result<String, (PongError, bool)>;
+    }
+"#;
+
 /// One item as either macro body emits it: what its doc attributes said, everything ahead of the
 /// block it opens, the keyword that opened it, and that block.
 struct EmittedItem {
@@ -1642,8 +1655,8 @@ fn header_out_is_error_is_refused_on_a_service_that_also_declares_amqp_rpc() {
     .unwrap();
     assert_eq!(
         refused.to_string(),
-        "service_schema: operation `ping` declares `header_out(\"is_error\")`, and this service \
-         also declares `amqp_rpc`\n       \
+        "service_schema: operation `ping` binds the reserved name \"is_error\" on `header_out` \
+         or `error_header_out`, and this service also declares `amqp_rpc`\n       \
          that name is reserved - amqp_rpc's own reply handle already writes it on every failed \
          reply; bind the value under another name"
     );
@@ -1655,6 +1668,24 @@ fn header_out_is_error_is_untouched_on_a_service_that_does_not_declare_amqp_rpc(
     assert!(
         reserved_header_out_refusal(&service(RESERVED_HEADER_SERVICE), &[Transport::WsRpc])
             .is_none()
+    );
+}
+
+/// [`header_out_is_error_is_refused_on_a_service_that_also_declares_amqp_rpc`]'s own twin on the
+/// error side.
+#[test]
+fn error_header_out_is_error_is_refused_on_a_service_that_also_declares_amqp_rpc() {
+    let refused = reserved_header_out_refusal(
+        &service(RESERVED_ERROR_HEADER_SERVICE),
+        &[Transport::AmqpRpc, Transport::HttpRest],
+    )
+    .unwrap();
+    assert_eq!(
+        refused.to_string(),
+        "service_schema: operation `pong` binds the reserved name \"is_error\" on `header_out` \
+         or `error_header_out`, and this service also declares `amqp_rpc`\n       \
+         that name is reserved - amqp_rpc's own reply handle already writes it on every failed \
+         reply; bind the value under another name"
     );
 }
 
@@ -3302,6 +3333,192 @@ fn a_tuple_success_type_with_no_header_out_is_refused() {
     );
 }
 
+/// `error_header_out`'s own twin: a tuple error type with no `error_header_out` to explain it is
+/// refused.
+#[test]
+fn a_tuple_error_type_with_no_error_header_out_is_refused() {
+    assert_eq!(
+        refusals(
+            "pub trait WidgetService<Ctx> {
+                #[service_schema_op(http(method = \"GET\", path = \"/widgets/{widget_id}\", ok_status = 200))]
+                async fn get_widget(&self, ctx: &Ctx, widget_id: String) -> Result<WidgetResponse, (WidgetError, String)>;
+            }"
+        ),
+        vec![
+            "service_schema: operation `get_widget` returns a tuple error type and declares no \
+             `error_header_out`\n       \
+             name what each element after the first is with `error_header_out(\"name\")`, or \
+             return the type directly"
+        ]
+    );
+}
+
+/// A declared `error_header_out` count that does not match the error tuple's own arity is
+/// refused, naming both counts.
+#[test]
+fn an_error_header_out_arity_mismatch_is_refused() {
+    assert_eq!(
+        refusals(
+            "pub trait WidgetService<Ctx> {
+                #[service_schema_op(http(
+                    method = \"GET\",
+                    path = \"/widgets/{widget_id}\",
+                    ok_status = 200,
+                    error_header_out(\"content-range\"),
+                ))]
+                async fn get_widget(&self, ctx: &Ctx, widget_id: String) -> Result<WidgetResponse, (WidgetError, String, String)>;
+            }"
+        ),
+        vec![
+            "service_schema: operation `get_widget` declares 1 `error_header_out` entry, and \
+             its error type is not a tuple of 2 elements\n       \
+             the tuple carries the declared error first, then one element per \
+             `error_header_out`, in declaration order"
+        ]
+    );
+}
+
+/// `error_header_out` on a `one_way` operation is refused: a one-way operation has no declared
+/// error to carry a header in at all.
+#[test]
+fn error_header_out_on_a_one_way_operation_is_refused() {
+    assert_eq!(
+        refusals(
+            "pub trait WidgetService<Ctx> {
+                #[service_schema_op(one_way, http(
+                    method = \"POST\",
+                    path = \"/widgets/{widget_id}/ping\",
+                    error_header_out(\"content-range\"),
+                ))]
+                async fn ping_widget(&self, ctx: &Ctx, widget_id: String);
+            }"
+        ),
+        vec![
+            "service_schema: operation `ping_widget` is marked `one_way` and declares \
+             `error_header_out`\n       \
+             a one-way operation produces no reply and therefore no declared error to carry a \
+             header in"
+        ]
+    );
+}
+
+/// A header name that is not a legal HTTP token is refused, naming the operation and the name.
+#[test]
+fn an_illegal_header_name_is_refused() {
+    assert_eq!(
+        refusals(
+            "pub trait WidgetService<Ctx> {
+                #[service_schema_op(http(
+                    method = \"GET\",
+                    path = \"/widgets/{widget_id}\",
+                    ok_status = 200,
+                    header_in(\"bad name\" = filter),
+                ))]
+                async fn get_widget(&self, ctx: &Ctx, widget_id: String, filter: String) -> Result<WidgetResponse, WidgetError>;
+            }"
+        ),
+        vec![
+            "service_schema: operation `get_widget` declares the header name \"bad name\", \
+             which is not a legal HTTP token\n       \
+             a header name is letters, digits and `!#$%&'*+-.^_`|~`, RFC 9110's own `tchar` \
+             set, and nothing else"
+        ]
+    );
+}
+
+/// A declared name the `http_rest` transport already writes itself is refused, naming the
+/// conflict.
+#[test]
+fn a_reserved_header_name_is_refused() {
+    assert_eq!(
+        refusals(
+            "pub trait WidgetService<Ctx> {
+                #[service_schema_op(http(
+                    method = \"GET\",
+                    path = \"/widgets/{widget_id}\",
+                    ok_status = 200,
+                    header_out(\"content-type\"),
+                ))]
+                async fn get_widget(&self, ctx: &Ctx, widget_id: String) -> Result<(WidgetResponse, String), WidgetError>;
+            }"
+        ),
+        vec![
+            "service_schema: operation `get_widget` declares the header name \"content-type\", \
+             which `json_response`, and a `body = \"bytes\"` reply's own content type, writes \
+             itself\n       \
+             name a header this transport does not already control"
+        ]
+    );
+}
+
+/// `content-range` is reserved only on a `body = "stream"` operation - every other body kind
+/// leaves the name free for `header_out`/`error_header_out` to claim.
+#[test]
+fn content_range_is_reserved_only_on_a_streamed_operation() {
+    assert!(
+        refusals(
+            "pub trait WidgetService<Ctx> {
+                #[service_schema_op(http(
+                    method = \"GET\",
+                    path = \"/widgets/{widget_id}\",
+                    ok_status = 200,
+                    header_out(\"content-range\"),
+                ))]
+                async fn get_widget(&self, ctx: &Ctx, widget_id: String) -> Result<(WidgetResponse, String), WidgetError>;
+            }"
+        )
+        .is_empty(),
+        "an ordinary JSON reply never writes `content-range` itself, so the name is free"
+    );
+}
+
+/// The same header name declared twice within one `header_out` list is refused.
+#[test]
+fn a_header_name_declared_twice_within_one_list_is_refused() {
+    assert_eq!(
+        refusals(
+            "pub trait WidgetService<Ctx> {
+                #[service_schema_op(http(
+                    method = \"GET\",
+                    path = \"/widgets/{widget_id}\",
+                    ok_status = 200,
+                    header_out(\"etag\"),
+                    header_out(\"etag\"),
+                ))]
+                async fn get_widget(&self, ctx: &Ctx, widget_id: String) -> Result<(WidgetResponse, String, String), WidgetError>;
+            }"
+        ),
+        vec![
+            "service_schema: operation `get_widget` declares the header name \"etag\" twice \
+             in one list\n       \
+             one name cannot bind two headers within the same `header_in`, `header_out` or \
+             `error_header_out` list"
+        ]
+    );
+}
+
+/// The same name echoed across two different lists - a request header answered back on the
+/// reply - is legal.
+#[test]
+fn a_header_name_echoed_across_two_different_lists_is_legal() {
+    assert_eq!(
+        refusals(
+            "pub trait WidgetService<Ctx> {
+                #[service_schema_op(http(
+                    method = \"GET\",
+                    path = \"/widgets/{widget_id}\",
+                    ok_status = 200,
+                    header_in(\"x-request-id\" = request_id),
+                    header_out(\"x-request-id\"),
+                    error_header_out(\"x-request-id\"),
+                ))]
+                async fn get_widget(&self, ctx: &Ctx, widget_id: String, request_id: String) -> Result<(WidgetResponse, String), (WidgetError, String)>;
+            }"
+        ),
+        Vec::<String>::new()
+    );
+}
+
 /// The completeness check `support::emit` builds for `error_status` is a plain-function-pointer
 /// const naming the operation's own error type, with exactly the declared arms — read off the
 /// service module's own tokens, the same way every other emitted item in this file is.
@@ -3397,13 +3614,19 @@ fn a_json_operations_expansion_is_unchanged_at_the_token_level() {
          record_panic (\"create-document\" , & panicked) ; return handler . on_fault (& $ crate \
          :: document_service_schema :: ServiceFault :: handler_panic (\"create-document\" , & \
          panicked)) ; }",
-        "Ok (Ok ((value , header_out_0))) => { let headers : Vec < (String , String) > = :: std \
-         :: vec ! [(\"etag\" . to_owned () , match :: serde_json :: to_value (& (header_out_0)) \
-         { Ok (:: serde_json :: Value :: String (rendered)) => rendered , Ok (:: serde_json :: \
-         Value :: Bool (rendered)) => rendered . to_string () , Ok (:: serde_json :: Value :: \
-         Number (rendered)) => rendered . to_string () , Ok (rendered) => rendered . to_string \
-         () , Err (_unserializable) => :: std :: string :: String :: new () , }) ,] ; return \
-         json_response (200u16 , headers , & value) ; }",
+        "Ok (Ok ((value , header_out_0))) => { let mut headers : Vec < (String , String) > = :: \
+         std :: vec :: Vec :: new () ; { let rendered : :: std :: string :: String = match :: \
+         serde_json :: to_value (& (header_out_0)) { Ok (:: serde_json :: Value :: String \
+         (rendered)) => rendered , Ok (:: serde_json :: Value :: Bool (rendered)) => rendered . \
+         to_string () , Ok (:: serde_json :: Value :: Number (rendered)) => rendered . \
+         to_string () , Ok (rendered) => rendered . to_string () , Err (_unserializable) => :: \
+         std :: string :: String :: new () , } ; if ! legal_header_value (& rendered) { :: \
+         tracing :: error ! (header = \"etag\" , \"a response header value contained a \
+         character illegal in an HTTP header\" ,) ; return handler . on_fault (& $ crate :: \
+         document_service_schema :: ServiceFault :: handler_panic (\"get-version\" , \"a \
+         response header value contained a character illegal in an HTTP header\" ,)) ; } \
+         headers . push ((\"etag\" . to_owned () , rendered)) ; } return json_response (200u16 \
+         , headers , & value) ; }",
     ] {
         assert!(
             dispatcher.contains(fragment),

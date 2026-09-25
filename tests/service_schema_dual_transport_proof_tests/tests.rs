@@ -60,6 +60,14 @@ pub enum ThumbnailError {
 
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum RangeError {
+    NotFound,
+    RangeNotSatisfiable,
+}
+
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SweepReport {
     pub swept: u32,
 }
@@ -81,6 +89,20 @@ pub trait DocumentService<Ctx> {
         error_status(AlreadyArchived = 409),
     ))]
     async fn archive_document(&self, ctx: &Ctx, document_id: String) -> Result<(), ArchiveError>;
+
+    /// A declared error that carries a response header of its own: `error_header_out` splits
+    /// the error tuple the same way `header_out` splits a success one.
+    #[service_schema_op(http(
+        method = "GET",
+        path = "/documents/{document_id}/range-check",
+        error_status(NotFound = 404, RangeNotSatisfiable = 416),
+        error_header_out("content-range"),
+    ))]
+    async fn check_range(
+        &self,
+        ctx: &Ctx,
+        document_id: String,
+    ) -> Result<VersionResponse, (RangeError, Option<String>)>;
 
     /// A `bytes`-kind body: the success arm is the raw bytes and their content type, not JSON.
     /// `download` binds no path placeholder, so a bodyless `GET` reads it off the query string.
@@ -113,7 +135,7 @@ pub trait DocumentService<Ctx> {
         document_id: String,
         version_id: String,
         byte_range: Option<String>,
-    ) -> Result<(VersionResponse, String), GetVersionError>;
+    ) -> Result<(VersionResponse, Option<String>), GetVersionError>;
 
     /// One-way: a client sends and neither transport expects an answer.
     #[service_schema_op(one_way, http(method = "DELETE", path = "/documents/{document_id}"))]
@@ -146,6 +168,42 @@ impl DocumentService<()> for DocumentBackEnd {
         Ok(())
     }
 
+    async fn check_range(
+        &self,
+        _ctx: &(),
+        document_id: String,
+    ) -> Result<VersionResponse, (RangeError, Option<String>)> {
+        ready(()).await;
+        self.reach(format!("check_range {document_id}"));
+        if document_id == "missing" {
+            return Err((RangeError::NotFound, None));
+        }
+        if document_id == "toolarge" {
+            return Err((
+                RangeError::RangeNotSatisfiable,
+                Some("bytes */2097152".to_owned()),
+            ));
+        }
+        if document_id == "inject" {
+            return Err((
+                RangeError::RangeNotSatisfiable,
+                Some("bytes */2097152\r\nSet-Cookie: injected=yes".to_owned()),
+            ));
+        }
+        if document_id == "space" {
+            return Err((RangeError::RangeNotSatisfiable, Some("a b".to_owned())));
+        }
+        if document_id == "tab" {
+            return Err((RangeError::RangeNotSatisfiable, Some("a\tb".to_owned())));
+        }
+        if document_id == "quoted" {
+            return Err((RangeError::RangeNotSatisfiable, Some("\"abc\"".to_owned())));
+        }
+        Ok(VersionResponse {
+            content: format!("{document_id}@ok"),
+        })
+    }
+
     async fn get_thumbnail(
         &self,
         _ctx: &(),
@@ -166,7 +224,7 @@ impl DocumentService<()> for DocumentBackEnd {
         document_id: String,
         version_id: String,
         byte_range: Option<String>,
-    ) -> Result<(VersionResponse, String), GetVersionError> {
+    ) -> Result<(VersionResponse, Option<String>), GetVersionError> {
         ready(()).await;
         self.reach(format!(
             "get_version {document_id} {version_id} {byte_range:?}"
@@ -177,11 +235,19 @@ impl DocumentService<()> for DocumentBackEnd {
         if document_id == "gone" {
             return Err(GetVersionError::VersionGone);
         }
+        if document_id == "quiet" {
+            return Ok((
+                VersionResponse {
+                    content: format!("{document_id}@{version_id}"),
+                },
+                None,
+            ));
+        }
         Ok((
             VersionResponse {
                 content: format!("{document_id}@{version_id}"),
             },
-            "v7".to_owned(),
+            Some("v7".to_owned()),
         ))
     }
 
@@ -481,7 +547,7 @@ fn the_http_loop_round_trips_the_header_bound_operation() {
             VersionResponse {
                 content: "doc-1@v1".to_owned(),
             },
-            "v7".to_owned(),
+            Some("v7".to_owned()),
         )),
         "the response rides in the body and the header_out value is rejoined from the reply's own \
          headers"
@@ -491,6 +557,28 @@ fn the_http_loop_round_trips_the_header_bound_operation() {
         vec![r#"get_version doc-1 v1 Some("bytes=0-10")"#.to_owned()],
         "the header_in binding decoded the claimed request header into the implementation's own \
          argument"
+    );
+}
+
+#[test]
+fn the_http_loop_carries_none_rather_than_an_empty_header_for_an_absent_header_out_value() {
+    let service = DocumentBackEnd::new();
+    let client = http_rest_client::DocumentServiceClient::new(HttpLoop::new(
+        &service,
+        http_rest_transport::DefaultFaultHandler,
+    ));
+    let answered =
+        poll_once(client.get_version("quiet".to_owned(), "v1".to_owned(), None)).unwrap();
+    assert_eq!(
+        answered,
+        Ok((
+            VersionResponse {
+                content: "quiet@v1".to_owned(),
+            },
+            None,
+        )),
+        "a `None` `header_out` element must omit the header rather than send it empty, and \
+         decode back to `None` rather than `Some(String::new())`"
     );
 }
 
@@ -511,6 +599,175 @@ fn the_http_loop_answers_the_header_bound_operations_complete_error_mapping() {
             answered,
             Err(document_service_schema::CallError::Operation(declared)),
             "`{document_id}` must decode through the status this variant declared"
+        );
+    }
+}
+
+#[test]
+fn the_http_loop_round_trips_the_declared_error_s_own_header() {
+    let service = DocumentBackEnd::new();
+    let client = http_rest_client::DocumentServiceClient::new(HttpLoop::new(
+        &service,
+        http_rest_transport::DefaultFaultHandler,
+    ));
+    let answered = poll_once(client.check_range("toolarge".to_owned())).unwrap();
+    assert_eq!(
+        answered,
+        Err(document_service_schema::CallError::Operation((
+            RangeError::RangeNotSatisfiable,
+            Some("bytes */2097152".to_owned()),
+        ))),
+        "the declared error's own head rides the body and its `error_header_out` element is \
+         rejoined from the reply's own headers, exactly as a success `header_out` element is"
+    );
+}
+
+#[test]
+fn a_declared_error_with_no_header_value_carries_none_rather_than_an_empty_header() {
+    let service = DocumentBackEnd::new();
+    let client = http_rest_client::DocumentServiceClient::new(HttpLoop::new(
+        &service,
+        http_rest_transport::DefaultFaultHandler,
+    ));
+    let answered = poll_once(client.check_range("missing".to_owned())).unwrap();
+    assert_eq!(
+        answered,
+        Err(document_service_schema::CallError::Operation((
+            RangeError::NotFound,
+            None,
+        ))),
+    );
+}
+
+/// An illegal `error_header_out` value (here, one carrying an injected header line) never reaches
+/// the wire: the dispatcher answers a fault instead of a response whose headers were spliced by
+/// the value, and the fault kind is `handler-panic`, the kind this crate reuses for a runtime
+/// contract the implementation itself broke.
+#[test]
+fn an_illegal_declared_error_header_value_answers_a_fault_rather_than_an_injected_line() {
+    let service = DocumentBackEnd::new();
+    let request = http_rest_transport::IncomingRequest::new(
+        "GET".to_owned(),
+        "/documents/inject/range-check".to_owned(),
+        String::new(),
+        Vec::new(),
+        Vec::new(),
+    );
+    let response = poll_once(http_rest_transport::dispatch(
+        &service,
+        &(),
+        &request,
+        &http_rest_transport::DefaultFaultHandler,
+    ))
+    .unwrap();
+    assert_eq!(response.status(), 500);
+    for (_, value) in response.headers() {
+        assert!(
+            !value.contains("Set-Cookie") && !value.contains('\r') && !value.contains('\n'),
+            "no header carries the injected line or a raw control character. Got: {:?}",
+            response.headers()
+        );
+    }
+    let fault: serde_json::Value = serde_json::from_slice(response.body()).unwrap();
+    assert_eq!(fault["kind"], "handler-panic");
+}
+
+/// Every byte the legality check accepts - a space, a tab, a `Content-Range`-shaped value, and a
+/// value carrying literal quote characters - reaches the response header unchanged rather than
+/// being refused as if it were illegal.
+#[test]
+fn a_legal_declared_error_header_value_reaches_the_response_unchanged() {
+    let service = DocumentBackEnd::new();
+    for (document_id, legal_value) in [
+        ("space", "a b"),
+        ("tab", "a\tb"),
+        ("toolarge", "bytes */2097152"),
+        ("quoted", "\"abc\""),
+    ] {
+        let request = http_rest_transport::IncomingRequest::new(
+            "GET".to_owned(),
+            format!("/documents/{document_id}/range-check"),
+            String::new(),
+            Vec::new(),
+            Vec::new(),
+        );
+        let response = poll_once(http_rest_transport::dispatch(
+            &service,
+            &(),
+            &request,
+            &http_rest_transport::DefaultFaultHandler,
+        ))
+        .unwrap();
+        assert_eq!(
+            response.status(),
+            416,
+            "a legal value must map to the declared status, not a fault. got status {}, headers {:?}",
+            response.status(),
+            response.headers()
+        );
+        assert!(
+            response
+                .headers()
+                .contains(&("content-range".to_owned(), legal_value.to_owned())),
+            "`{legal_value:?}` must reach the response header unchanged. got: {:?}",
+            response.headers()
+        );
+    }
+}
+
+/// A `header_in` value that fails the safety check is refused before the client ever calls the
+/// transport: the implementation is never reached.
+#[test]
+fn an_illegal_header_in_value_refuses_before_the_transport_is_ever_reached() {
+    let service = DocumentBackEnd::new();
+    let client = http_rest_client::DocumentServiceClient::new(HttpLoop::new(
+        &service,
+        http_rest_transport::DefaultFaultHandler,
+    ));
+    let answered = poll_once(client.get_version(
+        "doc-1".to_owned(),
+        "v1".to_owned(),
+        Some("bytes=0-10\r\nX-Injected: yes".to_owned()),
+    ))
+    .unwrap();
+    assert!(
+        matches!(answered, Err(document_service_schema::CallError::Fault(_))),
+        "an illegal header_in value must refuse rather than answer. Got: {answered:?}"
+    );
+    if let Err(document_service_schema::CallError::Fault(fault)) = answered {
+        assert_eq!(format!("{}", fault.kind()), "failed validation");
+    }
+    assert!(
+        service.reached().is_empty(),
+        "the implementation must never run for a call the client itself refused"
+    );
+}
+
+/// Every byte the legality check accepts - a space, a tab, a `Content-Range`-shaped value, and a
+/// value carrying literal quote characters - reaches the implementation unchanged rather than
+/// being refused as if it were illegal.
+#[test]
+fn a_legal_header_in_value_reaches_the_implementation_unchanged() {
+    for legal_value in ["a b", "a\tb", "bytes */2097152", "\"abc\""] {
+        let service = DocumentBackEnd::new();
+        let client = http_rest_client::DocumentServiceClient::new(HttpLoop::new(
+            &service,
+            http_rest_transport::DefaultFaultHandler,
+        ));
+        let answered = poll_once(client.get_version(
+            "doc-1".to_owned(),
+            "v1".to_owned(),
+            Some(legal_value.to_owned()),
+        ))
+        .unwrap();
+        assert!(
+            answered.is_ok(),
+            "`{legal_value:?}` must not be refused. Got: {answered:?}"
+        );
+        assert_eq!(
+            service.reached(),
+            vec![format!("get_version doc-1 v1 Some({legal_value:?})")],
+            "`{legal_value:?}` must reach the implementation unchanged"
         );
     }
 }
@@ -705,7 +962,7 @@ fn the_amqp_loop_round_trips_the_header_bound_operation_through_the_headers_chan
             VersionResponse {
                 content: "doc-1@v1".to_owned(),
             },
-            "v7".to_owned(),
+            Some("v7".to_owned()),
         ),
         "the header_in value rode the message headers table into the implementation, and the \
          header_out value rode the reply headers back out"
@@ -713,6 +970,25 @@ fn the_amqp_loop_round_trips_the_header_bound_operation_through_the_headers_chan
     assert_eq!(
         service.reached(),
         vec![r#"get_version doc-1 v1 Some("bytes=0-10")"#.to_owned()]
+    );
+}
+
+#[test]
+fn the_amqp_loop_carries_none_rather_than_an_empty_header_for_an_absent_header_out_value() {
+    let service = DocumentBackEnd::new();
+    let client = amqp_client::DocumentServiceClient::new(AmqpLoop::new(&service));
+    let answered = poll_once(client.get_version("quiet".to_owned(), "v1".to_owned(), None))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        answered,
+        (
+            VersionResponse {
+                content: "quiet@v1".to_owned(),
+            },
+            None,
+        ),
+        "a `None` `header_out` element must omit the header, on the AMQP headers table too"
     );
 }
 
@@ -732,6 +1008,37 @@ fn the_amqp_loop_answers_the_header_bound_operations_complete_error_mapping() {
             "`{document_id}`"
         );
     }
+}
+
+#[test]
+fn the_amqp_loop_round_trips_the_declared_error_s_own_header() {
+    let service = DocumentBackEnd::new();
+    let client = amqp_client::DocumentServiceClient::new(AmqpLoop::new(&service));
+    let answered = poll_once(client.check_range("toolarge".to_owned())).unwrap();
+    assert_eq!(
+        answered,
+        Err(document_service_schema::CallError::Operation((
+            RangeError::RangeNotSatisfiable,
+            Some("bytes */2097152".to_owned()),
+        ))),
+        "the declared error's own head rides the envelope's `error` and its `error_header_out` \
+         element rides the reply's own headers table, exactly as a success `header_out` element \
+         does"
+    );
+}
+
+#[test]
+fn an_amqp_declared_error_with_no_header_value_carries_none() {
+    let service = DocumentBackEnd::new();
+    let client = amqp_client::DocumentServiceClient::new(AmqpLoop::new(&service));
+    let answered = poll_once(client.check_range("missing".to_owned())).unwrap();
+    assert_eq!(
+        answered,
+        Err(document_service_schema::CallError::Operation((
+            RangeError::NotFound,
+            None,
+        ))),
+    );
 }
 
 /// The mapped-error arm of the no-payload operation round-trips over `amqp_rpc` exactly like any

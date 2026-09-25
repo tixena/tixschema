@@ -166,10 +166,23 @@ fn a_header_in_binding_becomes_an_extra_argument_and_a_built_header() {
         method.contains("const headers: Array<[string, string]> = [];")
             && method.contains(
                 "if (byteRange !== undefined) {\n        \
-                 headers.push([\"range\", String(byteRange)]);\n      \
+                 const rendered = String(byteRange);\n        \
+                 if (!documentClientServiceHttpLegalHeaderValue(rendered)) {\n        \
+                 return {\n          \
+                 ok: false,\n          \
+                 error: {\n            \
+                 isServiceFault: true,\n            \
+                 fault: documentClientServiceHttpOutboundFault(\"get-version\", [{ path: \
+                 [\"range\"], message: \"a header value contains a character illegal in an \
+                 HTTP header\" }]),\n          \
+                 },\n        \
+                 };\n        \
+                 }\n        \
+                 headers.push([\"range\", rendered]);\n      \
                  }"
             ),
-        "the header is built from the extra argument, never from the message. Got: {method}"
+        "the header is built from the extra argument, never from the message, and its rendered \
+         value is checked before it is pushed. Got: {method}"
     );
 }
 

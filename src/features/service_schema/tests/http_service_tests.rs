@@ -337,11 +337,29 @@ fn a_header_in_binding_is_read_by_the_dispatcher_not_by_this_server() {
 fn a_bytes_reply_answers_the_raw_bytes_with_their_content_type_and_declared_headers() {
     let written = http_service_of(BYTES_HTTP_SERVICE);
     assert!(
-        written.contains(
-            "const [bytes, contentType, headerOut0] = envelope.value;"
-        ) && written.contains(
-            "const headers: Array<[string, string]> = [[\"content-type\", contentType], [\"x-document-id\", String(headerOut0)]];"
-        ) && written.contains("return { status: 200, headers, body: new Uint8Array(bytes) };"),
+        written.contains("const [bytes, contentType, headerOut0] = envelope.value;")
+            && written.contains(
+                "const headers: Array<[string, string]> = [];\n        \
+             {\n            \
+             const rendered = contentType;\n            \
+             if (!thumbnailClientServiceHttpLegalResponseHeaderValue(rendered)) {\n              \
+             return onFault(thumbnailClientServiceHttpFault(\"handler-panic\", \
+             \"get-thumbnail\", \"a response header value contained a character illegal in an \
+             HTTP header\"));\n            \
+             }\n            \
+             headers.push([\"content-type\", rendered]);\n          \
+             }\n        \
+             {\n            \
+             const rendered = String(headerOut0);\n            \
+             if (!thumbnailClientServiceHttpLegalResponseHeaderValue(rendered)) {\n              \
+             return onFault(thumbnailClientServiceHttpFault(\"handler-panic\", \
+             \"get-thumbnail\", \"a response header value contained a character illegal in an \
+             HTTP header\"));\n            \
+             }\n            \
+             headers.push([\"x-document-id\", rendered]);\n          \
+             }"
+            )
+            && written.contains("return { status: 200, headers, body: new Uint8Array(bytes) };"),
         "got: {written}"
     );
 }

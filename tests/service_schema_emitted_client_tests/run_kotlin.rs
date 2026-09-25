@@ -14,6 +14,9 @@ use super::runtime::ran_kotlin;
 use super::tests::conversation_client_service_schema::{
     conversation_client_service_fault_fields_kotlin, conversation_client_service_fault_kind_kotlin,
 };
+use super::tests::echo_client_service_schema::{
+    echo_client_service_fault_fields_kotlin, echo_client_service_fault_kind_kotlin,
+};
 use super::tests::pulse_client_service_schema::{
     pulse_client_service_fault_fields_kotlin, pulse_client_service_fault_kind_kotlin,
 };
@@ -25,10 +28,14 @@ use super::tests::swift_codec_fixture::{
     codec_options_row_kotlin, codec_primary_kotlin, codec_tuple_point_kotlin,
     codec_unit_field_kotlin, codec_unit_payload_kotlin, codec_untagged_kotlin,
 };
+use super::tests::thumbnail_client_service_schema::{
+    thumbnail_client_service_fault_fields_kotlin, thumbnail_client_service_fault_kind_kotlin,
+};
 use super::tests::{
-    ConversationClientServiceSchema, PulseClientServiceSchema, conversation_id_kotlin,
-    pulse_error_kotlin, pulse_request_kotlin, pulse_response_kotlin, window_error_kotlin,
-    window_page_kotlin, window_request_kotlin,
+    ConversationClientServiceSchema, EchoClientServiceSchema, PulseClientServiceSchema,
+    ThumbnailClientServiceSchema, conversation_id_kotlin, echo_range_error_kotlin,
+    echo_range_response_kotlin, pulse_error_kotlin, pulse_request_kotlin, pulse_response_kotlin,
+    thumbnail_error_kotlin, window_error_kotlin, window_page_kotlin, window_request_kotlin,
 };
 use std::collections::HashMap;
 
@@ -283,6 +290,76 @@ fun main() = runBlocking {
 }
 "#;
 
+/// A stub `ThumbnailClientServiceHttpTransport` answering by path alone, driving the emitted
+/// client's own declared-error and `header_out` decode - the Kotlin twin of the Node, Dart and
+/// Swift client tests on the same fixture.
+const THUMBNAIL_DRIVER: &str = r#"
+class ThumbnailRecorder : ThumbnailClientServiceHttpTransport {
+    override suspend fun send(request: ThumbnailClientServiceHttpRequest): ThumbnailClientServiceHttpResponse {
+        if (request.path == "/thumbnails/missing") {
+            return ThumbnailClientServiceHttpResponse(404, listOf("x-thumbnail-reason" to "archived"), """{"errorCode":"not-found"}""".encodeToByteArray())
+        }
+        if (request.path == "/thumbnails/gone") {
+            return ThumbnailClientServiceHttpResponse(404, emptyList(), """{"errorCode":"not-found"}""".encodeToByteArray())
+        }
+        return ThumbnailClientServiceHttpResponse(200, listOf("content-type" to "image/png"), "PNGDATA".encodeToByteArray())
+    }
+}
+
+fun describeThumbnail(result: ThumbnailClientServiceGetThumbnailResult): JsonObject = buildJsonObject {
+    when (result) {
+        is ThumbnailClientServiceGetThumbnailResult.Ok -> {
+            put("kind", "ok")
+            put("headerOut", result.value.headerOut0)
+        }
+        is ThumbnailClientServiceGetThumbnailResult.Declared -> {
+            put("kind", "operation")
+            put("errorHeaderOut", result.error.errorHeaderOut0)
+        }
+        is ThumbnailClientServiceGetThumbnailResult.Fault -> {
+            put("kind", "fault")
+        }
+    }
+}
+
+fun main() = runBlocking {
+    val client = ThumbnailClientServiceHttpClient(ThumbnailRecorder())
+    val missing = client.getThumbnail("missing")
+    val gone = client.getThumbnail("gone")
+    val anon = client.getThumbnail("anon")
+    val report = buildJsonObject {
+        put("missing", describeThumbnail(missing))
+        put("gone", describeThumbnail(gone))
+        put("anon", describeThumbnail(anon))
+    }
+    println(report.toString())
+}
+"#;
+
+/// A stub `EchoClientServiceHttpTransport` recording whether `send` was ever called, driving the
+/// emitted client's own `header_in` legality check on a value carrying a line feed.
+const ECHO_DRIVER: &str = r#"
+class EchoRecorder : EchoClientServiceHttpTransport {
+    var sendCalled = false
+    override suspend fun send(request: EchoClientServiceHttpRequest): EchoClientServiceHttpResponse {
+        sendCalled = true
+        return EchoClientServiceHttpResponse(200, emptyList(), """{"received":"unreachable"}""".encodeToByteArray())
+    }
+}
+
+fun main() = runBlocking {
+    val recorder = EchoRecorder()
+    val client = EchoClientServiceHttpClient(recorder)
+    val refused = client.echoRange("doc-1", "bytes=0-10\nX-Injected: yes")
+    val faultKind = if (refused is EchoClientServiceEchoRangeResult.Fault) refused.fault.kind.name else null
+    val report = buildJsonObject {
+        put("sendCalled", recorder.sendCalled)
+        put("faultKind", faultKind)
+    }
+    println(report.toString())
+}
+"#;
+
 // -------------------------------------------------------------------------------------------
 // The generated text every group but the codec one drives: `ConversationClientService`'s own
 // declared types, its fault pair, and both of its clients.
@@ -315,9 +392,27 @@ fn pulse_definitions() -> Vec<String> {
     ]
 }
 
+/// `ThumbnailClientService`'s own declared error type, its fault pair, and its client - the
+/// `error_header_out`/`header_out` `Option<T>`-omission group's own fixture.
+fn thumbnail_definitions() -> Vec<String> {
+    vec![
+        thumbnail_error_kotlin::kotlin_definition(),
+        thumbnail_client_service_fault_fields_kotlin::kotlin_definition(),
+        thumbnail_client_service_fault_kind_kotlin::kotlin_definition(),
+        ThumbnailClientServiceSchema::kotlin_http_client(),
+    ]
+}
+
 fn client_module(driver: &str) -> String {
     let mut parts = vec![KOTLIN_IMPORTS.to_owned()];
     parts.extend(client_definitions());
+    parts.push(driver.to_owned());
+    parts.join("\n\n")
+}
+
+fn thumbnail_module(driver: &str) -> String {
+    let mut parts = vec![KOTLIN_IMPORTS.to_owned()];
+    parts.extend(thumbnail_definitions());
     parts.push(driver.to_owned());
     parts.join("\n\n")
 }
@@ -605,4 +700,63 @@ fn the_mini_server_answers_every_frame_with_an_id_and_shares_the_socket() {
     ] {
         assert_eq!(report[key], true, "`{key}` was false. Got: {report:#?}");
     }
+}
+
+#[test]
+fn the_client_decodes_the_declared_errors_own_header_and_omits_a_none_header_out_element() {
+    let Some(written) = ran_kotlin(&thumbnail_module(THUMBNAIL_DRIVER)) else {
+        return;
+    };
+    let results: serde_json::Value = serde_json::from_str(written.trim()).unwrap();
+    assert_eq!(results["missing"]["kind"], "operation", "got: {results:#?}");
+    assert_eq!(
+        results["missing"]["errorHeaderOut"], "archived",
+        "the declared error's own `error_header_out` element must decode. got: {results:#?}"
+    );
+    assert_eq!(results["gone"]["kind"], "operation", "got: {results:#?}");
+    assert!(
+        results["gone"]["errorHeaderOut"].is_null(),
+        "an absent `error_header_out` header must decode as `null`. got: {results:#?}"
+    );
+    assert_eq!(results["anon"]["kind"], "ok", "got: {results:#?}");
+    assert!(
+        results["anon"]["headerOut"].is_null(),
+        "an absent `header_out` header must decode as `null`. got: {results:#?}"
+    );
+}
+
+/// `EchoClientService`'s own declared types, its fault pair, and its client - the `header_in`
+/// line-feed-refusal group's own fixture.
+fn echo_definitions() -> Vec<String> {
+    vec![
+        echo_range_response_kotlin::kotlin_definition(),
+        echo_range_error_kotlin::kotlin_definition(),
+        echo_client_service_fault_fields_kotlin::kotlin_definition(),
+        echo_client_service_fault_kind_kotlin::kotlin_definition(),
+        EchoClientServiceSchema::kotlin_http_client(),
+    ]
+}
+
+fn echo_module(driver: &str) -> String {
+    let mut parts = vec![KOTLIN_IMPORTS.to_owned()];
+    parts.extend(echo_definitions());
+    parts.push(driver.to_owned());
+    parts.join("\n\n")
+}
+
+#[test]
+fn a_header_in_value_with_a_line_feed_is_refused_before_the_transport_is_ever_reached() {
+    let Some(written) = ran_kotlin(&echo_module(ECHO_DRIVER)) else {
+        return;
+    };
+    let results: serde_json::Value = serde_json::from_str(written.trim()).unwrap();
+    assert_eq!(
+        results["sendCalled"], false,
+        "an illegal `header_in` value must refuse before the transport is ever reached. \
+         got: {results:#?}"
+    );
+    assert_eq!(
+        results["faultKind"], "FailedValidation",
+        "got: {results:#?}"
+    );
 }

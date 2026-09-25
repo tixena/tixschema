@@ -22,8 +22,10 @@ use super::tests::swift_codec_fixture::{
     codec_untagged_swift,
 };
 use super::tests::{
-    ConversationClientServiceSchema, conversation_id_swift, window_error_swift, window_page_swift,
-    window_request_swift,
+    ConversationClientServiceSchema, EchoClientServiceSchema, ThumbnailClientServiceSchema,
+    conversation_id_swift, echo_client_service_schema, echo_range_error_swift,
+    echo_range_response_swift, thumbnail_client_service_schema, thumbnail_error_swift,
+    window_error_swift, window_page_swift, window_request_swift,
 };
 use std::collections::HashMap;
 
@@ -179,6 +181,83 @@ let report = Report(
 )
 print(String(data: try! JSONEncoder().encode(report), encoding: .utf8)!)
 "#;
+
+/// A stub `ThumbnailClientServiceHttpTransport` answering by path alone, driving the emitted
+/// client's own declared-error and `header_out` decode - the Swift twin of the Node and Dart
+/// client tests on the same fixture.
+const THUMBNAIL_DRIVER: &str = r##"
+struct ThumbnailReport: Codable {
+  let kind: String
+  let errorCode: String?
+  let errorHeaderOut: String?
+  let headerOut: String?
+}
+
+struct ThumbnailRecorder: ThumbnailClientServiceHttpTransport {
+  func send(_ request: ThumbnailClientServiceHttpRequest) async throws -> ThumbnailClientServiceHttpResponse {
+    if request.path == "/thumbnails/missing" {
+      return ThumbnailClientServiceHttpResponse(status: 404, headers: [("x-thumbnail-reason", "archived")], body: Data(#"{"errorCode":"not-found"}"#.utf8))
+    }
+    if request.path == "/thumbnails/gone" {
+      return ThumbnailClientServiceHttpResponse(status: 404, headers: [], body: Data(#"{"errorCode":"not-found"}"#.utf8))
+    }
+    return ThumbnailClientServiceHttpResponse(status: 200, headers: [("content-type", "image/png")], body: Data("PNGDATA".utf8))
+  }
+}
+
+func describeThumbnail(_ result: Result<(Data, String, String?), ThumbnailClientServiceGetThumbnailFailure>) -> ThumbnailReport {
+  switch result {
+  case .success(let value):
+    return ThumbnailReport(kind: "ok", errorCode: nil, errorHeaderOut: nil, headerOut: value.2)
+  case .failure(.declared(let error)):
+    let code: String
+    switch error.0 {
+    case .notFound: code = "not-found"
+    }
+    return ThumbnailReport(kind: "operation", errorCode: code, errorHeaderOut: error.1, headerOut: nil)
+  case .failure(.fault):
+    return ThumbnailReport(kind: "fault", errorCode: nil, errorHeaderOut: nil, headerOut: nil)
+  }
+}
+
+let thumbnailClient = ThumbnailClientServiceHttpClient(transport: ThumbnailRecorder())
+let thumbnailMissing = await thumbnailClient.getThumbnail("missing")
+let thumbnailGone = await thumbnailClient.getThumbnail("gone")
+let thumbnailAnon = await thumbnailClient.getThumbnail("anon")
+let thumbnailReport: [String: ThumbnailReport] = [
+  "missing": describeThumbnail(thumbnailMissing),
+  "gone": describeThumbnail(thumbnailGone),
+  "anon": describeThumbnail(thumbnailAnon),
+]
+print(String(data: try! JSONEncoder().encode(thumbnailReport), encoding: .utf8)!)
+"##;
+
+/// A stub `EchoClientServiceHttpTransport` recording whether `send` was ever called, driving the
+/// emitted client's own `header_in` legality check on a value carrying a line feed.
+const ECHO_DRIVER: &str = r##"
+actor EchoRecorder: EchoClientServiceHttpTransport {
+  private(set) var sendCalled = false
+
+  func send(_ request: EchoClientServiceHttpRequest) async throws -> EchoClientServiceHttpResponse {
+    sendCalled = true
+    return EchoClientServiceHttpResponse(status: 200, headers: [], body: Data(#"{"received":"unreachable"}"#.utf8))
+  }
+}
+
+let echoRecorder = EchoRecorder()
+let echoClient = EchoClientServiceHttpClient(transport: echoRecorder)
+let echoRefused = await echoClient.echoRange("doc-1", byte_range: "bytes=0-10\nX-Injected: yes")
+var echoFaultKind = ""
+if case .failure(.fault(let fault)) = echoRefused {
+  echoFaultKind = fault.kind.rawValue
+}
+struct EchoReport: Codable {
+  let sendCalled: Bool
+  let faultKind: String
+}
+let echoReport = EchoReport(sendCalled: await echoRecorder.sendCalled, faultKind: echoFaultKind)
+print(String(data: try! JSONEncoder().encode(echoReport), encoding: .utf8)!)
+"##;
 
 // -------------------------------------------------------------------------------------------
 // The generated types and clients every group but the codec one drives.
@@ -503,4 +582,79 @@ fn a_frame_for_another_service_is_dropped_and_the_genuine_reply_still_resolves()
         return;
     };
     assert_eq!(written["foreignResolvedOk"], true, "got: {written:#?}");
+}
+
+fn thumbnail_module() -> String {
+    [
+        "import Foundation".to_owned(),
+        thumbnail_error_swift::swift_definition(),
+        thumbnail_client_service_schema::thumbnail_client_service_fault_fields_swift::swift_definition(),
+        thumbnail_client_service_schema::thumbnail_client_service_fault_kind_swift::swift_definition(),
+        ThumbnailClientServiceSchema::swift_http_client(),
+        THUMBNAIL_DRIVER.to_owned(),
+    ]
+    .join("\n\n")
+}
+
+#[test]
+fn the_client_decodes_the_declared_errors_own_header_and_omits_a_none_header_out_element() {
+    let Some(wrote) = ran(
+        "swift",
+        RUNTIME_VAR,
+        "swift",
+        "thumbnail.swift",
+        &thumbnail_module(),
+    ) else {
+        return;
+    };
+    let results: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
+    assert_eq!(results["missing"]["kind"], "operation", "got: {results:#?}");
+    assert_eq!(
+        results["missing"]["errorCode"], "not-found",
+        "got: {results:#?}"
+    );
+    assert_eq!(
+        results["missing"]["errorHeaderOut"], "archived",
+        "the declared error's own `error_header_out` element must decode. got: {results:#?}"
+    );
+    assert_eq!(results["gone"]["kind"], "operation", "got: {results:#?}");
+    assert!(
+        results["gone"]["errorHeaderOut"].is_null(),
+        "an absent `error_header_out` header must decode as `nil`. got: {results:#?}"
+    );
+    assert_eq!(results["anon"]["kind"], "ok", "got: {results:#?}");
+    assert!(
+        results["anon"]["headerOut"].is_null(),
+        "an absent `header_out` header must decode as `nil`. got: {results:#?}"
+    );
+}
+
+fn echo_module() -> String {
+    [
+        "import Foundation".to_owned(),
+        echo_range_response_swift::swift_definition(),
+        echo_range_error_swift::swift_definition(),
+        echo_client_service_schema::echo_client_service_fault_fields_swift::swift_definition(),
+        echo_client_service_schema::echo_client_service_fault_kind_swift::swift_definition(),
+        EchoClientServiceSchema::swift_http_client(),
+        ECHO_DRIVER.to_owned(),
+    ]
+    .join("\n\n")
+}
+
+#[test]
+fn a_header_in_value_with_a_line_feed_is_refused_before_the_transport_is_ever_reached() {
+    let Some(wrote) = ran("swift", RUNTIME_VAR, "swift", "echo.swift", &echo_module()) else {
+        return;
+    };
+    let results: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
+    assert_eq!(
+        results["sendCalled"], false,
+        "an illegal `header_in` value must refuse before the transport is ever reached. \
+         got: {results:#?}"
+    );
+    assert_eq!(
+        results["faultKind"], "failed-validation",
+        "got: {results:#?}"
+    );
 }

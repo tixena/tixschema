@@ -4,7 +4,7 @@
 //! were written, no crate prefix.
 
 use crate::tests::{
-    ArchiveError, GetVersionError, SealAck, SweepError, SweepReport, ThumbnailError,
+    ArchiveError, GetVersionError, RangeError, SealAck, SweepError, SweepReport, ThumbnailError,
     VersionResponse,
 };
 

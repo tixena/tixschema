@@ -326,7 +326,7 @@ fn method(named: &str, fn_prefix: &str, operation: &OperationDef, has_multipart:
     let returns = return_type(named, operation);
     let path_build = path_build_stmt(fn_prefix, operation, &shape);
     let query_build = query_build_stmt(operation, &shape);
-    let headers_build = header_in_build_stmt(&shape);
+    let headers_build = header_in_build_stmt(named, fn_prefix, operation, &shape);
     let body_build = body_build_stmt(named, fn_prefix, wire, &operation.outcome, &shape);
     let parts_build = multipart_parts_build_stmt(operation, &shape, has_multipart);
     let method_str = shape.method.name();
@@ -440,10 +440,14 @@ fn query_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
     format!("    var query: [(String, String)] = []\n{pushes}")
 }
 
-/// Builds the outgoing header list, one entry per `header_in` binding — except a `nil` optional
-/// binding, which is added nowhere rather than as the empty string [`swift_wire_text`] renders
-/// for a present-but-empty value.
-fn header_in_build_stmt(shape: &HttpShape) -> String {
+/// Builds the outgoing header list, one entry per `header_in` binding - a `nil` optional binding
+/// is added nowhere, and every rendered value is checked before it is appended.
+fn header_in_build_stmt(
+    named: &str,
+    fn_prefix: &str,
+    operation: &OperationDef,
+    shape: &HttpShape,
+) -> String {
     if shape.header_in.is_empty() {
         return "    let headers: [(String, String)] = []\n".to_owned();
     }
@@ -451,20 +455,47 @@ fn header_in_build_stmt(shape: &HttpShape) -> String {
     for header in &shape.header_in {
         let name = &header.name;
         let parameter = &header.parameter;
+        let fault_expr = format!(
+            "{fn_prefix}HttpOutboundFault(\"{}\", \"{name}\", \"a header value contains a \
+             character illegal in an HTTP header\")",
+            operation.wire_name,
+        );
+        let refusal = outbound_refusal_stmt(named, operation, &fault_expr);
+        // `text` is substituted twice (check, then append) rather than bound to a `let` first: a
+        // bare `{ ... }` block is not a statement Swift accepts outside a closure.
         if let Some(inner) = option_inner(&header.ty) {
             let text = swift_wire_text(inner, &parameter.to_string());
             let _ = writeln!(
                 stmt,
                 "    if let {parameter} = {parameter} {{\n      \
+                 if !{fn_prefix}LegalHeaderValue({text}) {{\n        {refusal}\n      \
+                 }}\n      \
                  headers.append((\"{name}\", {text}))\n    \
                  }}"
             );
         } else {
             let text = swift_wire_text(&header.ty, &parameter.to_string());
-            let _ = writeln!(stmt, "    headers.append((\"{name}\", {text}))");
+            let _ = writeln!(
+                stmt,
+                "    if !{fn_prefix}LegalHeaderValue({text}) {{\n      {refusal}\n    \
+                 }}\n    \
+                 headers.append((\"{name}\", {text}))"
+            );
         }
     }
     stmt
+}
+
+/// What a `header_in` value failing the safety check answers, before the transport is ever
+/// reached — mirrors [`encode_failure_recovery`]'s own `OneWay`/`Reply` split.
+fn outbound_refusal_stmt(named: &str, operation: &OperationDef, fault_expr: &str) -> String {
+    match &operation.outcome {
+        OperationOutcome::OneWay => format!("throw {named}Refusal(fault: {fault_expr})"),
+        OperationOutcome::Reply {
+            error: _error,
+            success: _success,
+        } => format!("return .failure(.fault({fault_expr}))"),
+    }
 }
 
 fn body_build_stmt(
@@ -660,21 +691,12 @@ fn reply_decode_stmt(
     }
     let ok_status = shape.ok_status;
     let error_condition = error_condition_expr(shape);
-    let error_ty = swift_typename_of(error);
     let success_block = success_decode_block(fn_prefix, wire, shape, success);
+    let error_block = error_decode_block(fn_prefix, wire, shape, error);
     format!(
         "    let status = response.status\n    \
          if status == {ok_status} {{\n{success_block}    }}\n    \
-         if {error_condition} {{\n      \
-         let declared: {error_ty}\n      \
-         do {{\n        \
-         declared = try JSONDecoder().decode({error_ty}.self, from: response.body)\n      \
-         }} catch {{\n        \
-         return .failure(.fault(\n          \
-         {fn_prefix}UndeserializablePayload(\"{wire}\", \"\\(error)\")\n        \
-         ))\n      \
-         }}\n      \
-         return .failure(.declared(declared))\n    \
+         if {error_condition} {{\n{error_block}    \
          }}\n    \
          if status == 400 || status == 404 || status == 500 {{\n      \
          return .failure(.fault({fn_prefix}FaultFromBody(\"{wire}\", response.body)))\n    \
@@ -699,23 +721,14 @@ fn stream_reply_decode_stmt(
 ) -> String {
     let ok_status = shape.ok_status;
     let error_condition = error_condition_expr(shape);
-    let error_ty = swift_typename_of(error);
     let partial = stream_success_arm(fn_prefix, wire, shape, success, true);
     let full = stream_success_arm(fn_prefix, wire, shape, success, false);
+    let error_block = error_decode_block(fn_prefix, wire, shape, error);
     format!(
         "    let status = response.status\n    \
          if status == 206 {{\n{partial}    }}\n    \
          if status == {ok_status} {{\n{full}    }}\n    \
-         if {error_condition} {{\n      \
-         let declared: {error_ty}\n      \
-         do {{\n        \
-         declared = try JSONDecoder().decode({error_ty}.self, from: response.body)\n      \
-         }} catch {{\n        \
-         return .failure(.fault(\n          \
-         {fn_prefix}UndeserializablePayload(\"{wire}\", \"\\(error)\")\n        \
-         ))\n      \
-         }}\n      \
-         return .failure(.declared(declared))\n    \
+         if {error_condition} {{\n{error_block}    \
          }}\n    \
          if status == 400 || status == 404 || status == 500 {{\n      \
          return .failure(.fault({fn_prefix}FaultFromBody(\"{wire}\", response.body)))\n    \
@@ -771,29 +784,108 @@ fn header_out_read_stmts(
     elements: &[&Type],
     body_elements: usize,
 ) -> (String, Vec<String>) {
+    header_value_read_stmts(
+        fn_prefix,
+        wire,
+        &shape.header_out,
+        elements,
+        body_elements,
+        "headerOut",
+    )
+}
+
+/// [`header_out_read_stmts`]'s own general form, shared with the error side: `ident_prefix`
+/// names the locals apart so an operation declaring both never binds two under one name.
+fn header_value_read_stmts(
+    fn_prefix: &str,
+    wire: &str,
+    names: &[String],
+    elements: &[&Type],
+    body_elements: usize,
+    ident_prefix: &str,
+) -> (String, Vec<String>) {
     let mut stmt = String::new();
     let mut idents = Vec::new();
-    for (index, (name, element_ty)) in shape
-        .header_out
+    let capitalized_prefix = RenameRule::PascalCase.apply_to_field(ident_prefix);
+    for (index, (name, element_ty)) in names
         .iter()
         .zip(elements.iter().skip(body_elements))
         .enumerate()
     {
-        let ident = format!("headerOut{index}");
-        let decode = swift_header_out_decode(element_ty, &format!("rawHeaderOut{index}"));
-        let _ = write!(
-            stmt,
-            "      guard let rawHeaderOut{index} = {fn_prefix}FindHeader(response.headers, \"{name}\") \
-             else {{\n        \
-             return .failure(.fault(\n          \
-             {fn_prefix}UndeserializablePayload(\"{wire}\", \"a declared response header was missing\")\n        \
-             ))\n      \
-             }}\n      \
-             let {ident} = {decode}\n",
-        );
+        let ident = format!("{ident_prefix}{index}");
+        let raw_ident = format!("raw{capitalized_prefix}{index}");
+        // An `Option<T>` element reads a missing header as `nil`; anything else faults.
+        if option_inner(element_ty).is_some() {
+            let decode = swift_header_out_decode(element_ty, "raw");
+            let _ = write!(
+                stmt,
+                "      let {raw_ident} = {fn_prefix}FindHeader(response.headers, \"{name}\")\n      \
+                 let {ident} = {raw_ident}.map {{ raw in {decode} }}\n",
+            );
+        } else {
+            let decode = swift_header_out_decode(element_ty, &raw_ident);
+            let _ = write!(
+                stmt,
+                "      guard let {raw_ident} = {fn_prefix}FindHeader(response.headers, \"{name}\") \
+                 else {{\n        \
+                 return .failure(.fault(\n          \
+                 {fn_prefix}UndeserializablePayload(\"{wire}\", \"a declared response header was missing\")\n        \
+                 ))\n      \
+                 }}\n      \
+                 let {ident} = {decode}\n",
+            );
+        }
         idents.push(ident);
     }
     (stmt, idents)
+}
+
+/// The declared-error read every reply-decoding arm shares: the error's own head off the body,
+/// plus each `error_header_out` element off its own response header where any were declared.
+fn error_decode_block(fn_prefix: &str, wire: &str, shape: &HttpShape, error: &Type) -> String {
+    if shape.error_header_out.is_empty() {
+        let error_ty = swift_typename_of(error);
+        return format!(
+            "      let declared: {error_ty}\n      \
+             do {{\n        \
+             declared = try JSONDecoder().decode({error_ty}.self, from: response.body)\n      \
+             }} catch {{\n        \
+             return .failure(.fault(\n          \
+             {fn_prefix}UndeserializablePayload(\"{wire}\", \"\\(error)\")\n        \
+             ))\n      \
+             }}\n      \
+             return .failure(.declared(declared))\n"
+        );
+    }
+    let elements: Vec<&Type> = tuple_elements(error).into_iter().flatten().collect();
+    let head_ty = elements
+        .first()
+        .map_or_else(|| swift_typename_of(error), |ty| swift_typename_of(ty));
+    let mut stmt = format!(
+        "      let declaredHead: {head_ty}\n      \
+         do {{\n        \
+         declaredHead = try JSONDecoder().decode({head_ty}.self, from: response.body)\n      \
+         }} catch {{\n        \
+         return .failure(.fault(\n          \
+         {fn_prefix}UndeserializablePayload(\"{wire}\", \"\\(error)\")\n        \
+         ))\n      \
+         }}\n"
+    );
+    let (header_stmts, header_idents) = header_value_read_stmts(
+        fn_prefix,
+        wire,
+        &shape.error_header_out,
+        &elements,
+        1,
+        "errorHeaderOut",
+    );
+    stmt.push_str(&header_stmts);
+    let _ = writeln!(
+        stmt,
+        "      return .failure(.declared((declaredHead, {})))",
+        header_idents.join(", ")
+    );
+    stmt
 }
 
 /// What one operation's method returns once its status has already matched `ok_status`: bytes and
@@ -886,6 +978,10 @@ fn fault_helpers(service: &ServiceDef, named: &str, fn_prefix: &str) -> Vec<Stri
         undeserializable_payload_fn(named, fn_prefix),
         fault_from_body_fn(named, fn_prefix),
     ]);
+    if declares_header_in(service) {
+        helpers.push(legal_header_value_fn(fn_prefix));
+        helpers.push(outbound_fault_fn(named, fn_prefix));
+    }
     helpers
 }
 
@@ -895,8 +991,50 @@ fn reads_a_response_header(service: &ServiceDef) -> bool {
     service.operations.iter().any(|operation| {
         let shape = HttpShape::of(operation);
         !shape.header_out.is_empty()
+            || !shape.error_header_out.is_empty()
             || matches!(shape.body_kind, BodyKind::Bytes | BodyKind::Stream)
     })
+}
+
+/// Whether the service declares an operation carrying at least one `header_in` binding, which is
+/// what needs the outbound header-safety checker.
+fn declares_header_in(service: &ServiceDef) -> bool {
+    service
+        .operations
+        .iter()
+        .any(|operation| !HttpShape::of(operation).header_in.is_empty())
+}
+
+/// Whether every byte of `value` is legal as an HTTP header value: visible ASCII (`0x21`-`0x7E`),
+/// a space, or a tab.
+fn legal_header_value_fn(fn_prefix: &str) -> String {
+    format!(
+        "/// Whether every byte of `value` is legal as an HTTP header value: visible ASCII\n\
+         /// (`0x21`-`0x7E`), a space, or a tab.\n\
+         func {fn_prefix}LegalHeaderValue(_ value: String) -> Bool {{\n  \
+         for scalar in value.unicodeScalars {{\n    \
+         let code = scalar.value\n    \
+         if code != 0x09 && code != 0x20 && (code < 0x21 || code > 0x7e) {{ return false }}\n  \
+         }}\n  \
+         return true\n\
+         }}"
+    )
+}
+
+/// The fault a `header_in` value that fails [`legal_header_value_fn`]'s own check answers with,
+/// before the transport is ever reached.
+fn outbound_fault_fn(named: &str, fn_prefix: &str) -> String {
+    let fields = fault_fields_typescript_name(named);
+    let kind = format!("{named}FaultKind");
+    format!(
+        "/// The fault a `{named}` HTTP client answers with when a `header_in` value fails its\n\
+         /// own safety check, before the transport is ever reached.\n\
+         func {fn_prefix}HttpOutboundFault(_ operation: String, _ field: String, _ detail: \
+         String) -> {fields} {{\n  \
+         {fields}(detail: detail, field: field, kind: {kind}.failedValidation, operation: \
+         operation)\n\
+         }}"
+    )
 }
 
 /// Percent-encodes exactly the characters `Uri.encodeComponent` leaves unescaped on the Dart

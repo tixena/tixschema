@@ -74,12 +74,34 @@ pub enum UnwatchError {
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum CheckRangeError {
+    NotFound,
+    RangeNotSatisfiable,
+}
+
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
 pub enum WatchError {
     NotFound,
 }
 
 #[service_schema(transports = ["ws_rpc"])]
 pub trait DocumentSession<Ctx> {
+    /// A declared error carrying a response header of its own: `error_header_out` splits the
+    /// error tuple the same way `read_range`'s own `header_out` splits its success one.
+    #[service_schema_op(http(
+        method = "GET",
+        path = "/documents/{document_id}/range-check",
+        error_status(NotFound = 404, RangeNotSatisfiable = 416),
+        error_header_out("content-range"),
+    ))]
+    async fn check_range(
+        &self,
+        ctx: &Ctx,
+        document_id: String,
+    ) -> Result<RangeResult, (CheckRangeError, Option<String>)>;
+
     #[service_schema_op(http(
         method = "GET",
         path = "/documents/{document_id}/range",
@@ -92,7 +114,7 @@ pub trait DocumentSession<Ctx> {
         ctx: &Ctx,
         document_id: String,
         byte_range: Option<String>,
-    ) -> Result<(RangeResult, String), RangeError>;
+    ) -> Result<(RangeResult, Option<String>), RangeError>;
 
     #[service_schema_op(one_way)]
     async fn touch(&self, ctx: &Ctx, req: TouchRequest);
@@ -140,22 +162,51 @@ impl DocumentBackEnd {
 }
 
 impl DocumentSession<Session> for DocumentBackEnd {
+    async fn check_range(
+        &self,
+        _ctx: &Session,
+        document_id: String,
+    ) -> Result<RangeResult, (CheckRangeError, Option<String>)> {
+        ready(()).await;
+        self.reach(format!("check_range {document_id}"));
+        if document_id == "missing" {
+            return Err((CheckRangeError::NotFound, None));
+        }
+        if document_id == "toolarge" {
+            return Err((
+                CheckRangeError::RangeNotSatisfiable,
+                Some("bytes */2097152".to_owned()),
+            ));
+        }
+        Ok(RangeResult {
+            content: format!("range-of-{document_id}"),
+        })
+    }
+
     async fn read_range(
         &self,
         _ctx: &Session,
         document_id: String,
         byte_range: Option<String>,
-    ) -> Result<(RangeResult, String), RangeError> {
+    ) -> Result<(RangeResult, Option<String>), RangeError> {
         ready(()).await;
         self.reach(format!("read_range {document_id} {byte_range:?}"));
         if document_id == "missing" {
             return Err(RangeError::NotFound);
         }
+        if document_id == "quiet" {
+            return Ok((
+                RangeResult {
+                    content: format!("range-of-{document_id}"),
+                },
+                None,
+            ));
+        }
         Ok((
             RangeResult {
                 content: format!("range-of-{document_id}"),
             },
-            "etag-1".to_owned(),
+            Some("etag-1".to_owned()),
         ))
     }
 
@@ -406,7 +457,7 @@ fn header_in_and_header_out_round_trip_through_the_wire() {
             RangeResult {
                 content: "range-of-doc-1".to_owned(),
             },
-            "etag-1".to_owned(),
+            Some("etag-1".to_owned()),
         )),
     );
     assert_eq!(
@@ -433,6 +484,79 @@ fn header_in_and_header_out_round_trip_through_the_wire() {
                 "value": { "content": "range-of-doc-1" },
             }),
         ],
+    );
+}
+
+#[test]
+fn a_none_header_out_value_omits_the_key_from_the_reply_frame_s_own_headers_object() {
+    let harness = Harness::new();
+    let mut call = pin!(
+        harness
+            .client
+            .read_range("quiet".to_owned(), Some("bytes=0-10".to_owned()))
+    );
+    let answered = drive(&harness, call.as_mut());
+    assert_eq!(
+        answered,
+        Ok((
+            RangeResult {
+                content: "range-of-quiet".to_owned(),
+            },
+            None,
+        )),
+    );
+    assert_eq!(
+        crossed_frames(&harness),
+        vec![
+            serde_json::json!({
+                "id": "1",
+                "kind": "request",
+                "operation": "read-range",
+                "payload": "quiet",
+                "headers": { "range": "bytes=0-10" },
+                "service": "DocumentSession",
+            }),
+            serde_json::json!({
+                "id": "1",
+                "kind": "reply",
+                "ok": true,
+                "service": "DocumentSession",
+                "value": { "content": "range-of-quiet" },
+            }),
+        ],
+        "a `None` `header_out` element writes no `headers` object on the reply frame at all, \
+         rather than one carrying `\"etag\": null`"
+    );
+}
+
+#[test]
+fn error_header_out_round_trips_through_the_wire() {
+    let harness = Harness::new();
+    let mut call = pin!(harness.client.check_range("toolarge".to_owned()));
+    let answered = drive(&harness, call.as_mut());
+    assert_eq!(
+        answered,
+        Err(CallError::Operation((
+            CheckRangeError::RangeNotSatisfiable,
+            Some("bytes */2097152".to_owned()),
+        ))),
+        "the declared error's own head and its `error_header_out` element round trip over the \
+         `ws_rpc` headers channel exactly as a success `header_out` element does"
+    );
+    assert_eq!(
+        harness.back_end.reached(),
+        vec!["check_range toolarge".to_owned()],
+    );
+}
+
+#[test]
+fn a_declared_error_with_no_error_header_out_value_carries_none() {
+    let harness = Harness::new();
+    let mut call = pin!(harness.client.check_range("missing".to_owned()));
+    let answered = drive(&harness, call.as_mut());
+    assert_eq!(
+        answered,
+        Err(CallError::Operation((CheckRangeError::NotFound, None))),
     );
 }
 

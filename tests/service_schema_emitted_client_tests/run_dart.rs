@@ -9,7 +9,9 @@
 use super::runtime::ran;
 use super::tests::swift_codec_fixture::{codec_unit_field_dart, codec_unit_payload_dart};
 use super::tests::{
-    ConversationClientServiceSchema, conversation_id_dart, window_error_dart, window_page_dart,
+    ConversationClientServiceSchema, EchoClientServiceSchema, ThumbnailClientServiceSchema,
+    conversation_id_dart, echo_range_error_dart, echo_range_response_dart, thumbnail_error_dart,
+    window_error_dart, window_page_dart,
 };
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -67,6 +69,80 @@ void main() async {
     'ok': ok,
     'items': ok ? (outcome as ConversationClientServiceWindowResultOk).value.items : null,
   }));
+}
+";
+
+/// A stub `ThumbnailClientServiceHttpTransport` answering by path alone, driving the emitted
+/// client's own declared-error and `header_out` decode - the Dart twin of the Node client test
+/// on the same fixture.
+const THUMBNAIL_DRIVER: &str = "
+class _ThumbnailRecorder implements ThumbnailClientServiceHttpTransport {
+  @override
+  Future<({int status, List<(String, String)> headers, List<int> body, Stream<List<int>> bodyStream})> send(
+    ({String method, String path, String query, List<(String, String)> headers, List<int> body, List<(String, dynamic)> parts}) request,
+  ) async {
+    if (request.path == '/thumbnails/missing') {
+      return (status: 404, headers: [('x-thumbnail-reason', 'archived')], body: utf8.encode(jsonEncode({'errorCode': 'not-found'})), bodyStream: const Stream<List<int>>.empty());
+    }
+    if (request.path == '/thumbnails/gone') {
+      return (status: 404, headers: <(String, String)>[], body: utf8.encode(jsonEncode({'errorCode': 'not-found'})), bodyStream: const Stream<List<int>>.empty());
+    }
+    return (status: 200, headers: [('content-type', 'image/png')], body: utf8.encode('PNGDATA'), bodyStream: const Stream<List<int>>.empty());
+  }
+}
+
+Map<String, dynamic> _describe(ThumbnailClientServiceGetThumbnailResult result) {
+  return switch (result) {
+    ThumbnailClientServiceGetThumbnailResultOk(:final value) => {
+        'kind': 'ok',
+        'headerOut': value.$3,
+      },
+    ThumbnailClientServiceGetThumbnailResultOperation(:final error) => {
+        'kind': 'operation',
+        'errorCode': error.$1.toJson(),
+        'errorHeaderOut': error.$2,
+      },
+    ThumbnailClientServiceGetThumbnailResultFault(:final fault) => {
+        'kind': 'fault',
+        'detail': fault.detail,
+      },
+  };
+}
+
+void main() async {
+  final client = ThumbnailClientServiceHttpClient(_ThumbnailRecorder());
+  final missing = await client.getThumbnail('missing');
+  final gone = await client.getThumbnail('gone');
+  final anon = await client.getThumbnail('anon');
+  print(jsonEncode(<String, dynamic>{
+    'missing': _describe(missing),
+    'gone': _describe(gone),
+    'anon': _describe(anon),
+  }));
+}
+";
+
+/// A stub `EchoClientServiceHttpTransport` recording whether `send` was ever called, driving the
+/// emitted client's own `header_in` legality check on a value carrying a line feed.
+const ECHO_DRIVER: &str = "
+class _EchoRecorder implements EchoClientServiceHttpTransport {
+  bool sendCalled = false;
+
+  @override
+  Future<({int status, List<(String, String)> headers, List<int> body, Stream<List<int>> bodyStream})> send(
+    ({String method, String path, String query, List<(String, String)> headers, List<int> body, List<(String, dynamic)> parts}) request,
+  ) async {
+    sendCalled = true;
+    return (status: 200, headers: <(String, String)>[], body: utf8.encode(jsonEncode(<String, dynamic>{'received': 'unreachable'})), bodyStream: const Stream<List<int>>.empty());
+  }
+}
+
+void main() async {
+  final recorder = _EchoRecorder();
+  final client = EchoClientServiceHttpClient(recorder);
+  final refused = await client.echoRange('doc-1', 'bytes=0-10\\nX-Injected: yes');
+  final fault = refused is EchoClientServiceEchoRangeResultFault ? (refused as EchoClientServiceEchoRangeResultFault).fault.kind.wireValue : null;
+  print(jsonEncode(<String, dynamic>{'sendCalled': recorder.sendCalled, 'faultKind': fault}));
 }
 ";
 
@@ -236,5 +312,77 @@ fn a_unit_struct_field_round_trips_as_an_empty_object() {
         value,
         serde_json::json!({"label": "marker", "payload": {}}),
         "got: {value:#?}"
+    );
+}
+
+fn thumbnail_module() -> String {
+    [
+        "import 'dart:convert';".to_owned(),
+        thumbnail_error_dart::dart_definition(),
+        ThumbnailClientServiceSchema::dart_definition(),
+        ThumbnailClientServiceSchema::dart_http_client(),
+        THUMBNAIL_DRIVER.to_owned(),
+    ]
+    .join("\n\n")
+}
+
+#[test]
+fn the_client_decodes_the_declared_errors_own_header_and_omits_a_none_header_out_element() {
+    let Some(wrote) = ran(
+        "dart",
+        RUNTIME_VAR,
+        "dart",
+        "thumbnail.dart",
+        &thumbnail_module(),
+    ) else {
+        return;
+    };
+    let results: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
+    assert_eq!(
+        results["missing"],
+        serde_json::json!({"kind": "operation", "errorCode": {"errorCode": "not-found"}, "errorHeaderOut": "archived"}),
+        "the declared error's own head and its `error_header_out` element must both decode. \
+         got: {results:#?}"
+    );
+    assert_eq!(
+        results["gone"],
+        serde_json::json!({"kind": "operation", "errorCode": {"errorCode": "not-found"}, "errorHeaderOut": null}),
+        "an absent `error_header_out` header must decode as `null` rather than a string. \
+         got: {results:#?}"
+    );
+    assert_eq!(
+        results["anon"],
+        serde_json::json!({"kind": "ok", "headerOut": null}),
+        "an absent `header_out` header must decode as `null` rather than a string. \
+         got: {results:#?}"
+    );
+}
+
+fn echo_module() -> String {
+    [
+        "import 'dart:convert';".to_owned(),
+        echo_range_response_dart::dart_definition(),
+        echo_range_error_dart::dart_definition(),
+        EchoClientServiceSchema::dart_definition(),
+        EchoClientServiceSchema::dart_http_client(),
+        ECHO_DRIVER.to_owned(),
+    ]
+    .join("\n\n")
+}
+
+#[test]
+fn a_header_in_value_with_a_line_feed_is_refused_before_the_transport_is_ever_reached() {
+    let Some(wrote) = ran("dart", RUNTIME_VAR, "dart", "echo.dart", &echo_module()) else {
+        return;
+    };
+    let results: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
+    assert_eq!(
+        results["sendCalled"], false,
+        "an illegal `header_in` value must refuse before the transport is ever reached. \
+         got: {results:#?}"
+    );
+    assert_eq!(
+        results["faultKind"], "failed-validation",
+        "got: {results:#?}"
     );
 }

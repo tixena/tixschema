@@ -164,13 +164,30 @@ fn header_out_fields(
     body_elements: usize,
 ) -> Vec<HeaderOutField> {
     let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
-    shape
-        .header_out
+    header_value_fields(&shape.header_out, &elements, body_elements, "headerOut")
+}
+
+/// [`header_out_fields`]'s own twin on the error side: `error`'s own trailing tuple elements,
+/// always one slot past the head (`body_elements` is always `1` there, unlike the success side).
+fn error_header_out_fields(shape: &HttpShape, error: &Type) -> Vec<HeaderOutField> {
+    let elements: Vec<&Type> = tuple_elements(error).into_iter().flatten().collect();
+    header_value_fields(&shape.error_header_out, &elements, 1, "errorHeaderOut")
+}
+
+/// [`header_out_fields`]'s own general form: `ident_prefix` names the Kotlin properties apart so
+/// an operation declaring both never binds two under one name.
+fn header_value_fields(
+    names: &[String],
+    elements: &[&Type],
+    body_elements: usize,
+    ident_prefix: &str,
+) -> Vec<HeaderOutField> {
+    names
         .iter()
         .zip(elements.iter().skip(body_elements))
         .enumerate()
         .map(|(index, (name, element_ty))| HeaderOutField {
-            kotlin_prop: format!("headerOut{index}"),
+            kotlin_prop: format!("{ident_prefix}{index}"),
             ty: (*element_ty).clone(),
             wire_name: name.clone(),
         })
@@ -255,15 +272,42 @@ fn success_shape(published: &str, shape: &HttpShape, success: &Type) -> SuccessS
     }
 }
 
+/// [`success_shape`]'s own twin on the error side: `error`'s own Kotlin shape, an aux
+/// `data class` where `error_header_out` declared any entries.
+fn error_shape(published: &str, shape: &HttpShape, error: &Type) -> SuccessShape {
+    if shape.error_header_out.is_empty() {
+        return SuccessShape {
+            aux_declaration: None,
+            type_name: kotlin_type_of(error),
+        };
+    }
+    let extra = error_header_out_fields(shape, error);
+    let type_name = format!("{published}Declared");
+    let mut params = vec![format!(
+        "val error: {}",
+        kotlin_type_of(&body_element_type(error))
+    )];
+    for field in &extra {
+        params.push(format!(
+            "val {}: {}",
+            field.kotlin_prop,
+            kotlin_type_of(&field.ty)
+        ));
+    }
+    SuccessShape {
+        aux_declaration: Some(format!("data class {type_name}({})", params.join(", "))),
+        type_name,
+    }
+}
+
 fn result_interface(named: &str, operation: &OperationDef) -> Option<String> {
     let OperationOutcome::Reply { error, success } = &operation.outcome else {
         return None;
     };
     let published = result_name(named, operation)?;
     let shape = HttpShape::of(operation);
-    let error_ty = kotlin_type_of(error);
     let fault = fault_fields_typescript_name(named);
-    let (aux, ok_member) = if carries_no_value(operation, &shape) {
+    let (ok_aux, ok_member) = if carries_no_value(operation, &shape) {
         (String::new(), format!("  data object Ok : {published}"))
     } else {
         let shape_info = success_shape(&published, &shape, success);
@@ -279,6 +323,13 @@ fn result_interface(named: &str, operation: &OperationDef) -> Option<String> {
             ),
         )
     };
+    let error_info = error_shape(&published, &shape, error);
+    let error_aux = error_info
+        .aux_declaration
+        .map(|declared| format!("{declared}\n"))
+        .unwrap_or_default();
+    let error_ty = error_info.type_name;
+    let aux = format!("{ok_aux}{error_aux}");
     Some(format!(
         "/// What `{}` on `{named}` answers: the success, the error the operation declared, or a\n\
          /// fault it never declared.\n\
@@ -366,7 +417,7 @@ fn method(named: &str, fn_prefix: &str, operation: &OperationDef, has_multipart:
     let params = method_params(operation, &shape);
     let path_build = path_build_stmt(operation, &shape, fn_prefix);
     let query_build = query_build_stmt(operation, &shape, fn_prefix);
-    let headers_build = header_in_build_stmt(&shape);
+    let headers_build = header_in_build_stmt(named, fn_prefix, operation, &shape);
     let body_build = body_build_stmt(&shape, &message_kotlin_typename(operation));
     let parts_build = multipart_parts_build_stmt(operation, &shape, has_multipart);
     let method_str = shape.method.name();
@@ -486,26 +537,69 @@ fn query_build_stmt(operation: &OperationDef, shape: &HttpShape, fn_prefix: &str
     )
 }
 
-fn header_in_build_stmt(shape: &HttpShape) -> String {
+/// Builds the outgoing header list, one entry per `header_in` binding - every rendered value is
+/// checked before it is added.
+fn header_in_build_stmt(
+    named: &str,
+    fn_prefix: &str,
+    operation: &OperationDef,
+    shape: &HttpShape,
+) -> String {
     if shape.header_in.is_empty() {
         return "    val headers = emptyList<Pair<String, String>>()\n".to_owned();
     }
     let mut stmt = String::from("    val headers = mutableListOf<Pair<String, String>>()\n");
+    // `?.let`/`run` are inline, so the `return` written inside either answers this method's own
+    // caller rather than just the block.
     for header in &shape.header_in {
         let name = &header.name;
         let prop = kotlin_property(&header.parameter.to_string());
+        let fault_expr = format!(
+            "{fn_prefix}HttpOutboundFault(\"{}\", \"{name}\", \"a header value contains a \
+             character illegal in an HTTP header\")",
+            operation.wire_name,
+        );
+        let refusal = outbound_refusal_stmt(named, operation, &fault_expr);
         if let Some(inner) = option_inner(&header.ty) {
             let text = kotlin_wire_text(inner, &prop, true);
             let _ = writeln!(
                 stmt,
-                "    {prop}?.let {{ headers.add(\"{name}\" to {text}) }}"
+                "    {prop}?.let {{\n      \
+                 val rendered = {text}\n      \
+                 if (!{fn_prefix}HttpLegalHeaderValue(rendered)) {{\n        {refusal}\n      \
+                 }}\n      \
+                 headers.add(\"{name}\" to rendered)\n    \
+                 }}"
             );
         } else {
             let text = kotlin_wire_text(&header.ty, &prop, true);
-            let _ = writeln!(stmt, "    headers.add(\"{name}\" to {text})");
+            let _ = writeln!(
+                stmt,
+                "    run {{\n      \
+                 val rendered = {text}\n      \
+                 if (!{fn_prefix}HttpLegalHeaderValue(rendered)) {{\n        {refusal}\n      \
+                 }}\n      \
+                 headers.add(\"{name}\" to rendered)\n    \
+                 }}"
+            );
         }
     }
     stmt
+}
+
+/// What a `header_in` value failing the safety check answers, before the transport is ever
+/// reached — mirrors the Dart and Swift clients' own `outbound_refusal_stmt`.
+fn outbound_refusal_stmt(named: &str, operation: &OperationDef, fault_expr: &str) -> String {
+    match &operation.outcome {
+        OperationOutcome::OneWay => format!("throw {named}Refusal({fault_expr})"),
+        OperationOutcome::Reply {
+            error: _error,
+            success: _success,
+        } => {
+            let result = return_type(named, operation);
+            format!("return {result}.Fault({fault_expr})")
+        }
+    }
 }
 
 fn body_build_stmt(shape: &HttpShape, req_type: &str) -> String {
@@ -633,6 +727,44 @@ fn error_condition_expr(shape: &HttpShape) -> String {
     }
 }
 
+/// The declared-error read every reply-decoding arm shares: the error's own head off the body,
+/// plus each `error_header_out` element off its own response header where any were declared.
+fn error_decode_block(
+    result: &str,
+    fn_prefix: &str,
+    wire: &str,
+    shape: &HttpShape,
+    error: &Type,
+) -> String {
+    if shape.error_header_out.is_empty() {
+        let error_ty = kotlin_type_of(error);
+        return format!(
+            "      return try {{\n        \
+             {result}.Declared(Json.decodeFromString(serializer<{error_ty}>(), response.body.decodeToString()))\n      \
+             }} catch (rejected: Throwable) {{\n        \
+             {result}.Fault({fn_prefix}HttpUndeserializablePayload(\"{wire}\", rejected.toString()))\n      \
+             }}\n"
+        );
+    }
+    let extra = error_header_out_fields(shape, error);
+    let head_ty = kotlin_type_of(&body_element_type(error));
+    let mut stmt = format!(
+        "      val declaredHead = try {{\n        \
+         Json.decodeFromString(serializer<{head_ty}>(), response.body.decodeToString())\n      \
+         }} catch (rejected: Throwable) {{\n        \
+         return {result}.Fault({fn_prefix}HttpUndeserializablePayload(\"{wire}\", rejected.toString()))\n      \
+         }}\n"
+    );
+    let (header_stmts, header_idents) = header_out_read_stmts(result, fn_prefix, wire, &extra);
+    stmt.push_str(&header_stmts);
+    let _ = writeln!(
+        stmt,
+        "      return {result}.Declared({result}Declared(declaredHead, {}))",
+        header_idents.join(", ")
+    );
+    stmt
+}
+
 fn reply_decode_stmt(
     result: &str,
     fn_prefix: &str,
@@ -646,17 +778,12 @@ fn reply_decode_stmt(
     }
     let ok_status = shape.ok_status;
     let error_condition = error_condition_expr(shape);
-    let error_ty = kotlin_type_of(error);
     let success_block = success_decode_block(result, fn_prefix, wire, shape, success);
+    let error_block = error_decode_block(result, fn_prefix, wire, shape, error);
     format!(
         "    val status = response.status\n    \
          if (status == {ok_status}) {{\n{success_block}    }}\n    \
-         if ({error_condition}) {{\n      \
-         return try {{\n        \
-         {result}.Declared(Json.decodeFromString(serializer<{error_ty}>(), response.body.decodeToString()))\n      \
-         }} catch (rejected: Throwable) {{\n        \
-         {result}.Fault({fn_prefix}HttpUndeserializablePayload(\"{wire}\", rejected.toString()))\n      \
-         }}\n    \
+         if ({error_condition}) {{\n{error_block}    \
          }}\n    \
          if (status == 400 || status == 404 || status == 500) {{\n      \
          return {result}.Fault({fn_prefix}HttpFaultFromBody(\"{wire}\", response))\n    \
@@ -677,19 +804,14 @@ fn stream_reply_decode_stmt(
 ) -> String {
     let ok_status = shape.ok_status;
     let error_condition = error_condition_expr(shape);
-    let error_ty = kotlin_type_of(error);
     let partial = stream_success_arm(result, fn_prefix, wire, shape, success, true);
     let full = stream_success_arm(result, fn_prefix, wire, shape, success, false);
+    let error_block = error_decode_block(result, fn_prefix, wire, shape, error);
     format!(
         "    val status = response.status\n    \
          if (status == 206) {{\n{partial}    }}\n    \
          if (status == {ok_status}) {{\n{full}    }}\n    \
-         if ({error_condition}) {{\n      \
-         return try {{\n        \
-         {result}.Declared(Json.decodeFromString(serializer<{error_ty}>(), response.body.decodeToString()))\n      \
-         }} catch (rejected: Throwable) {{\n        \
-         {result}.Fault({fn_prefix}HttpUndeserializablePayload(\"{wire}\", rejected.toString()))\n      \
-         }}\n    \
+         if ({error_condition}) {{\n{error_block}    \
          }}\n    \
          if (status == 400 || status == 404 || status == 500) {{\n      \
          return {result}.Fault({fn_prefix}HttpFaultFromBody(\"{wire}\", response))\n    \
@@ -744,18 +866,31 @@ fn header_out_read_stmts(
     let mut idents = Vec::new();
     for field in extra {
         let raw_ident = format!("raw{}", capitalize(&field.kotlin_prop));
-        let decode = kotlin_header_out_decode(&field.ty, &raw_ident);
-        let _ = write!(
-            stmt,
-            "      val {raw_ident} = {find_header}(response.headers, \"{header_name}\")\n      \
-             ?: return {result}.Fault(\n        \
-             {fn_prefix}HttpUndeserializablePayload(\"{wire}\", \"a declared response header was missing\"),\n      \
-             )\n      \
-             val {prop} = {decode}\n",
-            find_header = find_header_call(fn_prefix),
-            header_name = field.wire_name,
-            prop = field.kotlin_prop,
-        );
+        // An `Option<T>` field reads a missing header as `null`; anything else faults.
+        if option_inner(&field.ty).is_some() {
+            let decode = kotlin_header_out_decode(&field.ty, "raw");
+            let _ = write!(
+                stmt,
+                "      val {raw_ident} = {find_header}(response.headers, \"{header_name}\")\n      \
+                 val {prop} = {raw_ident}?.let {{ raw -> {decode} }}\n",
+                find_header = find_header_call(fn_prefix),
+                header_name = field.wire_name,
+                prop = field.kotlin_prop,
+            );
+        } else {
+            let decode = kotlin_header_out_decode(&field.ty, &raw_ident);
+            let _ = write!(
+                stmt,
+                "      val {raw_ident} = {find_header}(response.headers, \"{header_name}\")\n      \
+                 ?: return {result}.Fault(\n        \
+                 {fn_prefix}HttpUndeserializablePayload(\"{wire}\", \"a declared response header was missing\"),\n      \
+                 )\n      \
+                 val {prop} = {decode}\n",
+                find_header = find_header_call(fn_prefix),
+                header_name = field.wire_name,
+                prop = field.kotlin_prop,
+            );
+        }
         idents.push(field.kotlin_prop.clone());
     }
     (stmt, idents)
@@ -857,6 +992,10 @@ fn fault_helpers(service: &ServiceDef, named: &str, fn_prefix: &str) -> Vec<Stri
         undeserializable_payload_fn(named, fn_prefix),
         fault_from_body_fn(named, fn_prefix),
     ]);
+    if declares_header_in(service) {
+        helpers.push(legal_header_value_fn(fn_prefix));
+        helpers.push(outbound_fault_fn(named, fn_prefix));
+    }
     helpers
 }
 
@@ -864,8 +1003,52 @@ fn reads_a_response_header(service: &ServiceDef) -> bool {
     service.operations.iter().any(|operation| {
         let shape = HttpShape::of(operation);
         !shape.header_out.is_empty()
+            || !shape.error_header_out.is_empty()
             || matches!(shape.body_kind, BodyKind::Bytes | BodyKind::Stream)
     })
+}
+
+/// Whether the service declares an operation carrying at least one `header_in` binding, which is
+/// what needs the outbound header-safety checker.
+fn declares_header_in(service: &ServiceDef) -> bool {
+    service
+        .operations
+        .iter()
+        .any(|operation| !HttpShape::of(operation).header_in.is_empty())
+}
+
+/// Whether every character of `value` is legal as an HTTP header value: visible ASCII
+/// (`0x21`-`0x7E`), a space, or a tab.
+fn legal_header_value_fn(fn_prefix: &str) -> String {
+    format!(
+        "/// Whether every character of `value` is legal as an HTTP header value: visible ASCII\n\
+         /// (`0x21`-`0x7E`), a space, or a tab.\n\
+         private fun {fn_prefix}HttpLegalHeaderValue(value: String): Boolean {{\n  \
+         for (ch in value) {{\n    \
+         val code = ch.code\n    \
+         if (code != 0x09 && code != 0x20 && (code < 0x21 || code > 0x7e)) return false\n  \
+         }}\n  \
+         return true\n\
+         }}"
+    )
+}
+
+/// The fault a `header_in` value that fails [`legal_header_value_fn`]'s own check answers with,
+/// before the transport is ever reached.
+fn outbound_fault_fn(named: &str, fn_prefix: &str) -> String {
+    let fields = fault_fields_typescript_name(named);
+    format!(
+        "/// The fault a `{named}` HTTP client answers with when a `header_in` value fails its\n\
+         /// own safety check, before the transport is ever reached.\n\
+         private fun {fn_prefix}HttpOutboundFault(operation: String, field: String, detail: \
+         String): {fields} =\n  \
+         {fields}(\n    \
+         detail = detail,\n    \
+         field = field,\n    \
+         kind = {named}FaultKind.FailedValidation,\n    \
+         operation = operation,\n  \
+         )"
+    )
 }
 
 /// The RFC 3986 unreserved-character percent-encoder every path and query value is written

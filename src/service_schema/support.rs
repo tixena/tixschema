@@ -55,7 +55,7 @@
 
 use super::parse::{
     HttpBinding, OperationDef, OperationInputs, OperationOutcome, PathSegment, ServiceDef,
-    service_declares_a_stream, service_needs_body_source_seam,
+    error_declared_type, service_declares_a_stream, service_needs_body_source_seam,
 };
 use super::transport::Transport;
 use crate::rename_rule::RenameRule;
@@ -376,12 +376,13 @@ fn http_error_status_completeness(service: &ServiceDef) -> TokenStream {
             return None;
         }
         let OperationOutcome::Reply {
-            error,
+            error: raw_error,
             success: _success,
         } = &operation.outcome
         else {
             return None;
         };
+        let error = error_declared_type(binding.error_header_out.len(), raw_error);
         let summary = http_binding_summary(binding);
         let arms = binding
             .error_status
@@ -425,8 +426,17 @@ fn http_binding_summary(binding: &HttpBinding) -> String {
     } else {
         format!(", writing `{}`", binding.header_out.join("`, `"))
     };
+    let error_header_out: String = if binding.error_header_out.is_empty() {
+        String::new()
+    } else {
+        format!(
+            ", writing `{}` on a declared error",
+            binding.error_header_out.join("`, `")
+        )
+    };
     format!(
-        "`{method} {path}` answers `{ok_status}` with a {body_kind:?} body{header_in}{header_out}.",
+        "`{method} {path}` answers `{ok_status}` with a {body_kind:?} \
+         body{header_in}{header_out}{error_header_out}.",
         method = binding.method.name(),
         ok_status = binding.ok_status,
         body_kind = binding.body_kind,

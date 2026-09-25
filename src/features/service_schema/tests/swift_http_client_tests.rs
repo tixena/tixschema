@@ -177,10 +177,17 @@ fn a_header_in_binding_becomes_an_extra_parameter_and_a_built_header() {
     assert!(
         method.contains("var headers: [(String, String)] = []")
             && method.contains(
-                "if let byte_range = byte_range {\n      headers.append((\"range\", \"\\(byte_range)\"))\n    }"
+                "if let byte_range = byte_range {\n      \
+                 if !documentClientServiceLegalHeaderValue(\"\\(byte_range)\") {\n        \
+                 return .failure(.fault(documentClientServiceHttpOutboundFault(\"get-version\", \
+                 \"range\", \"a header value contains a character illegal in an HTTP \
+                 header\")))\n      \
+                 }\n      \
+                 headers.append((\"range\", \"\\(byte_range)\"))\n    }"
             ),
-        "the header is built from the extra argument, never from the message, and reads the \
-         parameter the `if let` has already unwrapped. Got: {method}"
+        "the header is built from the extra argument, never from the message, reads the \
+         parameter the `if let` has already unwrapped, and checks the rendered value before it \
+         is appended. Got: {method}"
     );
 }
 

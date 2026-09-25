@@ -1904,7 +1904,7 @@ Each macro takes no arguments and emits bare items rather than a module of its o
 - `UsageServiceClient` -- one method per operation, over any `Transport`. Each takes that operation's arguments -- one more per `header_in` binding, in declaration order -- and no context: a context is what an implementation needs, and a caller has nothing to hand one to. Every method answers a `Result`, and every method's generated documentation says under an `# Errors` heading what its failure arm can hold.
 - The mirror that reads a fault back off the wire and the reader that turns one envelope into three outcomes, emitted only where the service declares an operation that answers. A service declaring only one-way operations is emitted neither, there being no reply for either to read.
 
-**`header_in`/`header_out` ride the headers channel, not the payload.** `#[service_schema_op(http(header_in("name" = parameter), header_out("name")))]` binds an ordinary argument beside the message to a named header on the way in, and names the tuple element after the response on the way out. On `amqp_rpc` that channel is the message's own basic-properties headers table: the dispatcher decodes each `header_in` value (JSON-encoded) off the incoming headers before calling the implementation, naming the header rather than a payload field if a value will not decode; a `header_out`-bound success type is a tuple, and the arm sends the response alone as the value while writing every element after it into the reply's own headers. The client mirrors both directions, encoding each `header_in` argument and decoding `request`'s returned headers back into the declared tuple. An operation naming no `http(...)` group carries an empty headers list either way -- the channel exists on every operation, but nothing reads or writes it there.
+**`header_in`/`header_out`/`error_header_out` ride the headers channel, not the payload.** `#[service_schema_op(http(header_in("name" = parameter), header_out("name")))]` binds an ordinary argument beside the message to a named header on the way in, and names the tuple element after the response on the way out; `error_header_out("name")` names the tuple element after the *declared error* the same way, read and written only when the error is the reply. On `amqp_rpc` that channel is the message's own basic-properties headers table: the dispatcher decodes each `header_in` value (JSON-encoded) off the incoming headers before calling the implementation, naming the header rather than a payload field if a value will not decode; a `header_out`-bound success type and an `error_header_out`-bound error type are each a tuple, and the arm sends the value alone while writing every element after it into the reply's own headers. The client mirrors both directions, encoding each `header_in` argument and decoding `request`'s returned headers back into whichever declared tuple its outcome answers. An operation naming no `http(...)` group carries an empty headers list either way -- the channel exists on every operation, but nothing reads or writes it there.
 
 The server emits everything the dispatcher does, plus the pieces that turn a real delivery into a call on an implementation:
 
@@ -2052,11 +2052,11 @@ pub trait DocumentService<Ctx> {
 }
 ```
 
-`method` is one of `"GET"`, `"POST"`, `"PUT"`, `"DELETE"`, `"PATCH"`; `path` is a template walked left to right, `{field}` placeholders included; `ok_status` is the success status (default 200, or 204 where the reply carries nothing -- see below); `error_status(Variant = code, ...)` maps the operation's own declared error variants to the statuses they answer at; `header_in`/`header_out` bind request and response headers (covered on its own below); `body` picks the body kind (`"json"`, the default; `"bytes"`; `"multipart"`; or `"stream"` -- covered on its own below); and `part("name" = parameter)` claims one multipart file part, only meaningful under `body = "multipart"`. Writing an argument this grammar does not recognise is refused naming the arguments it does:
+`method` is one of `"GET"`, `"POST"`, `"PUT"`, `"DELETE"`, `"PATCH"`; `path` is a template walked left to right, `{field}` placeholders included; `ok_status` is the success status (default 200, or 204 where the reply carries nothing -- see below); `error_status(Variant = code, ...)` maps the operation's own declared error variants to the statuses they answer at; `header_in`/`header_out`/`error_header_out` bind request and response headers (covered on its own below); `body` picks the body kind (`"json"`, the default; `"bytes"`; `"multipart"`; or `"stream"` -- covered on its own below); and `part("name" = parameter)` claims one multipart file part, only meaningful under `body = "multipart"`. Writing an argument this grammar does not recognise is refused naming the arguments it does:
 
 ```text
 service_schema: unknown `http` argument
-       the arguments are `method`, `path`, `ok_status`, `error_status`, `header_in`, `header_out`, `part` and `body`
+       the arguments are `method`, `path`, `ok_status`, `error_status`, `header_in`, `header_out`, `error_header_out`, `part` and `body`
 ```
 
 **An operation naming no `http(...)` group at all** still gets one, defaulted rather than left unhandled: `POST /{wire-name}`, the same `ok_status` default every annotated operation gets (200, or 204 for nothing to serialize), no header bindings, and every declared error answered at one fixed status, `422`, rather than a per-variant table -- there being no annotation to read one from. So an internal service pays no attribute cost and still answers real HTTP:
@@ -2106,6 +2106,22 @@ service_schema: operation `get_widget` binds header "range" to a parameter named
 service_schema: operation `get_widget` returns a tuple success type and declares no `header_out`
               name what each element after the first is with `header_out("name")`, or return the type directly
 ```
+
+`error_header_out("name")` is the same tuple-splitting rule applied to the *declared error* instead of the success type: the error first, then one element per declared `error_header_out` entry, in declaration order, each written out as a response header when the error is the reply and read back the same way by the client. A tuple error type with no `error_header_out` to explain it, an `error_header_out` whose count does not match the tuple's own arity, and `error_header_out` on a `one_way` operation (which has no declared error to carry one in) are each refused naming the requirement:
+
+```text
+service_schema: operation `check_range` returns a tuple error type and declares no `error_header_out`
+              name what each element after the first is with `error_header_out("name")`, or return the type directly
+```
+
+**Header names and values are checked, not trusted.** Across `header_in`, `header_out` and `error_header_out` together, on one operation: a header name must be a legal HTTP token (letters, digits and `` !#$%&'*+-.^_`|~ ``, RFC 9110's own `tchar` set); a name the transport already writes itself -- `content-type`, `content-length`, and `content-range` on a `body = "stream"` operation -- cannot be claimed by any of the three directives; and within any one of `header_in`, `header_out` or `error_header_out`, the same name cannot be declared twice -- the same name declared in two *different* lists, an echoed `x-request-id` read by `header_in` and written back by `header_out`, is legal. All three are refused at compile time, on the operation:
+
+```text
+service_schema: operation `get_widget` declares the header name "content-type", which `json_response`, and a `body = "bytes"` reply's own content type, writes itself
+              name a header this transport does not already control
+```
+
+A header *value* is checked at runtime instead, on every HTTP writer: `header_in`, `header_out` and `error_header_out` values are each rejected -- a fault on the server, a refusal before sending on the client -- unless every byte is visible ASCII (`0x21`-`0x7E`), a space, or a tab, which rules out a value carrying a line break or another control character before it ever reaches the wire.
 
 **Statuses.** `ok_status` and `error_status` are owner-chosen, exactly as `amqp_rpc`'s own message contract stays HTTP-free -- neither lives on a type, only on the operation. `error_status`'s completeness against the operation's own declared error type is checked unconditionally, by a `match` over exactly the declared arms and no wildcard: a variant the table leaves out is refused with rustc's own exhaustiveness check, naming it, and the refusal is spanned on the trait's own `#[service_schema]` attribute rather than invented by this crate:
 
