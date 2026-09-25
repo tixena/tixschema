@@ -1916,16 +1916,19 @@ fn reply_handle_type() -> TokenStream {
 ///
 /// A one-way publish carries no `replyTo` at all, and a handle built from such a delivery
 /// publishes nothing; a publish the channel refuses is logged and dropped rather than propagated,
-/// there being no failure a caller already waiting for a reply could be told about.
+/// there being no failure a caller already waiting for a reply could be told about. A declared
+/// error and a fault both carry the header `is_error` = `true` beside whatever `header_out` wrote;
+/// a success reply carries none.
 fn reply_handle_impls(module: &Ident) -> TokenStream {
     quote! {
         impl Reply for ReplyHandle<'_> {
             async fn fault(&self, fault: $crate::#module::ServiceFault) {
                 match ::serde_json::to_value(fault) {
                     Ok(fault) => {
+                        let framed = framed_fault(&fault);
                         self.publish(
-                            &legacy_reply(&framed_fault(&fault), self.correlation()),
-                            Vec::new(),
+                            &legacy_reply(&framed, self.correlation()),
+                            outgoing_headers(&framed, Vec::new()),
                         )
                         .await;
                     }
@@ -1942,8 +1945,11 @@ fn reply_handle_impls(module: &Ident) -> TokenStream {
             {
                 match ::serde_json::to_value(value) {
                     Ok(answered) => {
-                        self.publish(&legacy_reply(&answered, self.correlation()), headers)
-                            .await;
+                        self.publish(
+                            &legacy_reply(&answered, self.correlation()),
+                            outgoing_headers(&answered, headers),
+                        )
+                        .await;
                     }
                     Err(unserializable) => ::tracing::error!(
                         error = %unserializable,
@@ -1959,8 +1965,9 @@ fn reply_handle_impls(module: &Ident) -> TokenStream {
             }
 
             /// Publishes to the reply queue, or to nowhere when the delivery named none. `headers`
-            /// carries every `header_out` value, JSON-encoded, into the AMQP basic-properties
-            /// headers table this bus reads a request's own `header_in` values off of.
+            /// carries every `header_out` value, JSON-encoded, plus `is_error` as plain text on a
+            /// failed reply, into the AMQP basic-properties headers table this bus reads a
+            /// request's own `header_in` values off of.
             async fn publish(&self, reply: &::serde_json::Value, headers: Vec<(String, String)>) {
                 let Some(reply_to) = self.reply_to.clone() else {
                     return;
@@ -2224,6 +2231,10 @@ fn wire_framing_consts() -> TokenStream {
         const INVALID_REQUEST: &str = "invalid-request";
         /// What the runtime replies when an error names no code of its own.
         const FALLBACK_ERROR_CODE: &str = "server-error";
+        /// The header name [`ReplyHandle`](reply_handle_impls) writes `true` under on a failed
+        /// reply — reserved, and refused as a `header_out` name, so a bound value never collides
+        /// with it.
+        const IS_ERROR_HEADER: &str = "is_error";
     }
 }
 
@@ -2269,6 +2280,18 @@ fn wire_framing_fns() -> TokenStream {
         /// defect and a declared error take the same path through [`legacy_reply`].
         pub fn framed_fault(fault: &::serde_json::Value) -> ::serde_json::Value {
             ::serde_json::json!({ "ok": false, "error": { "isServiceFault": true, "fault": fault } })
+        }
+
+        /// The headers [`ReplyHandle`](reply_handle_impls)'s `fault` and `send` publish:
+        /// `is_error` appended when `answered`'s own `ok` is `false`.
+        pub fn outgoing_headers(
+            answered: &::serde_json::Value,
+            mut headers: Vec<(String, String)>,
+        ) -> Vec<(String, String)> {
+            if answered.get("ok") == Some(&::serde_json::Value::Bool(false)) {
+                headers.push((IS_ERROR_HEADER.to_owned(), "true".to_owned()));
+            }
+            headers
         }
 
         /// The envelope, unwrapped into one of the three shapes this bus carries.
