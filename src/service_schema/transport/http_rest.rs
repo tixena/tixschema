@@ -1032,15 +1032,22 @@ fn message_value_for_generated(
 ) -> (TokenStream, TokenStream) {
     let bodied = shape.method.carries_a_body();
     let multipart = matches!(shape.body_kind, BodyKind::Multipart);
+    let reads_query = !bodied
+        && !multipart
+        && fields
+            .iter()
+            .any(|(field, _)| !placeholder_names.contains(&field.to_string()));
     let base = if multipart {
         quote! { let mut object = ::serde_json::Map::new(); }
     } else if bodied {
         object_base(true)
-    } else {
+    } else if reads_query {
         quote! {
             let query_map = parse_query(request.query());
             let mut object = ::serde_json::Map::new();
         }
+    } else {
+        quote! { let mut object = ::serde_json::Map::new(); }
     };
     let inserts: TokenStream = fields
         .iter()

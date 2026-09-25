@@ -346,6 +346,37 @@ const QUERY_HTTP_SERVICE: &str = "
     }
 ";
 
+/// A bodyless `GET` whose macro-generated message's two fields are both bound by the path -
+/// nothing left to read off the query - beside a second operation whose `limit` the path leaves
+/// unbound.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+const PATH_BOUND_HTTP_SERVICE: &str = "
+    pub trait LabelClientService<Ctx> {
+        #[service_schema_op(http(
+            method = \"GET\",
+            path = \"/orgs/{org}/documents/{document_id}\",
+            error_status(NotFound = 404),
+        ))]
+        async fn get_document(
+            &self,
+            ctx: &Ctx,
+            org: String,
+            document_id: String,
+        ) -> Result<SearchResponse, SearchError>;
+
+        #[service_schema_op(http(
+            method = \"GET\",
+            path = \"/orgs/{org}/documents\",
+        ))]
+        async fn list_documents(
+            &self,
+            ctx: &Ctx,
+            org: String,
+            limit: Option<u32>,
+        ) -> Result<SearchResponse, SearchError>;
+    }
+";
+
 /// The same declaration `tests/service_schema_emitted_client_tests/tests.rs` runs the emitted
 /// clients against — `ConversationId` a wire-scalar newtype, `purge_conversation` declared first,
 /// `window` second.

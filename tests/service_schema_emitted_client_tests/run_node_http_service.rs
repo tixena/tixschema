@@ -15,12 +15,13 @@ use super::tests::{
     ArchiveClientServiceSchema, ArchiveError, ArchiveStatus, ContentBackEnd,
     ContentClientServiceSchema, ContentError, ConversationClientServiceSchema, ConversationId,
     EchoBackEnd, EchoClientServiceSchema, EchoRangeError, EchoRangeResponse,
-    GateClientServiceSchema, GateError, GateStatus, PulseBackEnd, PulseClientServiceSchema,
-    PulseError, PulseResponse, SealClientServiceSchema, SealError, SealStatus,
-    SearchClientServiceSchema, SearchEcho, SearchError, ThumbnailBackEnd,
-    ThumbnailClientServiceSchema, ThumbnailError, UploadDocumentBackEnd,
-    UploadDocumentClientServiceSchema, UploadDocumentError, UploadDocumentResponse,
-    VaultClientServiceSchema, VaultError, VaultStatus, WindowError, WindowPage, WindowRequest,
+    GateClientServiceSchema, GateError, GateStatus, LabelClientServiceSchema, LabelError,
+    LabelStatus, PulseBackEnd, PulseClientServiceSchema, PulseError, PulseResponse,
+    SealClientServiceSchema, SealError, SealStatus, SearchClientServiceSchema, SearchEcho,
+    SearchError, ThumbnailBackEnd, ThumbnailClientServiceSchema, ThumbnailError,
+    UploadDocumentBackEnd, UploadDocumentClientServiceSchema, UploadDocumentError,
+    UploadDocumentResponse, VaultClientServiceSchema, VaultError, VaultStatus, WindowError,
+    WindowPage, WindowRequest,
 };
 use super::thumbnail_http_rest_transport;
 use super::upload_document_http_rest_transport;
@@ -363,6 +364,34 @@ async function main() {
     { method: "GET", path: "/pulse", query: "", headers: [], body: new Uint8Array() },
   );
   console.log(JSON.stringify({ status: response.status, headers: response.headers, bodyBytes: Array.from(response.body) }));
+  process.exit(0);
+}
+main().catch((error) => { console.error(error); process.exit(1); });
+"#;
+
+/// A bodyless `GET` whose macro-generated message's two fields are both bound by the path -
+/// nothing left for the emitted dispatcher to read off the query string.
+const LABEL_DRIVER: &str = r#"
+async function main() {
+  const impl = {
+    async getLabel(ctx, req) {
+      if (req.labelId === "missing") return { ok: false, error: { errorCode: "not-found" } };
+      return { ok: true, value: { label: `${req.orgId}/${req.labelId}` } };
+    },
+  };
+  const dispatch = createLabelClientServiceHttpDispatcher(impl);
+
+  async function answered(path) {
+    const response = await dispatch({}, { method: "GET", path, query: "", headers: [], body: new Uint8Array() });
+    const text = new TextDecoder().decode(response.body);
+    return { status: response.status, body: JSON.parse(text) };
+  }
+
+  const results = {
+    ok: await answered("/orgs/acme/labels/priority"),
+    missing: await answered("/orgs/acme/labels/missing"),
+  };
+  console.log(JSON.stringify(results));
   process.exit(0);
 }
 main().catch((error) => { console.error(error); process.exit(1); });
@@ -1388,4 +1417,45 @@ fn the_pulse_route_table_and_incoming_request_read_back_what_they_were_built_wit
     .unwrap();
     assert_eq!(response.status(), 499);
     assert_eq!(response.body(), b"handled");
+}
+
+// -------------------------------------------------------------------------------------------
+// Group 7: a fully path-bound macro-generated message - two placeholders, no query field - and
+// the declared error it still answers.
+// -------------------------------------------------------------------------------------------
+
+fn label_emitted() -> String {
+    [
+        "import { z } from \"zod\";".to_owned(),
+        LabelStatus::ts_definition(),
+        LabelStatus::zod_schema(),
+        LabelError::ts_definition(),
+        LabelError::zod_schema(),
+        LabelClientServiceSchema::ts_definition(),
+        LabelClientServiceSchema::ts_service(),
+        LabelClientServiceSchema::ts_http_service(),
+    ]
+    .join("\n\n")
+}
+
+#[test]
+fn a_fully_path_bound_generated_message_dispatches_with_no_query_reader() {
+    let module = format!("{}\n\n{LABEL_DRIVER}", label_emitted());
+    let Some(results) = run_or_stand_down("http-service-label", "label.mts", &module) else {
+        return;
+    };
+
+    assert_eq!(results["ok"]["status"], 200_i64, "got: {results:#?}");
+    assert_eq!(
+        results["ok"]["body"],
+        serde_json::json!({"label": "acme/priority"}),
+        "both fields decoded off the path placeholders. got: {results:#?}"
+    );
+
+    assert_eq!(results["missing"]["status"], 404_i64, "got: {results:#?}");
+    assert_eq!(
+        results["missing"]["body"],
+        serde_json::json!({"errorCode": "not-found"}),
+        "got: {results:#?}"
+    );
 }
