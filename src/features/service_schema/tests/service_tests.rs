@@ -8,7 +8,7 @@
 
 use super::{
     MIXED_HTTP_SERVICE, MIXED_SERVICE, MULTIPART_HTTP_SERVICE, REQUIRED_HEADER_HTTP_SERVICE,
-    TS_UNIT_SUCCESS_SERVICE, service_of,
+    TS_HEADER_TUPLE_SERVICE, TS_UNIT_SUCCESS_SERVICE, service_of,
 };
 
 #[test]
@@ -103,9 +103,13 @@ fn the_dispatcher_factory_answers_with_a_dispatch_function() {
     );
     assert!(
         written.contains(
-            "): (ctx: Ctx, operation: string, payload: unknown, headers?: ReadonlyArray<readonly \
-             [string, string]>, parts?: ReadonlyArray<readonly [string, unknown]>) => \
-             Promise<unknown> {"
+            "): (\n  \
+             ctx: Ctx,\n  \
+             operation: string,\n  \
+             payload: unknown,\n  \
+             headers?: ReadonlyArray<readonly [string, string]>,\n  \
+             parts?: ReadonlyArray<readonly [string, unknown]>,\n\
+             ) => Promise<UsageServiceDispatched | undefined> {"
         ),
         "got: {written}"
     );
@@ -154,9 +158,12 @@ fn an_operation_nothing_answers_to_produces_a_framed_fault() {
         "got: {written}"
     );
     assert!(
-        written.contains("return { ok: false, error: { isServiceFault: true, fault } };"),
-        "a fault crosses inside the failure arm, behind the literal a caller narrows on. \
-         Got: {written}"
+        written.contains(
+            "return { answered: { ok: false, error: { isServiceFault: true, fault } }, headers: \
+             [] };"
+        ),
+        "a fault crosses inside the failure arm, behind the literal a caller narrows on, with no \
+         header beside it. Got: {written}"
     );
 }
 
@@ -251,7 +258,8 @@ fn the_seal_leaves_the_framing_a_caller_narrows_on_untouched() {
     let written = service_of(MIXED_SERVICE);
     assert!(
         written.contains(
-            "): { ok: false; error: { isServiceFault: true; fault: UsageServiceFault } } {"
+            "return { answered: { ok: false, error: { isServiceFault: true, fault } }, headers: \
+             [] };"
         ),
         "a fault still crosses behind the literal a caller narrows on. Got: {written}"
     );
@@ -325,7 +333,7 @@ fn an_operation_with_no_binding_takes_no_extra_argument() {
 }
 
 #[test]
-fn the_arm_looks_up_an_optional_header_and_passes_it_to_the_call() {
+fn the_arm_reads_an_optional_header_off_its_json_and_passes_it_to_the_call() {
     let written = service_of(MIXED_HTTP_SERVICE);
     let arm = written
         .split("      case \"get-version\": {")
@@ -336,17 +344,19 @@ fn the_arm_looks_up_an_optional_header_and_passes_it_to_the_call() {
     let body = arm.unwrap();
     assert!(
         body.contains(
-            "const byteRangeText = headers.find(([name]) => name.toLowerCase() === \
-             \"range\")?.[1];"
+            "const byteRangeHeader = documentClientServiceRequestHeader(\"get-version\", headers, \
+             \"range\", z.union([z.null().transform(() => undefined), z.string(), \
+             z.undefined()]).prefault(undefined));\n        \
+             if (!byteRangeHeader.ok) {\n          \
+             return documentClientServiceFramed(byteRangeHeader.fault);\n        \
+             }"
         ),
         "got: {body}"
     );
     assert!(
-        body.contains("const byteRange = byteRangeText === undefined ? undefined : byteRangeText;"),
-        "got: {body}"
-    );
-    assert!(
-        body.contains("return impl.getVersion(ctx, received.data, byteRange);"),
+        body.contains(
+            "const outcome = await impl.getVersion(ctx, received.data, byteRangeHeader.value);"
+        ),
         "the call is `impl.<op>(ctx, received.data, <headers...>, <parts...>)`. Got: {body}"
     );
 }
@@ -363,29 +373,73 @@ fn a_missing_required_header_answers_the_same_framed_fault_a_bad_payload_gets() 
     let body = arm.unwrap();
     assert!(
         body.contains(
-            "const byteRangeText = headers.find(([name]) => name.toLowerCase() === \
-             \"range\")?.[1];"
+            "const byteRangeHeader = documentClientServiceRequestHeader(\"get-version\", headers, \
+             \"range\", z.string());"
         ),
         "got: {body}"
     );
     assert!(
-        body.contains(
-            "if (byteRangeText === undefined) {\n          return \
-             documentClientServiceFramed(documentClientServiceInboundFault(\"get-version\", \
-             [{ path: [\"range\"], message: \"a required header was not carried\" }]));\n        \
-             }"
+        written.contains(
+            "issues = carried === undefined\n      \
+             ? [{ path: [name], message: \"a required header was not carried\" }]"
         ),
-        "got: {body}"
+        "an absent header the schema refuses is named as missing. Got: {written}"
     );
     assert!(
-        body.contains("const byteRange = byteRangeText;"),
-        "got: {body}"
-    );
-    assert!(
-        body.find("if (byteRangeText === undefined)").unwrap()
+        body.find("documentClientServiceRequestHeader(").unwrap()
             > body.find("safeParse(payload)").unwrap(),
         "the message is checked first, exactly as the message check runs before every binding \
          read. Got: {body}"
+    );
+}
+
+/// A header tuple is split: the body answers under `value` or `error`, each header is written
+/// JSON-encoded under its name, and an optional one holding `null` is written nowhere.
+#[test]
+fn a_header_tuple_outcome_is_split_into_the_envelope_and_its_headers() {
+    let written = service_of(TS_HEADER_TUPLE_SERVICE);
+    assert!(
+        written.contains(
+            "        const outcome = await impl.get(ctx, received.data, tenantHeader.value, \
+             traceHeader.value);\n        \
+             if (outcome.ok) {\n          \
+             const [body0, headerOut0, headerOut1] = outcome.value;\n          \
+             const replied: Array<[string, string]> = [];\n          \
+             replied.push([\"etag\", JSON.stringify(headerOut0)]);\n          \
+             if (headerOut1 != null) replied.push([\"x-age\", JSON.stringify(headerOut1)]);\n          \
+             return { answered: { ok: true, value: body0 }, headers: replied };\n        \
+             }\n        \
+             const [body0, errorHeaderOut0] = outcome.error;\n        \
+             const replied: Array<[string, string]> = [];\n        \
+             if (errorHeaderOut0 != null) replied.push([\"x-reason\", \
+             JSON.stringify(errorHeaderOut0)]);\n        \
+             return { answered: { ok: false, error: body0 }, headers: replied };\n      \
+             }"
+        ),
+        "got: {written}"
+    );
+    assert!(
+        written.contains(
+            "        await impl.touch(ctx, received.data, tenantHeader.value);\n        \
+             return undefined;"
+        ),
+        "a one-way operation reads its header and answers nothing. Got: {written}"
+    );
+}
+
+/// An operation binding no header answers its outcome whole, with no header beside it.
+#[test]
+fn an_operation_binding_no_header_answers_its_outcome_with_no_headers() {
+    let written = service_of(MIXED_SERVICE);
+    assert!(
+        written.contains(
+            "return { answered: await impl.getAvailableBalance(ctx, received.data), headers: [] };"
+        ),
+        "got: {written}"
+    );
+    assert!(
+        !written.contains("RequestHeader"),
+        "a service binding no header publishes no header reader. Got: {written}"
     );
 }
 
@@ -413,7 +467,10 @@ fn the_arm_looks_up_a_bound_part_and_refuses_a_missing_one_through_the_same_faul
         "got: {body}"
     );
     assert!(
-        body.contains("return impl.uploadDocument(ctx, received.data, attachment);"),
+        body.contains(
+            "return { answered: await impl.uploadDocument(ctx, received.data, attachment), \
+             headers: [] };"
+        ),
         "got: {body}"
     );
 }

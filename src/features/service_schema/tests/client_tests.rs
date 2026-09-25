@@ -5,7 +5,7 @@
 //! one-way method answers nothing and publishes the shape it throws instead. No TypeScript
 //! toolchain is reachable here, so none of them type-checks the bundle.
 
-use super::{MIXED_SERVICE, TS_UNIT_SUCCESS_SERVICE, client_of};
+use super::{MIXED_SERVICE, TS_HEADER_TUPLE_SERVICE, TS_UNIT_SUCCESS_SERVICE, client_of};
 
 #[test]
 fn a_one_way_method_answers_nothing_and_a_replying_one_answers_its_result() {
@@ -60,13 +60,13 @@ fn the_operation_name_travels_beside_the_payload() {
     let written = client_of(MIXED_SERVICE);
     assert!(
         written.contains(
-            "return transport.request<UsageServiceGetAvailableBalanceResult>\
-             (\"get-available-balance\", "
+            "const { answered } = await transport.request<UsageServiceGetAvailableBalanceResult>\
+             (\"get-available-balance\", validated.data, []);"
         ),
         "the name is an argument of its own, never a key inside the message. Got: {written}"
     );
     assert!(
-        written.contains("await transport.notify(\"apply-bundle\", "),
+        written.contains("await transport.notify(\"apply-bundle\", validated.data, []);"),
         "got: {written}"
     );
 }
@@ -84,8 +84,8 @@ fn a_unit_success_normalizes_value_to_undefined_whatever_the_transport_answered(
     let body = method.unwrap();
     assert!(
         body.contains(
-            "const answered = await transport.request<PingClientServicePingResult>(\"ping\", \
-             validated.data);"
+            "const { answered } = await transport.request<PingClientServicePingResult>(\"ping\", \
+             validated.data, []);"
         ),
         "got: {body}"
     );
@@ -279,4 +279,80 @@ fn the_refusal_a_one_way_method_throws_carries_a_sealed_fault() {
         "the thrower is handed a fault the client minted, never one written at the throw site. \
          Got: {written}"
     );
+}
+
+/// Each `header_in` value goes out JSON-encoded, an optional one holding `undefined` as `null` —
+/// what the Rust client writes for a `None`.
+#[test]
+fn a_header_in_argument_is_sent_json_encoded_beside_the_message() {
+    let written = client_of(TS_HEADER_TUPLE_SERVICE);
+    assert!(
+        written.contains(
+            "get(req: string, tenant: string, trace: number | undefined): \
+             Promise<VersionServiceGetResult>;"
+        ),
+        "got: {written}"
+    );
+    assert!(
+        written.contains(
+            "      const headers: Array<[string, string]> = [];\n      \
+             headers.push([\"x-tenant\", JSON.stringify(tenant)]);\n      \
+             headers.push([\"x-trace\", JSON.stringify(trace ?? null)]);\n"
+        ),
+        "got: {written}"
+    );
+    assert!(
+        written.contains("await transport.notify(\"touch\", validated.data, headers);"),
+        "a one-way operation sends its header too. Got: {written}"
+    );
+}
+
+/// A header tuple is rejoined from the reply: the body off the envelope, each header off the
+/// reply's own headers through its slot schema, and a missing or malformed one a fault.
+#[test]
+fn a_header_tuple_reply_is_rejoined_from_the_envelope_and_the_reply_headers() {
+    let written = client_of(TS_HEADER_TUPLE_SERVICE);
+    assert!(
+        written.contains(
+            "      const { answered, headers: replied } = await transport.request<\n        \
+             | { ok: true; value: Document }\n        \
+             | { ok: false; error: DocError | { isServiceFault: true; fault: VersionServiceFault } \
+             }\n      \
+             >(\"get\", validated.data, headers);"
+        ),
+        "the transport answers the body alone, typed as the envelope carries it. Got: {written}"
+    );
+    assert!(
+        written.contains(
+            "const headerOut1 = versionServiceReplyHeader(\"get\", replied, \"x-age\", \
+             z.nullable(z.number().int()));\n        \
+             if (!headerOut1.ok) {\n          \
+             return { ok: false, error: { isServiceFault: true, fault: headerOut1.fault } };\n        \
+             }\n        \
+             return { ok: true, value: [answered.value, headerOut0.value, headerOut1.value] };"
+        ),
+        "got: {written}"
+    );
+    assert!(
+        written.contains(
+            "      if (typeof error === \"object\" && error !== null && \"isServiceFault\" in error) \
+             {\n        \
+             return { ok: false, error };\n      \
+             }"
+        ) && written.contains("return { ok: false, error: [error, errorHeaderOut0.value] };"),
+        "a fault passes through before the declared error is rejoined. Got: {written}"
+    );
+    assert!(
+        written.contains(
+            "const parsed = schema.safeParse(carried === undefined ? null : JSON.parse(carried));"
+        ) && written.contains("? \"a declared reply header was missing\""),
+        "an absent header reads as the `null` an optional slot holds, and faults a required one. \
+         Got: {written}"
+    );
+}
+
+#[test]
+fn a_service_with_no_header_tuple_publishes_no_reply_header_reader() {
+    let written = client_of(MIXED_SERVICE);
+    assert!(!written.contains("ReplyHeader"), "got: {written}");
 }

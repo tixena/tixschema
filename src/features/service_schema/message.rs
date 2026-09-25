@@ -12,7 +12,8 @@
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
-    HttpShape, OperationDef, OperationInputs, ScalarKind, option_inner, scalar_kind, vec_inner,
+    HttpShape, OperationDef, OperationInputs, ScalarKind, option_inner, scalar_kind,
+    tuple_elements, vec_inner,
 };
 use syn::Type;
 
@@ -63,6 +64,23 @@ pub fn binding_params(shape: &HttpShape) -> Vec<(String, String)> {
         ));
     }
     params
+}
+
+/// The type a header tuple carries in its body slot: the tuple's first element where `headers`
+/// elements were declared after it, or `ty` itself where none were.
+pub fn body_type(headers: usize, ty: &Type) -> &Type {
+    if headers == 0 {
+        return ty;
+    }
+    tuple_elements(ty)
+        .and_then(|elements| elements.first())
+        .unwrap_or(ty)
+}
+
+/// The types of a header tuple's trailing header elements, one per declared name, in order.
+pub fn header_types(headers: usize, ty: &Type) -> Vec<&Type> {
+    let elements: Vec<&Type> = tuple_elements(ty).into_iter().flatten().collect();
+    elements[elements.len().saturating_sub(headers)..].to_vec()
 }
 
 /// Mirrors the Rust `decode_expr`: a `Vec<...>` splits `raw` on `,` and coerces each piece the

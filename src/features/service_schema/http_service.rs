@@ -30,12 +30,14 @@
 //!
 //! `create{Service}Dispatcher` — [`super::service`]'s own `dispatcher` — is where a `header_in`
 //! binding and a `part(...)` binding are read, decoded and refused, the same way it already reads
-//! and refuses the message. This module keeps no presence check of its own: it hands the request's
-//! own `headers` and, where the service declares multipart, its own `parts` straight through to
-//! `dispatch`, exactly as it hands the assembled message through.
+//! and refuses the message. This module keeps no presence check of its own. What it does keep is
+//! the HTTP text form: the dispatcher reads and writes each header value JSON-encoded, as a
+//! `ws_rpc` frame and an AMQP message carry it, so each `header_in` value is coerced from its
+//! header text before it is handed on, and each header the dispatcher answers is rendered back to
+//! header text before it is written.
 
 use super::message;
-use super::result::stream_success_ts_type;
+use super::result::STREAMED_ANSWER_TS_TYPE;
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
@@ -81,6 +83,12 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
     if service_writes_a_response_header(service) {
         items.push(legal_response_header_value_fn(&prefix));
     }
+    if service.operations.iter().any(|operation| {
+        let shape = HttpShape::of(operation);
+        !shape.header_out.is_empty() || !shape.error_header_out.is_empty()
+    }) {
+        items.push(replied_header_fn(&prefix));
+    }
     items.push(dispatcher_fn(service, &named, &prefix));
     items
 }
@@ -108,6 +116,21 @@ fn legal_response_header_value_fn(prefix: &str) -> String {
          if (code !== 0x09 && code !== 0x20 && (code < 0x21 || code > 0x7e)) return false;\n  \
          }}\n  \
          return true;\n\
+         }}"
+    )
+}
+
+/// Reads one header the dispatcher answered back off its JSON encoding, `undefined` where it wrote
+/// none — an optional header holding `undefined`.
+fn replied_header_fn(prefix: &str) -> String {
+    format!(
+        "/** One header the dispatcher answered, decoded off its JSON encoding. */\n\
+         function {prefix}HttpRepliedHeader(\n  \
+         replied: ReadonlyArray<readonly [string, string]>,\n  \
+         name: string,\n\
+         ): unknown {{\n  \
+         const carried = replied.find(([candidate]) => candidate === name)?.[1];\n  \
+         return carried === undefined ? undefined : JSON.parse(carried);\n\
          }}"
     )
 }
@@ -553,28 +576,37 @@ fn dispatcher_fn(service: &ServiceDef, named: &str, prefix: &str) -> String {
 
 /// The shared closure every JSON-reply, multipart-reply and one-way arm answers through. Bytes,
 /// stream and `header_out` replies build their own response instead — see [`custom_reply_block`].
-/// Takes the whole request so it can hand `headers` and `parts` to the dispatcher unchecked.
+/// Takes the arm's JSON-encoded `header_in` values and, where the service declares multipart,
+/// the request's own `parts`, handing both to the dispatcher unchecked.
 fn answer_fn(ctx: &DispatcherContext) -> String {
     let DispatcherContext {
         named,
         prefix,
         has_multipart,
     } = *ctx;
-    let parts_arg = if has_multipart { ", request.parts" } else { "" };
+    let (parts_param, parts_arg) = if has_multipart {
+        (
+            " parts: ReadonlyArray<readonly [string, unknown]>,",
+            ", parts",
+        )
+    } else {
+        ("", "")
+    };
     format!(
-        "  const answer = async (ctx: Ctx, request: {named}HttpRequest, operation: string, \
-         payload: unknown, okStatus: number, errorStatus: (error: unknown) => number) => {{\n    \
-         let answered: unknown;\n    \
+        "  const answer = async (ctx: Ctx, operation: string, payload: unknown, headers: \
+         ReadonlyArray<readonly [string, string]>,{parts_param} okStatus: number, errorStatus: \
+         (error: unknown) => number) => {{\n    \
+         let dispatched: {named}Dispatched | undefined;\n    \
          try {{\n      \
-         answered = await dispatch(ctx, operation, payload, request.headers{parts_arg});\n    \
+         dispatched = await dispatch(ctx, operation, payload, headers{parts_arg});\n    \
          }} catch (thrown) {{\n      \
          return onFault({prefix}HttpFault(\"handler-panic\", operation, thrown instanceof \
          Error ? thrown.message : String(thrown)));\n    \
          }}\n    \
-         if (answered === undefined) return {{ status: okStatus, headers: [], body: new \
+         if (dispatched === undefined) return {{ status: okStatus, headers: [], body: new \
          Uint8Array() }};\n    \
-         const envelope = answered as {{ ok: true; value: unknown }} | {{ ok: false; error: \
-         unknown }};\n    \
+         const envelope = dispatched.answered as {{ ok: true; value: unknown }} | {{ ok: false; \
+         error: unknown }};\n    \
          if (envelope.ok) return {prefix}HttpJson(okStatus, [], envelope.value);\n    \
          const error = envelope.error as {{ isServiceFault?: true; fault?: {named}Fault }};\n    \
          if (typeof error === \"object\" && error !== null && error.isServiceFault === true \
@@ -618,10 +650,50 @@ fn arm(operation: &OperationDef, ctx: &DispatcherContext) -> String {
     }
     let (setup, message_expr) = message_build(operation, &shape, prefix);
     out.push_str(&setup);
+    out.push_str(&header_in_encode_stmt(&shape, prefix));
     out.push_str(&arm_body(operation, &shape, &message_expr, ctx));
     out.push_str("      }\n");
     out.push_str("    }\n");
     out
+}
+
+/// Each `header_in` value's own header text, coerced the way the Rust `decode_expr` coerces it
+/// and JSON-encoded into `headersIn` for the dispatcher to read. A header the request did not
+/// carry is left out, for the dispatcher to accept as `undefined` or refuse as missing. Nothing at
+/// all for an operation binding none, which hands the dispatcher an empty list.
+fn header_in_encode_stmt(shape: &HttpShape, prefix: &str) -> String {
+    if shape.header_in.is_empty() {
+        return String::new();
+    }
+    let mut stmt = String::from("        const headersIn: Array<[string, string]> = [];\n");
+    for header in &shape.header_in {
+        let name = &header.name;
+        let text = format!(
+            "{}Text",
+            RenameRule::CamelCase.apply_to_field(&header.parameter.to_string())
+        );
+        let lower = name.to_lowercase();
+        let decode = message::decode_ts_expr(&header.ty, &text, prefix);
+        let _ = write!(
+            stmt,
+            "        const {text} = request.headers.find(([name]) => name.toLowerCase() === \
+             \"{lower}\")?.[1];\n        \
+             if ({text} !== undefined) headersIn.push([\"{name}\", JSON.stringify({decode})]);\n"
+        );
+    }
+    stmt
+}
+
+/// What an arm hands the dispatcher beside the message: its JSON-encoded `header_in` values and,
+/// where the service declares multipart, the request's own parts.
+fn dispatch_extras(shape: &HttpShape, has_multipart: bool) -> String {
+    let headers = if shape.header_in.is_empty() {
+        "[]"
+    } else {
+        "headersIn"
+    };
+    let parts = if has_multipart { ", request.parts" } else { "" };
+    format!("{headers}{parts}")
 }
 
 fn arm_body(
@@ -630,9 +702,10 @@ fn arm_body(
     message_expr: &str,
     ctx: &DispatcherContext,
 ) -> String {
+    let extras = dispatch_extras(shape, ctx.has_multipart);
     let OperationOutcome::Reply { error, success } = &operation.outcome else {
         return format!(
-            "        return answer(ctx, request, \"{}\", {message_expr}, {}, () => \
+            "        return answer(ctx, \"{}\", {message_expr}, {extras}, {}, () => \
              {DEFAULT_BINDING_ERROR_STATUS});\n",
             operation.wire_name, shape.ok_status,
         );
@@ -643,7 +716,7 @@ fn arm_body(
     if plain_json {
         let closure = error_status_closure(shape, error);
         return format!(
-            "        return answer(ctx, request, \"{}\", {message_expr}, {}, {closure});\n",
+            "        return answer(ctx, \"{}\", {message_expr}, {extras}, {}, {closure});\n",
             operation.wire_name, shape.ok_status,
         );
     }
@@ -754,11 +827,12 @@ fn generated_rule_lines(
 // ---------------------------------------------------------------------------------------------
 
 /// The statements shared by every custom reply: dispatch, catch a panic, and answer a declared
-/// error. Ends with `envelope.value` ready to read on the success path, which the caller writes on.
+/// error. Ends with `envelope.value` ready to read on the success path, which the caller writes on,
+/// and `replied` holding the headers the dispatcher answered where the operation declares any.
 fn dispatch_envelope_preamble(
     wire: &str,
     message_expr: &str,
-    success_ty: &str,
+    body_ty: &str,
     shape: &HttpShape,
     error: &Type,
     ctx: &DispatcherContext,
@@ -768,18 +842,24 @@ fn dispatch_envelope_preamble(
         prefix,
         has_multipart,
     } = *ctx;
-    let parts_arg = if has_multipart { ", request.parts" } else { "" };
+    let extras = dispatch_extras(shape, has_multipart);
+    let replied = if shape.header_out.is_empty() && shape.error_header_out.is_empty() {
+        ""
+    } else {
+        "        const replied = dispatched === undefined ? [] : dispatched.headers;\n"
+    };
     let declared_error_stmt = declared_error_response_stmt(wire, shape, error, ctx);
     format!(
-        "        let answered: unknown;\n        \
+        "        let dispatched: {named}Dispatched | undefined;\n        \
          try {{\n          \
-         answered = await dispatch(ctx, \"{wire}\", {message_expr}, request.headers{parts_arg});\n        \
+         dispatched = await dispatch(ctx, \"{wire}\", {message_expr}, {extras});\n        \
          }} catch (thrown) {{\n          \
          return onFault({prefix}HttpFault(\"handler-panic\", \"{wire}\", thrown instanceof \
          Error ? thrown.message : String(thrown)));\n        \
          }}\n        \
-         const envelope = answered as {{ ok: true; value: {success_ty} }} | {{ ok: false; \
-         error: unknown }};\n        \
+         const envelope = dispatched?.answered as {{ ok: true; value: {body_ty} }} | {{ ok: \
+         false; error: unknown }};\n\
+{replied}        \
          if (!envelope.ok) {{\n          \
          const error = envelope.error as {{ isServiceFault?: true; fault?: {named}Fault \
          }};\n          \
@@ -791,7 +871,8 @@ fn dispatch_envelope_preamble(
 }
 
 /// The declared-error response [`dispatch_envelope_preamble`] answers with: the mapped status
-/// with the error as bare JSON, split into a checked response header per `error_header_out` entry.
+/// with the error as bare JSON, and a checked response header per `error_header_out` entry the
+/// dispatcher answered.
 fn declared_error_response_stmt(
     wire: &str,
     shape: &HttpShape,
@@ -807,21 +888,21 @@ fn declared_error_response_stmt(
         );
     }
     let idents = error_header_out_idents(shape);
-    let error_ts_ty = get_field_def("error", error, "").typescript_typename();
-    let elements: Vec<&Type> = tuple_elements(error).into_iter().flatten().collect();
+    let head_ty = get_field_def("error", error_head, "").typescript_typename();
+    let types = message::header_types(shape.error_header_out.len(), error);
     let mut stmt = format!(
-        "          const [declaredError, {}] = envelope.error as {error_ts_ty};\n          \
+        "          const declaredError = envelope.error as {head_ty};\n\
+{reads}          \
          const headers: Array<[string, string]> = [];\n",
-        idents.join(", "),
+        reads = replied_header_reads(
+            ctx.prefix,
+            &shape.error_header_out,
+            &idents,
+            &types,
+            "          "
+        ),
     );
-    for push in checked_header_pushes(
-        ctx.prefix,
-        wire,
-        &shape.error_header_out,
-        &idents,
-        &elements,
-        1,
-    ) {
+    for push in checked_header_pushes(ctx.prefix, wire, &shape.error_header_out, &idents, &types) {
         let _ = writeln!(stmt, "          {push}");
     }
     let _ = writeln!(
@@ -829,6 +910,26 @@ fn declared_error_response_stmt(
         "          return {}HttpJson(({closure})(declaredError), headers, declaredError);",
         ctx.prefix,
     );
+    stmt
+}
+
+/// One local per declared header, read back off `replied` and typed as the header's own element.
+fn replied_header_reads(
+    prefix: &str,
+    names: &[String],
+    idents: &[String],
+    types: &[&Type],
+    indent: &str,
+) -> String {
+    let mut stmt = String::new();
+    for ((name, ident), ty) in names.iter().zip(idents).zip(types) {
+        let element_ty = get_field_def("value", ty, "").typescript_typename();
+        let _ = writeln!(
+            stmt,
+            "{indent}const {ident} = {prefix}HttpRepliedHeader(replied, \"{name}\") as \
+             {element_ty};"
+        );
+    }
     stmt
 }
 
@@ -858,29 +959,24 @@ fn error_header_out_idents(shape: &HttpShape) -> Vec<String> {
 }
 
 /// One checked push per declared name: an illegal value answers a fault through `onFault`
-/// instead of reaching the response. `skip` reads past the body elements into `elements`.
+/// instead of reaching the response. `types` holds each header's own element type.
 fn checked_header_pushes(
     prefix: &str,
     wire: &str,
     names: &[String],
     idents: &[String],
-    elements: &[&Type],
-    skip: usize,
+    types: &[&Type],
 ) -> Vec<String> {
     names
         .iter()
         .zip(idents)
-        .enumerate()
-        .map(|(index, (name, ident))| {
-            let element_ty = elements.get(skip + index).copied();
-            let encode = element_ty.map_or_else(
-                || format!("String({ident})"),
-                |ty| header_out_encode_expr(ty, ident),
-            );
+        .zip(types)
+        .map(|((name, ident), ty)| {
+            let encode = header_out_encode_expr(ty, ident);
             let push = checked_header_push_stmt(prefix, wire, name, &encode);
             // An `Option<T>` entry pushes nothing for `undefined`, rather than the literal text
             // `String(undefined)` would otherwise render.
-            if element_ty.is_some_and(|ty| option_inner(ty).is_some()) {
+            if option_inner(ty).is_some() {
                 format!("if ({ident} !== undefined) {{\n          {push}\n        }}")
             } else {
                 push
@@ -904,10 +1000,10 @@ fn checked_header_push_stmt(prefix: &str, wire: &str, name: &str, value_expr: &s
     )
 }
 
-/// A `body = "bytes"` reply: the bytes and their content type (and any declared `header_out`
-/// elements after them) destructured off `envelope.value`, answered bare — mirrors the Rust
-/// `bytes_answer_block`. The content type is checked the same way every other runtime-computed
-/// header value is.
+/// A `body = "bytes"` reply: the bytes and their content type destructured off `envelope.value`,
+/// any declared `header_out` element read back off the dispatcher's own headers, answered bare —
+/// mirrors the Rust `bytes_answer_block`. The content type is checked the same way every other
+/// runtime-computed header value is.
 fn bytes_reply_block(
     operation: &OperationDef,
     shape: &HttpShape,
@@ -917,26 +1013,25 @@ fn bytes_reply_block(
     ctx: &DispatcherContext,
 ) -> String {
     let wire = &operation.wire_name;
-    let success_ty = get_field_def("value", success, "").typescript_typename();
-    let mut out = dispatch_envelope_preamble(wire, message_expr, &success_ty, shape, error, ctx);
-    let idents = header_out_idents(shape);
-    let extra = if idents.is_empty() {
-        String::new()
-    } else {
-        format!(", {}", idents.join(", "))
-    };
-    let _ = writeln!(
-        out,
-        "        const [bytes, contentType{extra}] = envelope.value;"
-    );
-    out.push_str("        const headers: Array<[string, string]> = [];\n");
+    let pair = tuple_elements(success)
+        .into_iter()
+        .flatten()
+        .take(2)
+        .map(|ty| get_field_def("value", ty, "").typescript_typename())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut out =
+        dispatch_envelope_preamble(wire, message_expr, &format!("[{pair}]"), shape, error, ctx);
+    out.push_str("        const [bytes, contentType] = envelope.value;\n");
     let content_type_push =
         checked_header_push_stmt(ctx.prefix, wire, "content-type", "contentType");
-    let _ = writeln!(out, "        {content_type_push}");
-    let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
-    for push in checked_header_pushes(ctx.prefix, wire, &shape.header_out, &idents, &elements, 2) {
-        let _ = writeln!(out, "        {push}");
-    }
+    out.push_str(&header_out_writes(
+        wire,
+        shape,
+        success,
+        ctx,
+        &format!("        {content_type_push}\n"),
+    ));
     let _ = writeln!(
         out,
         "        return {{ status: {}, headers, body: new Uint8Array(bytes) }};",
@@ -958,29 +1053,24 @@ fn stream_reply_block(
     ctx: &DispatcherContext,
 ) -> String {
     let wire = &operation.wire_name;
-    let success_ty = stream_success_ts_type(shape, success);
-    let mut out = dispatch_envelope_preamble(wire, message_expr, &success_ty, shape, error, ctx);
-    let idents = header_out_idents(shape);
-    if idents.is_empty() {
-        out.push_str("        const answer = envelope.value;\n");
-    } else {
-        let _ = writeln!(
-            out,
-            "        const [answer, {}] = envelope.value;",
-            idents.join(", ")
-        );
-    }
-    out.push_str("        const headers: Array<[string, string]> = [];\n");
+    let mut out = dispatch_envelope_preamble(
+        wire,
+        message_expr,
+        STREAMED_ANSWER_TS_TYPE,
+        shape,
+        error,
+        ctx,
+    );
+    out.push_str("        const answer = envelope.value;\n");
     let range_push =
         checked_header_push_stmt(ctx.prefix, wire, "content-range", "answer.contentRange");
-    let _ = writeln!(
-        out,
-        "        if (answer.contentRange !== undefined) {{\n          {range_push}\n        }}"
-    );
-    let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
-    for push in checked_header_pushes(ctx.prefix, wire, &shape.header_out, &idents, &elements, 1) {
-        let _ = writeln!(out, "        {push}");
-    }
+    out.push_str(&header_out_writes(
+        wire,
+        shape,
+        success,
+        ctx,
+        &format!("        if (answer.contentRange !== undefined) {{\n          {range_push}\n        }}\n"),
+    ));
     let _ = writeln!(
         out,
         "        const status = answer.contentRange === undefined ? {} : 206;",
@@ -990,8 +1080,8 @@ fn stream_reply_block(
     out
 }
 
-/// A JSON reply declaring `header_out`, an `error_header_out`, or both: the value (and each
-/// declared `header_out` element, where any were) destructured off `envelope.value`.
+/// A JSON reply declaring `header_out`, an `error_header_out`, or both: the value off
+/// `envelope.value`, and each declared `header_out` element off the dispatcher's own headers.
 fn header_out_json_reply_block(
     operation: &OperationDef,
     shape: &HttpShape,
@@ -1001,28 +1091,36 @@ fn header_out_json_reply_block(
     ctx: &DispatcherContext,
 ) -> String {
     let wire = &operation.wire_name;
-    let success_ty = get_field_def("value", success, "").typescript_typename();
-    let mut out = dispatch_envelope_preamble(wire, message_expr, &success_ty, shape, error, ctx);
-    let idents = header_out_idents(shape);
-    if idents.is_empty() {
-        out.push_str("        const value = envelope.value;\n");
-    } else {
-        let _ = writeln!(
-            out,
-            "        const [value, {}] = envelope.value;",
-            idents.join(", ")
-        );
-    }
-    out.push_str("        const headers: Array<[string, string]> = [];\n");
-    let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
-    for push in checked_header_pushes(ctx.prefix, wire, &shape.header_out, &idents, &elements, 1) {
-        let _ = writeln!(out, "        {push}");
-    }
+    let body = message::body_type(shape.header_out.len(), success);
+    let body_ty = get_field_def("value", body, "").typescript_typename();
+    let mut out = dispatch_envelope_preamble(wire, message_expr, &body_ty, shape, error, ctx);
+    out.push_str("        const value = envelope.value;\n");
+    out.push_str(&header_out_writes(wire, shape, success, ctx, ""));
     let _ = writeln!(
         out,
         "        return {}HttpJson({}, headers, value);",
         ctx.prefix, shape.ok_status
     );
+    out
+}
+
+/// The response's `headers` list: the body kind's own header pushes (`own`), then a checked push
+/// per declared `header_out` element read back off the dispatcher's own headers.
+fn header_out_writes(
+    wire: &str,
+    shape: &HttpShape,
+    success: &Type,
+    ctx: &DispatcherContext,
+    own: &str,
+) -> String {
+    let idents = header_out_idents(shape);
+    let types = message::header_types(shape.header_out.len(), success);
+    let mut out = replied_header_reads(ctx.prefix, &shape.header_out, &idents, &types, "        ");
+    out.push_str("        const headers: Array<[string, string]> = [];\n");
+    out.push_str(own);
+    for push in checked_header_pushes(ctx.prefix, wire, &shape.header_out, &idents, &types) {
+        let _ = writeln!(out, "        {push}");
+    }
     out
 }
 

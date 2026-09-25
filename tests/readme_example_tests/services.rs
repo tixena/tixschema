@@ -352,9 +352,13 @@ fn the_dispatcher_factory_is_shown_with_the_signature_it_is_emitted_under() {
         &UsageServiceSchema::ts_service(),
         "export function createUsageServiceDispatcher<Ctx>(\n  \
          impl: UsageServiceImpl<Ctx>,\n\
-         ): (ctx: Ctx, operation: string, payload: unknown, headers?: ReadonlyArray<readonly \
-         [string, string]>, parts?: ReadonlyArray<readonly [string, unknown]>) => \
-         Promise<unknown> {",
+         ): (\n  \
+         ctx: Ctx,\n  \
+         operation: string,\n  \
+         payload: unknown,\n  \
+         headers?: ReadonlyArray<readonly [string, string]>,\n  \
+         parts?: ReadonlyArray<readonly [string, unknown]>,\n\
+         ) => Promise<UsageServiceDispatched | undefined> {",
     );
 }
 
@@ -422,7 +426,7 @@ fn the_one_way_refusal_the_client_throws_is_shown_as_emitted() {
          throw usageServiceRefused(usageServiceOutboundFault(\"apply-bundle\", \
          validated.error.issues));\n      \
          }\n      \
-         await transport.notify(\"apply-bundle\", validated.data);\n    },",
+         await transport.notify(\"apply-bundle\", validated.data, []);\n    },",
     );
 }
 
@@ -442,8 +446,10 @@ fn the_outbound_check_the_client_runs_before_the_transport_is_shown_as_emitted()
          },\n        \
          };\n      \
          }\n      \
-         return transport.request<UsageServiceExpireCreditResult>(\"expire-credit\", \
-         validated.data);\n    },",
+         const { answered } = await \
+         transport.request<UsageServiceExpireCreditResult>(\"expire-credit\", validated.data, \
+         []);\n      \
+         return answered;\n    },",
     );
 }
 

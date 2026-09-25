@@ -24,7 +24,12 @@ use super::the_bundle_one_registration_line_produces::{
 };
 use super::{
     ApplyBundleReceipt, AuditServiceSchema, BalanceRequest, BalanceResponse, CreditWriteError,
-    ProbeError, ProbeServiceSchema, UnitPingError, UnitPingRequest, UnitPingServiceSchema,
+    ProbeError, ProbeServiceSchema,
+};
+#[cfg(feature = "zod")]
+use super::{
+    HeaderProbeDocument, HeaderProbeError, HeaderProbeServiceSchema, UnitPingError,
+    UnitPingRequest, UnitPingServiceSchema,
 };
 use std::env;
 use std::env::temp_dir;
@@ -83,15 +88,21 @@ declare type ZodType<Parsed> = {
 
 declare type ZodBuilder = ZodType<never> & {
   int(): ZodBuilder;
+  prefault(value: unknown): ZodBuilder;
+  transform(map: (value: never) => unknown): ZodBuilder;
 };
 
 declare const z: {
   boolean(): ZodBuilder;
   discriminatedUnion(key: string, arms: ReadonlyArray<ZodBuilder>): ZodBuilder;
   literal(value: string): ZodBuilder;
+  null(): ZodBuilder;
+  nullable(inner: ZodBuilder): ZodBuilder;
   number(): ZodBuilder;
   string(): ZodBuilder;
   strictObject(shape: Record<string, ZodBuilder>): ZodBuilder;
+  undefined(): ZodBuilder;
+  union(arms: ReadonlyArray<ZodBuilder>): ZodBuilder;
 };
 ";
 
@@ -182,11 +193,15 @@ const CALLER: &str = r#"import {
 } from "./bundle";
 
 const transport: ProbeServiceTransport = {
-  async notify(operation, payload): Promise<void> {
-    void `${operation}:${JSON.stringify(payload)}`;
+  async notify(operation, payload, headers): Promise<void> {
+    void `${operation}:${JSON.stringify(payload)}:${headers.length}`;
   },
-  async request<Answered>(operation: string, payload: unknown): Promise<Answered> {
-    throw new Error(`${operation}:${JSON.stringify(payload)}`);
+  async request<Answered>(
+    operation: string,
+    payload: unknown,
+    headers: ReadonlyArray<readonly [string, string]>,
+  ): Promise<{ answered: Answered; headers: ReadonlyArray<readonly [string, string]> }> {
+    throw new Error(`${operation}:${JSON.stringify(payload)}:${headers.length}`);
   },
 };
 
@@ -295,11 +310,15 @@ const UNIT_SUCCESS_CALLER: &str = r#"import {
 } from "./bundle";
 
 const transport: UnitPingServiceTransport = {
-  async notify(operation, payload): Promise<void> {
-    void `${operation}:${JSON.stringify(payload)}`;
+  async notify(operation, payload, headers): Promise<void> {
+    void `${operation}:${JSON.stringify(payload)}:${headers.length}`;
   },
-  async request<Answered>(operation: string, payload: unknown): Promise<Answered> {
-    throw new Error(`${operation}:${JSON.stringify(payload)}`);
+  async request<Answered>(
+    operation: string,
+    payload: unknown,
+    headers: ReadonlyArray<readonly [string, string]>,
+  ): Promise<{ answered: Answered; headers: ReadonlyArray<readonly [string, string]> }> {
+    throw new Error(`${operation}:${JSON.stringify(payload)}:${headers.length}`);
   },
 };
 
@@ -310,6 +329,90 @@ export async function read(): Promise<boolean> {
     return value === undefined;
   }
   return false;
+}
+"#;
+
+// ---------------------------------------------------------------------------------------------
+// `HeaderProbeService`: headers both ways, over the generic client and the `ws_rpc` pair.
+// ---------------------------------------------------------------------------------------------
+
+/// A caller destructuring a header tuple on both arms, each element typed as the operation
+/// declared it — an absent optional header being `null`, the value its tuple slot holds.
+#[cfg(feature = "zod")]
+const HEADER_CALLER: &str = r#"import {
+  createHeaderProbeServiceClient,
+  createHeaderProbeServiceWsTransport,
+  type HeaderProbeServiceTransport,
+} from "./bundle";
+
+const transport: HeaderProbeServiceTransport = {
+  async notify(operation, payload, headers): Promise<void> {
+    void `${operation}:${JSON.stringify(payload)}:${headers.length}`;
+  },
+  async request<Answered>(
+    operation: string,
+    payload: unknown,
+    headers: ReadonlyArray<readonly [string, string]>,
+  ): Promise<{ answered: Answered; headers: ReadonlyArray<readonly [string, string]> }> {
+    throw new Error(`${operation}:${JSON.stringify(payload)}:${headers.length}`);
+  },
+};
+
+declare const socket: WebSocket;
+
+export async function read(overSocket: boolean): Promise<string> {
+  const bound = overSocket ? createHeaderProbeServiceWsTransport(socket) : transport;
+  const answered = await createHeaderProbeServiceClient(bound).read("doc", "acme", undefined);
+  if (answered.ok) {
+    const [document, etag, age] = answered.value;
+    const title: string = document.title;
+    const tag: string = etag;
+    const aged: number | null = age;
+    return `${title}:${tag}:${aged ?? ""}`;
+  }
+  if ("isServiceFault" in answered.error) {
+    return answered.error.fault.kind;
+  }
+  const [declared, reason] = answered.error;
+  const said: string | null = reason;
+  return `${declared.errorCode}:${said ?? ""}`;
+}
+"#;
+
+/// An implementation answering a header tuple on both arms, reached through the dispatcher
+/// factory and the `ws_rpc` attachment alike.
+#[cfg(feature = "zod")]
+const HEADER_IMPLEMENTATION: &str = r#"import {
+  attachHeaderProbeServiceWsDispatcher,
+  createHeaderProbeServiceDispatcher,
+  type HeaderProbeServiceDispatched,
+  type HeaderProbeServiceImpl,
+  type HeaderProbeServiceReadOutcome,
+} from "./bundle";
+
+type ProbeContext = { loggerName: string };
+
+const implementation: HeaderProbeServiceImpl<ProbeContext> = {
+  async read(ctx, req, tenant, trace): Promise<HeaderProbeServiceReadOutcome> {
+    if (req === "") {
+      return { ok: false, error: [{ errorCode: "missing" }, null] };
+    }
+    return { ok: true, value: [{ title: `${ctx.loggerName}:${req}` }, tenant, trace ?? null] };
+  },
+};
+
+declare const socket: WebSocket;
+
+export const detach = attachHeaderProbeServiceWsDispatcher<ProbeContext>(
+  socket,
+  { loggerName: "probe" },
+  implementation,
+  (fault) => void fault.kind,
+);
+
+export async function answer(): Promise<HeaderProbeServiceDispatched | undefined> {
+  const dispatch = createHeaderProbeServiceDispatcher(implementation);
+  return dispatch({ loggerName: "probe" }, "read", "doc", [["x-tenant", "\"acme\""]]);
 }
 "#;
 
@@ -414,6 +517,23 @@ fn unit_ping_bundle() -> String {
         UnitPingServiceSchema::ts_definition(),
         UnitPingServiceSchema::ts_client(),
         UnitPingServiceSchema::ts_service(),
+    ]
+    .join("\n\n")
+}
+
+/// `HeaderProbeService`'s types, client, dispatcher, and both `ws_rpc` surfaces.
+#[cfg(feature = "zod")]
+fn header_probe_bundle() -> String {
+    [
+        HeaderProbeDocument::ts_definition(),
+        HeaderProbeDocument::zod_schema(),
+        HeaderProbeError::ts_definition(),
+        HeaderProbeError::zod_schema(),
+        HeaderProbeServiceSchema::ts_definition(),
+        HeaderProbeServiceSchema::ts_client(),
+        HeaderProbeServiceSchema::ts_service(),
+        HeaderProbeServiceSchema::ts_ws_client(),
+        HeaderProbeServiceSchema::ts_ws_service(),
     ]
     .join("\n\n")
 }
@@ -757,5 +877,37 @@ fn a_unit_success_implementation_answering_ok_true_with_value_is_refused_at_the_
     assert!(
         said.contains("'value' does not exist in type") && said.contains("{ ok: true; }"),
         "the refusal has to be about the excess `value` member. Got:\n{said}"
+    );
+}
+
+/// A caller reads a header tuple's elements as the operation declared them, over the generic
+/// seam and the `ws_rpc` transport alike.
+#[cfg(feature = "zod")]
+#[test]
+fn a_header_tuple_caller_reads_each_element_as_declared() {
+    let mut files = bundled(header_probe_bundle());
+    files.push(("caller.ts", HEADER_CALLER.to_owned()));
+    let Some((accepted, said)) = compiled("header-tuple-caller", &files) else {
+        return;
+    };
+    assert!(
+        accepted,
+        "a caller destructuring a header tuple does not compile:\n{said}"
+    );
+}
+
+/// An implementation answering header tuples is accepted at the dispatcher factory and at the
+/// `ws_rpc` attachment, and the dispatcher answers the envelope beside its headers.
+#[cfg(feature = "zod")]
+#[test]
+fn a_header_tuple_implementation_is_accepted_at_the_dispatcher_and_the_attachment() {
+    let mut files = bundled(header_probe_bundle());
+    files.push(("implementation.ts", HEADER_IMPLEMENTATION.to_owned()));
+    let Some((accepted, said)) = compiled("header-tuple-implementation", &files) else {
+        return;
+    };
+    assert!(
+        accepted,
+        "an implementation answering header tuples does not compile:\n{said}"
     );
 }

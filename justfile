@@ -160,6 +160,8 @@ test-emitted:
     @test -n "${TIXSCHEMA_NODE_MODULES:-}" && [ -d "${TIXSCHEMA_NODE_MODULES}/node_modules/zod" ] || { echo "No zod: set TIXSCHEMA_NODE_MODULES to a directory whose node_modules holds zod." >&2; exit 1; }
     @echo "Running the emitted TypeScript REST server with $(command -v "${TIXSCHEMA_NODE:-node}")..."
     TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" cargo test --test service_schema_emitted_client_tests run_node_http_service
+    @echo "Running the emitted ws_rpc headers against the Rust twins with $(command -v "${TIXSCHEMA_NODE:-node}")..."
+    TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" cargo test --test service_schema_emitted_client_tests run_node_ws_headers
     @command -v "${TIXSCHEMA_DART:-dart}" >/dev/null 2>&1 || { echo "No Dart SDK: put \`dart\` on PATH, or set TIXSCHEMA_DART to one." >&2; exit 1; }
     @echo "Running the emitted Dart client with $(command -v "${TIXSCHEMA_DART:-dart}")..."
     TIXSCHEMA_DART="$(command -v "${TIXSCHEMA_DART:-dart}")" cargo test --all-features --test service_schema_emitted_client_tests run_dart

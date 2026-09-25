@@ -13,6 +13,8 @@
 
 #![cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
 
+extern crate alloc;
+
 #[cfg(test)]
 #[macro_use]
 #[path = "service_schema_emitted_client_tests/tests.rs"]
@@ -48,9 +50,23 @@ mod echo_http_rest_transport;
 #[path = "service_schema_emitted_client_tests/pulse_http_rest_transport.rs"]
 mod pulse_http_rest_transport;
 
+/// The `ws_rpc` dispatcher and client for `StampClientService`, the Rust twins the headers groups
+/// are measured against.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/stamp_ws_rpc_transport.rs"]
+mod stamp_ws_rpc_transport;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/stamp_ws_rpc_client.rs"]
+mod stamp_ws_rpc_client;
+
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_node.rs"]
 mod run_node;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_ws_headers.rs"]
+mod run_node_ws_headers;
 
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_node_ws_server.rs"]
@@ -88,11 +104,11 @@ mod runtime;
 use tests::{
     ArchiveClientService, ContentClientService, ConversationClientService, EchoClientService,
     GateClientService, LabelClientService, PulseClientService, SealClientService,
-    SearchClientService, ThumbnailClientService, UploadDocumentClientService, VaultClientService,
-    archive_client_service_schema, content_client_service_schema,
+    SearchClientService, StampClientService, ThumbnailClientService, UploadDocumentClientService,
+    VaultClientService, archive_client_service_schema, content_client_service_schema,
     conversation_client_service_schema, echo_client_service_schema, gate_client_service_schema,
     label_client_service_schema, pulse_client_service_schema, seal_client_service_schema,
-    search_client_service_schema, thumbnail_client_service_schema,
+    search_client_service_schema, stamp_client_service_schema, thumbnail_client_service_schema,
     upload_document_client_service_schema, vault_client_service_schema,
 };
 #[cfg(all(test, feature = "dart"))]

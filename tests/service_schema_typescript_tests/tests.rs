@@ -952,7 +952,10 @@ mod the_envelope_typescript_declares_is_the_one_rust_writes {
         let fault = dispatched("nothing-answers-to-this", b"{}", "probe");
         let written = ProbeServiceSchema::ts_service();
         assert!(
-            written.contains("return { ok: false, error: { isServiceFault: true, fault } };"),
+            written.contains(
+                "return { answered: { ok: false, error: { isServiceFault: true, fault } }, \
+                 headers: [] };"
+            ),
             "the framing this test writes by hand is the one the emitter writes. Got: {written}"
         );
         let client = amqp_client::ProbeServiceClient::new(PreparedAnswer {
@@ -1365,6 +1368,61 @@ impl UnitPingService<()> for UnitPingBackEnd {
     }
 }
 
+#[model_schema()]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct HeaderProbeDocument {
+    pub title: String,
+}
+
+#[model_schema()]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "errorCode", rename_all = "kebab-case")]
+pub enum HeaderProbeError {
+    Missing,
+}
+
+/// Headers both ways: a required and an optional `header_in`, a `header_out` tuple with a
+/// required and an optional element, and an `error_header_out` tuple.
+#[service_schema(transports = [])]
+pub trait HeaderProbeService<Ctx> {
+    #[service_schema_op(http(
+        method = "POST",
+        path = "/read",
+        header_in("x-tenant" = tenant),
+        header_in("x-trace" = trace),
+        header_out("etag"),
+        header_out("x-age"),
+        error_header_out("x-reason"),
+    ))]
+    async fn read(
+        &self,
+        ctx: &Ctx,
+        id: String,
+        tenant: String,
+        trace: Option<u32>,
+    ) -> Result<(HeaderProbeDocument, String, Option<u32>), (HeaderProbeError, Option<String>)>;
+}
+
+pub struct HeaderProbeBackEnd;
+
+impl HeaderProbeService<()> for HeaderProbeBackEnd {
+    async fn read(
+        &self,
+        _ctx: &(),
+        id: String,
+        tenant: String,
+        trace: Option<u32>,
+    ) -> Result<(HeaderProbeDocument, String, Option<u32>), (HeaderProbeError, Option<String>)>
+    {
+        ready(()).await;
+        if id.is_empty() {
+            Err((HeaderProbeError::Missing, Some(tenant)))
+        } else {
+            Ok((HeaderProbeDocument { title: id }, tenant, trace))
+        }
+    }
+}
+
 /// The probe never suspends, so one poll answers it; `None` says an assumption about the bodies
 /// above stopped holding rather than that the runtime is missing.
 fn poll_once<Answered>(answering: Answered) -> Option<Answered::Output>
@@ -1405,6 +1463,16 @@ fn the_unit_success_service_is_still_implementable_and_callable() {
     ))
     .unwrap();
     assert!(answered.is_ok(), "got: {answered:?}");
+}
+
+#[test]
+fn the_header_probe_service_is_still_implementable_and_callable() {
+    let answered =
+        poll_once(HeaderProbeBackEnd.read(&(), String::new(), "acme".to_owned(), None)).unwrap();
+    assert!(
+        matches!(&answered, Err((HeaderProbeError::Missing, Some(tenant))) if tenant == "acme"),
+        "got: {answered:?}"
+    );
 }
 
 #[test]

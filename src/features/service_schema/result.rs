@@ -39,7 +39,7 @@ use syn::Type;
 /// the body as the platform's own `ReadableStream<Uint8Array>` — mirrors the Rust client's own
 /// `StreamedAnswer::Full`/`Partial` and the Dart client's own streamed record.
 #[cfg(feature = "typescript")]
-const STREAMED_ANSWER_TS_TYPE: &str =
+pub const STREAMED_ANSWER_TS_TYPE: &str =
     "{ contentRange: string | undefined; body: ReadableStream<Uint8Array> }";
 
 #[cfg(feature = "typescript")]

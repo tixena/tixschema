@@ -116,6 +116,7 @@ use core::pin::pin;
 use core::task::{Context as PollContext, Poll, Waker};
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read};
+use std::sync::Mutex;
 use tixschema::{model_schema, service_schema};
 
 /// The full body the one streamed operation in this file answers — it declares no `header_in`
@@ -843,6 +844,92 @@ impl EchoClientService<()> for EchoBackEnd {
         Ok(EchoRangeResponse {
             received: byte_range,
         })
+    }
+}
+
+/// Headers both ways over `ws_rpc`: `stamp` binds a required and an optional `header_in`, answers
+/// a `header_out` tuple with a required and an optional element, and declares an
+/// `error_header_out` tuple; `mark` is one-way, with a `header_in` of its own. The Rust twin every
+/// non-Rust `ws_rpc` client and server is measured against.
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct StampReceipt {
+    pub label: String,
+    pub tenant: String,
+}
+
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum StampError {
+    Refused,
+}
+
+#[service_schema(transports = ["ws_rpc"])]
+pub trait StampClientService<Ctx> {
+    #[service_schema_op(
+        one_way,
+        http(method = "POST", path = "/mark", header_in("x-tenant" = tenant))
+    )]
+    async fn mark(&self, ctx: &Ctx, label: String, tenant: String);
+
+    #[service_schema_op(http(
+        method = "POST",
+        path = "/stamp",
+        header_in("x-tenant" = tenant),
+        header_in("x-trace" = trace),
+        header_out("etag"),
+        header_out("x-age"),
+        error_status(Refused = 409),
+        error_header_out("x-reason"),
+    ))]
+    async fn stamp(
+        &self,
+        ctx: &Ctx,
+        label: String,
+        tenant: String,
+        trace: Option<u32>,
+    ) -> Result<(StampReceipt, String, Option<u32>), (StampError, Option<String>)>;
+}
+
+/// Answers `stamp` from its headers and records every `mark`, so a one-way call's header is
+/// observable too.
+#[derive(Default)]
+pub struct StampBackEnd {
+    marked: Mutex<Vec<String>>,
+}
+
+impl StampBackEnd {
+    pub fn marked(&self) -> Vec<String> {
+        self.marked.lock().unwrap().clone()
+    }
+}
+
+impl StampClientService<()> for StampBackEnd {
+    async fn mark(&self, _ctx: &(), label: String, tenant: String) {
+        ready(()).await;
+        self.marked
+            .lock()
+            .unwrap()
+            .push(format!("{label} {tenant}"));
+    }
+
+    async fn stamp(
+        &self,
+        _ctx: &(),
+        label: String,
+        tenant: String,
+        trace: Option<u32>,
+    ) -> Result<(StampReceipt, String, Option<u32>), (StampError, Option<String>)> {
+        ready(()).await;
+        if label == "refuse" {
+            return Err((
+                StampError::Refused,
+                trace.map(|at| format!("refused at {at}")),
+            ));
+        }
+        let etag = format!("etag-{tenant}");
+        Ok((StampReceipt { label, tenant }, etag, trace.map(|at| at + 1)))
     }
 }
 
