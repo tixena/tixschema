@@ -167,6 +167,26 @@ const REQUIRED_HEADER_HTTP_SERVICE: &str = "
     }
 ";
 
+/// A service whose `header_out` tuple carries a required and an optional element, to exercise the
+/// paths `MIXED_HTTP_SERVICE`'s single required `etag` element does not: an absent optional header
+/// reading `null`, and a present one failing to decode as its declared type faulting.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+const OPTIONAL_HEADER_OUT_HTTP_SERVICE: &str = "
+    pub trait DocumentClientService<Ctx> {
+        #[service_schema_op(http(
+            method = \"GET\",
+            path = \"/documents/{document_id}\",
+            header_out(\"etag\"),
+            header_out(\"x-age\"),
+        ))]
+        async fn get_version(
+            &self,
+            ctx: &Ctx,
+            document_id: String,
+        ) -> Result<(VersionResponse, String, Option<u32>), GetVersionError>;
+    }
+";
+
 /// A service exercising every `http(...)` shape the Dart client answers for: a bodied `POST`
 /// naming its own message with a mapped error, a bodyless `GET` with a path carrying two
 /// placeholders on a `Named` message plus a `header_in` binding and a `header_out` tuple success,

@@ -859,6 +859,32 @@ fn header_out_read_stmts(
     )
 }
 
+/// The client's own `{ ok: false, error: { isServiceFault: true, fault } }` return for a header
+/// fault, wrapped in `if (condition) { ... }` at `indent`. Shared by the "missing" and "did not
+/// match" wordings so the two copies cannot drift.
+fn header_fault_return_stmt(
+    prefix: &str,
+    wire: &str,
+    condition: &str,
+    detail: &str,
+    indent: &str,
+) -> String {
+    format!(
+        "{indent}if ({condition}) {{\n{indent}  \
+         return {{\n{indent}    \
+         ok: false,\n{indent}    \
+         error: {{\n{indent}      \
+         isServiceFault: true,\n{indent}      \
+         fault: {prefix}HttpUndeserializablePayload(\n{indent}        \
+         \"{wire}\",\n{indent}        \
+         \"{detail}\",\n{indent}      \
+         ),\n{indent}    \
+         }},\n{indent}  \
+         }};\n{indent}\
+         }}\n"
+    )
+}
+
 /// [`header_out_read_stmts`]'s own general form, shared with the error side: `ident_prefix`
 /// names the locals apart so an operation declaring both never binds two under one name.
 fn header_value_read_stmts(
@@ -879,41 +905,52 @@ fn header_value_read_stmts(
     {
         let raw_ident = format!("raw{capitalized_prefix}{index}");
         let ident = format!("{ident_prefix}{index}");
-        let element_typename = get_field_def("value", element_ty, "").typescript_typename();
+        let slot_typename = get_field_def("value", element_ty, "").typescript_slot_typename();
         let _ = writeln!(
             stmt,
             "        const {raw_ident} = response.headers.find(\n          \
              ([name]) => name.toLowerCase() === \"{name}\",\n        \
              );"
         );
-        // An `Option<T>` element reads a missing header as `undefined`; anything else faults.
+        let raw_text = format!("{raw_ident}[1]");
+        let value_expr = header_out_value_expr(element_ty, &raw_text);
+        let invalid_expr = header_out_invalid_expr(element_ty, &raw_text);
+        let mismatch = "a response header did not match its declared type";
+        // An `Option<T>` element reads a missing header as `null`, its slot's own spelling; a
+        // present one that fails to decode as its declared type faults the same way a required
+        // element does.
         if option_inner(element_ty).is_some() {
-            let value_expr = header_out_value_expr(element_ty, &format!("{raw_ident}[1]"));
-            let _ = writeln!(
-                stmt,
-                "        const {ident} = {raw_ident} === undefined ? undefined : ({value_expr} \
-                 as {element_typename});"
-            );
+            let _ = writeln!(stmt, "        let {ident}: {slot_typename};");
+            let _ = writeln!(stmt, "        if ({raw_ident} === undefined) {{");
+            let _ = writeln!(stmt, "          {ident} = null;");
+            let _ = writeln!(stmt, "        }} else {{");
+            if let Some(invalid) = &invalid_expr {
+                stmt.push_str(&header_fault_return_stmt(
+                    prefix,
+                    wire,
+                    invalid,
+                    mismatch,
+                    "          ",
+                ));
+            }
+            let _ = writeln!(stmt, "          {ident} = {value_expr} as {slot_typename};");
+            let _ = writeln!(stmt, "        }}");
         } else {
-            let _ = write!(
-                stmt,
-                "        if ({raw_ident} === undefined) {{\n          \
-                 return {{\n            \
-                 ok: false,\n            \
-                 error: {{\n              \
-                 isServiceFault: true,\n              \
-                 fault: {prefix}HttpUndeserializablePayload(\n                \
-                 \"{wire}\",\n                \
-                 \"a declared response header was missing\",\n              \
-                 ),\n            \
-                 }},\n          \
-                 }};\n        \
-                 }}\n"
-            );
-            let value_expr = header_out_value_expr(element_ty, &format!("{raw_ident}[1]"));
+            stmt.push_str(&header_fault_return_stmt(
+                prefix,
+                wire,
+                &format!("{raw_ident} === undefined"),
+                "a declared response header was missing",
+                "        ",
+            ));
+            if let Some(invalid) = &invalid_expr {
+                stmt.push_str(&header_fault_return_stmt(
+                    prefix, wire, invalid, mismatch, "        ",
+                ));
+            }
             let _ = writeln!(
                 stmt,
-                "        const {ident} = {value_expr} as {element_typename};"
+                "        const {ident} = {value_expr} as {slot_typename};"
             );
         }
         idents.push(ident);
@@ -923,9 +960,8 @@ fn header_value_read_stmts(
 
 /// The expression that reads a `header_out` element's declared type back off `raw` — a `string`
 /// expression holding the raw header text. Mirrors the coercion the Rust client's own
-/// `decode_expr` performs on the way back from a response header, minus the fallible middle step:
-/// a value already trusted enough to publish under a declared type is read directly rather than
-/// re-validated a second time.
+/// `decode_expr` performs on the way back from a response header. Paired with
+/// [`header_out_invalid_expr`], which answers whether this same read is trustworthy.
 fn header_out_value_expr(ty: &Type, raw: &str) -> String {
     let base = option_inner(ty).unwrap_or(ty);
     if let Some(inner) = vec_inner(base) {
@@ -937,6 +973,48 @@ fn header_out_value_expr(ty: &Type, raw: &str) -> String {
         ScalarKind::Number => format!("Number({raw})"),
         ScalarKind::Text => raw.to_owned(),
     }
+}
+
+/// `None` when `raw` can never fail to read as `ty` (any text-shaped type); otherwise a boolean
+/// expression, true when it does. Mirrors the failure modes of the Rust client's own
+/// `serde_json::from_value` read: a number that is `NaN`, or for an integer type not a whole
+/// number; a boolean other than `"true"`/`"false"`; any array piece failing either check.
+fn header_out_invalid_expr(ty: &Type, raw: &str) -> Option<String> {
+    let base = option_inner(ty).unwrap_or(ty);
+    if let Some(inner) = vec_inner(base) {
+        let inner_invalid = header_out_invalid_expr(inner, "piece")?;
+        return Some(format!(
+            "({raw}).split(\",\").some((piece: string) => {inner_invalid})"
+        ));
+    }
+    match scalar_kind(base) {
+        ScalarKind::Bool => Some(format!("{raw} !== \"true\" && {raw} !== \"false\"")),
+        ScalarKind::Number => {
+            let parsed = format!("Number({raw})");
+            if is_integer_scalar(base) {
+                Some(format!(
+                    "Number.isNaN({parsed}) || !Number.isInteger({parsed})"
+                ))
+            } else {
+                Some(format!("Number.isNaN({parsed})"))
+            }
+        }
+        ScalarKind::Text => None,
+    }
+}
+
+/// Whether `ty` — already known to be [`ScalarKind::Number`] — is one of the integer primitives
+/// rather than `f32`/`f64`; only an integer type refuses a non-integer decode.
+fn is_integer_scalar(ty: &Type) -> bool {
+    let Type::Path(named) = ty else {
+        return false;
+    };
+    named.path.segments.last().is_some_and(|leaf| {
+        matches!(
+            leaf.ident.to_string().as_str(),
+            "u8" | "u16" | "u32" | "u64" | "usize" | "i8" | "i16" | "i32" | "i64" | "isize"
+        )
+    })
 }
 
 // ---------------------------------------------------------------------------------------------

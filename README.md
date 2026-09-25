@@ -2157,6 +2157,8 @@ service_schema: operation `get_widget` declares the header name "content-type", 
 
 A header *value* is checked at runtime instead, on every HTTP writer: `header_in`, `header_out` and `error_header_out` values are each rejected -- a fault on the server, a refusal before sending on the client -- unless every byte is visible ASCII (`0x21`-`0x7E`), a space, or a tab, which rules out a value carrying a line break or another control character before it ever reaches the wire.
 
+Every REST client reads a `header_out` or `error_header_out` element back the way the Rust client does. An absent optional element reads as the language's own null. An absent required one answers the `undeserializable-payload` fault `a declared response header was missing`. A present one that does not decode as its declared type -- a number that does not parse, a boolean other than `true`/`false`, any piece of a list -- answers the same fault with `a response header did not match its declared type`, never an exception or a default value.
+
 **Statuses.** `ok_status` and `error_status` are owner-chosen, exactly as `amqp_rpc`'s own message contract stays HTTP-free -- neither lives on a type, only on the operation. `error_status`'s completeness against the operation's own declared error type is checked unconditionally, by a `match` over exactly the declared arms and no wildcard: a variant the table leaves out is refused with rustc's own exhaustiveness check, naming it, and the refusal is spanned on the trait's own `#[service_schema]` attribute rather than invented by this crate:
 
 ```text

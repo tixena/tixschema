@@ -379,6 +379,40 @@ export async function read(overSocket: boolean): Promise<string> {
 }
 "#;
 
+/// A caller reading a header tuple's elements over the `http_rest` client: an absent optional
+/// `header_out`/`error_header_out` element is `null`, the value its tuple slot holds.
+#[cfg(feature = "zod")]
+const HEADER_HTTP_CALLER: &str = r#"import {
+  createHeaderProbeServiceHttpClient,
+  type HeaderProbeServiceHttpTransport,
+} from "./bundle";
+
+const transport: HeaderProbeServiceHttpTransport = {
+  async send(request) {
+    void request;
+    return { status: 200, headers: [], body: "{}" };
+  },
+};
+
+export async function read(): Promise<string> {
+  const client = createHeaderProbeServiceHttpClient(transport);
+  const answered = await client.read("doc", "acme", undefined);
+  if (answered.ok) {
+    const [document, etag, age] = answered.value;
+    const title: string = document.title;
+    const tag: string = etag;
+    const aged: number | null = age;
+    return `${title}:${tag}:${aged ?? ""}`;
+  }
+  if ("isServiceFault" in answered.error) {
+    return answered.error.fault.kind;
+  }
+  const [declared, reason] = answered.error;
+  const said: string | null = reason;
+  return `${declared.errorCode}:${said ?? ""}`;
+}
+"#;
+
 /// An implementation answering a header tuple on both arms, reached through the dispatcher
 /// factory and the `ws_rpc` attachment alike.
 #[cfg(feature = "zod")]
@@ -534,6 +568,7 @@ fn header_probe_bundle() -> String {
         HeaderProbeServiceSchema::ts_service(),
         HeaderProbeServiceSchema::ts_ws_client(),
         HeaderProbeServiceSchema::ts_ws_service(),
+        HeaderProbeServiceSchema::ts_http_client(),
     ]
     .join("\n\n")
 }
@@ -893,6 +928,22 @@ fn a_header_tuple_caller_reads_each_element_as_declared() {
     assert!(
         accepted,
         "a caller destructuring a header tuple does not compile:\n{said}"
+    );
+}
+
+/// The same read, over the `http_rest` client: an absent optional header reads as `null`, the
+/// value its tuple slot declares — the client's own read once disagreed with the slot type.
+#[cfg(feature = "zod")]
+#[test]
+fn a_header_tuple_http_caller_reads_each_element_as_declared() {
+    let mut files = bundled(header_probe_bundle());
+    files.push(("caller.ts", HEADER_HTTP_CALLER.to_owned()));
+    let Some((accepted, said)) = compiled("header-tuple-http-caller", &files) else {
+        return;
+    };
+    assert!(
+        accepted,
+        "a caller destructuring a header tuple over the http_rest client does not compile:\n{said}"
     );
 }
 
