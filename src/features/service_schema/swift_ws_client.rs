@@ -39,25 +39,48 @@ use crate::features::swift::swift_reference_type;
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
-    OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
+    HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
+    option_inner, tuple_elements,
 };
+use core::fmt::Write as _;
 use syn::Type;
+
+use super::swift_type::swift_typename_of;
 
 pub fn emit(service: &ServiceDef) -> Vec<String> {
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
+    let has_header_in = declares_header_in(service);
     let mut published = vec![
         socket_type(&named),
         options_type(&named),
-        support_types(&named),
+        support_types(&named, has_header_in),
     ];
+    if has_header_in {
+        published.push(header_in_type(&named));
+    }
     published.push(transport_failure_helper(&named, &prefix));
     published.push(failed_validation_helper(&named, &prefix));
     let mut aux = Vec::new();
-    published.push(transport_actor(service, &named, &prefix, &mut aux));
+    published.push(transport_actor(
+        service,
+        &named,
+        &prefix,
+        has_header_in,
+        &mut aux,
+    ));
     published.extend(aux);
     published.push(client_alias(&named));
     published
+}
+
+/// Whether the service declares an operation carrying at least one `header_in` binding —
+/// mirrors `swift_http_client`'s own `declares_header_in`.
+fn declares_header_in(service: &ServiceDef) -> bool {
+    service
+        .operations
+        .iter()
+        .any(|operation| !HttpShape::of(operation).header_in.is_empty())
 }
 
 /// `{Named}{PascalOperation}Failure`, the failure arm every reply method answers with —
@@ -144,22 +167,28 @@ fn options_type(named: &str) -> String {
 
 /// The outbound frame shapes and inbound decode envelopes every operation method shares, plus a
 /// bare probe that reads `kind`, `id` and `service` off a frame before its `value`/`error` shape
-/// is known.
-fn support_types(named: &str) -> String {
+/// is known. The request and notify frames carry an optional `headers` field only where the
+/// service declares `header_in` — left off the wire when `nil`.
+fn support_types(named: &str, has_header_in: bool) -> String {
     let fault = fault_name(named);
+    let headers_field = if has_header_in {
+        format!("\n  let headers: [String: {named}WsHeaderIn]?")
+    } else {
+        String::new()
+    };
     format!(
         "struct {named}WsRequestFrame<Payload: Encodable>: Encodable {{\n  \
          let kind = \"request\"\n  \
          let id: String\n  \
          let service: String\n  \
          let operation: String\n  \
-         let payload: Payload\n\
+         let payload: Payload{headers_field}\n\
          }}\n\n\
          struct {named}WsNotifyFrame<Payload: Encodable>: Encodable {{\n  \
          let kind = \"notify\"\n  \
          let service: String\n  \
          let operation: String\n  \
-         let payload: Payload\n\
+         let payload: Payload{headers_field}\n\
          }}\n\n\
          struct {named}WsFrameProbe: Decodable {{\n  \
          let kind: String\n  \
@@ -181,6 +210,22 @@ fn support_types(named: &str) -> String {
          let fault: {fault}?\n  \
          }}\n  \
          let error: Marker\n\
+         }}"
+    )
+}
+
+/// One outgoing `header_in` value, type-erased so operations with different header types share
+/// one dictionary; an `Optional` writes JSON `null` for `nil` rather than omitting the key.
+fn header_in_type(named: &str) -> String {
+    format!(
+        "struct {named}WsHeaderIn: Encodable {{\n  \
+         private let write: (Encoder) throws -> Void\n\n  \
+         init<Value: Encodable>(_ value: Value) {{\n    \
+         write = {{ encoder in try value.encode(to: encoder) }}\n  \
+         }}\n\n  \
+         func encode(to encoder: Encoder) throws {{\n    \
+         try write(encoder)\n  \
+         }}\n\
          }}"
     )
 }
@@ -223,12 +268,13 @@ fn transport_actor(
     service: &ServiceDef,
     named: &str,
     prefix: &str,
+    has_header_in: bool,
     aux: &mut Vec<String>,
 ) -> String {
     let methods = service
         .operations
         .iter()
-        .map(|operation| operation_method(named, prefix, operation, aux))
+        .map(|operation| operation_method(named, prefix, operation, has_header_in, aux))
         .collect::<Vec<_>>()
         .join("\n\n");
     format!(
@@ -238,8 +284,8 @@ fn transport_actor(
         header = actor_header(named),
         init = actor_init(named),
         close = actor_close_method(),
-        correlate = actor_correlate(named),
-        notify = actor_send_notify(named),
+        correlate = actor_correlate(named, has_header_in),
+        notify = actor_send_notify(named, has_header_in),
         handle_message = actor_handle_message(named),
         heartbeat = actor_heartbeat_machinery(),
         handle_close = actor_handle_close(),
@@ -298,17 +344,26 @@ fn actor_close_method() -> String {
 
 /// Sends a `request` frame and awaits the matching `reply`'s raw bytes, or `nil` once the socket
 /// closes first. Registering the pending continuation and writing the frame happen inside the
-/// same non-suspending closure, so no reply for this id can be read before it is recorded.
-fn actor_correlate(named: &str) -> String {
+/// same non-suspending closure, so no reply for this id can be read before it is recorded. Takes
+/// `headers` only where the service declares `header_in`.
+fn actor_correlate(named: &str, has_header_in: bool) -> String {
+    let (headers_param, headers_arg) = if has_header_in {
+        (
+            format!("\n    headers: [String: {named}WsHeaderIn]?,"),
+            ", headers: headers",
+        )
+    } else {
+        (String::new(), "")
+    };
     format!(
         "  private func correlate<Payload: Encodable>(\n    \
          operation: String,\n    \
-         payload: Payload,\n  \
+         payload: Payload,{headers_param}\n  \
          ) async throws -> Data? {{\n    \
          let id = String(next)\n    \
          next += 1\n    \
          let frame = {named}WsRequestFrame(id: id, service: \"{named}\", operation: operation, \
-         payload: payload)\n    \
+         payload: payload{headers_arg})\n    \
          let data = try JSONEncoder().encode(frame)\n    \
          if closed {{\n      \
          return nil\n    \
@@ -323,12 +378,20 @@ fn actor_correlate(named: &str) -> String {
     )
 }
 
-fn actor_send_notify(named: &str) -> String {
+fn actor_send_notify(named: &str, has_header_in: bool) -> String {
+    let (headers_param, headers_arg) = if has_header_in {
+        (
+            format!(", headers: [String: {named}WsHeaderIn]?"),
+            ", headers: headers",
+        )
+    } else {
+        (String::new(), "")
+    };
     format!(
-        "  private func sendNotify<Payload: Encodable>(operation: String, payload: Payload) \
-         throws {{\n    \
+        "  private func sendNotify<Payload: Encodable>(operation: String, payload: \
+         Payload{headers_param}) throws {{\n    \
          let frame = {named}WsNotifyFrame(service: \"{named}\", operation: operation, payload: \
-         payload)\n    \
+         payload{headers_arg})\n    \
          let data = try JSONEncoder().encode(frame)\n    \
          let text = String(decoding: data, as: UTF8.self)\n    \
          socket.send(text)\n  \
@@ -420,20 +483,54 @@ fn operation_method(
     named: &str,
     prefix: &str,
     operation: &OperationDef,
+    has_header_in: bool,
     aux: &mut Vec<String>,
 ) -> String {
     match &operation.outcome {
-        OperationOutcome::OneWay => one_way_method(named, prefix, operation, aux),
+        OperationOutcome::OneWay => one_way_method(named, prefix, operation, has_header_in, aux),
         OperationOutcome::Reply { error, success } => {
-            reply_method(named, prefix, operation, error, success, aux)
+            reply_method(named, prefix, operation, error, success, has_header_in, aux)
         }
     }
+}
+
+/// One argument per `header_in` binding, after the message — the raw Rust identifier, never
+/// re-cased, mirrors `swift_http_client`'s own `method_params`.
+fn header_in_params(param_ty: &str, shape: &HttpShape) -> String {
+    let mut params = format!("_ req: {param_ty}");
+    for header in &shape.header_in {
+        let _ = write!(
+            params,
+            ", {}: {}",
+            header.parameter,
+            swift_typename_of(&header.ty)
+        );
+    }
+    params
+}
+
+/// The outgoing header dictionary, one entry per `header_in` binding, sent unconditionally so an
+/// `Option` holding `nil` crosses as JSON `null` rather than being left out.
+fn header_in_build_stmt(named: &str, shape: &HttpShape) -> String {
+    if shape.header_in.is_empty() {
+        return format!("    let headers: [String: {named}WsHeaderIn]? = nil\n");
+    }
+    let mut entries = String::new();
+    for header in &shape.header_in {
+        let _ = writeln!(
+            entries,
+            "      \"{}\": {named}WsHeaderIn({}),",
+            header.name, header.parameter
+        );
+    }
+    format!("    let headers: [String: {named}WsHeaderIn]? = [\n{entries}    ]\n")
 }
 
 fn one_way_method(
     named: &str,
     prefix: &str,
     operation: &OperationDef,
+    has_header_in: bool,
     aux: &mut Vec<String>,
 ) -> String {
     let call = &operation.ts_name;
@@ -441,15 +538,231 @@ fn one_way_method(
     let (param_ty, param_aux) = message_swift_type(operation);
     aux.extend(param_aux);
     let refusal = refusal_name(named);
+    let shape = HttpShape::of(operation);
+    let params = header_in_params(&param_ty, &shape);
+    let (headers_build, headers_arg) = if has_header_in {
+        (header_in_build_stmt(named, &shape), ", headers: headers")
+    } else {
+        (String::new(), "")
+    };
     format!(
         "  /// Calls `{wire}` over `ws_rpc`.\n  \
-         public func {call}(_ req: {param_ty}) async throws {{\n    \
+         public func {call}({params}) async throws {{\n\
+{headers_build}    \
          do {{\n      \
-         try sendNotify(operation: \"{wire}\", payload: req)\n    \
+         try sendNotify(operation: \"{wire}\", payload: req{headers_arg})\n    \
          }} catch {{\n      \
          throw {refusal}(fault: {prefix}WsFailedValidation(\"{wire}\", \"\\(error)\"))\n    \
          }}\n  \
          }}"
+    )
+}
+
+/// One operation's own reply-headers structure: an absent optional element decodes as `nil`, a
+/// missing required one throws, caught by the reply method's own outer `catch` into a fault.
+fn header_read_struct(
+    type_name: &str,
+    names: &[String],
+    elements: &[&Type],
+    body_elements: usize,
+    ident_prefix: &str,
+) -> (String, Vec<String>) {
+    let entries: Vec<(String, &String, &Type)> = names
+        .iter()
+        .zip(elements.iter().skip(body_elements))
+        .enumerate()
+        .map(|(index, (name, ty))| (format!("{ident_prefix}{index}"), name, *ty))
+        .collect();
+    let has_required = entries.iter().any(|(_, _, ty)| option_inner(ty).is_none());
+    let mut properties = String::new();
+    let mut coding_keys = String::new();
+    let mut assigns = String::new();
+    for (ident, name, ty) in &entries {
+        let full_ty = swift_typename_of(ty);
+        let _ = writeln!(properties, "  let {ident}: {full_ty}");
+        let _ = writeln!(coding_keys, "    case {ident} = \"{name}\"");
+        if let Some(inner) = option_inner(ty) {
+            let inner_ty = swift_typename_of(inner);
+            let accessor = if has_required { "headers" } else { "headers?" };
+            let _ = writeln!(
+                assigns,
+                "    {ident} = try {accessor}.decodeIfPresent({inner_ty}.self, forKey: .{ident})"
+            );
+        } else {
+            let _ = writeln!(
+                assigns,
+                "    {ident} = try headers.decode({full_ty}.self, forKey: .{ident})"
+            );
+        }
+    }
+    let guard_block = if has_required {
+        "    guard let headers else {\n      \
+         throw DecodingError.keyNotFound(\n        \
+         TopKeys.headers,\n        \
+         DecodingError.Context(\n          \
+         codingPath: decoder.codingPath,\n          \
+         debugDescription: \"a declared response header was missing\"\n        \
+         )\n      \
+         )\n    \
+         }\n"
+    } else {
+        ""
+    };
+    let idents = entries.into_iter().map(|(ident, _, _)| ident).collect();
+    let text = format!(
+        "struct {type_name}: Decodable {{\n\
+{properties}\n  \
+         private enum TopKeys: String, CodingKey {{\n    \
+         case headers\n  \
+         }}\n\n  \
+         private enum HeaderKeys: String, CodingKey {{\n\
+{coding_keys}  \
+         }}\n\n  \
+         init(from decoder: Decoder) throws {{\n    \
+         let top = try decoder.container(keyedBy: TopKeys.self)\n    \
+         let headers: KeyedDecodingContainer<HeaderKeys>?\n    \
+         if top.contains(.headers) {{\n      \
+         headers = try top.nestedContainer(keyedBy: HeaderKeys.self, forKey: .headers)\n    \
+         }} else {{\n      \
+         headers = nil\n    \
+         }}\n\
+{guard_block}\
+{assigns}  \
+         }}\n\
+         }}"
+    );
+    (text, idents)
+}
+
+/// The reply's own success block: the plain envelope decode with no `header_out`, or the body
+/// plus every header element read back and rejoined into the declared tuple.
+fn success_block(
+    named: &str,
+    prefix: &str,
+    wire: &str,
+    operation: &OperationDef,
+    success: &Type,
+    shape: &HttpShape,
+    aux: &mut Vec<String>,
+) -> (String, String) {
+    if !shape.header_out.is_empty() {
+        let success_ty = swift_typename_of(success);
+        let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
+        let body_ty = elements
+            .first()
+            .map_or_else(|| swift_typename_of(success), |ty| swift_typename_of(ty));
+        let headers_ty = format!(
+            "{named}Ws{}SuccessHeaders",
+            RenameRule::PascalCase.apply_to_field(&operation.ident.to_string())
+        );
+        let (headers_struct, header_idents) =
+            header_read_struct(&headers_ty, &shape.header_out, &elements, 1, "headerOut");
+        aux.push(headers_struct);
+        let mut tuple_parts = vec!["decoded.value".to_owned()];
+        tuple_parts.extend(
+            header_idents
+                .iter()
+                .map(|ident| format!("headerValues.{ident}")),
+        );
+        let tuple_expr = tuple_parts.join(", ");
+        let block = format!(
+            "        do {{\n          \
+             let decoded = try JSONDecoder().decode({named}WsValueEnvelope<{body_ty}>.self, \
+             from: raw)\n          \
+             let headerValues = try JSONDecoder().decode({headers_ty}.self, from: raw)\n          \
+             return .success(({tuple_expr}))\n        \
+             }} catch {{\n          \
+             return .failure(.fault({prefix}WsFailedValidation(\"{wire}\", \"\\(error)\")))\n        \
+             }}\n"
+        );
+        return (success_ty, block);
+    }
+    if is_unit_type(success) {
+        return (
+            "Void".to_owned(),
+            "        return .success(())\n".to_owned(),
+        );
+    }
+    let field_hint = format!(
+        "{named}{}Success",
+        RenameRule::PascalCase.apply_to_field(&operation.ident.to_string())
+    );
+    let (success_ty, success_aux) =
+        swift_reference_type(&get_field_def("value", success, ""), &field_hint);
+    aux.extend(success_aux);
+    let block = format!(
+        "        do {{\n          \
+         let decoded = try JSONDecoder().decode({named}WsValueEnvelope<{success_ty}>.self, \
+         from: raw)\n          \
+         return .success(decoded.value)\n        \
+         }} catch {{\n          \
+         return .failure(.fault({prefix}WsFailedValidation(\"{wire}\", \"\\(error)\")))\n        \
+         }}\n"
+    );
+    (success_ty, block)
+}
+
+/// The reply's own declared-error block: the plain envelope decode with no `error_header_out`, or
+/// the head plus every header element read back and rejoined into the declared tuple.
+fn declared_error_block(
+    named: &str,
+    prefix: &str,
+    wire: &str,
+    operation: &OperationDef,
+    error: &Type,
+    shape: &HttpShape,
+    aux: &mut Vec<String>,
+) -> String {
+    if shape.error_header_out.is_empty() {
+        let error_hint = format!(
+            "{named}{}Error",
+            RenameRule::PascalCase.apply_to_field(&operation.ident.to_string())
+        );
+        let (error_ty, error_aux) =
+            swift_reference_type(&get_field_def("error", error, ""), &error_hint);
+        aux.extend(error_aux);
+        return format!(
+            "    do {{\n      \
+             let declared = try JSONDecoder().decode({named}WsDeclaredEnvelope<{error_ty}>.self, \
+             from: raw)\n      \
+             return .failure(.declared(declared.error))\n    \
+             }} catch {{\n      \
+             return .failure(.fault({prefix}WsFailedValidation(\"{wire}\", \"\\(error)\")))\n    \
+             }}\n"
+        );
+    }
+    let elements: Vec<&Type> = tuple_elements(error).into_iter().flatten().collect();
+    let head_ty = elements
+        .first()
+        .map_or_else(|| swift_typename_of(error), |ty| swift_typename_of(ty));
+    let headers_ty = format!(
+        "{named}Ws{}ErrorHeaders",
+        RenameRule::PascalCase.apply_to_field(&operation.ident.to_string())
+    );
+    let (headers_struct, header_idents) = header_read_struct(
+        &headers_ty,
+        &shape.error_header_out,
+        &elements,
+        1,
+        "errorHeaderOut",
+    );
+    aux.push(headers_struct);
+    let mut tuple_parts = vec!["declared.error".to_owned()];
+    tuple_parts.extend(
+        header_idents
+            .iter()
+            .map(|ident| format!("errorHeaderValues.{ident}")),
+    );
+    let tuple_expr = tuple_parts.join(", ");
+    format!(
+        "    do {{\n      \
+         let declared = try JSONDecoder().decode({named}WsDeclaredEnvelope<{head_ty}>.self, \
+         from: raw)\n      \
+         let errorHeaderValues = try JSONDecoder().decode({headers_ty}.self, from: raw)\n      \
+         return .failure(.declared(({tuple_expr})))\n    \
+         }} catch {{\n      \
+         return .failure(.fault({prefix}WsFailedValidation(\"{wire}\", \"\\(error)\")))\n    \
+         }}\n"
     )
 }
 
@@ -459,6 +772,7 @@ fn reply_method(
     operation: &OperationDef,
     error: &Type,
     success: &Type,
+    has_header_in: bool,
     aux: &mut Vec<String>,
 ) -> String {
     let call = &operation.ts_name;
@@ -466,44 +780,23 @@ fn reply_method(
     let (param_ty, param_aux) = message_swift_type(operation);
     aux.extend(param_aux);
     let failure = failure_name(named, operation).unwrap();
-    let unit = is_unit_type(success);
-    let (success_ty, success_block) = if unit {
-        (
-            "Void".to_owned(),
-            "        return .success(())\n".to_owned(),
-        )
+    let shape = HttpShape::of(operation);
+    let params = header_in_params(&param_ty, &shape);
+    let (headers_build, headers_arg) = if has_header_in {
+        (header_in_build_stmt(named, &shape), ", headers: headers")
     } else {
-        let field_hint = format!(
-            "{named}{}Success",
-            RenameRule::PascalCase.apply_to_field(&operation.ident.to_string())
-        );
-        let (success_ty, success_aux) =
-            swift_reference_type(&get_field_def("value", success, ""), &field_hint);
-        aux.extend(success_aux);
-        let block = format!(
-            "        do {{\n          \
-             let decoded = try JSONDecoder().decode({named}WsValueEnvelope<{success_ty}>.self, \
-             from: raw)\n          \
-             return .success(decoded.value)\n        \
-             }} catch {{\n          \
-             return .failure(.fault({prefix}WsFailedValidation(\"{wire}\", \"\\(error)\")))\n        \
-             }}\n"
-        );
-        (success_ty, block)
+        (String::new(), "")
     };
-    let error_hint = format!(
-        "{named}{}Error",
-        RenameRule::PascalCase.apply_to_field(&operation.ident.to_string())
-    );
-    let (error_ty, error_aux) =
-        swift_reference_type(&get_field_def("error", error, ""), &error_hint);
-    aux.extend(error_aux);
+    let (success_ty, success_block) =
+        success_block(named, prefix, wire, operation, success, &shape, aux);
+    let error_block = declared_error_block(named, prefix, wire, operation, error, &shape, aux);
     format!(
         "  /// Calls `{wire}` over `ws_rpc`.\n  \
-         public func {call}(_ req: {param_ty}) async -> Result<{success_ty}, {failure}> {{\n    \
+         public func {call}({params}) async -> Result<{success_ty}, {failure}> {{\n\
+{headers_build}    \
          let raw: Data?\n    \
          do {{\n      \
-         raw = try await correlate(operation: \"{wire}\", payload: req)\n    \
+         raw = try await correlate(operation: \"{wire}\", payload: req{headers_arg})\n    \
          }} catch {{\n      \
          return .failure(.fault({prefix}WsFailedValidation(\"{wire}\", \"\\(error)\")))\n    \
          }}\n    \
@@ -524,14 +817,8 @@ fn reply_method(
          probed.error.isServiceFault == true,\n       \
          let fault = probed.error.fault {{\n      \
          return .failure(.fault(fault))\n    \
-         }}\n    \
-         do {{\n      \
-         let declared = try JSONDecoder().decode({named}WsDeclaredEnvelope<{error_ty}>.self, \
-         from: raw)\n      \
-         return .failure(.declared(declared.error))\n    \
-         }} catch {{\n      \
-         return .failure(.fault({prefix}WsFailedValidation(\"{wire}\", \"\\(error)\")))\n    \
-         }}\n  \
+         }}\n\
+{error_block}  \
          }}"
     )
 }
