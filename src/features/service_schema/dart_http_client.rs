@@ -58,7 +58,7 @@
 //! back, and one with no multipart operation sends an empty `parts`.
 
 use super::result::result_name;
-use crate::features::dart::dart_typename;
+use crate::features::dart::{dart_json_decode, dart_json_encode, dart_typename};
 use crate::field_type::{FieldDefType, get_field_def};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
@@ -86,6 +86,9 @@ const RESPONSE_RECORD_FIELDS: &str =
 /// declares multipart, and stays empty for every other body kind.
 const REQUEST_RECORD_FIELDS: &str = "{String method, String path, String query, \
      List<(String, String)> headers, List<int> body, List<(String, dynamic)> parts}";
+
+/// The response body read as a dynamically typed JSON value.
+const RESPONSE_JSON: &str = "jsonDecode(utf8.decode(response.body))";
 
 pub fn emit(service: &ServiceDef) -> Vec<String> {
     let named = service.ident.to_string();
@@ -264,7 +267,7 @@ fn method(named: &str, fn_prefix: &str, operation: &OperationDef) -> String {
     let path_build = path_build_stmt(operation, &shape);
     let query_build = query_build_stmt(operation, &shape);
     let headers_build = header_in_build_stmt(named, fn_prefix, operation, &shape);
-    let body_build = body_build_stmt(&shape);
+    let body_build = body_build_stmt(operation, &shape);
     let parts_build = multipart_parts_build_stmt(operation, &shape);
     let method_str = shape.method.name();
     let (send, decode) = match &operation.outcome {
@@ -424,12 +427,16 @@ fn header_in_build_stmt(
     stmt
 }
 
-fn body_build_stmt(shape: &HttpShape) -> String {
+fn body_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
     match shape.body_kind {
         BodyKind::Multipart => "    const body = <int>[];\n".to_owned(),
         BodyKind::Bytes | BodyKind::Json | BodyKind::Stream => {
             if shape.method.carries_a_body() {
-                "    final body = utf8.encode(jsonEncode(req.toJson()));\n".to_owned()
+                let encoded = message_type(operation).map_or_else(
+                    || "req.toJson()".to_owned(),
+                    |ty| dart_json_encode(&ty, "req", true),
+                );
+                format!("    final body = utf8.encode(jsonEncode({encoded}));\n")
             } else {
                 "    const body = <int>[];\n".to_owned()
             }
@@ -724,10 +731,11 @@ fn error_decode_block(
 ) -> String {
     if shape.error_header_out.is_empty() {
         let error_ty = dart_type_of(error);
+        let decoded = dart_json_decode(error, RESPONSE_JSON);
         return format!(
             "      late final {error_ty} declared;\n      \
              try {{\n        \
-             declared = {error_ty}.fromJson(jsonDecode(utf8.decode(response.body)));\n      \
+             declared = {decoded};\n      \
              }} catch (rejected) {{\n        \
              return {result}Fault(\n          \
              _{fn_prefix}HttpUndeserializablePayload('{wire}', '$rejected'),\n        \
@@ -737,13 +745,13 @@ fn error_decode_block(
         );
     }
     let elements: Vec<&Type> = tuple_elements(error).into_iter().flatten().collect();
-    let head_ty = elements
-        .first()
-        .map_or_else(|| dart_type_of(error), |ty| dart_type_of(ty));
+    let head = elements.first().copied().unwrap_or(error);
+    let head_ty = dart_type_of(head);
+    let decoded = dart_json_decode(head, RESPONSE_JSON);
     let mut stmt = format!(
         "      late final {head_ty} declaredHead;\n      \
          try {{\n        \
-         declaredHead = {head_ty}.fromJson(jsonDecode(utf8.decode(response.body)));\n      \
+         declaredHead = {decoded};\n      \
          }} catch (rejected) {{\n        \
          return {result}Fault(\n          \
          _{fn_prefix}HttpUndeserializablePayload('{wire}', '$rejected'),\n        \
@@ -791,10 +799,11 @@ fn success_decode_block(
             return format!("      return {result}Ok();\n");
         }
         let success_ty = dart_type_of(success);
+        let decoded = dart_json_decode(success, RESPONSE_JSON);
         return format!(
             "      late final {success_ty} value;\n      \
              try {{\n        \
-             value = {success_ty}.fromJson(jsonDecode(utf8.decode(response.body)));\n      \
+             value = {decoded};\n      \
              }} catch (rejected) {{\n        \
              return {result}Fault(\n          \
              _{fn_prefix}HttpUndeserializablePayload('{wire}', '$rejected'),\n        \
@@ -806,13 +815,13 @@ fn success_decode_block(
     // `header_out`'s own arity check guarantees `success` is a tuple of exactly this many
     // elements, so the lookups below never miss.
     let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
-    let body_ty = elements
-        .first()
-        .map_or_else(|| dart_type_of(success), |ty| dart_type_of(ty));
+    let body = elements.first().copied().unwrap_or(success);
+    let body_ty = dart_type_of(body);
+    let decoded = dart_json_decode(body, RESPONSE_JSON);
     let mut stmt = format!(
         "      late final {body_ty} value;\n      \
          try {{\n        \
-         value = {body_ty}.fromJson(jsonDecode(utf8.decode(response.body)));\n      \
+         value = {decoded};\n      \
          }} catch (rejected) {{\n        \
          return {result}Fault(\n          \
          _{fn_prefix}HttpUndeserializablePayload('{wire}', '$rejected'),\n        \
@@ -1030,17 +1039,16 @@ fn fault_from_body_fn(named: &str, fn_prefix: &str) -> String {
 /// operation that named none — mirrors `message::typename` (the TypeScript half), through the
 /// same `FieldDef` walk every reference to a type goes through.
 fn message_dart_typename(operation: &OperationDef) -> String {
+    message_type(operation).map_or_else(|| "dynamic".to_owned(), |ty| dart_type_of(&ty))
+}
+
+/// The message's Rust type: the one the operation named, or the one the macro declared for it.
+pub(super) fn message_type(operation: &OperationDef) -> Option<Type> {
     match &operation.inputs {
-        OperationInputs::Named(declared) => dart_type_of(declared),
-        OperationInputs::Empty | OperationInputs::Generated(_) => {
-            operation.generated_message_ident().map_or_else(
-                || "dynamic".to_owned(),
-                |ident| {
-                    let named: Type = syn::parse_quote! { #ident };
-                    dart_type_of(&named)
-                },
-            )
-        }
+        OperationInputs::Named(declared) => Some(declared.as_ref().clone()),
+        OperationInputs::Empty | OperationInputs::Generated(_) => operation
+            .generated_message_ident()
+            .map(|ident| syn::parse_quote! { #ident }),
     }
 }
 

@@ -95,3 +95,5 @@ use tests::{
     search_client_service_schema, thumbnail_client_service_schema,
     upload_document_client_service_schema, vault_client_service_schema,
 };
+#[cfg(all(test, feature = "dart"))]
+use tests::{ShelfClientService, shelf_client_service_schema};

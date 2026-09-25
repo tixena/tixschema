@@ -756,6 +756,15 @@ const DART_WS_SERVICE: &str = "
     }
 ";
 
+/// A lone `String` message on a bodied method, and an `i64` success: neither is a generated class.
+#[cfg(feature = "dart")]
+const DART_PRIMITIVE_SERVICE: &str = "
+    pub trait Shelves<Ctx> {
+        #[service_schema_op(http(method = \"POST\", path = \"/tally\"))]
+        async fn tally(&self, ctx: &Ctx, shelf_id: String) -> Result<i64, TallyError>;
+    }
+";
+
 /// Every `http(...)` shape the Swift client answers for. Swift-gated mirror of `DART_HTTP_SERVICE`.
 #[cfg(feature = "swift")]
 const SWIFT_HTTP_SERVICE: &str = "

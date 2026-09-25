@@ -126,6 +126,86 @@ const STREAMED_CONTENT: &[u8] = b"the quick brown fox jumps over the lazy dog";
 /// takes several `pull()` calls rather than one buffered copy.
 const CHUNKED_READ_CAP: usize = 5;
 
+/// A class the Dart legs read back as a list success.
+#[cfg(feature = "dart")]
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Shelf {
+    pub title: String,
+}
+
+/// A plain enum the Dart legs read back as a declared error.
+#[cfg(feature = "dart")]
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum ShelfError {
+    Missing,
+}
+
+/// A lone `String` message, and `Vec<String>`, `Vec<Shelf>` and `i64` successes: every value the
+/// Dart clients encode and decode here is something other than a generated class.
+#[cfg(feature = "dart")]
+#[service_schema(transports = ["http_rest"])]
+pub trait ShelfClientService<Ctx> {
+    #[service_schema_op(http(method = "POST", path = "/shelve", error_status(Missing = 404)))]
+    async fn shelve(&self, ctx: &Ctx, shelf_id: String) -> Result<(), ShelfError>;
+
+    #[service_schema_op(http(method = "POST", path = "/stacks", error_status(Missing = 404)))]
+    async fn stacks(&self, ctx: &Ctx, prefix: String, limit: u32)
+    -> Result<Vec<Shelf>, ShelfError>;
+
+    #[service_schema_op(http(method = "POST", path = "/tally", error_status(Missing = 404)))]
+    async fn tally(&self, ctx: &Ctx, prefix: String, deep: bool) -> Result<i64, ShelfError>;
+
+    #[service_schema_op(http(method = "POST", path = "/titles", error_status(Missing = 404)))]
+    async fn titles(
+        &self,
+        ctx: &Ctx,
+        prefix: String,
+        limit: u32,
+    ) -> Result<Vec<String>, ShelfError>;
+}
+
+/// A backend answering the contract, so the trait is implementable rather than merely declared.
+#[cfg(feature = "dart")]
+pub struct ShelfBackEnd;
+
+#[cfg(feature = "dart")]
+impl ShelfClientService<()> for ShelfBackEnd {
+    async fn shelve(&self, _ctx: &(), _shelf_id: String) -> Result<(), ShelfError> {
+        ready(()).await;
+        Ok(())
+    }
+
+    async fn stacks(
+        &self,
+        _ctx: &(),
+        prefix: String,
+        _limit: u32,
+    ) -> Result<Vec<Shelf>, ShelfError> {
+        ready(()).await;
+        Ok(vec![Shelf { title: prefix }])
+    }
+
+    async fn tally(&self, _ctx: &(), _prefix: String, deep: bool) -> Result<i64, ShelfError> {
+        ready(()).await;
+        if deep {
+            return Err(ShelfError::Missing);
+        }
+        Ok(7)
+    }
+
+    async fn titles(
+        &self,
+        _ctx: &(),
+        prefix: String,
+        _limit: u32,
+    ) -> Result<Vec<String>, ShelfError> {
+        ready(()).await;
+        Ok(vec![prefix])
+    }
+}
+
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WindowPage {
@@ -986,5 +1066,29 @@ fn the_pulse_backend_answers_alive() {
     assert_eq!(
         poll_once(PulseBackEnd.pulse(&())).unwrap(),
         Ok(PulseResponse { alive: true })
+    );
+}
+
+/// Read only by the Dart groups beside this one.
+#[cfg(feature = "dart")]
+#[test]
+fn the_shelf_backend_answers_every_operation() {
+    assert_eq!(
+        poll_once(ShelfBackEnd.shelve(&(), "s".to_owned())).unwrap(),
+        Ok(())
+    );
+    assert_eq!(
+        poll_once(ShelfBackEnd.stacks(&(), "t".to_owned(), 1)).unwrap(),
+        Ok(vec![Shelf {
+            title: "t".to_owned()
+        }])
+    );
+    assert_eq!(
+        poll_once(ShelfBackEnd.tally(&(), "x".to_owned(), true)).unwrap(),
+        Err(ShelfError::Missing)
+    );
+    assert_eq!(
+        poll_once(ShelfBackEnd.titles(&(), "a".to_owned(), 2)).unwrap(),
+        Ok(vec!["a".to_owned()])
     );
 }

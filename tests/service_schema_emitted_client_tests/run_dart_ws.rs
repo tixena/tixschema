@@ -9,7 +9,8 @@
 
 use super::runtime::ran;
 use super::tests::{
-    ConversationClientServiceSchema, conversation_id_dart, window_error_dart, window_page_dart,
+    ConversationClientServiceSchema, ShelfClientServiceSchema, conversation_id_dart, shelf_dart,
+    shelf_error_dart, window_error_dart, window_page_dart,
 };
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -105,6 +106,115 @@ void main() async {
 }
 ";
 
+/// Drives the `ws_rpc` client through a lone `String` message and list, integer and plain-enum
+/// answers, then the dispatcher attachment through the same shapes on its own frames record.
+const SHELF_DRIVER: &str = "
+void main() async {
+  final sentRaw = <dynamic>[];
+  final outbound = StreamController<dynamic>();
+  outbound.stream.listen(sentRaw.add);
+  final inbound = StreamController<dynamic>();
+  final transport = ShelfClientServiceWsTransport(
+    sink: outbound.sink,
+    stream: inbound.stream,
+    heartbeat: ShelfClientServiceWsHeartbeat.off(),
+  );
+  final client = ShelfClientServiceWsClient(transport);
+
+  Future<Map<String, dynamic>> lastSent() async {
+    await Future<void>.delayed(Duration.zero);
+    return jsonDecode(sentRaw.last as String) as Map<String, dynamic>;
+  }
+
+  void reply(Map<String, dynamic> frame, Map<String, dynamic> answer) {
+    inbound.add(jsonEncode(<String, dynamic>{
+      'kind': 'reply',
+      'id': frame['id'],
+      'service': 'ShelfClientService',
+      ...answer,
+    }));
+  }
+
+  final shelveFuture = client.shelve('shelf-1');
+  final shelveFrame = await lastSent();
+  reply(shelveFrame, <String, dynamic>{'ok': true, 'value': null});
+  final shelved = await shelveFuture;
+
+  final titlesFuture = client.titles(TitlesRequest(prefix: 'a', limit: 2));
+  reply(await lastSent(), <String, dynamic>{'ok': true, 'value': <String>['a', 'b']});
+  final titles = await titlesFuture;
+
+  final stacksFuture = client.stacks(StacksRequest(prefix: 't', limit: 1));
+  reply(await lastSent(), <String, dynamic>{
+    'ok': true,
+    'value': <Map<String, dynamic>>[<String, dynamic>{'title': 't'}],
+  });
+  final stacks = await stacksFuture;
+
+  final tallyFuture = client.tally(TallyRequest(prefix: 'x', deep: false));
+  reply(await lastSent(), <String, dynamic>{'ok': true, 'value': 7});
+  final tally = await tallyFuture;
+
+  final refusedFuture = client.tally(TallyRequest(prefix: 'x', deep: true));
+  reply(await lastSent(), <String, dynamic>{'ok': false, 'error': 'Missing'});
+  final refused = await refusedFuture;
+  transport.close();
+
+  final served = StreamController<Map<String, dynamic>>();
+  final answers = <Map<String, dynamic>>[];
+  final shelvedIds = <String>[];
+  final faults = <String>[];
+  final detach = attachShelfClientServiceWsDispatcher<void>(
+    (inbound: served.stream, send: answers.add),
+    null,
+    ShelfClientServiceHandlers<void>(
+      shelve: (ctx, req) async {
+        shelvedIds.add(req);
+      },
+      stacks: (ctx, req) async => <Shelf>[Shelf(title: req.prefix)],
+      tally: (ctx, req) async {
+        if (req.deep) throw ShelfError.missing;
+        return 7;
+      },
+      titles: (ctx, req) async => <String>[req.prefix],
+    ),
+    onFault: (fault) => faults.add(fault.detail),
+  );
+  Map<String, dynamic> request(String id, String operation, Object payload) => <String, dynamic>{
+        'kind': 'request',
+        'id': id,
+        'service': 'ShelfClientService',
+        'operation': operation,
+        'payload': payload,
+      };
+  served.add(request('1', 'shelve', 'shelf-9'));
+  served.add(request('2', 'titles', <String, dynamic>{'prefix': 'q', 'limit': 1}));
+  served.add(request('3', 'stacks', <String, dynamic>{'prefix': 'r', 'limit': 1}));
+  served.add(request('4', 'tally', <String, dynamic>{'prefix': 'x', 'deep': false}));
+  served.add(request('5', 'tally', <String, dynamic>{'prefix': 'x', 'deep': true}));
+  await Future<void>.delayed(const Duration(milliseconds: 20));
+  detach();
+
+  print(jsonEncode(<String, dynamic>{
+    'shelvePayload': shelveFrame['payload'],
+    'shelved': shelved is ShelfClientServiceShelveResultOk,
+    'titles': (titles as ShelfClientServiceTitlesResultOk).value,
+    'stacks': (stacks as ShelfClientServiceStacksResultOk).value.map((shelf) => shelf.toJson()).toList(),
+    'tally': (tally as ShelfClientServiceTallyResultOk).value,
+    'refused': (refused as ShelfClientServiceTallyResultOperation).error.toJson(),
+    'shelvedIds': shelvedIds,
+    'answers': answers
+        .map((answer) => <String, dynamic>{
+              'id': answer['id'],
+              'ok': answer['ok'],
+              'carried': answer['ok'] == true ? answer['value'] : answer['error'],
+            })
+        .toList(),
+    'faults': faults,
+  }));
+}
+";
+
 /// The generated classes the client calls, the client, and the driver.
 fn module() -> String {
     [
@@ -176,5 +286,52 @@ fn a_request_still_waiting_when_the_transport_closes_answers_the_fault_member() 
         written["closed"], true,
         "the transport settles a pending request with a value, not an error, once it closes, and \
          the client turns that into the same fault member. Got: {written:#?}"
+    );
+}
+
+fn shelf_module() -> String {
+    [
+        "import 'dart:async';".to_owned(),
+        "import 'dart:convert';".to_owned(),
+        shelf_dart::dart_definition(),
+        shelf_error_dart::dart_definition(),
+        ShelfClientServiceSchema::dart_definition(),
+        ShelfClientServiceSchema::dart_ws_client(),
+        SHELF_DRIVER.to_owned(),
+    ]
+    .join("\n\n")
+}
+
+#[test]
+fn a_primitive_message_and_primitive_list_and_enum_answers_cross_the_client_and_the_attachment() {
+    let Some(wrote) = ran(
+        "dart",
+        RUNTIME_VAR,
+        "dart",
+        "shelf_ws.dart",
+        &shelf_module(),
+    ) else {
+        return;
+    };
+    let written: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
+    assert_eq!(
+        written,
+        serde_json::json!({
+            "shelvePayload": "shelf-1",
+            "shelved": true,
+            "titles": ["a", "b"],
+            "stacks": [{"title": "t"}],
+            "tally": 7_i64,
+            "refused": "Missing",
+            "shelvedIds": ["shelf-9"],
+            "answers": [
+                {"id": "1", "ok": true, "carried": null},
+                {"id": "2", "ok": true, "carried": ["q"]},
+                {"id": "3", "ok": true, "carried": [{"title": "r"}]},
+                {"id": "4", "ok": true, "carried": 7_i64},
+                {"id": "5", "ok": false, "carried": "Missing"},
+            ],
+            "faults": [],
+        })
     );
 }

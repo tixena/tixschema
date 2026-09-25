@@ -9,8 +9,9 @@
 use super::runtime::ran;
 use super::tests::swift_codec_fixture::{codec_unit_field_dart, codec_unit_payload_dart};
 use super::tests::{
-    ConversationClientServiceSchema, EchoClientServiceSchema, ThumbnailClientServiceSchema,
-    conversation_id_dart, echo_range_error_dart, echo_range_response_dart, thumbnail_error_dart,
+    ConversationClientServiceSchema, EchoClientServiceSchema, ShelfClientServiceSchema,
+    ThumbnailClientServiceSchema, conversation_id_dart, echo_range_error_dart,
+    echo_range_response_dart, shelf_dart, shelf_error_dart, thumbnail_error_dart,
     window_error_dart, window_page_dart,
 };
 
@@ -143,6 +144,52 @@ void main() async {
   final refused = await client.echoRange('doc-1', 'bytes=0-10\\nX-Injected: yes');
   final fault = refused is EchoClientServiceEchoRangeResultFault ? (refused as EchoClientServiceEchoRangeResultFault).fault.kind.wireValue : null;
   print(jsonEncode(<String, dynamic>{'sendCalled': recorder.sendCalled, 'faultKind': fault}));
+}
+";
+
+/// A stub `ShelfClientServiceHttpTransport` answering by path: a list of strings, a list of
+/// classes, an integer, and the plain-enum error when `deep` is set, recording every request body.
+const SHELF_DRIVER: &str = "
+class _ShelfRecorder implements ShelfClientServiceHttpTransport {
+  final List<dynamic> bodies = <dynamic>[];
+
+  @override
+  Future<({int status, List<(String, String)> headers, List<int> body, Stream<List<int>> bodyStream})> send(
+    ({String method, String path, String query, List<(String, String)> headers, List<int> body, List<(String, dynamic)> parts}) request,
+  ) async {
+    final sent = jsonDecode(utf8.decode(request.body));
+    bodies.add(sent);
+    if (request.path == '/shelve') {
+      return (status: 204, headers: <(String, String)>[], body: <int>[], bodyStream: const Stream<List<int>>.empty());
+    }
+    if (request.path == '/tally' && (sent as Map<String, dynamic>)['deep'] == true) {
+      return (status: 404, headers: <(String, String)>[], body: utf8.encode(jsonEncode('Missing')), bodyStream: const Stream<List<int>>.empty());
+    }
+    final Object answer = switch (request.path) {
+      '/titles' => <String>['a', 'b'],
+      '/stacks' => <Map<String, dynamic>>[<String, dynamic>{'title': 't'}],
+      _ => 7,
+    };
+    return (status: 200, headers: <(String, String)>[], body: utf8.encode(jsonEncode(answer)), bodyStream: const Stream<List<int>>.empty());
+  }
+}
+
+void main() async {
+  final recorder = _ShelfRecorder();
+  final client = ShelfClientServiceHttpClient(recorder);
+  final shelved = await client.shelve('shelf-1');
+  final titles = await client.titles(TitlesRequest(prefix: 'a', limit: 2));
+  final stacks = await client.stacks(StacksRequest(prefix: 't', limit: 1));
+  final tally = await client.tally(TallyRequest(prefix: 'x', deep: false));
+  final refused = await client.tally(TallyRequest(prefix: 'x', deep: true));
+  print(jsonEncode(<String, dynamic>{
+    'shelveBody': recorder.bodies.first,
+    'shelved': shelved is ShelfClientServiceShelveResultOk,
+    'titles': (titles as ShelfClientServiceTitlesResultOk).value,
+    'stacks': (stacks as ShelfClientServiceStacksResultOk).value.map((shelf) => shelf.toJson()).toList(),
+    'tally': (tally as ShelfClientServiceTallyResultOk).value,
+    'refused': (refused as ShelfClientServiceTallyResultOperation).error.toJson(),
+  }));
 }
 ";
 
@@ -384,5 +431,36 @@ fn a_header_in_value_with_a_line_feed_is_refused_before_the_transport_is_ever_re
     assert_eq!(
         results["faultKind"], "failed-validation",
         "got: {results:#?}"
+    );
+}
+
+fn shelf_module() -> String {
+    [
+        "import 'dart:convert';".to_owned(),
+        shelf_dart::dart_definition(),
+        shelf_error_dart::dart_definition(),
+        ShelfClientServiceSchema::dart_definition(),
+        ShelfClientServiceSchema::dart_http_client(),
+        SHELF_DRIVER.to_owned(),
+    ]
+    .join("\n\n")
+}
+
+#[test]
+fn a_primitive_message_and_primitive_and_list_successes_cross_the_http_client() {
+    let Some(wrote) = ran("dart", RUNTIME_VAR, "dart", "shelf.dart", &shelf_module()) else {
+        return;
+    };
+    let results: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
+    assert_eq!(
+        results,
+        serde_json::json!({
+            "shelveBody": "shelf-1",
+            "shelved": true,
+            "titles": ["a", "b"],
+            "stacks": [{"title": "t"}],
+            "tally": 7_i64,
+            "refused": "Missing",
+        })
     );
 }
