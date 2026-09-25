@@ -384,6 +384,12 @@ pub enum PaymentMethod {
 
 Discriminated unions also support tuple variants. Single-element tuples are flattened to a `value` field, and multi-element tuples generate a TypeScript tuple type.
 
+A tuple variant with no field, `Empty()`, is refused on every enum: serde writes it with an empty `[]` payload, which no surface describes. Write `Empty` for a unit variant, or give it a field:
+
+```text
+model_schema: variant `Empty`: `Empty()` is a tuple variant with no field, which serde writes with an empty `[]` payload, while every surface describes it as the unit variant `Empty`, so a value of it never crosses. Write `Empty` for a unit variant, or give it a field.
+```
+
 ```rust
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone)]

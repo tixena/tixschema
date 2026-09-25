@@ -1140,6 +1140,15 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     ) {
         return output;
     }
+    // `Foo()` and `Foo` are two wire shapes to serde and one to every surface, in every feature
+    // combination, so it is refused here, ahead of every shape.
+    if let Some(output) = guard_failure_output(
+        &item,
+        item_schema_ident(&item),
+        &empty_tuple_variant_errors(&item),
+    ) {
+        return output;
+    }
     // A doc example is compiled at one instantiation, and a const parameter takes no filling from
     // the convention that names one, so an item writing both is refused here — ahead of every
     // shape, and of the branded split inside the struct path.
@@ -2280,6 +2289,34 @@ fn item_attrs(item: &Item) -> &[syn::Attribute] {
     } else {
         &[]
     }
+}
+
+/// The `compile_error!` tokens for every enum variant written `Foo()`, which serde writes with an
+/// empty `[]` payload while every surface describes the unit variant `Foo`.
+fn empty_tuple_variant_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
+    let Item::Enum(item_enum) = item else {
+        return Vec::new();
+    };
+    item_enum
+        .variants
+        .iter()
+        .filter(|variant| {
+            matches!(&variant.fields, syn::Fields::Unnamed(slots) if slots.unnamed.is_empty())
+        })
+        .map(|variant| {
+            let name = &variant.ident;
+            syn::Error::new_spanned(
+                variant,
+                prefixed_guard_message(&format!(
+                    "variant `{name}`: `{name}()` is a tuple variant with no field, which serde \
+                     writes with an empty `[]` payload, while every surface describes it as the \
+                     unit variant `{name}`, so a value of it never crosses. Write `{name}` for a \
+                     unit variant, or give it a field."
+                )),
+            )
+            .to_compile_error()
+        })
+        .collect()
 }
 
 /// The `compile_error!` tokens every list-form `rename(...)` / `rename_all(...)` the item carries
