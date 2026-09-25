@@ -49,15 +49,26 @@ use crate::features::kotlin::kotlin_typename;
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
-    OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
+    HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
+    option_inner, tuple_elements,
 };
 use crate::service_schema::support::fault_fields_typescript_name;
 use core::fmt::Write as _;
 use syn::Type;
 
+/// One `header_out`/`error_header_out` entry: its local identifier (`headerOut0`, ...), its wire
+/// name, and its declared type.
+struct HeaderElement {
+    kotlin_prop: String,
+    ty: Type,
+    wire_name: String,
+}
+
 pub fn emit(service: &ServiceDef) -> Vec<String> {
     let named = service.ident.to_string();
     let fn_prefix = RenameRule::CamelCase.apply_to_variant(&named);
+    let has_header_in = declares_header_in(service);
+    let needs_field = has_header_in || declares_header_out_or_error(service);
     let mut published = vec![
         socket_interface(&named),
         options_class(&named),
@@ -66,13 +77,13 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
     if has_one_way(service) {
         published.push(refusal_class(&named));
     }
-    published.push(transport_class(&named));
-    published.push(client_class(service, &named, &fn_prefix));
+    published.push(transport_class(&named, has_header_in));
+    published.push(client_class(service, &named, &fn_prefix, has_header_in));
     published.push(handlers_interface(service, &named));
     published.push(attachment_class(&named));
-    published.push(attach_dispatcher_fn(&named, &fn_prefix));
-    published.push(dispatch_fn(service, &named, &fn_prefix));
-    published.extend(fault_helpers(&named, &fn_prefix));
+    published.push(attach_dispatcher_fn(&named, &fn_prefix, has_header_in));
+    published.push(dispatch_fn(service, &named, &fn_prefix, has_header_in));
+    published.extend(fault_helpers(&named, &fn_prefix, needs_field));
     published
 }
 
@@ -81,6 +92,23 @@ fn has_one_way(service: &ServiceDef) -> bool {
         .operations
         .iter()
         .any(|operation| matches!(operation.outcome, OperationOutcome::OneWay))
+}
+
+/// Whether any operation binds a `header_in` value — gates the transport's `headers` channel.
+fn declares_header_in(service: &ServiceDef) -> bool {
+    service
+        .operations
+        .iter()
+        .any(|operation| !HttpShape::of(operation).header_in.is_empty())
+}
+
+/// Whether any operation declares `header_out` or `error_header_out` — the other half of what
+/// earns the failed-validation helper its `field` parameter.
+fn declares_header_out_or_error(service: &ServiceDef) -> bool {
+    service.operations.iter().any(|operation| {
+        let shape = HttpShape::of(operation);
+        !shape.header_out.is_empty() || !shape.error_header_out.is_empty()
+    })
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -150,13 +178,13 @@ fn refusal_class(named: &str) -> String {
 // heartbeat, and hands every other frame to `frames`.
 // ---------------------------------------------------------------------------------------------
 
-fn transport_class(named: &str) -> String {
+fn transport_class(named: &str, has_headers: bool) -> String {
     format!(
         "{header}{request}{notify_and_send}{on_frame}{heartbeat}{close}\n\
          }}",
         header = transport_header_stmt(named),
-        request = transport_request_stmt(named),
-        notify_and_send = transport_notify_and_send_stmt(named),
+        request = transport_request_stmt(named, has_headers),
+        notify_and_send = transport_notify_and_send_stmt(named, has_headers),
         on_frame = transport_on_frame_stmt(),
         heartbeat = transport_heartbeat_stmt(named),
         close = transport_close_stmt(named),
@@ -202,7 +230,33 @@ fn transport_header_stmt(named: &str) -> String {
 
 /// Assigns the next id and registers the pending deferred under one lock, then sends the request
 /// frame and awaits the reply outside it.
-fn transport_request_stmt(named: &str) -> String {
+fn transport_request_stmt(named: &str, has_headers: bool) -> String {
+    if has_headers {
+        return format!(
+            "/// Sends `operation` with `payload` and `headers` as a `request` frame and answers\n  \
+             /// with the matching `reply` frame's own fields, or `null` once the connection closes\n  \
+             /// before one arrives.\n  \
+             suspend fun request(operation: String, payload: JsonElement?, headers: JsonObject): JsonObject? {{\n    \
+             val deferred = CompletableDeferred<JsonObject?>()\n    \
+             val id = synchronized(this) {{\n      \
+             val assigned = (nextId++).toString()\n      \
+             pending[assigned] = deferred\n      \
+             assigned\n    \
+             }}\n    \
+             send(\n      \
+             buildJsonObject {{\n        \
+             put(\"kind\", \"request\")\n        \
+             put(\"id\", id)\n        \
+             put(\"service\", \"{named}\")\n        \
+             put(\"operation\", operation)\n        \
+             put(\"payload\", payload ?: JsonNull)\n        \
+             if (headers.isNotEmpty()) put(\"headers\", headers)\n      \
+             }},\n    \
+             )\n    \
+             return deferred.await()\n  \
+             }}\n\n  "
+        );
+    }
     format!(
         "/// Sends `operation` with `payload` as a `request` frame and answers with the matching\n  \
          /// `reply` frame's own fields, or `null` once the connection closes before one arrives.\n  \
@@ -227,7 +281,27 @@ fn transport_request_stmt(named: &str) -> String {
     )
 }
 
-fn transport_notify_and_send_stmt(named: &str) -> String {
+fn transport_notify_and_send_stmt(named: &str, has_headers: bool) -> String {
+    if has_headers {
+        return format!(
+            "/// Sends `operation` with `payload` and `headers` as a `notify` frame. No reply is\n  \
+             /// expected.\n  \
+             fun notify(operation: String, payload: JsonElement?, headers: JsonObject) {{\n    \
+             send(\n      \
+             buildJsonObject {{\n        \
+             put(\"kind\", \"notify\")\n        \
+             put(\"service\", \"{named}\")\n        \
+             put(\"operation\", operation)\n        \
+             put(\"payload\", payload ?: JsonNull)\n        \
+             if (headers.isNotEmpty()) put(\"headers\", headers)\n      \
+             }},\n    \
+             )\n  \
+             }}\n\n  \
+             private fun send(frame: JsonObject) {{\n    \
+             socket.send(frame.toString())\n  \
+             }}\n\n  "
+        );
+    }
     format!(
         "/// Sends `operation` with `payload` as a `notify` frame. No reply is expected.\n  \
          fun notify(operation: String, payload: JsonElement?) {{\n    \
@@ -331,11 +405,11 @@ fn transport_close_stmt(named: &str) -> String {
 // transport's own `request`/`notify`.
 // ---------------------------------------------------------------------------------------------
 
-fn client_class(service: &ServiceDef, named: &str, fn_prefix: &str) -> String {
+fn client_class(service: &ServiceDef, named: &str, fn_prefix: &str, has_headers: bool) -> String {
     let methods = service
         .operations
         .iter()
-        .map(|operation| client_method(named, fn_prefix, operation))
+        .map(|operation| client_method(named, fn_prefix, operation, has_headers))
         .collect::<Vec<_>>()
         .join("\n\n");
     format!(
@@ -346,17 +420,72 @@ fn client_class(service: &ServiceDef, named: &str, fn_prefix: &str) -> String {
     )
 }
 
-fn client_method(named: &str, fn_prefix: &str, operation: &OperationDef) -> String {
+/// `req` plus one parameter per `header_in` binding.
+fn client_method_params(shape: &HttpShape, req_ty: &str) -> String {
+    let mut params = vec![format!("req: {req_ty}")];
+    for header in &shape.header_in {
+        params.push(format!(
+            "{}: {}",
+            kotlin_property(&header.parameter.to_string()),
+            kotlin_type_of(&header.ty)
+        ));
+    }
+    params.join(", ")
+}
+
+/// One entry per `header_in` binding, each JSON-encoded; `None` sent as JSON `null` rather than
+/// omitted, mirroring the Rust client's own unconditional `outbound_headers`.
+fn client_headers_build_stmt(shape: &HttpShape) -> String {
+    if shape.header_in.is_empty() {
+        return "    val headers = buildJsonObject {}\n".to_owned();
+    }
+    let mut stmt = String::from("    val headers = buildJsonObject {\n");
+    for header in &shape.header_in {
+        let prop = kotlin_property(&header.parameter.to_string());
+        let name = &header.name;
+        if let Some(inner) = option_inner(&header.ty) {
+            let inner_ty = kotlin_type_of(inner);
+            let _ = writeln!(
+                stmt,
+                "      put(\"{name}\", {prop}?.let {{ \
+                 Json.encodeToJsonElement(serializer<{inner_ty}>(), it) }} ?: JsonNull)"
+            );
+        } else {
+            let ty = kotlin_type_of(&header.ty);
+            let _ = writeln!(
+                stmt,
+                "      put(\"{name}\", Json.encodeToJsonElement(serializer<{ty}>(), {prop}))"
+            );
+        }
+    }
+    stmt.push_str("    }\n");
+    stmt
+}
+
+fn client_method(
+    named: &str,
+    fn_prefix: &str,
+    operation: &OperationDef,
+    has_headers: bool,
+) -> String {
     let wire = &operation.wire_name;
     let call = &operation.ts_name;
     let req_ty = message_kotlin_typename(operation);
+    let shape = HttpShape::of(operation);
+    let params = client_method_params(&shape, &req_ty);
     let doc = format!("  /// Calls `{wire}` over `ws_rpc`.");
+    let (headers_build, headers_arg) = if has_headers {
+        (client_headers_build_stmt(&shape), ", headers")
+    } else {
+        (String::new(), "")
+    };
     match &operation.outcome {
         OperationOutcome::OneWay => format!(
             "{doc}\n  \
-             suspend fun {call}(req: {req_ty}) {{\n    \
+             suspend fun {call}({params}) {{\n\
+{headers_build}    \
              try {{\n      \
-             transport.notify(\"{wire}\", Json.encodeToJsonElement(serializer<{req_ty}>(), req))\n    \
+             transport.notify(\"{wire}\", Json.encodeToJsonElement(serializer<{req_ty}>(), req){headers_arg})\n    \
              }} catch (uncarried: Throwable) {{\n      \
              throw {named}WsRefusal({fn_prefix}WsTransportFailure(\"{wire}\", uncarried.toString()))\n    \
              }}\n  \
@@ -364,12 +493,13 @@ fn client_method(named: &str, fn_prefix: &str, operation: &OperationDef) -> Stri
         ),
         OperationOutcome::Reply { error, success } => {
             let result = result_name(named, operation).unwrap();
-            let decode = reply_decode_stmt(named, fn_prefix, wire, &result, error, success);
+            let decode = reply_decode_stmt(named, fn_prefix, wire, &result, &shape, error, success);
             format!(
                 "{doc}\n  \
-                 suspend fun {call}(req: {req_ty}): {result} {{\n    \
+                 suspend fun {call}({params}): {result} {{\n\
+{headers_build}    \
                  val reply = try {{\n      \
-                 transport.request(\"{wire}\", Json.encodeToJsonElement(serializer<{req_ty}>(), req))\n    \
+                 transport.request(\"{wire}\", Json.encodeToJsonElement(serializer<{req_ty}>(), req){headers_arg})\n    \
                  }} catch (uncarried: Throwable) {{\n      \
                  return {result}.Fault({fn_prefix}WsTransportFailure(\"{wire}\", uncarried.toString()))\n    \
                  }}\n    \
@@ -392,12 +522,13 @@ fn reply_decode_stmt(
     fn_prefix: &str,
     wire: &str,
     result: &str,
+    shape: &HttpShape,
     error: &Type,
     success: &Type,
 ) -> String {
     let fields = fault_fields_typescript_name(named);
-    let success_block = success_decode_block(fn_prefix, wire, result, success);
-    let error_ty = kotlin_type_of(error);
+    let success_block = success_decode_block(fn_prefix, wire, result, shape, success);
+    let error_block = error_decode_block(fn_prefix, wire, result, shape, error);
     format!(
         "    val ok = (reply[\"ok\"] as? JsonPrimitive)?.booleanOrNull ?: false\n    \
          if (ok) {{\n{success_block}    }}\n    \
@@ -412,27 +543,145 @@ fn reply_decode_stmt(
          }} catch (rejected: Throwable) {{\n        \
          {result}.Fault({fn_prefix}WsFailedValidation(\"{wire}\", rejected.toString()))\n      \
          }}\n    \
-         }}\n    \
-         return try {{\n      \
-         {result}.Declared(Json.decodeFromJsonElement(serializer<{error_ty}>(), error ?: JsonNull))\n    \
-         }} catch (rejected: Throwable) {{\n      \
-         {result}.Fault({fn_prefix}WsFailedValidation(\"{wire}\", rejected.toString()))\n    \
-         }}\n"
+         }}\n\
+{error_block}"
     )
 }
 
-fn success_decode_block(fn_prefix: &str, wire: &str, result: &str, success: &Type) -> String {
+fn success_decode_block(
+    fn_prefix: &str,
+    wire: &str,
+    result: &str,
+    shape: &HttpShape,
+    success: &Type,
+) -> String {
     if is_unit_type(success) {
         return format!("      return {result}.Ok\n");
     }
-    let success_ty = kotlin_type_of(success);
-    format!(
-        "      return try {{\n        \
-         {result}.Ok(Json.decodeFromJsonElement(serializer<{success_ty}>(), reply.getValue(\"value\")))\n      \
+    if shape.header_out.is_empty() {
+        let success_ty = kotlin_type_of(success);
+        return format!(
+            "      return try {{\n        \
+             {result}.Ok(Json.decodeFromJsonElement(serializer<{success_ty}>(), reply.getValue(\"value\")))\n      \
+             }} catch (rejected: Throwable) {{\n        \
+             {result}.Fault({fn_prefix}WsFailedValidation(\"{wire}\", rejected.toString()))\n      \
+             }}\n"
+        );
+    }
+    let extra = header_elements(&shape.header_out, success, "headerOut");
+    let body_ty = kotlin_type_of(body_type(shape.header_out.len(), success));
+    let mut stmt = format!(
+        "      val headers = (reply[\"headers\"] as? JsonObject) ?: buildJsonObject {{}}\n      \
+         val value = try {{\n        \
+         Json.decodeFromJsonElement(serializer<{body_ty}>(), reply.getValue(\"value\"))\n      \
          }} catch (rejected: Throwable) {{\n        \
-         {result}.Fault({fn_prefix}WsFailedValidation(\"{wire}\", rejected.toString()))\n      \
+         return {result}.Fault({fn_prefix}WsFailedValidation(\"{wire}\", rejected.toString()))\n      \
          }}\n"
-    )
+    );
+    let (header_stmts, idents) =
+        header_out_decode_stmts(result, fn_prefix, wire, "headers", "      ", &extra);
+    stmt.push_str(&header_stmts);
+    let _ = writeln!(
+        stmt,
+        "      return {result}.Ok({result}Value(value, {}))",
+        idents.join(", ")
+    );
+    stmt
+}
+
+fn error_decode_block(
+    fn_prefix: &str,
+    wire: &str,
+    result: &str,
+    shape: &HttpShape,
+    error: &Type,
+) -> String {
+    if shape.error_header_out.is_empty() {
+        let error_ty = kotlin_type_of(error);
+        return format!(
+            "    return try {{\n      \
+             {result}.Declared(Json.decodeFromJsonElement(serializer<{error_ty}>(), error ?: JsonNull))\n    \
+             }} catch (rejected: Throwable) {{\n      \
+             {result}.Fault({fn_prefix}WsFailedValidation(\"{wire}\", rejected.toString()))\n    \
+             }}\n"
+        );
+    }
+    let extra = header_elements(&shape.error_header_out, error, "errorHeaderOut");
+    let head_ty = kotlin_type_of(body_type(shape.error_header_out.len(), error));
+    let mut stmt = format!(
+        "    val declaredHeaders = (reply[\"headers\"] as? JsonObject) ?: buildJsonObject {{}}\n    \
+         val declaredHead = try {{\n      \
+         Json.decodeFromJsonElement(serializer<{head_ty}>(), error ?: JsonNull)\n    \
+         }} catch (rejected: Throwable) {{\n      \
+         return {result}.Fault({fn_prefix}WsFailedValidation(\"{wire}\", rejected.toString()))\n    \
+         }}\n"
+    );
+    let (header_stmts, idents) =
+        header_out_decode_stmts(result, fn_prefix, wire, "declaredHeaders", "    ", &extra);
+    stmt.push_str(&header_stmts);
+    let _ = writeln!(
+        stmt,
+        "    return {result}.Declared({result}Declared(declaredHead, {}))",
+        idents.join(", ")
+    );
+    stmt
+}
+
+/// Decodes each of `extra` off `headers_var`: an `Option<T>` element reads a missing header as
+/// `null`; a required one, missing or undecodable, answers `{result}.Fault` naming the header.
+fn header_out_decode_stmts(
+    result: &str,
+    fn_prefix: &str,
+    wire: &str,
+    headers_var: &str,
+    margin: &str,
+    extra: &[HeaderElement],
+) -> (String, Vec<String>) {
+    let mut stmt = String::new();
+    let mut idents = Vec::new();
+    for field in extra {
+        let raw_ident = format!("{}Raw", field.kotlin_prop);
+        let header_name = &field.wire_name;
+        let prop = &field.kotlin_prop;
+        if let Some(inner) = option_inner(&field.ty) {
+            let inner_ty = kotlin_type_of(inner);
+            let _ = write!(
+                stmt,
+                "{margin}val {raw_ident} = {headers_var}[\"{header_name}\"]\n\
+                 {margin}val {prop} = {raw_ident}?.let {{ raw ->\n\
+                 {margin}  try {{\n\
+                 {margin}    Json.decodeFromJsonElement(serializer<{inner_ty}>(), raw)\n\
+                 {margin}  }} catch (rejected: Throwable) {{\n\
+                 {margin}    return {result}.Fault(\n\
+                 {margin}      {fn_prefix}WsFailedValidation(\"{wire}\", rejected.toString(), field = \"{header_name}\"),\n\
+                 {margin}    )\n\
+                 {margin}  }}\n\
+                 {margin}}}\n",
+            );
+        } else {
+            let ty = kotlin_type_of(&field.ty);
+            let _ = write!(
+                stmt,
+                "{margin}val {raw_ident} = {headers_var}[\"{header_name}\"]\n\
+                 {margin}  ?: return {result}.Fault(\n\
+                 {margin}    {fn_prefix}WsFailedValidation(\n\
+                 {margin}      \"{wire}\",\n\
+                 {margin}      \"a declared response header was missing\",\n\
+                 {margin}      field = \"{header_name}\",\n\
+                 {margin}    ),\n\
+                 {margin}  )\n\
+                 {margin}val {prop} = try {{\n\
+                 {margin}  Json.decodeFromJsonElement(serializer<{ty}>(), {raw_ident})\n\
+                 {margin}}} catch (rejected: Throwable) {{\n\
+                 {margin}  return {result}.Fault(\n\
+                 {margin}    {fn_prefix}WsFailedValidation(\"{wire}\", rejected.toString(), field = \"{header_name}\"),\n\
+                 {margin}  )\n\
+                 {margin}}}\n",
+            );
+        }
+        idents.push(field.kotlin_prop.clone());
+    }
+    (stmt, idents)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -440,12 +689,27 @@ fn success_decode_block(fn_prefix: &str, wire: &str, result: &str, success: &Typ
 // attachment that dispatches them.
 // ---------------------------------------------------------------------------------------------
 
+/// `req` plus one parameter per `header_in` binding, mirroring [`client_method_params`].
+fn handler_params(operation: &OperationDef, shape: &HttpShape) -> String {
+    let req_ty = message_kotlin_typename(operation);
+    let mut params = vec![format!("req: {req_ty}")];
+    for header in &shape.header_in {
+        params.push(format!(
+            "{}: {}",
+            kotlin_property(&header.parameter.to_string()),
+            kotlin_type_of(&header.ty)
+        ));
+    }
+    params.join(", ")
+}
+
 fn handler_member(named: &str, operation: &OperationDef) -> String {
     let call = &operation.ts_name;
-    let req_ty = message_kotlin_typename(operation);
+    let shape = HttpShape::of(operation);
+    let params = handler_params(operation, &shape);
     result_name(named, operation).map_or_else(
-        || format!("  suspend fun {call}(req: {req_ty})"),
-        |result| format!("  suspend fun {call}(req: {req_ty}): {result}"),
+        || format!("  suspend fun {call}({params})"),
+        |result| format!("  suspend fun {call}({params}): {result}"),
     )
 }
 
@@ -496,8 +760,13 @@ fn attachment_class(named: &str) -> String {
     )
 }
 
-fn attach_dispatcher_fn(named: &str, fn_prefix: &str) -> String {
+fn attach_dispatcher_fn(named: &str, fn_prefix: &str, has_headers: bool) -> String {
     let fields = fault_fields_typescript_name(named);
+    let headers_arg = if has_headers {
+        ", frame[\"headers\"]"
+    } else {
+        ""
+    };
     format!(
         "/// Attaches `handlers` to `frames`, dispatching every inbound `{named}` frame, decoded\n\
          /// through the generated codec, to its own handler on `frames`' own scope — so closing\n\
@@ -518,7 +787,7 @@ fn attach_dispatcher_fn(named: &str, fn_prefix: &str) -> String {
          val id = (frame[\"id\"] as? JsonPrimitive)?.contentOrNull\n      \
          val operation = (frame[\"operation\"] as? JsonPrimitive)?.contentOrNull ?: return@collect\n      \
          launch {{\n        \
-         {fn_prefix}WsDispatch(id, operation, frame[\"payload\"], handlers, frames.send, onFault)\n      \
+         {fn_prefix}WsDispatch(id, operation, frame[\"payload\"]{headers_arg}, handlers, frames.send, onFault)\n      \
          }}\n    \
          }}\n  \
          }}\n  \
@@ -551,8 +820,18 @@ fn fault_reply_stmt(named: &str, fault_expr: &str) -> String {
     format!("        if (id != null) send({frame})\n")
 }
 
-fn dispatch_fn(service: &ServiceDef, named: &str, fn_prefix: &str) -> String {
+fn dispatch_fn(service: &ServiceDef, named: &str, fn_prefix: &str, has_headers: bool) -> String {
     let fields = fault_fields_typescript_name(named);
+    let headers_param = if has_headers {
+        "  headers: JsonElement?,\n"
+    } else {
+        ""
+    };
+    let headers_prelude = if has_headers {
+        "  val incomingHeaders = (headers as? JsonObject) ?: buildJsonObject {}\n"
+    } else {
+        ""
+    };
     let arms = service
         .operations
         .iter()
@@ -566,11 +845,13 @@ fn dispatch_fn(service: &ServiceDef, named: &str, fn_prefix: &str) -> String {
         "private suspend fun {fn_prefix}WsDispatch(\n  \
          id: String?,\n  \
          operation: String,\n  \
-         payload: JsonElement?,\n  \
+         payload: JsonElement?,\n\
+{headers_param}  \
          handlers: {named}Handlers,\n  \
          send: (String) -> Unit,\n  \
          onFault: ({fields}) -> Unit,\n\
-         ) {{\n  \
+         ) {{\n\
+{headers_prelude}  \
          when (operation) {{\n\
 {arms}\n    \
          else -> {{\n      \
@@ -584,10 +865,179 @@ fn dispatch_fn(service: &ServiceDef, named: &str, fn_prefix: &str) -> String {
     )
 }
 
+/// Reads each `header_in` binding off `incomingHeaders`, refusing the same way a malformed
+/// payload does — mirrors the Rust dispatcher's own `header_in_reads`.
+fn header_in_read_stmt(
+    named: &str,
+    fn_prefix: &str,
+    wire: &str,
+    shape: &HttpShape,
+) -> (String, Vec<String>) {
+    let mut stmt = String::new();
+    let mut idents = Vec::new();
+    for header in &shape.header_in {
+        let prop = kotlin_property(&header.parameter.to_string());
+        let name = &header.name;
+        let raw_ident = format!("{prop}Raw");
+        if let Some(inner) = option_inner(&header.ty) {
+            let inner_ty = kotlin_type_of(inner);
+            let decode_fault = fault_reply_stmt(named, "fault");
+            let _ = write!(
+                stmt,
+                "      val {raw_ident} = incomingHeaders[\"{name}\"]\n      \
+                 val {prop} = if ({raw_ident} == null || {raw_ident} is JsonNull) {{\n        \
+                 null\n      \
+                 }} else {{\n        \
+                 try {{\n          \
+                 Json.decodeFromJsonElement(serializer<{inner_ty}>(), {raw_ident})\n        \
+                 }} catch (rejected: Throwable) {{\n          \
+                 val fault = {fn_prefix}WsFailedValidation(\"{wire}\", rejected.toString(), field = \"{name}\")\n          \
+                 onFault(fault)\n\
+{decode_fault}          \
+                 return\n        \
+                 }}\n      \
+                 }}\n",
+            );
+        } else {
+            let ty = kotlin_type_of(&header.ty);
+            let missing_fault = fault_reply_stmt(named, "fault");
+            let decode_fault = fault_reply_stmt(named, "fault");
+            let _ = write!(
+                stmt,
+                "      val {raw_ident} = incomingHeaders[\"{name}\"]\n      \
+                 if ({raw_ident} == null) {{\n        \
+                 val fault = {fn_prefix}WsFailedValidation(\"{wire}\", \"a required header was not carried\", field = \"{name}\")\n        \
+                 onFault(fault)\n\
+{missing_fault}        \
+                 return\n      \
+                 }}\n      \
+                 val {prop} = try {{\n        \
+                 Json.decodeFromJsonElement(serializer<{ty}>(), {raw_ident})\n      \
+                 }} catch (rejected: Throwable) {{\n        \
+                 val fault = {fn_prefix}WsFailedValidation(\"{wire}\", rejected.toString(), field = \"{name}\")\n        \
+                 onFault(fault)\n\
+{decode_fault}        \
+                 return\n      \
+                 }}\n",
+            );
+        }
+        idents.push(prop);
+    }
+    (stmt, idents)
+}
+
+/// The `val replyHeaders = ...` statement a reply arm writes before sending: one `put` per
+/// element of `extra`, read off `accessor_root`, a `null` `Option<T>` element omitted.
+fn header_write_stmt(extra: &[HeaderElement], accessor_root: &str) -> String {
+    let mut stmt = String::from("            val replyHeaders = buildJsonObject {\n");
+    for field in extra {
+        let accessor = format!("{accessor_root}.{}", field.kotlin_prop);
+        let name = &field.wire_name;
+        if let Some(inner) = option_inner(&field.ty) {
+            let inner_ty = kotlin_type_of(inner);
+            let _ = writeln!(
+                stmt,
+                "              {accessor}?.let {{ put(\"{name}\", \
+                 Json.encodeToJsonElement(serializer<{inner_ty}>(), it)) }}"
+            );
+        } else {
+            let ty = kotlin_type_of(&field.ty);
+            let _ = writeln!(
+                stmt,
+                "              put(\"{name}\", Json.encodeToJsonElement(serializer<{ty}>(), {accessor}))"
+            );
+        }
+    }
+    stmt.push_str("            }\n");
+    stmt
+}
+
+/// The `Ok` reply's `replyHeaders` statement and body expression. Called only where `header_out`
+/// was declared, so `success` is a tuple.
+fn ok_reply_parts(shape: &HttpShape, success: &Type) -> (String, String) {
+    let extra = header_elements(&shape.header_out, success, "headerOut");
+    let body_ty = kotlin_type_of(body_type(shape.header_out.len(), success));
+    let body_expr =
+        format!("Json.encodeToJsonElement(serializer<{body_ty}>(), answered.value.value)");
+    (header_write_stmt(&extra, "answered.value"), body_expr)
+}
+
+/// [`ok_reply_parts`]'s own twin on the declared-error side.
+fn declared_reply_parts(shape: &HttpShape, error: &Type) -> (String, String) {
+    let extra = header_elements(&shape.error_header_out, error, "errorHeaderOut");
+    let head_ty = kotlin_type_of(body_type(shape.error_header_out.len(), error));
+    let body_expr =
+        format!("Json.encodeToJsonElement(serializer<{head_ty}>(), answered.error.error)");
+    (header_write_stmt(&extra, "answered.error"), body_expr)
+}
+
+/// The `is {result}.Ok -> ...` arm: the original one-line `send` where the operation declared no
+/// `header_out`, else a block that writes `replyHeaders` beside the body.
+fn ok_arm(named: &str, result: &str, shape: &HttpShape, success: &Type) -> String {
+    if shape.header_out.is_empty() {
+        let ok_value = if is_unit_type(success) {
+            "JsonNull".to_owned()
+        } else {
+            let success_ty = kotlin_type_of(success);
+            format!("Json.encodeToJsonElement(serializer<{success_ty}>(), answered.value)")
+        };
+        let ok_frame = reply_frame_expr(named, "true", "value", &ok_value);
+        return format!("          is {result}.Ok -> send({ok_frame})\n");
+    }
+    let (headers_stmt, body_expr) = ok_reply_parts(shape, success);
+    format!(
+        "          is {result}.Ok -> {{\n\
+{headers_stmt}            \
+         send(\n              \
+         buildJsonObject {{\n                \
+         put(\"kind\", \"reply\")\n                \
+         put(\"id\", id)\n                \
+         put(\"service\", \"{named}\")\n                \
+         put(\"ok\", true)\n                \
+         put(\"value\", {body_expr})\n                \
+         if (replyHeaders.isNotEmpty()) put(\"headers\", replyHeaders)\n              \
+         }}.toString(),\n            \
+         )\n          \
+         }}\n"
+    )
+}
+
+/// [`ok_arm`]'s own twin on the declared-error side.
+fn declared_arm(named: &str, result: &str, shape: &HttpShape, error: &Type) -> String {
+    if shape.error_header_out.is_empty() {
+        let error_ty = kotlin_type_of(error);
+        let declared_frame = reply_frame_expr(
+            named,
+            "false",
+            "error",
+            &format!("Json.encodeToJsonElement(serializer<{error_ty}>(), answered.error)"),
+        );
+        return format!("          is {result}.Declared -> send({declared_frame})\n");
+    }
+    let (headers_stmt, body_expr) = declared_reply_parts(shape, error);
+    format!(
+        "          is {result}.Declared -> {{\n\
+{headers_stmt}            \
+         send(\n              \
+         buildJsonObject {{\n                \
+         put(\"kind\", \"reply\")\n                \
+         put(\"id\", id)\n                \
+         put(\"service\", \"{named}\")\n                \
+         put(\"ok\", false)\n                \
+         put(\"error\", {body_expr})\n                \
+         if (replyHeaders.isNotEmpty()) put(\"headers\", replyHeaders)\n              \
+         }}.toString(),\n            \
+         )\n          \
+         }}\n"
+    )
+}
+
 fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> String {
     let wire = &operation.wire_name;
     let req_ty = message_kotlin_typename(operation);
+    let shape = HttpShape::of(operation);
     let decode_fault = fault_reply_stmt(named, "fault");
+    let (header_reads, header_idents) = header_in_read_stmt(named, fn_prefix, wire, &shape);
     let mut arm = format!(
         "    \"{wire}\" -> {{\n      \
          val decoded = try {{\n        \
@@ -597,8 +1047,12 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
          onFault(fault)\n\
 {decode_fault}        \
          return\n      \
-         }}\n"
+         }}\n\
+{header_reads}"
     );
+    let mut call_arg_list = vec!["decoded".to_owned()];
+    call_arg_list.extend(header_idents);
+    let call_args = call_arg_list.join(", ");
     match &operation.outcome {
         OperationOutcome::OneWay => {
             let call = &operation.ts_name;
@@ -607,7 +1061,7 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
             let _ = write!(
                 arm,
                 "      try {{\n        \
-                 handlers.{call}(decoded)\n      \
+                 handlers.{call}({call_args})\n      \
                  }} catch (unexpected: Throwable) {{\n        \
                  val fault = {fn_prefix}WsHandlerPanic(\"{wire}\", unexpected.toString())\n        \
                  onFault(fault)\n\
@@ -622,26 +1076,14 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
             let call = &operation.ts_name;
             let result = result_name(named, operation).unwrap();
             let panic_fault = fault_reply_stmt(named, "fault");
-            let ok_value = if is_unit_type(success) {
-                "JsonNull".to_owned()
-            } else {
-                let success_ty = kotlin_type_of(success);
-                format!("Json.encodeToJsonElement(serializer<{success_ty}>(), answered.value)")
-            };
-            let ok_frame = reply_frame_expr(named, "true", "value", &ok_value);
-            let error_ty = kotlin_type_of(error);
-            let declared_frame = reply_frame_expr(
-                named,
-                "false",
-                "error",
-                &format!("Json.encodeToJsonElement(serializer<{error_ty}>(), answered.error)"),
-            );
+            let ok_line = ok_arm(named, &result, &shape, success);
+            let declared_line = declared_arm(named, &result, &shape, error);
             let fault_envelope = fault_envelope_expr(named, "answered.fault");
             let fault_frame = reply_frame_expr(named, "false", "error", &fault_envelope);
             let _ = write!(
                 arm,
                 "      val answered = try {{\n        \
-                 handlers.{call}(decoded)\n      \
+                 handlers.{call}({call_args})\n      \
                  }} catch (unexpected: Throwable) {{\n        \
                  val fault = {fn_prefix}WsHandlerPanic(\"{wire}\", unexpected.toString())\n        \
                  onFault(fault)\n\
@@ -649,9 +1091,8 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
                  return\n      \
                  }}\n      \
                  if (id != null) {{\n        \
-                 when (answered) {{\n          \
-                 is {result}.Ok -> send({ok_frame})\n          \
-                 is {result}.Declared -> send({declared_frame})\n          \
+                 when (answered) {{\n\
+{ok_line}{declared_line}          \
                  is {result}.Fault -> send({fault_frame})\n        \
                  }}\n      \
                  }}\n    \
@@ -666,7 +1107,7 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
 // The faults every method and every dispatch arm reaches for.
 // ---------------------------------------------------------------------------------------------
 
-fn fault_helpers(named: &str, fn_prefix: &str) -> Vec<String> {
+fn fault_helpers(named: &str, fn_prefix: &str, needs_field: bool) -> Vec<String> {
     vec![
         fault_helper(
             named,
@@ -678,16 +1119,7 @@ fn fault_helpers(named: &str, fn_prefix: &str) -> Vec<String> {
                  carry a call: the frame never went out, or the reply never came back."
             ),
         ),
-        fault_helper(
-            named,
-            fn_prefix,
-            "WsFailedValidation",
-            "FailedValidation",
-            &format!(
-                "The fault a `{named}` `ws_rpc` reply answers with when it will not become the \
-                 operation's own declared type through the generated codec."
-            ),
-        ),
+        fault_helper_validation(named, fn_prefix, needs_field),
         fault_helper(
             named,
             fn_prefix,
@@ -723,13 +1155,49 @@ fn fault_helper(named: &str, fn_prefix: &str, suffix: &str, kind: &str, doc: &st
     )
 }
 
+/// `field` names the header a header-shaped failure is about, and is only worth declaring where
+/// a header read or write uses it.
+fn fault_helper_validation(named: &str, fn_prefix: &str, needs_field: bool) -> String {
+    let fields = fault_fields_typescript_name(named);
+    let doc = format!(
+        "The fault a `{named}` `ws_rpc` reply answers with when it will not become the \
+         operation's own declared type through the generated codec."
+    );
+    if !needs_field {
+        return fault_helper(
+            named,
+            fn_prefix,
+            "WsFailedValidation",
+            "FailedValidation",
+            &doc,
+        );
+    }
+    format!(
+        "/// {doc}\n\
+         private fun {fn_prefix}WsFailedValidation(\n  \
+         operation: String,\n  \
+         detail: String,\n  \
+         field: String? = null,\n\
+         ): {fields} = {fields}(\n  \
+         detail = detail,\n  \
+         field = field,\n  \
+         kind = {named}FaultKind.FailedValidation,\n  \
+         operation = operation,\n\
+         )"
+    )
+}
+
 // ---------------------------------------------------------------------------------------------
 // Small, Kotlin-flavored value rendering, duplicated from `kotlin_http_client` rather than shared
-// with it: this module needs none of its HTTP-shaped machinery, only a type's name.
+// with it: this module needs none of its HTTP-shaped machinery.
 // ---------------------------------------------------------------------------------------------
 
+fn kotlin_property(raw: &str) -> String {
+    RenameRule::CamelCase.apply_to_field(raw)
+}
+
 /// The message's Kotlin type: the type the operation named, or the one the macro declared for an
-/// operation that named none — mirrors `kotlin_http_client`'s own `message_kotlin_typename`.
+/// operation that named none.
 fn message_kotlin_typename(operation: &OperationDef) -> String {
     match &operation.inputs {
         OperationInputs::Named(declared) => kotlin_type_of(declared),
@@ -745,8 +1213,32 @@ fn message_kotlin_typename(operation: &OperationDef) -> String {
     }
 }
 
-/// `ty`'s own Kotlin type name, read through the same `FieldDef` walk every field's type goes
-/// through — mirrors `kotlin_http_client`'s own `kotlin_type_of`.
 fn kotlin_type_of(ty: &Type) -> String {
     kotlin_typename(&get_field_def("value", ty, ""))
+}
+
+/// The type a header tuple carries in its body slot: the tuple's first element, or `ty` itself
+/// where no headers were declared.
+fn body_type(headers: usize, ty: &Type) -> &Type {
+    if headers == 0 {
+        return ty;
+    }
+    tuple_elements(ty)
+        .and_then(|elements| elements.first())
+        .unwrap_or(ty)
+}
+
+/// `names`' own declared header elements, matched against `whole`'s trailing tuple elements.
+fn header_elements(names: &[String], whole: &Type, ident_prefix: &str) -> Vec<HeaderElement> {
+    let elements: Vec<&Type> = tuple_elements(whole).into_iter().flatten().collect();
+    names
+        .iter()
+        .zip(elements.iter().skip(1))
+        .enumerate()
+        .map(|(index, (name, ty))| HeaderElement {
+            kotlin_prop: format!("{ident_prefix}{index}"),
+            ty: (*ty).clone(),
+            wire_name: name.clone(),
+        })
+        .collect()
 }

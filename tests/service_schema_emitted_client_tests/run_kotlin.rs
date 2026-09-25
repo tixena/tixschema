@@ -20,6 +20,9 @@ use super::tests::echo_client_service_schema::{
 use super::tests::pulse_client_service_schema::{
     pulse_client_service_fault_fields_kotlin, pulse_client_service_fault_kind_kotlin,
 };
+use super::tests::stamp_client_service_schema::{
+    stamp_client_service_fault_fields_kotlin, stamp_client_service_fault_kind_kotlin,
+};
 use super::tests::swift_codec_fixture::{
     CodecAdjacentTagged, CodecEnvelope, CodecExternalTagged, CodecInternalTagged, CodecMapKeys,
     CodecOptionsRow, CodecPrimary, CodecTuplePoint, CodecUnitField, CodecUnitPayload,
@@ -33,9 +36,10 @@ use super::tests::thumbnail_client_service_schema::{
 };
 use super::tests::{
     ConversationClientServiceSchema, EchoClientServiceSchema, PulseClientServiceSchema,
-    ThumbnailClientServiceSchema, conversation_id_kotlin, echo_range_error_kotlin,
-    echo_range_response_kotlin, pulse_error_kotlin, pulse_request_kotlin, pulse_response_kotlin,
-    thumbnail_error_kotlin, window_error_kotlin, window_page_kotlin, window_request_kotlin,
+    StampClientServiceSchema, ThumbnailClientServiceSchema, conversation_id_kotlin,
+    echo_range_error_kotlin, echo_range_response_kotlin, pulse_error_kotlin, pulse_request_kotlin,
+    pulse_response_kotlin, stamp_error_kotlin, stamp_receipt_kotlin, thumbnail_error_kotlin,
+    window_error_kotlin, window_page_kotlin, window_request_kotlin,
 };
 use std::collections::HashMap;
 
@@ -299,7 +303,8 @@ fun main() = runBlocking {
 
 /// A stub `ThumbnailClientServiceHttpTransport` answering by path alone, driving the emitted
 /// client's own declared-error and `header_out` decode - the Kotlin twin of the Node, Dart and
-/// Swift client tests on the same fixture.
+/// Swift client tests on the same fixture. Shares its compiled program with `StampClientService`'s
+/// own `x-age` (`Option<u32>`) read: present, absent, and present but not a number.
 const THUMBNAIL_DRIVER: &str = r#"
 class ThumbnailRecorder : ThumbnailClientServiceHttpTransport {
     override suspend fun send(request: ThumbnailClientServiceHttpRequest): ThumbnailClientServiceHttpResponse {
@@ -329,15 +334,42 @@ fun describeThumbnail(result: ThumbnailClientServiceGetThumbnailResult): JsonObj
     }
 }
 
+class FixedStampResponse(private val headers: List<Pair<String, String>>) : StampClientServiceHttpTransport {
+    override suspend fun send(request: StampClientServiceHttpRequest): StampClientServiceHttpResponse =
+        StampClientServiceHttpResponse(200, headers, """{"label":"a","tenant":"acme"}""".encodeToByteArray())
+}
+
+fun describeStampAge(result: StampClientServiceStampResult): JsonObject = buildJsonObject {
+    when (result) {
+        is StampClientServiceStampResult.Ok -> {
+            put("kind", "ok")
+            put("age", result.value.headerOut1?.toString())
+        }
+        is StampClientServiceStampResult.Declared -> put("kind", "declared")
+        is StampClientServiceStampResult.Fault -> put("kind", "fault")
+    }
+}
+
 fun main() = runBlocking {
     val client = ThumbnailClientServiceHttpClient(ThumbnailRecorder())
     val missing = client.getThumbnail("missing")
     val gone = client.getThumbnail("gone")
     val anon = client.getThumbnail("anon")
+
+    val presentAge = StampClientServiceHttpClient(FixedStampResponse(listOf("etag" to "e", "x-age" to "8")))
+        .stamp("a", "acme", null)
+    val absentAge = StampClientServiceHttpClient(FixedStampResponse(listOf("etag" to "e")))
+        .stamp("a", "acme", null)
+    val malformedAge = StampClientServiceHttpClient(FixedStampResponse(listOf("etag" to "e", "x-age" to "soon")))
+        .stamp("a", "acme", null)
+
     val report = buildJsonObject {
         put("missing", describeThumbnail(missing))
         put("gone", describeThumbnail(gone))
         put("anon", describeThumbnail(anon))
+        put("presentAge", describeStampAge(presentAge))
+        put("absentAge", describeStampAge(absentAge))
+        put("malformedAge", describeStampAge(malformedAge))
     }
     println(report.toString())
 }
@@ -400,13 +432,19 @@ fn pulse_definitions() -> Vec<String> {
 }
 
 /// `ThumbnailClientService`'s own declared error type, its fault pair, and its client - the
-/// `error_header_out`/`header_out` `Option<T>`-omission group's own fixture.
+/// `error_header_out`/`header_out` `Option<T>`-omission group's own fixture. `StampClientService`'s
+/// own types and client share this program for the numeric `header_out` read.
 fn thumbnail_definitions() -> Vec<String> {
     vec![
         thumbnail_error_kotlin::kotlin_definition(),
         thumbnail_client_service_fault_fields_kotlin::kotlin_definition(),
         thumbnail_client_service_fault_kind_kotlin::kotlin_definition(),
         ThumbnailClientServiceSchema::kotlin_http_client(),
+        stamp_receipt_kotlin::kotlin_definition(),
+        stamp_error_kotlin::kotlin_definition(),
+        stamp_client_service_fault_fields_kotlin::kotlin_definition(),
+        stamp_client_service_fault_kind_kotlin::kotlin_definition(),
+        StampClientServiceSchema::kotlin_http_client(),
     ]
 }
 
@@ -710,7 +748,7 @@ fn the_mini_server_answers_every_frame_with_an_id_and_shares_the_socket() {
 }
 
 #[test]
-fn the_client_decodes_the_declared_errors_own_header_and_omits_a_none_header_out_element() {
+fn the_client_decodes_the_declared_errors_own_header_and_a_numeric_header_out_element() {
     let Some(written) = ran_kotlin(&thumbnail_module(THUMBNAIL_DRIVER)) else {
         return;
     };
@@ -729,6 +767,21 @@ fn the_client_decodes_the_declared_errors_own_header_and_omits_a_none_header_out
     assert!(
         results["anon"]["headerOut"].is_null(),
         "an absent `header_out` header must decode as `null`. got: {results:#?}"
+    );
+    assert_eq!(
+        results["presentAge"],
+        serde_json::json!({ "kind": "ok", "age": "8" }),
+        "a numeric `header_out` element parses into its declared Kotlin type. got: {results:#?}"
+    );
+    assert_eq!(
+        results["absentAge"],
+        serde_json::json!({ "kind": "ok", "age": null }),
+        "got: {results:#?}"
+    );
+    assert_eq!(
+        results["malformedAge"]["kind"], "fault",
+        "a present header that will not parse as its declared type faults rather than \
+         throwing. got: {results:#?}"
     );
 }
 

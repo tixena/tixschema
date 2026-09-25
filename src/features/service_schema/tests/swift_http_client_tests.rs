@@ -6,7 +6,8 @@
 
 use super::{
     SWIFT_BYTES_HEADER_OUT_SERVICE, SWIFT_HEADER_VEC_OF_OPTIONS_SERVICE, SWIFT_HTTP_SERVICE,
-    SWIFT_MULTIPART_HTTP_SERVICE, SWIFT_SINGLE_PLACEHOLDER_HTTP_SERVICE, SWIFT_STREAM_HTTP_SERVICE,
+    SWIFT_MULTIPART_HTTP_SERVICE, SWIFT_NUMERIC_HEADER_OUT_SERVICE,
+    SWIFT_SINGLE_PLACEHOLDER_HTTP_SERVICE, SWIFT_STREAM_HTTP_SERVICE,
     SWIFT_UNIT_SUCCESS_HTTP_SERVICE, swift_http_client_of,
 };
 
@@ -329,6 +330,40 @@ fn a_header_out_tuple_success_reads_the_body_and_the_header_back() {
         ),
         "the method's own return type carries the success tuple the operation declared. \
          Got: {written}"
+    );
+}
+
+#[test]
+fn a_numeric_header_out_element_parses_into_its_own_declared_width() {
+    let written = swift_http_client_of(SWIFT_NUMERIC_HEADER_OUT_SERVICE);
+    let method = method_body(&written, "getMetric");
+    assert!(
+        method.contains("guard let headerOut0 = UInt32(rawHeaderOut0) else {"),
+        "got: {method}"
+    );
+    assert!(
+        method.contains("guard let headerOut1 = Float(rawHeaderOut1) else {"),
+        "got: {method}"
+    );
+}
+
+#[test]
+fn a_present_header_that_will_not_decode_faults_rather_than_defaulting() {
+    let written = swift_http_client_of(SWIFT_NUMERIC_HEADER_OUT_SERVICE);
+    let method = method_body(&written, "getMetric");
+    assert!(
+        method.matches(
+            "metricClientServiceUndeserializablePayload(\"get-metric\", \"a response header did \
+             not match its declared type\")"
+        )
+        .count()
+            == 2,
+        "both numeric elements fault the same way on a present value that will not parse. \
+         Got: {method}"
+    );
+    assert!(
+        !method.contains("?? 0"),
+        "a bad numeric header must not silently answer 0. Got: {method}"
     );
 }
 

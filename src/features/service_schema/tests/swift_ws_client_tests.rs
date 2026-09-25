@@ -5,7 +5,9 @@
 //! must appear, and a name that must not. The text has also been compiled and driven under a real
 //! Swift toolchain, against an in-memory socket, separately from this file's own assertions.
 
-use super::{SWIFT_UNIT_SUCCESS_SERVICE, SWIFT_WS_SERVICE, swift_ws_client_of};
+use super::{
+    SWIFT_UNIT_SUCCESS_SERVICE, SWIFT_WS_HEADERS_SERVICE, SWIFT_WS_SERVICE, swift_ws_client_of,
+};
 
 /// The body of one declaration, from its own start marker through the closing brace that ends
 /// it at column zero — mirrors `dart_ws_client_tests`'s own `body_from`, adjusted for Swift's
@@ -323,4 +325,179 @@ fn a_unit_success_answers_the_void_result_with_no_value_decode() {
         "`Void` is not `Decodable`; a unit success is never decoded through the value envelope. \
          Got: {written}"
     );
+}
+
+#[test]
+fn a_headerless_service_gets_no_headers_field_on_either_frame() {
+    let written = swift_ws_client_of(SWIFT_WS_SERVICE);
+    assert!(
+        !written.contains("headers"),
+        "a service declaring no `header_in` anywhere must emit exactly the same text as before — \
+         no `headers` field, no `WsHeaderIn` carrier. Got: {written}"
+    );
+}
+
+#[test]
+fn a_header_in_binding_becomes_an_extra_parameter_and_a_built_dictionary() {
+    let written = swift_ws_client_of(SWIFT_WS_HEADERS_SERVICE);
+    assert!(
+        written.contains("public func mark(_ req: String, tenant: String) async throws {"),
+        "got: {written}"
+    );
+    let method = body_from(&written, "public func mark(_ req: String, tenant: String)");
+    assert!(
+        method.contains(
+            "let headers: [String: StampClientServiceWsHeaderIn]? = [\n      \"x-tenant\": \
+             StampClientServiceWsHeaderIn(tenant),\n    ]"
+        ) && method.contains("try sendNotify(operation: \"mark\", payload: req, headers: headers)"),
+        "got: {method}"
+    );
+}
+
+#[test]
+fn an_optional_header_in_value_is_wrapped_and_sent_unconditionally_rather_than_unwrapped() {
+    let written = swift_ws_client_of(SWIFT_WS_HEADERS_SERVICE);
+    let method = body_from(
+        &written,
+        "public func stamp(_ req: String, tenant: String, trace: UInt32?)",
+    );
+    assert!(
+        method.contains("\"x-trace\": StampClientServiceWsHeaderIn(trace),"),
+        "an `Option` header_in value is handed to the carrier whole — its own `Encodable` \
+         conformance writes `null` for `nil` rather than the value being unwrapped and skipped. \
+         Got: {method}"
+    );
+}
+
+#[test]
+fn the_shared_actor_methods_carry_a_headers_parameter_passed_through_from_every_call_site() {
+    let written = swift_ws_client_of(SWIFT_WS_HEADERS_SERVICE);
+    let correlate = body_from(&written, "private func correlate<Payload: Encodable>(");
+    assert!(
+        correlate.contains("headers: [String: StampClientServiceWsHeaderIn]?,")
+            && correlate.contains("payload: payload, headers: headers)"),
+        "got: {correlate}"
+    );
+    let notify = body_from(&written, "private func sendNotify<Payload: Encodable>(");
+    assert!(
+        notify.contains("headers: [String: StampClientServiceWsHeaderIn]?")
+            && notify.contains("payload: payload, headers: headers)"),
+        "got: {notify}"
+    );
+}
+
+#[test]
+fn a_header_out_tuple_reads_the_body_and_a_dedicated_header_structure_back() {
+    let written = swift_ws_client_of(SWIFT_WS_HEADERS_SERVICE);
+    assert!(
+        written.contains(
+            "public func stamp(_ req: String, tenant: String, trace: UInt32?) async -> \
+             Result<(StampReceipt, String, UInt32?), StampClientServiceStampFailure> {"
+        ),
+        "the success tuple carries the body and every declared `header_out` element, exactly as \
+         `swift_http_client()`'s own return type does. Got: {written}"
+    );
+    let method = body_from(
+        &written,
+        "public func stamp(_ req: String, tenant: String, trace: UInt32?)",
+    );
+    assert!(
+        method.contains(
+            "let decoded = try JSONDecoder().decode(StampClientServiceWsValueEnvelope<StampReceipt>.self, from: raw)"
+        ) && method.contains(
+            "let headerValues = try JSONDecoder().decode(StampClientServiceWsStampSuccessHeaders.self, from: raw)"
+        ) && method.contains(
+            "return .success((decoded.value, headerValues.headerOut0, headerValues.headerOut1))"
+        ),
+        "the body decodes through the plain value envelope; the headers decode separately \
+         through their own structure and are rejoined by hand. Got: {method}"
+    );
+}
+
+#[test]
+fn the_success_headers_structure_defaults_an_absent_optional_element_and_throws_on_a_missing_required_one()
+ {
+    let written = swift_ws_client_of(SWIFT_WS_HEADERS_SERVICE);
+    assert!(
+        written.contains("struct StampClientServiceWsStampSuccessHeaders: Decodable {"),
+        "got: {written}"
+    );
+    let body = body_from(
+        &written,
+        "struct StampClientServiceWsStampSuccessHeaders: Decodable {",
+    );
+    assert!(
+        body.contains("let headerOut0: String") && body.contains("let headerOut1: UInt32?"),
+        "got: {body}"
+    );
+    assert!(
+        body.contains("case headerOut0 = \"etag\"") && body.contains("case headerOut1 = \"x-age\""),
+        "each element decodes under the declared header name, not its synthesized identifier. \
+         Got: {body}"
+    );
+    assert!(
+        body.contains("guard let headers else {")
+            && body.contains("throw DecodingError.keyNotFound("),
+        "at least one required element means a wholly-absent `headers` object is itself a fault. \
+         Got: {body}"
+    );
+    assert!(
+        body.contains("headerOut0 = try headers.decode(String.self, forKey: .headerOut0)")
+            && body.contains(
+                "headerOut1 = try headers.decodeIfPresent(UInt32.self, forKey: .headerOut1)"
+            ),
+        "the required element throws through `decode` when its own key is missing; the optional \
+         one defaults to `nil` through `decodeIfPresent`. Got: {body}"
+    );
+}
+
+#[test]
+fn an_all_optional_error_headers_structure_never_requires_the_headers_object_at_all() {
+    let written = swift_ws_client_of(SWIFT_WS_HEADERS_SERVICE);
+    let body = body_from(
+        &written,
+        "struct StampClientServiceWsStampErrorHeaders: Decodable {",
+    );
+    assert!(
+        !body.contains("guard let headers else {"),
+        "every declared element is optional, so a wholly-absent `headers` object is not itself a \
+         fault — only reachable per element. Got: {body}"
+    );
+    assert!(
+        body.contains(
+            "errorHeaderOut0 = try headers?.decodeIfPresent(String.self, forKey: .errorHeaderOut0)"
+        ),
+        "got: {body}"
+    );
+}
+
+#[test]
+fn a_declared_error_with_error_header_out_reads_the_head_and_its_own_headers_back() {
+    let written = swift_ws_client_of(SWIFT_WS_HEADERS_SERVICE);
+    let method = body_from(
+        &written,
+        "public func stamp(_ req: String, tenant: String, trace: UInt32?)",
+    );
+    assert!(
+        method.contains(
+            "let declared = try JSONDecoder().decode(StampClientServiceWsDeclaredEnvelope<StampError>.self, from: raw)"
+        ) && method.contains(
+            "let errorHeaderValues = try JSONDecoder().decode(StampClientServiceWsStampErrorHeaders.self, from: raw)"
+        ) && method.contains(
+            "return .failure(.declared((declared.error, errorHeaderValues.errorHeaderOut0)))"
+        ),
+        "got: {method}"
+    );
+}
+
+#[test]
+fn no_unkeyed_tuple_codec_type_is_generated_for_a_header_bearing_reply() {
+    let written = swift_ws_client_of(SWIFT_WS_HEADERS_SERVICE);
+    for named in ["SuccessTuple", "ErrorTuple"] {
+        assert!(
+            !written.contains(named),
+            "a `ws_rpc` reply decodes its body and its headers separately; nothing here needs an \
+             unkeyed tuple codec. Got: {written}"
+        );
+    }
 }
