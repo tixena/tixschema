@@ -155,14 +155,33 @@ fn without_id(mut frame: Value) -> Value {
     frame
 }
 
-/// The `index`-th `stamp` frame for `payload` in `frames`, in declaration order.
-fn stamp_frame(frames: &[Value], payload: &str, index: usize) -> Value {
+/// Every `stamp` frame in `frames`, id stripped.
+fn stamp_frames(frames: &[Value]) -> Vec<Value> {
     frames
         .iter()
-        .filter(|frame| frame["operation"] == "stamp" && frame["payload"] == payload)
-        .nth(index)
-        .unwrap()
-        .clone()
+        .filter(|frame| frame["operation"] == "stamp")
+        .cloned()
+        .map(without_id)
+        .collect()
+}
+
+/// Each frame in `swift` matches exactly one frame in `rust`, id aside — a multiset match by
+/// value rather than by position, since `sent`'s own JSON object keys are not written in a
+/// canonical order and the four calls start concurrently under `async let`.
+fn assert_stamp_frames_match(swift: &[Value], rust: &[Value]) {
+    let mut remaining = rust.to_vec();
+    for frame in swift {
+        let found = remaining.iter().position(|candidate| candidate == frame);
+        assert!(
+            found.is_some(),
+            "no Rust stamp frame equals {frame:#?}. Got: {swift:#?} vs {rust:#?}"
+        );
+        remaining.remove(found.unwrap());
+    }
+    assert!(
+        remaining.is_empty(),
+        "Rust sent stamp frames Swift did not. Got: {swift:#?} vs {rust:#?}"
+    );
 }
 
 /// One `stamp` call's own reply, computed against the real Rust dispatcher through a fresh Rust
@@ -231,13 +250,7 @@ await main()
         .map(|f| parsed(f))
         .collect();
 
-    for (payload, trace_index) in [("a", 0), ("b", 0), ("refuse", 0), ("refuse", 1)] {
-        assert_eq!(
-            without_id(stamp_frame(&sent, payload, trace_index)),
-            without_id(stamp_frame(&rust, payload, trace_index)),
-            "the {payload} frame at index {trace_index}. Got: {sent:#?} vs {rust:#?}"
-        );
-    }
+    assert_stamp_frames_match(&stamp_frames(&sent), &stamp_frames(&rust));
     let swift_mark = sent.iter().find(|frame| frame["operation"] == "mark");
     let rust_mark = rust.iter().find(|frame| frame["operation"] == "mark");
     assert_eq!(
