@@ -11701,6 +11701,50 @@ fn the_shapes_the_macro_expands_are_not_refused() {
     }
 }
 
+/// `Foo()` is refused on the variant under the default and the adjacent tagging alike.
+#[test]
+fn an_empty_tuple_variant_is_refused_on_the_variant() {
+    for source in [
+        "pub enum Choice { Unit, Empty(), Data(i32) }",
+        "#[serde(tag = \"kind\", content = \"body\")] pub enum Choice { Unit, Empty(), Data(i32) }",
+    ] {
+        let expanded = expansion_over(source).to_string();
+        assert!(
+            expanded.contains(
+                "model_schema: variant `Empty`: `Empty()` is a tuple variant with no field, which \
+                 serde writes with an empty `[]` payload, while every surface describes it as the \
+                 unit variant `Empty`, so a value of it never crosses. Write `Empty` for a unit \
+                 variant, or give it a field."
+            ),
+            "for {source}, got: {expanded}"
+        );
+        let refusals = super::empty_tuple_variant_errors(&syn::parse_str(source).unwrap());
+        assert_eq!(refusals.len(), 1, "for {source}, got: {refusals:?}");
+        let located = located_source_texts(&refusals[0]);
+        assert!(
+            !located.is_empty()
+                && located
+                    .iter()
+                    .all(|text| text.starts_with("Empty") || text == "()"),
+            "for {source}, got: {located:?}"
+        );
+    }
+}
+
+/// A unit variant, a one-slot and a many-slot tuple variant are not refused.
+#[test]
+fn a_unit_variant_and_a_tuple_variant_with_fields_are_not_refused() {
+    let refusals = super::empty_tuple_variant_errors(
+        &syn::parse_str("pub enum Choice { Unit, One(i32), Two(i32, String) }").unwrap(),
+    );
+    assert!(refusals.is_empty(), "got: {refusals:?}");
+    assert!(
+        !expansion_over("pub enum Choice { Unit, One(i32) }")
+            .to_string()
+            .contains("tuple variant with no field")
+    );
+}
+
 /// How many `compile_error!` invocations `tokens` writes, counted off the token trees so a name a
 /// message quotes in its own text is not mistaken for a second diagnostic.
 #[cfg(feature = "serde")]

@@ -1456,7 +1456,7 @@ pub fn classify_variant(variant: &Variant) -> VariantKind {
         Fields::Named(_) => VariantKind::Named,
         Fields::Unnamed(fields) => {
             if fields.unnamed.is_empty() {
-                // Empty tuple like `Foo()` - treat as unit
+                // `Foo()` is refused at expansion before any shape reads it.
                 VariantKind::Unit
             } else if fields.unnamed.len() == 1 {
                 VariantKind::TupleSingle
