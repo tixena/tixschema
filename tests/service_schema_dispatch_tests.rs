@@ -109,6 +109,20 @@ mod path_bound_beside_query_service;
 #[path = "service_schema_dispatch_tests/path_bound_beside_query_http_rest_transport.rs"]
 mod path_bound_beside_query_http_rest_transport;
 
+/// `ScalarPathBoundService`, whose one operation's one argument already is the message - a
+/// scalar the path's one placeholder binds whole - and the tests driving it. A service of its
+/// own rather than an operation added to `DocumentService`, so its one route cannot collide with
+/// another operation's own path there.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_dispatch_tests/scalar_path_bound_service.rs"]
+mod scalar_path_bound_service;
+
+/// The `http_rest` dispatcher for `ScalarPathBoundService`, in a module of its own.
+#[cfg(all(test, feature = "serde"))]
+#[path = "service_schema_dispatch_tests/scalar_path_bound_http_rest_transport.rs"]
+mod scalar_path_bound_http_rest_transport;
+
 // A transport's dispatcher reaches what the service declared through `$crate`, which is this
 // binary's root: a service written in a submodule is named here for the expansion to resolve.
 #[cfg(all(test, feature = "serde"))]
@@ -117,6 +131,8 @@ use multipart_service::{UploadService, upload_service_schema};
 use path_bound_beside_query_service::{
     PathBoundBesideQueryService, path_bound_beside_query_service_schema,
 };
+#[cfg(all(test, feature = "serde"))]
+use scalar_path_bound_service::{ScalarPathBoundService, scalar_path_bound_service_schema};
 #[cfg(all(test, feature = "serde"))]
 use solo_path_bound_service::{SoloPathBoundService, solo_path_bound_service_schema};
 #[cfg(all(test, feature = "serde"))]

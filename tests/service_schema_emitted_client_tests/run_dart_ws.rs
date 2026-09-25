@@ -10,7 +10,6 @@
 use super::runtime::ran;
 use super::tests::{
     ConversationClientServiceSchema, conversation_id_dart, window_error_dart, window_page_dart,
-    window_request_dart,
 };
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -112,7 +111,6 @@ fn module() -> String {
         "import 'dart:async';".to_owned(),
         "import 'dart:convert';".to_owned(),
         conversation_id_dart::dart_definition(),
-        window_request_dart::dart_definition(),
         window_page_dart::dart_definition(),
         window_error_dart::dart_definition(),
         ConversationClientServiceSchema::dart_definition(),

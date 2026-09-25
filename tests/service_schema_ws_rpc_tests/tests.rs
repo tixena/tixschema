@@ -25,12 +25,6 @@ use tixschema::{model_schema, service_schema};
 
 #[model_schema()]
 #[derive(Deserialize, Serialize)]
-pub struct ReadRangeRequest {
-    pub document_id: String,
-}
-
-#[model_schema()]
-#[derive(Deserialize, Serialize)]
 pub struct TouchRequest {
     pub document_id: String,
 }
@@ -97,7 +91,7 @@ pub trait DocumentSession<Ctx> {
     async fn read_range(
         &self,
         ctx: &Ctx,
-        req: ReadRangeRequest,
+        document_id: String,
         byte_range: Option<String>,
     ) -> Result<(RangeResult, String), RangeError>;
 
@@ -140,16 +134,16 @@ impl DocumentSession<()> for DocumentBackEnd {
     fn read_range(
         &self,
         _ctx: &(),
-        req: ReadRangeRequest,
+        document_id: String,
         byte_range: Option<String>,
     ) -> impl Future<Output = Result<(RangeResult, String), RangeError>> {
-        self.reach(format!("read_range {} {byte_range:?}", req.document_id));
-        let outcome = if req.document_id == "missing" {
+        self.reach(format!("read_range {document_id} {byte_range:?}"));
+        let outcome = if document_id == "missing" {
             Err(RangeError::NotFound)
         } else {
             Ok((
                 RangeResult {
-                    content: format!("range-of-{}", req.document_id),
+                    content: format!("range-of-{document_id}"),
                 },
                 "etag-1".to_owned(),
             ))
@@ -498,7 +492,7 @@ fn headers_round_trip_through_a_request_frame_and_its_reply() {
     let service = DocumentBackEnd::new();
     let reply = answer(
         &service,
-        r#"{"kind":"request","id":"11","service":"DocumentSession","operation":"read-range","payload":{"document_id":"doc-1"},"headers":{"range":"bytes=0-10"}}"#,
+        r#"{"kind":"request","id":"11","service":"DocumentSession","operation":"read-range","payload":"doc-1","headers":{"range":"bytes=0-10"}}"#,
     )
     .unwrap();
     assert_reply(
@@ -525,7 +519,7 @@ fn a_header_in_binding_nothing_carried_decodes_as_the_arguments_own_absent_value
     let service = DocumentBackEnd::new();
     let reply = answer(
         &service,
-        r#"{"kind":"request","id":"12","service":"DocumentSession","operation":"read-range","payload":{"document_id":"doc-2"}}"#,
+        r#"{"kind":"request","id":"12","service":"DocumentSession","operation":"read-range","payload":"doc-2"}"#,
     )
     .unwrap();
     assert_reply(
@@ -809,12 +803,7 @@ fn unwatch_reads_the_unit_success_reply() {
 fn read_range_round_trips_header_in_and_header_out() {
     let (session, sent) = frame_session();
     let client = DocumentSessionClient::new(session.clone());
-    let mut call = pin!(client.read_range(
-        ReadRangeRequest {
-            document_id: "doc-1".to_owned(),
-        },
-        Some("bytes=0-10".to_owned()),
-    ));
+    let mut call = pin!(client.read_range("doc-1".to_owned(), Some("bytes=0-10".to_owned())));
     assert_eq!(poll_by_hand(call.as_mut()), Poll::Pending);
     assert_eq!(
         sent.last(),
@@ -822,7 +811,7 @@ fn read_range_round_trips_header_in_and_header_out() {
             "id": "1",
             "kind": "request",
             "operation": "read-range",
-            "payload": { "document_id": "doc-1" },
+            "payload": "doc-1",
             "headers": { "range": "bytes=0-10" },
             "service": "DocumentSession",
         }),

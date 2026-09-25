@@ -1018,6 +1018,30 @@ fn extra_arguments(operation: &TraitItemFn) -> HashMap<String, Type> {
         .collect()
 }
 
+/// The one argument beside `&self`, the context and any `header_in`/`part` binding — the argument
+/// [`OperationInputs::Named`] boxed away its own name for.
+fn named_message_argument<'op>(operation: &'op TraitItemFn, raw: &RawHttp) -> Option<&'op Ident> {
+    let claimed: HashSet<String> = raw
+        .header_in
+        .iter()
+        .map(|(_, parameter)| parameter.to_string())
+        .chain(
+            raw.multipart_parts
+                .iter()
+                .map(|(_, parameter)| parameter.to_string()),
+        )
+        .collect();
+    operation.sig.inputs.iter().skip(2).find_map(|input| {
+        let FnArg::Typed(typed) = input else {
+            return None;
+        };
+        let Pat::Ident(named) = typed.pat.as_ref() else {
+            return None;
+        };
+        (!claimed.contains(&named.ident.to_string())).then_some(&named.ident)
+    })
+}
+
 /// Checks `http(...)` against the operation it was written on: every `header_in` claims a real
 /// argument, every path placeholder matches a field the message actually has, a required field a
 /// bodyless method cannot carry any other way is bound in the path, and a tuple success type is
@@ -1032,17 +1056,12 @@ fn extra_arguments(operation: &TraitItemFn) -> HashMap<String, Type> {
 ///
 /// # A full declaration, compiling
 ///
-/// Every grammar arm at once: a path placeholder bound to a message field, one header claimed
-/// beside the message, one header written out beside the response, and a complete status table.
+/// Every grammar arm at once: two path placeholders each bound to their own generated field, one
+/// header claimed beside the message, one header written out beside the response, and a complete
+/// status table.
 ///
 /// ```rust
 /// use tixschema::service_schema;
-///
-/// #[derive(serde::Deserialize, serde::Serialize)]
-/// pub struct GetVersionRequest {
-///     pub document_id: String,
-///     pub version_id: String,
-/// }
 ///
 /// #[derive(serde::Deserialize, serde::Serialize)]
 /// pub struct VersionResponse {
@@ -1068,7 +1087,8 @@ fn extra_arguments(operation: &TraitItemFn) -> HashMap<String, Type> {
 ///     async fn get_version(
 ///         &self,
 ///         ctx: &Ctx,
-///         req: GetVersionRequest,
+///         document_id: String,
+///         version_id: String,
 ///         byte_range: Option<String>,
 ///     ) -> Result<(VersionResponse, String), GetVersionError>;
 /// }
@@ -1553,6 +1573,181 @@ fn extra_arguments(operation: &TraitItemFn) -> HashMap<String, Type> {
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
 ///
+/// # A single-argument message the path does not bind is refused on a bodyless method
+///
+/// `req` is the author's own struct, and the path names only `document_id`:
+///
+/// ```rust,compile_fail
+/// use tixschema::service_schema;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub struct DownloadRequest {
+///     pub document_id: String,
+///     pub verbose: Option<bool>,
+/// }
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub struct MediaDescriptor {
+///     pub document_id: String,
+/// }
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub enum DownloadError {
+///     NotFound,
+/// }
+///
+/// #[service_schema()]
+/// pub trait MediaService<Ctx> {
+///     #[service_schema_op(http(method = "GET", path = "/media/{document_id}", error_status(NotFound = 404)))]
+///     async fn download(&self, ctx: &Ctx, req: DownloadRequest) -> Result<MediaDescriptor, DownloadError>;
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: service_schema: operation `download` takes its whole message as the one argument `req` on a `GET`
+///               a `GET` carries no body, and the path does not bind `req`; this macro cannot see its fields to read them off the query string
+///               declare each field as its own argument, so the message is generated and every field is read by its type
+///   --> tests/zz_probe.rs:22:57
+///    |
+/// 22 |     async fn download(&self, ctx: &Ctx, req: DownloadRequest) -> Result<MediaDescriptor, DownloadError>;
+///    |                                                         ^^^^^^^^^^^^^^^
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
+///
+/// # A lone scalar argument the path does not bind is refused the same way
+///
+/// `q` is a plain `String`, but nothing in the path names it:
+///
+/// ```rust,compile_fail
+/// use tixschema::service_schema;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub struct SearchResult {
+///     pub matched: u32,
+/// }
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub enum SearchError {
+///     TooBroad,
+/// }
+///
+/// #[service_schema()]
+/// pub trait MediaService<Ctx> {
+///     #[service_schema_op(http(method = "GET", path = "/search", error_status(TooBroad = 422)))]
+///     async fn search(&self, ctx: &Ctx, q: String) -> Result<SearchResult, SearchError>;
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: service_schema: operation `search` takes its whole message as the one argument `q` on a `GET`
+///               a `GET` carries no body, and the path does not bind `q`; this macro cannot see its fields to read them off the query string
+///               declare each field as its own argument, so the message is generated and every field is read by its type
+///   --> tests/zz_probe.rs:15:44
+///    |
+/// 15 |     async fn search(&self, ctx: &Ctx, q: String) -> Result<SearchResult, SearchError>;
+///    |                                            ^^^^^^
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
+///
+/// # A single-argument message under `body = "multipart"` is refused
+///
+/// `req` carries its own fields, which this macro cannot see to write or read as parts:
+///
+/// ```rust,compile_fail
+/// use tixschema::service_schema;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub struct UploadMediaRequest {
+///     pub filename: Option<String>,
+///     pub mime: String,
+/// }
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub struct UploadResponse {
+///     pub document_id: String,
+/// }
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub enum UploadError {
+///     TooLarge,
+/// }
+///
+/// #[service_schema()]
+/// pub trait UploadService<Ctx> {
+///     #[service_schema_op(http(method = "POST", path = "/media", body = "multipart", error_status(TooLarge = 413)))]
+///     async fn upload(&self, ctx: &Ctx, req: UploadMediaRequest) -> Result<UploadResponse, UploadError>;
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: service_schema: operation `upload` takes its whole message as the one argument `req` under `body = "multipart"`
+///               a multipart request carries its fields as text parts, and this macro cannot see `req`'s fields to write or read them
+///               declare each field as its own argument beside the `part(...)` bindings
+///   --> tests/zz_probe.rs:20:33
+///    |
+/// 20 |     async fn upload(&self, ctx: &Ctx, req: UploadMediaRequest) -> Result<UploadResponse, UploadError>;
+///    |                                                 ^^^^^^^^^^^^^^^^^
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
+///
+/// # A lone scalar argument under `body = "multipart"` is refused the same way
+///
+/// `title` is a plain `String` beside the `part("file" = file)` binding:
+///
+/// ```rust,compile_fail
+/// use tixschema::service_schema;
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub struct UploadResponse {
+///     pub document_id: String,
+/// }
+///
+/// #[derive(serde::Deserialize, serde::Serialize)]
+/// pub enum UploadError {
+///     TooLarge,
+/// }
+///
+/// #[service_schema()]
+/// pub trait UploadService<Ctx> {
+///     #[service_schema_op(http(
+///         method = "POST",
+///         path = "/media",
+///         body = "multipart",
+///         part("file" = file),
+///         error_status(TooLarge = 413),
+///     ))]
+///     async fn upload(
+///         &self,
+///         ctx: &Ctx,
+///         title: String,
+///         file: Box<dyn upload_service_schema::BodySource + Send>,
+///     ) -> Result<UploadResponse, UploadError>;
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error: service_schema: operation `upload` takes its whole message as the one argument `title` under `body = "multipart"`
+///               a multipart request carries its fields as text parts, and this macro cannot see `title`'s fields to write or read them
+///               declare each field as its own argument beside the `part(...)` bindings
+///   --> tests/zz_probe.rs:19:16
+///    |
+/// 19 |         title: String,
+///    |                ^^^^^^
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
+///
 /// # A `part` naming an argument the operation does not have is refused
 ///
 /// `attachment` is written nowhere in the signature:
@@ -1748,13 +1943,19 @@ fn build_http_binding(
         }
     }
 
-    if let Some(refusal) = multipart_refusals(operation_ident, &raw, &existing) {
+    if let Some(refusal) = multipart_refusals(operation_ident, operation, &raw, &existing, inputs) {
         refusals = Some(combined(refusals.take(), refusal));
     }
 
     let path = parse_path_template(&raw.path)?;
     if let Some(refusal) =
         placeholder_refusals(operation_ident, &raw.path, raw.method.0, &path, inputs)
+    {
+        refusals = Some(combined(refusals.take(), refusal));
+    }
+
+    if let Some(refusal) =
+        bodyless_single_argument_refusal(operation_ident, operation, &raw, &path, inputs)
     {
         refusals = Some(combined(refusals.take(), refusal));
     }
@@ -2093,14 +2294,27 @@ fn mentions_body_source(ty: &Type) -> bool {
     ty.to_token_stream().into_iter().any(|tree| mentions(&tree))
 }
 
-/// The three ways a multipart declaration can be wrong at compile time, checked together since
-/// none needs the others' guarantee first: a `part(...)` naming an argument the operation does not
-/// have, `body = "multipart"` on a method with no request body for parts to travel in, and a
-/// body-source-shaped argument no `part(...)` binding claims.
+fn multipart_single_argument_message(operation: &Ident, argument: &Ident) -> String {
+    format!(
+        "service_schema: operation `{operation}` takes its whole message as the one argument \
+         `{argument}` under `body = \"multipart\"`\n       \
+         a multipart request carries its fields as text parts, and this macro cannot see \
+         `{argument}`'s fields to write or read them\n       \
+         declare each field as its own argument beside the `part(...)` bindings"
+    )
+}
+
+/// The four ways a multipart declaration can be wrong at compile time, checked together since none
+/// needs the others' guarantee first: a `part(...)` naming an argument the operation does not have,
+/// `body = "multipart"` on a method with no request body for parts to travel in, a single-argument
+/// message this macro cannot see the fields of to send or read as parts, and a body-source-shaped
+/// argument no `part(...)` binding claims.
 fn multipart_refusals(
     operation_ident: &Ident,
+    operation: &TraitItemFn,
     raw: &RawHttp,
     existing: &HashMap<String, Type>,
+    inputs: &OperationInputs,
 ) -> Option<syn::Error> {
     let mut refusals: Option<syn::Error> = None;
     for (name, parameter) in &raw.multipart_parts {
@@ -2114,16 +2328,27 @@ fn multipart_refusals(
             ));
         }
     }
-    if let Some((BodyKind::Multipart, declared)) = &raw.body
-        && !raw.method.0.carries_a_body()
-    {
-        refusals = Some(combined(
-            refusals.take(),
-            syn::Error::new(
-                declared.span(),
-                multipart_on_bodyless_method_message(operation_ident, raw.method.0),
-            ),
-        ));
+    if let Some((BodyKind::Multipart, declared)) = &raw.body {
+        if !raw.method.0.carries_a_body() {
+            refusals = Some(combined(
+                refusals.take(),
+                syn::Error::new(
+                    declared.span(),
+                    multipart_on_bodyless_method_message(operation_ident, raw.method.0),
+                ),
+            ));
+        }
+        if let OperationInputs::Named(ty) = inputs
+            && let Some(argument) = named_message_argument(operation, raw)
+        {
+            refusals = Some(combined(
+                refusals.take(),
+                syn::Error::new(
+                    ty.span(),
+                    multipart_single_argument_message(operation_ident, argument),
+                ),
+            ));
+        }
     }
     let claimed: HashSet<String> = raw
         .header_in
@@ -2174,12 +2399,6 @@ fn unbound_required_field_message(operation: &Ident, field: &str, method: HttpMe
 
 /// Every placeholder the path names must match a field the message actually has, and — on a
 /// method with no body to fall back to — every required field must be named by one.
-///
-/// Only checked where the message's fields are visible to this macro: [`OperationInputs::Empty`]
-/// (there are none) and [`OperationInputs::Generated`] (the operation's own argument list, read
-/// directly). [`OperationInputs::Named`] is an author's own type declared elsewhere, and this
-/// macro cannot see its fields any more than [`build_http_binding`] can see an error enum's
-/// variants — checking it is future work.
 fn placeholder_refusals(
     operation_ident: &Ident,
     path_literal: &LitStr,
@@ -2229,6 +2448,57 @@ fn placeholder_refusals(
         }
     }
     refusals
+}
+
+fn bodyless_single_argument_message(
+    operation: &Ident,
+    method: HttpMethod,
+    argument: &Ident,
+) -> String {
+    format!(
+        "service_schema: operation `{operation}` takes its whole message as the one argument \
+         `{argument}` on a `{}`\n       \
+         a `{}` carries no body, and the path does not bind `{argument}`; this macro cannot see \
+         its fields to read them off the query string\n       \
+         declare each field as its own argument, so the message is generated and every field is \
+         read by its type",
+        method.name(),
+        method.name(),
+    )
+}
+
+/// A single-argument message has no fields to read off the query string by type on a bodyless
+/// method. The one shape that stays legal: a scalar the path binds whole, under its own name.
+fn bodyless_single_argument_refusal(
+    operation_ident: &Ident,
+    operation: &TraitItemFn,
+    raw: &RawHttp,
+    path: &[PathSegment],
+    inputs: &OperationInputs,
+) -> Option<syn::Error> {
+    let OperationInputs::Named(ty) = inputs else {
+        return None;
+    };
+    if raw.method.0.carries_a_body() {
+        return None;
+    }
+    let argument = named_message_argument(operation, raw)?;
+    let placeholders: Vec<&str> = path
+        .iter()
+        .filter_map(|segment| match segment {
+            PathSegment::Placeholder(name) => Some(name.as_str()),
+            PathSegment::Literal(_) => None,
+        })
+        .collect();
+    let bound_whole =
+        is_scalar_named_type(ty) && placeholders.len() == 1 && argument == placeholders[0];
+    if bound_whole {
+        return None;
+    }
+    Some(syn::Error::new(
+        ty.span(),
+        bodyless_single_argument_message(operation_ident, raw.method.0, argument),
+    ))
 }
 
 fn tuple_without_header_out_message(operation: &Ident) -> String {

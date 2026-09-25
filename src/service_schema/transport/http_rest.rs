@@ -600,11 +600,12 @@ fn has_query_fields(operation: &OperationDef, shape: &HttpShape) -> bool {
     }
     let placeholders = shape.placeholder_names();
     match &operation.inputs {
-        OperationInputs::Empty => false,
         OperationInputs::Generated(fields) => fields
             .iter()
             .any(|(field, _)| !placeholders.contains(&field.to_string())),
-        OperationInputs::Named(declared) => !is_scalar_named_type(declared),
+        // `Empty` has no field to read; a bodyless `Named` message is always the one scalar the
+        // path binds whole, reading off the placeholder rather than the query.
+        OperationInputs::Empty | OperationInputs::Named(_) => false,
     }
 }
 
@@ -957,13 +958,9 @@ fn message_value(
                 )
             }
         }
-        OperationInputs::Named(named_type) => message_value_for_named(
-            wire,
-            named_type,
-            bodied,
-            placeholder_idents,
-            placeholder_names,
-        ),
+        OperationInputs::Named(named_type) => {
+            message_value_for_named(wire, named_type, placeholder_idents, placeholder_names)
+        }
         OperationInputs::Generated(fields) => {
             message_value_for_generated(fields, shape, placeholder_names)
         }
@@ -981,24 +978,16 @@ fn from_body_expr(wire: &str) -> TokenStream {
     }
 }
 
-/// A `OperationInputs::Named` message: the whole body where there is one and no placeholder binds
-/// it; the one placeholder's own coerced value where the named type is a recognised scalar and
-/// there is exactly one; otherwise an object keyed under each placeholder's own written spelling,
-/// merged onto the body where the method carries one — the opaque-struct case [`message_value`]'s
-/// own documentation covers.
+/// A `OperationInputs::Named` message: the body with no placeholder, the one placeholder's own
+/// coerced value when the type is a scalar bound whole, or an object keyed by placeholder.
 fn message_value_for_named(
     wire: &str,
     named_type: &Type,
-    bodied: bool,
     placeholder_idents: &[Ident],
     placeholder_names: &[String],
 ) -> (TokenStream, TokenStream) {
     if placeholder_idents.is_empty() {
-        return if bodied {
-            (TokenStream::new(), from_body_expr(wire))
-        } else {
-            (TokenStream::new(), quote! { ::serde_json::Value::Null })
-        };
+        return (TokenStream::new(), from_body_expr(wire));
     }
     if placeholder_idents.len() == 1 && is_scalar_named_type(named_type) {
         // The whole message *is* this one placeholder — a body, if the method carries one at all,
@@ -1007,7 +996,7 @@ fn message_value_for_named(
         let decode = decode_expr(named_type, &quote! { #only.as_str() });
         return (TokenStream::new(), decode);
     }
-    let base = object_base(bodied);
+    let base = object_base(true);
     let inserts: TokenStream = placeholder_names
         .iter()
         .zip(placeholder_idents)
@@ -1930,8 +1919,10 @@ fn query_build_stmts(operation: &OperationDef, shape: &HttpShape) -> TokenStream
     if shape.method.carries_a_body() {
         return quote! { let query = String::new(); };
     }
+    // `Empty` sends no query, and a bodyless `Named` message is always the one scalar the path
+    // binds whole, reading off the placeholder rather than the query — only `Generated` builds one.
     let OperationInputs::Generated(fields) = &operation.inputs else {
-        return named_query_build_stmts(operation, shape);
+        return quote! { let query = String::new(); };
     };
     let placeholders = shape.placeholder_names();
     let field_pushes: Vec<TokenStream> = fields
@@ -1942,9 +1933,8 @@ fn query_build_stmts(operation: &OperationDef, shape: &HttpShape) -> TokenStream
                 return None;
             }
             let key = wire_key(field);
-            // A bodyless method's own placeholder_refusals already guarantees every field here is
-            // `Option<...>` — a required field with nowhere else to go must be path-bound — so
-            // there is no third, unconditional-push case to write.
+            // Every field here is already guaranteed `Option<...>`: a required field with nowhere
+            // else to go must be path-bound.
             Some(vec_inner(option_inner(ty).unwrap_or(ty)).map_or_else(
                 || {
                     let rendered = encode_expr(&quote! { value });
@@ -1978,46 +1968,6 @@ fn query_build_stmts(operation: &OperationDef, shape: &HttpShape) -> TokenStream
         let query = {
             let mut query_parts: Vec<String> = ::std::vec::Vec::new();
             #pushes
-            query_parts.join("&")
-        };
-    }
-}
-
-/// The query string a bodyless method carrying an author's own message builds: every key the path
-/// did not spend. This macro cannot name that type's fields, so the emitted client walks the
-/// message serde wrote instead, as the TypeScript and Dart clients do.
-fn named_query_build_stmts(operation: &OperationDef, shape: &HttpShape) -> TokenStream {
-    let OperationInputs::Named(declared) = &operation.inputs else {
-        return quote! { let query = String::new(); };
-    };
-    if is_scalar_named_type(declared) {
-        return quote! { let query = String::new(); };
-    }
-    let bound: Vec<String> = shape.placeholder_names().into_iter().collect();
-    quote! {
-        let query = {
-            let mut query_parts: Vec<String> = ::std::vec::Vec::new();
-            let path_bound: &[&str] = &[#(#bound),*];
-            if let Ok(::serde_json::Value::Object(written)) = ::serde_json::to_value(&sending) {
-                for (key, value) in &written {
-                    if path_bound.contains(&key.as_str()) || value.is_null() {
-                        continue;
-                    }
-                    let rendered = match value {
-                        ::serde_json::Value::Array(elements) => elements
-                            .iter()
-                            .map(|element| match element {
-                                ::serde_json::Value::String(text) => text.clone(),
-                                other => other.to_string(),
-                            })
-                            .collect::<Vec<String>>()
-                            .join(","),
-                        ::serde_json::Value::String(text) => text.clone(),
-                        other => other.to_string(),
-                    };
-                    query_parts.push(format!("{}={}", key, percent_encoded(&rendered)));
-                }
-            }
             query_parts.join("&")
         };
     }

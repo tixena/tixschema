@@ -62,21 +62,6 @@ pub enum GetVersionError {
 }
 
 #[model_schema()]
-#[derive(Deserialize, Serialize)]
-pub struct GetVersionRequest {
-    pub document_id: String,
-    pub version_id: String,
-}
-
-#[model_schema()]
-#[derive(Deserialize, Serialize)]
-pub struct ReadWindowRequest {
-    pub document_id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub from_version: Option<String>,
-}
-
-#[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct VersionResponse {
     pub content: String,
@@ -139,7 +124,8 @@ pub trait DocumentClientService<Ctx> {
     async fn get_version(
         &self,
         ctx: &Ctx,
-        req: GetVersionRequest,
+        document_id: String,
+        version_id: String,
         byte_range: Option<String>,
     ) -> Result<(VersionResponse, String), GetVersionError>;
 
@@ -154,7 +140,8 @@ pub trait DocumentClientService<Ctx> {
     async fn read_window(
         &self,
         ctx: &Ctx,
-        req: ReadWindowRequest,
+        document_id: String,
+        from_version: Option<String>,
     ) -> Result<VersionResponse, GetVersionError>;
 }
 
@@ -246,13 +233,14 @@ impl DocumentClientService<()> for DocumentClientBackEnd {
     async fn get_version(
         &self,
         _ctx: &(),
-        req: GetVersionRequest,
+        document_id: String,
+        version_id: String,
         _byte_range: Option<String>,
     ) -> Result<(VersionResponse, String), GetVersionError> {
         ready(()).await;
         Ok((
             VersionResponse {
-                content: format!("{}@{}", req.document_id, req.version_id),
+                content: format!("{document_id}@{version_id}"),
             },
             "v1".to_owned(),
         ))
@@ -265,11 +253,12 @@ impl DocumentClientService<()> for DocumentClientBackEnd {
     async fn read_window(
         &self,
         _ctx: &(),
-        req: ReadWindowRequest,
+        document_id: String,
+        _from_version: Option<String>,
     ) -> Result<VersionResponse, GetVersionError> {
         ready(()).await;
         Ok(VersionResponse {
-            content: req.document_id,
+            content: document_id,
         })
     }
 }
@@ -509,10 +498,8 @@ fn a_call_records_the_exact_request_method_path_query_headers_and_body() {
     )]);
     let client = http_rest_client::DocumentClientServiceClient::new(transport);
     let answered = poll_once(client.get_version(
-        GetVersionRequest {
-            document_id: "d1".to_owned(),
-            version_id: "v1".to_owned(),
-        },
+        "d1".to_owned(),
+        "v1".to_owned(),
         Some("bytes=0-1".to_owned()),
     ))
     .unwrap();
@@ -546,15 +533,9 @@ fn an_absent_option_header_in_omits_the_header_entirely_rather_than_sending_null
         br#"{"content":"d1@v1"}"#.to_vec(),
     )]);
     let client = http_rest_client::DocumentClientServiceClient::new(transport);
-    poll_once(client.get_version(
-        GetVersionRequest {
-            document_id: "d1".to_owned(),
-            version_id: "v1".to_owned(),
-        },
-        None,
-    ))
-    .unwrap()
-    .unwrap();
+    poll_once(client.get_version("d1".to_owned(), "v1".to_owned(), None))
+        .unwrap()
+        .unwrap();
     assert_eq!(
         client.transport().requests(),
         vec![RecordedRequest {
@@ -601,14 +582,8 @@ fn a_mapped_status_decodes_into_the_declared_error() {
         br#"{"errorCode":"not-found"}"#.to_vec(),
     )]);
     let client = http_rest_client::DocumentClientServiceClient::new(transport);
-    let answered = poll_once(client.get_version(
-        GetVersionRequest {
-            document_id: "missing".to_owned(),
-            version_id: "v1".to_owned(),
-        },
-        None,
-    ))
-    .unwrap();
+    let answered =
+        poll_once(client.get_version("missing".to_owned(), "v1".to_owned(), None)).unwrap();
     assert_eq!(
         answered,
         Err(document_client_service_schema::CallError::Operation(
@@ -626,14 +601,7 @@ fn a_fixed_fault_status_decodes_through_the_private_mirror() {
             .to_vec(),
     )]);
     let client = http_rest_client::DocumentClientServiceClient::new(transport);
-    let answered = poll_once(client.get_version(
-        GetVersionRequest {
-            document_id: "d1".to_owned(),
-            version_id: "v1".to_owned(),
-        },
-        None,
-    ))
-    .unwrap();
+    let answered = poll_once(client.get_version("d1".to_owned(), "v1".to_owned(), None)).unwrap();
     let reported = match &answered {
         Err(document_client_service_schema::CallError::Fault(reported)) => Some(reported),
         Ok(_) | Err(document_client_service_schema::CallError::Operation(_)) => None,
@@ -651,14 +619,7 @@ fn a_status_naming_neither_a_declared_error_nor_a_fixed_fault_is_an_undeserializ
 {
     let transport = RecordingTransport::queued(vec![(599, Vec::new(), b"{}".to_vec())]);
     let client = http_rest_client::DocumentClientServiceClient::new(transport);
-    let answered = poll_once(client.get_version(
-        GetVersionRequest {
-            document_id: "d1".to_owned(),
-            version_id: "v1".to_owned(),
-        },
-        None,
-    ))
-    .unwrap();
+    let answered = poll_once(client.get_version("d1".to_owned(), "v1".to_owned(), None)).unwrap();
     let reported = match &answered {
         Err(document_client_service_schema::CallError::Fault(reported)) => Some(reported),
         Ok(_) | Err(document_client_service_schema::CallError::Operation(_)) => None,
@@ -687,15 +648,11 @@ fn a_no_payload_operation_resolves_on_its_declared_status_without_reading_a_body
 }
 
 #[test]
-fn a_lone_placeholder_on_an_author_s_own_message_sends_the_field_it_names() {
+fn a_generated_field_bound_to_a_placeholder_fills_the_path() {
     let transport =
         RecordingTransport::queued(vec![(200, Vec::new(), br#"{"content":"d1"}"#.to_vec())]);
     let client = http_rest_client::DocumentClientServiceClient::new(transport);
-    let answered = poll_once(client.read_window(ReadWindowRequest {
-        document_id: "d1".to_owned(),
-        from_version: Some("v1".to_owned()),
-    }))
-    .unwrap();
+    let answered = poll_once(client.read_window("d1".to_owned(), Some("v1".to_owned()))).unwrap();
     assert_eq!(
         answered,
         Ok(VersionResponse {
@@ -713,18 +670,16 @@ fn a_lone_placeholder_leaves_the_rest_of_the_message_in_the_query() {
     let transport =
         RecordingTransport::queued(vec![(200, Vec::new(), br#"{"content":"d1"}"#.to_vec())]);
     let client = http_rest_client::DocumentClientServiceClient::new(transport);
-    poll_once(client.read_window(ReadWindowRequest {
-        document_id: "d1".to_owned(),
-        from_version: Some("v1".to_owned()),
-    }))
-    .unwrap()
-    .unwrap();
+    poll_once(client.read_window("d1".to_owned(), Some("v1".to_owned())))
+        .unwrap()
+        .unwrap();
     let sent = &client.transport().requests()[0];
     assert_eq!(sent.path, "/documents/d1/window");
     assert_eq!(
-        sent.query, "from_version=v1",
+        sent.query, "fromVersion=v1",
         "`from_version` is bound to no placeholder, so the only place left for it is the query \
-         string; an empty query drops the field the caller passed. Got: {sent:?}"
+         string, under its camelCase wire key; an empty query drops the field the caller passed. \
+         Got: {sent:?}"
     );
 }
 
@@ -803,15 +758,9 @@ fn a_bytes_operations_mapped_status_still_decodes_into_the_declared_error() {
 /// this binary placed a dispatcher for it.
 #[test]
 fn the_document_contract_is_implementable_where_no_dispatcher_was_placed() {
-    let answered = poll_once(DocumentClientBackEnd.get_version(
-        &(),
-        GetVersionRequest {
-            document_id: "d1".to_owned(),
-            version_id: "v1".to_owned(),
-        },
-        None,
-    ))
-    .unwrap();
+    let answered =
+        poll_once(DocumentClientBackEnd.get_version(&(), "d1".to_owned(), "v1".to_owned(), None))
+            .unwrap();
     assert_eq!(
         answered,
         Ok((
@@ -843,14 +792,7 @@ fn the_document_contract_is_implementable_where_no_dispatcher_was_placed() {
         ))
     );
     assert_eq!(
-        poll_once(DocumentClientBackEnd.read_window(
-            &(),
-            ReadWindowRequest {
-                document_id: "d1".to_owned(),
-                from_version: None,
-            }
-        ))
-        .unwrap(),
+        poll_once(DocumentClientBackEnd.read_window(&(), "d1".to_owned(), None)).unwrap(),
         Ok(VersionResponse {
             content: "d1".to_owned()
         })

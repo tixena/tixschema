@@ -2067,6 +2067,16 @@ service_schema: operation `get_widget`'s field `filter` is required and is bound
 
 An *optional* field a bodyless method leaves unbound becomes a query parameter instead, read out of the parsed query string on the way in and appended to it on the way out. A path placeholder, a query parameter and a `header_in` value are all read the same way, off the operation argument's own declared type: `true`/`false` become a JSON boolean, anything that parses as a number becomes a JSON number, anything else stays a JSON string, and a `Vec<T>` splits its raw text on `,` and coerces each piece the same way -- the dispatcher and the TypeScript client apply this judgement identically, from one shared rule, so the two sides of the wire cannot read a query string two different ways.
 
+A single-argument message -- the whole message already being the author's own type, or the argument list collapsed to one -- gives this macro no fields to read off the query string, so a bodyless method refuses it outright, naming what to write instead:
+
+```text
+service_schema: operation `download` takes its whole message as the one argument `req` on a `GET`
+              a `GET` carries no body, and the path does not bind `req`; this macro cannot see its fields to read them off the query string
+              declare each field as its own argument, so the message is generated and every field is read by its type
+```
+
+The one exception is a scalar bound whole by the path's one placeholder of its own name -- `get(&self, ctx: &Ctx, id: String)` on `/documents/{id}` stays legal, its value traveling in the path rather than the query.
+
 **`header_in`/`header_out` on `http_rest` are the same grammar already introduced above for `amqp_rpc`'s headers-table channel, realized over real HTTP request and response headers instead.** `header_in("range" = byte_range)` binds the request's own `range` header to an ordinary argument beside the message; naming a parameter the operation does not take is refused on the parameter:
 
 ```text
@@ -2121,6 +2131,14 @@ and a `part(...)` naming a parameter the operation does not take is refused exac
 ```text
 service_schema: operation `upload_document` binds part "file" to a parameter named `attachment`, and `upload_document` takes no argument by that name
               `part` binds one ordinary argument beside the message; name it in the signature, or remove the binding
+```
+
+A single-argument message under `body = "multipart"` is refused the same way, struct or lone scalar alike -- this macro cannot see its fields to send or read as parts:
+
+```text
+service_schema: operation `upload` takes its whole message as the one argument `req` under `body = "multipart"`
+              a multipart request carries its fields as text parts, and this macro cannot see `req`'s fields to write or read them
+              declare each field as its own argument beside the `part(...)` bindings
 ```
 
 Verified end to end, no server involved: a multipart upload dispatched by hand decodes its scalar parts into the generated message and hands the file part through as an undrained `BodySource`, draining to exactly the bytes it was built with, before `validate()` runs; a streamed download answers `200` with the whole body pulled across more than one `BodySource::pull()` call for a body larger than the reader's own chunk cap, and a `range` header answers `206` with `content-range` and the sliced body, the declared `header_out` riding beside either arm.

@@ -89,22 +89,21 @@ fn a_path_placeholder_is_filled_by_exact_segment_substitution() {
     let method = method_body(&written, "getVersion");
     assert!(
         method.contains("path += \"/documents/\";")
-            && method.contains("path += encodeURIComponent(String(sending.document_id));")
+            && method.contains("path += encodeURIComponent(String(sending.documentId));")
             && method.contains("path += \"/versions/\";")
-            && method.contains("path += encodeURIComponent(String(sending.version_id));"),
+            && method.contains("path += encodeURIComponent(String(sending.versionId));"),
         "each segment is pushed in template order, a placeholder reading its own field off the \
          validated message rather than splitting a shared prefix. Got: {method}"
     );
 }
 
 #[test]
-fn a_lone_placeholder_on_an_author_s_own_message_reads_the_field_it_names() {
+fn a_placeholder_bound_generated_field_fills_the_path() {
     let written = http_client_of(SINGLE_PLACEHOLDER_HTTP_SERVICE);
     let method = method_body(&written, "window");
     assert!(
-        method.contains("path += encodeURIComponent(String(sending.conversation_id));"),
-        "a message the author declared is an object whatever the path is shaped like, so the one \
-         placeholder reads the field it names off it. Got: {method}"
+        method.contains("path += encodeURIComponent(String(sending.conversationId));"),
+        "the field the placeholder names is read off the validated message. Got: {method}"
     );
     assert!(
         !method.contains("path += encodeURIComponent(String(sending));"),
@@ -125,16 +124,17 @@ fn a_lone_placeholder_on_a_scalar_message_still_is_the_whole_message() {
 }
 
 #[test]
-fn a_named_message_s_unbound_fields_build_the_query_string_of_a_bodyless_method() {
+fn an_unbound_generated_field_builds_the_query_string_of_a_bodyless_method() {
     let written = http_client_of(SINGLE_PLACEHOLDER_HTTP_SERVICE);
     let method = method_body(&written, "window");
     assert!(
-        method.contains("const pathBound: ReadonlyArray<string> = [\"conversation_id\"];")
-            && method.contains("for (const [key, value] of Object.entries(sending)) {")
-            && method.contains("queryParts.push(`${key}=${encodeURIComponent(rendered)}`);")
+        method.contains("const queryParts: Array<string> = [];")
+            && method.contains("if (sending.limit !== undefined) {")
+            && method
+                .contains("queryParts.push(`limit=${encodeURIComponent(String(sending.limit))}`);")
             && method.contains("const query = queryParts.join(\"&\");"),
-        "a field the path does not bind is a query parameter; the message is walked because this \
-         macro cannot name an author's own fields. Got: {method}"
+        "a field the path does not bind is a query parameter, read off the validated message by \
+         its own type. Got: {method}"
     );
     assert!(
         !method.contains("const query = \"\";"),

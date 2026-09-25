@@ -1227,19 +1227,12 @@ impl ReadFields {
 // The `http_rest` transport
 // -------------------------------------------------------------------------------------------
 
-/// A document service exercising every arm of the `http_rest` dispatcher's JSON path: a path
-/// placeholder bound to a Named message with a header claimed beside it and a header written out
-/// beside the response; a whole-body POST with a mapped error; a one-way DELETE answering the
-/// bodyless default; a no-payload POST overriding its default status; a handler that panics; a
-/// bodyless GET reading its own fields off the query string; and an operation naming no
+/// A document service exercising every arm of the `http_rest` dispatcher's JSON path: two path
+/// placeholders each bound to their own generated field, with a header claimed beside them and a
+/// header written out beside the response; a whole-body POST with a mapped error; a one-way DELETE
+/// answering the bodyless default; a no-payload POST overriding its default status; a handler that
+/// panics; a bodyless GET reading its own fields off the query string; and an operation naming no
 /// `http(...)` group at all.
-#[model_schema()]
-#[derive(Deserialize, Serialize)]
-pub struct GetVersionRequest {
-    pub document_id: String,
-    pub version_id: String,
-}
-
 #[model_schema()]
 #[derive(Deserialize, Serialize)]
 pub struct VersionResponse {
@@ -1444,7 +1437,8 @@ pub trait DocumentService<Ctx> {
     async fn get_version(
         &self,
         ctx: &Ctx,
-        req: GetVersionRequest,
+        document_id: String,
+        version_id: String,
         byte_range: Option<String>,
     ) -> Result<(VersionResponse, String), GetVersionError>;
 
@@ -1565,23 +1559,23 @@ impl DocumentService<()> for DocumentBackEnd {
     async fn get_version(
         &self,
         _ctx: &(),
-        req: GetVersionRequest,
+        document_id: String,
+        version_id: String,
         byte_range: Option<String>,
     ) -> Result<(VersionResponse, String), GetVersionError> {
         ready(()).await;
         self.reach(format!(
-            "get_version {} {} {byte_range:?}",
-            req.document_id, req.version_id
+            "get_version {document_id} {version_id} {byte_range:?}"
         ));
-        if req.document_id == "missing" {
+        if document_id == "missing" {
             return Err(GetVersionError::NotFound);
         }
-        if req.document_id == "gone" {
+        if document_id == "gone" {
             return Err(GetVersionError::VersionGone);
         }
         Ok((
             VersionResponse {
-                content: format!("{}@{}", req.document_id, req.version_id),
+                content: format!("{document_id}@{version_id}"),
             },
             "v7".to_owned(),
         ))

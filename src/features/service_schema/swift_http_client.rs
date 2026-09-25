@@ -403,47 +403,16 @@ fn path_build_stmt(fn_prefix: &str, operation: &OperationDef, shape: &HttpShape)
     stmt
 }
 
-/// A bodyless method's own field, unbound to a placeholder, is always `Option<...>` — a required
-/// field with nowhere else to go is refused at parse time — so every push is guarded by an
-/// `if let`, matching the Dart client's own null check.
-fn named_query_build_stmt(shape: &HttpShape) -> String {
-    // The object walked below is keyed by `JSONEncoder`'s wire spelling (the raw field name),
-    // so the exclusion below reads placeholder names raw, never Swift's camelCase spelling.
-    let bound = shape
-        .placeholder_names()
-        .iter()
-        .map(|name| format!("\"{name}\""))
-        .collect::<Vec<String>>()
-        .join(", ");
-    format!(
-        "    var query: [(String, String)] = []\n    \
-         if let object = try? JSONSerialization.jsonObject(\n      \
-         with: JSONEncoder().encode(req)\n    \
-         ) as? [String: Any] {{\n      \
-         for (key, value) in object {{\n        \
-         if [{bound}].contains(key) || value is NSNull {{ continue }}\n        \
-         if let array = value as? [Any] {{\n          \
-         query.append((key, array.map {{ \"\\($0)\" }}.joined(separator: \",\")))\n        \
-         }} else {{\n          \
-         query.append((key, \"\\(value)\"))\n        \
-         }}\n      \
-         }}\n    \
-         }}\n"
-    )
-}
-
 fn query_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
     if shape.method.carries_a_body() {
         return "    let query: [(String, String)] = []\n".to_owned();
     }
     let fields = match &operation.inputs {
-        OperationInputs::Empty => return "    let query: [(String, String)] = []\n".to_owned(),
-        OperationInputs::Named(declared) => {
-            return if is_scalar_named_type(declared) {
-                "    let query: [(String, String)] = []\n".to_owned()
-            } else {
-                named_query_build_stmt(shape)
-            };
+        // `Empty` sends no field. A bodyless `Named` message is always the one scalar the path
+        // binds whole (refused at parse time otherwise), reading off the placeholder rather than
+        // the query.
+        OperationInputs::Empty | OperationInputs::Named(_) => {
+            return "    let query: [(String, String)] = []\n".to_owned();
         }
         OperationInputs::Generated(fields) => fields,
     };

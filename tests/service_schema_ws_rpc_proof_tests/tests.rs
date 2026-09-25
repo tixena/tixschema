@@ -29,12 +29,6 @@ use tixschema::{model_schema, service_schema};
 
 #[model_schema()]
 #[derive(Deserialize, Serialize)]
-pub struct ReadRangeRequest {
-    pub document_id: String,
-}
-
-#[model_schema()]
-#[derive(Deserialize, Serialize)]
 pub struct TouchRequest {
     pub document_id: String,
 }
@@ -96,7 +90,7 @@ pub trait DocumentSession<Ctx> {
     async fn read_range(
         &self,
         ctx: &Ctx,
-        req: ReadRangeRequest,
+        document_id: String,
         byte_range: Option<String>,
     ) -> Result<(RangeResult, String), RangeError>;
 
@@ -149,17 +143,17 @@ impl DocumentSession<Session> for DocumentBackEnd {
     async fn read_range(
         &self,
         _ctx: &Session,
-        req: ReadRangeRequest,
+        document_id: String,
         byte_range: Option<String>,
     ) -> Result<(RangeResult, String), RangeError> {
         ready(()).await;
-        self.reach(format!("read_range {} {byte_range:?}", req.document_id));
-        if req.document_id == "missing" {
+        self.reach(format!("read_range {document_id} {byte_range:?}"));
+        if document_id == "missing" {
             return Err(RangeError::NotFound);
         }
         Ok((
             RangeResult {
-                content: format!("range-of-{}", req.document_id),
+                content: format!("range-of-{document_id}"),
             },
             "etag-1".to_owned(),
         ))
@@ -400,12 +394,11 @@ fn a_declared_error_round_trips_through_the_wire() {
 #[test]
 fn header_in_and_header_out_round_trip_through_the_wire() {
     let harness = Harness::new();
-    let mut call = pin!(harness.client.read_range(
-        ReadRangeRequest {
-            document_id: "doc-1".to_owned(),
-        },
-        Some("bytes=0-10".to_owned()),
-    ));
+    let mut call = pin!(
+        harness
+            .client
+            .read_range("doc-1".to_owned(), Some("bytes=0-10".to_owned()))
+    );
     let answered = drive(&harness, call.as_mut());
     assert_eq!(
         answered,
@@ -427,7 +420,7 @@ fn header_in_and_header_out_round_trip_through_the_wire() {
                 "id": "1",
                 "kind": "request",
                 "operation": "read-range",
-                "payload": { "document_id": "doc-1" },
+                "payload": "doc-1",
                 "headers": { "range": "bytes=0-10" },
                 "service": "DocumentSession",
             }),

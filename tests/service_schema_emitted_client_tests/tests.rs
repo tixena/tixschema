@@ -112,15 +112,6 @@ const STREAMED_CONTENT: &[u8] = b"the quick brown fox jumps over the lazy dog";
 /// takes several `pull()` calls rather than one buffered copy.
 const CHUNKED_READ_CAP: usize = 5;
 
-/// `conversation_id` is what the placeholder names; `limit` has nowhere to go but the query.
-#[model_schema()]
-#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct WindowRequest {
-    pub conversation_id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub limit: Option<u32>,
-}
-
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WindowPage {
@@ -153,7 +144,12 @@ pub trait ConversationClientService<Ctx> {
         path = "/v1/conversations/{conversation_id}/window",
         error_status(NotFound = 404),
     ))]
-    async fn window(&self, ctx: &Ctx, req: WindowRequest) -> Result<WindowPage, WindowError>;
+    async fn window(
+        &self,
+        ctx: &Ctx,
+        conversation_id: String,
+        limit: Option<u32>,
+    ) -> Result<WindowPage, WindowError>;
 }
 
 /// A backend answering the contract, so the trait is implementable rather than merely declared.
@@ -164,10 +160,15 @@ impl ConversationClientService<()> for ConversationBackEnd {
         ready(()).await;
     }
 
-    async fn window(&self, _ctx: &(), req: WindowRequest) -> Result<WindowPage, WindowError> {
+    async fn window(
+        &self,
+        _ctx: &(),
+        conversation_id: String,
+        _limit: Option<u32>,
+    ) -> Result<WindowPage, WindowError> {
         ready(()).await;
         Ok(WindowPage {
-            items: vec![req.conversation_id],
+            items: vec![conversation_id],
         })
     }
 }
@@ -826,7 +827,7 @@ fn every_declared_type_is_constructible() {
             .len(),
         24
     );
-    drop(ConversationBackEnd.window(&(), asked));
+    drop(ConversationBackEnd.window(&(), asked.conversation_id, asked.limit));
     drop(
         ConversationBackEnd
             .purge_conversation(&(), ConversationId("652f1a3b4c5d6e7f8a9b0c1d".to_owned())),

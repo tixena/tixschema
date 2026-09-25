@@ -17,12 +17,6 @@ use std::sync::Mutex;
 use tixschema::{model_schema, service_schema};
 
 #[model_schema()]
-#[derive(Deserialize, Serialize)]
-pub struct GetVersionRequest {
-    pub document_id: String,
-}
-
-#[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct VersionResponse {
     pub content: String,
@@ -48,7 +42,7 @@ pub trait DocumentService<Ctx> {
     async fn get_version(
         &self,
         ctx: &Ctx,
-        req: GetVersionRequest,
+        document_id: String,
         byte_range: Option<String>,
     ) -> Result<(VersionResponse, String), DocumentError>;
 
@@ -78,15 +72,15 @@ impl DocumentService<()> for DocumentBackEnd {
     async fn get_version(
         &self,
         _ctx: &(),
-        req: GetVersionRequest,
+        document_id: String,
         byte_range: Option<String>,
     ) -> Result<(VersionResponse, String), DocumentError> {
         ready(()).await;
         self.reached
             .lock()
             .unwrap()
-            .push((req.document_id.clone(), byte_range));
-        if req.document_id == "missing" {
+            .push((document_id.clone(), byte_range));
+        if document_id == "missing" {
             return Err(DocumentError::NotFound);
         }
         Ok((
@@ -281,7 +275,7 @@ fn the_dispatcher_decodes_a_claimed_header_before_calling_the_implementation_and
         &(),
         &amqp_transport::IncomingMessage::new(
             "get-version".to_owned(),
-            br#"{"document_id":"doc-1"}"#.to_vec(),
+            br#""doc-1""#.to_vec(),
             vec![("range".to_owned(), range)],
         ),
         &reply,
@@ -312,7 +306,7 @@ fn a_header_in_binding_nothing_carried_decodes_as_the_argument_s_own_absent_valu
         &(),
         &amqp_transport::IncomingMessage::new(
             "get-version".to_owned(),
-            br#"{"document_id":"doc-2"}"#.to_vec(),
+            br#""doc-2""#.to_vec(),
             Vec::new(),
         ),
         &reply,
@@ -335,7 +329,7 @@ fn a_header_in_value_that_will_not_decode_fails_before_the_implementation_is_cal
         &(),
         &amqp_transport::IncomingMessage::new(
             "get-version".to_owned(),
-            br#"{"document_id":"doc-3"}"#.to_vec(),
+            br#""doc-3""#.to_vec(),
             vec![("range".to_owned(), "not json".to_owned())],
         ),
         &reply,
@@ -367,7 +361,7 @@ fn the_operations_own_error_carries_no_header_out_value_and_still_answers_normal
         &(),
         &amqp_transport::IncomingMessage::new(
             "get-version".to_owned(),
-            br#"{"document_id":"missing"}"#.to_vec(),
+            br#""missing""#.to_vec(),
             Vec::new(),
         ),
         &reply,
@@ -386,14 +380,9 @@ fn the_operations_own_error_carries_no_header_out_value_and_still_answers_normal
 fn the_client_encodes_a_claimed_header_outbound_and_decodes_a_declared_one_from_the_reply() {
     let transport = ProbeTransport::new();
     let client = amqp_client::DocumentServiceClient::new(transport);
-    let answered = poll_once(client.get_version(
-        GetVersionRequest {
-            document_id: "doc-1".to_owned(),
-        },
-        Some("bytes=0-10".to_owned()),
-    ))
-    .unwrap()
-    .unwrap();
+    let answered = poll_once(client.get_version("doc-1".to_owned(), Some("bytes=0-10".to_owned())))
+        .unwrap()
+        .unwrap();
     assert_eq!(
         answered,
         (
@@ -428,14 +417,9 @@ fn a_none_header_in_argument_round_trips_through_the_amqp_headers_table_as_json_
     // `http_rest`, which omits the header instead rather than relying on that distinction.
     let transport = ProbeTransport::new();
     let client = amqp_client::DocumentServiceClient::new(transport);
-    poll_once(client.get_version(
-        GetVersionRequest {
-            document_id: "doc-1".to_owned(),
-        },
-        None,
-    ))
-    .unwrap()
-    .unwrap();
+    poll_once(client.get_version("doc-1".to_owned(), None))
+        .unwrap()
+        .unwrap();
     assert_eq!(
         client.transport().calls(),
         vec![(
@@ -452,7 +436,7 @@ fn a_none_header_in_argument_round_trips_through_the_amqp_headers_table_as_json_
         &(),
         &amqp_transport::IncomingMessage::new(
             "get-version".to_owned(),
-            br#"{"document_id":"doc-1"}"#.to_vec(),
+            br#""doc-1""#.to_vec(),
             vec![("range".to_owned(), "null".to_owned())],
         ),
         &reply,

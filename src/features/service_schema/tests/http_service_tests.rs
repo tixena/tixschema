@@ -137,14 +137,18 @@ export function createConversationClientServiceHttpDispatcher<Ctx>(
         return answer(ctx, request, \"purge-conversation\", conversation_id, 204, () => 422);
       }
     }
-    // window: GET /v1/conversations/{conversation_id}/window \u{2014} an author-declared message: the placeholder
-    // is inserted under its written spelling as a string; a bodyless method reads no body (Rust reads no query here either).
+    // window: GET /v1/conversations/{conversation_id}/window \u{2014} a macro-generated message: placeholder-bound fields come from the path, the rest from the query string, each with its own coercion.
     if (method === \"GET\") {
       const captured = conversationClientServiceHttpMatchPath([\"/v1/conversations/\", null, \"/window\"], path);
       if (captured !== undefined) {
         const [conversation_id] = captured;
+        const queryMap = conversationClientServiceHttpParseQuery(request.query);
         const message: Record<string, unknown> = {};
-        message[\"conversation_id\"] = conversation_id;
+        message[\"conversationId\"] = conversation_id;
+        {
+          const raw = queryMap.get(\"limit\");
+          message[\"limit\"] = raw === undefined ? null : conversationClientServiceHttpCoerceNumber(raw);
+        }
         return answer(ctx, request, \"window\", message, 200, (error) => {
           switch (WindowError$Variant(error)) {
             case \"NotFound\": return 404;
@@ -240,17 +244,17 @@ fn a_single_scalar_placeholder_message_is_the_placeholder_itself() {
 }
 
 #[test]
-fn an_author_declared_message_takes_only_its_placeholders_as_strings() {
+fn a_generated_message_bound_entirely_by_placeholders_takes_no_query() {
     let written = http_service_of(MIXED_HTTP_SERVICE);
     assert!(
-        written.contains("message[\"document_id\"] = document_id;")
-            && written.contains("message[\"version_id\"] = version_id;"),
+        written.contains("message[\"documentId\"] = document_id;")
+            && written.contains("message[\"versionId\"] = version_id;"),
         "got: {written}"
     );
     assert!(
         !written.contains("HttpParseQuery(request.query)"),
-        "`get_version` is bodyless and reads no query, mirroring the Rust dispatcher's own drop. \
-         Got: {written}"
+        "`get_version`'s two fields are both placeholder-bound, so nothing is left to read off \
+         the query. Got: {written}"
     );
 }
 

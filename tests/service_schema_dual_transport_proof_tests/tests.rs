@@ -26,13 +26,6 @@ use tixschema::{model_schema, service_schema};
 
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct GetVersionRequest {
-    pub document_id: String,
-    pub version_id: String,
-}
-
-#[model_schema()]
-#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct VersionResponse {
     pub content: String,
 }
@@ -111,7 +104,8 @@ pub trait DocumentService<Ctx> {
     async fn get_version(
         &self,
         ctx: &Ctx,
-        req: GetVersionRequest,
+        document_id: String,
+        version_id: String,
         byte_range: Option<String>,
     ) -> Result<(VersionResponse, String), GetVersionError>;
 
@@ -160,23 +154,23 @@ impl DocumentService<()> for DocumentBackEnd {
     async fn get_version(
         &self,
         _ctx: &(),
-        req: GetVersionRequest,
+        document_id: String,
+        version_id: String,
         byte_range: Option<String>,
     ) -> Result<(VersionResponse, String), GetVersionError> {
         ready(()).await;
         self.reach(format!(
-            "get_version {} {} {byte_range:?}",
-            req.document_id, req.version_id
+            "get_version {document_id} {version_id} {byte_range:?}"
         ));
-        if req.document_id == "missing" {
+        if document_id == "missing" {
             return Err(GetVersionError::NotFound);
         }
-        if req.document_id == "gone" {
+        if document_id == "gone" {
             return Err(GetVersionError::VersionGone);
         }
         Ok((
             VersionResponse {
-                content: format!("{}@{}", req.document_id, req.version_id),
+                content: format!("{document_id}@{version_id}"),
             },
             "v7".to_owned(),
         ))
@@ -461,10 +455,8 @@ fn the_http_loop_round_trips_the_header_bound_operation() {
         http_rest_transport::DefaultFaultHandler,
     ));
     let answered = poll_once(client.get_version(
-        GetVersionRequest {
-            document_id: "doc-1".to_owned(),
-            version_id: "v1".to_owned(),
-        },
+        "doc-1".to_owned(),
+        "v1".to_owned(),
         Some("bytes=0-10".to_owned()),
     ))
     .unwrap();
@@ -498,14 +490,8 @@ fn the_http_loop_answers_the_header_bound_operations_complete_error_mapping() {
             &service,
             http_rest_transport::DefaultFaultHandler,
         ));
-        let answered = poll_once(client.get_version(
-            GetVersionRequest {
-                document_id: document_id.to_owned(),
-                version_id: "v1".to_owned(),
-            },
-            None,
-        ))
-        .unwrap();
+        let answered =
+            poll_once(client.get_version(document_id.to_owned(), "v1".to_owned(), None)).unwrap();
         assert_eq!(
             answered,
             Err(document_service_schema::CallError::Operation(declared)),
@@ -678,10 +664,8 @@ fn the_amqp_loop_round_trips_the_header_bound_operation_through_the_headers_chan
     let service = DocumentBackEnd::new();
     let client = amqp_client::DocumentServiceClient::new(AmqpLoop::new(&service));
     let answered = poll_once(client.get_version(
-        GetVersionRequest {
-            document_id: "doc-1".to_owned(),
-            version_id: "v1".to_owned(),
-        },
+        "doc-1".to_owned(),
+        "v1".to_owned(),
         Some("bytes=0-10".to_owned()),
     ))
     .unwrap()
@@ -711,14 +695,8 @@ fn the_amqp_loop_answers_the_header_bound_operations_complete_error_mapping() {
     ] {
         let service = DocumentBackEnd::new();
         let client = amqp_client::DocumentServiceClient::new(AmqpLoop::new(&service));
-        let answered = poll_once(client.get_version(
-            GetVersionRequest {
-                document_id: document_id.to_owned(),
-                version_id: "v1".to_owned(),
-            },
-            None,
-        ))
-        .unwrap();
+        let answered =
+            poll_once(client.get_version(document_id.to_owned(), "v1".to_owned(), None)).unwrap();
         assert_eq!(
             answered,
             Err(document_service_schema::CallError::Operation(declared)),
