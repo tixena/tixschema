@@ -114,14 +114,14 @@ fn a_path_placeholder_is_filled_by_percent_encoding_the_field_it_names() {
 }
 
 #[test]
-fn a_lone_placeholder_on_an_author_s_own_message_reads_the_property_it_names() {
+fn a_placeholder_bound_generated_field_fills_the_path() {
     let written = swift_http_client_of(SWIFT_SINGLE_PLACEHOLDER_HTTP_SERVICE);
     let method = method_body(&written, "window");
     assert!(
         method
             .contains("path += conversationClientServicePercentEncode(\"\\(req.conversationId)\")"),
-        "a message the author declared is a struct whatever the path is shaped like, so the one \
-         placeholder reads the property it names off it. Got: {method}"
+        "the field the placeholder names is read off the message under Swift's own camelCase \
+         spelling. Got: {method}"
     );
 }
 
@@ -137,39 +137,20 @@ fn a_lone_placeholder_on_a_scalar_message_still_is_the_whole_message() {
 }
 
 #[test]
-fn a_named_message_s_unbound_fields_build_the_query_string_of_a_bodyless_method() {
+fn an_unbound_generated_field_builds_the_query_string_of_a_bodyless_method() {
     let written = swift_http_client_of(SWIFT_SINGLE_PLACEHOLDER_HTTP_SERVICE);
     let method = method_body(&written, "window");
     assert!(
-        method.contains("JSONSerialization.jsonObject(")
-            && method.contains("[\"conversation_id\"].contains(key)")
-            && method.contains("query.append((key,"),
-        "a field the path does not bind is a query parameter, read back off the encoded message \
-         since this macro cannot name an author's own fields; the exclusion reads the wire \
-         spelling the placeholder names, not Swift's camelCase property spelling. \
-         Got: {method}"
+        method.contains("var query: [(String, String)] = []")
+            && method.contains("if let value = req.limit {")
+            && method.contains("query.append((\"limit\", \"\\(value)\"))"),
+        "a field the path does not bind is a query parameter, read off the message by its own \
+         type. Got: {method}"
     );
     assert!(
         !method.contains("let query: [(String, String)] = []"),
         "a message carrying more than the path spends does not send an empty query. \
          Got: {method}"
-    );
-}
-
-#[test]
-fn a_named_message_s_query_exclusion_names_the_snake_case_wire_key_not_the_camel_case_property() {
-    let written = swift_http_client_of(SWIFT_SINGLE_PLACEHOLDER_HTTP_SERVICE);
-    let method = method_body(&written, "window");
-    assert!(
-        method.contains("[\"conversation_id\"].contains(key)"),
-        "the path-bound field is excluded by the key `JSONEncoder` actually writes by default — \
-         the raw, untransformed field name — never `conversationId`, which names no key the \
-         default `CodingKeys` produces and would let the path-bound field leak into the query. \
-         Got: {method}"
-    );
-    assert!(
-        !method.contains("[\"conversationId\"].contains(key)"),
-        "got: {method}"
     );
 }
 

@@ -8,7 +8,7 @@
 use super::runtime::{node_modules, ran_with_modules, stand_down_modules};
 use super::tests::{
     ConversationClientServiceSchema, ConversationId, WatchClientServiceSchema, WatchError,
-    WatchRequest, WindowError, WindowPage, WindowRequest,
+    WatchRequest, WindowError, WindowPage,
 };
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -40,7 +40,7 @@ async function until(predicate, timeoutMs = 2000) {
 }
 ";
 
-/// `window` answers the two-field page every scenario reads off; a `conversation_id` of
+/// `window` answers the two-field page every scenario reads off; a `conversationId` of
 /// `"slow-4"` is scenario 4's own hook to hold the handler open past the client's close, so it can
 /// observe the connection's cancellation signal directly rather than racing a fixed sleep against it.
 const IMPL_AND_MAKE_SERVER: &str = r#"
@@ -50,13 +50,13 @@ const handlerDone = new Promise((resolve) => { handlerReturned = resolve; });
 const impl = {
   async purgeConversation() {},
   async window(ctx, req) {
-    if (req.conversation_id === "slow-4") {
+    if (req.conversationId === "slow-4") {
       await until(() => ctx.signal.aborted, 2000);
       lastHandlerSawAborted = ctx.signal.aborted;
       handlerReturned();
       return { ok: true, value: { items: ["slow"] } };
     }
-    return { ok: true, value: { items: [req.conversation_id, "connection " + ctx.n] } };
+    return { ok: true, value: { items: [req.conversationId, "connection " + ctx.n] } };
   },
 };
 
@@ -84,7 +84,7 @@ async function main() {
   await onceEvent(rawSocket, "open");
   const transport = createConversationClientServiceWsTransport(rawSocket);
   const client = createConversationClientServiceClient(transport);
-  const windowResult = await client.window({ conversation_id: "abc" });
+  const windowResult = await client.window({ conversationId: "abc" });
   await client.purgeConversation("abc");
   const connectionsWhileOpen = server.connections().length;
   rawSocket.close();
@@ -190,7 +190,7 @@ async function main() {
   await onceEvent(client, "open");
   client.send(JSON.stringify({
     kind: "request", id: "1", service: "ConversationClientService", operation: "window",
-    payload: { conversation_id: "slow-4" },
+    payload: { conversationId: "slow-4" },
   }));
   await sleep(100);
   client.close();
@@ -362,7 +362,7 @@ async function main() {
   client.send(JSON.stringify({ kind: "ping" }));
   client.send(JSON.stringify({
     kind: "request", id: "1", service: "ConversationClientService", operation: "window",
-    payload: { conversation_id: "abc" },
+    payload: { conversationId: "abc" },
   }));
   client.send(JSON.stringify({
     kind: "request", id: "3", service: "UnknownService", operation: "noop", payload: {},
@@ -436,8 +436,6 @@ fn emitted() -> String {
     [
         "import { z } from \"zod\";".to_owned(),
         "import { WebSocketServer } from \"ws\";".to_owned(),
-        WindowRequest::ts_definition(),
-        WindowRequest::zod_schema(),
         WindowPage::ts_definition(),
         WindowPage::zod_schema(),
         WindowError::ts_definition(),

@@ -21,7 +21,7 @@ use super::tests::{
     SearchError, ThumbnailBackEnd, ThumbnailClientServiceSchema, ThumbnailError,
     UploadDocumentBackEnd, UploadDocumentClientServiceSchema, UploadDocumentError,
     UploadDocumentResponse, VaultClientServiceSchema, VaultError, VaultStatus, WindowError,
-    WindowPage, WindowRequest,
+    WindowPage,
 };
 use super::thumbnail_http_rest_transport;
 use super::upload_document_http_rest_transport;
@@ -43,9 +43,9 @@ const SEVEN_REQUESTS_DRIVER: &str = r#"
 const impl = {
   async purgeConversation() {},
   async window(ctx, req) {
-    if (req.conversation_id === "missing") return { ok: false, error: { errorCode: "not-found" } };
-    if (req.conversation_id === "boom") throw new Error("the handler came apart");
-    return { ok: true, value: { items: [req.conversation_id, `limit=${req.limit}`, "request 1"] } };
+    if (req.conversationId === "missing") return { ok: false, error: { errorCode: "not-found" } };
+    if (req.conversationId === "boom") throw new Error("the handler came apart");
+    return { ok: true, value: { items: [req.conversationId, `limit=${req.limit}`, "request 1"] } };
   },
 };
 
@@ -498,8 +498,6 @@ fn conversation_emitted() -> String {
     [
         "import { z } from \"zod\";".to_owned(),
         "import { createServer } from \"node:http\";".to_owned(),
-        WindowRequest::ts_definition(),
-        WindowRequest::zod_schema(),
         WindowPage::ts_definition(),
         WindowPage::zod_schema(),
         WindowError::ts_definition(),
@@ -529,7 +527,7 @@ fn the_seven_requests_answer_as_the_design_recorded() {
     );
     assert_eq!(
         results[0]["body"],
-        serde_json::json!({"items": ["652f1a3b4c5d6e7f8a9b0c1d", "limit=undefined", "request 1"]}),
+        serde_json::json!({"items": ["652f1a3b4c5d6e7f8a9b0c1d", "limit=10", "request 1"]}),
         "got: {results:#?}"
     );
 

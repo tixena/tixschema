@@ -33,8 +33,8 @@ const transport = {
   },
 };
 const client = createConversationClientServiceHttpClient(transport);
-await client.window({ conversation_id: "652f1a3b4c5d6e7f8a9b0c1d", limit: 10 });
-await client.window({ conversation_id: "652f1a3b4c5d6e7f8a9b0c1d" });
+await client.window({ conversationId: "652f1a3b4c5d6e7f8a9b0c1d", limit: 10 });
+await client.window({ conversationId: "652f1a3b4c5d6e7f8a9b0c1d" });
 await client.purgeConversation("652f1a3b4c5d6e7f8a9b0c1d");
 console.log(JSON.stringify(sent));
 "#;

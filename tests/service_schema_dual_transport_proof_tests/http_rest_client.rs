@@ -6,8 +6,7 @@
 //! where the service was declared.
 
 use crate::tests::{
-    ArchiveError, GetVersionError, GetVersionRequest, SweepError, SweepReport, ThumbnailError,
-    VersionResponse,
+    ArchiveError, GetVersionError, SweepError, SweepReport, ThumbnailError, VersionResponse,
 };
 
 document_service_http_rest_client!();

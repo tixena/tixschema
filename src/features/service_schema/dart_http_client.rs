@@ -341,40 +341,16 @@ fn path_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
     stmt
 }
 
-fn named_query_build_stmt(shape: &HttpShape) -> String {
-    let bound = shape
-        .placeholder_names()
-        .iter()
-        .map(|name| format!("'{name}'"))
-        .collect::<Vec<String>>()
-        .join(", ");
-    format!(
-        "    final queryParts = <String>[];\n    \
-         req.toJson().forEach((key, value) {{\n      \
-         if (const <String>[{bound}].contains(key) || value == null) {{\n        \
-         return;\n      \
-         }}\n      \
-         final rendered = value is List\n          \
-         ? value.map((element) => '$element').join(',')\n          \
-         : '$value';\n      \
-         queryParts.add('$key=${{Uri.encodeComponent(rendered)}}');\n    \
-         }});\n    \
-         final query = queryParts.join('&');\n"
-    )
-}
-
 fn query_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
     if shape.method.carries_a_body() {
         return "    const query = '';\n".to_owned();
     }
     let fields = match &operation.inputs {
-        OperationInputs::Empty => return "    const query = '';\n".to_owned(),
-        OperationInputs::Named(declared) => {
-            return if is_scalar_named_type(declared) {
-                "    const query = '';\n".to_owned()
-            } else {
-                named_query_build_stmt(shape)
-            };
+        // `Empty` sends no field. A bodyless `Named` message is always the one scalar the path
+        // binds whole (refused at parse time otherwise), reading off the placeholder rather than
+        // the query.
+        OperationInputs::Empty | OperationInputs::Named(_) => {
+            return "    const query = '';\n".to_owned();
         }
         OperationInputs::Generated(fields) => fields,
     };

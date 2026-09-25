@@ -99,7 +99,8 @@ const HTTP_SERVICE: &str = r#"
         async fn get_version(
             &self,
             ctx: &Ctx,
-            req: GetVersionRequest,
+            document_id: String,
+            version_id: String,
             byte_range: Option<String>,
         ) -> Result<(VersionResponse, String), GetVersionError>;
 
@@ -171,6 +172,7 @@ const MULTIPART_SERVICE: &str = r#"
             &self,
             ctx: &Ctx,
             title: String,
+            category: String,
             attachment: Box<dyn upload_service_schema::BodySource + Send>,
         ) -> Result<UploadResponse, UploadError>;
     }
@@ -2948,7 +2950,7 @@ fn a_stream_body_kind_is_recorded_on_the_binding() {
 }
 
 /// `header_in` claims one ordinary argument beside the message, by name, and the message it
-/// leaves behind is still the author's own type — the claimed argument never becomes a field.
+/// leaves behind carries only the fields the operation's own argument list still has.
 #[test]
 fn a_header_in_binding_claims_one_argument_beside_the_message() {
     let read = service(HTTP_SERVICE);
@@ -2957,10 +2959,15 @@ fn a_header_in_binding_claims_one_argument_beside_the_message() {
     assert_eq!(binding.header_in.len(), 1);
     assert_eq!(binding.header_in[0].name, "range");
     assert_eq!(binding.header_in[0].parameter.to_string(), "byte_range");
+    let fields: Vec<String> = generated_inputs(operation)
+        .unwrap()
+        .iter()
+        .map(|(field, _)| field.to_string())
+        .collect();
     assert_eq!(
-        spelled(named_input(operation).unwrap()),
-        "GetVersionRequest",
-        "the claimed argument is excluded from the message, which stays the author's own type"
+        fields,
+        vec!["document_id".to_owned(), "version_id".to_owned()],
+        "the claimed argument is excluded from the message's own field list"
     );
 }
 
@@ -3129,6 +3136,85 @@ fn an_optional_field_unbound_by_the_path_of_a_bodyless_method_is_not_refused() {
             }"
         ),
         Vec::<String>::new()
+    );
+}
+
+/// A single-argument message the path does not bind on a bodyless method is refused, naming the
+/// argument and the method.
+#[test]
+fn a_single_argument_message_the_path_does_not_bind_on_a_bodyless_method_is_refused() {
+    assert_eq!(
+        refusals(
+            "pub trait MediaService<Ctx> {
+                #[service_schema_op(http(method = \"GET\", path = \"/media/{document_id}\", error_status(NotFound = 404)))]
+                async fn download(&self, ctx: &Ctx, req: DownloadRequest) -> Result<MediaDescriptor, DownloadError>;
+            }"
+        ),
+        vec![
+            "service_schema: operation `download` takes its whole message as the one argument \
+             `req` on a `GET`\n       \
+             a `GET` carries no body, and the path does not bind `req`; this macro cannot see \
+             its fields to read them off the query string\n       \
+             declare each field as its own argument, so the message is generated and every \
+             field is read by its type"
+        ]
+    );
+}
+
+/// The same refusal, for a lone scalar argument the path does not name.
+#[test]
+fn a_lone_scalar_argument_the_path_does_not_bind_is_refused() {
+    assert_eq!(
+        refusals(
+            "pub trait MediaService<Ctx> {
+                #[service_schema_op(http(method = \"GET\", path = \"/search\", error_status(TooBroad = 422)))]
+                async fn search(&self, ctx: &Ctx, q: String) -> Result<SearchResult, SearchError>;
+            }"
+        ),
+        vec![
+            "service_schema: operation `search` takes its whole message as the one argument \
+             `q` on a `GET`\n       \
+             a `GET` carries no body, and the path does not bind `q`; this macro cannot see \
+             its fields to read them off the query string\n       \
+             declare each field as its own argument, so the message is generated and every \
+             field is read by its type"
+        ]
+    );
+}
+
+/// The scalar exception: a single argument bound whole by the path's one placeholder of its own
+/// name is not refused.
+#[test]
+fn a_scalar_bound_whole_by_its_own_placeholder_is_not_refused() {
+    assert_eq!(
+        refusals(
+            "pub trait DocumentService<Ctx> {
+                #[service_schema_op(http(method = \"GET\", path = \"/documents/{id}\"))]
+                async fn get(&self, ctx: &Ctx, id: String) -> Result<Document, DocumentError>;
+            }"
+        ),
+        Vec::<String>::new()
+    );
+}
+
+/// A single-argument message under `body = "multipart"` is refused, whole struct or lone scalar
+/// alike.
+#[test]
+fn a_single_argument_message_under_multipart_is_refused() {
+    assert_eq!(
+        refusals(
+            "pub trait UploadService<Ctx> {
+                #[service_schema_op(http(method = \"POST\", path = \"/media\", body = \"multipart\", error_status(TooLarge = 413)))]
+                async fn upload(&self, ctx: &Ctx, req: UploadMediaRequest) -> Result<UploadResponse, UploadError>;
+            }"
+        ),
+        vec![
+            "service_schema: operation `upload` takes its whole message as the one argument \
+             `req` under `body = \"multipart\"`\n       \
+             a multipart request carries its fields as text parts, and this macro cannot see \
+             `req`'s fields to write or read them\n       \
+             declare each field as its own argument beside the `part(...)` bindings"
+        ]
     );
 }
 

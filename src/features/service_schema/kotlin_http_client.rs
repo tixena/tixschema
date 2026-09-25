@@ -445,41 +445,16 @@ fn path_build_stmt(operation: &OperationDef, shape: &HttpShape, fn_prefix: &str)
     stmt
 }
 
-fn named_query_build_stmt(shape: &HttpShape, req_type: &str, fn_prefix: &str) -> String {
-    let bound = shape
-        .placeholder_names()
-        .iter()
-        .map(|name| format!("\"{name}\""))
-        .collect::<Vec<String>>()
-        .join(", ");
-    format!(
-        "    val queryParts = mutableListOf<String>()\n    \
-         val queryFields = Json.encodeToJsonElement(serializer<{req_type}>(), req).jsonObject\n    \
-         for ((key, jsonValue) in queryFields) {{\n      \
-         if (key in setOf({bound}) || jsonValue is JsonNull) continue\n      \
-         val rendered = if (jsonValue is JsonArray) {{\n        \
-         jsonValue.joinToString(\",\") {{ it.jsonPrimitive.content }}\n      \
-         }} else {{\n        \
-         jsonValue.jsonPrimitive.content\n      \
-         }}\n      \
-         queryParts.add(\"$key=\" + {fn_prefix}HttpPercentEncode(rendered))\n    \
-         }}\n    \
-         val query = queryParts.joinToString(\"&\")\n"
-    )
-}
-
 fn query_build_stmt(operation: &OperationDef, shape: &HttpShape, fn_prefix: &str) -> String {
     if shape.method.carries_a_body() {
         return "    val query = \"\"\n".to_owned();
     }
     let fields = match &operation.inputs {
-        OperationInputs::Empty => return "    val query = \"\"\n".to_owned(),
-        OperationInputs::Named(declared) => {
-            return if is_scalar_named_type(declared) {
-                "    val query = \"\"\n".to_owned()
-            } else {
-                named_query_build_stmt(shape, &kotlin_type_of(declared), fn_prefix)
-            };
+        // `Empty` sends no field. A bodyless `Named` message is always the one scalar the path
+        // binds whole (refused at parse time otherwise), reading off the placeholder rather than
+        // the query.
+        OperationInputs::Empty | OperationInputs::Named(_) => {
+            return "    val query = \"\"\n".to_owned();
         }
         OperationInputs::Generated(fields) => fields,
     };

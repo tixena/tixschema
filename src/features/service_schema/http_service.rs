@@ -330,14 +330,9 @@ fn message_build(operation: &OperationDef, shape: &HttpShape, prefix: &str) -> (
     let multipart = matches!(shape.body_kind, BodyKind::Multipart);
     match &operation.inputs {
         OperationInputs::Empty => empty_message_build(operation, bodied, multipart, prefix),
-        OperationInputs::Named(named_type) => named_message_build(
-            operation,
-            named_type,
-            bodied,
-            multipart,
-            &shape.placeholder_names(),
-            prefix,
-        ),
+        OperationInputs::Named(named_type) => {
+            named_message_build(operation, named_type, &shape.placeholder_names(), prefix)
+        }
         OperationInputs::Generated(fields) => generated_message_build(fields, shape, prefix),
     }
 }
@@ -388,16 +383,19 @@ fn empty_message_build(
     (String::new(), "{}".to_owned())
 }
 
+/// A `Named` message, TypeScript side: the whole body, the one placeholder's decoded value when
+/// the type is a scalar bound whole, or an object keyed by placeholder.
 fn named_message_build(
     operation: &OperationDef,
     named_type: &Type,
-    bodied: bool,
-    multipart: bool,
     placeholder_names: &[String],
     prefix: &str,
 ) -> (String, String) {
     if placeholder_names.is_empty() {
-        return empty_message_build(operation, bodied, multipart, prefix);
+        return (
+            whole_body_message_stmt(&operation.wire_name, prefix),
+            "message".to_owned(),
+        );
     }
     if placeholder_names.len() == 1 && is_scalar_named_type(named_type) {
         return (
@@ -405,11 +403,7 @@ fn named_message_build(
             message::decode_ts_expr(named_type, &placeholder_names[0], prefix),
         );
     }
-    let mut setup = if bodied && !multipart {
-        parsed_body_base_stmt()
-    } else {
-        "        const message: Record<string, unknown> = {};\n".to_owned()
-    };
+    let mut setup = parsed_body_base_stmt();
     for name in placeholder_names {
         let _ = writeln!(setup, "        message[\"{name}\"] = {name};");
     }
@@ -650,7 +644,7 @@ fn assembly_rule_lines(operation: &OperationDef, shape: &HttpShape) -> Vec<Strin
     match &operation.inputs {
         OperationInputs::Empty => empty_rule_lines(bodied, multipart),
         OperationInputs::Named(named_type) => {
-            named_rule_lines(named_type, bodied, multipart, &shape.placeholder_names())
+            named_rule_lines(named_type, &shape.placeholder_names())
         }
         OperationInputs::Generated(fields) => {
             generated_rule_lines(fields, shape, bodied, multipart)
@@ -666,14 +660,11 @@ fn empty_rule_lines(bodied: bool, multipart: bool) -> Vec<String> {
     }
 }
 
-fn named_rule_lines(
-    named_type: &Type,
-    bodied: bool,
-    multipart: bool,
-    placeholders: &[String],
-) -> Vec<String> {
+/// The doc line describing a `Named` message's build rule, for whichever of
+/// [`named_message_build`]'s shapes applies.
+fn named_rule_lines(named_type: &Type, placeholders: &[String]) -> Vec<String> {
     if placeholders.is_empty() {
-        return empty_rule_lines(bodied, multipart);
+        return empty_rule_lines(true, false);
     }
     if placeholders.len() == 1 && is_scalar_named_type(named_type) {
         return vec!["the message IS the one placeholder (a wire scalar).".to_owned()];
@@ -683,19 +674,10 @@ fn named_rule_lines(
     } else {
         ("placeholders", "are")
     };
-    if bodied && !multipart {
-        return vec![format!(
-            "an author-declared message: the {word} {is_are} inserted under its written \
-             spelling as a string, merged onto the parsed body."
-        )];
-    }
-    vec![
-        format!("an author-declared message: the {word}"),
-        format!(
-            "{is_are} inserted under its written spelling as a string; a bodyless method reads \
-             no body (Rust reads no query here either)."
-        ),
-    ]
+    vec![format!(
+        "an author-declared message: the {word} {is_are} inserted under its written spelling as \
+         a string, merged onto the parsed body."
+    )]
 }
 
 fn generated_rule_lines(

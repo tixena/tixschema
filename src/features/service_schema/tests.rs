@@ -72,6 +72,8 @@ use super::ws_server;
 #[cfg(all(feature = "typescript", feature = "zod"))]
 use super::ws_service;
 use crate::service_schema::parse::{ServiceDef, parse_service};
+#[cfg(any(feature = "swift", feature = "kotlin"))]
+use crate::utils::record_wire_scalar;
 use quote::ToTokens as _;
 use syn::ItemTrait;
 
@@ -129,7 +131,8 @@ const MIXED_HTTP_SERVICE: &str = "
         async fn get_version(
             &self,
             ctx: &Ctx,
-            req: GetVersionRequest,
+            document_id: String,
+            version_id: String,
             byte_range: Option<String>,
         ) -> Result<(VersionResponse, String), GetVersionError>;
 
@@ -155,7 +158,8 @@ const REQUIRED_HEADER_HTTP_SERVICE: &str = "
         async fn get_version(
             &self,
             ctx: &Ctx,
-            req: GetVersionRequest,
+            document_id: String,
+            version_id: String,
             byte_range: String,
         ) -> Result<VersionResponse, GetVersionError>;
     }
@@ -193,7 +197,8 @@ const DART_HTTP_SERVICE: &str = "
         async fn get_version(
             &self,
             ctx: &Ctx,
-            req: GetVersionRequest,
+            document_id: String,
+            version_id: String,
             byte_range: Option<String>,
         ) -> Result<(VersionResponse, String), GetVersionError>;
 
@@ -315,7 +320,8 @@ const SINGLE_PLACEHOLDER_HTTP_SERVICE: &str = "
         async fn window(
             &self,
             ctx: &Ctx,
-            req: WindowRequest,
+            conversation_id: String,
+            limit: Option<u32>,
         ) -> Result<WindowPage, WindowError>;
 
         #[service_schema_op(one_way, http(
@@ -394,7 +400,12 @@ const EMITTED_CLIENT_TEST_SERVICE: &str = "
             path = \"/v1/conversations/{conversation_id}/window\",
             error_status(NotFound = 404),
         ))]
-        async fn window(&self, ctx: &Ctx, req: WindowRequest) -> Result<WindowPage, WindowError>;
+        async fn window(
+            &self,
+            ctx: &Ctx,
+            conversation_id: String,
+            limit: Option<u32>,
+        ) -> Result<WindowPage, WindowError>;
     }
 ";
 
@@ -486,7 +497,8 @@ const DART_SINGLE_PLACEHOLDER_HTTP_SERVICE: &str = "
         async fn window(
             &self,
             ctx: &Ctx,
-            req: WindowRequest,
+            conversation_id: String,
+            limit: Option<u32>,
         ) -> Result<WindowPage, WindowError>;
 
         #[service_schema_op(one_way, http(
@@ -543,7 +555,8 @@ const KOTLIN_HTTP_SERVICE: &str = "
         async fn get_version(
             &self,
             ctx: &Ctx,
-            req: GetVersionRequest,
+            document_id: String,
+            version_id: String,
             byte_range: Option<String>,
         ) -> Result<(VersionResponse, String), GetVersionError>;
 
@@ -667,7 +680,8 @@ const KOTLIN_SINGLE_PLACEHOLDER_HTTP_SERVICE: &str = "
         async fn window(
             &self,
             ctx: &Ctx,
-            req: WindowRequest,
+            conversation_id: String,
+            limit: Option<u32>,
         ) -> Result<WindowPage, WindowError>;
 
         #[service_schema_op(one_way, http(
@@ -698,7 +712,12 @@ const KOTLIN_WS_SERVICE: &str = "
             path = \"/v1/conversations/{conversation_id}/window\",
             error_status(NotFound = 404),
         ))]
-        async fn window(&self, ctx: &Ctx, req: WindowRequest) -> Result<WindowPage, WindowError>;
+        async fn window(
+            &self,
+            ctx: &Ctx,
+            conversation_id: String,
+            limit: Option<u32>,
+        ) -> Result<WindowPage, WindowError>;
 
         #[service_schema_op(
             one_way,
@@ -750,7 +769,8 @@ const SWIFT_HTTP_SERVICE: &str = "
         async fn get_version(
             &self,
             ctx: &Ctx,
-            req: GetVersionRequest,
+            document_id: String,
+            version_id: String,
             byte_range: Option<String>,
         ) -> Result<(VersionResponse, String), GetVersionError>;
 
@@ -874,7 +894,8 @@ const SWIFT_SINGLE_PLACEHOLDER_HTTP_SERVICE: &str = "
         async fn window(
             &self,
             ctx: &Ctx,
-            req: WindowRequest,
+            conversation_id: String,
+            limit: Option<u32>,
         ) -> Result<WindowPage, WindowError>;
 
         #[service_schema_op(one_way, http(
@@ -906,7 +927,12 @@ const SWIFT_WS_SERVICE: &str = "
             path = \"/v1/conversations/{conversation_id}/window\",
             error_status(NotFound = 404),
         ))]
-        async fn window(&self, ctx: &Ctx, req: WindowRequest) -> Result<WindowPage, WindowError>;
+        async fn window(
+            &self,
+            ctx: &Ctx,
+            conversation_id: String,
+            limit: Option<u32>,
+        ) -> Result<WindowPage, WindowError>;
 
         #[service_schema_op(
             one_way,
@@ -939,14 +965,16 @@ const SWIFT_HEADER_VEC_OF_OPTIONS_SERVICE: &str = "
         async fn list_tags(
             &self,
             ctx: &Ctx,
-            req: ListTagsRequest,
             tags: Vec<Option<String>>,
         ) -> Result<ListTagsResponse, ListTagsError>;
     }
 ";
 
+/// `ConversationId` is a wire-scalar newtype throughout the fixtures this parses, and the
+/// registry recording that is thread-local and reset per test — see [`record_wire_scalar`].
 #[cfg(feature = "swift")]
 fn swift_ws_client_of(source: &str) -> String {
+    record_wire_scalar("ConversationId");
     swift_ws_client::emit(&parsed(source)).join("\n\n")
 }
 
@@ -1005,8 +1033,11 @@ fn kotlin_http_client_of(source: &str) -> String {
     kotlin_http_client::emit(&parsed(source)).join("\n\n")
 }
 
+/// `ConversationId` is a wire-scalar newtype throughout the fixtures this parses, and the
+/// registry recording that is thread-local and reset per test — see [`record_wire_scalar`].
 #[cfg(feature = "kotlin")]
 fn kotlin_ws_client_of(source: &str) -> String {
+    record_wire_scalar("ConversationId");
     kotlin_ws_client::emit(&parsed(source)).join("\n\n")
 }
 

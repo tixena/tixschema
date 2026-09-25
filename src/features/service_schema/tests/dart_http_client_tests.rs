@@ -144,18 +144,17 @@ fn a_lone_placeholder_on_a_scalar_message_still_is_the_whole_message() {
 }
 
 #[test]
-fn a_named_message_s_unbound_fields_build_the_query_string_of_a_bodyless_method() {
+fn an_unbound_generated_field_builds_the_query_string_of_a_bodyless_method() {
     let written = dart_http_client_of(DART_SINGLE_PLACEHOLDER_HTTP_SERVICE);
     let method = method_body(&written, "window");
     assert!(
-        method.contains("req.toJson().forEach((key, value) {")
-            && method.contains(
-                "if (const <String>['conversation_id'].contains(key) || value == null) {"
-            )
-            && method.contains("queryParts.add('$key=${Uri.encodeComponent(rendered)}');")
+        method.contains("final queryParts = <String>[];")
+            && method.contains("final value = req.limit;")
+            && method.contains("if (value != null) {")
+            && method.contains("queryParts.add('limit=' + Uri.encodeComponent('${value}'));")
             && method.contains("final query = queryParts.join('&');"),
-        "a field the path does not bind is a query parameter; the rendered map is walked because \
-         this macro cannot name an author's own fields. Got: {method}"
+        "a field the path does not bind is a query parameter, read off the message by its own \
+         type. Got: {method}"
     );
     assert!(
         !method.contains("const query = '';"),
@@ -628,7 +627,6 @@ fn a_header_vec_of_options_narrows_its_element_without_spelling_the_null_away() 
         async fn list_tags(
             &self,
             ctx: &Ctx,
-            req: ListTagsRequest,
             tags: Vec<Option<String>>,
         ) -> Result<ListTagsResponse, ListTagsError>;
     }
