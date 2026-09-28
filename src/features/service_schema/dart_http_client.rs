@@ -63,8 +63,8 @@ use crate::field_type::{FieldDefType, get_field_def};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
-    OperationOutcome, PathSegment, ServiceDef, is_scalar_named_type, is_unit_type, option_inner,
-    tuple_elements, vec_inner, wire_key,
+    OperationOutcome, PathSegment, ServiceDef, is_scalar_named_type, is_unit_type,
+    named_type_field_type, option_inner, tuple_elements, vec_inner, wire_key,
 };
 use crate::service_schema::support::fault_fields_typescript_name;
 use core::fmt::Write as _;
@@ -302,8 +302,11 @@ fn method(named: &str, fn_prefix: &str, operation: &OperationDef) -> String {
 // Building the request from the validated message.
 // ---------------------------------------------------------------------------------------------
 
-/// The value one path placeholder reads off `req`: the field the placeholder names, or the whole
-/// message where that message is itself a wire scalar.
+/// The value one path placeholder reads off `req`: the field the placeholder names — typed off the
+/// registry [`named_type_field_type`] reads back where the author's own message was declared with
+/// `#[model_schema()]` above the service naming it, so a sibling field, an `Option` or a `Vec` of
+/// one still renders through its own wire codec (issue #357) — or, failing that, the field read
+/// back untyped, or the whole message where that message is itself a wire scalar.
 fn placeholder_value_dart_expr(
     operation: &OperationDef,
     shape: &HttpShape,
@@ -321,6 +324,8 @@ fn placeholder_value_dart_expr(
         OperationInputs::Named(declared) => {
             if shape.placeholder_names().len() == 1 && is_scalar_named_type(declared) {
                 dart_wire_text(declared, "req", true)
+            } else if let Some(field_ty) = named_type_field_type(declared, placeholder) {
+                dart_wire_text(&field_ty, &format!("req.{placeholder}"), false)
             } else {
                 format!("'${{req.{placeholder}}}'")
             }

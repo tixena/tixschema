@@ -38,6 +38,8 @@
 //! attributes a generated message needs onto them.
 
 use crate::rename_rule::RenameRule;
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+use crate::utils::NAMED_STRUCT_FIELDS;
 use crate::utils::{is_recorded_unit_struct_type, is_recorded_untagged_enum, is_wire_scalar_type};
 use proc_macro2::TokenTree;
 use quote::{ToTokens as _, format_ident};
@@ -563,6 +565,29 @@ pub fn scalar_kind(ty: &Type) -> ScalarKind {
 /// Recognised through a registry, so a declaration *below* the service is not yet recorded.
 pub fn is_scalar_named_type(ty: &Type) -> bool {
     is_wire_scalar_type(ty)
+}
+
+/// The type a `Named` message's own `field` is declared at — read back from the registry
+/// [`crate::utils::record_named_struct_fields`] fills as each struct's own expansion runs. `None`
+/// both for a message declared below the service naming it and for a message this crate never
+/// recorded at all (a foreign type, or one written without `#[model_schema()]`) — the same limit
+/// [`is_scalar_named_type`] answers under. A caller falls back to its own pre-registry behavior
+/// where this answers `None`. Only the class-based HTTP clients (Dart, Kotlin, Swift) call this —
+/// see [`crate::utils::record_named_struct_fields`]'s own doc — so it is gated the same way.
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+pub fn named_type_field_type(declared: &Type, field: &str) -> Option<Type> {
+    let Type::Path(named) = declared else {
+        return None;
+    };
+    let rust_ident = named.path.segments.last()?.ident.to_string();
+    NAMED_STRUCT_FIELDS.with(|fields| {
+        fields
+            .borrow()
+            .get(&rust_ident)?
+            .iter()
+            .find(|(name, _)| name == field)
+            .map(|(_, ty)| ty.clone())
+    })
 }
 
 /// The one generic argument inside `Option<...>` or `Vec<...>`, if `ty` is written as that generic.

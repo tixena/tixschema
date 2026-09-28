@@ -30,8 +30,9 @@ use crate::field_type::{FieldDefType, get_field_def};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
-    OperationOutcome, PathSegment, ServiceDef, is_scalar_named_type, is_unit_type, option_inner,
-    service_declares_a_stream, service_declares_multipart, tuple_elements, vec_inner, wire_key,
+    OperationOutcome, PathSegment, ServiceDef, is_scalar_named_type, is_unit_type,
+    named_type_field_type, option_inner, service_declares_a_stream, service_declares_multipart,
+    tuple_elements, vec_inner, wire_key,
 };
 use crate::service_schema::support::fault_fields_typescript_name;
 use core::fmt::Write as _;
@@ -473,6 +474,8 @@ fn placeholder_value_kotlin_expr(
         OperationInputs::Named(declared) => {
             if shape.placeholder_names().len() == 1 && is_scalar_named_type(declared) {
                 kotlin_wire_text(declared, "req", true)
+            } else if let Some(field_ty) = named_type_field_type(declared, placeholder) {
+                kotlin_wire_text(&field_ty, &format!("req.{prop}"), false)
             } else {
                 format!("\"${{req.{prop}}}\"")
             }

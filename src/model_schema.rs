@@ -168,6 +168,9 @@ use crate::utils::{
     is_recorded_untagged_enum, is_wire_scalar_type, record_untagged_enum, record_wire_scalar,
 };
 
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+use crate::utils::record_named_struct_fields;
+
 #[cfg(feature = "serde")]
 use crate::utils::record_unit_struct;
 
@@ -1120,6 +1123,7 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // Read in every feature combination: a transport reads it whether or not a surface is on.
     record_wire_scalar_item(&item);
     record_untagged_enum_item(&item);
+    record_named_struct_fields_item(&item);
     // A `default_types` declaration is read against the item's own parameters, which the parser
     // never sees, so both directions are answered here — ahead of every shape, and of the branded
     // split inside the struct path.
@@ -4039,6 +4043,39 @@ fn record_untagged_enum_item(item: &Item) {
         record_untagged_enum(&item_type.ident.to_string());
     }
 }
+
+/// Records a plain struct's own named fields — a tuple struct and an enum have no named field, and
+/// carry none — for `crate::service_schema::parse::named_type_field_type` to answer later. This is
+/// the only way a `#[service_schema]` operation's own `Named` message can have one of its fields
+/// typed by an HTTP client emitter: that macro reads the trait's own tokens, never the message
+/// struct's, so a field the struct's own expansion already parsed is recorded here rather than
+/// re-parsed there.
+/// Only the class-based HTTP clients (Dart, Kotlin, Swift) ever read this back — see
+/// [`crate::utils::record_named_struct_fields`]'s own doc — so recording it is gated the same way.
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+fn record_named_struct_fields_item(item: &Item) {
+    let Item::Struct(item_struct) = item else {
+        return;
+    };
+    let syn::Fields::Named(fields) = &item_struct.fields else {
+        return;
+    };
+    let recorded = fields
+        .named
+        .iter()
+        .filter_map(|field| {
+            field
+                .ident
+                .as_ref()
+                .map(|ident| (ident.to_string(), field.ty.clone()))
+        })
+        .collect();
+    record_named_struct_fields(&item_struct.ident.to_string(), recorded);
+}
+
+/// [`record_named_struct_fields_item`] where no client that reads it back is on: nothing to record.
+#[cfg(not(any(feature = "dart", feature = "kotlin", feature = "swift")))]
+const fn record_named_struct_fields_item(_item: &Item) {}
 
 /// The name and inner type of the two shapes that can publish a bare scalar under their own name.
 fn wire_scalar_candidate(item: &Item) -> Option<(&syn::Ident, &syn::Type)> {

@@ -10,6 +10,24 @@ use super::{
     KOTLIN_NUMERIC_HEADER_OUT_SERVICE, KOTLIN_SINGLE_PLACEHOLDER_HTTP_SERVICE,
     KOTLIN_STREAM_HTTP_SERVICE, KOTLIN_UNIT_SUCCESS_HTTP_SERVICE, kotlin_http_client_of,
 };
+use crate::utils::record_named_struct_fields;
+
+/// A `Named` message with more than the one field a lone path placeholder binds — the Kotlin twin
+/// of `dart_http_client_tests`'s own `NAMED_SIBLING_FIELD_HTTP_SERVICE`, issue #357.
+const NAMED_SIBLING_FIELD_HTTP_SERVICE: &str = "
+    pub trait ThingClientService<Ctx> {
+        #[service_schema_op(http(
+            method = \"POST\",
+            path = \"/things/{id}\",
+            error_status(NotFound = 404),
+        ))]
+        async fn create_thing(
+            &self,
+            ctx: &Ctx,
+            req: CreateThingRequest,
+        ) -> Result<CreateThingResponse, CreateThingError>;
+    }
+";
 
 /// The body of one method, from its own doc comment through the closing brace of the method
 /// following it (or the end of the class) — mirrors `dart_http_client_tests`'s own `method_body`.
@@ -272,5 +290,58 @@ fn a_unit_success_answers_a_bare_ok_object() {
         written.contains("data object Ok : PingClientServicePingResult"),
         "a unit success carries no value, so `Ok` is an object rather than a data class holding \
          one. Got: {written}"
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// A `Named` message's own field, bound to a path placeholder — issue #357, Kotlin twin.
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn a_named_message_s_sibling_field_bound_to_a_placeholder_reads_through_its_own_json_codec() {
+    record_named_struct_fields(
+        "CreateThingRequest",
+        vec![
+            ("id".to_owned(), syn::parse_str("MediaId").unwrap()),
+            ("title".to_owned(), syn::parse_str("String").unwrap()),
+        ],
+    );
+    let written = kotlin_http_client_of(NAMED_SIBLING_FIELD_HTTP_SERVICE);
+    let method = method_body(&written, "createThing");
+    assert!(
+        method.contains(
+            "Json.encodeToJsonElement(serializer<MediaId>(), req.id).jsonPrimitive.content"
+        ),
+        "`id` is a sibling type, so the segment must read it through its own JSON codec — never \
+         Kotlin's default `toString()`, which would send the class's identity hash. Got: {method}"
+    );
+}
+
+#[test]
+fn a_named_message_s_unrecorded_field_falls_back_to_plain_interpolation() {
+    // Nothing records `UnknownClientRequest`'s own fields - the pre-existing, now-documented
+    // residual limit this crate cannot check what it was never told, same as the Dart client's own
+    // `a_named_message_s_unrecorded_field_falls_back_to_plain_interpolation`.
+    let written = kotlin_http_client_of(
+        "
+    pub trait ThingClientService<Ctx> {
+        #[service_schema_op(http(
+            method = \"POST\",
+            path = \"/things/{id}\",
+            error_status(NotFound = 404),
+        ))]
+        async fn create_unknown_thing(
+            &self,
+            ctx: &Ctx,
+            req: UnknownClientRequest,
+        ) -> Result<CreateThingResponse, CreateThingError>;
+    }
+    ",
+    );
+    let method = method_body(&written, "createUnknownThing");
+    assert!(
+        method.contains("\"${req.id}\""),
+        "an unrecorded message's field cannot be typed, so it falls back to the same plain \
+         interpolation the branch always used. Got: {method}"
     );
 }

@@ -9,6 +9,7 @@ use super::{
     DART_PRIMITIVE_SERVICE, DART_SINGLE_PLACEHOLDER_HTTP_SERVICE, DART_STREAM_HTTP_SERVICE,
     DART_UNIT_SUCCESS_HTTP_SERVICE, dart_http_client_of,
 };
+use crate::utils::record_named_struct_fields;
 
 /// The `send` signature every service's transport interface carries, whatever it declares.
 const SEAM_SEND_SIGNATURE: &str = "  Future<({int status, List<(String, String)> headers, \
@@ -16,6 +17,24 @@ const SEAM_SEND_SIGNATURE: &str = "  Future<({int status, List<(String, String)>
      ({String method, String path, String query, List<(String, String)> headers, List<int> \
      body, List<(String, dynamic)> parts}) request,\n  \
      );";
+
+/// A `Named` message with more than the one field a lone path placeholder binds:
+/// `CreateThingRequest` is never itself a wire scalar (it carries more than the placeholder), so
+/// the placeholder must read the one field it names off it, not the whole message — issue #357.
+const NAMED_SIBLING_FIELD_HTTP_SERVICE: &str = "
+    pub trait ThingClientService<Ctx> {
+        #[service_schema_op(http(
+            method = \"POST\",
+            path = \"/things/{id}\",
+            error_status(NotFound = 404),
+        ))]
+        async fn create_thing(
+            &self,
+            ctx: &Ctx,
+            req: CreateThingRequest,
+        ) -> Result<CreateThingResponse, CreateThingError>;
+    }
+";
 
 /// The body of one method, from its own doc comment through the closing brace of the method
 /// following it (or the end of the class) — mirrors `http_client_tests`'s own `method_body`.
@@ -783,5 +802,161 @@ fn a_header_vec_element_that_will_not_parse_faults_the_whole_element() {
         ),
         "one bad piece faults the whole `Vec` element rather than silently dropping it. \
          Got: {method}"
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// A `Named` message's own field, bound to a path placeholder — issue #357.
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn a_named_message_s_sibling_field_bound_to_a_placeholder_reads_through_its_own_wire_codec() {
+    record_named_struct_fields(
+        "CreateThingRequest",
+        vec![
+            ("id".to_owned(), syn::parse_str("MediaId").unwrap()),
+            ("title".to_owned(), syn::parse_str("String").unwrap()),
+        ],
+    );
+    let written = dart_http_client_of(NAMED_SIBLING_FIELD_HTTP_SERVICE);
+    let method = method_body(&written, "createThing");
+    assert!(
+        method.contains("path += Uri.encodeComponent('${(req.id).toJson()}');"),
+        "`id` is a sibling type (a newtype such as a `serde(transparent)` id wrapper), so the \
+         segment must read it through its own `toJson()` — never Dart's default `Object.toString()`, \
+         which would send the literal text `Instance of 'MediaId'`. Got: {method}"
+    );
+    assert!(
+        !method.contains("path += Uri.encodeComponent('${req.id}');"),
+        "the buggy rendering this issue reports: interpolating the class instance directly. \
+         Got: {method}"
+    );
+}
+
+#[test]
+fn a_named_message_s_plain_scalar_field_bound_to_a_placeholder_still_interpolates_directly() {
+    record_named_struct_fields(
+        "RenameThingRequest",
+        vec![("name".to_owned(), syn::parse_str("String").unwrap())],
+    );
+    let written = dart_http_client_of(
+        "
+    pub trait ThingClientService<Ctx> {
+        #[service_schema_op(http(
+            method = \"POST\",
+            path = \"/things/{name}\",
+            error_status(NotFound = 404),
+        ))]
+        async fn rename_thing(
+            &self,
+            ctx: &Ctx,
+            req: RenameThingRequest,
+        ) -> Result<RenameThingResponse, RenameThingError>;
+    }
+    ",
+    );
+    let method = method_body(&written, "renameThing");
+    assert!(
+        method.contains("path += Uri.encodeComponent('${req.name}');"),
+        "a plain `String` field still interpolates directly - typing the field changes nothing \
+         for a value that was already wire-safe text. Got: {method}"
+    );
+}
+
+#[test]
+fn a_named_message_s_optional_sibling_field_bound_to_a_placeholder_reads_the_empty_string_when_absent()
+ {
+    record_named_struct_fields(
+        "TagThingRequest",
+        vec![(
+            "label".to_owned(),
+            syn::parse_str("Option<MediaId>").unwrap(),
+        )],
+    );
+    let written = dart_http_client_of(
+        "
+    pub trait ThingClientService<Ctx> {
+        #[service_schema_op(http(
+            method = \"POST\",
+            path = \"/things/{label}\",
+            error_status(NotFound = 404),
+        ))]
+        async fn tag_thing(
+            &self,
+            ctx: &Ctx,
+            req: TagThingRequest,
+        ) -> Result<TagThingResponse, TagThingError>;
+    }
+    ",
+    );
+    let method = method_body(&written, "tagThing");
+    assert!(
+        method.contains(
+            "path += Uri.encodeComponent((req.label == null ? '' : '${(req.label!).toJson()}'));"
+        ),
+        "an absent `Option` field reads as the empty string; a present one still reads through \
+         its own `toJson()`. Got: {method}"
+    );
+}
+
+#[test]
+fn a_named_message_s_vec_of_sibling_field_bound_to_a_placeholder_joins_each_element_s_own_wire_codec()
+ {
+    record_named_struct_fields(
+        "TagAllThingsRequest",
+        vec![("labels".to_owned(), syn::parse_str("Vec<MediaId>").unwrap())],
+    );
+    let written = dart_http_client_of(
+        "
+    pub trait ThingClientService<Ctx> {
+        #[service_schema_op(http(
+            method = \"POST\",
+            path = \"/things/{labels}\",
+            error_status(NotFound = 404),
+        ))]
+        async fn tag_all_things(
+            &self,
+            ctx: &Ctx,
+            req: TagAllThingsRequest,
+        ) -> Result<TagAllThingsResponse, TagAllThingsError>;
+    }
+    ",
+    );
+    let method = method_body(&written, "tagAllThings");
+    assert!(
+        method.contains(
+            "path += Uri.encodeComponent((req.labels).map((e) => '${(e).toJson()}').join(\",\"));"
+        ),
+        "each element of a `Vec` field reads through its own `toJson()`, joined with a comma. \
+         Got: {method}"
+    );
+}
+
+#[test]
+fn a_named_message_s_unrecorded_field_falls_back_to_plain_interpolation() {
+    // Nothing records `UnknownClientRequest`'s own fields (a struct declared without
+    // `#[model_schema()]`, or below the service naming it) - the pre-existing, now-documented
+    // residual limit: this crate cannot check what it was never told.
+    let written = dart_http_client_of(
+        "
+    pub trait ThingClientService<Ctx> {
+        #[service_schema_op(http(
+            method = \"POST\",
+            path = \"/things/{id}\",
+            error_status(NotFound = 404),
+        ))]
+        async fn create_unknown_thing(
+            &self,
+            ctx: &Ctx,
+            req: UnknownClientRequest,
+        ) -> Result<CreateThingResponse, CreateThingError>;
+    }
+    ",
+    );
+    let method = method_body(&written, "createUnknownThing");
+    assert!(
+        method.contains("path += Uri.encodeComponent('${req.id}');"),
+        "an unrecorded message's field cannot be typed, so it falls back to the same plain \
+         interpolation the branch always used. Got: {method}"
     );
 }

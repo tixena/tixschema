@@ -612,6 +612,28 @@ thread_local! {
     static UNTAGGED_ENUMS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
 }
 
+// Read only by `service_schema::parse::named_type_field_type`, for the class-based HTTP clients
+// (Dart, Kotlin, Swift) — the ones whose sibling values are real class instances needing an
+// explicit codec call before they can be embedded as text. The Rust transport reads every value
+// through serde generically, and a TypeScript/Zod value has no wrapper class to unwrap in the
+// first place, so neither ever reads this; gated to match, the same way the registry's own writer
+// below is. `pub(crate)`, unlike this module's other thread-locals: its one reader lives in
+// `service_schema::parse` (which, unlike this private `utils` module, publishes what it declares),
+// so a wrapper function here answering *for* it would read as though nothing called it and be
+// refused as dead code the same way — the direct static avoids the false read.
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+thread_local! {
+    /// Each plain struct's own named fields, one `(field name, field type)` pair per field in
+    /// declaration order. `#[service_schema]` sees a `Named` operation message's own type only as
+    /// the author wrote it in the trait's signature — never that struct's fields, which belong to a
+    /// separate item and a separate expansion — so an HTTP client emitter that has to type one
+    /// field of it (to know whether the value needs its own `toJson()`/wire codec before it can be
+    /// embedded as text) reads it back from here instead. Recognised through a registry, so a
+    /// declaration *below* the service is not yet recorded — the same limit
+    /// [`is_recorded_wire_scalar`] answers under.
+    pub(crate) static NAMED_STRUCT_FIELDS: RefCell<HashMap<String, Vec<(String, Type)>>> = RefCell::new(HashMap::new());
+}
+
 #[cfg(feature = "serde")]
 thread_local! {
     /// The names of unit structs `process_struct` has rewritten to write and read `{}`. Read by
@@ -917,6 +939,15 @@ pub fn is_recorded_unit_struct_type(ty: &Type) -> bool {
 
 pub fn lookup_alias_info(rust_ident: &str) -> Option<AliasInfo> {
     ALIAS_INFO.with(|map| map.borrow().get(rust_ident).cloned())
+}
+
+/// Records `rust_ident`'s own named fields, replacing whatever an earlier declaration of the same
+/// name left — a struct is declared once, so there is nothing to merge.
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+pub fn record_named_struct_fields(rust_ident: &str, fields: Vec<(String, Type)>) {
+    NAMED_STRUCT_FIELDS.with(|map| {
+        map.borrow_mut().insert(rust_ident.to_owned(), fields);
+    });
 }
 
 /// The type a spelling names, read through the invisible grouping a `macro_rules!` substitution
