@@ -565,6 +565,17 @@ pub fn is_scalar_named_type(ty: &Type) -> bool {
     is_wire_scalar_type(ty)
 }
 
+/// Whether a path placeholder reads a field of the operation's own `Named` message, whose type
+/// this macro never sees, rather than the message bound whole as one wire scalar.
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+pub fn path_reads_a_named_field(operation: &OperationDef) -> bool {
+    let OperationInputs::Named(declared) = &operation.inputs else {
+        return false;
+    };
+    let placeholders = HttpShape::of(operation).placeholder_names();
+    !placeholders.is_empty() && (placeholders.len() != 1 || !is_scalar_named_type(declared))
+}
+
 /// The one generic argument inside `Option<...>` or `Vec<...>`, if `ty` is written as that generic.
 pub fn generic_inner<'ty>(ty: &'ty Type, wanted: &str) -> Option<&'ty Type> {
     let Type::Path(named) = ty else {

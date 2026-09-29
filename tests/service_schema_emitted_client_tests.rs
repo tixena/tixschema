@@ -115,12 +115,13 @@ mod runtime;
 #[cfg(test)]
 use tests::{
     ArchiveClientService, ContentClientService, ConversationClientService, EchoClientService,
-    GateClientService, LabelClientService, PulseClientService, SealClientService,
-    SearchClientService, StampClientService, ThumbnailClientService, UploadDocumentClientService,
-    VaultClientService, archive_client_service_schema, content_client_service_schema,
-    conversation_client_service_schema, echo_client_service_schema, gate_client_service_schema,
-    label_client_service_schema, pulse_client_service_schema, seal_client_service_schema,
-    search_client_service_schema, stamp_client_service_schema, thumbnail_client_service_schema,
+    GateClientService, LabelClientService, MediaClientService, PulseClientService,
+    SealClientService, SearchClientService, StampClientService, ThumbnailClientService,
+    UploadDocumentClientService, VaultClientService, archive_client_service_schema,
+    content_client_service_schema, conversation_client_service_schema, echo_client_service_schema,
+    gate_client_service_schema, label_client_service_schema, media_client_service_schema,
+    pulse_client_service_schema, seal_client_service_schema, search_client_service_schema,
+    stamp_client_service_schema, thumbnail_client_service_schema,
     upload_document_client_service_schema, vault_client_service_schema,
 };
 #[cfg(all(test, feature = "dart"))]

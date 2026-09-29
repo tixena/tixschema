@@ -508,6 +508,16 @@ const DART_MULTIPART_HTTP_SERVICE: &str = "
     }
 ";
 
+/// A body-carrying operation whose path placeholder reads a field of its named message, a field
+/// whose type the macro never sees.
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+const NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE: &str = "
+    pub trait MediaClientService<Ctx> {
+        #[service_schema_op(http(method = \"PUT\", path = \"/media/{sha256}\"))]
+        async fn upload(&self, ctx: &Ctx, req: MediaUpload) -> Result<(), MediaError>;
+    }
+";
+
 #[cfg(feature = "dart")]
 const DART_SINGLE_PLACEHOLDER_HTTP_SERVICE: &str = "
     pub trait ConversationClientService<Ctx> {

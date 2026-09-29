@@ -17,6 +17,9 @@ use super::tests::conversation_client_service_schema::{
 use super::tests::echo_client_service_schema::{
     echo_client_service_fault_fields_kotlin, echo_client_service_fault_kind_kotlin,
 };
+use super::tests::media_client_service_schema::{
+    media_client_service_fault_fields_kotlin, media_client_service_fault_kind_kotlin,
+};
 use super::tests::pulse_client_service_schema::{
     pulse_client_service_fault_fields_kotlin, pulse_client_service_fault_kind_kotlin,
 };
@@ -35,11 +38,12 @@ use super::tests::thumbnail_client_service_schema::{
     thumbnail_client_service_fault_fields_kotlin, thumbnail_client_service_fault_kind_kotlin,
 };
 use super::tests::{
-    ConversationClientServiceSchema, EchoClientServiceSchema, PulseClientServiceSchema,
-    StampClientServiceSchema, ThumbnailClientServiceSchema, conversation_id_kotlin,
-    echo_range_error_kotlin, echo_range_response_kotlin, pulse_error_kotlin, pulse_request_kotlin,
-    pulse_response_kotlin, stamp_error_kotlin, stamp_receipt_kotlin, thumbnail_error_kotlin,
-    window_error_kotlin, window_page_kotlin, window_request_kotlin,
+    ConversationClientServiceSchema, EchoClientServiceSchema, MediaClientServiceSchema,
+    PulseClientServiceSchema, StampClientServiceSchema, ThumbnailClientServiceSchema,
+    conversation_id_kotlin, echo_range_error_kotlin, echo_range_response_kotlin,
+    media_error_kotlin, media_id_kotlin, media_upload_kotlin, pulse_error_kotlin,
+    pulse_request_kotlin, pulse_response_kotlin, stamp_error_kotlin, stamp_receipt_kotlin,
+    thumbnail_error_kotlin, window_error_kotlin, window_page_kotlin, window_request_kotlin,
 };
 use std::collections::HashMap;
 
@@ -53,6 +57,23 @@ const KOTLIN_IMPORTS: &str = "import kotlinx.coroutines.*\n\
      import kotlinx.serialization.descriptors.*\n\
      import kotlinx.serialization.encoding.*\n\
      import kotlinx.serialization.builtins.*";
+
+/// A stub `MediaClientServiceHttpTransport` recording the path of the one request it answers.
+const MEDIA_DRIVER: &str = r#"
+class MediaRecorder : MediaClientServiceHttpTransport {
+    val paths = mutableListOf<String>()
+    override suspend fun send(request: MediaClientServiceHttpRequest): MediaClientServiceHttpResponse {
+        paths.add(request.path)
+        return MediaClientServiceHttpResponse(204, emptyList(), ByteArray(0))
+    }
+}
+
+fun main() = runBlocking {
+    val recorder = MediaRecorder()
+    MediaClientServiceHttpClient(recorder).upload(MediaUpload(caption = "c", sha256 = MediaId("abc123")))
+    println(buildJsonObject { put("path", recorder.paths.first()) }.toString())
+}
+"#;
 
 /// Group 2's own driver: a recording `ConversationClientServiceHttpTransport` answering 200 for
 /// every call but `DELETE`, which it answers 204 — then the three calls `run_dart.rs` makes of
@@ -455,6 +476,22 @@ fn client_module(driver: &str) -> String {
     parts.join("\n\n")
 }
 
+/// `MediaClientService`'s own types, its fault pair and its client, driven over a stub transport
+/// that records the path of the one request it answers.
+fn media_module() -> String {
+    let mut parts = vec![KOTLIN_IMPORTS.to_owned()];
+    parts.extend([
+        media_id_kotlin::kotlin_definition(),
+        media_upload_kotlin::kotlin_definition(),
+        media_error_kotlin::kotlin_definition(),
+        media_client_service_fault_fields_kotlin::kotlin_definition(),
+        media_client_service_fault_kind_kotlin::kotlin_definition(),
+        MediaClientServiceSchema::kotlin_http_client(),
+        MEDIA_DRIVER.to_owned(),
+    ]);
+    parts.join("\n\n")
+}
+
 fn thumbnail_module(driver: &str) -> String {
     let mut parts = vec![KOTLIN_IMPORTS.to_owned()];
     parts.extend(thumbnail_definitions());
@@ -818,5 +855,17 @@ fn a_header_in_value_with_a_line_feed_is_refused_before_the_transport_is_ever_re
     assert_eq!(
         results["faultKind"], "FailedValidation",
         "got: {results:#?}"
+    );
+}
+
+#[test]
+fn a_newtype_field_of_a_named_body_message_fills_its_path_placeholder_with_its_wire_value() {
+    let Some(wrote) = ran_kotlin(&media_module()) else {
+        return;
+    };
+    let sent: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
+    assert_eq!(
+        sent["path"], "/media/abc123",
+        "the segment is the newtype's wire value, as the Rust client writes it. Got: {sent:#?}"
     );
 }

@@ -2108,6 +2108,8 @@ service_schema: operation `get_widget`'s path names `{item_id}`, and its message
               a path placeholder binds a same-named field on the message
 ```
 
+Every client fills a placeholder the way the Rust client does, through the value's own codec: a string as itself, a number or boolean as its text, and a newtype such as `MediaId("abc123")` as its wire value, `/media/abc123`. That includes a field of an author's own named message, whose type the macro never sees: the Dart, Kotlin and Swift clients render it at runtime through a generated helper.
+
 `GET` and `DELETE` carry no request body, so a required field the path did not bind has nowhere left to go and is refused on the field rather than silently dropped:
 
 ```text

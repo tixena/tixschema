@@ -8,7 +8,8 @@
 use super::{
     KOTLIN_BYTES_HEADER_OUT_SERVICE, KOTLIN_HTTP_SERVICE, KOTLIN_MULTIPART_HTTP_SERVICE,
     KOTLIN_NUMERIC_HEADER_OUT_SERVICE, KOTLIN_SINGLE_PLACEHOLDER_HTTP_SERVICE,
-    KOTLIN_STREAM_HTTP_SERVICE, KOTLIN_UNIT_SUCCESS_HTTP_SERVICE, kotlin_http_client_of,
+    KOTLIN_STREAM_HTTP_SERVICE, KOTLIN_UNIT_SUCCESS_HTTP_SERVICE,
+    NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE, kotlin_http_client_of,
 };
 
 /// The body of one method, from its own doc comment through the closing brace of the method
@@ -272,5 +273,21 @@ fn a_unit_success_answers_a_bare_ok_object() {
         written.contains("data object Ok : PingClientServicePingResult"),
         "a unit success carries no value, so `Ok` is an object rather than a data class holding \
          one. Got: {written}"
+    );
+}
+
+#[test]
+fn a_named_message_field_in_the_path_crosses_through_the_wire_text_helper() {
+    let written = kotlin_http_client_of(NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE);
+    assert!(
+        written.contains("mediaClientServiceHttpWireText(req.sha256)")
+            && written.contains(
+                "private inline fun <reified T> mediaClientServiceHttpWireText(value: T): String ="
+            ),
+        "got: {written}"
+    );
+    assert!(
+        !kotlin_http_client_of(KOTLIN_HTTP_SERVICE).contains("HttpWireText"),
+        "a service with no such placeholder emits no helper"
     );
 }

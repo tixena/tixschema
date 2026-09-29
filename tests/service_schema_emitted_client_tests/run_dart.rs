@@ -9,11 +9,11 @@
 use super::runtime::ran;
 use super::tests::swift_codec_fixture::{codec_unit_field_dart, codec_unit_payload_dart};
 use super::tests::{
-    ConversationClientServiceSchema, EchoClientServiceSchema, ShelfClientServiceSchema,
-    StampClientServiceSchema, ThumbnailClientServiceSchema, conversation_id_dart,
-    echo_range_error_dart, echo_range_response_dart, shelf_dart, shelf_error_dart,
-    stamp_error_dart, stamp_receipt_dart, thumbnail_error_dart, window_error_dart,
-    window_page_dart,
+    ConversationClientServiceSchema, EchoClientServiceSchema, MediaClientServiceSchema,
+    ShelfClientServiceSchema, StampClientServiceSchema, ThumbnailClientServiceSchema,
+    conversation_id_dart, echo_range_error_dart, echo_range_response_dart, media_error_dart,
+    media_id_dart, media_upload_dart, shelf_dart, shelf_error_dart, stamp_error_dart,
+    stamp_receipt_dart, thumbnail_error_dart, window_error_dart, window_page_dart,
 };
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -238,6 +238,27 @@ void main() async {
     'tally': (tally as ShelfClientServiceTallyResultOk).value,
     'refused': (refused as ShelfClientServiceTallyResultOperation).error.toJson(),
   }));
+}
+";
+
+/// A stub `MediaClientServiceHttpTransport` recording the path and body of every request.
+const MEDIA_DRIVER: &str = "
+class _MediaRecorder implements MediaClientServiceHttpTransport {
+  final List<Map<String, dynamic>> sent = <Map<String, dynamic>>[];
+
+  @override
+  Future<({int status, List<(String, String)> headers, List<int> body, Stream<List<int>> bodyStream})> send(
+    ({String method, String path, String query, List<(String, String)> headers, List<int> body, List<(String, dynamic)> parts}) request,
+  ) async {
+    sent.add(<String, dynamic>{'path': request.path, 'body': jsonDecode(utf8.decode(request.body))});
+    return (status: 204, headers: <(String, String)>[], body: <int>[], bodyStream: const Stream<List<int>>.empty());
+  }
+}
+
+void main() async {
+  final recorder = _MediaRecorder();
+  await MediaClientServiceHttpClient(recorder).upload(MediaUpload(sha256: MediaId('abc123'), caption: 'c'));
+  print(jsonEncode(recorder.sent.first));
 }
 ";
 
@@ -550,5 +571,35 @@ fn a_primitive_message_and_primitive_and_list_successes_cross_the_http_client() 
             "tally": 7_i64,
             "refused": "Missing",
         })
+    );
+}
+
+// -------------------------------------------------------------------------------------------
+// A path placeholder reading a newtype field of a named body message: the segment must carry
+// the newtype's own wire value, as the Rust client writes it.
+// -------------------------------------------------------------------------------------------
+
+fn media_module() -> String {
+    [
+        "import 'dart:convert';".to_owned(),
+        media_id_dart::dart_definition(),
+        media_upload_dart::dart_definition(),
+        media_error_dart::dart_definition(),
+        MediaClientServiceSchema::dart_definition(),
+        MediaClientServiceSchema::dart_http_client(),
+        MEDIA_DRIVER.to_owned(),
+    ]
+    .join("\n\n")
+}
+
+#[test]
+fn a_newtype_field_of_a_named_body_message_fills_its_path_placeholder_with_its_wire_value() {
+    let Some(wrote) = ran("dart", RUNTIME_VAR, "dart", "media.dart", &media_module()) else {
+        return;
+    };
+    let sent: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
+    assert_eq!(
+        sent["path"], "/media/abc123",
+        "the segment is the newtype's wire value, as the Rust client writes it. Got: {sent:#?}"
     );
 }

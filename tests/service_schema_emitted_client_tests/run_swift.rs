@@ -13,6 +13,9 @@ use super::runtime::ran;
 use super::tests::conversation_client_service_schema::{
     conversation_client_service_fault_fields_swift, conversation_client_service_fault_kind_swift,
 };
+use super::tests::media_client_service_schema::{
+    media_client_service_fault_fields_swift, media_client_service_fault_kind_swift,
+};
 use super::tests::stamp_client_service_schema::{
     stamp_client_service_fault_fields_swift, stamp_client_service_fault_kind_swift,
 };
@@ -25,9 +28,10 @@ use super::tests::swift_codec_fixture::{
     codec_untagged_swift,
 };
 use super::tests::{
-    ConversationClientServiceSchema, EchoClientServiceSchema, StampClientServiceSchema,
-    ThumbnailClientServiceSchema, conversation_id_swift, echo_client_service_schema,
-    echo_range_error_swift, echo_range_response_swift, stamp_error_swift, stamp_receipt_swift,
+    ConversationClientServiceSchema, EchoClientServiceSchema, MediaClientServiceSchema,
+    StampClientServiceSchema, ThumbnailClientServiceSchema, conversation_id_swift,
+    echo_client_service_schema, echo_range_error_swift, echo_range_response_swift,
+    media_error_swift, media_id_swift, media_upload_swift, stamp_error_swift, stamp_receipt_swift,
     thumbnail_client_service_schema, thumbnail_error_swift, window_error_swift, window_page_swift,
     window_request_swift,
 };
@@ -308,6 +312,22 @@ let report = Report(
 )
 print(String(data: try! JSONEncoder().encode(report), encoding: .utf8)!)
 "##;
+
+/// A stub `MediaClientServiceHttpTransport` recording the path of the one request it answers.
+const MEDIA_DRIVER: &str = r#"
+final class MediaRecorder: MediaClientServiceHttpTransport, @unchecked Sendable {
+  var paths: [String] = []
+  func send(_ request: MediaClientServiceHttpRequest) async throws -> MediaClientServiceHttpResponse {
+    paths.append(request.path)
+    return MediaClientServiceHttpResponse(status: 204, headers: [], body: Data())
+  }
+}
+
+let recorder = MediaRecorder()
+_ = await MediaClientServiceHttpClient(transport: recorder)
+  .upload(MediaUpload(caption: "c", sha256: MediaId(value: "abc123")))
+print(String(data: try! JSONEncoder().encode(["path": recorder.paths.first ?? ""]), encoding: .utf8)!)
+"#;
 
 // -------------------------------------------------------------------------------------------
 // The generated types and clients every group but the codec one drives.
@@ -740,5 +760,37 @@ fn a_numeric_header_out_element_reads_present_absent_and_a_value_that_will_not_p
         results["malformed"]["faultKind"], "undeserializable-payload",
         "a present header that will not parse as its declared type must fault rather than \
          default to 0. got: {results:#?}"
+    );
+}
+
+fn media_module() -> String {
+    [
+        "import Foundation".to_owned(),
+        media_id_swift::swift_definition(),
+        media_upload_swift::swift_definition(),
+        media_error_swift::swift_definition(),
+        media_client_service_fault_fields_swift::swift_definition(),
+        media_client_service_fault_kind_swift::swift_definition(),
+        MediaClientServiceSchema::swift_http_client(),
+        MEDIA_DRIVER.to_owned(),
+    ]
+    .join("\n\n")
+}
+
+#[test]
+fn a_newtype_field_of_a_named_body_message_fills_its_path_placeholder_with_its_wire_value() {
+    let Some(wrote) = ran(
+        "swift",
+        RUNTIME_VAR,
+        "swift",
+        "media.swift",
+        &media_module(),
+    ) else {
+        return;
+    };
+    let sent: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
+    assert_eq!(
+        sent["path"], "/media/abc123",
+        "the segment is the newtype's wire value, as the Rust client writes it. Got: {sent:#?}"
     );
 }

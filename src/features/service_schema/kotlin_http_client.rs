@@ -31,7 +31,8 @@ use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
     OperationOutcome, PathSegment, ServiceDef, is_scalar_named_type, is_unit_type, option_inner,
-    service_declares_a_stream, service_declares_multipart, tuple_elements, vec_inner, wire_key,
+    path_reads_a_named_field, service_declares_a_stream, service_declares_multipart,
+    tuple_elements, vec_inner, wire_key,
 };
 use crate::service_schema::support::fault_fields_typescript_name;
 use core::fmt::Write as _;
@@ -456,6 +457,7 @@ fn method(named: &str, fn_prefix: &str, operation: &OperationDef, has_multipart:
 // ---------------------------------------------------------------------------------------------
 
 fn placeholder_value_kotlin_expr(
+    fn_prefix: &str,
     operation: &OperationDef,
     shape: &HttpShape,
     placeholder: &str,
@@ -474,7 +476,7 @@ fn placeholder_value_kotlin_expr(
             if shape.placeholder_names().len() == 1 && is_scalar_named_type(declared) {
                 kotlin_wire_text(declared, "req", true)
             } else {
-                format!("\"${{req.{prop}}}\"")
+                format!("{}(req.{prop})", wire_text_call(fn_prefix))
             }
         }
     }
@@ -488,7 +490,7 @@ fn path_build_stmt(operation: &OperationDef, shape: &HttpShape, fn_prefix: &str)
                 let _ = writeln!(stmt, "    path += \"{}\"", kotlin_escape(text));
             }
             PathSegment::Placeholder(name) => {
-                let value = placeholder_value_kotlin_expr(operation, shape, name);
+                let value = placeholder_value_kotlin_expr(fn_prefix, operation, shape, name);
                 let _ = writeln!(stmt, "    path += {fn_prefix}HttpPercentEncode({value})");
             }
         }
@@ -1004,6 +1006,9 @@ fn fault_helpers(service: &ServiceDef, named: &str, fn_prefix: &str) -> Vec<Stri
     if reads_a_response_header(service) {
         helpers.push(find_header_fn(fn_prefix));
     }
+    if service.operations.iter().any(path_reads_a_named_field) {
+        helpers.push(wire_text_fn(fn_prefix));
+    }
     helpers.extend([
         transport_failure_fn(named, fn_prefix),
         undeserializable_payload_fn(named, fn_prefix),
@@ -1106,6 +1111,23 @@ fn find_header_fn(fn_prefix: &str) -> String {
 
 fn find_header_call(fn_prefix: &str) -> String {
     format!("{fn_prefix}HttpFindHeader")
+}
+
+/// A named message's field as the text a path segment carries, as the Rust client writes it: a
+/// string as itself, anything else as its JSON, through the field's own serializer.
+fn wire_text_fn(fn_prefix: &str) -> String {
+    format!(
+        "private inline fun <reified T> {}(value: T): String =\n  \
+         when (val encoded = Json.encodeToJsonElement(serializer<T>(), value)) {{\n    \
+         is JsonPrimitive -> encoded.content\n    \
+         else -> encoded.toString()\n  \
+         }}",
+        wire_text_call(fn_prefix)
+    )
+}
+
+fn wire_text_call(fn_prefix: &str) -> String {
+    format!("{fn_prefix}HttpWireText")
 }
 
 fn transport_failure_fn(named: &str, fn_prefix: &str) -> String {

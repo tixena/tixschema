@@ -5,10 +5,10 @@
 //! output: a substring that must appear, and a name that must not.
 
 use super::{
-    SWIFT_BYTES_HEADER_OUT_SERVICE, SWIFT_HEADER_VEC_OF_OPTIONS_SERVICE, SWIFT_HTTP_SERVICE,
-    SWIFT_MULTIPART_HTTP_SERVICE, SWIFT_NUMERIC_HEADER_OUT_SERVICE,
-    SWIFT_SINGLE_PLACEHOLDER_HTTP_SERVICE, SWIFT_STREAM_HTTP_SERVICE,
-    SWIFT_UNIT_SUCCESS_HTTP_SERVICE, swift_http_client_of,
+    NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE, SWIFT_BYTES_HEADER_OUT_SERVICE,
+    SWIFT_HEADER_VEC_OF_OPTIONS_SERVICE, SWIFT_HTTP_SERVICE, SWIFT_MULTIPART_HTTP_SERVICE,
+    SWIFT_NUMERIC_HEADER_OUT_SERVICE, SWIFT_SINGLE_PLACEHOLDER_HTTP_SERVICE,
+    SWIFT_STREAM_HTTP_SERVICE, SWIFT_UNIT_SUCCESS_HTTP_SERVICE, swift_http_client_of,
 };
 
 /// The body of one method, from its own doc comment through the closing brace of the method
@@ -631,4 +631,20 @@ fn a_unit_success_answers_void() {
     );
     let method = method_body(&written, "ping");
     assert!(method.contains("return .success(())"), "got: {method}");
+}
+
+#[test]
+fn a_named_message_field_in_the_path_crosses_through_the_wire_text_helper() {
+    let written = swift_http_client_of(NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE);
+    assert!(
+        written.contains("mediaClientServiceWireText(req.sha256)")
+            && written.contains(
+                "func mediaClientServiceWireText<Value: Encodable>(_ value: Value) -> String {"
+            ),
+        "got: {written}"
+    );
+    assert!(
+        !swift_http_client_of(SWIFT_HTTP_SERVICE).contains("WireText"),
+        "a service with no such placeholder emits no helper"
+    );
 }
