@@ -3472,6 +3472,55 @@ fn content_range_is_reserved_only_on_a_streamed_operation() {
     );
 }
 
+/// A streamed operation's declared error is answered without the transport's own range header,
+/// so `error_header_out` may carry `content-range`: `bytes */<size>` on a `416`.
+#[test]
+fn a_streamed_operation_may_carry_content_range_on_its_declared_error() {
+    assert_eq!(
+        refusals(
+            "pub trait ContentService<Ctx> {
+                #[service_schema_op(http(
+                    method = \"GET\",
+                    path = \"/documents/{document_id}/content\",
+                    body = \"stream\",
+                    header_in(\"range\" = byte_range),
+                    error_status(NotFound = 404, RangeNotSatisfiable = 416),
+                    error_header_out(\"content-range\"),
+                ))]
+                async fn get_content(&self, ctx: &Ctx, document_id: String, byte_range: Option<String>)
+                    -> Result<content_service_schema::StreamedAnswer, (ContentError, Option<String>)>;
+            }"
+        ),
+        Vec::<String>::new(),
+        "the transport writes `content-range` only on a `206`, so a declared error is free to carry it"
+    );
+}
+
+/// The success side stays reserved: `StreamedAnswer::Partial` writes `content-range` itself.
+#[test]
+fn a_streamed_operation_still_refuses_content_range_on_header_out() {
+    assert_eq!(
+        refusals(
+            "pub trait ContentService<Ctx> {
+                #[service_schema_op(http(
+                    method = \"GET\",
+                    path = \"/documents/{document_id}/content\",
+                    body = \"stream\",
+                    error_status(NotFound = 404),
+                    header_out(\"content-range\"),
+                ))]
+                async fn get_content(&self, ctx: &Ctx, document_id: String)
+                    -> Result<(content_service_schema::StreamedAnswer, String), ContentError>;
+            }"
+        ),
+        vec![
+            "service_schema: operation `get_content` declares the header name \"content-range\", \
+             which a `body = \"stream\"` reply's own range answer writes itself\n       \
+             name a header this transport does not already control"
+        ]
+    );
+}
+
 /// The same header name declared twice within one `header_out` list is refused.
 #[test]
 fn a_header_name_declared_twice_within_one_list_is_refused() {
