@@ -330,14 +330,15 @@ pub struct MultipartPart {
 }
 
 /// How `http(...)` carries the body. `Json` is the default a group that writes no `body` gets.
-/// `Bytes` answers raw bytes under a declared content type. `Stream` answers a pulled body source,
-/// full or (through `StreamedAnswer::Partial`) a `206` range slice with `content-range`, through
-/// the seam `#[service_schema]` publishes beside the trait. `Multipart` reads the *request* as
-/// named parts instead of one JSON object: a scalar field is read off the same-named part exactly
-/// as a bodyless method's field is read off the query string, and a `part("name" = parameter)`
-/// binding hands a file part through as a [`crate::service_schema::support`] `BodySource` handle,
-/// undecoded. `Multipart` says nothing about the *response* — its success and error types are
-/// ordinary JSON, `header_out` included, exactly like `Json`.
+/// `Bytes` answers raw bytes under a declared content type. `Stream` answers a pulled body source
+/// under the content type it names, full or (through `StreamedAnswer::Partial`) a `206` range slice
+/// with `content-range`, through the seam `#[service_schema]` publishes beside the trait.
+/// `Multipart` reads the *request* as named parts instead of one JSON object: a scalar field is
+/// read off the same-named part exactly as a bodyless method's field is read off the query string,
+/// and a `part("name" = parameter)` binding hands a file part through as a
+/// [`crate::service_schema::support`] `BodySource` handle, undecoded. `Multipart` says nothing
+/// about the *response* — its success and error types are ordinary JSON, `header_out` included,
+/// exactly like `Json`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BodyKind {
     Bytes,
@@ -2769,7 +2770,10 @@ const fn transport_reserved_header_writer(
     error_side: bool,
 ) -> Option<&'static str> {
     if name.eq_ignore_ascii_case("content-type") {
-        return Some("`json_response`, and a `body = \"bytes\"` reply's own content type,");
+        return Some(
+            "`json_response`, and a `body = \"bytes\"` or `body = \"stream\"` reply's own \
+             content type,",
+        );
     }
     if name.eq_ignore_ascii_case("content-length") {
         return Some("the HTTP transport itself");

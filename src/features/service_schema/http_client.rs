@@ -804,8 +804,9 @@ fn stream_reply_decode_stmt(
 
 /// One status arm of [`stream_reply_decode_stmt`]: `contentRange` read back off the response for a
 /// `206` partial answer, left `undefined` for the declared `ok_status`'s whole-body answer — both
-/// paired with `response.bodyStream`, the seam's own lazily-pulled source — then every declared
-/// `header_out` element read back exactly as the bytes and JSON paths do.
+/// paired with `contentType`, read back the way a bytes reply reads it, and `response.bodyStream`,
+/// the seam's own lazily-pulled source — then every declared `header_out` element read back exactly
+/// as the bytes and JSON paths do.
 fn stream_success_arm(
     prefix: &str,
     wire: &str,
@@ -822,7 +823,12 @@ fn stream_success_arm(
     } else {
         "        const contentRange: string | undefined = undefined;\n".to_owned()
     };
-    stmt.push_str("        const answer = { contentRange, body: response.bodyStream };\n");
+    stmt.push_str(
+        "        const contentType = response.headers.find(\n          \
+         ([name]) => name.toLowerCase() === \"content-type\",\n        \
+         )?.[1] ?? \"\";\n        \
+         const answer = { contentRange, contentType, body: response.bodyStream };\n",
+    );
     if shape.header_out.is_empty() {
         stmt.push_str("        return { ok: true, value: answer };\n");
         return stmt;

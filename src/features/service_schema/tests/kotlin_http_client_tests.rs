@@ -233,7 +233,7 @@ fn a_stream_operation_answers_a_flow_and_a_content_range() {
     );
     assert!(
         written.contains(
-            "data class ContentClientServiceGetFileResultStreamed(val contentRange: String?, val body: Flow<ByteArray>)"
+            "data class ContentClientServiceGetFileResultStreamed(val contentRange: String?, val contentType: String, val body: Flow<ByteArray>)"
         ),
         "got: {written}"
     );
@@ -241,6 +241,26 @@ fn a_stream_operation_answers_a_flow_and_a_content_range() {
     assert!(
         method.contains("if (status == 206) {") && method.contains("if (status == 200) {"),
         "both the partial and the full answer decode the streamed record. Got: {method}"
+    );
+    assert_eq!(
+        method
+            .matches(
+                "val contentType = contentClientServiceHttpFindHeader(response.headers, \
+                 \"content-type\") ?: \"\""
+            )
+            .count(),
+        2,
+        "both arms read `contentType` back the way a bytes reply does. Got: {method}"
+    );
+    assert_eq!(
+        method
+            .matches(
+                "return ContentClientServiceGetFileResult.Ok(ContentClientServiceGetFileResultStreamed(\
+                 contentRange, contentType, response.bodyStream))"
+            )
+            .count(),
+        2,
+        "got: {method}"
     );
 }
 

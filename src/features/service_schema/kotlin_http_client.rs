@@ -212,6 +212,7 @@ fn success_shape(published: &str, shape: &HttpShape, success: &Type) -> SuccessS
             let type_name = format!("{published}Streamed");
             let mut params = vec![
                 "val contentRange: String?".to_owned(),
+                "val contentType: String".to_owned(),
                 "val body: Flow<ByteArray>".to_owned(),
             ];
             for field in &extra {
@@ -840,11 +841,17 @@ fn stream_success_arm(
     } else {
         "      val contentRange: String? = null\n".to_owned()
     };
+    let _ = writeln!(
+        stmt,
+        "      val contentType = {}(response.headers, \"content-type\") ?: \"\"",
+        find_header_call(fn_prefix)
+    );
     let extra = header_out_fields(shape, success, 1);
     if extra.is_empty() {
         let _ = writeln!(
             stmt,
-            "      return {result}.Ok({result}Streamed(contentRange, response.bodyStream))"
+            "      return {result}.Ok({result}Streamed(contentRange, contentType, \
+             response.bodyStream))"
         );
         return stmt;
     }
@@ -852,7 +859,8 @@ fn stream_success_arm(
     stmt.push_str(&header_stmts);
     let _ = writeln!(
         stmt,
-        "      return {result}.Ok({result}Streamed(contentRange, response.bodyStream, {}))",
+        "      return {result}.Ok({result}Streamed(contentRange, contentType, \
+         response.bodyStream, {}))",
         header_idents.join(", ")
     );
     stmt

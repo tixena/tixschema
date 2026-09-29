@@ -452,8 +452,9 @@ fn a_stream_operation_answers_a_content_range_and_body_record_at_200_and_206() {
     let written = dart_http_client_of(DART_STREAM_HTTP_SERVICE);
     assert!(
         written.contains("Future<ContentClientServiceGetFileResult> getFile(String req) async {"),
-        "a bare `StreamedAnswer` renders as a record pairing a nullable `contentRange` with a lazy \
-         `Stream<List<int>>` body, carried as the result pair's own success value. Got: {written}"
+        "a bare `StreamedAnswer` renders as a record pairing a nullable `contentRange` and the \
+         `contentType` with a lazy `Stream<List<int>>` body, carried as the result pair's own \
+         success value. Got: {written}"
     );
     let method = method_body(&written, "getFile");
     assert!(
@@ -462,7 +463,8 @@ fn a_stream_operation_answers_a_content_range_and_body_record_at_200_and_206() {
                 "final contentRange = _contentClientServiceHttpFindHeader(response.headers, 'content-range') ?? '';"
             )
             && method.contains(
-                "final answer = (contentRange: contentRange, body: response.bodyStream);"
+                "final answer = (contentRange: contentRange, contentType: contentType, body: \
+                 response.bodyStream);"
             )
             && method.contains("return ContentClientServiceGetFileResultOk(answer);"),
         "a `206` answers the record with `contentRange` read back off the response. Got: {method}"
@@ -472,6 +474,16 @@ fn a_stream_operation_answers_a_content_range_and_body_record_at_200_and_206() {
             && method.contains("const String? contentRange = null;"),
         "the declared `ok_status` answers the same record with `contentRange` left `null`. \
          Got: {method}"
+    );
+    assert_eq!(
+        method
+            .matches(
+                "final contentType = _contentClientServiceHttpFindHeader(response.headers, \
+                 'content-type') ?? '';"
+            )
+            .count(),
+        2,
+        "both arms read `contentType` back the way a bytes reply does. Got: {method}"
     );
 }
 

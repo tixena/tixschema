@@ -1424,15 +1424,16 @@ fn bytes_answer_block(
     }
 }
 
-/// A `body = "stream"` operation's own arm: with no declared `header_out`, the status and the one
-/// header a streamed answer carries come from the variant itself - `Full` answers the declared
-/// `ok_status` with no extra header, `Partial` answers `206` with `content-range` set to what the
-/// handler built. With one declared, `parse.rs`'s own `is_stream_success_shape` has already
-/// required `success` to wrap the answer in a tuple carrying one more element per entry, composed
-/// onto both arms exactly as the JSON path's own `header_out` composition does - `content-range`
-/// stands beside the declared headers on `Partial` rather than being replaced by them. Either way
-/// the body is handed on undrained, in `OutgoingBody::Stream`, for an adapter to pull onto the
-/// wire. `content-range` is checked the same way every other runtime-computed header value is.
+/// A `body = "stream"` operation's own arm: with no declared `header_out`, the status and the
+/// headers a streamed answer carries come from the variant itself - `Full` answers the declared
+/// `ok_status` with `content-type`, `Partial` answers `206` with `content-type` and `content-range`
+/// set to what the handler built. With one declared, `parse.rs`'s own `is_stream_success_shape`
+/// has already required `success` to wrap the answer in a tuple carrying one more element per
+/// entry, composed onto both arms exactly as the JSON path's own `header_out` composition does -
+/// the variant's own headers stand beside the declared ones rather than being replaced by them.
+/// Either way the body is handed on undrained, in `OutgoingBody::Stream`, for an adapter to pull
+/// onto the wire. Both headers are checked the same way every other runtime-computed header value
+/// is.
 fn stream_answer_block(arm: &AnswerArm<'_>, shape: &HttpShape, success: &Type) -> TokenStream {
     let &AnswerArm {
         called,
@@ -1442,20 +1443,29 @@ fn stream_answer_block(arm: &AnswerArm<'_>, shape: &HttpShape, success: &Type) -
         wire,
     } = arm;
     let ok_status = shape.ok_status;
+    let content_type_push =
+        checked_header_push(wire, module, "content-type", &quote! { content_type });
     let content_range_push =
         checked_header_push(wire, module, "content-range", &quote! { content_range });
     if shape.header_out.is_empty() {
         quote! {
             match #called {
-                Ok(Ok($crate::#module::StreamedAnswer::Full(source))) => {
+                Ok(Ok($crate::#module::StreamedAnswer::Full { source, content_type })) => {
+                    let mut headers: Vec<(String, String)> = ::std::vec::Vec::new();
+                    #content_type_push
                     return OutgoingResponse {
                         status: #ok_status,
-                        headers: ::std::vec::Vec::new(),
+                        headers,
                         body: OutgoingBody::Stream(source),
                     };
                 }
-                Ok(Ok($crate::#module::StreamedAnswer::Partial { source, content_range })) => {
+                Ok(Ok($crate::#module::StreamedAnswer::Partial {
+                    source,
+                    content_range,
+                    content_type,
+                })) => {
                     let mut headers: Vec<(String, String)> = ::std::vec::Vec::new();
+                    #content_type_push
                     #content_range_push
                     return OutgoingResponse {
                         status: 206,
@@ -1480,8 +1490,12 @@ fn stream_answer_block(arm: &AnswerArm<'_>, shape: &HttpShape, success: &Type) -
         );
         quote! {
             match #called {
-                Ok(Ok(($crate::#module::StreamedAnswer::Full(source), #(#header_idents),*))) => {
+                Ok(Ok((
+                    $crate::#module::StreamedAnswer::Full { source, content_type },
+                    #(#header_idents),*
+                ))) => {
                     let mut headers: Vec<(String, String)> = ::std::vec::Vec::new();
+                    #content_type_push
                     #header_pushes
                     return OutgoingResponse {
                         status: #ok_status,
@@ -1490,10 +1504,11 @@ fn stream_answer_block(arm: &AnswerArm<'_>, shape: &HttpShape, success: &Type) -
                     };
                 }
                 Ok(Ok((
-                    $crate::#module::StreamedAnswer::Partial { source, content_range },
+                    $crate::#module::StreamedAnswer::Partial { source, content_range, content_type },
                     #(#header_idents),*
                 ))) => {
                     let mut headers: Vec<(String, String)> = ::std::vec::Vec::new();
+                    #content_type_push
                     #content_range_push
                     #header_pushes
                     return OutgoingResponse {
@@ -1530,7 +1545,7 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
          success tuple, `header_out` elements read back from response headers; or, for an \
          operation declaring `body = \"bytes\"`, the response bytes and their `content-type`; or, \
          for `body = \"stream\"`, a `StreamedAnswer` pulling from the response body - `Full` at \
-         `200`, `Partial` with `content-range` at `206`), a \
+         `200`, `Partial` with `content-range` at `206`, both with their `content-type`), a \
          mapped status into the declared error, and anything else - including a fixed fault \
          status this crate did not expect at that code - into a fault.\n\n\
          The invoking crate names `serde` and `serde_json` in its own manifest. It names no \
@@ -2531,8 +2546,9 @@ fn reply_decode(
 
 /// A `body = "stream"` operation's own decode: `206` answers `StreamedAnswer::Partial` with
 /// `content-range` read back before the body is taken; the declared `ok_status` (`200` by default)
-/// answers `StreamedAnswer::Full`; everything else falls through the same declared-error,
-/// fixed-fault and unexpected-status ladder every other kind answers through. A response the seam
+/// answers `StreamedAnswer::Full`; both read `content-type` back the way a bytes reply does;
+/// everything else falls through the same declared-error, fixed-fault and unexpected-status ladder
+/// every other kind answers through. A response the seam
 /// already buffered still satisfies `BodySource` once wrapped in a `Cursor` - the same blanket
 /// `Read` impl a real chunked reader relies on, so the client answers a body source either way.
 ///
@@ -2570,20 +2586,26 @@ fn stream_reply_decode(
             let status = response.status();
             if status == 206 {
                 let content_range = response.header("content-range").unwrap_or_default().to_owned();
+                let content_type = response.header("content-type").unwrap_or_default().to_owned();
                 let source: ::std::boxed::Box<dyn $crate::#module::BodySource + Send> =
                     match response.into_body() {
                         IncomingBody::Bytes(bytes) => ::std::boxed::Box::new(::std::io::Cursor::new(bytes)),
                         IncomingBody::Stream(source) => source,
                     };
-                return Ok($crate::#module::StreamedAnswer::Partial { source, content_range });
+                return Ok($crate::#module::StreamedAnswer::Partial {
+                    source,
+                    content_range,
+                    content_type,
+                });
             }
             if status == #ok_status {
+                let content_type = response.header("content-type").unwrap_or_default().to_owned();
                 let source: ::std::boxed::Box<dyn $crate::#module::BodySource + Send> =
                     match response.into_body() {
                         IncomingBody::Bytes(bytes) => ::std::boxed::Box::new(::std::io::Cursor::new(bytes)),
                         IncomingBody::Stream(source) => source,
                     };
-                return Ok($crate::#module::StreamedAnswer::Full(source));
+                return Ok($crate::#module::StreamedAnswer::Full { source, content_type });
             }
             #tail
         }
@@ -2603,6 +2625,7 @@ fn stream_reply_decode(
             let status = response.status();
             if status == 206 {
                 let content_range = response.header("content-range").unwrap_or_default().to_owned();
+                let content_type = response.header("content-type").unwrap_or_default().to_owned();
                 #header_lets
                 let source: ::std::boxed::Box<dyn $crate::#module::BodySource + Send> =
                     match response.into_body() {
@@ -2610,18 +2633,22 @@ fn stream_reply_decode(
                         IncomingBody::Stream(source) => source,
                     };
                 return Ok((
-                    $crate::#module::StreamedAnswer::Partial { source, content_range },
+                    $crate::#module::StreamedAnswer::Partial { source, content_range, content_type },
                     #(#header_idents),*
                 ));
             }
             if status == #ok_status {
+                let content_type = response.header("content-type").unwrap_or_default().to_owned();
                 #header_lets
                 let source: ::std::boxed::Box<dyn $crate::#module::BodySource + Send> =
                     match response.into_body() {
                         IncomingBody::Bytes(bytes) => ::std::boxed::Box::new(::std::io::Cursor::new(bytes)),
                         IncomingBody::Stream(source) => source,
                     };
-                return Ok(($crate::#module::StreamedAnswer::Full(source), #(#header_idents),*));
+                return Ok((
+                    $crate::#module::StreamedAnswer::Full { source, content_type },
+                    #(#header_idents),*
+                ));
             }
             #tail
         }

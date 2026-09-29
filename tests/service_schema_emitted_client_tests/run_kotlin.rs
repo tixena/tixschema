@@ -42,12 +42,13 @@ use super::tests::thumbnail_client_service_schema::{
 };
 use super::tests::{
     ContentClientServiceSchema, ConversationClientServiceSchema, EchoClientServiceSchema,
-    MediaClientServiceSchema, PulseClientServiceSchema, StampClientServiceSchema,
-    ThumbnailClientServiceSchema, content_error_kotlin, content_range_error_kotlin,
-    conversation_id_kotlin, echo_range_error_kotlin, echo_range_response_kotlin,
-    media_error_kotlin, media_id_kotlin, media_upload_kotlin, pulse_error_kotlin,
-    pulse_request_kotlin, pulse_response_kotlin, stamp_error_kotlin, stamp_receipt_kotlin,
-    thumbnail_error_kotlin, window_error_kotlin, window_page_kotlin, window_request_kotlin,
+    MediaClientServiceSchema, PulseClientServiceSchema, STREAMED_CONTENT_TYPE,
+    StampClientServiceSchema, ThumbnailClientServiceSchema, content_error_kotlin,
+    content_range_error_kotlin, conversation_id_kotlin, echo_range_error_kotlin,
+    echo_range_response_kotlin, media_error_kotlin, media_id_kotlin, media_upload_kotlin,
+    pulse_error_kotlin, pulse_request_kotlin, pulse_response_kotlin, stamp_error_kotlin,
+    stamp_receipt_kotlin, thumbnail_error_kotlin, window_error_kotlin, window_page_kotlin,
+    window_request_kotlin,
 };
 use std::collections::HashMap;
 
@@ -80,6 +81,39 @@ fun main() = runBlocking {
     println(buildJsonObject {
         put("error", declared?.let { Json.encodeToJsonElement(serializer<ContentRangeError>(), it.error) } ?: JsonNull)
         put("contentRange", declared?.errorHeaderOut0)
+    }.toString())
+}
+"#;
+
+/// A stub `ContentClientServiceHttpTransport` answering the streamed operation whole at
+/// `/files/present` and as a range slice anywhere else, both naming their content type.
+const CONTENT_TYPE_DRIVER: &str = r#"
+class ContentTyped : ContentClientServiceHttpTransport {
+    override suspend fun send(request: ContentClientServiceHttpRequest): ContentClientServiceHttpResponse =
+        if (request.path == "/files/present") {
+            ContentClientServiceHttpResponse(200, listOf("content-type" to "text/plain; charset=utf-8"), ByteArray(0))
+        } else {
+            ContentClientServiceHttpResponse(
+                206,
+                listOf("content-range" to "bytes 4-8/43", "content-type" to "text/plain; charset=utf-8"),
+                ByteArray(0),
+            )
+        }
+}
+
+fun streamed(answered: ContentClientServiceGetFileResult): JsonElement =
+    (answered as? ContentClientServiceGetFileResult.Ok)?.value?.let {
+        buildJsonObject {
+            put("contentRange", it.contentRange)
+            put("contentType", it.contentType)
+        }
+    } ?: JsonNull
+
+fun main() = runBlocking {
+    val client = ContentClientServiceHttpClient(ContentTyped())
+    println(buildJsonObject {
+        put("full", streamed(client.getFile("present")))
+        put("partial", streamed(client.getFile("sliced")))
     }.toString())
 }
 "#;
@@ -518,8 +552,8 @@ fn media_module() -> String {
     parts.join("\n\n")
 }
 
-/// `ContentClientService`'s own types, its fault pair and its client, driven by [`CONTENT_DRIVER`].
-fn content_module() -> String {
+/// `ContentClientService`'s own types, its fault pair and its client, driven by `driver`.
+fn content_module(driver: &str) -> String {
     let mut parts = vec![KOTLIN_IMPORTS.to_owned()];
     parts.extend([
         content_error_kotlin::kotlin_definition(),
@@ -527,7 +561,7 @@ fn content_module() -> String {
         content_client_service_fault_fields_kotlin::kotlin_definition(),
         content_client_service_fault_kind_kotlin::kotlin_definition(),
         ContentClientServiceSchema::kotlin_http_client(),
-        CONTENT_DRIVER.to_owned(),
+        driver.to_owned(),
     ]);
     parts.join("\n\n")
 }
@@ -912,7 +946,7 @@ fn a_newtype_field_of_a_named_body_message_fills_its_path_placeholder_with_its_w
 
 #[test]
 fn a_streamed_operations_declared_416_reads_its_content_range_back() {
-    let Some(wrote) = ran_kotlin(&content_module()) else {
+    let Some(wrote) = ran_kotlin(&content_module(CONTENT_DRIVER)) else {
         return;
     };
     let results: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
@@ -920,5 +954,21 @@ fn a_streamed_operations_declared_416_reads_its_content_range_back() {
         results,
         serde_json::json!({"error": {"errorCode": "range-not-satisfiable"}, "contentRange": "bytes */43"}),
         "the declared error carries the complete length"
+    );
+}
+
+#[test]
+fn a_streamed_reply_reads_its_content_type_back() {
+    let Some(wrote) = ran_kotlin(&content_module(CONTENT_TYPE_DRIVER)) else {
+        return;
+    };
+    let results: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
+    assert_eq!(
+        results,
+        serde_json::json!({
+            "full": {"contentRange": null, "contentType": STREAMED_CONTENT_TYPE},
+            "partial": {"contentRange": "bytes 4-8/43", "contentType": STREAMED_CONTENT_TYPE},
+        }),
+        "both answers carry the content type the response named"
     );
 }

@@ -464,10 +464,10 @@ fn a_bytes_operation_with_header_out_composes_body_content_type_and_the_header()
 fn a_stream_operation_answers_a_content_range_and_body_pair_at_200_and_206() {
     let written = swift_http_client_of(SWIFT_STREAM_HTTP_SERVICE);
     assert!(
-        written.contains("public func getFile(_ req: String) async -> Result<(contentRange: String?, body: AsyncThrowingStream<Data, Error>), ContentClientServiceGetFileFailure> {"),
-        "a bare `StreamedAnswer` renders as a pair of a nullable `contentRange` and a lazy \
-         `AsyncThrowingStream<Data, Error>` body, carried as the method's own success value. \
-         Got: {written}"
+        written.contains("public func getFile(_ req: String) async -> Result<(contentRange: String?, contentType: String, body: AsyncThrowingStream<Data, Error>), ContentClientServiceGetFileFailure> {"),
+        "a bare `StreamedAnswer` renders as a nullable `contentRange` and the `contentType` beside \
+         a lazy `AsyncThrowingStream<Data, Error>` body, carried as the method's own success \
+         value. Got: {written}"
     );
     let method = method_body(&written, "getFile");
     assert!(
@@ -476,7 +476,8 @@ fn a_stream_operation_answers_a_content_range_and_body_pair_at_200_and_206() {
                 "let contentRange = contentClientServiceFindHeader(response.headers, \"content-range\") ?? \"\""
             )
             && method.contains(
-                "let answer = (contentRange: contentRange, body: response.bodyStream)"
+                "let answer = (contentRange: contentRange, contentType: contentType, body: \
+                 response.bodyStream)"
             )
             && method.contains("return .success(answer)"),
         "a `206` answers the pair with `contentRange` read back off the response. Got: {method}"
@@ -485,6 +486,16 @@ fn a_stream_operation_answers_a_content_range_and_body_pair_at_200_and_206() {
         method.contains("if status == 200 {") && method.contains("let contentRange: String? = nil"),
         "the declared `ok_status` answers the same pair with `contentRange` left `nil`. \
          Got: {method}"
+    );
+    assert_eq!(
+        method
+            .matches(
+                "let contentType = contentClientServiceFindHeader(response.headers, \
+                 \"content-type\") ?? \"\""
+            )
+            .count(),
+        2,
+        "both arms read `contentType` back the way a bytes reply does. Got: {method}"
     );
 }
 
