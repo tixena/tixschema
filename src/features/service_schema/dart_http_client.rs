@@ -64,7 +64,7 @@ use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
     OperationOutcome, PathSegment, ServiceDef, is_scalar_named_type, is_unit_type, option_inner,
-    tuple_elements, vec_inner, wire_key,
+    path_reads_a_named_field, tuple_elements, vec_inner, wire_key,
 };
 use crate::service_schema::support::fault_fields_typescript_name;
 use core::fmt::Write as _;
@@ -264,7 +264,7 @@ fn method(named: &str, fn_prefix: &str, operation: &OperationDef) -> String {
     let call = &operation.ts_name;
     let params = method_params(operation, &shape);
     let returns = return_type(named, operation);
-    let path_build = path_build_stmt(operation, &shape);
+    let path_build = path_build_stmt(fn_prefix, operation, &shape);
     let query_build = query_build_stmt(operation, &shape);
     let headers_build = header_in_build_stmt(named, fn_prefix, operation, &shape);
     let body_build = body_build_stmt(operation, &shape);
@@ -305,6 +305,7 @@ fn method(named: &str, fn_prefix: &str, operation: &OperationDef) -> String {
 /// The value one path placeholder reads off `req`: the field the placeholder names, or the whole
 /// message where that message is itself a wire scalar.
 fn placeholder_value_dart_expr(
+    fn_prefix: &str,
     operation: &OperationDef,
     shape: &HttpShape,
     placeholder: &str,
@@ -322,13 +323,13 @@ fn placeholder_value_dart_expr(
             if shape.placeholder_names().len() == 1 && is_scalar_named_type(declared) {
                 dart_wire_text(declared, "req", true)
             } else {
-                format!("'${{req.{placeholder}}}'")
+                format!("{}(req.{placeholder})", wire_text_call(fn_prefix))
             }
         }
     }
 }
 
-fn path_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
+fn path_build_stmt(fn_prefix: &str, operation: &OperationDef, shape: &HttpShape) -> String {
     let mut stmt = String::from("    var path = '';\n");
     for segment in &shape.path {
         match segment {
@@ -336,7 +337,7 @@ fn path_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
                 let _ = writeln!(stmt, "    path += '{}';", dart_escape(text));
             }
             PathSegment::Placeholder(name) => {
-                let value = placeholder_value_dart_expr(operation, shape, name);
+                let value = placeholder_value_dart_expr(fn_prefix, operation, shape, name);
                 let _ = writeln!(stmt, "    path += Uri.encodeComponent({value});");
             }
         }
@@ -912,6 +913,9 @@ fn fault_helpers(service: &ServiceDef, named: &str, fn_prefix: &str) -> Vec<Stri
     if reads_a_response_header(service) {
         helpers.push(find_header_fn(fn_prefix));
     }
+    if service.operations.iter().any(path_reads_a_named_field) {
+        helpers.push(wire_text_fn(fn_prefix));
+    }
     helpers.extend([
         transport_failure_fn(named, fn_prefix),
         undeserializable_payload_fn(named, fn_prefix),
@@ -1011,6 +1015,23 @@ fn find_header_fn(fn_prefix: &str) -> String {
 /// do not both declare it.
 fn find_header_call(fn_prefix: &str) -> String {
     format!("_{fn_prefix}HttpFindHeader")
+}
+
+/// A named message's field as the text a path segment carries, as the Rust client writes it: a
+/// string as itself, anything else as its JSON. `jsonEncode` reaches a class through its `toJson`.
+fn wire_text_fn(fn_prefix: &str) -> String {
+    format!(
+        "String {}(Object? value) {{\n  \
+         final encoded = jsonEncode(value);\n  \
+         final decoded = jsonDecode(encoded);\n  \
+         return decoded is String ? decoded : encoded;\n\
+         }}",
+        wire_text_call(fn_prefix)
+    )
+}
+
+fn wire_text_call(fn_prefix: &str) -> String {
+    format!("_{fn_prefix}HttpWireText")
 }
 
 fn transport_failure_fn(named: &str, fn_prefix: &str) -> String {

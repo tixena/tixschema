@@ -207,6 +207,49 @@ impl ShelfClientService<()> for ShelfBackEnd {
     }
 }
 
+/// A transparent newtype carried as a field of a named body message.
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct MediaId(pub String);
+
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MediaUpload {
+    pub caption: String,
+    pub sha256: MediaId,
+}
+
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum MediaError {
+    Missing,
+}
+
+/// A body-carrying operation whose path placeholder reads a newtype field of its named message.
+#[service_schema(transports = ["http_rest"])]
+pub trait MediaClientService<Ctx> {
+    #[service_schema_op(http(
+        method = "PUT",
+        path = "/media/{sha256}",
+        error_status(Missing = 404)
+    ))]
+    async fn upload(&self, ctx: &Ctx, req: MediaUpload) -> Result<(), MediaError>;
+}
+
+/// A backend answering the contract, so the trait is implementable rather than merely declared.
+pub struct MediaBackEnd;
+
+impl MediaClientService<()> for MediaBackEnd {
+    async fn upload(&self, _ctx: &(), req: MediaUpload) -> Result<(), MediaError> {
+        ready(()).await;
+        if req.sha256.0.is_empty() {
+            return Err(MediaError::Missing);
+        }
+        Ok(())
+    }
+}
+
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WindowPage {
@@ -1153,6 +1196,23 @@ fn the_pulse_backend_answers_alive() {
     assert_eq!(
         poll_once(PulseBackEnd.pulse(&())).unwrap(),
         Ok(PulseResponse { alive: true })
+    );
+}
+
+/// Read only by the Dart, Swift and Kotlin groups beside this one.
+#[test]
+fn the_media_backend_answers_an_upload() {
+    let upload = |sha256: &str| MediaUpload {
+        caption: "c".to_owned(),
+        sha256: MediaId(sha256.to_owned()),
+    };
+    assert_eq!(
+        poll_once(MediaBackEnd.upload(&(), upload("abc123"))).unwrap(),
+        Ok(())
+    );
+    assert_eq!(
+        poll_once(MediaBackEnd.upload(&(), upload(""))).unwrap(),
+        Err(MediaError::Missing)
     );
 }
 

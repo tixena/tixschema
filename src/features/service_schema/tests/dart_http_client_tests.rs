@@ -7,7 +7,7 @@
 use super::{
     DART_BYTES_HEADER_OUT_SERVICE, DART_HTTP_SERVICE, DART_MULTIPART_HTTP_SERVICE,
     DART_PRIMITIVE_SERVICE, DART_SINGLE_PLACEHOLDER_HTTP_SERVICE, DART_STREAM_HTTP_SERVICE,
-    DART_UNIT_SUCCESS_HTTP_SERVICE, dart_http_client_of,
+    DART_UNIT_SUCCESS_HTTP_SERVICE, NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE, dart_http_client_of,
 };
 
 /// The `send` signature every service's transport interface carries, whatever it declares.
@@ -783,5 +783,20 @@ fn a_header_vec_element_that_will_not_parse_faults_the_whole_element() {
         ),
         "one bad piece faults the whole `Vec` element rather than silently dropping it. \
          Got: {method}"
+    );
+}
+
+#[test]
+fn a_named_message_field_in_the_path_crosses_through_the_wire_text_helper() {
+    let written = dart_http_client_of(NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE);
+    assert!(
+        written
+            .contains("path += Uri.encodeComponent(_mediaClientServiceHttpWireText(req.sha256));")
+            && written.contains("String _mediaClientServiceHttpWireText(Object? value) {"),
+        "got: {written}"
+    );
+    assert!(
+        !dart_http_client_of(DART_HTTP_SERVICE).contains("HttpWireText"),
+        "a service with no such placeholder emits no helper"
     );
 }

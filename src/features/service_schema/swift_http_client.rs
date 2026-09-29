@@ -33,7 +33,8 @@ use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
     OperationOutcome, PathSegment, ServiceDef, is_scalar_named_type, is_unit_type, option_inner,
-    service_declares_a_stream, service_declares_multipart, tuple_elements, vec_inner, wire_key,
+    path_reads_a_named_field, service_declares_a_stream, service_declares_multipart,
+    tuple_elements, vec_inner, wire_key,
 };
 use crate::service_schema::support::fault_fields_typescript_name;
 use core::fmt::Write as _;
@@ -363,6 +364,7 @@ fn method(named: &str, fn_prefix: &str, operation: &OperationDef, has_multipart:
 /// the macro declared, or an author's own struct), or the whole message where that message
 /// already is a wire scalar — mirrors the Dart client's own `placeholder_value_dart_expr`.
 fn placeholder_value_swift_expr(
+    fn_prefix: &str,
     operation: &OperationDef,
     shape: &HttpShape,
     placeholder: &str,
@@ -381,7 +383,7 @@ fn placeholder_value_swift_expr(
             if shape.placeholder_names().len() == 1 && is_scalar_named_type(declared) {
                 swift_wire_text(declared, "req")
             } else {
-                format!("\"\\(req.{accessor})\"")
+                format!("{fn_prefix}WireText(req.{accessor})")
             }
         }
     }
@@ -395,7 +397,7 @@ fn path_build_stmt(fn_prefix: &str, operation: &OperationDef, shape: &HttpShape)
                 let _ = writeln!(stmt, "    path += \"{}\"", swift_escape(text));
             }
             PathSegment::Placeholder(name) => {
-                let value = placeholder_value_swift_expr(operation, shape, name);
+                let value = placeholder_value_swift_expr(fn_prefix, operation, shape, name);
                 let _ = writeln!(stmt, "    path += {fn_prefix}PercentEncode({value})");
             }
         }
@@ -1090,6 +1092,9 @@ fn fault_helpers(service: &ServiceDef, named: &str, fn_prefix: &str) -> Vec<Stri
     if reads_a_response_header(service) {
         helpers.push(find_header_fn(fn_prefix));
     }
+    if service.operations.iter().any(path_reads_a_named_field) {
+        helpers.push(wire_text_fn(fn_prefix));
+    }
     helpers.extend([
         transport_failure_fn(named, fn_prefix),
         undeserializable_payload_fn(named, fn_prefix),
@@ -1173,6 +1178,24 @@ fn query_text_fn(fn_prefix: &str) -> String {
          /// joined, keys left as written — a wire key this crate composes is always URL-safe.\n\
          func {fn_prefix}QueryText(_ pairs: [(String, String)]) -> String {{\n  \
          pairs.map {{ \"\\($0.0)=\\({fn_prefix}PercentEncode($0.1))\" }}.joined(separator: \"&\")\n\
+         }}"
+    )
+}
+
+/// A named message's field as the text a path segment carries, as the Rust client writes it: a
+/// string as itself, anything else as its JSON, through the field's own `Encodable` conformance.
+fn wire_text_fn(fn_prefix: &str) -> String {
+    format!(
+        "func {fn_prefix}WireText<Value: Encodable>(_ value: Value) -> String {{\n  \
+         let encoder = JSONEncoder()\n  \
+         encoder.outputFormatting = [.withoutEscapingSlashes]\n  \
+         guard let data = try? encoder.encode(value) else {{\n    \
+         return \"\"\n  \
+         }}\n  \
+         if let text = try? JSONDecoder().decode(String.self, from: data) {{\n    \
+         return text\n  \
+         }}\n  \
+         return String(decoding: data, as: UTF8.self)\n\
          }}"
     )
 }
