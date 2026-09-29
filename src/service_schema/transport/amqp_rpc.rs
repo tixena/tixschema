@@ -2125,8 +2125,8 @@ fn reply_handle_type() -> TokenStream {
 /// A one-way publish carries no `replyTo` at all, and a handle built from such a delivery
 /// publishes nothing; a publish the channel refuses is logged and dropped rather than propagated,
 /// there being no failure a caller already waiting for a reply could be told about. A declared
-/// error and a fault both carry the header `is_error` = `true` beside whatever `header_out` wrote;
-/// a success reply carries none.
+/// error and a fault both carry the boolean header `is_error` = `true` beside whatever
+/// `header_out` wrote; a success reply carries none.
 fn reply_handle_impls(module: &Ident) -> TokenStream {
     quote! {
         impl Reply for ReplyHandle<'_> {
@@ -2172,11 +2172,9 @@ fn reply_handle_impls(module: &Ident) -> TokenStream {
                 self.correlation_id.as_ref().map(::lapin::types::ShortString::as_str)
             }
 
-            /// Publishes to the reply queue, or to nowhere when the delivery named none. `headers`
-            /// carries every `header_out` value, JSON-encoded, plus `is_error` as plain text on a
-            /// failed reply, into the AMQP basic-properties headers table this bus reads a
-            /// request's own `header_in` values off of.
-            async fn publish(&self, reply: &::serde_json::Value, headers: Vec<(String, String)>) {
+            /// Publishes to the reply queue, or to nowhere when the delivery named none, with
+            /// `headers` as the basic-properties headers table.
+            async fn publish(&self, reply: &::serde_json::Value, headers: ::lapin::types::FieldTable) {
                 let Some(reply_to) = self.reply_to.clone() else {
                     return;
                 };
@@ -2191,17 +2189,8 @@ fn reply_handle_impls(module: &Ident) -> TokenStream {
                 if let Some(correlation_id) = self.correlation_id.clone() {
                     properties = properties.with_correlation_id(correlation_id);
                 }
-                if !headers.is_empty() {
-                    let mut table = ::lapin::types::FieldTable::default();
-                    for (name, value) in headers {
-                        table.insert(
-                            ::lapin::types::ShortString::from(name),
-                            ::lapin::types::AMQPValue::LongString(
-                                ::lapin::types::LongString::from(value),
-                            ),
-                        );
-                    }
-                    properties = properties.with_headers(table);
+                if !headers.inner().is_empty() {
+                    properties = properties.with_headers(headers);
                 }
                 if let Err(refused) = self
                     .channel
@@ -2439,9 +2428,9 @@ fn wire_framing_consts() -> TokenStream {
         const INVALID_REQUEST: &str = "invalid-request";
         /// What the runtime replies when an error names no code of its own.
         const FALLBACK_ERROR_CODE: &str = "server-error";
-        /// The header name [`ReplyHandle`](reply_handle_impls) writes `true` under on a failed
-        /// reply — reserved, and refused as a `header_out` name, so a bound value never collides
-        /// with it.
+        /// The header name [`ReplyHandle`](reply_handle_impls) writes the boolean `true` under on a
+        /// failed reply — reserved, and refused as a `header_out` name, so a bound value never
+        /// collides with it.
         const IS_ERROR_HEADER: &str = "is_error";
     }
 }
@@ -2490,16 +2479,27 @@ fn wire_framing_fns() -> TokenStream {
             ::serde_json::json!({ "ok": false, "error": { "isServiceFault": true, "fault": fault } })
         }
 
-        /// The headers [`ReplyHandle`](reply_handle_impls)'s `fault` and `send` publish:
-        /// `is_error` appended when `answered`'s own `ok` is `false`.
+        /// The headers table [`ReplyHandle`](reply_handle_impls)'s `fault` and `send` publish:
+        /// each `header_out` value as JSON text, plus `is_error` as the boolean `true` when
+        /// `answered`'s own `ok` is `false`.
         pub fn outgoing_headers(
             answered: &::serde_json::Value,
-            mut headers: Vec<(String, String)>,
-        ) -> Vec<(String, String)> {
-            if answered.get("ok") == Some(&::serde_json::Value::Bool(false)) {
-                headers.push((IS_ERROR_HEADER.to_owned(), "true".to_owned()));
+            headers: Vec<(String, String)>,
+        ) -> ::lapin::types::FieldTable {
+            let mut table = ::lapin::types::FieldTable::default();
+            for (name, value) in headers {
+                table.insert(
+                    ::lapin::types::ShortString::from(name),
+                    ::lapin::types::AMQPValue::LongString(::lapin::types::LongString::from(value)),
+                );
             }
-            headers
+            if answered.get("ok") == Some(&::serde_json::Value::Bool(false)) {
+                table.insert(
+                    ::lapin::types::ShortString::from(IS_ERROR_HEADER),
+                    ::lapin::types::AMQPValue::Boolean(true),
+                );
+            }
+            table
         }
 
         /// The envelope, unwrapped into one of the three shapes this bus carries.

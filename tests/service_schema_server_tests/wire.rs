@@ -5,6 +5,7 @@
 
 #[cfg(test)]
 mod tests {
+    use lapin::types::{AMQPValue, FieldTable, LongString, ShortString};
     use serde_json::{Value, json};
 
     use crate::amqp_server::{framed_fault, legacy_reply, outgoing_headers};
@@ -201,27 +202,39 @@ mod tests {
         );
     }
 
+    fn table(entries: Vec<(&str, AMQPValue)>) -> FieldTable {
+        let mut table = FieldTable::default();
+        for (name, value) in entries {
+            table.insert(ShortString::from(name), value);
+        }
+        table
+    }
+
+    fn text(value: &str) -> AMQPValue {
+        AMQPValue::LongString(LongString::from(value))
+    }
+
     #[test]
     fn a_success_envelope_carries_no_is_error_header() {
         assert_eq!(
             outgoing_headers(&json!({ "ok": true, "value": {} }), Vec::new()),
-            Vec::new(),
+            FieldTable::default(),
         );
     }
 
     #[test]
-    fn a_declared_error_envelope_carries_the_is_error_header() {
+    fn a_declared_error_envelope_carries_the_is_error_header_as_a_boolean() {
         assert_eq!(
             outgoing_headers(
                 &json!({ "ok": false, "error": { "errorCode": "db-error" } }),
                 Vec::new(),
             ),
-            vec![("is_error".to_owned(), "true".to_owned())],
+            table(vec![("is_error", AMQPValue::Boolean(true))]),
         );
     }
 
     #[test]
-    fn a_framed_fault_carries_the_is_error_header() {
+    fn a_framed_fault_carries_the_is_error_header_as_a_boolean() {
         let framed = framed_fault(&json!({
             "detail": "invalid type: string, expected u32",
             "kind": "undeserializable-payload",
@@ -229,21 +242,21 @@ mod tests {
         }));
         assert_eq!(
             outgoing_headers(&framed, Vec::new()),
-            vec![("is_error".to_owned(), "true".to_owned())],
+            table(vec![("is_error", AMQPValue::Boolean(true))]),
         );
     }
 
     #[test]
-    fn a_declared_header_out_still_arrives_beside_is_error_on_an_error_envelope() {
+    fn a_declared_header_out_still_arrives_as_text_beside_is_error_on_an_error_envelope() {
         assert_eq!(
             outgoing_headers(
                 &json!({ "ok": false, "error": { "errorCode": "db-error" } }),
-                vec![("etag".to_owned(), "v1".to_owned())],
+                vec![("etag".to_owned(), "\"v1\"".to_owned())],
             ),
-            vec![
-                ("etag".to_owned(), "v1".to_owned()),
-                ("is_error".to_owned(), "true".to_owned()),
-            ],
+            table(vec![
+                ("etag", text("\"v1\"")),
+                ("is_error", AMQPValue::Boolean(true)),
+            ]),
         );
     }
 
@@ -252,9 +265,9 @@ mod tests {
         assert_eq!(
             outgoing_headers(
                 &json!({ "ok": true, "value": {} }),
-                vec![("etag".to_owned(), "v1".to_owned())],
+                vec![("etag".to_owned(), "\"v1\"".to_owned())],
             ),
-            vec![("etag".to_owned(), "v1".to_owned())],
+            table(vec![("etag", text("\"v1\""))]),
         );
     }
 }
