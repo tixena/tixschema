@@ -910,9 +910,15 @@ The CI pipeline ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs:
 
 1. `cargo build --verbose`
 2. `just check` (cargo check + clippy)
-3. `cargo test --verbose` (basic tests)
-4. `just test-sets` (every combination of the `web`, `mobile` and `mongo` feature sets via cargo-hack)
-5. Discord notification with build status
+3. `just lint-sets` (clippy over every combination of the feature sets)
+4. `cargo test --verbose` (basic tests)
+5. `just test-sets` (every combination of the `web`, `mobile` and `mongo` feature sets via cargo-hack)
+6. `just typecheck-ts` (the emitted TypeScript through a real `tsc --strict`)
+7. `just test-emitted` (the emitted Node, Dart, Swift and Kotlin clients run under their own toolchains)
+8. `cargo audit`
+9. Discord notification with build status
+
+CI installs every toolchain those groups need: Node with `zod`, `ws` and `typescript`, Dart, and the Kotlin jars; Swift, Kotlin and a JRE come with the runner image. Inside a plain `cargo test` those groups stand down and pass when their toolchain is missing, so only `just typecheck-ts` and `just test-emitted` prove anything: both refuse to stand down.
 
 **Before pushing**, run `just ci` locally to replicate the CI pipeline.
 
