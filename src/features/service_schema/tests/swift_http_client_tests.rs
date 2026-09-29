@@ -5,10 +5,11 @@
 //! output: a substring that must appear, and a name that must not.
 
 use super::{
-    NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE, SWIFT_BYTES_HEADER_OUT_SERVICE,
-    SWIFT_HEADER_VEC_OF_OPTIONS_SERVICE, SWIFT_HTTP_SERVICE, SWIFT_MULTIPART_HTTP_SERVICE,
-    SWIFT_NUMERIC_HEADER_OUT_SERVICE, SWIFT_SINGLE_PLACEHOLDER_HTTP_SERVICE,
-    SWIFT_STREAM_HTTP_SERVICE, SWIFT_UNIT_SUCCESS_HTTP_SERVICE, swift_http_client_of,
+    NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE, NEWTYPE_HEADER_OUT_HTTP_SERVICE,
+    SWIFT_BYTES_HEADER_OUT_SERVICE, SWIFT_HEADER_VEC_OF_OPTIONS_SERVICE, SWIFT_HTTP_SERVICE,
+    SWIFT_MULTIPART_HTTP_SERVICE, SWIFT_NUMERIC_HEADER_OUT_SERVICE,
+    SWIFT_SINGLE_PLACEHOLDER_HTTP_SERVICE, SWIFT_STREAM_HTTP_SERVICE,
+    SWIFT_UNIT_SUCCESS_HTTP_SERVICE, swift_http_client_of,
 };
 
 /// The body of one method, from its own doc comment through the closing brace of the method
@@ -657,5 +658,16 @@ fn a_named_message_field_in_the_path_crosses_through_the_wire_text_helper() {
     assert!(
         !swift_http_client_of(SWIFT_HTTP_SERVICE).contains("WireText"),
         "a service with no such placeholder emits no helper"
+    );
+}
+
+#[test]
+fn a_newtype_header_out_element_decodes_through_its_codable_and_faults_when_it_refuses() {
+    let written = swift_http_client_of(NEWTYPE_HEADER_OUT_HTTP_SERVICE);
+    assert!(
+        written.contains(
+            "(try? JSONDecoder().decode(MediaId.self, from: JSONEncoder().encode(rawHeaderOut0)))"
+        ) && written.contains("a response header did not match its declared type"),
+        "got: {written}"
     );
 }

@@ -120,18 +120,29 @@ fun main() = runBlocking {
 
 /// A stub `MediaClientServiceHttpTransport` recording the path of the one request it answers.
 const MEDIA_DRIVER: &str = r#"
-class MediaRecorder : MediaClientServiceHttpTransport {
+class MediaRecorder(private val statHeaders: List<Pair<String, String>>) : MediaClientServiceHttpTransport {
     val paths = mutableListOf<String>()
     override suspend fun send(request: MediaClientServiceHttpRequest): MediaClientServiceHttpResponse {
         paths.add(request.path)
+        if (request.path == "/media/stat") {
+            return MediaClientServiceHttpResponse(200, statHeaders, """{"caption":"c","sha256":"abc123"}""".encodeToByteArray())
+        }
         return MediaClientServiceHttpResponse(204, emptyList(), ByteArray(0))
     }
 }
 
 fun main() = runBlocking {
-    val recorder = MediaRecorder()
-    MediaClientServiceHttpClient(recorder).upload(MediaUpload(caption = "c", sha256 = MediaId("abc123")))
-    println(buildJsonObject { put("path", recorder.paths.first()) }.toString())
+    val upload = MediaUpload(caption = "c", sha256 = MediaId("abc123"))
+    val recorder = MediaRecorder(listOf("x-media-id" to "abc123"))
+    val client = MediaClientServiceHttpClient(recorder)
+    client.upload(upload)
+    val stat = client.stat(upload)
+    val missing = MediaClientServiceHttpClient(MediaRecorder(emptyList())).stat(upload)
+    println(buildJsonObject {
+        put("path", recorder.paths.first())
+        put("statId", (stat as? MediaClientServiceStatResult.Ok)?.value?.headerOut0?.value)
+        put("missingIsFault", missing is MediaClientServiceStatResult.Fault)
+    }.toString())
 }
 "#;
 
@@ -932,16 +943,29 @@ fn a_header_in_value_with_a_line_feed_is_refused_before_the_transport_is_ever_re
     );
 }
 
+fn media_answers() -> Option<serde_json::Value> {
+    let wrote = ran_kotlin(&media_module())?;
+    Some(serde_json::from_str(wrote.trim()).unwrap())
+}
+
 #[test]
 fn a_newtype_field_of_a_named_body_message_fills_its_path_placeholder_with_its_wire_value() {
-    let Some(wrote) = ran_kotlin(&media_module()) else {
+    let Some(answers) = media_answers() else {
         return;
     };
-    let sent: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
     assert_eq!(
-        sent["path"], "/media/abc123",
-        "the segment is the newtype's wire value, as the Rust client writes it. Got: {sent:#?}"
+        answers["path"], "/media/abc123",
+        "the segment is the newtype's wire value, as the Rust client writes it. Got: {answers:#?}"
     );
+}
+
+#[test]
+fn a_newtype_header_out_element_decodes_through_its_codec_and_a_missing_one_faults() {
+    let Some(answers) = media_answers() else {
+        return;
+    };
+    assert_eq!(answers["statId"], "abc123", "got: {answers:#?}");
+    assert_eq!(answers["missingIsFault"], true, "got: {answers:#?}");
 }
 
 #[test]

@@ -246,21 +246,36 @@ void main() async {
 /// A stub `MediaClientServiceHttpTransport` recording the path and body of every request.
 const MEDIA_DRIVER: &str = "
 class _MediaRecorder implements MediaClientServiceHttpTransport {
-  final List<Map<String, dynamic>> sent = <Map<String, dynamic>>[];
+  _MediaRecorder(this.statHeaders);
+
+  final List<(String, String)> statHeaders;
+  final List<String> paths = <String>[];
 
   @override
   Future<({int status, List<(String, String)> headers, List<int> body, Stream<List<int>> bodyStream})> send(
     ({String method, String path, String query, List<(String, String)> headers, List<int> body, List<(String, dynamic)> parts}) request,
   ) async {
-    sent.add(<String, dynamic>{'path': request.path, 'body': jsonDecode(utf8.decode(request.body))});
+    paths.add(request.path);
+    if (request.path == '/media/stat') {
+      final body = utf8.encode(jsonEncode(<String, dynamic>{'caption': 'c', 'sha256': 'abc123'}));
+      return (status: 200, headers: statHeaders, body: body, bodyStream: const Stream<List<int>>.empty());
+    }
     return (status: 204, headers: <(String, String)>[], body: <int>[], bodyStream: const Stream<List<int>>.empty());
   }
 }
 
 void main() async {
-  final recorder = _MediaRecorder();
-  await MediaClientServiceHttpClient(recorder).upload(MediaUpload(sha256: MediaId('abc123'), caption: 'c'));
-  print(jsonEncode(recorder.sent.first));
+  final upload = MediaUpload(sha256: MediaId('abc123'), caption: 'c');
+  final recorder = _MediaRecorder(<(String, String)>[('x-media-id', 'abc123')]);
+  final client = MediaClientServiceHttpClient(recorder);
+  await client.upload(upload);
+  final stat = await client.stat(upload);
+  final missing = await MediaClientServiceHttpClient(_MediaRecorder(<(String, String)>[])).stat(upload);
+  print(jsonEncode(<String, dynamic>{
+    'path': recorder.paths.first,
+    'statId': stat is MediaClientServiceStatResultOk ? stat.value.$2.toJson() : null,
+    'missingIsFault': missing is MediaClientServiceStatResultFault,
+  }));
 }
 ";
 
@@ -650,16 +665,29 @@ fn media_module() -> String {
     .join("\n\n")
 }
 
+fn media_answers() -> Option<serde_json::Value> {
+    let wrote = ran("dart", RUNTIME_VAR, "dart", "media.dart", &media_module())?;
+    Some(serde_json::from_str(wrote.trim()).unwrap())
+}
+
 #[test]
 fn a_newtype_field_of_a_named_body_message_fills_its_path_placeholder_with_its_wire_value() {
-    let Some(wrote) = ran("dart", RUNTIME_VAR, "dart", "media.dart", &media_module()) else {
+    let Some(answers) = media_answers() else {
         return;
     };
-    let sent: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
     assert_eq!(
-        sent["path"], "/media/abc123",
-        "the segment is the newtype's wire value, as the Rust client writes it. Got: {sent:#?}"
+        answers["path"], "/media/abc123",
+        "the segment is the newtype's wire value, as the Rust client writes it. Got: {answers:#?}"
     );
+}
+
+#[test]
+fn a_newtype_header_out_element_decodes_through_its_codec_and_a_missing_one_faults() {
+    let Some(answers) = media_answers() else {
+        return;
+    };
+    assert_eq!(answers["statId"], "abc123", "got: {answers:#?}");
+    assert_eq!(answers["missingIsFault"], true, "got: {answers:#?}");
 }
 
 fn content_module(driver: &str) -> String {

@@ -318,20 +318,48 @@ print(String(data: try! JSONEncoder().encode(report), encoding: .utf8)!)
 "##;
 
 /// A stub `MediaClientServiceHttpTransport` recording the path of the one request it answers.
-const MEDIA_DRIVER: &str = r#"
+const MEDIA_DRIVER: &str = r##"
 final class MediaRecorder: MediaClientServiceHttpTransport, @unchecked Sendable {
+  let statHeaders: [(String, String)]
   var paths: [String] = []
+
+  init(statHeaders: [(String, String)]) {
+    self.statHeaders = statHeaders
+  }
+
   func send(_ request: MediaClientServiceHttpRequest) async throws -> MediaClientServiceHttpResponse {
     paths.append(request.path)
+    if request.path == "/media/stat" {
+      return MediaClientServiceHttpResponse(
+        status: 200, headers: statHeaders, body: Data(#"{"caption":"c","sha256":"abc123"}"#.utf8))
+    }
     return MediaClientServiceHttpResponse(status: 204, headers: [], body: Data())
   }
 }
 
-let recorder = MediaRecorder()
-_ = await MediaClientServiceHttpClient(transport: recorder)
-  .upload(MediaUpload(caption: "c", sha256: MediaId(value: "abc123")))
-print(String(data: try! JSONEncoder().encode(["path": recorder.paths.first ?? ""]), encoding: .utf8)!)
-"#;
+struct MediaReport: Codable {
+  let path: String
+  let statId: String
+  let missingIsFault: Bool
+}
+
+let upload = MediaUpload(caption: "c", sha256: MediaId(value: "abc123"))
+let recorder = MediaRecorder(statHeaders: [("x-media-id", "abc123")])
+let client = MediaClientServiceHttpClient(transport: recorder)
+_ = await client.upload(upload)
+let stat = await client.stat(upload)
+let missing = await MediaClientServiceHttpClient(transport: MediaRecorder(statHeaders: [])).stat(upload)
+var statId = ""
+if case .success(let answered) = stat {
+  statId = answered.1.value
+}
+var missingIsFault = false
+if case .failure(.fault) = missing {
+  missingIsFault = true
+}
+let mediaReport = MediaReport(path: recorder.paths.first ?? "", statId: statId, missingIsFault: missingIsFault)
+print(String(data: try! JSONEncoder().encode(mediaReport), encoding: .utf8)!)
+"##;
 
 /// A stub `ContentClientServiceHttpTransport` answering the streamed operation's declared `416`
 /// with the complete length in `content-range`.
@@ -848,22 +876,35 @@ fn media_module() -> String {
     .join("\n\n")
 }
 
-#[test]
-fn a_newtype_field_of_a_named_body_message_fills_its_path_placeholder_with_its_wire_value() {
-    let Some(wrote) = ran(
+fn media_answers() -> Option<serde_json::Value> {
+    let wrote = ran(
         "swift",
         RUNTIME_VAR,
         "swift",
         "media.swift",
         &media_module(),
-    ) else {
+    )?;
+    Some(serde_json::from_str(wrote.trim()).unwrap())
+}
+
+#[test]
+fn a_newtype_field_of_a_named_body_message_fills_its_path_placeholder_with_its_wire_value() {
+    let Some(answers) = media_answers() else {
         return;
     };
-    let sent: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
     assert_eq!(
-        sent["path"], "/media/abc123",
-        "the segment is the newtype's wire value, as the Rust client writes it. Got: {sent:#?}"
+        answers["path"], "/media/abc123",
+        "the segment is the newtype's wire value, as the Rust client writes it. Got: {answers:#?}"
     );
+}
+
+#[test]
+fn a_newtype_header_out_element_decodes_through_its_codec_and_a_missing_one_faults() {
+    let Some(answers) = media_answers() else {
+        return;
+    };
+    assert_eq!(answers["statId"], "abc123", "got: {answers:#?}");
+    assert_eq!(answers["missingIsFault"], true, "got: {answers:#?}");
 }
 
 fn content_module(driver: &str) -> String {

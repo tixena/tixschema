@@ -1197,11 +1197,19 @@ fn dart_header_out_decode(ty: &Type, raw: &str) -> (String, bool) {
         | FieldDefType::Usize
         | FieldDefType::Isize => (format!("int.tryParse({raw})"), true),
         FieldDefType::F32 | FieldDefType::F64 => (format!("double.tryParse({raw})"), true),
+        // The header text read as a JSON string, as the Rust client reads it, through the type's
+        // own codec; a codec that refuses it is a malformed header.
+        FieldDefType::SiblingType(_, _) => (
+            format!(
+                "(() {{ try {{ return {}; }} catch (_) {{ return null; }} }})()",
+                dart_json_decode(base, raw)
+            ),
+            true,
+        ),
         FieldDefType::BooleanLiteral(_)
         | FieldDefType::Char
         | FieldDefType::Map(_, _)
         | FieldDefType::NumberLiteral(_)
-        | FieldDefType::SiblingType(_, _)
         | FieldDefType::String
         | FieldDefType::StringLiteral(_)
         | FieldDefType::Tuple(_)

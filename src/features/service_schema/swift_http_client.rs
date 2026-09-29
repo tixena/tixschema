@@ -858,7 +858,8 @@ fn header_value_read_stmts(
 }
 
 /// Whether `bare_ty` (an element's own type, its outer `Option` already stripped) can fail to
-/// decode from header text — every `Boolean` and numeric kind, bare or as a `Vec`'s own item type.
+/// decode from header text — every `Boolean`, numeric and declared kind, bare or as a `Vec`'s own
+/// item type.
 fn header_read_is_fallible(bare_ty: &Type) -> bool {
     let leaf = vec_inner(bare_ty).unwrap_or(bare_ty);
     matches!(
@@ -876,6 +877,7 @@ fn header_read_is_fallible(bare_ty: &Type) -> bool {
             | FieldDefType::Isize
             | FieldDefType::F32
             | FieldDefType::F64
+            | FieldDefType::SiblingType(_, _)
     )
 }
 
@@ -1341,11 +1343,16 @@ fn swift_header_out_decode(ty: &Type, raw: &str) -> String {
         | FieldDefType::Isize
         | FieldDefType::F32
         | FieldDefType::F64 => format!("{}({raw})", swift_typename_of(base)),
+        // The header text read as a JSON string, as the Rust client reads it, through the type's
+        // own `Decodable` conformance; one that refuses it is a malformed header.
+        FieldDefType::SiblingType(_, _) => format!(
+            "(try? JSONDecoder().decode({}.self, from: JSONEncoder().encode({raw})))",
+            swift_typename_of(base)
+        ),
         FieldDefType::BooleanLiteral(_)
         | FieldDefType::Char
         | FieldDefType::Map(_, _)
         | FieldDefType::NumberLiteral(_)
-        | FieldDefType::SiblingType(_, _)
         | FieldDefType::String
         | FieldDefType::StringLiteral(_)
         | FieldDefType::Tuple(_)

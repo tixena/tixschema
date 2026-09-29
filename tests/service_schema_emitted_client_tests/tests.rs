@@ -232,6 +232,10 @@ pub enum MediaError {
 /// A body-carrying operation whose path placeholder reads a newtype field of its named message.
 #[service_schema(transports = ["http_rest"])]
 pub trait MediaClientService<Ctx> {
+    #[service_schema_op(http(method = "POST", path = "/media/stat", header_out("x-media-id")))]
+    async fn stat(&self, ctx: &Ctx, req: MediaUpload)
+    -> Result<(MediaUpload, MediaId), MediaError>;
+
     #[service_schema_op(http(
         method = "PUT",
         path = "/media/{sha256}",
@@ -244,6 +248,16 @@ pub trait MediaClientService<Ctx> {
 pub struct MediaBackEnd;
 
 impl MediaClientService<()> for MediaBackEnd {
+    async fn stat(
+        &self,
+        _ctx: &(),
+        req: MediaUpload,
+    ) -> Result<(MediaUpload, MediaId), MediaError> {
+        ready(()).await;
+        let id = MediaId(req.sha256.0.clone());
+        Ok((req, id))
+    }
+
     async fn upload(&self, _ctx: &(), req: MediaUpload) -> Result<(), MediaError> {
         ready(()).await;
         if req.sha256.0.is_empty() {
@@ -1252,7 +1266,7 @@ fn the_pulse_backend_answers_alive() {
 
 /// Read only by the Dart, Swift and Kotlin groups beside this one.
 #[test]
-fn the_media_backend_answers_an_upload() {
+fn the_media_backend_answers_every_operation() {
     let upload = |sha256: &str| MediaUpload {
         caption: "c".to_owned(),
         sha256: MediaId(sha256.to_owned()),
@@ -1264,6 +1278,10 @@ fn the_media_backend_answers_an_upload() {
     assert_eq!(
         poll_once(MediaBackEnd.upload(&(), upload(""))).unwrap(),
         Err(MediaError::Missing)
+    );
+    assert_eq!(
+        poll_once(MediaBackEnd.stat(&(), upload("abc123"))).unwrap(),
+        Ok((upload("abc123"), MediaId("abc123".to_owned())))
     );
 }
 
