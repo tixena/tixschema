@@ -9,7 +9,7 @@ use super::{
     KOTLIN_BYTES_HEADER_OUT_SERVICE, KOTLIN_HTTP_SERVICE, KOTLIN_MULTIPART_HTTP_SERVICE,
     KOTLIN_NUMERIC_HEADER_OUT_SERVICE, KOTLIN_SINGLE_PLACEHOLDER_HTTP_SERVICE,
     KOTLIN_STREAM_HTTP_SERVICE, KOTLIN_UNIT_SUCCESS_HTTP_SERVICE,
-    NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE, kotlin_http_client_of,
+    NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE, NEWTYPE_HEADER_OUT_HTTP_SERVICE, kotlin_http_client_of,
 };
 
 /// The body of one method, from its own doc comment through the closing brace of the method
@@ -289,5 +289,16 @@ fn a_named_message_field_in_the_path_crosses_through_the_wire_text_helper() {
     assert!(
         !kotlin_http_client_of(KOTLIN_HTTP_SERVICE).contains("HttpWireText"),
         "a service with no such placeholder emits no helper"
+    );
+}
+
+#[test]
+fn a_newtype_header_out_element_decodes_through_its_serializer_and_faults_when_it_refuses() {
+    let written = kotlin_http_client_of(NEWTYPE_HEADER_OUT_HTTP_SERVICE);
+    assert!(
+        written.contains(
+            "runCatching { Json.decodeFromJsonElement(serializer<MediaId>(), JsonPrimitive(rawHeaderOut0)) }.getOrNull()"
+        ) && written.contains("a response header did not match its declared type"),
+        "got: {written}"
     );
 }

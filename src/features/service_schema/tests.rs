@@ -508,6 +508,16 @@ const DART_MULTIPART_HTTP_SERVICE: &str = "
     }
 ";
 
+/// A `header_out` element of a declared newtype, which the client reads back through that type's
+/// own codec.
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+const NEWTYPE_HEADER_OUT_HTTP_SERVICE: &str = "
+    pub trait MediaClientService<Ctx> {
+        #[service_schema_op(http(method = \"POST\", path = \"/media/stat\", header_out(\"x-media-id\")))]
+        async fn stat(&self, ctx: &Ctx, req: MediaUpload) -> Result<(MediaUpload, MediaId), MediaError>;
+    }
+";
+
 /// A body-carrying operation whose path placeholder reads a field of its named message, a field
 /// whose type the macro never sees.
 #[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]

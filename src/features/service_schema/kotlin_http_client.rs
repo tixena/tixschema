@@ -1277,11 +1277,16 @@ fn kotlin_header_out_decode(ty: &Type, raw: &str) -> String {
         | FieldDefType::Isize
         | FieldDefType::F32
         | FieldDefType::F64 => format!("({raw}).to{}OrNull()", kotlin_type_of(base)),
+        // The header text read as a JSON string, as the Rust client reads it, through the type's
+        // own serializer; one that refuses it is a malformed header.
+        FieldDefType::SiblingType(_, _) => format!(
+            "runCatching {{ Json.decodeFromJsonElement(serializer<{}>(), JsonPrimitive({raw})) }}.getOrNull()",
+            kotlin_type_of(base)
+        ),
         FieldDefType::BooleanLiteral(_)
         | FieldDefType::Char
         | FieldDefType::Map(_, _)
         | FieldDefType::NumberLiteral(_)
-        | FieldDefType::SiblingType(_, _)
         | FieldDefType::String
         | FieldDefType::StringLiteral(_)
         | FieldDefType::Tuple(_)
@@ -1298,7 +1303,7 @@ fn kotlin_header_out_decode(ty: &Type, raw: &str) -> String {
 }
 
 /// Whether [`kotlin_header_out_decode`]'s own expression for `ty` can answer `null` (a number, a
-/// `Boolean`, or a list of either) — an always-non-null one needs no elvis to fault on, and
+/// `Boolean`, a declared type, or a list of those) — an always-non-null one needs no elvis to fault on, and
 /// writing one anyway is an unconditionally-true elvis kotlinc warns about.
 fn kotlin_header_out_decode_is_fallible(ty: &Type) -> bool {
     let base = option_inner(ty).unwrap_or(ty);
@@ -1320,6 +1325,7 @@ fn kotlin_header_out_decode_is_fallible(ty: &Type) -> bool {
             | FieldDefType::Isize
             | FieldDefType::F32
             | FieldDefType::F64
+            | FieldDefType::SiblingType(_, _)
     )
 }
 
