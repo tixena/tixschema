@@ -17,11 +17,11 @@ use super::tests::{
     ConversationId, EchoBackEnd, EchoClientServiceSchema, EchoRangeError, EchoRangeResponse,
     GateClientServiceSchema, GateError, GateStatus, LabelClientServiceSchema, LabelError,
     LabelStatus, PulseBackEnd, PulseClientServiceSchema, PulseError, PulseResponse,
-    SealClientServiceSchema, SealError, SealStatus, SearchClientServiceSchema, SearchEcho,
-    SearchError, ThumbnailBackEnd, ThumbnailClientServiceSchema, ThumbnailError,
-    UploadDocumentBackEnd, UploadDocumentClientServiceSchema, UploadDocumentError,
-    UploadDocumentResponse, VaultClientServiceSchema, VaultError, VaultStatus, WindowError,
-    WindowPage,
+    STREAMED_CONTENT_TYPE, SealClientServiceSchema, SealError, SealStatus,
+    SearchClientServiceSchema, SearchEcho, SearchError, ThumbnailBackEnd,
+    ThumbnailClientServiceSchema, ThumbnailError, UploadDocumentBackEnd,
+    UploadDocumentClientServiceSchema, UploadDocumentError, UploadDocumentResponse,
+    VaultClientServiceSchema, VaultError, VaultStatus, WindowError, WindowPage,
 };
 use super::thumbnail_http_rest_transport;
 use super::upload_document_http_rest_transport;
@@ -234,7 +234,8 @@ main().catch((error) => { console.error(error); process.exit(1); });
 "#;
 
 /// `getFile`'s own signature carries no `byte_range`: it declares no `header_in` binding at all,
-/// so the answer is always the full body — the one shape both dispatchers can agree on.
+/// so the answer is always the full body — the one shape both dispatchers can agree on. The
+/// `bad-type` file answers a content type carrying a line break, as its Rust twin does.
 const STREAM_DRIVER: &str = r#"
 async function main() {
   const content = new TextEncoder().encode("the quick brown fox jumps over the lazy dog");
@@ -245,6 +246,7 @@ async function main() {
         ok: true,
         value: {
           contentRange: undefined,
+          contentType: fileId === "bad-type" ? "text/plain\r\nx-injected: yes" : "text/plain; charset=utf-8",
           body: new ReadableStream({
             start(controller) {
               controller.enqueue(content);
@@ -262,6 +264,7 @@ async function main() {
         ok: true,
         value: {
           contentRange: undefined,
+          contentType: "text/plain; charset=utf-8",
           body: new ReadableStream({
             start(controller) {
               controller.enqueue(content);
@@ -303,6 +306,7 @@ async function main() {
     full: await answered("/files/present"),
     missing: await answered("/files/missing"),
     unsatisfiable: await answered("/ranges/unsatisfiable"),
+    badType: await answered("/files/bad-type"),
   };
   console.log(JSON.stringify(results));
   process.exit(0);
@@ -458,6 +462,32 @@ const transport = {
 };
 const client = createContentClientServiceHttpClient(transport);
 console.log(JSON.stringify({ unsatisfiable: await client.getRange("unsatisfiable") }));
+"#;
+
+/// A stub `Transport` answering the streamed operation whole at `/files/present` and as a range
+/// slice anywhere else, both naming their content type.
+const CONTENT_TYPE_CLIENT_DRIVER: &str = r#"
+const empty = () => new ReadableStream({ start(controller) { controller.close(); } });
+const transport = {
+  async send(request) {
+    if (request.path === "/files/present") {
+      return { status: 200, headers: [["content-type", "text/plain; charset=utf-8"]], body: "", bodyStream: empty() };
+    }
+    return {
+      status: 206,
+      headers: [["content-range", "bytes 4-8/43"], ["content-type", "text/plain; charset=utf-8"]],
+      body: "",
+      bodyStream: empty(),
+    };
+  },
+};
+const streamed = (result) =>
+  result.ok ? { contentRange: result.value.contentRange ?? null, contentType: result.value.contentType } : result;
+const client = createContentClientServiceHttpClient(transport);
+console.log(JSON.stringify({
+  full: streamed(await client.getFile("present")),
+  partial: streamed(await client.getFile("sliced")),
+}));
 "#;
 
 /// A stub `Transport` recording whether `send` was ever called, driving the emitted client's own
@@ -1004,6 +1034,29 @@ fn a_streamed_operations_declared_416_reads_its_content_range_back() {
     );
 }
 
+#[test]
+fn a_streamed_reply_reads_its_content_type_back() {
+    let module = format!(
+        "{}\n\n{CONTENT_TYPE_CLIENT_DRIVER}",
+        content_client_emitted()
+    );
+    let Some(results) = run_or_stand_down(
+        "http-client-content-type",
+        "content-type-client.mts",
+        &module,
+    ) else {
+        return;
+    };
+    assert_eq!(
+        results,
+        serde_json::json!({
+            "full": {"contentRange": null, "contentType": STREAMED_CONTENT_TYPE},
+            "partial": {"contentRange": "bytes 4-8/43", "contentType": STREAMED_CONTENT_TYPE},
+        }),
+        "both answers carry the content type the response named"
+    );
+}
+
 fn content_emitted() -> String {
     [
         "import { z } from \"zod\";".to_owned(),
@@ -1068,9 +1121,11 @@ fn stream_body_kind_agrees_with_rust() {
     let node_full = node_answered(&results["full"]);
     let node_missing = node_answered(&results["missing"]);
     let node_unsatisfiable = node_answered(&results["unsatisfiable"]);
+    let node_bad_type = node_answered(&results["badType"]);
     let rust_full = content_rust_answered("/files/present");
     let rust_missing = content_rust_answered("/files/missing");
     let rust_unsatisfiable = content_rust_answered("/ranges/unsatisfiable");
+    let rust_bad_type = content_rust_answered("/files/bad-type");
     assert_eq!(
         node_full, rust_full,
         "node: {node_full:#?}, rust: {rust_full:#?}"
@@ -1083,7 +1138,15 @@ fn stream_body_kind_agrees_with_rust() {
         node_unsatisfiable, rust_unsatisfiable,
         "node: {node_unsatisfiable:#?}, rust: {rust_unsatisfiable:#?}"
     );
+    assert_eq!(
+        node_bad_type, rust_bad_type,
+        "node: {node_bad_type:#?}, rust: {rust_bad_type:#?}"
+    );
     assert_eq!(rust_full.status, 200, "got: {rust_full:#?}");
+    assert_eq!(
+        rust_bad_type.status, 500,
+        "a content type carrying a line break is a fault. Got: {rust_bad_type:#?}"
+    );
     assert_eq!(rust_missing.status, 404, "got: {rust_missing:#?}");
     assert_eq!(
         rust_unsatisfiable.status, 416,
@@ -1094,6 +1157,35 @@ fn stream_body_kind_agrees_with_rust() {
             .headers
             .contains(&("content-range".to_owned(), "bytes */43".to_owned())),
         "a declared 416 carries the complete length. Got: {rust_unsatisfiable:#?}"
+    );
+}
+
+/// A streamed reply names its content type, as a `body = "bytes"` reply does.
+#[test]
+fn the_rust_dispatchers_streamed_reply_carries_a_content_type() {
+    let answered = content_rust_answered("/files/present");
+    assert!(
+        answered
+            .headers
+            .contains(&("content-type".to_owned(), STREAMED_CONTENT_TYPE.to_owned())),
+        "the streamed reply names no content type. Got: {answered:#?}"
+    );
+}
+
+/// The TypeScript REST server's twin of the Rust dispatcher's check.
+#[test]
+fn the_typescript_servers_streamed_reply_carries_a_content_type() {
+    let module = format!("{}\n\n{STREAM_DRIVER}", content_emitted());
+    let Some(results) = run_or_stand_down("http-service-stream-type", "stream-type.mts", &module)
+    else {
+        return;
+    };
+    let answered = node_answered(&results["full"]);
+    assert!(
+        answered
+            .headers
+            .contains(&("content-type".to_owned(), STREAMED_CONTENT_TYPE.to_owned())),
+        "the streamed reply names no content type. Got: {answered:#?}"
     );
 }
 

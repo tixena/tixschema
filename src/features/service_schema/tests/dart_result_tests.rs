@@ -83,12 +83,17 @@ fn the_pair_carries_no_codec() {
 fn a_stream_operations_ok_carries_the_same_record_the_rest_client_answers_with() {
     let written = dart_result_of(DART_STREAM_HTTP_SERVICE).join("\n\n");
     assert!(
-        written.contains("final ({String? contentRange, Stream<List<int>> body}) value;"),
+        written.contains(
+            "final ({String? contentRange, String contentType, Stream<List<int>> body}) value;"
+        ),
         "a bare streamed success shares its spelling with `dart_http_client`'s own return type, \
          through the shared `dart_success_type`. Got: {written}"
     );
     assert!(
-        written.contains("final (({String? contentRange, Stream<List<int>> body}), String) value;"),
+        written.contains(
+            "final (({String? contentRange, String contentType, Stream<List<int>> body}), String) \
+             value;"
+        ),
         "a `header_out` operation's own success wraps the streamed record in a tuple, exactly as \
          the client's own return type does. Got: {written}"
     );

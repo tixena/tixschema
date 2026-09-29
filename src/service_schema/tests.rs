@@ -3444,8 +3444,8 @@ fn a_reserved_header_name_is_refused() {
         ),
         vec![
             "service_schema: operation `get_widget` declares the header name \"content-type\", \
-             which `json_response`, and a `body = \"bytes\"` reply's own content type, writes \
-             itself\n       \
+             which `json_response`, and a `body = \"bytes\"` or `body = \"stream\"` reply's own \
+             content type, writes itself\n       \
              name a header this transport does not already control"
         ]
     );

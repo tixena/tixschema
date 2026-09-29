@@ -43,10 +43,10 @@ use syn::Type;
 use super::swift_type::swift_typename_of;
 
 /// The Swift type a `body = "stream"` operation's own success answers with: a nullable
-/// `contentRange` paired with the body as an `AsyncThrowingStream<Data, Error>` — mirrors the
-/// Dart client's own `STREAMED_ANSWER_DART_TYPE`.
+/// `contentRange` and the `contentType`, paired with the body as an
+/// `AsyncThrowingStream<Data, Error>` — mirrors the Dart client's own `STREAMED_ANSWER_DART_TYPE`.
 const STREAMED_ANSWER_SWIFT_TYPE: &str =
-    "(contentRange: String?, body: AsyncThrowingStream<Data, Error>)";
+    "(contentRange: String?, contentType: String, body: AsyncThrowingStream<Data, Error>)";
 
 pub fn emit(service: &ServiceDef) -> Vec<String> {
     let named = service.ident.to_string();
@@ -744,8 +744,9 @@ fn stream_reply_decode_stmt(
 }
 
 /// One status arm of [`stream_reply_decode_stmt`]: `contentRange` read back off the response for
-/// a `206` partial answer, left `nil` for the declared `ok_status`'s whole-body answer, then every
-/// declared `header_out` element read back exactly as the bytes and JSON paths do.
+/// a `206` partial answer, left `nil` for the declared `ok_status`'s whole-body answer, both with
+/// `contentType` read back the way a bytes reply reads it, then every declared `header_out` element
+/// read back exactly as the bytes and JSON paths do.
 fn stream_success_arm(
     fn_prefix: &str,
     wire: &str,
@@ -760,7 +761,13 @@ fn stream_success_arm(
     } else {
         "      let contentRange: String? = nil\n".to_owned()
     };
-    stmt.push_str("      let answer = (contentRange: contentRange, body: response.bodyStream)\n");
+    let _ = write!(
+        stmt,
+        "      let contentType = {fn_prefix}FindHeader(response.headers, \"content-type\") \
+         ?? \"\"\n      \
+         let answer = (contentRange: contentRange, contentType: contentType, body: \
+         response.bodyStream)\n"
+    );
     if shape.header_out.is_empty() {
         stmt.push_str("      return .success(answer)\n");
         return stmt;

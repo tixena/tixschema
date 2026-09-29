@@ -1,6 +1,7 @@
 //! A `body = "stream"` operation driven through the `http_rest` dispatcher by hand — no server —
 //! with a hand-rolled chunked reader proving genuine incremental pulling through `BodySource`, and
-//! a `206` range answer expressing `content-range` alongside the streamed body.
+//! a `206` range answer expressing `content-range` alongside the streamed body, both answers
+//! naming their `content-type`.
 
 #![cfg(feature = "serde")]
 
@@ -19,6 +20,9 @@ const CONTENT: &[u8] = b"the quick brown fox jumps over the lazy dog";
 /// The most [`ChunkedSlice::read`] ever returns in one call, regardless of the caller's own buffer
 /// size — what makes draining [`CONTENT`] genuinely incremental.
 const CHUNK_CAP: usize = 5;
+
+/// The content type every answer names, except the one a `bad-type` document answers with.
+const CONTENT_TYPE: &str = "text/plain; charset=utf-8";
 
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -107,10 +111,16 @@ impl ContentService<()> for DocumentStore {
         if document_id == "missing" {
             return Err(ContentError::NotFound);
         }
+        let content_type = if document_id == "bad-type" {
+            "text/plain\r\nx-injected: yes".to_owned()
+        } else {
+            CONTENT_TYPE.to_owned()
+        };
         let Some(range) = byte_range else {
-            return Ok(content_service_schema::StreamedAnswer::Full(Box::new(
-                ChunkedSlice::new(CONTENT),
-            )));
+            return Ok(content_service_schema::StreamedAnswer::Full {
+                source: Box::new(ChunkedSlice::new(CONTENT)),
+                content_type,
+            });
         };
         let Some((start, end)) = parse_range(&range, CONTENT.len()) else {
             return Err(ContentError::RangeNotSatisfiable);
@@ -118,6 +128,7 @@ impl ContentService<()> for DocumentStore {
         Ok(content_service_schema::StreamedAnswer::Partial {
             source: Box::new(ChunkedSlice::new(&CONTENT[start..=end])),
             content_range: format!("bytes {start}-{end}/{}", CONTENT.len()),
+            content_type,
         })
     }
 
@@ -145,6 +156,14 @@ impl stream_http_rest_transport::FaultHandler for RecordingFaultHandler {
             ),
         )
     }
+}
+
+/// The value of the first header called `name`, if any.
+fn header<'headers>(headers: &'headers [(String, String)], name: &str) -> Option<&'headers str> {
+    headers
+        .iter()
+        .find(|(candidate, _)| candidate == name)
+        .map(|(_, value)| value.as_str())
 }
 
 /// Parses `bytes=START-END` into an inclusive, in-bounds `(start, end)`, or `None` where the range
@@ -245,6 +264,11 @@ fn a_full_body_streams_through_the_seam_in_more_than_one_pull() {
         !headers.iter().any(|(name, _)| name == "content-range"),
         "a full body carries no content-range. got: {headers:?}"
     );
+    assert_eq!(
+        header(&headers, "content-type"),
+        Some(CONTENT_TYPE),
+        "got: {headers:?}"
+    );
 }
 
 /// A `Range` header answers `206` with `content-range` composed alongside the streamed slice -
@@ -260,13 +284,34 @@ fn a_range_header_answers_206_with_content_range_and_the_sliced_body() {
     assert_eq!(body, b"quick");
     assert!(pulls >= 1, "got {pulls} pulls");
     assert_eq!(
-        headers
-            .iter()
-            .find(|(name, _)| name == "content-range")
-            .map(|(_, value)| value.as_str()),
+        header(&headers, "content-range"),
         Some(format!("bytes 4-8/{}", CONTENT.len())).as_deref(),
         "got: {headers:?}"
     );
+    assert_eq!(
+        header(&headers, "content-type"),
+        Some(CONTENT_TYPE),
+        "got: {headers:?}"
+    );
+}
+
+/// A content type carrying a line break is refused before it reaches the wire, on the whole body
+/// and on a range slice alike: the answer is a fault, not a response with an injected header.
+#[test]
+fn a_streamed_content_type_carrying_a_line_break_answers_a_fault() {
+    for range in [None, Some("bytes=4-8")] {
+        let headers_in: Vec<(&str, &str)> =
+            range.map(|value| ("range", value)).into_iter().collect();
+        let (status, headers, body, _pulls) =
+            dispatched("GET", "/documents/bad-type/content", &headers_in);
+        assert_eq!(status, 500, "range {range:?}. got: {headers:?}");
+        assert!(
+            !headers.iter().any(|(name, _)| name == "x-injected"),
+            "range {range:?}. got: {headers:?}"
+        );
+        let fault: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(fault["kind"], "handler-panic", "range {range:?}");
+    }
 }
 
 /// A range past the end of the body is answered through the declared error, mapped to its own
@@ -319,11 +364,13 @@ fn a_header_out_entry_composes_onto_both_streamed_answer_arms() {
     assert_eq!(full_status, 200);
     assert_eq!(full_body, CONTENT);
     assert_eq!(
-        full_headers
-            .iter()
-            .find(|(name, _)| name == "etag")
-            .map(|(_, value)| value.as_str()),
+        header(&full_headers, "etag"),
         Some("v9"),
+        "got: {full_headers:?}"
+    );
+    assert_eq!(
+        header(&full_headers, "content-type"),
+        Some(CONTENT_TYPE),
         "got: {full_headers:?}"
     );
 
@@ -335,18 +382,17 @@ fn a_header_out_entry_composes_onto_both_streamed_answer_arms() {
     assert_eq!(partial_status, 206);
     assert_eq!(partial_body, b"quick");
     assert_eq!(
-        partial_headers
-            .iter()
-            .find(|(name, _)| name == "content-range")
-            .map(|(_, value)| value.as_str()),
+        header(&partial_headers, "content-range"),
         Some(format!("bytes 4-8/{}", CONTENT.len())).as_deref(),
         "content-range still rides beside the declared header. got: {partial_headers:?}"
     );
     assert_eq!(
-        partial_headers
-            .iter()
-            .find(|(name, _)| name == "etag")
-            .map(|(_, value)| value.as_str()),
+        header(&partial_headers, "content-type"),
+        Some(CONTENT_TYPE),
+        "content-type still rides beside the declared header. got: {partial_headers:?}"
+    );
+    assert_eq!(
+        header(&partial_headers, "etag"),
         Some("v9"),
         "got: {partial_headers:?}"
     );

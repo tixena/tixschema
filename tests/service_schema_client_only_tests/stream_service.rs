@@ -1,7 +1,8 @@
 //! A `body = "stream"` operation called through the `http_rest` client with no dispatcher in
 //! sight - a hand-written `Transport` answering with a chunked reader, proving the client reads a
 //! response body incrementally through the same seam a dispatcher answers one through, and a
-//! `206` range answer coming back as `StreamedAnswer::Partial` with its own `content-range`.
+//! `206` range answer coming back as `StreamedAnswer::Partial` with its own `content-range`, both
+//! answers carrying their `content-type`.
 
 #![cfg(feature = "serde")]
 
@@ -198,9 +199,10 @@ impl ContentClientService<()> for ContentClientBackEnd {
         if document_id == "missing" {
             return Err(ContentError::NotFound);
         }
-        Ok(content_client_service_schema::StreamedAnswer::Full(
-            Box::new(ChunkedSlice::new(CONTENT)),
-        ))
+        Ok(content_client_service_schema::StreamedAnswer::Full {
+            source: Box::new(ChunkedSlice::new(CONTENT)),
+            content_type: "text/plain".to_owned(),
+        })
     }
 
     async fn get_content_with_etag(
@@ -227,40 +229,53 @@ impl ContentClientService<()> for ContentClientBackEnd {
                 Some(format!("bytes */{}", CONTENT.len())),
             ));
         }
-        Ok(content_client_service_schema::StreamedAnswer::Full(
-            Box::new(ChunkedSlice::new(CONTENT)),
-        ))
+        Ok(content_client_service_schema::StreamedAnswer::Full {
+            source: Box::new(ChunkedSlice::new(CONTENT)),
+            content_type: "text/plain".to_owned(),
+        })
     }
 }
 
-/// The `Full` source, or `None` for `Partial` - extracted through `Option` rather than a match arm
-/// that panics, so a wrong variant fails a test through the same `.unwrap()` every other assertion
-/// here does.
+/// The `Full` source and its content type, or `None` for `Partial` - extracted through `Option`
+/// rather than a match arm that panics, so a wrong variant fails a test through the same
+/// `.unwrap()` every other assertion here does.
 fn full_source(
-    answered: content_client_service_schema::StreamedAnswer,
-) -> Option<Box<dyn content_client_service_schema::BodySource + Send>> {
-    match answered {
-        content_client_service_schema::StreamedAnswer::Full(source) => Some(source),
-        content_client_service_schema::StreamedAnswer::Partial {
-            source: _source,
-            content_range: _content_range,
-        } => None,
-    }
-}
-
-/// The `Partial` source and its `content-range`, or `None` for `Full`.
-fn partial_source(
     answered: content_client_service_schema::StreamedAnswer,
 ) -> Option<(
     Box<dyn content_client_service_schema::BodySource + Send>,
     String,
 )> {
     match answered {
+        content_client_service_schema::StreamedAnswer::Full {
+            source,
+            content_type,
+        } => Some((source, content_type)),
+        content_client_service_schema::StreamedAnswer::Partial {
+            source: _source,
+            content_range: _content_range,
+            content_type: _content_type,
+        } => None,
+    }
+}
+
+/// The `Partial` source, its `content-range` and its content type, or `None` for `Full`.
+fn partial_source(
+    answered: content_client_service_schema::StreamedAnswer,
+) -> Option<(
+    Box<dyn content_client_service_schema::BodySource + Send>,
+    String,
+    String,
+)> {
+    match answered {
         content_client_service_schema::StreamedAnswer::Partial {
             source,
             content_range,
-        } => Some((source, content_range)),
-        content_client_service_schema::StreamedAnswer::Full(_) => None,
+            content_type,
+        } => Some((source, content_range, content_type)),
+        content_client_service_schema::StreamedAnswer::Full {
+            source: _source,
+            content_type: _content_type,
+        } => None,
     }
 }
 
@@ -296,20 +311,22 @@ where
 }
 
 /// A full `200` answer comes back as `StreamedAnswer::Full`, its source read incrementally through
-/// the same `BodySource` seam a dispatcher's own handler answers through - and the request the
-/// client sent is recorded exactly as `header_in`/the path template built it.
+/// the same `BodySource` seam a dispatcher's own handler answers through, its `content-type` read
+/// back beside it - and the request the client sent is recorded exactly as `header_in`/the path
+/// template built it.
 #[test]
 fn a_full_answer_streams_back_through_the_seam_in_more_than_one_pull() {
     let transport = StreamingTransport::queued(vec![(
         200,
-        Vec::new(),
+        vec![("content-type".to_owned(), "text/plain".to_owned())],
         QueuedBody::Stream(ChunkedSlice::new(CONTENT)),
     )]);
     let client = stream_http_rest_client::ContentClientServiceClient::new(transport);
     let answered = poll_once(client.get_content("present".to_owned(), None))
         .unwrap()
         .unwrap();
-    let source = full_source(answered).unwrap();
+    let (source, content_type) = full_source(answered).unwrap();
+    assert_eq!(content_type, "text/plain");
     let (body, pulls) = drain(source);
     assert_eq!(body, CONTENT);
     assert!(pulls > 1, "got {pulls} pulls");
@@ -326,14 +343,17 @@ fn a_full_answer_streams_back_through_the_seam_in_more_than_one_pull() {
     );
 }
 
-/// A `206` answer comes back as `StreamedAnswer::Partial`, `content-range` read off the response
-/// header before the body is taken, and the `Range` request header travelling out through
-/// `header_in` exactly like it does for any other operation.
+/// A `206` answer comes back as `StreamedAnswer::Partial`, `content-range` and `content-type` read
+/// off the response headers before the body is taken, and the `Range` request header travelling
+/// out through `header_in` exactly like it does for any other operation.
 #[test]
 fn a_206_answer_carries_its_content_range_into_the_partial_variant() {
     let transport = StreamingTransport::queued(vec![(
         206,
-        vec![("content-range".to_owned(), "bytes 4-8/44".to_owned())],
+        vec![
+            ("content-range".to_owned(), "bytes 4-8/44".to_owned()),
+            ("content-type".to_owned(), "text/plain".to_owned()),
+        ],
         QueuedBody::Stream(ChunkedSlice::new(b"quick")),
     )]);
     let client = stream_http_rest_client::ContentClientServiceClient::new(transport);
@@ -341,8 +361,9 @@ fn a_206_answer_carries_its_content_range_into_the_partial_variant() {
         poll_once(client.get_content("present".to_owned(), Some("bytes=4-8".to_owned())))
             .unwrap()
             .unwrap();
-    let (source, content_range) = partial_source(answered).unwrap();
+    let (source, content_range, content_type) = partial_source(answered).unwrap();
     assert_eq!(content_range, "bytes 4-8/44");
+    assert_eq!(content_type, "text/plain");
     let (body, _pulls) = drain(source);
     assert_eq!(body, b"quick");
     assert_eq!(
@@ -356,7 +377,10 @@ fn a_206_answer_carries_its_content_range_into_the_partial_variant() {
 fn a_header_out_entry_reads_back_off_the_full_streamed_answer() {
     let transport = StreamingTransport::queued(vec![(
         200,
-        vec![("etag".to_owned(), "v9".to_owned())],
+        vec![
+            ("content-type".to_owned(), "text/plain".to_owned()),
+            ("etag".to_owned(), "v9".to_owned()),
+        ],
         QueuedBody::Stream(ChunkedSlice::new(CONTENT)),
     )]);
     let client = stream_http_rest_client::ContentClientServiceClient::new(transport);
@@ -364,7 +388,9 @@ fn a_header_out_entry_reads_back_off_the_full_streamed_answer() {
         .unwrap()
         .unwrap();
     assert_eq!(etag, "v9");
-    let (drained, _pulls) = drain(full_source(answered).unwrap());
+    let (source, content_type) = full_source(answered).unwrap();
+    assert_eq!(content_type, "text/plain");
+    let (drained, _pulls) = drain(source);
     assert_eq!(drained, CONTENT);
 }
 
@@ -376,6 +402,7 @@ fn a_header_out_entry_reads_back_off_the_partial_streamed_answer() {
         206,
         vec![
             ("content-range".to_owned(), "bytes 4-8/44".to_owned()),
+            ("content-type".to_owned(), "text/plain".to_owned()),
             ("etag".to_owned(), "v9".to_owned()),
         ],
         QueuedBody::Stream(ChunkedSlice::new(b"quick")),
@@ -386,8 +413,9 @@ fn a_header_out_entry_reads_back_off_the_partial_streamed_answer() {
             .unwrap()
             .unwrap();
     assert_eq!(etag, "v9");
-    let (source, content_range) = partial_source(answered).unwrap();
+    let (source, content_range, content_type) = partial_source(answered).unwrap();
     assert_eq!(content_range, "bytes 4-8/44");
+    assert_eq!(content_type, "text/plain");
     let (drained, _pulls) = drain(source);
     assert_eq!(drained, b"quick");
 }
@@ -402,7 +430,11 @@ fn an_already_buffered_response_still_reads_back_as_a_body_source() {
     let answered = poll_once(client.get_content("present".to_owned(), None))
         .unwrap()
         .unwrap();
-    let source = full_source(answered).unwrap();
+    let (source, content_type) = full_source(answered).unwrap();
+    assert_eq!(
+        content_type, "",
+        "a response naming no content type reads back empty, as a bytes reply's does"
+    );
     let (body, _pulls) = drain(source);
     assert_eq!(body, CONTENT);
 }
@@ -468,7 +500,9 @@ fn the_contract_is_implementable_where_no_dispatcher_was_placed() {
     let answered = poll_once(ContentClientBackEnd.get_content(&(), "present".to_owned(), None))
         .unwrap()
         .unwrap();
-    let (body, pulls) = drain(full_source(answered).unwrap());
+    let (source, content_type) = full_source(answered).unwrap();
+    assert_eq!(content_type, "text/plain");
+    let (body, pulls) = drain(source);
     assert_eq!(body, CONTENT);
     assert!(pulls > 1, "got {pulls} pulls");
     assert!(matches!(
@@ -480,6 +514,7 @@ fn the_contract_is_implementable_where_no_dispatcher_was_placed() {
             .unwrap()
             .unwrap();
     assert_eq!(etag, "v9");
-    let (drained, _pulls) = drain(full_source(with_etag).unwrap());
+    let (with_etag_source, _content_type) = full_source(with_etag).unwrap();
+    let (drained, _pulls) = drain(with_etag_source);
     assert_eq!(drained, CONTENT);
 }

@@ -123,6 +123,9 @@ use tixschema::{model_schema, service_schema};
 /// binding of its own, so the answer is always the full body.
 const STREAMED_CONTENT: &[u8] = b"the quick brown fox jumps over the lazy dog";
 
+/// The content type [`STREAMED_CONTENT`] answers under.
+pub const STREAMED_CONTENT_TYPE: &str = "text/plain; charset=utf-8";
+
 /// The most [`ChunkedSlice::read`] ever answers in one call, so draining [`STREAMED_CONTENT`]
 /// takes several `pull()` calls rather than one buffered copy.
 const CHUNKED_READ_CAP: usize = 5;
@@ -783,9 +786,15 @@ impl ContentClientService<()> for ContentBackEnd {
         if file_id == "missing" {
             return Err(ContentError::NotFound);
         }
-        Ok(content_client_service_schema::StreamedAnswer::Full(
-            Box::new(ChunkedSlice::new(STREAMED_CONTENT)),
-        ))
+        let content_type = if file_id == "bad-type" {
+            "text/plain\r\nx-injected: yes"
+        } else {
+            STREAMED_CONTENT_TYPE
+        };
+        Ok(content_client_service_schema::StreamedAnswer::Full {
+            source: Box::new(ChunkedSlice::new(STREAMED_CONTENT)),
+            content_type: content_type.to_owned(),
+        })
     }
 
     async fn get_range(
@@ -801,9 +810,10 @@ impl ContentClientService<()> for ContentBackEnd {
                 Some(format!("bytes */{}", STREAMED_CONTENT.len())),
             ));
         }
-        Ok(content_client_service_schema::StreamedAnswer::Full(
-            Box::new(ChunkedSlice::new(STREAMED_CONTENT)),
-        ))
+        Ok(content_client_service_schema::StreamedAnswer::Full {
+            source: Box::new(ChunkedSlice::new(STREAMED_CONTENT)),
+            content_type: STREAMED_CONTENT_TYPE.to_owned(),
+        })
     }
 }
 

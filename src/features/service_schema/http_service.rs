@@ -1041,9 +1041,9 @@ fn bytes_reply_block(
 }
 
 /// A `body = "stream"` reply: `206` with `content-range` where the answer was partial, the
-/// declared `ok_status` with no extra header where it was full, either way the body handed on
-/// undrained — mirrors the Rust `stream_answer_block`. `content-range` is checked the same way
-/// every other runtime-computed header value is.
+/// declared `ok_status` where it was full, either way with `content-type` and the body handed on
+/// undrained — mirrors the Rust `stream_answer_block`. Both headers are checked the same way every
+/// other runtime-computed header value is.
 fn stream_reply_block(
     operation: &OperationDef,
     shape: &HttpShape,
@@ -1062,6 +1062,8 @@ fn stream_reply_block(
         ctx,
     );
     out.push_str("        const answer = envelope.value;\n");
+    let type_push =
+        checked_header_push_stmt(ctx.prefix, wire, "content-type", "answer.contentType");
     let range_push =
         checked_header_push_stmt(ctx.prefix, wire, "content-range", "answer.contentRange");
     out.push_str(&header_out_writes(
@@ -1069,7 +1071,10 @@ fn stream_reply_block(
         shape,
         success,
         ctx,
-        &format!("        if (answer.contentRange !== undefined) {{\n          {range_push}\n        }}\n"),
+        &format!(
+            "        {type_push}\n        \
+             if (answer.contentRange !== undefined) {{\n          {range_push}\n        }}\n"
+        ),
     ));
     let _ = writeln!(
         out,
