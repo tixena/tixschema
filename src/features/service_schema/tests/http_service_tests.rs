@@ -381,6 +381,20 @@ fn a_stream_reply_answers_206_or_the_declared_status_off_the_streamed_records_ow
             && written.contains("return { status, headers, body: answer.body };"),
         "got: {written}"
     );
+    let typed = written.find(
+        "const rendered = answer.contentType;\n            \
+         if (!contentClientServiceHttpLegalResponseHeaderValue(rendered)) {\n              \
+         return onFault(contentClientServiceHttpFault(\"handler-panic\", \"get-file\", \"a \
+         response header value contained a character illegal in an HTTP header\"));\n            \
+         }\n            \
+         headers.push([\"content-type\", rendered]);",
+    );
+    let ranged = written.find("const rendered = answer.contentRange;");
+    assert!(
+        typed.is_some() && typed < ranged,
+        "the content type is checked and written on every streamed answer, ahead of the range. \
+         Got: {written}"
+    );
 }
 
 /// A bound part is neither checked nor read here — see `service_tests`.

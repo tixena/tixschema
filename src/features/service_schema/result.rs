@@ -35,12 +35,12 @@ use crate::service_schema::parse::{OperationDef, OperationOutcome};
 use syn::Type;
 
 /// The TypeScript record a `body = "stream"` operation's own success answers with: a `contentRange`
-/// left `undefined` at the operation's own `ok_status`, set to the range text at `206`, paired with
-/// the body as the platform's own `ReadableStream<Uint8Array>` — mirrors the Rust client's own
-/// `StreamedAnswer::Full`/`Partial` and the Dart client's own streamed record.
+/// left `undefined` at the operation's own `ok_status`, set to the range text at `206`, and the
+/// `contentType`, paired with the body as the platform's own `ReadableStream<Uint8Array>` — mirrors
+/// the Rust client's own `StreamedAnswer::Full`/`Partial` and the Dart client's own streamed record.
 #[cfg(feature = "typescript")]
 pub const STREAMED_ANSWER_TS_TYPE: &str =
-    "{ contentRange: string | undefined; body: ReadableStream<Uint8Array> }";
+    "{ contentRange: string | undefined; contentType: string; body: ReadableStream<Uint8Array> }";
 
 #[cfg(feature = "typescript")]
 pub fn emit(service: &ServiceDef) -> Vec<String> {

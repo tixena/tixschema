@@ -123,6 +123,9 @@ use tixschema::{model_schema, service_schema};
 /// binding of its own, so the answer is always the full body.
 const STREAMED_CONTENT: &[u8] = b"the quick brown fox jumps over the lazy dog";
 
+/// The content type [`STREAMED_CONTENT`] answers under.
+pub const STREAMED_CONTENT_TYPE: &str = "text/plain; charset=utf-8";
+
 /// The most [`ChunkedSlice::read`] ever answers in one call, so draining [`STREAMED_CONTENT`]
 /// takes several `pull()` calls rather than one buffered copy.
 const CHUNKED_READ_CAP: usize = 5;
@@ -722,6 +725,14 @@ pub enum ContentError {
     NotFound,
 }
 
+/// A streamed operation's own range refusal, carried with the complete length it refused against.
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum ContentRangeError {
+    RangeNotSatisfiable,
+}
+
 #[service_schema(transports = ["http_rest"])]
 pub trait ContentClientService<Ctx> {
     #[service_schema_op(http(
@@ -735,6 +746,21 @@ pub trait ContentClientService<Ctx> {
         ctx: &Ctx,
         file_id: String,
     ) -> Result<content_client_service_schema::StreamedAnswer, ContentError>;
+
+    /// A declared `416` carrying `content-range: bytes */<size>`, which the transport never writes
+    /// on an error itself.
+    #[service_schema_op(http(
+        method = "GET",
+        path = "/ranges/{file_id}",
+        body = "stream",
+        error_status(RangeNotSatisfiable = 416),
+        error_header_out("content-range"),
+    ))]
+    async fn get_range(
+        &self,
+        ctx: &Ctx,
+        file_id: String,
+    ) -> Result<content_client_service_schema::StreamedAnswer, (ContentRangeError, Option<String>)>;
 }
 
 /// A chunked [`Read`] source: every call answers at most [`CHUNKED_READ_CAP`] bytes.
@@ -774,9 +800,34 @@ impl ContentClientService<()> for ContentBackEnd {
         if file_id == "missing" {
             return Err(ContentError::NotFound);
         }
-        Ok(content_client_service_schema::StreamedAnswer::Full(
-            Box::new(ChunkedSlice::new(STREAMED_CONTENT)),
-        ))
+        let content_type = if file_id == "bad-type" {
+            "text/plain\r\nx-injected: yes"
+        } else {
+            STREAMED_CONTENT_TYPE
+        };
+        Ok(content_client_service_schema::StreamedAnswer::Full {
+            source: Box::new(ChunkedSlice::new(STREAMED_CONTENT)),
+            content_type: content_type.to_owned(),
+        })
+    }
+
+    async fn get_range(
+        &self,
+        _ctx: &(),
+        file_id: String,
+    ) -> Result<content_client_service_schema::StreamedAnswer, (ContentRangeError, Option<String>)>
+    {
+        ready(()).await;
+        if file_id == "unsatisfiable" {
+            return Err((
+                ContentRangeError::RangeNotSatisfiable,
+                Some(format!("bytes */{}", STREAMED_CONTENT.len())),
+            ));
+        }
+        Ok(content_client_service_schema::StreamedAnswer::Full {
+            source: Box::new(ChunkedSlice::new(STREAMED_CONTENT)),
+            content_type: STREAMED_CONTENT_TYPE.to_owned(),
+        })
     }
 }
 

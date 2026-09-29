@@ -488,7 +488,9 @@ fn a_stream_operation_answers_a_content_range_and_body_record_at_200_and_206() {
                  ([name]) => name.toLowerCase() === \"content-range\",\n          \
                  )?.[1] ?? \"\";"
             )
-            && method.contains("const answer = { contentRange, body: response.bodyStream };")
+            && method.contains(
+                "const answer = { contentRange, contentType, body: response.bodyStream };"
+            )
             && method.contains("return { ok: true, value: answer };"),
         "a `206` answers the record with `contentRange` read back off the response. Got: {method}"
     );
@@ -497,6 +499,17 @@ fn a_stream_operation_answers_a_content_range_and_body_record_at_200_and_206() {
             && method.contains("const contentRange: string | undefined = undefined;"),
         "the declared `ok_status` answers the same record with `contentRange` left `undefined`. \
          Got: {method}"
+    );
+    assert_eq!(
+        method
+            .matches(
+                "const contentType = response.headers.find(\n          \
+                 ([name]) => name.toLowerCase() === \"content-type\",\n        \
+                 )?.[1] ?? \"\";"
+            )
+            .count(),
+        2,
+        "both arms read `contentType` back the way a bytes reply does. Got: {method}"
     );
 }
 

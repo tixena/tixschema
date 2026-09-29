@@ -10,6 +10,9 @@
 #![cfg(feature = "swift")]
 
 use super::runtime::ran;
+use super::tests::content_client_service_schema::{
+    content_client_service_fault_fields_swift, content_client_service_fault_kind_swift,
+};
 use super::tests::conversation_client_service_schema::{
     conversation_client_service_fault_fields_swift, conversation_client_service_fault_kind_swift,
 };
@@ -28,12 +31,13 @@ use super::tests::swift_codec_fixture::{
     codec_untagged_swift,
 };
 use super::tests::{
-    ConversationClientServiceSchema, EchoClientServiceSchema, MediaClientServiceSchema,
-    StampClientServiceSchema, ThumbnailClientServiceSchema, conversation_id_swift,
-    echo_client_service_schema, echo_range_error_swift, echo_range_response_swift,
-    media_error_swift, media_id_swift, media_upload_swift, stamp_error_swift, stamp_receipt_swift,
-    thumbnail_client_service_schema, thumbnail_error_swift, window_error_swift, window_page_swift,
-    window_request_swift,
+    ContentClientServiceSchema, ConversationClientServiceSchema, EchoClientServiceSchema,
+    MediaClientServiceSchema, STREAMED_CONTENT_TYPE, StampClientServiceSchema,
+    ThumbnailClientServiceSchema, content_error_swift, content_range_error_swift,
+    conversation_id_swift, echo_client_service_schema, echo_range_error_swift,
+    echo_range_response_swift, media_error_swift, media_id_swift, media_upload_swift,
+    stamp_error_swift, stamp_receipt_swift, thumbnail_client_service_schema, thumbnail_error_swift,
+    window_error_swift, window_page_swift, window_request_swift,
 };
 use std::collections::HashMap;
 
@@ -356,6 +360,73 @@ if case .failure(.fault) = missing {
 let mediaReport = MediaReport(path: recorder.paths.first ?? "", statId: statId, missingIsFault: missingIsFault)
 print(String(data: try! JSONEncoder().encode(mediaReport), encoding: .utf8)!)
 "##;
+
+/// A stub `ContentClientServiceHttpTransport` answering the streamed operation's declared `416`
+/// with the complete length in `content-range`.
+const CONTENT_DRIVER: &str = r##"
+struct ContentRefusal: ContentClientServiceHttpTransport {
+  func send(_ request: ContentClientServiceHttpRequest) async throws -> ContentClientServiceHttpResponse {
+    ContentClientServiceHttpResponse(
+      status: 416, headers: [("content-range", "bytes */43")],
+      body: Data(#"{"errorCode":"range-not-satisfiable"}"#.utf8),
+      bodyStream: AsyncThrowingStream { $0.finish() })
+  }
+}
+
+struct ContentReport: Codable {
+  let error: ContentRangeError?
+  let contentRange: String?
+}
+
+let refused = await ContentClientServiceHttpClient(transport: ContentRefusal()).getRange("unsatisfiable")
+var report = ContentReport(error: nil, contentRange: nil)
+if case .failure(.declared(let declared)) = refused {
+  report = ContentReport(error: declared.0, contentRange: declared.1)
+}
+print(String(data: try! JSONEncoder().encode(report), encoding: .utf8)!)
+"##;
+
+/// A stub `ContentClientServiceHttpTransport` answering the streamed operation whole at
+/// `/files/present` and as a range slice anywhere else, both naming their content type. A `nil`
+/// `contentRange` leaves its key out of the report.
+const CONTENT_TYPE_DRIVER: &str = r#"
+struct ContentTyped: ContentClientServiceHttpTransport {
+  func send(_ request: ContentClientServiceHttpRequest) async throws -> ContentClientServiceHttpResponse {
+    if request.path == "/files/present" {
+      return ContentClientServiceHttpResponse(
+        status: 200, headers: [("content-type", "text/plain; charset=utf-8")],
+        body: Data(), bodyStream: AsyncThrowingStream { $0.finish() })
+    }
+    return ContentClientServiceHttpResponse(
+      status: 206, headers: [("content-range", "bytes 4-8/43"), ("content-type", "text/plain; charset=utf-8")],
+      body: Data(), bodyStream: AsyncThrowingStream { $0.finish() })
+  }
+}
+
+struct StreamedReport: Codable {
+  let contentRange: String?
+  let contentType: String
+}
+
+struct ContentTypeReport: Codable {
+  let full: StreamedReport?
+  let partial: StreamedReport?
+}
+
+let client = ContentClientServiceHttpClient(transport: ContentTyped())
+let fullAnswer = await client.getFile("present")
+let partialAnswer = await client.getFile("sliced")
+var full: StreamedReport? = nil
+if case .success(let answer) = fullAnswer {
+  full = StreamedReport(contentRange: answer.contentRange, contentType: answer.contentType)
+}
+var partial: StreamedReport? = nil
+if case .success(let answer) = partialAnswer {
+  partial = StreamedReport(contentRange: answer.contentRange, contentType: answer.contentType)
+}
+let typed = ContentTypeReport(full: full, partial: partial)
+print(String(data: try! JSONEncoder().encode(typed), encoding: .utf8)!)
+"#;
 
 // -------------------------------------------------------------------------------------------
 // The generated types and clients every group but the codec one drives.
@@ -834,4 +905,58 @@ fn a_newtype_header_out_element_decodes_through_its_codec_and_a_missing_one_faul
     };
     assert_eq!(answers["statId"], "abc123", "got: {answers:#?}");
     assert_eq!(answers["missingIsFault"], true, "got: {answers:#?}");
+}
+
+fn content_module(driver: &str) -> String {
+    [
+        "import Foundation".to_owned(),
+        content_error_swift::swift_definition(),
+        content_range_error_swift::swift_definition(),
+        content_client_service_fault_fields_swift::swift_definition(),
+        content_client_service_fault_kind_swift::swift_definition(),
+        ContentClientServiceSchema::swift_http_client(),
+        driver.to_owned(),
+    ]
+    .join("\n\n")
+}
+
+#[test]
+fn a_streamed_operations_declared_416_reads_its_content_range_back() {
+    let Some(wrote) = ran(
+        "swift",
+        RUNTIME_VAR,
+        "swift",
+        "content.swift",
+        &content_module(CONTENT_DRIVER),
+    ) else {
+        return;
+    };
+    let results: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
+    assert_eq!(
+        results,
+        serde_json::json!({"error": {"errorCode": "range-not-satisfiable"}, "contentRange": "bytes */43"}),
+        "the declared error carries the complete length"
+    );
+}
+
+#[test]
+fn a_streamed_reply_reads_its_content_type_back() {
+    let Some(wrote) = ran(
+        "swift",
+        RUNTIME_VAR,
+        "swift",
+        "content_type.swift",
+        &content_module(CONTENT_TYPE_DRIVER),
+    ) else {
+        return;
+    };
+    let results: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
+    assert_eq!(
+        results,
+        serde_json::json!({
+            "full": {"contentType": STREAMED_CONTENT_TYPE},
+            "partial": {"contentRange": "bytes 4-8/43", "contentType": STREAMED_CONTENT_TYPE},
+        }),
+        "both answers carry the content type the response named"
+    );
 }

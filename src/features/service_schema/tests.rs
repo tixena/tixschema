@@ -1446,7 +1446,7 @@ fn the_result_answers_the_streamed_record_rather_than_the_undescribable_rust_typ
     let result = found.unwrap();
     assert!(
         result.contains(
-            "| { ok: true; value: { contentRange: string | undefined; body: \
+            "| { ok: true; value: { contentRange: string | undefined; contentType: string; body: \
              ReadableStream<Uint8Array> } }"
         ),
         "got: {result}"
@@ -1470,8 +1470,8 @@ fn the_result_composes_header_out_onto_the_streamed_record_in_a_tuple() {
     let result = found.unwrap();
     assert!(
         result.contains(
-            "| { ok: true; value: [{ contentRange: string | undefined; body: \
-             ReadableStream<Uint8Array> }, string] }"
+            "| { ok: true; value: [{ contentRange: string | undefined; contentType: string; \
+             body: ReadableStream<Uint8Array> }, string] }"
         ),
         "got: {result}"
     );

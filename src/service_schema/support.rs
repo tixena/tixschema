@@ -279,13 +279,18 @@ fn streamed_answer_type() -> TokenStream {
         /// type regardless of what it streams: `Full` answers the declared `ok_status` with the
         /// whole body; `Partial` answers `206` with `content-range` set to the given string
         /// (`bytes {start}-{end}/{total}`, RFC 9110 §14.4) and the body limited to that slice.
+        /// Either way `content_type` answers as the `content-type` header.
         pub enum StreamedAnswer {
             /// The whole body.
-            Full(::std::boxed::Box<dyn BodySource + Send>),
+            Full {
+                source: ::std::boxed::Box<dyn BodySource + Send>,
+                content_type: ::std::string::String,
+            },
             /// A byte-range slice, with the `content-range` header it answers under.
             Partial {
                 source: ::std::boxed::Box<dyn BodySource + Send>,
                 content_range: ::std::string::String,
+                content_type: ::std::string::String,
             },
         }
     }

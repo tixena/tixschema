@@ -48,9 +48,9 @@
 //!
 //! # A streamed answer and a multipart request ride fields every service's seam carries
 //!
-//! `body = "stream"` answers a Dart record pairing a nullable `contentRange` with the body as a
-//! lazily-pulled `Stream<List<int>>` — `dart:async`'s own core type, not an HTTP package's, read
-//! back off the seam's *response* record's `bodyStream` field. `body = "multipart"` builds its
+//! `body = "stream"` answers a Dart record pairing a nullable `contentRange` and the `contentType`
+//! with the body as a lazily-pulled `Stream<List<int>>` — `dart:async`'s own core type, not an
+//! HTTP package's, read back off the seam's *response* record's `bodyStream` field. `body = "multipart"` builds its
 //! request from the seam's *request* record's `parts` field — a list of name/value pairs, exactly
 //! mirroring the TypeScript client's own `parts` field. Both fields sit on every service's records,
 //! whatever it declares, so every service's `send` reads one shape and one implementation satisfies
@@ -71,11 +71,12 @@ use core::fmt::Write as _;
 use syn::Type;
 
 /// The Dart record a `body = "stream"` operation's own success answers with: a nullable
-/// `contentRange` paired with the body as a lazily-pulled `Stream<List<int>>` — `null` at the
-/// operation's own `ok_status`, the range text at `206`. Folds the two into one nullable field
-/// rather than a tagged variant, the one shape a Dart record can carry, mirroring the Rust client's
-/// own `StreamedAnswer::Full`/`Partial`.
-const STREAMED_ANSWER_DART_TYPE: &str = "({String? contentRange, Stream<List<int>> body})";
+/// `contentRange` and the `contentType`, paired with the body as a lazily-pulled
+/// `Stream<List<int>>` — `contentRange` is `null` at the operation's own `ok_status`, the range
+/// text at `206`. Folds the two into one nullable field rather than a tagged variant, the one shape
+/// a Dart record can carry, mirroring the Rust client's own `StreamedAnswer::Full`/`Partial`.
+const STREAMED_ANSWER_DART_TYPE: &str =
+    "({String? contentRange, String contentType, Stream<List<int>> body})";
 
 /// The response record every service's `send` answers with. `bodyStream` is on it whether or not
 /// the service streams, so one implementation satisfies every service's interface.
@@ -613,8 +614,9 @@ fn stream_reply_decode_stmt(
 
 /// One status arm of [`stream_reply_decode_stmt`]: `contentRange` read back off the response for a
 /// `206` partial answer, left `null` for the declared `ok_status`'s whole-body answer — both
-/// pairing it with `response.bodyStream`, the seam's own lazily-pulled source — then every declared
-/// `header_out` element read back exactly as the bytes and JSON paths do.
+/// pairing it with `contentType`, read back the way a bytes reply reads it, and
+/// `response.bodyStream`, the seam's own lazily-pulled source — then every declared `header_out`
+/// element read back exactly as the bytes and JSON paths do.
 fn stream_success_arm(
     result: &str,
     fn_prefix: &str,
@@ -631,8 +633,12 @@ fn stream_success_arm(
     } else {
         "      const String? contentRange = null;\n".to_owned()
     };
-    stmt.push_str(
-        "      final answer = (contentRange: contentRange, body: response.bodyStream);\n",
+    let _ = write!(
+        stmt,
+        "      final contentType = {}(response.headers, 'content-type') ?? '';\n      \
+         final answer = (contentRange: contentRange, contentType: contentType, body: \
+         response.bodyStream);\n",
+        find_header_call(fn_prefix)
     );
     if shape.header_out.is_empty() {
         let _ = writeln!(stmt, "      return {result}Ok(answer);");

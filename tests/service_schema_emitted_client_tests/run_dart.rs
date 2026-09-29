@@ -9,11 +9,13 @@
 use super::runtime::ran;
 use super::tests::swift_codec_fixture::{codec_unit_field_dart, codec_unit_payload_dart};
 use super::tests::{
-    ConversationClientServiceSchema, EchoClientServiceSchema, MediaClientServiceSchema,
-    ShelfClientServiceSchema, StampClientServiceSchema, ThumbnailClientServiceSchema,
-    conversation_id_dart, echo_range_error_dart, echo_range_response_dart, media_error_dart,
-    media_id_dart, media_upload_dart, shelf_dart, shelf_error_dart, stamp_error_dart,
-    stamp_receipt_dart, thumbnail_error_dart, window_error_dart, window_page_dart,
+    ContentClientServiceSchema, ConversationClientServiceSchema, EchoClientServiceSchema,
+    MediaClientServiceSchema, STREAMED_CONTENT_TYPE, ShelfClientServiceSchema,
+    StampClientServiceSchema, ThumbnailClientServiceSchema, content_error_dart,
+    content_range_error_dart, conversation_id_dart, echo_range_error_dart,
+    echo_range_response_dart, media_error_dart, media_id_dart, media_upload_dart, shelf_dart,
+    shelf_error_dart, stamp_error_dart, stamp_receipt_dart, thumbnail_error_dart,
+    window_error_dart, window_page_dart,
 };
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -273,6 +275,62 @@ void main() async {
     'path': recorder.paths.first,
     'statId': stat is MediaClientServiceStatResultOk ? stat.value.$2.toJson() : null,
     'missingIsFault': missing is MediaClientServiceStatResultFault,
+  }));
+}
+";
+
+/// A stub `ContentClientServiceHttpTransport` answering the streamed operation's declared `416`
+/// with the complete length in `content-range`.
+const CONTENT_DRIVER: &str = "
+class _ContentRefusal implements ContentClientServiceHttpTransport {
+  @override
+  Future<({int status, List<(String, String)> headers, List<int> body, Stream<List<int>> bodyStream})> send(
+    ({String method, String path, String query, List<(String, String)> headers, List<int> body, List<(String, dynamic)> parts}) request,
+  ) async {
+    final body = utf8.encode(jsonEncode(<String, dynamic>{'errorCode': 'range-not-satisfiable'}));
+    return (status: 416, headers: <(String, String)>[('content-range', 'bytes */43')], body: body, bodyStream: const Stream<List<int>>.empty());
+  }
+}
+
+void main() async {
+  final refused = await ContentClientServiceHttpClient(_ContentRefusal()).getRange('unsatisfiable');
+  print(jsonEncode(<String, dynamic>{
+    'error': refused is ContentClientServiceGetRangeResultOperation ? refused.error.$1.toJson() : null,
+    'contentRange': refused is ContentClientServiceGetRangeResultOperation ? refused.error.$2 : null,
+  }));
+}
+";
+
+/// A stub `ContentClientServiceHttpTransport` answering the streamed operation whole at
+/// `/files/present` and as a range slice anywhere else, both naming their content type.
+const CONTENT_TYPE_DRIVER: &str = "
+class _ContentTyped implements ContentClientServiceHttpTransport {
+  @override
+  Future<({int status, List<(String, String)> headers, List<int> body, Stream<List<int>> bodyStream})> send(
+    ({String method, String path, String query, List<(String, String)> headers, List<int> body, List<(String, dynamic)> parts}) request,
+  ) async {
+    if (request.path == '/files/present') {
+      return (status: 200, headers: <(String, String)>[('content-type', 'text/plain; charset=utf-8')], body: <int>[], bodyStream: const Stream<List<int>>.empty());
+    }
+    return (
+      status: 206,
+      headers: <(String, String)>[('content-range', 'bytes 4-8/43'), ('content-type', 'text/plain; charset=utf-8')],
+      body: <int>[],
+      bodyStream: const Stream<List<int>>.empty(),
+    );
+  }
+}
+
+Map<String, dynamic>? _streamed(ContentClientServiceGetFileResult answered) =>
+    answered is ContentClientServiceGetFileResultOk
+        ? <String, dynamic>{'contentRange': answered.value.contentRange, 'contentType': answered.value.contentType}
+        : null;
+
+void main() async {
+  final client = ContentClientServiceHttpClient(_ContentTyped());
+  print(jsonEncode(<String, dynamic>{
+    'full': _streamed(await client.getFile('present')),
+    'partial': _streamed(await client.getFile('sliced')),
   }));
 }
 ";
@@ -630,4 +688,57 @@ fn a_newtype_header_out_element_decodes_through_its_codec_and_a_missing_one_faul
     };
     assert_eq!(answers["statId"], "abc123", "got: {answers:#?}");
     assert_eq!(answers["missingIsFault"], true, "got: {answers:#?}");
+}
+
+fn content_module(driver: &str) -> String {
+    [
+        "import 'dart:convert';".to_owned(),
+        content_error_dart::dart_definition(),
+        content_range_error_dart::dart_definition(),
+        ContentClientServiceSchema::dart_definition(),
+        ContentClientServiceSchema::dart_http_client(),
+        driver.to_owned(),
+    ]
+    .join("\n\n")
+}
+
+#[test]
+fn a_streamed_operations_declared_416_reads_its_content_range_back() {
+    let Some(wrote) = ran(
+        "dart",
+        RUNTIME_VAR,
+        "dart",
+        "content.dart",
+        &content_module(CONTENT_DRIVER),
+    ) else {
+        return;
+    };
+    let results: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
+    assert_eq!(
+        results,
+        serde_json::json!({"error": {"errorCode": "range-not-satisfiable"}, "contentRange": "bytes */43"}),
+        "the declared error carries the complete length"
+    );
+}
+
+#[test]
+fn a_streamed_reply_reads_its_content_type_back() {
+    let Some(wrote) = ran(
+        "dart",
+        RUNTIME_VAR,
+        "dart",
+        "content_type.dart",
+        &content_module(CONTENT_TYPE_DRIVER),
+    ) else {
+        return;
+    };
+    let results: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
+    assert_eq!(
+        results,
+        serde_json::json!({
+            "full": {"contentRange": null, "contentType": STREAMED_CONTENT_TYPE},
+            "partial": {"contentRange": "bytes 4-8/43", "contentType": STREAMED_CONTENT_TYPE},
+        }),
+        "both answers carry the content type the response named"
+    );
 }
