@@ -11,6 +11,9 @@
 #![cfg(feature = "kotlin")]
 
 use super::runtime::ran_kotlin;
+use super::tests::content_client_service_schema::{
+    content_client_service_fault_fields_kotlin, content_client_service_fault_kind_kotlin,
+};
 use super::tests::conversation_client_service_schema::{
     conversation_client_service_fault_fields_kotlin, conversation_client_service_fault_kind_kotlin,
 };
@@ -38,8 +41,9 @@ use super::tests::thumbnail_client_service_schema::{
     thumbnail_client_service_fault_fields_kotlin, thumbnail_client_service_fault_kind_kotlin,
 };
 use super::tests::{
-    ConversationClientServiceSchema, EchoClientServiceSchema, MediaClientServiceSchema,
-    PulseClientServiceSchema, StampClientServiceSchema, ThumbnailClientServiceSchema,
+    ContentClientServiceSchema, ConversationClientServiceSchema, EchoClientServiceSchema,
+    MediaClientServiceSchema, PulseClientServiceSchema, StampClientServiceSchema,
+    ThumbnailClientServiceSchema, content_error_kotlin, content_range_error_kotlin,
     conversation_id_kotlin, echo_range_error_kotlin, echo_range_response_kotlin,
     media_error_kotlin, media_id_kotlin, media_upload_kotlin, pulse_error_kotlin,
     pulse_request_kotlin, pulse_response_kotlin, stamp_error_kotlin, stamp_receipt_kotlin,
@@ -57,6 +61,28 @@ const KOTLIN_IMPORTS: &str = "import kotlinx.coroutines.*\n\
      import kotlinx.serialization.descriptors.*\n\
      import kotlinx.serialization.encoding.*\n\
      import kotlinx.serialization.builtins.*";
+
+/// A stub `ContentClientServiceHttpTransport` answering the streamed operation's declared `416`
+/// with the complete length in `content-range`.
+const CONTENT_DRIVER: &str = r#"
+class ContentRefusal : ContentClientServiceHttpTransport {
+    override suspend fun send(request: ContentClientServiceHttpRequest): ContentClientServiceHttpResponse =
+        ContentClientServiceHttpResponse(
+            416,
+            listOf("content-range" to "bytes */43"),
+            """{"errorCode":"range-not-satisfiable"}""".encodeToByteArray(),
+        )
+}
+
+fun main() = runBlocking {
+    val refused = ContentClientServiceHttpClient(ContentRefusal()).getRange("unsatisfiable")
+    val declared = (refused as? ContentClientServiceGetRangeResult.Declared)?.error
+    println(buildJsonObject {
+        put("error", declared?.let { Json.encodeToJsonElement(serializer<ContentRangeError>(), it.error) } ?: JsonNull)
+        put("contentRange", declared?.errorHeaderOut0)
+    }.toString())
+}
+"#;
 
 /// A stub `MediaClientServiceHttpTransport` recording the path of the one request it answers.
 const MEDIA_DRIVER: &str = r#"
@@ -492,6 +518,20 @@ fn media_module() -> String {
     parts.join("\n\n")
 }
 
+/// `ContentClientService`'s own types, its fault pair and its client, driven by [`CONTENT_DRIVER`].
+fn content_module() -> String {
+    let mut parts = vec![KOTLIN_IMPORTS.to_owned()];
+    parts.extend([
+        content_error_kotlin::kotlin_definition(),
+        content_range_error_kotlin::kotlin_definition(),
+        content_client_service_fault_fields_kotlin::kotlin_definition(),
+        content_client_service_fault_kind_kotlin::kotlin_definition(),
+        ContentClientServiceSchema::kotlin_http_client(),
+        CONTENT_DRIVER.to_owned(),
+    ]);
+    parts.join("\n\n")
+}
+
 fn thumbnail_module(driver: &str) -> String {
     let mut parts = vec![KOTLIN_IMPORTS.to_owned()];
     parts.extend(thumbnail_definitions());
@@ -867,5 +907,18 @@ fn a_newtype_field_of_a_named_body_message_fills_its_path_placeholder_with_its_w
     assert_eq!(
         sent["path"], "/media/abc123",
         "the segment is the newtype's wire value, as the Rust client writes it. Got: {sent:#?}"
+    );
+}
+
+#[test]
+fn a_streamed_operations_declared_416_reads_its_content_range_back() {
+    let Some(wrote) = ran_kotlin(&content_module()) else {
+        return;
+    };
+    let results: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
+    assert_eq!(
+        results,
+        serde_json::json!({"error": {"errorCode": "range-not-satisfiable"}, "contentRange": "bytes */43"}),
+        "the declared error carries the complete length"
     );
 }

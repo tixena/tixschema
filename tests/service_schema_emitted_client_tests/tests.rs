@@ -708,6 +708,14 @@ pub enum ContentError {
     NotFound,
 }
 
+/// A streamed operation's own range refusal, carried with the complete length it refused against.
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum ContentRangeError {
+    RangeNotSatisfiable,
+}
+
 #[service_schema(transports = ["http_rest"])]
 pub trait ContentClientService<Ctx> {
     #[service_schema_op(http(
@@ -721,6 +729,21 @@ pub trait ContentClientService<Ctx> {
         ctx: &Ctx,
         file_id: String,
     ) -> Result<content_client_service_schema::StreamedAnswer, ContentError>;
+
+    /// A declared `416` carrying `content-range: bytes */<size>`, which the transport never writes
+    /// on an error itself.
+    #[service_schema_op(http(
+        method = "GET",
+        path = "/ranges/{file_id}",
+        body = "stream",
+        error_status(RangeNotSatisfiable = 416),
+        error_header_out("content-range"),
+    ))]
+    async fn get_range(
+        &self,
+        ctx: &Ctx,
+        file_id: String,
+    ) -> Result<content_client_service_schema::StreamedAnswer, (ContentRangeError, Option<String>)>;
 }
 
 /// A chunked [`Read`] source: every call answers at most [`CHUNKED_READ_CAP`] bytes.
@@ -759,6 +782,24 @@ impl ContentClientService<()> for ContentBackEnd {
         ready(()).await;
         if file_id == "missing" {
             return Err(ContentError::NotFound);
+        }
+        Ok(content_client_service_schema::StreamedAnswer::Full(
+            Box::new(ChunkedSlice::new(STREAMED_CONTENT)),
+        ))
+    }
+
+    async fn get_range(
+        &self,
+        _ctx: &(),
+        file_id: String,
+    ) -> Result<content_client_service_schema::StreamedAnswer, (ContentRangeError, Option<String>)>
+    {
+        ready(()).await;
+        if file_id == "unsatisfiable" {
+            return Err((
+                ContentRangeError::RangeNotSatisfiable,
+                Some(format!("bytes */{}", STREAMED_CONTENT.len())),
+            ));
         }
         Ok(content_client_service_schema::StreamedAnswer::Full(
             Box::new(ChunkedSlice::new(STREAMED_CONTENT)),

@@ -2760,15 +2760,23 @@ fn duplicate_header_name_message(operation: &Ident, name: &str) -> String {
 }
 
 /// The reason `http_rest` already writes `name` itself, case-insensitively, or `None` where it
-/// writes nothing under that name. `content-range` is reserved only on `body = "stream"`.
-const fn transport_reserved_header_writer(name: &str, raw: &RawHttp) -> Option<&'static str> {
+/// writes nothing under that name. `content-range` is reserved only on a `body = "stream"`
+/// operation's success side: the transport writes it on a `206` and never on a declared error,
+/// which is free to carry `bytes */<size>` on a `416`.
+const fn transport_reserved_header_writer(
+    name: &str,
+    raw: &RawHttp,
+    error_side: bool,
+) -> Option<&'static str> {
     if name.eq_ignore_ascii_case("content-type") {
         return Some("`json_response`, and a `body = \"bytes\"` reply's own content type,");
     }
     if name.eq_ignore_ascii_case("content-length") {
         return Some("the HTTP transport itself");
     }
-    if name.eq_ignore_ascii_case("content-range") && matches!(raw.body, Some((BodyKind::Stream, _)))
+    if !error_side
+        && name.eq_ignore_ascii_case("content-range")
+        && matches!(raw.body, Some((BodyKind::Stream, _)))
     {
         return Some("a `body = \"stream\"` reply's own range answer");
     }
@@ -2779,14 +2787,14 @@ const fn transport_reserved_header_writer(name: &str, raw: &RawHttp) -> Option<&
 /// for an illegal token or a name `http_rest` already writes itself.
 fn header_name_safety_refusals(operation_ident: &Ident, raw: &RawHttp) -> Option<syn::Error> {
     let mut refusals: Option<syn::Error> = None;
-    let named: Vec<&LitStr> = raw
+    let named: Vec<(&LitStr, bool)> = raw
         .header_in
         .iter()
-        .map(|(name, _)| name)
-        .chain(raw.header_out.iter())
-        .chain(raw.error_header_out.iter())
+        .map(|(name, _)| (name, false))
+        .chain(raw.header_out.iter().map(|name| (name, false)))
+        .chain(raw.error_header_out.iter().map(|name| (name, true)))
         .collect();
-    for literal in named {
+    for (literal, error_side) in named {
         let name = literal.value();
         if !is_http_token(&name) {
             refusals = Some(combined(
@@ -2798,7 +2806,7 @@ fn header_name_safety_refusals(operation_ident: &Ident, raw: &RawHttp) -> Option
             ));
             continue;
         }
-        if let Some(writes_it) = transport_reserved_header_writer(&name, raw) {
+        if let Some(writes_it) = transport_reserved_header_writer(&name, raw, error_side) {
             refusals = Some(combined(
                 refusals.take(),
                 syn::Error::new(

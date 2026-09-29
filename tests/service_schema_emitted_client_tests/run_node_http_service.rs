@@ -13,8 +13,8 @@ use super::pulse_http_rest_transport;
 use super::runtime::{node_modules, ran_with_modules, stand_down_modules};
 use super::tests::{
     ArchiveClientServiceSchema, ArchiveError, ArchiveStatus, ContentBackEnd,
-    ContentClientServiceSchema, ContentError, ConversationClientServiceSchema, ConversationId,
-    EchoBackEnd, EchoClientServiceSchema, EchoRangeError, EchoRangeResponse,
+    ContentClientServiceSchema, ContentError, ContentRangeError, ConversationClientServiceSchema,
+    ConversationId, EchoBackEnd, EchoClientServiceSchema, EchoRangeError, EchoRangeResponse,
     GateClientServiceSchema, GateError, GateStatus, LabelClientServiceSchema, LabelError,
     LabelStatus, PulseBackEnd, PulseClientServiceSchema, PulseError, PulseResponse,
     SealClientServiceSchema, SealError, SealStatus, SearchClientServiceSchema, SearchEcho,
@@ -254,6 +254,23 @@ async function main() {
         },
       };
     },
+    async getRange(ctx, fileId) {
+      if (fileId === "unsatisfiable") {
+        return { ok: false, error: [{ errorCode: "range-not-satisfiable" }, `bytes */${content.length}`] };
+      }
+      return {
+        ok: true,
+        value: {
+          contentRange: undefined,
+          body: new ReadableStream({
+            start(controller) {
+              controller.enqueue(content);
+              controller.close();
+            },
+          }),
+        },
+      };
+    },
   };
   const dispatch = createContentClientServiceHttpDispatcher(impl);
 
@@ -285,6 +302,7 @@ async function main() {
   const results = {
     full: await answered("/files/present"),
     missing: await answered("/files/missing"),
+    unsatisfiable: await answered("/ranges/unsatisfiable"),
   };
   console.log(JSON.stringify(results));
   process.exit(0);
@@ -423,6 +441,23 @@ const results = {
   anon: await client.getThumbnail("anon"),
 };
 console.log(JSON.stringify(results));
+"#;
+
+/// A stub `Transport` answering the streamed operation's declared `416` with the complete length in
+/// `content-range`, driving the emitted client's own error-side header decode.
+const CONTENT_CLIENT_DRIVER: &str = r#"
+const transport = {
+  async send(request) {
+    return {
+      status: 416,
+      headers: [["content-range", "bytes */43"]],
+      body: JSON.stringify({ errorCode: "range-not-satisfiable" }),
+      bodyStream: new ReadableStream({ start(controller) { controller.close(); } }),
+    };
+  },
+};
+const client = createContentClientServiceHttpClient(transport);
+console.log(JSON.stringify({ unsatisfiable: await client.getRange("unsatisfiable") }));
 "#;
 
 /// A stub `Transport` recording whether `send` was ever called, driving the emitted client's own
@@ -942,11 +977,40 @@ fn the_client_decodes_the_declared_errors_own_header_and_omits_a_none_header_out
     );
 }
 
+fn content_client_emitted() -> String {
+    [
+        "import { z } from \"zod\";".to_owned(),
+        ContentError::ts_definition(),
+        ContentError::zod_schema(),
+        ContentRangeError::ts_definition(),
+        ContentRangeError::zod_schema(),
+        ContentClientServiceSchema::ts_definition(),
+        ContentClientServiceSchema::ts_http_client(),
+    ]
+    .join("\n\n")
+}
+
+#[test]
+fn a_streamed_operations_declared_416_reads_its_content_range_back() {
+    let module = format!("{}\n\n{CONTENT_CLIENT_DRIVER}", content_client_emitted());
+    let Some(results) = run_or_stand_down("http-client-content", "content-client.mts", &module)
+    else {
+        return;
+    };
+    assert_eq!(
+        results["unsatisfiable"],
+        serde_json::json!({"ok": false, "error": [{"errorCode": "range-not-satisfiable"}, "bytes */43"]}),
+        "the declared error carries the complete length. got: {results:#?}"
+    );
+}
+
 fn content_emitted() -> String {
     [
         "import { z } from \"zod\";".to_owned(),
         ContentError::ts_definition(),
         ContentError::zod_schema(),
+        ContentRangeError::ts_definition(),
+        ContentRangeError::zod_schema(),
         ContentClientServiceSchema::ts_definition(),
         ContentClientServiceSchema::ts_service(),
         ContentClientServiceSchema::ts_http_service(),
@@ -972,10 +1036,10 @@ fn drain_outgoing(body: content_http_rest_transport::OutgoingBody) -> Vec<u8> {
     }
 }
 
-fn content_rust_answered(file_id: &str) -> Answered {
+fn content_rust_answered(path: &str) -> Answered {
     let request = content_http_rest_transport::IncomingRequest::new(
         "GET".to_owned(),
-        format!("/files/{file_id}"),
+        path.to_owned(),
         String::new(),
         Vec::new(),
         Vec::new(),
@@ -1003,8 +1067,10 @@ fn stream_body_kind_agrees_with_rust() {
     };
     let node_full = node_answered(&results["full"]);
     let node_missing = node_answered(&results["missing"]);
-    let rust_full = content_rust_answered("present");
-    let rust_missing = content_rust_answered("missing");
+    let node_unsatisfiable = node_answered(&results["unsatisfiable"]);
+    let rust_full = content_rust_answered("/files/present");
+    let rust_missing = content_rust_answered("/files/missing");
+    let rust_unsatisfiable = content_rust_answered("/ranges/unsatisfiable");
     assert_eq!(
         node_full, rust_full,
         "node: {node_full:#?}, rust: {rust_full:#?}"
@@ -1013,8 +1079,22 @@ fn stream_body_kind_agrees_with_rust() {
         node_missing, rust_missing,
         "node: {node_missing:#?}, rust: {rust_missing:#?}"
     );
+    assert_eq!(
+        node_unsatisfiable, rust_unsatisfiable,
+        "node: {node_unsatisfiable:#?}, rust: {rust_unsatisfiable:#?}"
+    );
     assert_eq!(rust_full.status, 200, "got: {rust_full:#?}");
     assert_eq!(rust_missing.status, 404, "got: {rust_missing:#?}");
+    assert_eq!(
+        rust_unsatisfiable.status, 416,
+        "got: {rust_unsatisfiable:#?}"
+    );
+    assert!(
+        rust_unsatisfiable
+            .headers
+            .contains(&("content-range".to_owned(), "bytes */43".to_owned())),
+        "a declared 416 carries the complete length. Got: {rust_unsatisfiable:#?}"
+    );
 }
 
 fn upload_document_emitted() -> String {
@@ -1355,7 +1435,7 @@ fn the_content_route_table_and_incoming_request_read_back_what_they_were_built_w
     let routes = content_http_rest_transport::ROUTES;
     assert_eq!(
         routes.len(),
-        1,
+        2,
         "got: {:?}",
         routes
             .iter()
@@ -1367,6 +1447,9 @@ fn the_content_route_table_and_incoming_request_read_back_what_they_were_built_w
     assert_eq!(routes[0].operation(), "get-file");
     assert_eq!(routes[0].ok_status(), 200);
     assert_eq!(routes[0].error_statuses(), &[404]);
+    assert_eq!(routes[1].path(), "/ranges/{file_id}");
+    assert_eq!(routes[1].operation(), "get-range");
+    assert_eq!(routes[1].error_statuses(), &[416]);
 
     let request = content_http_rest_transport::IncomingRequest::new(
         "GET".to_owned(),

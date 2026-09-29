@@ -6,6 +6,6 @@
 // `content_client_service_schema::StreamedAnswer`, exactly as the trait wrote it - and a
 // module-qualified success type needs the module itself importable, not only the error it names
 // beside it.
-use crate::stream_service::{ContentError, content_client_service_schema};
+use crate::stream_service::{ContentError, ContentRangeError, content_client_service_schema};
 
 content_client_service_http_rest_client!();

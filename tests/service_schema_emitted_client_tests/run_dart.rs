@@ -9,8 +9,9 @@
 use super::runtime::ran;
 use super::tests::swift_codec_fixture::{codec_unit_field_dart, codec_unit_payload_dart};
 use super::tests::{
-    ConversationClientServiceSchema, EchoClientServiceSchema, MediaClientServiceSchema,
-    ShelfClientServiceSchema, StampClientServiceSchema, ThumbnailClientServiceSchema,
+    ContentClientServiceSchema, ConversationClientServiceSchema, EchoClientServiceSchema,
+    MediaClientServiceSchema, ShelfClientServiceSchema, StampClientServiceSchema,
+    ThumbnailClientServiceSchema, content_error_dart, content_range_error_dart,
     conversation_id_dart, echo_range_error_dart, echo_range_response_dart, media_error_dart,
     media_id_dart, media_upload_dart, shelf_dart, shelf_error_dart, stamp_error_dart,
     stamp_receipt_dart, thumbnail_error_dart, window_error_dart, window_page_dart,
@@ -259,6 +260,28 @@ void main() async {
   final recorder = _MediaRecorder();
   await MediaClientServiceHttpClient(recorder).upload(MediaUpload(sha256: MediaId('abc123'), caption: 'c'));
   print(jsonEncode(recorder.sent.first));
+}
+";
+
+/// A stub `ContentClientServiceHttpTransport` answering the streamed operation's declared `416`
+/// with the complete length in `content-range`.
+const CONTENT_DRIVER: &str = "
+class _ContentRefusal implements ContentClientServiceHttpTransport {
+  @override
+  Future<({int status, List<(String, String)> headers, List<int> body, Stream<List<int>> bodyStream})> send(
+    ({String method, String path, String query, List<(String, String)> headers, List<int> body, List<(String, dynamic)> parts}) request,
+  ) async {
+    final body = utf8.encode(jsonEncode(<String, dynamic>{'errorCode': 'range-not-satisfiable'}));
+    return (status: 416, headers: <(String, String)>[('content-range', 'bytes */43')], body: body, bodyStream: const Stream<List<int>>.empty());
+  }
+}
+
+void main() async {
+  final refused = await ContentClientServiceHttpClient(_ContentRefusal()).getRange('unsatisfiable');
+  print(jsonEncode(<String, dynamic>{
+    'error': refused is ContentClientServiceGetRangeResultOperation ? refused.error.$1.toJson() : null,
+    'contentRange': refused is ContentClientServiceGetRangeResultOperation ? refused.error.$2 : null,
+  }));
 }
 ";
 
@@ -601,5 +624,36 @@ fn a_newtype_field_of_a_named_body_message_fills_its_path_placeholder_with_its_w
     assert_eq!(
         sent["path"], "/media/abc123",
         "the segment is the newtype's wire value, as the Rust client writes it. Got: {sent:#?}"
+    );
+}
+
+fn content_module() -> String {
+    [
+        "import 'dart:convert';".to_owned(),
+        content_error_dart::dart_definition(),
+        content_range_error_dart::dart_definition(),
+        ContentClientServiceSchema::dart_definition(),
+        ContentClientServiceSchema::dart_http_client(),
+        CONTENT_DRIVER.to_owned(),
+    ]
+    .join("\n\n")
+}
+
+#[test]
+fn a_streamed_operations_declared_416_reads_its_content_range_back() {
+    let Some(wrote) = ran(
+        "dart",
+        RUNTIME_VAR,
+        "dart",
+        "content.dart",
+        &content_module(),
+    ) else {
+        return;
+    };
+    let results: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
+    assert_eq!(
+        results,
+        serde_json::json!({"error": {"errorCode": "range-not-satisfiable"}, "contentRange": "bytes */43"}),
+        "the declared error carries the complete length"
     );
 }

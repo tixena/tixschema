@@ -10,6 +10,9 @@
 #![cfg(feature = "swift")]
 
 use super::runtime::ran;
+use super::tests::content_client_service_schema::{
+    content_client_service_fault_fields_swift, content_client_service_fault_kind_swift,
+};
 use super::tests::conversation_client_service_schema::{
     conversation_client_service_fault_fields_swift, conversation_client_service_fault_kind_swift,
 };
@@ -28,8 +31,9 @@ use super::tests::swift_codec_fixture::{
     codec_untagged_swift,
 };
 use super::tests::{
-    ConversationClientServiceSchema, EchoClientServiceSchema, MediaClientServiceSchema,
-    StampClientServiceSchema, ThumbnailClientServiceSchema, conversation_id_swift,
+    ContentClientServiceSchema, ConversationClientServiceSchema, EchoClientServiceSchema,
+    MediaClientServiceSchema, StampClientServiceSchema, ThumbnailClientServiceSchema,
+    content_error_swift, content_range_error_swift, conversation_id_swift,
     echo_client_service_schema, echo_range_error_swift, echo_range_response_swift,
     media_error_swift, media_id_swift, media_upload_swift, stamp_error_swift, stamp_receipt_swift,
     thumbnail_client_service_schema, thumbnail_error_swift, window_error_swift, window_page_swift,
@@ -328,6 +332,31 @@ _ = await MediaClientServiceHttpClient(transport: recorder)
   .upload(MediaUpload(caption: "c", sha256: MediaId(value: "abc123")))
 print(String(data: try! JSONEncoder().encode(["path": recorder.paths.first ?? ""]), encoding: .utf8)!)
 "#;
+
+/// A stub `ContentClientServiceHttpTransport` answering the streamed operation's declared `416`
+/// with the complete length in `content-range`.
+const CONTENT_DRIVER: &str = r##"
+struct ContentRefusal: ContentClientServiceHttpTransport {
+  func send(_ request: ContentClientServiceHttpRequest) async throws -> ContentClientServiceHttpResponse {
+    ContentClientServiceHttpResponse(
+      status: 416, headers: [("content-range", "bytes */43")],
+      body: Data(#"{"errorCode":"range-not-satisfiable"}"#.utf8),
+      bodyStream: AsyncThrowingStream { $0.finish() })
+  }
+}
+
+struct ContentReport: Codable {
+  let error: ContentRangeError?
+  let contentRange: String?
+}
+
+let refused = await ContentClientServiceHttpClient(transport: ContentRefusal()).getRange("unsatisfiable")
+var report = ContentReport(error: nil, contentRange: nil)
+if case .failure(.declared(let declared)) = refused {
+  report = ContentReport(error: declared.0, contentRange: declared.1)
+}
+print(String(data: try! JSONEncoder().encode(report), encoding: .utf8)!)
+"##;
 
 // -------------------------------------------------------------------------------------------
 // The generated types and clients every group but the codec one drives.
@@ -792,5 +821,37 @@ fn a_newtype_field_of_a_named_body_message_fills_its_path_placeholder_with_its_w
     assert_eq!(
         sent["path"], "/media/abc123",
         "the segment is the newtype's wire value, as the Rust client writes it. Got: {sent:#?}"
+    );
+}
+
+fn content_module() -> String {
+    [
+        "import Foundation".to_owned(),
+        content_error_swift::swift_definition(),
+        content_range_error_swift::swift_definition(),
+        content_client_service_fault_fields_swift::swift_definition(),
+        content_client_service_fault_kind_swift::swift_definition(),
+        ContentClientServiceSchema::swift_http_client(),
+        CONTENT_DRIVER.to_owned(),
+    ]
+    .join("\n\n")
+}
+
+#[test]
+fn a_streamed_operations_declared_416_reads_its_content_range_back() {
+    let Some(wrote) = ran(
+        "swift",
+        RUNTIME_VAR,
+        "swift",
+        "content.swift",
+        &content_module(),
+    ) else {
+        return;
+    };
+    let results: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
+    assert_eq!(
+        results,
+        serde_json::json!({"error": {"errorCode": "range-not-satisfiable"}, "contentRange": "bytes */43"}),
+        "the declared error carries the complete length"
     );
 }

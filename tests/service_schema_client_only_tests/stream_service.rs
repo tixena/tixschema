@@ -28,6 +28,14 @@ pub enum ContentError {
     NotFound,
 }
 
+/// A declared range refusal, carried with the complete length it refused against.
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum ContentRangeError {
+    RangeNotSatisfiable,
+}
+
 #[service_schema(transports = ["http_rest"])]
 pub trait ContentClientService<Ctx> {
     #[service_schema_op(http(
@@ -61,6 +69,22 @@ pub trait ContentClientService<Ctx> {
         document_id: String,
         byte_range: Option<String>,
     ) -> Result<(content_client_service_schema::StreamedAnswer, String), ContentError>;
+
+    /// A declared `416` carrying `content-range: bytes */<size>` back to the caller.
+    #[service_schema_op(http(
+        method = "GET",
+        path = "/documents/{document_id}/range",
+        header_in("range" = byte_range),
+        body = "stream",
+        error_status(RangeNotSatisfiable = 416),
+        error_header_out("content-range"),
+    ))]
+    async fn get_range(
+        &self,
+        ctx: &Ctx,
+        document_id: String,
+        byte_range: Option<String>,
+    ) -> Result<content_client_service_schema::StreamedAnswer, (ContentRangeError, Option<String>)>;
 }
 
 /// A chunked [`Read`] source: every call answers at most [`CHUNK_CAP`] bytes. Blanket-implemented
@@ -187,6 +211,25 @@ impl ContentClientService<()> for ContentClientBackEnd {
     ) -> Result<(content_client_service_schema::StreamedAnswer, String), ContentError> {
         let answered = self.get_content(ctx, document_id, byte_range).await?;
         Ok((answered, "v9".to_owned()))
+    }
+
+    async fn get_range(
+        &self,
+        _ctx: &(),
+        _document_id: String,
+        byte_range: Option<String>,
+    ) -> Result<content_client_service_schema::StreamedAnswer, (ContentRangeError, Option<String>)>
+    {
+        ready(()).await;
+        if byte_range.is_some() {
+            return Err((
+                ContentRangeError::RangeNotSatisfiable,
+                Some(format!("bytes */{}", CONTENT.len())),
+            ));
+        }
+        Ok(content_client_service_schema::StreamedAnswer::Full(
+            Box::new(ChunkedSlice::new(CONTENT)),
+        ))
     }
 }
 
@@ -381,6 +424,40 @@ fn a_streamed_operations_mapped_status_still_decodes_into_the_declared_error() {
         Err(content_client_service_schema::CallError::Operation(
             ContentError::NotFound
         ))
+    ));
+}
+
+/// A declared `416` reads its `content-range` back into the error tuple: the complete length the
+/// range was refused against.
+#[test]
+fn a_declared_416_carries_its_content_range_into_the_error_tuple() {
+    let transport = StreamingTransport::queued(vec![(
+        416,
+        vec![("content-range".to_owned(), "bytes */43".to_owned())],
+        QueuedBody::Bytes(br#"{"errorCode":"range-not-satisfiable"}"#.to_vec()),
+    )]);
+    let client = stream_http_rest_client::ContentClientServiceClient::new(transport);
+    let answered =
+        poll_once(client.get_range("present".to_owned(), Some("bytes=100-".to_owned()))).unwrap();
+    assert!(
+        matches!(
+            &answered,
+            Err(content_client_service_schema::CallError::Operation((
+                ContentRangeError::RangeNotSatisfiable,
+                Some(content_range),
+            ))) if content_range == "bytes */43"
+        ),
+        "the declared error carries the complete length"
+    );
+}
+
+/// The backend answers the same refusal the client reads back.
+#[test]
+fn the_backend_refuses_a_range_with_the_complete_length() {
+    assert!(matches!(
+        poll_once(ContentClientBackEnd.get_range(&(), "present".to_owned(), Some("bytes=100-".to_owned())))
+            .unwrap(),
+        Err((ContentRangeError::RangeNotSatisfiable, Some(content_range))) if content_range == "bytes */43"
     ));
 }
 
