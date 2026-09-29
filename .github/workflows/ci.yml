@@ -40,6 +40,35 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-cargo-
 
+    # Every emitted-client run and the tsc type check stand down when their toolchain is missing,
+    # so CI installs each one; `just typecheck-ts` and `just test-emitted` then refuse to stand down.
+    # The runner image already carries Swift, Kotlin and a JRE; Dart and the Node packages are added.
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24
+
+    - name: Setup Dart
+      uses: dart-lang/setup-dart@v1
+
+    - name: Install zod, ws and tsc for the emitted TypeScript
+      run: |
+        npm install --no-save --no-package-lock --prefix "$RUNNER_TEMP/node" zod@4.6.5 ws@8.21.3 typescript@5.9.3
+        echo "TIXSCHEMA_NODE_MODULES=$RUNNER_TEMP/node" >> "$GITHUB_ENV"
+        echo "TIXSCHEMA_TSC=$RUNNER_TEMP/node/node_modules/.bin/tsc" >> "$GITHUB_ENV"
+
+    - name: Install the Kotlin jars the emitted Kotlin compiles against
+      run: just kotlin-libs
+
+    - name: Show the toolchains
+      run: |
+        node --version
+        "$TIXSCHEMA_TSC" --version
+        dart --version
+        swift --version
+        kotlinc -version
+        java -version
+
     - name: Build project
       id: build
       run: |
@@ -71,6 +100,18 @@ jobs:
       run: |
         echo "🚀 Testing every combination of the feature sets..."
         just test-sets
+
+    - name: Type-check the emitted TypeScript
+      id: typecheck-ts
+      run: |
+        echo "🔎 Type-checking the emitted TypeScript with tsc..."
+        just typecheck-ts
+
+    - name: Run the emitted clients under their own toolchains
+      id: test-emitted
+      run: |
+        echo "🌐 Running the emitted Node, Dart, Swift and Kotlin clients..."
+        just test-emitted
 
     - name: Run security audit
       id: audit
@@ -106,6 +147,8 @@ jobs:
         LALL: ${{ steps.lint-all.outcome }}
         TBASIC: ${{ steps.test-basic.outcome }}
         TEXT: ${{ steps.test-extensive.outcome }}
+        TSC: ${{ steps.typecheck-ts.outcome }}
+        EMIT: ${{ steps.test-emitted.outcome }}
         AUDIT: ${{ steps.audit.outcome }}
       run: |
         # Validate repository to prevent forks from sending notifications
@@ -122,12 +165,14 @@ jobs:
         elif [[ "$LALL" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Lint the feature sets (just lint-sets)";
         elif [[ "$TBASIC" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Basic tests (cargo test)";
         elif [[ "$TEXT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Feature-set tests (just test-sets)";
+        elif [[ "$TSC" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Emitted TypeScript type check (just typecheck-ts)";
+        elif [[ "$EMIT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Emitted clients (just test-emitted)";
         elif [[ "$AUDIT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Security audit (cargo audit)";
         fi
 
         icon() { case "$1" in success) printf '✅';; failure) printf '❌';; *) printf '⏭️';; esac; }
-        STATUS_VALUE=$(printf '🏗️ Build: %s\n🔍 Check: %s\n🧹 Lint (all features): %s\n🧪 Basic Tests: %s\n🚀 Extensive Tests: %s\n🛡️ Audit: %s' \
-          "$(icon "$BLD")" "$(icon "$CHK")" "$(icon "$LALL")" "$(icon "$TBASIC")" "$(icon "$TEXT")" "$(icon "$AUDIT")")
+        STATUS_VALUE=$(printf '🏗️ Build: %s\n🔍 Check: %s\n🧹 Lint (all features): %s\n🧪 Basic Tests: %s\n🚀 Extensive Tests: %s\n🔎 Emitted TypeScript: %s\n🌐 Emitted Clients: %s\n🛡️ Audit: %s' \
+          "$(icon "$BLD")" "$(icon "$CHK")" "$(icon "$LALL")" "$(icon "$TBASIC")" "$(icon "$TEXT")" "$(icon "$TSC")" "$(icon "$EMIT")" "$(icon "$AUDIT")")
 
         # Per-event details: commit message / author / PR link
         if [[ "$EVENT_NAME" == "pull_request" ]]; then
