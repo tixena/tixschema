@@ -5,7 +5,7 @@
 //! output: a substring that must appear, and a name that must not.
 
 use super::{
-    NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE, NEWTYPE_HEADER_OUT_HTTP_SERVICE,
+    MIXED_SERVICE, NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE, NEWTYPE_HEADER_OUT_HTTP_SERVICE,
     SWIFT_BYTES_HEADER_OUT_SERVICE, SWIFT_HEADER_VEC_OF_OPTIONS_SERVICE, SWIFT_HTTP_SERVICE,
     SWIFT_MULTIPART_HTTP_SERVICE, SWIFT_NUMERIC_HEADER_OUT_SERVICE,
     SWIFT_SINGLE_PLACEHOLDER_HTTP_SERVICE, SWIFT_STREAM_HTTP_SERVICE,
@@ -20,6 +20,17 @@ fn method_body<'written>(written: &'written str, call: &str) -> &'written str {
     let rest = &written[start.unwrap()..];
     let end = rest.find("\n\n").unwrap_or(rest.len());
     &rest[..end]
+}
+
+#[test]
+fn a_failed_reply_is_checked_against_the_declared_error() {
+    let written = swift_http_client_of(MIXED_SERVICE);
+    let body = method_body(&written, "getAvailableBalance");
+    assert!(
+        body.contains("JSONDecoder().decode(BalanceError.self,"),
+        "a failure the transport handed back is answered as a `BalanceError`, so it is decoded \
+         as one first. Got: {body}"
+    );
 }
 
 #[test]

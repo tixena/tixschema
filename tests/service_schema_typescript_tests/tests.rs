@@ -322,9 +322,10 @@ mod the_bundle_one_registration_line_produces {
         let (_, written) = written_bundle("tixschema_service_bundle_mint.ts");
         let answering = written.matches("): ProbeServiceFault {").count();
         assert_eq!(
-            answering, 3,
-            "the client refuses an outbound message, and the dispatcher answers an unrecognised \
-             operation and a payload that failed. Got: {written}"
+            answering, 4,
+            "the client refuses an outbound message and a failed reply that will not parse as \
+             the declared error, and the dispatcher answers an unrecognised operation and a \
+             payload that failed. Got: {written}"
         );
         assert_eq!(
             written

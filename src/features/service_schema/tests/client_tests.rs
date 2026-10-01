@@ -90,8 +90,14 @@ fn a_unit_success_normalizes_value_to_undefined_whatever_the_transport_answered(
         "got: {body}"
     );
     assert!(
-        body.contains("return answered.ok === true ? { ok: true, value: undefined } : answered;"),
+        body.contains(
+            "if (answered.ok) {\n        return { ok: true, value: undefined };\n      }"
+        ),
         "got: {body}"
+    );
+    assert!(
+        body.contains("PingError$Schema.safeParse(error)"),
+        "a unit success still declares an error, and a failure is parsed against it. Got: {body}"
     );
 }
 
@@ -129,6 +135,40 @@ fn a_message_that_fails_its_schema_answers_a_fault_before_the_transport_is_named
     assert!(
         body.contains("AvailableBalanceRequest$Schema.safeParse(req)"),
         "got: {body}"
+    );
+}
+
+#[test]
+fn a_failed_reply_is_checked_against_the_declared_error() {
+    let written = client_of(MIXED_SERVICE);
+    let method = written
+        .split("    async getAvailableBalance(req) {")
+        .nth(1)
+        .and_then(|rest| rest.split_once("\n    },"))
+        .map(|(body, _)| body.to_owned());
+    assert!(method.is_some(), "got: {written}");
+    let body = method.unwrap();
+    assert!(
+        body.contains("BalanceError$Schema.safeParse("),
+        "a failure the transport handed back is returned typed as `BalanceError`, so it is \
+         parsed against that error's own schema first. Got: {body}"
+    );
+    let sealed = body.find("\"isServiceFault\" in error");
+    assert!(
+        sealed.is_some() && sealed < body.find("BalanceError$Schema.safeParse(error)"),
+        "a fault the far side sealed is not a declared error, so it passes through before the \
+         parse. Got: {body}"
+    );
+    assert!(
+        body.contains(
+            "fault: usageServiceReplyFault(\"get-available-balance\", declared.error.issues),"
+        ),
+        "a failure that will not parse answers a fault, never a value typed as the declared \
+         error. Got: {body}"
+    );
+    assert!(
+        body.ends_with("return { ok: false, error: declared.data };"),
+        "what parsed is what the caller reads. Got: {body}"
     );
 }
 
@@ -218,6 +258,26 @@ fn a_service_with_no_one_way_operation_publishes_no_refusal() {
 }
 
 #[test]
+fn a_service_with_no_replying_operation_publishes_no_reply_fault() {
+    const ONE_WAY_ONLY: &str = "
+        pub trait UsageService<Ctx> {
+            #[service_schema_op(one_way)]
+            async fn apply_bundle(&self, ctx: &Ctx, req: ApplyBundleRequest);
+        }
+    ";
+    let written = client_of(ONE_WAY_ONLY);
+    assert!(
+        !written.contains("ReplyFault"),
+        "no reply is ever read, so a constructor for one that failed is one nothing calls. \
+         Got: {written}"
+    );
+    assert!(
+        written.contains("function usageServiceOutboundFault("),
+        "got: {written}"
+    );
+}
+
+#[test]
 fn the_fault_a_client_builds_names_the_key_that_failed() {
     let written = client_of(MIXED_SERVICE);
     assert!(
@@ -242,15 +302,20 @@ fn members_of(written: &str) -> String {
         .map_or_else(String::new, |(declared, _)| declared.to_owned())
 }
 
-/// The client's one constructor mints the same way the dispatcher's two do — the fields the Rust
+/// The client's constructors mint the same way the dispatcher's two do — the fields the Rust
 /// declaration published, then the assertion into the sealed type.
 #[test]
 fn the_fault_the_client_builds_is_minted_from_the_fields_and_sealed() {
     let written = client_of(MIXED_SERVICE);
     assert_eq!(
         written.matches("): UsageServiceFault {").count(),
-        1,
-        "the client builds a fault in one place: the message it refused. Got: {written}"
+        2,
+        "the client builds a fault in two places: the message it refused, and the failed reply \
+         that would not parse as the declared error. Got: {written}"
+    );
+    assert!(
+        written.contains("function usageServiceReplyFault("),
+        "got: {written}"
     );
     assert!(
         written.find("const built: UsageServiceFaultFields = {")
@@ -338,9 +403,17 @@ fn a_header_tuple_reply_is_rejoined_from_the_envelope_and_the_reply_headers() {
             "      if (typeof error === \"object\" && error !== null && \"isServiceFault\" in error) \
              {\n        \
              return { ok: false, error };\n      \
-             }"
-        ) && written.contains("return { ok: false, error: [error, errorHeaderOut0.value] };"),
-        "a fault passes through before the declared error is rejoined. Got: {written}"
+             }\n      \
+             const declared = DocError$Schema.safeParse(error);"
+        ) && written
+            .contains("return { ok: false, error: [declared.data, errorHeaderOut0.value] };"),
+        "a fault passes through, then the body is parsed as the declared error and its headers \
+         are rejoined onto what parsed. Got: {written}"
+    );
+    let parsed = written.find("DocError$Schema.safeParse(error)");
+    assert!(
+        parsed.is_some() && parsed < written.find("const errorHeaderOut0 ="),
+        "the body is parsed before its headers are read. Got: {written}"
     );
     assert!(
         written.contains(

@@ -6,7 +6,8 @@
 //! Swift toolchain, against an in-memory socket, separately from this file's own assertions.
 
 use super::{
-    SWIFT_UNIT_SUCCESS_SERVICE, SWIFT_WS_HEADERS_SERVICE, SWIFT_WS_SERVICE, swift_ws_client_of,
+    MIXED_SERVICE, SWIFT_UNIT_SUCCESS_SERVICE, SWIFT_WS_HEADERS_SERVICE, SWIFT_WS_SERVICE,
+    swift_ws_client_of,
 };
 
 /// The body of one declaration, from its own start marker through the closing brace that ends
@@ -18,6 +19,17 @@ fn body_from<'written>(written: &'written str, marker: &str) -> &'written str {
     let rest = &written[start.unwrap()..];
     let end = rest.find("\n}").map_or(rest.len(), |at| at + 2);
     &rest[..end]
+}
+
+#[test]
+fn a_failed_reply_is_checked_against_the_declared_error() {
+    let written = swift_ws_client_of(MIXED_SERVICE);
+    let body = body_from(&written, "public func getAvailableBalance(");
+    assert!(
+        body.contains("JSONDecoder().decode(UsageServiceWsDeclaredEnvelope<BalanceError>.self,"),
+        "a failure the transport handed back is answered as a `BalanceError`, so it is decoded \
+         as one first. Got: {body}"
+    );
 }
 
 #[test]

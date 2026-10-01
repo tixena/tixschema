@@ -8,7 +8,7 @@
 use super::{
     KOTLIN_BYTES_HEADER_OUT_SERVICE, KOTLIN_HTTP_SERVICE, KOTLIN_MULTIPART_HTTP_SERVICE,
     KOTLIN_NUMERIC_HEADER_OUT_SERVICE, KOTLIN_SINGLE_PLACEHOLDER_HTTP_SERVICE,
-    KOTLIN_STREAM_HTTP_SERVICE, KOTLIN_UNIT_SUCCESS_HTTP_SERVICE,
+    KOTLIN_STREAM_HTTP_SERVICE, KOTLIN_UNIT_SUCCESS_HTTP_SERVICE, MIXED_SERVICE,
     NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE, NEWTYPE_HEADER_OUT_HTTP_SERVICE, kotlin_http_client_of,
 };
 
@@ -20,6 +20,17 @@ fn method_body<'written>(written: &'written str, call: &str) -> &'written str {
     let rest = &written[start.unwrap()..];
     let end = rest.find("\n\n").unwrap_or(rest.len());
     &rest[..end]
+}
+
+#[test]
+fn a_failed_reply_is_checked_against_the_declared_error() {
+    let written = kotlin_http_client_of(MIXED_SERVICE);
+    let body = method_body(&written, "getAvailableBalance");
+    assert!(
+        body.contains("Json.decodeFromString(serializer<BalanceError>(),"),
+        "a failure the transport handed back is answered as a `BalanceError`, so it is decoded \
+         as one first. Got: {body}"
+    );
 }
 
 #[test]

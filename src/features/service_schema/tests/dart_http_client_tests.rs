@@ -7,7 +7,7 @@
 use super::{
     DART_BYTES_HEADER_OUT_SERVICE, DART_HTTP_SERVICE, DART_MULTIPART_HTTP_SERVICE,
     DART_PRIMITIVE_SERVICE, DART_SINGLE_PLACEHOLDER_HTTP_SERVICE, DART_STREAM_HTTP_SERVICE,
-    DART_UNIT_SUCCESS_HTTP_SERVICE, NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE,
+    DART_UNIT_SUCCESS_HTTP_SERVICE, MIXED_SERVICE, NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE,
     NEWTYPE_HEADER_OUT_HTTP_SERVICE, dart_http_client_of,
 };
 
@@ -26,6 +26,17 @@ fn method_body<'written>(written: &'written str, call: &str) -> &'written str {
     let rest = &written[start.unwrap()..];
     let end = rest.find("\n\n").unwrap_or(rest.len());
     &rest[..end]
+}
+
+#[test]
+fn a_failed_reply_is_checked_against_the_declared_error() {
+    let written = dart_http_client_of(MIXED_SERVICE);
+    let body = method_body(&written, "getAvailableBalance");
+    assert!(
+        body.contains("BalanceError.fromJson("),
+        "a failure the transport handed back is answered as a `BalanceError`, so it is decoded \
+         as one first. Got: {body}"
+    );
 }
 
 #[test]

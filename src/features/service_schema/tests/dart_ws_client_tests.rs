@@ -6,7 +6,7 @@
 
 use super::{
     DART_HEADER_TUPLE_SERVICE, DART_PRIMITIVE_SERVICE, DART_UNIT_SUCCESS_HTTP_SERVICE,
-    DART_WS_SERVICE, dart_ws_client_of,
+    DART_WS_SERVICE, MIXED_SERVICE, dart_ws_client_of,
 };
 
 /// The body of one method or dispatch arm, from its own start marker through the closing brace of
@@ -17,6 +17,20 @@ fn body_from<'written>(written: &'written str, marker: &str) -> &'written str {
     let rest = &written[start.unwrap()..];
     let end = rest.find("\n\n").unwrap_or(rest.len());
     &rest[..end]
+}
+
+#[test]
+fn a_failed_reply_is_checked_against_the_declared_error() {
+    let written = dart_ws_client_of(MIXED_SERVICE);
+    let body = body_from(
+        &written,
+        "Future<UsageServiceGetAvailableBalanceResult> getAvailableBalance(",
+    );
+    assert!(
+        body.contains("BalanceError.fromJson("),
+        "a failure the transport handed back is answered as a `BalanceError`, so it is decoded \
+         as one first. Got: {body}"
+    );
 }
 
 #[test]
