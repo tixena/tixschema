@@ -7,7 +7,9 @@
 #![cfg(feature = "dart")]
 
 use super::runtime::ran;
-use super::tests::swift_codec_fixture::{codec_unit_field_dart, codec_unit_payload_dart};
+use super::tests::swift_codec_fixture::{
+    CodecUnitField, CodecUnitPayload, codec_unit_field_dart, codec_unit_payload_dart,
+};
 use super::tests::{
     ContentClientServiceSchema, ConversationClientServiceSchema, EchoClientServiceSchema,
     MediaClientServiceSchema, STREAMED_CONTENT_TYPE, ShelfClientServiceSchema,
@@ -501,6 +503,15 @@ fn a_unit_struct_field_round_trips_as_an_empty_object() {
         value,
         serde_json::json!({"label": "marker", "payload": {}}),
         "got: {value:#?}"
+    );
+    let serde_wrote = serde_json::to_value(CodecUnitField {
+        label: "marker".to_owned(),
+        payload: CodecUnitPayload,
+    })
+    .unwrap();
+    assert_eq!(
+        value, serde_wrote,
+        "Dart writes what serde writes for the same value"
     );
 }
 
