@@ -4150,17 +4150,17 @@ fn struct_rename_all(item_struct: &syn::ItemStruct) -> Result<Option<String>, To
 }
 
 /// The struct's own `JSDoc` body: [`build_jsdoc_body`] under `typescript`, empty text otherwise.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(feature = "typescript")]
 fn struct_docs_body(doc_comment: Option<&[String]>, item_name: &str) -> String {
-    #[cfg(feature = "typescript")]
-    {
-        build_jsdoc_body(doc_comment, item_name)
-    }
-    #[cfg(not(feature = "typescript"))]
-    {
-        let _: (&_, &_) = (&doc_comment, &item_name);
-        String::new()
-    }
+    build_jsdoc_body(doc_comment, item_name)
+}
+
+#[cfg(all(
+    not(feature = "typescript"),
+    any(feature = "zod", feature = "jsonschema")
+))]
+const fn struct_docs_body(_doc_comment: Option<&[String]>, _item_name: &str) -> String {
+    String::new()
 }
 
 fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> TokenStream {
