@@ -1771,7 +1771,24 @@ Outbound, the generated client validates the message it is about to send, so a m
         };
       }
       const { answered } = await transport.request<UsageServiceExpireCreditResult>("expire-credit", validated.data, []);
-      return answered;
+      if (answered.ok) {
+        return answered;
+      }
+      const error = answered.error;
+      if (typeof error === "object" && error !== null && "isServiceFault" in error) {
+        return { ok: false, error };
+      }
+      const declared = BalanceError$Schema.safeParse(error);
+      if (!declared.success) {
+        return {
+          ok: false,
+          error: {
+            isServiceFault: true,
+            fault: usageServiceReplyFault("expire-credit", declared.error.issues),
+          },
+        };
+      }
+      return { ok: false, error: declared.data };
     },
 ```
 
@@ -1786,6 +1803,8 @@ A one-way method runs the same check and has nowhere to put the result of it, so
       await transport.notify("apply-bundle", validated.data, []);
     },
 ```
+
+A replying method checks what comes back as well, in the tail of `expireCredit` above. A failed reply is parsed against the operation's declared error before the caller reads it: a fault the far side already sealed passes through, a failure that parses is returned as parsed, and one that does not -- a declared field missing, an undeclared key, another shape altogether -- answers a `failed-validation` fault naming the first offending key rather than a value typed as that error. A bundle therefore publishes the Zod schema of every declared error type beside its type.
 
 #### Service Faults
 

@@ -22,6 +22,12 @@
 //! operation never ran, so what came back is not one of the errors it declared, and a caller's
 //! code is identical whether the fault came from here or from the far end.
 //!
+//! # A failed reply is checked before a caller reads it
+//!
+//! A failure comes back typed as the error the operation declared, so it is parsed against that
+//! error's own schema first. A fault the far side already sealed passes through; a failure that
+//! will not parse answers a fault instead, never a value typed as the declared error.
+//!
 //! # Where the schemas come from, and why this module exists only beside them
 //!
 //! The schema a message validates against is the one `#[model_schema()]` publishes for it, which
@@ -51,8 +57,8 @@ use core::fmt::Write as _;
 use core::iter::once;
 use syn::Type;
 
-/// One side of a header-tuple reply: the body as it arrived, and the headers `names` binds,
-/// rejoined into the tuple the operation declared.
+/// One side of a reply: its body, and the headers `names` binds, rejoined into the tuple the
+/// operation declared.
 struct Rejoined<'shape> {
     /// The returned envelope around the rejoined tuple: what goes before it, and after it.
     answered: (&'static str, &'static str),
@@ -66,7 +72,7 @@ struct Rejoined<'shape> {
 impl Rejoined<'_> {
     /// Reads each named header back off `replied`, returning the fault a missing or malformed one
     /// produces, then returns the envelope with the body rejoined to them. With no header named,
-    /// the body is returned as it arrived.
+    /// the body alone is returned.
     fn stmt(&self, prefix: &str, wire: &str) -> String {
         let margin = self.indent;
         let mut stmt = String::new();
@@ -176,35 +182,34 @@ fn factory(service: &ServiceDef) -> String {
 fn fault_helpers(service: &ServiceDef) -> Vec<String> {
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
-    let mut helpers = vec![format!(
-        "/**\n \
-         * The fault a `{named}` client answers with when the message it was about to send failed \
-         its\n \
-         * own schema. The operation never ran, so this is not one of the errors it declared, and \
-         the\n \
-         * transport was never reached.\n \
-         */\n\
-         function {prefix}OutboundFault(\n  \
-         operation: string,\n  \
-         issues: ReadonlyArray<{{ path: ReadonlyArray<PropertyKey>; message: string }}>,\n\
-         ): {named}Fault {{\n  \
-         const [first] = issues;\n  \
-         const failedAt = first === undefined ? \"\" : first.path.join(\".\");\n\
-         {minted}\n\
-         }}",
-        minted = fault::minted(
-            &named,
-            "    detail: issues\n      \
-             .map((issue) =>\n        \
-             issue.path.length === 0 ? issue.message : `'${issue.path.join(\".\")}': \
-             ${issue.message}`,\n      \
-             )\n      \
-             .join(\"; \"),\n    \
-             field: failedAt === \"\" ? undefined : failedAt,\n    \
-             kind: \"failed-validation\",\n    \
-             operation,"
-        )
+    let mut helpers = vec![issues_fault_fn(
+        &named,
+        &format!("{prefix}OutboundFault"),
+        &format!(
+            " * The fault a `{named}` client answers with when the message it was about to send \
+             failed its\n \
+             * own schema. The operation never ran, so this is not one of the errors it declared, \
+             and the\n \
+             * transport was never reached."
+        ),
     )];
+    if service
+        .operations
+        .iter()
+        .any(|operation| !matches!(operation.outcome, OperationOutcome::OneWay))
+    {
+        helpers.push(issues_fault_fn(
+            &named,
+            &format!("{prefix}ReplyFault"),
+            &format!(
+                " * The fault a `{named}` client answers with when a failed reply will not parse \
+                 as the error\n \
+                 * its operation declared. The far side answered a shape nobody promised, so this \
+                 is not\n \
+                 * one of those errors either."
+            ),
+        ));
+    }
     if service.operations.iter().any(|operation| {
         let shape = HttpShape::of(operation);
         !shape.header_out.is_empty() || !shape.error_header_out.is_empty()
@@ -249,6 +254,36 @@ fn fault_helpers(service: &ServiceDef) -> Vec<String> {
     helpers
 }
 
+/// A fault constructor folding a failed parse into one `failed-validation` fault naming the first
+/// failing key. `doc` is the body of its `JSDoc`.
+fn issues_fault_fn(named: &str, function: &str, doc: &str) -> String {
+    format!(
+        "/**\n\
+         {doc}\n \
+         */\n\
+         function {function}(\n  \
+         operation: string,\n  \
+         issues: ReadonlyArray<{{ path: ReadonlyArray<PropertyKey>; message: string }}>,\n\
+         ): {named}Fault {{\n  \
+         const [first] = issues;\n  \
+         const failedAt = first === undefined ? \"\" : first.path.join(\".\");\n\
+         {minted}\n\
+         }}",
+        minted = fault::minted(
+            named,
+            "    detail: issues\n      \
+             .map((issue) =>\n        \
+             issue.path.length === 0 ? issue.message : `'${issue.path.join(\".\")}': \
+             ${issue.message}`,\n      \
+             )\n      \
+             .join(\"; \"),\n    \
+             field: failedAt === \"\" ? undefined : failedAt,\n    \
+             kind: \"failed-validation\",\n    \
+             operation,"
+        )
+    )
+}
+
 /// What one operation's method answers: its own result type, or nothing for a one-way operation.
 fn answers(service: &str, operation: &OperationDef) -> String {
     result_name(service, operation).unwrap_or_else(|| "void".to_owned())
@@ -285,24 +320,23 @@ fn method(service: &ServiceDef, operation: &OperationDef) -> String {
         {
             header_tuple_answer(&named, &prefix, wire, &shape, error, success, &headers)
         }
-        OperationOutcome::Reply {
-            error: _error,
-            success,
-        } if is_unit_type(success) => format!(
-            "      const {{ answered }} = await transport.request<{result}>(\"{wire}\", \
-             validated.data, {headers});\n      \
-             return answered.ok === true ? {{ ok: true, value: undefined }} : answered;",
-            result = answers(&named, operation)
-        ),
-        OperationOutcome::Reply {
-            error: _error,
-            success: _success,
-        } => format!(
-            "      const {{ answered }} = await transport.request<{}>(\"{wire}\", \
-             validated.data, {headers});\n      \
-             return answered;",
-            answers(&named, operation)
-        ),
+        OperationOutcome::Reply { error, success } => {
+            let succeeded = if is_unit_type(success) {
+                "{ ok: true, value: undefined }"
+            } else {
+                "answered"
+            };
+            format!(
+                "      const {{ answered }} = await transport.request<{result}>(\"{wire}\", \
+                 validated.data, {headers});\n      \
+                 if (answered.ok) {{\n        \
+                 return {succeeded};\n      \
+                 }}\n\
+                 {failed}",
+                result = answers(&named, operation),
+                failed = failure_stmt(&prefix, wire, &shape, error)
+            )
+        }
     };
     format!("    async {call}({arguments}) {{\n{checked}{headers_build}{sending}\n    }},")
 }
@@ -386,22 +420,42 @@ fn header_tuple_answer(
         types: message::header_types(shape.header_out.len(), success),
     };
     stmt.push_str(&success_side.stmt(prefix, wire));
-    stmt.push_str(
-        "      }\n      \
-         const error = answered.error;\n      \
-         if (typeof error === \"object\" && error !== null && \"isServiceFault\" in error) {\n        \
-         return { ok: false, error };\n      \
-         }\n",
+    stmt.push_str("      }\n");
+    stmt.push_str(&failure_stmt(prefix, wire, shape, error));
+    stmt
+}
+
+/// What a replying method ends on once the reply is a failure: a fault the far side sealed passes
+/// through, and anything else is parsed against the operation's declared error before the
+/// `error_header_out` elements are rejoined onto it.
+fn failure_stmt(prefix: &str, wire: &str, shape: &HttpShape, error: &Type) -> String {
+    let body = message::body_type(shape.error_header_out.len(), error);
+    let schema = get_field_def("error", body, "").zod_type();
+    let mut stmt = format!(
+        "      const error = answered.error;\n      \
+         if (typeof error === \"object\" && error !== null && \"isServiceFault\" in error) {{\n        \
+         return {{ ok: false, error }};\n      \
+         }}\n      \
+         const declared = {schema}.safeParse(error);\n      \
+         if (!declared.success) {{\n        \
+         return {{\n          \
+         ok: false,\n          \
+         error: {{\n            \
+         isServiceFault: true,\n            \
+         fault: {prefix}ReplyFault(\"{wire}\", declared.error.issues),\n          \
+         }},\n        \
+         }};\n      \
+         }}\n"
     );
-    let error_side = Rejoined {
+    let rejoined = Rejoined {
         answered: ("{ ok: false, error: ", " }"),
-        body: "error",
+        body: "declared.data",
         ident_prefix: "errorHeaderOut",
         indent: "      ",
         names: &shape.error_header_out,
         types: message::header_types(shape.error_header_out.len(), error),
     };
-    stmt.push_str(&error_side.stmt(prefix, wire));
+    stmt.push_str(&rejoined.stmt(prefix, wire));
     stmt.truncate(stmt.trim_end().len());
     stmt
 }

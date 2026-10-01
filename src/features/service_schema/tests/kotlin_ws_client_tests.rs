@@ -5,7 +5,9 @@
 //! live kotlinc compile-and-run pass covers the heartbeat, correlation, dispatch and sharing
 //! scenarios separately, outside this crate's own test suite.
 
-use super::{KOTLIN_UNIT_SUCCESS_HTTP_SERVICE, KOTLIN_WS_SERVICE, kotlin_ws_client_of};
+use super::{
+    KOTLIN_UNIT_SUCCESS_HTTP_SERVICE, KOTLIN_WS_SERVICE, MIXED_SERVICE, kotlin_ws_client_of,
+};
 
 /// The body of one method, one dispatch arm, or one function, from its own start marker through
 /// the closing brace of whatever follows — mirrors `dart_ws_client_tests`'s own `body_from`.
@@ -15,6 +17,17 @@ fn body_from<'written>(written: &'written str, marker: &str) -> &'written str {
     let rest = &written[start.unwrap()..];
     let end = rest.find("\n\n").unwrap_or(rest.len());
     &rest[..end]
+}
+
+#[test]
+fn a_failed_reply_is_checked_against_the_declared_error() {
+    let written = kotlin_ws_client_of(MIXED_SERVICE);
+    let body = body_from(&written, "suspend fun getAvailableBalance(");
+    assert!(
+        body.contains("Json.decodeFromJsonElement(serializer<BalanceError>(),"),
+        "a failure the transport handed back is answered as a `BalanceError`, so it is decoded \
+         as one first. Got: {body}"
+    );
 }
 
 #[test]
