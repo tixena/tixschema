@@ -18,7 +18,7 @@ use std::collections::HashMap;
 
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Type, Variant};
+use syn::{Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
 use crate::features::serde::parse_serde_key_omission;
@@ -587,13 +587,15 @@ pub fn dart_typename(field: &FieldDef) -> String {
 
 /// Decodes a value of `ty` out of the dynamically typed JSON `expr`, as a model field of that type
 /// is decoded.
-pub fn dart_json_decode(ty: &Type, expr: &str) -> String {
+#[cfg(feature = "serde")]
+pub fn dart_json_decode(ty: &syn::Type, expr: &str) -> String {
     dart_decode_expr(&get_field_def("value", ty, ""), expr)
 }
 
 /// Encodes the Dart value `expr` of `ty` into a `jsonEncode`-safe value, as a model field of that
 /// type is encoded. `promoted`: Dart narrows `expr`, being a parameter or a local.
-pub fn dart_json_encode(ty: &Type, expr: &str, promoted: bool) -> String {
+#[cfg(feature = "serde")]
+pub fn dart_json_encode(ty: &syn::Type, expr: &str, promoted: bool) -> String {
     dart_encode_expr(&get_field_def("value", ty, ""), expr, promoted)
 }
 
