@@ -4,15 +4,18 @@
 
 /// Codec rows declared once so `run_dart.rs`, `run_swift.rs` and `run_kotlin.rs` can each
 /// round-trip them through their own emitted definition text and this file's own `serde_json`
-/// writes.
+/// writes. The Dart group reads the unit-struct row alone, so the others exist only where the
+/// Swift or the Kotlin group does.
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 pub mod swift_codec_fixture {
     use serde::{Deserialize, Serialize};
+    #[cfg(any(feature = "swift", feature = "kotlin"))]
     use std::collections::HashMap;
     use tixschema::model_schema;
 
     /// Row 1: a renamed field, an omitted optional, a present optional, and a `nullable` field
     /// that must still write its key as `null`.
+    #[cfg(any(feature = "swift", feature = "kotlin"))]
     #[model_schema()]
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -27,6 +30,7 @@ pub mod swift_codec_fixture {
     }
 
     /// Row 2a: externally tagged (serde's default once a variant carries data).
+    #[cfg(any(feature = "swift", feature = "kotlin"))]
     #[model_schema()]
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum CodecExternalTagged {
@@ -36,6 +40,7 @@ pub mod swift_codec_fixture {
     }
 
     /// Row 2b: internally tagged (`tag = "..."`, no `content`).
+    #[cfg(any(feature = "swift", feature = "kotlin"))]
     #[model_schema()]
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(tag = "type")]
@@ -45,6 +50,7 @@ pub mod swift_codec_fixture {
     }
 
     /// Row 2c: adjacently tagged (`tag = "...", content = "..."`).
+    #[cfg(any(feature = "swift", feature = "kotlin"))]
     #[model_schema()]
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(tag = "type", content = "value")]
@@ -54,6 +60,7 @@ pub mod swift_codec_fixture {
     }
 
     /// Row 3: untagged — the decode tries each member in declaration order.
+    #[cfg(any(feature = "swift", feature = "kotlin"))]
     #[model_schema()]
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(untagged)]
@@ -64,6 +71,7 @@ pub mod swift_codec_fixture {
 
     /// Row 4: a tuple field, which Swift has no native `Codable` for and emits as a wrapper
     /// struct over an unkeyed container.
+    #[cfg(any(feature = "swift", feature = "kotlin"))]
     #[model_schema()]
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct CodecTuplePoint {
@@ -72,6 +80,7 @@ pub mod swift_codec_fixture {
     }
 
     /// Row 5: a generic struct, bound through conditional conformance.
+    #[cfg(any(feature = "swift", feature = "kotlin"))]
     #[model_schema(default_types(T = String))]
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct CodecEnvelope<T> {
@@ -80,6 +89,7 @@ pub mod swift_codec_fixture {
     }
 
     /// A plain enum used as a non-string map key below.
+    #[cfg(any(feature = "swift", feature = "kotlin"))]
     #[model_schema()]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub enum CodecPrimary {
@@ -90,6 +100,7 @@ pub mod swift_codec_fixture {
     /// Row 6: a numeric and an enum map key, each needing the keyed-wrapper codec Swift's native
     /// `Dictionary` conformance does not give a non-`String`/`Int` key. A `bool`-keyed map is
     /// deliberately not exercised here: its emitted decode does not compile.
+    #[cfg(any(feature = "swift", feature = "kotlin"))]
     #[model_schema()]
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct CodecMapKeys {
