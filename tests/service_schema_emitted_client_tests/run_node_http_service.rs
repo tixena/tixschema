@@ -435,6 +435,9 @@ const transport = {
     if (request.path === "/thumbnails/gone") {
       return { status: 404, headers: [], body: JSON.stringify({ errorCode: "not-found" }) };
     }
+    if (request.path === "/thumbnails/undeclared") {
+      return { status: 404, headers: [], body: JSON.stringify({ errorCode: "unheard-of" }) };
+    }
     return { status: 200, headers: [["content-type", "image/png"]], body: "PNGDATA" };
   },
 };
@@ -443,6 +446,7 @@ const results = {
   missing: await client.getThumbnail("missing"),
   gone: await client.getThumbnail("gone"),
   anon: await client.getThumbnail("anon"),
+  undeclared: await client.getThumbnail("undeclared"),
 };
 console.log(JSON.stringify(results));
 "#;
@@ -1004,6 +1008,11 @@ fn the_client_decodes_the_declared_errors_own_header_and_omits_a_none_header_out
         serde_json::json!({"ok": true, "value": ["PNGDATA", "image/png", null]}),
         "an absent `header_out` header must decode as the tuple's own `undefined`, not a \
          string. got: {results:#?}"
+    );
+    assert_eq!(
+        results["undeclared"]["error"]["fault"]["kind"], "undeserializable-payload",
+        "a body that is not the declared error answers a fault rather than a value typed as \
+         one. got: {results:#?}"
     );
 }
 

@@ -20,6 +20,17 @@ fn body_from<'written>(written: &'written str, marker: &str) -> &'written str {
 }
 
 #[test]
+fn a_successful_reply_is_checked_against_the_declared_success() {
+    let written = kotlin_ws_client_of(MIXED_SERVICE);
+    let body = body_from(&written, "suspend fun getAvailableBalance(");
+    assert!(
+        body.contains("Json.decodeFromJsonElement(serializer<AvailableBalanceResponse>(),"),
+        "a success the transport handed back is answered as an `AvailableBalanceResponse`, so it is \
+         decoded as one first. Got: {body}"
+    );
+}
+
+#[test]
 fn a_failed_reply_is_checked_against_the_declared_error() {
     let written = kotlin_ws_client_of(MIXED_SERVICE);
     let body = body_from(&written, "suspend fun getAvailableBalance(");
@@ -27,6 +38,22 @@ fn a_failed_reply_is_checked_against_the_declared_error() {
         body.contains("Json.decodeFromJsonElement(serializer<BalanceError>(),"),
         "a failure the transport handed back is answered as a `BalanceError`, so it is decoded \
          as one first. Got: {body}"
+    );
+}
+
+#[test]
+fn a_declared_error_crosses_with_every_field_it_carries() {
+    let written = kotlin_ws_client_of(MIXED_SERVICE);
+    assert!(
+        written.contains(
+            "put(\"error\", Json.encodeToJsonElement(serializer<BalanceError>(), answered.error))"
+        ),
+        "the dispatcher writes the declared error through its own serializer, whole. \
+         Got: {written}"
+    );
+    assert!(
+        !written.contains("errorMessage"),
+        "no field of a declared error is picked out by name. Got: {written}"
     );
 }
 

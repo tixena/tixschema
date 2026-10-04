@@ -18,6 +18,11 @@
 //! dispatcher and the server macro build `dispatch` from, so the two can never answer one message
 //! two different ways.
 //!
+//! A reply's body is the payload alone: the value, the declared error or the fault, exactly as
+//! `dispatch` wrote it. Everything else is AMQP metadata — which of the three it is in the `type`
+//! property, the correlation id in `correlation_id`, and `is_error` and every `header_out` value in
+//! the headers table.
+//!
 //! A crate that places the server macro is the one crate on the bus: it names `lapin`, `tokio` and
 //! `futures` in its own manifest, beside `serde`, `serde_json` and `tracing`, because the items
 //! below call all six.
@@ -2126,7 +2131,8 @@ fn reply_handle_type() -> TokenStream {
 /// publishes nothing; a publish the channel refuses is logged and dropped rather than propagated,
 /// there being no failure a caller already waiting for a reply could be told about. A declared
 /// error and a fault both carry the boolean header `is_error` = `true` beside whatever
-/// `header_out` wrote; a success reply carries none.
+/// `header_out` wrote; a success reply carries none. The AMQP `type` property names which of the
+/// three a reply is, and the body is the payload alone.
 fn reply_handle_impls(module: &Ident) -> TokenStream {
     quote! {
         impl Reply for ReplyHandle<'_> {
@@ -2134,11 +2140,9 @@ fn reply_handle_impls(module: &Ident) -> TokenStream {
                 match ::serde_json::to_value(fault) {
                     Ok(fault) => {
                         let framed = framed_fault(&fault);
-                        self.publish(
-                            &legacy_reply(&framed, self.correlation()),
-                            outgoing_headers(&framed, Vec::new()),
-                        )
-                        .await;
+                        let (kind, body) = reply(&framed);
+                        self.publish(kind, &body, outgoing_headers(&framed, Vec::new()))
+                            .await;
                     }
                     Err(unserializable) => ::tracing::error!(
                         error = %unserializable,
@@ -2153,11 +2157,9 @@ fn reply_handle_impls(module: &Ident) -> TokenStream {
             {
                 match ::serde_json::to_value(value) {
                     Ok(answered) => {
-                        self.publish(
-                            &legacy_reply(&answered, self.correlation()),
-                            outgoing_headers(&answered, headers),
-                        )
-                        .await;
+                        let (kind, body) = reply(&answered);
+                        self.publish(kind, &body, outgoing_headers(&answered, headers))
+                            .await;
                     }
                     Err(unserializable) => ::tracing::error!(
                         error = %unserializable,
@@ -2168,24 +2170,27 @@ fn reply_handle_impls(module: &Ident) -> TokenStream {
         }
 
         impl ReplyHandle<'_> {
-            fn correlation(&self) -> Option<&str> {
-                self.correlation_id.as_ref().map(::lapin::types::ShortString::as_str)
-            }
-
-            /// Publishes to the reply queue, or to nowhere when the delivery named none, with
-            /// `headers` as the basic-properties headers table.
-            async fn publish(&self, reply: &::serde_json::Value, headers: ::lapin::types::FieldTable) {
+            /// Publishes `body` to the reply queue, or to nowhere when the delivery named none,
+            /// under the `type` property `kind`, with `headers` as the basic-properties headers
+            /// table.
+            async fn publish(
+                &self,
+                kind: &str,
+                body: &::serde_json::Value,
+                headers: ::lapin::types::FieldTable,
+            ) {
                 let Some(reply_to) = self.reply_to.clone() else {
                     return;
                 };
-                let encoded = match ::serde_json::to_vec(reply) {
+                let encoded = match ::serde_json::to_vec(body) {
                     Ok(encoded) => encoded,
                     Err(unserializable) => {
                         ::tracing::error!(error = %unserializable, "a reply would not encode");
                         return;
                     }
                 };
-                let mut properties = ::lapin::BasicProperties::default();
+                let mut properties = ::lapin::BasicProperties::default()
+                    .with_type(::lapin::types::ShortString::from(kind));
                 if let Some(correlation_id) = self.correlation_id.clone() {
                     properties = properties.with_correlation_id(correlation_id);
                 }
@@ -2329,7 +2334,6 @@ fn server_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
     let framing_consts = wire_framing_consts();
     let loop_consts = consumer_loop_consts();
     let context = server_context();
-    let framing_type = wire_framing_type();
     let dispatch_types = dispatcher_types(service);
     let reply_type = reply_handle_type();
     let loop_type = consumer_loop_type();
@@ -2337,7 +2341,6 @@ fn server_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
     let reply_impls = reply_handle_impls(&module);
     let dispatch_fns = dispatcher_fns(service);
     let framing_fns = wire_framing_fns();
-    let framing_helpers = wire_framing_helpers();
     let loop_fn = consumer_loop(contract);
     let loop_helpers = consumer_loop_helpers();
     quote! {
@@ -2349,7 +2352,6 @@ fn server_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
                 #loop_consts
 
                 #context
-                #framing_type
                 #dispatch_types
                 #reply_type
                 #loop_type
@@ -2359,7 +2361,6 @@ fn server_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
 
                 #dispatch_fns
                 #framing_fns
-                #framing_helpers
                 #loop_fn
                 #loop_helpers
             };
@@ -2422,12 +2423,9 @@ fn wire_framing_consts() -> TokenStream {
         const RESPONSE: &str = "response";
         /// The `type` a reply carries when the operation answered with the error it declared.
         const ERROR: &str = "error";
-        /// The `type` a reply carries when the message was refused before the operation ran. It
-        /// is what a fault becomes, that being the shape this bus has always reported a defect
-        /// in.
-        const INVALID_REQUEST: &str = "invalid-request";
-        /// What the runtime replies when an error names no code of its own.
-        const FALLBACK_ERROR_CODE: &str = "server-error";
+        /// The `type` a reply carries when the answer is a fault: a defect the operation never
+        /// declared.
+        const FAULT: &str = "fault";
         /// The header name [`ReplyHandle`](reply_handle_impls) writes the boolean `true` under on a
         /// failed reply — reserved, and refused as a `header_out` name, so a bound value never
         /// collides with it.
@@ -2435,46 +2433,40 @@ fn wire_framing_consts() -> TokenStream {
     }
 }
 
-/// `Fault`, the one type the wire framing reads a failure arm into.
-///
-/// Travels with the server macro rather than the dispatcher, because nothing reads it back except
-/// [`ReplyHandle`](reply_handle_impls) — a generated service never sees its own reply framed this
-/// way.
-fn wire_framing_type() -> TokenStream {
-    quote! {
-        /// What a fault says, read off the failure arm without naming any service's fault type.
-        struct Fault {
-            detail: String,
-            kind: String,
-        }
-    }
-}
-
-/// The wire framing a reply and a fault are built through: the shapes this bus has always carried,
-/// unwrapped from the envelope a generated `dispatch` answered with. [`wire_framing_helpers`] is
-/// the rest of it, split out only so that neither function runs long.
+/// The wire framing a reply and a fault are built through. A reply's body is the payload alone —
+/// the value, the declared error or the fault, exactly as the generated `dispatch` wrote it — and
+/// everything else rides beside it: which of the three it is in the AMQP `type` property, the
+/// correlation id in `correlation_id`, and `is_error` and every `header_out` value in the headers
+/// table.
 fn wire_framing_fns() -> TokenStream {
     quote! {
-        /// One answer, turned into the reply an unmodified caller on this bus already parses.
-        ///
-        /// The correlation id and `isError` are the transport's own injections.
-        pub fn legacy_reply(
-            answered: &::serde_json::Value,
-            correlation_id: Option<&str>,
-        ) -> ::serde_json::Value {
-            let mut reply = translate(answered);
-            if reply.get("type").and_then(::serde_json::Value::as_str) == Some(ERROR) {
-                insert(&mut reply, "isError", ::serde_json::Value::Bool(true));
+        /// One answer, as the reply that carries it: the `type` property naming which of the three
+        /// it is, and the body.
+        pub fn reply(answered: &::serde_json::Value) -> (&'static str, ::serde_json::Value) {
+            let Some(answered) = answered.as_object() else {
+                return (FAULT, unreadable("the service answered with no message"));
+            };
+            if answered.get("ok") == Some(&::serde_json::Value::Bool(true)) {
+                return (
+                    RESPONSE,
+                    answered.get("value").cloned().unwrap_or(::serde_json::Value::Null),
+                );
             }
-            if let Some(correlation_id) = correlation_id {
-                insert(&mut reply, "correlationId", ::serde_json::json!(correlation_id));
+            let Some(error) = answered.get("error") else {
+                return (FAULT, unreadable("the service answered with no error"));
+            };
+            match error.get("fault") {
+                Some(fault)
+                    if error.get("isServiceFault") == Some(&::serde_json::Value::Bool(true)) =>
+                {
+                    (FAULT, fault.clone())
+                }
+                _ => (ERROR, error.clone()),
             }
-
-            ::serde_json::Value::Object(reply)
         }
 
         /// A fault, framed the way a dispatcher frames one before it reaches a caller, so that a
-        /// defect and a declared error take the same path through [`legacy_reply`].
+        /// defect and a declared error take the same path through [`reply`].
         pub fn framed_fault(fault: &::serde_json::Value) -> ::serde_json::Value {
             ::serde_json::json!({ "ok": false, "error": { "isServiceFault": true, "fault": fault } })
         }
@@ -2502,139 +2494,10 @@ fn wire_framing_fns() -> TokenStream {
             table
         }
 
-        /// The envelope, unwrapped into one of the three shapes this bus carries.
-        fn translate(
-            answered: &::serde_json::Value,
-        ) -> ::serde_json::Map<String, ::serde_json::Value> {
-            let Some(answered) = answered.as_object() else {
-                return refused(
-                    "undeserializable-payload",
-                    "the service answered with no message",
-                );
-            };
-            if answered.get("ok") == Some(&::serde_json::Value::Bool(true)) {
-                return answered_with(answered.get("value"));
-            }
-            let Some(error) = answered.get("error").and_then(::serde_json::Value::as_object)
-            else {
-                return refused(
-                    "undeserializable-payload",
-                    "the service answered with no error",
-                );
-            };
-
-            match read_fault(error) {
-                Some(fault) => refused(&fault.kind, &fault.detail),
-                None => declared_error(error),
-            }
-        }
-    }
-}
-
-/// The rest of [`wire_framing`]: what `translate` calls to build each of the three shapes.
-fn wire_framing_helpers() -> TokenStream {
-    quote! {
-        /// The reply a value crosses in.
-        ///
-        /// A ported operation's success type is the response message it already answered with,
-        /// `type: "response"` and all, so the envelope is unwrapped and the object inside crosses
-        /// untouched. A value that carries no such marker gets one, which is what makes an
-        /// operation whose success type was never a bus message answerable here at all.
-        fn answered_with(
-            value: Option<&::serde_json::Value>,
-        ) -> ::serde_json::Map<String, ::serde_json::Value> {
-            match value.and_then(::serde_json::Value::as_object) {
-                Some(value)
-                    if value.get("type").and_then(::serde_json::Value::as_str)
-                        == Some(RESPONSE) =>
-                {
-                    value.clone()
-                }
-                Some(value) => {
-                    let mut reply = ::serde_json::Map::new();
-                    reply.insert("type".to_owned(), ::serde_json::json!(RESPONSE));
-                    for (key, held) in value {
-                        reply.insert(key.clone(), held.clone());
-                    }
-
-                    reply
-                }
-                None => {
-                    let mut reply = ::serde_json::Map::new();
-                    reply.insert("type".to_owned(), ::serde_json::json!(RESPONSE));
-
-                    reply
-                }
-            }
-        }
-
-        /// The reply an error the operation declared crosses in: the code and the message a
-        /// caller has always branched on, under the `type` it has always arrived with.
-        fn declared_error(
-            error: &::serde_json::Map<String, ::serde_json::Value>,
-        ) -> ::serde_json::Map<String, ::serde_json::Value> {
-            let mut reply = ::serde_json::Map::new();
-            reply.insert("type".to_owned(), ::serde_json::json!(ERROR));
-            reply.insert(
-                "errorCode".to_owned(),
-                ::serde_json::json!(
-                    read_string(error, "errorCode").unwrap_or(FALLBACK_ERROR_CODE)
-                ),
-            );
-            reply.insert(
-                "errorMessage".to_owned(),
-                ::serde_json::json!(read_string(error, "errorMessage").unwrap_or_default()),
-            );
-
-            reply
-        }
-
-        /// The reply a defect crosses in, carrying the fault's kind as the error code so the far
-        /// end can report the same defect it was told about.
-        fn refused(
-            error_code: &str,
-            message: &str,
-        ) -> ::serde_json::Map<String, ::serde_json::Value> {
-            let mut reply = ::serde_json::Map::new();
-            reply.insert("type".to_owned(), ::serde_json::json!(INVALID_REQUEST));
-            reply.insert(
-                "errors".to_owned(),
-                ::serde_json::json!([{ "errorCode": error_code, "message": message }]),
-            );
-
-            reply
-        }
-
-        /// The fault inside a failure arm, if the arm carries one. A `field` the fault names is
-        /// folded into the detail, there being one message on the wire and not two.
-        fn read_fault(error: &::serde_json::Map<String, ::serde_json::Value>) -> Option<Fault> {
-            if error.get("isServiceFault") != Some(&::serde_json::Value::Bool(true)) {
-                return None;
-            }
-            let fault = error.get("fault")?.as_object()?;
-            let detail = read_string(fault, "detail")?;
-            let kind = read_string(fault, "kind")?;
-
-            Some(Fault {
-                detail: read_string(fault, "field")
-                    .map_or_else(|| detail.to_owned(), |field| format!("'{field}': {detail}")),
-                kind: kind.to_owned(),
-            })
-        }
-
-        fn insert(
-            reply: &mut ::serde_json::Map<String, ::serde_json::Value>,
-            key: &str,
-            value: ::serde_json::Value,
-        ) {
-            reply.insert(key.to_owned(), value);
-        }
-
-        fn read_string<'held>(
-            held: &'held ::serde_json::Map<String, ::serde_json::Value>,
-            key: &str,
-        ) -> Option<&'held str> {
-            held.get(key)?.as_str()
+        /// The fault a reply carries when the dispatcher handed over something that is not an
+        /// envelope at all.
+        fn unreadable(detail: &str) -> ::serde_json::Value {
+            ::serde_json::json!({ "detail": detail, "kind": "undeserializable-payload" })
         }
     }
 }

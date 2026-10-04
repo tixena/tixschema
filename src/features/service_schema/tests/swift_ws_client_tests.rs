@@ -22,6 +22,19 @@ fn body_from<'written>(written: &'written str, marker: &str) -> &'written str {
 }
 
 #[test]
+fn a_successful_reply_is_checked_against_the_declared_success() {
+    let written = swift_ws_client_of(MIXED_SERVICE);
+    let body = body_from(&written, "public func getAvailableBalance(");
+    assert!(
+        body.contains(
+            "JSONDecoder().decode(UsageServiceWsValueEnvelope<AvailableBalanceResponse>.self,"
+        ),
+        "a success the transport handed back is answered as an `AvailableBalanceResponse`, so it is \
+         decoded as one first. Got: {body}"
+    );
+}
+
+#[test]
 fn a_failed_reply_is_checked_against_the_declared_error() {
     let written = swift_ws_client_of(MIXED_SERVICE);
     let body = body_from(&written, "public func getAvailableBalance(");

@@ -9,6 +9,22 @@
 use super::{MIXED_SERVICE, ws_service_of};
 
 #[test]
+fn a_declared_error_crosses_with_every_field_it_carries() {
+    let written = ws_service_of(MIXED_SERVICE);
+    assert!(
+        written.contains(
+            "socket.send(JSON.stringify({ kind: \"reply\", id, service, ...envelope, ...replied }));"
+        ),
+        "the dispatcher's envelope is spread into the reply frame, its declared error whole. \
+         Got: {written}"
+    );
+    assert!(
+        !written.contains("errorMessage"),
+        "no field of a declared error is picked out by name. Got: {written}"
+    );
+}
+
+#[test]
 fn the_signature_takes_a_socket_a_context_an_implementation_and_a_required_on_fault() {
     let written = ws_service_of(MIXED_SERVICE);
     assert!(

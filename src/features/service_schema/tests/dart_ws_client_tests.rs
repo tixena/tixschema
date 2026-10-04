@@ -20,6 +20,20 @@ fn body_from<'written>(written: &'written str, marker: &str) -> &'written str {
 }
 
 #[test]
+fn a_successful_reply_is_checked_against_the_declared_success() {
+    let written = dart_ws_client_of(MIXED_SERVICE);
+    let body = body_from(
+        &written,
+        "Future<UsageServiceGetAvailableBalanceResult> getAvailableBalance(",
+    );
+    assert!(
+        body.contains("AvailableBalanceResponse.fromJson("),
+        "a success the transport handed back is answered as an `AvailableBalanceResponse`, so it is \
+         decoded as one first. Got: {body}"
+    );
+}
+
+#[test]
 fn a_failed_reply_is_checked_against_the_declared_error() {
     let written = dart_ws_client_of(MIXED_SERVICE);
     let body = body_from(
@@ -30,6 +44,20 @@ fn a_failed_reply_is_checked_against_the_declared_error() {
         body.contains("BalanceError.fromJson("),
         "a failure the transport handed back is answered as a `BalanceError`, so it is decoded \
          as one first. Got: {body}"
+    );
+}
+
+#[test]
+fn a_declared_error_crosses_with_every_field_it_carries() {
+    let written = dart_ws_client_of(MIXED_SERVICE);
+    let body = body_from(&written, "} on BalanceError catch (declared) {");
+    assert!(
+        body.contains("'error': (declared).toJson(),"),
+        "the dispatcher writes the declared error through its own `toJson`, whole. Got: {body}"
+    );
+    assert!(
+        !written.contains("errorMessage"),
+        "no field of a declared error is picked out by name. Got: {written}"
     );
 }
 

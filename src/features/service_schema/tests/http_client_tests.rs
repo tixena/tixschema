@@ -6,10 +6,39 @@
 //! type-checks the bundle.
 
 use super::{
-    BYTES_HTTP_SERVICE, MIXED_HTTP_SERVICE, MULTIPART_HTTP_SERVICE,
+    BYTES_HTTP_SERVICE, MIXED_HTTP_SERVICE, MIXED_SERVICE, MULTIPART_HTTP_SERVICE,
     OPTIONAL_HEADER_OUT_HTTP_SERVICE, SINGLE_PLACEHOLDER_HTTP_SERVICE, STREAM_HTTP_SERVICE,
     TS_UNIT_SUCCESS_SERVICE, http_client_of,
 };
+
+#[test]
+fn a_successful_reply_is_checked_against_the_declared_success() {
+    let body = http_client_of(MIXED_SERVICE);
+    assert!(
+        body.contains(
+            "const parsed = usageServiceHttpParsed(\"get-available-balance\", response.body, \
+             AvailableBalanceResponse$Schema);"
+        ) && body.contains("return { ok: true, value: parsed.value };"),
+        "a success the transport handed back is answered as an `AvailableBalanceResponse`, so it is \
+         parsed as one first. Got: {body}"
+    );
+}
+
+#[test]
+fn a_declared_error_crosses_with_every_field_it_carries() {
+    let written = http_client_of(MIXED_SERVICE);
+    assert!(
+        written.contains(
+            "const declared = usageServiceHttpParsed(\"get-available-balance\", response.body, \
+             BalanceError$Schema);"
+        ) && written.contains("return { ok: false, error: declared.value };"),
+        "the whole body is read as the declared error and answered as it was read. Got: {written}"
+    );
+    assert!(
+        !written.contains("errorMessage"),
+        "no field of a declared error is picked out by name. Got: {written}"
+    );
+}
 
 /// A unit success reads no body and answers `value: undefined`.
 #[test]
@@ -203,9 +232,12 @@ fn the_declared_ok_status_decodes_into_the_success_type() {
     let method = method_body(&written, "createDocument");
     assert!(
         method.contains("if (status === 200) {")
-            && method.contains("value = JSON.parse(response.body) as CreateDocumentResponse;")
-            && method.contains("return { ok: true, value };"),
-        "got: {method}"
+            && method.contains(
+                "const parsed = documentClientServiceHttpParsed(\"create-document\", \
+                 response.body, CreateDocumentResponse$Schema);"
+            )
+            && method.contains("return { ok: true, value: parsed.value };"),
+        "the success body is parsed against its declared schema, never cast. Got: {method}"
     );
 }
 
@@ -215,9 +247,12 @@ fn a_mapped_status_decodes_into_the_declared_error_type() {
     let method = method_body(&written, "createDocument");
     assert!(
         method.contains("if (status === 409) {")
-            && method.contains("declared = JSON.parse(response.body) as CreateDocumentError;")
-            && method.contains("return { ok: false, error: declared };"),
-        "got: {method}"
+            && method.contains(
+                "const declared = documentClientServiceHttpParsed(\"create-document\", \
+                 response.body, CreateDocumentError$Schema);"
+            )
+            && method.contains("return { ok: false, error: declared.value };"),
+        "the declared error is parsed against its declared schema, never cast. Got: {method}"
     );
 }
 
@@ -264,7 +299,7 @@ fn an_operation_naming_no_http_group_defaults_to_post_and_the_fixed_binding_erro
     );
     assert!(
         method.contains("if (status === 422) {")
-            && method.contains("declared = JSON.parse(response.body) as SweepError;"),
+            && method.contains("response.body, SweepError$Schema);"),
         "an operation naming no `http(...)` group declares no `error_status` table either, so \
          its declared error answers at the fixed binding-error status. Got: {method}"
     );
@@ -289,7 +324,7 @@ fn a_tuple_success_reads_its_header_out_element_back_off_the_response() {
     );
     assert!(
         method.contains("const headerOut0 = rawHeaderOut0[1] as string;")
-            && method.contains("return { ok: true, value: [value, headerOut0] };"),
+            && method.contains("return { ok: true, value: [parsed.value, headerOut0] };"),
         "the body and the header ride the same tuple the result type declares. Got: {method}"
     );
 }
