@@ -13,8 +13,9 @@
 //!
 //! `{service}_amqp_rpc_server!` emits everything the dispatcher does, plus the pieces that turn a
 //! real `lapin::Channel` delivery into a call on an implementation: `Context`, a `ReplyHandle` that
-//! implements the dispatcher's own `Reply`, the wire framing a reply is built through, and
-//! `serve_until`, the consumer loop itself. [`dispatcher_items`] is the one emitter both the
+//! implements the dispatcher's own `Reply`, the wire framing a reply is built through,
+//! `serve_until`, the consumer loop itself, and `serve_deliveries`, the loop it runs with the
+//! broker taken out. [`dispatcher_items`] is the one emitter both the
 //! dispatcher and the server macro build `dispatch` from, so the two can never answer one message
 //! two different ways.
 //!
@@ -678,8 +679,6 @@ fn consumer_loop_consts() -> TokenStream {
     quote! {
         /// Where the operation travels: beside the payload, never inside it.
         pub const OPERATION_NAME_HEADER: &str = "operation-name";
-        /// Deliveries outstanding at once; every one is settled by this loop.
-        pub const PREFETCH: u16 = 10;
         const MAX_PRIORITY: i32 = 10;
     }
 }
@@ -690,17 +689,20 @@ fn consumer_loop_type() -> TokenStream {
         /// Why [`serve_until`] returned.
         #[derive(Clone, Copy, Debug, Eq, PartialEq)]
         pub enum Stopped {
-            /// `shutdown` completed; a delivery in hand was dispatched and acknowledged first.
+            /// `shutdown` completed: the consumer was cancelled, no delivery was started after
+            /// it, and every delivery already started was dispatched and acknowledged first.
             ShutdownRequested,
-            /// The broker closed the consumer.
+            /// The broker closed the consumer; every delivery already started was dispatched and
+            /// acknowledged first.
             ConsumerClosed,
         }
     }
 }
 
-/// The consumer loop: `serve_until` itself. [`consumer_loop_helpers`] is the private helpers a
-/// delivery passes through on its way to [`dispatch`](dispatcher_items) and back — split out only
-/// so that neither function runs long.
+/// The consumer loop: `serve_until`, and `serve_delivery`, the one delivery's worth of work it
+/// hands [`consumer_loop_driver`]'s `serve_deliveries`. [`consumer_loop_helpers`] is the private
+/// helpers a delivery passes through on its way to [`dispatch`](dispatcher_items) and back — split
+/// out only so that no function runs long.
 ///
 /// Every runtime crate below is reached through a leading `::` — `::lapin`, `::tokio`,
 /// `::futures`, `::tracing` — so each resolves in the crate that places this macro rather than in
@@ -708,7 +710,12 @@ fn consumer_loop_type() -> TokenStream {
 fn consumer_loop(contract: &Ident) -> TokenStream {
     quote! {
         /// Serves `service` on `queue` until `shutdown` completes or the broker closes the
-        /// consumer.
+        /// consumer, dispatching up to `prefetch` deliveries at once.
+        ///
+        /// `prefetch` is both how many unacknowledged deliveries the broker hands this consumer
+        /// and how many are dispatched at the same time, so none waits behind another. They run
+        /// concurrently on the task awaiting this future, not in parallel: a handler that blocks
+        /// its thread holds up every other one.
         ///
         /// # Errors
         ///
@@ -718,6 +725,7 @@ fn consumer_loop(contract: &Ident) -> TokenStream {
             channel: &::lapin::Channel,
             queue: &str,
             service: &S,
+            prefetch: ::core::num::NonZeroU16,
             shutdown: F,
         ) -> Result<Stopped, ::lapin::Error>
         where
@@ -726,9 +734,9 @@ fn consumer_loop(contract: &Ident) -> TokenStream {
         {
             declare(channel, queue).await?;
             channel
-                .basic_qos(PREFETCH, ::lapin::options::BasicQosOptions::default())
+                .basic_qos(prefetch.get(), ::lapin::options::BasicQosOptions::default())
                 .await?;
-            let mut deliveries = channel
+            let deliveries = channel
                 .basic_consume(
                     ::lapin::types::ShortString::from(queue),
                     ::lapin::types::ShortString::from(""),
@@ -736,54 +744,111 @@ fn consumer_loop(contract: &Ident) -> TokenStream {
                     ::lapin::types::FieldTable::default(),
                 )
                 .await?;
-            ::tracing::info!(queue, "serving");
+            ::tracing::info!(queue, prefetch = prefetch.get(), "serving");
 
+            let consumer_tag = deliveries.tag();
+            Ok(serve_deliveries(
+                deliveries,
+                prefetch,
+                shutdown,
+                stop_consuming(channel, consumer_tag, queue),
+                |delivered| serve_delivery(channel, queue, service, delivered),
+            )
+            .await)
+        }
+
+        /// Dispatches one delivery and acknowledges it once dispatch is done with it.
+        async fn serve_delivery<S>(
+            channel: &::lapin::Channel,
+            queue: &str,
+            service: &S,
+            delivered: Result<::lapin::message::Delivery, ::lapin::Error>,
+        ) where
+            S: $crate::#contract<Context> + Sync,
+        {
+            match delivered {
+                Ok(mut delivery) => {
+                    let payload = ::core::mem::take(&mut delivery.data);
+                    let Some(operation) = operation_name(&delivery) else {
+                        reject_unaddressed(&delivery).await;
+                        return;
+                    };
+                    let reply = ReplyHandle {
+                        channel,
+                        correlation_id: delivery.properties.correlation_id().clone(),
+                        reply_to: delivery.properties.reply_to().clone(),
+                    };
+                    let ctx = Context {
+                        logger: ::tracing::info_span!(
+                            "amqp_service",
+                            queue,
+                            operation = operation.as_str()
+                        ),
+                    };
+                    let headers = incoming_headers(&delivery);
+                    let message = IncomingMessage::new(operation, payload, headers);
+                    dispatch(service, &ctx, &message, &reply).await;
+                    acknowledge(&delivery).await;
+                }
+                Err(lost) => {
+                    ::tracing::error!(error = %lost, queue, "a delivery could not be read");
+                }
+            }
+        }
+    }
+}
+
+/// `serve_deliveries`, the loop [`consumer_loop`]'s `serve_until` runs, generic over everything a
+/// broker would supply so that a test drives it with no broker at all.
+fn consumer_loop_driver() -> TokenStream {
+    quote! {
+        /// The loop [`serve_until`] runs, with the broker taken out: handles up to `limit` items
+        /// of `deliveries` at once, each finishing in its own time, until `shutdown` completes or
+        /// `deliveries` ends. Once `shutdown` completes no item is started and `stop` runs beside
+        /// the drain; either way, every item already started finishes before this returns.
+        pub async fn serve_deliveries<Delivered, Shutdown, Stop, Handle, Handled>(
+            deliveries: Delivered,
+            limit: ::core::num::NonZeroU16,
+            shutdown: Shutdown,
+            stop: Stop,
+            mut handle: Handle,
+        ) -> Stopped
+        where
+            Delivered: ::futures::Stream,
+            Shutdown: ::core::future::Future<Output = ()>,
+            Stop: ::core::future::Future<Output = ()>,
+            Handle: FnMut(Delivered::Item) -> Handled,
+            Handled: ::core::future::Future<Output = ()>,
+        {
+            let mut deliveries = ::core::pin::pin!(deliveries);
             let mut shutdown = ::core::pin::pin!(shutdown);
+            let mut started = ::futures::stream::FuturesUnordered::new();
+            // Shutdown is read first on every turn, so it is noticed even while every slot is
+            // busy and the deliveries are not being read at all.
             let stopped = loop {
-                let delivered = ::tokio::select! {
+                let room = started.len() < usize::from(limit.get());
+                ::tokio::select! {
                     biased;
                     () = &mut shutdown => break Stopped::ShutdownRequested,
-                    delivered = ::futures::StreamExt::next(&mut deliveries) => match delivered {
-                        Some(delivered) => delivered,
-                        None => break Stopped::ConsumerClosed,
-                    },
-                };
-
-                match delivered {
-                    Ok(mut delivery) => {
-                        let payload = ::core::mem::take(&mut delivery.data);
-                        let Some(operation) = operation_name(&delivery) else {
-                            reject_unaddressed(&delivery).await;
-                            continue;
-                        };
-                        let reply = ReplyHandle {
-                            channel,
-                            correlation_id: delivery.properties.correlation_id().clone(),
-                            reply_to: delivery.properties.reply_to().clone(),
-                        };
-                        let ctx = Context {
-                            logger: ::tracing::info_span!(
-                                "amqp_service",
-                                queue,
-                                operation = operation.as_str()
-                            ),
-                        };
-                        let headers = incoming_headers(&delivery);
-                        let message = IncomingMessage::new(operation, payload, headers);
-                        dispatch(service, &ctx, &message, &reply).await;
-                        acknowledge(&delivery).await;
-                    }
-                    Err(lost) => {
-                        ::tracing::error!(error = %lost, queue, "a delivery could not be read");
+                    Some(()) = ::futures::StreamExt::next(&mut started) => {}
+                    delivered = ::futures::StreamExt::next(&mut deliveries), if room => {
+                        match delivered {
+                            Some(delivered) => started.push(handle(delivered)),
+                            None => break Stopped::ConsumerClosed,
+                        }
                     }
                 }
             };
 
+            let finishing = async {
+                while ::futures::StreamExt::next(&mut started).await.is_some() {}
+            };
             if stopped == Stopped::ShutdownRequested {
-                stop_consuming(channel, deliveries.tag(), queue).await;
+                ::futures::future::join(stop, finishing).await;
+            } else {
+                finishing.await;
             }
-
-            Ok(stopped)
+            stopped
         }
     }
 }
@@ -2304,8 +2369,9 @@ fn server_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
         "The `{contract}` server for the `{}` transport, held as tokens rather than compiled \
          here.\n\n\
          It takes no arguments and emits every item the dispatcher does, plus `Context`, a \
-         `ReplyHandle` that implements `Reply`, the wire framing a reply is built through, and \
-         `serve_until`, the consumer loop itself. The caller supplies the module they land in, and \
+         `ReplyHandle` that implements `Reply`, the wire framing a reply is built through, \
+         `serve_until`, the consumer loop itself, and `serve_deliveries`, the loop it runs with the \
+         broker taken out. The caller supplies the module they land in, and \
          two transports in one crate cannot collide. The invoking crate names `lapin`, `tokio`, \
          `futures`, `serde`, `serde_json` and `tracing` in its own manifest, because the items \
          below call all six.\n\n\
@@ -2342,6 +2408,7 @@ fn server_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
     let dispatch_fns = dispatcher_fns(service);
     let framing_fns = wire_framing_fns();
     let loop_fn = consumer_loop(contract);
+    let loop_driver = consumer_loop_driver();
     let loop_helpers = consumer_loop_helpers();
     quote! {
         #[doc = #macro_doc]
@@ -2362,6 +2429,7 @@ fn server_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
                 #dispatch_fns
                 #framing_fns
                 #loop_fn
+                #loop_driver
                 #loop_helpers
             };
         }
