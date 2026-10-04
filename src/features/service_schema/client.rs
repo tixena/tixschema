@@ -202,11 +202,10 @@ fn fault_helpers(service: &ServiceDef) -> Vec<String> {
             &named,
             &format!("{prefix}ReplyFault"),
             &format!(
-                " * The fault a `{named}` client answers with when a failed reply will not parse \
-                 as the error\n \
-                 * its operation declared. The far side answered a shape nobody promised, so this \
-                 is not\n \
-                 * one of those errors either."
+                " * The fault a `{named}` client answers with when a reply will not parse as \
+                 the success or\n \
+                 * the error its operation declared. The far side answered a shape nobody \
+                 promised."
             ),
         ));
     }
@@ -320,23 +319,14 @@ fn method(service: &ServiceDef, operation: &OperationDef) -> String {
         {
             header_tuple_answer(&named, &prefix, wire, &shape, error, success, &headers)
         }
-        OperationOutcome::Reply { error, success } => {
-            let succeeded = if is_unit_type(success) {
-                "{ ok: true, value: undefined }"
-            } else {
-                "answered"
-            };
-            format!(
-                "      const {{ answered }} = await transport.request<{result}>(\"{wire}\", \
-                 validated.data, {headers});\n      \
-                 if (answered.ok) {{\n        \
-                 return {succeeded};\n      \
-                 }}\n\
-                 {failed}",
-                result = answers(&named, operation),
-                failed = failure_stmt(&prefix, wire, &shape, error)
-            )
-        }
+        OperationOutcome::Reply { error, success } => format!(
+            "      const {{ answered }} = await transport.request<{result}>(\"{wire}\", \
+             validated.data, {headers});\n\
+             {succeeded}{failed}",
+            result = answers(&named, operation),
+            succeeded = success_stmt(&prefix, wire, &shape, success),
+            failed = failure_stmt(&prefix, wire, &shape, error)
+        ),
     };
     format!("    async {call}({arguments}) {{\n{checked}{headers_build}{sending}\n    }},")
 }
@@ -403,15 +393,39 @@ fn header_tuple_answer(
         "      const {{ answered, headers: replied }} = await transport.request<\n        \
          | {{ ok: true; value: {value_ty} }}\n        \
          | {{ ok: false; error: {error_ty} | {{ isServiceFault: true; fault: {named}Fault }} }}\n      \
-         >(\"{wire}\", validated.data, {headers});\n      \
-         if (answered.ok) {{\n"
+         >(\"{wire}\", validated.data, {headers});\n"
     );
-    let value = if is_unit_type(success_body) {
+    stmt.push_str(&success_stmt(prefix, wire, shape, success));
+    stmt.push_str(&failure_stmt(prefix, wire, shape, error));
+    stmt
+}
+
+/// What a replying method answers once the reply is a success: a unit success as `undefined`, and
+/// anything else parsed against the operation's declared success before the `header_out` elements
+/// are rejoined onto it.
+fn success_stmt(prefix: &str, wire: &str, shape: &HttpShape, success: &Type) -> String {
+    let body = message::body_type(shape.header_out.len(), success);
+    let mut stmt = String::from("      if (answered.ok) {\n");
+    let value = if is_unit_type(body) {
         "undefined"
     } else {
-        "answered.value"
+        let schema = get_field_def("value", body, "").zod_type();
+        let _ = write!(
+            stmt,
+            "        const parsed = {schema}.safeParse(answered.value);\n        \
+             if (!parsed.success) {{\n          \
+             return {{\n            \
+             ok: false,\n            \
+             error: {{\n              \
+             isServiceFault: true,\n              \
+             fault: {prefix}ReplyFault(\"{wire}\", parsed.error.issues),\n            \
+             }},\n          \
+             }};\n        \
+             }}\n"
+        );
+        "parsed.data"
     };
-    let success_side = Rejoined {
+    let rejoined = Rejoined {
         answered: ("{ ok: true, value: ", " }"),
         body: value,
         ident_prefix: "headerOut",
@@ -419,9 +433,8 @@ fn header_tuple_answer(
         names: &shape.header_out,
         types: message::header_types(shape.header_out.len(), success),
     };
-    stmt.push_str(&success_side.stmt(prefix, wire));
+    stmt.push_str(&rejoined.stmt(prefix, wire));
     stmt.push_str("      }\n");
-    stmt.push_str(&failure_stmt(prefix, wire, shape, error));
     stmt
 }
 

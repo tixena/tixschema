@@ -139,6 +139,24 @@ fn a_message_that_fails_its_schema_answers_a_fault_before_the_transport_is_named
 }
 
 #[test]
+fn a_successful_reply_is_checked_against_the_declared_success() {
+    let written = client_of(MIXED_SERVICE);
+    let method = written
+        .split("    async getAvailableBalance(req) {")
+        .nth(1)
+        .and_then(|rest| rest.split_once("\n    },"))
+        .map(|(body, _)| body.to_owned());
+    assert!(method.is_some(), "got: {written}");
+    let body = method.unwrap();
+    assert!(
+        body.contains("const parsed = AvailableBalanceResponse$Schema.safeParse(answered.value);")
+            && body.contains("return { ok: true, value: parsed.data };"),
+        "a success the transport handed back is answered as an `AvailableBalanceResponse`, so it is \
+         parsed as one first. Got: {body}"
+    );
+}
+
+#[test]
 fn a_failed_reply_is_checked_against_the_declared_error() {
     let written = client_of(MIXED_SERVICE);
     let method = written
@@ -394,9 +412,14 @@ fn a_header_tuple_reply_is_rejoined_from_the_envelope_and_the_reply_headers() {
              if (!headerOut1.ok) {\n          \
              return { ok: false, error: { isServiceFault: true, fault: headerOut1.fault } };\n        \
              }\n        \
-             return { ok: true, value: [answered.value, headerOut0.value, headerOut1.value] };"
+             return { ok: true, value: [parsed.data, headerOut0.value, headerOut1.value] };"
         ),
-        "got: {written}"
+        "the headers are rejoined onto the parsed body. Got: {written}"
+    );
+    let success_parsed = written.find("const parsed = Document$Schema.safeParse(answered.value);");
+    assert!(
+        success_parsed.is_some() && success_parsed < written.find("const headerOut0 ="),
+        "the success body is parsed before its headers are read. Got: {written}"
     );
     assert!(
         written.contains(

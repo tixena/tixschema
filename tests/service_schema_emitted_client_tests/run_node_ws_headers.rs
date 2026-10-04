@@ -139,7 +139,7 @@ async function main() {
     },
   });
   const results = {};
-  for (const [label, tenant, trace] of [...CALLS, ["noetag", "acme", undefined], ["badage", "acme", undefined], ["wrongage", "acme", undefined], ["undeclared", "acme", undefined]]) {
+  for (const [label, tenant, trace] of [...CALLS, ["noetag", "acme", undefined], ["badage", "acme", undefined], ["wrongage", "acme", undefined], ["undeclared", "acme", undefined], ["wrongreceipt", "acme", undefined]]) {
     results[`${label}:${trace}`] = described(await client.stamp(label, tenant, trace));
   }
   await client.mark("m", "acme");
@@ -482,6 +482,10 @@ fn the_generic_client_reads_a_stub_amqp_transport_s_headers() {
             &json!({ "ok": false, "error": { "errorCode": "unheard-of" } }),
             &[("x-reason", json!("refused at 3"))],
         ),
+        "wrongreceipt": amqp_answer(
+            &json!({ "ok": true, "value": { "label": 7_i32, "tenant": "acme" } }),
+            &[("etag", json!("etag-acme"))],
+        ),
     });
     let Some(ran) = run(
         "ws-headers-amqp",
@@ -525,6 +529,7 @@ fn the_generic_client_reads_a_stub_amqp_transport_s_headers() {
         ("badage:undefined", "x-age"),
         ("wrongage:undefined", "x-age"),
         ("undeclared:undefined", "errorCode"),
+        ("wrongreceipt:undefined", "label"),
     ] {
         assert_eq!(
             results[called]["fault"]["kind"],

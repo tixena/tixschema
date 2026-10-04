@@ -9,6 +9,33 @@
 use super::{MIXED_SERVICE, TS_HEADER_TUPLE_SERVICE, ws_client_of};
 
 #[test]
+fn a_successful_reply_is_checked_against_the_declared_success() {
+    let body = ws_client_of(MIXED_SERVICE);
+    assert!(
+        body.contains("\"get-available-balance\": AvailableBalanceResponse$Schema,")
+            && body.contains("const schema = usageServiceSuccessSchemas[operation];")
+            && body.contains("const parsed = schema.safeParse(envelope.value);"),
+        "a success the transport handed back is answered as an `AvailableBalanceResponse`, so it is \
+         parsed as one first. Got: {body}"
+    );
+}
+
+#[test]
+fn a_declared_error_crosses_with_every_field_it_carries() {
+    let written = ws_client_of(MIXED_SERVICE);
+    let parsed = written.find("usageServiceErrorSchemas[operation]?.safeParse(error);");
+    assert!(
+        parsed.is_some() && written[parsed.unwrap()..].contains("return envelope;"),
+        "a declared error that parses is handed on in the envelope it arrived in, whole. \
+         Got: {written}"
+    );
+    assert!(
+        !written.contains("errorMessage"),
+        "no field of a declared error is picked out by name. Got: {written}"
+    );
+}
+
+#[test]
 fn the_seam_is_structural_and_names_no_platform_class() {
     let written = ws_client_of(MIXED_SERVICE);
     let seam = seam_of(&written, "UsageServiceWsSocket");

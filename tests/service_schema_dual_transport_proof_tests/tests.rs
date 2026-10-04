@@ -43,6 +43,7 @@ pub enum GetVersionError {
 #[serde(rename_all = "kebab-case", tag = "errorCode")]
 pub enum ArchiveError {
     AlreadyArchived,
+    Locked { reason: String },
 }
 
 /// A unit-struct success: `seal_document` answers no data of its own, the same as `()` does for
@@ -86,7 +87,7 @@ pub trait DocumentService<Ctx> {
         method = "POST",
         path = "/documents/{document_id}/archive",
         ok_status = 202,
-        error_status(AlreadyArchived = 409),
+        error_status(AlreadyArchived = 409, Locked = 423),
     ))]
     async fn archive_document(&self, ctx: &Ctx, document_id: String) -> Result<(), ArchiveError>;
 
@@ -164,6 +165,11 @@ impl DocumentService<()> for DocumentBackEnd {
         self.reach(format!("archive_document {document_id}"));
         if document_id == "already" {
             return Err(ArchiveError::AlreadyArchived);
+        }
+        if document_id == "locked" {
+            return Err(ArchiveError::Locked {
+                reason: "held for review".to_owned(),
+            });
         }
         Ok(())
     }
@@ -1008,6 +1014,37 @@ fn the_amqp_loop_answers_the_header_bound_operations_complete_error_mapping() {
             "`{document_id}`"
         );
     }
+}
+
+#[test]
+fn a_declared_error_crosses_the_amqp_loop_with_every_field_it_carries() {
+    let service = DocumentBackEnd::new();
+    let client = amqp_client::DocumentServiceClient::new(AmqpLoop::new(&service));
+    assert_eq!(
+        poll_once(client.archive_document("locked".to_owned())).unwrap(),
+        Err(document_service_schema::CallError::Operation(
+            ArchiveError::Locked {
+                reason: "held for review".to_owned(),
+            }
+        )),
+    );
+}
+
+#[test]
+fn a_declared_error_crosses_the_http_loop_with_every_field_it_carries() {
+    let service = DocumentBackEnd::new();
+    let client = http_rest_client::DocumentServiceClient::new(HttpLoop::new(
+        &service,
+        http_rest_transport::DefaultFaultHandler,
+    ));
+    assert_eq!(
+        poll_once(client.archive_document("locked".to_owned())).unwrap(),
+        Err(document_service_schema::CallError::Operation(
+            ArchiveError::Locked {
+                reason: "held for review".to_owned(),
+            }
+        )),
+    );
 }
 
 #[test]

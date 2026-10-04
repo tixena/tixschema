@@ -72,6 +72,7 @@ pub enum UnwatchError {
 #[serde(rename_all = "kebab-case", tag = "errorCode")]
 pub enum WatchError {
     NotFound,
+    Revoked { reason: String },
 }
 
 /// Writes down every call that reached it, so a test can say what the dispatcher let through.
@@ -176,10 +177,12 @@ impl DocumentSession<()> for DocumentBackEnd {
         req: WatchRequest,
     ) -> impl Future<Output = Result<WatchResult, WatchError>> {
         self.reach(format!("watch {}", req.document_id));
-        let outcome = if req.document_id == "missing" {
-            Err(WatchError::NotFound)
-        } else {
-            Ok(WatchResult { accepted: true })
+        let outcome = match req.document_id.as_str() {
+            "missing" => Err(WatchError::NotFound),
+            "revoked" => Err(WatchError::Revoked {
+                reason: "the session ended".to_owned(),
+            }),
+            _ => Ok(WatchResult { accepted: true }),
         };
         ready(outcome)
     }
@@ -590,6 +593,37 @@ fn a_declared_error_reply_reads_back_as_the_operations_own_error() {
     assert_eq!(
         poll_by_hand(call.as_mut()),
         Poll::Ready(Err(CallError::Operation(WatchError::NotFound))),
+    );
+}
+
+/// The request frame the client wrote is answered by the dispatcher, and that reply is delivered
+/// back to the client.
+#[test]
+fn a_declared_error_crosses_with_every_field_it_carries() {
+    let service = DocumentBackEnd::new();
+    let (session, sent) = frame_session();
+    let client = DocumentSessionClient::new(session.clone());
+    let mut call = pin!(client.watch(WatchRequest {
+        document_id: "revoked".to_owned(),
+    }));
+    assert_eq!(poll_by_hand(call.as_mut()), Poll::Pending);
+    let request = sent.0.lock().unwrap().last().cloned().unwrap();
+    let reply = answer(&service, &request).unwrap();
+    let written: serde_json::Value = serde_json::from_str(&reply).unwrap();
+    assert_eq!(
+        written["error"],
+        serde_json::json!({ "errorCode": "revoked", "reason": "the session ended" }),
+        "raw reply: {reply}"
+    );
+    assert_eq!(
+        poll_by_hand(pin!(session.deliver(&reply)).as_mut()),
+        Poll::Ready(())
+    );
+    assert_eq!(
+        poll_by_hand(call.as_mut()),
+        Poll::Ready(Err(CallError::Operation(WatchError::Revoked {
+            reason: "the session ended".to_owned(),
+        }))),
     );
 }
 

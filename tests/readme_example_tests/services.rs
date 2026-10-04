@@ -450,7 +450,17 @@ fn the_outbound_check_the_client_runs_before_the_transport_is_shown_as_emitted()
          transport.request<UsageServiceExpireCreditResult>(\"expire-credit\", validated.data, \
          []);\n      \
          if (answered.ok) {\n        \
-         return answered;\n      \
+         const parsed = AvailableBalanceResponse$Schema.safeParse(answered.value);\n        \
+         if (!parsed.success) {\n          \
+         return {\n            \
+         ok: false,\n            \
+         error: {\n              \
+         isServiceFault: true,\n              \
+         fault: usageServiceReplyFault(\"expire-credit\", parsed.error.issues),\n            \
+         },\n          \
+         };\n        \
+         }\n        \
+         return { ok: true, value: parsed.data };\n      \
          }\n      \
          const error = answered.error;\n      \
          if (typeof error === \"object\" && error !== null && \"isServiceFault\" in error) {\n        \

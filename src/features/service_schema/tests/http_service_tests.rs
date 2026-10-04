@@ -8,9 +8,9 @@
 //! compiles against the emitted dispatcher.
 
 use super::{
-    BYTES_HTTP_SERVICE, EMITTED_CLIENT_TEST_SERVICE, MIXED_HTTP_SERVICE, MULTIPART_HTTP_SERVICE,
-    PATH_BOUND_HTTP_SERVICE, QUERY_HTTP_SERVICE, REQUIRED_HEADER_HTTP_SERVICE, STREAM_HTTP_SERVICE,
-    TS_UNIT_SUCCESS_SERVICE, http_service_of,
+    BYTES_HTTP_SERVICE, EMITTED_CLIENT_TEST_SERVICE, MIXED_HTTP_SERVICE, MIXED_SERVICE,
+    MULTIPART_HTTP_SERVICE, PATH_BOUND_HTTP_SERVICE, QUERY_HTTP_SERVICE,
+    REQUIRED_HEADER_HTTP_SERVICE, STREAM_HTTP_SERVICE, TS_UNIT_SUCCESS_SERVICE, http_service_of,
 };
 use crate::utils::record_wire_scalar;
 
@@ -160,6 +160,21 @@ export function createConversationClientServiceHttpDispatcher<Ctx>(
     return onFault(conversationClientServiceHttpFault(\"unknown-operation\", `${method} ${path}`, \"the service answers to no route by that method and path\"));
   };
 }";
+
+#[test]
+fn a_declared_error_crosses_with_every_field_it_carries() {
+    let written = http_service_of(MIXED_SERVICE);
+    assert!(
+        written.contains(
+            "return usageServiceHttpJson(errorStatus(envelope.error), [], envelope.error);"
+        ),
+        "the declared error is the response body, whole. Got: {written}"
+    );
+    assert!(
+        !written.contains("errorMessage"),
+        "no field of a declared error is picked out by name. Got: {written}"
+    );
+}
 
 #[test]
 fn the_emitted_client_test_service_reproduces_the_design_document_verbatim() {

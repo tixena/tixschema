@@ -558,45 +558,20 @@ fn error_condition_expr(shape: &HttpShape) -> String {
 }
 
 /// The declared-error read every reply-decoding arm shares: the error's own head off the body,
-/// plus each `error_header_out` element off its own response header where any were declared.
+/// parsed against its declared schema, plus each `error_header_out` element off its own response
+/// header where any were declared.
 fn error_decode_block(prefix: &str, wire: &str, shape: &HttpShape, error: &Type) -> String {
-    if shape.error_header_out.is_empty() {
-        let error_ty = get_field_def("error", error, "").typescript_typename();
-        return format!(
-            "        let declared: {error_ty};\n        \
-             try {{\n          \
-             declared = JSON.parse(response.body) as {error_ty};\n        \
-             }} catch (rejected) {{\n          \
-             return {{\n            \
-             ok: false,\n            \
-             error: {{\n              \
-             isServiceFault: true,\n              \
-             fault: {prefix}HttpUndeserializablePayload(\"{wire}\", String(rejected)),\n            \
-             }},\n          \
-             }};\n        \
-             }}\n        \
-             return {{ ok: false, error: declared }};\n"
-        );
-    }
     let elements: Vec<&Type> = tuple_elements(error).into_iter().flatten().collect();
-    let head_ty = elements.first().map_or_else(
-        || get_field_def("error", error, "").typescript_typename(),
-        |ty| get_field_def("error", ty, "").typescript_typename(),
-    );
-    let mut stmt = format!(
-        "        let declared: {head_ty};\n        \
-         try {{\n          \
-         declared = JSON.parse(response.body) as {head_ty};\n        \
-         }} catch (rejected) {{\n          \
-         return {{\n            \
-         ok: false,\n            \
-         error: {{\n              \
-         isServiceFault: true,\n              \
-         fault: {prefix}HttpUndeserializablePayload(\"{wire}\", String(rejected)),\n            \
-         }},\n          \
-         }};\n        \
-         }}\n"
-    );
+    let head = if shape.error_header_out.is_empty() {
+        error
+    } else {
+        elements.first().copied().unwrap_or(error)
+    };
+    let mut stmt = parsed_body_stmt(prefix, wire, "declared", head);
+    if shape.error_header_out.is_empty() {
+        stmt.push_str("        return { ok: false, error: declared.value };\n");
+        return stmt;
+    }
     let (header_stmts, header_idents) = header_value_read_stmts(
         prefix,
         wire,
@@ -608,10 +583,22 @@ fn error_decode_block(prefix: &str, wire: &str, shape: &HttpShape, error: &Type)
     stmt.push_str(&header_stmts);
     let _ = writeln!(
         stmt,
-        "        return {{ ok: false, error: [declared, {}] }};",
+        "        return {{ ok: false, error: [declared.value, {}] }};",
         header_idents.join(", ")
     );
     stmt
+}
+
+/// Reads the response body into `local` through [`parsed_fn`]'s reader, answering the fault it
+/// returns where the body will not become `ty`.
+fn parsed_body_stmt(prefix: &str, wire: &str, local: &str, ty: &Type) -> String {
+    let schema = get_field_def(local, ty, "").zod_type();
+    format!(
+        "        const {local} = {prefix}HttpParsed(\"{wire}\", response.body, {schema});\n        \
+         if (!{local}.ok) {{\n          \
+         return {{ ok: false, error: {{ isServiceFault: true, fault: {local}.fault }} }};\n        \
+         }}\n"
+    )
 }
 
 /// A request-and-reply operation's decode: the declared status into the success (tuple), a
@@ -674,47 +661,18 @@ fn success_decode_block(prefix: &str, wire: &str, shape: &HttpShape, success: &T
         if is_unit_type(success) {
             return "        return { ok: true, value: undefined };\n".to_owned();
         }
-        let success_ty = get_field_def("value", success, "").typescript_typename();
-        return format!(
-            "        let value: {success_ty};\n        \
-             try {{\n          \
-             value = JSON.parse(response.body) as {success_ty};\n        \
-             }} catch (rejected) {{\n          \
-             return {{\n            \
-             ok: false,\n            \
-             error: {{\n              \
-             isServiceFault: true,\n              \
-             fault: {prefix}HttpUndeserializablePayload(\"{wire}\", String(rejected)),\n            \
-             }},\n          \
-             }};\n        \
-             }}\n        \
-             return {{ ok: true, value }};\n"
-        );
+        let mut stmt = parsed_body_stmt(prefix, wire, "parsed", success);
+        stmt.push_str("        return { ok: true, value: parsed.value };\n");
+        return stmt;
     }
     let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
-    let body_ty = elements.first().map_or_else(
-        || get_field_def("value", success, "").typescript_typename(),
-        |ty| get_field_def("value", ty, "").typescript_typename(),
-    );
-    let mut stmt = format!(
-        "        let value: {body_ty};\n        \
-         try {{\n          \
-         value = JSON.parse(response.body) as {body_ty};\n        \
-         }} catch (rejected) {{\n          \
-         return {{\n            \
-         ok: false,\n            \
-         error: {{\n              \
-         isServiceFault: true,\n              \
-         fault: {prefix}HttpUndeserializablePayload(\"{wire}\", String(rejected)),\n            \
-         }},\n          \
-         }};\n        \
-         }}\n"
-    );
+    let body = elements.first().copied().unwrap_or(success);
+    let mut stmt = parsed_body_stmt(prefix, wire, "parsed", body);
     let (header_stmts, header_idents) = header_out_read_stmts(prefix, wire, shape, &elements, 1);
     stmt.push_str(&header_stmts);
     let _ = writeln!(
         stmt,
-        "        return {{ ok: true, value: [value, {}] }};",
+        "        return {{ ok: true, value: [parsed.value, {}] }};",
         header_idents.join(", ")
     );
     stmt
@@ -1042,6 +1000,13 @@ fn fault_helpers(service: &ServiceDef) -> Vec<String> {
     if service
         .operations
         .iter()
+        .any(|operation| !matches!(operation.outcome, OperationOutcome::OneWay))
+    {
+        helpers.push(parsed_fn(&named, &prefix));
+    }
+    if service
+        .operations
+        .iter()
         .any(|operation| matches!(operation.outcome, OperationOutcome::OneWay))
     {
         helpers.push(refusal_type(&named));
@@ -1142,6 +1107,39 @@ fn undeserializable_payload_fn(named: &str, prefix: &str) -> String {
             "    detail,\n    field: undefined,\n    kind: \"undeserializable-payload\",\n    \
              operation,"
         )
+    )
+}
+
+/// Reads a JSON response body as the type its schema declares, answering the
+/// `undeserializable-payload` fault this client gives every body that will not become what its
+/// status promised.
+fn parsed_fn(named: &str, prefix: &str) -> String {
+    format!(
+        "/**\n \
+         * Reads a `{named}` response body as the type `schema` declares. Text that is no JSON, \
+         or JSON\n \
+         * that is not that type, answers the fault instead, naming the first failing key.\n \
+         */\n\
+         function {prefix}HttpParsed<Parsed>(\n  \
+         operation: string,\n  \
+         text: string,\n  \
+         schema: ZodType<Parsed>,\n\
+         ): {{ ok: true; value: Parsed }} | {{ ok: false; fault: {named}Fault }} {{\n  \
+         let detail: string;\n  \
+         try {{\n    \
+         const parsed = schema.safeParse(JSON.parse(text));\n    \
+         if (parsed.success) return {{ ok: true, value: parsed.data }};\n    \
+         detail = parsed.error.issues\n      \
+         .map((issue) =>\n        \
+         issue.path.length === 0 ? issue.message : `'${{issue.path.join(\".\")}}': \
+         ${{issue.message}}`,\n      \
+         )\n      \
+         .join(\"; \");\n  \
+         }} catch (rejected) {{\n    \
+         detail = String(rejected);\n  \
+         }}\n  \
+         return {{ ok: false, fault: {prefix}HttpUndeserializablePayload(operation, detail) }};\n\
+         }}"
     )
 }
 

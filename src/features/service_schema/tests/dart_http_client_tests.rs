@@ -29,6 +29,17 @@ fn method_body<'written>(written: &'written str, call: &str) -> &'written str {
 }
 
 #[test]
+fn a_successful_reply_is_checked_against_the_declared_success() {
+    let written = dart_http_client_of(MIXED_SERVICE);
+    let body = method_body(&written, "getAvailableBalance");
+    assert!(
+        body.contains("AvailableBalanceResponse.fromJson("),
+        "a success the transport handed back is answered as an `AvailableBalanceResponse`, so it is \
+         decoded as one first. Got: {body}"
+    );
+}
+
+#[test]
 fn a_failed_reply_is_checked_against_the_declared_error() {
     let written = dart_http_client_of(MIXED_SERVICE);
     let body = method_body(&written, "getAvailableBalance");

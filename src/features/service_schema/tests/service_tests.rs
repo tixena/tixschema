@@ -12,6 +12,22 @@ use super::{
 };
 
 #[test]
+fn a_declared_error_crosses_with_every_field_it_carries() {
+    let written = service_of(MIXED_SERVICE);
+    assert!(
+        written.contains(
+            "return { answered: await impl.getAvailableBalance(ctx, received.data), headers: [] };"
+        ),
+        "the implementation's own outcome is what crosses, its declared error whole. \
+         Got: {written}"
+    );
+    assert!(
+        !written.contains("errorMessage"),
+        "no field of a declared error is picked out by name. Got: {written}"
+    );
+}
+
+#[test]
 fn an_implementation_answers_an_outcome_that_has_no_fault_in_it() {
     let written = service_of(MIXED_SERVICE);
     let found = written
