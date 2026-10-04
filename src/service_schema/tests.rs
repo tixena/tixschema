@@ -1202,6 +1202,7 @@ fn a_service_asking_for_no_transport_is_emitted_the_contract_and_nothing_else() 
         "pub struct Context",
         "pub struct ReplyHandle",
         "pub async fn serve_until",
+        "pub async fn serve_deliveries",
         "lapin",
     ] {
         assert!(
@@ -1301,6 +1302,7 @@ fn a_service_asking_for_only_ws_rpc_emits_its_dispatcher_and_its_client() {
         "pub struct Context",
         "pub struct ReplyHandle",
         "pub async fn serve_until",
+        "pub async fn serve_deliveries",
         "lapin",
     ] {
         assert!(
