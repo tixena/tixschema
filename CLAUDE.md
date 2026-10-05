@@ -353,15 +353,15 @@ pub struct UserProfile {
 
 ### 7. Field Validation Attributes (`#[model_schema_prop(...)]`)
 
-All validation constraints generate checks in **Zod (frontend), JSON Schema, and Rust (Serde deserialization)**:
+All validation constraints generate checks in **Zod (frontend), JSON Schema, and Rust**. In Rust the check runs in `validate()`. It also runs as serde reads the payload in one position only: a member of an untagged enum, where the check decides which variant the payload is:
 
-| Attribute | Field Type | Zod | JSON Schema | Rust serde |
+| Attribute | Field Type | Zod | JSON Schema | Rust |
 |-----------|------------|-----|-------------|------------|
-| `pattern = "regex"` | `String` | `.check(z.regex(/regex/))` | `"pattern"` | validator + deserializer |
-| `minLength = N` | `String` | `.min(N)` | `"minLength"` | validator + deserializer |
-| `maxLength = N` | `String` | `.max(N)` | `"maxLength"` | validator + deserializer |
-| `minimum = N` | numeric | `.min(N)` | `"minimum"` | validator + deserializer |
-| `maximum = N` | numeric | `.max(N)` | `"maximum"` | validator + deserializer |
+| `pattern = "regex"` | `String` | `.check(z.regex(/regex/))` | `"pattern"` | `validate()`; the read too on an untagged enum's member |
+| `minLength = N` | `String` | `.min(N)` | `"minLength"` | `validate()`; the read too on an untagged enum's member |
+| `maxLength = N` | `String` | `.max(N)` | `"maxLength"` | `validate()`; the read too on an untagged enum's member |
+| `minimum = N` | numeric | `.min(N)` | `"minimum"` | `validate()`; the read too on an untagged enum's member |
+| `maximum = N` | numeric | `.max(N)` | `"maximum"` | `validate()`; the read too on an untagged enum's member |
 | `literal = "val"` | `String` | `z.literal("val")` | `{"type": "string", "const": "val"}` | — |
 | `literal = true` | `bool` | `z.literal(true)` | `{"type": "boolean", "const": true}` | — |
 | `literal = 214` | numeric | `z.literal(214)` | `{"type": "number", "const": 214}` | — |
@@ -403,7 +403,7 @@ pub struct User {
 
 #### Generated `validate()` method
 
-When any field has constraints, the macro generates a `validate(&self) -> Result<(), Vec<String>>` method that aggregates all per-field errors. This is useful when constructing instances in code rather than through serde (serde validates automatically):
+When any field has constraints, the macro generates a `validate(&self) -> Result<(), Vec<String>>` method that aggregates all per-field errors. On a struct field, and on a field of a tagged enum's variant, this is the only place the constraint is checked: serde reads a payload that breaks it:
 
 ```rust
 let result = my_instance.validate();
@@ -415,7 +415,7 @@ match result {
 
 The macro also generates into the type's schema module:
 - `validate_{field}_value(&FieldType) -> Result<(), String>` — pure static validator per field
-- `deserialize_{field}(D) -> Result<FieldType, E>` — serde hook that calls the static validator
+- `deserialize_{variant}_{field}(D) -> Result<FieldType, E>` — serde hook that calls the static validator, generated only for a member of an untagged enum, the one position where the check runs on the read
 
 For a generic type (one with type parameters), `validate()` is emitted only at the declared default
 instantiation — `impl DocumentId<String> { pub fn validate(&self) -> Result<(), Vec<String>> { … } }`,
