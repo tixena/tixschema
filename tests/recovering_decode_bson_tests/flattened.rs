@@ -3,6 +3,7 @@
 //! left of that document, its issues sit at that document's paths, and the keys it declares count
 //! as declared. Each case holds the walker's list to what plain serde says of the same document.
 
+use core::fmt::Debug;
 use std::collections::HashMap;
 
 use bson::oid::ObjectId;
@@ -117,6 +118,30 @@ macro_rules! read_counting {
             $module::Verdict::Reject
         })
     };
+}
+
+/// Implements [`Flagged`] for each `$model`, whose callback types `$module` holds.
+macro_rules! flagged {
+    ($($model:ty => $module:ident,)+) => {$(
+        impl Flagged for $model {
+            fn read(row: Document, json: serde_json::Value) -> (Option<Self>, Option<Self>, u32) {
+                let mut calls = 0_u32;
+                let from_row = read_counting!($model, $module, row, calls).ok();
+                let from_json = <$model>::from_value_with(json, |_raw, _found| {
+                    calls += 1;
+                    $module::Verdict::Reject
+                });
+                (from_row, from_json.ok(), calls)
+            }
+        }
+    )+};
+}
+
+/// A flagged type as [`reads_what_serde_wrote`] reads it.
+trait Flagged: Sized {
+    /// What `from_bson_with` reads `row` as and `from_value_with` reads `json` as, each under a
+    /// decider that rejects, and how many times the two deciders ran.
+    fn read(row: Document, json: serde_json::Value) -> (Option<Self>, Option<Self>, u32);
 }
 
 #[model_schema(decode_with)]
@@ -666,6 +691,166 @@ struct Docket {
     #[serde(flatten)]
     marker: Marker,
     name: String,
+}
+
+/// A flattened id, which serde writes as the entry `$oid` of the document that holds it.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct DirectId {
+    #[serde(flatten)]
+    id: ObjectId,
+    name: String,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct MaybeId {
+    name: String,
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    oid: Option<ObjectId>,
+}
+
+/// A flattened id read through a hook.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct IdThroughHook {
+    name: String,
+    #[serde(flatten, deserialize_with = "as_written")]
+    oid: ObjectId,
+}
+
+/// A flattened generic brand filled with an `Option` of a struct.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Pocket {
+    #[serde(flatten)]
+    body: Wrap<Option<Body>>,
+    id: String,
+}
+
+/// A flattened `Option` read through a hook.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct DirectMaybe {
+    id: String,
+    #[serde(
+        flatten,
+        default,
+        deserialize_with = "as_written",
+        skip_serializing_if = "Option::is_none"
+    )]
+    version: Option<Version>,
+}
+
+/// A flattened struct read through a hook.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct ThroughHook {
+    id: String,
+    #[serde(flatten, deserialize_with = "as_written")]
+    version: Version,
+}
+
+/// A flattened map read through a hook.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct MapThroughHook {
+    #[serde(flatten, deserialize_with = "as_written")]
+    entries: HashMap<String, i32>,
+    id: String,
+}
+
+/// A flattened field read through a hook generic over what it reads, then a flattened type that
+/// takes every key it is handed.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct HookAhead {
+    #[serde(flatten, deserialize_with = "as_written")]
+    ahead: Version,
+    #[serde(flatten)]
+    counts: Counts,
+    id: String,
+}
+
+/// A flattened field serde writes and never reads.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct NeverRead {
+    id: String,
+    #[serde(flatten, skip_deserializing, skip_serializing_if = "Option::is_none")]
+    version: Option<Version>,
+}
+
+/// A flagged type with a value of its own to stand where serde reads none.
+#[model_schema(decode_with)]
+#[derive(Debug, Default, Deserialize, PartialEq, Serialize)]
+struct Draft {
+    pages: i32,
+}
+
+/// A flattened field serde writes and never reads, which takes its type's default.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Unpicked {
+    #[serde(flatten, skip_deserializing)]
+    draft: Draft,
+    id: String,
+}
+
+/// An optional flattened type parameter.
+#[model_schema(decode_with, default_types(T = Body))]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Tucked<T> {
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    body: Option<T>,
+    id: String,
+}
+
+/// A flattened JSON value, which holds whatever entries are left.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct OpenEnded {
+    id: String,
+    #[serde(flatten)]
+    rest: serde_json::Value,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct MaybeOpenEnded {
+    id: String,
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    rest: Option<serde_json::Value>,
+}
+
+/// A flattened `Option` of a map.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct MaybeCounted {
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    entries: Option<HashMap<String, i32>>,
+    id: String,
+}
+
+flagged! {
+    Counts => counts_schema,
+    DirectId => direct_id_schema,
+    DirectMaybe => direct_maybe_schema,
+    HookAhead => hook_ahead_schema,
+    IdThroughHook => id_through_hook_schema,
+    Letter<ObjectId> => letter_schema,
+    Letter<Option<Body>> => letter_schema,
+    Letter<Option<ObjectId>> => letter_schema,
+    MapThroughHook => map_through_hook_schema,
+    MaybeCounted => maybe_counted_schema,
+    MaybeId => maybe_id_schema,
+    MaybeOpenEnded => maybe_open_ended_schema,
+    NeverRead => never_read_schema,
+    OpenEnded => open_ended_schema,
+    Pocket => pocket_schema,
+    ThroughHook => through_hook_schema,
+    Tucked<Body> => tucked_schema,
+    Unpicked => unpicked_schema,
 }
 
 fn audit() -> Audit {
@@ -1809,6 +1994,28 @@ fn counts() -> Counts {
     }
 }
 
+fn mark() -> ObjectId {
+    oid("6a7cc592ca0574e6efdfe217")
+}
+
+/// Holds both reads to serde over what serde writes for `value`, as a document and as a JSON
+/// value: plain serde reads each, and `from_bson_with` and `from_value_with` give what it reads
+/// and run no decider.
+fn reads_what_serde_wrote<T>(value: &T)
+where
+    T: Flagged + PartialEq + Debug + Serialize + for<'de> Deserialize<'de>,
+{
+    let (row, json) = (written(value), serde_json::to_value(value).unwrap());
+    let by_serde = (
+        T::deserialize(bson::Deserializer::new(Bson::Document(row.clone()))).ok(),
+        T::deserialize(&json).ok(),
+    );
+    assert!(by_serde.0.is_some() && by_serde.1.is_some(), "for {row}");
+    let (from_row, from_json, calls) = T::read(row, json);
+    assert_eq!((from_row, from_json), by_serde);
+    assert_eq!(calls, 0);
+}
+
 /// A read hook that reads what the type's own reader reads, from whatever it is handed.
 fn as_written<'de, D, T>(deserializer: D) -> Result<T, D::Error>
 where
@@ -2075,4 +2282,181 @@ fn a_flattened_single_slot_struct_over_an_id_claims_the_key_serde_reads_for_it()
     });
     assert_eq!(from_json, Ok(docket));
     assert_eq!(calls, 0);
+}
+
+/// A flattened id is read from the entry serde writes for it, from a document and from a JSON
+/// value: alone, as an `Option` there and absent, through a hook, and where it fills a parameter.
+#[test]
+fn a_flattened_id_reads_what_serde_wrote_with_no_call() {
+    let direct = DirectId {
+        id: mark(),
+        name: "n".to_owned(),
+    };
+    assert_eq!(
+        written(&direct),
+        doc! { "$oid": "6a7cc592ca0574e6efdfe217", "name": "n" }
+    );
+    reads_what_serde_wrote(&direct);
+    reads_what_serde_wrote(&MaybeId {
+        name: "n".to_owned(),
+        oid: Some(mark()),
+    });
+    reads_what_serde_wrote(&MaybeId {
+        name: "n".to_owned(),
+        oid: None,
+    });
+    reads_what_serde_wrote(&IdThroughHook {
+        name: "n".to_owned(),
+        oid: mark(),
+    });
+    reads_what_serde_wrote(&Letter::<ObjectId> {
+        body: mark(),
+        id: "i".to_owned(),
+    });
+    reads_what_serde_wrote(&Letter::<Option<ObjectId>> {
+        body: Some(mark()),
+        id: "i".to_owned(),
+    });
+    reads_what_serde_wrote(&Letter::<Option<ObjectId>> {
+        body: None,
+        id: "i".to_owned(),
+    });
+}
+
+/// A flattened `Option` in what fills a parameter, or read through a hook, is absent to serde
+/// wherever the value does not read, so a record written with it absent is no issue. With it
+/// there, it is read.
+#[test]
+fn a_flattened_option_not_seen_that_is_absent_is_no_issue() {
+    reads_what_serde_wrote(&Letter::<Option<Body>> {
+        body: None,
+        id: "i".to_owned(),
+    });
+    reads_what_serde_wrote(&Letter::<Option<Body>> {
+        body: Some(Body {
+            text: "t".to_owned(),
+        }),
+        id: "i".to_owned(),
+    });
+    reads_what_serde_wrote(&Pocket {
+        body: Wrap(None),
+        id: "i".to_owned(),
+    });
+    reads_what_serde_wrote(&Pocket {
+        body: Wrap(Some(Body {
+            text: "t".to_owned(),
+        })),
+        id: "i".to_owned(),
+    });
+    reads_what_serde_wrote(&DirectMaybe {
+        id: "i".to_owned(),
+        version: None,
+    });
+    reads_what_serde_wrote(&DirectMaybe {
+        id: "i".to_owned(),
+        version: Some(Version { number: 3_i32 }),
+    });
+}
+
+/// serde reads an `Option` behind a hook or in what fills a parameter as absent where what it
+/// holds is refused, and reads the document. Nothing here sees that `Option`, so nothing is listed.
+#[test]
+fn a_value_refused_inside_a_flattened_option_not_seen_is_read_as_absent() {
+    let mut calls = 0_u32;
+    let number_as_text = doc! { "id": "i", "number": "3" };
+    assert!(serde_reads::<DirectMaybe>(&number_as_text));
+    assert_eq!(
+        read_counting!(DirectMaybe, direct_maybe_schema, number_as_text, calls),
+        Ok(DirectMaybe {
+            id: "i".to_owned(),
+            version: None,
+        })
+    );
+    let text_as_number = doc! { "id": "i", "text": 5_i32 };
+    assert!(serde_reads::<Letter<Option<Body>>>(&text_as_number));
+    assert_eq!(
+        read_counting!(Letter<Option<Body>>, letter_schema, text_as_number, calls),
+        Ok(Letter {
+            body: None,
+            id: "i".to_owned(),
+        })
+    );
+    assert_eq!(calls, 0);
+}
+
+/// A value read whole that is no `Option` and that its reader refuses is listed at the document,
+/// as serde refuses the document.
+#[test]
+fn a_flattened_value_read_whole_that_its_reader_refuses_is_invalid_at_the_document() {
+    let number_as_text = doc! { "id": "i", "number": "3" };
+    assert!(!serde_reads::<ThroughHook>(&number_as_text));
+    assert_eq!(
+        listed!(ThroughHook, through_hook_schema, number_as_text),
+        [invalid(
+            "",
+            "Model(\"Version\")",
+            Bson::Document(doc! { "number": "3" })
+        )]
+    );
+}
+
+/// Every other kind of flattened field reads what serde wrote for it with no call, from a
+/// document and from a JSON value: a map and an `Option` of one, a value read whole through a
+/// hook, a JSON value and an `Option` of one, a field serde writes and never reads, and an
+/// `Option` of a parameter's type, there and absent.
+#[test]
+fn every_kind_of_flattened_field_reads_what_serde_wrote_with_no_call() {
+    let entries = || HashMap::from([("a".to_owned(), 1_i32)]);
+    reads_what_serde_wrote(&counts());
+    reads_what_serde_wrote(&MaybeCounted {
+        entries: Some(entries()),
+        id: "i".to_owned(),
+    });
+    reads_what_serde_wrote(&MaybeCounted {
+        entries: None,
+        id: "i".to_owned(),
+    });
+    reads_what_serde_wrote(&ThroughHook {
+        id: "i".to_owned(),
+        version: Version { number: 3_i32 },
+    });
+    reads_what_serde_wrote(&MapThroughHook {
+        entries: entries(),
+        id: "i".to_owned(),
+    });
+    reads_what_serde_wrote(&HookAhead {
+        ahead: Version { number: 3_i32 },
+        counts: counts(),
+        id: "i".to_owned(),
+    });
+    reads_what_serde_wrote(&OpenEnded {
+        id: "i".to_owned(),
+        rest: serde_json::json!({ "a": 1_i32, "b": "x" }),
+    });
+    reads_what_serde_wrote(&MaybeOpenEnded {
+        id: "i".to_owned(),
+        rest: Some(serde_json::json!({ "a": 1_i32 })),
+    });
+    reads_what_serde_wrote(&MaybeOpenEnded {
+        id: "i".to_owned(),
+        rest: None,
+    });
+    reads_what_serde_wrote(&NeverRead {
+        id: "i".to_owned(),
+        version: Some(Version { number: 3_i32 }),
+    });
+    reads_what_serde_wrote(&Unpicked {
+        draft: Draft { pages: 3_i32 },
+        id: "i".to_owned(),
+    });
+    reads_what_serde_wrote(&Tucked::<Body> {
+        body: Some(Body {
+            text: "t".to_owned(),
+        }),
+        id: "i".to_owned(),
+    });
+    reads_what_serde_wrote(&Tucked::<Body> {
+        body: None,
+        id: "i".to_owned(),
+    });
 }

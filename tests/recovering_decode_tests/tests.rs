@@ -106,6 +106,56 @@ struct AliasedParts {
     tags: Vec<String>,
 }
 
+/// A field serde writes wherever a predicate lets it be, and never reads.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Kept {
+    id: String,
+    #[serde(skip_deserializing, skip_serializing_if = "Option::is_none")]
+    note: Option<String>,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct KeptText {
+    id: String,
+    #[serde(skip_deserializing, skip_serializing_if = "String::is_empty")]
+    note: String,
+}
+
+/// Two fields serde neither writes nor reads: one under `skip`, one under its two halves.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Shelved {
+    #[serde(skip)]
+    cached: u8,
+    id: String,
+    #[serde(skip_serializing, skip_deserializing)]
+    local: u8,
+}
+
+/// A variant's field serde writes wherever a predicate lets it be, and never reads.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+enum Memo {
+    Noted {
+        id: String,
+        #[serde(skip_deserializing, skip_serializing_if = "Option::is_none")]
+        note: Option<String>,
+    },
+    Plain,
+}
+
+/// A slot serde writes wherever a predicate lets it be, and never reads. A schema surface refuses
+/// the declaration.
+#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Duo(
+    String,
+    #[serde(skip_deserializing, skip_serializing_if = "String::is_empty")] String,
+);
+
 /// Every way serde reads a field whose key is not there.
 #[model_schema(decode_with)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -724,6 +774,124 @@ fn a_key_the_type_writes_and_does_not_read_is_declared() {
         lines(&skipped.unwrap_err()),
         ["local: unknown: found Number(9)"]
     );
+}
+
+/// A field serde writes wherever its predicate lets it be and never reads has its key in what the
+/// type wrote, which is a key the type declares. Where the predicate held it back, nothing changes.
+#[test]
+fn a_key_the_type_writes_under_a_predicate_and_does_not_read_is_declared() {
+    let kept = Kept {
+        id: "i".to_owned(),
+        note: Some("n".to_owned()),
+    };
+    let written = serde_json::to_value(&kept).unwrap();
+    assert_eq!(written, json!({ "id": "i", "note": "n" }));
+    let mut calls = 0_u32;
+    let read = Kept::from_value_with(written, |_raw, _found| {
+        calls += 1;
+        kept_schema::Verdict::Reject
+    });
+    let unread = Kept {
+        id: "i".to_owned(),
+        note: None,
+    };
+    assert_eq!(read.as_ref(), Ok(&unread));
+    let held_back = Kept::from_value_with(json!({ "id": "i" }), |_raw, _found| {
+        calls += 1;
+        kept_schema::Verdict::Reject
+    });
+    assert_eq!(held_back, Ok(unread));
+
+    let text = serde_json::to_value(KeptText {
+        id: "i".to_owned(),
+        note: "n".to_owned(),
+    })
+    .unwrap();
+    assert_eq!(text, json!({ "id": "i", "note": "n" }));
+    let read_text = KeptText::from_value_with(text, |_raw, _found| {
+        calls += 1;
+        kept_text_schema::Verdict::Reject
+    });
+    assert_eq!(
+        read_text,
+        Ok(KeptText {
+            id: "i".to_owned(),
+            note: String::new(),
+        })
+    );
+    assert_eq!(calls, 0);
+}
+
+/// A variant's field under the same attributes is a key the variant declares.
+#[test]
+fn a_key_a_variant_writes_under_a_predicate_and_does_not_read_is_declared() {
+    let written = serde_json::to_value(Memo::Noted {
+        id: "i".to_owned(),
+        note: Some("n".to_owned()),
+    })
+    .unwrap();
+    assert_eq!(written, json!({ "Noted": { "id": "i", "note": "n" } }));
+    let mut calls = 0_u32;
+    let read = Memo::from_value_with(written, |_raw, _found| {
+        calls += 1;
+        memo_schema::Verdict::Reject
+    });
+    assert_eq!(
+        read,
+        Ok(Memo::Noted {
+            id: "i".to_owned(),
+            note: None,
+        })
+    );
+    assert_eq!(calls, 0);
+}
+
+/// A field serde neither writes nor reads declares no key, under `skip` or under
+/// `skip_serializing` beside `skip_deserializing`: its key in a record is one serde reads past.
+#[test]
+fn a_key_of_a_field_the_type_neither_writes_nor_reads_is_unknown() {
+    let stored = json!({ "cached": 1_i32, "id": "i", "local": 9_i32 });
+    assert_eq!(
+        Shelved::deserialize(&stored).unwrap(),
+        Shelved {
+            cached: 0,
+            id: "i".to_owned(),
+            local: 0,
+        }
+    );
+    let read = Shelved::from_value_with(stored, |_raw, _found| shelved_schema::Verdict::Reject);
+    assert_eq!(
+        lines(&read.unwrap_err()),
+        [
+            "cached: unknown: found Number(1)",
+            "local: unknown: found Number(9)"
+        ]
+    );
+}
+
+/// serde reads no array it wrote with such a slot in it: it writes the slot and reads an array
+/// without it. The walker refuses the array as serde does, and reads one written without the slot.
+#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[test]
+fn a_slot_the_type_writes_under_a_predicate_and_does_not_read_is_refused_as_serde_refuses_it() {
+    let written = serde_json::to_value(Duo("a".to_owned(), "n".to_owned())).unwrap();
+    assert_eq!(written, json!(["a", "n"]));
+    let refusal = Duo::deserialize(&written).unwrap_err().to_string();
+    let read = Duo::from_value_with(written, |_raw, _found| duo_schema::Verdict::Reject);
+    assert_eq!(
+        lines(&read.unwrap_err()),
+        [
+            "[1]: unknown: found String(\"n\")".to_owned(),
+            format!("undescribed: {refusal}")
+        ]
+    );
+    let mut calls = 0_u32;
+    let short = Duo::from_value_with(json!(["a"]), |_raw, _found| {
+        calls += 1;
+        duo_schema::Verdict::Reject
+    });
+    assert_eq!(short, Ok(Duo("a".to_owned(), String::new())));
+    assert_eq!(calls, 0);
 }
 
 #[test]

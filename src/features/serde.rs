@@ -221,6 +221,29 @@ pub fn has_serde_read_hook(attrs: &[Attribute]) -> bool {
     found
 }
 
+/// Whether serde never writes the field: it is under `skip` or `skip_serializing`. One under
+/// `skip_serializing_if` is written wherever its predicate lets it be.
+#[cfg(feature = "serde")]
+pub fn has_serde_skip_serializing(attrs: &[Attribute]) -> bool {
+    let mut found = false;
+    for attr in attrs {
+        if !attr.path().is_ident("serde") {
+            continue;
+        }
+        attr.parse_nested_meta(|nested| {
+            if nested.path.is_ident("skip") || nested.path.is_ident("skip_serializing") {
+                found = true;
+            }
+            consume_unread_value(&nested)?;
+            Ok(())
+        })
+        .unwrap_or_else(|e| {
+            log::trace!("Failed to parse serde skip attribute: {e}");
+        });
+    }
+    found
+}
+
 /// Whether the container is `#[serde(transparent)]`, wherever among its serde attributes the key
 /// is written.
 #[cfg(feature = "serde")]

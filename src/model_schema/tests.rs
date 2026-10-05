@@ -6418,7 +6418,8 @@ fn what_decode_with_emits_is_written_for_the_lints_a_consumer_denies() {
             "pub enum Issue < V > {",
             "pub enum Verdict {",
             "pub struct Unrecovered < V > {",
-            "pub struct TakenProbe (",
+            "pub struct Asked {",
+            "pub struct TakenProbe < 'asked > (",
         ] {
             assert!(
                 flagged.contains(&format!("# [non_exhaustive] {declared}")),

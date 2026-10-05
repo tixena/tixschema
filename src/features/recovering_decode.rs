@@ -27,8 +27,8 @@ use syn::{
 
 use crate::features::serde::{
     NAMED_READ_HOOK_PREFIX, SerdeFieldHooks, has_serde_default, has_serde_read_hook,
-    has_serde_transparent, parse_serde_field_attributes, parse_serde_field_hooks,
-    parse_serde_key_omission, parse_serde_type_attributes,
+    has_serde_skip_serializing, has_serde_transparent, parse_serde_field_attributes,
+    parse_serde_field_hooks, parse_serde_key_omission, parse_serde_type_attributes,
 };
 use crate::field_type::{
     FieldDefType, get_field_def, is_refused_sequence_wrapper, is_sequence_wrapper,
@@ -39,7 +39,8 @@ use crate::utils::{ident_schema_module_name, type_parameters_in_scope, written_t
 
 /// The type names the flag adds to a schema module.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-const ADDED_TYPE_NAMES: [&str; 10] = [
+const ADDED_TYPE_NAMES: [&str; 11] = [
+    "Asked",
     "Expected",
     "ExpectedToken",
     "Issue",
@@ -129,8 +130,12 @@ impl<'item> Flattened<'item> {
         let Walk { step, ty } = member_walk(field, module_name, parameters);
         match step {
             Step::Entries(values) => Self::Entries(*values),
-            // Flattened, serde reads an `Option` as absent where the type's own reader refuses.
-            Step::Leaf(whole) if whole.hooked || !get_field_def("", ty, "").is_optional() => {
+            // Flattened, serde reads an `Option` as absent where the type's own reader refuses, and
+            // an id from the object it writes for one: neither is read here.
+            Step::Leaf(whole)
+                if whole.hooked
+                    || !(get_field_def("", ty, "").is_optional() || holds_an_id(ty)) =>
+            {
                 Self::Whole(Walk {
                     step: Step::Leaf(whole),
                     ty,
@@ -151,21 +156,22 @@ impl<'item> Flattened<'item> {
         matches!(self, Self::Entries(_) | Self::Whole(_))
     }
 
-    /// The function serde reads the field through, where reading it can take entries out of what
-    /// is left for the flattened fields declared after it. A map takes none.
-    fn taker(&self) -> Option<TokenStream> {
+    /// The function serde reads the field through and the type that function reads, where reading
+    /// it can take entries out of what is left for the flattened fields declared after it. A map
+    /// takes none.
+    fn taker(&self) -> Option<(TokenStream, &'item Type)> {
         match self {
             Self::Entries(_) | Self::Unwalked(None) => None,
             Self::Model(read) | Self::Optional(_, read) | Self::Unwalked(Some(read)) => {
-                Some(own_reader(read))
+                Some((own_reader(read), read))
             }
             Self::Whole(walk) => Some(match &walk.step {
-                Step::Leaf(whole) => whole.read.clone(),
+                Step::Leaf(whole) => (whole.read.clone(), walk.ty),
                 Step::Entries(_)
                 | Step::Items(_)
                 | Step::Model
                 | Step::Positions(_)
-                | Step::Present(_) => own_reader(walk.ty),
+                | Step::Present(_) => (own_reader(walk.ty), walk.ty),
             }),
         }
     }
@@ -525,12 +531,6 @@ impl Source {
         format_ident!("{}_leaf", self.stem())
     }
 
-    /// The function answering what serde leaves of an object once it has read a type flattened
-    /// there.
-    fn left(self) -> Ident {
-        format_ident!("{}_left", self.stem())
-    }
-
     /// One of the walker's methods: `decode_with_value_issues`, `decode_with_bson_fields`.
     fn method(self, part: &str) -> Ident {
         format_ident!("decode_with_{}_{part}", self.stem())
@@ -583,6 +583,12 @@ impl Source {
         self.object_from(&quote! { #object.clone() })
     }
 
+    /// The function answering what remains of an object once serde has read a type flattened
+    /// there.
+    fn remaining(self) -> Ident {
+        format_ident!("{}_remaining", self.stem())
+    }
+
     /// The source's name inside what the flag adds for it.
     const fn stem(self) -> &'static str {
         match self {
@@ -596,6 +602,18 @@ impl Source {
     fn text(self, text: &Ident) -> TokenStream {
         let value = self.value();
         quote! { #value::String(#text) }
+    }
+
+    /// The closure writing nothing back for a value read whole: a flattened value is held as the
+    /// entries serde writes for it, whatever form it has under a key. A value a hook read is
+    /// `pinned` to the field's type, as [`Self::write_back`] pins it.
+    fn unwritten(self, pinned: Option<&Type>) -> TokenStream {
+        let read = pinned.map_or_else(|| quote! { _ }, |ty| quote! { _: &#ty });
+        match self {
+            #[cfg(feature = "bson")]
+            Self::Bson => quote! { |#read, _| None },
+            Self::Json => quote! { |#read| None },
+        }
     }
 
     /// The type of one value.
@@ -999,13 +1017,7 @@ impl Walker<'_> {
         match flattened {
             Flattened::Entries(values) => self.entries_walk(values, object, segments, unclaimed),
             Flattened::Whole(Walk {
-                step:
-                    Step::Leaf(Whole {
-                        hooked,
-                        parameterized,
-                        read,
-                        write,
-                    }),
+                step: Step::Leaf(whole),
                 ty,
             }) => {
                 let rest = unclaimed.map_or_else(
@@ -1022,9 +1034,13 @@ impl Walker<'_> {
                 );
                 let (leaf, here, expected) =
                     (source.leaf(), path_expression(segments), self.expected(ty));
-                let written = source.written(*parameterized, hooked.then_some(*ty), write.as_ref());
+                let (read, unwritten) =
+                    (&whole.read, source.unwritten(whole.hooked.then_some(*ty)));
+                let absent = self.read_as_absent(whole.hooked || whole.parameterized, read, ty);
                 quote! {
-                    out.extend(#module::#leaf(&#rest, #read, #written, #here, #expected, issue));
+                    out.extend(
+                        #module::#leaf(&#rest, #read, #unwritten, #here, #expected, issue) #absent
+                    );
                 }
             }
             Flattened::Model(_)
@@ -1068,7 +1084,10 @@ impl Walker<'_> {
             {
                 let (whole_object, read) = (
                     source.object_value(&object),
-                    self.read_whole(&self.expected(walk.ty)),
+                    self.read_whole_flattened(
+                        whole.hooked || whole.parameterized,
+                        &self.expected(walk.ty),
+                    ),
                 );
                 let walked = quote! {
                     let found = &#whole_object;
@@ -1219,12 +1238,12 @@ impl Walker<'_> {
         };
         // serde reads the flattened fields in the order declared, each from what the ones before
         // it left: the readers of those since the last one walked are still to be asked.
-        let mut earlier: Vec<TokenStream> = Vec::new();
+        let mut earlier: Vec<(TokenStream, &Type)> = Vec::new();
         let mut declared: Vec<TokenStream> = Vec::new();
         for field in flattened {
             if field.declares_its_keys() {
-                for read in take(&mut earlier) {
-                    declared.push(self.left_after(&mut handed, &read));
+                for (read, ty) in take(&mut earlier) {
+                    declared.push(self.remaining_after(&mut handed, &read, ty));
                 }
             }
             declared.push(match field {
@@ -1247,7 +1266,7 @@ impl Walker<'_> {
                 .take_while(|earlier_field| !earlier_field.reads_the_rest())
                 .filter(|earlier_field| matches!(earlier_field, Flattened::Unwalked(_)))
                 .filter_map(Flattened::taker)
-                .map(|read| self.left_after(&mut open, &read))
+                .map(|(read, ty)| self.remaining_after(&mut open, &read, ty))
                 .collect();
             let walked = self.flattened_rest(field, &open.held, segments, unclaimed.as_ref());
             quote! {
@@ -1270,21 +1289,6 @@ impl Walker<'_> {
                 #rest
             },
         }
-    }
-
-    /// What binds, as what is `handed` over from here on, what serde leaves of it once it has
-    /// read a type flattened there through `read`: the same object where serde takes nothing.
-    fn left_after(&self, handed: &mut Handed<'_>, read: &TokenStream) -> TokenStream {
-        let (module, left_after) = (self.module, self.source.left());
-        let argument = handed.argument();
-        let left = Ident::new("left", Span::call_site());
-        let bound = quote! {
-            let taken = #module::#left_after(#read, #argument);
-            let #left = taken.as_ref().unwrap_or(#argument);
-        };
-        handed.held = left;
-        handed.owned = false;
-        bound
     }
 
     /// `arms` as the statement listing the issues of the value held under `held`.
@@ -1559,6 +1563,19 @@ impl Walker<'_> {
         }
     }
 
+    /// What keeps the issue of a value read whole as `ty` only where `read` reads no `Option`:
+    /// flattening, serde reads an `Option` as absent wherever what it holds is refused. Nothing
+    /// unless the `Option` would be `unseen` here, behind a hook or in what fills a parameter.
+    fn read_as_absent(&self, unseen: bool, read: &TokenStream, ty: &Type) -> TokenStream {
+        if !unseen {
+            return TokenStream::new();
+        }
+        let module = self.module;
+        quote! {
+            .filter(|_| !#module::reads_an_option::<#ty, _>(#read, &#module::Asked::default()))
+        }
+    }
+
     /// What lists `found` read whole with the type's own reader: serde's verdict on it, at the
     /// value, naming `expected`.
     fn read_whole(&self, expected: &TokenStream) -> TokenStream {
@@ -1567,6 +1584,43 @@ impl Walker<'_> {
         quote! {
             out.extend(#module::#leaf(found, <Self as serde::Deserialize>::deserialize, #written, path.to_vec(), #expected, issue))
         }
+    }
+
+    /// [`Self::read_whole`] where `found` is the entries serde reads the type from flattened:
+    /// nothing is written back, and an `Option` that is `unseen` here is absent where refused.
+    fn read_whole_flattened(&self, unseen: bool, expected: &TokenStream) -> TokenStream {
+        let (module, leaf) = (self.module, self.source.leaf());
+        let own: Type = parse_quote! { Self };
+        let read = own_reader(&own);
+        let (unwritten, absent) = (
+            self.source.unwritten(None),
+            self.read_as_absent(unseen, &read, &own),
+        );
+        quote! {
+            out.extend(#module::#leaf(found, #read, #unwritten, path.to_vec(), #expected, issue) #absent)
+        }
+    }
+
+    /// What binds, as what is `handed` over from here on, what remains of it once serde has read
+    /// a `ty` flattened there through `read`: the same object where serde takes nothing. `ty`
+    /// pins what a hook generic over what it reads is asked for.
+    fn remaining_after(
+        &self,
+        handed: &mut Handed<'_>,
+        read: &TokenStream,
+        ty: &Type,
+    ) -> TokenStream {
+        let (module, remaining_after) = (self.module, self.source.remaining());
+        let argument = handed.argument();
+        let remaining = Ident::new("remaining", Span::call_site());
+        let bound = quote! {
+            let taken =
+                #module::#remaining_after::<#ty, _>(#read, &#module::Asked::default(), #argument);
+            let #remaining = taken.as_ref().unwrap_or(#argument);
+        };
+        handed.held = remaining;
+        handed.owned = false;
+        bound
     }
 
     /// What every method listing the issues of one value takes, after its name.
@@ -1700,6 +1754,91 @@ where
     }
 }
 
+/// A deserializer that reads nothing and notes what a reader asks of it, and what it notes.
+fn asked_items() -> TokenStream {
+    quote! {
+        /// What a read asks of the entries a flattened field is read from, as a [`TakenProbe`]
+        /// notes it.
+        #[derive(Default)]
+        #[non_exhaustive]
+        pub struct Asked {
+            /// It asks for an `Option`, which serde reads as absent where what it holds is refused.
+            optional: core::cell::Cell<bool>,
+            taken: core::cell::Cell<Taken>,
+        }
+
+        /// What a read asks for says of the entries serde takes out for it.
+        #[derive(Clone, Copy, Default)]
+        #[non_exhaustive]
+        enum Taken {
+            /// The entries under these keys: a struct with named fields.
+            Fields(&'static [&'static str]),
+            /// None: a map, and whatever else reads the entries and leaves them.
+            #[default]
+            Nothing,
+            /// The first entry one of these names keys: an enum written under its variant's name.
+            Variant(&'static [&'static str]),
+        }
+
+        /// A deserializer that reads nothing: it notes what a read asks of the entries a flattened
+        /// field is read from, and refuses it.
+        #[non_exhaustive]
+        pub struct TakenProbe<'asked>(&'asked Asked);
+
+        impl<'de> serde::Deserializer<'de> for TakenProbe<'_> {
+            type Error = serde::de::value::Error;
+
+            fn deserialize_any<V: serde::de::Visitor<'de>>(
+                self,
+                _visitor: V,
+            ) -> core::result::Result<V::Value, Self::Error> {
+                Err(serde::de::Error::custom("nothing is read"))
+            }
+
+            fn deserialize_struct<V: serde::de::Visitor<'de>>(
+                self,
+                _name: &'static str,
+                fields: &'static [&'static str],
+                _visitor: V,
+            ) -> core::result::Result<V::Value, Self::Error> {
+                self.0.taken.set(Taken::Fields(fields));
+                Err(serde::de::Error::custom("nothing is read"))
+            }
+
+            fn deserialize_enum<V: serde::de::Visitor<'de>>(
+                self,
+                _name: &'static str,
+                variants: &'static [&'static str],
+                _visitor: V,
+            ) -> core::result::Result<V::Value, Self::Error> {
+                self.0.taken.set(Taken::Variant(variants));
+                Err(serde::de::Error::custom("nothing is read"))
+            }
+
+            fn deserialize_option<V: serde::de::Visitor<'de>>(
+                self,
+                visitor: V,
+            ) -> core::result::Result<V::Value, Self::Error> {
+                self.0.optional.set(true);
+                visitor.visit_some(self)
+            }
+
+            fn deserialize_newtype_struct<V: serde::de::Visitor<'de>>(
+                self,
+                _name: &'static str,
+                visitor: V,
+            ) -> core::result::Result<V::Value, Self::Error> {
+                visitor.visit_newtype_struct(self)
+            }
+
+            serde::forward_to_deserialize_any! {
+                bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string bytes byte_buf
+                unit unit_struct seq tuple tuple_struct map identifier ignored_any
+            }
+        }
+    }
+}
+
 /// A loop's binding at `depth`: the plain name at the first level, and a numbered one under it,
 /// where an outer index or key is still read to build the path.
 fn binding(stem: &str, depth: usize) -> Ident {
@@ -1766,7 +1905,7 @@ fn bson_entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
     }
 }
 
-/// `bson_leaf`, the bracket rule it decides `Mistyped` by, and `bson_left`.
+/// `bson_leaf`, the bracket rule it decides `Mistyped` by, and `bson_remaining`.
 #[cfg(feature = "bson")]
 fn bson_leaf_items() -> TokenStream {
     quote! {
@@ -1806,13 +1945,17 @@ fn bson_leaf_items() -> TokenStream {
             }
         }
 
-        /// What serde leaves of `entries` once it has read a type flattened there through `read`,
+        /// What remains of `entries` once serde has read a type flattened there through `read`,
         /// and `None` where it takes none of them.
-        pub fn bson_left<T, R>(read: R, entries: &bson::Document) -> Option<bson::Document>
+        pub fn bson_remaining<'asked, T, R>(
+            read: R,
+            asked: &'asked Asked,
+            entries: &bson::Document,
+        ) -> Option<bson::Document>
         where
-            R: FnOnce(TakenProbe) -> core::result::Result<T, serde::de::value::Error>,
+            R: FnOnce(TakenProbe<'asked>) -> core::result::Result<T, serde::de::value::Error>,
         {
-            let taken = taken_keys(read, entries.keys());
+            let taken = taken_keys(read, asked, entries.keys());
             if taken.is_empty() {
                 return None;
             }
@@ -2391,6 +2534,13 @@ fn follows_a_path_separator(tokens: &[TokenTree]) -> bool {
     first.as_char() == ':' && first.spacing() == Spacing::Joint && second.as_char() == ':'
 }
 
+/// Whether serde neither writes nor reads `field`, so that no record it wrote holds a key of it.
+/// One under `skip_serializing_if` is written wherever its predicate lets it be, read or not.
+fn is_off_the_wire(field: &Field) -> bool {
+    parse_serde_key_omission(&field.attrs).skips_deserializing
+        && has_serde_skip_serializing(&field.attrs)
+}
+
 /// How the value of a field or a slot is walked: through its author's hooks, or by its type.
 fn member_walk<'item>(
     member: &'item Field,
@@ -2806,113 +2956,57 @@ fn starts_at_a_parameter(type_path: &TypePath, parameters: &[String]) -> bool {
         })
 }
 
-/// What answers which entries serde takes for a type it reads flattened: a deserializer that
-/// reads nothing and hears what the type's own reader asks for, and `value_left` over it. A type
-/// that fills a parameter carries no flag, so nothing but its own `Deserialize` can say.
+/// What answers what serde does with a type it reads flattened: the two questions asked of the
+/// type's own reader through the deserializer of [`asked_items`]. A type that fills a parameter
+/// carries no flag, so nothing but its own `Deserialize` can say.
 fn taken_items() -> TokenStream {
+    let asked = asked_items();
     quote! {
-        /// What a type's own `Deserialize` asks of the entries a flattened field is read from,
-        /// which says what serde takes out of them for it.
-        #[derive(Clone, Copy)]
-        #[non_exhaustive]
-        enum Taken {
-            /// The entries under these keys: a struct with named fields.
-            Fields(&'static [&'static str]),
-            /// The first entry one of these names keys: an enum written under its variant's name.
-            Variant(&'static [&'static str]),
-            /// None: a map, and whatever else reads the entries and leaves them.
-            Nothing,
-        }
+        #asked
 
-        /// A deserializer that reads nothing: it hears what a read asks of the entries a flattened
-        /// field is read from, and refuses it.
-        #[non_exhaustive]
-        pub struct TakenProbe(std::rc::Rc<core::cell::Cell<Taken>>);
-
-        impl<'de> serde::Deserializer<'de> for TakenProbe {
-            type Error = serde::de::value::Error;
-
-            fn deserialize_any<V: serde::de::Visitor<'de>>(
-                self,
-                _visitor: V,
-            ) -> core::result::Result<V::Value, Self::Error> {
-                Err(serde::de::Error::custom("nothing is read"))
-            }
-
-            fn deserialize_struct<V: serde::de::Visitor<'de>>(
-                self,
-                _name: &'static str,
-                fields: &'static [&'static str],
-                _visitor: V,
-            ) -> core::result::Result<V::Value, Self::Error> {
-                self.0.set(Taken::Fields(fields));
-                Err(serde::de::Error::custom("nothing is read"))
-            }
-
-            fn deserialize_enum<V: serde::de::Visitor<'de>>(
-                self,
-                _name: &'static str,
-                variants: &'static [&'static str],
-                _visitor: V,
-            ) -> core::result::Result<V::Value, Self::Error> {
-                self.0.set(Taken::Variant(variants));
-                Err(serde::de::Error::custom("nothing is read"))
-            }
-
-            fn deserialize_option<V: serde::de::Visitor<'de>>(
-                self,
-                visitor: V,
-            ) -> core::result::Result<V::Value, Self::Error> {
-                visitor.visit_some(self)
-            }
-
-            fn deserialize_newtype_struct<V: serde::de::Visitor<'de>>(
-                self,
-                _name: &'static str,
-                visitor: V,
-            ) -> core::result::Result<V::Value, Self::Error> {
-                visitor.visit_newtype_struct(self)
-            }
-
-            serde::forward_to_deserialize_any! {
-                bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string bytes byte_buf
-                unit unit_struct seq tuple tuple_struct map identifier ignored_any
-            }
+        /// Whether `read` reads an `Option`. Flattening, serde reads one as absent wherever what
+        /// it holds is refused.
+        pub fn reads_an_option<'asked, T, R>(read: R, asked: &'asked Asked) -> bool
+        where
+            R: FnOnce(TakenProbe<'asked>) -> core::result::Result<T, serde::de::value::Error>,
+        {
+            let _refused = read(TakenProbe(asked));
+            asked.optional.get()
         }
 
         /// The keys among `keys` whose entries serde takes when it reads a type flattened there
         /// through `read`.
-        fn taken_keys<'key, T, R, K>(read: R, mut keys: K) -> Vec<&'key str>
+        fn taken_keys<'asked, 'key, T, R, K>(read: R, asked: &'asked Asked, mut keys: K) -> Vec<&'key str>
         where
-            R: FnOnce(TakenProbe) -> core::result::Result<T, serde::de::value::Error>,
+            R: FnOnce(TakenProbe<'asked>) -> core::result::Result<T, serde::de::value::Error>,
             K: Iterator<Item = &'key String>,
         {
-            let asked = std::rc::Rc::new(core::cell::Cell::new(Taken::Nothing));
-            let _refused = read(TakenProbe(std::rc::Rc::clone(&asked)));
-            match asked.get() {
+            let _refused = read(TakenProbe(asked));
+            match asked.taken.get() {
                 Taken::Fields(fields) => keys
                     .map(String::as_str)
                     .filter(|key| fields.contains(key))
                     .collect(),
+                Taken::Nothing => Vec::new(),
                 Taken::Variant(variants) => keys
                     .find(|key| variants.contains(&key.as_str()))
                     .map(String::as_str)
                     .into_iter()
                     .collect(),
-                Taken::Nothing => Vec::new(),
             }
         }
 
-        /// What serde leaves of `entries` once it has read a type flattened there through `read`,
+        /// What remains of `entries` once serde has read a type flattened there through `read`,
         /// and `None` where it takes none of them.
-        pub fn value_left<T, R>(
+        pub fn value_remaining<'asked, T, R>(
             read: R,
+            asked: &'asked Asked,
             entries: &serde_json::Map<String, serde_json::Value>,
         ) -> Option<serde_json::Map<String, serde_json::Value>>
         where
-            R: FnOnce(TakenProbe) -> core::result::Result<T, serde::de::value::Error>,
+            R: FnOnce(TakenProbe<'asked>) -> core::result::Result<T, serde::de::value::Error>,
         {
-            let taken = taken_keys(read, entries.keys());
+            let taken = taken_keys(read, asked, entries.keys());
             if taken.is_empty() {
                 return None;
             }
@@ -3089,10 +3183,10 @@ fn walked_field<'item>(
     parameters: &[String],
 ) -> Option<WalkedField<'item>> {
     let ident = field.ident.as_ref()?;
-    let omission = parse_serde_key_omission(&field.attrs);
-    if omission.absent_from_wire() {
+    if is_off_the_wire(field) {
         return None;
     }
+    let omission = parse_serde_key_omission(&field.attrs);
     let meta = parse_serde_field_attributes(&field.attrs);
     let key = meta.rename.unwrap_or_else(|| {
         resolve_rename_rule(rename_all).apply_to_field(&ident.unraw().to_string())
@@ -3130,10 +3224,10 @@ fn walked_fields<'item>(
                 module_name,
                 parameters,
             ));
-        } else if !parse_serde_key_omission(&field.attrs).absent_from_wire() {
-            flattened.push(Flattened::of(field, module_name, parameters));
-        } else {
+        } else if is_off_the_wire(field) {
             // serde neither writes nor reads the field, so no key in the object is its own.
+        } else {
+            flattened.push(Flattened::of(field, module_name, parameters));
         }
     }
     let declared = fields

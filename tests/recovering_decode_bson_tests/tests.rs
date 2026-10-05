@@ -274,6 +274,34 @@ impl<'de> Deserialize<'de> for Sealed {
     }
 }
 
+/// A field serde writes wherever a predicate lets it be, and never reads.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Kept {
+    id: String,
+    #[serde(skip_deserializing, skip_serializing_if = "Option::is_none")]
+    note: Option<String>,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct KeptText {
+    id: String,
+    #[serde(skip_deserializing, skip_serializing_if = "String::is_empty")]
+    note: String,
+}
+
+/// Two fields serde neither writes nor reads: one under `skip`, one under its two halves.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Shelved {
+    #[serde(skip)]
+    cached: u8,
+    id: String,
+    #[serde(skip_serializing, skip_deserializing)]
+    local: u8,
+}
+
 #[model_schema(decode_with)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Envelope {
@@ -1110,6 +1138,63 @@ fn bson_5_a_number_stored_as_another_number_type_is_no_issue() {
     assert_eq!(read, Ok(record(&[2_i32])));
     assert_eq!(seen, Vec::<Told>::new());
     assert_eq!(calls, 0);
+}
+
+/// A field serde writes wherever its predicate lets it be and never reads has its key in what the
+/// type wrote, which is a key the type declares.
+#[test]
+fn a_key_the_type_writes_under_a_predicate_and_does_not_read_is_declared() {
+    let kept_row = written(&Kept {
+        id: "i".to_owned(),
+        note: Some("n".to_owned()),
+    });
+    assert_eq!(kept_row, doc! { "id": "i", "note": "n" });
+    let mut calls = 0_u32;
+    let kept = Kept::from_bson_with(kept_row, |_raw, _found| {
+        calls += 1;
+        kept_schema::Verdict::Reject
+    });
+    assert_eq!(
+        kept,
+        Ok(Kept {
+            id: "i".to_owned(),
+            note: None,
+        })
+    );
+
+    let text_row = written(&KeptText {
+        id: "i".to_owned(),
+        note: "n".to_owned(),
+    });
+    assert_eq!(text_row, doc! { "id": "i", "note": "n" });
+    let text = KeptText::from_bson_with(text_row, |_raw, _found| {
+        calls += 1;
+        kept_text_schema::Verdict::Reject
+    });
+    assert_eq!(
+        text,
+        Ok(KeptText {
+            id: "i".to_owned(),
+            note: String::new(),
+        })
+    );
+    assert_eq!(calls, 0);
+}
+
+/// A field serde neither writes nor reads declares no key, under `skip` or under
+/// `skip_serializing` beside `skip_deserializing`: its key in a row is one serde reads past.
+#[test]
+fn a_key_of_a_field_the_type_neither_writes_nor_reads_is_unknown() {
+    let stored_row = doc! { "cached": 1_i32, "id": "i", "local": 9_i32 };
+    assert!(serde_reads::<Shelved>(&stored_row));
+    let read = Shelved::from_bson_with(stored_row, |_raw, _found| shelved_schema::Verdict::Reject);
+    assert_eq!(
+        told!(shelved_schema, read.unwrap_err().issues),
+        [
+            unknown("cached", Bson::Int32(1_i32)),
+            unknown("local", Bson::Int32(9_i32))
+        ]
+    );
 }
 
 /// Bson 6: a MongoDB row with the `_id` every row carries, read into a type that does not declare

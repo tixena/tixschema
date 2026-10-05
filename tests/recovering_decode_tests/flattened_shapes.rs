@@ -724,6 +724,119 @@ struct Bundle<T> {
     id: String,
 }
 
+/// A flattened type parameter beside a key of the type's own.
+#[model_schema(decode_with, default_types(T = Plain))]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Letter<T> {
+    #[serde(flatten)]
+    body: T,
+    id: String,
+}
+
+/// A flattened generic brand filled with an `Option` of a struct.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Pocket {
+    #[serde(flatten)]
+    body: Wrap<Option<Plain>>,
+    id: String,
+}
+
+/// A flattened `Option` read through a hook.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct DirectMaybe {
+    id: String,
+    #[serde(
+        flatten,
+        default,
+        deserialize_with = "as_written",
+        skip_serializing_if = "Option::is_none"
+    )]
+    version: Option<Version>,
+}
+
+/// A flattened struct read through a hook.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct ThroughHook {
+    id: String,
+    #[serde(flatten, deserialize_with = "as_written")]
+    version: Version,
+}
+
+/// A flattened map read through a hook.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct MapThroughHook {
+    #[serde(flatten, deserialize_with = "as_written")]
+    entries: HashMap<String, i32>,
+    id: String,
+}
+
+/// A flattened field read through a hook generic over what it reads, then a flattened type that
+/// takes every key it is handed.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct HookAhead {
+    #[serde(flatten, deserialize_with = "as_written")]
+    ahead: Version,
+    #[serde(flatten)]
+    counts: Counts,
+    id: String,
+}
+
+/// A flattened field serde writes and never reads.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct NeverRead {
+    id: String,
+    #[serde(flatten, skip_deserializing, skip_serializing_if = "Option::is_none")]
+    version: Option<Version>,
+}
+
+/// A flagged type with a value of its own to stand where serde reads none.
+#[model_schema(decode_with)]
+#[derive(Debug, Default, Deserialize, PartialEq, Serialize)]
+struct Draft {
+    pages: i32,
+}
+
+/// A flattened field serde writes and never reads, which takes its type's default.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Unpicked {
+    #[serde(flatten, skip_deserializing)]
+    draft: Draft,
+    id: String,
+}
+
+/// A flattened JSON value, which holds whatever entries are left.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct OpenEnded {
+    id: String,
+    #[serde(flatten)]
+    rest: Value,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct MaybeOpenEnded {
+    id: String,
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    rest: Option<Value>,
+}
+
+/// A flattened `Option` of a map.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct MaybeCounted {
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    entries: Option<HashMap<String, i32>>,
+    id: String,
+}
+
 /// A single-slot struct over an `Option` of an `Option` of a struct, the inner one in a `Box`,
 /// which serde reads through.
 #[model_schema(decode_with)]
@@ -850,6 +963,19 @@ flagged! {
     Waxed => waxed_schema,
     Guess => guess_schema,
     Deeper => deeper_schema,
+    Counts => counts_schema,
+    Signed => signed_schema,
+    Letter<Plain> => letter_schema,
+    Letter<Option<Plain>> => letter_schema,
+    Letter<HashMap<String, i32>> => letter_schema,
+    DirectMaybe => direct_maybe_schema,
+    Pocket => pocket_schema,
+    ThroughHook => through_hook_schema,
+    MapThroughHook => map_through_hook_schema,
+    HookAhead => hook_ahead_schema,
+    OpenEnded => open_ended_schema,
+    MaybeOpenEnded => maybe_open_ended_schema,
+    MaybeCounted => maybe_counted_schema,
 }
 
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
@@ -937,7 +1063,8 @@ where
 {
     let mut rest = stored.as_object().unwrap().clone();
     rest.remove("id");
-    let left = counts_schema::value_left(S::deserialize, &rest);
+    let left =
+        counts_schema::value_remaining(S::deserialize, &counts_schema::Asked::default(), &rest);
     let copied = left.is_some();
     (left.unwrap_or(rest).into_iter().collect(), copied)
 }
@@ -1506,4 +1633,161 @@ fn a_flattened_single_slot_struct_with_a_hooked_slot_claims_what_its_hook_reads(
             "the value itself: invalid: expected Model(\"Version\"), found Object {\"number\": String(\"3\")}: invalid type: string \"3\", expected i32"
         ]
     );
+}
+
+/// A flattened type parameter filled with an `Option` is absent to serde wherever the value does
+/// not read, so a record written with it absent is no issue. With it there, it is read.
+#[test]
+fn a_flattened_parameter_filled_with_an_absent_option_is_no_issue() {
+    let letter = Letter::<Option<Plain>> {
+        body: None,
+        id: "i".to_owned(),
+    };
+    let written = serde_json::to_value(&letter).unwrap();
+    assert_eq!(written, json!({ "id": "i" }));
+    let mut calls = 0_u32;
+    let read = read_counting!(Letter<Option<Plain>>, letter_schema, written, calls);
+    assert_eq!(read.ok(), Some(letter));
+    assert_eq!(calls, 0);
+    assert!(agrees::<Letter<Option<Plain>>>(
+        &json!({ "id": "i", "text": "t" })
+    ));
+    // A generic brand reads as whatever fills it, flattened too.
+    assert!(agrees::<Pocket>(&json!({ "id": "i" })));
+    assert!(agrees::<Pocket>(&json!({ "id": "i", "text": "t" })));
+}
+
+/// A flattened `Option` read through a hook is absent to serde wherever the hook's read of it is
+/// refused, so a record written with it absent is no issue. With it there, it is read.
+#[test]
+fn a_flattened_option_behind_a_hook_that_is_absent_is_no_issue() {
+    assert!(agrees::<DirectMaybe>(&json!({ "id": "i" })));
+    assert!(agrees::<DirectMaybe>(
+        &json!({ "id": "i", "number": 3_i32 })
+    ));
+}
+
+/// serde reads an `Option` behind a hook or in what fills a parameter as absent where what it
+/// holds is refused, and reads the record. Nothing here sees that `Option`, so nothing is listed.
+#[test]
+fn a_value_refused_inside_a_flattened_option_not_seen_is_read_as_absent() {
+    let mut calls = 0_u32;
+    let number_as_text = json!({ "id": "i", "number": "3" });
+    let maybe = DirectMaybe {
+        id: "i".to_owned(),
+        version: None,
+    };
+    assert_eq!(DirectMaybe::deserialize(&number_as_text).unwrap(), maybe);
+    assert_eq!(
+        read_counting!(DirectMaybe, direct_maybe_schema, number_as_text, calls),
+        Ok(maybe)
+    );
+
+    let text_as_number = json!({ "id": "i", "text": 5_i32 });
+    let letter = Letter::<Option<Plain>> {
+        body: None,
+        id: "i".to_owned(),
+    };
+    assert_eq!(
+        Letter::<Option<Plain>>::deserialize(&text_as_number).unwrap(),
+        letter
+    );
+    assert_eq!(
+        read_counting!(Letter<Option<Plain>>, letter_schema, text_as_number, calls),
+        Ok(letter)
+    );
+    assert_eq!(calls, 0);
+}
+
+/// A value read whole that is no `Option` and that its reader refuses is listed at the object, as
+/// serde refuses the record.
+#[test]
+fn a_flattened_value_read_whole_that_its_reader_refuses_is_invalid_at_the_object() {
+    let number_as_text = json!({ "id": "i", "number": "3" });
+    assert!(!serde_reads::<ThroughHook>(&number_as_text));
+    assert_eq!(
+        listed!(ThroughHook, through_hook_schema, number_as_text),
+        [
+            "the value itself: invalid: expected Model(\"Version\"), found Object {\"number\": String(\"3\")}: invalid type: string \"3\", expected i32"
+        ]
+    );
+    let text_as_number = json!({ "id": "i", "text": 5_i32 });
+    assert!(!serde_reads::<Letter<Plain>>(&text_as_number));
+    assert_eq!(
+        listed!(Letter<Plain>, letter_schema, text_as_number),
+        [
+            "the value itself: invalid: expected TypeParam(\"T\"), found Object {\"text\": Number(5)}: invalid type: integer `5`, expected a string"
+        ]
+    );
+}
+
+/// Every kind of flattened field reads what serde wrote for it with no call: a map, a flagged
+/// type, a value read whole through a hook, of a parameter's type and of a JSON value's type, and
+/// an `Option` of each, there and absent.
+#[test]
+fn every_kind_of_flattened_field_reads_what_serde_wrote_with_no_call() {
+    assert!(agrees::<Counts>(&json!({ "a": 1_i32, "title": "t" })));
+    assert!(agrees::<MaybeCounted>(&json!({ "a": 1_i32, "id": "i" })));
+    assert!(agrees::<MaybeCounted>(&json!({ "id": "i" })));
+    assert!(agrees::<Signed>(
+        &json!({ "id": "i", "number": 3_i32, "revision": "r" })
+    ));
+
+    assert!(agrees::<ThroughHook>(
+        &json!({ "id": "i", "number": 3_i32 })
+    ));
+    assert!(agrees::<MapThroughHook>(&json!({ "a": 1_i32, "id": "i" })));
+    assert!(agrees::<HookAhead>(
+        &json!({ "a": 1_i32, "id": "i", "number": 3_i32, "title": "t" })
+    ));
+
+    assert!(agrees::<Letter<Plain>>(&json!({ "id": "i", "text": "t" })));
+    assert!(agrees::<Letter<HashMap<String, i32>>>(
+        &json!({ "a": 1_i32, "id": "i" })
+    ));
+
+    assert!(agrees::<OpenEnded>(
+        &json!({ "a": 1_i32, "b": "x", "id": "i" })
+    ));
+    assert!(agrees::<MaybeOpenEnded>(&json!({ "a": 1_i32, "id": "i" })));
+    assert!(agrees::<MaybeOpenEnded>(&json!({ "id": "i" })));
+}
+
+/// A flattened field serde writes and never reads leaves its keys in the object: serde reads past
+/// them, and no key is `Unknown`.
+#[test]
+fn a_flattened_field_serde_never_reads_is_read_past() {
+    let written = serde_json::to_value(NeverRead {
+        id: "i".to_owned(),
+        version: Some(Version { number: 3_i32 }),
+    })
+    .unwrap();
+    assert_eq!(written, json!({ "id": "i", "number": 3_i32 }));
+    let unread = NeverRead {
+        id: "i".to_owned(),
+        version: None,
+    };
+    assert_eq!(NeverRead::deserialize(&written).unwrap(), unread);
+    let mut calls = 0_u32;
+    assert_eq!(
+        read_counting!(NeverRead, never_read_schema, written, calls),
+        Ok(unread)
+    );
+
+    let paged = serde_json::to_value(Unpicked {
+        draft: Draft { pages: 3_i32 },
+        id: "i".to_owned(),
+    })
+    .unwrap();
+    assert_eq!(paged, json!({ "id": "i", "pages": 3_i32 }));
+    let unpicked = Unpicked {
+        draft: Draft::default(),
+        id: "i".to_owned(),
+    };
+    assert_eq!(Unpicked::deserialize(&paged).unwrap(), unpicked);
+    assert_eq!(
+        read_counting!(Unpicked, unpicked_schema, paged, calls),
+        Ok(unpicked)
+    );
+    assert_eq!(calls, 0);
 }
