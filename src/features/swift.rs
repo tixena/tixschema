@@ -16,6 +16,7 @@ use std::collections::HashMap;
 
 use proc_macro2::TokenStream;
 use quote::quote;
+use syn::ext::IdentExt as _;
 use syn::{Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
@@ -939,7 +940,7 @@ fn collect_swift_fields(
         let Some(ident) = field.ident.as_ref() else {
             continue;
         };
-        let rust_name = ident.to_string();
+        let rust_name = ident.unraw().to_string();
         let omission = parse_serde_key_omission(&field.attrs);
         if omission.absent_from_wire() {
             continue;

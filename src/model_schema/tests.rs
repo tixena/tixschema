@@ -10088,7 +10088,7 @@ fn emitted_string_module(spelling: &str) -> String {
         ..ModelSchemaPropMeta::default()
     };
     generate_string_validation_code(
-        "field",
+        &proc_macro2::Ident::new("field", proc_macro2::Span::call_site()),
         &helper_name_stem("field", None),
         &meta,
         &shape,
@@ -10109,7 +10109,7 @@ fn emitted_pattern_validator(pattern: &str) -> String {
         ..ModelSchemaPropMeta::default()
     };
     let module = generate_string_validation_code(
-        "field",
+        &proc_macro2::Ident::new("field", proc_macro2::Span::call_site()),
         &helper_name_stem("field", None),
         &meta,
         &constrained_shape(&ty).unwrap(),
@@ -10151,7 +10151,7 @@ fn a_bare_field_deserializes_the_constrained_value_itself() {
         ..ModelSchemaPropMeta::default()
     };
     let numeric = generate_numeric_validation_code(
-        "field",
+        &proc_macro2::Ident::new("field", proc_macro2::Span::call_site()),
         &helper_name_stem("field", None),
         "u32",
         &numeric_meta,

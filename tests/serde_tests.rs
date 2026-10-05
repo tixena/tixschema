@@ -3,6 +3,10 @@
 //! `rename_all`, across TypeScript, Zod, and JSON schema generation.
 
 #[cfg(test)]
+#[path = "serde_tests/raw_identifiers.rs"]
+mod raw_identifiers;
+
+#[cfg(test)]
 #[cfg(feature = "serde")]
 #[path = "serde_tests/tests.rs"]
 mod tests;

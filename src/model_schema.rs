@@ -5,6 +5,7 @@ use core::fmt::Write as _;
 
 use proc_macro2::TokenStream;
 use quote::quote;
+use syn::ext::IdentExt as _;
 use syn::parse::{Parse, ParseStream, Parser as _};
 use syn::punctuated::Punctuated;
 use syn::{Field, Item, ItemType, Meta, Token};
@@ -11215,7 +11216,7 @@ fn wrap_binding(depth: usize) -> proc_macro2::Ident {
 /// The name a variant's constrained member is bound under in the arm that matched it.
 fn member_binding(field_ident: &proc_macro2::Ident) -> proc_macro2::Ident {
     proc_macro2::Ident::new(
-        &format!("member_{field_ident}"),
+        &format!("member_{}", field_ident.unraw()),
         proc_macro2::Span::call_site(),
     )
 }
@@ -11628,7 +11629,7 @@ fn checked_value_parts(
 /// the field's declared type when it is wrapped.
 #[cfg(feature = "serde")]
 fn generate_string_validation_code(
-    field_ident: &str,
+    member: &proc_macro2::Ident,
     helper_stem: &str,
     meta: &ModelSchemaPropMeta,
     shape: &ConstrainedShape,
@@ -11646,7 +11647,7 @@ fn generate_string_validation_code(
     let measures_path = matches!(shape.leaf, ConstraintLeaf::Path);
     let (checked_param, rendering) = checked_value_parts(measures_path);
 
-    let field_name_lit = field_ident.to_owned();
+    let field_name_lit = member.unraw().to_string();
 
     let measured = quote! { value.len() };
     let mut checks: Vec<proc_macro2::TokenStream> = Vec::new();
@@ -11715,10 +11716,7 @@ fn generate_string_validation_code(
         #deserializer
     };
 
-    let field_ident_tok = proc_macro2::Ident::new(field_ident, proc_macro2::Span::call_site());
-
-    let validate_body =
-        build_field_validation(wraps, access, &field_ident_tok, &validate_value_fn_ident);
+    let validate_body = build_field_validation(wraps, access, member, &validate_value_fn_ident);
 
     FieldValidationCode {
         module_items,
@@ -11730,7 +11728,7 @@ fn generate_string_validation_code(
 /// — see `generate_string_validation_code` for how the two spellings differ.
 #[cfg(feature = "serde")]
 fn generate_numeric_validation_code(
-    field_ident: &str,
+    member: &proc_macro2::Ident,
     helper_stem: &str,
     rust_type_str: &str,
     meta: &ModelSchemaPropMeta,
@@ -11747,7 +11745,7 @@ fn generate_numeric_validation_code(
         proc_macro2::Ident::new(&deserialize_fn_name, proc_macro2::Span::call_site());
 
     let rust_type_ident: proc_macro2::TokenStream = rust_type_str.parse().unwrap();
-    let field_name_lit = field_ident.to_owned();
+    let field_name_lit = member.unraw().to_string();
 
     let measured = quote! { value };
     let mut checks: Vec<proc_macro2::TokenStream> = Vec::new();
@@ -11808,10 +11806,7 @@ fn generate_numeric_validation_code(
         #deserializer
     };
 
-    let field_ident_tok = proc_macro2::Ident::new(field_ident, proc_macro2::Span::call_site());
-
-    let validate_body =
-        build_field_validation(wraps, access, &field_ident_tok, &validate_value_fn_ident);
+    let validate_body = build_field_validation(wraps, access, member, &validate_value_fn_ident);
 
     FieldValidationCode {
         module_items,
@@ -12104,12 +12099,12 @@ fn check_nullable_ts_optional_conflict(flags: &ModelSchemaPropMeta) -> Result<()
     Ok(())
 }
 
-/// The field's ident as a string, empty for a positional slot that has none.
+/// The field's name as serde reads it, with no raw prefix; empty for a positional slot.
 fn field_ident_string(field: &Field) -> String {
     field
         .ident
         .as_ref()
-        .map(ToString::to_string)
+        .map(|ident| ident.unraw().to_string())
         .unwrap_or_default()
 }
 
@@ -12798,7 +12793,7 @@ fn nested_validate_body(
         MemberAccess::SelfField
     };
     let checked = member_access_expr(access, field_ident_tok);
-    let named = field_ident_tok.to_string();
+    let named = field_ident_tok.unraw().to_string();
     let under = (!flattened).then_some(named.as_str());
     Some(build_nested_validation(&wraps, &checked, under))
 }
@@ -13121,6 +13116,9 @@ fn generate_field_validation(
         return (None, None, None);
     };
 
+    let Some(member) = field.ident.as_ref() else {
+        return (None, None, None);
+    };
     let helper_stem = helper_name_stem(raw_field_ident, variant_ident);
     // The variant that scopes the helper names is the same thing that says where the value is
     // reached from: a member of one is bound by the arm that matched it, and a struct's field is
@@ -13133,7 +13131,7 @@ fn generate_field_validation(
     let generated = match shape.leaf {
         ConstraintLeaf::Path | ConstraintLeaf::Str => has_string_constraints.then(|| {
             generate_string_validation_code(
-                raw_field_ident,
+                member,
                 &helper_stem,
                 model_schema_prop_meta,
                 &shape,
@@ -13143,7 +13141,7 @@ fn generate_field_validation(
         }),
         ConstraintLeaf::Number(rust_type) => has_numeric_constraints.then(|| {
             generate_numeric_validation_code(
-                raw_field_ident,
+                member,
                 &helper_stem,
                 rust_type,
                 model_schema_prop_meta,
