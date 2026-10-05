@@ -115,3 +115,90 @@ mod a_second_trait_with_fmt {
         assert_eq!(RecordId(id).to_string(), "6a7cc592ca0574e6efdfe217");
     }
 }
+
+/// A module that declares a type named `Sized` beside a struct holding another model type, whose
+/// expansion bounds a type parameter `?Sized`.
+#[cfg(all(feature = "serde", feature = "typescript"))]
+mod a_type_named_sized {
+    /// The same two types in a module that declares no `Sized`, to read the surfaces against.
+    mod unshadowed {
+        use serde::{Deserialize, Serialize};
+        use tixschema::model_schema;
+
+        #[model_schema()]
+        #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+        pub struct PlainHolder {
+            pub inner: PlainInner,
+            #[model_schema_prop(minimum = 1)]
+            pub level: i32,
+        }
+
+        #[model_schema()]
+        #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+        pub struct PlainInner {
+            pub number: i32,
+        }
+    }
+
+    use serde::{Deserialize, Serialize};
+    use tixschema::model_schema;
+
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder {
+        pub inner: Inner,
+        #[model_schema_prop(minimum = 1)]
+        pub level: i32,
+    }
+
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Inner {
+        pub number: i32,
+    }
+
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Sized {
+        pub text: String,
+    }
+
+    /// `text` with the unshadowed pair's names put back to the shadowed pair's.
+    fn renamed(text: &str) -> String {
+        text.replace("PlainHolder", "Holder")
+            .replace("PlainInner", "Inner")
+    }
+
+    #[test]
+    fn a_struct_holding_a_model_type_describes_as_it_does_without_the_name() {
+        assert_eq!(
+            Holder::ts_definition(),
+            renamed(&unshadowed::PlainHolder::ts_definition())
+        );
+        assert!(Sized::ts_definition().contains("text: string"));
+
+        let holder: Holder = serde_json::from_value(
+            serde_json::json!({ "inner": { "number": 1_i32 }, "level": 0_i32 }),
+        )
+        .unwrap();
+        assert_eq!(holder.validate().unwrap_err().len(), 1);
+    }
+
+    #[cfg(feature = "zod")]
+    #[test]
+    fn its_zod_schema_is_what_it_is_without_the_name() {
+        assert_eq!(
+            Holder::zod_schema(),
+            renamed(&unshadowed::PlainHolder::zod_schema())
+        );
+    }
+
+    #[cfg(feature = "jsonschema")]
+    #[test]
+    fn its_json_schema_is_what_it_is_without_the_name() {
+        assert_eq!(
+            Holder::json_schema(),
+            unshadowed::PlainHolder::json_schema()
+        );
+    }
+}

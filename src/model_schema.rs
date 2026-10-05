@@ -5170,13 +5170,13 @@ fn build_branded_validation(
 ))]
 fn embedded_type_identity() -> proc_macro2::TokenStream {
     quote! {
-        fn type_identity<T: ?Sized>() -> ::core::any::TypeId {
+        fn type_identity<T: ?::core::marker::Sized>() -> ::core::any::TypeId {
             trait NonStaticAny {
                 fn get_type_id(&self) -> ::core::any::TypeId
                 where
                     Self: 'static;
             }
-            impl<T: ?Sized> NonStaticAny for ::core::marker::PhantomData<T> {
+            impl<T: ?::core::marker::Sized> NonStaticAny for ::core::marker::PhantomData<T> {
                 fn get_type_id(&self) -> ::core::any::TypeId
                 where
                     Self: 'static,
@@ -11359,7 +11359,7 @@ fn unpublished_validate_fallback() -> proc_macro2::TokenStream {
                 Ok(())
             }
         }
-        impl<T: ?Sized> UnpublishedValidate for &T {}
+        impl<T: ?::core::marker::Sized> UnpublishedValidate for &T {}
     }
 }
 

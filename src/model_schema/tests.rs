@@ -2758,7 +2758,7 @@ fn a_field_whose_type_could_publish_a_validator_contributes_a_body_that_runs_it(
         "a type that published no validator has to answer something: {body}"
     );
     assert!(
-        body.contains("impl < T : ? Sized > UnpublishedValidate for & T"),
+        body.contains("impl < T : ? :: core :: marker :: Sized > UnpublishedValidate for & T"),
         "implemented for `&T` so it sits one autoref step below any other blanket `validate()` \
          the call site can see, rather than tying with it: {body}"
     );
