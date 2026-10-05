@@ -70,8 +70,11 @@ mod a_one_parameter_result {
 }
 
 /// A module that imports a second trait with a `fmt` method beside a brand, whose `Display`
-/// hands the formatting to the value it holds.
-#[cfg(feature = "serde")]
+/// hands the formatting to the value it holds. A brand is displayed where a schema surface is on.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
 mod a_second_trait_with_fmt {
     use core::fmt::Debug;
     #[cfg(feature = "mongodb")]
