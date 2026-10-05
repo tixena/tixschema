@@ -3523,7 +3523,7 @@ impl Record {
     { /* ... */ }
 
     pub fn from_bson_with<F>(
-        mut document: bson::Document,
+        document: bson::Document,
         decide: F,
     ) -> core::result::Result<Self, record_schema::Unrecovered<bson::Bson>>
     where
@@ -3714,9 +3714,11 @@ The message names the first such field serde reads, a reference held inside an `
 
 ### Cost
 
-Every read walks the record, one that decodes cleanly included: the walk is what finds a key the type does not declare and a value held in another form than its field writes. Each plain value is read a second time and written back, to compare it with what is held. `from_bson_with` also copies the document it reads, `bson::Deserializer::new` taking the value it reads by value.
+Every read walks the record, one that decodes cleanly included: the walk is what finds a key the type does not declare and a value held in another form than its field writes. Each plain value is read a second time and written back, to compare it with what is held.
 
-Measured on one machine in a release build, on the `Record` below holding two versions, a `from_bson_with` read that calls no callback took about four times what plain serde takes to read the same document.
+`from_bson_with` copies the document once for each read of it by serde, `bson::Deserializer::new` taking the value it reads by value: once for the read that decodes it, and once more for the read of what the callback left after it answers `Fixed`. The walk borrows the document. Whatever the walk reads with serde on its own, each plain value first of all, it copies as it reads it, for the same reason.
+
+Measured on one machine in a release build, on the `Record` below holding two versions, a `from_value_with` read that calls no callback took about 2.7 times what `serde_json::from_value` takes to read the same value, and a `from_bson_with` read about 3.3 times what the `bson` library's own read takes to read the same document, `bson::from_document` in version 2 and `bson::deserialize_from_document` in version 3. Each read was handed its own copy of the value and consumed it. Plain serde reading the JSON value through a reference, `Record::deserialize(&value)`, leaves the value with its caller and took less than half of what `serde_json::from_value` takes: `from_value_with` took about six times that.
 
 ### A complete callback
 

@@ -227,6 +227,62 @@ fn leaf_tokens(tokens: proc_macro2::TokenStream, leaves: &mut Vec<String>) {
     }
 }
 
+/// The body of the method `named` among `type_impl`, as text.
+fn body_of(type_impl: proc_macro2::TokenStream, named: &str) -> String {
+    use quote::ToTokens as _;
+
+    let added: syn::File = syn::parse2(type_impl).unwrap();
+    let bodies: Vec<String> = added
+        .items
+        .iter()
+        .filter_map(|added_item| {
+            if let syn::Item::Impl(block) = added_item {
+                Some(&block.items)
+            } else {
+                None
+            }
+        })
+        .flatten()
+        .filter_map(|member| {
+            if let syn::ImplItem::Fn(method) = member
+                && method.sig.ident == named
+            {
+                Some(method.block.to_token_stream().to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(bodies.len(), 1, "for {named}");
+    bodies.concat()
+}
+
+/// The `impl` the flag adds to one type of each shape, beside the source that declares it: structs
+/// with named fields, with flattened fields, with slots and with none, and the five enum forms.
+fn impls_of_every_shape() -> Vec<(&'static str, proc_macro2::TokenStream)> {
+    let mut emitted = Vec::new();
+    for source in [
+        EVERY_WALK,
+        FLATTENING,
+        "pub struct Pair(String, u32);",
+        "pub struct Ping;",
+    ] {
+        let item: syn::ItemStruct = syn::parse_str(source).unwrap();
+        emitted.push((source, struct_recovering_decode(&item).type_impl));
+    }
+    for source in [
+        EXTERNAL,
+        INTERNAL,
+        ADJACENT,
+        UNTAGGED,
+        "pub enum Status { Draft, Published }",
+    ] {
+        let item: syn::ItemEnum = syn::parse_str(source).unwrap();
+        emitted.push((source, enum_recovering_decode(&item).type_impl));
+    }
+    emitted
+}
+
 /// The methods of the `impl Path` the flag puts into a schema module, in the order written.
 fn path_methods() -> Vec<String> {
     let added: syn::File = syn::parse2(module_items()).unwrap();
@@ -315,11 +371,11 @@ fn the_bson_methods_carry_the_signatures_of_their_json_twins() {
     assert_eq!(
         signatures,
         [
-            "pub fn from_bson_with < F > (mut document : bson :: Document , decide : F ,) \
+            "pub fn from_bson_with < F > (document : bson :: Document , decide : F ,) \
              -> core :: result :: Result < Self , named_schema :: Unrecovered < bson :: Bson > > \
              where F : FnOnce (& mut bson :: Document , & [named_schema :: Issue < bson :: Bson >]) \
              -> named_schema :: Verdict ,",
-            "fn decode_with_bson_report (document : & bson :: Document) \
+            "fn decode_with_bson_report (whole : & bson :: Bson , refused : Option < String >) \
              -> Vec < named_schema :: Issue < bson :: Bson > >",
             "pub fn decode_with_bson_issues < I > (found : & bson :: Bson , \
              path : & [core :: result :: Result < String , usize >] , \
@@ -329,6 +385,24 @@ fn the_bson_methods_carry_the_signatures_of_their_json_twins() {
              issue : named_schema :: IssueFromParts < bson :: Bson , I > , out : & mut Vec < I > ,) \
              -> Vec < & 'a str >",
         ]
+    );
+    // The JSON report is told what serde said as the BSON one is.
+    let json_report = added.items.iter().find_map(|added_item| {
+        if let syn::ImplItem::Fn(method) = added_item
+            && method.sig.ident == "decode_with_value_report"
+        {
+            let signature = &method.sig;
+            Some(quote::quote!(#signature).to_string())
+        } else {
+            None
+        }
+    });
+    assert_eq!(
+        json_report.as_deref(),
+        Some(
+            "fn decode_with_value_report (value : & serde_json :: Value , refused : Option < String >) \
+             -> Vec < named_schema :: Issue < serde_json :: Value > >"
+        )
     );
 }
 
@@ -397,12 +471,89 @@ fn the_bson_emission_names_only_what_both_major_versions_have() {
     for through in [
         "bson :: Deserializer :: new (held . clone ())",
         "bson :: Serializer :: new ()",
-        "bson :: Deserializer :: new (bson :: Bson :: Document (document . clone ()))",
+        "bson :: Deserializer :: new (whole . clone ())",
     ] {
         assert!(
             emitted.contains(through),
             "missing `{through}` in: {emitted}"
         );
+    }
+}
+
+/// `from_value_with` reads the value with serde once per decode and tells its report what serde
+/// said, so the report reads nothing with serde on its own account, whatever the type's shape.
+#[test]
+fn from_value_with_reads_the_value_once_per_decode_and_its_report_reads_nothing() {
+    for (source, type_impl) in impls_of_every_shape() {
+        let entry = body_of(type_impl.clone(), "from_value_with");
+        // The first read, and the one after the callback answers `Fixed`.
+        assert_eq!(
+            entry
+                .matches("< Self as serde :: Deserialize > :: deserialize (& value)")
+                .count(),
+            2,
+            "for {source}, got: {entry}"
+        );
+        assert_eq!(
+            entry.matches("deserialize").count(),
+            2,
+            "for {source}, got: {entry}"
+        );
+        for told in [
+            "Self :: decode_with_value_report (& value , None)",
+            "Self :: decode_with_value_report (& value , Some (refused . to_string ()))",
+            "Self :: decode_with_value_report (& value , read . as_ref () . err () . map (ToString :: to_string))",
+        ] {
+            assert_eq!(entry.matches(told).count(), 1, "for {source}, got: {entry}");
+        }
+
+        let report = body_of(type_impl, "decode_with_value_report");
+        assert!(
+            report.contains("Self :: decode_with_value_issues (value , & [] ,"),
+            "for {source}, got: {report}"
+        );
+        for absent in ["deserialize", "Deserialize"] {
+            assert!(!report.contains(absent), "for {source}, got: {report}");
+        }
+    }
+}
+
+/// `bson::Deserializer::new` takes what it reads by value, so `from_bson_with` copies the document
+/// once per read of it by serde. Its report borrows the document and is told what serde said, so
+/// it copies nothing and reads nothing, whatever the type's shape.
+#[cfg(feature = "bson")]
+#[test]
+fn from_bson_with_copies_the_document_once_per_read_by_serde_and_its_report_copies_nothing() {
+    for (source, type_impl) in impls_of_every_shape() {
+        let entry = body_of(type_impl.clone(), "from_bson_with");
+        assert!(
+            entry.contains("let mut whole = bson :: Bson :: Document (document) ;"),
+            "for {source}, got: {entry}"
+        );
+        // The first read, and the one after the callback answers `Fixed`.
+        assert_eq!(
+            entry
+                .matches("bson :: Deserializer :: new (whole . clone ())")
+                .count(),
+            2,
+            "for {source}, got: {entry}"
+        );
+        for once_per_read in ["Deserializer", "clone"] {
+            assert_eq!(
+                entry.matches(once_per_read).count(),
+                2,
+                "for {source}, got: {entry}"
+            );
+        }
+
+        let report = body_of(type_impl, "decode_with_bson_report");
+        assert!(
+            report.contains("Self :: decode_with_bson_issues (whole , & [] ,"),
+            "for {source}, got: {report}"
+        );
+        for absent in ["clone", "Deserializer"] {
+            assert!(!report.contains(absent), "for {source}, got: {report}");
+        }
     }
 }
 

@@ -1412,33 +1412,40 @@ fn binding(stem: &str, depth: usize) -> Ident {
 }
 
 /// `from_bson_with` and the report it runs. Every value is read through `bson::Deserializer::new`,
-/// which both major versions of the `bson` library have.
+/// which both major versions of the `bson` library have, and which takes what it reads by value:
+/// the document is held as the `bson::Bson` the walker borrows, and copied once per read by serde.
 #[cfg(feature = "bson")]
 fn bson_entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
     quote! {
         /// Reads `document` as this type, handing every issue found in it to `decide`, once.
         pub fn from_bson_with<#decider>(
-            mut document: bson::Document,
+            document: bson::Document,
             decide: #decider,
         ) -> core::result::Result<Self, #module::Unrecovered<bson::Bson>>
         where
             #decider: FnOnce(&mut bson::Document, &[#module::Issue<bson::Bson>]) -> #module::Verdict,
         {
-            let found = match <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(bson::Bson::Document(document.clone()))) {
+            let mut whole = bson::Bson::Document(document);
+            let found = match <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(whole.clone())) {
                 Ok(decoded) => {
-                    let found = Self::decode_with_bson_report(&document);
+                    let found = Self::decode_with_bson_report(&whole, None);
                     if found.is_empty() {
                         return Ok(decoded);
                     }
                     found
                 }
-                Err(_) => Self::decode_with_bson_report(&document),
+                Err(refused) => Self::decode_with_bson_report(&whole, Some(refused.to_string())),
             };
-            match decide(&mut document, &found) {
+            // `whole` is the document it was built from, so the other arm is never taken.
+            let bson::Bson::Document(object) = &mut whole else {
+                return Err(#module::Unrecovered { issues: found });
+            };
+            match decide(object, &found) {
                 #module::Verdict::Reject => Err(#module::Unrecovered { issues: found }),
                 #module::Verdict::Fixed => {
-                    let again = Self::decode_with_bson_report(&document);
-                    match <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(bson::Bson::Document(document.clone()))) {
+                    let read = <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(whole.clone()));
+                    let again = Self::decode_with_bson_report(&whole, read.as_ref().err().map(ToString::to_string));
+                    match read {
                         Ok(decoded) if again.is_empty() => Ok(decoded),
                         _ => Err(#module::Unrecovered { issues: again }),
                     }
@@ -1446,14 +1453,13 @@ fn bson_entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
             }
         }
 
-        fn decode_with_bson_report(document: &bson::Document) -> Vec<#module::Issue<bson::Bson>> {
+        fn decode_with_bson_report(whole: &bson::Bson, refused: Option<String>) -> Vec<#module::Issue<bson::Bson>> {
             let mut out = Vec::new();
-            let found = bson::Bson::Document(document.clone());
-            Self::decode_with_bson_issues(&found, &[], #module::issue_from_parts, &mut out);
-            if out.iter().all(|found| matches!(found, #module::Issue::Unknown { .. } | #module::Issue::Mistyped { .. }))
-                && let Err(refused) = <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(found))
+            Self::decode_with_bson_issues(whole, &[], #module::issue_from_parts, &mut out);
+            if let Some(reason) = refused
+                && out.iter().all(|found| matches!(found, #module::Issue::Unknown { .. } | #module::Issue::Mistyped { .. }))
             {
-                out.push(#module::Issue::Undescribed { reason: refused.to_string() });
+                out.push(#module::Issue::Undescribed { reason });
             }
             out
         }
@@ -1691,7 +1697,8 @@ fn callback_items() -> TokenStream {
     }
 }
 
-/// `from_value_with` and the report it runs.
+/// `from_value_with` and the report it runs. The report is told what serde said of the value, so
+/// each decode reads the value with serde once.
 fn entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
     quote! {
         /// Reads `value` as this type, handing every issue found in it to `decide`, once.
@@ -1704,19 +1711,20 @@ fn entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
         {
             let found = match <Self as serde::Deserialize>::deserialize(&value) {
                 Ok(decoded) => {
-                    let found = Self::decode_with_value_report(&value);
+                    let found = Self::decode_with_value_report(&value, None);
                     if found.is_empty() {
                         return Ok(decoded);
                     }
                     found
                 }
-                Err(_) => Self::decode_with_value_report(&value),
+                Err(refused) => Self::decode_with_value_report(&value, Some(refused.to_string())),
             };
             match decide(&mut value, &found) {
                 #module::Verdict::Reject => Err(#module::Unrecovered { issues: found }),
                 #module::Verdict::Fixed => {
-                    let again = Self::decode_with_value_report(&value);
-                    match <Self as serde::Deserialize>::deserialize(&value) {
+                    let read = <Self as serde::Deserialize>::deserialize(&value);
+                    let again = Self::decode_with_value_report(&value, read.as_ref().err().map(ToString::to_string));
+                    match read {
                         Ok(decoded) if again.is_empty() => Ok(decoded),
                         _ => Err(#module::Unrecovered { issues: again }),
                     }
@@ -1724,13 +1732,13 @@ fn entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
             }
         }
 
-        fn decode_with_value_report(value: &serde_json::Value) -> Vec<#module::Issue<serde_json::Value>> {
+        fn decode_with_value_report(value: &serde_json::Value, refused: Option<String>) -> Vec<#module::Issue<serde_json::Value>> {
             let mut out = Vec::new();
             Self::decode_with_value_issues(value, &[], #module::issue_from_parts, &mut out);
-            if out.iter().all(|found| matches!(found, #module::Issue::Unknown { .. } | #module::Issue::Mistyped { .. }))
-                && let Err(refused) = <Self as serde::Deserialize>::deserialize(value)
+            if let Some(reason) = refused
+                && out.iter().all(|found| matches!(found, #module::Issue::Unknown { .. } | #module::Issue::Mistyped { .. }))
             {
-                out.push(#module::Issue::Undescribed { reason: refused.to_string() });
+                out.push(#module::Issue::Undescribed { reason });
             }
             out
         }

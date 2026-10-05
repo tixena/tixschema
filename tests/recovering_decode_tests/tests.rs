@@ -43,12 +43,16 @@ use alloc::borrow::Cow;
 use core::error::Error;
 use core::fmt::Display;
 use core::str::FromStr;
+use core::sync::atomic::{AtomicUsize, Ordering};
 use std::collections::HashMap;
 
 use serde::de::Error as _;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
+
+/// How many times [`counted`] has run. One test reads [`Counted`], and nothing else runs it.
+static NUMBER_READS: AtomicUsize = AtomicUsize::new(0);
 
 #[model_schema(decode_with)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -205,6 +209,14 @@ struct Unread {
     label: String,
 }
 
+/// One field read through a hook that counts its own runs.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Counted {
+    #[serde(deserialize_with = "counted")]
+    number: i32,
+}
+
 /// Two fields that name `'static` and borrow nothing from the value read: a `Cow`, which serde
 /// reads as an owned value, and a reference serde never reads.
 #[model_schema(decode_with)]
@@ -221,6 +233,15 @@ struct Lettered {
 struct Stamped {
     #[model_schema_prop(as_number)]
     at: chrono::DateTime<chrono::Utc>,
+}
+
+/// The read hook of [`Counted::number`]: the field type's own reader, counted.
+fn counted<'de, D>(deserializer: D) -> Result<i32, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    NUMBER_READS.fetch_add(1, Ordering::Relaxed);
+    i32::deserialize(deserializer)
 }
 
 /// The read hook of [`Hooked::code`]: text that carries no lower-case letter.
@@ -510,6 +531,20 @@ fn a_hooked_field_held_as_its_hook_writes_it_is_no_issue() {
         })
     );
     assert_eq!(calls, 0);
+}
+
+/// A read that calls no callback runs a field's reader twice: in serde's read of the whole value,
+/// and in the walk's own read of the field. The report reads nothing: it is told what serde said.
+#[test]
+fn a_read_that_calls_no_callback_runs_a_fields_reader_twice() {
+    let mut calls = 0_u32;
+    let read = Counted::from_value_with(json!({ "number": 7_i32 }), |_raw, _found| {
+        calls += 1;
+        counted_schema::Verdict::Reject
+    });
+    assert_eq!(read, Ok(Counted { number: 7 }));
+    assert_eq!(calls, 0);
+    assert_eq!(NUMBER_READS.load(Ordering::Relaxed), 2);
 }
 
 /// A constraint on a struct's field hangs no read hook: serde reads the value, so the walker does,
