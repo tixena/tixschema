@@ -1,17 +1,18 @@
 //! The recovering decode `#[model_schema(decode_with)]` turns on.
 //!
 //! A flagged struct gets `from_value_with`, which reads a `serde_json::Value` with plain serde,
-//! walks it, and hands every issue the walk finds to a callback once. The callback's types go into
-//! the type's own `{type}_schema` module. Two flagged types share no declaration: each module
-//! declares the same aliases of standard types, and a walker builds whatever issue type the
-//! constructor it is handed builds.
+//! walks it, and hands every issue the walk finds to a callback once. A build with `bson` on adds
+//! `from_bson_with`, the same read of a `bson::Document`, written with what both major versions of
+//! the `bson` library have. The callback's types go into the type's own `{type}_schema` module. Two
+//! flagged types share no declaration: each module declares the same aliases of standard types, and
+//! a walker builds whatever issue type the constructor it is handed builds.
 
 use core::iter::once;
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use proc_macro2::{Group, Spacing, TokenTree};
 use proc_macro2::{Ident, Literal, Span, TokenStream};
-use quote::quote;
+use quote::{format_ident, quote};
 use syn::ext::IdentExt as _;
 use syn::{Field, GenericArgument, ItemStruct, LitStr, PathArguments, Type, TypePath};
 
@@ -57,6 +58,118 @@ pub struct RecoveringDecode {
     pub type_impl: TokenStream,
 }
 
+/// What a value is read from. One walk serves every source: the types it names, the patterns it
+/// matches and the function a plain value is read through are the source's own.
+#[derive(Clone, Copy)]
+enum Source {
+    #[cfg(feature = "bson")]
+    Bson,
+    Json,
+}
+
+impl Source {
+    /// Every source this build generates an entry point and a walker for.
+    const GENERATED: &'static [Self] = &[
+        Self::Json,
+        #[cfg(feature = "bson")]
+        Self::Bson,
+    ];
+
+    /// The pattern a map is held under, binding its entries.
+    fn entries(self, entries: &Ident) -> TokenStream {
+        match self {
+            #[cfg(feature = "bson")]
+            Self::Bson => quote! { bson::Bson::Document(#entries) },
+            Self::Json => quote! { serde_json::Value::Object(#entries) },
+        }
+    }
+
+    /// The entry point and the report it runs.
+    fn entry_methods(self, module: &Ident) -> TokenStream {
+        match self {
+            #[cfg(feature = "bson")]
+            Self::Bson => bson_entry_methods(module),
+            Self::Json => entry_methods(module),
+        }
+    }
+
+    /// The pattern a list is held under, binding its items.
+    fn items(self, items: &Ident) -> TokenStream {
+        let value = self.value();
+        quote! { #value::Array(#items) }
+    }
+
+    /// The function a plain value is read through.
+    fn leaf(self) -> Ident {
+        format_ident!("{}_leaf", self.stem())
+    }
+
+    /// One of the walker's methods: `decode_with_value_issues`, `decode_with_bson_fields`.
+    fn method(self, part: &str) -> Ident {
+        format_ident!("decode_with_{}_{part}", self.stem())
+    }
+
+    fn null(self) -> TokenStream {
+        let value = self.value();
+        quote! { #value::Null }
+    }
+
+    /// The type of the object whose keys a type's fields are looked up in.
+    fn object(self) -> TokenStream {
+        match self {
+            #[cfg(feature = "bson")]
+            Self::Bson => quote! { bson::Document },
+            Self::Json => quote! { serde_json::Map<String, serde_json::Value> },
+        }
+    }
+
+    /// What binds `object` to the keys of `found`, when it holds an object.
+    fn object_of_found(self) -> TokenStream {
+        match self {
+            #[cfg(feature = "bson")]
+            Self::Bson => quote! { bson::Bson::Document(object) = found },
+            Self::Json => quote! { Some(object) = found.as_object() },
+        }
+    }
+
+    /// The source's name inside what the flag adds for it.
+    const fn stem(self) -> &'static str {
+        match self {
+            #[cfg(feature = "bson")]
+            Self::Bson => "bson",
+            Self::Json => "value",
+        }
+    }
+
+    /// The type of one value.
+    fn value(self) -> TokenStream {
+        match self {
+            #[cfg(feature = "bson")]
+            Self::Bson => quote! { bson::Bson },
+            Self::Json => quote! { serde_json::Value },
+        }
+    }
+
+    /// The closure writing back a value read whole, through a hook's own writer or with the type's
+    /// own `Serialize`. A value a hook read is `pinned` to the field's type: a hook generic over
+    /// what it reads is pinned by nothing else, as serde's derive pins it by the field.
+    fn write_back(self, pinned: Option<&Type>, through: Option<&TokenStream>) -> TokenStream {
+        let read = pinned.map_or_else(|| quote! { read }, |ty| quote! { read: &#ty });
+        match (self, through) {
+            #[cfg(feature = "bson")]
+            (Self::Bson, Some(writer)) => quote! { |#read, to| #writer(read, to).ok() },
+            #[cfg(feature = "bson")]
+            (Self::Bson, None) => {
+                quote! { |#read, to| serde::Serialize::serialize(read, to).ok() }
+            }
+            (Self::Json, Some(writer)) => {
+                quote! { |#read| #writer(read, serde_json::value::Serializer).ok() }
+            }
+            (Self::Json, None) => quote! { |#read| serde_json::to_value(read).ok() },
+        }
+    }
+}
+
 /// How the value at one position of a field's type is walked.
 enum Step<'ty> {
     /// A map: each value at its key.
@@ -95,17 +208,22 @@ struct WalkedField<'item> {
 
 /// The function serde reads a plain value with, and the one that writes it back.
 struct Whole {
+    /// A hook of the field's reads the value.
+    hooked: bool,
     read: TokenStream,
-    write: TokenStream,
+    /// The function a hook writes the value to a serializer with, and `None` for the type's own
+    /// `Serialize`.
+    write: Option<TokenStream>,
 }
 
-/// What the generated code names of the type it is generated for.
-struct Walker {
-    module: Ident,
-    own_name: String,
+/// What the generated code names of the type it is generated for, and the source it walks.
+struct Walker<'item> {
+    module: &'item Ident,
+    own_name: &'item str,
+    source: Source,
 }
 
-impl Walker {
+impl Walker<'_> {
     /// The arms a value held under `held` is matched by. `reported` is the type named as expected
     /// by the arm for a value that is no list or map, which under an `Option` is the `Option`.
     fn arms(
@@ -116,7 +234,7 @@ impl Walker {
         depth: usize,
         reported: &Type,
     ) -> Vec<Arm> {
-        let module = &self.module;
+        let (module, source) = (self.module, self.source);
         let path = path_expression(segments);
         match &walk.step {
             Step::Entries(inner) => {
@@ -136,7 +254,7 @@ impl Walker {
                     Arm {
                         body: quote! {{ for (#key, #item) in #entries { #each } }},
                         nothing: false,
-                        pattern: quote! { serde_json::Value::Object(#entries) },
+                        pattern: source.entries(&entries),
                     },
                     not_the_shape(held, &path, &expected, "not an object"),
                 ]
@@ -158,23 +276,29 @@ impl Walker {
                     Arm {
                         body: quote! {{ for (#index, #item) in #items.iter().enumerate() { #each } }},
                         nothing: false,
-                        pattern: quote! { serde_json::Value::Array(#items) },
+                        pattern: source.items(&items),
                     },
                     not_the_shape(held, &path, &expected, "not an array"),
                 ]
             }
-            Step::Leaf(Whole { read, write }) => {
+            Step::Leaf(Whole {
+                hooked,
+                read,
+                write,
+            }) => {
                 let expected = self.expected(walk.ty);
+                let leaf = source.leaf();
+                let written = source.write_back(hooked.then_some(walk.ty), write.as_ref());
                 vec![Arm {
                     body: quote! {
-                        out.extend(#module::value_leaf(#held, #read, #write, #path, #expected, issue))
+                        out.extend(#module::#leaf(#held, #read, #written, #path, #expected, issue))
                     },
                     nothing: false,
                     pattern: quote! { #held },
                 }]
             }
             Step::Model => vec![Arm {
-                body: model_walker_call(walk.ty, held, &path),
+                body: model_walker_call(source, walk.ty, held, &path),
                 nothing: false,
                 pattern: quote! { #held },
             }],
@@ -182,7 +306,7 @@ impl Walker {
                 let mut arms = vec![Arm {
                     body: quote! { {} },
                     nothing: true,
-                    pattern: quote! { serde_json::Value::Null },
+                    pattern: source.null(),
                 }];
                 arms.extend(self.arms(inner, held, segments, depth, walk.ty));
                 arms
@@ -193,7 +317,7 @@ impl Walker {
     /// The field's type as the constant list of tokens an issue carries for it.
     fn expected(&self, ty: &Type) -> TokenStream {
         let mut def = get_field_def("", ty, "");
-        def.resolve_self_references(&self.own_name, &[]);
+        def.resolve_self_references(self.own_name, &[]);
         let members = def
             .expected_members()
             .into_iter()
@@ -204,8 +328,8 @@ impl Walker {
         quote! { &[#(#members),*] }
     }
 
-    /// What `decode_with_value_fields` runs for one field: its key looked up under its name and
-    /// every alias, the value walked when it is there, and `Missing` when serde needs it.
+    /// What the fields walker runs for one field: its key looked up under its name and every
+    /// alias, the value walked when it is there, and `Missing` when serde needs it.
     fn field(&self, field: &WalkedField<'_>) -> TokenStream {
         let Some(walk) = &field.walk else {
             return TokenStream::new();
@@ -252,7 +376,8 @@ impl Walker {
             quote! { #pattern => #body, }
         });
         let absent = if merged {
-            quote! { None | Some(serde_json::Value::Null) => {} }
+            let null = self.source.null();
+            quote! { None | Some(#null) => {} }
         } else if field.absence_is_read {
             quote! { None => {} }
         } else {
@@ -336,10 +461,7 @@ pub fn struct_recovering_decode(item_struct: &ItemStruct) -> RecoveringDecode {
             )
         })
         .collect();
-    let walker = Walker {
-        module: Ident::new(&module_name, Span::call_site()),
-        own_name,
-    };
+    let module = Ident::new(&module_name, Span::call_site());
     let mut declared: Vec<&str> = fields
         .iter()
         .flat_map(|field| once(&field.key).chain(&field.aliases))
@@ -347,16 +469,26 @@ pub fn struct_recovering_decode(item_struct: &ItemStruct) -> RecoveringDecode {
         .collect();
     // serde writes a struct's `tag` as a key of the object and reads past it.
     declared.extend(container.tag.as_deref());
-    let walks: Vec<TokenStream> = fields.iter().map(|field| walker.field(field)).collect();
-    let entry = entry_methods(&walker.module);
-    let walk_methods = walker_methods(&walker, &walks, &declared);
+    let methods = Source::GENERATED.iter().map(|&source| {
+        let walker = Walker {
+            module: &module,
+            own_name: &own_name,
+            source,
+        };
+        let walks: Vec<TokenStream> = fields.iter().map(|field| walker.field(field)).collect();
+        let entry = source.entry_methods(&module);
+        let walk_methods = walker_methods(&walker, &walks, &declared);
+        quote! {
+            #entry
+            #walk_methods
+        }
+    });
     let name = &item_struct.ident;
     RecoveringDecode {
-        schema_module: placed_in_schema_module(&walker.module, &module_items()),
+        schema_module: placed_in_schema_module(&module, &module_items()),
         type_impl: quote! {
             impl #name {
-                #entry
-                #walk_methods
+                #(#methods)*
             }
         },
     }
@@ -371,6 +503,171 @@ fn binding(stem: &str, depth: usize) -> Ident {
         format!("{stem}_{depth}")
     };
     Ident::new(&name, Span::call_site())
+}
+
+/// `from_bson_with` and the report it runs. Every value is read through `bson::Deserializer::new`,
+/// which both major versions of the `bson` library have.
+#[cfg(feature = "bson")]
+fn bson_entry_methods(module: &Ident) -> TokenStream {
+    quote! {
+        /// Reads `document` as this type, handing every issue found in it to `decide`, once.
+        pub fn from_bson_with<F>(
+            mut document: bson::Document,
+            decide: F,
+        ) -> core::result::Result<Self, #module::Unrecovered<bson::Bson>>
+        where
+            F: FnOnce(&mut bson::Document, &[#module::Issue<bson::Bson>]) -> #module::Verdict,
+        {
+            let found = match <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(bson::Bson::Document(document.clone()))) {
+                Ok(decoded) => {
+                    let found = Self::decode_with_bson_report(&document);
+                    if found.is_empty() {
+                        return Ok(decoded);
+                    }
+                    found
+                }
+                Err(_) => Self::decode_with_bson_report(&document),
+            };
+            match decide(&mut document, &found) {
+                #module::Verdict::Reject => Err(#module::Unrecovered { issues: found }),
+                #module::Verdict::Fixed => {
+                    let again = Self::decode_with_bson_report(&document);
+                    match <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(bson::Bson::Document(document.clone()))) {
+                        Ok(decoded) if again.is_empty() => Ok(decoded),
+                        _ => Err(#module::Unrecovered { issues: again }),
+                    }
+                }
+            }
+        }
+
+        fn decode_with_bson_report(document: &bson::Document) -> Vec<#module::Issue<bson::Bson>> {
+            let mut out = Vec::new();
+            let found = bson::Bson::Document(document.clone());
+            Self::decode_with_bson_issues(&found, &[], #module::issue_from_parts, &mut out);
+            if out.iter().all(|found| matches!(found, #module::Issue::Unknown { .. } | #module::Issue::Mistyped { .. }))
+                && let Err(refused) = <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(found))
+            {
+                out.push(#module::Issue::Undescribed { reason: refused.to_string() });
+            }
+            out
+        }
+    }
+}
+
+/// `bson_leaf` and the bracket rule it decides `Mistyped` by.
+#[cfg(feature = "bson")]
+fn bson_leaf_items() -> TokenStream {
+    quote! {
+        /// Whether a query for `written` matches `stored`: numbers compare across their types, strings and
+        /// symbols are one type, and every other BSON type matches only itself.
+        pub fn same_bracket(stored: &bson::Bson, written: &bson::Bson) -> bool {
+            let numeric = |b: &bson::Bson| matches!(b, bson::Bson::Int32(_) | bson::Bson::Int64(_) | bson::Bson::Double(_) | bson::Bson::Decimal128(_));
+            let textual = |b: &bson::Bson| matches!(b, bson::Bson::String(_) | bson::Bson::Symbol(_));
+            (numeric(stored) && numeric(written))
+                || (textual(stored) && textual(written))
+                || std::mem::discriminant(stored) == std::mem::discriminant(written)
+        }
+
+        /// One BSON value read whole: refused by serde, or read but stored as a type `write`
+        /// does not give back.
+        pub fn bson_leaf<T, I, E, R, W>(
+            held: &bson::Bson,
+            read: R,
+            write: W,
+            path: Vec<core::result::Result<String, usize>>,
+            expected: &'static [ExpectedToken],
+            issue: IssueFromParts<bson::Bson, I>,
+        ) -> Option<I>
+        where
+            E: core::fmt::Display,
+            R: FnOnce(bson::Deserializer) -> core::result::Result<T, E>,
+            W: FnOnce(&T, bson::Serializer) -> Option<bson::Bson>,
+        {
+            match read(bson::Deserializer::new(held.clone())) {
+                Err(refused) => Some(issue("Invalid", path, expected, Some(held.clone()), Some(refused.to_string()), Vec::new())),
+                Ok(read) => match write(&read, bson::Serializer::new()) {
+                    Some(written) if !same_bracket(held, &written) => {
+                        Some(issue("Mistyped", path, expected, Some(held.clone()), None, Vec::new()))
+                    }
+                    _ => None,
+                },
+            }
+        }
+    }
+}
+
+/// A build without `bson` reads no BSON value.
+#[cfg(not(feature = "bson"))]
+fn bson_leaf_items() -> TokenStream {
+    TokenStream::new()
+}
+
+/// The helpers a callback fixes a BSON document through.
+#[cfg(feature = "bson")]
+fn bson_path_helpers() -> TokenStream {
+    quote! {
+        /// Puts `value` at this path inside a BSON document, inserting the last key when it is absent.
+        pub fn set_in_document(&self, root: &mut bson::Document, value: bson::Bson) -> bool {
+            let Some((Segment::Key(first), rest)) = self.0.split_first() else { return false };
+            let Some((last, parents)) = rest.split_last() else {
+                root.insert(first.clone(), value);
+                return true;
+            };
+            let Some(mut slot) = root.get_mut(first) else { return false };
+            for segment in parents {
+                let next = match (segment, slot) {
+                    (Segment::Key(key), bson::Bson::Document(object)) => object.get_mut(key),
+                    (Segment::Index(index), bson::Bson::Array(items)) => items.get_mut(*index),
+                    _ => None,
+                };
+                let Some(next) = next else { return false };
+                slot = next;
+            }
+            match (last, slot) {
+                (Segment::Key(key), bson::Bson::Document(object)) => {
+                    object.insert(key.clone(), value);
+                    true
+                }
+                (Segment::Index(index), bson::Bson::Array(items)) if *index < items.len() => {
+                    items[*index] = value;
+                    true
+                }
+                _ => false,
+            }
+        }
+
+        /// Removes the key or item at this path inside a BSON document.
+        pub fn remove_from_document(&self, root: &mut bson::Document) -> bool {
+            let Some((Segment::Key(first), rest)) = self.0.split_first() else { return false };
+            let Some((last, parents)) = rest.split_last() else {
+                return root.remove(first).is_some();
+            };
+            let Some(mut slot) = root.get_mut(first) else { return false };
+            for segment in parents {
+                let next = match (segment, slot) {
+                    (Segment::Key(key), bson::Bson::Document(object)) => object.get_mut(key),
+                    (Segment::Index(index), bson::Bson::Array(items)) => items.get_mut(*index),
+                    _ => None,
+                };
+                let Some(next) = next else { return false };
+                slot = next;
+            }
+            match (last, slot) {
+                (Segment::Key(key), bson::Bson::Document(object)) => object.remove(key).is_some(),
+                (Segment::Index(index), bson::Bson::Array(items)) if *index < items.len() => {
+                    items.remove(*index);
+                    true
+                }
+                _ => false,
+            }
+        }
+    }
+}
+
+/// A build without `bson` fixes no BSON document.
+#[cfg(not(feature = "bson"))]
+fn bson_path_helpers() -> TokenStream {
+    TokenStream::new()
 }
 
 /// The types a callback works with.
@@ -536,6 +833,7 @@ fn entry_methods(module: &Ident) -> TokenStream {
 
 /// The items one type's walker hands issues to another's with.
 fn handoff_items() -> TokenStream {
+    let bson_leaf = bson_leaf_items();
     quote! {
         /// One member of an `Expected`, written before the members under it: its name, the names
         /// it carries, and how many members follow under it.
@@ -644,6 +942,8 @@ fn handoff_items() -> TokenStream {
                 },
             }
         }
+
+        #bson_leaf
     }
 }
 
@@ -670,20 +970,18 @@ fn hooked_leaf(ty: &Type, hooks: &SerdeFieldHooks, module_name: &str) -> Option<
         },
         |through| quote! { #through },
     );
-    let written = writer.map_or_else(
+    let write = writer.map_or_else(
         || {
-            module.as_ref().map_or_else(
-                || quote! { serde_json::to_value(read) },
-                |through| quote! { #through::serialize(read, serde_json::value::Serializer) },
-            )
+            module
+                .as_ref()
+                .map(|through| quote! { #through::serialize })
         },
-        |through| quote! { #through(read, serde_json::value::Serializer) },
+        |through| Some(quote! { #through }),
     );
-    // The closure names the field's type: a hook generic over what it reads is pinned by nothing
-    // else here, as serde's derive pins it by the field.
     Some(Step::Leaf(Whole {
+        hooked: true,
         read,
-        write: quote! { |read: &#ty| #written.ok() },
+        write,
     }))
 }
 
@@ -701,6 +999,7 @@ fn follows_a_path_separator(tokens: &[TokenTree]) -> bool {
 /// Every type a flagged type's fields reach carries the flag too. This builds:
 ///
 /// ```rust
+/// # extern crate bson2 as bson;
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
@@ -722,6 +1021,7 @@ fn follows_a_path_separator(tokens: &[TokenTree]) -> bool {
 /// The run below is that one with the flag taken off `Version`, and nothing else changed:
 ///
 /// ```rust,compile_fail
+/// # extern crate bson2 as bson;
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
@@ -757,8 +1057,11 @@ fn follows_a_path_separator(tokens: &[TokenTree]) -> bool {
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
-fn model_walker_call(ty: &Type, held: &Ident, path: &TokenStream) -> TokenStream {
-    quote! { <#ty>::decode_with_value_issues(#held, &#path, issue, out) }
+///
+/// A build with `bson` on earns the same error a second time, naming `decode_with_bson_issues`.
+fn model_walker_call(source: Source, ty: &Type, held: &Ident, path: &TokenStream) -> TokenStream {
+    let issues = source.method("issues");
+    quote! { <#ty>::#issues(#held, &#path, issue, out) }
 }
 
 /// Everything the flag puts into the type's `{type}_schema` module.
@@ -809,8 +1112,9 @@ fn path_expression(segments: &[TokenStream]) -> TokenStream {
     quote! { [path, &[#(#segments),*]].concat() }
 }
 
-/// `Segment` and `Path`, with the helpers a callback fixes a JSON value through.
+/// `Segment` and `Path`, with the helpers a callback fixes a value through.
 fn path_items() -> TokenStream {
+    let in_documents = bson_path_helpers();
     quote! {
         #[derive(Clone, Debug, PartialEq, Eq)]
         #[non_exhaustive]
@@ -875,6 +1179,8 @@ fn path_items() -> TokenStream {
                     _ => false,
                 }
             }
+
+            #in_documents
         }
 
         impl core::fmt::Display for Path {
@@ -966,8 +1272,9 @@ fn path_step<'ty>(type_path: &'ty TypePath, ty: &'ty Type) -> Walk<'ty> {
 fn plain_value(ty: &Type) -> Walk<'_> {
     Walk {
         step: Step::Leaf(Whole {
+            hooked: false,
             read: own_reader(ty),
-            write: quote! { |read| serde_json::to_value(read).ok() },
+            write: None,
         }),
         ty,
     }
@@ -1043,9 +1350,16 @@ fn walked_field<'item>(
 }
 
 /// The two methods one type's walker is called through by another's.
-fn walker_methods(walker: &Walker, walks: &[TokenStream], declared: &[&str]) -> TokenStream {
-    let module = &walker.module;
-    let own_name = &walker.own_name;
+fn walker_methods(walker: &Walker<'_>, walks: &[TokenStream], declared: &[&str]) -> TokenStream {
+    let (module, own_name, source) = (walker.module, walker.own_name, walker.source);
+    let (issues, fields, leaf) = (
+        source.method("issues"),
+        source.method("fields"),
+        source.leaf(),
+    );
+    let (value, object, object_of_found) =
+        (source.value(), source.object(), source.object_of_found());
+    let written = source.write_back(None, None);
     // A type with no field to walk lists no issue of its own, so the `Vec` it is handed goes
     // unbound.
     let out = if walks.iter().all(TokenStream::is_empty) {
@@ -1055,17 +1369,17 @@ fn walker_methods(walker: &Walker, walks: &[TokenStream], declared: &[&str]) -> 
     };
     quote! {
         /// Lists every issue in `found`, read as this type at `path`.
-        pub fn decode_with_value_issues<I>(
-            found: &serde_json::Value,
+        pub fn #issues<I>(
+            found: &#value,
             path: &[core::result::Result<String, usize>],
-            issue: #module::IssueFromParts<serde_json::Value, I>,
+            issue: #module::IssueFromParts<#value, I>,
             out: &mut Vec<I>,
         ) {
-            let Some(object) = found.as_object() else {
-                out.extend(#module::value_leaf(found, <Self as serde::Deserialize>::deserialize, |read| serde_json::to_value(read).ok(), path.to_vec(), &[("Model", &[#own_name], 0)], issue));
+            let #object_of_found else {
+                out.extend(#module::#leaf(found, <Self as serde::Deserialize>::deserialize, #written, path.to_vec(), &[("Model", &[#own_name], 0)], issue));
                 return;
             };
-            let declared = Self::decode_with_value_fields(object, path, issue, out);
+            let declared = Self::#fields(object, path, issue, out);
             for (key, held) in object {
                 if !declared.contains(&key.as_str()) {
                     out.push(issue("Unknown", [path, &[Ok(key.clone())]].concat(), &[], Some(held.clone()), None, Vec::new()));
@@ -1075,10 +1389,10 @@ fn walker_methods(walker: &Walker, walks: &[TokenStream], declared: &[&str]) -> 
 
         /// Lists every issue in this type's fields inside `object`, and returns the keys that are
         /// its own.
-        pub fn decode_with_value_fields<'a, I>(
-            object: &'a serde_json::Map<String, serde_json::Value>,
+        pub fn #fields<'a, I>(
+            object: &'a #object,
             path: &[core::result::Result<String, usize>],
-            issue: #module::IssueFromParts<serde_json::Value, I>,
+            issue: #module::IssueFromParts<#value, I>,
             #out: &mut Vec<I>,
         ) -> Vec<&'a str> {
             #(#walks)*

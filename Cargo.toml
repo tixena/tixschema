@@ -27,6 +27,10 @@ regex-syntax = "0.8"
 
 [dev-dependencies]
 mongodb = ">=3.7"
+# Test-only: what the recovering decode generates names the crate `bson`, and builds against
+# both of its major versions. Each BSON test binary binds that name to one of these.
+bson2 = { package = "bson", version = "2.15" }
+bson3 = { package = "bson", version = "3.1", features = ["serde"] }
 # Test-only: `rc` supplies serde's `Rc`/`Arc` impls, without which the wire criterion the
 # transparent-wrapper coverage rests on cannot be read off an `Rc`/`Arc` field at all.
 serde = { version = "1", features = ["derive", "rc"] }
