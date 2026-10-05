@@ -3502,7 +3502,7 @@ Chrono types also work in collections (`Vec<NaiveDate>` generates `z.array(z.iso
 
 ## Feature Flags
 
-The crate uses optional features to control code generation and dependencies. All features can be independently enabled or disabled.
+The crate uses optional features to control code generation and dependencies. Each feature is enabled or disabled on its own, with two exceptions: `mongodb` turns on `bson`, and `bson` turns on `serde`.
 
 | Feature | Default | Description |
 |---------|---------|-------------|
@@ -3524,7 +3524,7 @@ Common configurations:
 tixschema = "0.1.0"
 
 # All features including optional ones
-tixschema = { features = ["serde", "zod", "jsonschema", "typescript", "mongodb", "chrono", "dart", "swift", "kotlin"] }
+tixschema = { features = ["serde", "zod", "jsonschema", "typescript", "mongodb", "bson", "chrono", "dart", "swift", "kotlin"] }
 
 # Minimal (TypeScript only, no Zod or JSON Schema)
 tixschema = { default-features = false, features = ["typescript"] }

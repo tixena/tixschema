@@ -187,7 +187,7 @@ The crate uses optional features for minimal dependencies:
 
 **Feature sets**: `web` (the default: `serde`, `zod`, `jsonschema`, `typescript`), `mobile` (`serde`, `dart`, `swift`, `kotlin`) and `mongo` (`mongodb`, `chrono`). CI tests the powerset of the sets (`just test-sets`); `just test` runs the powerset of the plain features locally
 
-**Default configuration**: `serde`, `zod`, `jsonschema`, `typescript` (the `mongodb`, `chrono`, `dart`, `swift` and `kotlin` features are opt-in)
+**Default configuration**: `serde`, `zod`, `jsonschema`, `typescript` (the `mongodb`, `bson`, `chrono`, `dart`, `swift` and `kotlin` features are opt-in)
 
 ## Critical Development Rules
 
