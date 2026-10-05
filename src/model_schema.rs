@@ -574,6 +574,9 @@ struct ModelSchemaArgs {
     /// written as.
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     pattern_rejection: Option<syn::Error>,
+    /// The first of `pattern`, `minLength` and `maxLength` written, and where: a refusal of the
+    /// check is spanned there.
+    string_check: Option<(&'static str, proc_macro2::Span)>,
 }
 
 /// One `#[serde(flatten)]` source as a surface writes it: the spelling of what its members are, and
@@ -814,6 +817,7 @@ impl MapMemberItem {
     }
 }
 
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 impl ModelSchemaArgs {
     const fn has_string_constraints(&self) -> bool {
         self.pattern.is_some() || self.min_length.is_some() || self.max_length.is_some()
@@ -931,6 +935,14 @@ fn parse_model_schema_args(args: proc_macro2::TokenStream) -> ModelSchemaArgs {
     result
 }
 
+/// Notes the first type-level string check written, and where.
+fn note_string_check(result: &mut ModelSchemaArgs, check: &'static str, path: &syn::Path) {
+    let written_at = path
+        .get_ident()
+        .map_or_else(proc_macro2::Span::call_site, proc_macro2::Ident::span);
+    result.string_check.get_or_insert((check, written_at));
+}
+
 /// The name is read before the shape, so an argument this parser knows, written the wrong way, is
 /// answered with what it takes rather than reported as unknown.
 fn apply_arg(result: &mut ModelSchemaArgs, meta: &Meta) -> syn::Result<()> {
@@ -938,10 +950,13 @@ fn apply_arg(result: &mut ModelSchemaArgs, meta: &Meta) -> syn::Result<()> {
     if path.is_ident("name") {
         result.name_override = Some(name_arg_value(str_arg(meta, "name")?)?);
     } else if path.is_ident("pattern") {
+        note_string_check(result, "pattern", path);
         record_pattern(result, str_arg(meta, "pattern")?);
     } else if path.is_ident("minLength") {
+        note_string_check(result, "minLength", path);
         result.min_length = Some(length_arg(meta, "minLength")?);
     } else if path.is_ident("maxLength") {
+        note_string_check(result, "maxLength", path);
         result.max_length = Some(length_arg(meta, "maxLength")?);
     } else if path.is_ident("no_display") {
         result.no_display = flag_arg(meta, "no_display")?;
@@ -1251,7 +1266,8 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // Same independence as the Dart and Swift tokens above.
     let kotlin_tokens = kotlin_suffix_tokens(&item, parsed_args.name_override.as_deref());
     let expanded = if let Item::Struct(item_struct) = item {
-        process_struct(item_struct, &parsed_args)
+        string_check_refusal_output(&item_struct, &parsed_args)
+            .unwrap_or_else(|| process_struct(item_struct, &parsed_args))
     } else if let Item::Enum(item_enum) = item {
         process_enum(item_enum, &parsed_args)
     } else if let Item::Type(item_type) = item {
@@ -4203,12 +4219,38 @@ fn collect_struct_fields(
     )
 }
 
-/// Panics unless the struct has no string constraints — those are only valid on branded newtypes.
-fn assert_no_struct_string_constraints(args: &ModelSchemaArgs) {
-    assert!(
-        !args.has_string_constraints(),
-        "model_schema constraints (pattern, minLength, maxLength) are only supported on branded newtype structs (#[serde(transparent)] single-field tuple structs)"
-    );
+/// The refusal of a type-level string check written where nothing enforces it: on a struct that
+/// is no brand, and on a brand in a build with no schema surface, where no reader is generated
+/// for it.
+fn string_check_refusal_output(
+    item_struct: &syn::ItemStruct,
+    args: &ModelSchemaArgs,
+) -> Option<TokenStream> {
+    let (check, written_at) = args.string_check?;
+    let brand = is_branded_newtype(item_struct);
+    // With a schema surface on, a brand's check is hung on its reader.
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    if brand {
+        return None;
+    }
+    let refusal = if brand {
+        format!(
+            "`{check}` on a brand is enforced by the reader generated with its schema surface, \
+             and this build generates none. Turn on `typescript`, `zod` or `jsonschema`, or \
+             remove the check."
+        )
+    } else {
+        format!(
+            "`{check}` is supported only on a branded newtype: a `#[serde(transparent)]` struct \
+             with a single unnamed field. On a field, write it in `#[model_schema_prop(...)]`."
+        )
+    };
+    let error = syn::Error::new(
+        written_at,
+        prefixed_guard_message(&format!("type `{}`: {refusal}", item_struct.ident)),
+    )
+    .to_compile_error();
+    guard_failure_output(item_struct, Some(&item_struct.ident), &[error])
 }
 
 /// Records `item` where serde writes it as a bare wire scalar rather than an object: a
@@ -4257,7 +4299,6 @@ fn wire_scalar_candidate(item: &Item) -> Option<(&syn::Ident, &syn::Type)> {
 }
 
 /// Returns whether a struct is a branded newtype: `#[serde(transparent)]` plus a single field.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn is_branded_newtype(item_struct: &syn::ItemStruct) -> bool {
     has_serde_transparent(&item_struct.attrs)
         && matches!(&item_struct.fields, syn::Fields::Unnamed(f) if f.unnamed.len() == 1)
@@ -4367,9 +4408,6 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
     if is_branded_newtype(&item_struct) {
         return process_branded_newtype(item_struct, args);
     }
-
-    // String constraints (pattern, minLength, maxLength) are only valid on branded newtypes
-    assert_no_struct_string_constraints(args);
 
     let name = item_struct.ident.clone();
     let rust_ident = name.to_string();

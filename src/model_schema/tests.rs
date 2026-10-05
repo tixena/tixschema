@@ -5900,6 +5900,45 @@ fn expansion_under(args: &str, source: &str) -> String {
     .to_string()
 }
 
+/// A type-level string check on a struct that is no brand is refused, naming the check, and the
+/// expansion does not panic.
+#[test]
+fn a_string_check_on_a_struct_that_is_no_brand_is_refused() {
+    for (args, check) in [
+        ("minLength = 3", "minLength"),
+        ("maxLength = 9", "maxLength"),
+        ("pattern = \"^[a-z]+$\"", "pattern"),
+    ] {
+        let expanded = expansion_under(args, "pub struct Named { pub name: String }");
+        assert!(expanded.contains("compile_error"), "got: {expanded}");
+        assert!(
+            expanded.contains(&format!(
+                "type `Named`: `{check}` is supported only on a branded newtype"
+            )),
+            "got: {expanded}"
+        );
+    }
+}
+
+/// With no schema surface on, no reader is generated for a brand, so a check written on one is
+/// refused in place of being silently dropped.
+#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[test]
+fn a_string_check_on_a_brand_is_refused_where_no_schema_surface_is_on() {
+    let expanded = expansion_under(
+        "minLength = 3",
+        "#[serde(transparent)] pub struct Code(pub String);",
+    );
+    assert!(expanded.contains("compile_error"), "got: {expanded}");
+    assert!(
+        expanded.contains(
+            "type `Code`: `minLength` on a brand is enforced by the reader generated with its \
+             schema surface, and this build generates none"
+        ),
+        "got: {expanded}"
+    );
+}
+
 /// serde writes a `#[serde(transparent)]` struct with a named field as the value of that field, so
 /// the walker reads that value at the path the struct sits at, and looks no key up: its fields
 /// walker returns none.
