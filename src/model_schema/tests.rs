@@ -163,10 +163,11 @@ const DECODE_WITH_STRUCT_SHAPES: [(&str, &str); 7] = [
     ),
 ];
 
-/// One enum per form serde writes an enum in, each with the arguments it is declared under and
-/// whether serde can flatten it, which is what earns it a fields walker.
+/// One enum per form serde writes an enum in, then one per form whose variants carry an alias or
+/// are never read, each with the arguments it is declared under and whether serde can flatten it,
+/// which is what earns it a fields walker.
 #[cfg(feature = "serde")]
-const DECODE_WITH_ENUM_FORMS: [(&str, &str, bool); 6] = [
+const DECODE_WITH_ENUM_FORMS: [(&str, &str, bool); 10] = [
     (
         "decode_with",
         "pub enum DecodeStatus { Draft, Published }",
@@ -196,6 +197,26 @@ const DECODE_WITH_ENUM_FORMS: [(&str, &str, bool); 6] = [
         "decode_with, default_types(T = String)",
         "pub enum DecodeAnswer<T> { Empty, Value(T) }",
         true,
+    ),
+    (
+        "decode_with",
+        "pub enum DecodeContour { #[serde(alias = \"Round\")] Circle { radius: f64 }, #[serde(alias = \"Blank\")] Empty, #[serde(skip)] Lost }",
+        true,
+    ),
+    (
+        "decode_with",
+        "#[serde(tag = \"kind\")] pub enum DecodeCoating { #[serde(alias = \"Blank\")] Clear, #[serde(skip_deserializing)] Retired, Solid { color: String } }",
+        true,
+    ),
+    (
+        "decode_with",
+        "#[serde(tag = \"kind\", content = \"data\")] pub enum DecodeDash { #[serde(alias = \"Dotted\")] Dashed { gap: u32 }, #[serde(skip_deserializing)] Faded(u32), Hairline }",
+        true,
+    ),
+    (
+        "decode_with",
+        "#[derive(Deserialize)] #[serde(untagged)] pub enum DecodeChannel { Email { address: String }, #[serde(skip_deserializing)] Pager { number: i32 } }",
+        false,
     ),
 ];
 

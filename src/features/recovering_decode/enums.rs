@@ -4,6 +4,8 @@
 //! the variant it names holds is walked where that form writes it. An untagged enum is walked as
 //! the variant serde reads the value as.
 
+use core::iter::once;
+
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{format_ident, quote};
 use syn::ext::IdentExt as _;
@@ -13,7 +15,9 @@ use super::{
     Arm, Lookup, RecoveringDecode, Shape, Step, Walk, WalkedField, Walker, added_to, binding,
     not_the_shape, path_expression, undeclared_keys,
 };
-use crate::features::serde::{parse_serde_field_attributes, parse_serde_type_attributes};
+use crate::features::serde::{
+    parse_serde_field_attributes, parse_serde_key_omission, parse_serde_type_attributes,
+};
 use crate::field_type::{get_field_def, is_plain_enum};
 use crate::rename_rule::resolve_rename_rule;
 use crate::utils::{ident_schema_module_name, to_snake_case, type_parameters_in_scope};
@@ -52,10 +56,14 @@ impl Tagging {
 
 /// One variant as its enum's walker reads it.
 struct WalkedVariant<'item> {
+    /// Every `alias`: a tag serde reads the variant under beside its name.
+    aliases: Vec<String>,
     /// What the variant holds, in the form serde writes it beside the variant's name.
     content: Shape<'item>,
     /// The name serde writes the variant under.
     name: String,
+    /// serde reads no value as the variant: it is under `skip_deserializing` or `skip`.
+    never_read: bool,
     /// The variant as a pattern, whatever it holds: `Self::Email { .. }`.
     pattern: TokenStream,
     rust_name: String,
@@ -63,9 +71,19 @@ struct WalkedVariant<'item> {
     stem: String,
 }
 
+impl WalkedVariant<'_> {
+    /// Every tag serde reads the variant under: its name, then its aliases in the order written.
+    fn tags(&self) -> impl Iterator<Item = &String> {
+        once(&self.name).chain(&self.aliases)
+    }
+}
+
 /// The walker of one enum for one source: what the type's own walker names, and the enum's
 /// variants.
 struct EnumWalker<'walk> {
+    /// The variants serde reads no value as, which are no variant to the walker.
+    never_read: &'walk [WalkedVariant<'walk>],
+    /// The variants serde reads, in the order declared.
     variants: &'walk [WalkedVariant<'walk>],
     walker: &'walk Walker<'walk>,
 }
@@ -77,9 +95,9 @@ impl EnumWalker<'_> {
     fn adjacent_fields(&self, tag: &str, content: &str) -> TokenStream {
         let expected = self.variants_expected();
         let arms = self.variants.iter().map(|variant| {
-            let name = &variant.name;
+            let tags = variant.tags();
             let walked = self.keyed_content(&variant.content, content);
-            quote! { Some(#name) => #walked, }
+            quote! { Some(#(#tags)|*) => #walked, }
         });
         let missing = missing_tag(tag, &expected);
         let unknown = self.unknown_tag(tag, &expected);
@@ -145,7 +163,7 @@ impl EnumWalker<'_> {
         }
     }
 
-    /// The walker of an externally tagged enum: a unit variant's name as text, or an object whose
+    /// The walker of an externally tagged enum: a unit variant's tag as text, or an object whose
     /// one key names a variant over what it holds. A value in any other form is read whole.
     fn external_methods(&self) -> TokenStream {
         let source = self.walker.source;
@@ -158,21 +176,21 @@ impl EnumWalker<'_> {
         let named_alone = if units.is_empty() {
             TokenStream::new()
         } else {
-            let (text, names) = (
+            let (text, tags) = (
                 source.text(&Ident::new("tag", Span::call_site())),
-                units.iter().map(|variant| &variant.name),
+                units.iter().flat_map(|variant| variant.tags()),
             );
-            quote! { #text if matches!(tag.as_str(), #(#names)|*) => {} }
+            quote! { #text if matches!(tag.as_str(), #(#tags)|*) => {} }
         };
         let named_by_key = if holding.is_empty() {
             TokenStream::new()
         } else {
-            let (object, names) = (
+            let (object, tags) = (
                 source.entries(&Ident::new("object", Span::call_site())),
-                holding.iter().map(|variant| &variant.name),
+                holding.iter().flat_map(|variant| variant.tags()),
             );
             quote! {
-                #object if object.len() == 1 && object.keys().any(|key| matches!(key.as_str(), #(#names)|*)) => {
+                #object if object.len() == 1 && object.keys().any(|key| matches!(key.as_str(), #(#tags)|*)) => {
                     Self::#fields(object, path, issue, out);
                 }
             }
@@ -205,19 +223,35 @@ impl EnumWalker<'_> {
     }
 
     /// What an externally tagged enum's fields walker runs for one variant: where `object` holds
-    /// the variant's name as a key, what is under it is walked, and the key is the enum's own.
+    /// a key naming the variant, what is under it is walked, and that key is the enum's own. A
+    /// variant with aliases is found under the first of its tags `object` holds, bound as `tag`.
     fn external_variant(&self, variant: &WalkedVariant<'_>) -> TokenStream {
         let name = &variant.name;
+        let aliased = !variant.aliases.is_empty();
+        let tags: Vec<&String> = variant.tags().collect();
+        let stored = if aliased {
+            quote! { tag }
+        } else {
+            quote! { #name }
+        };
         let content = Ident::new("content", Span::call_site());
-        let segments = [quote! { Ok(#name.to_owned()) }];
+        let segments = [quote! { Ok(#stored.to_owned()) }];
         let walked = match &variant.content {
             Shape::Fields { declared, fields } => {
                 self.held_fields(declared, fields, &content, &segments)
             }
             Shape::Nothing => {
-                return quote! {
-                    if object.contains_key(#name) {
-                        return vec![#name];
+                return if aliased {
+                    quote! {
+                        if let Some(tag) = [#(#tags),*].into_iter().find(|&tag| object.contains_key(tag)) {
+                            return vec![tag];
+                        }
+                    }
+                } else {
+                    quote! {
+                        if object.contains_key(#name) {
+                            return vec![#name];
+                        }
                     }
                 };
             }
@@ -225,10 +259,22 @@ impl EnumWalker<'_> {
                 Walker::listed(&content, &self.content_arms(held, &content, &segments))
             }
         };
+        let (there, found) = if aliased {
+            (
+                quote! { Some((tag, content)) },
+                quote! {
+                    [#(#tags),*]
+                        .into_iter()
+                        .find_map(|tag| object.get(tag).map(|content| (tag, content)))
+                },
+            )
+        } else {
+            (quote! { Some(content) }, quote! { object.get(#name) })
+        };
         quote! {
-            if let Some(content) = object.get(#name) {
+            if let #there = #found {
                 #walked
-                return vec![#name];
+                return vec![#stored];
             }
         }
     }
@@ -264,7 +310,7 @@ impl EnumWalker<'_> {
         let expected = self.variants_expected();
         let every_key = quote! { object.keys().map(String::as_str).collect() };
         let arms = self.variants.iter().map(|variant| {
-            let name = &variant.name;
+            let tags = variant.tags();
             let declared = match &variant.content {
                 Shape::Fields { declared, fields } => {
                     let walks = fields
@@ -287,7 +333,7 @@ impl EnumWalker<'_> {
                 // serde reads any other value from the whole object, where no walk reaches it.
                 Shape::Held(_) | Shape::Slots(_) => every_key.clone(),
             };
-            quote! { Some(#name) => #declared, }
+            quote! { Some(#(#tags)|*) => #declared, }
         });
         let missing = missing_tag(tag, &expected);
         let unknown = self.unknown_tag(tag, &expected);
@@ -371,7 +417,7 @@ impl EnumWalker<'_> {
     }
 
     /// The walker of an untagged enum: the walk of the variant serde reads the value as, or one
-    /// `NoVariant` holding every variant's own list where it reads it as none.
+    /// `NoVariant` holding the own list of every variant serde reads where it reads it as none.
     fn untagged_methods(&self) -> TokenStream {
         let variants = self.variants;
         let reader = self.walker.source.found_reader();
@@ -382,6 +428,13 @@ impl EnumWalker<'_> {
             );
             quote! { Ok(#pattern) => #walked, }
         });
+        // serde gives none of these back, and the match on what it gives stays exhaustive.
+        let unread = if self.never_read.is_empty() {
+            TokenStream::new()
+        } else {
+            let patterns = self.never_read.iter().map(|variant| &variant.pattern);
+            quote! { Ok(#(#patterns)|*) => {} }
+        };
         let lists: Vec<Ident> = variants
             .iter()
             .map(|variant| format_ident!("as_{}", variant.stem))
@@ -397,6 +450,7 @@ impl EnumWalker<'_> {
         let walked = self.walker.issues_method(&quote! {
             match <Self as serde::Deserialize>::deserialize(#reader) {
                 #(#picked)*
+                #unread
                 Err(_) => {
                     #(#tried)*
                     out.push(issue("NoVariant", path.to_vec(), &[], Some(found.clone()), None, vec![#((#names, #lists)),*]));
@@ -472,11 +526,11 @@ impl EnumWalker<'_> {
         })
     }
 
-    /// What an issue names as expected where a tag is: every variant's name as serde writes it,
+    /// What an issue names as expected where a tag is: every tag serde reads, variant by variant
     /// in the order declared.
     fn variants_expected(&self) -> TokenStream {
-        let names = self.variants.iter().map(|variant| &variant.name);
-        quote! { &[("Variants", &[#(#names),*], 0)] }
+        let tags = self.variants.iter().flat_map(WalkedVariant::tags);
+        quote! { &[("Variants", &[#(#tags),*], 0)] }
     }
 }
 
@@ -486,7 +540,10 @@ pub fn enum_recovering_decode(item_enum: &ItemEnum) -> RecoveringDecode {
     let module_name = ident_schema_module_name(&item_enum.ident.to_string());
     let parameters = type_parameters_in_scope(&item_enum.generics);
     let tagging = Tagging::of(item_enum);
-    let variants = walked_variants(item_enum, &module_name, &parameters);
+    let (never_read, variants): (Vec<WalkedVariant<'_>>, Vec<WalkedVariant<'_>>) =
+        walked_variants(item_enum, &module_name, &parameters)
+            .into_iter()
+            .partition(|variant| variant.never_read);
     added_to(
         &item_enum.ident,
         &item_enum.generics,
@@ -494,6 +551,7 @@ pub fn enum_recovering_decode(item_enum: &ItemEnum) -> RecoveringDecode {
         &parameters,
         |walker| {
             EnumWalker {
+                never_read: &never_read,
                 variants: &variants,
                 walker,
             }
@@ -522,12 +580,10 @@ fn walked_variants<'item>(
         .map(|variant| {
             let ident = &variant.ident;
             let rust_name = ident.unraw().to_string();
-            let name = parse_serde_field_attributes(&variant.attrs)
-                .rename
-                .unwrap_or_else(|| {
-                    resolve_rename_rule(container.rename_all.as_deref())
-                        .apply_to_variant(&rust_name)
-                });
+            let meta = parse_serde_field_attributes(&variant.attrs);
+            let name = meta.rename.unwrap_or_else(|| {
+                resolve_rename_rule(container.rename_all.as_deref()).apply_to_variant(&rust_name)
+            });
             let pattern = match &variant.fields {
                 Fields::Named(_) => quote! { Self::#ident { .. } },
                 Fields::Unit => quote! { Self::#ident },
@@ -535,6 +591,7 @@ fn walked_variants<'item>(
             };
             let stem = to_snake_case(&rust_name);
             WalkedVariant {
+                aliases: meta.aliases,
                 content: Shape::of_variant(
                     variant,
                     container.rename_all_fields.as_deref(),
@@ -542,6 +599,7 @@ fn walked_variants<'item>(
                     parameters,
                 ),
                 name,
+                never_read: parse_serde_key_omission(&variant.attrs).skips_deserializing,
                 pattern,
                 rust_name,
                 stem,

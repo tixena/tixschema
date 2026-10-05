@@ -21,6 +21,17 @@ macro_rules! listed {
     };
 }
 
+/// What `from_value_with` reads `$stored` as, by a decider that counts each run of its own into
+/// `$calls`.
+macro_rules! read_counting {
+    ($model:ty, $module:ident, $stored:expr, $calls:ident) => {
+        <$model>::from_value_with($stored, |_raw, _found| {
+            $calls += 1;
+            $module::Verdict::Reject
+        })
+    };
+}
+
 /// The list each variant of an untagged enum earned in the one `NoVariant` among `$issues`.
 macro_rules! tried {
     ($module:ident, $issues:expr) => {
@@ -232,6 +243,80 @@ enum Reply<T> {
 enum Either<T> {
     Left { left: T },
     Right { right: u32 },
+}
+
+/// Internally tagged, with a variant serde also reads under an alias and one it never reads.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+enum Coating {
+    #[serde(alias = "Blank")]
+    Clear,
+    #[serde(skip_deserializing)]
+    Hidden,
+    Solid {
+        color: String,
+    },
+}
+
+/// Externally tagged, each variant also read under an alias.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+enum Contour {
+    #[serde(alias = "Round")]
+    Circle { radius: f64 },
+    #[serde(alias = "Blank")]
+    Empty,
+}
+
+/// Externally tagged: a variant under two aliases, one whose field has an alias of its own, one
+/// serde neither writes nor reads, and one it reads and never writes.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+enum Trail {
+    #[serde(alias = "Hop", alias = "Leap")]
+    Jump(i32, i32),
+    #[serde(skip)]
+    Lost,
+    #[serde(skip_serializing)]
+    Old { length: u32 },
+    #[serde(alias = "Lane")]
+    Road {
+        #[serde(alias = "len")]
+        length: u32,
+    },
+}
+
+/// Adjacently tagged, with a variant serde also reads under two aliases and one it never reads.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "data")]
+enum Dash {
+    #[serde(alias = "Dotted", alias = "Broken")]
+    Dashed {
+        gap: u32,
+    },
+    #[serde(skip_deserializing)]
+    Faded(u32),
+    Hairline,
+}
+
+/// Untagged, with a variant serde never reads.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(untagged)]
+enum Reach {
+    Email {
+        address: String,
+    },
+    #[serde(skip_deserializing)]
+    Pager {
+        number: i32,
+    },
+    Phone {
+        country: i32,
+        digits: String,
+    },
 }
 
 /// What plain serde says of `stored`, read as `T`.
@@ -1143,4 +1228,347 @@ fn a_generic_enum_reads_a_parameters_value_whole() {
             ),
         ]
     );
+}
+
+/// serde reads a variant under each alias it carries, so a tag or a key stored as one names that
+/// variant: the read is serde's, and nothing is listed for the alias.
+#[test]
+fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
+    let mut calls = 0_u32;
+    assert_eq!(
+        read_counting!(Coating, coating_schema, json!({ "kind": "Blank" }), calls),
+        Ok(Coating::Clear)
+    );
+    assert_eq!(
+        read_counting!(
+            Coating,
+            coating_schema,
+            json!({ "color": "red", "kind": "Solid" }),
+            calls
+        ),
+        Ok(Coating::Solid {
+            color: "red".to_owned(),
+        })
+    );
+    assert_eq!(
+        read_counting!(Contour, contour_schema, json!("Blank"), calls),
+        Ok(Contour::Empty)
+    );
+    assert_eq!(
+        read_counting!(
+            Contour,
+            contour_schema,
+            json!({ "Round": { "radius": 1.5_f64 } }),
+            calls
+        ),
+        Ok(Contour::Circle { radius: 1.5_f64 })
+    );
+    for key in ["Jump", "Hop", "Leap"] {
+        assert_eq!(
+            read_counting!(Trail, trail_schema, json!({ key: [1_i32, 2_i32] }), calls),
+            Ok(Trail::Jump(1_i32, 2_i32)),
+            "for {key}"
+        );
+    }
+    assert_eq!(
+        read_counting!(
+            Trail,
+            trail_schema,
+            json!({ "Lane": { "len": 3_i32 } }),
+            calls
+        ),
+        Ok(Trail::Road { length: 3 })
+    );
+    for tag in ["Dashed", "Dotted", "Broken"] {
+        assert_eq!(
+            read_counting!(
+                Dash,
+                dash_schema,
+                json!({ "data": { "gap": 2_i32 }, "kind": tag }),
+                calls
+            ),
+            Ok(Dash::Dashed { gap: 2 }),
+            "for {tag}"
+        );
+    }
+    assert_eq!(
+        read_counting!(Dash, dash_schema, json!({ "kind": "Hairline" }), calls),
+        Ok(Dash::Hairline)
+    );
+    assert_eq!(calls, 0);
+}
+
+/// A variant stored under an alias is walked as that variant, and the key it is stored under is
+/// the one its issues are pathed under: an undeclared key, a bad value, a position, a field under
+/// an alias of its own, and a field that is not there.
+#[test]
+fn an_issue_inside_a_variant_stored_under_an_alias_is_listed_under_the_stored_key() {
+    let undeclared = json!({ "Round": { "extra": 1_i32, "radius": 1.5_f64 } });
+    assert!(serde_reads::<Contour>(&undeclared));
+    assert_eq!(
+        listed!(Contour, contour_schema, undeclared),
+        ["Round.extra: unknown: found Number(1)"]
+    );
+    let refused = json!({ "Round": { "radius": "wide" } });
+    assert!(!serde_reads::<Contour>(&refused));
+    assert_eq!(
+        listed!(Contour, contour_schema, refused),
+        [
+            "Round.radius: invalid: expected F64, found String(\"wide\"): invalid type: string \"wide\", expected f64"
+        ]
+    );
+    let positions = json!({ "Leap": [1_i32, "2", 3_i32] });
+    assert!(!serde_reads::<Trail>(&positions));
+    assert_eq!(
+        listed!(Trail, trail_schema, positions),
+        [
+            "Leap[1]: invalid: expected I32, found String(\"2\"): invalid type: string \"2\", expected i32",
+            "Leap[2]: unknown: found Number(3)",
+        ]
+    );
+    assert_eq!(
+        listed!(Trail, trail_schema, json!({ "Hop": 7_i32 })),
+        ["Hop: invalid: expected Tuple([I32, I32]), found Number(7): not an array"]
+    );
+    let twice_aliased = json!({ "Lane": { "len": "far", "width": 1_i32 } });
+    assert!(!serde_reads::<Trail>(&twice_aliased));
+    assert_eq!(
+        listed!(Trail, trail_schema, twice_aliased),
+        [
+            "Lane.len: invalid: expected U32, found String(\"far\"): invalid type: string \"far\", expected u32",
+            "Lane.width: unknown: found Number(1)",
+        ]
+    );
+    let absent = json!({ "Lane": {} });
+    assert!(!serde_reads::<Trail>(&absent));
+    assert_eq!(
+        listed!(Trail, trail_schema, absent),
+        ["Lane.length: missing: expected U32"]
+    );
+}
+
+/// The path a decider is handed names the alias the variant is stored under, so setting it fixes
+/// the record as it is stored.
+#[test]
+fn a_decider_repairs_what_an_aliased_variant_holds_by_the_path_it_is_handed() {
+    let stored = json!({ "Round": { "radius": "1.5" } });
+    let read = Contour::from_value_with(stored, |raw, found| {
+        for issue in found {
+            if let contour_schema::Issue::Invalid {
+                path,
+                expected: _expected,
+                found: _found,
+                reason: _reason,
+            } = issue
+            {
+                assert_eq!(path.to_string(), "Round.radius");
+                path.set_in_value(raw, json!(1.5_f64));
+            } else {
+                return contour_schema::Verdict::Reject;
+            }
+        }
+        contour_schema::Verdict::Fixed
+    });
+    assert_eq!(read, Ok(Contour::Circle { radius: 1.5_f64 }));
+}
+
+/// An adjacently tagged variant whose tag is stored as an alias is walked under the content key,
+/// which no alias renames.
+#[test]
+fn an_adjacent_tag_stored_as_an_alias_walks_its_content_under_the_content_key() {
+    let refused = json!({ "data": { "gap": "wide", "legacy": true }, "kind": "Broken" });
+    assert!(!serde_reads::<Dash>(&refused));
+    assert_eq!(
+        listed!(Dash, dash_schema, refused),
+        [
+            "data.gap: invalid: expected U32, found String(\"wide\"): invalid type: string \"wide\", expected u32",
+            "data.legacy: unknown: found Bool(true)",
+        ]
+    );
+    let undeclared = json!({ "data": { "gap": 2_i32, "legacy": true }, "kind": "Dotted" });
+    assert!(serde_reads::<Dash>(&undeclared));
+    assert_eq!(
+        listed!(Dash, dash_schema, undeclared),
+        ["data.legacy: unknown: found Bool(true)"]
+    );
+    let absent = json!({ "kind": "Dotted" });
+    assert!(!serde_reads::<Dash>(&absent));
+    assert_eq!(
+        listed!(Dash, dash_schema, absent),
+        ["data: missing: expected Model(\"Dash\")"]
+    );
+}
+
+/// serde reads no tag as a variant under `skip_deserializing` or `skip`, so a tag naming one names
+/// no variant: `Invalid` where the tag is, with serde's message. `Variants` lists what serde does
+/// read, each variant's name and then its aliases, and nothing for that variant.
+#[test]
+fn a_tag_naming_a_variant_serde_never_reads_names_no_variant() {
+    let hidden = serde_json::to_value(Coating::Hidden).unwrap();
+    assert_eq!(hidden, json!({ "kind": "Hidden" }));
+    assert!(!serde_reads::<Coating>(&hidden));
+    assert_eq!(
+        listed!(Coating, coating_schema, hidden),
+        [
+            "kind: invalid: expected Variants([\"Clear\", \"Blank\", \"Solid\"]), found String(\"Hidden\"): unknown variant `Hidden`, expected one of `Blank`, `Clear`, `Solid`"
+        ]
+    );
+    assert_eq!(
+        listed!(Coating, coating_schema, json!({})),
+        ["kind: missing: expected Variants([\"Clear\", \"Blank\", \"Solid\"])"]
+    );
+
+    let faded = serde_json::to_value(Dash::Faded(3)).unwrap();
+    assert_eq!(faded, json!({ "data": 3_i32, "kind": "Faded" }));
+    assert!(!serde_reads::<Dash>(&faded));
+    assert_eq!(
+        listed!(Dash, dash_schema, faded),
+        [
+            "kind: invalid: expected Variants([\"Dashed\", \"Dotted\", \"Broken\", \"Hairline\"]), found String(\"Faded\"): unknown variant `Faded`, expected one of `Broken`, `Dashed`, `Dotted`, `Hairline`"
+        ]
+    );
+
+    assert_eq!(
+        serde_json::to_value(Trail::Lost).unwrap_err().to_string(),
+        "the enum variant Trail::Lost cannot be serialized"
+    );
+    let named = json!("Lost");
+    assert!(!serde_reads::<Trail>(&named));
+    assert_eq!(
+        listed!(Trail, trail_schema, named),
+        [
+            "the value itself: invalid: expected Variants([\"Jump\", \"Hop\", \"Leap\", \"Old\", \"Road\", \"Lane\"]), found String(\"Lost\"): unknown variant `Lost`, expected one of `Hop`, `Jump`, `Leap`, `Old`, `Lane`, `Road`"
+        ]
+    );
+    let keyed = json!({ "Lost": null });
+    assert!(!serde_reads::<Trail>(&keyed));
+    assert_eq!(
+        listed!(Trail, trail_schema, keyed),
+        [
+            "the value itself: invalid: expected Variants([\"Jump\", \"Hop\", \"Leap\", \"Old\", \"Road\", \"Lane\"]), found Object {\"Lost\": Null}: unknown variant `Lost`, expected one of `Hop`, `Jump`, `Leap`, `Old`, `Lane`, `Road`"
+        ]
+    );
+}
+
+/// serde reads no value as an untagged variant under `skip_deserializing`, so what it wrote for
+/// one is read by no variant, and the one `NoVariant` holds a list for every other variant alone.
+#[test]
+fn an_untagged_variant_serde_never_reads_gets_no_list_of_its_own() {
+    let stored = serde_json::to_value(Reach::Pager { number: 7_i32 }).unwrap();
+    assert_eq!(stored, json!({ "number": 7_i32 }));
+    assert!(!serde_reads::<Reach>(&stored));
+    let read = Reach::from_value_with(stored, |_raw, _found| reach_schema::Verdict::Reject);
+    let issues = read.unwrap_err().issues;
+    assert_eq!(
+        lines(&reach_schema::Unrecovered {
+            issues: issues.clone(),
+        }),
+        ["the value itself: no variant: found Object {\"number\": Number(7)}, tried Email, Phone"]
+    );
+    assert_eq!(
+        tried!(reach_schema, issues),
+        [
+            (
+                "Email",
+                vec![
+                    "address: missing: expected String".to_owned(),
+                    "number: unknown: found Number(7)".to_owned(),
+                ]
+            ),
+            (
+                "Phone",
+                vec![
+                    "country: missing: expected I32".to_owned(),
+                    "digits: missing: expected String".to_owned(),
+                    "number: unknown: found Number(7)".to_owned(),
+                ]
+            ),
+        ]
+    );
+
+    let email = json!({ "address": "ann@example.org", "legacy": true });
+    assert_eq!(
+        serde_json::from_value::<Reach>(email.clone()).unwrap(),
+        Reach::Email {
+            address: "ann@example.org".to_owned(),
+        }
+    );
+    assert_eq!(
+        listed!(Reach, reach_schema, email),
+        ["legacy: unknown: found Bool(true)"]
+    );
+    let mut calls = 0_u32;
+    assert_eq!(
+        read_counting!(
+            Reach,
+            reach_schema,
+            json!({ "country": 1_i32, "digits": "555" }),
+            calls
+        ),
+        Ok(Reach::Phone {
+            country: 1_i32,
+            digits: "555".to_owned(),
+        })
+    );
+    assert_eq!(calls, 0);
+}
+
+/// serde still reads a variant it never writes, so one under `skip_serializing` alone is walked.
+#[test]
+fn a_variant_serde_reads_and_never_writes_is_walked() {
+    assert_eq!(
+        serde_json::to_value(Trail::Old { length: 3 })
+            .unwrap_err()
+            .to_string(),
+        "the enum variant Trail::Old cannot be serialized"
+    );
+    let mut calls = 0_u32;
+    assert_eq!(
+        read_counting!(
+            Trail,
+            trail_schema,
+            json!({ "Old": { "length": 3_i32 } }),
+            calls
+        ),
+        Ok(Trail::Old { length: 3 })
+    );
+    assert_eq!(calls, 0);
+    let stored = json!({ "Old": { "extra": true, "length": "x" } });
+    assert!(!serde_reads::<Trail>(&stored));
+    assert_eq!(
+        listed!(Trail, trail_schema, stored),
+        [
+            "Old.length: invalid: expected U32, found String(\"x\"): invalid type: string \"x\", expected u32",
+            "Old.extra: unknown: found Bool(true)",
+        ]
+    );
+}
+
+/// The key an externally tagged variant is stored under is the enum's own, alias or name.
+#[test]
+fn an_externally_tagged_enums_fields_walker_returns_the_key_the_variant_is_stored_under() {
+    let mut none: Vec<contour_schema::Issue<Value>> = Vec::new();
+    for (stored, own) in [
+        (
+            json!({ "Round": { "radius": 1.5_f64 }, "legacy": true }),
+            "Round",
+        ),
+        (
+            json!({ "Circle": { "radius": 1.5_f64 }, "legacy": true }),
+            "Circle",
+        ),
+        (json!({ "Blank": null, "legacy": true }), "Blank"),
+        (json!({ "Empty": null, "legacy": true }), "Empty"),
+    ] {
+        assert_eq!(
+            Contour::decode_with_value_fields(
+                stored.as_object().unwrap(),
+                &[],
+                contour_schema::issue_from_parts,
+                &mut none,
+            ),
+            [own]
+        );
+    }
+    assert_eq!(none, Vec::new());
 }

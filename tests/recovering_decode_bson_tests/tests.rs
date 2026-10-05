@@ -500,6 +500,68 @@ enum Answer<T> {
     Value(T),
 }
 
+/// Internally tagged, with a variant serde also reads under an alias and one it never reads.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+enum Coating {
+    #[serde(alias = "Blank")]
+    Clear,
+    #[serde(skip_deserializing)]
+    Hidden,
+    Solid {
+        color: String,
+    },
+}
+
+/// Externally tagged, each variant also read under an alias.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+enum Contour {
+    #[serde(alias = "Round")]
+    Circle { radius: f64 },
+    #[serde(alias = "Blank")]
+    Empty,
+}
+
+/// Adjacently tagged, with a variant serde also reads under an alias.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "data")]
+enum Dash {
+    #[serde(alias = "Dotted")]
+    Dashed {
+        gap: i32,
+    },
+    Hairline,
+}
+
+/// Untagged, with a variant serde never reads.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(untagged)]
+enum Reach {
+    Email {
+        address: String,
+    },
+    #[serde(skip_deserializing)]
+    Pager {
+        number: i32,
+    },
+    Phone {
+        country: i32,
+        digits: String,
+    },
+}
+
+/// One enum of each form a variant's name is stored in: under a tag, and as text.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Sketch {
+    coating: Coating,
+    contour: Contour,
+}
+
 /// The read hook of [`Hooked::code`]: text that carries no lower-case letter.
 fn upper_only<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
@@ -2598,4 +2660,262 @@ fn a_generic_enum_reads_a_parameters_value_whole() {
             string("6a7cc592ca0574e6efdfe217")
         )]
     );
+}
+
+/// serde reads a variant under each alias it carries, so a tag or a key stored as one names that
+/// variant: the read is serde's, and nothing is listed for the alias.
+#[test]
+fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
+    let mut calls = 0_u32;
+    let stored_row = doc! { "coating": { "kind": "Blank" }, "contour": "Blank" };
+    let read = Sketch::from_bson_with(stored_row, |_raw, _found| {
+        calls += 1;
+        sketch_schema::Verdict::Reject
+    });
+    assert_eq!(
+        read,
+        Ok(Sketch {
+            coating: Coating::Clear,
+            contour: Contour::Empty,
+        })
+    );
+    let keyed_row = doc! {
+        "coating": { "color": "red", "kind": "Solid" },
+        "contour": { "Round": { "radius": 1.5_f64 } },
+    };
+    let keyed = Sketch::from_bson_with(keyed_row, |_raw, _found| {
+        calls += 1;
+        sketch_schema::Verdict::Reject
+    });
+    assert_eq!(
+        keyed,
+        Ok(Sketch {
+            coating: Coating::Solid {
+                color: "red".to_owned(),
+            },
+            contour: Contour::Circle { radius: 1.5_f64 },
+        })
+    );
+    for stored_dash in [
+        doc! { "data": { "gap": 2_i32 }, "kind": "Dotted" },
+        written(&Dash::Dashed { gap: 2_i32 }),
+    ] {
+        let dash = Dash::from_bson_with(stored_dash, |_raw, _found| {
+            calls += 1;
+            dash_schema::Verdict::Reject
+        });
+        assert_eq!(dash, Ok(Dash::Dashed { gap: 2_i32 }));
+    }
+    let hairline = Dash::from_bson_with(doc! { "kind": "Hairline" }, |_raw, _found| {
+        calls += 1;
+        dash_schema::Verdict::Reject
+    });
+    assert_eq!(hairline, Ok(Dash::Hairline));
+    assert_eq!(calls, 0);
+}
+
+/// A variant stored under an alias is walked as that variant, and the key it is stored under is
+/// the one its issues are pathed under, so a decider that works on each path repairs the row.
+#[test]
+fn an_issue_inside_a_variant_stored_under_an_alias_is_listed_and_fixed_under_the_stored_key() {
+    let undeclared = doc! { "Round": { "extra": 1_i32, "radius": 1.5_f64 } };
+    assert!(serde_reads::<Contour>(&undeclared));
+    let read = Contour::from_bson_with(undeclared, |_raw, _found| contour_schema::Verdict::Reject);
+    assert_eq!(
+        told!(contour_schema, read.unwrap_err().issues),
+        [unknown("Round.extra", Bson::Int32(1))]
+    );
+
+    let refused = doc! { "Round": { "radius": "wide" } };
+    assert!(!serde_reads::<Contour>(&refused));
+    let mut seen: Vec<Told> = Vec::new();
+    let fixed = Contour::from_bson_with(refused, |raw, found| {
+        seen = told!(contour_schema, found);
+        for issue in found {
+            if let contour_schema::Issue::Invalid {
+                path,
+                expected: contour_schema::Expected::F64,
+                found: _found,
+                reason: _reason,
+            } = issue
+            {
+                path.set_in_document(raw, Bson::Double(1.5_f64));
+            } else {
+                return contour_schema::Verdict::Reject;
+            }
+        }
+        contour_schema::Verdict::Fixed
+    });
+    assert_eq!(seen, [invalid("Round.radius", "F64", string("wide"))]);
+    assert_eq!(fixed, Ok(Contour::Circle { radius: 1.5_f64 }));
+
+    let mut held = written(&Sketch {
+        coating: Coating::Clear,
+        contour: Contour::Empty,
+    });
+    held.insert("contour", doc! { "Round": {} });
+    assert!(!serde_reads::<Sketch>(&held));
+    let listed = Sketch::from_bson_with(held, |_raw, _found| sketch_schema::Verdict::Reject);
+    assert_eq!(
+        told!(sketch_schema, listed.unwrap_err().issues),
+        [missing("contour.Round.radius", "F64")]
+    );
+}
+
+/// An adjacently tagged variant whose tag is stored as an alias is walked under the content key,
+/// which no alias renames.
+#[test]
+fn an_adjacent_tag_stored_as_an_alias_walks_its_content_under_the_content_key() {
+    for (stored_row, reads, told) in [
+        (
+            doc! { "data": { "gap": "wide", "legacy": true }, "kind": "Dotted" },
+            false,
+            vec![
+                invalid("data.gap", "I32", string("wide")),
+                unknown("data.legacy", Bson::Boolean(true)),
+            ],
+        ),
+        (
+            doc! { "data": { "gap": 2_i32, "legacy": true }, "kind": "Dotted" },
+            true,
+            vec![unknown("data.legacy", Bson::Boolean(true))],
+        ),
+        (
+            doc! { "kind": "Dotted" },
+            false,
+            vec![missing("data", "Model(\"Dash\")")],
+        ),
+    ] {
+        assert_eq!(serde_reads::<Dash>(&stored_row), reads, "for {stored_row}");
+        let listed = Dash::from_bson_with(stored_row.clone(), |_raw, _found| {
+            dash_schema::Verdict::Reject
+        });
+        assert_eq!(
+            told!(dash_schema, listed.unwrap_err().issues),
+            told,
+            "for {stored_row}"
+        );
+    }
+}
+
+/// serde reads no tag as a variant under `skip_deserializing`, so a tag naming one names no
+/// variant: `Invalid` where the tag is. `Variants` lists what serde does read, each variant's
+/// name and then its aliases, and nothing for that variant.
+#[test]
+fn a_tag_naming_a_variant_serde_never_reads_names_no_variant() {
+    let stored_row = written(&Coating::Hidden);
+    assert_eq!(stored_row, doc! { "kind": "Hidden" });
+    assert!(!serde_reads::<Coating>(&stored_row));
+    let read = Coating::from_bson_with(stored_row, |_raw, _found| coating_schema::Verdict::Reject);
+    assert_eq!(
+        told!(coating_schema, read.unwrap_err().issues),
+        [invalid(
+            "kind",
+            "Variants([\"Clear\", \"Blank\", \"Solid\"])",
+            string("Hidden")
+        )]
+    );
+    let absent = Coating::from_bson_with(Document::new(), |_raw, _found| {
+        coating_schema::Verdict::Reject
+    });
+    assert_eq!(
+        told!(coating_schema, absent.unwrap_err().issues),
+        [missing(
+            "kind",
+            "Variants([\"Clear\", \"Blank\", \"Solid\"])"
+        )]
+    );
+
+    let unnamed = doc! { "Oval": {} };
+    assert!(!serde_reads::<Contour>(&unnamed));
+    let listed = Contour::from_bson_with(unnamed.clone(), |_raw, _found| {
+        contour_schema::Verdict::Reject
+    });
+    assert_eq!(
+        told!(contour_schema, listed.unwrap_err().issues),
+        [invalid(
+            "",
+            "Variants([\"Circle\", \"Round\", \"Empty\", \"Blank\"])",
+            Bson::Document(unnamed)
+        )]
+    );
+}
+
+/// serde reads no document as an untagged variant under `skip_deserializing`, so what it wrote for
+/// one is read by no variant, and the one `NoVariant` holds a list for every other variant alone.
+#[test]
+fn an_untagged_variant_serde_never_reads_gets_no_list_of_its_own() {
+    let stored_row = written(&Reach::Pager { number: 7_i32 });
+    assert_eq!(stored_row, doc! { "number": 7_i32 });
+    assert!(!serde_reads::<Reach>(&stored_row));
+    let read = Reach::from_bson_with(stored_row.clone(), |_raw, _found| {
+        reach_schema::Verdict::Reject
+    });
+    let issues = read.unwrap_err().issues;
+    assert_eq!(
+        told!(reach_schema, issues),
+        [(
+            "NoVariant",
+            String::new(),
+            String::new(),
+            Some(Bson::Document(stored_row))
+        )]
+    );
+    assert_eq!(
+        tried!(reach_schema, issues),
+        [
+            (
+                "Email",
+                vec![
+                    missing("address", "String"),
+                    unknown("number", Bson::Int32(7)),
+                ]
+            ),
+            (
+                "Phone",
+                vec![
+                    missing("country", "I32"),
+                    missing("digits", "String"),
+                    unknown("number", Bson::Int32(7)),
+                ]
+            ),
+        ]
+    );
+
+    let email = doc! { "address": "ann@example.org", "legacy": true };
+    assert!(serde_reads::<Reach>(&email));
+    let listed = Reach::from_bson_with(email, |_raw, _found| reach_schema::Verdict::Reject);
+    assert_eq!(
+        told!(reach_schema, listed.unwrap_err().issues),
+        [unknown("legacy", Bson::Boolean(true))]
+    );
+}
+
+/// The key an externally tagged variant is stored under is the enum's own, alias or name.
+#[test]
+fn an_externally_tagged_enums_fields_walker_returns_the_key_the_variant_is_stored_under() {
+    let mut none: Vec<contour_schema::Issue<Bson>> = Vec::new();
+    for (stored_row, own) in [
+        (
+            doc! { "Round": { "radius": 1.5_f64 }, "legacy": true },
+            "Round",
+        ),
+        (
+            doc! { "Circle": { "radius": 1.5_f64 }, "legacy": true },
+            "Circle",
+        ),
+        (doc! { "Blank": Bson::Null, "legacy": true }, "Blank"),
+        (doc! { "Empty": Bson::Null, "legacy": true }, "Empty"),
+    ] {
+        assert_eq!(
+            Contour::decode_with_bson_fields(
+                &stored_row,
+                &[],
+                contour_schema::issue_from_parts,
+                &mut none,
+            ),
+            [own]
+        );
+    }
+    assert_eq!(none, Vec::new());
 }

@@ -25,6 +25,19 @@ const UNTAGGED: &str = "#[serde(untagged)] pub enum Contact { \
      Email { #[serde(deserialize_with = \"contact_schema::deserialize_email_address\")] address: String }, \
      Versioned(Inner), Word(String) }";
 
+/// One enum per form serde writes an enum in, each with a variant serde also reads under an alias
+/// and a variant it never reads.
+const ALIASED_EXTERNAL: &str = "pub enum Contour { #[serde(alias = \"Round\")] Circle { radius: f64 }, \
+     #[serde(alias = \"Blank\")] Empty, #[serde(alias = \"Hop\", alias = \"Leap\")] Jump(i32, i32), \
+     #[serde(skip)] Lost, #[serde(skip_serializing)] Old(String) }";
+const ALIASED_INTERNAL: &str = "#[serde(tag = \"kind\")] pub enum Coating { \
+     #[serde(alias = \"Blank\")] Clear, #[serde(skip_deserializing)] Hidden, Solid { color: String } }";
+const ALIASED_ADJACENT: &str = "#[serde(tag = \"kind\", content = \"data\")] pub enum Dash { \
+     #[serde(alias = \"Dotted\", alias = \"Broken\")] Dashed { gap: u32 }, \
+     #[serde(skip_deserializing)] Faded(u32), Hairline }";
+const UNREAD_UNTAGGED: &str = "#[serde(untagged)] pub enum Reach { Email { address: String }, \
+     #[serde(skip_deserializing)] Fax(Inner), #[serde(skip)] Pager { number: i32 }, Word(String) }";
+
 /// The `impl` the flag adds to `source`, as text.
 fn type_impl_of(source: &str) -> String {
     let item: syn::ItemStruct = syn::parse_str(source).unwrap();
@@ -1215,5 +1228,180 @@ fn the_bson_walker_of_each_enum_form_matches_the_librarys_own_types() {
             !bson.contains("decode_with_value"),
             "for {source}, got: {bson}"
         );
+    }
+}
+
+/// serde reads a tagged variant under its name and under each alias, so the arm of a variant with
+/// aliases matches them all, and the arm of one with none is the name alone.
+#[test]
+fn a_tag_stored_as_an_alias_is_matched_by_its_variants_arm() {
+    let internal = enum_json_of(ALIASED_INTERNAL);
+    assert!(
+        internal.contains(
+            "match tag . as_str () { Some (\"Clear\" | \"Blank\") => vec ! [\"kind\"] , Some (\"Solid\") => { match object . get (\"color\") {"
+        ),
+        "got: {internal}"
+    );
+    let adjacent = enum_json_of(ALIASED_ADJACENT);
+    for written in [
+        "match tag . as_str () { Some (\"Dashed\" | \"Dotted\" | \"Broken\") => match object . get (\"data\") { Some (content) => if let serde_json :: Value :: Object (inner) = content { match inner . get (\"gap\") {",
+        "[path , & [Ok (\"data\" . to_owned ()) , Ok (\"gap\" . to_owned ())]] . concat ()",
+        ", Some (\"Hairline\") => { } , _ => { let here = [path , & [Ok (\"kind\" . to_owned ())]] . concat () ;",
+    ] {
+        assert!(
+            adjacent.contains(written),
+            "missing `{written}` in: {adjacent}"
+        );
+    }
+}
+
+/// An externally tagged variant with aliases is found under the first of its tags the object
+/// holds, bound as `tag` apart from the `stored` a field under an alias binds: the path segment of
+/// what the variant holds, and the key returned as the enum's own.
+#[test]
+fn an_externally_tagged_variant_is_looked_up_under_its_name_and_each_alias() {
+    let walk = enum_json_of(ALIASED_EXTERNAL);
+    for written in [
+        "serde_json :: Value :: String (tag) if matches ! (tag . as_str () , \"Empty\" | \"Blank\") => { }",
+        "object . keys () . any (| key | matches ! (key . as_str () , \"Circle\" | \"Round\" | \"Jump\" | \"Hop\" | \"Leap\" | \"Old\"))",
+        "if let Some ((tag , content)) = [\"Circle\" , \"Round\"] . into_iter () . find_map (| tag | object . get (tag) . map (| content | (tag , content))) { if let serde_json :: Value :: Object (inner) = content { match inner . get (\"radius\") {",
+        "None => out . push (issue (\"Missing\" , [path , & [Ok (tag . to_owned ()) , Ok (\"radius\" . to_owned ())]] . concat () , & [(\"F64\" , & [] , 0)] , None , None , Vec :: new ())) , }",
+        "out . push (issue (\"Unknown\" , [path , & [Ok (tag . to_owned ()) , Ok (key . clone ())]] . concat () , & [] , Some (held . clone ()) , None , Vec :: new ())) ; } } } return vec ! [tag] ; }",
+        "if let Some (tag) = [\"Empty\" , \"Blank\"] . into_iter () . find (| & tag | object . contains_key (tag)) { return vec ! [tag] ; }",
+        "if let Some ((tag , content)) = [\"Jump\" , \"Hop\" , \"Leap\"] . into_iter () . find_map (| tag | object . get (tag) . map (| content | (tag , content))) { match content { serde_json :: Value :: Array (items) => { match items . first () {",
+        "out . push (issue (\"Unknown\" , [path , & [Ok (tag . to_owned ()) , Err (index)]] . concat () ,",
+        "content => out . push (issue (\"Invalid\" , [path , & [Ok (tag . to_owned ())]] . concat () , & [(\"Tuple\" , & [] , 2) , (\"I32\" , & [] , 0) , (\"I32\" , & [] , 0)] , Some (content . clone ()) , Some (\"not an array\" . to_owned ()) , Vec :: new ())) , } return vec ! [tag] ; }",
+        "if let Some (content) = object . get (\"Old\") { out . extend (contour_schema :: value_leaf (content , < String as serde :: Deserialize > :: deserialize , | read | serde_json :: to_value (read) . ok () , [path , & [Ok (\"Old\" . to_owned ())]] . concat () , & [(\"String\" , & [] , 0)] , issue)) ; return vec ! [\"Old\"] ; }",
+    ] {
+        assert!(walk.contains(written), "missing `{written}` in: {walk}");
+    }
+    let twice_aliased = enum_json_of(
+        "pub enum Trail { #[serde(alias = \"Lane\")] Road { #[serde(alias = \"len\")] length: u32 } }",
+    );
+    assert!(
+        twice_aliased.contains(
+            "match [\"length\" , \"len\"] . into_iter () . find_map (| stored | inner . get (stored) . map (| held | (stored , held))) { Some ((stored , held)) => out . extend (trail_schema :: value_leaf (held , < u32 as serde :: Deserialize > :: deserialize , | read | serde_json :: to_value (read) . ok () , [path , & [Ok (tag . to_owned ()) , Ok (stored . to_owned ())]] . concat () ,"
+        ),
+        "got: {twice_aliased}"
+    );
+}
+
+/// `Variants` lists the tags serde reads: variant by variant in the order declared, a variant's
+/// name and then its aliases in the order written. Nothing emitted names a variant under
+/// `skip_deserializing` or `skip`, and one under `skip_serializing` alone is still read.
+#[test]
+fn variants_lists_every_tag_serde_reads_and_none_of_a_variant_it_never_reads() {
+    for (source, variants, never_read) in [
+        (
+            ALIASED_EXTERNAL,
+            "& [(\"Variants\" , & [\"Circle\" , \"Round\" , \"Empty\" , \"Blank\" , \"Jump\" , \"Hop\" , \"Leap\" , \"Old\"] , 0)]",
+            "Lost",
+        ),
+        (
+            ALIASED_INTERNAL,
+            "& [(\"Variants\" , & [\"Clear\" , \"Blank\" , \"Solid\"] , 0)]",
+            "Hidden",
+        ),
+        (
+            ALIASED_ADJACENT,
+            "& [(\"Variants\" , & [\"Dashed\" , \"Dotted\" , \"Broken\" , \"Hairline\"] , 0)]",
+            "Faded",
+        ),
+    ] {
+        let emitted = enum_impl_of(source);
+        let listed = emitted.matches("(\"Variants\" ,").count();
+        assert!(
+            listed > 0 && listed == emitted.matches(variants).count(),
+            "for {source}, got: {emitted}"
+        );
+        assert!(
+            !emitted.contains(never_read),
+            "for {source}, got: {emitted}"
+        );
+    }
+}
+
+/// An untagged variant serde never reads is no variant to the walker: it gets no walk, no method
+/// and no list inside `NoVariant`. The match on what serde read stays exhaustive through one arm
+/// that lists nothing, written only where the enum has such a variant.
+#[test]
+fn an_untagged_variant_serde_never_reads_is_matched_and_never_walked() {
+    let walk = enum_json_of(UNREAD_UNTAGGED);
+    for written in [
+        "Ok (Self :: Word (..)) => Self :: decode_with_value_variant_word (found , path , issue , out) , Ok (Self :: Fax (..) | Self :: Pager { .. }) => { } Err (_) => { let mut as_email = Vec :: new () ;",
+        "let mut as_word = Vec :: new () ; Self :: decode_with_value_variant_word (found , path , issue , & mut as_word) ; out . push (issue (\"NoVariant\" , path . to_vec () , & [] , Some (found . clone ()) , None , vec ! [(\"Email\" , as_email) , (\"Word\" , as_word)])) ; } } }",
+    ] {
+        assert!(walk.contains(written), "missing `{written}` in: {walk}");
+    }
+    for absent in [
+        "as_fax",
+        "as_pager",
+        "variant_pager",
+        "\"Fax\"",
+        "\"Pager\"",
+        "Inner",
+    ] {
+        assert!(!walk.contains(absent), "found `{absent}` in: {walk}");
+    }
+    let of_source = |stem: &str| {
+        let mut named = methods_of(stem, false);
+        named.extend(
+            ["email", "word"].map(|variant| format!("decode_with_{stem}_variant_{variant}")),
+        );
+        named
+    };
+    let mut named = of_source("value");
+    if cfg!(feature = "bson") {
+        named.extend(of_source("bson"));
+    }
+    assert_eq!(
+        added_enum_impls(UNREAD_UNTAGGED),
+        [("impl Reach".to_owned(), named)]
+    );
+    let every_variant_read = enum_json_of(UNTAGGED);
+    assert!(
+        every_variant_read.contains(
+            "Ok (Self :: Word (..)) => Self :: decode_with_value_variant_word (found , path , issue , out) , Err (_) => {"
+        ),
+        "got: {every_variant_read}"
+    );
+}
+
+/// The BSON walk of an aliased or never-read variant is its JSON one over the library's own types.
+#[cfg(feature = "bson")]
+#[test]
+fn the_bson_walker_reads_a_variants_alias_and_skip_as_the_json_one_does() {
+    for (source, written) in [
+        (
+            ALIASED_EXTERNAL,
+            "bson :: Bson :: String (tag) if matches ! (tag . as_str () , \"Empty\" | \"Blank\") => { } bson :: Bson :: Document (object) if object . len () == 1 && object . keys () . any (| key | matches ! (key . as_str () , \"Circle\" | \"Round\" | \"Jump\" | \"Hop\" | \"Leap\" | \"Old\")) => {",
+        ),
+        (
+            ALIASED_EXTERNAL,
+            "if let Some ((tag , content)) = [\"Circle\" , \"Round\"] . into_iter () . find_map (| tag | object . get (tag) . map (| content | (tag , content))) { if let bson :: Bson :: Document (inner) = content { match inner . get (\"radius\") {",
+        ),
+        (
+            ALIASED_EXTERNAL,
+            "if let Some (tag) = [\"Empty\" , \"Blank\"] . into_iter () . find (| & tag | object . contains_key (tag)) { return vec ! [tag] ; }",
+        ),
+        (
+            ALIASED_INTERNAL,
+            "match tag . as_str () { Some (\"Clear\" | \"Blank\") => vec ! [\"kind\"] , Some (\"Solid\") => {",
+        ),
+        (
+            ALIASED_ADJACENT,
+            "Some (\"Dashed\" | \"Dotted\" | \"Broken\") => match object . get (\"data\") { Some (content) => if let bson :: Bson :: Document (inner) = content {",
+        ),
+        (
+            UNREAD_UNTAGGED,
+            "Ok (Self :: Word (..)) => Self :: decode_with_bson_variant_word (found , path , issue , out) , Ok (Self :: Fax (..) | Self :: Pager { .. }) => { } Err (_) => {",
+        ),
+    ] {
+        let bson = enum_bson_of(source);
+        assert!(
+            bson.contains(written),
+            "for {source}, missing `{written}` in: {bson}"
+        );
+        assert!(!bson.contains("serde_json"), "for {source}, got: {bson}");
     }
 }
