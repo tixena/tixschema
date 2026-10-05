@@ -13706,6 +13706,37 @@ fn raw_default_block(item_name: &str, call: &str) -> String {
     )
 }
 
+/// The name a factory's return type is read back under. A builder that defers a reference may
+/// reach its own type through it, and a declaration file writes such a type only by name: an
+/// interface is printed as its name, where an alias is printed as the structure it resolves to,
+/// with `any` at the point that structure recurs.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+fn zod_schema_of(
+    item_name: &str,
+    bounds: &str,
+    builder: &str,
+    parameters: &[String],
+    preamble: &str,
+    expression: &str,
+) -> String {
+    let read_back = format!(
+        "ReturnType<\n  typeof {builder}<{}>\n>",
+        parameters.join(", ")
+    );
+    if defers_a_reference(preamble) || defers_a_reference(expression) {
+        format!("interface {item_name}$SchemaOf{bounds} extends {read_back} {{}}")
+    } else {
+        format!("type {item_name}$SchemaOf{bounds} = {read_back};")
+    }
+}
+
+/// Whether `zod` holds a member written behind a getter or an operand written behind `z.lazy`,
+/// the two spellings a reference is deferred in.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+fn defers_a_reference(zod: &str) -> bool {
+    zod.contains("() { return ") || zod.contains("z.lazy(() => ")
+}
+
 /// What a generic type's Zod surface is written as: the builder holding the schema its arguments
 /// compose into, the return type read back off it, the cache interfaces, and the exported factory.
 #[cfg(feature = "zod")]
@@ -13741,9 +13772,10 @@ fn zod_factory_block(
     let cache = zod_cache_name(item_name);
     #[cfg(feature = "typescript")]
     let declarations = format!(
-        "type {item_name}$SchemaOf{bounds} = ReturnType<\n  typeof {builder}<{}>\n>;\n\nconst \
-         {cache} = new {}();\n\n",
-        parameters.join(", "),
+        "{}\n\nconst {cache} = new {}();\n\n",
+        zod_schema_of(
+            item_name, &bounds, &builder, parameters, preamble, expression
+        ),
         zod_cache_type(item_name, parameters)
     );
     #[cfg(not(feature = "typescript"))]

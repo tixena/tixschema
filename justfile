@@ -104,12 +104,17 @@ lint-sets:
 # tests inside `cargo test` stand down when they find none, saying so on stderr. This recipe is the
 # one that refuses to stand down — it resolves the compiler up front and names it for the tests,
 # where a named compiler that cannot be started is a failure rather than a stand-down. Set
-# TIXSCHEMA_TSC to use a compiler that is not on PATH.
+# TIXSCHEMA_TSC to use a compiler that is not on PATH. Its last check compiles a second package
+# against the declarations the compiler emits for the bundle, which reads `zod` itself: set
+# TIXSCHEMA_NODE_MODULES to a directory whose node_modules holds it.
 typecheck-ts:
     @command -v "${TIXSCHEMA_TSC:-tsc}" >/dev/null 2>&1 || { echo "No TypeScript compiler: put \`tsc\` on PATH, or set TIXSCHEMA_TSC to one." >&2; exit 1; }
     @echo "Type-checking the emitted bundle with $(command -v "${TIXSCHEMA_TSC:-tsc}")..."
     TIXSCHEMA_TSC="$(command -v "${TIXSCHEMA_TSC:-tsc}")" cargo test --test service_schema_typescript_tests type_check
     TIXSCHEMA_TSC="$(command -v "${TIXSCHEMA_TSC:-tsc}")" cargo test --no-default-features --features "serde,typescript" --test service_schema_typescript_tests type_check
+    @test -n "${TIXSCHEMA_NODE_MODULES:-}" && [ -d "${TIXSCHEMA_NODE_MODULES}/node_modules/zod" ] || { echo "No zod: set TIXSCHEMA_NODE_MODULES to a directory whose node_modules holds zod." >&2; exit 1; }
+    @echo "Compiling a second package against the bundle's declarations..."
+    TIXSCHEMA_TSC="$(command -v "${TIXSCHEMA_TSC:-tsc}")" cargo test --test generic_types_tests type_check
     @echo "✅ The emitted bundle type-checks!"
 
 # Install the jars the emitted Kotlin compiles and runs against into ~/.local/share/tixschema/kotlin-libs: the

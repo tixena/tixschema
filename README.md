@@ -990,9 +990,13 @@ const buildNode$Schema = <IdType extends ZodType>(
   get children() { return z.array(Node$SchemaFactory(idType)); },
   id: idType,
 });
+
+interface Node$SchemaOf<IdType extends ZodType> extends ReturnType<
+  typeof buildNode$Schema<IdType>
+> {}
 ```
 
-The member is written as a getter so that the call is made after the factory has reached its cache rather than while its object is still being built. Where a cycle spans two types, the reference the getter is written on is the one pointing *forward* -- at a type declared below -- because that is the reference no cycle can be built without: if every reference in a cycle named something already declared, declaration positions would have to decrease all the way round. Deferring those leaves nothing that can cycle, and every reference pointing back at a type already declared is written as it stands.
+The member is written as a getter so that the call is made after the factory has reached its cache rather than while its object is still being built. A type whose builder defers a reference reads its schema type back under an `interface` rather than the `type` alias every other generic type keeps: a declaration file (`.d.ts`) writes a type that reaches itself only by name, and an alias is written there as the structure it resolves to, with `any` at the point the structure recurs. Under the interface the member is declared `z.ZodArray<Node$SchemaOf<IdType>>`, so a second package reading the declarations parses `children` as `Node<…>` all the way down. Where a cycle spans two types, the reference the getter is written on is the one pointing *forward* -- at a type declared below -- because that is the reference no cycle can be built without: if every reference in a cycle named something already declared, declaration positions would have to decrease all the way round. Deferring those leaves nothing that can cycle, and every reference pointing back at a type already declared is written as it stands.
 
 #### Declaring the default type
 

@@ -580,7 +580,13 @@ A generic type may reach itself, directly or through a second type reaching back
 hoists it into `$defs` once and points a `$ref` at that definition; TypeScript writes the name
 inside itself with its arguments; Zod calls the factory again with the argument the outer call was
 handed, the memo cache being what ends the recursion — the schema is cached before the recursive
-call is made. Which of the item's two bindings a self-reference names is read off the store
+call is made. A builder that defers a reference — a member behind a getter, an operand behind
+`z.lazy` — reads its type back under `interface X$SchemaOf<…> extends ReturnType<…> {}` where every
+other generic item keeps the `type` alias: `zod_schema_of` decides, off `defers_a_reference`. A
+declaration file writes a type that reaches itself only by name, and writes an alias as the
+structure it resolves to, with `any` where that structure recurs; the interface is what a second
+package, reading the `.d.ts`, parses the recursive member through.
+`tests/generic_types_tests/declarations.rs` compiles that second package for real. Which of the item's two bindings a self-reference names is read off the store
 `record_zod_factory` writes, and that is written at `exec_model_schema` ahead of every shape rather
 than where the binding is finally spelled: the fields are rendered before then, so an answer stored
 on the item's own registry entry would be read before the item had put one there.
@@ -949,7 +955,7 @@ The CI pipeline ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs:
 3. `just lint-sets` (clippy over every combination of the feature sets)
 4. `cargo test --verbose` (basic tests)
 5. `just test-sets` (every combination of the `web`, `mobile` and `mongo` feature sets via cargo-hack)
-6. `just typecheck-ts` (the emitted TypeScript through a real `tsc --strict`)
+6. `just typecheck-ts` (the emitted TypeScript through a real `tsc --strict`, and a second package compiled against the declarations emitted for it)
 7. `just test-emitted` (the emitted Node, Dart, Swift and Kotlin clients run under their own toolchains)
 8. `cargo audit`
 9. Discord notification with build status
