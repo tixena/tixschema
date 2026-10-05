@@ -210,7 +210,7 @@ all-powerset: lint lint-all test
     @echo "All powerset checks completed successfully!"
 
 # Lint with every feature on at once - one build that reaches the feature-gated code (dart,
-# chrono, mongodb) the default-features `lint` misses, without the powerset's 128 builds.
+# chrono, mongodb) the default-features `lint` misses, without the powerset's build per combination.
 lint-all-features:
     cargo clippy --all-targets --all-features -- -D warnings
 
