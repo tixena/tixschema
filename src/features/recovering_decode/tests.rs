@@ -343,12 +343,37 @@ fn the_bson_walker_matches_the_librarys_own_types() {
         "bson :: Bson :: Array (items_1) =>",
         "Some (bson :: Bson :: Document (entries)) =>",
         "< Inner > :: decode_with_bson_issues (item_1 ,",
-        "walked_schema :: bson_leaf (item , < ObjectId as serde :: Deserialize > :: deserialize , | read , to | serde :: Serialize :: serialize (read , to) . ok () ,",
     ] {
         assert!(walk.contains(written), "missing `{written}` in: {walk}");
     }
+    // Only `mongodb` makes `ObjectId` a type tixschema knows, and so one it reads whole.
+    #[cfg(feature = "mongodb")]
+    assert!(
+        walk.contains(
+            "walked_schema :: bson_leaf (item , < ObjectId as serde :: Deserialize > :: deserialize , | read , to | serde :: Serialize :: serialize (read , to) . ok () ,"
+        ),
+        "got: {walk}"
+    );
     assert!(!walk.contains("serde_json"), "got: {walk}");
     assert!(!walk.contains("decode_with_value"), "got: {walk}");
+}
+
+/// Without `mongodb`, `ObjectId` is a type tixschema does not know, so the BSON walker reaches it
+/// as it reaches any model type: by that type's own BSON walker, never read whole.
+#[cfg(all(feature = "bson", not(feature = "mongodb")))]
+#[test]
+fn without_mongodb_the_bson_walker_reaches_an_id_as_a_model_type() {
+    let walk = bson_fields_walk_of(EVERY_WALK);
+    assert!(
+        walk.contains(
+            "for (key , item) in entries { < ObjectId > :: decode_with_bson_issues (item , & [path , & [Ok (\"owners\" . to_owned ()) , Ok (key . clone ())]] . concat () , issue , out) ; }"
+        ),
+        "got: {walk}"
+    );
+    assert!(
+        !walk.contains("< ObjectId as serde :: Deserialize >"),
+        "got: {walk}"
+    );
 }
 
 /// A hook takes a deserializer and a serializer, not a value, so the BSON walker hands it the
