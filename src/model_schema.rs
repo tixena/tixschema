@@ -82,7 +82,8 @@ use crate::features::serde::rename_direction_rejection;
 // `derives_deserialize` is reached through `container_is_read_back`, which states its own answer.
 #[cfg(feature = "serde")]
 use crate::features::serde::{
-    NAMED_READ_HOOK_PREFIX, SerdeFieldMeta, SerdeTypeMeta, derives_deserialize, has_serde_read_hook,
+    NAMED_READ_HOOK_PREFIX, SerdeFieldMeta, SerdeTypeMeta, derives_deserialize,
+    has_serde_read_hook, struct_tag,
 };
 use crate::features::serde::{brand_field, has_serde_default, parse_serde_key_omission};
 
@@ -4417,13 +4418,72 @@ const fn struct_docs_body(_doc_comment: Option<&[String]>, _item_name: &str) -> 
     String::new()
 }
 
+/// Puts the key a struct's own `#[serde(tag = "...")]` writes ahead of the struct's members, as
+/// one whose only value is the struct's serde name, or refuses a field that writes the same key:
+/// serde would write it twice.
+#[cfg(feature = "serde")]
+fn with_struct_tag(
+    item_struct: &syn::ItemStruct,
+    mut collected: StructFieldData,
+) -> StructFieldData {
+    let Some((key, named)) = struct_tag(item_struct) else {
+        return collected;
+    };
+    if collected.0.iter().any(|member| member.name == key) {
+        let refusal = format!(
+            "type `{}`: `#[serde(tag = \"{key}\")]` writes the struct's name under `{key}`, and \
+             a field of the struct writes that key too, so serde would write it twice. Rename \
+             one of the two.",
+            item_struct.ident
+        );
+        collected.4.push(
+            syn::Error::new_spanned(&item_struct.ident, prefixed_guard_message(&refusal))
+                .to_compile_error(),
+        );
+        return collected;
+    }
+    let string: syn::Type = syn::parse_quote!(String);
+    let mut member = get_field_def(&key, &string, &build_jsdoc_body(None, &key));
+    member.field_type = FieldDefType::StringLiteral(named);
+    collected.0.insert(0, member);
+    collected
+}
+
+/// What a struct's fields collect into, with the key its own tag writes ahead of them.
+fn struct_members(
+    item_struct: &mut syn::ItemStruct,
+    rename_all: Option<&str>,
+    module_name_opt: Option<&str>,
+    container_defaulted: bool,
+) -> StructFieldData {
+    let from_fields = collect_struct_fields(
+        &mut item_struct.fields,
+        rename_all,
+        module_name_opt,
+        &item_struct.ident.to_string(),
+        &item_struct.generics,
+        container_defaulted,
+        container_is_read_back(&item_struct.attrs),
+    );
+    #[cfg(feature = "serde")]
+    {
+        with_struct_tag(item_struct, from_fields)
+    }
+    #[cfg(not(feature = "serde"))]
+    {
+        from_fields
+    }
+}
+
 fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> TokenStream {
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     if is_branded_newtype(&item_struct) {
         return process_branded_newtype(item_struct, args);
     }
 
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     let name = item_struct.ident.clone();
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     let rust_ident = name.to_string();
 
     #[cfg(feature = "serde")]
@@ -4465,14 +4525,11 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
     // Bound as a whole so feature-gated field access (`.0`/`.2`/`.3`) marks it used without
     // per-element unused warnings; `collect_struct_fields` is always called for its `item_struct`
     // mutation.
-    let collected = collect_struct_fields(
-        &mut item_struct.fields,
+    let collected = struct_members(
+        &mut item_struct,
         rename_all.as_deref(),
         module_name_opt,
-        &rust_ident,
-        &item_struct.generics,
         container_defaulted,
-        container_is_read_back(&item_struct.attrs),
     );
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
     let _: &_ = &&collected;

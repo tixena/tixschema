@@ -20,7 +20,7 @@ use syn::ext::IdentExt as _;
 use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
-use crate::features::serde::{brand_field, parse_serde_key_omission};
+use crate::features::serde::{brand_field, parse_serde_key_omission, struct_tag};
 use crate::field_type::{
     FieldDef, FieldDefType, VariantKind, classify_variant, get_field_def, is_plain_enum,
     is_sequence_wrapper,
@@ -1009,7 +1009,11 @@ fn swift_coding_keys(fields: &[SwiftField], extra: &[(String, String)]) -> Strin
 /// The body (properties, `CodingKeys`, and — only where synthesis cannot reach — `init(from:)`,
 /// `encode(to:)` and the memberwise initializer it costs) for a set of [`SwiftField`]s.
 /// `extra_coding_keys` lists cases with no matching field (an internally-tagged variant's tag).
-fn struct_body_content(fields: &[SwiftField], extra_coding_keys: &[(String, String)]) -> String {
+fn struct_body_content(
+    fields: &[SwiftField],
+    extra_coding_keys: &[(String, String)],
+    own_tag: Option<&(String, String)>,
+) -> String {
     let props = fields.iter().fold(String::new(), |mut acc, field| {
         write!(
             acc,
@@ -1020,9 +1024,12 @@ fn struct_body_content(fields: &[SwiftField], extra_coding_keys: &[(String, Stri
         acc
     });
     let coding_keys = swift_coding_keys(fields, extra_coding_keys);
-    let needs_decode = fields
-        .iter()
-        .any(|field| field.flatten || !matches!(field.shape.leaf_conversion, LeafConversion::None));
+    // A struct's own tag has no property to synthesize a codec from, so both halves are written
+    // out: the tag is encoded under a key set of its own, and decoding reads past it.
+    let needs_decode = own_tag.is_some()
+        || fields.iter().any(|field| {
+            field.flatten || !matches!(field.shape.leaf_conversion, LeafConversion::None)
+        });
     let needs_encode = needs_decode || fields.iter().any(field_is_nullable_flag);
 
     let memberwise_init = if needs_decode {
@@ -1036,10 +1043,12 @@ fn struct_body_content(fields: &[SwiftField], extra_coding_keys: &[(String, Stri
             .map(|field| decode_statement(field, "container"))
             .collect::<Vec<_>>()
             .join("; ");
-        format!(
-            "public init(from decoder: Decoder) throws {{ \
-             let container = try decoder.container(keyedBy: CodingKeys.self); {statements} }}; "
-        )
+        let container = if fields.is_empty() {
+            ""
+        } else {
+            "let container = try decoder.container(keyedBy: CodingKeys.self); "
+        };
+        format!("public init(from decoder: Decoder) throws {{ {container}{statements} }}; ")
     } else {
         String::new()
     };
@@ -1049,14 +1058,30 @@ fn struct_body_content(fields: &[SwiftField], extra_coding_keys: &[(String, Stri
             .map(|field| encode_statement(field, "container"))
             .collect::<Vec<_>>()
             .join("; ");
+        let container = if fields.is_empty() {
+            ""
+        } else {
+            "var container = encoder.container(keyedBy: CodingKeys.self); "
+        };
+        let tag = own_tag.map_or_else(String::new, |(_, named)| {
+            format!(
+                "var tagged = encoder.container(keyedBy: SwiftSchemaTagCodingKeys.self); \
+                 try tagged.encode(\"{named}\", forKey: .swiftSchemaTag); "
+            )
+        });
         format!(
-            "public func encode(to encoder: Encoder) throws {{ \
-             var container = encoder.container(keyedBy: CodingKeys.self); {statements} }} "
+            "public func encode(to encoder: Encoder) throws {{ {tag}{container}{statements} }} "
         )
     } else {
         String::new()
     };
-    format!("{props}{coding_keys} {memberwise_init}{init_method}{encode_method}")
+    let tag_keys = own_tag.map_or_else(String::new, |(key, _)| {
+        format!(
+            "private enum SwiftSchemaTagCodingKeys: String, CodingKey {{ \
+             case swiftSchemaTag = \"{key}\" }}; "
+        )
+    });
+    format!("{props}{coding_keys} {tag_keys}{memberwise_init}{init_method}{encode_method}")
 }
 
 /// The explicit memberwise `public init(...)` a custom `init(from:)` costs a struct — Swift
@@ -1077,8 +1102,13 @@ fn memberwise_initializer(fields: &[SwiftField]) -> String {
 /// The `public struct {export_name}{generics}: Codable, Sendable { ... }` a named-field struct or
 /// a struct-shaped variant payload earns, with the `DateTime` helpers appended when a field needs
 /// them.
-fn struct_declaration(export_name: &str, generic_params: &str, fields: &[SwiftField]) -> String {
-    let content = struct_body_content(fields, &[]);
+fn struct_declaration(
+    export_name: &str,
+    generic_params: &str,
+    fields: &[SwiftField],
+    own_tag: Option<&(String, String)>,
+) -> String {
+    let content = struct_body_content(fields, &[], own_tag);
     let helpers = datetime_helpers_for(export_name, fields);
     format!(
         "public struct {export_name}{generic_params}: Codable, Sendable {{ {content} }}; {helpers}"
@@ -1120,7 +1150,8 @@ fn struct_swift_tokens(item_struct: &ItemStruct, name_override: Option<&str>) ->
         &export_name,
         &mut aux,
     );
-    let body = struct_declaration(&export_name, &generic_params, &fields);
+    let own_tag = struct_tag(item_struct);
+    let body = struct_declaration(&export_name, &generic_params, &fields, own_tag.as_ref());
     let typealias = ident_typealias(&rust_ident, &export_name, &generic_params);
     let swift_source = if aux.is_empty() {
         format!("{body}{typealias}")
@@ -1297,7 +1328,7 @@ fn resolve_variant_payload(
                 &struct_name,
                 aux,
             );
-            aux.push(struct_declaration(&struct_name, "", &fields));
+            aux.push(struct_declaration(&struct_name, "", &fields, None));
             Some(struct_name)
         }
         VariantKind::TupleSingle => {

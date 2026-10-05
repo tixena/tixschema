@@ -22,7 +22,7 @@ use syn::ext::IdentExt as _;
 use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
-use crate::features::serde::{brand_field, parse_serde_key_omission};
+use crate::features::serde::{brand_field, parse_serde_key_omission, struct_tag};
 use crate::field_type::{
     FieldDef, FieldDefType, VariantKind, classify_variant, dart_from_json_argument,
     dart_lower_camel, dart_to_json_argument, get_field_def, is_plain_enum, is_sequence_wrapper,
@@ -916,9 +916,10 @@ fn class_body(
     class_name: &str,
     generic_params: &str,
     fields: &[DartField],
+    extra_to_json: &[String],
     codec: &GenericCodec,
 ) -> String {
-    let content = class_body_content(class_name, fields, &[], codec);
+    let content = class_body_content(class_name, fields, extra_to_json, codec);
     format!("class {class_name}{generic_params} {{ {content} }}")
 }
 
@@ -947,7 +948,12 @@ fn struct_dart_tokens(item_struct: &ItemStruct, name_override: Option<&str>) -> 
     let fields = collect_dart_fields(&item_struct.fields, rule, &type_parameters);
     let generic_params = dart_generic_params(&item_struct.generics);
     let codec = generic_codec(&type_parameters);
-    let body = class_body(&export_name, &generic_params, &fields, &codec);
+    // A struct's own tag is written ahead of its fields and read past, as serde does both.
+    let own_tag: Vec<String> = struct_tag(item_struct)
+        .into_iter()
+        .map(|(key, named)| format!("'{key}': '{named}',"))
+        .collect();
+    let body = class_body(&export_name, &generic_params, &fields, &own_tag, &codec);
     let typedef = ident_typedef(&rust_ident, &export_name, &generic_params);
     let dart_source = format!("{body}{typedef}");
 

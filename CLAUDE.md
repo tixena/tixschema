@@ -351,6 +351,14 @@ pub struct UserProfile {
 }
 ```
 
+A struct's own `#[serde(tag = "...")]` writes the struct's serde name under that key, and every
+surface describes it. `struct_tag` in `src/features/serde.rs` answers the key and the name (the
+ident, or the container's `rename`); `with_struct_tag` puts the pair ahead of the struct's members
+as a required string literal and refuses a field that writes the same key, which serde would write
+twice. Dart writes it into `toJson`, Swift encodes it under `SwiftSchemaTagCodingKeys`, and Kotlin
+holds it in an `@EncodeDefault` property outside the constructor; all three read a payload with
+the key or without it, as serde does.
+
 ### 7. Field Validation Attributes (`#[model_schema_prop(...)]`)
 
 All validation constraints generate checks in **Zod (frontend), JSON Schema, and Rust**. In Rust the check runs in `validate()`. It also runs as serde reads the payload in one position only: a member of an untagged enum, where the check decides which variant the payload is:

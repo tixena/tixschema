@@ -4019,6 +4019,7 @@ Supported Serde attributes:
 - `#[serde(rename = "...")]` -- rename individual fields
 - `#[serde(rename_all = "camelCase")]` -- rename all fields with a naming convention
 - `#[serde(tag = "...")]` -- internally tagged enums: the variant's data is written beside the discriminator
+- `#[serde(tag = "...")]` on a struct -- the struct's name is written under that key, and every surface describes the key: see [A Struct's Own Tag](#a-structs-own-tag)
 - `#[serde(tag = "...", content = "...")]` -- adjacently tagged enums
 - `#[serde(untagged)]` -- untagged enums generate a union (`A | B`) / Zod `z.union([...])` / JSON Schema `anyOf`
 - `#[serde(flatten)]` -- flatten a field into the parent as an intersection type (`A & B`) / Zod `.and(...)`
@@ -4033,6 +4034,33 @@ Supported Serde attributes:
 The three `skip` spellings are three different wires, and [Optional Fields](#optional-fields) reads each one in both directions, positional slots included.
 
 If the `serde` feature is disabled but serde attributes are present, you will see compile-time warnings and field names will not be transformed.
+
+### A Struct's Own Tag
+
+`#[serde(tag = "...")]` on a struct makes serde write the struct's name under that key, ahead of its fields. Every surface describes the key as a required member whose only value is that name -- the struct's ident, or its `#[serde(rename = "...")]`:
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub struct Tagged {
+    pub name: String,
+}
+```
+
+```typescript
+export type Tagged = {
+  kind: "Tagged";
+  name: string;
+};
+
+const Tagged$RawSchema = z.strictObject({
+  kind: z.literal("Tagged"),
+  name: z.string(),
+});
+```
+
+The JSON Schema lists `kind` in `required` as `{"type": "string", "const": "Tagged"}`, and the Dart, Swift and Kotlin types write the key and read a payload with it or without it. serde reads the struct either way too, whatever value the key holds, so the schemas describe what the struct writes. A struct that flattens a tagged one is written with the key in its own object, which is what its intersection describes. A field of the struct that writes the same key is refused, since serde would write the key twice.
 
 ## Important Notes
 

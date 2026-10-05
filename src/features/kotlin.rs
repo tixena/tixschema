@@ -22,7 +22,7 @@ use syn::ext::IdentExt as _;
 use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
-use crate::features::serde::{brand_field, parse_serde_key_omission};
+use crate::features::serde::{brand_field, parse_serde_key_omission, struct_tag};
 use crate::field_type::{
     FieldDef, FieldDefType, VariantKind, classify_variant, get_field_def, is_plain_enum,
     is_sequence_wrapper,
@@ -883,10 +883,16 @@ fn flatten_merging_serializer(
     generic_params: &str,
     type_parameters: &[String],
     fields: &[KotlinField],
+    own_tag: Option<&(String, String)>,
 ) -> String {
     let self_type = format!("{export_name}{generic_params}");
     let serializer_head = serializer_declaration(export_name, type_parameters);
-    let plan = flatten_plan(fields, type_parameters);
+    let mut plan = flatten_plan(fields, type_parameters);
+    // A struct's own tag is written ahead of everything merged into the object.
+    if let Some((key, named)) = own_tag {
+        plan.serialize_stmts
+            .insert(0, format!("put(\"{key}\", \"{named}\")"));
+    }
 
     let lenient_field = if plan.needs_lenient {
         "private val lenient = Json { ignoreUnknownKeys = true }; "
@@ -950,10 +956,24 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, name_override: Option<&str>) -
             data_class_params(&fields)
         )
     };
+    let own_tag = struct_tag(item_struct);
     let kotlin_source = if fields.iter().any(|field| field.flatten) {
-        let serializer =
-            flatten_merging_serializer(&export_name, &generic_params, &type_parameters, &fields);
+        let serializer = flatten_merging_serializer(
+            &export_name,
+            &generic_params,
+            &type_parameters,
+            &fields,
+            own_tag.as_ref(),
+        );
         format!("@Serializable(with = {export_name}Serializer::class) {body} {serializer}{alias}")
+    } else if let Some((key, named)) = own_tag {
+        // A struct's own tag: a property outside the constructor, always written and holding the
+        // struct's name unless a payload says otherwise, as serde writes it and reads past it.
+        format!(
+            "@OptIn(ExperimentalSerializationApi::class) @Serializable {body} {{ \
+             @SerialName(\"{key}\") @EncodeDefault val kotlinSchemaTag: String = \"{named}\" \
+             }}{alias}"
+        )
     } else {
         format!("@Serializable {body}{alias}")
     };

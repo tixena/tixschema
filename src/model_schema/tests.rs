@@ -12433,6 +12433,28 @@ fn expansion_with_args_over(args: &str, source: &str) -> proc_macro2::TokenStrea
     )
 }
 
+/// serde writes a struct's own tag and a field under the same key as two entries of one object,
+/// so the declaration is refused, whether the field is named for the key or renamed onto it.
+#[cfg(feature = "serde")]
+#[test]
+fn a_field_under_a_structs_own_tag_key_is_refused() {
+    for source in [
+        "#[serde(tag = \"kind\")] pub struct TagNamed { pub kind: String, pub name: String }",
+        "#[serde(tag = \"kind\")] pub struct TagRenamed { #[serde(rename = \"kind\")] \
+         pub other: String }",
+    ] {
+        let tokens = expansion_over(source).to_string();
+        assert!(
+            tokens.contains("writes the struct's name under `kind`"),
+            "for {source}, got: {tokens}"
+        );
+    }
+    let accepted =
+        expansion_over("#[serde(tag = \"kind\")] pub struct TagAlone { pub name: String }")
+            .to_string();
+    assert!(!accepted.contains("compile_error"), "got: {accepted}");
+}
+
 /// The seam's fallthrough, the one sink no item that compiles can reach: an item whose shape the
 /// macro has no expansion for earns the refusal, spanned on the item so the caret lands on the
 /// declaration rather than on the attribute.

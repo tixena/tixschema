@@ -11,6 +11,8 @@ use crate::utils::written_type;
 use proc_macro2::Group;
 #[cfg(feature = "serde")]
 use proc_macro2::{Delimiter, TokenTree};
+#[cfg(feature = "serde")]
+use syn::ext::IdentExt as _;
 use syn::meta::ParseNestedMeta;
 use syn::token::Paren;
 use syn::{Attribute, Field, Fields, ItemStruct, Token, Type};
@@ -243,6 +245,27 @@ pub fn has_serde_skip_serializing(attrs: &[Attribute]) -> bool {
         });
     }
     found
+}
+
+/// The key a struct writes its own serde name under, with that name: what `#[serde(tag = "...")]`
+/// means on a struct. serde writes the pair ahead of the fields and reads the struct with or
+/// without it.
+#[cfg(feature = "serde")]
+pub fn struct_tag(item_struct: &ItemStruct) -> Option<(String, String)> {
+    let key = parse_serde_type_attributes(&item_struct.attrs).tag?;
+    let named = parse_serde_field_attributes(&item_struct.attrs)
+        .rename
+        .unwrap_or_else(|| item_struct.ident.unraw().to_string());
+    Some((key, named))
+}
+
+/// Without the `serde` feature nothing reads the attribute, so no struct has a tag.
+#[cfg(all(
+    not(feature = "serde"),
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
+pub const fn struct_tag(_item_struct: &ItemStruct) -> Option<(String, String)> {
+    None
 }
 
 /// The field a brand is written and read as the value of, or `None` for a struct that is no

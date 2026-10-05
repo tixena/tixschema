@@ -7,6 +7,10 @@
 mod raw_identifiers;
 
 #[cfg(test)]
+#[path = "serde_tests/tagged_struct.rs"]
+mod tagged_struct;
+
+#[cfg(test)]
 #[cfg(feature = "serde")]
 #[path = "serde_tests/tests.rs"]
 mod tests;

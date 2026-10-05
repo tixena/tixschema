@@ -92,6 +92,47 @@ fn assert_readme_declares_and_shows(declaration: &str, emission: &str, members: 
     }
 }
 
+/// The "A Struct's Own Tag" example: the key serde writes the struct's name under is a member.
+#[test]
+fn test_the_struct_tag_example_is_declarable_and_shows_what_it_emits() {
+    #[model_schema()]
+    #[derive(Serialize, Deserialize)]
+    #[serde(tag = "kind")]
+    pub struct Tagged {
+        pub name: String,
+    }
+
+    let declaration = "#[model_schema()]\n#[derive(Serialize, Deserialize)]\n#[serde(tag = \
+                       \"kind\")]\npub struct Tagged {\n    pub name: String,\n}";
+    assert_readme_declares_and_shows(
+        declaration,
+        &Tagged::ts_definition(),
+        &[
+            "export type Tagged = {",
+            "  kind: \"Tagged\";",
+            "  name: string;",
+        ],
+    );
+    #[cfg(feature = "zod")]
+    assert_readme_declares_and_shows(
+        declaration,
+        &Tagged::zod_schema(),
+        &[
+            "const Tagged$RawSchema = z.strictObject({",
+            "  kind: z.literal(\"Tagged\"),",
+            "  name: z.string(),",
+            "});",
+        ],
+    );
+    assert_eq!(
+        serde_json::to_value(Tagged {
+            name: "x".to_owned()
+        })
+        .unwrap(),
+        serde_json::json!({ "kind": "Tagged", "name": "x" })
+    );
+}
+
 /// The "Optional Fields" example: three keys the payload may omit, beside two it may not.
 #[test]
 fn test_the_optional_fields_example_is_declarable_and_shows_what_it_emits() {
