@@ -2290,6 +2290,12 @@ fn decode_with_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_mac
         Some(decode_with_alias_refusal(alias))
     } else if let (Some(lifetime), Some(ident)) = (borrowed, item_schema_ident(item)) {
         Some(decode_with_borrow_refusal(ident, lifetime))
+    } else if let Some((field_name, declared, reference)) = decode_with_borrowing_field(item) {
+        Some(decode_with_reference_refusal(
+            &field_name,
+            declared,
+            reference,
+        ))
     } else if let Item::Enum(item_enum) = item {
         Some(decode_with_unavailable(
             &item_enum.ident,
@@ -2398,6 +2404,93 @@ fn decode_with_borrow_refusal(ident: &syn::Ident, lifetime: &syn::LifetimeParam)
              borrow from it for `{borrowed}`."
         ),
     )
+}
+
+fn decode_with_reference_refusal(
+    field_name: &str,
+    declared: &syn::Type,
+    reference: &syn::TypeReference,
+) -> syn::Error {
+    let written = written_spelling(declared);
+    let lifetime = reference.lifetime.as_ref().map_or_else(
+        || "its lifetime".to_owned(),
+        |borrowed| format!("`{borrowed}`"),
+    );
+    syn::Error::new_spanned(
+        reference,
+        format!(
+            "`#[model_schema(decode_with)]` cannot be written on a type with a field that borrows: \
+             `{field_name}` is `{written}`, and `from_value_with` owns the value it reads, so \
+             nothing decoded from it can be borrowed for {lifetime}. Write the field as an owned \
+             type."
+        ),
+    )
+}
+
+/// The first field serde reads whose type holds a reference, with the name the refusal gives it: a
+/// tuple position by its number, and an enum's field behind its variant.
+fn decode_with_borrowing_field(item: &Item) -> Option<(String, &syn::Type, &syn::TypeReference)> {
+    let members: Vec<(String, &syn::Fields)> = if let Item::Struct(item_struct) = item {
+        vec![(String::new(), &item_struct.fields)]
+    } else if let Item::Enum(item_enum) = item {
+        item_enum
+            .variants
+            .iter()
+            .map(|variant| (format!("{}.", variant.ident), &variant.fields))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    members.into_iter().find_map(|(variant, fields)| {
+        fields.iter().enumerate().find_map(|(position, field)| {
+            // Nothing is decoded into a field serde never reads, so it borrows from no value.
+            if parse_serde_key_omission(&field.attrs).skips_deserializing {
+                return None;
+            }
+            let reference = held_reference(&field.ty)?;
+            let member = field
+                .ident
+                .as_ref()
+                .map_or_else(|| position.to_string(), ToString::to_string);
+            Some((format!("{variant}{member}"), &field.ty, reference))
+        })
+    })
+}
+
+/// The first reference among the values a type holds, the type itself included.
+fn held_reference(written: &syn::Type) -> Option<&syn::TypeReference> {
+    match written {
+        syn::Type::Reference(reference) => Some(reference),
+        syn::Type::Path(type_path) => type_path.path.segments.iter().find_map(|segment| {
+            let syn::PathArguments::AngleBracketed(angled) = &segment.arguments else {
+                return None;
+            };
+            angled.args.iter().find_map(|argument| {
+                if let syn::GenericArgument::Type(inner) = argument {
+                    held_reference(inner)
+                } else {
+                    None
+                }
+            })
+        }),
+        syn::Type::Array(array) => held_reference(&array.elem),
+        syn::Type::Slice(slice) => held_reference(&slice.elem),
+        syn::Type::Paren(paren) => held_reference(&paren.elem),
+        syn::Type::Group(group) => held_reference(&group.elem),
+        syn::Type::Tuple(tuple) => tuple.elems.iter().find_map(held_reference),
+        // None of these holds a value serde reads out of what it is handed: a function pointer, an
+        // `impl Trait`, an inferred or never type, a trait object, a raw pointer, and the two
+        // spellings `syn` hands back unparsed.
+        syn::Type::FnPtr(_)
+        | syn::Type::ImplTrait(_)
+        | syn::Type::Infer(_)
+        | syn::Type::Macro(_)
+        | syn::Type::Never(_)
+        | syn::Type::Ptr(_)
+        | syn::Type::TraitObject(_)
+        | syn::Type::Verbatim(_)
+        | _ => None,
+    }
 }
 
 /// Tokens as their author spells them, without the spaces a token stream prints between them.

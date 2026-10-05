@@ -33,6 +33,7 @@ mod shadowing;
 #[cfg(all(feature = "chrono", feature = "mongodb"))]
 mod stored_record;
 
+use alloc::borrow::Cow;
 use core::error::Error;
 use core::fmt::Display;
 use core::str::FromStr;
@@ -203,6 +204,16 @@ struct Derived {
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Unread {
     label: String,
+}
+
+/// Two fields that name `'static` and borrow nothing from the value read: a `Cow`, which serde
+/// reads as an owned value, and a reference serde never reads.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Lettered {
+    label: Cow<'static, str>,
+    #[serde(skip)]
+    origin: &'static str,
 }
 
 #[cfg(feature = "chrono")]
@@ -883,6 +894,23 @@ fn a_struct_with_no_field_to_read_still_lists_an_undeclared_key() {
         lines(&keyed.unwrap_err()),
         ["extra: unknown: found Bool(true)"]
     );
+}
+
+#[test]
+fn a_field_that_names_a_lifetime_and_borrows_nothing_is_read() {
+    let mut calls = 0_u32;
+    let read = Lettered::from_value_with(json!({ "label": "x" }), |_raw, _found| {
+        calls += 1;
+        lettered_schema::Verdict::Reject
+    });
+    assert_eq!(
+        read,
+        Ok(Lettered {
+            label: Cow::Borrowed("x"),
+            origin: "",
+        })
+    );
+    assert_eq!(calls, 0);
 }
 
 #[test]

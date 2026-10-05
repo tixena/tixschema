@@ -5895,12 +5895,110 @@ fn decode_with_is_refused_for_good_on_a_type_that_borrows() {
     }
 }
 
+/// The message a field that borrows is refused with, as it reads on `DecodeLabelled`.
+fn borrowing_field_refusal(field: &str, written: &str) -> String {
+    format!(
+        "model_schema: type `DecodeLabelled`: `#[model_schema(decode_with)]` cannot be written on \
+         a type with a field that borrows: `{field}` is `{written}`, and `from_value_with` owns \
+         the value it reads, so nothing decoded from it can be borrowed for `'static`. Write the \
+         field as an owned type."
+    )
+}
+
+/// A reference written in a field borrows from the owned value as a declared lifetime does.
+/// Unrefused, rustc answers at the attribute with `error[E0716]: temporary value dropped while
+/// borrowed` and three `error[E0521]: borrowed data escapes outside of associated function`.
+#[test]
+fn decode_with_is_refused_for_good_on_a_field_that_borrows() {
+    for (source, field, written) in [
+        (
+            "pub struct DecodeLabelled { pub label: &'static str }",
+            "label",
+            "&'static str",
+        ),
+        (
+            "pub struct DecodeLabelled { pub label: Option<&'static str> }",
+            "label",
+            "Option<&'static str>",
+        ),
+        (
+            "pub struct DecodeLabelled { pub chunks: Vec<&'static [u8]>, pub name: String }",
+            "chunks",
+            "Vec<&'static [u8]>",
+        ),
+    ] {
+        let expanded = expansion_under("decode_with", source);
+        assert!(
+            expanded.contains(&borrowing_field_refusal(field, written)),
+            "for {source}, got: {expanded}"
+        );
+        assert!(
+            !expanded.contains("fn from_value_with"),
+            "for {source}, got: {expanded}"
+        );
+    }
+}
+
+/// A shape the walker is not generated on yet is refused for its borrowing field and not for the
+/// shape, so the refusal is already there the day the shape's own is lifted.
+#[test]
+fn decode_with_is_refused_on_a_borrowing_field_ahead_of_the_shape_it_is_written_in() {
+    for (source, field) in [
+        ("pub struct DecodeLabelled(pub u32, pub &'static str);", "1"),
+        (
+            "#[serde(transparent)] pub struct DecodeLabelled(pub &'static str);",
+            "0",
+        ),
+        (
+            "pub enum DecodeLabelled { Named(&'static str), Unnamed }",
+            "Named.0",
+        ),
+        (
+            "pub enum DecodeLabelled { Named { label: &'static str }, Unnamed }",
+            "Named.label",
+        ),
+    ] {
+        let expanded = expansion_under("decode_with", source);
+        assert!(
+            expanded.contains(&borrowing_field_refusal(field, "&'static str")),
+            "for {source}, got: {expanded}"
+        );
+        assert!(
+            !expanded.contains("is not available on"),
+            "for {source}, got: {expanded}"
+        );
+    }
+}
+
+/// Naming a lifetime is no borrow from the value read: serde reads a `Cow` as an owned value, and
+/// reads nothing into a field it skips.
+#[test]
+fn decode_with_is_not_refused_on_a_field_that_borrows_nothing_from_the_value() {
+    for source in [
+        "pub struct DecodeLettered { pub label: Cow<'static, str> }",
+        "pub struct DecodeLettered { #[serde(skip)] pub label: &'static str, pub name: String }",
+        "pub struct DecodeLettered { #[serde(skip_deserializing)] pub label: &'static str }",
+    ] {
+        let expanded = expansion_under("decode_with", source);
+        assert!(
+            !expanded.contains("a field that borrows"),
+            "for {source}, got: {expanded}"
+        );
+        #[cfg(feature = "serde")]
+        assert!(
+            expanded.contains("pub fn from_value_with"),
+            "for {source}, got: {expanded}"
+        );
+    }
+}
+
 /// Without the flag, and with it written `false`, the expansion is what it was before the flag
 /// existed: token for token the same, and nothing of the flag's in it.
 #[test]
 fn an_item_without_decode_with_expands_as_it_did() {
     for source in [
         "pub struct DecodePlain { pub name: String, pub tags: Vec<String> }",
+        "pub struct DecodePlainLabel { pub label: &'static str }",
         "pub enum DecodePlainChoice { One, Two }",
         "pub type DecodePlainAlias = String;",
     ] {
