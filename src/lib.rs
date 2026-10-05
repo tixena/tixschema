@@ -344,10 +344,10 @@ export const Event$Schema: ZodType<Event> = Event$RawSchema;
 ///
 /// ## `MongoDB` `ObjectId` Support
 ///
-/// When the `object_id` feature is enabled, the macro provides first-class support for `MongoDB` `ObjectId` types:
+/// When the `mongodb` feature is enabled, the macro provides first-class support for `MongoDB` `ObjectId` types:
 ///
 #[cfg_attr(
-    feature = "object_id",
+    feature = "mongodb",
     doc = r#"
 ```rust
 use tixschema::model_schema;

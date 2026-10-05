@@ -430,7 +430,7 @@ fn dart_base(field: &FieldDef) -> String {
         | FieldDefType::Usize
         | FieldDefType::Isize => "int".to_owned(),
         FieldDefType::F32 | FieldDefType::F64 => "double".to_owned(),
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => "ObjectId".to_owned(),
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => {
@@ -505,7 +505,7 @@ fn dart_map_key_decode(key: &FieldDef, expr: &str) -> String {
             | FieldDefType::Tuple(_)
             | FieldDefType::TypeParam(_)
             | FieldDefType::Unknown => dart_decode_expr(key, expr),
-            #[cfg(feature = "object_id")]
+            #[cfg(feature = "mongodb")]
             FieldDefType::ObjectId => dart_decode_expr(key, expr),
             #[cfg(feature = "chrono")]
             FieldDefType::NaiveDate
@@ -554,7 +554,7 @@ fn dart_map_key_encode(key: &FieldDef, expr: &str) -> String {
             | FieldDefType::Unknown => {
                 format!("({}) as String", dart_encode_expr(key, expr, false))
             }
-            #[cfg(feature = "object_id")]
+            #[cfg(feature = "mongodb")]
             FieldDefType::ObjectId => format!("({}) as String", dart_encode_expr(key, expr, false)),
             #[cfg(feature = "chrono")]
             FieldDefType::NaiveDate
@@ -688,7 +688,7 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str) -> String {
         | FieldDefType::Usize
         | FieldDefType::Isize => format!("{expr} as int"),
         FieldDefType::F32 | FieldDefType::F64 => format!("({expr} as num).toDouble()"),
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => format!("ObjectId.fromJson({expr})"),
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => {
@@ -789,7 +789,7 @@ fn dart_encode_at(field: &FieldDef, level: u8, expr: &str) -> String {
         | FieldDefType::Isize
         | FieldDefType::F32
         | FieldDefType::F64 => expr.to_owned(),
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => format!("({expr}).toJson()"),
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => {

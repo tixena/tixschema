@@ -1215,7 +1215,7 @@ fn dart_header_out_decode(ty: &Type, raw: &str) -> (String, bool) {
         | FieldDefType::Tuple(_)
         | FieldDefType::TypeParam(_)
         | FieldDefType::Unknown => (raw.to_owned(), false),
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => (raw.to_owned(), false),
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate

@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
@@ -222,7 +222,7 @@ pub struct WithFlatten {
 // ObjectId (feature-gated).
 // ---------------------------------------------------------------------------------------------
 
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Document {
@@ -580,7 +580,7 @@ fn a_flattened_field_decodes_and_encodes_through_the_same_top_level_decoder() {
 // ObjectId (feature-gated).
 // ---------------------------------------------------------------------------------------------
 
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 #[test]
 fn object_id_maps_to_a_bare_reference() {
     let swift = document_swift::swift_definition();
@@ -700,7 +700,7 @@ fn every_fixture_constructs_and_round_trips_through_serde_json() {
     })
     .unwrap();
 
-    #[cfg(feature = "object_id")]
+    #[cfg(feature = "mongodb")]
     serde_json::to_string(&Document {
         id: ObjectId::new(),
     })

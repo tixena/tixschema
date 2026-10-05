@@ -1358,7 +1358,7 @@ fn swift_header_out_decode(ty: &Type, raw: &str) -> String {
         | FieldDefType::Tuple(_)
         | FieldDefType::TypeParam(_)
         | FieldDefType::Unknown => raw.to_owned(),
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => raw.to_owned(),
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate

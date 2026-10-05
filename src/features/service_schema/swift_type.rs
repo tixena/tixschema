@@ -81,7 +81,7 @@ fn swift_base(field: &FieldDef) -> String {
         FieldDefType::I32 => "Int32".to_owned(),
         FieldDefType::I64 => "Int64".to_owned(),
         FieldDefType::Usize | FieldDefType::Isize => "Int".to_owned(),
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => "ObjectId".to_owned(),
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => {

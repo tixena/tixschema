@@ -1,6 +1,6 @@
 use super::*;
 
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 use crate::features::object_id::OBJECT_ID_HEX_PATTERN;
 
 /// The pattern shapes the shipped tests write, none of which the two grammars spell differently.
@@ -348,7 +348,7 @@ const NEGATED_CLASS_PATTERNS: [&str; 6] = [
 /// author's `pattern`. An author's pattern reaches the three surfaces through the guard, which
 /// equalises what it can and refuses the rest; one the crate writes reaches them directly, so
 /// without this list there are two contracts and only one of them is enforced.
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 const CRATE_EMITTED_PATTERNS: [&str; 1] = [OBJECT_ID_HEX_PATTERN];
 
 /// The strings a classification is proved against — every character the equalised classes are
@@ -955,7 +955,7 @@ fn test_the_emitted_pattern_picks_out_the_same_haystacks_in_both_engines() {
 /// Every regex this crate writes into a generated schema itself, rather than carrying over from an
 /// author's `pattern`.
 #[test]
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 fn test_every_pattern_the_crate_emits_is_a_fixed_point_of_the_guard() {
     for pattern in CRATE_EMITTED_PATTERNS {
         assert_eq!(
@@ -971,7 +971,7 @@ fn test_every_pattern_the_crate_emits_is_a_fixed_point_of_the_guard() {
 /// spelling turns on. The real `ObjectId` and the uppercase hex say the value set the constant is
 /// *for* did not move.
 #[test]
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 fn test_the_emitted_object_id_hex_agrees_with_javascript_over_every_hex_shaped_haystack() {
     let emitted = regex::Regex::new(OBJECT_ID_HEX_PATTERN).unwrap();
     for (haystack, javascript) in [

@@ -331,7 +331,7 @@ mod constrained_branded_tests {
     }
 }
 
-#[cfg(all(feature = "object_id", feature = "serde", feature = "zod"))]
+#[cfg(all(feature = "mongodb", feature = "serde", feature = "zod"))]
 mod constrained_objectid_branded_tests {
     use super::*;
     use mongodb::bson::oid::ObjectId;
@@ -374,7 +374,7 @@ mod constrained_objectid_branded_tests {
 /// The three surfaces of an `ObjectId`-inner brand, pinned against the `$oid` object serde writes
 /// for it. The `ObjectId` wire form is an object, so no surface may describe the brand as a string.
 #[cfg(all(
-    feature = "object_id",
+    feature = "mongodb",
     feature = "serde",
     feature = "zod",
     feature = "typescript",

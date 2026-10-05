@@ -50,13 +50,13 @@ use crate::utils::{
     record_zod_default_arguments, record_zod_factory, zod_default_arguments, zod_factory_argument,
 };
 
-#[cfg(all(feature = "zod", feature = "object_id"))]
+#[cfg(all(feature = "zod", feature = "mongodb"))]
 use crate::features::object_id::get_object_id_zod_schema_with;
 
 // The 24-character hex an `ObjectId`'s `$oid` member holds, as a JSON-schema `pattern`. Read from
 // the `ObjectId` feature module, which is where the Zod literal reads it from too, so the two
 // surfaces cannot drift into describing the same string different ways.
-#[cfg(all(feature = "jsonschema", feature = "object_id"))]
+#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
 use crate::features::object_id::OBJECT_ID_HEX_PATTERN;
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
@@ -81,9 +81,17 @@ use crate::features::serde::rename_direction_rejection;
 // `derives_deserialize` is reached through `container_is_read_back`, which states its own answer.
 #[cfg(feature = "serde")]
 use crate::features::serde::{
-    SerdeFieldMeta, SerdeTypeMeta, derives_deserialize, has_serde_read_hook,
+    NAMED_READ_HOOK_PREFIX, SerdeFieldMeta, SerdeTypeMeta, derives_deserialize, has_serde_read_hook,
 };
 use crate::features::serde::{has_serde_default, parse_serde_key_omission};
+
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+use crate::features::recovering_decode::reading_the_authors_scope;
+#[cfg(feature = "serde")]
+use crate::features::recovering_decode::{enums::enum_recovering_decode, struct_recovering_decode};
 // The type is named where a positional slot's own omission is read: the tuple-struct walk, which
 // only a describing build performs, and the variant walk, which every build performs.
 use crate::features::serde::SerdeKeyOmission;
@@ -186,6 +194,7 @@ const KNOWN_ARGS: &[&str] = &[
     "maxLength",
     "no_display",
     "default_types",
+    "decode_with",
 ];
 
 /// What every plain-enum flatten diagnostic says about its own reach, so an author who fixes the
@@ -278,6 +287,7 @@ type StructFieldData = (
 /// Borrowed pieces needed to assemble the final token stream for a branded newtype.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 struct BrandedNewtypeOutput<'parts> {
+    decode_with: &'parts DecodeWithParts,
     default_types: &'parts [(syn::Ident, syn::Type)],
     delegate_impl_items: &'parts [proc_macro2::TokenStream],
     display_tokens: &'parts proc_macro2::TokenStream,
@@ -316,7 +326,7 @@ enum BrandedJsonInner {
     Chrono(&'static str),
     /// The `$oid` object an `ObjectId` writes, whose hex member carries the brand's string
     /// constraints.
-    #[cfg(feature = "object_id")]
+    #[cfg(feature = "mongodb")]
     ObjectId,
     /// A `"type"` keyword those constraints sit beside.
     Scalar(String),
@@ -332,7 +342,7 @@ enum BrandedJsonInner {
 enum BasePattern {
     /// The base states none, so the brand's is the schema's own `pattern` keyword.
     Absent,
-    #[cfg(feature = "object_id")]
+    #[cfg(feature = "mongodb")]
     Stated,
 }
 
@@ -522,6 +532,15 @@ enum TaggedContent {
     Unnameable(&'static str),
 }
 
+/// What `decode_with` adds to an item, both empty without the flag.
+#[derive(Default)]
+struct DecodeWithParts {
+    /// The items added to the schema module a surface writes, or that module whole where no
+    /// surface writes one.
+    schema_module: TokenStream,
+    type_impl: TokenStream,
+}
+
 /// One `default_types(IdType = String)` entry as written: the parameter it names, and the type
 /// declared for that parameter.
 struct DefaultTypeEntry {
@@ -534,6 +553,8 @@ struct ModelSchemaArgs {
     /// The parser's refusal of the attribute's arguments — one it does not read, or a value it
     /// cannot read — spanned on the tokens that earned it.
     arg_rejection: Option<syn::Error>,
+    /// `decode_with`: the type gets `from_value_with` and `from_bson_with`, and their walkers.
+    decode_with: bool,
     /// The default type declared per type parameter, in written order: `default_types(IdType =
     /// String, DateType = f64)`. Read by JSON-schema generation, which has no type parameters of
     /// its own and builds its document from one concrete filling.
@@ -926,6 +947,8 @@ fn apply_arg(result: &mut ModelSchemaArgs, meta: &Meta) -> syn::Result<()> {
         result.no_display = flag_arg(meta, "no_display")?;
     } else if path.is_ident("default_types") {
         result.default_types = default_types_arg(meta)?;
+    } else if path.is_ident("decode_with") {
+        result.decode_with = flag_arg(meta, "decode_with")?;
     } else {
         return Err(unknown_arg_rejection(meta));
     }
@@ -1181,6 +1204,15 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
             &brand_slot_errors,
         )
     {
+        return output;
+    }
+    // `decode_with` generates methods on the type it is written on, so a shape that cannot carry
+    // them is refused here rather than left with plain serde.
+    if let Some(output) = guard_failure_output(
+        &item,
+        item_schema_ident(&item),
+        &decode_with_guard_errors(&item, &parsed_args),
+    ) {
         return output;
     }
     // A name already published by another declaration is refused here, after every guard that
@@ -1607,10 +1639,13 @@ fn build_struct_delegate_items(
 }
 
 /// Assembles the final macro output for a struct or enum: the item itself, its schema module
-/// (with the per-field validation functions), the type's delegate impl, and its standalone
-/// default-only `validate()` impl when it has one.
+/// (with the per-field validation functions and the items `decode_with` adds), the type's delegate
+/// impl, and its standalone default-only `validate()` impl when it has one.
 #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
-fn assemble_schema_output<T>(parts: &SchemaOutputParts<T>) -> TokenStream
+fn assemble_schema_output<T>(
+    parts: &SchemaOutputParts<T>,
+    decode_with_items: &TokenStream,
+) -> TokenStream
 where
     T: quote::ToTokens,
 {
@@ -1627,13 +1662,8 @@ where
         parts.generics,
         parts.default_types,
     );
-
-    let output = quote! {
-        #item
-
-        pub mod #module_ident {
-            use super::*;
-
+    let module_items = schema_module_items(
+        quote! {
             #[non_exhaustive]
             pub struct Schema;
 
@@ -1642,6 +1672,17 @@ where
             }
 
             #(#validation_fns)*
+        },
+        decode_with_items,
+    );
+
+    let output = quote! {
+        #item
+
+        pub mod #module_ident {
+            use super::*;
+
+            #module_items
         }
 
         impl #impl_generics #name #type_generics #where_clause {
@@ -1655,6 +1696,32 @@ where
     log::trace!("{output}");
 
     output
+}
+
+/// What a schema module holds: `held`, and beside it the items `decode_with` adds. Those items
+/// are named `Issue`, `Path` and so on, which `held` then reads from the author's scope outright.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "zod", feature = "typescript", feature = "jsonschema")
+))]
+fn schema_module_items(held: TokenStream, decode_with_items: &TokenStream) -> TokenStream {
+    if decode_with_items.is_empty() {
+        return held;
+    }
+    let scoped = reading_the_authors_scope(held);
+    quote! {
+        #scoped
+        #decode_with_items
+    }
+}
+
+/// Without `serde` no item carries anything of `decode_with`'s.
+#[cfg(all(
+    not(feature = "serde"),
+    any(feature = "zod", feature = "typescript", feature = "jsonschema")
+))]
+const fn schema_module_items(held: TokenStream, _decode_with_items: &TokenStream) -> TokenStream {
+    held
 }
 
 /// The type-level `validate()` a struct publishes: the aggregate of its per-field validators, or
@@ -2199,6 +2266,156 @@ fn published_name_collision_errors(
         item_label(item)
     ));
     vec![syn::Error::new_spanned(ident, message).to_compile_error()]
+}
+
+/// The `compile_error!` tokens `decode_with` earns where it cannot be written: on an alias, and on
+/// a type that borrows.
+fn decode_with_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2::TokenStream> {
+    if !args.decode_with {
+        return Vec::new();
+    }
+    let borrowed = item_generics(item).and_then(|generics| generics.lifetimes().next());
+    let refusal = if let Item::Type(alias) = item {
+        Some(decode_with_alias_refusal(alias))
+    } else if let (Some(lifetime), Some(ident)) = (borrowed, item_schema_ident(item)) {
+        Some(decode_with_borrow_refusal(ident, lifetime))
+    } else if let Some((field_name, declared, reference)) = decode_with_borrowing_field(item) {
+        Some(decode_with_reference_refusal(
+            &field_name,
+            declared,
+            reference,
+        ))
+    } else {
+        None
+    };
+    refusal
+        .iter()
+        .map(|rejection| attr_guard_error(rejection, &item_label(item)))
+        .collect()
+}
+
+fn decode_with_alias_refusal(alias: &ItemType) -> syn::Error {
+    let name = &alias.ident;
+    let target = written_spelling(&alias.ty);
+    syn::Error::new_spanned(
+        &alias.ty,
+        format!(
+            "`#[model_schema(decode_with)]` cannot be written on a type alias: `{name}` is another \
+             name for `{target}`, and the methods would have to be added to that type. Write the \
+             flag on the model types the alias reaches."
+        ),
+    )
+}
+
+fn decode_with_borrow_refusal(ident: &syn::Ident, lifetime: &syn::LifetimeParam) -> syn::Error {
+    let borrowed = &lifetime.lifetime;
+    syn::Error::new_spanned(
+        lifetime,
+        format!(
+            "`#[model_schema(decode_with)]` cannot be written on a type that borrows: \
+             `from_value_with` owns the value it reads, so the decoded `{ident}<{borrowed}>` cannot \
+             borrow from it for `{borrowed}`."
+        ),
+    )
+}
+
+fn decode_with_reference_refusal(
+    field_name: &str,
+    declared: &syn::Type,
+    reference: &syn::TypeReference,
+) -> syn::Error {
+    let written = written_spelling(declared);
+    let lifetime = reference.lifetime.as_ref().map_or_else(
+        || "its lifetime".to_owned(),
+        |borrowed| format!("`{borrowed}`"),
+    );
+    syn::Error::new_spanned(
+        reference,
+        format!(
+            "`#[model_schema(decode_with)]` cannot be written on a type with a field that borrows: \
+             `{field_name}` is `{written}`, and `from_value_with` owns the value it reads, so \
+             nothing decoded from it can be borrowed for {lifetime}. Write the field as an owned \
+             type."
+        ),
+    )
+}
+
+/// The first field serde reads whose type holds a reference, with the name the refusal gives it: a
+/// tuple position by its number, and an enum's field behind its variant.
+fn decode_with_borrowing_field(item: &Item) -> Option<(String, &syn::Type, &syn::TypeReference)> {
+    let members: Vec<(String, &syn::Fields)> = if let Item::Struct(item_struct) = item {
+        vec![(String::new(), &item_struct.fields)]
+    } else if let Item::Enum(item_enum) = item {
+        item_enum
+            .variants
+            .iter()
+            .map(|variant| (format!("{}.", variant.ident), &variant.fields))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    members.into_iter().find_map(|(variant, fields)| {
+        fields.iter().enumerate().find_map(|(position, field)| {
+            // Nothing is decoded into a field serde never reads, so it borrows from no value.
+            if parse_serde_key_omission(&field.attrs).skips_deserializing {
+                return None;
+            }
+            let reference = held_reference(&field.ty)?;
+            let member = field
+                .ident
+                .as_ref()
+                .map_or_else(|| position.to_string(), ToString::to_string);
+            Some((format!("{variant}{member}"), &field.ty, reference))
+        })
+    })
+}
+
+/// The first reference among the values a type holds, the type itself included.
+fn held_reference(written: &syn::Type) -> Option<&syn::TypeReference> {
+    match written {
+        syn::Type::Reference(reference) => Some(reference),
+        syn::Type::Path(type_path) => type_path.path.segments.iter().find_map(|segment| {
+            let syn::PathArguments::AngleBracketed(angled) = &segment.arguments else {
+                return None;
+            };
+            angled.args.iter().find_map(|argument| {
+                if let syn::GenericArgument::Type(inner) = argument {
+                    held_reference(inner)
+                } else {
+                    None
+                }
+            })
+        }),
+        syn::Type::Array(array) => held_reference(&array.elem),
+        syn::Type::Slice(slice) => held_reference(&slice.elem),
+        syn::Type::Paren(paren) => held_reference(&paren.elem),
+        syn::Type::Group(group) => held_reference(&group.elem),
+        syn::Type::Tuple(tuple) => tuple.elems.iter().find_map(held_reference),
+        // None of these holds a value serde reads out of what it is handed: a function pointer, an
+        // `impl Trait`, an inferred or never type, a trait object, a raw pointer, and the two
+        // spellings `syn` hands back unparsed.
+        syn::Type::FnPtr(_)
+        | syn::Type::ImplTrait(_)
+        | syn::Type::Infer(_)
+        | syn::Type::Macro(_)
+        | syn::Type::Never(_)
+        | syn::Type::Ptr(_)
+        | syn::Type::TraitObject(_)
+        | syn::Type::Verbatim(_)
+        | _ => None,
+    }
+}
+
+/// Tokens as their author spells them, without the spaces a token stream prints between them.
+fn written_spelling(tokens: &impl quote::ToTokens) -> String {
+    quote! { #tokens }
+        .to_string()
+        .replace(" < ", "<")
+        .replace("< ", "<")
+        .replace(" >", ">")
+        .replace(" ,", ",")
+        .replace(" :: ", "::")
+        .replace("& ", "&")
 }
 
 /// Records which of the two Zod bindings an item publishes, ahead of the shape it is dispatched to.
@@ -3409,7 +3626,7 @@ fn swift_refused_primitive_name(field_def: &FieldDef) -> Option<&'static str> {
         | FieldDefType::U8
         | FieldDefType::Unknown
         | FieldDefType::Usize => None,
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => None,
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime
@@ -3488,7 +3705,7 @@ fn non_string_inner_shape(inner: &FieldDef) -> Option<&'static str> {
         // `validate()` reaches it the same way it reaches a numeric or boolean inner: through
         // `Display`.
         FieldDefType::Char | FieldDefType::String | FieldDefType::StringLiteral(_) => None,
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => None,
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate
@@ -3548,7 +3765,7 @@ const fn scalar_json_type_keyword(field_type: &FieldDefType) -> Option<&'static 
         | FieldDefType::NaiveDate
         | FieldDefType::NaiveDateTime
         | FieldDefType::NaiveTime => Some("string"),
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => None,
         FieldDefType::Map(..)
         | FieldDefType::SiblingType(..)
@@ -4238,6 +4455,10 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
     #[cfg(not(feature = "serde"))]
     let unit_struct_impls = unit_struct_impls_for(&item_struct);
 
+    // Read after the fields carry every serde attribute generation hangs on them, so the walker
+    // reads each one through the function serde's derive will call for it.
+    let decode_with = struct_decode_with(&item_struct, args);
+
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     let docs = struct_docs_body(docs_and_example.0.as_deref(), &item_name);
 
@@ -4290,38 +4511,119 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
                 validation_fns: &collected.2,
             },
             &unit_struct_impls,
+            &decode_with,
         )
     }
 
     #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
     {
-        struct_output_with_unit_impls(&item_struct, &unit_struct_impls)
+        struct_output_with_unit_impls(&item_struct, &unit_struct_impls, &decode_with)
     }
 }
 
-/// The assembled schema module, with a unit struct's own serde impls appended after it.
+/// The assembled schema module, with a unit struct's own serde impls and the `impl` `decode_with`
+/// adds appended after it.
 #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
 fn struct_output_with_unit_impls(
     parts: &SchemaOutputParts<syn::ItemStruct>,
     unit_struct_impls: &proc_macro2::TokenStream,
+    decode_with: &DecodeWithParts,
 ) -> TokenStream {
-    let base = assemble_schema_output(parts);
+    let base = assemble_schema_output(parts, &decode_with.schema_module);
+    let decode_with_impl = &decode_with.type_impl;
     quote! {
         #base
         #unit_struct_impls
+        #decode_with_impl
     }
 }
 
-/// [`struct_output_with_unit_impls`] where no schema surface is on: the item alone, unit impls
-/// still appended.
+/// [`struct_output_with_unit_impls`] where no schema surface is on: the item alone, with a unit
+/// struct's serde impls and what `decode_with` adds appended.
 #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
 fn struct_output_with_unit_impls(
     item_struct: &syn::ItemStruct,
     unit_struct_impls: &proc_macro2::TokenStream,
+    decode_with: &DecodeWithParts,
 ) -> TokenStream {
+    let decode_with_module = &decode_with.schema_module;
+    let decode_with_impl = &decode_with.type_impl;
     let output = quote! {
         #item_struct
         #unit_struct_impls
+        #decode_with_module
+        #decode_with_impl
+    };
+    log::trace!("{output}");
+    output
+}
+
+/// What `decode_with` adds to a struct, read off the struct as it is emitted. Empty without the
+/// flag.
+#[cfg(feature = "serde")]
+fn struct_decode_with(item_struct: &syn::ItemStruct, args: &ModelSchemaArgs) -> DecodeWithParts {
+    if !args.decode_with {
+        return DecodeWithParts::default();
+    }
+    let added = struct_recovering_decode(item_struct);
+    DecodeWithParts {
+        schema_module: added.schema_module,
+        type_impl: added.type_impl,
+    }
+}
+
+/// Nothing, where no `serde` feature reads the attributes a walker is written from.
+#[cfg(not(feature = "serde"))]
+fn struct_decode_with(_item_struct: &syn::ItemStruct, _args: &ModelSchemaArgs) -> DecodeWithParts {
+    DecodeWithParts::default()
+}
+
+/// What `decode_with` adds to an enum, read off the enum as it is emitted. Empty without the flag.
+#[cfg(feature = "serde")]
+fn enum_decode_with(item_enum: &syn::ItemEnum, args: &ModelSchemaArgs) -> DecodeWithParts {
+    if !args.decode_with {
+        return DecodeWithParts::default();
+    }
+    let added = enum_recovering_decode(item_enum);
+    DecodeWithParts {
+        schema_module: added.schema_module,
+        type_impl: added.type_impl,
+    }
+}
+
+/// Nothing, where no `serde` feature reads the attributes a walker is written from.
+#[cfg(not(feature = "serde"))]
+fn enum_decode_with(_item_enum: &syn::ItemEnum, _args: &ModelSchemaArgs) -> DecodeWithParts {
+    DecodeWithParts::default()
+}
+
+/// An enum's assembled schema module, with the `impl` `decode_with` adds appended after it.
+#[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
+fn enum_output_with_decode(
+    parts: &SchemaOutputParts<syn::ItemEnum>,
+    decode_with: &DecodeWithParts,
+) -> TokenStream {
+    let base = assemble_schema_output(parts, &decode_with.schema_module);
+    let decode_with_impl = &decode_with.type_impl;
+    quote! {
+        #base
+        #decode_with_impl
+    }
+}
+
+/// [`enum_output_with_decode`] where no schema surface is on: the item alone, with what
+/// `decode_with` adds appended.
+#[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
+fn enum_output_with_decode(
+    item_enum: &syn::ItemEnum,
+    decode_with: &DecodeWithParts,
+) -> TokenStream {
+    let decode_with_module = &decode_with.schema_module;
+    let decode_with_impl = &decode_with.type_impl;
+    let output = quote! {
+        #item_enum
+        #decode_with_module
+        #decode_with_impl
     };
     log::trace!("{output}");
     output
@@ -4720,17 +5022,24 @@ fn process_tuple_struct(
         schema_example_method.as_ref(),
     );
 
-    assemble_schema_output(&SchemaOutputParts {
-        default_types: &args.default_types,
-        delegate_impl_items: &delegate_impl_items,
-        generics: &item_struct.generics,
-        item: &item_struct,
-        module_ident: &module_ident,
-        name: &name,
-        schema_impl_items: &schema_impl_items,
-        validate_method: &None,
-        validation_fns: &[],
-    })
+    // Read after every slot carries the serde attributes generation hangs on it.
+    let decode_with = struct_decode_with(&item_struct, args);
+
+    struct_output_with_unit_impls(
+        &SchemaOutputParts {
+            default_types: &args.default_types,
+            delegate_impl_items: &delegate_impl_items,
+            generics: &item_struct.generics,
+            item: &item_struct,
+            module_ident: &module_ident,
+            name: &name,
+            schema_impl_items: &schema_impl_items,
+            validate_method: &None,
+            validation_fns: &[],
+        },
+        &TokenStream::new(),
+        &decode_with,
+    )
 }
 
 /// Builds the `validate_value`/`deserialize_value` functions for a constrained branded newtype, or
@@ -5004,7 +5313,7 @@ fn branded_schema_obj_over(
             BasePattern::Absent => quote! {
                 schema_obj.insert("pattern".to_string(), serde_json::Value::String(#pattern.to_string()));
             },
-            #[cfg(feature = "object_id")]
+            #[cfg(feature = "mongodb")]
             BasePattern::Stated => quote! {
                 schema_obj.insert("allOf".to_string(), serde_json::json!([{ "pattern": #pattern }]));
             },
@@ -5055,7 +5364,7 @@ fn branded_chrono_schema(args: &ModelSchemaArgs, format: &str) -> proc_macro2::T
 /// The `$oid` member an `ObjectId` brand carries: the hex string the type always holds, narrowed
 /// by the brand's own constraints. The hex is the base's own `pattern`, so the brand's is layered
 /// beside it rather than written over it — see [`BasePattern`].
-#[cfg(all(feature = "jsonschema", feature = "object_id"))]
+#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
 fn branded_object_id_hex_schema(args: &ModelSchemaArgs) -> proc_macro2::TokenStream {
     branded_schema_obj_over(
         args,
@@ -5127,7 +5436,7 @@ fn build_branded_json_schema_method(
         #[cfg(feature = "chrono")]
         BrandedJsonInner::Chrono(format) => branded_chrono_schema(args, format),
         BrandedJsonInner::Scalar(type_name) => branded_constrained_schema_obj(args, type_name),
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         BrandedJsonInner::ObjectId => {
             object_id_json_schema_value(&branded_object_id_hex_schema(args))
         }
@@ -5171,7 +5480,7 @@ fn branded_ts_type_and_generics(
 /// [`surface_field_def`] has already erased the brand's own type parameters out of.
 #[cfg(feature = "jsonschema")]
 fn branded_json_inner(inner: &FieldDef) -> BrandedJsonInner {
-    #[cfg(feature = "object_id")]
+    #[cfg(feature = "mongodb")]
     if branded_inner_is_object_id(inner) {
         return BrandedJsonInner::ObjectId;
     }
@@ -5247,7 +5556,7 @@ fn branded_zod_base_checks(args: &ModelSchemaArgs) -> String {
 /// Whether a branded newtype's inner is an `ObjectId` written on its own, reaching the wire as the
 /// `$oid` object rather than any string. An arrayed inner is excluded — it writes the array around
 /// that object, not this shape.
-#[cfg(all(feature = "object_id", any(feature = "zod", feature = "jsonschema")))]
+#[cfg(all(feature = "mongodb", any(feature = "zod", feature = "jsonschema")))]
 const fn branded_inner_is_object_id(inner: &FieldDef) -> bool {
     matches!(inner.field_type, FieldDefType::ObjectId) && !inner.is_array()
 }
@@ -5289,7 +5598,7 @@ fn branded_inner_is_composite(inner: &FieldDef) -> bool {
         | FieldDefType::U32
         | FieldDefType::U64
         | FieldDefType::Usize => false,
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => false,
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime
@@ -5306,7 +5615,7 @@ fn branded_zod_inner(args: &ModelSchemaArgs, inner: &FieldDef) -> String {
         return inner.zod_type();
     }
     let checks = branded_zod_string_checks(args);
-    #[cfg(feature = "object_id")]
+    #[cfg(feature = "mongodb")]
     if branded_inner_is_object_id(inner) {
         return get_object_id_zod_schema_with(&checks);
     }
@@ -5729,14 +6038,8 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
         parts.default_types,
     );
 
-    let output = quote! {
-        #item_struct
-
-        #display_tokens
-
-        pub mod #module_ident {
-            use super::*;
-
+    let module_items = schema_module_items(
+        quote! {
             #[non_exhaustive]
             pub struct Schema;
 
@@ -5745,6 +6048,20 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
             }
 
             #validation_tokens
+        },
+        &parts.decode_with.schema_module,
+    );
+    let decode_with_impl = &parts.decode_with.type_impl;
+
+    let output = quote! {
+        #item_struct
+
+        #display_tokens
+
+        pub mod #module_ident {
+            use super::*;
+
+            #module_items
         }
 
         impl #impl_generics #name #type_generics #where_clause {
@@ -5754,6 +6071,8 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
         }
 
         #default_validate_impl
+
+        #decode_with_impl
     };
 
     log::trace!("{output}");
@@ -5941,7 +6260,11 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
     #[cfg(not(feature = "serde"))]
     let validate_method = quote! {};
 
+    // Read off the struct as it is emitted: the hook a constrained brand reads through is hung.
+    let decode_with = struct_decode_with(&output_struct, args);
+
     assemble_branded_output(&BrandedNewtypeOutput {
+        decode_with: &decode_with,
         default_types: &args.default_types,
         delegate_impl_items: &delegate_impl_items,
         display_tokens: &display_tokens,
@@ -6543,9 +6866,6 @@ fn process_plain_enum(
 
     // schema_example must be directly on the type (not in the module) because the example code
     // uses type names that may not be accessible from the nested module.
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    let _: &_ = &args;
-
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     let schema_example_method =
         enum_schema_example_method(&item_enum.attrs, name, &item_enum.generics, args);
@@ -6569,28 +6889,64 @@ fn process_plain_enum(
             .chain(schema_example_method)
             .collect();
 
-    let enum_values = &enumerated;
+    let decode_with = enum_decode_with(&item_enum, args);
 
+    #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
+    {
+        plain_enum_output(
+            &item_enum,
+            name,
+            &module_ident,
+            &schema_impl_items,
+            &delegate_impl_items,
+            &enumerated,
+            &decode_with,
+        )
+    }
+
+    #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
+    {
+        plain_enum_output(&item_enum, name, &enumerated, &decode_with)
+    }
+}
+
+/// A plain enum with its schema module, its delegates, `enum_members()`, and what `decode_with`
+/// adds.
+#[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
+fn plain_enum_output(
+    item_enum: &syn::ItemEnum,
+    name: &syn::Ident,
+    module_ident: &Ident,
+    schema_impl_items: &[proc_macro2::TokenStream],
+    delegate_impl_items: &[proc_macro2::TokenStream],
+    enum_values: &[proc_macro2::TokenStream],
+    decode_with: &DecodeWithParts,
+) -> TokenStream {
     // A plain enum publishes `enum_members()` from an `impl` of its own rather than through
     // `assemble_schema_output`, so it repeats the declaration's parameters itself. A type
     // parameter it cannot bind — Rust refuses an all-unit enum that leaves one unused — but a
     // const or a lifetime it can, and either has to be carried here or the block names a type
     // that does not exist.
     let (impl_generics, type_generics, where_clause) = item_enum.generics.split_for_impl();
-
-    #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
-    let output = quote! {
-        #item_enum
-
-        pub mod #module_ident {
-            use super::*;
-
+    let module_items = schema_module_items(
+        quote! {
             #[non_exhaustive]
             pub struct Schema;
 
             impl Schema {
                 #(#schema_impl_items)*
             }
+        },
+        &decode_with.schema_module,
+    );
+    let decode_with_impl = &decode_with.type_impl;
+    let output = quote! {
+        #item_enum
+
+        pub mod #module_ident {
+            use super::*;
+
+            #module_items
         }
 
         impl #impl_generics #name #type_generics #where_clause {
@@ -6602,9 +6958,25 @@ fn process_plain_enum(
                 ].iter().map(|v| v.to_string()).collect::<Vec<_>>()
             }
         }
-    };
 
-    #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
+        #decode_with_impl
+    };
+    log::trace!("{output}");
+    output
+}
+
+/// [`plain_enum_output`] where no schema surface is on: the item, `enum_members()`, and what
+/// `decode_with` adds.
+#[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
+fn plain_enum_output(
+    item_enum: &syn::ItemEnum,
+    name: &syn::Ident,
+    enum_values: &[proc_macro2::TokenStream],
+    decode_with: &DecodeWithParts,
+) -> TokenStream {
+    let (impl_generics, type_generics, where_clause) = item_enum.generics.split_for_impl();
+    let decode_with_module = &decode_with.schema_module;
+    let decode_with_impl = &decode_with.type_impl;
     let output = quote! {
         #item_enum
 
@@ -6615,10 +6987,11 @@ fn process_plain_enum(
                 ].iter().map(|v| v.to_string()).collect::<Vec<_>>()
             }
         }
+
+        #decode_with_module
+        #decode_with_impl
     };
-
     log::trace!("{output}");
-
     output
 }
 
@@ -7006,7 +7379,8 @@ fn process_discriminated_enum(
     }
     let rendered = render_discriminated_variants(tag_name, content_name, item_name, &variants.0);
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    let _: &_ = &(name, &rendered, args);
+    let _: &_ = &(name, &rendered);
+    let decode_with = enum_decode_with(&item_enum, args);
 
     #[cfg(feature = "jsonschema")]
     let main_schema_code = discriminated_main_schema_code(&rendered.2);
@@ -7071,26 +7445,25 @@ fn process_discriminated_enum(
 
     #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     {
-        assemble_schema_output(&SchemaOutputParts {
-            default_types: &args.default_types,
-            delegate_impl_items: &delegate_impl_items,
-            generics: &item_enum.generics,
-            item: &item_enum,
-            module_ident: &module_ident,
-            name,
-            schema_impl_items: &schema_impl_items,
-            validate_method: &build_enum_validate_method(&variants.3, &module_ident),
-            validation_fns: &variants.1,
-        })
+        enum_output_with_decode(
+            &SchemaOutputParts {
+                default_types: &args.default_types,
+                delegate_impl_items: &delegate_impl_items,
+                generics: &item_enum.generics,
+                item: &item_enum,
+                module_ident: &module_ident,
+                name,
+                schema_impl_items: &schema_impl_items,
+                validate_method: &build_enum_validate_method(&variants.3, &module_ident),
+                validation_fns: &variants.1,
+            },
+            &decode_with,
+        )
     }
 
     #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
     {
-        let output = quote! {
-            #item_enum
-        };
-        log::trace!("{output}");
-        output
+        enum_output_with_decode(&item_enum, &decode_with)
     }
 }
 
@@ -7526,6 +7899,7 @@ fn process_externally_tagged_enum(
     if let Some(output) = guard_failure_output(&item_enum, Some(&item_enum.ident), &variants.2) {
         return output;
     }
+    let decode_with = enum_decode_with(&item_enum, args);
 
     let members: Vec<(String, String, proc_macro2::TokenStream)> = variants
         .0
@@ -7546,7 +7920,7 @@ fn process_externally_tagged_enum(
     #[cfg(not(feature = "zod"))]
     let _: &_ = &schema_code;
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    let _: &_ = &(name, args);
+    let _: &_ = &name;
 
     #[cfg(feature = "typescript")]
     let docs = build_jsdoc_body(docs_vec.as_deref(), item_name);
@@ -7596,27 +7970,26 @@ fn process_externally_tagged_enum(
 
     #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     {
-        assemble_schema_output(&SchemaOutputParts {
-            default_types: &args.default_types,
-            delegate_impl_items: &delegate_impl_items,
-            generics: &item_enum.generics,
-            item: &item_enum,
-            module_ident: &module_ident,
-            name,
-            schema_impl_items: &schema_impl_items,
-            validate_method: &build_enum_validate_method(&variants.3, &module_ident),
-            validation_fns: &variants.1,
-        })
+        enum_output_with_decode(
+            &SchemaOutputParts {
+                default_types: &args.default_types,
+                delegate_impl_items: &delegate_impl_items,
+                generics: &item_enum.generics,
+                item: &item_enum,
+                module_ident: &module_ident,
+                name,
+                schema_impl_items: &schema_impl_items,
+                validate_method: &build_enum_validate_method(&variants.3, &module_ident),
+                validation_fns: &variants.1,
+            },
+            &decode_with,
+        )
     }
 
     #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
     {
         let _: &_ = &(&variants.1, &variants.3);
-        let output = quote! {
-            #item_enum
-        };
-        log::trace!("{output}");
-        output
+        enum_output_with_decode(&item_enum, &decode_with)
     }
 }
 
@@ -7656,7 +8029,7 @@ fn tagged_content(inner: &FieldDef) -> TaggedContent {
         | FieldDefType::NaiveTime => TaggedContent::Refused("a string"),
         FieldDefType::Tuple(_) => TaggedContent::Refused("a tuple"),
         FieldDefType::Map(..) => TaggedContent::Unnameable("a map"),
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => TaggedContent::Unnameable("an ObjectId"),
         FieldDefType::TypeParam(_) => TaggedContent::Unnameable("a type parameter"),
         FieldDefType::Unknown => TaggedContent::Unnameable("a type the expansion cannot resolve"),
@@ -7936,6 +8309,7 @@ fn process_internally_tagged_enum(
     if let Some(output) = guard_failure_output(&item_enum, Some(&item_enum.ident), &variants.2) {
         return output;
     }
+    let decode_with = enum_decode_with(&item_enum, args);
 
     let members: Vec<(String, String, proc_macro2::TokenStream, bool)> = variants
         .0
@@ -7951,7 +8325,7 @@ fn process_internally_tagged_enum(
     #[cfg(not(feature = "zod"))]
     let _: &_ = &schema_code;
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    let _: &_ = &(name, args);
+    let _: &_ = &name;
 
     #[cfg(feature = "typescript")]
     let docs = build_jsdoc_body(docs_vec.as_deref(), item_name);
@@ -8001,27 +8375,26 @@ fn process_internally_tagged_enum(
 
     #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     {
-        assemble_schema_output(&SchemaOutputParts {
-            default_types: &args.default_types,
-            delegate_impl_items: &delegate_impl_items,
-            generics: &item_enum.generics,
-            item: &item_enum,
-            module_ident: &module_ident,
-            name,
-            schema_impl_items: &schema_impl_items,
-            validate_method: &build_enum_validate_method(&variants.3, &module_ident),
-            validation_fns: &variants.1,
-        })
+        enum_output_with_decode(
+            &SchemaOutputParts {
+                default_types: &args.default_types,
+                delegate_impl_items: &delegate_impl_items,
+                generics: &item_enum.generics,
+                item: &item_enum,
+                module_ident: &module_ident,
+                name,
+                schema_impl_items: &schema_impl_items,
+                validate_method: &build_enum_validate_method(&variants.3, &module_ident),
+                validation_fns: &variants.1,
+            },
+            &decode_with,
+        )
     }
 
     #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
     {
         let _: &_ = &(&variants.1, &variants.3);
-        let output = quote! {
-            #item_enum
-        };
-        log::trace!("{output}");
-        output
+        enum_output_with_decode(&item_enum, &decode_with)
     }
 }
 
@@ -8376,7 +8749,7 @@ fn field_json_schema_value(fld: &FieldDef) -> proc_macro2::TokenStream {
             let keyword = scalar_json_type_keyword(&fld.field_type).unwrap();
             quote! { serde_json::json!({ "type": #keyword }) }
         }
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => object_id_json_schema_value(&object_id_hex_json_schema()),
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate
@@ -9040,7 +9413,8 @@ fn process_untagged_enum(
     let _: &_ = &ts_merge_parts;
 
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    let _: &_ = &(name, item_name, &ts_parts, &zod_parts, &json_parts, args);
+    let _: &_ = &(name, item_name, &ts_parts, &zod_parts, &json_parts);
+    let decode_with = enum_decode_with(&item_enum, args);
 
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     let schema_example_method =
@@ -9074,27 +9448,26 @@ fn process_untagged_enum(
 
     #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     {
-        assemble_schema_output(&SchemaOutputParts {
-            default_types: &args.default_types,
-            delegate_impl_items: &delegate_impl_items,
-            generics: &item_enum.generics,
-            item: &item_enum,
-            module_ident: &module_ident,
-            name,
-            schema_impl_items: &schema_impl_items,
-            validate_method: &validate_method,
-            validation_fns: &enum_validation_fns,
-        })
+        enum_output_with_decode(
+            &SchemaOutputParts {
+                default_types: &args.default_types,
+                delegate_impl_items: &delegate_impl_items,
+                generics: &item_enum.generics,
+                item: &item_enum,
+                module_ident: &module_ident,
+                name,
+                schema_impl_items: &schema_impl_items,
+                validate_method: &validate_method,
+                validation_fns: &enum_validation_fns,
+            },
+            &decode_with,
+        )
     }
 
     #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
     {
         let _: &_ = &(&enum_validation_fns, &validate_arms);
-        let output = quote! {
-            #item_enum
-        };
-        log::trace!("{output}");
-        output
+        enum_output_with_decode(&item_enum, &decode_with)
     }
 }
 
@@ -9577,7 +9950,7 @@ const fn chrono_json_schema_format(field_type: &FieldDefType) -> Option<&'static
         | FieldDefType::U64
         | FieldDefType::Unknown
         | FieldDefType::Usize => None,
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => None,
     }
 }
@@ -9634,7 +10007,7 @@ fn scalar_field_json_schema_item(fld: &FieldDef) -> Option<proc_macro2::TokenStr
         | FieldDefType::NaiveTime
         | FieldDefType::NaiveDateTime
         | FieldDefType::DateTime => chrono_json_schema_item(&fld.field_type)?,
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => object_id_json_schema_item(&object_id_hex_json_schema()),
         FieldDefType::TypeParam(_)
         | FieldDefType::Unknown
@@ -9882,7 +10255,7 @@ fn map_key_path(key: &FieldDef) -> MapKeyPath<'_> {
         }
         FieldDefType::Tuple(..) => MapKeyPath::Refused(unwritable_key(key, WRITTEN_AS_ARRAY)),
         FieldDefType::Map(..) => MapKeyPath::Refused(unwritable_key(key, WRITTEN_AS_OBJECT)),
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => MapKeyPath::Refused(unwritable_key(key, WRITTEN_AS_OBJECT)),
         FieldDefType::SiblingType(..)
         | FieldDefType::Unknown
@@ -9963,7 +10336,7 @@ fn map_key_element_name(key: &FieldDef) -> String {
         FieldDefType::Map(..) => "HashMap<_, _>".to_owned(),
         FieldDefType::Tuple(..) => "(_, _)".to_owned(),
         FieldDefType::Unknown => "_".to_owned(),
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => "ObjectId".to_owned(),
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime => "DateTime".to_owned(),
@@ -10025,7 +10398,7 @@ fn map_key_rejection(fld: &FieldDef) -> Option<MapKeyRejection> {
         | FieldDefType::Isize
         | FieldDefType::F32
         | FieldDefType::F64 => None,
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => None,
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate
@@ -10198,7 +10571,7 @@ fn build_map_member_item(value: &FieldDef) -> Result<MapMemberItem, MapMemberRej
             ))
         }
         // The one `$oid` object every position spells, which a member carries as written.
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => {
             MapMemberItem::Fragment(object_id_json_schema_item(&object_id_hex_json_schema()))
         }
@@ -10569,7 +10942,7 @@ fn build_sibling_type_field_schema(
 
 /// The `json!` literal an `ObjectId` describes as — the closed `$oid` object serde writes — with
 /// `hex_schema` as the schema of the hex string it holds.
-#[cfg(all(feature = "jsonschema", feature = "object_id"))]
+#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
 fn object_id_json_schema_item(hex_schema: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
     quote! { {
         "type": "object",
@@ -10583,20 +10956,20 @@ fn object_id_json_schema_item(hex_schema: &proc_macro2::TokenStream) -> proc_mac
 
 /// [`object_id_json_schema_item`] as a standalone `serde_json::Value` expression, for the positions
 /// that hold the `$oid` object as a value rather than writing it into a literal.
-#[cfg(all(feature = "jsonschema", feature = "object_id"))]
+#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
 fn object_id_json_schema_value(hex_schema: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
     let item = object_id_json_schema_item(hex_schema);
     quote! { serde_json::json!(#item) }
 }
 
 /// The hex string an `ObjectId`'s `$oid` member holds, where no brand narrows it further.
-#[cfg(all(feature = "jsonschema", feature = "object_id"))]
+#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
 fn object_id_hex_json_schema() -> proc_macro2::TokenStream {
     quote! { serde_json::json!({ "type": "string", "pattern": #OBJECT_ID_HEX_PATTERN }) }
 }
 
 /// Builds the JSON schema for a `MongoDB` `ObjectId` field (`{ "$oid": string }`).
-#[cfg(all(feature = "jsonschema", feature = "object_id"))]
+#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
 fn build_object_id_field_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2::TokenStream {
     let schema = nullable_slot_json_schema_value(
         fld,
@@ -10699,7 +11072,7 @@ fn build_field_type_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2:
         }
         FieldDefType::Boolean => build_boolean_field_schema(fld, field_name_str),
         FieldDefType::Char => build_char_field_schema(fld, field_name_str),
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => build_object_id_field_schema(fld, field_name_str),
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate
@@ -12434,7 +12807,7 @@ fn named_read_hook(
 
     let stem = helper_name_stem(raw_field_ident, ctx.variant_ident);
     let hook_ident = proc_macro2::Ident::new(
-        &format!("deserialize_named_{stem}"),
+        &format!("{NAMED_READ_HOOK_PREFIX}{stem}"),
         proc_macro2::Span::call_site(),
     );
     let path_lit = syn::LitStr::new(

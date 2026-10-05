@@ -1,3 +1,6 @@
+#[cfg(feature = "serde")]
+use core::slice::from_ref;
+
 use syn::{Fields, GenericArgument, Ident, ItemEnum, PathArguments, Type, Variant};
 
 #[cfg(feature = "jsonschema")]
@@ -23,7 +26,7 @@ use crate::utils::FlattenVariant;
 
 #[cfg(feature = "chrono")]
 use crate::features::chrono;
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 use crate::features::object_id;
 
 #[cfg(feature = "serde")]
@@ -115,8 +118,8 @@ pub enum FieldDefType {
     /// Maps to `214` in TS, `z.literal(214)` in Zod. Stored as `f64` regardless of the field's own
     /// integer or float type, so a whole value renders without the trailing `.0` `f64` carries.
     NumberLiteral(f64),
-    #[cfg(feature = "object_id")]
-    /// `MongoDB` `ObjectId` type - requires "`object_id`" feature.
+    #[cfg(feature = "mongodb")]
+    /// `MongoDB` `ObjectId` type - requires "`mongodb`" feature.
     /// Maps to `ObjectId` interface in TS with `$oid: string`.
     /// Zod: `z.object({ $oid: z.string().regex(...) })`.
     /// JSON Schema: object with `$oid` string property.
@@ -167,6 +170,11 @@ impl FieldDefType {
         )
     }
 }
+
+/// One member of a recovering decode's `Expected`: its name, the names it carries, and how many
+/// members follow under it.
+#[cfg(feature = "serde")]
+pub type ExpectedMember = (&'static str, Vec<String>, usize);
 
 /// Struct representing a field's definition for schema generation.
 #[derive(Clone, Debug)]
@@ -232,7 +240,7 @@ impl FieldDef {
             | FieldDefType::Isize
             | FieldDefType::F32
             | FieldDefType::F64 => None,
-            #[cfg(feature = "object_id")]
+            #[cfg(feature = "mongodb")]
             FieldDefType::ObjectId => None,
             #[cfg(feature = "chrono")]
             FieldDefType::NaiveDate
@@ -268,7 +276,7 @@ impl FieldDef {
         match &self.field_type {
             FieldDefType::Map(_, _) => Some("a map"),
             FieldDefType::Tuple(_) => Some("a tuple"),
-            #[cfg(feature = "object_id")]
+            #[cfg(feature = "mongodb")]
             FieldDefType::ObjectId => None,
             #[cfg(feature = "chrono")]
             FieldDefType::NaiveDate
@@ -347,7 +355,7 @@ impl FieldDef {
             | FieldDefType::Isize
             | FieldDefType::F32
             | FieldDefType::F64 => false,
-            #[cfg(feature = "object_id")]
+            #[cfg(feature = "mongodb")]
             FieldDefType::ObjectId => false,
             #[cfg(feature = "chrono")]
             FieldDefType::NaiveDate
@@ -372,6 +380,69 @@ impl FieldDef {
         }
     }
 
+    /// The field's type as a recovering decode's `Expected` describes it, each member written
+    /// before the members under it: `Optional` and `Array` per level, outermost first, then the
+    /// category.
+    #[cfg(feature = "serde")]
+    pub fn expected_members(&self) -> Vec<ExpectedMember> {
+        let mut members: Vec<ExpectedMember> = Vec::new();
+        for level in (0..=self.array_depth).rev() {
+            if self.is_nullable_at(level) {
+                members.push(("Optional", Vec::new(), 1));
+            }
+            if level > 0 {
+                members.push(("Array", Vec::new(), 1));
+            }
+        }
+        let (member, names, under): (&'static str, Vec<String>, &[Self]) = match &self.field_type {
+            FieldDefType::Boolean => ("Boolean", Vec::new(), &[]),
+            FieldDefType::BooleanLiteral(value) => ("BooleanLiteral", vec![value.to_string()], &[]),
+            FieldDefType::Char => ("Char", Vec::new(), &[]),
+            #[cfg(feature = "chrono")]
+            FieldDefType::DateTime => ("DateTime", Vec::new(), &[]),
+            FieldDefType::F32 => ("F32", Vec::new(), &[]),
+            FieldDefType::F64 => ("F64", Vec::new(), &[]),
+            FieldDefType::I16 => ("I16", Vec::new(), &[]),
+            FieldDefType::I32 => ("I32", Vec::new(), &[]),
+            FieldDefType::I64 => ("I64", Vec::new(), &[]),
+            FieldDefType::I8 => ("I8", Vec::new(), &[]),
+            FieldDefType::Isize => ("Isize", Vec::new(), &[]),
+            FieldDefType::Map(_, value) => ("Map", Vec::new(), from_ref(&**value)),
+            #[cfg(feature = "chrono")]
+            FieldDefType::NaiveDate => ("NaiveDate", Vec::new(), &[]),
+            #[cfg(feature = "chrono")]
+            FieldDefType::NaiveDateTime => ("NaiveDateTime", Vec::new(), &[]),
+            #[cfg(feature = "chrono")]
+            FieldDefType::NaiveTime => ("NaiveTime", Vec::new(), &[]),
+            FieldDefType::NumberLiteral(value) => {
+                ("NumberLiteral", vec![format_number_literal(*value)], &[])
+            }
+            #[cfg(feature = "mongodb")]
+            FieldDefType::ObjectId => ("ObjectId", Vec::new(), &[]),
+            // serde writes every std sequence as the array a `Vec` writes.
+            FieldDefType::SiblingType(name, items)
+                if items.len() == 1
+                    && (is_sequence_wrapper(name) || is_refused_sequence_wrapper(name)) =>
+            {
+                ("Array", Vec::new(), items)
+            }
+            FieldDefType::SiblingType(name, _) => ("Model", vec![name.clone()], &[]),
+            FieldDefType::String => ("String", Vec::new(), &[]),
+            FieldDefType::StringLiteral(text) => ("StringLiteral", vec![text.clone()], &[]),
+            FieldDefType::Tuple(elements) => ("Tuple", Vec::new(), elements),
+            FieldDefType::TypeParam(name) => ("TypeParam", vec![name.clone()], &[]),
+            FieldDefType::U16 => ("U16", Vec::new(), &[]),
+            FieldDefType::U32 => ("U32", Vec::new(), &[]),
+            FieldDefType::U64 => ("U64", Vec::new(), &[]),
+            FieldDefType::U8 => ("U8", Vec::new(), &[]),
+            FieldDefType::Unknown => ("Unknown", Vec::new(), &[]),
+            FieldDefType::Usize => ("Usize", Vec::new(), &[]),
+        };
+        members.push((member, names, under.len()));
+        members.extend(under.iter().flat_map(Self::expected_members));
+        members
+    }
+
     /// The element count the array at `level` was written with, for a level written as a `[T; N]`
     /// whose `N` the expansion could read. `None` is every other level: serde writes as many items
     /// as it holds there, so nothing bounds it.
@@ -387,7 +458,7 @@ impl FieldDef {
     /// whole and a `model_schema_prop` bound has no place in.
     pub const fn fixed_shape_name(&self) -> Option<&'static str> {
         match &self.field_type {
-            #[cfg(feature = "object_id")]
+            #[cfg(feature = "mongodb")]
             FieldDefType::ObjectId => Some("ObjectId"),
             #[cfg(feature = "chrono")]
             FieldDefType::NaiveDate => Some("chrono::NaiveDate"),
@@ -580,7 +651,7 @@ impl FieldDef {
             | FieldDefType::Isize
             | FieldDefType::F32
             | FieldDefType::F64 => false,
-            #[cfg(feature = "object_id")]
+            #[cfg(feature = "mongodb")]
             FieldDefType::ObjectId => false,
             #[cfg(feature = "chrono")]
             FieldDefType::NaiveDate
@@ -621,7 +692,7 @@ impl FieldDef {
             | FieldDefType::Isize
             | FieldDefType::F32
             | FieldDefType::F64 => Vec::new(),
-            #[cfg(feature = "object_id")]
+            #[cfg(feature = "mongodb")]
             FieldDefType::ObjectId => Vec::new(),
             #[cfg(feature = "chrono")]
             FieldDefType::NaiveDate
@@ -677,7 +748,7 @@ impl FieldDef {
             | FieldDefType::Isize
             | FieldDefType::F32
             | FieldDefType::F64 => None,
-            #[cfg(feature = "object_id")]
+            #[cfg(feature = "mongodb")]
             FieldDefType::ObjectId => None,
             #[cfg(feature = "chrono")]
             FieldDefType::NaiveDate
@@ -729,7 +800,7 @@ impl FieldDef {
             | FieldDefType::Isize
             | FieldDefType::F32
             | FieldDefType::F64 => None,
-            #[cfg(feature = "object_id")]
+            #[cfg(feature = "mongodb")]
             FieldDefType::ObjectId => None,
             #[cfg(feature = "chrono")]
             FieldDefType::NaiveDate
@@ -775,7 +846,7 @@ impl FieldDef {
             | FieldDefType::Isize
             | FieldDefType::F32
             | FieldDefType::F64 => false,
-            #[cfg(feature = "object_id")]
+            #[cfg(feature = "mongodb")]
             FieldDefType::ObjectId => false,
             #[cfg(feature = "chrono")]
             FieldDefType::NaiveDate
@@ -845,7 +916,7 @@ impl FieldDef {
             | FieldDefType::Isize
             | FieldDefType::F32
             | FieldDefType::F64 => {}
-            #[cfg(feature = "object_id")]
+            #[cfg(feature = "mongodb")]
             FieldDefType::ObjectId => {}
             #[cfg(feature = "chrono")]
             FieldDefType::NaiveDate
@@ -947,7 +1018,7 @@ impl FieldDef {
             | FieldDefType::Usize
             | FieldDefType::Isize => "number".to_owned(),
             FieldDefType::F32 | FieldDefType::F64 => "number".to_owned(),
-            #[cfg(feature = "object_id")]
+            #[cfg(feature = "mongodb")]
             FieldDefType::ObjectId => object_id::get_object_id_typescript_type(),
             #[cfg(feature = "chrono")]
             FieldDefType::NaiveDate => chrono::get_naive_date_typescript_type(),
@@ -1145,7 +1216,7 @@ impl FieldDef {
             | FieldDefType::Usize
             | FieldDefType::Isize => self.zod_number_type("z.number().int()"),
             FieldDefType::F32 | FieldDefType::F64 => self.zod_number_type("z.number()"),
-            #[cfg(feature = "object_id")]
+            #[cfg(feature = "mongodb")]
             FieldDefType::ObjectId => object_id::get_object_id_zod_schema(),
             #[cfg(feature = "chrono")]
             FieldDefType::NaiveDate => chrono::get_naive_date_zod_schema(),
@@ -1750,7 +1821,7 @@ fn get_field_def_type_or_sibling(t_name: &str) -> FieldDefType {
         "isize" => FieldDefType::Isize,
         "f32" => FieldDefType::F32,
         "f64" => FieldDefType::F64,
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         "ObjectId" => {
             if object_id::should_handle_as_object_id(t_name) {
                 FieldDefType::ObjectId
@@ -1758,14 +1829,13 @@ fn get_field_def_type_or_sibling(t_name: &str) -> FieldDefType {
                 FieldDefType::SiblingType(t_name.to_owned(), vec![])
             }
         }
-        #[cfg(not(feature = "object_id"))]
+        #[cfg(not(feature = "mongodb"))]
         "ObjectId" => {
-            // When object_id feature is disabled, warn user and treat as regular type
-            eprintln!("warning: ObjectId type detected but 'object_id' feature is not enabled");
+            eprintln!("warning: ObjectId type detected but the 'mongodb' feature is not enabled");
             eprintln!(
                 "         ObjectId will be treated as a custom type (may cause compilation errors)"
             );
-            eprintln!("         Enable the object_id feature: features = [\"object_id\"]");
+            eprintln!("         Enable the mongodb feature: features = [\"mongodb\"]");
             eprintln!("         Or add the required ObjectId type definition to your code");
             FieldDefType::SiblingType(t_name.to_owned(), vec![])
         }

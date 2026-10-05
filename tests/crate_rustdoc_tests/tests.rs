@@ -12,7 +12,7 @@
 use serde::{Deserialize, Serialize};
 #[cfg(all(
     feature = "jsonschema",
-    feature = "object_id",
+    feature = "mongodb",
     feature = "serde",
     feature = "typescript",
     feature = "zod"
@@ -119,7 +119,7 @@ fn test_tagged_union_section_shows_what_the_tagged_enum_emits() {
 /// type being recognised by name, and so does this.
 #[cfg(all(
     feature = "jsonschema",
-    feature = "object_id",
+    feature = "mongodb",
     feature = "serde",
     feature = "typescript",
     feature = "zod"

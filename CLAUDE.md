@@ -110,6 +110,7 @@ just ci
    - `zod.rs`: Generates Zod v4 schema strings (`z.string()`, `z.union()`, etc.), embeds examples in `.meta()`
    - `jsonschema.rs`: Generates JSON schema objects
    - `object_id.rs`: MongoDB ObjectId type detection and schema generation
+   - `recovering_decode.rs`: Generates what `#[model_schema(decode_with)]` adds to a type: `from_value_with`, `from_bson_with` under `bson`, the walker of each, and the callback's types in `{type}_schema`. `recovering_decode/enums.rs` holds the walkers of an enum
    - `model_schema_prop.rs`: Parses field-level customization attributes (`pattern`, `minLength`, `maxLength`, `minimum`, `maximum`, `literal`, `as`, `preprocess`)
 
 5. **Code Generation** ([generation/](src/generation/))
@@ -177,16 +178,17 @@ The crate uses optional features for minimal dependencies:
 - `serde`: Enables Serde attribute parsing and field renaming
 - `zod`: Enables Zod schema generation (v4 syntax)
 - `jsonschema`: Enables `json_schema()` method generation
-- `object_id`: Enables MongoDB ObjectId type support
+- `mongodb`: Enables MongoDB ObjectId type support
+- `bson`: BSON support, turned on by `mongodb`; turns on `serde`. Generates `from_bson_with` on types that opt in with `decode_with`
 - `typescript`: Enables TypeScript type generation
 - `chrono`: Enables chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`)
 - `dart`: Enables Dart type generation with a JSON codec, and the Dart HTTP client
 - `swift`: Enables Swift type generation with a `Codable` codec
 - `kotlin`: Enables Kotlin type generation with `kotlinx.serialization` annotations. A consuming Kotlin build declares two dependencies: the runtime library `org.jetbrains.kotlinx:kotlinx-serialization-json` and the Kotlin Gradle plugin `kotlin("plugin.serialization")`
 
-**Feature sets**: `web` (the default: `serde`, `zod`, `jsonschema`, `typescript`), `mobile` (`serde`, `dart`, `swift`, `kotlin`) and `mongo` (`object_id`, `chrono`). CI tests the powerset of the sets (`just test-sets`); `just test` runs the powerset of the plain features locally
+**Feature sets**: `web` (the default: `serde`, `zod`, `jsonschema`, `typescript`), `mobile` (`serde`, `dart`, `swift`, `kotlin`) and `mongo` (`mongodb`, `chrono`). CI tests the powerset of the sets (`just test-sets`); `just test` runs the powerset of the plain features locally
 
-**Default configuration**: `serde`, `zod`, `jsonschema`, `typescript` (the `object_id`, `chrono`, `dart`, `swift` and `kotlin` features are opt-in)
+**Default configuration**: `serde`, `zod`, `jsonschema`, `typescript` (the `mongodb`, `bson`, `chrono`, `dart`, `swift` and `kotlin` features are opt-in)
 
 ## Critical Development Rules
 
@@ -665,6 +667,40 @@ runs the checks when they are equal, so the read reaches the same one filling `$
 `validate()` do. `type_identity` is emitted into the schema module by `embedded_type_identity`, a
 copy of `typeid::of` (see `THIRD-PARTY-NOTICES`), so a consumer adds no dependency for it.
 
+### Recovering Decode
+
+`#[model_schema(decode_with)]` gives a type `from_value_with`, and `from_bson_with` under `bson`:
+plain serde reads the value, a walker lists every issue in it, and a callback supplied with the
+call rejects the record or fixes it once. `README.md`'s "Recovering Decode" section is the
+consumer's view; this is what a change to the emitter has to keep.
+
+- **The flag is read at `exec_model_schema`.** `decode_with_guard_errors` runs there, ungated, so
+  the refusals -- a type alias, a type that declares a lifetime, a field that borrows -- are the
+  same in every feature combination and are raised before any shape is split off. The emitter
+  itself runs under `serde`, from `struct_decode_with` and `enum_decode_with`, and reads the item
+  as it is emitted, so a read hook tixschema hangs on a field is one the walker reads through.
+- **A walker is generic over the issue type.** Each walker method takes a type parameter for the
+  issue it builds and an `IssueFromParts` constructor, a function pointer over standard types, so
+  one type's walker builds another type's issues at their full path. Two flagged types share no
+  declaration: each `{type}_schema` module declares the same aliases of standard types
+  (`ExpectedToken`, `IssueFromParts`), and `issue_from_parts` turns the parts into that module's
+  own `Issue`.
+- **Every name the flag adds is its own.** Each method carries the flag's name
+  (`decode_with_value_issues`, `decode_with_bson_fields`, `decode_with_value_named`), and a
+  method's own type parameters take a name the item does not write (`unclaimed_parameter`): `F`
+  and `I`, numbered where the item writes one.
+- **The emitted code names only what both major versions of the `bson` library have.** Every BSON
+  value is read through `bson::Deserializer::new` and written through `bson::Serializer::new`.
+  `tests/recovering_decode_bson_tests/` is compiled once per major, by
+  `recovering_decode_bson2_tests.rs` and `recovering_decode_bson3_tests.rs`, each binding the name
+  `bson` with an `extern crate`.
+- **Nothing emitted carries `#[allow]`, `#[expect]` or `#[doc(hidden)]`.** A consumer's lint levels
+  reach what the macro emits into their crate: every added type is `#[non_exhaustive]`, no added
+  function takes `impl Trait` as a parameter, and a `Result` is written `core::result::Result`.
+- **The README's example is pinned.** `tests/recovering_decode_bson_tests/readme.rs` holds the
+  README's declarations and its callback as one text with the code that compiles, and runs the
+  README's stored row against both `bson` majors.
+
 ### Adding Examples to Types
 
 To add examples to your types for inclusion in Zod schemas:
@@ -864,7 +900,7 @@ Run generation tests in your CI pipeline to ensure frontend types stay in sync w
 The crate includes comprehensive ObjectId tests with real MongoDB library integration (dev-only dependency). Test various ObjectId scenarios:
 
 ```rust
-#[cfg(all(feature = "object_id", test))]
+#[cfg(all(feature = "mongodb", test))]
 #[test]
 fn test_objectid_types() {
     #[model_schema()]
@@ -924,7 +960,7 @@ CI installs every toolchain those groups need: Node with `zod`, `ws` and `typesc
 
 ## MongoDB ObjectId Support
 
-The `object_id` feature provides comprehensive MongoDB ObjectId type support with proper validation and serialization.
+The `mongodb` feature provides comprehensive MongoDB ObjectId type support with proper validation and serialization.
 
 ### Basic Usage
 
@@ -1017,6 +1053,7 @@ tixschema/
 │   │   ├── zod.rs                # Zod schema generation
 │   │   ├── jsonschema.rs         # JSON schema generation
 │   │   ├── object_id.rs          # ObjectId support
+│   │   ├── recovering_decode.rs  # decode_with: from_value_with, from_bson_with, walkers
 │   │   └── model_schema_prop.rs  # Field attribute parsing
 │   └── generation/
 │       ├── mod.rs
@@ -1028,6 +1065,9 @@ tixschema/
 │   ├── serde_tests.rs
 │   ├── mongodb_tests.rs
 │   ├── mongodb_real_tests.rs
+│   ├── recovering_decode_tests.rs        # from_value_with
+│   ├── recovering_decode_bson2_tests.rs  # from_bson_with, against bson 2
+│   ├── recovering_decode_bson3_tests.rs  # from_bson_with, against bson 3
 │   ├── edge_cases_tests.rs
 │   ├── semantic_types_tests.rs
 │   └── ...

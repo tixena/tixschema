@@ -27,6 +27,10 @@ regex-syntax = "0.8"
 
 [dev-dependencies]
 mongodb = ">=3.7"
+# Test-only: what the recovering decode generates names the crate `bson`, and builds against
+# both of its major versions. Each BSON test binary binds that name to one of these.
+bson2 = { package = "bson", version = "2.15" }
+bson3 = { package = "bson", version = "3.1", features = ["serde"] }
 # Test-only: `rc` supplies serde's `Rc`/`Arc` impls, without which the wire criterion the
 # transparent-wrapper coverage rests on cannot be read off an `Rc`/`Arc` field at all.
 serde = { version = "1", features = ["derive", "rc"] }
@@ -69,13 +73,14 @@ default = ["web"]
 web = ["serde", "zod", "jsonschema", "typescript"]
 # `serde` is here because a service's mobile clients need it; the type definitions alone do not.
 mobile = ["serde", "dart", "swift", "kotlin"]
-mongo = ["object_id", "chrono"]
+mongo = ["mongodb", "chrono"]
 
 # Core features
 serde = [] # Serde integration for attribute parsing and field renaming
 zod = [] # Zod schema generation alongside TypeScript types
 jsonschema = [] # JSON schema generation methods
-object_id = [] # MongoDB ObjectId type support
+mongodb = ["bson"] # MongoDB support: the ObjectId type, and bson
+bson = ["serde"] # BSON support: from_bson_with on types that opt in
 typescript = [] # TypeScript type generation and TypeScript-style Zod schemas
 chrono = [
 ] # Chrono date/time type support (NaiveDate, NaiveTime, NaiveDateTime, DateTime)

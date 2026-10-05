@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
@@ -168,7 +168,7 @@ pub enum Either<IdType> {
 // ObjectId (feature-gated).
 // ---------------------------------------------------------------------------------------------
 
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Document {
@@ -329,7 +329,7 @@ fn test_every_declared_type_is_constructible() {
 }
 
 #[test]
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 fn test_document_is_constructible() {
     let document = Document {
         id: ObjectId::new(),
@@ -754,7 +754,7 @@ fn test_generic_tagged_enum_threads_converters_through_the_whole_hierarchy() {
 // ---------------------------------------------------------------------------------------------
 
 #[test]
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 fn test_object_id_maps_to_a_bare_objectid_reference() {
     let dart = document_dart::dart_definition();
     assert!(
