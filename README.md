@@ -4274,6 +4274,34 @@ pub struct MyType {
 }
 ```
 
+#### A Model Type Declared in Another Module
+
+**Error:** `cannot find module or crate <type>_schema in this scope` (`E0433`), reported at the field's type.
+
+With the `jsonschema` feature on, a field naming a `#[model_schema]` type reaches that type's generated `{type}_schema` module by its bare name, so the module has to be in scope where the referencing type is declared. Import it beside the type:
+
+```rust
+pub mod version {
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Serialize)]
+    pub struct Version {
+        pub number: i32,
+    }
+}
+
+pub mod record {
+    use crate::version::{Version, version_schema};
+
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Serialize)]
+    pub struct Record {
+        pub versions: Vec<Version>,
+    }
+}
+```
+
+rustc's help line suggests `cargo add version_schema`; there is no such crate. The module is generated next to `Version`, in the module that declares it.
+
 ### Runtime Issues
 
 #### Missing TypeScript Types
