@@ -38,6 +38,15 @@ const ALIASED_ADJACENT: &str = "#[serde(tag = \"kind\", content = \"data\")] pub
 const UNREAD_UNTAGGED: &str = "#[serde(untagged)] pub enum Reach { Email { address: String }, \
      #[serde(skip_deserializing)] Fax(Inner), #[serde(skip)] Pager { number: i32 }, Word(String) }";
 
+/// A struct, an optional struct and a tagged enum, each flattened beside a key of the type's own.
+const FLATTENING: &str = "pub struct Entry { #[serde(flatten)] pub audit: Audit, \
+     #[serde(flatten, default, skip_serializing_if = \"Option::is_none\")] pub extra: Option<Extra>, \
+     #[serde(flatten)] pub fill: Fill, pub title: String }";
+
+/// A flattened type parameter beside a key of the type's own.
+const FLATTENING_A_PARAMETER: &str =
+    "pub struct Envelope<T> { #[serde(flatten)] pub body: T, pub id: String }";
+
 /// The `impl` the flag adds to `source`, as text.
 fn type_impl_of(source: &str) -> String {
     let item: syn::ItemStruct = syn::parse_str(source).unwrap();
@@ -75,6 +84,15 @@ fn fields_walk_of(source: &str) -> String {
         .split_once("pub fn decode_with_value_fields")
         .unwrap();
     walk.to_owned()
+}
+
+/// The statements `decode_with_value_fields` runs for `source`, as text, up to the BSON entry
+/// point.
+fn json_fields_walk_of(source: &str) -> String {
+    let walk = fields_walk_of(source);
+    walk.split_once("pub fn from_bson_with")
+        .map_or(walk.as_str(), |(json, _bson)| json)
+        .to_owned()
 }
 
 /// The statements `decode_with_value_issues` runs for `source`, as text, up to the next method.
@@ -340,6 +358,10 @@ fn the_bson_emission_names_only_what_both_major_versions_have() {
     for source in [EXTERNAL, INTERNAL, ADJACENT, UNTAGGED] {
         let tagged: syn::ItemEnum = syn::parse_str(source).unwrap();
         leaf_tokens(enum_recovering_decode(&tagged).type_impl, &mut leaves);
+    }
+    for source in [FLATTENING, FLATTENING_A_PARAMETER] {
+        let flattening: syn::ItemStruct = syn::parse_str(source).unwrap();
+        leaf_tokens(struct_recovering_decode(&flattening).type_impl, &mut leaves);
     }
     let mut named: Vec<&str> = leaves
         .windows(4)
@@ -896,6 +918,10 @@ fn a_methods_own_type_parameter_is_never_a_name_the_item_writes() {
             ["F", "I2"],
         ),
         (
+            "pub struct Holder { #[serde(flatten)] pub inner: I }",
+            ["F", "I2"],
+        ),
+        (
             "pub struct Holder { #[serde(deserialize_with = \"parsed::<I, _>\")] pub score: i32 }",
             ["F", "I2"],
         ),
@@ -1049,8 +1075,8 @@ fn the_bson_walker_of_each_struct_shape_matches_the_librarys_own_types() {
 }
 
 /// Each form serde writes an enum in gets the methods that form has a use for, in one `impl`. A
-/// tagged enum is an object serde can flatten, so it gets a fields walker; a plain enum and an
-/// untagged one get none, and an untagged one a method per variant it walks itself.
+/// tagged enum and an untagged one are objects serde can flatten, so each gets a fields walker; a
+/// plain enum gets none, and an untagged one a method per variant it walks itself.
 #[test]
 fn each_enum_form_adds_the_methods_its_form_has_a_use_for() {
     let forms: [(&str, bool, &[&str]); 5] = [
@@ -1058,7 +1084,7 @@ fn each_enum_form_adds_the_methods_its_form_has_a_use_for() {
         (EXTERNAL, true, &[]),
         (INTERNAL, true, &[]),
         (ADJACENT, true, &[]),
-        (UNTAGGED, false, &["email", "word"]),
+        (UNTAGGED, true, &["email", "word"]),
     ];
     for (source, keyed, walked) in forms {
         let of_source = |stem: &str| {
@@ -1440,7 +1466,7 @@ fn an_untagged_variant_serde_never_reads_is_matched_and_never_walked() {
         assert!(!walk.contains(absent), "found `{absent}` in: {walk}");
     }
     let of_source = |stem: &str| {
-        let mut named = methods_of(stem, false);
+        let mut named = methods_of(stem, true);
         named.extend(
             ["email", "word"].map(|variant| format!("decode_with_{stem}_variant_{variant}")),
         );
@@ -1499,5 +1525,312 @@ fn the_bson_walker_reads_a_variants_alias_and_skip_as_the_json_one_does() {
             "for {source}, missing `{written}` in: {bson}"
         );
         assert!(!bson.contains("serde_json"), "for {source}, got: {bson}");
+    }
+}
+
+/// A flattened type's keys sit among the object's own, so its fields walker runs in that object
+/// at that object's path, and the keys it returns are kept as declared beside the type's own. A
+/// flattened `Option` runs it into a list of its own, kept where serde reads the type from the
+/// object and replaced by one `Mistyped` at the object where it does not.
+#[test]
+fn a_flattened_type_is_walked_in_the_outer_object_and_its_keys_are_declared() {
+    let walk = json_fields_walk_of(FLATTENING);
+    for written in [
+        "-> Vec < & 'a str > { let mut declared = vec ! [\"title\"] ; match object . get (\"title\") { Some (held) =>",
+        "declared . extend (< Audit > :: decode_with_value_fields (object , path , issue , out)) ; { let mut nested = Vec :: new () ; let keys = < Extra > :: decode_with_value_fields (object , path , issue , & mut nested) ; if keys . iter () . any (| key | object . contains_key (* key)) { match < Extra as serde :: Deserialize > :: deserialize (serde_json :: Value :: Object (object . clone ())) { Ok (_) => out . append (& mut nested) , Err (_) => out . push (issue (\"Mistyped\" , path . to_vec () , & [(\"Optional\" , & [] , 1) , (\"Model\" , & [\"Extra\"] , 0)] , Some (serde_json :: Value :: Object (object . clone ())) , None , Vec :: new ())) , } } declared . extend (keys) ; } declared . extend (< Fill > :: decode_with_value_fields (object , path , issue , out)) ; declared }",
+    ] {
+        assert!(walk.contains(written), "missing `{written}` in: {walk}");
+    }
+    assert!(!walk.contains("_schema :: decode_with"), "got: {walk}");
+    let wrapped = json_fields_walk_of(
+        "pub struct Boxed { #[serde(flatten)] pub audit: Box<Audit>, \
+         #[serde(flatten, default, skip_serializing_if = \"Option::is_none\")] pub extra: Option<Box<Extra>> }",
+    );
+    for written in [
+        "{ let mut declared = Vec :: new () ; declared . extend (< Audit > :: decode_with_value_fields (object , path , issue , out)) ;",
+        "match < Extra as serde :: Deserialize > :: deserialize (serde_json :: Value :: Object (object . clone ())) {",
+        "& [(\"Optional\" , & [] , 1) , (\"Model\" , & [\"Extra\"] , 0)]",
+    ] {
+        assert!(
+            wrapped.contains(written),
+            "missing `{written}` in: {wrapped}"
+        );
+    }
+}
+
+/// A flattened map takes every key nothing else declares and walks each value at its key, so the
+/// type then returns every key of the object. What else declares a key is read off the keys kept
+/// where a flattened type declares some, off the type's own where none does, and off nothing where
+/// the type has none.
+#[test]
+fn a_flattened_map_walks_the_value_of_every_key_nothing_else_declares() {
+    let beside_a_type = json_fields_walk_of(
+        "pub struct Bag { #[serde(flatten)] pub audit: Audit, \
+         #[serde(flatten)] pub extra: HashMap<String, Inner>, pub title: String }",
+    );
+    assert!(
+        beside_a_type.contains(
+            "declared . extend (< Audit > :: decode_with_value_fields (object , path , issue , out)) ; for (key , item) in object { if ! declared . contains (& key . as_str ()) { < Inner > :: decode_with_value_issues (item , & [path , & [Ok (key . clone ())]] . concat () , issue , out) ; } } object . keys () . map (String :: as_str) . collect () }"
+        ),
+        "got: {beside_a_type}"
+    );
+    let beside_a_key = json_fields_walk_of(
+        "pub struct Bag { #[serde(flatten)] pub extra: HashMap<String, i32>, pub title: String }",
+    );
+    assert!(
+        beside_a_key.contains(
+            "for (key , item) in object { if ! matches ! (key . as_str () , \"title\") { out . extend (bag_schema :: value_leaf (item , < i32 as serde :: Deserialize > :: deserialize , | read | serde_json :: to_value (read) . ok () , [path , & [Ok (key . clone ())]] . concat () , & [(\"I32\" , & [] , 0)] , issue)) ; } } object . keys () . map (String :: as_str) . collect () }"
+        ),
+        "got: {beside_a_key}"
+    );
+    assert!(!beside_a_key.contains("declared"), "got: {beside_a_key}");
+    let alone = json_fields_walk_of(
+        "pub struct Open { #[serde(flatten)] pub extra: HashMap<String, i32> }",
+    );
+    assert!(
+        alone.contains(
+            "-> Vec < & 'a str > { for (key , item) in object { out . extend (open_schema :: value_leaf (item , < i32 as serde :: Deserialize > :: deserialize ,"
+        ),
+        "got: {alone}"
+    );
+}
+
+/// A flattened type parameter is read whole, with its own reader, from an object of the keys
+/// nothing else declares, which is the whole object where the type declares none. A flattened
+/// field its author's hook reads is read the same way, through the hook.
+#[test]
+fn a_flattened_parameter_is_read_whole_from_the_keys_nothing_else_declares() {
+    let walk = json_fields_walk_of(FLATTENING_A_PARAMETER);
+    assert!(
+        walk.contains(
+            "out . extend (envelope_schema :: value_leaf (& serde_json :: Value :: Object (object . iter () . filter (| (key , _) | ! matches ! (key . as_str () , \"id\")) . map (| (key , held) | (key . clone () , held . clone ())) . collect ()) , < T as serde :: Deserialize > :: deserialize , | _ | None , path . to_vec () , & [(\"TypeParam\" , & [\"T\"] , 0)] , issue)) ; object . keys () . map (String :: as_str) . collect () }"
+        ),
+        "got: {walk}"
+    );
+    let alone = json_fields_walk_of("pub struct Only<T> { #[serde(flatten)] pub body: T }");
+    assert!(
+        alone.contains(
+            "-> Vec < & 'a str > { out . extend (only_schema :: value_leaf (& serde_json :: Value :: Object (object . clone ()) , < T as serde :: Deserialize > :: deserialize , | _ | None , path . to_vec () , & [(\"TypeParam\" , & [\"T\"] , 0)] , issue)) ; object . keys () . map (String :: as_str) . collect () }"
+        ),
+        "got: {alone}"
+    );
+    let hooked = json_fields_walk_of(
+        "pub struct Hooked { #[serde(flatten)] pub audit: Audit, \
+         #[serde(flatten, with = \"as_text\")] pub rest: HashMap<String, i32> }",
+    );
+    assert!(
+        hooked.contains(
+            "out . extend (hooked_schema :: value_leaf (& serde_json :: Value :: Object (object . iter () . filter (| (key , _) | ! declared . contains (& key . as_str ())) . map (| (key , held) | (key . clone () , held . clone ())) . collect ()) , as_text :: deserialize , | read : & HashMap < String , i32 > | as_text :: serialize (read , serde_json :: value :: Serializer) . ok () , path . to_vec () , & [(\"Map\" , & [] , 1) , (\"I32\" , & [] , 0)] , issue)) ;"
+        ),
+        "got: {hooked}"
+    );
+}
+
+/// serde hands the first flattened field that takes the rest every key the walker hands it, and
+/// what that one leaves for the next is nothing the walker can know. Only the first is walked, and
+/// serde's verdict stands for the others.
+#[test]
+fn only_the_first_flattened_field_that_takes_the_rest_is_walked() {
+    let walk = json_fields_walk_of(
+        "pub struct Packet<T> { #[serde(flatten)] pub body: T, \
+         #[serde(flatten)] pub counts: HashMap<String, i32>, pub id: String }",
+    );
+    assert!(
+        walk.contains(
+            "Vec :: new ())) , } out . extend (packet_schema :: value_leaf (& serde_json :: Value :: Object (object . iter () . filter (| (key , _) | ! matches ! (key . as_str () , \"id\")) . map (| (key , held) | (key . clone () , held . clone ())) . collect ()) , < T as serde :: Deserialize > :: deserialize , | _ | None , path . to_vec () , & [(\"TypeParam\" , & [\"T\"] , 0)] , issue)) ; object . keys () . map (String :: as_str) . collect () }"
+        ),
+        "got: {walk}"
+    );
+    assert!(!walk.contains("for (key , item) in object"), "got: {walk}");
+    let maps = json_fields_walk_of(
+        "pub struct Twice { #[serde(flatten)] pub first: HashMap<String, i32>, \
+         #[serde(flatten)] pub second: HashMap<String, String> }",
+    );
+    assert_eq!(
+        maps.matches("for (key , item) in object").count(),
+        1,
+        "got: {maps}"
+    );
+    assert!(
+        maps.contains("< i32 as serde :: Deserialize >") && !maps.contains("< String as serde"),
+        "got: {maps}"
+    );
+}
+
+/// No walk reaches a flattened field serde reads as absent where its type's own reader would
+/// refuse, one it refuses outright, or one it never reads: every key of the object counts as the
+/// field's own and nothing is listed for it, so serde's verdict is the read's. A flattened type
+/// beside it is still walked, and its keys are kept nowhere, nothing being left to read them.
+#[test]
+fn a_flattened_field_no_walk_reaches_takes_every_key_and_lists_nothing() {
+    for source in [
+        "pub struct Loose { #[serde(flatten, default, skip_serializing_if = \"Option::is_none\")] pub rest: Option<HashMap<String, i32>> }",
+        "pub struct Loose<T> { #[serde(flatten, default, skip_serializing_if = \"Option::is_none\")] pub rest: Option<T> }",
+        "pub struct Loose { #[serde(flatten)] pub rest: Vec<i32> }",
+        "pub struct Loose { #[serde(flatten, skip_deserializing)] pub rest: Audit }",
+    ] {
+        let walk = json_fields_walk_of(source);
+        assert!(
+            walk.contains(
+                ", _ : & mut Vec < I > ,) -> Vec < & 'a str > { object . keys () . map (String :: as_str) . collect () }"
+            ),
+            "for {source}, got: {walk}"
+        );
+    }
+    let beside_a_type = json_fields_walk_of(
+        "pub struct Beside { #[serde(flatten)] pub audit: Audit, \
+         #[serde(flatten, default, skip_serializing_if = \"Option::is_none\")] pub rest: Option<HashMap<String, i32>> }",
+    );
+    assert!(
+        beside_a_type.contains(
+            ", out : & mut Vec < I > ,) -> Vec < & 'a str > { < Audit > :: decode_with_value_fields (object , path , issue , out) ; object . keys () . map (String :: as_str) . collect () }"
+        ),
+        "got: {beside_a_type}"
+    );
+    // serde neither writes nor reads a flattened field under `skip`, so no key is its own.
+    let off_the_wire = json_fields_walk_of(
+        "pub struct Kept { #[serde(flatten, skip)] pub cached: Audit, pub title: String }",
+    );
+    assert!(
+        off_the_wire.contains("vec ! [\"title\"] }") && !off_the_wire.contains("Audit"),
+        "got: {off_the_wire}"
+    );
+}
+
+/// A variant's flattened field is walked in the object the variant's fields sit in, at that
+/// object's path, wherever the enum's form puts it. The keys it returns are the variant's own
+/// beside the ones the variant declares, so a key outside both is `Unknown`.
+#[test]
+fn a_variants_flattened_field_is_walked_in_the_object_its_fields_sit_in() {
+    let external = enum_json_of(
+        "pub enum Outline { Gone, Made { #[serde(flatten)] audit: Audit, title: String } }",
+    );
+    for written in [
+        "if let Some (content) = object . get (\"Made\") { if let serde_json :: Value :: Object (inner) = content { let mut declared = vec ! [\"title\"] ; match inner . get (\"title\") {",
+        "declared . extend (< Audit > :: decode_with_value_fields (inner , & [path , & [Ok (\"Made\" . to_owned ())]] . concat () , issue , out)) ; for (key , held) in inner { if ! declared . contains (& key . as_str ()) { out . push (issue (\"Unknown\" , [path , & [Ok (\"Made\" . to_owned ()) , Ok (key . clone ())]] . concat () , & [] , Some (held . clone ()) , None , Vec :: new ())) ; } } } return vec ! [\"Made\"] ; }",
+    ] {
+        assert!(
+            external.contains(written),
+            "missing `{written}` in: {external}"
+        );
+    }
+    let internal = enum_json_of(
+        "#[serde(tag = \"kind\")] pub enum Fill { Gone, Made { #[serde(flatten)] audit: Audit, title: String } }",
+    );
+    for written in [
+        "Some (\"Made\") => { let mut declared = vec ! [\"kind\" , \"title\"] ; match object . get (\"title\") {",
+        "declared . extend (< Audit > :: decode_with_value_fields (object , path , issue , out)) ; declared } ,",
+    ] {
+        assert!(
+            internal.contains(written),
+            "missing `{written}` in: {internal}"
+        );
+    }
+    let adjacent = enum_json_of(
+        "#[serde(tag = \"kind\", content = \"data\")] pub enum Stroke { Gone, Made { #[serde(flatten)] audit: Audit, title: String } }",
+    );
+    for written in [
+        "Some (\"Made\") => match object . get (\"data\") { Some (content) => if let serde_json :: Value :: Object (inner) = content { let mut declared = vec ! [\"title\"] ;",
+        "declared . extend (< Audit > :: decode_with_value_fields (inner , & [path , & [Ok (\"data\" . to_owned ())]] . concat () , issue , out)) ; for (key , held) in inner { if ! declared . contains (& key . as_str ()) { out . push (issue (\"Unknown\" , [path , & [Ok (\"data\" . to_owned ()) , Ok (key . clone ())]] . concat () ,",
+    ] {
+        assert!(
+            adjacent.contains(written),
+            "missing `{written}` in: {adjacent}"
+        );
+    }
+    let untagged = enum_json_of(
+        "#[serde(untagged)] pub enum Contact { Gone { at: u32 }, Made { #[serde(flatten)] audit: Audit, title: String } }",
+    );
+    assert!(
+        untagged.contains(
+            "issue)) ; return ; } ; let mut declared = vec ! [\"title\"] ; match object . get (\"title\") {"
+        ) && untagged.contains(
+            "declared . extend (< Audit > :: decode_with_value_fields (object , path , issue , out)) ; for (key , held) in object { if ! declared . contains (& key . as_str ()) { out . push (issue (\"Unknown\" , [path , & [Ok (key . clone ())]] . concat () ,"
+        ),
+        "got: {untagged}"
+    );
+    // A variant that flattens a map leaves no key of its object undeclared.
+    let open = enum_json_of(
+        "pub enum Outline { Gone, Made { #[serde(flatten)] extra: HashMap<String, i32>, title: String } }",
+    );
+    assert!(
+        open.contains(
+            "for (key , item) in inner { if ! matches ! (key . as_str () , \"title\") { out . extend (outline_schema :: value_leaf (item , < i32 as serde :: Deserialize > :: deserialize , | read | serde_json :: to_value (read) . ok () , [path , & [Ok (\"Made\" . to_owned ()) , Ok (key . clone ())]] . concat () , & [(\"I32\" , & [] , 0)] , issue)) ; } } } return vec ! [\"Made\"] ; }"
+        ),
+        "got: {open}"
+    );
+}
+
+/// An untagged enum's fields walker walks, in the object it is handed, the fields of the variant
+/// serde reads that object as, and returns that variant's keys. Where serde reads it as none, one
+/// `NoVariant` holds each variant's own list, without the keys that variant does not declare, and
+/// every key of the object is returned.
+#[test]
+fn an_untagged_enums_fields_walker_walks_the_variant_serde_reads_the_object_as() {
+    let emitted = enum_json_of(UNTAGGED);
+    let (_issues, walk) = emitted
+        .split_once("pub fn decode_with_value_fields")
+        .unwrap();
+    for written in [
+        "-> Vec < & 'a str > { match < Self as serde :: Deserialize > :: deserialize (serde_json :: Value :: Object (object . clone ())) { Ok (Self :: Email { .. }) => { match object . get (\"address\") { Some (held) => out . extend (contact_schema :: value_leaf (held , contact_schema :: deserialize_email_address ,",
+        "vec ! [\"address\"] } , Ok (Self :: Versioned (..)) => < Inner > :: decode_with_value_fields (object , path , issue , out) , Ok (Self :: Word (..)) => object . keys () . map (String :: as_str) . collect () , Err (_) => { let found = & serde_json :: Value :: Object (object . clone ()) ; let mut as_email = Vec :: new () ; { let out = & mut as_email ; match object . get (\"address\") {",
+        "Vec :: new ())) , } } let mut as_versioned = Vec :: new () ; < Inner > :: decode_with_value_fields (object , path , issue , & mut as_versioned) ; let mut as_word = Vec :: new () ; Self :: decode_with_value_variant_word (found , path , issue , & mut as_word) ; out . push (issue (\"NoVariant\" , path . to_vec () , & [] , Some (found . clone ()) , None , vec ! [(\"Email\" , as_email) , (\"Versioned\" , as_versioned) , (\"Word\" , as_word)])) ; object . keys () . map (String :: as_str) . collect () } } } fn decode_with_value_variant_email < I > (",
+    ] {
+        assert!(walk.contains(written), "missing `{written}` in: {walk}");
+    }
+    let unread = enum_json_of(UNREAD_UNTAGGED);
+    assert!(
+        unread.contains(
+            "Ok (Self :: Word (..)) => object . keys () . map (String :: as_str) . collect () , Ok (Self :: Fax (..) | Self :: Pager { .. }) => Vec :: new () , Err (_) => { let found = & serde_json :: Value :: Object (object . clone ()) ;"
+        ),
+        "got: {unread}"
+    );
+    // A variant with no field to walk lists nothing, so its list is bound and never written to.
+    let blank = enum_json_of("#[serde(untagged)] pub enum Sparse { Blank {}, Word(String) }");
+    for written in [
+        "Ok (Self :: Blank { .. }) => { vec ! [] } ,",
+        "let as_blank = Vec :: new () ; let mut as_word = Vec :: new () ;",
+    ] {
+        assert!(blank.contains(written), "missing `{written}` in: {blank}");
+    }
+}
+
+/// The BSON walk of a flattened field is its JSON one over the library's own types: serde reads a
+/// whole document through the library's deserializer, and a document is the member of
+/// `bson::Bson` that holds one.
+#[cfg(feature = "bson")]
+#[test]
+fn the_bson_walker_of_a_flattened_field_matches_the_librarys_own_types() {
+    let flattening = bson_fields_walk_of(FLATTENING);
+    for written in [
+        "declared . extend (< Audit > :: decode_with_bson_fields (object , path , issue , out)) ; { let mut nested = Vec :: new () ; let keys = < Extra > :: decode_with_bson_fields (object , path , issue , & mut nested) ;",
+        "match < Extra as serde :: Deserialize > :: deserialize (bson :: Deserializer :: new (bson :: Bson :: Document (object . clone ()))) { Ok (_) => out . append (& mut nested) , Err (_) => out . push (issue (\"Mistyped\" , path . to_vec () , & [(\"Optional\" , & [] , 1) , (\"Model\" , & [\"Extra\"] , 0)] , Some (bson :: Bson :: Document (object . clone ())) , None , Vec :: new ())) , }",
+    ] {
+        assert!(
+            flattening.contains(written),
+            "missing `{written}` in: {flattening}"
+        );
+    }
+    let parameter = bson_fields_walk_of(FLATTENING_A_PARAMETER);
+    assert!(
+        parameter.contains(
+            "out . extend (envelope_schema :: bson_leaf (& bson :: Bson :: Document (object . iter () . filter (| (key , _) | ! matches ! (key . as_str () , \"id\")) . map (| (key , held) | (key . clone () , held . clone ())) . collect ()) , < T as serde :: Deserialize > :: deserialize , | read , to | serde :: Serialize :: serialize (read , to) . ok () , path . to_vec () , & [(\"TypeParam\" , & [\"T\"] , 0)] , issue)) ;"
+        ),
+        "got: {parameter}"
+    );
+    let untagged = enum_bson_of(UNTAGGED);
+    for written in [
+        "-> Vec < & 'a str > { match < Self as serde :: Deserialize > :: deserialize (bson :: Deserializer :: new (bson :: Bson :: Document (object . clone ()))) { Ok (Self :: Email { .. }) =>",
+        "Err (_) => { let found = & bson :: Bson :: Document (object . clone ()) ; let mut as_email = Vec :: new () ;",
+        "< Inner > :: decode_with_bson_fields (object , path , issue , & mut as_versioned) ;",
+    ] {
+        assert!(
+            untagged.contains(written),
+            "missing `{written}` in: {untagged}"
+        );
+    }
+    for bson in [flattening, parameter, untagged] {
+        assert!(!bson.contains("serde_json"), "got: {bson}");
+        assert!(!bson.contains("decode_with_value"), "got: {bson}");
     }
 }

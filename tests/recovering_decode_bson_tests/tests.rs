@@ -29,6 +29,7 @@ mod as_text {
         serializer.collect_str(value)
     }
 }
+mod flattened;
 
 use core::any::TypeId;
 use core::error::Error;

@@ -58,6 +58,134 @@ struct Arm {
     pattern: TokenStream,
 }
 
+/// Where the walk of an object's fields leaves the keys that are the object's own.
+enum Claimed {
+    /// In the `declared` the walk binds: what a flattened type declares is known once it is walked.
+    Bound,
+    /// Nowhere: a flattened field takes every key nothing else declares, so every key is.
+    Every,
+    /// In these, known where the type is expanded.
+    Listed(Vec<String>),
+}
+
+impl Claimed {
+    /// The keys as a fields walker returns them for `object`.
+    fn returned(&self, object: &Ident) -> TokenStream {
+        match self {
+            Self::Bound => quote! { declared },
+            Self::Every => quote! { #object.keys().map(String::as_str).collect() },
+            Self::Listed(keys) => quote! { vec![#(#keys),*] },
+        }
+    }
+
+    /// What lists every key of `object`, held at `segments`, that is none of these as `Unknown`.
+    fn undeclared(&self, object: &Ident, segments: &[TokenStream]) -> TokenStream {
+        match self {
+            Self::Bound => {
+                let here = path_expression(&under(segments, &quote! { Ok(key.clone()) }));
+                quote! {
+                    for (key, held) in #object {
+                        if !declared.contains(&key.as_str()) {
+                            out.push(issue("Unknown", #here, &[], Some(held.clone()), None, Vec::new()));
+                        }
+                    }
+                }
+            }
+            Self::Every => TokenStream::new(),
+            Self::Listed(keys) => undeclared_keys(object, keys, segments),
+        }
+    }
+}
+
+/// A `#[serde(flatten)]` field, by how its keys are read out of the object that holds them.
+enum Flattened<'item> {
+    /// A map: every key nothing else declares, each value walked at its key.
+    Entries(Walk<'item>),
+    /// Another flagged type: its own fields walker, run in the same object.
+    Model(&'item Type),
+    /// An `Option` of a flagged type, which serde reads as absent where it does not read the type:
+    /// that type, then the field's own, which an issue names as expected.
+    Optional(&'item Type, &'item Type),
+    /// A field no walk reaches: every key counts as its own, and serde's verdict is the read's.
+    Unwalked,
+    /// A value read whole from the keys nothing else declares.
+    Whole(Walk<'item>),
+}
+
+impl<'item> Flattened<'item> {
+    /// The keys it declares are its own alone, known once its type's fields walker has run.
+    const fn declares_its_keys(&self) -> bool {
+        matches!(self, Self::Model(_) | Self::Optional(_, _))
+    }
+
+    fn of(field: &'item Field, module_name: &str, parameters: &[String]) -> Self {
+        // serde reads nothing into the field, and the keys it wrote for it are still in the object.
+        if parse_serde_key_omission(&field.attrs).skips_deserializing {
+            return Self::Unwalked;
+        }
+        let Walk { step, ty } = member_walk(field, module_name, parameters);
+        match step {
+            Step::Entries(values) => Self::Entries(*values),
+            // Flattened, serde reads an `Option` as absent where the type's own reader refuses.
+            Step::Leaf(whole) if whole.hooked || !get_field_def("", ty, "").is_optional() => {
+                Self::Whole(Walk {
+                    step: Step::Leaf(whole),
+                    ty,
+                })
+            }
+            Step::Model => Self::Model(ty),
+            Step::Present(present) if matches!(present.step, Step::Model) => {
+                Self::Optional(present.ty, ty)
+            }
+            Step::Items(_) | Step::Leaf(_) | Step::Positions(_) | Step::Present(_) => {
+                Self::Unwalked
+            }
+        }
+    }
+
+    /// It reads the keys nothing else declares, so it needs to know which those are.
+    const fn reads_the_rest(&self) -> bool {
+        matches!(self, Self::Entries(_) | Self::Whole(_))
+    }
+}
+
+/// The fields of an object as its walker reads them.
+struct Keyed<'item> {
+    /// Every key the fields are read under.
+    declared: Vec<String>,
+    fields: Vec<WalkedField<'item>>,
+    /// The `#[serde(flatten)]` fields, whose keys sit among the object's own.
+    flattened: Vec<Flattened<'item>>,
+}
+
+/// The walk of an object's fields, and where it leaves the object's keys.
+struct KeyedWalk {
+    claimed: Claimed,
+    /// The walk lists an issue, so it reads the `Vec` it is handed.
+    lists: bool,
+    walk: TokenStream,
+}
+
+impl KeyedWalk {
+    /// The walk, then every key of `object`, held at `segments`, that is not its own as `Unknown`.
+    fn checked(&self, object: &Ident, segments: &[TokenStream]) -> TokenStream {
+        let (walk, undeclared) = (&self.walk, self.claimed.undeclared(object, segments));
+        quote! {
+            #walk
+            #undeclared
+        }
+    }
+
+    /// The walk, then the keys of `object` that are its own, as a fields walker returns them.
+    fn returning(&self, object: &Ident) -> TokenStream {
+        let (walk, returned) = (&self.walk, self.claimed.returned(object));
+        quote! {
+            #walk
+            #returned
+        }
+    }
+}
+
 /// The key a value is looked up under in the object that holds it.
 struct Lookup<'key> {
     /// serde reads the value when its key is missing.
@@ -91,10 +219,7 @@ pub struct RecoveringDecode {
 /// What the walker of a struct, or of what a variant holds, walks: the form serde writes it in.
 enum Shape<'item> {
     /// An object of the fields, under the keys they declare.
-    Fields {
-        declared: Vec<String>,
-        fields: Vec<WalkedField<'item>>,
-    },
+    Fields(Keyed<'item>),
     /// A single slot: the value it holds.
     Held(Walk<'item>),
     /// No field: the `{}` tixschema makes a unit struct write, and nothing under a variant's name.
@@ -109,7 +234,7 @@ impl<'item> Shape<'item> {
         match &item_struct.fields {
             Fields::Named(named) => {
                 let container = parse_serde_type_attributes(&item_struct.attrs);
-                let (mut declared, fields) = walked_fields(
+                let mut keyed = walked_fields(
                     named,
                     container.rename_all.as_deref(),
                     defaulted,
@@ -117,8 +242,8 @@ impl<'item> Shape<'item> {
                     parameters,
                 );
                 // serde writes a struct's `tag` as a key of the object and reads past it.
-                declared.extend(container.tag);
-                Self::Fields { declared, fields }
+                keyed.declared.extend(container.tag);
+                Self::Fields(keyed)
             }
             Fields::Unit => Self::Nothing,
             Fields::Unnamed(slots) => {
@@ -148,14 +273,13 @@ impl<'item> Shape<'item> {
         match &variant.fields {
             Fields::Named(named) => {
                 let own = parse_serde_type_attributes(&variant.attrs).rename_all;
-                let (declared, fields) = walked_fields(
+                Self::Fields(walked_fields(
                     named,
                     own.as_deref().or(rename_all_fields),
                     false,
                     module_name,
                     parameters,
-                );
-                Self::Fields { declared, fields }
+                ))
             }
             Fields::Unit => Self::Nothing,
             Fields::Unnamed(slots) => {
@@ -324,6 +448,15 @@ impl Source {
         }
     }
 
+    /// The value that holds `entries` as an object.
+    fn object_from(self, entries: &TokenStream) -> TokenStream {
+        match self {
+            #[cfg(feature = "bson")]
+            Self::Bson => quote! { bson::Bson::Document(#entries) },
+            Self::Json => quote! { serde_json::Value::Object(#entries) },
+        }
+    }
+
     /// What binds `object` to the keys of `found`, when it holds an object.
     fn object_of_found(self) -> TokenStream {
         match self {
@@ -334,14 +467,18 @@ impl Source {
     }
 
     /// What serde reads the whole of `object` from.
-    fn object_reader(self) -> TokenStream {
+    fn object_reader(self, object: &Ident) -> TokenStream {
+        let whole = self.object_value(object);
         match self {
             #[cfg(feature = "bson")]
-            Self::Bson => {
-                quote! { bson::Deserializer::new(bson::Bson::Document(object.clone())) }
-            }
-            Self::Json => quote! { serde_json::Value::Object(object.clone()) },
+            Self::Bson => quote! { bson::Deserializer::new(#whole) },
+            Self::Json => whole,
         }
+    }
+
+    /// The whole of `object` as one value.
+    fn object_value(self, object: &Ident) -> TokenStream {
+        self.object_from(&quote! { #object.clone() })
     }
 
     /// The source's name inside what the flag adds for it.
@@ -645,6 +782,119 @@ impl Walker<'_> {
         }
     }
 
+    /// What walks a flattened flagged type in `object`, held at `segments`: its own fields walker,
+    /// whose keys are kept in `declared` where `collects`.
+    fn flattened_model(
+        &self,
+        model: &Type,
+        object: &Ident,
+        segments: &[TokenStream],
+        collects: bool,
+    ) -> TokenStream {
+        let walked = flattened_walker_call(self.source, model, object, segments, &quote! { out });
+        if collects {
+            quote! { declared.extend(#walked); }
+        } else {
+            quote! { #walked; }
+        }
+    }
+
+    /// What walks a flattened `Option` of a flagged type in `object`, held at `segments`. serde
+    /// reads it as absent where it does not read the type, so with some of its keys there the
+    /// object holds what the field would not write.
+    fn flattened_optional(
+        &self,
+        model: &Type,
+        written: &Type,
+        object: &Ident,
+        segments: &[TokenStream],
+        collects: bool,
+    ) -> TokenStream {
+        let source = self.source;
+        let walked =
+            flattened_walker_call(source, model, object, segments, &quote! { &mut nested });
+        let (reader, whole) = (source.object_reader(object), source.object_value(object));
+        let (here, expected) = (path_expression(segments), self.expected(written));
+        let kept = if collects {
+            quote! { declared.extend(keys); }
+        } else {
+            TokenStream::new()
+        };
+        quote! {
+            {
+                let mut nested = Vec::new();
+                let keys = #walked;
+                if keys.iter().any(|key| #object.contains_key(*key)) {
+                    match <#model as serde::Deserialize>::deserialize(#reader) {
+                        Ok(_) => out.append(&mut nested),
+                        Err(_) => out.push(issue("Mistyped", #here, #expected, Some(#whole), None, Vec::new())),
+                    }
+                }
+                #kept
+            }
+        }
+    }
+
+    /// What walks a flattened field that takes the keys of `object` nothing else declares, each
+    /// one a key `unclaimed` holds of, and every one where there is no such test.
+    fn flattened_rest(
+        &self,
+        flattened: &Flattened<'_>,
+        object: &Ident,
+        segments: &[TokenStream],
+        unclaimed: Option<&TokenStream>,
+    ) -> TokenStream {
+        let (module, source) = (self.module, self.source);
+        match flattened {
+            Flattened::Entries(values) => {
+                let item = Ident::new("item", Span::call_site());
+                let each = self.statement(
+                    values,
+                    &item,
+                    &under(segments, &quote! { Ok(key.clone()) }),
+                    0,
+                );
+                unclaimed.map_or_else(
+                    || quote! { for (key, #item) in #object { #each } },
+                    |test| quote! { for (key, #item) in #object { if #test { #each } } },
+                )
+            }
+            Flattened::Whole(Walk {
+                step:
+                    Step::Leaf(Whole {
+                        hooked,
+                        parameterized,
+                        read,
+                        write,
+                    }),
+                ty,
+            }) => {
+                let rest = unclaimed.map_or_else(
+                    || source.object_value(object),
+                    |test| {
+                        source.object_from(&quote! {
+                            #object
+                                .iter()
+                                .filter(|(key, _)| #test)
+                                .map(|(key, held)| (key.clone(), held.clone()))
+                                .collect()
+                        })
+                    },
+                );
+                let (leaf, here, expected) =
+                    (source.leaf(), path_expression(segments), self.expected(ty));
+                let written = source.written(*parameterized, hooked.then_some(*ty), write.as_ref());
+                quote! {
+                    out.extend(#module::#leaf(&#rest, #read, #written, #here, #expected, issue));
+                }
+            }
+            Flattened::Model(_)
+            | Flattened::Optional(_, _)
+            | Flattened::Unwalked
+            | Flattened::Whole(_) => TokenStream::new(),
+        }
+    }
+
     /// What binds the form `found` is walked in, as `held_as` binds it. A value held in any other
     /// form is read whole with the type's own reader, so what is listed for it is serde's verdict.
     fn held_as(&self, held_as: &TokenStream) -> TokenStream {
@@ -700,6 +950,84 @@ impl Walker<'_> {
             pub fn #issues #signature {
                 #body
             }
+        }
+    }
+
+    /// What walks the fields of `object`, held at `segments`, the flattened ones after the ones
+    /// read under a key of their own, and where that leaves the object's keys, `tag` first among
+    /// them where the object carries one. A caller that reads the keys afterwards says so in
+    /// `reads_keys`.
+    fn keyed(
+        &self,
+        keyed: &Keyed<'_>,
+        tag: Option<&str>,
+        object: &Ident,
+        segments: &[TokenStream],
+        reads_keys: bool,
+    ) -> KeyedWalk {
+        let walks: Vec<TokenStream> = keyed
+            .fields
+            .iter()
+            .map(|field| self.field(field, object, segments))
+            .collect();
+        let own: Vec<String> = tag
+            .map(str::to_owned)
+            .into_iter()
+            .chain(keyed.declared.iter().cloned())
+            .collect();
+        let lists = !walks.iter().all(TokenStream::is_empty);
+        let flattened = &keyed.flattened;
+        if flattened.is_empty() {
+            return KeyedWalk {
+                claimed: Claimed::Listed(own),
+                lists,
+                walk: quote! { #(#walks)* },
+            };
+        }
+        let declaring = flattened.iter().any(Flattened::declares_its_keys);
+        let takes_the_rest = flattened.iter().any(|field| !field.declares_its_keys());
+        // serde hands the first field that takes the rest every key the walker hands it. What that
+        // one leaves for the next is nothing the walker can know, so no other is walked.
+        let reader = flattened.iter().find(|field| field.reads_the_rest());
+        // The keys the flattened types declare are kept only where something reads them: the
+        // flattened field that reads the rest, or the caller.
+        let collects = declaring && (reader.is_some() || (reads_keys && !takes_the_rest));
+        let bound = if !collects {
+            TokenStream::new()
+        } else if own.is_empty() {
+            quote! { let mut declared = Vec::new(); }
+        } else {
+            quote! { let mut declared = vec![#(#own),*]; }
+        };
+        let unclaimed = if collects {
+            Some(quote! { !declared.contains(&key.as_str()) })
+        } else if own.is_empty() {
+            None
+        } else {
+            Some(quote! { !matches!(key.as_str(), #(#own)|*) })
+        };
+        let declared = flattened.iter().map(|field| match field {
+            Flattened::Model(model) => self.flattened_model(model, object, segments, collects),
+            Flattened::Optional(model, written) => {
+                self.flattened_optional(model, written, object, segments, collects)
+            }
+            Flattened::Entries(_) | Flattened::Unwalked | Flattened::Whole(_) => TokenStream::new(),
+        });
+        let rest =
+            reader.map(|field| self.flattened_rest(field, object, segments, unclaimed.as_ref()));
+        KeyedWalk {
+            claimed: if takes_the_rest {
+                Claimed::Every
+            } else {
+                Claimed::Bound
+            },
+            lists: lists || declaring || reader.is_some(),
+            walk: quote! {
+                #bound
+                #(#walks)*
+                #(#declared)*
+                #rest
+            },
         }
     }
 
@@ -781,14 +1109,7 @@ impl Walker<'_> {
     /// The methods one type's walker is called through by another's.
     fn methods(&self, shape: &Shape<'_>) -> TokenStream {
         match shape {
-            Shape::Fields { declared, fields } => {
-                let object = Ident::new("object", Span::call_site());
-                let walks: Vec<TokenStream> = fields
-                    .iter()
-                    .map(|field| self.field(field, &object, &[]))
-                    .collect();
-                self.object_methods(&walks, declared)
-            }
+            Shape::Fields(keyed) => self.object_methods(keyed),
             Shape::Held(walk) => self.held_methods(walk),
             Shape::Nothing => self.unit_methods(),
             Shape::Slots(slots) => self.positional_methods(slots),
@@ -813,22 +1134,17 @@ impl Walker<'_> {
     }
 
     /// The walker of a struct serde writes as an object of its fields.
-    fn object_methods(&self, walks: &[TokenStream], declared: &[String]) -> TokenStream {
+    fn object_methods(&self, keyed: &Keyed<'_>) -> TokenStream {
+        let object = Ident::new("object", Span::call_site());
+        let keyed_walk = self.keyed(keyed, None, &object, &[], true);
         let walked = self.object_issues_method();
         // A type with no field to walk lists no issue of its own, so the `Vec` it is handed goes
         // unbound.
-        let keyed = self.fields_method(
-            true,
-            !walks.iter().all(TokenStream::is_empty),
-            &quote! {
-                #(#walks)*
-                vec![#(#declared),*]
-            },
-        );
+        let fields = self.fields_method(true, keyed_walk.lists, &keyed_walk.returning(&object));
         quote! {
             #walked
 
-            #keyed
+            #fields
         }
     }
 
@@ -1413,6 +1729,91 @@ fn entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
             out
         }
     }
+}
+
+/// Hands the object a flattened field's keys sit in to the fields walker of the model type the
+/// field is declared as, which lists into `out` and returns the keys that are that type's own.
+///
+/// A type a flagged type flattens carries the flag too, and is one serde can flatten. This builds:
+///
+/// ```rust
+/// # extern crate bson2 as bson;
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema(decode_with)]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Audit {
+///     pub revision: i32,
+/// }
+///
+/// #[model_schema(decode_with)]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Note {
+///     #[serde(flatten)]
+///     pub audit: Audit,
+///     pub text: String,
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// The run below is that one with the flag taken off `Audit`, and nothing else changed:
+///
+/// ```rust,compile_fail
+/// # extern crate bson2 as bson;
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema()]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Audit {
+///     pub revision: i32,
+/// }
+///
+/// #[model_schema(decode_with)]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Note {
+///     #[serde(flatten)]
+///     pub audit: Audit,
+///     pub text: String,
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// A `compile_fail` doctest asserts only that some error was raised, so the snippet was compiled
+/// standalone as an ordinary test file, and this is the only error it earned, verbatim:
+///
+/// ```text
+/// error[E0599]: no associated function or constant named `decode_with_value_fields` found for struct `Audit` in the current scope
+///   --> tests/zz_probe.rs:10:1
+///    |
+///  6 | pub struct Audit {
+///    | ---------------- associated function or constant `decode_with_value_fields` not found for this struct
+/// ...
+/// 10 | #[model_schema(decode_with)]
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ associated function or constant not found in `Audit`
+///    |
+///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
+///
+/// A build with `bson` on earns the same error a second time, naming `decode_with_bson_fields`.
+fn flattened_walker_call(
+    source: Source,
+    model: &Type,
+    object: &Ident,
+    segments: &[TokenStream],
+    out: &TokenStream,
+) -> TokenStream {
+    let fields = source.method("fields");
+    if segments.is_empty() {
+        return quote! { <#model>::#fields(#object, path, issue, #out) };
+    }
+    let path = path_expression(segments);
+    quote! { <#model>::#fields(#object, &#path, issue, #out) }
 }
 
 /// The items one type's walker hands issues to another's with.
@@ -2178,33 +2579,42 @@ fn walked_field<'item>(
     })
 }
 
-/// The fields serde writes or reads among `named`, and every key they are read under.
+/// The fields serde writes or reads among `named`: the ones read under a key of their own with
+/// every such key, and the flattened ones apart.
 fn walked_fields<'item>(
     named: &'item FieldsNamed,
     rename_all: Option<&str>,
     container_defaulted: bool,
     module_name: &str,
     parameters: &[String],
-) -> (Vec<String>, Vec<WalkedField<'item>>) {
-    let fields: Vec<WalkedField<'item>> = named
-        .named
-        .iter()
-        .filter_map(|field| {
-            walked_field(
+) -> Keyed<'item> {
+    let mut fields: Vec<WalkedField<'item>> = Vec::new();
+    let mut flattened: Vec<Flattened<'item>> = Vec::new();
+    for field in &named.named {
+        if !parse_serde_field_attributes(&field.attrs).flatten {
+            fields.extend(walked_field(
                 field,
                 rename_all,
                 container_defaulted,
                 module_name,
                 parameters,
-            )
-        })
-        .collect();
+            ));
+        } else if !parse_serde_key_omission(&field.attrs).absent_from_wire() {
+            flattened.push(Flattened::of(field, module_name, parameters));
+        } else {
+            // serde neither writes nor reads the field, so no key in the object is its own.
+        }
+    }
     let declared = fields
         .iter()
         .flat_map(|field| once(&field.key).chain(&field.aliases))
         .cloned()
         .collect();
-    (declared, fields)
+    Keyed {
+        declared,
+        fields,
+        flattened,
+    }
 }
 
 /// One slot of a tuple as the walker reads it, or `None` for a slot serde does not read:

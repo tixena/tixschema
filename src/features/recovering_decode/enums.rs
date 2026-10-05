@@ -12,8 +12,8 @@ use syn::ext::IdentExt as _;
 use syn::{Fields, ItemEnum, Type, parse_quote};
 
 use super::{
-    Arm, Lookup, RecoveringDecode, Shape, Step, Walk, WalkedField, Walker, added_to, binding,
-    not_the_shape, path_expression, undeclared_keys, written_names,
+    Arm, Keyed, Lookup, RecoveringDecode, Shape, Step, Walk, Walker, added_to, binding,
+    flattened_walker_call, not_the_shape, path_expression, written_names,
 };
 use crate::features::serde::{
     parse_serde_field_attributes, parse_serde_key_omission, parse_serde_type_attributes,
@@ -122,8 +122,8 @@ impl EnumWalker<'_> {
         segments: &[TokenStream],
     ) -> Vec<Arm> {
         match content {
-            Shape::Fields { declared, fields } => vec![Arm {
-                body: self.held_fields(declared, fields, held, segments),
+            Shape::Fields(keyed) => vec![Arm {
+                body: self.held_fields(keyed, held, segments),
                 nothing: false,
                 pattern: quote! { #held },
             }],
@@ -237,9 +237,7 @@ impl EnumWalker<'_> {
         let content = Ident::new("content", Span::call_site());
         let segments = [quote! { Ok(#stored.to_owned()) }];
         let walked = match &variant.content {
-            Shape::Fields { declared, fields } => {
-                self.held_fields(declared, fields, &content, &segments)
-            }
+            Shape::Fields(keyed) => self.held_fields(keyed, &content, &segments),
             Shape::Nothing => {
                 return if aliased {
                     quote! {
@@ -283,21 +281,19 @@ impl EnumWalker<'_> {
     /// in any other form they list nothing, and the read carries serde's refusal alone.
     fn held_fields(
         &self,
-        declared: &[String],
-        fields: &[WalkedField<'_>],
+        keyed: &Keyed<'_>,
         held: &Ident,
         segments: &[TokenStream],
     ) -> TokenStream {
         let inner = Ident::new("inner", Span::call_site());
         let object = self.walker.source.entries(&inner);
-        let walks = fields
-            .iter()
-            .map(|field| self.walker.field(field, &inner, segments));
-        let undeclared = undeclared_keys(&inner, declared, segments);
+        let walked = self
+            .walker
+            .keyed(keyed, None, &inner, segments, true)
+            .checked(&inner, segments);
         quote! {
             if let #object = #held {
-                #(#walks)*
-                #undeclared
+                #walked
             }
         }
     }
@@ -312,14 +308,12 @@ impl EnumWalker<'_> {
         let arms = self.variants.iter().map(|variant| {
             let tags = variant.tags();
             let declared = match &variant.content {
-                Shape::Fields { declared, fields } => {
-                    let walks = fields
-                        .iter()
-                        .map(|field| self.walker.field(field, &object, &[]));
-                    quote! {{
-                        #(#walks)*
-                        vec![#tag, #(#declared),*]
-                    }}
+                Shape::Fields(keyed_fields) => {
+                    let walked = self
+                        .walker
+                        .keyed(keyed_fields, Some(tag), &object, &[], true)
+                        .returning(&object);
+                    quote! {{ #walked }}
                 }
                 Shape::Held(Walk {
                     step: Step::Model,
@@ -406,13 +400,104 @@ impl EnumWalker<'_> {
     /// What lists a tag naming no variant, held under `tag`: `Invalid` where serde refuses the
     /// whole object, and `Mistyped` where it reads it.
     fn unknown_tag(&self, tag: &str, expected: &TokenStream) -> TokenStream {
-        let reader = self.walker.source.object_reader();
+        let reader = self
+            .walker
+            .source
+            .object_reader(&Ident::new("object", Span::call_site()));
         quote! {
             let here = [path, &[Ok(#tag.to_owned())]].concat();
             out.push(match <Self as serde::Deserialize>::deserialize(#reader) {
                 Err(refused) => issue("Invalid", here, #expected, Some(tag.clone()), Some(refused.to_string()), Vec::new()),
                 Ok(_) => issue("Mistyped", here, #expected, Some(tag.clone()), None, Vec::new()),
             });
+        }
+    }
+
+    /// What `decode_with_{source}_fields` of an untagged enum runs: the fields of the variant serde
+    /// reads `object` as walked in it, or one `NoVariant` where serde reads it as none, with every
+    /// key then the enum's own.
+    fn untagged_fields(&self) -> TokenStream {
+        let source = self.walker.source;
+        let object = Ident::new("object", Span::call_site());
+        let reader = source.object_reader(&object);
+        let every_key = quote! { object.keys().map(String::as_str).collect() };
+        let out = quote! { out };
+        let picked = self.variants.iter().map(|variant| {
+            let pattern = &variant.pattern;
+            let declared = match &variant.content {
+                Shape::Fields(keyed) => {
+                    let walked = self
+                        .walker
+                        .keyed(keyed, None, &object, &[], true)
+                        .returning(&object);
+                    quote! {{ #walked }}
+                }
+                Shape::Held(Walk {
+                    step: Step::Model,
+                    ty,
+                }) => flattened_walker_call(source, ty, &object, &[], &out),
+                // serde reads any other value from the whole object, where no walk reaches it.
+                Shape::Held(_) | Shape::Nothing | Shape::Slots(_) => every_key.clone(),
+            };
+            quote! { Ok(#pattern) => #declared, }
+        });
+        // serde gives none of these back, and the match on what it gives stays exhaustive.
+        let unread = if self.never_read.is_empty() {
+            TokenStream::new()
+        } else {
+            let patterns = self.never_read.iter().map(|variant| &variant.pattern);
+            quote! { Ok(#(#patterns)|*) => Vec::new(), }
+        };
+        let lists: Vec<Ident> = self
+            .variants
+            .iter()
+            .map(|variant| format_ident!("as_{}", variant.stem))
+            .collect();
+        let tried = self.variants.iter().zip(&lists).map(|(variant, list)| {
+            let into = quote! { &mut #list };
+            let walked = match &variant.content {
+                // What the object's other keys hold is none of the variant's to list.
+                Shape::Fields(keyed) => {
+                    let walked = self.walker.keyed(keyed, None, &object, &[], false);
+                    if !walked.lists {
+                        return quote! { let #list = Vec::new(); };
+                    }
+                    let walk = walked.walk;
+                    quote! {{
+                        let out = #into;
+                        #walk
+                    }}
+                }
+                Shape::Held(Walk {
+                    step: Step::Model,
+                    ty,
+                }) => {
+                    let walked = flattened_walker_call(source, ty, &object, &[], &into);
+                    quote! { #walked; }
+                }
+                Shape::Held(_) | Shape::Nothing | Shape::Slots(_) => {
+                    let walked = self.variant_call(variant, &into);
+                    quote! { #walked; }
+                }
+            };
+            quote! {
+                let mut #list = Vec::new();
+                #walked
+            }
+        });
+        let names = self.variants.iter().map(|variant| &variant.rust_name);
+        let whole = source.object_value(&object);
+        quote! {
+            match <Self as serde::Deserialize>::deserialize(#reader) {
+                #(#picked)*
+                #unread
+                Err(_) => {
+                    let found = &#whole;
+                    #(#tried)*
+                    out.push(issue("NoVariant", path.to_vec(), &[], Some(found.clone()), None, vec![#((#names, #lists)),*]));
+                    #every_key
+                }
+            }
         }
     }
 
@@ -457,11 +542,15 @@ impl EnumWalker<'_> {
                 }
             }
         });
+        let keyed = self
+            .walker
+            .fields_method(true, true, &self.untagged_fields());
         let methods = variants
             .iter()
             .filter_map(|variant| self.variant_method(variant));
         quote! {
             #walked
+            #keyed
             #(#methods)*
         }
     }
@@ -489,17 +578,16 @@ impl EnumWalker<'_> {
     fn variant_method(&self, variant: &WalkedVariant<'_>) -> Option<TokenStream> {
         let found = Ident::new("found", Span::call_site());
         let body = match &variant.content {
-            Shape::Fields { declared, fields } => {
+            Shape::Fields(keyed) => {
                 let object = Ident::new("object", Span::call_site());
                 let held_as = self.walker.held_as(&self.walker.source.object_of_found());
-                let walks = fields
-                    .iter()
-                    .map(|field| self.walker.field(field, &object, &[]));
-                let undeclared = undeclared_keys(&object, declared, &[]);
+                let walked = self
+                    .walker
+                    .keyed(keyed, None, &object, &[], true)
+                    .checked(&object, &[]);
                 quote! {
                     #held_as
-                    #(#walks)*
-                    #undeclared
+                    #walked
                 }
             }
             Shape::Held(Walk {

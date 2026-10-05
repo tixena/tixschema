@@ -191,7 +191,7 @@ const DECODE_WITH_ENUM_FORMS: [(&str, &str, bool); 10] = [
     (
         "decode_with",
         "#[derive(Deserialize)] #[serde(untagged)] pub enum DecodeContact { Email { address: String }, Versioned(DecodeInner) }",
-        false,
+        true,
     ),
     (
         "decode_with, default_types(T = String)",
@@ -216,7 +216,43 @@ const DECODE_WITH_ENUM_FORMS: [(&str, &str, bool); 10] = [
     (
         "decode_with",
         "#[derive(Deserialize)] #[serde(untagged)] pub enum DecodeChannel { Email { address: String }, #[serde(skip_deserializing)] Pager { number: i32 } }",
-        false,
+        true,
+    ),
+];
+
+/// One type per source serde flattens into a struct, then one enum per form serde writes an enum
+/// in whose struct variant flattens a field, each with the arguments it is declared under.
+#[cfg(feature = "serde")]
+const DECODE_WITH_FLATTEN_FORMS: [(&str, &str); 7] = [
+    (
+        "decode_with",
+        "pub struct DecodeFlatEntry { #[serde(flatten)] pub audit: DecodeAudit, \
+         #[serde(flatten, default, skip_serializing_if = \"Option::is_none\")] pub extra: Option<DecodeExtra>, \
+         #[serde(flatten)] pub fill: DecodeFill, pub title: String }",
+    ),
+    (
+        "decode_with",
+        "pub struct DecodeFlatBag { #[serde(flatten)] pub extra: HashMap<String, i32>, pub title: String }",
+    ),
+    (
+        "decode_with, default_types(T = DecodeBody)",
+        "pub struct DecodeFlatEnvelope<T> { #[serde(flatten)] pub body: T, pub id: String }",
+    ),
+    (
+        "decode_with",
+        "pub enum DecodeFlatOutline { Made { #[serde(flatten)] audit: DecodeAudit, title: String }, Gone }",
+    ),
+    (
+        "decode_with",
+        "#[serde(tag = \"kind\")] pub enum DecodeFlatFill { Made { #[serde(flatten)] audit: DecodeAudit }, Gone }",
+    ),
+    (
+        "decode_with",
+        "#[serde(tag = \"kind\", content = \"data\")] pub enum DecodeFlatStroke { Made { #[serde(flatten)] audit: DecodeAudit }, Gone }",
+    ),
+    (
+        "decode_with",
+        "#[derive(Deserialize)] #[serde(untagged)] pub enum DecodeFlatContact { Made { #[serde(flatten)] audit: DecodeAudit }, Gone { at: u32 } }",
     ),
 ];
 
@@ -6055,45 +6091,36 @@ fn decode_with_bounds_its_own_impls_and_nothing_else_of_a_generic_type() {
     );
 }
 
-/// A flattened field is read off serde's attributes, which only the `serde` feature parses.
+/// A flattened field is no reason to refuse the flag, in a struct or in an enum's struct variant
+/// under any tagging: each gets the entry point and its walker, and the type flattened is reached
+/// by its own fields walker.
 #[cfg(feature = "serde")]
 #[test]
-fn decode_with_is_refused_on_a_struct_with_a_flattened_field() {
-    let expanded = expansion_under(
-        "decode_with",
-        "pub struct DecodeEntry { #[serde(flatten)] pub audit: DecodeAudit, pub title: String }",
-    );
-    assert!(
-        expanded.contains(
-            "model_schema: type `DecodeEntry`: `#[model_schema(decode_with)]` is not available on \
-             a struct with a `#[serde(flatten)]` field yet: `from_value_with` and `from_bson_with` \
-             are generated on structs with no flattened field only."
-        ),
-        "got: {expanded}"
-    );
-}
-
-/// A variant's flattened field writes its keys among the variant's own, so an enum holding one
-/// is refused as a struct holding one is, whatever form serde writes the enum in.
-#[cfg(feature = "serde")]
-#[test]
-fn decode_with_is_refused_on_an_enum_with_a_flattened_field_in_a_variant() {
-    for source in [
-        "pub enum DecodeEvent { Made { #[serde(flatten)] audit: DecodeAudit, title: String }, Gone }",
-        "#[serde(tag = \"kind\")] pub enum DecodeEvent { Made { #[serde(flatten)] audit: DecodeAudit }, Gone }",
-        "#[serde(untagged)] pub enum DecodeEvent { Made { #[serde(flatten)] audit: DecodeAudit }, Gone { at: u32 } }",
-    ] {
-        let expanded = expansion_under("decode_with", source);
+fn decode_with_is_generated_on_a_type_with_a_flattened_field() {
+    for (args, source) in DECODE_WITH_FLATTEN_FORMS {
+        let expanded = expansion_under(args, source);
         assert!(
-            expanded.contains(
-                "model_schema: type `DecodeEvent`: `#[model_schema(decode_with)]` is not available \
-                 on an enum with a `#[serde(flatten)]` field in a variant yet: `from_value_with` \
-                 and `from_bson_with` are generated on enums whose variants flatten no field only."
-            ),
+            !expanded.contains("compile_error"),
             "for {source}, got: {expanded}"
         );
-        assert!(
-            !expanded.contains("fn from_value_with"),
+        for emitted in [
+            "pub fn from_value_with < F > (",
+            "pub fn decode_with_value_issues < I > (",
+            "pub fn decode_with_value_fields < 'a , I > (",
+        ] {
+            assert!(
+                expanded.contains(emitted),
+                "for {source}, missing `{emitted}`, got: {expanded}"
+            );
+        }
+        assert_eq!(
+            expanded.contains("pub fn decode_with_bson_fields < 'a , I > ("),
+            cfg!(feature = "bson"),
+            "for {source}, got: {expanded}"
+        );
+        assert_eq!(
+            expanded.contains("< DecodeAudit > :: decode_with_value_fields ("),
+            source.contains("DecodeAudit"),
             "for {source}, got: {expanded}"
         );
     }
@@ -6311,6 +6338,7 @@ fn nothing_decode_with_emits_suppresses_a_lint() {
         .into_iter()
         .chain([named_fields])
         .chain(enum_forms)
+        .chain(DECODE_WITH_FLATTEN_FORMS)
     {
         let flagged = expansion_under(args, source);
         for suppression in ["allow", "expect", "hidden", "cfg_attr"] {
@@ -6339,6 +6367,7 @@ fn what_decode_with_emits_is_written_for_the_lints_a_consumer_denies() {
         .into_iter()
         .chain([named_fields])
         .chain(enum_forms)
+        .chain(DECODE_WITH_FLATTEN_FORMS)
     {
         let flagged = expansion_under(args, source);
         for declared in [

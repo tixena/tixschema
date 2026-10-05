@@ -2285,8 +2285,6 @@ fn decode_with_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_mac
             declared,
             reference,
         ))
-    } else if let Item::Enum(item_enum) = item {
-        decode_with_variant_refusal(item_enum)
     } else if let Item::Struct(item_struct) = item {
         decode_with_struct_refusal(item_struct)
     } else {
@@ -2298,48 +2296,19 @@ fn decode_with_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_mac
         .collect()
 }
 
-/// The one enum `decode_with` is not generated on yet: a variant's flattened field writes its keys
-/// among the variant's own, which the walk of those keys would report one by one.
-fn decode_with_variant_refusal(item_enum: &syn::ItemEnum) -> Option<syn::Error> {
-    item_enum
-        .variants
-        .iter()
-        .flat_map(|variant| &variant.fields)
-        .find(|field| is_flattened_field(field))
-        .map(|field| {
-            decode_with_unavailable(
-                field,
-                "an enum with a `#[serde(flatten)]` field in a variant",
-                "enums whose variants flatten no field",
-            )
-        })
-}
-
 /// The shape of a struct `decode_with` is not generated on yet, spanned on what makes it that shape.
 fn decode_with_struct_refusal(item_struct: &syn::ItemStruct) -> Option<syn::Error> {
-    let syn::Fields::Named(named) = &item_struct.fields else {
-        return None;
-    };
     // serde writes it as the value of its one field, which the walk of an object's keys would
     // report key by key.
-    if has_serde_transparent(&item_struct.attrs) {
-        return Some(decode_with_unavailable(
+    (matches!(item_struct.fields, syn::Fields::Named(_))
+        && has_serde_transparent(&item_struct.attrs))
+    .then(|| {
+        decode_with_unavailable(
             &item_struct.ident,
             "a `#[serde(transparent)]` struct with a named field",
             "structs that are not transparent over a named field",
-        ));
-    }
-    named
-        .named
-        .iter()
-        .find(|field| is_flattened_field(field))
-        .map(|field| {
-            decode_with_unavailable(
-                field,
-                "a struct with a `#[serde(flatten)]` field",
-                "structs with no flattened field",
-            )
-        })
+        )
+    })
 }
 
 fn decode_with_unavailable(
