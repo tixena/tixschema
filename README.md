@@ -3333,7 +3333,7 @@ Key points:
 
 ## MongoDB ObjectId Support
 
-Enable the `object_id` feature for first-class MongoDB ObjectId support with proper serialization and validation.
+Enable the `mongodb` feature for first-class MongoDB ObjectId support with proper serialization and validation.
 
 ```rust
 use tixschema::model_schema;
@@ -3510,7 +3510,8 @@ The crate uses optional features to control code generation and dependencies. Al
 | `zod` | Yes | Zod v4 schema generation alongside TypeScript types |
 | `jsonschema` | Yes | JSON Schema generation via `json_schema()` method |
 | `typescript` | Yes | TypeScript type generation via `ts_definition()` method |
-| `object_id` | No | MongoDB ObjectId type support with validation |
+| `mongodb` | No | MongoDB support: the ObjectId type, with validation; turns on `bson` |
+| `bson` | No | BSON support; turns on `serde` |
 | `chrono` | No | Chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`) |
 | `dart` | No | Dart type generation via `dart_definition()`, with a JSON `fromJson`/`toJson` codec |
 | `swift` | No | Swift type generation with a `Codable` codec |
@@ -3523,7 +3524,7 @@ Common configurations:
 tixschema = "0.1.0"
 
 # All features including optional ones
-tixschema = { features = ["serde", "zod", "jsonschema", "typescript", "object_id", "chrono", "dart", "swift", "kotlin"] }
+tixschema = { features = ["serde", "zod", "jsonschema", "typescript", "mongodb", "chrono", "dart", "swift", "kotlin"] }
 
 # Minimal (TypeScript only, no Zod or JSON Schema)
 tixschema = { default-features = false, features = ["typescript"] }
@@ -3685,12 +3686,12 @@ If the `serde` feature is disabled but serde attributes are present, you will se
 
 **Error:** `cannot find type 'ObjectId' in this scope`
 
-**Cause:** Using `ObjectId` without the `object_id` feature enabled.
+**Cause:** Using `ObjectId` without the `mongodb` feature enabled.
 
 **Solutions:**
 ```toml
-# Option 1: Enable the object_id feature
-tixschema = { features = ["object_id"] }
+# Option 1: Enable the mongodb feature
+tixschema = { features = ["mongodb"] }
 
 # Option 2: Use full path in your code
 # use mongodb::bson::oid::ObjectId;

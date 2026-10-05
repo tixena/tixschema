@@ -3,7 +3,7 @@ use super::*;
 /// The `$oid` strings the two surfaces were told apart by, with the verdict a flagless ECMA-262
 /// regex gives each: `new RegExp(OBJECT_ID_HEX_PATTERN).test(oid)` under node v26.2.0. The upper-
 /// case hex is the one a flag turns, and the lower-case one is what `ObjectId::to_hex()` writes.
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 const OBJECT_ID_HEX_STRINGS: [(&str, bool); 2] = [
     ("507f1f77bcf86cd799439011", true),
     ("507F1F77BCF86CD799439011", false),
@@ -21,7 +21,7 @@ fn test_object_id_typescript_type() {
     assert_eq!(get_object_id_typescript_type(), "ObjectId");
 }
 
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 #[test]
 fn test_object_id_zod_schema() {
     let schema = get_object_id_zod_schema();
@@ -31,7 +31,7 @@ fn test_object_id_zod_schema() {
 }
 
 /// The regex literal the Zod surface writes, split into its source and the flags it carries.
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 fn emitted_zod_literal(zod_schema: &str) -> (&str, &str) {
     let literal = zod_schema.split_once(".regex(/").unwrap().1;
     let (source, after) = literal.split_once('/').unwrap();
@@ -43,7 +43,7 @@ fn emitted_zod_literal(zod_schema: &str) -> (&str, &str) {
 /// discipline the emitted-pattern tests use. The flags decide a verdict as much as the source does,
 /// so they are translated rather than dropped; a flag with no reading recorded here stops the test
 /// instead of being silently ignored.
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 fn javascript_literal(source: &str, flags: &str) -> regex::Regex {
     assert!(
         flags.chars().all(|flag| flag == 'i'),
@@ -59,7 +59,7 @@ fn javascript_literal(source: &str, flags: &str) -> regex::Regex {
 /// can only come from the source spelling — which leaves the Zod literal's flag set as the one
 /// place the two can part ways, and an empty one as the only way they cannot. The contract both
 /// describe is what serde writes, and `ObjectId::to_hex()` writes lower-case.
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 #[test]
 fn test_both_object_id_surfaces_read_one_hex_under_one_case_rule() {
     let zod_schema = get_object_id_zod_schema();

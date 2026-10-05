@@ -395,7 +395,7 @@ fn test_complex_nested_collections() {
 }
 
 #[test]
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 fn test_objectid_generates_proper_schema() {
     use mongodb::bson::oid::ObjectId;
 

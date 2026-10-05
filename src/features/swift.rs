@@ -341,7 +341,7 @@ fn swift_map_key_scalar(key: &FieldDef) -> String {
         | FieldDefType::F32
         | FieldDefType::F64
         | FieldDefType::Usize => "String".to_owned(),
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => "String".to_owned(),
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => {
@@ -390,7 +390,7 @@ fn swift_map_key_codec(key: &FieldDef) -> (String, String) {
         | FieldDefType::F32
         | FieldDefType::F64
         | FieldDefType::Usize => ("wireKey".to_owned(), "key".to_owned()),
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => ("wireKey".to_owned(), "key".to_owned()),
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => {
@@ -523,7 +523,7 @@ fn swift_field_shape(field: &FieldDef, name_hint: &str, aux: &mut Vec<String>) -
         FieldDefType::I32 => direct_shape("Int32".to_owned()),
         FieldDefType::I64 => direct_shape("Int64".to_owned()),
         FieldDefType::Usize | FieldDefType::Isize => direct_shape("Int".to_owned()),
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => direct_shape("ObjectId".to_owned()),
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => {

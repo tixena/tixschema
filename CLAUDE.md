@@ -177,16 +177,17 @@ The crate uses optional features for minimal dependencies:
 - `serde`: Enables Serde attribute parsing and field renaming
 - `zod`: Enables Zod schema generation (v4 syntax)
 - `jsonschema`: Enables `json_schema()` method generation
-- `object_id`: Enables MongoDB ObjectId type support
+- `mongodb`: Enables MongoDB ObjectId type support
+- `bson`: BSON support, turned on by `mongodb`; turns on `serde`
 - `typescript`: Enables TypeScript type generation
 - `chrono`: Enables chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`)
 - `dart`: Enables Dart type generation with a JSON codec, and the Dart HTTP client
 - `swift`: Enables Swift type generation with a `Codable` codec
 - `kotlin`: Enables Kotlin type generation with `kotlinx.serialization` annotations. A consuming Kotlin build declares two dependencies: the runtime library `org.jetbrains.kotlinx:kotlinx-serialization-json` and the Kotlin Gradle plugin `kotlin("plugin.serialization")`
 
-**Feature sets**: `web` (the default: `serde`, `zod`, `jsonschema`, `typescript`), `mobile` (`serde`, `dart`, `swift`, `kotlin`) and `mongo` (`object_id`, `chrono`). CI tests the powerset of the sets (`just test-sets`); `just test` runs the powerset of the plain features locally
+**Feature sets**: `web` (the default: `serde`, `zod`, `jsonschema`, `typescript`), `mobile` (`serde`, `dart`, `swift`, `kotlin`) and `mongo` (`mongodb`, `chrono`). CI tests the powerset of the sets (`just test-sets`); `just test` runs the powerset of the plain features locally
 
-**Default configuration**: `serde`, `zod`, `jsonschema`, `typescript` (the `object_id`, `chrono`, `dart`, `swift` and `kotlin` features are opt-in)
+**Default configuration**: `serde`, `zod`, `jsonschema`, `typescript` (the `mongodb`, `chrono`, `dart`, `swift` and `kotlin` features are opt-in)
 
 ## Critical Development Rules
 
@@ -864,7 +865,7 @@ Run generation tests in your CI pipeline to ensure frontend types stay in sync w
 The crate includes comprehensive ObjectId tests with real MongoDB library integration (dev-only dependency). Test various ObjectId scenarios:
 
 ```rust
-#[cfg(all(feature = "object_id", test))]
+#[cfg(all(feature = "mongodb", test))]
 #[test]
 fn test_objectid_types() {
     #[model_schema()]
@@ -924,7 +925,7 @@ CI installs every toolchain those groups need: Node with `zod`, `ws` and `typesc
 
 ## MongoDB ObjectId Support
 
-The `object_id` feature provides comprehensive MongoDB ObjectId type support with proper validation and serialization.
+The `mongodb` feature provides comprehensive MongoDB ObjectId type support with proper validation and serialization.
 
 ### Basic Usage
 

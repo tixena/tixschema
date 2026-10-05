@@ -14,7 +14,7 @@ pub mod zod;
 #[cfg(feature = "jsonschema")]
 pub mod jsonschema;
 
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 pub mod object_id;
 
 #[cfg(feature = "chrono")]
@@ -57,8 +57,11 @@ impl Features {
         if Self::has_jsonschema() {
             features.push("jsonschema");
         }
-        if Self::has_object_id() {
-            features.push("object_id");
+        if Self::has_mongodb() {
+            features.push("mongodb");
+        }
+        if Self::has_bson() {
+            features.push("bson");
         }
         if Self::has_typescript() {
             features.push("typescript");
@@ -83,6 +86,10 @@ impl Features {
         features
     }
 
+    pub const fn has_bson() -> bool {
+        cfg!(feature = "bson")
+    }
+
     /// Check if `chrono` feature is enabled.
     pub const fn has_chrono() -> bool {
         cfg!(feature = "chrono")
@@ -102,9 +109,9 @@ impl Features {
         cfg!(feature = "kotlin")
     }
 
-    /// Check if `object_id` feature is enabled.
-    pub const fn has_object_id() -> bool {
-        cfg!(feature = "object_id")
+    /// Check if `mongodb` feature is enabled.
+    pub const fn has_mongodb() -> bool {
+        cfg!(feature = "mongodb")
     }
 
     /// Check if serde feature is enabled.

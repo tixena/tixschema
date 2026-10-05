@@ -69,13 +69,14 @@ default = ["web"]
 web = ["serde", "zod", "jsonschema", "typescript"]
 # `serde` is here because a service's mobile clients need it; the type definitions alone do not.
 mobile = ["serde", "dart", "swift", "kotlin"]
-mongo = ["object_id", "chrono"]
+mongo = ["mongodb", "chrono"]
 
 # Core features
 serde = [] # Serde integration for attribute parsing and field renaming
 zod = [] # Zod schema generation alongside TypeScript types
 jsonschema = [] # JSON schema generation methods
-object_id = [] # MongoDB ObjectId type support
+mongodb = ["bson"] # MongoDB support: the ObjectId type, and bson
+bson = ["serde"] # BSON support: from_bson_with on types that opt in
 typescript = [] # TypeScript type generation and TypeScript-style Zod schemas
 chrono = [
 ] # Chrono date/time type support (NaiveDate, NaiveTime, NaiveDateTime, DateTime)

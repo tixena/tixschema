@@ -250,7 +250,7 @@ fn test_the_collections_example_is_declarable() {
 /// The `ObjectId` example. The block it stands in a dummy `ObjectId` for the reason the crate
 /// rustdoc's does: the type is recognised by name, so nothing here needs `mongodb` pulled in.
 #[test]
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 fn test_the_object_id_example_is_declarable_and_shows_what_it_emits() {
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct ObjectId(pub String);

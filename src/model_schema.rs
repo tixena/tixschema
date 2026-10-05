@@ -50,13 +50,13 @@ use crate::utils::{
     record_zod_default_arguments, record_zod_factory, zod_default_arguments, zod_factory_argument,
 };
 
-#[cfg(all(feature = "zod", feature = "object_id"))]
+#[cfg(all(feature = "zod", feature = "mongodb"))]
 use crate::features::object_id::get_object_id_zod_schema_with;
 
 // The 24-character hex an `ObjectId`'s `$oid` member holds, as a JSON-schema `pattern`. Read from
 // the `ObjectId` feature module, which is where the Zod literal reads it from too, so the two
 // surfaces cannot drift into describing the same string different ways.
-#[cfg(all(feature = "jsonschema", feature = "object_id"))]
+#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
 use crate::features::object_id::OBJECT_ID_HEX_PATTERN;
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
@@ -316,7 +316,7 @@ enum BrandedJsonInner {
     Chrono(&'static str),
     /// The `$oid` object an `ObjectId` writes, whose hex member carries the brand's string
     /// constraints.
-    #[cfg(feature = "object_id")]
+    #[cfg(feature = "mongodb")]
     ObjectId,
     /// A `"type"` keyword those constraints sit beside.
     Scalar(String),
@@ -332,7 +332,7 @@ enum BrandedJsonInner {
 enum BasePattern {
     /// The base states none, so the brand's is the schema's own `pattern` keyword.
     Absent,
-    #[cfg(feature = "object_id")]
+    #[cfg(feature = "mongodb")]
     Stated,
 }
 
@@ -3409,7 +3409,7 @@ fn swift_refused_primitive_name(field_def: &FieldDef) -> Option<&'static str> {
         | FieldDefType::U8
         | FieldDefType::Unknown
         | FieldDefType::Usize => None,
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => None,
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime
@@ -3488,7 +3488,7 @@ fn non_string_inner_shape(inner: &FieldDef) -> Option<&'static str> {
         // `validate()` reaches it the same way it reaches a numeric or boolean inner: through
         // `Display`.
         FieldDefType::Char | FieldDefType::String | FieldDefType::StringLiteral(_) => None,
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => None,
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate
@@ -3548,7 +3548,7 @@ const fn scalar_json_type_keyword(field_type: &FieldDefType) -> Option<&'static 
         | FieldDefType::NaiveDate
         | FieldDefType::NaiveDateTime
         | FieldDefType::NaiveTime => Some("string"),
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => None,
         FieldDefType::Map(..)
         | FieldDefType::SiblingType(..)
@@ -5004,7 +5004,7 @@ fn branded_schema_obj_over(
             BasePattern::Absent => quote! {
                 schema_obj.insert("pattern".to_string(), serde_json::Value::String(#pattern.to_string()));
             },
-            #[cfg(feature = "object_id")]
+            #[cfg(feature = "mongodb")]
             BasePattern::Stated => quote! {
                 schema_obj.insert("allOf".to_string(), serde_json::json!([{ "pattern": #pattern }]));
             },
@@ -5055,7 +5055,7 @@ fn branded_chrono_schema(args: &ModelSchemaArgs, format: &str) -> proc_macro2::T
 /// The `$oid` member an `ObjectId` brand carries: the hex string the type always holds, narrowed
 /// by the brand's own constraints. The hex is the base's own `pattern`, so the brand's is layered
 /// beside it rather than written over it — see [`BasePattern`].
-#[cfg(all(feature = "jsonschema", feature = "object_id"))]
+#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
 fn branded_object_id_hex_schema(args: &ModelSchemaArgs) -> proc_macro2::TokenStream {
     branded_schema_obj_over(
         args,
@@ -5127,7 +5127,7 @@ fn build_branded_json_schema_method(
         #[cfg(feature = "chrono")]
         BrandedJsonInner::Chrono(format) => branded_chrono_schema(args, format),
         BrandedJsonInner::Scalar(type_name) => branded_constrained_schema_obj(args, type_name),
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         BrandedJsonInner::ObjectId => {
             object_id_json_schema_value(&branded_object_id_hex_schema(args))
         }
@@ -5171,7 +5171,7 @@ fn branded_ts_type_and_generics(
 /// [`surface_field_def`] has already erased the brand's own type parameters out of.
 #[cfg(feature = "jsonschema")]
 fn branded_json_inner(inner: &FieldDef) -> BrandedJsonInner {
-    #[cfg(feature = "object_id")]
+    #[cfg(feature = "mongodb")]
     if branded_inner_is_object_id(inner) {
         return BrandedJsonInner::ObjectId;
     }
@@ -5247,7 +5247,7 @@ fn branded_zod_base_checks(args: &ModelSchemaArgs) -> String {
 /// Whether a branded newtype's inner is an `ObjectId` written on its own, reaching the wire as the
 /// `$oid` object rather than any string. An arrayed inner is excluded — it writes the array around
 /// that object, not this shape.
-#[cfg(all(feature = "object_id", any(feature = "zod", feature = "jsonschema")))]
+#[cfg(all(feature = "mongodb", any(feature = "zod", feature = "jsonschema")))]
 const fn branded_inner_is_object_id(inner: &FieldDef) -> bool {
     matches!(inner.field_type, FieldDefType::ObjectId) && !inner.is_array()
 }
@@ -5289,7 +5289,7 @@ fn branded_inner_is_composite(inner: &FieldDef) -> bool {
         | FieldDefType::U32
         | FieldDefType::U64
         | FieldDefType::Usize => false,
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => false,
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime
@@ -5306,7 +5306,7 @@ fn branded_zod_inner(args: &ModelSchemaArgs, inner: &FieldDef) -> String {
         return inner.zod_type();
     }
     let checks = branded_zod_string_checks(args);
-    #[cfg(feature = "object_id")]
+    #[cfg(feature = "mongodb")]
     if branded_inner_is_object_id(inner) {
         return get_object_id_zod_schema_with(&checks);
     }
@@ -7656,7 +7656,7 @@ fn tagged_content(inner: &FieldDef) -> TaggedContent {
         | FieldDefType::NaiveTime => TaggedContent::Refused("a string"),
         FieldDefType::Tuple(_) => TaggedContent::Refused("a tuple"),
         FieldDefType::Map(..) => TaggedContent::Unnameable("a map"),
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => TaggedContent::Unnameable("an ObjectId"),
         FieldDefType::TypeParam(_) => TaggedContent::Unnameable("a type parameter"),
         FieldDefType::Unknown => TaggedContent::Unnameable("a type the expansion cannot resolve"),
@@ -8376,7 +8376,7 @@ fn field_json_schema_value(fld: &FieldDef) -> proc_macro2::TokenStream {
             let keyword = scalar_json_type_keyword(&fld.field_type).unwrap();
             quote! { serde_json::json!({ "type": #keyword }) }
         }
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => object_id_json_schema_value(&object_id_hex_json_schema()),
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate
@@ -9577,7 +9577,7 @@ const fn chrono_json_schema_format(field_type: &FieldDefType) -> Option<&'static
         | FieldDefType::U64
         | FieldDefType::Unknown
         | FieldDefType::Usize => None,
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => None,
     }
 }
@@ -9634,7 +9634,7 @@ fn scalar_field_json_schema_item(fld: &FieldDef) -> Option<proc_macro2::TokenStr
         | FieldDefType::NaiveTime
         | FieldDefType::NaiveDateTime
         | FieldDefType::DateTime => chrono_json_schema_item(&fld.field_type)?,
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => object_id_json_schema_item(&object_id_hex_json_schema()),
         FieldDefType::TypeParam(_)
         | FieldDefType::Unknown
@@ -9882,7 +9882,7 @@ fn map_key_path(key: &FieldDef) -> MapKeyPath<'_> {
         }
         FieldDefType::Tuple(..) => MapKeyPath::Refused(unwritable_key(key, WRITTEN_AS_ARRAY)),
         FieldDefType::Map(..) => MapKeyPath::Refused(unwritable_key(key, WRITTEN_AS_OBJECT)),
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => MapKeyPath::Refused(unwritable_key(key, WRITTEN_AS_OBJECT)),
         FieldDefType::SiblingType(..)
         | FieldDefType::Unknown
@@ -9963,7 +9963,7 @@ fn map_key_element_name(key: &FieldDef) -> String {
         FieldDefType::Map(..) => "HashMap<_, _>".to_owned(),
         FieldDefType::Tuple(..) => "(_, _)".to_owned(),
         FieldDefType::Unknown => "_".to_owned(),
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => "ObjectId".to_owned(),
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime => "DateTime".to_owned(),
@@ -10025,7 +10025,7 @@ fn map_key_rejection(fld: &FieldDef) -> Option<MapKeyRejection> {
         | FieldDefType::Isize
         | FieldDefType::F32
         | FieldDefType::F64 => None,
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => None,
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate
@@ -10198,7 +10198,7 @@ fn build_map_member_item(value: &FieldDef) -> Result<MapMemberItem, MapMemberRej
             ))
         }
         // The one `$oid` object every position spells, which a member carries as written.
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => {
             MapMemberItem::Fragment(object_id_json_schema_item(&object_id_hex_json_schema()))
         }
@@ -10569,7 +10569,7 @@ fn build_sibling_type_field_schema(
 
 /// The `json!` literal an `ObjectId` describes as — the closed `$oid` object serde writes — with
 /// `hex_schema` as the schema of the hex string it holds.
-#[cfg(all(feature = "jsonschema", feature = "object_id"))]
+#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
 fn object_id_json_schema_item(hex_schema: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
     quote! { {
         "type": "object",
@@ -10583,20 +10583,20 @@ fn object_id_json_schema_item(hex_schema: &proc_macro2::TokenStream) -> proc_mac
 
 /// [`object_id_json_schema_item`] as a standalone `serde_json::Value` expression, for the positions
 /// that hold the `$oid` object as a value rather than writing it into a literal.
-#[cfg(all(feature = "jsonschema", feature = "object_id"))]
+#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
 fn object_id_json_schema_value(hex_schema: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
     let item = object_id_json_schema_item(hex_schema);
     quote! { serde_json::json!(#item) }
 }
 
 /// The hex string an `ObjectId`'s `$oid` member holds, where no brand narrows it further.
-#[cfg(all(feature = "jsonschema", feature = "object_id"))]
+#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
 fn object_id_hex_json_schema() -> proc_macro2::TokenStream {
     quote! { serde_json::json!({ "type": "string", "pattern": #OBJECT_ID_HEX_PATTERN }) }
 }
 
 /// Builds the JSON schema for a `MongoDB` `ObjectId` field (`{ "$oid": string }`).
-#[cfg(all(feature = "jsonschema", feature = "object_id"))]
+#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
 fn build_object_id_field_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2::TokenStream {
     let schema = nullable_slot_json_schema_value(
         fld,
@@ -10699,7 +10699,7 @@ fn build_field_type_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2:
         }
         FieldDefType::Boolean => build_boolean_field_schema(fld, field_name_str),
         FieldDefType::Char => build_char_field_schema(fld, field_name_str),
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => build_object_id_field_schema(fld, field_name_str),
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate

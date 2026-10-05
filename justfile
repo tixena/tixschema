@@ -44,7 +44,7 @@ test-named-features:
     cargo test --no-default-features --features "typescript"
     cargo test --no-default-features --features "typescript,zod"
     cargo test --no-default-features --features "serde,zod"
-    cargo test --no-default-features --features "serde,zod,object_id"
+    cargo test --no-default-features --features "serde,zod,mongodb"
     cargo test --all-features
     @echo "✅ Key feature combinations passed!"
 
@@ -66,7 +66,7 @@ test-combinations:
     cargo test --no-default-features --features "serde"
     cargo test --no-default-features --features "zod"
     cargo test --no-default-features --features "jsonschema"
-    cargo test --no-default-features --features "object_id"
+    cargo test --no-default-features --features "mongodb"
     cargo test --no-default-features --features "typescript"
     cargo test --no-default-features --features "serde,zod"
     cargo test --no-default-features --features "serde,typescript"
@@ -210,7 +210,7 @@ all-powerset: lint lint-all test
     @echo "All powerset checks completed successfully!"
 
 # Lint with every feature on at once - one build that reaches the feature-gated code (dart,
-# chrono, object_id) the default-features `lint` misses, without the powerset's 128 builds.
+# chrono, mongodb) the default-features `lint` misses, without the powerset's 128 builds.
 lint-all-features:
     cargo clippy --all-targets --all-features -- -D warnings
 

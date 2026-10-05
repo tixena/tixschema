@@ -243,7 +243,7 @@ mod typescript {
 
 #[cfg(feature = "zod")]
 mod zod {
-    #[cfg(all(feature = "chrono", feature = "object_id"))]
+    #[cfg(all(feature = "chrono", feature = "mongodb"))]
     use super::MixedArguments;
     use super::{
         Adjacent, BatchedDefault, Carried, CycleFollower, CycleLeader, EchoedDefault, EcmDocument,
@@ -930,7 +930,7 @@ mod zod {
     /// Every argument reaches the call through whatever already answers for its type, so a date,
     /// a database identifier and a number are each written exactly as they are written anywhere
     /// else and none of the three is reached by a rule of its own.
-    #[cfg(all(feature = "chrono", feature = "object_id"))]
+    #[cfg(all(feature = "chrono", feature = "mongodb"))]
     #[test]
     fn an_argument_renders_through_the_renderer_that_already_answers_for_it() {
         let zod = MixedArguments::zod_schema();
@@ -1056,7 +1056,7 @@ mod jsonschema {
         }
     }
 
-    #[cfg(all(feature = "chrono", feature = "object_id"))]
+    #[cfg(all(feature = "chrono", feature = "mongodb"))]
     use super::StoredFolder;
     use super::{
         Branch, CountedFolder, EcmDocument, Envelope, Grove, KeyedByParameter, Pair, Perch, Roost,
@@ -1241,7 +1241,7 @@ mod jsonschema {
 
     /// Every argument reaches the document through whatever already describes its type, so a date
     /// and a database identifier are each written exactly as they are written anywhere else.
-    #[cfg(all(feature = "chrono", feature = "object_id"))]
+    #[cfg(all(feature = "chrono", feature = "mongodb"))]
     #[test]
     fn an_argument_is_described_by_whatever_already_answers_for_it() {
         let stored = StoredFolder::json_schema()["properties"]["doc"]["properties"].clone();
@@ -1386,9 +1386,9 @@ use alloc::borrow::Cow;
 use core::hash::Hash;
 use std::collections::{HashMap, HashSet};
 
-#[cfg(all(feature = "chrono", feature = "object_id"))]
+#[cfg(all(feature = "chrono", feature = "mongodb"))]
 use chrono::{DateTime, Utc};
-#[cfg(all(feature = "chrono", feature = "object_id"))]
+#[cfg(all(feature = "chrono", feature = "mongodb"))]
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -1701,7 +1701,7 @@ pub struct CountedFolder {
 /// The stored shape of the same document: a database identifier and a date where the wire shape
 /// carries a string and a number. Each argument reaches the document through whatever already
 /// describes its type, so neither is reached by a rule of its own.
-#[cfg(all(feature = "chrono", feature = "object_id"))]
+#[cfg(all(feature = "chrono", feature = "mongodb"))]
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredFolder {
@@ -1710,7 +1710,7 @@ pub struct StoredFolder {
 
 /// A date, a database identifier and a number in argument position. Each is rendered by whatever
 /// already answers for it everywhere else, so none of the three is reached by a rule of its own.
-#[cfg(all(feature = "chrono", feature = "object_id"))]
+#[cfg(all(feature = "chrono", feature = "mongodb"))]
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MixedArguments {
@@ -2128,7 +2128,7 @@ fn a_reference_carrying_arguments_expands_to_rust_that_compiles() {
 }
 
 /// The two argument kinds no build reaches without their own feature, named the same way.
-#[cfg(all(feature = "chrono", feature = "object_id"))]
+#[cfg(all(feature = "chrono", feature = "mongodb"))]
 #[test]
 fn a_dated_and_an_identified_argument_expand_to_rust_that_compiles() {
     let mixed = MixedArguments {

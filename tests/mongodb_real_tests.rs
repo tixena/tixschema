@@ -4,6 +4,6 @@
 //! correctly with real `MongoDB` `ObjectId`s.
 
 #[cfg(test)]
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 #[path = "mongodb_real_tests/tests.rs"]
 mod tests;

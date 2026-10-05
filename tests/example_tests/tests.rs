@@ -269,7 +269,7 @@ fn test_serde_attributes_in_example() {
     assert!(zod.contains("example:"));
 }
 
-#[cfg(all(feature = "zod", feature = "object_id"))]
+#[cfg(all(feature = "zod", feature = "mongodb"))]
 #[test]
 fn test_objectid_example() {
     use mongodb::bson::oid::ObjectId;

@@ -2087,7 +2087,7 @@ fn a_map_key_serde_refuses_to_write_is_refused_wherever_it_is_written() {
 /// An `ObjectId` writes a `{"$oid": ...}` object, so it joins the tuple and the nested map: serde
 /// refuses a map keyed by one exactly as it refuses those.
 #[cfg(all(
-    feature = "object_id",
+    feature = "mongodb",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
 ))]
 #[test]
@@ -3241,7 +3241,7 @@ fn a_bound_on_a_chrono_field_is_refused() {
 
 /// An `ObjectId` writes an object, not the string a length or a pattern measures, so it answers as
 /// the chrono types do.
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 #[test]
 fn a_bound_on_an_object_id_field_is_refused() {
     let errors = field_prop_guard_errors(&syn::parse_quote! {
@@ -3268,7 +3268,7 @@ fn a_bound_on_an_object_id_field_is_refused() {
 
 /// A chrono or `ObjectId` field carrying no bound must not acquire one of these errors, and neither
 /// must the keys that name the type rather than constrain the value.
-#[cfg(all(feature = "chrono", feature = "object_id"))]
+#[cfg(all(feature = "chrono", feature = "mongodb"))]
 #[test]
 fn a_fixed_shape_field_without_a_bound_is_left_alone() {
     for field in [
@@ -4121,7 +4121,7 @@ fn branded_json_inners() -> Vec<super::BrandedJsonInner> {
     vec![
         #[cfg(feature = "chrono")]
         super::BrandedJsonInner::Chrono("date-time"),
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         super::BrandedJsonInner::ObjectId,
         super::BrandedJsonInner::Scalar("string".to_owned()),
         super::BrandedJsonInner::Slot(Box::new(super::get_field_def("_inner", &composite, ""))),
@@ -7461,7 +7461,7 @@ fn a_chrono_enum_keyed_map_value_keeps_its_format() {
 
 /// An enum-keyed member binds the one `$oid` object every position spells — the same one a
 /// `String`-keyed member carries. Pinned so neither key path can grow a spelling of its own.
-#[cfg(all(feature = "object_id", feature = "jsonschema"))]
+#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
 #[test]
 fn an_object_id_enum_keyed_map_value_binds_the_one_oid_object() {
     let tokens = enum_key_map_value_binding(FieldDefType::ObjectId);
@@ -7636,7 +7636,7 @@ fn an_alias_of_a_chrono_target_is_stringified() {
 /// An `ObjectId` writes a JSON object, which serde uses as no key at all, so an alias of one stays
 /// refused where the stringifying targets are let through.
 #[cfg(all(
-    feature = "object_id",
+    feature = "mongodb",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
 ))]
 #[test]
@@ -7789,7 +7789,7 @@ fn a_brand_over_a_chrono_inner_is_stringified() {
 /// An `ObjectId` writes a JSON object, which serde uses as no key at all, so a brand over one stays
 /// refused where the stringifying inners are let through.
 #[cfg(all(
-    feature = "object_id",
+    feature = "mongodb",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
 ))]
 #[test]
@@ -8150,7 +8150,7 @@ fn a_nested_string_literal_map_value_keeps_its_const() {
 }
 
 /// A nested `ObjectId` member carries the `$oid` object the outer member carries.
-#[cfg(all(feature = "object_id", feature = "jsonschema"))]
+#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
 #[test]
 fn a_nested_object_id_map_value_keeps_its_oid_object() {
     let inner_member = r#"{ "type" : "object" , "additionalProperties" : { "type" : "object" , "properties" : { "$oid" : (serde_json :: json ! ({ "type" : "string" , "pattern" : "^[a-f0-9]{24}$" })) } , "required" : ["$oid"] , "additionalProperties" : false } }"#;
@@ -8707,7 +8707,7 @@ fn untagged_member_dispatch_values() -> Vec<(&'static str, super::FieldDef)> {
         "(i64, String)",
         super::get_field_def("items", &syn::parse_quote!((i64, String)), ""),
     ));
-    #[cfg(feature = "object_id")]
+    #[cfg(feature = "mongodb")]
     values.push((
         "ObjectId",
         super::get_field_def("items", &syn::parse_quote!(ObjectId), ""),
@@ -9060,7 +9060,7 @@ fn an_optional_unwrapped_map_field_widens_the_object_with_null() {
 
 /// A tuple element is a slot, and a slot spells the `$oid` object the way every other position
 /// spells it. Pinned so the element cannot be handed a rendering of its own again.
-#[cfg(all(feature = "object_id", feature = "jsonschema"))]
+#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
 #[test]
 fn an_object_id_tuple_element_spells_the_one_oid_object() {
     let parsed = super::get_field_def("id", &syn::parse_quote!(ObjectId), "");

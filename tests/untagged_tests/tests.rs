@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use tixschema::model_schema;
 
-#[cfg(all(feature = "jsonschema", feature = "object_id"))]
+#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
 use mongodb::bson::oid::ObjectId;
 
 /// The members of `StringArrayUnion`, in the order the union declares them.
@@ -357,7 +357,7 @@ enum CheckedThenLooseUnion {
 
 // An untagged member is written by a dispatch of its own, so it is a position an `ObjectId` can be
 // spelled in.
-#[cfg(all(feature = "jsonschema", feature = "object_id"))]
+#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -1572,7 +1572,7 @@ fn test_untagged_member_constraint_leaves_serialization_alone() {
 /// An untagged member spells the `$oid` object the way every other position spells it — a member is
 /// written by its own dispatch, which is one more place the object could have drifted.
 #[test]
-#[cfg(all(feature = "jsonschema", feature = "object_id"))]
+#[cfg(all(feature = "jsonschema", feature = "mongodb"))]
 fn test_untagged_objectid_member_spells_the_one_oid_object() {
     let schema = OidUnion::json_schema();
     assert_eq!(

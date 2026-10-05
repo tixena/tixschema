@@ -222,7 +222,7 @@ fn test_mongodb_structs_constructible() {
 }
 
 #[test]
-#[cfg(all(feature = "object_id", feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "mongodb", feature = "typescript", feature = "zod"))]
 fn test_basic_object_id_types() {
     let ts_definition = User::ts_definition();
 
@@ -239,7 +239,7 @@ fn test_basic_object_id_types() {
 }
 
 #[test]
-#[cfg(all(feature = "object_id", feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "mongodb", feature = "typescript", feature = "zod"))]
 fn test_complex_nested_object_id_structures() {
     let ts_definition = ComplexDocument::ts_definition();
 
@@ -271,7 +271,7 @@ fn test_complex_nested_object_id_structures() {
 }
 
 #[test]
-#[cfg(all(feature = "object_id", feature = "jsonschema"))]
+#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
 fn test_complex_object_id_json_schema() {
     let schema = ComplexDocument::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -288,7 +288,7 @@ fn test_complex_object_id_json_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "object_id", feature = "zod"))]
+#[cfg(all(feature = "mongodb", feature = "zod"))]
 fn test_complex_object_id_zod_schema() {
     let zod_schema = ComplexDocument::zod_schema();
 
@@ -313,7 +313,7 @@ fn test_document_json() {
 }
 
 #[test]
-#[cfg(all(feature = "object_id", feature = "jsonschema"))]
+#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
 fn test_hashmap_object_id_json_schema() {
     let schema = UserWithObjectIdMap::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -329,7 +329,7 @@ fn test_hashmap_object_id_json_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "object_id", feature = "zod"))]
+#[cfg(all(feature = "mongodb", feature = "zod"))]
 fn test_hashmap_object_id_zod_schema() {
     let zod_schema = UserWithObjectIdMap::zod_schema();
 
@@ -337,7 +337,7 @@ fn test_hashmap_object_id_zod_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "object_id", feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "mongodb", feature = "typescript", feature = "zod"))]
 fn test_hashmap_with_object_id_values() {
     let ts_definition = UserWithObjectIdMap::ts_definition();
 
@@ -352,7 +352,7 @@ fn test_hashmap_with_object_id_values() {
 }
 
 #[test]
-#[cfg(all(feature = "object_id", feature = "jsonschema"))]
+#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
 fn test_json_schema_optional_parent() {
     let schema = Post::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -370,7 +370,7 @@ fn test_json_schema_optional_parent() {
 }
 
 #[test]
-#[cfg(all(feature = "object_id", feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "mongodb", feature = "typescript", feature = "zod"))]
 fn test_object_id_arrays() {
     let ts_definition = UserWithObjectIdArray::ts_definition();
 
@@ -385,7 +385,7 @@ fn test_object_id_arrays() {
 }
 
 #[test]
-#[cfg(all(feature = "object_id", feature = "jsonschema"))]
+#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
 fn test_object_id_arrays_json_schema() {
     let schema = UserWithObjectIdArray::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -401,7 +401,7 @@ fn test_object_id_arrays_json_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "object_id", feature = "zod"))]
+#[cfg(all(feature = "mongodb", feature = "zod"))]
 fn test_object_id_arrays_zod_schema() {
     let zod_schema = UserWithObjectIdArray::zod_schema();
 
@@ -420,7 +420,7 @@ fn test_object_id_compilation_smoke_test() {
 }
 
 #[test]
-#[cfg(all(feature = "object_id", feature = "jsonschema"))]
+#[cfg(all(feature = "mongodb", feature = "jsonschema"))]
 fn test_object_id_json_schema() {
     let schema = User::json_schema();
     let properties = schema["properties"].as_object().unwrap();
@@ -435,7 +435,7 @@ fn test_object_id_json_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "object_id", feature = "zod"))]
+#[cfg(all(feature = "mongodb", feature = "zod"))]
 fn test_object_id_zod_schema() {
     let zod_schema = Post::zod_schema();
 
@@ -443,7 +443,7 @@ fn test_object_id_zod_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "object_id", feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "mongodb", feature = "typescript", feature = "zod"))]
 fn test_optional_object_id() {
     let ts_definition = UserWithOptionalId::ts_definition();
 
@@ -458,7 +458,7 @@ fn test_optional_object_id() {
 }
 
 #[test]
-#[cfg(all(feature = "object_id", feature = "zod"))]
+#[cfg(all(feature = "mongodb", feature = "zod"))]
 fn test_optional_object_id_zod_schema() {
     let zod_schema = UserWithOptionalId::zod_schema();
 

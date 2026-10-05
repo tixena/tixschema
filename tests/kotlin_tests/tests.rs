@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
@@ -169,7 +169,7 @@ pub struct Dates {
     pub zoned_ms: chrono::DateTime<chrono::Utc>,
 }
 
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HasId {
@@ -500,7 +500,7 @@ fn test_chrono_type_is_constructible() {
 }
 
 #[test]
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 fn test_object_id_type_is_constructible() {
     let has_id = HasId {
         id: ObjectId::new(),
@@ -735,7 +735,7 @@ fn test_dates() {
 }
 
 #[test]
-#[cfg(feature = "object_id")]
+#[cfg(feature = "mongodb")]
 fn test_object_id_bare() {
     let kotlin = has_id_kotlin::kotlin_definition();
     assert!(kotlin.contains("val id: ObjectId"), "got: {kotlin}");

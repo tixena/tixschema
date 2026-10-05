@@ -144,7 +144,7 @@ pub fn kotlin_refused_width(field: &FieldDef) -> Option<&'static str> {
         | FieldDefType::Isize
         | FieldDefType::F32
         | FieldDefType::F64 => None,
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => None,
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate
@@ -396,7 +396,7 @@ fn kotlin_base(field: &FieldDef) -> String {
         FieldDefType::I64 | FieldDefType::Isize => "Long".to_owned(),
         FieldDefType::F32 => "Float".to_owned(),
         FieldDefType::F64 => "Double".to_owned(),
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => "ObjectId".to_owned(),
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => {
@@ -466,7 +466,7 @@ fn field_reaches_type_parameter(field: &FieldDef, type_parameters: &[String]) ->
         | FieldDefType::Usize
         | FieldDefType::F32
         | FieldDefType::F64 => false,
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => false,
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate
@@ -539,7 +539,7 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
         | FieldDefType::Usize
         | FieldDefType::F32
         | FieldDefType::F64 => format!("serializer<{}>()", kotlin_typename(field)),
-        #[cfg(feature = "object_id")]
+        #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => format!("serializer<{}>()", kotlin_typename(field)),
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate
