@@ -29,6 +29,7 @@ use crate::features::serde::{
     NAMED_READ_HOOK_PREFIX, SerdeFieldHooks, has_serde_default, has_serde_read_hook,
     has_serde_skip_serializing, has_serde_transparent, parse_serde_field_attributes,
     parse_serde_field_hooks, parse_serde_key_omission, parse_serde_type_attributes,
+    transparent_field,
 };
 use crate::field_type::{
     FieldDefType, get_field_def, is_refused_sequence_wrapper, is_sequence_wrapper,
@@ -3018,26 +3019,6 @@ fn taken_items() -> TokenStream {
                     .collect(),
             )
         }
-    }
-}
-
-/// The field serde's derive reads a `#[serde(transparent)]` struct as the value of, named or a
-/// slot: the one it reads that has no `default` and is not written `PhantomData`. `None` for any
-/// other count, which that derive refuses.
-fn transparent_field(fields: &Fields) -> Option<&Field> {
-    let mut read = fields.iter().filter(|field| {
-        let omission = parse_serde_key_omission(&field.attrs);
-        let marker = matches!(
-            written_type(&field.ty),
-            Type::Path(written)
-                if written.path.segments.last().is_some_and(|last| last.ident == "PhantomData")
-        );
-        !omission.skips_deserializing && !omission.defaulted && !marker
-    });
-    if let (Some(only), None) = (read.next(), read.next()) {
-        Some(only)
-    } else {
-        None
     }
 }
 

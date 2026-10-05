@@ -19,10 +19,10 @@ use std::collections::HashMap;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::ext::IdentExt as _;
-use syn::{Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
+use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
-use crate::features::serde::{has_serde_transparent, parse_serde_key_omission};
+use crate::features::serde::{brand_field, parse_serde_key_omission};
 use crate::field_type::{
     FieldDef, FieldDefType, VariantKind, classify_variant, dart_from_json_argument,
     dart_lower_camel, dart_to_json_argument, get_field_def, is_plain_enum, is_sequence_wrapper,
@@ -926,8 +926,8 @@ fn class_body(
 /// when `name = "..."` moved its published name elsewhere.
 fn struct_dart_tokens(item_struct: &ItemStruct, name_override: Option<&str>) -> TokenStream {
     let type_parameters = type_parameters_in_scope(&item_struct.generics);
-    if has_serde_transparent(&item_struct.attrs) && is_single_slot(&item_struct.fields) {
-        let value_field = single_slot_field(&item_struct.fields, &type_parameters);
+    if let Some(held) = brand_field(item_struct) {
+        let value_field = brand_value_field(held, &type_parameters);
         return value_wrapper_tokens(
             &item_struct.ident,
             &item_struct.generics,
@@ -954,26 +954,9 @@ fn struct_dart_tokens(item_struct: &ItemStruct, name_override: Option<&str>) -> 
     dart_module_tokens(&rust_ident, item_struct.ident.span(), &dart_source)
 }
 
-/// Whether `fields` is a tuple shape (unnamed) with exactly one slot — the shape a branded newtype
-/// and a bare-value (non-branded) newtype struct share on the wire, both writing the slot's value
-/// alone.
-fn is_single_slot(fields: &Fields) -> bool {
-    matches!(fields, Fields::Unnamed(unnamed) if unnamed.unnamed.len() == 1)
-}
-
-/// The `FieldDef` of a single-slot tuple shape's one field, its type parameters already erased.
-/// Falls back to describing an empty value for a shape that is not actually single-slot — never
-/// reached given [`is_single_slot`] gates every caller, but left panic-free regardless, since a
-/// generator that panics on an input another guard has already refused is strictly worse than one
-/// that answers with something harmless.
-fn single_slot_field(fields: &Fields, type_parameters: &[String]) -> FieldDef {
-    let Fields::Unnamed(unnamed) = fields else {
-        return get_field_def("value", &syn::parse_quote!(()), "");
-    };
-    let Some(slot) = unnamed.unnamed.first() else {
-        return get_field_def("value", &syn::parse_quote!(()), "");
-    };
-    let mut field_def = field_def_with_prop_meta("value", &slot.ty, &slot.attrs);
+/// The `FieldDef` of the field a brand is the value of, its type parameters already erased.
+fn brand_value_field(held: &Field, type_parameters: &[String]) -> FieldDef {
+    let mut field_def = field_def_with_prop_meta("value", &held.ty, &held.attrs);
     field_def.erase_type_parameters(type_parameters);
     field_def
 }

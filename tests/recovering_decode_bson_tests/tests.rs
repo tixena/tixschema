@@ -406,7 +406,7 @@ struct Owner {
 }
 
 /// A `transparent` struct with a named field over a model type.
-#[model_schema(decode_with)]
+#[model_schema(decode_with, no_display)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Current {

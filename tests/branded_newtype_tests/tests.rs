@@ -3067,11 +3067,10 @@ mod untouched_by_the_slot_refusal_tests {
     #[serde(transparent)]
     pub struct BareBrand(pub String);
 
-    #[model_schema()]
+    #[model_schema(pattern = "^[a-z]+$")]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct NamedTransparent {
-        #[model_schema_prop(pattern = "^[a-z]+$")]
         pub inner: String,
     }
 
@@ -3119,29 +3118,38 @@ mod untouched_by_the_slot_refusal_tests {
         );
     }
 
-    /// A named field is not a slot, so the transparent wrapper around it is not a brand and the
-    /// attribute on it is read exactly as it is on any other named field.
+    /// serde writes a transparent struct with a named field as the value of that field, exactly
+    /// as it writes the tuple form, so it is the same brand: its checks are written on the type.
     #[test]
-    fn a_named_field_under_transparent_still_reads_its_attribute() {
+    fn a_named_field_under_transparent_is_a_brand_over_that_field() {
         let zod = NamedTransparent::zod_schema();
         assert!(
-            zod.contains("  inner: z.string().check(z.regex(/^[a-z]+$/, { error: \"does not match pattern '^[a-z]+$'\" })),"),
+            zod.contains(
+                "const NamedTransparent$RawSchema = z.string().check(z.regex(/^[a-z]+$/, { error: \
+                 \"does not match pattern '^[a-z]+$'\" })).brand<\"NamedTransparent\">()"
+            ),
             "Got:\n{zod}"
         );
         assert_eq!(
             NamedTransparent::json_schema(),
-            serde_json::json!({
-                "type": "object",
-                "additionalProperties": false,
-                "properties": { "inner": { "type": "string", "pattern": "^[a-z]+$" } },
-                "required": ["inner"]
-            })
+            serde_json::json!({ "type": "string", "pattern": "^[a-z]+$" })
         );
         assert!(
-            NamedTransparent::ts_definition().contains("  inner: string;"),
+            NamedTransparent::ts_definition()
+                .contains("export type NamedTransparent = string & $brand<\"NamedTransparent\">;"),
             "Got:\n{}",
             NamedTransparent::ts_definition()
         );
+
+        let held = NamedTransparent {
+            inner: "abc".to_owned(),
+        };
+        assert_eq!(
+            serde_json::to_value(&held).unwrap(),
+            serde_json::json!("abc")
+        );
+        assert_eq!(held.to_string(), "abc");
+        serde_json::from_value::<NamedTransparent>(serde_json::json!("ABC")).unwrap_err();
     }
 }
 

@@ -542,7 +542,7 @@ struct MoodLast {
 }
 
 /// A `#[serde(transparent)]` struct over a type that takes every key it is handed.
-#[model_schema(decode_with)]
+#[model_schema(decode_with, no_display)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct CountsRef {
@@ -889,7 +889,7 @@ struct Slate {
 }
 
 /// A `#[serde(transparent)]` struct whose field a hook reads.
-#[model_schema(decode_with)]
+#[model_schema(decode_with, no_display)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Wax {

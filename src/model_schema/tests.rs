@@ -7929,8 +7929,7 @@ fn constrained_brand_inner_spanned_tokens(source: &str, inner: &str) -> (usize, 
     let item: syn::ItemStruct = syn::parse_str(source).unwrap();
     let args = super::parse_model_schema_args(quote::quote! { pattern = "^[a-z]+$" });
     let validation =
-        super::build_branded_validation(&args, &[], &item.fields.iter().next().unwrap().ty)
-            .unwrap();
+        super::build_branded_validation(&args, &[], item.fields.iter().next().unwrap()).unwrap();
     let module_ident = syn::Ident::new("slug_id_schema", proc_macro2::Span::call_site());
     let (_, _, validate_method) = super::inject_branded_serde_attrs(
         item,
@@ -7984,8 +7983,7 @@ fn constrained_brand_emission(inner: &str, module: &str) -> (String, String, Str
     );
     let args = super::parse_model_schema_args(quote::quote! { pattern = "^[a-z]+$" });
     let validation =
-        super::build_branded_validation(&args, &[], &item.fields.iter().next().unwrap().ty)
-            .unwrap();
+        super::build_branded_validation(&args, &[], item.fields.iter().next().unwrap()).unwrap();
     let module_ident = syn::Ident::new(module, proc_macro2::Span::call_site());
     let (_, _, validate_method) = super::inject_branded_serde_attrs(
         item,
@@ -12758,9 +12756,27 @@ fn a_brand_slot_refusal_is_spanned_on_the_attribute() {
     );
 }
 
+/// A transparent struct with a named field is the same brand as the tuple form, so the field it
+/// is the value of takes no attribute either. One beside it, which serde does not read, keeps its
+/// own.
+#[test]
+fn a_prop_on_a_named_brand_field_earns_the_refusal() {
+    let refusals = branded_slot_refusals(
+        "#[serde(transparent)] pub struct Named { #[model_schema_prop(pattern = \"^a$\")] \
+         pub inner: String, #[serde(skip)] #[model_schema_prop(minLength = 2)] pub note: String }",
+    );
+    assert_eq!(refusals.len(), 1, "got: {refusals:?}");
+    assert_eq!(
+        located_source_texts(&refusals[0])
+            .last()
+            .map(String::as_str),
+        Some("[model_schema_prop(pattern = \"^a$\")]")
+    );
+}
+
 /// The guard asks the pair that makes a declaration a brand, so a slot the brand path never takes
 /// keeps the attribute it reads today: an ordinary tuple struct's slot, a wider transparent tuple
-/// struct's, a transparent struct's named field, and every shape that is not a struct at all.
+/// struct's, and every shape that is not a struct at all.
 #[test]
 fn a_prop_outside_a_brand_slot_earns_no_refusal() {
     for source in [
@@ -12768,8 +12784,6 @@ fn a_prop_outside_a_brand_slot_earns_no_refusal() {
         "pub struct Plain(#[model_schema_prop(literal = \"fixed\")] pub String);",
         "#[serde(transparent)] pub struct Wide(\
          #[model_schema_prop(minLength = 2)] pub String, pub u32);",
-        "#[serde(transparent)] pub struct Named { #[model_schema_prop(pattern = \"^a$\")] \
-         pub inner: String }",
         "#[serde(transparent)] pub struct Bare(pub String);",
         "pub enum Choice { Slug(#[model_schema_prop(minLength = 2)] String) }",
         "pub type Alias = String;",

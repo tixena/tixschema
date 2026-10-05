@@ -84,7 +84,7 @@ use crate::features::serde::rename_direction_rejection;
 use crate::features::serde::{
     NAMED_READ_HOOK_PREFIX, SerdeFieldMeta, SerdeTypeMeta, derives_deserialize, has_serde_read_hook,
 };
-use crate::features::serde::{has_serde_default, has_serde_transparent, parse_serde_key_omission};
+use crate::features::serde::{brand_field, has_serde_default, parse_serde_key_omission};
 
 #[cfg(all(
     feature = "serde",
@@ -3203,21 +3203,13 @@ const fn const_parameter_argument_errors(_item: &Item) -> Vec<proc_macro2::Token
 /// Asked at the ungated seam rather than inside the brand path, which is gated on the three
 /// surfaces: with all three off the same declaration is not a brand at all, so a refusal written
 /// there would decide one declaration two ways across the powerset. The pair asked here is the one
-/// `is_branded_newtype` asks, leaving a named-field transparent struct and a wider tuple struct to
-/// the slot reading they already get.
+/// `is_branded_newtype` asks, leaving a wider tuple struct to the slot reading it already gets.
 fn branded_slot_prop_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
     let Item::Struct(item_struct) = item else {
         return Vec::new();
     };
-    let syn::Fields::Unnamed(slots) = &item_struct.fields else {
-        return Vec::new();
-    };
-    if slots.unnamed.len() != 1 || !has_serde_transparent(&item_struct.attrs) {
-        return Vec::new();
-    }
-    slots
-        .unnamed
-        .iter()
+    brand_field(item_struct)
+        .into_iter()
         .flat_map(|slot| &slot.attrs)
         .filter(|attr| attr.path().is_ident("model_schema_prop"))
         .map(|attr| {
@@ -3492,8 +3484,7 @@ fn deferred_shape_question(
     if !args.has_string_constraints() {
         return None;
     }
-    let inner =
-        branded_inner_value_surface(&item_struct.generics, item_struct.fields.iter().next()?);
+    let inner = branded_inner_value_surface(&item_struct.generics, brand_field(item_struct)?);
     if inner.is_array() || sequence_wrapper_element(&inner).is_some() {
         return None;
     }
@@ -3976,7 +3967,7 @@ fn branded_guard_errors(
     item_struct: &syn::ItemStruct,
     args: &ModelSchemaArgs,
 ) -> Vec<proc_macro2::TokenStream> {
-    let inner_field = item_struct.fields.iter().next().unwrap();
+    let inner_field = brand_field(item_struct).unwrap();
     branded_cfg_attr_guard_errors(item_struct, inner_field)
         .into_iter()
         .chain(branded_option_inner_error(&item_struct.ident, inner_field))
@@ -4310,19 +4301,21 @@ fn wire_scalar_candidate(item: &Item) -> Option<(&syn::Ident, &syn::Type)> {
     let Item::Struct(item_struct) = item else {
         return None;
     };
-    let syn::Fields::Unnamed(slots) = &item_struct.fields else {
-        return None;
-    };
-    if slots.unnamed.len() != 1 || !has_serde_transparent(&item_struct.attrs) {
-        return None;
-    }
-    Some((&item_struct.ident, &slots.unnamed[0].ty))
+    Some((&item_struct.ident, &brand_field(item_struct)?.ty))
 }
 
-/// Returns whether a struct is a branded newtype: `#[serde(transparent)]` plus a single field.
+/// How a brand's one field is reached on a value of the brand: by its name, or as slot `0`.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+fn brand_member(field: &Field) -> syn::Member {
+    field.ident.clone().map_or_else(
+        || syn::Member::Unnamed(syn::Index::from(0)),
+        syn::Member::Named,
+    )
+}
+
+/// Whether a struct is a branded newtype: one serde writes as the value of a single field.
 fn is_branded_newtype(item_struct: &syn::ItemStruct) -> bool {
-    has_serde_transparent(&item_struct.attrs)
-        && matches!(&item_struct.fields, syn::Fields::Unnamed(f) if f.unnamed.len() == 1)
+    brand_field(item_struct).is_some()
 }
 
 /// Computes the TypeScript name, schema-module name, and module ident for a struct, and registers
@@ -5093,8 +5086,10 @@ fn process_tuple_struct(
 fn build_branded_validation(
     args: &ModelSchemaArgs,
     generic_params: &[String],
-    inner_ty: &syn::Type,
+    inner_field: &Field,
 ) -> Option<BrandedValidation> {
+    let inner_ty = &inner_field.ty;
+    let held = brand_member(inner_field);
     let is_generic = !generic_params.is_empty();
     args.has_string_constraints().then(|| {
         let measures_path = branded_inner_measures_path(inner_ty);
@@ -5176,7 +5171,11 @@ fn build_branded_validation(
         };
 
         BrandedValidation {
-            checked_inner: branded_checked_value(measures_path, to_string_span, &quote! { self.0 }),
+            checked_inner: branded_checked_value(
+                measures_path,
+                to_string_span,
+                &quote! { self.#held },
+            ),
             deserialize_fn,
             validate_fn,
         }
@@ -5872,7 +5871,14 @@ fn build_branded_display_impl(
         .predicates
         .push(syn::parse_quote_spanned!(bound_span=> #inner_ty: std::fmt::Display));
     let (display_impl_generics, _, display_where_clause) = display_generics.split_for_impl();
-    let delegate = quote_spanned! {inner_field.ty.span()=> std::fmt::Display::fmt(&self.0, f) };
+    // Spanned whole on the field's type, the member with it, which is where a non-`Display`
+    // inner is reported.
+    let mut held = brand_member(inner_field);
+    match &mut held {
+        syn::Member::Named(field_name) => field_name.set_span(inner_field.ty.span()),
+        syn::Member::Unnamed(slot) => slot.span = inner_field.ty.span(),
+    }
+    let delegate = quote_spanned! {inner_field.ty.span()=> std::fmt::Display::fmt(&self.#held, f) };
     quote! {
         impl #display_impl_generics std::fmt::Display for #name #type_generics #display_where_clause {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -6033,8 +6039,18 @@ fn inject_branded_serde_attrs(
     let serde_attr: syn::Attribute = syn::parse_quote! {
         #[serde(deserialize_with = #path_lit)]
     };
-    if let syn::Fields::Unnamed(fields) = &mut owned_struct.fields {
-        fields.unnamed.first_mut().unwrap().attrs.push(serde_attr);
+    if let Some(at) = brand_field(&owned_struct).map(brand_member) {
+        let held = owned_struct
+            .fields
+            .iter_mut()
+            .enumerate()
+            .find(|(index, field)| match &at {
+                syn::Member::Named(name) => field.ident.as_ref() == Some(name),
+                syn::Member::Unnamed(slot) => usize::try_from(slot.index) == Ok(*index),
+            });
+        if let Some((_, field)) = held {
+            field.attrs.push(serde_attr);
+        }
     }
 
     let validate_fn = &validation.validate_fn;
@@ -6146,7 +6162,7 @@ fn register_branded_newtype(
     item_name: &str,
     module_name: &str,
 ) {
-    let inner_field = item_struct.fields.iter().next().unwrap();
+    let inner_field = brand_field(item_struct).unwrap();
     register_alias_info(
         rust_ident,
         item_name,
@@ -6206,7 +6222,7 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
 
     let generic_params = type_parameters_in_scope(&item_struct.generics);
 
-    let inner_field = item_struct.fields.iter().next().unwrap();
+    let inner_field = brand_field(&item_struct).unwrap();
     let inner_ty = &inner_field.ty;
 
     // `ts_pair`: (ts_inner_type, ts_generics).
@@ -6240,7 +6256,7 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
 
     // --- Generate validation code for constrained branded newtypes ---
     #[cfg(feature = "serde")]
-    let branded_validation = build_branded_validation(args, &generic_params, inner_ty);
+    let branded_validation = build_branded_validation(args, &generic_params, inner_field);
 
     // --- Build schema module impl items ---
     #[cfg(feature = "jsonschema")]

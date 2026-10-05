@@ -97,7 +97,7 @@ just ci
    - Parses Serde attributes when `serde` feature enabled
    - Extracts example code from doc comments (` ```rust example` fences)
    - Generates methods: `ts_definition()`, optionally `json_schema()`, optionally `schema_example()`, and optionally `validate()`
-   - `process_branded_newtype()`: handles `#[serde(transparent)]` single-field tuple structs, generating Zod brand schemas or `unique symbol` branded TypeScript types
+   - `process_branded_newtype()`: handles `#[serde(transparent)]` structs serde writes as the value of one field -- a single-slot tuple struct, or a struct with named fields -- generating Zod brand schemas or `unique symbol` branded TypeScript types
 
 3. **Type Analysis** ([field_type.rs](src/field_type.rs))
    - `FieldDef`: Core data structure representing a field's type, optionality, docs, etc.
@@ -430,7 +430,7 @@ constraints.
 
 ### 8. Branded Newtypes
 
-Single-field tuple structs with `#[serde(transparent)]` are treated as branded/opaque types. The brand publishes under its Rust ident unless `#[model_schema(name = "...")]` names another, and that name reaches the surface twice: as the exported type and as the brand tag the values carry.
+Single-field tuple structs with `#[serde(transparent)]` are treated as branded/opaque types, and so is a `#[serde(transparent)]` struct with named fields, over the one field serde reads it as: `brand_field` in `src/features/serde.rs` is the one seam every surface asks, the web three and Dart, Swift and Kotlin alike, and `transparent_field` beside it is serde's own rule for which named field that is (read, no `default`, not `PhantomData`). The brand publishes under its Rust ident unless `#[model_schema(name = "...")]` names another, and that name reaches the surface twice: as the exported type and as the brand tag the values carry.
 
 A non-generic brand publishes a `$RawSchema`/`$Schema` const pair:
 
@@ -517,8 +517,9 @@ Rules:
   `.brand()` written onto it, so no key written there reaches any surface, and one written there is
   refused at `exec_model_schema` — the ungated seam, so the verdict is the same in every feature
   combination — with the item re-emitted stripped of it. The three checks a brand does carry are
-  written on the type: `#[model_schema(pattern = "...", minLength = N, maxLength = N)]`. A
-  `#[serde(transparent)]` struct with a *named* field is no brand and is untouched
+  written on the type: `#[model_schema(pattern = "...", minLength = N, maxLength = N)]`. The
+  field a `#[serde(transparent)]` struct with *named* fields is the value of is that slot, and is
+  held to the same
 - An item whose published expression *is* another item's binding — an alias of a brand, a one-slot
   tuple struct over one, and the `$SchemaDefault` of either where it declares a parameter — is
   annotated `typeof {Name}$RawSchema` rather than `ZodType<{Name}>`, so the brand's narrowing

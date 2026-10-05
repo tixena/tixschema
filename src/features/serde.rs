@@ -7,12 +7,13 @@
 
 #[cfg(all(test, feature = "serde"))]
 use crate::rename_rule::resolve_rename_rule;
+use crate::utils::written_type;
 use proc_macro2::Group;
 #[cfg(feature = "serde")]
 use proc_macro2::{Delimiter, TokenTree};
 use syn::meta::ParseNestedMeta;
 use syn::token::Paren;
-use syn::{Attribute, Token};
+use syn::{Attribute, Field, Fields, ItemStruct, Token, Type};
 #[cfg(feature = "serde")]
 use syn::{Error, LitStr, Meta};
 
@@ -242,6 +243,40 @@ pub fn has_serde_skip_serializing(attrs: &[Attribute]) -> bool {
         });
     }
     found
+}
+
+/// The field a brand is written and read as the value of, or `None` for a struct that is no
+/// brand: a `#[serde(transparent)]` tuple struct's one slot, and of a `#[serde(transparent)]`
+/// struct with named fields the one [`transparent_field`] finds.
+pub fn brand_field(item_struct: &ItemStruct) -> Option<&Field> {
+    if !has_serde_transparent(&item_struct.attrs) {
+        return None;
+    }
+    match &item_struct.fields {
+        Fields::Named(_) => transparent_field(&item_struct.fields),
+        Fields::Unnamed(slots) if slots.unnamed.len() == 1 => slots.unnamed.first(),
+        Fields::Unnamed(_) | Fields::Unit => None,
+    }
+}
+
+/// The field serde's derive reads a `#[serde(transparent)]` struct as the value of, named or a
+/// slot: the one it reads that has no `default` and is not written `PhantomData`. `None` for any
+/// other count, which that derive refuses.
+pub fn transparent_field(fields: &Fields) -> Option<&Field> {
+    let mut read = fields.iter().filter(|field| {
+        let omission = parse_serde_key_omission(&field.attrs);
+        let marker = matches!(
+            written_type(&field.ty),
+            Type::Path(written)
+                if written.path.segments.last().is_some_and(|last| last.ident == "PhantomData")
+        );
+        !omission.skips_deserializing && !omission.defaulted && !marker
+    });
+    if let (Some(only), None) = (read.next(), read.next()) {
+        Some(only)
+    } else {
+        None
+    }
 }
 
 /// Whether the container is `#[serde(transparent)]`, wherever among its serde attributes the key

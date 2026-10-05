@@ -1104,6 +1104,8 @@ The value's type is whatever the instantiation supplies, so nothing here holds i
 
 `#[serde(transparent)]` tuple structs with a single public field generate branded TypeScript types. The newtype is invisible in JSON serialization but carries a distinct type identity in TypeScript, preventing accidental mixing of different ID types.
 
+A `#[serde(transparent)]` struct with named fields is the same brand, over the one field serde reads it as -- the one that is not skipped for reading, carries no `default` and is not written `PhantomData`. serde writes `struct Slug { text: String }` as the string alone, exactly as it writes `struct Slug(String)`, so the two publish the same thing on every surface, and everything this section says of the slot holds for that field: the `Display` requirement and `no_display`, the checks written on the type, and no `#[model_schema_prop(...)]` on the field itself.
+
 ```rust
 use tixschema::model_schema;
 use serde::{Deserialize, Serialize};
@@ -1182,7 +1184,7 @@ Notes:
 - The description is written before the brand in a factory and after it in a `const`. Inside a factory the receiver is the parameter the caller filled, and Zod's `.meta()` returns `this` — which TypeScript resolves back to that bare parameter, dropping the marker `.brand<"Name">()` had just added. Both orders build the same schema.
 - Serde transparent serialization works normally -- the wrapper is invisible in JSON.
 - An item whose published expression *is* another item's binding -- an alias of a brand, a one-slot tuple struct over one, and the `$SchemaDefault` of either where it declares a parameter -- is annotated `typeof {Name}$RawSchema` rather than `ZodType<{Name}>`, so the brand's narrowing survives the republish; `.brand()` narrows at the value position, which a restated `ZodType<{Name}>` discards. An item that builds an expression of its own keeps `ZodType<{Name}>`.
-- The slot takes no `#[model_schema_prop(...)]`. A brand publishes its inner's own schema with a `.brand()` written onto it, so no key written on the slot -- `pattern`, `as`, `preprocess`, `literal`, `ts_optional`, `nullable`, any of them -- reaches any surface, and one written there is refused with a message naming the spelling that does work. The three checks a brand carries are written on the type itself: `#[model_schema(pattern = "...", minLength = N, maxLength = N)]`, under [Branded Newtype Validation Constraints](#branded-newtype-validation-constraints). This is about the *slot* of a single-field tuple struct; a `#[serde(transparent)]` struct with a **named** field is no brand, and its field attributes are read as any other named field's are.
+- The slot takes no `#[model_schema_prop(...)]`. A brand publishes its inner's own schema with a `.brand()` written onto it, so no key written on the slot -- `pattern`, `as`, `preprocess`, `literal`, `ts_optional`, `nullable`, any of them -- reaches any surface, and one written there is refused with a message naming the spelling that does work. The three checks a brand carries are written on the type itself: `#[model_schema(pattern = "...", minLength = N, maxLength = N)]`, under [Branded Newtype Validation Constraints](#branded-newtype-validation-constraints). The same holds for the field a `#[serde(transparent)]` struct with named fields is the value of.
 - Use branded newtypes for opaque IDs and phantom types to prevent passing the wrong ID type across domain boundaries.
 
 #### A Named Inner Must Carry `#[model_schema()]`

@@ -19,10 +19,10 @@ use std::collections::HashMap;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::ext::IdentExt as _;
-use syn::{Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
+use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
-use crate::features::serde::{has_serde_transparent, parse_serde_key_omission};
+use crate::features::serde::{brand_field, parse_serde_key_omission};
 use crate::field_type::{
     FieldDef, FieldDefType, VariantKind, classify_variant, get_field_def, is_plain_enum,
     is_sequence_wrapper,
@@ -170,22 +170,9 @@ fn lookup_kotlin_name(rust_ident: &str) -> Option<String> {
     KOTLIN_NAMES.with(|names| names.borrow().get(rust_ident).cloned())
 }
 
-/// Whether `fields` is a tuple shape (unnamed) with exactly one slot — the shape a branded newtype
-/// and a bare-value (non-branded) newtype struct share on the wire, both writing the slot's value
-/// alone.
-fn is_single_slot(fields: &Fields) -> bool {
-    matches!(fields, Fields::Unnamed(unnamed) if unnamed.unnamed.len() == 1)
-}
-
-/// The `FieldDef` of a single-slot tuple shape's one field, its type parameters already erased.
-fn single_slot_field(fields: &Fields, type_parameters: &[String]) -> FieldDef {
-    let Fields::Unnamed(unnamed) = fields else {
-        return get_field_def("value", &syn::parse_quote!(()), "");
-    };
-    let Some(slot) = unnamed.unnamed.first() else {
-        return get_field_def("value", &syn::parse_quote!(()), "");
-    };
-    let mut field_def = field_def_with_prop_meta("value", &slot.ty, &slot.attrs);
+/// The `FieldDef` of the field a brand is the value of, its type parameters already erased.
+fn brand_value_field(held: &Field, type_parameters: &[String]) -> FieldDef {
+    let mut field_def = field_def_with_prop_meta("value", &held.ty, &held.attrs);
     field_def.erase_type_parameters(type_parameters);
     field_def
 }
@@ -931,8 +918,8 @@ fn flatten_merging_serializer(
 /// `#[serde(flatten)]` fields also earns a generated merging [`KSerializer`](flatten_merging_serializer).
 fn struct_kotlin_tokens(item_struct: &ItemStruct, name_override: Option<&str>) -> TokenStream {
     let type_parameters = type_parameters_in_scope(&item_struct.generics);
-    if has_serde_transparent(&item_struct.attrs) && is_single_slot(&item_struct.fields) {
-        let value_field = single_slot_field(&item_struct.fields, &type_parameters);
+    if let Some(held) = brand_field(item_struct) {
+        let value_field = brand_value_field(held, &type_parameters);
         return value_class_tokens(
             &item_struct.ident,
             &item_struct.generics,
