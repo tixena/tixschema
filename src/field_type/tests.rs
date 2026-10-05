@@ -780,3 +780,168 @@ fn test_number_literal_zod_has_no_trailing_zero() {
         "z.literal(3.5)"
     );
 }
+
+/// The members a written type is expected as, each as `(name, names, members under it)`.
+#[cfg(feature = "serde")]
+fn expected_of(spelling: &str) -> Vec<(&'static str, Vec<String>, usize)> {
+    let ty: syn::Type = syn::parse_str(spelling).unwrap();
+    super::get_field_def("", &ty, "").expected_members()
+}
+
+/// One member carrying no name, with `under` members after it.
+#[cfg(feature = "serde")]
+const fn member(name: &'static str, under: usize) -> (&'static str, Vec<String>, usize) {
+    (name, Vec::new(), under)
+}
+
+/// Every category that carries nothing is the member of its own name.
+#[cfg(feature = "serde")]
+#[test]
+fn test_a_plain_category_is_expected_as_the_member_of_its_name() {
+    for (field_type, name) in [
+        (FieldDefType::Boolean, "Boolean"),
+        (FieldDefType::Char, "Char"),
+        (FieldDefType::F32, "F32"),
+        (FieldDefType::F64, "F64"),
+        (FieldDefType::I8, "I8"),
+        (FieldDefType::I16, "I16"),
+        (FieldDefType::I32, "I32"),
+        (FieldDefType::I64, "I64"),
+        (FieldDefType::Isize, "Isize"),
+        (FieldDefType::String, "String"),
+        (FieldDefType::U8, "U8"),
+        (FieldDefType::U16, "U16"),
+        (FieldDefType::U32, "U32"),
+        (FieldDefType::U64, "U64"),
+        (FieldDefType::Unknown, "Unknown"),
+        (FieldDefType::Usize, "Usize"),
+    ] {
+        assert_eq!(field(field_type).expected_members(), [member(name, 0)]);
+    }
+}
+
+#[cfg(all(feature = "serde", feature = "chrono"))]
+#[test]
+fn test_a_chrono_category_is_expected_as_the_member_of_its_name() {
+    for (field_type, name) in [
+        (FieldDefType::DateTime, "DateTime"),
+        (FieldDefType::NaiveDate, "NaiveDate"),
+        (FieldDefType::NaiveDateTime, "NaiveDateTime"),
+        (FieldDefType::NaiveTime, "NaiveTime"),
+    ] {
+        assert_eq!(field(field_type).expected_members(), [member(name, 0)]);
+    }
+    assert_eq!(expected_of("DateTime<Utc>"), [member("DateTime", 0)]);
+}
+
+#[cfg(all(feature = "serde", feature = "mongodb"))]
+#[test]
+fn test_an_object_id_is_expected_as_object_id() {
+    assert_eq!(
+        field(FieldDefType::ObjectId).expected_members(),
+        [member("ObjectId", 0)]
+    );
+}
+
+/// A literal carries its value as the one name it holds, a number without a trailing `.0`.
+#[cfg(feature = "serde")]
+#[test]
+fn test_a_literal_category_is_expected_with_its_value() {
+    for (field_type, name, value) in [
+        (FieldDefType::BooleanLiteral(true), "BooleanLiteral", "true"),
+        (
+            FieldDefType::BooleanLiteral(false),
+            "BooleanLiteral",
+            "false",
+        ),
+        (FieldDefType::NumberLiteral(214.0), "NumberLiteral", "214"),
+        (FieldDefType::NumberLiteral(3.5), "NumberLiteral", "3.5"),
+        (
+            FieldDefType::StringLiteral("Tixena".to_owned()),
+            "StringLiteral",
+            "Tixena",
+        ),
+    ] {
+        assert_eq!(
+            field(field_type).expected_members(),
+            [(name, vec![value.to_owned()], 0)]
+        );
+    }
+}
+
+/// A name the classifier does not know is another model type, by the name its field writes. One of
+/// the item's own parameters is named the same way.
+#[cfg(feature = "serde")]
+#[test]
+fn test_a_named_type_is_expected_as_a_model_by_the_name_written() {
+    for (spelling, name) in [
+        ("Version", "Version"),
+        ("crate::models::Version", "Version"),
+        ("Page<Version>", "Page"),
+    ] {
+        assert_eq!(
+            expected_of(spelling),
+            [("Model", vec![name.to_owned()], 0)],
+            "for: {spelling}"
+        );
+    }
+    assert_eq!(
+        field(FieldDefType::TypeParam("T".to_owned())).expected_members(),
+        [("TypeParam", vec!["T".to_owned()], 0)]
+    );
+}
+
+/// A map is expected by the type of its values, a tuple by its members in order, and every std
+/// sequence as the array serde writes for it.
+#[cfg(feature = "serde")]
+#[test]
+fn test_a_composite_category_is_expected_before_the_members_under_it() {
+    assert_eq!(
+        expected_of("HashMap<String, u8>"),
+        [member("Map", 1), member("U8", 0)]
+    );
+    assert_eq!(
+        expected_of("(String, u32)"),
+        [member("Tuple", 2), member("String", 0), member("U32", 0)]
+    );
+    for wrapper in SEQUENCE_WRAPPERS.into_iter().chain(["LinkedList"]) {
+        assert_eq!(
+            expected_of(&format!("{wrapper}<u32>")),
+            [member("Array", 1), member("U32", 0)],
+            "for: {wrapper}"
+        );
+    }
+}
+
+/// `Optional` and `Array` wrap the category outermost first, one per level it was written at, and a
+/// wrapper serde writes as the value it holds adds none.
+#[cfg(feature = "serde")]
+#[test]
+fn test_optional_and_array_wrap_the_category_in_the_order_written() {
+    assert_eq!(
+        expected_of("Option<String>"),
+        [member("Optional", 1), member("String", 0)]
+    );
+    assert_eq!(
+        expected_of("Vec<Vec<i32>>"),
+        [member("Array", 1), member("Array", 1), member("I32", 0)]
+    );
+    assert_eq!(
+        expected_of("Option<Vec<Option<i32>>>"),
+        [
+            member("Optional", 1),
+            member("Array", 1),
+            member("Optional", 1),
+            member("I32", 0)
+        ]
+    );
+    assert_eq!(
+        expected_of("Box<Option<HashMap<String, [u8; 4]>>>"),
+        [
+            member("Optional", 1),
+            member("Map", 1),
+            member("Array", 1),
+            member("U8", 0)
+        ]
+    );
+}

@@ -5737,13 +5737,14 @@ fn an_alias_claims_the_suffixed_name_it_publishes() {
 /// name is one it actually reads — the list and the arms cannot drift apart while both hold.
 #[test]
 fn no_argument_the_parser_reads_is_rejected() {
-    let probes: [proc_macro2::TokenStream; 6] = [
+    let probes: [proc_macro2::TokenStream; 7] = [
         quote::quote! { name = "Renamed" },
         quote::quote! { pattern = "^[a-z]+$" },
         quote::quote! { minLength = 1 },
         quote::quote! { maxLength = 50 },
         quote::quote! { no_display },
         quote::quote! { default_types(IdType = String) },
+        quote::quote! { decode_with },
     ];
     assert_eq!(probes.len(), super::KNOWN_ARGS.len());
 
@@ -5755,6 +5756,288 @@ fn no_argument_the_parser_reads_is_rejected() {
         let rendered = probe.to_string();
         assert_eq!(args_rejection(probe), None, "for {rendered}");
     }
+}
+
+/// `decode_with` reads as a flag: written alone, or with the boolean that says which way it is set.
+#[test]
+fn decode_with_is_read_as_a_flag() {
+    for (written, set) in [
+        ("decode_with", true),
+        ("decode_with = true", true),
+        ("decode_with = false", false),
+        ("", false),
+    ] {
+        let args = super::parse_model_schema_args(syn::parse_str(written).unwrap());
+        assert!(args.arg_rejection.is_none(), "for {written}");
+        assert_eq!(args.decode_with, set, "for {written}");
+    }
+    assert!(args_rejection(quote::quote! { decode_with = 3 }).is_some());
+}
+
+/// The whole expansion of `source` under `#[model_schema(...)]` written with `args`.
+fn expansion_under(args: &str, source: &str) -> String {
+    super::exec_model_schema(
+        syn::parse_str(args).unwrap(),
+        syn::parse_str(source).unwrap(),
+    )
+    .to_string()
+}
+
+/// Each shape the walker is not generated for yet is refused by its own name, and gets no method.
+#[test]
+fn decode_with_is_refused_on_every_shape_it_is_not_generated_on_yet() {
+    const NAMED_FIELDS: &str = "structs with named fields";
+    for (args, source, shape, generated_on) in [
+        (
+            "decode_with",
+            "pub struct DecodePair(pub String, pub u32);",
+            "a tuple struct",
+            NAMED_FIELDS,
+        ),
+        (
+            "decode_with",
+            "#[serde(transparent)] pub struct DecodeBrand(pub String);",
+            "a brand",
+            NAMED_FIELDS,
+        ),
+        (
+            "decode_with",
+            "pub struct DecodeUnit;",
+            "a unit struct",
+            NAMED_FIELDS,
+        ),
+        (
+            "decode_with",
+            "pub enum DecodeChoice { One, Two }",
+            "an enum",
+            NAMED_FIELDS,
+        ),
+        (
+            "decode_with, default_types(T = String)",
+            "pub struct DecodePage<T> { pub items: Vec<T> }",
+            "a generic type",
+            "types with no type parameter",
+        ),
+        (
+            "decode_with",
+            "#[serde(transparent)] pub struct DecodeHolder { pub inner: String }",
+            "a `#[serde(transparent)]` struct with a named field",
+            "structs serde writes as an object of their fields",
+        ),
+    ] {
+        let expanded = expansion_under(args, source);
+        let refusal = format!(
+            "`#[model_schema(decode_with)]` is not available on {shape} yet: `from_value_with` \
+             and `from_bson_with` are generated on {generated_on} only."
+        );
+        assert!(expanded.contains(&refusal), "for {source}, got: {expanded}");
+        assert!(
+            !expanded.contains("fn from_value_with"),
+            "for {source}, got: {expanded}"
+        );
+    }
+}
+
+/// A flattened field is read off serde's attributes, which only the `serde` feature parses.
+#[cfg(feature = "serde")]
+#[test]
+fn decode_with_is_refused_on_a_struct_with_a_flattened_field() {
+    let expanded = expansion_under(
+        "decode_with",
+        "pub struct DecodeEntry { #[serde(flatten)] pub audit: DecodeAudit, pub title: String }",
+    );
+    assert!(
+        expanded.contains(
+            "model_schema: type `DecodeEntry`: `#[model_schema(decode_with)]` is not available on \
+             a struct with a `#[serde(flatten)]` field yet: `from_value_with` and `from_bson_with` \
+             are generated on structs with no flattened field only."
+        ),
+        "got: {expanded}"
+    );
+}
+
+/// An alias is another name for a type that already exists, so there is nothing of its own for
+/// the methods to be generated on.
+#[test]
+fn decode_with_is_refused_for_good_on_a_type_alias() {
+    let expanded = expansion_under(
+        "decode_with",
+        "pub type DecodeVersions = Vec<DecodeVersion>;",
+    );
+    assert!(
+        expanded.contains(
+            "model_schema: type `DecodeVersions`: `#[model_schema(decode_with)]` cannot be written \
+             on a type alias: `DecodeVersions` is another name for `Vec<DecodeVersion>`, and the \
+             methods would have to be added to that type. Write the flag on the model types the \
+             alias reaches."
+        ),
+        "got: {expanded}"
+    );
+}
+
+/// A decoded value cannot borrow from the value the method owns, whatever shape declares the
+/// lifetime.
+#[test]
+fn decode_with_is_refused_for_good_on_a_type_that_borrows() {
+    for source in [
+        "pub struct DecodeNamed<'a> { pub name: &'a str }",
+        "pub enum DecodeNamed<'a> { Named(&'a str), Unnamed }",
+    ] {
+        let expanded = expansion_under("decode_with", source);
+        assert!(
+            expanded.contains(
+                "model_schema: type `DecodeNamed`: `#[model_schema(decode_with)]` cannot be \
+                 written on a type that borrows: `from_value_with` owns the value it reads, so \
+                 the decoded `DecodeNamed<'a>` cannot borrow from it for `'a`."
+            ),
+            "for {source}, got: {expanded}"
+        );
+    }
+}
+
+/// Without the flag, and with it written `false`, the expansion is what it was before the flag
+/// existed: token for token the same, and nothing of the flag's in it.
+#[test]
+fn an_item_without_decode_with_expands_as_it_did() {
+    for source in [
+        "pub struct DecodePlain { pub name: String, pub tags: Vec<String> }",
+        "pub enum DecodePlainChoice { One, Two }",
+        "pub type DecodePlainAlias = String;",
+    ] {
+        let unflagged = expansion_under("", source);
+        assert_eq!(
+            expansion_under("decode_with = false", source),
+            unflagged,
+            "for {source}"
+        );
+        assert!(
+            !unflagged.contains("decode_with") && !unflagged.contains("from_value_with"),
+            "for {source}, got: {unflagged}"
+        );
+    }
+}
+
+/// The flag written alone and written `true` generate the same thing, in every build that reads
+/// serde's attributes: the entry point, the walker, and the callback's types in the type's module.
+#[cfg(feature = "serde")]
+#[test]
+fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
+    let source = "pub struct DecodeFlagged { pub name: String }";
+    let flagged = expansion_under("decode_with", source);
+    assert_eq!(expansion_under("decode_with = true", source), flagged);
+    for emitted in [
+        "pub mod decode_flagged_schema {",
+        "pub fn from_value_with < F > (",
+        "fn decode_with_value_report (",
+        "pub fn decode_with_value_issues < I > (",
+        "pub fn decode_with_value_fields < 'a , I > (",
+        "pub enum Segment {",
+        "pub struct Path (pub Vec < Segment >) ;",
+        "pub enum Expected {",
+        "pub enum Issue < V > {",
+        "pub enum Verdict {",
+        "pub struct Unrecovered < V > {",
+        "pub type ExpectedToken =",
+        "pub type IssueFromParts < V , I > =",
+        "pub fn issue_from_parts < V > (",
+        "pub fn value_leaf < 'a , T , I , R , W > (",
+    ] {
+        assert!(
+            flagged.contains(emitted),
+            "missing `{emitted}`, got: {flagged}"
+        );
+    }
+}
+
+/// A consumer's lint levels reach what the macro emits into their crate, so nothing emitted may
+/// silence one.
+#[cfg(feature = "serde")]
+#[test]
+fn nothing_decode_with_emits_suppresses_a_lint() {
+    let flagged = expansion_under(
+        "decode_with",
+        "pub struct DecodeQuiet { pub name: String, pub tags: Vec<String> }",
+    );
+    for suppression in ["allow", "expect", "hidden", "cfg_attr"] {
+        assert!(
+            !flagged.contains(&format!("# [{suppression}"))
+                && !flagged.contains(&format!("({suppression})")),
+            "found `{suppression}`, got: {flagged}"
+        );
+    }
+}
+
+/// A consumer denying clippy's `restriction` set denies it over what the flag emits into their
+/// crate, a published module included: every added type is `#[non_exhaustive]`, as `Schema` is,
+/// and no added function takes `impl Trait` as a parameter.
+#[cfg(feature = "serde")]
+#[test]
+fn what_decode_with_emits_is_written_for_the_lints_a_consumer_denies() {
+    let flagged = expansion_under(
+        "decode_with",
+        "pub struct DecodeLinted { pub name: String }",
+    );
+    for declared in [
+        "pub enum Segment {",
+        "pub struct Path (",
+        "pub enum Expected {",
+        "pub enum Issue < V > {",
+        "pub enum Verdict {",
+        "pub struct Unrecovered < V > {",
+    ] {
+        assert!(
+            flagged.contains(&format!("# [non_exhaustive] {declared}")),
+            "for `{declared}`, got: {flagged}"
+        );
+    }
+    assert!(!flagged.contains(": impl "), "got: {flagged}");
+}
+
+/// A flagged type reaches another through its field by that type's own name. The other's module is
+/// one it cannot know to be there.
+#[cfg(feature = "serde")]
+#[test]
+fn a_flagged_type_names_the_type_it_reaches_and_never_its_module() {
+    let flagged = expansion_under(
+        "decode_with",
+        "pub struct DecodeOuter { pub inner: DecodeInner, pub many: Vec<DecodeInner> }",
+    );
+    let walker = flagged
+        .split_once("pub fn decode_with_value_fields")
+        .unwrap()
+        .1;
+    assert_eq!(
+        walker
+            .matches("< DecodeInner > :: decode_with_value_issues (")
+            .count(),
+        2,
+        "got: {walker}"
+    );
+    assert!(!walker.contains("decode_inner_schema"), "got: {walker}");
+}
+
+/// A module that gains a type named `Path` or `Issue` goes on reading the author's own type of
+/// that name wherever an item it already held names one.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn what_a_schema_module_already_held_reads_the_authors_scope_past_the_added_names() {
+    let source = "#[derive(Deserialize)] pub struct DecodeTicket { pub issue: Issue, pub trail: Vec<Segment> }";
+    let flagged = expansion_under("decode_with", source);
+    for scoped in [
+        "Result < super :: Issue , D :: Error >",
+        "< super :: Issue > :: deserialize (deserializer)",
+        "Result < Vec < super :: Segment > , D :: Error >",
+    ] {
+        assert!(
+            flagged.contains(scoped),
+            "missing `{scoped}`, got: {flagged}"
+        );
+    }
+    let unflagged = expansion_under("", source);
+    assert!(!unflagged.contains("super :: Issue"), "got: {unflagged}");
 }
 
 /// Every shape the old parser dropped on the floor: a wrong literal kind, a value that is no

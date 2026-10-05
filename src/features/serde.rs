@@ -22,6 +22,11 @@ const CFG_ATTR_SERDE_REJECTION: &str = "cfg_attr-wrapped serde attribute is invi
      model_schema and will be silently ignored by the generator; write #[serde(...)] \
      unconditionally (serde attrs are inert without the serde derive)";
 
+/// What the name of every read hook generated to name a field in its type's refusal starts with.
+/// The recovering decode reads past such a hook, which changes a message and never a verdict.
+#[cfg(feature = "serde")]
+pub const NAMED_READ_HOOK_PREFIX: &str = "deserialize_named_";
+
 /// What a field's serde attributes say about the key it writes. Read in every build, unlike the
 /// rest of this module, since one walk answers all three questions together and the guard that
 /// polices their combination needs them side by side.
@@ -76,12 +81,23 @@ pub struct SerdeTypeMeta {
     pub untagged: bool,      // Whether the enum is `#[serde(untagged)]`
 }
 
+/// The paths a field's serde attributes read and write it through, each as its author wrote it.
+#[cfg(feature = "serde")]
+#[derive(Default)]
+pub struct SerdeFieldHooks {
+    pub deserialize_with: Option<LitStr>,
+    pub serialize_with: Option<LitStr>,
+    pub with: Option<LitStr>,
+}
+
 /// Metadata for serde attributes applied to a field. Whether the field's key is omitted is not
 /// here: [`parse_serde_key_omission`] answers that in every build, keeping the surfaces from
 /// disagreeing across the feature toggle.
 #[cfg(feature = "serde")]
 #[derive(Clone, Debug, Default)]
 pub struct SerdeFieldMeta {
+    /// Every `alias = "..."`: a key serde reads the field from beside its own name.
+    pub aliases: Vec<String>,
     /// The rejection raised when the walk met a `cfg_attr`-wrapped serde attribute.
     pub cfg_attr_rejection: Option<Error>,
     pub flatten: bool,          // Whether the field is `#[serde(flatten)]`
@@ -203,6 +219,35 @@ pub fn has_serde_read_hook(attrs: &[Attribute]) -> bool {
         });
     }
     found
+}
+
+/// Reads the `with`, `deserialize_with` and `serialize_with` a field carries, tixschema's own
+/// included: the attributes are read as serde's derive will read them.
+#[cfg(feature = "serde")]
+pub fn parse_serde_field_hooks(attrs: &[Attribute]) -> SerdeFieldHooks {
+    let mut hooks = SerdeFieldHooks::default();
+    for attr in attrs {
+        if !attr.path().is_ident("serde") {
+            continue;
+        }
+        attr.parse_nested_meta(|nested| {
+            let slot = if nested.path.is_ident("with") {
+                &mut hooks.with
+            } else if nested.path.is_ident("deserialize_with") {
+                &mut hooks.deserialize_with
+            } else if nested.path.is_ident("serialize_with") {
+                &mut hooks.serialize_with
+            } else {
+                return consume_unread_value(&nested);
+            };
+            *slot = Some(nested.value()?.parse()?);
+            Ok(())
+        })
+        .unwrap_or_else(|e| {
+            log::trace!("Failed to parse serde hook attribute: {e}");
+        });
+    }
+    hooks
 }
 
 /// Reads the `serialize` and `deserialize` sub-keys out of a list-form renaming, stepping past any
@@ -428,6 +473,12 @@ pub fn parse_serde_field_attributes(attrs: &[Attribute]) -> SerdeFieldMeta {
                 // Handle `flatten`
                 else if nested.path.is_ident("flatten") {
                     meta.flatten = true;
+                }
+                // Handle `alias = "value"`, which a field may carry more than once
+                else if nested.path.is_ident("alias") {
+                    let value: LitStr = nested.value()?.parse()?;
+                    meta.aliases.push(value.value());
+                    return Ok(());
                 } else {
                     // Ignore other serde attributes.
                 }

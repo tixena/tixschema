@@ -8,6 +8,9 @@
 // the feature gates is everything else the module reads — renaming, tagging, and the guards.
 pub mod serde;
 
+#[cfg(feature = "serde")]
+pub mod recovering_decode;
+
 #[cfg(feature = "zod")]
 pub mod zod;
 

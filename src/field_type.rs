@@ -1,3 +1,6 @@
+#[cfg(feature = "serde")]
+use core::slice::from_ref;
+
 use syn::{Fields, GenericArgument, Ident, ItemEnum, PathArguments, Type, Variant};
 
 #[cfg(feature = "jsonschema")]
@@ -167,6 +170,11 @@ impl FieldDefType {
         )
     }
 }
+
+/// One member of a recovering decode's `Expected`: its name, the names it carries, and how many
+/// members follow under it.
+#[cfg(feature = "serde")]
+pub type ExpectedMember = (&'static str, Vec<String>, usize);
 
 /// Struct representing a field's definition for schema generation.
 #[derive(Clone, Debug)]
@@ -370,6 +378,69 @@ impl FieldDef {
         for nested in self.nested_type_positions() {
             nested.erase_type_parameters(parameters);
         }
+    }
+
+    /// The field's type as a recovering decode's `Expected` describes it, each member written
+    /// before the members under it: `Optional` and `Array` per level, outermost first, then the
+    /// category.
+    #[cfg(feature = "serde")]
+    pub fn expected_members(&self) -> Vec<ExpectedMember> {
+        let mut members: Vec<ExpectedMember> = Vec::new();
+        for level in (0..=self.array_depth).rev() {
+            if self.is_nullable_at(level) {
+                members.push(("Optional", Vec::new(), 1));
+            }
+            if level > 0 {
+                members.push(("Array", Vec::new(), 1));
+            }
+        }
+        let (member, names, under): (&'static str, Vec<String>, &[Self]) = match &self.field_type {
+            FieldDefType::Boolean => ("Boolean", Vec::new(), &[]),
+            FieldDefType::BooleanLiteral(value) => ("BooleanLiteral", vec![value.to_string()], &[]),
+            FieldDefType::Char => ("Char", Vec::new(), &[]),
+            #[cfg(feature = "chrono")]
+            FieldDefType::DateTime => ("DateTime", Vec::new(), &[]),
+            FieldDefType::F32 => ("F32", Vec::new(), &[]),
+            FieldDefType::F64 => ("F64", Vec::new(), &[]),
+            FieldDefType::I16 => ("I16", Vec::new(), &[]),
+            FieldDefType::I32 => ("I32", Vec::new(), &[]),
+            FieldDefType::I64 => ("I64", Vec::new(), &[]),
+            FieldDefType::I8 => ("I8", Vec::new(), &[]),
+            FieldDefType::Isize => ("Isize", Vec::new(), &[]),
+            FieldDefType::Map(_, value) => ("Map", Vec::new(), from_ref(&**value)),
+            #[cfg(feature = "chrono")]
+            FieldDefType::NaiveDate => ("NaiveDate", Vec::new(), &[]),
+            #[cfg(feature = "chrono")]
+            FieldDefType::NaiveDateTime => ("NaiveDateTime", Vec::new(), &[]),
+            #[cfg(feature = "chrono")]
+            FieldDefType::NaiveTime => ("NaiveTime", Vec::new(), &[]),
+            FieldDefType::NumberLiteral(value) => {
+                ("NumberLiteral", vec![format_number_literal(*value)], &[])
+            }
+            #[cfg(feature = "mongodb")]
+            FieldDefType::ObjectId => ("ObjectId", Vec::new(), &[]),
+            // serde writes every std sequence as the array a `Vec` writes.
+            FieldDefType::SiblingType(name, items)
+                if items.len() == 1
+                    && (is_sequence_wrapper(name) || is_refused_sequence_wrapper(name)) =>
+            {
+                ("Array", Vec::new(), items)
+            }
+            FieldDefType::SiblingType(name, _) => ("Model", vec![name.clone()], &[]),
+            FieldDefType::String => ("String", Vec::new(), &[]),
+            FieldDefType::StringLiteral(text) => ("StringLiteral", vec![text.clone()], &[]),
+            FieldDefType::Tuple(elements) => ("Tuple", Vec::new(), elements),
+            FieldDefType::TypeParam(name) => ("TypeParam", vec![name.clone()], &[]),
+            FieldDefType::U16 => ("U16", Vec::new(), &[]),
+            FieldDefType::U32 => ("U32", Vec::new(), &[]),
+            FieldDefType::U64 => ("U64", Vec::new(), &[]),
+            FieldDefType::U8 => ("U8", Vec::new(), &[]),
+            FieldDefType::Unknown => ("Unknown", Vec::new(), &[]),
+            FieldDefType::Usize => ("Usize", Vec::new(), &[]),
+        };
+        members.push((member, names, under.len()));
+        members.extend(under.iter().flat_map(Self::expected_members));
+        members
     }
 
     /// The element count the array at `level` was written with, for a level written as a `[T; N]`

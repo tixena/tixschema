@@ -81,9 +81,17 @@ use crate::features::serde::rename_direction_rejection;
 // `derives_deserialize` is reached through `container_is_read_back`, which states its own answer.
 #[cfg(feature = "serde")]
 use crate::features::serde::{
-    SerdeFieldMeta, SerdeTypeMeta, derives_deserialize, has_serde_read_hook,
+    NAMED_READ_HOOK_PREFIX, SerdeFieldMeta, SerdeTypeMeta, derives_deserialize, has_serde_read_hook,
 };
 use crate::features::serde::{has_serde_default, parse_serde_key_omission};
+
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+use crate::features::recovering_decode::reading_the_authors_scope;
+#[cfg(feature = "serde")]
+use crate::features::recovering_decode::struct_recovering_decode;
 // The type is named where a positional slot's own omission is read: the tuple-struct walk, which
 // only a describing build performs, and the variant walk, which every build performs.
 use crate::features::serde::SerdeKeyOmission;
@@ -186,7 +194,11 @@ const KNOWN_ARGS: &[&str] = &[
     "maxLength",
     "no_display",
     "default_types",
+    "decode_with",
 ];
+
+/// What `decode_with` is generated on, as the refusal of a shape that is not one says it.
+const DECODE_WITH_NAMED_FIELDS: &str = "structs with named fields";
 
 /// What every plain-enum flatten diagnostic says about its own reach, so an author who fixes the
 /// one declaration named there knows what was and was not checked around it.
@@ -522,6 +534,15 @@ enum TaggedContent {
     Unnameable(&'static str),
 }
 
+/// What `decode_with` adds to an item, both empty without the flag.
+#[derive(Default)]
+struct DecodeWithParts {
+    /// The items added to the schema module a surface writes, or that module whole where no
+    /// surface writes one.
+    schema_module: TokenStream,
+    type_impl: TokenStream,
+}
+
 /// One `default_types(IdType = String)` entry as written: the parameter it names, and the type
 /// declared for that parameter.
 struct DefaultTypeEntry {
@@ -534,6 +555,8 @@ struct ModelSchemaArgs {
     /// The parser's refusal of the attribute's arguments — one it does not read, or a value it
     /// cannot read — spanned on the tokens that earned it.
     arg_rejection: Option<syn::Error>,
+    /// `decode_with`: the type gets `from_value_with` and the walker behind it.
+    decode_with: bool,
     /// The default type declared per type parameter, in written order: `default_types(IdType =
     /// String, DateType = f64)`. Read by JSON-schema generation, which has no type parameters of
     /// its own and builds its document from one concrete filling.
@@ -926,6 +949,8 @@ fn apply_arg(result: &mut ModelSchemaArgs, meta: &Meta) -> syn::Result<()> {
         result.no_display = flag_arg(meta, "no_display")?;
     } else if path.is_ident("default_types") {
         result.default_types = default_types_arg(meta)?;
+    } else if path.is_ident("decode_with") {
+        result.decode_with = flag_arg(meta, "decode_with")?;
     } else {
         return Err(unknown_arg_rejection(meta));
     }
@@ -1181,6 +1206,15 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
             &brand_slot_errors,
         )
     {
+        return output;
+    }
+    // `decode_with` generates methods on the type it is written on, so a shape that cannot carry
+    // them, or whose walker does not exist yet, is refused here rather than left with plain serde.
+    if let Some(output) = guard_failure_output(
+        &item,
+        item_schema_ident(&item),
+        &decode_with_guard_errors(&item, &parsed_args),
+    ) {
         return output;
     }
     // A name already published by another declaration is refused here, after every guard that
@@ -1614,6 +1648,18 @@ fn assemble_schema_output<T>(parts: &SchemaOutputParts<T>) -> TokenStream
 where
     T: quote::ToTokens,
 {
+    assemble_schema_output_with(parts, &TokenStream::new())
+}
+
+/// [`assemble_schema_output`], with the items `decode_with` adds to the schema module.
+#[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
+fn assemble_schema_output_with<T>(
+    parts: &SchemaOutputParts<T>,
+    decode_with_items: &TokenStream,
+) -> TokenStream
+where
+    T: quote::ToTokens,
+{
     let (impl_generics, type_generics, where_clause) = parts.generics.split_for_impl();
     let item = parts.item;
     let module_ident = parts.module_ident;
@@ -1627,13 +1673,8 @@ where
         parts.generics,
         parts.default_types,
     );
-
-    let output = quote! {
-        #item
-
-        pub mod #module_ident {
-            use super::*;
-
+    let module_items = schema_module_items(
+        quote! {
             #[non_exhaustive]
             pub struct Schema;
 
@@ -1642,6 +1683,17 @@ where
             }
 
             #(#validation_fns)*
+        },
+        decode_with_items,
+    );
+
+    let output = quote! {
+        #item
+
+        pub mod #module_ident {
+            use super::*;
+
+            #module_items
         }
 
         impl #impl_generics #name #type_generics #where_clause {
@@ -1655,6 +1707,32 @@ where
     log::trace!("{output}");
 
     output
+}
+
+/// What a schema module holds: `held`, and beside it the items `decode_with` adds. Those items
+/// are named `Issue`, `Path` and so on, which `held` then reads from the author's scope outright.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "zod", feature = "typescript", feature = "jsonschema")
+))]
+fn schema_module_items(held: TokenStream, decode_with_items: &TokenStream) -> TokenStream {
+    if decode_with_items.is_empty() {
+        return held;
+    }
+    let scoped = reading_the_authors_scope(held);
+    quote! {
+        #scoped
+        #decode_with_items
+    }
+}
+
+/// Without `serde` no item carries anything of `decode_with`'s.
+#[cfg(all(
+    not(feature = "serde"),
+    any(feature = "zod", feature = "typescript", feature = "jsonschema")
+))]
+const fn schema_module_items(held: TokenStream, _decode_with_items: &TokenStream) -> TokenStream {
+    held
 }
 
 /// The type-level `validate()` a struct publishes: the aggregate of its per-field validators, or
@@ -2199,6 +2277,139 @@ fn published_name_collision_errors(
         item_label(item)
     ));
     vec![syn::Error::new_spanned(ident, message).to_compile_error()]
+}
+
+/// The `compile_error!` tokens `decode_with` earns where it cannot be written: for good on an alias
+/// and on a type that borrows, and until its walker is generated on every other shape named here.
+fn decode_with_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2::TokenStream> {
+    if !args.decode_with {
+        return Vec::new();
+    }
+    let borrowed = item_generics(item).and_then(|generics| generics.lifetimes().next());
+    let refusal = if let Item::Type(alias) = item {
+        Some(decode_with_alias_refusal(alias))
+    } else if let (Some(lifetime), Some(ident)) = (borrowed, item_schema_ident(item)) {
+        Some(decode_with_borrow_refusal(ident, lifetime))
+    } else if let Item::Enum(item_enum) = item {
+        Some(decode_with_unavailable(
+            &item_enum.ident,
+            "an enum",
+            DECODE_WITH_NAMED_FIELDS,
+        ))
+    } else if let Item::Struct(item_struct) = item {
+        decode_with_struct_refusal(item_struct)
+    } else {
+        None
+    };
+    refusal
+        .iter()
+        .map(|rejection| attr_guard_error(rejection, &item_label(item)))
+        .collect()
+}
+
+/// The shape of a struct `decode_with` is not generated on yet, spanned on what makes it that shape.
+fn decode_with_struct_refusal(item_struct: &syn::ItemStruct) -> Option<syn::Error> {
+    let ident = &item_struct.ident;
+    let transparent = has_serde_transparent(&item_struct.attrs);
+    match &item_struct.fields {
+        syn::Fields::Unit => Some(decode_with_unavailable(
+            ident,
+            "a unit struct",
+            DECODE_WITH_NAMED_FIELDS,
+        )),
+        syn::Fields::Unnamed(slots) => {
+            let shape = if transparent && slots.unnamed.len() == 1 {
+                "a brand"
+            } else {
+                "a tuple struct"
+            };
+            Some(decode_with_unavailable(
+                ident,
+                shape,
+                DECODE_WITH_NAMED_FIELDS,
+            ))
+        }
+        syn::Fields::Named(named) => {
+            if !item_struct.generics.params.is_empty() {
+                return Some(decode_with_unavailable(
+                    &item_struct.generics,
+                    "a generic type",
+                    "types with no type parameter",
+                ));
+            }
+            // serde writes it as the value of its one field, which the walk of an object's keys
+            // would report key by key.
+            if transparent {
+                return Some(decode_with_unavailable(
+                    ident,
+                    "a `#[serde(transparent)]` struct with a named field",
+                    "structs serde writes as an object of their fields",
+                ));
+            }
+            named
+                .named
+                .iter()
+                .find(|field| is_flattened_field(field))
+                .map(|field| {
+                    decode_with_unavailable(
+                        field,
+                        "a struct with a `#[serde(flatten)]` field",
+                        "structs with no flattened field",
+                    )
+                })
+        }
+    }
+}
+
+fn decode_with_unavailable(
+    spanned: impl quote::ToTokens,
+    shape: &str,
+    generated_on: &str,
+) -> syn::Error {
+    syn::Error::new_spanned(
+        spanned,
+        format!(
+            "`#[model_schema(decode_with)]` is not available on {shape} yet: `from_value_with` and \
+             `from_bson_with` are generated on {generated_on} only."
+        ),
+    )
+}
+
+fn decode_with_alias_refusal(alias: &ItemType) -> syn::Error {
+    let name = &alias.ident;
+    let target = written_spelling(&alias.ty);
+    syn::Error::new_spanned(
+        &alias.ty,
+        format!(
+            "`#[model_schema(decode_with)]` cannot be written on a type alias: `{name}` is another \
+             name for `{target}`, and the methods would have to be added to that type. Write the \
+             flag on the model types the alias reaches."
+        ),
+    )
+}
+
+fn decode_with_borrow_refusal(ident: &syn::Ident, lifetime: &syn::LifetimeParam) -> syn::Error {
+    let borrowed = &lifetime.lifetime;
+    syn::Error::new_spanned(
+        lifetime,
+        format!(
+            "`#[model_schema(decode_with)]` cannot be written on a type that borrows: \
+             `from_value_with` owns the value it reads, so the decoded `{ident}<{borrowed}>` cannot \
+             borrow from it for `{borrowed}`."
+        ),
+    )
+}
+
+/// Tokens as their author spells them, without the spaces a token stream prints between them.
+fn written_spelling(tokens: &impl quote::ToTokens) -> String {
+    quote! { #tokens }
+        .to_string()
+        .replace(" < ", "<")
+        .replace("< ", "<")
+        .replace(" >", ">")
+        .replace(" ,", ",")
+        .replace(" :: ", "::")
+        .replace("& ", "&")
 }
 
 /// Records which of the two Zod bindings an item publishes, ahead of the shape it is dispatched to.
@@ -4238,6 +4449,10 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
     #[cfg(not(feature = "serde"))]
     let unit_struct_impls = unit_struct_impls_for(&item_struct);
 
+    // Read after the fields carry every serde attribute generation hangs on them, so the walker
+    // reads each one through the function serde's derive will call for it.
+    let decode_with = struct_decode_with(&item_struct, args);
+
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     let docs = struct_docs_body(docs_and_example.0.as_deref(), &item_name);
 
@@ -4290,41 +4505,71 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
                 validation_fns: &collected.2,
             },
             &unit_struct_impls,
+            &decode_with,
         )
     }
 
     #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
     {
-        struct_output_with_unit_impls(&item_struct, &unit_struct_impls)
+        struct_output_with_unit_impls(&item_struct, &unit_struct_impls, &decode_with)
     }
 }
 
-/// The assembled schema module, with a unit struct's own serde impls appended after it.
+/// The assembled schema module, with a unit struct's own serde impls and the `impl` `decode_with`
+/// adds appended after it.
 #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
 fn struct_output_with_unit_impls(
     parts: &SchemaOutputParts<syn::ItemStruct>,
     unit_struct_impls: &proc_macro2::TokenStream,
+    decode_with: &DecodeWithParts,
 ) -> TokenStream {
-    let base = assemble_schema_output(parts);
+    let base = assemble_schema_output_with(parts, &decode_with.schema_module);
+    let decode_with_impl = &decode_with.type_impl;
     quote! {
         #base
         #unit_struct_impls
+        #decode_with_impl
     }
 }
 
-/// [`struct_output_with_unit_impls`] where no schema surface is on: the item alone, unit impls
-/// still appended.
+/// [`struct_output_with_unit_impls`] where no schema surface is on: the item alone, with a unit
+/// struct's serde impls and what `decode_with` adds appended.
 #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
 fn struct_output_with_unit_impls(
     item_struct: &syn::ItemStruct,
     unit_struct_impls: &proc_macro2::TokenStream,
+    decode_with: &DecodeWithParts,
 ) -> TokenStream {
+    let decode_with_module = &decode_with.schema_module;
+    let decode_with_impl = &decode_with.type_impl;
     let output = quote! {
         #item_struct
         #unit_struct_impls
+        #decode_with_module
+        #decode_with_impl
     };
     log::trace!("{output}");
     output
+}
+
+/// What `decode_with` adds to a struct, read off the struct as it is emitted. Empty without the
+/// flag.
+#[cfg(feature = "serde")]
+fn struct_decode_with(item_struct: &syn::ItemStruct, args: &ModelSchemaArgs) -> DecodeWithParts {
+    if !args.decode_with {
+        return DecodeWithParts::default();
+    }
+    let added = struct_recovering_decode(item_struct);
+    DecodeWithParts {
+        schema_module: added.schema_module,
+        type_impl: added.type_impl,
+    }
+}
+
+/// Nothing, where no `serde` feature reads the attributes a walker is written from.
+#[cfg(not(feature = "serde"))]
+fn struct_decode_with(_item_struct: &syn::ItemStruct, _args: &ModelSchemaArgs) -> DecodeWithParts {
+    DecodeWithParts::default()
 }
 
 /// Records a unit struct in the registry `is_unit_type` reads, then rewrites its derive.
@@ -12434,7 +12679,7 @@ fn named_read_hook(
 
     let stem = helper_name_stem(raw_field_ident, ctx.variant_ident);
     let hook_ident = proc_macro2::Ident::new(
-        &format!("deserialize_named_{stem}"),
+        &format!("{NAMED_READ_HOOK_PREFIX}{stem}"),
         proc_macro2::Span::call_site(),
     );
     let path_lit = syn::LitStr::new(

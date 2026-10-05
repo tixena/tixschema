@@ -33,6 +33,7 @@ fn test_final_field_name() {
     };
 
     let field_meta_with_rename = SerdeFieldMeta {
+        aliases: Vec::new(),
         cfg_attr_rejection: None,
         rename: Some("customName".to_owned()),
         skip: false,
@@ -44,6 +45,7 @@ fn test_final_field_name() {
     );
 
     let field_meta_no_rename = SerdeFieldMeta {
+        aliases: Vec::new(),
         cfg_attr_rejection: None,
         rename: None,
         skip: false,
@@ -96,6 +98,31 @@ fn field_meta(item: &syn::ItemStruct) -> SerdeFieldMeta {
 
 fn field_attrs(item: &syn::ItemStruct) -> &[syn::Attribute] {
     &item.fields.iter().next().unwrap().attrs
+}
+
+#[test]
+fn test_every_alias_of_a_field_is_read() {
+    let item: syn::ItemStruct = syn::parse_quote! {
+        struct S {
+            #[serde(alias = "fullName", rename = "name")]
+            #[serde(alias = "label", default)]
+            title: String,
+        }
+    };
+    let meta = field_meta(&item);
+    assert_eq!(meta.aliases, ["fullName", "label"]);
+    assert_eq!(meta.rename.as_deref(), Some("name"));
+}
+
+#[test]
+fn test_a_field_with_no_alias_reads_none() {
+    let item: syn::ItemStruct = syn::parse_quote! {
+        struct S {
+            #[serde(rename = "name")]
+            title: String,
+        }
+    };
+    assert_eq!(field_meta(&item).aliases, Vec::<String>::new());
 }
 
 #[test]

@@ -933,7 +933,12 @@ pub fn written_type(ty: &Type) -> &Type {
 /// newtype alike — which is also the module a reference assumes for a name the registry does not
 /// hold. Named from the Rust ident rather than the published name: a reference standing above the
 /// declaration has only the ident, and an override is not recoverable from it.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    feature = "serde"
+))]
 pub fn ident_schema_module_name(rust_ident: &str) -> String {
     format!("{}_schema", to_snake_case(rust_ident))
 }
