@@ -414,6 +414,17 @@ fn an_issue_the_fix_itself_leaves_fails_the_read() {
     );
 }
 
+/// serde reads the value, so only the second walk's list can fail the read.
+#[test]
+fn a_value_serde_reads_still_fails_after_fixed_while_an_issue_is_left() {
+    let stored = json!({ "name": "Loan", "versions": [{ "draft": true, "number": 1_i32 }] });
+    serde_json::from_value::<Ledger>(stored.clone()).unwrap();
+    let (read, seen, calls) = ledger_read(stored, ledger_schema::Verdict::Fixed);
+    assert_eq!(seen, ["versions[0].draft: unknown: found Bool(true)"]);
+    assert_eq!(lines(&read.unwrap_err()), seen);
+    assert_eq!(calls, 1);
+}
+
 #[test]
 fn a_record_serde_reads_with_an_undeclared_nested_key_reaches_the_decider() {
     let stored = json!({ "name": "Loan", "versions": [{ "draft": true, "number": 1_i32 }] });

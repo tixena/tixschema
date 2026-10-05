@@ -252,6 +252,32 @@ fn value_5_an_id_stored_as_text_is_mistyped() {
     assert_eq!(calls, 1);
 }
 
+/// serde reads the id held as text, so only the second walk's list can fail the read.
+#[test]
+fn an_id_stored_as_text_still_fails_after_fixed_while_it_is_left() {
+    fn untouched(
+        _raw: &mut Value,
+        _found: &[record_schema::Issue<Value>],
+    ) -> record_schema::Verdict {
+        record_schema::Verdict::Fixed
+    }
+
+    let stored = json!({
+        "createdAt": "2025-10-04T17:46:40Z",
+        "name": "Loan",
+        "recordId": "6a7cc592ca0574e6efdfe217",
+        "versions": [],
+    });
+    serde_json::from_value::<Record>(stored.clone()).unwrap();
+    let (read, seen, calls) = read_with(stored, untouched);
+    assert_eq!(
+        seen,
+        ["recordId: mistyped: expected ObjectId, found String(\"6a7cc592ca0574e6efdfe217\")"]
+    );
+    assert_eq!(lines(&read.unwrap_err()), seen);
+    assert_eq!(calls, 1);
+}
+
 /// Value 6: a record that decodes, but carries a key its model does not declare.
 #[test]
 fn value_6_an_undeclared_nested_key_reaches_the_decider() {
