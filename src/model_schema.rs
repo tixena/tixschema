@@ -91,7 +91,7 @@ use crate::features::serde::{has_serde_default, parse_serde_key_omission};
 ))]
 use crate::features::recovering_decode::reading_the_authors_scope;
 #[cfg(feature = "serde")]
-use crate::features::recovering_decode::struct_recovering_decode;
+use crate::features::recovering_decode::{enums::enum_recovering_decode, struct_recovering_decode};
 // The type is named where a positional slot's own omission is read: the tuple-struct walk, which
 // only a describing build performs, and the variant walk, which every build performs.
 use crate::features::serde::SerdeKeyOmission;
@@ -1639,19 +1639,10 @@ fn build_struct_delegate_items(
 }
 
 /// Assembles the final macro output for a struct or enum: the item itself, its schema module
-/// (with the per-field validation functions), the type's delegate impl, and its standalone
-/// default-only `validate()` impl when it has one.
+/// (with the per-field validation functions and the items `decode_with` adds), the type's delegate
+/// impl, and its standalone default-only `validate()` impl when it has one.
 #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
-fn assemble_schema_output<T>(parts: &SchemaOutputParts<T>) -> TokenStream
-where
-    T: quote::ToTokens,
-{
-    assemble_schema_output_with(parts, &TokenStream::new())
-}
-
-/// [`assemble_schema_output`], with the items `decode_with` adds to the schema module.
-#[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
-fn assemble_schema_output_with<T>(
+fn assemble_schema_output<T>(
     parts: &SchemaOutputParts<T>,
     decode_with_items: &TokenStream,
 ) -> TokenStream
@@ -2295,11 +2286,7 @@ fn decode_with_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_mac
             reference,
         ))
     } else if let Item::Enum(item_enum) = item {
-        Some(decode_with_unavailable(
-            &item_enum.ident,
-            "an enum",
-            "structs",
-        ))
+        decode_with_variant_refusal(item_enum)
     } else if let Item::Struct(item_struct) = item {
         decode_with_struct_refusal(item_struct)
     } else {
@@ -2309,6 +2296,23 @@ fn decode_with_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_mac
         .iter()
         .map(|rejection| attr_guard_error(rejection, &item_label(item)))
         .collect()
+}
+
+/// The one enum `decode_with` is not generated on yet: a variant's flattened field writes its keys
+/// among the variant's own, which the walk of those keys would report one by one.
+fn decode_with_variant_refusal(item_enum: &syn::ItemEnum) -> Option<syn::Error> {
+    item_enum
+        .variants
+        .iter()
+        .flat_map(|variant| &variant.fields)
+        .find(|field| is_flattened_field(field))
+        .map(|field| {
+            decode_with_unavailable(
+                field,
+                "an enum with a `#[serde(flatten)]` field in a variant",
+                "enums whose variants flatten no field",
+            )
+        })
 }
 
 /// The shape of a struct `decode_with` is not generated on yet, spanned on what makes it that shape.
@@ -4587,7 +4591,7 @@ fn struct_output_with_unit_impls(
     unit_struct_impls: &proc_macro2::TokenStream,
     decode_with: &DecodeWithParts,
 ) -> TokenStream {
-    let base = assemble_schema_output_with(parts, &decode_with.schema_module);
+    let base = assemble_schema_output(parts, &decode_with.schema_module);
     let decode_with_impl = &decode_with.type_impl;
     quote! {
         #base
@@ -4634,6 +4638,57 @@ fn struct_decode_with(item_struct: &syn::ItemStruct, args: &ModelSchemaArgs) -> 
 #[cfg(not(feature = "serde"))]
 fn struct_decode_with(_item_struct: &syn::ItemStruct, _args: &ModelSchemaArgs) -> DecodeWithParts {
     DecodeWithParts::default()
+}
+
+/// What `decode_with` adds to an enum, read off the enum as it is emitted. Empty without the flag.
+#[cfg(feature = "serde")]
+fn enum_decode_with(item_enum: &syn::ItemEnum, args: &ModelSchemaArgs) -> DecodeWithParts {
+    if !args.decode_with {
+        return DecodeWithParts::default();
+    }
+    let added = enum_recovering_decode(item_enum);
+    DecodeWithParts {
+        schema_module: added.schema_module,
+        type_impl: added.type_impl,
+    }
+}
+
+/// Nothing, where no `serde` feature reads the attributes a walker is written from.
+#[cfg(not(feature = "serde"))]
+fn enum_decode_with(_item_enum: &syn::ItemEnum, _args: &ModelSchemaArgs) -> DecodeWithParts {
+    DecodeWithParts::default()
+}
+
+/// An enum's assembled schema module, with the `impl` `decode_with` adds appended after it.
+#[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
+fn enum_output_with_decode(
+    parts: &SchemaOutputParts<syn::ItemEnum>,
+    decode_with: &DecodeWithParts,
+) -> TokenStream {
+    let base = assemble_schema_output(parts, &decode_with.schema_module);
+    let decode_with_impl = &decode_with.type_impl;
+    quote! {
+        #base
+        #decode_with_impl
+    }
+}
+
+/// [`enum_output_with_decode`] where no schema surface is on: the item alone, with what
+/// `decode_with` adds appended.
+#[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
+fn enum_output_with_decode(
+    item_enum: &syn::ItemEnum,
+    decode_with: &DecodeWithParts,
+) -> TokenStream {
+    let decode_with_module = &decode_with.schema_module;
+    let decode_with_impl = &decode_with.type_impl;
+    let output = quote! {
+        #item_enum
+        #decode_with_module
+        #decode_with_impl
+    };
+    log::trace!("{output}");
+    output
 }
 
 /// Records a unit struct in the registry `is_unit_type` reads, then rewrites its derive.
@@ -6873,9 +6928,6 @@ fn process_plain_enum(
 
     // schema_example must be directly on the type (not in the module) because the example code
     // uses type names that may not be accessible from the nested module.
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    let _: &_ = &args;
-
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     let schema_example_method =
         enum_schema_example_method(&item_enum.attrs, name, &item_enum.generics, args);
@@ -6899,28 +6951,64 @@ fn process_plain_enum(
             .chain(schema_example_method)
             .collect();
 
-    let enum_values = &enumerated;
+    let decode_with = enum_decode_with(&item_enum, args);
 
+    #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
+    {
+        plain_enum_output(
+            &item_enum,
+            name,
+            &module_ident,
+            &schema_impl_items,
+            &delegate_impl_items,
+            &enumerated,
+            &decode_with,
+        )
+    }
+
+    #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
+    {
+        plain_enum_output(&item_enum, name, &enumerated, &decode_with)
+    }
+}
+
+/// A plain enum with its schema module, its delegates, `enum_members()`, and what `decode_with`
+/// adds.
+#[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
+fn plain_enum_output(
+    item_enum: &syn::ItemEnum,
+    name: &syn::Ident,
+    module_ident: &Ident,
+    schema_impl_items: &[proc_macro2::TokenStream],
+    delegate_impl_items: &[proc_macro2::TokenStream],
+    enum_values: &[proc_macro2::TokenStream],
+    decode_with: &DecodeWithParts,
+) -> TokenStream {
     // A plain enum publishes `enum_members()` from an `impl` of its own rather than through
     // `assemble_schema_output`, so it repeats the declaration's parameters itself. A type
     // parameter it cannot bind — Rust refuses an all-unit enum that leaves one unused — but a
     // const or a lifetime it can, and either has to be carried here or the block names a type
     // that does not exist.
     let (impl_generics, type_generics, where_clause) = item_enum.generics.split_for_impl();
-
-    #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
-    let output = quote! {
-        #item_enum
-
-        pub mod #module_ident {
-            use super::*;
-
+    let module_items = schema_module_items(
+        quote! {
             #[non_exhaustive]
             pub struct Schema;
 
             impl Schema {
                 #(#schema_impl_items)*
             }
+        },
+        &decode_with.schema_module,
+    );
+    let decode_with_impl = &decode_with.type_impl;
+    let output = quote! {
+        #item_enum
+
+        pub mod #module_ident {
+            use super::*;
+
+            #module_items
         }
 
         impl #impl_generics #name #type_generics #where_clause {
@@ -6932,9 +7020,25 @@ fn process_plain_enum(
                 ].iter().map(|v| v.to_string()).collect::<Vec<_>>()
             }
         }
-    };
 
-    #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
+        #decode_with_impl
+    };
+    log::trace!("{output}");
+    output
+}
+
+/// [`plain_enum_output`] where no schema surface is on: the item, `enum_members()`, and what
+/// `decode_with` adds.
+#[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
+fn plain_enum_output(
+    item_enum: &syn::ItemEnum,
+    name: &syn::Ident,
+    enum_values: &[proc_macro2::TokenStream],
+    decode_with: &DecodeWithParts,
+) -> TokenStream {
+    let (impl_generics, type_generics, where_clause) = item_enum.generics.split_for_impl();
+    let decode_with_module = &decode_with.schema_module;
+    let decode_with_impl = &decode_with.type_impl;
     let output = quote! {
         #item_enum
 
@@ -6945,10 +7049,11 @@ fn process_plain_enum(
                 ].iter().map(|v| v.to_string()).collect::<Vec<_>>()
             }
         }
+
+        #decode_with_module
+        #decode_with_impl
     };
-
     log::trace!("{output}");
-
     output
 }
 
@@ -7336,7 +7441,8 @@ fn process_discriminated_enum(
     }
     let rendered = render_discriminated_variants(tag_name, content_name, item_name, &variants.0);
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    let _: &_ = &(name, &rendered, args);
+    let _: &_ = &(name, &rendered);
+    let decode_with = enum_decode_with(&item_enum, args);
 
     #[cfg(feature = "jsonschema")]
     let main_schema_code = discriminated_main_schema_code(&rendered.2);
@@ -7401,26 +7507,25 @@ fn process_discriminated_enum(
 
     #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     {
-        assemble_schema_output(&SchemaOutputParts {
-            default_types: &args.default_types,
-            delegate_impl_items: &delegate_impl_items,
-            generics: &item_enum.generics,
-            item: &item_enum,
-            module_ident: &module_ident,
-            name,
-            schema_impl_items: &schema_impl_items,
-            validate_method: &build_enum_validate_method(&variants.3, &module_ident),
-            validation_fns: &variants.1,
-        })
+        enum_output_with_decode(
+            &SchemaOutputParts {
+                default_types: &args.default_types,
+                delegate_impl_items: &delegate_impl_items,
+                generics: &item_enum.generics,
+                item: &item_enum,
+                module_ident: &module_ident,
+                name,
+                schema_impl_items: &schema_impl_items,
+                validate_method: &build_enum_validate_method(&variants.3, &module_ident),
+                validation_fns: &variants.1,
+            },
+            &decode_with,
+        )
     }
 
     #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
     {
-        let output = quote! {
-            #item_enum
-        };
-        log::trace!("{output}");
-        output
+        enum_output_with_decode(&item_enum, &decode_with)
     }
 }
 
@@ -7856,6 +7961,7 @@ fn process_externally_tagged_enum(
     if let Some(output) = guard_failure_output(&item_enum, Some(&item_enum.ident), &variants.2) {
         return output;
     }
+    let decode_with = enum_decode_with(&item_enum, args);
 
     let members: Vec<(String, String, proc_macro2::TokenStream)> = variants
         .0
@@ -7876,7 +7982,7 @@ fn process_externally_tagged_enum(
     #[cfg(not(feature = "zod"))]
     let _: &_ = &schema_code;
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    let _: &_ = &(name, args);
+    let _: &_ = &name;
 
     #[cfg(feature = "typescript")]
     let docs = build_jsdoc_body(docs_vec.as_deref(), item_name);
@@ -7926,27 +8032,26 @@ fn process_externally_tagged_enum(
 
     #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     {
-        assemble_schema_output(&SchemaOutputParts {
-            default_types: &args.default_types,
-            delegate_impl_items: &delegate_impl_items,
-            generics: &item_enum.generics,
-            item: &item_enum,
-            module_ident: &module_ident,
-            name,
-            schema_impl_items: &schema_impl_items,
-            validate_method: &build_enum_validate_method(&variants.3, &module_ident),
-            validation_fns: &variants.1,
-        })
+        enum_output_with_decode(
+            &SchemaOutputParts {
+                default_types: &args.default_types,
+                delegate_impl_items: &delegate_impl_items,
+                generics: &item_enum.generics,
+                item: &item_enum,
+                module_ident: &module_ident,
+                name,
+                schema_impl_items: &schema_impl_items,
+                validate_method: &build_enum_validate_method(&variants.3, &module_ident),
+                validation_fns: &variants.1,
+            },
+            &decode_with,
+        )
     }
 
     #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
     {
         let _: &_ = &(&variants.1, &variants.3);
-        let output = quote! {
-            #item_enum
-        };
-        log::trace!("{output}");
-        output
+        enum_output_with_decode(&item_enum, &decode_with)
     }
 }
 
@@ -8266,6 +8371,7 @@ fn process_internally_tagged_enum(
     if let Some(output) = guard_failure_output(&item_enum, Some(&item_enum.ident), &variants.2) {
         return output;
     }
+    let decode_with = enum_decode_with(&item_enum, args);
 
     let members: Vec<(String, String, proc_macro2::TokenStream, bool)> = variants
         .0
@@ -8281,7 +8387,7 @@ fn process_internally_tagged_enum(
     #[cfg(not(feature = "zod"))]
     let _: &_ = &schema_code;
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    let _: &_ = &(name, args);
+    let _: &_ = &name;
 
     #[cfg(feature = "typescript")]
     let docs = build_jsdoc_body(docs_vec.as_deref(), item_name);
@@ -8331,27 +8437,26 @@ fn process_internally_tagged_enum(
 
     #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     {
-        assemble_schema_output(&SchemaOutputParts {
-            default_types: &args.default_types,
-            delegate_impl_items: &delegate_impl_items,
-            generics: &item_enum.generics,
-            item: &item_enum,
-            module_ident: &module_ident,
-            name,
-            schema_impl_items: &schema_impl_items,
-            validate_method: &build_enum_validate_method(&variants.3, &module_ident),
-            validation_fns: &variants.1,
-        })
+        enum_output_with_decode(
+            &SchemaOutputParts {
+                default_types: &args.default_types,
+                delegate_impl_items: &delegate_impl_items,
+                generics: &item_enum.generics,
+                item: &item_enum,
+                module_ident: &module_ident,
+                name,
+                schema_impl_items: &schema_impl_items,
+                validate_method: &build_enum_validate_method(&variants.3, &module_ident),
+                validation_fns: &variants.1,
+            },
+            &decode_with,
+        )
     }
 
     #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
     {
         let _: &_ = &(&variants.1, &variants.3);
-        let output = quote! {
-            #item_enum
-        };
-        log::trace!("{output}");
-        output
+        enum_output_with_decode(&item_enum, &decode_with)
     }
 }
 
@@ -9370,7 +9475,8 @@ fn process_untagged_enum(
     let _: &_ = &ts_merge_parts;
 
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    let _: &_ = &(name, item_name, &ts_parts, &zod_parts, &json_parts, args);
+    let _: &_ = &(name, item_name, &ts_parts, &zod_parts, &json_parts);
+    let decode_with = enum_decode_with(&item_enum, args);
 
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     let schema_example_method =
@@ -9404,27 +9510,26 @@ fn process_untagged_enum(
 
     #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     {
-        assemble_schema_output(&SchemaOutputParts {
-            default_types: &args.default_types,
-            delegate_impl_items: &delegate_impl_items,
-            generics: &item_enum.generics,
-            item: &item_enum,
-            module_ident: &module_ident,
-            name,
-            schema_impl_items: &schema_impl_items,
-            validate_method: &validate_method,
-            validation_fns: &enum_validation_fns,
-        })
+        enum_output_with_decode(
+            &SchemaOutputParts {
+                default_types: &args.default_types,
+                delegate_impl_items: &delegate_impl_items,
+                generics: &item_enum.generics,
+                item: &item_enum,
+                module_ident: &module_ident,
+                name,
+                schema_impl_items: &schema_impl_items,
+                validate_method: &validate_method,
+                validation_fns: &enum_validation_fns,
+            },
+            &decode_with,
+        )
     }
 
     #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
     {
         let _: &_ = &(&enum_validation_fns, &validate_arms);
-        let output = quote! {
-            #item_enum
-        };
-        log::trace!("{output}");
-        output
+        enum_output_with_decode(&item_enum, &decode_with)
     }
 }
 

@@ -1,5 +1,5 @@
-//! `#[model_schema(decode_with)]`: `from_bson_with` on structs, built against version 2 of the
-//! `bson` library.
+//! `#[model_schema(decode_with)]`: `from_bson_with` on structs and enums, built against version 2
+//! of the `bson` library.
 
 extern crate bson2 as bson;
 

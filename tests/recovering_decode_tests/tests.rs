@@ -29,6 +29,7 @@ mod as_text {
         serializer.collect_str(value)
     }
 }
+mod enum_shapes;
 mod generic_types;
 mod shadowing;
 #[cfg(all(feature = "chrono", feature = "mongodb"))]

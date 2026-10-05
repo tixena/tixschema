@@ -1,12 +1,14 @@
 //! The recovering decode `#[model_schema(decode_with)]` turns on.
 //!
-//! A flagged struct gets `from_value_with`, which reads a `serde_json::Value` with plain serde,
-//! walks it in the form serde writes that struct in, and hands every issue the walk finds to a
+//! A flagged type gets `from_value_with`, which reads a `serde_json::Value` with plain serde,
+//! walks it in the form serde writes that type in, and hands every issue the walk finds to a
 //! callback once. A build with `bson` on adds `from_bson_with`, the same read of a
 //! `bson::Document`, written with what both major versions of the `bson` library have. The
 //! callback's types go into the type's own `{type}_schema` module. Two flagged types share no
 //! declaration: each module declares the same aliases of standard types, and a walker builds
 //! whatever issue type the constructor it is handed builds.
+
+pub mod enums;
 
 use core::iter::once;
 use core::mem::take;
@@ -18,8 +20,9 @@ use quote::{format_ident, quote};
 use syn::ext::IdentExt as _;
 use syn::punctuated::Punctuated;
 use syn::{
-    Field, Fields, GenericArgument, GenericParam, Generics, ItemStruct, LitStr, PathArguments,
-    PredicateType, Token, Type, TypeParamBound, TypePath, WherePredicate, parse_quote,
+    Field, Fields, FieldsNamed, GenericArgument, GenericParam, Generics, ItemStruct, LitStr,
+    PathArguments, PredicateType, Token, Type, TypeParamBound, TypePath, Variant, WherePredicate,
+    parse_quote,
 };
 
 use crate::features::serde::{
@@ -55,6 +58,26 @@ struct Arm {
     pattern: TokenStream,
 }
 
+/// The key a value is looked up under in the object that holds it.
+struct Lookup<'key> {
+    /// serde reads the value when its key is missing.
+    absence_is_read: bool,
+    aliases: &'key [String],
+    key: &'key str,
+}
+
+impl Lookup<'_> {
+    /// The path segment of the key the value is found under: the one stored, where it has aliases.
+    fn segment(&self) -> TokenStream {
+        if self.aliases.is_empty() {
+            let key = self.key;
+            quote! { Ok(#key.to_owned()) }
+        } else {
+            quote! { Ok(stored.to_owned()) }
+        }
+    }
+}
+
 /// What the flag adds to a type.
 pub struct RecoveringDecode {
     /// The items added to the `{type}_schema` module a schema surface writes, or that module whole
@@ -65,18 +88,18 @@ pub struct RecoveringDecode {
     pub type_impl: TokenStream,
 }
 
-/// What a struct's walker walks: the form serde writes the struct in.
+/// What the walker of a struct, or of what a variant holds, walks: the form serde writes it in.
 enum Shape<'item> {
-    /// An object of the struct's fields, under the keys it declares.
+    /// An object of the fields, under the keys they declare.
     Fields {
         declared: Vec<String>,
         fields: Vec<WalkedField<'item>>,
     },
-    /// A single-slot tuple struct: the value its slot holds.
+    /// A single slot: the value it holds.
     Held(Walk<'item>),
-    /// A unit struct: the `{}` tixschema makes it write.
+    /// No field: the `{}` tixschema makes a unit struct write, and nothing under a variant's name.
     Nothing,
-    /// A tuple struct: an array of its slots.
+    /// Several slots: an array of them.
     Slots(Vec<Slot<'item>>),
 }
 
@@ -86,24 +109,13 @@ impl<'item> Shape<'item> {
         match &item_struct.fields {
             Fields::Named(named) => {
                 let container = parse_serde_type_attributes(&item_struct.attrs);
-                let fields: Vec<WalkedField<'item>> = named
-                    .named
-                    .iter()
-                    .filter_map(|field| {
-                        walked_field(
-                            field,
-                            container.rename_all.as_deref(),
-                            defaulted,
-                            module_name,
-                            parameters,
-                        )
-                    })
-                    .collect();
-                let mut declared: Vec<String> = fields
-                    .iter()
-                    .flat_map(|field| once(&field.key).chain(&field.aliases))
-                    .cloned()
-                    .collect();
+                let (mut declared, fields) = walked_fields(
+                    named,
+                    container.rename_all.as_deref(),
+                    defaulted,
+                    module_name,
+                    parameters,
+                );
                 // serde writes a struct's `tag` as a key of the object and reads past it.
                 declared.extend(container.tag);
                 Self::Fields { declared, fields }
@@ -119,6 +131,48 @@ impl<'item> Shape<'item> {
                         .unnamed
                         .iter()
                         .filter_map(|slot| walked_slot(slot, defaulted, module_name, parameters))
+                        .collect(),
+                )
+            }
+        }
+    }
+
+    /// What `variant` holds. Its fields are cased by its own `rename_all`, and by the enum's
+    /// `rename_all_fields` where it writes none.
+    fn of_variant(
+        variant: &'item Variant,
+        rename_all_fields: Option<&str>,
+        module_name: &str,
+        parameters: &[String],
+    ) -> Self {
+        match &variant.fields {
+            Fields::Named(named) => {
+                let own = parse_serde_type_attributes(&variant.attrs).rename_all;
+                let (declared, fields) = walked_fields(
+                    named,
+                    own.as_deref().or(rename_all_fields),
+                    false,
+                    module_name,
+                    parameters,
+                );
+                Self::Fields { declared, fields }
+            }
+            Fields::Unit => Self::Nothing,
+            Fields::Unnamed(slots) => {
+                let mut written = slots.unnamed.iter();
+                if let (Some(only), None) = (written.next(), written.next()) {
+                    // serde writes a variant whose one slot it neither writes nor reads as a unit
+                    // variant.
+                    if parse_serde_key_omission(&only.attrs).absent_from_wire() {
+                        return Self::Nothing;
+                    }
+                    return Self::Held(member_walk(only, module_name, parameters));
+                }
+                Self::Slots(
+                    slots
+                        .unnamed
+                        .iter()
+                        .filter_map(|slot| walked_slot(slot, false, module_name, parameters))
                         .collect(),
                 )
             }
@@ -212,6 +266,15 @@ impl Source {
         }
     }
 
+    /// What serde reads `found` from.
+    fn found_reader(self) -> TokenStream {
+        match self {
+            #[cfg(feature = "bson")]
+            Self::Bson => quote! { bson::Deserializer::new(found.clone()) },
+            Self::Json => quote! { found },
+        }
+    }
+
     /// Whether this source's walker is bound to write back a value of a parameter's type, and the
     /// type itself where it has one: the BSON walker asks `Serialize` of both.
     const fn is_bound_to_write(self) -> bool {
@@ -270,6 +333,17 @@ impl Source {
         }
     }
 
+    /// What serde reads the whole of `object` from.
+    fn object_reader(self) -> TokenStream {
+        match self {
+            #[cfg(feature = "bson")]
+            Self::Bson => {
+                quote! { bson::Deserializer::new(bson::Bson::Document(object.clone())) }
+            }
+            Self::Json => quote! { serde_json::Value::Object(object.clone()) },
+        }
+    }
+
     /// The source's name inside what the flag adds for it.
     const fn stem(self) -> &'static str {
         match self {
@@ -277,6 +351,12 @@ impl Source {
             Self::Bson => "bson",
             Self::Json => "value",
         }
+    }
+
+    /// The pattern text is held under, binding it.
+    fn text(self, text: &Ident) -> TokenStream {
+        let value = self.value();
+        quote! { #value::String(#text) }
     }
 
     /// The type of one value.
@@ -510,68 +590,25 @@ impl Walker<'_> {
         quote! { &[#(#members),*] }
     }
 
-    /// What the fields walker runs for one field: its key looked up under its name and every
-    /// alias, the value walked when it is there, and `Missing` when serde needs it.
-    fn field(&self, field: &WalkedField<'_>) -> TokenStream {
+    /// What a fields walker runs for one field of the object held as `object` at `segments`: its
+    /// key looked up under its name and every alias, and its value walked when it is there.
+    fn field(
+        &self,
+        field: &WalkedField<'_>,
+        object: &Ident,
+        segments: &[TokenStream],
+    ) -> TokenStream {
         let Some(walk) = &field.walk else {
             return TokenStream::new();
         };
-        let key = &field.key;
+        let lookup = Lookup {
+            absence_is_read: field.absence_is_read,
+            aliases: &field.aliases,
+            key: &field.key,
+        };
         let held = Ident::new("held", Span::call_site());
-        let under_alias = !field.aliases.is_empty();
-        let (lookup, stored) = if under_alias {
-            let aliases = &field.aliases;
-            (
-                quote! {
-                    [#key, #(#aliases),*]
-                        .into_iter()
-                        .find_map(|stored| object.get(stored).map(|held| (stored, held)))
-                },
-                quote! { Ok(stored.to_owned()) },
-            )
-        } else {
-            (quote! { object.get(#key) }, quote! { Ok(#key.to_owned()) })
-        };
-        let there = |pattern: &TokenStream| {
-            if under_alias {
-                quote! { Some((stored, #pattern)) }
-            } else {
-                quote! { Some(#pattern) }
-            }
-        };
-        let arms = self.arms(walk, &held, &[stored], 0, walk.ty);
-        if field.absence_is_read
-            && let [only] = arms.as_slice()
-        {
-            let (pattern, body) = (there(&only.pattern), &only.body);
-            return quote! {
-                if let #pattern = #lookup {
-                    #body;
-                }
-            };
-        }
-        // An absent key and a `null` are the same `None` to serde, so one arm answers both.
-        let merged =
-            field.absence_is_read && !under_alias && arms.first().is_some_and(|arm| arm.nothing);
-        let listed = arms.iter().skip(usize::from(merged)).map(|arm| {
-            let (pattern, body) = (there(&arm.pattern), &arm.body);
-            quote! { #pattern => #body, }
-        });
-        let absent = if merged {
-            let null = self.source.null();
-            quote! { None | Some(#null) => {} }
-        } else if field.absence_is_read {
-            quote! { None => {} }
-        } else {
-            let here = path_expression(&[quote! { Ok(#key.to_owned()) }]);
-            let expected = self.expected(field.ty);
-            quote! { None => out.push(issue("Missing", #here, #expected, None, None, Vec::new())), }
-        };
-        if merged {
-            quote! { match #lookup { #absent #(#listed)* } }
-        } else {
-            quote! { match #lookup { #(#listed)* #absent } }
-        }
+        let arms = self.arms(walk, &held, &under(segments, &lookup.segment()), 0, walk.ty);
+        self.looked_up(&lookup, object, segments, &arms, &self.expected(field.ty))
     }
 
     /// `decode_with_{source}_fields` running `body`. A parameter `body` does not read is bound as
@@ -611,11 +648,10 @@ impl Walker<'_> {
     /// What binds the form `found` is walked in, as `held_as` binds it. A value held in any other
     /// form is read whole with the type's own reader, so what is listed for it is serde's verdict.
     fn held_as(&self, held_as: &TokenStream) -> TokenStream {
-        let (module, own_name, leaf) = (self.module, self.own_name, self.source.leaf());
-        let written = self.written_whole();
+        let whole = self.read_whole(&self.own_model());
         quote! {
             let #held_as else {
-                out.extend(#module::#leaf(found, <Self as serde::Deserialize>::deserialize, #written, path.to_vec(), &[("Model", &[#own_name], 0)], issue));
+                #whole;
                 return;
             };
         }
@@ -623,7 +659,7 @@ impl Walker<'_> {
 
     /// The walker of a single-slot tuple struct, which serde writes as the value its slot holds.
     fn held_methods(&self, walk: &Walk<'_>) -> TokenStream {
-        let (module, source) = (self.module, self.source);
+        let source = self.source;
         let found = Ident::new("found", Span::call_site());
         match &walk.step {
             Step::Entries(_) | Step::Items(_) | Step::Positions(_) | Step::Present(_) => self
@@ -633,11 +669,8 @@ impl Walker<'_> {
                 )),
             // The type's own reader runs whatever hook its slot carries.
             Step::Leaf(_) => {
-                let (leaf, written, expected) =
-                    (source.leaf(), self.written_whole(), self.expected(walk.ty));
-                self.issues_method(&quote! {
-                    out.extend(#module::#leaf(found, <Self as serde::Deserialize>::deserialize, #written, path.to_vec(), #expected, issue));
-                })
+                let whole = self.read_whole(&self.expected(walk.ty));
+                self.issues_method(&quote! { #whole; })
             }
             Step::Model => {
                 let (ty, issues, fields) =
@@ -660,16 +693,11 @@ impl Walker<'_> {
 
     /// `decode_with_{source}_issues` running `body`.
     fn issues_method(&self, body: &TokenStream) -> TokenStream {
-        let (module, source, built) = (self.module, self.source, self.issue_parameter);
-        let (issues, value) = (source.method("issues"), source.value());
+        let issues = self.source.method("issues");
+        let signature = self.signature();
         quote! {
             /// Lists every issue in `found`, read as this type at `path`.
-            pub fn #issues<#built>(
-                found: &#value,
-                path: &[core::result::Result<String, usize>],
-                issue: #module::IssueFromParts<#value, #built>,
-                out: &mut Vec<#built>,
-            ) {
+            pub fn #issues #signature {
                 #body
             }
         }
@@ -688,12 +716,77 @@ impl Walker<'_> {
         quote! { match #held { #(#listed)* } }
     }
 
+    /// What lists the issues of the value `object` holds under a key: `arms` when it is there, and
+    /// `Missing` naming `expected` when serde needs it.
+    fn looked_up(
+        &self,
+        lookup: &Lookup<'_>,
+        object: &Ident,
+        segments: &[TokenStream],
+        arms: &[Arm],
+        expected: &TokenStream,
+    ) -> TokenStream {
+        let key = lookup.key;
+        let under_alias = !lookup.aliases.is_empty();
+        let found = if under_alias {
+            let aliases = lookup.aliases;
+            quote! {
+                [#key, #(#aliases),*]
+                    .into_iter()
+                    .find_map(|stored| #object.get(stored).map(|held| (stored, held)))
+            }
+        } else {
+            quote! { #object.get(#key) }
+        };
+        let there = |pattern: &TokenStream| {
+            if under_alias {
+                quote! { Some((stored, #pattern)) }
+            } else {
+                quote! { Some(#pattern) }
+            }
+        };
+        if lookup.absence_is_read
+            && let [only] = arms
+        {
+            let (pattern, body) = (there(&only.pattern), &only.body);
+            return quote! {
+                if let #pattern = #found {
+                    #body;
+                }
+            };
+        }
+        // An absent key and a `null` are the same `None` to serde, so one arm answers both.
+        let merged =
+            lookup.absence_is_read && !under_alias && arms.first().is_some_and(|arm| arm.nothing);
+        let listed = arms.iter().skip(usize::from(merged)).map(|arm| {
+            let (pattern, body) = (there(&arm.pattern), &arm.body);
+            quote! { #pattern => #body, }
+        });
+        let absent = if merged {
+            let null = self.source.null();
+            quote! { None | Some(#null) => {} }
+        } else if lookup.absence_is_read {
+            quote! { None => {} }
+        } else {
+            let here = path_expression(&under(segments, &quote! { Ok(#key.to_owned()) }));
+            quote! { None => out.push(issue("Missing", #here, #expected, None, None, Vec::new())), }
+        };
+        if merged {
+            quote! { match #found { #absent #(#listed)* } }
+        } else {
+            quote! { match #found { #(#listed)* #absent } }
+        }
+    }
+
     /// The methods one type's walker is called through by another's.
     fn methods(&self, shape: &Shape<'_>) -> TokenStream {
         match shape {
             Shape::Fields { declared, fields } => {
-                let walks: Vec<TokenStream> =
-                    fields.iter().map(|field| self.field(field)).collect();
+                let object = Ident::new("object", Span::call_site());
+                let walks: Vec<TokenStream> = fields
+                    .iter()
+                    .map(|field| self.field(field, &object, &[]))
+                    .collect();
                 self.object_methods(&walks, declared)
             }
             Shape::Held(walk) => self.held_methods(walk),
@@ -702,12 +795,13 @@ impl Walker<'_> {
         }
     }
 
-    /// The walker of a struct serde writes as an object of its fields.
-    fn object_methods(&self, walks: &[TokenStream], declared: &[String]) -> TokenStream {
+    /// `decode_with_{source}_issues` of a type serde writes as an object: every key
+    /// `decode_with_{source}_fields` does not return as the type's own is `Unknown`.
+    fn object_issues_method(&self) -> TokenStream {
         let source = self.source;
         let fields = source.method("fields");
         let held_as = self.held_as(&source.object_of_found());
-        let walked = self.issues_method(&quote! {
+        self.issues_method(&quote! {
             #held_as
             let declared = Self::#fields(object, path, issue, out);
             for (key, held) in object {
@@ -715,7 +809,12 @@ impl Walker<'_> {
                     out.push(issue("Unknown", [path, &[Ok(key.clone())]].concat(), &[], Some(held.clone()), None, Vec::new()));
                 }
             }
-        });
+        })
+    }
+
+    /// The walker of a struct serde writes as an object of its fields.
+    fn object_methods(&self, walks: &[TokenStream], declared: &[String]) -> TokenStream {
+        let walked = self.object_issues_method();
         // A type with no field to walk lists no issue of its own, so the `Vec` it is handed goes
         // unbound.
         let keyed = self.fields_method(
@@ -731,6 +830,12 @@ impl Walker<'_> {
 
             #keyed
         }
+    }
+
+    /// What an issue names as expected where the type itself is: `Model`, by the type's name.
+    fn own_model(&self) -> TokenStream {
+        let own_name = self.own_name;
+        quote! { &[("Model", &[#own_name], 0)] }
     }
 
     /// What lists the issues of the position `at` among `items`: its value walked when it is
@@ -827,6 +932,30 @@ impl Walker<'_> {
         }
     }
 
+    /// What lists `found` read whole with the type's own reader: serde's verdict on it, at the
+    /// value, naming `expected`.
+    fn read_whole(&self, expected: &TokenStream) -> TokenStream {
+        let (module, leaf) = (self.module, self.source.leaf());
+        let written = self.written_whole();
+        quote! {
+            out.extend(#module::#leaf(found, <Self as serde::Deserialize>::deserialize, #written, path.to_vec(), #expected, issue))
+        }
+    }
+
+    /// What every method listing the issues of one value takes, after its name.
+    fn signature(&self) -> TokenStream {
+        let (module, built) = (self.module, self.issue_parameter);
+        let value = self.source.value();
+        quote! {
+            <#built>(
+                found: &#value,
+                path: &[core::result::Result<String, usize>],
+                issue: #module::IssueFromParts<#value, #built>,
+                out: &mut Vec<#built>,
+            )
+        }
+    }
+
     /// What lists the issues of a value held under `held`, one level under `depth`.
     fn statement(
         &self,
@@ -844,11 +973,10 @@ impl Walker<'_> {
     /// The walker of a unit struct: an object in which no key is the type's own.
     fn unit_methods(&self) -> TokenStream {
         let held_as = self.held_as(&self.source.object_of_found());
+        let undeclared = undeclared_keys(&Ident::new("object", Span::call_site()), &[], &[]);
         let walked = self.issues_method(&quote! {
             #held_as
-            for (key, held) in object {
-                out.push(issue("Unknown", [path, &[Ok(key.clone())]].concat(), &[], Some(held.clone()), None, Vec::new()));
-            }
+            #undeclared
         });
         let keyed = self.fields_method(false, false, &quote! { Vec::new() });
         quote! {
@@ -895,25 +1023,46 @@ pub fn reading_the_authors_scope(tokens: TokenStream) -> TokenStream {
 /// The recovering decode of a struct, read off the item as it is emitted, so a read hook tixschema
 /// hangs on a field is one the walker reads through.
 pub fn struct_recovering_decode(item_struct: &ItemStruct) -> RecoveringDecode {
-    let own_name = item_struct.ident.to_string();
-    let module_name = ident_schema_module_name(&own_name);
+    let module_name = ident_schema_module_name(&item_struct.ident.to_string());
     let parameters = type_parameters_in_scope(&item_struct.generics);
     let shape = Shape::of(item_struct, &module_name, &parameters);
-    let module = Ident::new(&module_name, Span::call_site());
-    let decider = unclaimed_parameter("F", &item_struct.generics);
-    let issue_parameter = unclaimed_parameter("I", &item_struct.generics);
-    let methods: Vec<TokenStream> = Source::GENERATED
+    added_to(
+        &item_struct.ident,
+        &item_struct.generics,
+        &module_name,
+        &parameters,
+        |walker| walker.methods(&shape),
+    )
+}
+
+/// What the flag adds to the type `name` declares under `generics`: the callback's types, and per
+/// source the entry point beside what `methods` writes for that source's walker.
+fn added_to<M>(
+    name: &Ident,
+    generics: &Generics,
+    module_name: &str,
+    parameters: &[String],
+    methods: M,
+) -> RecoveringDecode
+where
+    M: Fn(&Walker<'_>) -> TokenStream,
+{
+    let own_name = name.to_string();
+    let module = Ident::new(module_name, Span::call_site());
+    let decider = unclaimed_parameter("F", generics);
+    let issue_parameter = unclaimed_parameter("I", generics);
+    let of_sources: Vec<TokenStream> = Source::GENERATED
         .iter()
         .map(|&source| {
             let walker = Walker {
                 issue_parameter: &issue_parameter,
                 module: &module,
                 own_name: &own_name,
-                parameters: &parameters,
+                parameters,
                 source,
             };
             let entry = source.entry_methods(&module, &decider);
-            let walk_methods = walker.methods(&shape);
+            let walk_methods = methods(&walker);
             quote! {
                 #entry
                 #walk_methods
@@ -922,7 +1071,7 @@ pub fn struct_recovering_decode(item_struct: &ItemStruct) -> RecoveringDecode {
         .collect();
     RecoveringDecode {
         schema_module: placed_in_schema_module(&module, &module_items()),
-        type_impl: type_impls(item_struct, !parameters.is_empty(), &methods),
+        type_impl: type_impls(name, generics, !parameters.is_empty(), &of_sources),
     }
 }
 
@@ -1871,10 +2020,14 @@ fn type_arguments(arguments: &PathArguments) -> impl Iterator<Item = &Type> {
 /// The `impl`s holding `methods`, which lists what each generated source adds. A type with a type
 /// parameter gets one `impl` per source, under the bounds that source reads and writes a value
 /// with, and every other type one `impl` for them all.
-fn type_impls(item_struct: &ItemStruct, generic: bool, methods: &[TokenStream]) -> TokenStream {
-    let name = &item_struct.ident;
+fn type_impls(
+    name: &Ident,
+    generics: &Generics,
+    generic: bool,
+    methods: &[TokenStream],
+) -> TokenStream {
     if !generic {
-        let (impl_generics, type_generics, where_clause) = item_struct.generics.split_for_impl();
+        let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
         return quote! {
             impl #impl_generics #name #type_generics #where_clause {
                 #(#methods)*
@@ -1885,7 +2038,7 @@ fn type_impls(item_struct: &ItemStruct, generic: bool, methods: &[TokenStream]) 
         .iter()
         .zip(methods)
         .map(|(source, of_source)| {
-            let bounded = source.bounded(&item_struct.generics);
+            let bounded = source.bounded(generics);
             let (impl_generics, type_generics, where_clause) = bounded.split_for_impl();
             quote! {
                 impl #impl_generics #name #type_generics #where_clause {
@@ -1917,6 +2070,24 @@ fn unclaimed_parameter(base: &str, generics: &Generics) -> Ident {
         name = format!("{base}{number}");
     }
     Ident::new(&name, Span::call_site())
+}
+
+/// What lists every key of `object`, held at `segments`, that is none of `declared` as `Unknown`.
+fn undeclared_keys(object: &Ident, declared: &[String], segments: &[TokenStream]) -> TokenStream {
+    let here = path_expression(&under(segments, &quote! { Ok(key.clone()) }));
+    let unknown = quote! {
+        out.push(issue("Unknown", #here, &[], Some(held.clone()), None, Vec::new()));
+    };
+    if declared.is_empty() {
+        return quote! { for (key, held) in #object { #unknown } };
+    }
+    quote! {
+        for (key, held) in #object {
+            if !matches!(key.as_str(), #(#declared)|*) {
+                #unknown
+            }
+        }
+    }
 }
 
 /// `segments` with one more after them.
@@ -2000,7 +2171,36 @@ fn walked_field<'item>(
     })
 }
 
-/// One slot of a tuple struct as the walker reads it, or `None` for a slot serde does not read:
+/// The fields serde writes or reads among `named`, and every key they are read under.
+fn walked_fields<'item>(
+    named: &'item FieldsNamed,
+    rename_all: Option<&str>,
+    container_defaulted: bool,
+    module_name: &str,
+    parameters: &[String],
+) -> (Vec<String>, Vec<WalkedField<'item>>) {
+    let fields: Vec<WalkedField<'item>> = named
+        .named
+        .iter()
+        .filter_map(|field| {
+            walked_field(
+                field,
+                rename_all,
+                container_defaulted,
+                module_name,
+                parameters,
+            )
+        })
+        .collect();
+    let declared = fields
+        .iter()
+        .flat_map(|field| once(&field.key).chain(&field.aliases))
+        .cloned()
+        .collect();
+    (declared, fields)
+}
+
+/// One slot of a tuple as the walker reads it, or `None` for a slot serde does not read:
 /// the array holds no position for it.
 fn walked_slot<'item>(
     slot: &'item Field,

@@ -1,4 +1,4 @@
-//! `from_bson_with` on structs, held to what plain serde says of the same document. Two binaries compile this module, each with the name `bson` bound to one major
+//! `from_bson_with` on structs and enums, held to what plain serde says of the same document. Two binaries compile this module, each with the name `bson` bound to one major
 //! version of the library, so every case runs against both.
 //!
 //! An issue is asserted by its kind, its path, its expected type and the value it holds. Its
@@ -118,6 +118,29 @@ macro_rules! reasons {
                 }
             })
             .collect::<Vec<&str>>()
+    };
+}
+
+/// What each variant's own list says less each `reason`, in the one `NoVariant` among `$issues`.
+macro_rules! tried {
+    ($module:ident, $issues:expr) => {
+        $issues
+            .iter()
+            .filter_map(|issue| {
+                if let $module::Issue::NoVariant {
+                    path: _path,
+                    found: _found,
+                    variants,
+                } = issue
+                {
+                    Some(variants)
+                } else {
+                    None
+                }
+            })
+            .flatten()
+            .map(|(variant, list)| (*variant, told!($module, list)))
+            .collect::<Vec<(&str, Vec<Told>)>>()
     };
 }
 
@@ -355,6 +378,128 @@ struct Shelf {
     featured: RecordAlias,
 }
 
+/// A plain enum: serde writes the variant's name.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+enum Status {
+    Draft,
+    Published,
+}
+
+/// Externally tagged: `"Empty"`, `{"Label": "x"}`, `{"Circle": {"radius": 1.0}}`.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+enum Outline {
+    Circle { radius: f64 },
+    Empty,
+    Label(String),
+    Owned(ObjectId),
+}
+
+/// Internally tagged: `{"kind": "Solid", "color": "red"}`, `{"kind": "Versioned", "number": 3}`.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+enum Fill {
+    Clear,
+    Solid { color: String },
+    Versioned(Version),
+}
+
+/// Adjacently tagged: `{"kind": "Dashed", "data": {"gap": 2}}`, `{"kind": "Hairline"}`.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "data")]
+enum Stroke {
+    Dashed { gap: u32 },
+    Hairline,
+    Level(Option<u32>),
+    Span(u32, u32),
+    Width(u32),
+}
+
+/// One enum of each tagged form.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Drawing {
+    fill: Fill,
+    outline: Outline,
+    stroke: Stroke,
+}
+
+/// Untagged, with a member whose own check takes its variant out. Only a schema surface hangs it.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(untagged)]
+enum Contact {
+    Email {
+        #[model_schema_prop(minLength = 3)]
+        address: String,
+    },
+    Phone {
+        country: i32,
+        digits: String,
+    },
+    Versioned(Version),
+}
+
+/// A variant holding two values.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+enum Move {
+    Stay,
+    To(i32, i32),
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Route {
+    contact: Contact,
+    next: Move,
+    status: Status,
+}
+
+/// Every renaming serde reads off an enum: of its variants, of one variant, of every variant's
+/// fields, and of one variant's fields.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
+enum Shipment {
+    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+    ByAir {
+        flight_code: String,
+    },
+    BySea {
+        vessel_name: String,
+    },
+    #[serde(rename = "pickup")]
+    InPerson,
+}
+
+/// A tag naming no variant that serde reads all the same, as the variant marked `other`.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+enum Signal {
+    Go {
+        speed: u32,
+    },
+    #[serde(other)]
+    Unrecognized,
+}
+
+/// A generic enum: a `T` is read whole where it sits.
+#[model_schema(decode_with, default_types(T = String))]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+enum Answer<T> {
+    Empty,
+    Value(T),
+}
+
 /// The read hook of [`Hooked::code`]: text that carries no lower-case letter.
 fn upper_only<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
@@ -441,6 +586,29 @@ fn mistyped(path: &str, expected: &str, found: Bson) -> Told {
 
 fn unknown(path: &str, found: Bson) -> Told {
     ("Unknown", path.to_owned(), String::new(), Some(found))
+}
+
+fn undescribed() -> Told {
+    ("Undescribed", String::new(), String::new(), None)
+}
+
+fn drawing() -> Drawing {
+    Drawing {
+        fill: Fill::Versioned(Version { number: 3_i32 }),
+        outline: Outline::Circle { radius: 1.5_f64 },
+        stroke: Stroke::Dashed { gap: 2 },
+    }
+}
+
+fn route() -> Route {
+    Route {
+        contact: Contact::Phone {
+            country: 1_i32,
+            digits: "555".to_owned(),
+        },
+        next: Move::To(1_i32, 2_i32),
+        status: Status::Draft,
+    }
 }
 
 fn record(numbers: &[i32]) -> Record {
@@ -1757,6 +1925,676 @@ fn a_type_whose_parameters_are_named_as_the_methods_own_builds_and_reads() {
         [mistyped(
             "id",
             "TypeParam(\"I\")",
+            string("6a7cc592ca0574e6efdfe217")
+        )]
+    );
+}
+
+#[test]
+fn what_serde_wrote_for_each_enum_form_is_read_and_the_decider_never_runs() {
+    let mut calls = 0_u32;
+    let stored_row = written(&drawing());
+    assert_eq!(
+        stored_row,
+        doc! {
+            "fill": { "kind": "Versioned", "number": 3_i32 },
+            "outline": { "Circle": { "radius": 1.5_f64 } },
+            "stroke": { "kind": "Dashed", "data": { "gap": 2_i64 } },
+        }
+    );
+    let read = Drawing::from_bson_with(stored_row, |_raw, _found| {
+        calls += 1;
+        drawing_schema::Verdict::Reject
+    });
+    assert_eq!(read, Ok(drawing()));
+
+    let units = doc! {
+        "fill": { "kind": "Clear" },
+        "outline": "Empty",
+        "stroke": { "kind": "Hairline" },
+    };
+    let unit_read = Drawing::from_bson_with(units, |_raw, _found| {
+        calls += 1;
+        drawing_schema::Verdict::Reject
+    });
+    assert_eq!(
+        unit_read,
+        Ok(Drawing {
+            fill: Fill::Clear,
+            outline: Outline::Empty,
+            stroke: Stroke::Hairline,
+        })
+    );
+
+    let single = Drawing {
+        fill: Fill::Solid {
+            color: "red".to_owned(),
+        },
+        outline: Outline::Owned(oid("6a7cc592ca0574e6efdfe217")),
+        stroke: Stroke::Span(1, 2),
+    };
+    let single_read = Drawing::from_bson_with(written(&single), |_raw, _found| {
+        calls += 1;
+        drawing_schema::Verdict::Reject
+    });
+    assert_eq!(single_read, Ok(single));
+
+    let routed = written(&route());
+    assert_eq!(
+        routed,
+        doc! {
+            "contact": { "country": 1_i32, "digits": "555" },
+            "next": { "To": [1_i32, 2_i32] },
+            "status": "Draft",
+        }
+    );
+    let route_read = Route::from_bson_with(routed, |_raw, _found| {
+        calls += 1;
+        route_schema::Verdict::Reject
+    });
+    assert_eq!(route_read, Ok(route()));
+    assert_eq!(calls, 0);
+}
+
+/// A plain enum is one value, read with its own reader. A name it does not declare
+/// is serde's refusal, and its name as the one key of a document is a form serde reads and the
+/// enum does not write.
+#[test]
+fn a_plain_enum_is_one_value_read_with_its_own_reader() {
+    let mut stored_row = written(&route());
+    stored_row.insert("status", "Archived");
+    assert!(!serde_reads::<Route>(&stored_row));
+    let read = Route::from_bson_with(stored_row, |_raw, _found| route_schema::Verdict::Reject);
+    assert_eq!(
+        told!(route_schema, read.unwrap_err().issues),
+        [invalid("status", "Model(\"Status\")", string("Archived"))]
+    );
+
+    let keyed = Bson::Document(doc! { "Draft": Bson::Null });
+    let mut keyed_row = written(&route());
+    keyed_row.insert("status", keyed.clone());
+    assert!(serde_reads::<Route>(&keyed_row));
+    let listed = Route::from_bson_with(keyed_row, |_raw, _found| route_schema::Verdict::Reject);
+    assert_eq!(
+        told!(route_schema, listed.unwrap_err().issues),
+        [mistyped("status", "Model(\"Status\")", keyed)]
+    );
+}
+
+/// A document is never the bare name a plain enum writes, so every call reports:
+/// `Invalid` where serde refuses the document, and `Mistyped` where it reads it.
+#[test]
+fn from_bson_with_on_a_plain_enum_reports_on_every_call() {
+    let mut calls = 0_u32;
+    let read = Status::from_bson_with(Document::new(), |_raw, found| {
+        calls += 1;
+        assert_eq!(
+            told!(status_schema, found),
+            [invalid(
+                "",
+                "Model(\"Status\")",
+                Bson::Document(Document::new())
+            )]
+        );
+        status_schema::Verdict::Reject
+    });
+    read.unwrap_err();
+
+    let keyed = doc! { "Draft": Bson::Null };
+    assert!(serde_reads::<Status>(&keyed));
+    let keyed_read = Status::from_bson_with(keyed.clone(), |_raw, found| {
+        calls += 1;
+        assert_eq!(
+            told!(status_schema, found),
+            [mistyped(
+                "",
+                "Model(\"Status\")",
+                Bson::Document(keyed.clone())
+            )]
+        );
+        status_schema::Verdict::Reject
+    });
+    keyed_read.unwrap_err();
+    assert_eq!(calls, 2);
+}
+
+/// A tag naming no variant. It sits at the tag's key and holds the tag where the enum has
+/// one, and at the enum's own path, holding the whole value, where the tag is the document's key.
+#[test]
+fn a_tag_naming_no_variant_is_invalid_with_the_variants_the_enum_accepts() {
+    let stored_row = doc! {
+        "fill": { "color": "red", "kind": "Striped" },
+        "outline": { "Hexagon": {} },
+        "stroke": { "data": 1_i32, "kind": "Dotted" },
+    };
+    assert!(!serde_reads::<Drawing>(&stored_row));
+    let read = Drawing::from_bson_with(stored_row, |_raw, _found| drawing_schema::Verdict::Reject);
+    let issues = read.unwrap_err().issues;
+    assert_eq!(
+        told!(drawing_schema, issues),
+        [
+            invalid(
+                "fill.kind",
+                "Variants([\"Clear\", \"Solid\", \"Versioned\"])",
+                string("Striped")
+            ),
+            invalid(
+                "outline",
+                "Variants([\"Circle\", \"Empty\", \"Label\", \"Owned\"])",
+                Bson::Document(doc! { "Hexagon": {} })
+            ),
+            invalid(
+                "stroke.kind",
+                "Variants([\"Dashed\", \"Hairline\", \"Level\", \"Span\", \"Width\"])",
+                string("Dotted")
+            ),
+        ]
+    );
+    let reasons = reasons!(drawing_schema, issues);
+    for (reason, tag) in reasons.iter().zip(["Striped", "Hexagon", "Dotted"]) {
+        assert!(
+            reason.contains(&format!("unknown variant `{tag}`")),
+            "got: {reason}"
+        );
+    }
+}
+
+/// A problem inside the variant the tag names reaches the callback at its full path, and a
+/// decider that works on each path repairs the row. An id stored as text inside a variant is
+/// `Mistyped` there.
+#[test]
+fn an_issue_inside_a_variant_is_listed_and_fixed_at_its_full_path() {
+    let stored_row = doc! {
+        "fill": { "draft": true, "kind": "Versioned", "number": "3" },
+        "outline": { "Owned": "6a7cc592ca0574e6efdfe217" },
+        "stroke": { "data": {}, "kind": "Dashed" },
+    };
+    assert!(!serde_reads::<Drawing>(&stored_row));
+    let mut seen: Vec<Told> = Vec::new();
+    let read = Drawing::from_bson_with(stored_row, |raw, found| {
+        use drawing_schema::{Expected, Issue, Verdict};
+
+        seen = told!(drawing_schema, found);
+        for issue in found {
+            if let Issue::Invalid {
+                path,
+                expected: Expected::I32,
+                found: _found,
+                reason: _reason,
+            } = issue
+            {
+                path.set_in_document(raw, Bson::Int32(3));
+            } else if let Issue::Mistyped {
+                path,
+                expected: Expected::ObjectId,
+                found: Bson::String(hex),
+            } = issue
+            {
+                path.set_in_document(raw, Bson::ObjectId(oid(hex)));
+            } else if let Issue::Missing {
+                path,
+                expected: _expected,
+            } = issue
+            {
+                path.set_in_document(raw, Bson::Int32(2));
+            } else if let Issue::Unknown {
+                path,
+                found: _found,
+            } = issue
+            {
+                path.remove_from_document(raw);
+            } else {
+                return Verdict::Reject;
+            }
+        }
+        Verdict::Fixed
+    });
+    assert_eq!(
+        seen,
+        [
+            invalid("fill.number", "I32", string("3")),
+            unknown("fill.draft", Bson::Boolean(true)),
+            mistyped(
+                "outline.Owned",
+                "ObjectId",
+                string("6a7cc592ca0574e6efdfe217")
+            ),
+            missing("stroke.data.gap", "U32"),
+        ]
+    );
+    assert_eq!(
+        read,
+        Ok(Drawing {
+            fill: Fill::Versioned(Version { number: 3_i32 }),
+            outline: Outline::Owned(oid("6a7cc592ca0574e6efdfe217")),
+            stroke: Stroke::Dashed { gap: 2 },
+        })
+    );
+
+    let circle = doc! { "Circle": { "extra": 1_i32, "radius": "wide" } };
+    assert!(!serde_reads::<Outline>(&circle));
+    let listed = Outline::from_bson_with(circle, |_raw, _found| outline_schema::Verdict::Reject);
+    assert_eq!(
+        told!(outline_schema, listed.unwrap_err().issues),
+        [
+            invalid("Circle.radius", "F64", string("wide")),
+            unknown("Circle.extra", Bson::Int32(1)),
+        ]
+    );
+}
+
+/// The content of a struct variant stored as a number is the one place the walker lists
+/// nothing, so the read carries serde's refusal alone.
+#[test]
+fn a_struct_variants_content_stored_as_no_document_is_undescribed() {
+    let external = doc! { "Circle": 5_i32 };
+    assert!(!serde_reads::<Outline>(&external));
+    let read = Outline::from_bson_with(external, |_raw, _found| outline_schema::Verdict::Reject);
+    let issues = read.unwrap_err().issues;
+    assert_eq!(told!(outline_schema, issues), [undescribed()]);
+    let reasons = reasons!(outline_schema, issues);
+    assert!(
+        reasons
+            .iter()
+            .all(|reason| reason.contains("invalid type: integer `5`")),
+        "got: {reasons:?}"
+    );
+
+    let adjacent = doc! { "data": 5_i32, "kind": "Dashed" };
+    assert!(!serde_reads::<Stroke>(&adjacent));
+    let listed = Stroke::from_bson_with(adjacent, |_raw, _found| stroke_schema::Verdict::Reject);
+    assert_eq!(
+        told!(stroke_schema, listed.unwrap_err().issues),
+        [undescribed()]
+    );
+}
+
+/// An absent tag is the one issue, at the tag's key. Every key of an internally tagged
+/// document then counts as declared, and so do the two keys an adjacently tagged one writes.
+#[test]
+fn an_absent_tag_is_missing_at_the_tags_key() {
+    let internal = doc! { "color": "red" };
+    assert!(!serde_reads::<Fill>(&internal));
+    let read = Fill::from_bson_with(internal, |_raw, _found| fill_schema::Verdict::Reject);
+    assert_eq!(
+        told!(fill_schema, read.unwrap_err().issues),
+        [missing(
+            "kind",
+            "Variants([\"Clear\", \"Solid\", \"Versioned\"])"
+        )]
+    );
+    let adjacent = doc! { "data": { "gap": 2_i32 } };
+    assert!(!serde_reads::<Stroke>(&adjacent));
+    let listed = Stroke::from_bson_with(adjacent, |_raw, _found| stroke_schema::Verdict::Reject);
+    assert_eq!(
+        told!(stroke_schema, listed.unwrap_err().issues),
+        [missing(
+            "kind",
+            "Variants([\"Dashed\", \"Hairline\", \"Level\", \"Span\", \"Width\"])"
+        )]
+    );
+}
+
+/// A tag naming no variant is `Mistyped` where serde reads the whole document all the same.
+#[test]
+fn a_tag_naming_no_variant_that_serde_reads_is_mistyped() {
+    let stored_row = doc! { "kind": "Warp", "speed": 9_i32 };
+    assert!(serde_reads::<Signal>(&stored_row));
+    let read = Signal::from_bson_with(stored_row, |_raw, _found| signal_schema::Verdict::Reject);
+    assert_eq!(
+        told!(signal_schema, read.unwrap_err().issues),
+        [mistyped(
+            "kind",
+            "Variants([\"Go\", \"Unrecognized\"])",
+            string("Warp")
+        )]
+    );
+}
+
+/// A key beside the tag that the variant does not declare is `Unknown`, and what an adjacently
+/// tagged variant holds is walked under the content key by its kind.
+#[test]
+fn a_tagged_enum_is_a_document_whose_other_keys_are_the_variants() {
+    let internal = doc! { "extra": 1_i32, "kind": "Clear" };
+    assert!(serde_reads::<Fill>(&internal));
+    let read = Fill::from_bson_with(internal, |_raw, _found| fill_schema::Verdict::Reject);
+    assert_eq!(
+        told!(fill_schema, read.unwrap_err().issues),
+        [unknown("extra", Bson::Int32(1))]
+    );
+
+    for (stored_row, told) in [
+        (
+            doc! { "extra": 1_i32, "kind": "Hairline" },
+            vec![unknown("extra", Bson::Int32(1))],
+        ),
+        (
+            doc! { "kind": "Dashed" },
+            vec![missing("data", "Model(\"Stroke\")")],
+        ),
+        (doc! { "kind": "Width" }, vec![missing("data", "U32")]),
+        (
+            doc! { "data": "wide", "kind": "Width" },
+            vec![invalid("data", "U32", string("wide"))],
+        ),
+        (
+            doc! { "data": [1_i32, "2"], "kind": "Span" },
+            vec![invalid("data[1]", "U32", string("2"))],
+        ),
+        (
+            doc! { "data": 7_i32, "kind": "Span" },
+            vec![invalid("data", "Tuple([U32, U32])", Bson::Int32(7))],
+        ),
+        (
+            doc! { "data": "high", "kind": "Level" },
+            vec![invalid("data", "Optional(U32)", string("high"))],
+        ),
+    ] {
+        let listed = Stroke::from_bson_with(stored_row.clone(), |_raw, _found| {
+            stroke_schema::Verdict::Reject
+        });
+        assert_eq!(
+            told!(stroke_schema, listed.unwrap_err().issues),
+            told,
+            "for {stored_row}"
+        );
+    }
+
+    let mut calls = 0_u32;
+    for stored_row in [
+        doc! { "kind": "Level" },
+        doc! { "data": Bson::Null, "kind": "Level" },
+    ] {
+        let level = Stroke::from_bson_with(stored_row, |_raw, _found| {
+            calls += 1;
+            stroke_schema::Verdict::Reject
+        });
+        assert_eq!(level, Ok(Stroke::Level(None)));
+    }
+    assert_eq!(calls, 0);
+}
+
+/// A variant holding two values is walked by position under its key.
+#[test]
+fn a_variant_holding_two_values_is_walked_by_position() {
+    let mut stored_row = written(&route());
+    stored_row.insert("next", doc! { "To": [1_i32, "2", 3_i32] });
+    assert!(!serde_reads::<Route>(&stored_row));
+    let read = Route::from_bson_with(stored_row, |_raw, _found| route_schema::Verdict::Reject);
+    assert_eq!(
+        told!(route_schema, read.unwrap_err().issues),
+        [
+            invalid("next.To[1]", "I32", string("2")),
+            unknown("next.To[2]", Bson::Int32(3)),
+        ]
+    );
+    let short = Move::from_bson_with(doc! { "To": [1_i32] }, |_raw, _found| {
+        move_schema::Verdict::Reject
+    });
+    assert_eq!(
+        told!(move_schema, short.unwrap_err().issues),
+        [missing("To[1]", "I32")]
+    );
+}
+
+/// An untagged value no variant reads is one `NoVariant` at the enum's path, holding each
+/// variant's own list in the order declared.
+#[test]
+fn an_untagged_value_no_variant_reads_is_one_no_variant_with_each_variants_list() {
+    let stored_row = doc! { "country": "one", "digits": "555" };
+    assert!(!serde_reads::<Contact>(&stored_row));
+    let read = Contact::from_bson_with(stored_row.clone(), |_raw, _found| {
+        contact_schema::Verdict::Reject
+    });
+    let issues = read.unwrap_err().issues;
+    assert_eq!(
+        told!(contact_schema, issues),
+        [(
+            "NoVariant",
+            String::new(),
+            String::new(),
+            Some(Bson::Document(stored_row))
+        )]
+    );
+    assert_eq!(
+        tried!(contact_schema, issues),
+        [
+            (
+                "Email",
+                vec![
+                    missing("address", "String"),
+                    unknown("country", string("one")),
+                    unknown("digits", string("555")),
+                ]
+            ),
+            ("Phone", vec![invalid("country", "I32", string("one"))]),
+            (
+                "Versioned",
+                vec![
+                    missing("number", "I32"),
+                    unknown("country", string("one")),
+                    unknown("digits", string("555")),
+                ]
+            ),
+        ]
+    );
+
+    let mut held = written(&route());
+    held.insert("contact", 7_i32);
+    let listed = Route::from_bson_with(held, |_raw, _found| route_schema::Verdict::Reject);
+    assert_eq!(
+        told!(route_schema, listed.unwrap_err().issues),
+        [(
+            "NoVariant",
+            "contact".to_owned(),
+            String::new(),
+            Some(Bson::Int32(7))
+        )]
+    );
+}
+
+/// The hook tixschema hangs on a constrained member is the one serde reads it through, so
+/// a value the constraint refuses takes that variant out.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn an_untagged_enums_constrained_member_is_read_through_its_hook() {
+    let stored_row = doc! { "address": "ab" };
+    assert!(!serde_reads::<Contact>(&stored_row));
+    let read = Contact::from_bson_with(stored_row, |_raw, _found| contact_schema::Verdict::Reject);
+    let issues = read.unwrap_err().issues;
+    let tried = tried!(contact_schema, issues);
+    assert_eq!(
+        tried,
+        [
+            ("Email", vec![invalid("address", "String", string("ab"))]),
+            (
+                "Phone",
+                vec![
+                    missing("country", "I32"),
+                    missing("digits", "String"),
+                    unknown("address", string("ab")),
+                ]
+            ),
+            (
+                "Versioned",
+                vec![missing("number", "I32"), unknown("address", string("ab"))]
+            ),
+        ]
+    );
+    let refusals: Vec<&str> = issues
+        .iter()
+        .filter_map(|issue| {
+            if let contact_schema::Issue::NoVariant {
+                path: _path,
+                found: _found,
+                variants,
+            } = issue
+            {
+                variants.first()
+            } else {
+                None
+            }
+        })
+        .flat_map(|(_variant, list)| reasons!(contact_schema, list))
+        .collect();
+    assert_eq!(refusals.len(), 1);
+    assert!(
+        refusals
+            .iter()
+            .all(|reason| reason.contains("too short: minimum length is 3, got 2")),
+        "got: {refusals:?}"
+    );
+}
+
+/// serde says which variant reads the document, and that variant alone is walked.
+#[test]
+fn an_untagged_value_is_walked_as_the_variant_serde_reads_it_as() {
+    let email = doc! { "address": "ann@example.org", "legacy": true };
+    assert!(serde_reads::<Contact>(&email));
+    let read = Contact::from_bson_with(email, |_raw, _found| contact_schema::Verdict::Reject);
+    assert_eq!(
+        told!(contact_schema, read.unwrap_err().issues),
+        [unknown("legacy", Bson::Boolean(true))]
+    );
+    let versioned = doc! { "draft": true, "number": 3_i32 };
+    assert!(serde_reads::<Contact>(&versioned));
+    let listed = Contact::from_bson_with(versioned, |_raw, _found| contact_schema::Verdict::Reject);
+    assert_eq!(
+        told!(contact_schema, listed.unwrap_err().issues),
+        [unknown("draft", Bson::Boolean(true))]
+    );
+}
+
+/// Tags and keys are walked under the names serde writes, and `Variants` lists them.
+#[test]
+fn variants_and_their_fields_are_walked_under_their_wire_names() {
+    let by_air = Shipment::ByAir {
+        flight_code: "TX1".to_owned(),
+    };
+    let stored_row = written(&by_air);
+    assert_eq!(stored_row, doc! { "type": "by_air", "FLIGHT_CODE": "TX1" });
+    let mut calls = 0_u32;
+    let read = Shipment::from_bson_with(stored_row, |_raw, _found| {
+        calls += 1;
+        shipment_schema::Verdict::Reject
+    });
+    assert_eq!(read, Ok(by_air));
+    assert_eq!(calls, 0);
+
+    for (renamed_row, told) in [
+        (
+            doc! { "flight_code": "TX1", "type": "by_air" },
+            vec![
+                missing("FLIGHT_CODE", "String"),
+                unknown("flight_code", string("TX1")),
+            ],
+        ),
+        (
+            doc! { "type": "by_sea", "vesselName": 7_i32 },
+            vec![invalid("vesselName", "String", Bson::Int32(7))],
+        ),
+        (
+            doc! { "type": "InPerson" },
+            vec![invalid(
+                "type",
+                "Variants([\"by_air\", \"by_sea\", \"pickup\"])",
+                string("InPerson"),
+            )],
+        ),
+    ] {
+        let listed = Shipment::from_bson_with(renamed_row.clone(), |_raw, _found| {
+            shipment_schema::Verdict::Reject
+        });
+        assert_eq!(
+            told!(shipment_schema, listed.unwrap_err().issues),
+            told,
+            "for {renamed_row}"
+        );
+    }
+}
+
+/// An internally tagged variant holding a model type hands the document to that type's fields
+/// walker, and the tag's key joins the keys it returns.
+#[test]
+fn a_tagged_enums_fields_walker_returns_the_keys_that_are_its_own() {
+    let versioned = doc! { "draft": true, "kind": "Versioned", "number": "3" };
+    let mut out: Vec<fill_schema::Issue<Bson>> = Vec::new();
+    let declared = Fill::decode_with_bson_fields(
+        &versioned,
+        &[Ok("fill".to_owned())],
+        fill_schema::issue_from_parts,
+        &mut out,
+    );
+    assert_eq!(declared, ["number", "kind"]);
+    assert_eq!(
+        told!(fill_schema, out),
+        [invalid("fill.number", "I32", string("3"))]
+    );
+
+    let mut none: Vec<fill_schema::Issue<Bson>> = Vec::new();
+    assert_eq!(
+        Fill::decode_with_bson_fields(
+            &doc! { "color": "red", "kind": "Solid" },
+            &[],
+            fill_schema::issue_from_parts,
+            &mut none,
+        ),
+        ["kind", "color"]
+    );
+    assert_eq!(
+        Stroke::decode_with_bson_fields(
+            &doc! { "data": { "gap": 2_i32 }, "kind": "Dashed", "legacy": true },
+            &[],
+            fill_schema::issue_from_parts,
+            &mut none,
+        ),
+        ["kind", "data"]
+    );
+    assert_eq!(
+        Outline::decode_with_bson_fields(
+            &doc! { "Circle": { "radius": 1.5_f64 }, "legacy": true },
+            &[],
+            fill_schema::issue_from_parts,
+            &mut none,
+        ),
+        ["Circle"]
+    );
+    assert_eq!(none, Vec::new());
+}
+
+/// A generic enum gets its methods under the bounds a generic struct does. A value of
+/// the parameter's type is read whole where it sits, and written back to compare what it is
+/// stored as.
+#[test]
+fn a_generic_enum_reads_a_parameters_value_whole() {
+    let held = doc! { "number": "x" };
+    let read = Answer::<Version>::from_bson_with(doc! { "Value": held.clone() }, |_raw, _found| {
+        answer_schema::Verdict::Reject
+    });
+    assert_eq!(
+        told!(answer_schema, read.unwrap_err().issues),
+        [invalid("Value", "TypeParam(\"T\")", Bson::Document(held))]
+    );
+
+    let mut calls = 0_u32;
+    let kept =
+        Answer::<Version>::from_bson_with(doc! { "Value": { "number": 3_i32 } }, |_raw, _found| {
+            calls += 1;
+            answer_schema::Verdict::Reject
+        });
+    assert_eq!(kept, Ok(Answer::Value(Version { number: 3_i32 })));
+    assert_eq!(calls, 0);
+
+    let stored_row = doc! { "Value": "6a7cc592ca0574e6efdfe217" };
+    assert!(serde_reads::<Answer<ObjectId>>(&stored_row));
+    let listed = Answer::<ObjectId>::from_bson_with(stored_row, |_raw, _found| {
+        answer_schema::Verdict::Reject
+    });
+    assert_eq!(
+        told!(answer_schema, listed.unwrap_err().issues),
+        [mistyped(
+            "Value",
+            "TypeParam(\"T\")",
             string("6a7cc592ca0574e6efdfe217")
         )]
     );
