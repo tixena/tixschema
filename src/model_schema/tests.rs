@@ -4427,6 +4427,22 @@ fn an_alias_rejection_points_at_the_written_target() {
     );
 }
 
+/// rustc underlines from the first token of a `compile_error!` to its body, so a refusal spanned
+/// on a whole type has to keep its first token on the one and its last on the other.
+#[test]
+fn a_reworded_refusal_keeps_both_ends_of_what_it_is_spanned_on() {
+    let written: syn::Type = syn::parse_str("&'static str").unwrap();
+    let rejection = syn::Error::new_spanned(&written, "refused");
+    let tokens = super::attr_guard_error(&rejection, "type `Labelled`");
+    let located = located_source_texts(&tokens);
+    assert_eq!(located.first().map(String::as_str), Some("&"));
+    assert_eq!(located.last().map(String::as_str), Some("str"));
+    assert_eq!(
+        tokens.to_string(),
+        ":: core :: compile_error ! { \"model_schema: type `Labelled`: refused\" }"
+    );
+}
+
 /// The rejection names the written ident, not the export name the alias publishes under: `RowsData`
 /// exports as `RowsType`, which the author's source does not contain anywhere.
 #[cfg(feature = "jsonschema")]
@@ -12729,16 +12745,17 @@ fn branded_slot_refusals(source: &str) -> Vec<proc_macro2::TokenStream> {
 }
 
 /// The refusal points at the attribute as written, which is the one thing the author deletes — not
-/// at the slot, and not at the declaration around it.
+/// at the slot, and not at the declaration around it: from its `#` to the brackets that close it.
 #[test]
 fn a_brand_slot_refusal_is_spanned_on_the_attribute() {
     let refusals = branded_slot_refusals(&branded_slot_source("pattern = \"^[a-z]+$\""));
     assert_eq!(refusals.len(), 1, "got: {refusals:?}");
     let located = located_source_texts(&refusals[0]);
-    assert!(!located.is_empty(), "got: {refusals:?}");
-    for text in &located {
-        assert_eq!(text, "#[model_schema_prop(pattern = \"^[a-z]+$\")]");
-    }
+    assert_eq!(located.first().map(String::as_str), Some("#"));
+    assert_eq!(
+        located.last().map(String::as_str),
+        Some("[model_schema_prop(pattern = \"^[a-z]+$\")]")
+    );
 }
 
 /// The guard asks the pair that makes a declaration a brand, so a slot the brand path never takes

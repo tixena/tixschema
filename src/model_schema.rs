@@ -2158,21 +2158,19 @@ where
 /// keeping the attribute's span so the diagnostic still points at the offending line.
 #[cfg(feature = "serde")]
 fn cfg_attr_guard_error(rejection: &syn::Error, item: &str) -> proc_macro2::TokenStream {
-    syn::Error::new(
-        rejection.span(),
-        prefixed_guard_message(&format!("{item}: {rejection}")),
+    reworded(
+        rejection,
+        &prefixed_guard_message(&format!("{item}: {rejection}")),
     )
-    .to_compile_error()
 }
 
 /// Turns a rejected `pattern` into `compile_error!` tokens naming what carries it, keeping the
 /// literal's span so the diagnostic points at the pattern as written.
 fn pattern_guard_error(rejection: &syn::Error, subject: &str) -> proc_macro2::TokenStream {
-    syn::Error::new(
-        rejection.span(),
-        prefixed_guard_message(&format!("{subject}: {rejection}")),
+    reworded(
+        rejection,
+        &prefixed_guard_message(&format!("{subject}: {rejection}")),
     )
-    .to_compile_error()
 }
 
 /// The macro's own name, in front of every diagnostic it emits — the one thing that separates this
@@ -2185,11 +2183,33 @@ fn prefixed_guard_message(message: &str) -> String {
 /// or a serde renaming that names two keys — into `compile_error!` tokens naming what carries it,
 /// keeping the refusal's span so the diagnostic points at the argument, key or value as written.
 fn attr_guard_error(rejection: &syn::Error, subject: &str) -> proc_macro2::TokenStream {
-    syn::Error::new(
-        rejection.span(),
-        prefixed_guard_message(&format!("{subject}: {rejection}")),
+    reworded(
+        rejection,
+        &prefixed_guard_message(&format!("{subject}: {rejection}")),
     )
-    .to_compile_error()
+}
+
+/// `rejection` as `compile_error!` tokens saying `message` instead. `Error::span` joins the two
+/// ends of a refusal, which a stable toolchain cannot do, so the tokens syn spans on both ends are
+/// kept and only the text they carry is replaced.
+fn reworded(rejection: &syn::Error, message: &str) -> proc_macro2::TokenStream {
+    let mut tokens = proc_macro2::TokenStream::new();
+    for tree in rejection.to_compile_error() {
+        let proc_macro2::TokenTree::Group(written) = tree else {
+            tokens.extend([tree]);
+            continue;
+        };
+        let mut text = proc_macro2::Literal::string(message);
+        text.set_span(written.span());
+        let mut body = proc_macro2::Group::new(
+            written.delimiter(),
+            proc_macro2::TokenTree::Literal(text).into(),
+        );
+        body.set_span(written.span());
+        tokens.extend([proc_macro2::TokenTree::Group(body)]);
+        break;
+    }
+    tokens
 }
 
 /// Names a field in a guard message; tuple slots have no ident to name.
