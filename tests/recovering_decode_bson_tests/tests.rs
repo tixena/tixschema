@@ -380,6 +380,19 @@ struct Keyed<I, F> {
     id: I,
 }
 
+/// A type called what the methods the flag adds call a type parameter of their own.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct I {
+    number: i32,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Holder {
+    inner: I,
+}
+
 /// A type with no parameter, naming generic types filled with a model type and with an id.
 #[model_schema(decode_with)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -2218,6 +2231,29 @@ fn a_type_whose_parameters_are_named_as_the_methods_own_builds_and_reads() {
             "TypeParam(\"I\")",
             string("6a7cc592ca0574e6efdfe217")
         )]
+    );
+}
+
+#[test]
+fn a_field_typed_as_the_walkers_own_parameter_is_called_reads_as_the_authors_type() {
+    let mut calls = 0_u32;
+    let read = Holder::from_bson_with(doc! { "inner": { "number": 1_i32 } }, |_raw, _found| {
+        calls += 1;
+        holder_schema::Verdict::Reject
+    });
+    assert_eq!(
+        read,
+        Ok(Holder {
+            inner: I { number: 1 }
+        })
+    );
+    assert_eq!(calls, 0);
+
+    let stored_row = doc! { "inner": { "number": "one" } };
+    let refused = Holder::from_bson_with(stored_row, |_raw, _found| holder_schema::Verdict::Reject);
+    assert_eq!(
+        told!(holder_schema, refused.unwrap_err().issues),
+        [invalid("inner.number", "I32", string("one"))]
     );
 }
 

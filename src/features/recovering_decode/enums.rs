@@ -7,13 +7,13 @@
 use core::iter::once;
 
 use proc_macro2::{Ident, Span, TokenStream};
-use quote::{format_ident, quote};
+use quote::{ToTokens as _, format_ident, quote};
 use syn::ext::IdentExt as _;
 use syn::{Fields, ItemEnum, Type, parse_quote};
 
 use super::{
     Arm, Lookup, RecoveringDecode, Shape, Step, Walk, WalkedField, Walker, added_to, binding,
-    not_the_shape, path_expression, undeclared_keys,
+    not_the_shape, path_expression, undeclared_keys, written_names,
 };
 use crate::features::serde::{
     parse_serde_field_attributes, parse_serde_key_omission, parse_serde_type_attributes,
@@ -549,6 +549,7 @@ pub fn enum_recovering_decode(item_enum: &ItemEnum) -> RecoveringDecode {
         &item_enum.generics,
         &module_name,
         &parameters,
+        &written_names(item_enum.to_token_stream()),
         |walker| {
             EnumWalker {
                 never_read: &never_read,

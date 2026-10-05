@@ -14,13 +14,13 @@ use core::iter::once;
 use core::mem::take;
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-use proc_macro2::{Group, Spacing, TokenTree};
-use proc_macro2::{Ident, Literal, Span, TokenStream};
-use quote::{format_ident, quote};
+use proc_macro2::{Group, Spacing};
+use proc_macro2::{Ident, Literal, Span, TokenStream, TokenTree};
+use quote::{ToTokens as _, format_ident, quote};
 use syn::ext::IdentExt as _;
 use syn::punctuated::Punctuated;
 use syn::{
-    Field, Fields, FieldsNamed, GenericArgument, GenericParam, Generics, ItemStruct, LitStr,
+    Field, Fields, FieldsNamed, GenericArgument, GenericParam, Generics, ItemStruct, Lit, LitStr,
     PathArguments, PredicateType, Token, Type, TypeParamBound, TypePath, Variant, WherePredicate,
     parse_quote,
 };
@@ -1031,17 +1031,20 @@ pub fn struct_recovering_decode(item_struct: &ItemStruct) -> RecoveringDecode {
         &item_struct.generics,
         &module_name,
         &parameters,
+        &written_names(item_struct.to_token_stream()),
         |walker| walker.methods(&shape),
     )
 }
 
 /// What the flag adds to the type `name` declares under `generics`: the callback's types, and per
-/// source the entry point beside what `methods` writes for that source's walker.
+/// source the entry point beside what `methods` writes for that source's walker. `written` is
+/// every name the type's item writes, none of which a method's own type parameter takes.
 fn added_to<M>(
     name: &Ident,
     generics: &Generics,
     module_name: &str,
     parameters: &[String],
+    written: &[String],
     methods: M,
 ) -> RecoveringDecode
 where
@@ -1049,8 +1052,8 @@ where
 {
     let own_name = name.to_string();
     let module = Ident::new(module_name, Span::call_site());
-    let decider = unclaimed_parameter("F", generics);
-    let issue_parameter = unclaimed_parameter("I", generics);
+    let decider = unclaimed_parameter("F", written);
+    let issue_parameter = unclaimed_parameter("I", written);
     let of_sources: Vec<TokenStream> = Source::GENERATED
         .iter()
         .map(|&source| {
@@ -2063,23 +2066,13 @@ fn type_impls(
     quote! { #(#impls)* }
 }
 
-/// A name for a type parameter of a method's own: `base`, numbered where the type declares a
-/// parameter of that name, which the method's would otherwise be refused beside.
-fn unclaimed_parameter(base: &str, generics: &Generics) -> Ident {
-    let claimed = |name: &str| {
-        generics.params.iter().any(|parameter| {
-            if let GenericParam::Type(declared) = parameter {
-                declared.ident == name
-            } else if let GenericParam::Const(declared) = parameter {
-                declared.ident == name
-            } else {
-                false
-            }
-        })
-    };
+/// A name for a type parameter of a method's own: `base`, numbered where the item writes that
+/// name. The method's parameter would hide a type of its name wherever the method's body writes
+/// one, and be refused beside a parameter of the type's own.
+fn unclaimed_parameter(base: &str, written: &[String]) -> Ident {
     let mut name = base.to_owned();
     let mut number = 1_u32;
-    while claimed(&name) {
+    while written.contains(&name) {
         number += 1;
         name = format!("{base}{number}");
     }
@@ -2228,6 +2221,30 @@ fn walked_slot<'item>(
         ty: &slot.ty,
         walk: member_walk(slot, module_name, parameters),
     })
+}
+
+/// Every name `tokens` write: each identifier, and each word of a string, which is where a serde
+/// attribute writes the path of a hook.
+fn written_names(tokens: TokenStream) -> Vec<String> {
+    tokens
+        .into_iter()
+        .flat_map(|token| match token {
+            TokenTree::Group(group) => written_names(group.stream()),
+            TokenTree::Ident(ident) => vec![ident.unraw().to_string()],
+            TokenTree::Literal(literal) => {
+                if let Lit::Str(text) = Lit::new(literal) {
+                    text.value()
+                        .split(|letter: char| !letter.is_alphanumeric() && letter != '_')
+                        .filter(|word| !word.is_empty())
+                        .map(str::to_owned)
+                        .collect()
+                } else {
+                    Vec::new()
+                }
+            }
+            TokenTree::Punct(_) => Vec::new(),
+        })
+        .collect()
 }
 
 #[cfg(test)]

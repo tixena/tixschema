@@ -155,6 +155,35 @@ fn impls_in(type_impl: proc_macro2::TokenStream) -> Vec<(String, Vec<String>)> {
     impls
 }
 
+/// The names the methods among `type_impl` give type parameters of their own, each once, sorted.
+fn own_type_parameters(type_impl: proc_macro2::TokenStream) -> Vec<String> {
+    let added: syn::File = syn::parse2(type_impl).unwrap();
+    let mut named: Vec<String> = added
+        .items
+        .iter()
+        .filter_map(|added_item| {
+            if let syn::Item::Impl(block) = added_item {
+                Some(&block.items)
+            } else {
+                None
+            }
+        })
+        .flatten()
+        .filter_map(|member| {
+            if let syn::ImplItem::Fn(method) = member {
+                Some(method.sig.generics.type_params())
+            } else {
+                None
+            }
+        })
+        .flatten()
+        .map(|parameter| parameter.ident.to_string())
+        .collect();
+    named.sort_unstable();
+    named.dedup();
+    named
+}
+
 /// The methods one source adds to a type that gets a fields walker, and to one that gets none.
 fn methods_of(stem: &str, keyed: bool) -> Vec<String> {
     let mut named = vec![
@@ -845,6 +874,73 @@ fn a_methods_own_type_parameter_is_never_one_the_type_declares() {
         "pub fn decode_with_value_fields < 'a , I > (",
     ] {
         assert!(plain.contains(written), "missing `{written}` in: {plain}");
+    }
+}
+
+/// A method's own type parameter hides a type of its name wherever the method's body writes one,
+/// so each takes the next free name where the item writes `F` or `I` anywhere: a field's type, a
+/// type held inside one, the item's own name, the path of a hook. Every other item keeps both.
+#[test]
+fn a_methods_own_type_parameter_is_never_a_name_the_item_writes() {
+    for (source, named) in [
+        ("pub struct Holder { pub inner: Inner }", ["F", "I"]),
+        ("pub struct Holder { pub inner: I }", ["F", "I2"]),
+        ("pub struct Holder { pub inner: r#I }", ["F", "I2"]),
+        (
+            "pub struct Holder { pub keyed: HashMap<String, Vec<Option<(I, i32)>>> }",
+            ["F", "I2"],
+        ),
+        ("pub struct I { pub number: i32 }", ["F", "I2"]),
+        (
+            "pub struct Holder { #[serde(deserialize_with = \"I::positive\")] pub score: i32 }",
+            ["F", "I2"],
+        ),
+        (
+            "pub struct Holder { #[serde(deserialize_with = \"parsed::<I, _>\")] pub score: i32 }",
+            ["F", "I2"],
+        ),
+        ("pub struct F(pub String);", ["F2", "I"]),
+        (
+            "pub struct Holder { pub frame: F, pub inner: I, pub other: I2 }",
+            ["F2", "I3"],
+        ),
+    ] {
+        let item: syn::ItemStruct = syn::parse_str(source).unwrap();
+        assert_eq!(
+            own_type_parameters(struct_recovering_decode(&item).type_impl),
+            named,
+            "for {source}"
+        );
+    }
+    for (source, named) in [
+        (EXTERNAL, ["F", "I"]),
+        (
+            "pub enum Carried { Alone(I), Named { inner: I }, Paired(I, i32) }",
+            ["F", "I2"],
+        ),
+        (
+            "#[serde(untagged)] pub enum Alternate { Model(I), Text(String) }",
+            ["F", "I2"],
+        ),
+        (
+            "#[serde(tag = \"kind\")] pub enum Framed { Held(F) }",
+            ["F2", "I"],
+        ),
+    ] {
+        let item: syn::ItemEnum = syn::parse_str(source).unwrap();
+        assert_eq!(
+            own_type_parameters(enum_recovering_decode(&item).type_impl),
+            named,
+            "for {source}"
+        );
+    }
+    let walk = issues_walk_of("pub struct Holder(pub String, pub I);");
+    for written in [
+        " < I2 > (found : & serde_json :: Value , path : & [core :: result :: Result < String , usize >] , \
+         issue : holder_schema :: IssueFromParts < serde_json :: Value , I2 > , out : & mut Vec < I2 > ,)",
+        "Some (held) => < I > :: decode_with_value_issues (held , & [path , & [Err (1)]] . concat () , issue , out) ,",
+    ] {
+        assert!(walk.contains(written), "missing `{written}` in: {walk}");
     }
 }
 
