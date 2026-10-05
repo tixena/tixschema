@@ -198,7 +198,7 @@ fn frame_codec_type(side: Side) -> TokenStream {
 fn frame_codec_impl(side: Side) -> TokenStream {
     let arms = match side {
         Side::Dispatcher => quote! {
-            let read_message = |on: &::serde_json::Map<String, ::serde_json::Value>| -> Result<IncomingMessage, String> {
+            let read_message = |on: &::serde_json::Map<String, ::serde_json::Value>| -> ::core::result::Result<IncomingMessage, String> {
                 let payload = on.get("payload").cloned().unwrap_or(::serde_json::Value::Null);
                 Ok(IncomingMessage::new(
                     string_of(on, "operation")?,
@@ -247,7 +247,7 @@ fn frame_codec_impl(side: Side) -> TokenStream {
             /// Reads one frame off the wire. Text that is not JSON, is not a JSON object, or
             /// names no `kind` this transport recognises, is refused, naming why. A frame naming
             /// a `kind` the other side reads decodes to `Frame::Ignored` instead.
-            pub fn decode(text: &str) -> Result<Frame, String> {
+            pub fn decode(text: &str) -> ::core::result::Result<Frame, String> {
                 let parsed: ::serde_json::Value = ::serde_json::from_str(text)
                     .map_err(|refused| format!("not JSON: {refused}"))?;
                 let ::serde_json::Value::Object(frame) = parsed else {
@@ -272,7 +272,7 @@ fn frame_codec_fns() -> TokenStream {
         fn string_of(
             frame: &::serde_json::Map<String, ::serde_json::Value>,
             key: &str,
-        ) -> Result<String, String> {
+        ) -> ::core::result::Result<String, String> {
             match frame.get(key) {
                 Some(::serde_json::Value::String(read)) => Ok(read.clone()),
                 _ => Err(format!("frame carries no string `{key}`")),
@@ -584,7 +584,7 @@ fn send_frame_type() -> TokenStream {
     quote! {
         type SendFrame = Box<
             dyn Fn(String) -> ::core::pin::Pin<
-                    Box<dyn ::core::future::Future<Output = Result<(), String>> + Send>,
+                    Box<dyn ::core::future::Future<Output = ::core::result::Result<(), String>> + Send>,
                 > + Send
                 + Sync,
         >;
@@ -597,7 +597,7 @@ fn boxed_send_fn() -> TokenStream {
         fn boxed_send<F, Fut>(send: F) -> SendFrame
         where
             F: Fn(String) -> Fut + Send + Sync + 'static,
-            Fut: ::core::future::Future<Output = Result<(), String>> + Send + 'static,
+            Fut: ::core::future::Future<Output = ::core::result::Result<(), String>> + Send + 'static,
         {
             Box::new(move |text| {
                 let sending: ::core::pin::Pin<Box<dyn ::core::future::Future<Output = _> + Send>> =
@@ -626,7 +626,7 @@ fn frame_writer_impl() -> TokenStream {
             pub fn new<F, Fut>(send: F) -> Self
             where
                 F: Fn(String) -> Fut + Send + Sync + 'static,
-                Fut: ::core::future::Future<Output = Result<(), String>> + Send + 'static,
+                Fut: ::core::future::Future<Output = ::core::result::Result<(), String>> + Send + 'static,
             {
                 Self(boxed_send(send))
             }
@@ -645,7 +645,7 @@ fn frame_writer_transport_impl() -> TokenStream {
                 operation: &str,
                 payload: T,
                 headers: Vec<(String, String)>,
-            ) -> Result<(), String>
+            ) -> ::core::result::Result<(), String>
             where
                 T: ::serde::Serialize + Send,
             {
@@ -657,7 +657,7 @@ fn frame_writer_transport_impl() -> TokenStream {
                 operation: &str,
                 _: T,
                 _: Vec<(String, String)>,
-            ) -> impl ::core::future::Future<Output = Result<(Vec<u8>, Vec<(String, String)>), String>> + Send
+            ) -> impl ::core::future::Future<Output = ::core::result::Result<(Vec<u8>, Vec<(String, String)>), String>> + Send
             where
                 T: ::serde::Serialize + Send,
             {
@@ -679,7 +679,7 @@ fn frame_session_types() -> TokenStream {
         /// One outstanding request's own answer: empty until `deliver` or `close` fills it, and
         /// the waker whoever is polling [`Awaiting`] for it parked there meanwhile.
         struct Slot {
-            answer: Option<Result<(Vec<u8>, Vec<(String, String)>), String>>,
+            answer: Option<::core::result::Result<(Vec<u8>, Vec<(String, String)>), String>>,
             waker: Option<::core::task::Waker>,
         }
 
@@ -711,7 +711,7 @@ fn frame_session_types() -> TokenStream {
 fn awaiting_future_impl() -> TokenStream {
     quote! {
         impl ::core::future::Future for Awaiting {
-            type Output = Result<(Vec<u8>, Vec<(String, String)>), String>;
+            type Output = ::core::result::Result<(Vec<u8>, Vec<(String, String)>), String>;
 
             fn poll(
                 self: ::core::pin::Pin<&mut Self>,
@@ -781,7 +781,7 @@ fn frame_session_impl() -> TokenStream {
             pub fn new<F, Fut>(send: F) -> Self
             where
                 F: Fn(String) -> Fut + Send + Sync + 'static,
-                Fut: ::core::future::Future<Output = Result<(), String>> + Send + 'static,
+                Fut: ::core::future::Future<Output = ::core::result::Result<(), String>> + Send + 'static,
             {
                 Self {
                     inner: ::std::sync::Arc::new(SessionInner {
@@ -806,7 +806,7 @@ fn frame_session_transport_impl() -> TokenStream {
                 operation: &str,
                 payload: T,
                 headers: Vec<(String, String)>,
-            ) -> Result<(), String>
+            ) -> ::core::result::Result<(), String>
             where
                 T: ::serde::Serialize + Send,
             {
@@ -818,7 +818,7 @@ fn frame_session_transport_impl() -> TokenStream {
                 operation: &str,
                 payload: T,
                 headers: Vec<(String, String)>,
-            ) -> Result<(Vec<u8>, Vec<(String, String)>), String>
+            ) -> ::core::result::Result<(Vec<u8>, Vec<(String, String)>), String>
             where
                 T: ::serde::Serialize + Send,
             {
@@ -858,7 +858,7 @@ fn frame_encoders() -> TokenStream {
             operation: &str,
             payload: &T,
             headers: Vec<(String, String)>,
-        ) -> Result<String, String>
+        ) -> ::core::result::Result<String, String>
         where
             T: ::serde::Serialize,
         {
@@ -871,7 +871,7 @@ fn frame_encoders() -> TokenStream {
             operation: &str,
             payload: &T,
             headers: Vec<(String, String)>,
-        ) -> Result<String, String>
+        ) -> ::core::result::Result<String, String>
         where
             T: ::serde::Serialize,
         {
@@ -887,7 +887,7 @@ fn frame_encoders() -> TokenStream {
             operation: &str,
             payload: &T,
             headers: Vec<(String, String)>,
-        ) -> Result<String, String>
+        ) -> ::core::result::Result<String, String>
         where
             T: ::serde::Serialize,
         {

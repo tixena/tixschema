@@ -1778,7 +1778,7 @@ fn plain_transport_items(outgoing_request: &TokenStream) -> TokenStream {
             fn send(
                 &self,
                 request: OutgoingRequest,
-            ) -> impl ::core::future::Future<Output = Result<IncomingResponse, String>> + Send;
+            ) -> impl ::core::future::Future<Output = ::core::result::Result<IncomingResponse, String>> + Send;
         }
     }
 }
@@ -1851,7 +1851,7 @@ fn streamed_transport_items(outgoing_request: &TokenStream, module: &Ident) -> T
             fn send(
                 &self,
                 request: OutgoingRequest,
-            ) -> impl ::core::future::Future<Output = Result<IncomingResponse, String>> + Send;
+            ) -> impl ::core::future::Future<Output = ::core::result::Result<IncomingResponse, String>> + Send;
         }
     }
 }

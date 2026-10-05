@@ -7767,15 +7767,16 @@ fn display_impl_delegates_from_the_inner_field_span() {
     let tokens = super::build_branded_display_impl(&item.generics, &item.ident, field);
     assert_eq!(
         tokens.to_string(),
-        "impl std :: fmt :: Display for UserId where String : std :: fmt :: Display { fn fmt (& self , f : & mut std :: fmt :: Formatter < '_ >) -> std :: fmt :: Result { self . 0 . fmt (f) } }"
+        "impl std :: fmt :: Display for UserId where String : std :: fmt :: Display { fn fmt (& self , f : & mut std :: fmt :: Formatter < '_ >) -> std :: fmt :: Result { std :: fmt :: Display :: fmt (& self . 0 , f) } }"
     );
     assert_eq!(
         located_source_texts(&tokens).join(" "),
         "UserId String String String String String String String String String String String \
-         String String String String",
+         String String String String String String String String String String String String \
+         String String",
         "the interpolated type name, then every token of the where-clause predicate (the bound is \
          spanned on the field, so a non-`Display` inner is blamed there rather than at the \
-         attribute), then `self . 0 . fmt (f)` on the inner field"
+         attribute), then the call that hands the formatting to the inner field"
     );
 }
 
@@ -7790,7 +7791,7 @@ fn generic_display_impl_bounds_every_type_parameter() {
     let tokens = super::build_branded_display_impl(&item.generics, &item.ident, field);
     assert_eq!(
         tokens.to_string(),
-        "impl < IdType > std :: fmt :: Display for DocumentId < IdType > where IdType : std :: fmt :: Display { fn fmt (& self , f : & mut std :: fmt :: Formatter < '_ >) -> std :: fmt :: Result { self . 0 . fmt (f) } }"
+        "impl < IdType > std :: fmt :: Display for DocumentId < IdType > where IdType : std :: fmt :: Display { fn fmt (& self , f : & mut std :: fmt :: Formatter < '_ >) -> std :: fmt :: Result { std :: fmt :: Display :: fmt (& self . 0 , f) } }"
     );
 }
 
@@ -7960,7 +7961,7 @@ fn the_constrained_path_renders_the_same_to_string_calls_it_always_has() {
             constrained_brand_emission(spelling, "slug_id_schema");
         assert!(
             validate_fn.starts_with(
-                "pub fn validate_value (value : & str) -> Result < () , Vec < String >> {"
+                "pub fn validate_value (value : & str) -> core :: result :: Result < () , Vec < String >> {"
             ),
             "for {spelling}, got: {validate_fn}"
         );
@@ -7998,7 +7999,7 @@ fn a_path_brand_is_checked_through_its_lossy_rendering() {
             constrained_brand_emission(spelling, "asset_path_schema");
         assert!(
             validate_fn.starts_with(
-                "pub fn validate_value (path : & std :: path :: Path) -> Result < () , Vec < String >> { \
+                "pub fn validate_value (path : & std :: path :: Path) -> core :: result :: Result < () , Vec < String >> { \
                  let rendered = path . to_string_lossy () ; let value : & str = & rendered ;"
             ),
             "for {spelling}, got: {validate_fn}"
@@ -10083,7 +10084,7 @@ fn emitted_string_deserializer(spelling: &str) -> String {
 fn a_bare_field_deserializes_the_constrained_value_itself() {
     assert_eq!(
         emitted_string_deserializer("String"),
-        "pub fn deserialize_field < 'de , D > (deserializer : D) -> Result < String , D :: Error > \
+        "pub fn deserialize_field < 'de , D > (deserializer : D) -> core :: result :: Result < String , D :: Error > \
          where D : serde :: Deserializer < 'de > , { use serde :: Deserialize ; \
          let s = String :: deserialize (deserializer) ? ; \
          validate_field_value (& s) . map_err (| violations : Vec < String > | serde :: de :: Error :: custom (violations . join (\"; \"))) ? ; Ok (s) }"
@@ -10107,7 +10108,7 @@ fn a_bare_field_deserializes_the_constrained_value_itself() {
     .to_string();
     assert!(
         numeric.ends_with(
-            "pub fn deserialize_field < 'de , D > (deserializer : D) -> Result < u32 , D :: Error > \
+            "pub fn deserialize_field < 'de , D > (deserializer : D) -> core :: result :: Result < u32 , D :: Error > \
              where D : serde :: Deserializer < 'de > , { use serde :: Deserialize ; \
              let v = u32 :: deserialize (deserializer) ? ; \
              validate_field_value (& v) . map_err (| violations : Vec < String > | serde :: de :: Error :: custom (violations . join (\"; \"))) ? ; Ok (v) }"
@@ -10289,10 +10290,10 @@ fn a_constrained_tuple_variant_yields_diagnostics_rather_than_helpers() {
 fn a_wrapped_field_deserializes_its_declared_type() {
     assert_eq!(
         emitted_string_deserializer("Option<String>"),
-        "pub fn deserialize_field < 'de , D > (deserializer : D) -> Result < Option < String > , D :: Error > \
+        "pub fn deserialize_field < 'de , D > (deserializer : D) -> core :: result :: Result < Option < String > , D :: Error > \
          where D : serde :: Deserializer < 'de > , \
-         { fn deserialize_validated < 'de , D , T , F > (deserializer : D , check : F) -> Result < T , D :: Error > \
-         where D : serde :: Deserializer < 'de > , T : serde :: Deserialize < 'de > , F : FnOnce (& T) -> Result < () , Vec < String >> , \
+         { fn deserialize_validated < 'de , D , T , F > (deserializer : D , check : F) -> core :: result :: Result < T , D :: Error > \
+         where D : serde :: Deserializer < 'de > , T : serde :: Deserialize < 'de > , F : FnOnce (& T) -> core :: result :: Result < () , Vec < String >> , \
          { use serde :: Deserialize ; let value = T :: deserialize (deserializer) ? ; \
          check (& value) . map_err (| violations : Vec < String > | serde :: de :: Error :: custom (violations . join (\"; \"))) ? ; Ok (value) } \
          deserialize_validated (deserializer , | value_0 : & Option < String > | \
@@ -10351,14 +10352,14 @@ fn the_wire_walk_is_the_validate_walk_shape_for_shape() {
 fn a_borrowed_field_type_carries_its_lifetime_into_the_hook() {
     assert!(
         emitted_string_deserializer("Cow<'a, str>").starts_with(
-            "pub fn deserialize_field < 'de , 'a , D > (deserializer : D) -> Result < Cow < 'a , str > , D :: Error >"
+            "pub fn deserialize_field < 'de , 'a , D > (deserializer : D) -> core :: result :: Result < Cow < 'a , str > , D :: Error >"
         ),
         "{}",
         emitted_string_deserializer("Cow<'a, str>")
     );
     assert!(
         emitted_string_deserializer("Cow<'static, str>").starts_with(
-            "pub fn deserialize_field < 'de , D > (deserializer : D) -> Result < Cow < 'static , str > , D :: Error >"
+            "pub fn deserialize_field < 'de , D > (deserializer : D) -> core :: result :: Result < Cow < 'static , str > , D :: Error >"
         ),
         "{}",
         emitted_string_deserializer("Cow<'static, str>")
@@ -10955,7 +10956,7 @@ fn a_path_is_checked_through_its_lossy_rendering() {
     let module = emitted_string_module("PathBuf");
     assert!(
         module.starts_with(
-            "pub fn validate_field_value (path : & std :: path :: Path) -> Result < () , Vec < String >> \
+            "pub fn validate_field_value (path : & std :: path :: Path) -> core :: result :: Result < () , Vec < String >> \
              { let rendered = path . to_string_lossy () ; let value : & str = & rendered ;"
         ),
         "got: {module}"
@@ -10973,7 +10974,7 @@ fn a_path_is_checked_through_its_lossy_rendering() {
 fn a_bare_path_field_deserializes_the_owned_path() {
     assert_eq!(
         emitted_string_deserializer("PathBuf"),
-        "pub fn deserialize_field < 'de , D > (deserializer : D) -> Result < std :: path :: PathBuf , D :: Error > \
+        "pub fn deserialize_field < 'de , D > (deserializer : D) -> core :: result :: Result < std :: path :: PathBuf , D :: Error > \
          where D : serde :: Deserializer < 'de > , { use serde :: Deserialize ; \
          let s = std :: path :: PathBuf :: deserialize (deserializer) ? ; \
          validate_field_value (& s) . map_err (| violations : Vec < String > | serde :: de :: Error :: custom (violations . join (\"; \"))) ? ; Ok (s) }"
@@ -10999,14 +11000,14 @@ fn a_wrapped_path_field_deserializes_its_declared_type() {
 fn a_trivial_pattern_is_emitted_as_the_call_it_says_the_same_thing_as() {
     assert_eq!(
         emitted_pattern_validator("^/"),
-        "pub fn validate_field_value (value : & str) -> Result < () , Vec < String >> \
+        "pub fn validate_field_value (value : & str) -> core :: result :: Result < () , Vec < String >> \
          { let mut errors : Vec < String > = Vec :: new () ; \
          if ! value . starts_with ('/') { \
          errors . push (format ! (\"'{}': {}\" , \"field\" , \"does not match pattern '^/'\")) ; } if errors . is_empty () { Ok (()) } else { Err (errors) } } "
     );
     assert_eq!(
         emitted_pattern_validator("^abc$"),
-        "pub fn validate_field_value (value : & str) -> Result < () , Vec < String >> \
+        "pub fn validate_field_value (value : & str) -> core :: result :: Result < () , Vec < String >> \
          { let mut errors : Vec < String > = Vec :: new () ; \
          if value != \"abc\" { \
          errors . push (format ! (\"'{}': {}\" , \"field\" , \"does not match pattern '^abc$'\")) ; } if errors . is_empty () { Ok (()) } else { Err (errors) } } "
@@ -11020,7 +11021,7 @@ fn a_trivial_pattern_is_emitted_as_the_call_it_says_the_same_thing_as() {
 fn a_pattern_of_any_real_shape_keeps_its_regex() {
     assert_eq!(
         emitted_pattern_validator("^[a-z]+$"),
-        "pub fn validate_field_value (value : & str) -> Result < () , Vec < String >> \
+        "pub fn validate_field_value (value : & str) -> core :: result :: Result < () , Vec < String >> \
          { let mut errors : Vec < String > = Vec :: new () ; \
          { use std :: sync :: LazyLock ; \
          static RE : LazyLock < regex :: Regex > = LazyLock :: new (|| { regex :: Regex :: new (\"^[a-z]+$\") . unwrap () }) ; \
@@ -11952,7 +11953,7 @@ fn seed_external_registration(item: &syn::ItemEnum) {
 fn the_empty_string_pattern_keeps_the_call_it_was_already_emitted_as() {
     assert_eq!(
         emitted_pattern_validator("^$"),
-        "pub fn validate_field_value (value : & str) -> Result < () , Vec < String >> \
+        "pub fn validate_field_value (value : & str) -> core :: result :: Result < () , Vec < String >> \
          { let mut errors : Vec < String > = Vec :: new () ; \
          if ! value . is_empty () { \
          errors . push (format ! (\"'{}': {}\" , \"field\" , \"does not match pattern '^$'\")) ; } if errors . is_empty () { Ok (()) } else { Err (errors) } } "
@@ -11967,7 +11968,7 @@ fn the_empty_string_pattern_keeps_the_call_it_was_already_emitted_as() {
 fn a_word_boundary_pattern_keeps_its_regex() {
     assert_eq!(
         emitted_pattern_validator(r"\b[0-9A-Za-z_]+"),
-        "pub fn validate_field_value (value : & str) -> Result < () , Vec < String >> \
+        "pub fn validate_field_value (value : & str) -> core :: result :: Result < () , Vec < String >> \
          { let mut errors : Vec < String > = Vec :: new () ; \
          { use std :: sync :: LazyLock ; \
          static RE : LazyLock < regex :: Regex > = LazyLock :: new (|| { regex :: Regex :: new (\"\\\\b[0-9A-Za-z_]+\") . unwrap () }) ; \

@@ -2167,8 +2167,8 @@ fn a_client_method_validates_before_it_reaches_the_transport() {
 fn the_transport_seam_gives_a_call_that_never_landed_somewhere_to_be_reported() {
     let client = published_macro(MIXED_SERVICE, "usage_service_amqp_rpc_client");
     for answered in [
-        "Output = Result < () , String >",
-        "Output = Result < (Vec < u8 > , Vec < (String , String) >) , String >",
+        "Output = :: core :: result :: Result < () , String >",
+        "Output = :: core :: result :: Result < (Vec < u8 > , Vec < (String , String) >) , String >",
     ] {
         assert!(
             client.contains(answered),
@@ -2573,7 +2573,9 @@ fn every_published_function_answering_a_result_says_under_errors_what_the_failur
         "usage_service_amqp_rpc_client",
     ] {
         for (docs, head) in published_functions(macro_rules_items(MIXED_SERVICE, half)) {
-            if !head.contains("-> Result <") && !head.contains("Output = Result <") {
+            if !head.contains("- > : : core : : result : : Result <")
+                && !head.contains("Output = : : core : : result : : Result <")
+            {
                 continue;
             }
             reached += 1;

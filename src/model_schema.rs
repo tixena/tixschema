@@ -1765,7 +1765,7 @@ fn build_struct_validate_method(
             /// Validates all constrained fields and returns all validation errors.
             ///
             /// Returns `Ok(())` if all constraints pass, or `Err(Vec<String>)` with all errors.
-            pub fn validate(&self) -> Result<(), Vec<String>> {
+            pub fn validate(&self) -> core::result::Result<(), Vec<String>> {
                 use #module_ident::*;
                 let mut errors: Vec<String> = Vec::new();
                 #(#validate_bodies)*
@@ -1858,7 +1858,7 @@ fn build_enum_validate_method(
             /// Validates all constrained fields and returns all validation errors.
             ///
             /// Returns `Ok(())` if all constraints pass, or `Err(Vec<String>)` with all errors.
-            pub fn validate(&self) -> Result<(), Vec<String>> {
+            pub fn validate(&self) -> core::result::Result<(), Vec<String>> {
                 use #module_ident::*;
                 let mut errors: Vec<String> = Vec::new();
                 match self {
@@ -4689,7 +4689,7 @@ fn unit_struct_serde_impls(item_struct: &mut syn::ItemStruct) -> proc_macro2::To
     let serialize_impl = writes.then(|| {
         quote! {
             impl ::serde::Serialize for #name {
-                fn serialize<S: ::serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                fn serialize<S: ::serde::Serializer>(&self, serializer: S) -> core::result::Result<S::Ok, S::Error> {
                     use ::serde::ser::SerializeStruct as _;
                     serializer.serialize_struct(#type_name, 0)?.end()
                 }
@@ -4701,7 +4701,7 @@ fn unit_struct_serde_impls(item_struct: &mut syn::ItemStruct) -> proc_macro2::To
         let expecting = format!("an empty object for `{type_name}`");
         quote! {
             impl<'de> ::serde::Deserialize<'de> for #name {
-                fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> core::result::Result<Self, D::Error> {
                     struct UnitStructVisitor;
                     impl<'de> ::serde::de::Visitor<'de> for UnitStructVisitor {
                         type Value = #name;
@@ -4711,7 +4711,7 @@ fn unit_struct_serde_impls(item_struct: &mut syn::ItemStruct) -> proc_macro2::To
                         fn visit_map<A: ::serde::de::MapAccess<'de>>(
                             self,
                             mut map: A,
-                        ) -> Result<Self::Value, A::Error> {
+                        ) -> core::result::Result<Self::Value, A::Error> {
                             while map.next_entry::<::serde::de::IgnoredAny, ::serde::de::IgnoredAny>()?.is_some() {}
                             Ok(#name)
                         }
@@ -5091,7 +5091,7 @@ fn build_branded_validation(
         }
 
         let validate_fn = quote! {
-            pub fn validate_value(#checked_param) -> Result<(), Vec<String>> {
+            pub fn validate_value(#checked_param) -> core::result::Result<(), Vec<String>> {
                 #rendering
                 let mut errors: Vec<String> = Vec::new();
                 #(#checks)*
@@ -5107,7 +5107,7 @@ fn build_branded_validation(
             quote! {
                 #type_identity
 
-                pub fn deserialize_value<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+                pub fn deserialize_value<'de, D, T>(deserializer: D) -> core::result::Result<T, D::Error>
                 where
                     D: serde::Deserializer<'de>,
                     T: serde::Deserialize<'de> + std::fmt::Display,
@@ -5122,7 +5122,7 @@ fn build_branded_validation(
             }
         } else {
             quote! {
-                pub fn deserialize_value<'de, D>(deserializer: D) -> Result<#inner_ty, D::Error>
+                pub fn deserialize_value<'de, D>(deserializer: D) -> core::result::Result<#inner_ty, D::Error>
                 where
                     D: serde::Deserializer<'de>,
                 {
@@ -5831,7 +5831,7 @@ fn build_branded_display_impl(
         .predicates
         .push(syn::parse_quote_spanned!(bound_span=> #inner_ty: std::fmt::Display));
     let (display_impl_generics, _, display_where_clause) = display_generics.split_for_impl();
-    let delegate = quote_spanned! {inner_field.ty.span()=> self.0.fmt(f) };
+    let delegate = quote_spanned! {inner_field.ty.span()=> std::fmt::Display::fmt(&self.0, f) };
     quote! {
         impl #display_impl_generics std::fmt::Display for #name #type_generics #display_where_clause {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -5872,7 +5872,7 @@ fn build_branded_display_tokens(
 
 /// Builds a static assertion that the branded newtype's inner type implements `Display`, spanned
 /// on the inner field so a violation surfaces as an `E0277` naming the trait at the field instead
-/// of the `E0599` raised by `self.0.fmt(f)` deep inside the generated impl.
+/// of one raised deep inside the generated impl.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn build_branded_display_assertion(
     inner_field: &Field,
@@ -6004,7 +6004,7 @@ fn inject_branded_serde_attrs(
         #deserialize_fn
     };
     let validate_method = quote! {
-        pub fn validate(&self) -> Result<(), Vec<String>> {
+        pub fn validate(&self) -> core::result::Result<(), Vec<String>> {
             let mut errors = Vec::new();
             if let Err(reported) = #module_ident::validate_value(#checked_inner) {
                 errors.extend(reported);
@@ -11335,7 +11335,7 @@ fn build_nested_validation(
 fn unpublished_validate_fallback() -> proc_macro2::TokenStream {
     quote! {
         trait UnpublishedValidate {
-            fn validate(&self) -> Result<(), Vec<String>> {
+            fn validate(&self) -> core::result::Result<(), Vec<String>> {
                 Ok(())
             }
         }
@@ -11463,17 +11463,17 @@ fn build_wrapped_deserializer(
     let walk = walk_wraps(wraps, &head, 1, &leaf);
     let refusal = refusal_from_violations();
     quote! {
-        pub fn #deserialize_fn_ident<'de, #(#lifetimes,)* D>(deserializer: D) -> Result<#field_ty, D::Error>
+        pub fn #deserialize_fn_ident<'de, #(#lifetimes,)* D>(deserializer: D) -> core::result::Result<#field_ty, D::Error>
         where
             D: serde::Deserializer<'de>,
         {
             // Nested so that each hook carries its own: a schema module holds one hook per
             // constrained field and a shared name would have to be emitted exactly once.
-            fn deserialize_validated<'de, D, T, F>(deserializer: D, check: F) -> Result<T, D::Error>
+            fn deserialize_validated<'de, D, T, F>(deserializer: D, check: F) -> core::result::Result<T, D::Error>
             where
                 D: serde::Deserializer<'de>,
                 T: serde::Deserialize<'de>,
-                F: FnOnce(&T) -> Result<(), Vec<String>>,
+                F: FnOnce(&T) -> core::result::Result<(), Vec<String>>,
             {
                 use serde::Deserialize;
                 let value = T::deserialize(deserializer)?;
@@ -11644,7 +11644,7 @@ fn generate_string_validation_code(
         };
         let refusal = refusal_from_violations();
         quote! {
-            pub fn #deserialize_fn_ident<'de, D>(deserializer: D) -> Result<#owned, D::Error>
+            pub fn #deserialize_fn_ident<'de, D>(deserializer: D) -> core::result::Result<#owned, D::Error>
             where
                 D: serde::Deserializer<'de>,
             {
@@ -11665,7 +11665,7 @@ fn generate_string_validation_code(
     };
 
     let module_items = quote! {
-        pub fn #validate_value_fn_ident(#checked_param) -> Result<(), Vec<String>> {
+        pub fn #validate_value_fn_ident(#checked_param) -> core::result::Result<(), Vec<String>> {
             #rendering
             let mut errors: Vec<String> = Vec::new();
             #(#checks)*
@@ -11738,7 +11738,7 @@ fn generate_numeric_validation_code(
     let deserializer = if wraps.is_empty() {
         let refusal = refusal_from_violations();
         quote! {
-            pub fn #deserialize_fn_ident<'de, D>(deserializer: D) -> Result<#rust_type_ident, D::Error>
+            pub fn #deserialize_fn_ident<'de, D>(deserializer: D) -> core::result::Result<#rust_type_ident, D::Error>
             where
                 D: serde::Deserializer<'de>,
             {
@@ -11759,7 +11759,7 @@ fn generate_numeric_validation_code(
     };
 
     let module_items = quote! {
-        pub fn #validate_value_fn_ident(value: &#rust_type_ident) -> Result<(), Vec<String>> {
+        pub fn #validate_value_fn_ident(value: &#rust_type_ident) -> core::result::Result<(), Vec<String>> {
             let mut errors: Vec<String> = Vec::new();
             #(#checks)*
             if errors.is_empty() { Ok(()) } else { Err(errors) }
@@ -12853,7 +12853,7 @@ fn build_named_read_hook(
     let recogniser = reports_a_bound_fn();
     let splitter = joined_violations_fn();
     quote! {
-        pub fn #hook_ident<'de, D>(deserializer: D) -> Result<#field_ty, D::Error>
+        pub fn #hook_ident<'de, D>(deserializer: D) -> core::result::Result<#field_ty, D::Error>
         where
             D: serde::Deserializer<'de>,
         {

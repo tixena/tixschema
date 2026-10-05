@@ -654,7 +654,7 @@ fn answered_envelope() -> TokenStream {
 
         impl<T, E> Answered<T, E> {
             /// The envelope around the outcome an implementation produced.
-            pub fn answering(outcome: Result<T, E>) -> Self {
+            pub fn answering(outcome: ::core::result::Result<T, E>) -> Self {
                 match outcome {
                     Ok(value) => Self {
                         error: None,
@@ -674,7 +674,7 @@ fn answered_envelope() -> TokenStream {
             /// The arm is the `ok` flag's, and what it carries is `None` where the envelope
             /// contradicted itself — `ok` with no value, a failure with no error. That is a defect
             /// on the wire, which the reader answers for rather than this.
-            pub fn carried(self) -> Result<Option<T>, Option<E>> {
+            pub fn carried(self) -> ::core::result::Result<Option<T>, Option<E>> {
                 if self.ok {
                     Ok(self.value)
                 } else {
@@ -683,7 +683,7 @@ fn answered_envelope() -> TokenStream {
             }
 
             /// What the envelope said, `ok` alone: `value` is never read, whatever it holds.
-            pub fn carried_unit(self) -> Result<(), Option<E>> {
+            pub fn carried_unit(self) -> ::core::result::Result<(), Option<E>> {
                 if self.ok { Ok(()) } else { Err(self.error) }
             }
         }
@@ -710,7 +710,7 @@ fn message_validation() -> TokenStream {
             /// declared none passes here.
             pub trait MessageValidation {
                 /// `Ok(())`, there being nothing declared to check.
-                fn validate(&self) -> Result<(), Vec<String>> {
+                fn validate(&self) -> ::core::result::Result<(), Vec<String>> {
                     Ok(())
                 }
             }
@@ -778,7 +778,7 @@ fn message_validators(service: &ServiceDef) -> TokenStream {
         let in_scope = message_validation_in_scope();
         quote! {
             #[doc = #doc]
-            pub fn #named(received: &#message) -> Result<(), Vec<String>> {
+            pub fn #named(received: &#message) -> ::core::result::Result<(), Vec<String>> {
                 #in_scope
                 received.validate()
             }

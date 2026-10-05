@@ -278,7 +278,7 @@ pub(super) fn answer_reader(service: &ServiceDef, generated: &Generated) -> Toke
             /// The three outcomes, read out of one envelope: the value, the error the operation
             /// declared, or a fault. An envelope that contradicts itself — `ok` with no value, or
             /// a failure with no error — is itself a defect and becomes a fault.
-            fn read_answer<S, E>(operation: &str, encoded: &[u8]) -> Result<S, #call_error<E>>
+            fn read_answer<S, E>(operation: &str, encoded: &[u8]) -> ::core::result::Result<S, #call_error<E>>
             where
                 S: ::serde::de::DeserializeOwned,
                 E: ::serde::de::DeserializeOwned,
@@ -318,7 +318,7 @@ pub(super) fn answer_reader(service: &ServiceDef, generated: &Generated) -> Toke
         quote! {
             /// The unit-success outcome, read out of one envelope: `ok` alone, the error the
             /// operation declared, or a fault. `value` is never read, whatever it holds.
-            fn read_unit_answer<E>(operation: &str, encoded: &[u8]) -> Result<(), #call_error<E>>
+            fn read_unit_answer<E>(operation: &str, encoded: &[u8]) -> ::core::result::Result<(), #call_error<E>>
             where
                 E: ::serde::de::DeserializeOwned,
             {
@@ -364,9 +364,9 @@ pub(super) fn answers(operation: &OperationDef, generated: &Generated) -> TokenS
         module: _module,
     } = generated;
     match &operation.outcome {
-        OperationOutcome::OneWay => quote! { Result<(), #fault> },
+        OperationOutcome::OneWay => quote! { ::core::result::Result<(), #fault> },
         OperationOutcome::Reply { error, success } => {
-            quote! { Result<#success, #call_error<#error>> }
+            quote! { ::core::result::Result<#success, #call_error<#error>> }
         }
     }
 }
@@ -727,7 +727,7 @@ fn consumer_loop(contract: &Ident) -> TokenStream {
             service: &S,
             prefetch: ::core::num::NonZeroU16,
             shutdown: F,
-        ) -> Result<Stopped, ::lapin::Error>
+        ) -> ::core::result::Result<Stopped, ::lapin::Error>
         where
             S: $crate::#contract<Context> + Sync,
             F: ::core::future::Future<Output = ()> + Send,
@@ -762,7 +762,7 @@ fn consumer_loop(contract: &Ident) -> TokenStream {
             channel: &::lapin::Channel,
             queue: &str,
             service: &S,
-            delivered: Result<::lapin::message::Delivery, ::lapin::Error>,
+            delivered: ::core::result::Result<::lapin::message::Delivery, ::lapin::Error>,
         ) where
             S: $crate::#contract<Context> + Sync,
         {
@@ -863,7 +863,7 @@ fn consumer_loop_helpers() -> TokenStream {
         async fn declare(
             channel: &::lapin::Channel,
             queue: &str,
-        ) -> Result<::lapin::Queue, ::lapin::Error> {
+        ) -> ::core::result::Result<::lapin::Queue, ::lapin::Error> {
             let mut arguments = ::lapin::types::FieldTable::default();
             arguments.insert(
                 ::lapin::types::ShortString::from("x-max-priority"),
@@ -1299,7 +1299,7 @@ pub(super) fn fault_mirror_readers(generated: &Generated) -> TokenStream {
 /// anything else surfaces as the decode failure a missing required header is.
 pub(super) fn header_decoder() -> TokenStream {
     quote! {
-        fn decoded_header<T>(headers: &[(String, String)], name: &str) -> Result<T, String>
+        fn decoded_header<T>(headers: &[(String, String)], name: &str) -> ::core::result::Result<T, String>
         where
             T: ::serde::de::DeserializeOwned,
         {
@@ -2017,7 +2017,7 @@ pub(super) fn panic_guard() -> TokenStream {
         /// delivery that is never settled, and a caller owed an answer either way. Under
         /// `panic = "abort"` nothing is caught and the process ends, that being the profile's
         /// decision rather than this one's.
-        async fn caught<Making, Running>(making: Making) -> Result<Running::Output, String>
+        async fn caught<Making, Running>(making: Making) -> ::core::result::Result<Running::Output, String>
         where
             Making: FnOnce() -> Running,
             Running: ::core::future::Future,
@@ -2464,7 +2464,7 @@ pub(super) fn transport_trait(contract: &Ident) -> TokenStream {
                 operation: &str,
                 payload: T,
                 headers: Vec<(String, String)>,
-            ) -> impl ::core::future::Future<Output = Result<(), String>> + Send
+            ) -> impl ::core::future::Future<Output = ::core::result::Result<(), String>> + Send
             where
                 T: ::serde::Serialize + Send;
 
@@ -2476,7 +2476,7 @@ pub(super) fn transport_trait(contract: &Ident) -> TokenStream {
                 operation: &str,
                 payload: T,
                 headers: Vec<(String, String)>,
-            ) -> impl ::core::future::Future<Output = Result<(Vec<u8>, Vec<(String, String)>), String>>
+            ) -> impl ::core::future::Future<Output = ::core::result::Result<(Vec<u8>, Vec<(String, String)>), String>>
             + Send
             where
                 T: ::serde::Serialize + Send;
