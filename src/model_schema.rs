@@ -10123,8 +10123,11 @@ fn sibling_json_schema_value(
     span: proc_macro2::Span,
 ) -> proc_macro2::TokenStream {
     let module_ident = sibling_schema_module_ident(name, span);
+    // Named where the run declares the two, not on the field's type: a type handed into a
+    // `macro_rules!` body carries its call site's hygiene, under which neither binding is found.
+    let run = quote! { in_flight, hoisted_defs };
     if arguments.is_empty() {
-        return quote_spanned! {span=> #module_ident::Schema::json_schema_within(in_flight, hoisted_defs) };
+        return quote_spanned! {span=> #module_ident::Schema::json_schema_within(#run) };
     }
     let documents = arguments
         .iter()
@@ -10139,7 +10142,7 @@ fn sibling_json_schema_value(
     quote_spanned! {span=>
         ({
             let arguments = [#(#documents),*];
-            #module_ident::Schema::json_schema_within_with(in_flight, hoisted_defs, &arguments)
+            #module_ident::Schema::json_schema_within_with(#run, &arguments)
         })
     }
 }
