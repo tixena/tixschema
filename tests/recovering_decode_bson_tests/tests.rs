@@ -324,6 +324,29 @@ struct Coded {
 #[serde(transparent)]
 struct Pinned(Version);
 
+/// A `transparent` struct with a named field over an id: serde writes it as the id it holds.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct Owner {
+    id: ObjectId,
+}
+
+/// A `transparent` struct with a named field over a model type.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct Current {
+    version: Version,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Assigned {
+    current: Current,
+    owner: Owner,
+}
+
 #[model_schema(decode_with)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Ping;
@@ -2019,6 +2042,134 @@ fn a_brand_over_a_model_type_hands_its_fields_walk_to_that_type() {
         Ping::decode_with_bson_fields(&held, &[], ping_schema::issue_from_parts, &mut unlisted);
     assert_eq!(keys, Vec::<&str>::new());
     assert_eq!(unlisted, Vec::new());
+}
+
+/// A `transparent` struct with a named field is the value its field holds, at the path the struct
+/// sits at: an id stored as text is `Mistyped` there, and over a model type the struct walks as
+/// that type. No key is looked up under the field's name.
+#[test]
+fn a_transparent_struct_with_a_named_field_is_walked_as_the_value_its_field_holds() {
+    let assigned = Assigned {
+        current: Current {
+            version: Version { number: 3 },
+        },
+        owner: Owner {
+            id: oid("6a7cc592ca0574e6efdfe217"),
+        },
+    };
+    assert_eq!(
+        written(&assigned),
+        doc! {
+            "current": { "number": 3_i32 },
+            "owner": oid("6a7cc592ca0574e6efdfe217"),
+        }
+    );
+    let mut calls = 0_u32;
+    let kept = Assigned::from_bson_with(written(&assigned), |_raw, _found| {
+        calls += 1;
+        assigned_schema::Verdict::Reject
+    });
+    assert_eq!(kept.as_ref(), Ok(&assigned));
+    assert_eq!(calls, 0);
+
+    let stored_row = doc! {
+        "current": { "number": "3", "draft": true },
+        "owner": "6a7cc592ca0574e6efdfe217",
+    };
+    let mut seen: Vec<Told> = Vec::new();
+    let read = Assigned::from_bson_with(stored_row, |raw, found| {
+        use assigned_schema::{Expected, Issue, Verdict};
+
+        seen = told!(assigned_schema, found);
+        for issue in found {
+            if let Issue::Mistyped {
+                path,
+                expected: Expected::ObjectId,
+                found: Bson::String(hex),
+            } = issue
+            {
+                path.set_in_document(raw, Bson::ObjectId(oid(hex)));
+            } else if let Issue::Invalid {
+                path,
+                expected: Expected::I32,
+                found: _found,
+                reason: _reason,
+            } = issue
+            {
+                path.set_in_document(raw, Bson::Int32(3));
+            } else if let Issue::Unknown {
+                path,
+                found: _found,
+            } = issue
+            {
+                path.remove_from_document(raw);
+            } else {
+                return Verdict::Reject;
+            }
+        }
+        Verdict::Fixed
+    });
+    assert_eq!(
+        seen,
+        [
+            invalid("current.number", "I32", string("3")),
+            unknown("current.draft", Bson::Boolean(true)),
+            mistyped("owner", "ObjectId", string("6a7cc592ca0574e6efdfe217")),
+        ]
+    );
+    assert_eq!(read, Ok(assigned));
+
+    let refused = Assigned::from_bson_with(
+        doc! { "current": "three", "owner": { "id": oid("6a7cc592ca0574e6efdfe217") } },
+        |_raw, _found| assigned_schema::Verdict::Reject,
+    );
+    assert_eq!(
+        told!(assigned_schema, refused.unwrap_err().issues),
+        [
+            invalid("current", "Model(\"Version\")", string("three")),
+            invalid(
+                "owner",
+                "ObjectId",
+                Bson::Document(doc! { "id": oid("6a7cc592ca0574e6efdfe217") })
+            ),
+        ]
+    );
+}
+
+/// Read from a document of its own, a `transparent` struct over a model type lists that type's
+/// issues at paths inside that type, and hands its fields walk to that type.
+#[test]
+fn a_transparent_struct_over_a_model_type_is_read_from_a_document_as_that_type() {
+    let mut calls = 0_u32;
+    let current = Current::from_bson_with(doc! { "number": 3_i32 }, |_raw, _found| {
+        calls += 1;
+        current_schema::Verdict::Reject
+    });
+    assert_eq!(
+        current,
+        Ok(Current {
+            version: Version { number: 3 }
+        })
+    );
+    assert_eq!(calls, 0);
+
+    let refused = Current::from_bson_with(doc! { "number": "3" }, |_raw, _found| {
+        current_schema::Verdict::Reject
+    });
+    assert_eq!(
+        told!(current_schema, refused.unwrap_err().issues),
+        [invalid("number", "I32", string("3"))]
+    );
+
+    let held = doc! { "legacy": true, "number": "3" };
+    let mut out: Vec<current_schema::Issue<Bson>> = Vec::new();
+    let declared =
+        Current::decode_with_bson_fields(&held, &[], current_schema::issue_from_parts, &mut out);
+    assert_eq!(declared, ["number"]);
+    assert_eq!(
+        told!(current_schema, out),
+        [invalid("number", "I32", string("3"))]
+    );
 }
 
 /// The brand is read with its own reader, so the check written on it runs and its message is the

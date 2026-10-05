@@ -141,7 +141,7 @@ const SLOT_PROP_KEYS: [&str; 9] = [
 /// One of each struct shape the flag is generated on beside a struct with named fields, each with
 /// the arguments it is declared under.
 #[cfg(feature = "serde")]
-const DECODE_WITH_STRUCT_SHAPES: [(&str, &str); 7] = [
+const DECODE_WITH_STRUCT_SHAPES: [(&str, &str); 10] = [
     ("decode_with", "pub struct DecodePair(pub String, pub u32);"),
     ("decode_with", "pub struct DecodeWrapper(pub String);"),
     (
@@ -160,6 +160,18 @@ const DECODE_WITH_STRUCT_SHAPES: [(&str, &str); 7] = [
     (
         "decode_with, default_types(T = String)",
         "#[serde(transparent)] pub struct DecodeWrapped<T>(pub T);",
+    ),
+    (
+        "decode_with",
+        "#[serde(transparent)] pub struct DecodeHolder { pub inner: String }",
+    ),
+    (
+        "decode_with",
+        "#[serde(transparent)] pub struct DecodeCurrent { pub inner: DecodeInner }",
+    ),
+    (
+        "decode_with, default_types(T = String)",
+        "#[serde(transparent)] pub struct DecodeSleeve<T> { pub inner: T }",
     ),
 ];
 
@@ -5901,22 +5913,40 @@ fn expansion_under(args: &str, source: &str) -> String {
     .to_string()
 }
 
-/// A shape the walker is not generated for yet is refused by its own name, and gets no method.
+/// serde writes a `#[serde(transparent)]` struct with a named field as the value of that field, so
+/// the walker reads that value at the path the struct sits at, and looks no key up.
+#[cfg(feature = "serde")]
 #[test]
-fn decode_with_is_refused_on_a_transparent_struct_with_a_named_field() {
+fn decode_with_walks_a_transparent_struct_with_a_named_field_as_the_value_of_its_field() {
     let expanded = expansion_under(
         "decode_with",
         "#[serde(transparent)] pub struct DecodeHolder { pub inner: String }",
     );
+    assert!(!expanded.contains("compile_error"), "got: {expanded}");
+    let (_, added) = expanded.split_once("pub fn from_value_with").unwrap();
+    // A build with `dart`, `swift` or `kotlin` on writes that surface's module after the `impl`.
+    let walker = added
+        .split_once("pub mod ")
+        .map_or(added, |(methods, _)| methods);
     assert!(
-        expanded.contains(
-            "`#[model_schema(decode_with)]` is not available on a `#[serde(transparent)]` struct \
-             with a named field yet: `from_value_with` and `from_bson_with` are generated on \
-             structs that are not transparent over a named field only."
+        walker.contains(
+            "{ out . extend (decode_holder_schema :: value_leaf (found , \
+             < Self as serde :: Deserialize > :: deserialize , \
+             | read | serde_json :: to_value (read) . ok () , path . to_vec () , \
+             & [(\"String\" , & [] , 0)] , issue)) ; }"
         ),
-        "got: {expanded}"
+        "got: {walker}"
     );
-    assert!(!expanded.contains("fn from_value_with"), "got: {expanded}");
+    for unwritten in ["decode_with_value_fields", "inner", "\"Missing\""] {
+        assert!(
+            !walker.contains(unwritten),
+            "found `{unwritten}`, got: {walker}"
+        );
+    }
+    assert_eq!(
+        expanded.matches("pub mod decode_holder_schema {").count(),
+        1
+    );
 }
 
 /// Every form serde writes an enum in carries the flag: none is refused, each gets the entry point
@@ -5993,8 +6023,9 @@ fn decode_with_reads_an_untagged_enums_constrained_member_through_its_hook() {
     assert_eq!(expanded.matches("pub mod decode_reach_schema {").count(), 1);
 }
 
-/// A tuple struct, a single-slot one with and without `transparent`, a unit struct and a generic
-/// type each carry the flag: none is refused, and each gets the entry point and its walker.
+/// A tuple struct, a single-slot one with and without `transparent`, a unit struct, a generic type
+/// and a `transparent` struct with a named field each carry the flag: none is refused, and each
+/// gets the entry point and its walker.
 #[cfg(feature = "serde")]
 #[test]
 fn decode_with_is_generated_on_every_struct_shape_serde_writes() {
@@ -6209,15 +6240,18 @@ fn decode_with_is_refused_for_good_on_a_field_that_borrows() {
     }
 }
 
-/// A borrowing field is refused whatever shape declares it, an enum's variant included, and ahead
-/// of the refusal of a shape the walker is not generated on yet.
+/// A borrowing field is refused whatever shape declares it, an enum's variant included.
 #[test]
-fn decode_with_is_refused_on_a_borrowing_field_ahead_of_the_shape_it_is_written_in() {
+fn decode_with_is_refused_on_a_borrowing_field_whatever_shape_declares_it() {
     for (source, field) in [
         ("pub struct DecodeLabelled(pub u32, pub &'static str);", "1"),
         (
             "#[serde(transparent)] pub struct DecodeLabelled(pub &'static str);",
             "0",
+        ),
+        (
+            "#[serde(transparent)] pub struct DecodeLabelled { pub label: &'static str }",
+            "label",
         ),
         (
             "pub enum DecodeLabelled { Named(&'static str), Unnamed }",
@@ -6234,7 +6268,7 @@ fn decode_with_is_refused_on_a_borrowing_field_ahead_of_the_shape_it_is_written_
             "for {source}, got: {expanded}"
         );
         assert!(
-            !expanded.contains("is not available on"),
+            !expanded.contains("fn from_value_with"),
             "for {source}, got: {expanded}"
         );
     }
@@ -6271,6 +6305,7 @@ fn an_item_without_decode_with_expands_as_it_did() {
         "pub struct DecodePlainLabel { pub label: &'static str }",
         "pub struct DecodePlainPair(pub String, pub u32);",
         "#[serde(transparent)] pub struct DecodePlainBrand(pub String);",
+        "#[serde(transparent)] pub struct DecodePlainHolder { pub inner: String }",
         "pub struct DecodePlainUnit;",
         "pub enum DecodePlainChoice { One, Two }",
         "pub enum DecodePlainOutline { Circle { radius: f64 }, Empty }",

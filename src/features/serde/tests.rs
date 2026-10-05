@@ -607,3 +607,44 @@ fn test_list_form_bound_earns_no_rename_refusal() {
     assert!(rename_direction_rejection(&item.attrs).is_none());
     assert!(rename_direction_rejection(field_attrs(&item)).is_none());
 }
+
+/// `transparent` is read wherever it is written among a container's serde attributes: a key with a
+/// value or a list written ahead of it does not end the walk.
+#[test]
+fn test_transparent_is_read_wherever_it_is_written() {
+    let written: [(syn::ItemStruct, bool); 6] = [
+        (
+            syn::parse_quote! { #[serde(transparent)] struct S { value: String } },
+            true,
+        ),
+        (
+            syn::parse_quote! { #[serde(rename = "s", transparent)] struct S { value: String } },
+            true,
+        ),
+        (
+            syn::parse_quote! {
+                #[serde(bound(deserialize = ""), transparent)] struct S { value: String }
+            },
+            true,
+        ),
+        (
+            syn::parse_quote! {
+                #[serde(rename = "s")] #[serde(transparent)] struct S { value: String }
+            },
+            true,
+        ),
+        (
+            syn::parse_quote! { #[serde(rename = "transparent")] struct S { value: String } },
+            false,
+        ),
+        (syn::parse_quote! { struct S { value: String } }, false),
+    ];
+    for (item, transparent) in written {
+        assert_eq!(
+            has_serde_transparent(&item.attrs),
+            transparent,
+            "for {}",
+            quote::quote!(#item)
+        );
+    }
+}

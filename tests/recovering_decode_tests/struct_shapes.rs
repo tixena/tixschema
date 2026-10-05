@@ -1,7 +1,10 @@
 //! `from_value_with` on the structs serde does not write as an object of their fields: a tuple
-//! struct, a single-slot one, a brand and a unit struct, and on a tuple wherever a field's type
-//! holds one. Each is walked in the form serde writes it.
+//! struct, a single-slot one, a brand, a `transparent` struct with a named field and a unit
+//! struct, and on a tuple wherever a field's type holds one. Each is walked in the form serde
+//! writes it.
 
+#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+use core::marker::PhantomData;
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 use std::collections::HashMap;
 
@@ -88,6 +91,73 @@ struct History(Vec<Version>);
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Latest(Option<Version>);
 
+/// A `transparent` struct with a named field: serde writes it as the text the field holds.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct Slug {
+    text: String,
+}
+
+/// A `transparent` struct with a named field over a model type.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct Current {
+    version: Version,
+}
+
+/// A `transparent` struct with a named field over a list of model types.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct Revisions {
+    versions: Vec<Version>,
+}
+
+/// A `transparent` struct beside whose field is one serde neither writes nor reads.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct Cached {
+    #[serde(skip)]
+    hits: u32,
+    text: String,
+}
+
+/// A `transparent` struct whose field is read and written through a hook: a number as text.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct Counted {
+    #[serde(with = "super::as_text")]
+    count: u32,
+}
+
+/// The fields serde's derive passes over without a `skip` when it picks the one a `transparent`
+/// struct is written as: one with a `default`, and a `PhantomData`, which no schema surface
+/// describes.
+#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct Etched {
+    #[serde(default, skip_serializing)]
+    hits: u32,
+    marker: PhantomData<u8>,
+    text: String,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Titled {
+    cached: Cached,
+    counted: Counted,
+    current: Current,
+    revisions: Revisions,
+    slug: Slug,
+}
+
 #[model_schema(decode_with)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Ping;
@@ -142,6 +212,25 @@ fn labelled() -> Labelled {
     }
 }
 
+fn titled() -> Titled {
+    Titled {
+        cached: Cached {
+            hits: 0,
+            text: "c".to_owned(),
+        },
+        counted: Counted { count: 5 },
+        current: Current {
+            version: Version { number: 1 },
+        },
+        revisions: Revisions {
+            versions: vec![Version { number: 2 }],
+        },
+        slug: Slug {
+            text: "s".to_owned(),
+        },
+    }
+}
+
 /// What `from_value_with` lists for `stored`, read as a `Pair` by a decider that rejects it.
 fn pair_issues(stored: Value) -> Vec<String> {
     let read = Pair::from_value_with(stored, |_raw, _found| pair_schema::Verdict::Reject);
@@ -151,6 +240,12 @@ fn pair_issues(stored: Value) -> Vec<String> {
 /// What `from_value_with` lists for `stored`, read as a `Labelled` by a decider that rejects it.
 fn labelled_issues(stored: Value) -> Vec<String> {
     let read = Labelled::from_value_with(stored, |_raw, _found| labelled_schema::Verdict::Reject);
+    lines(&read.unwrap_err())
+}
+
+/// What `from_value_with` lists for `stored`, read as a `Titled` by a decider that rejects it.
+fn titled_issues(stored: Value) -> Vec<String> {
+    let read = Titled::from_value_with(stored, |_raw, _found| titled_schema::Verdict::Reject);
     lines(&read.unwrap_err())
 }
 
@@ -511,6 +606,215 @@ fn a_single_slot_struct_over_a_model_type_hands_its_fields_walk_to_that_type() {
             ]
         );
     }
+}
+
+/// serde writes a `transparent` struct with a named field as the value of that field, with no key
+/// for it, and what it wrote is read back without the decider.
+#[test]
+fn what_serde_wrote_for_a_transparent_struct_is_read_and_the_decider_never_runs() {
+    let mut calls = 0_u32;
+    let slug = Slug {
+        text: "x".to_owned(),
+    };
+    let written = serde_json::to_value(&slug).unwrap();
+    assert_eq!(written, json!("x"));
+    let read = Slug::from_value_with(written, |_raw, _found| {
+        calls += 1;
+        slug_schema::Verdict::Reject
+    });
+    assert_eq!(read, Ok(slug));
+
+    let stored = serde_json::to_value(titled()).unwrap();
+    assert_eq!(
+        stored,
+        json!({
+            "cached": "c",
+            "counted": "5",
+            "current": { "number": 1_i32 },
+            "revisions": [{ "number": 2_i32 }],
+            "slug": "s",
+        })
+    );
+    let titled_read = Titled::from_value_with(stored, |_raw, _found| {
+        calls += 1;
+        titled_schema::Verdict::Reject
+    });
+    assert_eq!(titled_read, Ok(titled()));
+    assert_eq!(calls, 0);
+}
+
+/// A value serde refuses is one issue at the path the struct sits at, naming the type of its
+/// field. No key is looked up under the field's name: held as an object keyed by it, the value is
+/// one serde refuses whole.
+#[test]
+fn a_value_a_transparent_struct_refuses_is_one_issue_at_the_path_the_struct_sits_at() {
+    let read = Slug::from_value_with(json!(5_i32), |_raw, _found| slug_schema::Verdict::Reject);
+    assert_eq!(
+        lines(&read.unwrap_err()),
+        [
+            "the value itself: invalid: expected String, found Number(5): invalid type: integer `5`, expected a string"
+        ]
+    );
+
+    let mut stored = serde_json::to_value(titled()).unwrap();
+    stored["cached"] = json!({ "text": "c" });
+    stored["slug"] = json!(5_i32);
+    assert_eq!(
+        titled_issues(stored),
+        [
+            "cached: invalid: expected String, found Object {\"text\": String(\"c\")}: invalid type: map, expected a string",
+            "slug: invalid: expected String, found Number(5): invalid type: integer `5`, expected a string",
+        ]
+    );
+}
+
+/// The struct is read with its own reader, which runs the hook its field carries: the hook's
+/// refusal is the issue's, at the path the struct sits at.
+#[test]
+fn a_transparent_struct_whose_field_carries_a_hook_is_read_through_it() {
+    let read = Counted::from_value_with(json!("five"), |_raw, _found| {
+        counted_schema::Verdict::Reject
+    });
+    assert_eq!(
+        lines(&read.unwrap_err()),
+        [
+            "the value itself: invalid: expected U32, found String(\"five\"): invalid digit found in string"
+        ]
+    );
+    let mut stored = serde_json::to_value(titled()).unwrap();
+    stored["counted"] = json!(5_i32);
+    assert_eq!(
+        titled_issues(stored),
+        [
+            "counted: invalid: expected U32, found Number(5): invalid type: integer `5`, expected a string"
+        ]
+    );
+}
+
+/// Over a model type the struct is that type at the path it sits at, so an issue sits at a path
+/// inside that type and never under the field's name. Over a list of them it is walked as a field
+/// of that type is.
+#[test]
+fn a_transparent_struct_over_a_model_type_walks_as_that_type() {
+    let read = Current::from_value_with(json!({ "draft": true, "number": "3" }), |_raw, _found| {
+        current_schema::Verdict::Reject
+    });
+    assert_eq!(
+        lines(&read.unwrap_err()),
+        [
+            "number: invalid: expected I32, found String(\"3\"): invalid type: string \"3\", expected i32",
+            "draft: unknown: found Bool(true)",
+        ]
+    );
+
+    let mut stored = serde_json::to_value(titled()).unwrap();
+    stored["current"] = json!({ "number": "3" });
+    stored["revisions"] = json!([{ "number": 2_i32 }, { "number": "4" }]);
+    assert_eq!(
+        titled_issues(stored),
+        [
+            "current.number: invalid: expected I32, found String(\"3\"): invalid type: string \"3\", expected i32",
+            "revisions[1].number: invalid: expected I32, found String(\"4\"): invalid type: string \"4\", expected i32",
+        ]
+    );
+    let mut unlisted = serde_json::to_value(titled()).unwrap();
+    unlisted["current"] = json!("one");
+    unlisted["revisions"] = json!("none");
+    assert_eq!(
+        titled_issues(unlisted),
+        [
+            "current: invalid: expected Model(\"Version\"), found String(\"one\"): invalid type: string \"one\", expected struct Version",
+            "revisions: invalid: expected Array(Model(\"Version\")), found String(\"none\"): not an array",
+        ]
+    );
+}
+
+/// What a `transparent` struct over a model type lists inside an object the caller holds is what
+/// that type lists there, and the keys are that type's.
+#[test]
+fn a_transparent_struct_over_a_model_type_hands_its_fields_walk_to_that_type() {
+    let held = json!({ "legacy": true, "number": "3" });
+    let mut out: Vec<current_schema::Issue<Value>> = Vec::new();
+    let declared = Current::decode_with_value_fields(
+        held.as_object().unwrap(),
+        &[],
+        current_schema::issue_from_parts,
+        &mut out,
+    );
+    assert_eq!(declared, ["number"]);
+    assert_eq!(
+        lines(&current_schema::Unrecovered { issues: out }),
+        [
+            "number: invalid: expected I32, found String(\"3\"): invalid type: string \"3\", expected i32"
+        ]
+    );
+}
+
+#[test]
+fn a_decider_repairs_a_transparent_struct_at_the_path_it_is_handed() {
+    let mut stored = serde_json::to_value(titled()).unwrap();
+    stored["current"] = json!({ "number": "1" });
+    stored["slug"] = json!(5_i32);
+    let read = Titled::from_value_with(stored, |raw, found| {
+        for issue in found {
+            if let titled_schema::Issue::Invalid {
+                path,
+                expected,
+                found: _found,
+                reason: _reason,
+            } = issue
+            {
+                let fixed = if *expected == titled_schema::Expected::I32 {
+                    assert_eq!(path.to_string(), "current.number");
+                    json!(1_i32)
+                } else {
+                    assert_eq!(path.to_string(), "slug");
+                    json!("s")
+                };
+                path.set_in_value(raw, fixed);
+            } else {
+                return titled_schema::Verdict::Reject;
+            }
+        }
+        titled_schema::Verdict::Fixed
+    });
+    assert_eq!(read, Ok(titled()));
+}
+
+/// The field a `transparent` struct is walked as is the one serde's derive reads it as: neither
+/// the one with a `default` nor the `PhantomData`.
+#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[test]
+fn a_transparent_struct_is_walked_as_the_field_serde_reads_past_a_default_and_a_marker() {
+    let etched = Etched {
+        hits: 3,
+        marker: PhantomData,
+        text: "e".to_owned(),
+    };
+    assert_eq!(serde_json::to_value(&etched).unwrap(), json!("e"));
+    let mut calls = 0_u32;
+    let read = Etched::from_value_with(json!("e"), |_raw, _found| {
+        calls += 1;
+        etched_schema::Verdict::Reject
+    });
+    assert_eq!(
+        read,
+        Ok(Etched {
+            hits: 0,
+            marker: PhantomData,
+            text: "e".to_owned(),
+        })
+    );
+    assert_eq!(calls, 0);
+
+    let refused =
+        Etched::from_value_with(json!(7_i32), |_raw, _found| etched_schema::Verdict::Reject);
+    assert_eq!(
+        lines(&refused.unwrap_err()),
+        [
+            "the value itself: invalid: expected String, found Number(7): invalid type: integer `7`, expected a string"
+        ]
+    );
 }
 
 /// A unit struct is the `{}` tixschema makes it write: no key in it is the type's own.

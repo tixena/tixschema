@@ -221,6 +221,29 @@ pub fn has_serde_read_hook(attrs: &[Attribute]) -> bool {
     found
 }
 
+/// Whether the container is `#[serde(transparent)]`, wherever among its serde attributes the key
+/// is written.
+#[cfg(feature = "serde")]
+pub fn has_serde_transparent(attrs: &[Attribute]) -> bool {
+    let mut found = false;
+    for attr in attrs {
+        if !attr.path().is_ident("serde") {
+            continue;
+        }
+        attr.parse_nested_meta(|nested| {
+            if nested.path.is_ident("transparent") {
+                found = true;
+            }
+            consume_unread_value(&nested)?;
+            Ok(())
+        })
+        .unwrap_or_else(|e| {
+            log::trace!("Failed to parse serde transparent attribute: {e}");
+        });
+    }
+    found
+}
+
 /// Reads the `with`, `deserialize_with` and `serialize_with` a field carries, tixschema's own
 /// included: the attributes are read as serde's derive will read them.
 #[cfg(feature = "serde")]

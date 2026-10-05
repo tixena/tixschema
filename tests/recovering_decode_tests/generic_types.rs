@@ -33,6 +33,14 @@ struct Plain {
 #[serde(transparent)]
 struct Wrapped<T>(T);
 
+/// A generic `transparent` struct with a named field.
+#[model_schema(decode_with, default_types(T = String))]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct Sleeve<T> {
+    held: T,
+}
+
 #[model_schema(decode_with, default_types(A = String, B = i32))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Pairing<A, B> {
@@ -282,6 +290,25 @@ fn a_generic_brand_is_read_as_the_value_it_holds() {
             wrapped_schema::Verdict::Reject
         }),
         Ok(Wrapped(7))
+    );
+}
+
+#[test]
+fn a_generic_transparent_struct_with_a_named_field_is_read_as_the_value_it_holds() {
+    let read = Sleeve::<u32>::from_value_with(json!("seven"), |_raw, _found| {
+        sleeve_schema::Verdict::Reject
+    });
+    assert_eq!(
+        lines(&read.unwrap_err()),
+        [
+            "the value itself: invalid: expected TypeParam(\"T\"), found String(\"seven\"): invalid type: string \"seven\", expected u32"
+        ]
+    );
+    assert_eq!(
+        Sleeve::<u32>::from_value_with(json!(7_i32), |_raw, _found| {
+            sleeve_schema::Verdict::Reject
+        }),
+        Ok(Sleeve { held: 7 })
     );
 }
 

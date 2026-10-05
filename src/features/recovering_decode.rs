@@ -27,8 +27,8 @@ use syn::{
 
 use crate::features::serde::{
     NAMED_READ_HOOK_PREFIX, SerdeFieldHooks, has_serde_default, has_serde_read_hook,
-    parse_serde_field_attributes, parse_serde_field_hooks, parse_serde_key_omission,
-    parse_serde_type_attributes,
+    has_serde_transparent, parse_serde_field_attributes, parse_serde_field_hooks,
+    parse_serde_key_omission, parse_serde_type_attributes,
 };
 use crate::field_type::{
     FieldDefType, get_field_def, is_refused_sequence_wrapper, is_sequence_wrapper,
@@ -220,7 +220,7 @@ pub struct RecoveringDecode {
 enum Shape<'item> {
     /// An object of the fields, under the keys they declare.
     Fields(Keyed<'item>),
-    /// A single slot: the value it holds.
+    /// A single slot, or the one field of a `#[serde(transparent)]` struct: the value it holds.
     Held(Walk<'item>),
     /// No field: the `{}` tixschema makes a unit struct write, and nothing under a variant's name.
     Nothing,
@@ -233,6 +233,11 @@ impl<'item> Shape<'item> {
         let defaulted = has_serde_default(&item_struct.attrs);
         match &item_struct.fields {
             Fields::Named(named) => {
+                if has_serde_transparent(&item_struct.attrs)
+                    && let Some(only) = transparent_field(named)
+                {
+                    return Self::Held(held_walk(only, module_name, parameters));
+                }
                 let container = parse_serde_type_attributes(&item_struct.attrs);
                 let mut keyed = walked_fields(
                     named,
@@ -907,7 +912,8 @@ impl Walker<'_> {
         }
     }
 
-    /// The walker of a single-slot tuple struct, which serde writes as the value its slot holds.
+    /// The walker of a struct serde writes as the value its one slot holds: a single-slot tuple
+    /// struct, and a `#[serde(transparent)]` struct with a named field.
     fn held_methods(&self, walk: &Walk<'_>) -> TokenStream {
         let source = self.source;
         let found = Ident::new("found", Span::call_site());
@@ -1950,8 +1956,9 @@ fn held_in<'ty>(
     }
 }
 
-/// How the value a single-slot tuple struct holds is walked. A hook on the slot is one the type's
-/// own reader runs, so the slot is then one value whatever its type holds.
+/// How the value a single-slot tuple struct holds is walked, or the one a `#[serde(transparent)]`
+/// struct holds in its field. A hook on the slot is one the type's own reader runs, so the slot is
+/// then one value whatever its type holds.
 fn held_walk<'item>(slot: &'item Field, module_name: &str, parameters: &[String]) -> Walk<'item> {
     let hooks = parse_serde_field_hooks(&slot.attrs);
     if hooked_leaf(&slot.ty, &hooks, module_name, parameters).is_some() {
@@ -2414,6 +2421,26 @@ fn starts_at_a_parameter(type_path: &TypePath, parameters: &[String]) -> bool {
                 .iter()
                 .any(|parameter| segment.ident == parameter)
         })
+}
+
+/// The field serde's derive reads a `#[serde(transparent)]` struct as the value of: the one it
+/// reads that has no `default` and is not written `PhantomData`. `None` for any other count, which
+/// that derive refuses.
+fn transparent_field(named: &FieldsNamed) -> Option<&Field> {
+    let mut read = named.named.iter().filter(|field| {
+        let omission = parse_serde_key_omission(&field.attrs);
+        let marker = matches!(
+            written_type(&field.ty),
+            Type::Path(written)
+                if written.path.segments.last().is_some_and(|last| last.ident == "PhantomData")
+        );
+        !omission.skips_deserializing && !omission.defaulted && !marker
+    });
+    if let (Some(only), None) = (read.next(), read.next()) {
+        Some(only)
+    } else {
+        None
+    }
 }
 
 /// The types written between a path segment's angle brackets.

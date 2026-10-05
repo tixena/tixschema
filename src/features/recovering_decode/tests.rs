@@ -789,6 +789,91 @@ fn a_single_slot_struct_over_a_list_or_an_option_walks_what_it_holds() {
     );
 }
 
+/// serde writes a `#[serde(transparent)]` struct with a named field as it writes a single-slot
+/// tuple struct: the value held. Both get the same methods running the same walk, from every
+/// source, whatever the field holds.
+#[test]
+fn a_transparent_struct_with_a_named_field_is_walked_as_a_single_slot_struct_is() {
+    for (named, slot) in [
+        ("{ pub inner: String }", "(pub String);"),
+        ("{ pub inner: Inner }", "(pub Inner);"),
+        ("{ pub inner: Box<Inner> }", "(pub Box<Inner>);"),
+        ("{ pub inner: Vec<Inner> }", "(pub Vec<Inner>);"),
+        ("{ pub inner: Option<Inner> }", "(pub Option<Inner>);"),
+        ("{ pub inner: (String, u32) }", "(pub (String, u32));"),
+        (
+            "{ #[serde(with = \"as_text\")] pub inner: Vec<Inner> }",
+            "(#[serde(with = \"as_text\")] pub Vec<Inner>);",
+        ),
+        (
+            "{ #[serde(deserialize_with = \"code_schema::deserialize_named_inner\")] pub inner: Inner }",
+            "(pub Inner);",
+        ),
+    ] {
+        assert_eq!(
+            type_impl_of(&format!("#[serde(transparent)] pub struct Code {named}")),
+            type_impl_of(&format!("#[serde(transparent)] pub struct Code{slot}")),
+            "for {named}"
+        );
+    }
+    assert_eq!(
+        type_impl_of("#[serde(transparent)] pub struct Code<T> { pub inner: T }"),
+        type_impl_of("#[serde(transparent)] pub struct Code<T>(pub T);"),
+    );
+}
+
+/// A `#[serde(transparent)]` struct with a named field gets a fields walker only over a model
+/// type, whose own it hands the walk to. Over anything else it gets none.
+#[test]
+fn a_transparent_struct_with_a_named_field_gets_a_fields_walker_only_over_a_model_type() {
+    for (field, keyed) in [
+        ("String", false),
+        ("Vec<Inner>", false),
+        ("Option<Inner>", false),
+        ("Inner", true),
+    ] {
+        let mut named = methods_of("value", keyed);
+        if cfg!(feature = "bson") {
+            named.extend(methods_of("bson", keyed));
+        }
+        let source = format!("#[serde(transparent)] pub struct Code {{ pub inner: {field} }}");
+        assert_eq!(
+            added_impls(&source),
+            [("impl Code".to_owned(), named)],
+            "for {source}"
+        );
+    }
+}
+
+/// The field walked is the one serde's derive reads the struct as the value of: a field it never
+/// reads, one with a `default` and a `PhantomData` are passed over, and `transparent` is read
+/// wherever it is written. A struct that derive refuses is left to the walk of its keys.
+#[test]
+fn a_transparent_struct_is_walked_as_the_one_field_serde_reads_it_as() {
+    let alone = type_impl_of("#[serde(transparent)] pub struct Code { pub inner: Inner }");
+    for source in [
+        "#[serde(transparent)] pub struct Code { #[serde(skip)] pub cached: u8, pub inner: Inner }",
+        "#[serde(transparent)] pub struct Code { pub inner: Inner, #[serde(skip_deserializing)] pub seen: u8 }",
+        "#[serde(transparent)] pub struct Code { #[serde(default, skip_serializing)] pub hits: u8, pub inner: Inner }",
+        "#[serde(transparent)] pub struct Code { pub inner: Inner, pub marker: PhantomData<u8> }",
+        "#[serde(transparent)] pub struct Code { pub inner: Inner, pub marker: core::marker::PhantomData<u8> }",
+        "#[serde(rename = \"code\", transparent)] pub struct Code { pub inner: Inner }",
+        "#[serde(bound(deserialize = \"\"), transparent)] pub struct Code { pub inner: Inner }",
+    ] {
+        assert_eq!(type_impl_of(source), alone, "for {source}");
+    }
+    for refused in [
+        "#[serde(transparent)] pub struct Code { pub inner: Inner, pub other: Inner }",
+        "#[serde(transparent)] pub struct Code { #[serde(default)] pub inner: Inner }",
+    ] {
+        let walk = fields_walk_of(refused);
+        assert!(
+            walk.contains("object . get (\"inner\")"),
+            "for {refused}, got: {walk}"
+        );
+    }
+}
+
 /// A unit struct is the `{}` tixschema makes it write: every key is `Unknown`, and the fields
 /// walker reads none of what it is handed, so it binds none of it.
 #[test]

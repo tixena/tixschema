@@ -1207,7 +1207,7 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
         return output;
     }
     // `decode_with` generates methods on the type it is written on, so a shape that cannot carry
-    // them, or whose walker does not exist yet, is refused here rather than left with plain serde.
+    // them is refused here rather than left with plain serde.
     if let Some(output) = guard_failure_output(
         &item,
         item_schema_ident(&item),
@@ -2268,8 +2268,8 @@ fn published_name_collision_errors(
     vec![syn::Error::new_spanned(ident, message).to_compile_error()]
 }
 
-/// The `compile_error!` tokens `decode_with` earns where it cannot be written: for good on an alias
-/// and on a type that borrows, and until its walker is generated on every other shape named here.
+/// The `compile_error!` tokens `decode_with` earns where it cannot be written: on an alias, and on
+/// a type that borrows.
 fn decode_with_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2::TokenStream> {
     if !args.decode_with {
         return Vec::new();
@@ -2285,8 +2285,6 @@ fn decode_with_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_mac
             declared,
             reference,
         ))
-    } else if let Item::Struct(item_struct) = item {
-        decode_with_struct_refusal(item_struct)
     } else {
         None
     };
@@ -2294,35 +2292,6 @@ fn decode_with_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_mac
         .iter()
         .map(|rejection| attr_guard_error(rejection, &item_label(item)))
         .collect()
-}
-
-/// The shape of a struct `decode_with` is not generated on yet, spanned on what makes it that shape.
-fn decode_with_struct_refusal(item_struct: &syn::ItemStruct) -> Option<syn::Error> {
-    // serde writes it as the value of its one field, which the walk of an object's keys would
-    // report key by key.
-    (matches!(item_struct.fields, syn::Fields::Named(_))
-        && has_serde_transparent(&item_struct.attrs))
-    .then(|| {
-        decode_with_unavailable(
-            &item_struct.ident,
-            "a `#[serde(transparent)]` struct with a named field",
-            "structs that are not transparent over a named field",
-        )
-    })
-}
-
-fn decode_with_unavailable(
-    spanned: impl quote::ToTokens,
-    shape: &str,
-    generated_on: &str,
-) -> syn::Error {
-    syn::Error::new_spanned(
-        spanned,
-        format!(
-            "`#[model_schema(decode_with)]` is not available on {shape} yet: `from_value_with` and \
-             `from_bson_with` are generated on {generated_on} only."
-        ),
-    )
 }
 
 fn decode_with_alias_refusal(alias: &ItemType) -> syn::Error {
