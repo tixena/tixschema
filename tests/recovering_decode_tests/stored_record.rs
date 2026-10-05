@@ -38,6 +38,25 @@ struct CatalogByItem {
     tags: Vec<ObjectId>,
 }
 
+/// A brand over an id: serde writes it as the id it holds.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct OwnerId(ObjectId);
+
+/// A generic brand, which holds whatever fills its parameter.
+#[model_schema(decode_with, default_types(T = String))]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct Tagged<T>(T);
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Owned {
+    owner: OwnerId,
+    tagged: Tagged<ObjectId>,
+}
+
 fn record(numbers: &[i32]) -> Record {
     Record {
         created_at: DateTime::from_timestamp_millis(1_759_600_000_000).unwrap(),
@@ -385,6 +404,54 @@ fn a_list_or_map_field_held_as_something_else_is_one_issue_at_the_field() {
         [
             "owners: invalid: expected Map(ObjectId), found Array []: not an object",
             "tags: invalid: expected Array(ObjectId), found String(\"none\"): not an array",
+        ]
+    );
+}
+
+/// A brand is read as the one value it holds, so an id held as text under one is `Mistyped` at
+/// the brand's own path, expecting the id. Under a generic brand the id fills a parameter, and
+/// nothing of a parameter's type is written back from a JSON value to compare.
+#[test]
+fn an_id_held_as_text_under_a_brand_is_mistyped_at_the_brand() {
+    let stored = json!({
+        "owner": "6a7cc592ca0574e6efdfe217",
+        "tagged": "6a7cc592ca0574e6efdfe218",
+    });
+    let read = Owned::from_value_with(stored, |raw, found| {
+        let seen = lines(&owned_schema::Unrecovered {
+            issues: found.to_vec(),
+        });
+        assert_eq!(
+            seen,
+            ["owner: mistyped: expected ObjectId, found String(\"6a7cc592ca0574e6efdfe217\")"]
+        );
+        for issue in found {
+            if let owned_schema::Issue::Mistyped {
+                path,
+                expected: owned_schema::Expected::ObjectId,
+                found: Value::String(hex),
+            } = issue
+            {
+                path.set_in_value(raw, json!({ "$oid": hex }));
+            }
+        }
+        owned_schema::Verdict::Fixed
+    });
+    assert_eq!(
+        read,
+        Ok(Owned {
+            owner: OwnerId(ObjectId::parse_str("6a7cc592ca0574e6efdfe217").unwrap()),
+            tagged: Tagged(ObjectId::parse_str("6a7cc592ca0574e6efdfe218").unwrap()),
+        })
+    );
+
+    let alone = OwnerId::from_value_with(json!("not-an-id"), |_raw, _found| {
+        owner_id_schema::Verdict::Reject
+    });
+    assert_eq!(
+        lines(&alone.unwrap_err()),
+        [
+            "the value itself: invalid: expected ObjectId, found String(\"not-an-id\"): invalid value: string \"not-an-id\", expected 24-character, big-endian hex string"
         ]
     );
 }

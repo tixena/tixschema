@@ -1,5 +1,5 @@
-//! `#[model_schema(decode_with)]`: `from_bson_with` on structs with named fields, built against
-//! version 3 of the `bson` library.
+//! `#[model_schema(decode_with)]`: `from_bson_with` on structs, built against version 3 of the
+//! `bson` library.
 
 extern crate bson3 as bson;
 

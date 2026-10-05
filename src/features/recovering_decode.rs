@@ -1,20 +1,26 @@
 //! The recovering decode `#[model_schema(decode_with)]` turns on.
 //!
 //! A flagged struct gets `from_value_with`, which reads a `serde_json::Value` with plain serde,
-//! walks it, and hands every issue the walk finds to a callback once. A build with `bson` on adds
-//! `from_bson_with`, the same read of a `bson::Document`, written with what both major versions of
-//! the `bson` library have. The callback's types go into the type's own `{type}_schema` module. Two
-//! flagged types share no declaration: each module declares the same aliases of standard types, and
-//! a walker builds whatever issue type the constructor it is handed builds.
+//! walks it in the form serde writes that struct in, and hands every issue the walk finds to a
+//! callback once. A build with `bson` on adds `from_bson_with`, the same read of a
+//! `bson::Document`, written with what both major versions of the `bson` library have. The
+//! callback's types go into the type's own `{type}_schema` module. Two flagged types share no
+//! declaration: each module declares the same aliases of standard types, and a walker builds
+//! whatever issue type the constructor it is handed builds.
 
 use core::iter::once;
+use core::mem::take;
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use proc_macro2::{Group, Spacing, TokenTree};
 use proc_macro2::{Ident, Literal, Span, TokenStream};
 use quote::{format_ident, quote};
 use syn::ext::IdentExt as _;
-use syn::{Field, GenericArgument, ItemStruct, LitStr, PathArguments, Type, TypePath};
+use syn::punctuated::Punctuated;
+use syn::{
+    Field, Fields, GenericArgument, GenericParam, Generics, ItemStruct, LitStr, PathArguments,
+    PredicateType, Token, Type, TypeParamBound, TypePath, WherePredicate, parse_quote,
+};
 
 use crate::features::serde::{
     NAMED_READ_HOOK_PREFIX, SerdeFieldHooks, has_serde_default, has_serde_read_hook,
@@ -26,7 +32,7 @@ use crate::field_type::{
     is_transparent_wrapper,
 };
 use crate::rename_rule::resolve_rename_rule;
-use crate::utils::{ident_schema_module_name, written_type};
+use crate::utils::{ident_schema_module_name, type_parameters_in_scope, written_type};
 
 /// The type names the flag adds to a schema module.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
@@ -54,8 +60,78 @@ pub struct RecoveringDecode {
     /// The items added to the `{type}_schema` module a schema surface writes, or that module whole
     /// in a build where none writes one.
     pub schema_module: TokenStream,
-    /// The `impl` holding the entry point and the walker.
+    /// The `impl` holding the entry points and the walkers, or one per source on a type with a
+    /// type parameter.
     pub type_impl: TokenStream,
+}
+
+/// What a struct's walker walks: the form serde writes the struct in.
+enum Shape<'item> {
+    /// An object of the struct's fields, under the keys it declares.
+    Fields {
+        declared: Vec<String>,
+        fields: Vec<WalkedField<'item>>,
+    },
+    /// A single-slot tuple struct: the value its slot holds.
+    Held(Walk<'item>),
+    /// A unit struct: the `{}` tixschema makes it write.
+    Nothing,
+    /// A tuple struct: an array of its slots.
+    Slots(Vec<Slot<'item>>),
+}
+
+impl<'item> Shape<'item> {
+    fn of(item_struct: &'item ItemStruct, module_name: &str, parameters: &[String]) -> Self {
+        let defaulted = has_serde_default(&item_struct.attrs);
+        match &item_struct.fields {
+            Fields::Named(named) => {
+                let container = parse_serde_type_attributes(&item_struct.attrs);
+                let fields: Vec<WalkedField<'item>> = named
+                    .named
+                    .iter()
+                    .filter_map(|field| {
+                        walked_field(
+                            field,
+                            container.rename_all.as_deref(),
+                            defaulted,
+                            module_name,
+                            parameters,
+                        )
+                    })
+                    .collect();
+                let mut declared: Vec<String> = fields
+                    .iter()
+                    .flat_map(|field| once(&field.key).chain(&field.aliases))
+                    .cloned()
+                    .collect();
+                // serde writes a struct's `tag` as a key of the object and reads past it.
+                declared.extend(container.tag);
+                Self::Fields { declared, fields }
+            }
+            Fields::Unit => Self::Nothing,
+            Fields::Unnamed(slots) => {
+                let mut written = slots.unnamed.iter();
+                if let (Some(only), None) = (written.next(), written.next()) {
+                    return Self::Held(held_walk(only, module_name, parameters));
+                }
+                Self::Slots(
+                    slots
+                        .unnamed
+                        .iter()
+                        .filter_map(|slot| walked_slot(slot, defaulted, module_name, parameters))
+                        .collect(),
+                )
+            }
+        }
+    }
+}
+
+/// One position of a tuple as its walker reads it.
+struct Slot<'item> {
+    /// serde reads the tuple when the position is missing.
+    absence_is_read: bool,
+    ty: &'item Type,
+    walk: Walk<'item>,
 }
 
 /// What a value is read from. One walk serves every source: the types it names, the patterns it
@@ -75,6 +151,49 @@ impl Source {
         Self::Bson,
     ];
 
+    /// `generics` with what this source's walker reads and writes a value with joined to every type
+    /// parameter and to the type itself, which carries whatever more serde's derive asks of one. A
+    /// parameter stays bounded in one place: its `where` predicate if it has one, else its name.
+    fn bounded(self, generics: &Generics) -> Generics {
+        let bounds: Punctuated<TypeParamBound, Token![+]> = match self {
+            #[cfg(feature = "bson")]
+            Self::Bson => parse_quote!(serde::de::DeserializeOwned + serde::Serialize),
+            Self::Json => parse_quote!(serde::de::DeserializeOwned),
+        };
+        let mut bounded = generics.clone();
+        bounded
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(Self: #bounds));
+        let mut predicates: Vec<&mut PredicateType> = bounded
+            .where_clause
+            .iter_mut()
+            .flat_map(|clause| &mut clause.predicates)
+            .filter_map(|predicate| {
+                if let WherePredicate::Type(bounding) = predicate {
+                    Some(bounding)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for parameter in &mut bounded.params {
+            let GenericParam::Type(declared) = parameter else {
+                continue;
+            };
+            let bounding = predicates.iter_mut().find(|bounding| {
+                matches!(&bounding.bounded_ty, Type::Path(named) if named.path.is_ident(&declared.ident))
+            });
+            if let Some(in_where) = bounding {
+                in_where.bounds.extend(take(&mut declared.bounds));
+                in_where.bounds.extend(bounds.clone());
+            } else {
+                declared.bounds.extend(bounds.clone());
+            }
+        }
+        bounded
+    }
+
     /// The pattern a map is held under, binding its entries.
     fn entries(self, entries: &Ident) -> TokenStream {
         match self {
@@ -85,11 +204,21 @@ impl Source {
     }
 
     /// The entry point and the report it runs.
-    fn entry_methods(self, module: &Ident) -> TokenStream {
+    fn entry_methods(self, module: &Ident, decider: &Ident) -> TokenStream {
         match self {
             #[cfg(feature = "bson")]
-            Self::Bson => bson_entry_methods(module),
-            Self::Json => entry_methods(module),
+            Self::Bson => bson_entry_methods(module, decider),
+            Self::Json => entry_methods(module, decider),
+        }
+    }
+
+    /// Whether this source's walker is bound to write back a value of a parameter's type, and the
+    /// type itself where it has one: the BSON walker asks `Serialize` of both.
+    const fn is_bound_to_write(self) -> bool {
+        match self {
+            #[cfg(feature = "bson")]
+            Self::Bson => true,
+            Self::Json => false,
         }
     }
 
@@ -97,6 +226,15 @@ impl Source {
     fn items(self, items: &Ident) -> TokenStream {
         let value = self.value();
         quote! { #value::Array(#items) }
+    }
+
+    /// What binds `items` to the positions of `found`, when it holds an array.
+    fn items_of_found(self) -> TokenStream {
+        match self {
+            #[cfg(feature = "bson")]
+            Self::Bson => quote! { bson::Bson::Array(items) = found },
+            Self::Json => quote! { Some(items) = found.as_array() },
+        }
     }
 
     /// The function a plain value is read through.
@@ -168,6 +306,20 @@ impl Source {
             (Self::Json, None) => quote! { |#read| serde_json::to_value(read).ok() },
         }
     }
+
+    /// [`Self::write_back`], or the closure that writes nothing back for a value whose type names
+    /// one of the type's own parameters where this source's walker is not bound to write one.
+    fn written(
+        self,
+        parameterized: bool,
+        pinned: Option<&Type>,
+        through: Option<&TokenStream>,
+    ) -> TokenStream {
+        if !parameterized || self.is_bound_to_write() {
+            return self.write_back(pinned, through);
+        }
+        pinned.map_or_else(|| quote! { |_| None }, |ty| quote! { |_: &#ty| None })
+    }
 }
 
 /// How the value at one position of a field's type is walked.
@@ -180,6 +332,8 @@ enum Step<'ty> {
     Leaf(Whole),
     /// Another flagged type: its own walker.
     Model,
+    /// A tuple: each position at its index.
+    Positions(Vec<Slot<'ty>>),
     /// An optional value, walked when it is not `null`.
     Present(Box<Walk<'ty>>),
 }
@@ -190,6 +344,11 @@ struct Walk<'ty> {
 }
 
 impl Walk<'_> {
+    /// A value of a parameter's type, which is one value whatever holds it.
+    const fn is_of_a_parameter(&self) -> bool {
+        matches!(&self.step, Step::Leaf(whole) if whole.parameterized)
+    }
+
     const fn reads_whole(&self) -> bool {
         matches!(self.step, Step::Leaf(_))
     }
@@ -210,6 +369,9 @@ struct WalkedField<'item> {
 struct Whole {
     /// A hook of the field's reads the value.
     hooked: bool,
+    /// The value's type names one of the type's own parameters, which nothing shows to be
+    /// `Serialize` where the JSON walker reads it.
+    parameterized: bool,
     read: TokenStream,
     /// The function a hook writes the value to a serializer with, and `None` for the type's own
     /// `Serialize`.
@@ -218,8 +380,12 @@ struct Whole {
 
 /// What the generated code names of the type it is generated for, and the source it walks.
 struct Walker<'item> {
+    /// The type parameter each walker method builds its issues as.
+    issue_parameter: &'item Ident,
     module: &'item Ident,
     own_name: &'item str,
+    /// The type's own type parameters.
+    parameters: &'item [String],
     source: Source,
 }
 
@@ -283,12 +449,14 @@ impl Walker<'_> {
             }
             Step::Leaf(Whole {
                 hooked,
+                parameterized,
                 read,
                 write,
             }) => {
                 let expected = self.expected(walk.ty);
                 let leaf = source.leaf();
-                let written = source.write_back(hooked.then_some(walk.ty), write.as_ref());
+                let written =
+                    source.written(*parameterized, hooked.then_some(walk.ty), write.as_ref());
                 vec![Arm {
                     body: quote! {
                         out.extend(#module::#leaf(#held, #read, #written, #path, #expected, issue))
@@ -298,10 +466,23 @@ impl Walker<'_> {
                 }]
             }
             Step::Model => vec![Arm {
-                body: model_walker_call(source, walk.ty, held, &path),
+                body: model_walker_call(source, walk.ty, held, segments),
                 nothing: false,
                 pattern: quote! { #held },
             }],
+            Step::Positions(slots) => {
+                let items = binding("items", depth);
+                let positions = self.positions(slots, &items, segments, depth);
+                let expected = self.expected(reported);
+                vec![
+                    Arm {
+                        body: quote! {{ #positions }},
+                        nothing: false,
+                        pattern: source.items(&items),
+                    },
+                    not_the_shape(held, &path, &expected, "not an array"),
+                ]
+            }
             Step::Present(inner) => {
                 let mut arms = vec![Arm {
                     body: quote! { {} },
@@ -318,6 +499,7 @@ impl Walker<'_> {
     fn expected(&self, ty: &Type) -> TokenStream {
         let mut def = get_field_def("", ty, "");
         def.resolve_self_references(self.own_name, &[]);
+        def.erase_type_parameters(self.parameters);
         let members = def
             .expected_members()
             .into_iter()
@@ -392,16 +574,110 @@ impl Walker<'_> {
         }
     }
 
-    /// What lists the issues of a value held under `held`, one level under `depth`.
-    fn statement(
-        &self,
-        walk: &Walk<'_>,
-        held: &Ident,
-        segments: &[TokenStream],
-        depth: usize,
-    ) -> TokenStream {
-        let arms = self.arms(walk, held, segments, depth.saturating_add(1), walk.ty);
-        if let [only] = arms.as_slice() {
+    /// `decode_with_{source}_fields` running `body`. A parameter `body` does not read is bound as
+    /// `_`: the object, the path and the constructor together, and the list of issues on its own.
+    fn fields_method(&self, reads_object: bool, lists: bool, body: &TokenStream) -> TokenStream {
+        let (module, source, built) = (self.module, self.source, self.issue_parameter);
+        let (fields, value, object_type) =
+            (source.method("fields"), source.value(), source.object());
+        let bound = |name: &str, read: bool| {
+            if read {
+                let named = Ident::new(name, Span::call_site());
+                quote! { #named }
+            } else {
+                quote! { _ }
+            }
+        };
+        let (object, path, issue, out) = (
+            bound("object", reads_object),
+            bound("path", reads_object),
+            bound("issue", reads_object),
+            bound("out", lists),
+        );
+        quote! {
+            /// Lists every issue in this type's fields inside `object`, and returns the keys that are
+            /// its own.
+            pub fn #fields<'a, #built>(
+                #object: &'a #object_type,
+                #path: &[core::result::Result<String, usize>],
+                #issue: #module::IssueFromParts<#value, #built>,
+                #out: &mut Vec<#built>,
+            ) -> Vec<&'a str> {
+                #body
+            }
+        }
+    }
+
+    /// What binds the form `found` is walked in, as `held_as` binds it. A value held in any other
+    /// form is read whole with the type's own reader, so what is listed for it is serde's verdict.
+    fn held_as(&self, held_as: &TokenStream) -> TokenStream {
+        let (module, own_name, leaf) = (self.module, self.own_name, self.source.leaf());
+        let written = self.written_whole();
+        quote! {
+            let #held_as else {
+                out.extend(#module::#leaf(found, <Self as serde::Deserialize>::deserialize, #written, path.to_vec(), &[("Model", &[#own_name], 0)], issue));
+                return;
+            };
+        }
+    }
+
+    /// The walker of a single-slot tuple struct, which serde writes as the value its slot holds.
+    fn held_methods(&self, walk: &Walk<'_>) -> TokenStream {
+        let (module, source) = (self.module, self.source);
+        let found = Ident::new("found", Span::call_site());
+        match &walk.step {
+            Step::Entries(_) | Step::Items(_) | Step::Positions(_) | Step::Present(_) => self
+                .issues_method(&Self::listed(
+                    &found,
+                    &self.arms(walk, &found, &[], 0, walk.ty),
+                )),
+            // The type's own reader runs whatever hook its slot carries.
+            Step::Leaf(_) => {
+                let (leaf, written, expected) =
+                    (source.leaf(), self.written_whole(), self.expected(walk.ty));
+                self.issues_method(&quote! {
+                    out.extend(#module::#leaf(found, <Self as serde::Deserialize>::deserialize, #written, path.to_vec(), #expected, issue));
+                })
+            }
+            Step::Model => {
+                let (ty, issues, fields) =
+                    (walk.ty, source.method("issues"), source.method("fields"));
+                let walked = self.issues_method(&quote! {
+                    <#ty>::#issues(found, path, issue, out);
+                });
+                let keyed = self.fields_method(
+                    true,
+                    true,
+                    &quote! { <#ty>::#fields(object, path, issue, out) },
+                );
+                quote! {
+                    #walked
+                    #keyed
+                }
+            }
+        }
+    }
+
+    /// `decode_with_{source}_issues` running `body`.
+    fn issues_method(&self, body: &TokenStream) -> TokenStream {
+        let (module, source, built) = (self.module, self.source, self.issue_parameter);
+        let (issues, value) = (source.method("issues"), source.value());
+        quote! {
+            /// Lists every issue in `found`, read as this type at `path`.
+            pub fn #issues<#built>(
+                found: &#value,
+                path: &[core::result::Result<String, usize>],
+                issue: #module::IssueFromParts<#value, #built>,
+                out: &mut Vec<#built>,
+            ) {
+                #body
+            }
+        }
+    }
+
+    /// `arms` as the statement listing the issues of the value held under `held`.
+    fn listed(held: &Ident, arms: &[Arm]) -> TokenStream {
+        if let [only] = arms {
             let body = &only.body;
             return quote! { #body; };
         }
@@ -410,6 +686,180 @@ impl Walker<'_> {
             quote! { #pattern => #body, }
         });
         quote! { match #held { #(#listed)* } }
+    }
+
+    /// The methods one type's walker is called through by another's.
+    fn methods(&self, shape: &Shape<'_>) -> TokenStream {
+        match shape {
+            Shape::Fields { declared, fields } => {
+                let walks: Vec<TokenStream> =
+                    fields.iter().map(|field| self.field(field)).collect();
+                self.object_methods(&walks, declared)
+            }
+            Shape::Held(walk) => self.held_methods(walk),
+            Shape::Nothing => self.unit_methods(),
+            Shape::Slots(slots) => self.positional_methods(slots),
+        }
+    }
+
+    /// The walker of a struct serde writes as an object of its fields.
+    fn object_methods(&self, walks: &[TokenStream], declared: &[String]) -> TokenStream {
+        let source = self.source;
+        let fields = source.method("fields");
+        let held_as = self.held_as(&source.object_of_found());
+        let walked = self.issues_method(&quote! {
+            #held_as
+            let declared = Self::#fields(object, path, issue, out);
+            for (key, held) in object {
+                if !declared.contains(&key.as_str()) {
+                    out.push(issue("Unknown", [path, &[Ok(key.clone())]].concat(), &[], Some(held.clone()), None, Vec::new()));
+                }
+            }
+        });
+        // A type with no field to walk lists no issue of its own, so the `Vec` it is handed goes
+        // unbound.
+        let keyed = self.fields_method(
+            true,
+            !walks.iter().all(TokenStream::is_empty),
+            &quote! {
+                #(#walks)*
+                vec![#(#declared),*]
+            },
+        );
+        quote! {
+            #walked
+
+            #keyed
+        }
+    }
+
+    /// What lists the issues of the position `at` among `items`: its value walked when it is
+    /// there, and `Missing` when serde needs it.
+    fn position(
+        &self,
+        slot: &Slot<'_>,
+        items: &Ident,
+        at: usize,
+        segments: &[TokenStream],
+        depth: usize,
+    ) -> TokenStream {
+        let held = binding("held", depth);
+        let index = Literal::usize_unsuffixed(at);
+        let here = under(segments, &quote! { Err(#index) });
+        let lookup = if at == 0 {
+            quote! { #items.first() }
+        } else {
+            quote! { #items.get(#index) }
+        };
+        let arms = self.arms(
+            &slot.walk,
+            &held,
+            &here,
+            depth.saturating_add(1),
+            slot.walk.ty,
+        );
+        if slot.absence_is_read
+            && let [only] = arms.as_slice()
+        {
+            let (pattern, body) = (&only.pattern, &only.body);
+            return quote! {
+                if let Some(#pattern) = #lookup {
+                    #body;
+                }
+            };
+        }
+        // An absent position and a `null` are the same `None` to serde, so one arm answers both.
+        let merged = slot.absence_is_read && arms.first().is_some_and(|arm| arm.nothing);
+        let listed = arms.iter().skip(usize::from(merged)).map(|arm| {
+            let (pattern, body) = (&arm.pattern, &arm.body);
+            quote! { Some(#pattern) => #body, }
+        });
+        if merged {
+            let null = self.source.null();
+            return quote! { match #lookup { None | Some(#null) => {} #(#listed)* } };
+        }
+        let absent = if slot.absence_is_read {
+            quote! { None => {} }
+        } else {
+            let path = path_expression(&here);
+            let expected = self.expected(slot.ty);
+            quote! { None => out.push(issue("Missing", #path, #expected, None, None, Vec::new())), }
+        };
+        quote! { match #lookup { #(#listed)* #absent } }
+    }
+
+    /// The walker of a tuple struct, which serde writes as an array of its slots.
+    fn positional_methods(&self, slots: &[Slot<'_>]) -> TokenStream {
+        let held_as = self.held_as(&self.source.items_of_found());
+        let positions = self.positions(slots, &Ident::new("items", Span::call_site()), &[], 0);
+        self.issues_method(&quote! {
+            #held_as
+            #positions
+        })
+    }
+
+    /// What lists the issues of a tuple held as `items`: each position the tuple declares, then
+    /// every one it does not as `Unknown`.
+    fn positions(
+        &self,
+        slots: &[Slot<'_>],
+        items: &Ident,
+        segments: &[TokenStream],
+        depth: usize,
+    ) -> TokenStream {
+        let declared = slots
+            .iter()
+            .enumerate()
+            .map(|(at, slot)| self.position(slot, items, at, segments, depth));
+        let (index, held) = (binding("index", depth), binding("held", depth));
+        let here = path_expression(&under(segments, &quote! { Err(#index) }));
+        let undeclared = if slots.is_empty() {
+            quote! { #items.iter().enumerate() }
+        } else {
+            let count = Literal::usize_unsuffixed(slots.len());
+            quote! { #items.iter().enumerate().skip(#count) }
+        };
+        quote! {
+            #(#declared)*
+            for (#index, #held) in #undeclared {
+                out.push(issue("Unknown", #here, &[], Some(#held.clone()), None, Vec::new()));
+            }
+        }
+    }
+
+    /// What lists the issues of a value held under `held`, one level under `depth`.
+    fn statement(
+        &self,
+        walk: &Walk<'_>,
+        held: &Ident,
+        segments: &[TokenStream],
+        depth: usize,
+    ) -> TokenStream {
+        Self::listed(
+            held,
+            &self.arms(walk, held, segments, depth.saturating_add(1), walk.ty),
+        )
+    }
+
+    /// The walker of a unit struct: an object in which no key is the type's own.
+    fn unit_methods(&self) -> TokenStream {
+        let held_as = self.held_as(&self.source.object_of_found());
+        let walked = self.issues_method(&quote! {
+            #held_as
+            for (key, held) in object {
+                out.push(issue("Unknown", [path, &[Ok(key.clone())]].concat(), &[], Some(held.clone()), None, Vec::new()));
+            }
+        });
+        let keyed = self.fields_method(false, false, &quote! { Vec::new() });
+        quote! {
+            #walked
+            #keyed
+        }
+    }
+
+    /// The closure writing back the type's own whole value, read with its own reader.
+    fn written_whole(&self) -> TokenStream {
+        self.source.written(!self.parameters.is_empty(), None, None)
     }
 }
 
@@ -442,55 +892,37 @@ pub fn reading_the_authors_scope(tokens: TokenStream) -> TokenStream {
     scoped.into_iter().collect()
 }
 
-/// The recovering decode of a struct with named fields, read off the item as it is emitted, so a
-/// read hook tixschema hangs on a field is one the walker reads through.
+/// The recovering decode of a struct, read off the item as it is emitted, so a read hook tixschema
+/// hangs on a field is one the walker reads through.
 pub fn struct_recovering_decode(item_struct: &ItemStruct) -> RecoveringDecode {
     let own_name = item_struct.ident.to_string();
     let module_name = ident_schema_module_name(&own_name);
-    let container = parse_serde_type_attributes(&item_struct.attrs);
-    let defaulted = has_serde_default(&item_struct.attrs);
-    let fields: Vec<WalkedField<'_>> = item_struct
-        .fields
+    let parameters = type_parameters_in_scope(&item_struct.generics);
+    let shape = Shape::of(item_struct, &module_name, &parameters);
+    let module = Ident::new(&module_name, Span::call_site());
+    let decider = unclaimed_parameter("F", &item_struct.generics);
+    let issue_parameter = unclaimed_parameter("I", &item_struct.generics);
+    let methods: Vec<TokenStream> = Source::GENERATED
         .iter()
-        .filter_map(|field| {
-            walked_field(
-                field,
-                container.rename_all.as_deref(),
-                defaulted,
-                &module_name,
-            )
+        .map(|&source| {
+            let walker = Walker {
+                issue_parameter: &issue_parameter,
+                module: &module,
+                own_name: &own_name,
+                parameters: &parameters,
+                source,
+            };
+            let entry = source.entry_methods(&module, &decider);
+            let walk_methods = walker.methods(&shape);
+            quote! {
+                #entry
+                #walk_methods
+            }
         })
         .collect();
-    let module = Ident::new(&module_name, Span::call_site());
-    let mut declared: Vec<&str> = fields
-        .iter()
-        .flat_map(|field| once(&field.key).chain(&field.aliases))
-        .map(String::as_str)
-        .collect();
-    // serde writes a struct's `tag` as a key of the object and reads past it.
-    declared.extend(container.tag.as_deref());
-    let methods = Source::GENERATED.iter().map(|&source| {
-        let walker = Walker {
-            module: &module,
-            own_name: &own_name,
-            source,
-        };
-        let walks: Vec<TokenStream> = fields.iter().map(|field| walker.field(field)).collect();
-        let entry = source.entry_methods(&module);
-        let walk_methods = walker_methods(&walker, &walks, &declared);
-        quote! {
-            #entry
-            #walk_methods
-        }
-    });
-    let name = &item_struct.ident;
     RecoveringDecode {
         schema_module: placed_in_schema_module(&module, &module_items()),
-        type_impl: quote! {
-            impl #name {
-                #(#methods)*
-            }
-        },
+        type_impl: type_impls(item_struct, !parameters.is_empty(), &methods),
     }
 }
 
@@ -508,15 +940,15 @@ fn binding(stem: &str, depth: usize) -> Ident {
 /// `from_bson_with` and the report it runs. Every value is read through `bson::Deserializer::new`,
 /// which both major versions of the `bson` library have.
 #[cfg(feature = "bson")]
-fn bson_entry_methods(module: &Ident) -> TokenStream {
+fn bson_entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
     quote! {
         /// Reads `document` as this type, handing every issue found in it to `decide`, once.
-        pub fn from_bson_with<F>(
+        pub fn from_bson_with<#decider>(
             mut document: bson::Document,
-            decide: F,
+            decide: #decider,
         ) -> core::result::Result<Self, #module::Unrecovered<bson::Bson>>
         where
-            F: FnOnce(&mut bson::Document, &[#module::Issue<bson::Bson>]) -> #module::Verdict,
+            #decider: FnOnce(&mut bson::Document, &[#module::Issue<bson::Bson>]) -> #module::Verdict,
         {
             let found = match <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(bson::Bson::Document(document.clone()))) {
                 Ok(decoded) => {
@@ -786,15 +1218,15 @@ fn callback_items() -> TokenStream {
 }
 
 /// `from_value_with` and the report it runs.
-fn entry_methods(module: &Ident) -> TokenStream {
+fn entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
     quote! {
         /// Reads `value` as this type, handing every issue found in it to `decide`, once.
-        pub fn from_value_with<F>(
+        pub fn from_value_with<#decider>(
             mut value: serde_json::Value,
-            decide: F,
+            decide: #decider,
         ) -> core::result::Result<Self, #module::Unrecovered<serde_json::Value>>
         where
-            F: FnOnce(&mut serde_json::Value, &[#module::Issue<serde_json::Value>]) -> #module::Verdict,
+            #decider: FnOnce(&mut serde_json::Value, &[#module::Issue<serde_json::Value>]) -> #module::Verdict,
         {
             let found = match <Self as serde::Deserialize>::deserialize(&value) {
                 Ok(decoded) => {
@@ -947,9 +1379,43 @@ fn handoff_items() -> TokenStream {
     }
 }
 
+/// `inner` held in a list or a map written as `ty`. What holds a value of a parameter's type is
+/// read whole, as that value is.
+fn held_in<'ty>(
+    step: fn(Box<Walk<'ty>>) -> Step<'ty>,
+    inner: Walk<'ty>,
+    ty: &'ty Type,
+    parameters: &[String],
+) -> Walk<'ty> {
+    if inner.is_of_a_parameter() {
+        plain_value(ty, parameters)
+    } else {
+        Walk {
+            step: step(Box::new(inner)),
+            ty,
+        }
+    }
+}
+
+/// How the value a single-slot tuple struct holds is walked. A hook on the slot is one the type's
+/// own reader runs, so the slot is then one value whatever its type holds.
+fn held_walk<'item>(slot: &'item Field, module_name: &str, parameters: &[String]) -> Walk<'item> {
+    let hooks = parse_serde_field_hooks(&slot.attrs);
+    if hooked_leaf(&slot.ty, &hooks, module_name, parameters).is_some() {
+        plain_value(&slot.ty, parameters)
+    } else {
+        walk_of(&slot.ty, parameters)
+    }
+}
+
 /// The functions a field is read and written back through when its author's serde attributes
 /// name any, and `None` for a field its own type reads.
-fn hooked_leaf(ty: &Type, hooks: &SerdeFieldHooks, module_name: &str) -> Option<Step<'static>> {
+fn hooked_leaf(
+    ty: &Type,
+    hooks: &SerdeFieldHooks,
+    module_name: &str,
+    parameters: &[String],
+) -> Option<Step<'static>> {
     let generated = format!("{module_name}::{NAMED_READ_HOOK_PREFIX}");
     let named = |hook: Option<&LitStr>| {
         let path = hook.filter(|path| !path.value().starts_with(&generated))?;
@@ -980,6 +1446,7 @@ fn hooked_leaf(ty: &Type, hooks: &SerdeFieldHooks, module_name: &str) -> Option<
     );
     Some(Step::Leaf(Whole {
         hooked: true,
+        parameterized: names_a_parameter(ty, parameters),
         read,
         write,
     }))
@@ -992,6 +1459,22 @@ fn follows_a_path_separator(tokens: &[TokenTree]) -> bool {
         return false;
     };
     first.as_char() == ':' && first.spacing() == Spacing::Joint && second.as_char() == ':'
+}
+
+/// How the value of a field or a slot is walked: through its author's hooks, or by its type.
+fn member_walk<'item>(
+    member: &'item Field,
+    module_name: &str,
+    parameters: &[String],
+) -> Walk<'item> {
+    let hooks = parse_serde_field_hooks(&member.attrs);
+    hooked_leaf(&member.ty, &hooks, module_name, parameters).map_or_else(
+        || walk_of(&member.ty, parameters),
+        |step| Walk {
+            step,
+            ty: &member.ty,
+        },
+    )
 }
 
 /// Hands a value to the walker of the model type its field is declared as.
@@ -1059,8 +1542,60 @@ fn follows_a_path_separator(tokens: &[TokenTree]) -> bool {
 /// ```
 ///
 /// A build with `bson` on earns the same error a second time, naming `decode_with_bson_issues`.
-fn model_walker_call(source: Source, ty: &Type, held: &Ident, path: &TokenStream) -> TokenStream {
+///
+/// An alias is the type it stands for, so the call reaches whatever the alias names. A field typed
+/// with an alias of a flagged model type builds. One typed with an alias of a list does not, where
+/// the first example, which writes the list in full, does:
+///
+/// ```rust,compile_fail
+/// # extern crate bson2 as bson;
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema(decode_with)]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Version {
+///     pub number: i32,
+/// }
+///
+/// #[model_schema()]
+/// pub type Versions = Vec<Version>;
+///
+/// #[model_schema(decode_with)]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Stock {
+///     pub all: Versions,
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// Compiled standalone the same way, this is the only error it earned, verbatim but for a note
+/// listing the constructors `Vec` has, left out where the dots are:
+///
+/// ```text
+/// error[E0599]: no associated function or constant named `decode_with_value_issues` found for struct `Vec<Version>` in the current scope
+///    --> tests/zz_probe.rs:13:1
+///     |
+///  13 | #[model_schema(decode_with)]
+///     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ associated function or constant not found in `Vec<Version>`
+///     |
+/// ...
+///     = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
+fn model_walker_call(
+    source: Source,
+    ty: &Type,
+    held: &Ident,
+    segments: &[TokenStream],
+) -> TokenStream {
     let issues = source.method("issues");
+    if segments.is_empty() {
+        return quote! { <#ty>::#issues(#held, path, issue, out) };
+    }
+    let path = path_expression(segments);
     quote! { <#ty>::#issues(#held, &#path, issue, out) }
 }
 
@@ -1076,7 +1611,39 @@ fn module_items() -> TokenStream {
     }
 }
 
-/// The arm for a value that is neither the list nor the map its field is.
+/// Whether `ty` names one of the type's own `parameters`, or the type itself where it has any.
+fn names_a_parameter(ty: &Type, parameters: &[String]) -> bool {
+    if parameters.is_empty() {
+        return false;
+    }
+    let written = written_type(ty);
+    if let Type::Path(type_path) = written {
+        starts_at_a_parameter(type_path, parameters)
+            || type_path.path.is_ident("Self")
+            || type_path
+                .qself
+                .iter()
+                .any(|qself| names_a_parameter(&qself.ty, parameters))
+            || type_path.path.segments.iter().any(|segment| {
+                type_arguments(&segment.arguments).any(|inner| names_a_parameter(inner, parameters))
+            })
+    } else if let Type::Tuple(tuple) = written {
+        tuple
+            .elems
+            .iter()
+            .any(|position| names_a_parameter(position, parameters))
+    } else if let Type::Array(array) = written {
+        names_a_parameter(&array.elem, parameters)
+    } else if let Type::Slice(slice) = written {
+        names_a_parameter(&slice.elem, parameters)
+    } else if let Type::Paren(paren) = written {
+        names_a_parameter(&paren.elem, parameters)
+    } else {
+        false
+    }
+}
+
+/// The arm for a value that is not the list, the map or the tuple its type is.
 fn not_the_shape(held: &Ident, path: &TokenStream, expected: &TokenStream, reason: &str) -> Arm {
     Arm {
         body: quote! {
@@ -1109,6 +1676,9 @@ fn placed_in_schema_module(module: &Ident, items: &TokenStream) -> TokenStream {
 
 /// Where a value sits: the walker's own path with `segments` after it.
 fn path_expression(segments: &[TokenStream]) -> TokenStream {
+    if segments.is_empty() {
+        return quote! { path.to_vec() };
+    }
     quote! { [path, &[#(#segments),*]].concat() }
 }
 
@@ -1200,84 +1770,153 @@ fn path_items() -> TokenStream {
 
 /// The step a type written as a path takes: a container the walk goes into, another model type,
 /// or a plain value.
-fn path_step<'ty>(type_path: &'ty TypePath, ty: &'ty Type) -> Walk<'ty> {
+fn path_step<'ty>(type_path: &'ty TypePath, ty: &'ty Type, parameters: &[String]) -> Walk<'ty> {
     let Some(segment) = type_path.path.segments.last() else {
-        return plain_value(ty);
+        return plain_value(ty, parameters);
     };
     let name = segment.ident.to_string();
-    if let PathArguments::AngleBracketed(arguments) = &segment.arguments {
-        let mut held = arguments.args.iter().filter_map(|argument| {
-            if let GenericArgument::Type(inner) = argument {
-                Some(inner)
-            } else {
-                None
+    let mut held = type_arguments(&segment.arguments);
+    let (first, second) = (held.next(), held.next());
+    if name == "Option"
+        && let Some(inner) = first
+    {
+        let optional = walk_of(inner, parameters);
+        return if optional.reads_whole() {
+            plain_value(ty, parameters)
+        } else {
+            Walk {
+                step: Step::Present(Box::new(optional)),
+                ty,
             }
-        });
-        let (first, second) = (held.next(), held.next());
-        if name == "Option"
-            && let Some(inner) = first
-        {
-            let optional = walk_of(inner);
-            return if optional.reads_whole() {
-                plain_value(ty)
-            } else {
-                Walk {
-                    step: Step::Present(Box::new(optional)),
-                    ty,
-                }
-            };
-        }
-        if (is_sequence_wrapper(&name) || is_refused_sequence_wrapper(&name))
-            && let Some(inner) = first
-        {
-            return Walk {
-                step: Step::Items(Box::new(walk_of(inner))),
-                ty,
-            };
-        }
-        if matches!(name.as_str(), "BTreeMap" | "HashMap")
-            && let Some(inner) = second
-        {
-            return Walk {
-                step: Step::Entries(Box::new(walk_of(inner))),
-                ty,
-            };
-        }
-        // serde writes the wrapper as the value it holds, so what is walked is that value.
-        if is_transparent_wrapper(&name)
-            && let Some(inner) = first
-        {
-            let wrapped = walk_of(inner);
-            return if wrapped.reads_whole() {
-                plain_value(ty)
-            } else {
-                wrapped
-            };
-        }
+        };
     }
-    if matches!(
-        get_field_def("", ty, "").field_type,
-        FieldDefType::SiblingType(_, _)
-    ) {
+    if (is_sequence_wrapper(&name) || is_refused_sequence_wrapper(&name))
+        && let Some(inner) = first
+    {
+        return held_in(Step::Items, walk_of(inner, parameters), ty, parameters);
+    }
+    if matches!(name.as_str(), "BTreeMap" | "HashMap")
+        && let Some(inner) = second
+    {
+        return held_in(Step::Entries, walk_of(inner, parameters), ty, parameters);
+    }
+    // serde writes the wrapper as the value it holds, so what is walked is that value.
+    if is_transparent_wrapper(&name)
+        && let Some(inner) = first
+    {
+        let wrapped = walk_of(inner, parameters);
+        return if wrapped.reads_whole() {
+            plain_value(ty, parameters)
+        } else {
+            wrapped
+        };
+    }
+    if !starts_at_a_parameter(type_path, parameters)
+        && matches!(
+            get_field_def("", ty, "").field_type,
+            FieldDefType::SiblingType(_, _)
+        )
+    {
         Walk {
             step: Step::Model,
             ty,
         }
     } else {
-        plain_value(ty)
+        plain_value(ty, parameters)
     }
 }
 
 /// A value read whole with its type's own `Deserialize`, and written back with its `Serialize`.
-fn plain_value(ty: &Type) -> Walk<'_> {
+fn plain_value<'ty>(ty: &'ty Type, parameters: &[String]) -> Walk<'ty> {
     Walk {
         step: Step::Leaf(Whole {
             hooked: false,
+            parameterized: names_a_parameter(ty, parameters),
             read: own_reader(ty),
             write: None,
         }),
         ty,
     }
+}
+
+/// Whether a path names one of the type's own parameters outright, or a type projected from one.
+fn starts_at_a_parameter(type_path: &TypePath, parameters: &[String]) -> bool {
+    type_path.qself.is_none()
+        && type_path.path.segments.first().is_some_and(|segment| {
+            parameters
+                .iter()
+                .any(|parameter| segment.ident == parameter)
+        })
+}
+
+/// The types written between a path segment's angle brackets.
+fn type_arguments(arguments: &PathArguments) -> impl Iterator<Item = &Type> {
+    let angled = if let PathArguments::AngleBracketed(angled) = arguments {
+        Some(angled)
+    } else {
+        None
+    };
+    angled
+        .into_iter()
+        .flat_map(|written| &written.args)
+        .filter_map(|argument| {
+            if let GenericArgument::Type(inner) = argument {
+                Some(inner)
+            } else {
+                None
+            }
+        })
+}
+
+/// The `impl`s holding `methods`, which lists what each generated source adds. A type with a type
+/// parameter gets one `impl` per source, under the bounds that source reads and writes a value
+/// with, and every other type one `impl` for them all.
+fn type_impls(item_struct: &ItemStruct, generic: bool, methods: &[TokenStream]) -> TokenStream {
+    let name = &item_struct.ident;
+    if !generic {
+        let (impl_generics, type_generics, where_clause) = item_struct.generics.split_for_impl();
+        return quote! {
+            impl #impl_generics #name #type_generics #where_clause {
+                #(#methods)*
+            }
+        };
+    }
+    let impls = Source::GENERATED
+        .iter()
+        .zip(methods)
+        .map(|(source, of_source)| {
+            let bounded = source.bounded(&item_struct.generics);
+            let (impl_generics, type_generics, where_clause) = bounded.split_for_impl();
+            quote! {
+                impl #impl_generics #name #type_generics #where_clause {
+                    #of_source
+                }
+            }
+        });
+    quote! { #(#impls)* }
+}
+
+/// A name for a type parameter of a method's own: `base`, numbered where the type declares a
+/// parameter of that name, which the method's would otherwise be refused beside.
+fn unclaimed_parameter(base: &str, generics: &Generics) -> Ident {
+    let claimed = |name: &str| {
+        generics.params.iter().any(|parameter| {
+            if let GenericParam::Type(declared) = parameter {
+                declared.ident == name
+            } else if let GenericParam::Const(declared) = parameter {
+                declared.ident == name
+            } else {
+                false
+            }
+        })
+    };
+    let mut name = base.to_owned();
+    let mut number = 1_u32;
+    while claimed(&name) {
+        number += 1;
+        name = format!("{base}{number}");
+    }
+    Ident::new(&name, Span::call_site())
 }
 
 /// `segments` with one more after them.
@@ -1288,22 +1927,46 @@ fn under(segments: &[TokenStream], segment: &TokenStream) -> Vec<TokenStream> {
 }
 
 /// How a value of type `ty` is walked.
-fn walk_of(ty: &Type) -> Walk<'_> {
+fn walk_of<'ty>(ty: &'ty Type, parameters: &[String]) -> Walk<'ty> {
     let written = written_type(ty);
     if let Type::Array(array) = written {
-        Walk {
-            step: Step::Items(Box::new(walk_of(&array.elem))),
-            ty: written,
-        }
+        held_in(
+            Step::Items,
+            walk_of(&array.elem, parameters),
+            written,
+            parameters,
+        )
     } else if let Type::Slice(slice) = written {
-        Walk {
-            step: Step::Items(Box::new(walk_of(&slice.elem))),
-            ty: written,
+        held_in(
+            Step::Items,
+            walk_of(&slice.elem, parameters),
+            written,
+            parameters,
+        )
+    } else if let Type::Tuple(tuple) = written
+        && !tuple.elems.is_empty()
+    {
+        let slots: Vec<Slot<'ty>> = tuple
+            .elems
+            .iter()
+            .map(|position| Slot {
+                absence_is_read: false,
+                ty: position,
+                walk: walk_of(position, parameters),
+            })
+            .collect();
+        if slots.iter().any(|slot| slot.walk.is_of_a_parameter()) {
+            plain_value(written, parameters)
+        } else {
+            Walk {
+                step: Step::Positions(slots),
+                ty: written,
+            }
         }
     } else if let Type::Path(type_path) = written {
-        path_step(type_path, written)
+        path_step(type_path, written, parameters)
     } else {
-        plain_value(written)
+        plain_value(written, parameters)
     }
 }
 
@@ -1313,6 +1976,7 @@ fn walked_field<'item>(
     rename_all: Option<&str>,
     container_defaulted: bool,
     module_name: &str,
+    parameters: &[String],
 ) -> Option<WalkedField<'item>> {
     let ident = field.ident.as_ref()?;
     let omission = parse_serde_key_omission(&field.attrs);
@@ -1323,20 +1987,7 @@ fn walked_field<'item>(
     let key = meta.rename.unwrap_or_else(|| {
         resolve_rename_rule(rename_all).apply_to_field(&ident.unraw().to_string())
     });
-    let walk = (!omission.skips_deserializing).then(|| {
-        hooked_leaf(
-            &field.ty,
-            &parse_serde_field_hooks(&field.attrs),
-            module_name,
-        )
-        .map_or_else(
-            || walk_of(&field.ty),
-            |step| Walk {
-                step,
-                ty: &field.ty,
-            },
-        )
-    });
+    let walk = (!omission.skips_deserializing).then(|| member_walk(field, module_name, parameters));
     // With a read hook on the field, serde's derive no longer reads a missing key as `None`.
     let optional =
         !has_serde_read_hook(&field.attrs) && get_field_def("", &field.ty, "").is_optional();
@@ -1349,56 +2000,20 @@ fn walked_field<'item>(
     })
 }
 
-/// The two methods one type's walker is called through by another's.
-fn walker_methods(walker: &Walker<'_>, walks: &[TokenStream], declared: &[&str]) -> TokenStream {
-    let (module, own_name, source) = (walker.module, walker.own_name, walker.source);
-    let (issues, fields, leaf) = (
-        source.method("issues"),
-        source.method("fields"),
-        source.leaf(),
-    );
-    let (value, object, object_of_found) =
-        (source.value(), source.object(), source.object_of_found());
-    let written = source.write_back(None, None);
-    // A type with no field to walk lists no issue of its own, so the `Vec` it is handed goes
-    // unbound.
-    let out = if walks.iter().all(TokenStream::is_empty) {
-        quote! { _ }
-    } else {
-        quote! { out }
-    };
-    quote! {
-        /// Lists every issue in `found`, read as this type at `path`.
-        pub fn #issues<I>(
-            found: &#value,
-            path: &[core::result::Result<String, usize>],
-            issue: #module::IssueFromParts<#value, I>,
-            out: &mut Vec<I>,
-        ) {
-            let #object_of_found else {
-                out.extend(#module::#leaf(found, <Self as serde::Deserialize>::deserialize, #written, path.to_vec(), &[("Model", &[#own_name], 0)], issue));
-                return;
-            };
-            let declared = Self::#fields(object, path, issue, out);
-            for (key, held) in object {
-                if !declared.contains(&key.as_str()) {
-                    out.push(issue("Unknown", [path, &[Ok(key.clone())]].concat(), &[], Some(held.clone()), None, Vec::new()));
-                }
-            }
-        }
-
-        /// Lists every issue in this type's fields inside `object`, and returns the keys that are
-        /// its own.
-        pub fn #fields<'a, I>(
-            object: &'a #object,
-            path: &[core::result::Result<String, usize>],
-            issue: #module::IssueFromParts<#value, I>,
-            #out: &mut Vec<I>,
-        ) -> Vec<&'a str> {
-            #(#walks)*
-            vec![#(#declared),*]
-        }
-    }
+/// One slot of a tuple struct as the walker reads it, or `None` for a slot serde does not read:
+/// the array holds no position for it.
+fn walked_slot<'item>(
+    slot: &'item Field,
+    container_defaulted: bool,
+    module_name: &str,
+    parameters: &[String],
+) -> Option<Slot<'item>> {
+    let omission = parse_serde_key_omission(&slot.attrs);
+    (!omission.skips_deserializing).then(|| Slot {
+        absence_is_read: omission.defaulted || container_defaulted,
+        ty: &slot.ty,
+        walk: member_walk(slot, module_name, parameters),
+    })
 }
 
 #[cfg(test)]

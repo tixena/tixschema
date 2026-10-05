@@ -1,5 +1,4 @@
-//! `from_bson_with` on structs with named fields, held to what plain serde says of the same
-//! document. Two binaries compile this module, each with the name `bson` bound to one major
+//! `from_bson_with` on structs, held to what plain serde says of the same document. Two binaries compile this module, each with the name `bson` bound to one major
 //! version of the library, so every case runs against both.
 //!
 //! An issue is asserted by its kind, its path, its expected type and the value it holds. Its
@@ -234,6 +233,126 @@ impl<'de> Deserialize<'de> for Sealed {
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Envelope {
     sealed: Sealed,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Pair(String, u32);
+
+/// A tuple struct, and a tuple as a field and in a list.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Placement {
+    pair: Pair,
+    spot: (String, u32),
+    spots: Vec<(String, u32)>,
+}
+
+/// A brand over an id: serde writes it as the id it holds.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct OwnerId(ObjectId);
+
+/// A single-slot tuple struct with no `transparent`: serde writes it as a brand is written.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Wrapper(String);
+
+/// A brand whose own reader refuses text shorter than three characters. Only a schema surface
+/// hangs that check.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[model_schema(decode_with, minLength = 3)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct Code(String);
+
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Coded {
+    code: Code,
+}
+
+/// A brand over a model type.
+#[model_schema(decode_with, no_display)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct Pinned(Version);
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Ping;
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Labelled {
+    owner: OwnerId,
+    ping: Ping,
+    pinned: Pinned,
+    wrapper: Wrapper,
+}
+
+#[model_schema(decode_with, default_types(T = String))]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Page<T> {
+    items: Vec<T>,
+    total: u32,
+}
+
+/// A model type that carries no flag: it only ever fills a parameter.
+#[model_schema()]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Plain {
+    label: String,
+}
+
+/// A generic brand.
+#[model_schema(decode_with, default_types(T = String))]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct Tagged<T>(T);
+
+#[model_schema(decode_with, default_types(A = String, B = i32))]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Pairing<A, B> {
+    left: A,
+    right: B,
+}
+
+/// serde's derive asks `Default` of the parameter here, beyond `Deserialize`.
+#[model_schema(decode_with, default_types(T = String))]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Lenient<T> {
+    #[serde(default)]
+    extra: T,
+    total: u32,
+}
+
+/// Parameters named as the methods the flag adds name their own.
+#[model_schema(decode_with, default_types(I = String, F = String))]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Keyed<I, F> {
+    format: F,
+    id: I,
+}
+
+/// A type with no parameter, naming generic types filled with a model type and with an id.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Listing {
+    page: Page<Version>,
+    tagged: Tagged<ObjectId>,
+}
+
+#[model_schema()]
+type RecordAlias = Record;
+
+/// A field typed with an alias of a flagged model type.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Shelf {
+    featured: RecordAlias,
 }
 
 /// The read hook of [`Hooked::code`]: text that carries no lower-case letter.
@@ -1186,4 +1305,459 @@ fn unrecovered_is_an_error_a_caller_can_propagate() {
         "name: missing: expected String\nlegacyField: unknown: found Boolean(true)"
     );
     assert!(failure.source().is_none());
+}
+
+/// A tuple struct and a tuple are each the list serde writes them as, walked position by position.
+#[test]
+fn a_tuple_struct_and_a_tuple_are_walked_by_position() {
+    let placement = Placement {
+        pair: Pair("p".to_owned(), 3),
+        spot: ("s".to_owned(), 4),
+        spots: vec![("t".to_owned(), 5)],
+    };
+    let mut calls = 0_u32;
+    let read = Placement::from_bson_with(written(&placement), |_raw, _found| {
+        calls += 1;
+        placement_schema::Verdict::Reject
+    });
+    assert_eq!(read, Ok(placement));
+    assert_eq!(calls, 0);
+
+    let stored_row = doc! {
+        "pair": ["a", "x"],
+        "spot": [5_i32, 1_i32],
+        "spots": [["t", 5_i32], [6_i32, 7_i32]],
+    };
+    assert!(!serde_reads::<Placement>(&stored_row));
+    let listed =
+        Placement::from_bson_with(stored_row, |_raw, _found| placement_schema::Verdict::Reject);
+    assert_eq!(
+        told!(placement_schema, listed.unwrap_err().issues),
+        [
+            invalid("pair[1]", "U32", string("x")),
+            invalid("spot[0]", "String", Bson::Int32(5)),
+            invalid("spots[1][0]", "String", Bson::Int32(6)),
+        ]
+    );
+}
+
+#[test]
+fn a_position_that_is_absent_is_missing() {
+    let stored_row = doc! { "pair": ["a"], "spot": [], "spots": [["t"]] };
+    let read =
+        Placement::from_bson_with(stored_row, |_raw, _found| placement_schema::Verdict::Reject);
+    assert_eq!(
+        told!(placement_schema, read.unwrap_err().issues),
+        [
+            missing("pair[1]", "U32"),
+            missing("spot[0]", "String"),
+            missing("spot[1]", "U32"),
+            missing("spots[0][1]", "U32"),
+        ]
+    );
+}
+
+/// serde reads past a position the type does not declare in a BSON list, so the position is the
+/// only issue, and a decider that removes it repairs the row.
+#[test]
+fn a_position_the_type_does_not_declare_is_unknown_and_serde_reads_past_it() {
+    let stored_row = doc! { "pair": ["a", 1_i32, true], "spot": ["b", 2_i32], "spots": [] };
+    assert!(serde_reads::<Placement>(&stored_row));
+    let mut seen: Vec<Told> = Vec::new();
+    let read = Placement::from_bson_with(stored_row, |raw, found| {
+        seen = told!(placement_schema, found);
+        for issue in found {
+            if let placement_schema::Issue::Unknown {
+                path,
+                found: _found,
+            } = issue
+            {
+                path.remove_from_document(raw);
+            }
+        }
+        placement_schema::Verdict::Fixed
+    });
+    assert_eq!(seen, [unknown("pair[2]", Bson::Boolean(true))]);
+    assert_eq!(
+        read,
+        Ok(Placement {
+            pair: Pair("a".to_owned(), 1),
+            spot: ("b".to_owned(), 2),
+            spots: Vec::new(),
+        })
+    );
+}
+
+/// A tuple stored as no list is one issue at the field in this walker's own words, and a tuple
+/// struct stored as one is read whole with its own reader.
+#[test]
+fn a_tuple_and_a_tuple_struct_stored_as_no_list_are_listed_at_the_value() {
+    let stored_row = doc! { "pair": { "0": "a" }, "spot": "none", "spots": [7_i32] };
+    let read =
+        Placement::from_bson_with(stored_row, |_raw, _found| placement_schema::Verdict::Reject);
+    let issues = read.unwrap_err().issues;
+    assert_eq!(
+        told!(placement_schema, issues),
+        [
+            invalid("pair", "Model(\"Pair\")", Bson::Document(doc! { "0": "a" })),
+            invalid("spot", "Tuple([String, U32])", string("none")),
+            invalid("spots[0]", "Tuple([String, U32])", Bson::Int32(7)),
+        ]
+    );
+    assert_eq!(
+        reasons!(placement_schema, issues).get(1..),
+        Some(["not an array", "not an array"].as_slice())
+    );
+}
+
+/// A brand and a single-slot tuple struct are each read as the one value they hold, a brand over
+/// a model type walks as that type, and a unit struct is a document in which no key is its own.
+#[test]
+fn a_brand_a_single_slot_struct_and_a_unit_struct_are_walked_as_serde_writes_them() {
+    let labelled = Labelled {
+        owner: OwnerId(oid("6a7cc592ca0574e6efdfe217")),
+        ping: Ping,
+        pinned: Pinned(Version { number: 3 }),
+        wrapper: Wrapper("w".to_owned()),
+    };
+    assert_eq!(
+        written(&labelled),
+        doc! {
+            "owner": oid("6a7cc592ca0574e6efdfe217"),
+            "ping": {},
+            "pinned": { "number": 3_i32 },
+            "wrapper": "w",
+        }
+    );
+    let stored_row = doc! {
+        "owner": "6a7cc592ca0574e6efdfe217",
+        "ping": { "x": 1_i32 },
+        "pinned": { "number": "3", "draft": true },
+        "wrapper": 5_i32,
+    };
+    let mut seen: Vec<Told> = Vec::new();
+    let read = Labelled::from_bson_with(stored_row, |raw, found| {
+        use labelled_schema::{Expected, Issue, Verdict};
+
+        seen = told!(labelled_schema, found);
+        for issue in found {
+            if let Issue::Mistyped {
+                path,
+                expected: Expected::ObjectId,
+                found: Bson::String(hex),
+            } = issue
+            {
+                path.set_in_document(raw, Bson::ObjectId(oid(hex)));
+            } else if let Issue::Invalid {
+                path,
+                expected,
+                found: _found,
+                reason: _reason,
+            } = issue
+            {
+                let fixed = if *expected == Expected::I32 {
+                    Bson::Int32(3)
+                } else {
+                    string("w")
+                };
+                path.set_in_document(raw, fixed);
+            } else if let Issue::Unknown {
+                path,
+                found: _found,
+            } = issue
+            {
+                path.remove_from_document(raw);
+            } else {
+                return Verdict::Reject;
+            }
+        }
+        Verdict::Fixed
+    });
+    assert_eq!(
+        seen,
+        [
+            mistyped("owner", "ObjectId", string("6a7cc592ca0574e6efdfe217")),
+            unknown("ping.x", Bson::Int32(1)),
+            invalid("pinned.number", "I32", string("3")),
+            unknown("pinned.draft", Bson::Boolean(true)),
+            invalid("wrapper", "String", Bson::Int32(5)),
+        ]
+    );
+    assert_eq!(read, Ok(labelled));
+}
+
+/// A unit struct and a brand over a model type read a document of their own, and a unit struct
+/// stored as text is read whole with its own reader.
+#[test]
+fn a_unit_struct_and_a_brand_over_a_model_type_are_read_from_a_document() {
+    let mut calls = 0_u32;
+    let ping = Ping::from_bson_with(Document::new(), |_raw, _found| {
+        calls += 1;
+        ping_schema::Verdict::Reject
+    });
+    assert_eq!(ping, Ok(Ping));
+    let pinned = Pinned::from_bson_with(doc! { "number": 3_i32 }, |_raw, _found| {
+        calls += 1;
+        pinned_schema::Verdict::Reject
+    });
+    assert_eq!(pinned, Ok(Pinned(Version { number: 3 })));
+    assert_eq!(calls, 0);
+
+    let keyed = Ping::from_bson_with(doc! { "x": 1_i32 }, |_raw, _found| {
+        ping_schema::Verdict::Reject
+    });
+    assert_eq!(
+        told!(ping_schema, keyed.unwrap_err().issues),
+        [unknown("x", Bson::Int32(1))]
+    );
+    let stored_row = doc! {
+        "owner": oid("6a7cc592ca0574e6efdfe217"),
+        "ping": "ping",
+        "pinned": "three",
+        "wrapper": "w",
+    };
+    let read =
+        Labelled::from_bson_with(stored_row, |_raw, _found| labelled_schema::Verdict::Reject);
+    assert_eq!(
+        told!(labelled_schema, read.unwrap_err().issues),
+        [
+            invalid("ping", "Model(\"Ping\")", string("ping")),
+            invalid("pinned", "Model(\"Version\")", string("three")),
+        ]
+    );
+}
+
+/// What a brand over a model type lists inside a document the caller holds is what that type
+/// lists there, under that type's keys, and a unit struct lists nothing and has no key.
+#[test]
+fn a_brand_over_a_model_type_hands_its_fields_walk_to_that_type() {
+    let held = doc! { "legacy": true, "number": "3" };
+    let mut out: Vec<pinned_schema::Issue<Bson>> = Vec::new();
+    let declared =
+        Pinned::decode_with_bson_fields(&held, &[], pinned_schema::issue_from_parts, &mut out);
+    assert_eq!(declared, ["number"]);
+    assert_eq!(
+        told!(pinned_schema, out),
+        [invalid("number", "I32", string("3"))]
+    );
+
+    let mut unlisted: Vec<ping_schema::Issue<Bson>> = Vec::new();
+    let keys =
+        Ping::decode_with_bson_fields(&held, &[], ping_schema::issue_from_parts, &mut unlisted);
+    assert_eq!(keys, Vec::<&str>::new());
+    assert_eq!(unlisted, Vec::new());
+}
+
+/// The brand is read with its own reader, so the check written on it runs and its message is the
+/// issue's.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn a_constrained_brand_is_refused_with_its_own_message() {
+    let read = Coded::from_bson_with(doc! { "code": "ab" }, |_raw, _found| {
+        coded_schema::Verdict::Reject
+    });
+    let issues = read.unwrap_err().issues;
+    assert_eq!(
+        told!(coded_schema, issues),
+        [invalid("code", "String", string("ab"))]
+    );
+    let reasons = reasons!(coded_schema, issues);
+    assert!(
+        reasons
+            .iter()
+            .all(|reason| reason.contains("too short: minimum length is 3, got 2")),
+        "got: {reasons:?}"
+    );
+    assert_eq!(
+        Coded::from_bson_with(doc! { "code": "abc" }, |_raw, _found| {
+            coded_schema::Verdict::Reject
+        }),
+        Ok(Coded {
+            code: Code("abc".to_owned())
+        })
+    );
+}
+
+/// An issue inside what fills the parameter is one issue at the field, with no path into the
+/// item, and a model type filling the parameter needs no flag.
+#[test]
+fn a_value_of_a_parameters_type_is_read_whole_at_its_field() {
+    let items = vec![
+        Bson::Document(doc! { "number": 1_i32 }),
+        Bson::Document(doc! { "number": "2" }),
+    ];
+    let stored_row = doc! { "items": items.clone(), "total": "two" };
+    let read =
+        Page::<Version>::from_bson_with(stored_row, |_raw, _found| page_schema::Verdict::Reject);
+    assert_eq!(
+        told!(page_schema, read.unwrap_err().issues),
+        [
+            invalid("items", "Array(TypeParam(\"T\"))", Bson::Array(items)),
+            invalid("total", "U32", string("two")),
+        ]
+    );
+
+    let page = Page {
+        items: vec![Plain {
+            label: "a".to_owned(),
+        }],
+        total: 1,
+    };
+    let mut calls = 0_u32;
+    let unflagged = Page::<Plain>::from_bson_with(written(&page), |_raw, _found| {
+        calls += 1;
+        page_schema::Verdict::Reject
+    });
+    assert_eq!(unflagged, Ok(page));
+    assert_eq!(calls, 0);
+}
+
+/// A BSON walker is bound to write a parameter's value back, so an id filling one and stored as
+/// text is `Mistyped`, as it is under a brand that names the id outright.
+#[test]
+fn a_value_of_a_parameters_type_stored_as_another_type_is_mistyped() {
+    let stored_row = doc! { "left": "6a7cc592ca0574e6efdfe217", "right": 2_i64 };
+    assert!(serde_reads::<Pairing<ObjectId, i32>>(&stored_row));
+    let mut seen: Vec<Told> = Vec::new();
+    let read = Pairing::<ObjectId, i32>::from_bson_with(stored_row, |raw, found| {
+        seen = told!(pairing_schema, found);
+        for issue in found {
+            if let pairing_schema::Issue::Mistyped {
+                path,
+                expected: _expected,
+                found: Bson::String(hex),
+            } = issue
+            {
+                path.set_in_document(raw, Bson::ObjectId(oid(hex)));
+            }
+        }
+        pairing_schema::Verdict::Fixed
+    });
+    assert_eq!(
+        seen,
+        [mistyped(
+            "left",
+            "TypeParam(\"A\")",
+            string("6a7cc592ca0574e6efdfe217")
+        )]
+    );
+    assert_eq!(
+        read,
+        Ok(Pairing {
+            left: oid("6a7cc592ca0574e6efdfe217"),
+            right: 2_i32,
+        })
+    );
+}
+
+/// What the derive asks of the parameter beyond `Deserialize` is carried by the bound on the type
+/// itself, so the methods are there wherever serde reads and writes the type.
+#[test]
+fn a_generic_struct_with_a_defaulted_field_of_the_parameters_type_builds_and_reads() {
+    let mut calls = 0_u32;
+    let read = Lenient::<String>::from_bson_with(doc! { "total": 1_i32 }, |_raw, _found| {
+        calls += 1;
+        lenient_schema::Verdict::Reject
+    });
+    assert_eq!(
+        read,
+        Ok(Lenient {
+            extra: String::new(),
+            total: 1,
+        })
+    );
+    assert_eq!(calls, 0);
+
+    let refused = Lenient::<String>::from_bson_with(
+        doc! { "extra": 7_i32, "total": 1_i32 },
+        |_raw, _found| lenient_schema::Verdict::Reject,
+    );
+    assert_eq!(
+        told!(lenient_schema, refused.unwrap_err().issues),
+        [invalid("extra", "TypeParam(\"T\")", Bson::Int32(7))]
+    );
+}
+
+/// A generic flagged type reached through a field is walked by its own walker at the field's
+/// path, and a generic brand is read as the value it holds.
+#[test]
+fn a_generic_type_reached_through_a_field_is_walked_at_the_fields_path() {
+    let listing = Listing {
+        page: Page {
+            items: vec![Version { number: 1 }],
+            total: 1,
+        },
+        tagged: Tagged(oid("6a7cc592ca0574e6efdfe217")),
+    };
+    let mut calls = 0_u32;
+    let read = Listing::from_bson_with(written(&listing), |_raw, _found| {
+        calls += 1;
+        listing_schema::Verdict::Reject
+    });
+    assert_eq!(read, Ok(listing));
+    assert_eq!(calls, 0);
+
+    let items = vec![Bson::Document(doc! { "number": "1" })];
+    let stored_row = doc! {
+        "page": { "draft": true, "items": items.clone(), "total": "one" },
+        "tagged": "6a7cc592ca0574e6efdfe217",
+    };
+    let listed =
+        Listing::from_bson_with(stored_row, |_raw, _found| listing_schema::Verdict::Reject);
+    assert_eq!(
+        told!(listing_schema, listed.unwrap_err().issues),
+        [
+            invalid("page.items", "Array(TypeParam(\"T\"))", Bson::Array(items)),
+            invalid("page.total", "U32", string("one")),
+            unknown("page.draft", Bson::Boolean(true)),
+            mistyped(
+                "tagged",
+                "TypeParam(\"T\")",
+                string("6a7cc592ca0574e6efdfe217")
+            ),
+        ]
+    );
+}
+
+/// An alias of a flagged model type is that type, so the field is walked into.
+#[test]
+fn a_field_typed_with_an_alias_of_a_model_type_is_walked_through_the_alias() {
+    let mut featured = plain_row();
+    featured.insert("name", 7_i32);
+    featured.insert("versions", vec![doc! { "number": "1" }]);
+    let read = Shelf::from_bson_with(doc! { "featured": featured }, |_raw, _found| {
+        shelf_schema::Verdict::Reject
+    });
+    assert_eq!(
+        told!(shelf_schema, read.unwrap_err().issues),
+        [
+            invalid("featured.name", "String", Bson::Int32(7)),
+            invalid("featured.versions[0].number", "I32", string("1")),
+        ]
+    );
+    let absent = Shelf::from_bson_with(Document::new(), |_raw, _found| {
+        shelf_schema::Verdict::Reject
+    });
+    assert_eq!(
+        told!(shelf_schema, absent.unwrap_err().issues),
+        [missing("featured", "Model(\"RecordAlias\")")]
+    );
+}
+
+/// The methods are generic over a decider and an issue type of their own, which take other names
+/// where the type's parameters are called what they would be.
+#[test]
+fn a_type_whose_parameters_are_named_as_the_methods_own_builds_and_reads() {
+    let stored_row = doc! { "format": "csv", "id": "6a7cc592ca0574e6efdfe217" };
+    let read = Keyed::<ObjectId, String>::from_bson_with(stored_row, |_raw, _found| {
+        keyed_schema::Verdict::Reject
+    });
+    assert_eq!(
+        told!(keyed_schema, read.unwrap_err().issues),
+        [mistyped(
+            "id",
+            "TypeParam(\"I\")",
+            string("6a7cc592ca0574e6efdfe217")
+        )]
+    );
 }

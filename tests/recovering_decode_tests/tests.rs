@@ -29,9 +29,11 @@ mod as_text {
         serializer.collect_str(value)
     }
 }
+mod generic_types;
 mod shadowing;
 #[cfg(all(feature = "chrono", feature = "mongodb"))]
 mod stored_record;
+mod struct_shapes;
 
 use alloc::borrow::Cow;
 use core::error::Error;
@@ -93,13 +95,6 @@ struct AliasedParts {
     latest: Option<Version>,
     #[serde(alias = "tagList")]
     tags: Vec<String>,
-}
-
-/// A tuple, which this walker reads as one value.
-#[model_schema(decode_with)]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Placed {
-    spot: (String, u32),
 }
 
 /// Every way serde reads a field whose key is not there.
@@ -626,29 +621,6 @@ fn a_list_and_a_model_type_stored_under_an_alias_are_walked_at_the_alias() {
     assert_eq!(
         lines(&absent.unwrap_err()),
         ["tags: missing: expected Array(String)"]
-    );
-}
-
-/// A tuple field is read whole with its own reader, so an issue inside it sits at the field.
-#[test]
-fn a_tuple_field_is_read_as_one_value() {
-    let read = Placed::from_value_with(json!({ "spot": ["a", "x"] }), |_raw, _found| {
-        placed_schema::Verdict::Reject
-    });
-    assert_eq!(
-        lines(&read.unwrap_err()),
-        [
-            "spot: invalid: expected Tuple([String, U32]), found Array [String(\"a\"), String(\"x\")]: invalid type: string \"x\", expected u32"
-        ]
-    );
-    let placed = Placed::from_value_with(json!({ "spot": ["a", 7_i32] }), |_raw, _found| {
-        placed_schema::Verdict::Reject
-    });
-    assert_eq!(
-        placed,
-        Ok(Placed {
-            spot: ("a".to_owned(), 7)
-        })
     );
 }
 

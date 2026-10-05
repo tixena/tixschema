@@ -1,4 +1,4 @@
-//! `#[model_schema(decode_with)]`: `from_value_with` on structs with named fields.
+//! `#[model_schema(decode_with)]`: `from_value_with` on structs.
 
 extern crate alloc;
 // With `bson` on, what a flagged type expands to names the `bson` library.

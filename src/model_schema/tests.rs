@@ -138,6 +138,31 @@ const SLOT_PROP_KEYS: [&str; 9] = [
     "bogus_key = 3",
 ];
 
+/// One of each struct shape the flag is generated on beside a struct with named fields, each with
+/// the arguments it is declared under.
+#[cfg(feature = "serde")]
+const DECODE_WITH_STRUCT_SHAPES: [(&str, &str); 7] = [
+    ("decode_with", "pub struct DecodePair(pub String, pub u32);"),
+    ("decode_with", "pub struct DecodeWrapper(pub String);"),
+    (
+        "decode_with",
+        "#[serde(transparent)] pub struct DecodeBrand(pub String);",
+    ),
+    (
+        "decode_with, no_display",
+        "#[serde(transparent)] pub struct DecodePinned(pub DecodeInner);",
+    ),
+    ("decode_with", "pub struct DecodeUnit;"),
+    (
+        "decode_with, default_types(T = String)",
+        "pub struct DecodePage<T> { pub items: Vec<T>, pub total: u32 }",
+    ),
+    (
+        "decode_with, default_types(T = String)",
+        "#[serde(transparent)] pub struct DecodeWrapped<T>(pub T);",
+    ),
+];
+
 /// What an enum declaring neither container-level casing rule hands its variant walk.
 const UNCASED: EnumCasing<'static> = EnumCasing {
     variant_fields: None,
@@ -5786,46 +5811,15 @@ fn expansion_under(args: &str, source: &str) -> String {
 /// Each shape the walker is not generated for yet is refused by its own name, and gets no method.
 #[test]
 fn decode_with_is_refused_on_every_shape_it_is_not_generated_on_yet() {
-    const NAMED_FIELDS: &str = "structs with named fields";
-    for (args, source, shape, generated_on) in [
+    for (source, shape, generated_on) in [
+        ("pub enum DecodeChoice { One, Two }", "an enum", "structs"),
         (
-            "decode_with",
-            "pub struct DecodePair(pub String, pub u32);",
-            "a tuple struct",
-            NAMED_FIELDS,
-        ),
-        (
-            "decode_with",
-            "#[serde(transparent)] pub struct DecodeBrand(pub String);",
-            "a brand",
-            NAMED_FIELDS,
-        ),
-        (
-            "decode_with",
-            "pub struct DecodeUnit;",
-            "a unit struct",
-            NAMED_FIELDS,
-        ),
-        (
-            "decode_with",
-            "pub enum DecodeChoice { One, Two }",
-            "an enum",
-            NAMED_FIELDS,
-        ),
-        (
-            "decode_with, default_types(T = String)",
-            "pub struct DecodePage<T> { pub items: Vec<T> }",
-            "a generic type",
-            "types with no type parameter",
-        ),
-        (
-            "decode_with",
             "#[serde(transparent)] pub struct DecodeHolder { pub inner: String }",
             "a `#[serde(transparent)]` struct with a named field",
-            "structs serde writes as an object of their fields",
+            "structs that are not transparent over a named field",
         ),
     ] {
-        let expanded = expansion_under(args, source);
+        let expanded = expansion_under("decode_with", source);
         let refusal = format!(
             "`#[model_schema(decode_with)]` is not available on {shape} yet: `from_value_with` \
              and `from_bson_with` are generated on {generated_on} only."
@@ -5836,6 +5830,104 @@ fn decode_with_is_refused_on_every_shape_it_is_not_generated_on_yet() {
             "for {source}, got: {expanded}"
         );
     }
+}
+
+/// A tuple struct, a single-slot one with and without `transparent`, a unit struct and a generic
+/// type each carry the flag: none is refused, and each gets the entry point and its walker.
+#[cfg(feature = "serde")]
+#[test]
+fn decode_with_is_generated_on_every_struct_shape_serde_writes() {
+    for (args, source) in DECODE_WITH_STRUCT_SHAPES {
+        let expanded = expansion_under(args, source);
+        assert!(
+            !expanded.contains("compile_error"),
+            "for {source}, got: {expanded}"
+        );
+        for emitted in [
+            "pub fn from_value_with < F > (",
+            "fn decode_with_value_report (",
+            "pub fn decode_with_value_issues < I > (",
+            "pub enum Issue < V > {",
+            "pub fn value_leaf < 'a , T , I , R , W > (",
+        ] {
+            assert!(
+                expanded.contains(emitted),
+                "for {source}, missing `{emitted}`, got: {expanded}"
+            );
+        }
+        assert_eq!(
+            expanded.contains("pub fn from_bson_with < F > ("),
+            cfg!(feature = "bson"),
+            "for {source}, got: {expanded}"
+        );
+    }
+}
+
+/// A brand's own check is read through the hook hung on its slot, which the walker never names:
+/// it reads the brand with the brand's own reader, in the module that already holds the hook.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn decode_with_reads_a_constrained_brand_with_the_brands_own_reader() {
+    let expanded = expansion_under(
+        "decode_with, minLength = 3",
+        "#[derive(Deserialize)] #[serde(transparent)] pub struct DecodeCode(pub String);",
+    );
+    for emitted in [
+        "# [serde (deserialize_with = \"decode_code_schema::deserialize_value\")] pub String",
+        "pub fn deserialize_value < 'de , D > (deserializer : D)",
+        "decode_code_schema :: value_leaf (found , < Self as serde :: Deserialize > :: deserialize , \
+         | read | serde_json :: to_value (read) . ok () , path . to_vec () , \
+         & [(\"String\" , & [] , 0)] , issue)",
+    ] {
+        assert!(
+            expanded.contains(emitted),
+            "missing `{emitted}`, got: {expanded}"
+        );
+    }
+    assert_eq!(expanded.matches("pub mod decode_code_schema {").count(), 1);
+    assert!(
+        !expanded.contains("value_leaf (found , decode_code_schema"),
+        "got: {expanded}"
+    );
+}
+
+/// A generic type gains its methods on `impl`s of their own, each bound for what it reads and
+/// writes. The declaration and the `impl` the schema surfaces write keep the bounds they had.
+#[cfg(feature = "serde")]
+#[test]
+fn decode_with_bounds_its_own_impls_and_nothing_else_of_a_generic_type() {
+    let source = "pub struct DecodeEnvelope<T> { pub items: Vec<T> }";
+    let expanded = expansion_under("decode_with, default_types(T = String)", source);
+    assert!(
+        expanded.starts_with("pub struct DecodeEnvelope < T > {"),
+        "got: {expanded}"
+    );
+    assert!(
+        expanded.contains(
+            "impl < T : serde :: de :: DeserializeOwned > DecodeEnvelope < T > \
+             where Self : serde :: de :: DeserializeOwned { "
+        ),
+        "got: {expanded}"
+    );
+    assert_eq!(
+        expanded.contains(
+            "impl < T : serde :: de :: DeserializeOwned + serde :: Serialize > \
+             DecodeEnvelope < T > \
+             where Self : serde :: de :: DeserializeOwned + serde :: Serialize { "
+        ),
+        cfg!(feature = "bson"),
+        "got: {expanded}"
+    );
+    let unflagged = expansion_under("default_types(T = String)", source);
+    assert!(!unflagged.contains("DeserializeOwned"), "got: {unflagged}");
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    assert!(
+        expanded.contains("impl < T > DecodeEnvelope < T > {"),
+        "got: {expanded}"
+    );
 }
 
 /// A flattened field is read off serde's attributes, which only the `serde` feature parses.
@@ -5939,8 +6031,8 @@ fn decode_with_is_refused_for_good_on_a_field_that_borrows() {
     }
 }
 
-/// A shape the walker is not generated on yet is refused for its borrowing field and not for the
-/// shape, so the refusal is already there the day the shape's own is lifted.
+/// A borrowing field is refused whatever shape declares it, and ahead of the refusal of a shape the
+/// walker is not generated on yet, so it is already there the day that shape's own is lifted.
 #[test]
 fn decode_with_is_refused_on_a_borrowing_field_ahead_of_the_shape_it_is_written_in() {
     for (source, field) in [
@@ -5999,6 +6091,9 @@ fn an_item_without_decode_with_expands_as_it_did() {
     for source in [
         "pub struct DecodePlain { pub name: String, pub tags: Vec<String> }",
         "pub struct DecodePlainLabel { pub label: &'static str }",
+        "pub struct DecodePlainPair(pub String, pub u32);",
+        "#[serde(transparent)] pub struct DecodePlainBrand(pub String);",
+        "pub struct DecodePlainUnit;",
         "pub enum DecodePlainChoice { One, Two }",
         "pub type DecodePlainAlias = String;",
     ] {
@@ -6052,43 +6147,55 @@ fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
 #[cfg(feature = "serde")]
 #[test]
 fn nothing_decode_with_emits_suppresses_a_lint() {
-    let flagged = expansion_under(
+    let named_fields = (
         "decode_with",
-        "pub struct DecodeQuiet { pub name: String, pub tags: Vec<String> }",
+        "pub struct DecodeQuiet { pub name: String, pub spot: (String, u32), pub tags: Vec<String> }",
     );
-    for suppression in ["allow", "expect", "hidden", "cfg_attr"] {
-        assert!(
-            !flagged.contains(&format!("# [{suppression}"))
-                && !flagged.contains(&format!("({suppression})")),
-            "found `{suppression}`, got: {flagged}"
-        );
+    for (args, source) in DECODE_WITH_STRUCT_SHAPES.into_iter().chain([named_fields]) {
+        let flagged = expansion_under(args, source);
+        for suppression in ["allow", "expect", "hidden", "cfg_attr"] {
+            assert!(
+                !flagged.contains(&format!("# [{suppression}"))
+                    && !flagged.contains(&format!("({suppression})")),
+                "for {source}, found `{suppression}`, got: {flagged}"
+            );
+        }
     }
 }
 
 /// A consumer denying clippy's `restriction` set denies it over what the flag emits into their
 /// crate, a published module included: every added type is `#[non_exhaustive]`, as `Schema` is,
-/// and no added function takes `impl Trait` as a parameter.
+/// no added function takes `impl Trait` as a parameter, and a path is `core::result::Result`
+/// written out.
 #[cfg(feature = "serde")]
 #[test]
 fn what_decode_with_emits_is_written_for_the_lints_a_consumer_denies() {
-    let flagged = expansion_under(
+    let named_fields = (
         "decode_with",
         "pub struct DecodeLinted { pub name: String }",
     );
-    for declared in [
-        "pub enum Segment {",
-        "pub struct Path (",
-        "pub enum Expected {",
-        "pub enum Issue < V > {",
-        "pub enum Verdict {",
-        "pub struct Unrecovered < V > {",
-    ] {
+    for (args, source) in DECODE_WITH_STRUCT_SHAPES.into_iter().chain([named_fields]) {
+        let flagged = expansion_under(args, source);
+        for declared in [
+            "pub enum Segment {",
+            "pub struct Path (",
+            "pub enum Expected {",
+            "pub enum Issue < V > {",
+            "pub enum Verdict {",
+            "pub struct Unrecovered < V > {",
+        ] {
+            assert!(
+                flagged.contains(&format!("# [non_exhaustive] {declared}")),
+                "for {source}, missing `{declared}`, got: {flagged}"
+            );
+        }
+        assert!(!flagged.contains(": impl "), "for {source}, got: {flagged}");
         assert!(
-            flagged.contains(&format!("# [non_exhaustive] {declared}")),
-            "for `{declared}`, got: {flagged}"
+            flagged.contains("path : & [core :: result :: Result < String , usize >]")
+                && !flagged.contains("& [Result <"),
+            "for {source}, got: {flagged}"
         );
     }
-    assert!(!flagged.contains(": impl "), "got: {flagged}");
 }
 
 /// A flagged type reaches another through its field by that type's own name. The other's module is

@@ -197,9 +197,6 @@ const KNOWN_ARGS: &[&str] = &[
     "decode_with",
 ];
 
-/// What `decode_with` is generated on, as the refusal of a shape that is not one says it.
-const DECODE_WITH_NAMED_FIELDS: &str = "structs with named fields";
-
 /// What every plain-enum flatten diagnostic says about its own reach, so an author who fixes the
 /// one declaration named there knows what was and was not checked around it.
 #[cfg(all(
@@ -290,6 +287,7 @@ type StructFieldData = (
 /// Borrowed pieces needed to assemble the final token stream for a branded newtype.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 struct BrandedNewtypeOutput<'parts> {
+    decode_with: &'parts DecodeWithParts,
     default_types: &'parts [(syn::Ident, syn::Type)],
     delegate_impl_items: &'parts [proc_macro2::TokenStream],
     display_tokens: &'parts proc_macro2::TokenStream,
@@ -555,7 +553,7 @@ struct ModelSchemaArgs {
     /// The parser's refusal of the attribute's arguments — one it does not read, or a value it
     /// cannot read — spanned on the tokens that earned it.
     arg_rejection: Option<syn::Error>,
-    /// `decode_with`: the type gets `from_value_with` and the walker behind it.
+    /// `decode_with`: the type gets `from_value_with` and `from_bson_with`, and their walkers.
     decode_with: bool,
     /// The default type declared per type parameter, in written order: `default_types(IdType =
     /// String, DateType = f64)`. Read by JSON-schema generation, which has no type parameters of
@@ -2300,7 +2298,7 @@ fn decode_with_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_mac
         Some(decode_with_unavailable(
             &item_enum.ident,
             "an enum",
-            DECODE_WITH_NAMED_FIELDS,
+            "structs",
         ))
     } else if let Item::Struct(item_struct) = item {
         decode_with_struct_refusal(item_struct)
@@ -2315,56 +2313,29 @@ fn decode_with_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_mac
 
 /// The shape of a struct `decode_with` is not generated on yet, spanned on what makes it that shape.
 fn decode_with_struct_refusal(item_struct: &syn::ItemStruct) -> Option<syn::Error> {
-    let ident = &item_struct.ident;
-    let transparent = has_serde_transparent(&item_struct.attrs);
-    match &item_struct.fields {
-        syn::Fields::Unit => Some(decode_with_unavailable(
-            ident,
-            "a unit struct",
-            DECODE_WITH_NAMED_FIELDS,
-        )),
-        syn::Fields::Unnamed(slots) => {
-            let shape = if transparent && slots.unnamed.len() == 1 {
-                "a brand"
-            } else {
-                "a tuple struct"
-            };
-            Some(decode_with_unavailable(
-                ident,
-                shape,
-                DECODE_WITH_NAMED_FIELDS,
-            ))
-        }
-        syn::Fields::Named(named) => {
-            if !item_struct.generics.params.is_empty() {
-                return Some(decode_with_unavailable(
-                    &item_struct.generics,
-                    "a generic type",
-                    "types with no type parameter",
-                ));
-            }
-            // serde writes it as the value of its one field, which the walk of an object's keys
-            // would report key by key.
-            if transparent {
-                return Some(decode_with_unavailable(
-                    ident,
-                    "a `#[serde(transparent)]` struct with a named field",
-                    "structs serde writes as an object of their fields",
-                ));
-            }
-            named
-                .named
-                .iter()
-                .find(|field| is_flattened_field(field))
-                .map(|field| {
-                    decode_with_unavailable(
-                        field,
-                        "a struct with a `#[serde(flatten)]` field",
-                        "structs with no flattened field",
-                    )
-                })
-        }
+    let syn::Fields::Named(named) = &item_struct.fields else {
+        return None;
+    };
+    // serde writes it as the value of its one field, which the walk of an object's keys would
+    // report key by key.
+    if has_serde_transparent(&item_struct.attrs) {
+        return Some(decode_with_unavailable(
+            &item_struct.ident,
+            "a `#[serde(transparent)]` struct with a named field",
+            "structs that are not transparent over a named field",
+        ));
     }
+    named
+        .named
+        .iter()
+        .find(|field| is_flattened_field(field))
+        .map(|field| {
+            decode_with_unavailable(
+                field,
+                "a struct with a `#[serde(flatten)]` field",
+                "structs with no flattened field",
+            )
+        })
 }
 
 fn decode_with_unavailable(
@@ -5058,17 +5029,24 @@ fn process_tuple_struct(
         schema_example_method.as_ref(),
     );
 
-    assemble_schema_output(&SchemaOutputParts {
-        default_types: &args.default_types,
-        delegate_impl_items: &delegate_impl_items,
-        generics: &item_struct.generics,
-        item: &item_struct,
-        module_ident: &module_ident,
-        name: &name,
-        schema_impl_items: &schema_impl_items,
-        validate_method: &None,
-        validation_fns: &[],
-    })
+    // Read after every slot carries the serde attributes generation hangs on it.
+    let decode_with = struct_decode_with(&item_struct, args);
+
+    struct_output_with_unit_impls(
+        &SchemaOutputParts {
+            default_types: &args.default_types,
+            delegate_impl_items: &delegate_impl_items,
+            generics: &item_struct.generics,
+            item: &item_struct,
+            module_ident: &module_ident,
+            name: &name,
+            schema_impl_items: &schema_impl_items,
+            validate_method: &None,
+            validation_fns: &[],
+        },
+        &TokenStream::new(),
+        &decode_with,
+    )
 }
 
 /// Builds the `validate_value`/`deserialize_value` functions for a constrained branded newtype, or
@@ -6067,14 +6045,8 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
         parts.default_types,
     );
 
-    let output = quote! {
-        #item_struct
-
-        #display_tokens
-
-        pub mod #module_ident {
-            use super::*;
-
+    let module_items = schema_module_items(
+        quote! {
             #[non_exhaustive]
             pub struct Schema;
 
@@ -6083,6 +6055,20 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
             }
 
             #validation_tokens
+        },
+        &parts.decode_with.schema_module,
+    );
+    let decode_with_impl = &parts.decode_with.type_impl;
+
+    let output = quote! {
+        #item_struct
+
+        #display_tokens
+
+        pub mod #module_ident {
+            use super::*;
+
+            #module_items
         }
 
         impl #impl_generics #name #type_generics #where_clause {
@@ -6092,6 +6078,8 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
         }
 
         #default_validate_impl
+
+        #decode_with_impl
     };
 
     log::trace!("{output}");
@@ -6279,7 +6267,11 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
     #[cfg(not(feature = "serde"))]
     let validate_method = quote! {};
 
+    // Read off the struct as it is emitted: the hook a constrained brand reads through is hung.
+    let decode_with = struct_decode_with(&output_struct, args);
+
     assemble_branded_output(&BrandedNewtypeOutput {
+        decode_with: &decode_with,
         default_types: &args.default_types,
         delegate_impl_items: &delegate_impl_items,
         display_tokens: &display_tokens,
