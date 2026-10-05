@@ -5942,7 +5942,7 @@ fn decode_with_walks_a_transparent_struct_with_a_named_field_as_the_value_of_its
 }
 
 /// Every form serde writes an enum in carries the flag: none is refused, and each gets the entry
-/// point and both walker methods, a plain enum included.
+/// point, both walker methods and the answer whether an object names it, a plain enum included.
 #[cfg(feature = "serde")]
 #[test]
 fn decode_with_is_generated_on_every_enum_form_serde_writes() {
@@ -5956,6 +5956,7 @@ fn decode_with_is_generated_on_every_enum_form_serde_writes() {
             "pub fn from_value_with < F > (",
             "fn decode_with_value_report (",
             "pub fn decode_with_value_issues < I > (",
+            "pub fn decode_with_value_named (",
             "pub fn decode_with_value_fields < 'a , I > (",
             "pub enum Issue < V > {",
             "pub fn value_leaf < 'a , T , I , R , W > (",
@@ -5972,6 +5973,11 @@ fn decode_with_is_generated_on_every_enum_form_serde_writes() {
         );
         assert_eq!(
             expanded.contains("pub fn decode_with_bson_fields < 'a , I > ("),
+            cfg!(feature = "bson"),
+            "for {source}, got: {expanded}"
+        );
+        assert_eq!(
+            expanded.contains("pub fn decode_with_bson_named ("),
             cfg!(feature = "bson"),
             "for {source}, got: {expanded}"
         );
@@ -6013,7 +6019,7 @@ fn decode_with_reads_an_untagged_enums_constrained_member_through_its_hook() {
 
 /// A tuple struct, a single-slot one with and without `transparent`, a unit struct, a generic type
 /// and a `transparent` struct with a named field each carry the flag: none is refused, and each
-/// gets the entry point and both walker methods.
+/// gets the entry point, both walker methods and the answer whether an object names it.
 #[cfg(feature = "serde")]
 #[test]
 fn decode_with_is_generated_on_every_struct_shape_serde_writes() {
@@ -6027,6 +6033,7 @@ fn decode_with_is_generated_on_every_struct_shape_serde_writes() {
             "pub fn from_value_with < F > (",
             "fn decode_with_value_report (",
             "pub fn decode_with_value_issues < I > (",
+            "pub fn decode_with_value_named (",
             "pub fn decode_with_value_fields < 'a , I > (",
             "pub enum Issue < V > {",
             "pub fn value_leaf < 'a , T , I , R , W > (",
@@ -6038,6 +6045,11 @@ fn decode_with_is_generated_on_every_struct_shape_serde_writes() {
         }
         assert_eq!(
             expanded.contains("pub fn from_bson_with < F > ("),
+            cfg!(feature = "bson"),
+            "for {source}, got: {expanded}"
+        );
+        assert_eq!(
+            expanded.contains("pub fn decode_with_bson_named ("),
             cfg!(feature = "bson"),
             "for {source}, got: {expanded}"
         );
@@ -6131,6 +6143,7 @@ fn decode_with_is_generated_on_a_type_with_a_flattened_field() {
         for emitted in [
             "pub fn from_value_with < F > (",
             "pub fn decode_with_value_issues < I > (",
+            "pub fn decode_with_value_named (",
             "pub fn decode_with_value_fields < 'a , I > (",
         ] {
             assert!(
@@ -6334,6 +6347,7 @@ fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
         "pub fn from_value_with < F > (",
         "fn decode_with_value_report (",
         "pub fn decode_with_value_issues < I > (",
+        "pub fn decode_with_value_named (",
         "pub fn decode_with_value_fields < 'a , I > (",
         "pub enum Segment {",
         "pub struct Path (pub Vec < Segment >) ;",

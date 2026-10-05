@@ -686,9 +686,9 @@ consumer's view; this is what a change to the emitter has to keep.
   (`ExpectedToken`, `IssueFromParts`), and `issue_from_parts` turns the parts into that module's
   own `Issue`.
 - **Every name the flag adds is its own.** Each method carries the flag's name
-  (`decode_with_value_issues`, `decode_with_bson_fields`), and a method's own type parameters take
-  a name the item does not write (`unclaimed_parameter`): `F` and `I`, numbered where the item
-  writes one.
+  (`decode_with_value_issues`, `decode_with_bson_fields`, `decode_with_value_named`), and a
+  method's own type parameters take a name the item does not write (`unclaimed_parameter`): `F`
+  and `I`, numbered where the item writes one.
 - **The emitted code names only what both major versions of the `bson` library have.** Every BSON
   value is read through `bson::Deserializer::new` and written through `bson::Serializer::new`.
   `tests/recovering_decode_bson_tests/` is compiled once per major, by

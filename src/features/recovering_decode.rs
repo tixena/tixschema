@@ -101,7 +101,7 @@ impl Claimed {
 enum Flattened<'item> {
     /// A map: every key nothing else declares, each value walked at its key.
     Entries(Walk<'item>),
-    /// Another flagged type: its own fields walker, run in the same object.
+    /// Another flagged type: its own fields walker, run in what serde hands it of the object.
     Model(&'item Type),
     /// An `Option` of a flagged type, which serde reads as absent where it does not read the type:
     /// that type, then the field's own, which an issue names as expected.
@@ -146,6 +146,59 @@ impl<'item> Flattened<'item> {
     /// It reads the keys nothing else declares, so it needs to know which those are.
     const fn reads_the_rest(&self) -> bool {
         matches!(self, Self::Entries(_) | Self::Whole(_))
+    }
+}
+
+/// What a flattened type's fields walker is handed, which is what serde hands the type: the
+/// entries of the object that the fields read under a key of their own did not take.
+struct Handed<'walk> {
+    /// The copy of those entries the walk binds, and `None` where no field takes a key: the
+    /// object itself is then handed over.
+    left: Option<Ident>,
+    object: &'walk Ident,
+}
+
+impl Handed<'_> {
+    /// What is handed over, as the argument of a call.
+    fn argument(&self) -> TokenStream {
+        let object = self.object;
+        self.left
+            .as_ref()
+            .map_or_else(|| quote! { #object }, |left| quote! { &#left })
+    }
+
+    /// What binds the copy: every entry of the object under a key that is none of `own`.
+    fn bound(&self, source: Source, own: &[String]) -> TokenStream {
+        let Some(left) = &self.left else {
+            return TokenStream::new();
+        };
+        let (object, object_type) = (self.object, source.object());
+        quote! {
+            let #left: #object_type = #object
+                .iter()
+                .filter(|(key, _)| !matches!(key.as_str(), #(#own)|*))
+                .map(|(key, held)| (key.clone(), held.clone()))
+                .collect();
+        }
+    }
+
+    /// The name what is handed over is read under.
+    fn name(&self) -> &Ident {
+        self.left.as_ref().unwrap_or(self.object)
+    }
+
+    /// `keys`, which a fields walker returned for what it was handed, as keys of the object: a
+    /// key borrowed from the copy does not outlive the walk.
+    fn of_the_object(&self, keys: &TokenStream) -> TokenStream {
+        if self.left.is_none() {
+            return keys.clone();
+        }
+        let object = self.object;
+        quote! {
+            #keys
+                .into_iter()
+                .filter_map(|key| #object.keys().find(|own| own.as_str() == key).map(String::as_str))
+        }
     }
 }
 
@@ -717,12 +770,15 @@ impl Walker<'_> {
         }
     }
 
-    /// `walked` beside a fields walker that lists nothing and returns no key. A type that holds
-    /// another calls the fields walker of it whatever its shape, so every shape has one.
+    /// `walked` beside what a type with no key of its own answers: no object names it, and its
+    /// fields walker lists nothing and returns no key. A type that holds another calls both of it
+    /// whatever its shape, so every shape has them.
     fn claiming_no_key(&self, walked: &TokenStream) -> TokenStream {
+        let named = self.never_named();
         let keyed = self.fields_method(false, false, &quote! { Vec::new() });
         quote! {
             #walked
+            #named
             #keyed
         }
     }
@@ -797,53 +853,67 @@ impl Walker<'_> {
         }
     }
 
-    /// What walks a flattened flagged type in `object`, held at `segments`: its own fields walker,
-    /// whose keys are kept in `declared` where `collects`.
+    /// What walks a flattened flagged type in what it is `handed`, held at `segments`: its own
+    /// fields walker, whose keys are kept in `declared` where `collects`.
     fn flattened_model(
         &self,
         model: &Type,
-        object: &Ident,
+        handed: &Handed<'_>,
         segments: &[TokenStream],
         collects: bool,
     ) -> TokenStream {
-        let walked = flattened_walker_call(self.source, model, object, segments, &quote! { out });
+        let walked = flattened_walker_call(
+            self.source,
+            model,
+            &handed.argument(),
+            segments,
+            &quote! { out },
+        );
         if collects {
-            quote! { declared.extend(#walked); }
+            let keys = handed.of_the_object(&walked);
+            quote! { declared.extend(#keys); }
         } else {
             quote! { #walked; }
         }
     }
 
-    /// What walks a flattened `Option` of a flagged type in `object`, held at `segments`. serde
-    /// reads it as absent where it does not read the type, so with some of its keys there the
-    /// object holds what the field would not write.
+    /// What walks a flattened `Option` of a flagged type in what it is `handed`, held at
+    /// `segments`, where the type answers that it is named there. serde reads it as absent where
+    /// it does not read the type, so the object then holds what the field would not write.
     fn flattened_optional(
         &self,
         model: &Type,
         written: &Type,
-        object: &Ident,
+        handed: &Handed<'_>,
         segments: &[TokenStream],
         collects: bool,
     ) -> TokenStream {
         let source = self.source;
+        let argument = handed.argument();
         let walked =
-            flattened_walker_call(source, model, object, segments, &quote! { &mut nested });
-        let (reader, whole) = (source.object_reader(object), source.object_value(object));
+            flattened_walker_call(source, model, &argument, segments, &quote! { &mut nested });
+        let named = source.method("named");
+        let (reader, whole) = (
+            source.object_reader(handed.name()),
+            source.object_value(handed.object),
+        );
         let (here, expected) = (path_expression(segments), self.expected(written));
-        let kept = if collects {
-            quote! { declared.extend(keys); }
+        let (walk, kept) = if collects {
+            let keys = handed.of_the_object(&quote! { keys });
+            (
+                quote! { let keys = #walked; },
+                quote! { declared.extend(#keys); },
+            )
         } else {
-            TokenStream::new()
+            (quote! { #walked; }, TokenStream::new())
         };
         quote! {
-            {
+            if <#model>::#named(#argument) {
                 let mut nested = Vec::new();
-                let keys = #walked;
-                if keys.iter().any(|key| #object.contains_key(*key)) {
-                    match <#model as serde::Deserialize>::deserialize(#reader) {
-                        Ok(_) => out.append(&mut nested),
-                        Err(_) => out.push(issue("Mistyped", #here, #expected, Some(#whole), None, Vec::new())),
-                    }
+                #walk
+                match <#model as serde::Deserialize>::deserialize(#reader) {
+                    Ok(_) => out.append(&mut nested),
+                    Err(_) => out.push(issue("Mistyped", #here, #expected, Some(#whole), None, Vec::new())),
                 }
                 #kept
             }
@@ -939,11 +1009,16 @@ impl Walker<'_> {
                 self.claiming_no_key(&self.issues_method(&quote! { #whole; }))
             }
             Step::Model => {
-                let (ty, issues, fields) =
-                    (walk.ty, source.method("issues"), source.method("fields"));
+                let (ty, issues, named, fields) = (
+                    walk.ty,
+                    source.method("issues"),
+                    source.method("named"),
+                    source.method("fields"),
+                );
                 let walked = self.issues_method(&quote! {
                     <#ty>::#issues(found, path, issue, out);
                 });
+                let asked = self.named_method(true, &quote! { <#ty>::#named(object) });
                 let keyed = self.fields_method(
                     true,
                     true,
@@ -951,6 +1026,7 @@ impl Walker<'_> {
                 );
                 quote! {
                     #walked
+                    #asked
                     #keyed
                 }
             }
@@ -1022,10 +1098,15 @@ impl Walker<'_> {
         } else {
             Some(quote! { !matches!(key.as_str(), #(#own)|*) })
         };
+        let handed = Handed {
+            left: (declaring && !own.is_empty()).then(|| Ident::new("rest", Span::call_site())),
+            object,
+        };
+        let copied = handed.bound(self.source, &own);
         let declared = flattened.iter().map(|field| match field {
-            Flattened::Model(model) => self.flattened_model(model, object, segments, collects),
+            Flattened::Model(model) => self.flattened_model(model, &handed, segments, collects),
             Flattened::Optional(model, written) => {
-                self.flattened_optional(model, written, object, segments, collects)
+                self.flattened_optional(model, written, &handed, segments, collects)
             }
             Flattened::Entries(_) | Flattened::Unwalked | Flattened::Whole(_) => TokenStream::new(),
         });
@@ -1041,6 +1122,7 @@ impl Walker<'_> {
             walk: quote! {
                 #bound
                 #(#walks)*
+                #copied
                 #(#declared)*
                 #rest
             },
@@ -1132,6 +1214,28 @@ impl Walker<'_> {
         }
     }
 
+    /// `decode_with_{source}_named` answering `body`. An `object` that `body` does not read is
+    /// bound as `_`.
+    fn named_method(&self, reads_object: bool, body: &TokenStream) -> TokenStream {
+        let (named, object_type) = (self.source.method("named"), self.source.object());
+        let object = if reads_object {
+            quote! { object }
+        } else {
+            quote! { _ }
+        };
+        quote! {
+            /// Whether `object` holds what names a value of this type.
+            pub fn #named(#object: &#object_type) -> bool {
+                #body
+            }
+        }
+    }
+
+    /// `decode_with_{source}_named` of a type no object names: one with no key of its own.
+    fn never_named(&self) -> TokenStream {
+        self.named_method(false, &quote! { false })
+    }
+
     /// `decode_with_{source}_issues` of a type serde writes as an object: every key
     /// `decode_with_{source}_fields` does not return as the type's own is `Unknown`.
     fn object_issues_method(&self) -> TokenStream {
@@ -1154,14 +1258,47 @@ impl Walker<'_> {
         let object = Ident::new("object", Span::call_site());
         let keyed_walk = self.keyed(keyed, None, &object, &[], true);
         let walked = self.object_issues_method();
+        let named = self.object_named(keyed).map_or_else(
+            || self.never_named(),
+            |answer| self.named_method(true, &answer),
+        );
         // A type with no field to walk lists no issue of its own, so the `Vec` it is handed goes
         // unbound.
         let fields = self.fields_method(true, keyed_walk.lists, &keyed_walk.returning(&object));
         quote! {
             #walked
 
+            #named
+
             #fields
         }
+    }
+
+    /// Whether `object` names a struct of these fields: it holds a key one of them is read under,
+    /// or names a flagged type the struct flattens. `None` where no key can name it.
+    fn object_named(&self, keyed: &Keyed<'_>) -> Option<TokenStream> {
+        // A flattened field that takes the rest owns every key, so any key names the struct.
+        if keyed
+            .flattened
+            .iter()
+            .any(|field| !field.declares_its_keys())
+        {
+            return Some(quote! { !object.is_empty() });
+        }
+        let named = self.source.method("named");
+        let keys = &keyed.declared;
+        let own = (!keys.is_empty())
+            .then(|| quote! { object.keys().any(|key| matches!(key.as_str(), #(#keys)|*)) });
+        let flattened = keyed.flattened.iter().filter_map(|field| {
+            if let Flattened::Model(model) | Flattened::Optional(model, _) = field {
+                Some(quote! { <#model>::#named(object) })
+            } else {
+                None
+            }
+        });
+        own.into_iter()
+            .chain(flattened)
+            .reduce(|answer, next| quote! { #answer || #next })
     }
 
     /// What an issue names as expected where the type itself is: `Model`, by the type's name.
@@ -1802,9 +1939,21 @@ fn entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
 /// ```
 ///
 /// A `compile_fail` doctest asserts only that some error was raised, so the snippet was compiled
-/// standalone as an ordinary test file, and this is the only error it earned, verbatim:
+/// standalone as an ordinary test file, and these are the errors it earned, verbatim: one where
+/// `Note` asks `Audit` whether an object names it, and one where it hands `Audit` the walk.
 ///
 /// ```text
+/// error[E0599]: no associated function or constant named `decode_with_value_named` found for struct `Audit` in the current scope
+///   --> tests/zz_probe.rs:10:1
+///    |
+///  6 | pub struct Audit {
+///    | ---------------- associated function or constant `decode_with_value_named` not found for this struct
+/// ...
+/// 10 | #[model_schema(decode_with)]
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ associated function or constant not found in `Audit`
+///    |
+///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///
 /// error[E0599]: no associated function or constant named `decode_with_value_fields` found for struct `Audit` in the current scope
 ///   --> tests/zz_probe.rs:10:1
 ///    |
@@ -1816,14 +1965,15 @@ fn entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
 ///    |
 ///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
-/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// error: could not compile `tixschema` (test "zz_probe") due to 2 previous errors
 /// ```
 ///
-/// A build with `bson` on earns the same error a second time, naming `decode_with_bson_fields`.
+/// A build with `bson` on earns each a second time, naming `decode_with_bson_named` and
+/// `decode_with_bson_fields`.
 fn flattened_walker_call(
     source: Source,
     model: &Type,
-    object: &Ident,
+    object: &TokenStream,
     segments: &[TokenStream],
     out: &TokenStream,
 ) -> TokenStream {

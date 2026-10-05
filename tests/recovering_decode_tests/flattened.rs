@@ -1,7 +1,7 @@
 //! `from_value_with` on types with `#[serde(flatten)]` fields. A flattened field's keys sit among
-//! the keys of the object that flattens it, so it is walked in that object, its issues sit at that
-//! object's paths, and the keys it declares count as declared. Each case holds the walker's list
-//! to what plain serde says of the same value.
+//! the keys of the object that flattens it, so it is walked in what the outer type's own fields
+//! left of that object, its issues sit at that object's paths, and the keys it declares count as
+//! declared. Each case holds the walker's list to what plain serde says of the same value.
 
 use alloc::collections::BTreeMap;
 use std::collections::HashMap;
@@ -369,6 +369,133 @@ struct Traced {
     title: String,
     #[serde(flatten)]
     trace: Trace,
+}
+
+/// A type that flattens one that flattens a map, which takes every key it is handed.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Report {
+    #[serde(flatten)]
+    counts: Counts,
+    id: String,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Captioned {
+    name: String,
+}
+
+/// Untagged, with a map among its variants, which takes every key the enum is handed.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(untagged)]
+enum Scores {
+    Captioned(Captioned),
+    Tallied(HashMap<String, i32>),
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Scoreboard {
+    id: String,
+    #[serde(flatten)]
+    scores: Scores,
+}
+
+/// Declares a key the type that flattens it declares too.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Part {
+    #[serde(default)]
+    title: i32,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Whole {
+    #[serde(flatten)]
+    part: Part,
+    title: String,
+}
+
+/// Internally tagged, with a struct variant that flattens a type that takes every key.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+enum Tabled {
+    Gone,
+    Made {
+        #[serde(flatten)]
+        counts: Counts,
+        id: String,
+    },
+}
+
+/// An optional flattened enum, internally tagged.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Painted {
+    own: String,
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    paint: Option<Paint>,
+}
+
+/// An optional flattened enum, untagged.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Reached {
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    channel: Option<Channel>,
+    own: String,
+}
+
+/// Two optional flattened enums, internally tagged and untagged, beside a flattened struct.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Layered {
+    #[serde(flatten)]
+    audit: Audit,
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    channel: Option<Channel>,
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    paint: Option<Paint>,
+    title: String,
+}
+
+/// Internally tagged, with a variant that holds a model type under a key.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+enum Finish {
+    Bare,
+    Coated { version: Version },
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Finished {
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    finish: Option<Finish>,
+    own: String,
+}
+
+/// An optional flattened enum, externally tagged.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Edged {
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    edge: Option<Edge>,
+    own: String,
+}
+
+/// An optional flattened enum, adjacently tagged.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Trimmed {
+    own: String,
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    trim: Option<Trim>,
 }
 
 /// The read hook of [`Marked::rest`]: counts, refused where one is negative.
@@ -799,7 +926,7 @@ fn a_flattened_untagged_enum_no_variant_reads_is_one_no_variant() {
     assert_eq!(
         lines(&report),
         [
-            "the value itself: no variant: found Object {\"digits\": Number(5), \"subject\": String(\"s\")}, tried Mail, Pager, Phone"
+            "the value itself: no variant: found Object {\"digits\": Number(5)}, tried Mail, Pager, Phone"
         ]
     );
     assert_eq!(
@@ -1235,4 +1362,472 @@ fn a_flattened_untagged_variant_with_no_field_declares_no_key() {
         listed!(Traced, traced_schema, stored),
         ["legacy: unknown: found Bool(true)"]
     );
+}
+
+/// serde hands a flattened type the keys the outer type's own fields did not take. A flattened
+/// type that flattens a map is handed no key of the outer type's, so the map reads none.
+#[test]
+fn a_flattened_type_that_flattens_a_map_is_handed_no_key_of_the_outer_type() {
+    let report = Report {
+        counts: Counts {
+            by_name: HashMap::from([("a".to_owned(), 1_i32)]),
+            title: "t".to_owned(),
+        },
+        id: "i".to_owned(),
+    };
+    let written = serde_json::to_value(&report).unwrap();
+    assert_eq!(written, json!({ "a": 1_i32, "id": "i", "title": "t" }));
+    let mut calls = 0_u32;
+    assert_eq!(
+        read_counting!(Report, report_schema, written, calls),
+        Ok(report)
+    );
+    assert_eq!(calls, 0);
+}
+
+/// A flattened untagged enum is read from what the outer type's own fields left, so a map among
+/// its variants holds none of the outer type's keys.
+#[test]
+fn a_flattened_untagged_enum_with_a_map_variant_is_handed_no_key_of_the_outer_type() {
+    let scoreboard = Scoreboard {
+        id: "i".to_owned(),
+        scores: Scores::Tallied(HashMap::from([("a".to_owned(), 1_i32)])),
+    };
+    let written = serde_json::to_value(&scoreboard).unwrap();
+    assert_eq!(written, json!({ "a": 1_i32, "id": "i" }));
+    let mut calls = 0_u32;
+    assert_eq!(
+        read_counting!(Scoreboard, scoreboard_schema, written, calls),
+        Ok(scoreboard)
+    );
+    assert_eq!(calls, 0);
+}
+
+/// A key both the outer type and a type it flattens declare is the outer type's alone: serde
+/// hands the flattened type an object without it, and so does the walker.
+#[test]
+fn a_key_the_outer_type_and_a_flattened_type_both_declare_is_the_outer_types_alone() {
+    let stored = json!({ "title": "t" });
+    assert_eq!(
+        serde_json::from_value::<Whole>(stored.clone()).unwrap(),
+        Whole {
+            part: Part { title: 0_i32 },
+            title: "t".to_owned(),
+        }
+    );
+    let mut calls = 0_u32;
+    assert_eq!(
+        read_counting!(Whole, whole_schema, stored, calls),
+        Ok(Whole {
+            part: Part { title: 0_i32 },
+            title: "t".to_owned(),
+        })
+    );
+    assert_eq!(calls, 0);
+
+    let numbered = json!({ "title": 5_i32 });
+    assert!(!serde_reads::<Whole>(&numbered));
+    assert_eq!(
+        listed!(Whole, whole_schema, numbered),
+        [
+            "title: invalid: expected String, found Number(5): invalid type: integer `5`, expected a string"
+        ]
+    );
+    let undeclared = json!({ "legacy": true, "title": "t" });
+    assert!(serde_reads::<Whole>(&undeclared));
+    assert_eq!(
+        listed!(Whole, whole_schema, undeclared),
+        ["legacy: unknown: found Bool(true)"]
+    );
+}
+
+/// An issue inside a flattened type that takes every key it is handed is listed where it sits: a
+/// value the map refuses at its key, and none at a key of the outer type's.
+#[test]
+fn an_issue_in_a_flattened_type_that_flattens_a_map_is_listed_at_its_key() {
+    let stored = json!({ "a": "x", "id": "i", "title": "t" });
+    assert!(!serde_reads::<Report>(&stored));
+    assert_eq!(
+        listed!(Report, report_schema, stored),
+        ["a: invalid: expected I32, found String(\"x\"): invalid type: string \"x\", expected i32"]
+    );
+    // The map takes a key nothing declares, so serde refuses a value in it that is no count.
+    let undeclared = json!({ "a": 1_i32, "id": "i", "legacy": [1_i32], "title": "t" });
+    assert!(!serde_reads::<Report>(&undeclared));
+    assert_eq!(
+        listed!(Report, report_schema, undeclared),
+        [
+            "legacy: invalid: expected I32, found Array [Number(1)]: invalid type: sequence, expected i32"
+        ]
+    );
+}
+
+/// Where no variant of a flattened untagged enum reads what it is handed, the one issue is
+/// `NoVariant` at the outer object's path, holding what the enum was handed.
+#[test]
+fn a_flattened_untagged_enum_no_variant_reads_holds_what_the_enum_was_handed() {
+    let stored = json!({ "a": "x", "id": "i" });
+    assert!(!serde_reads::<Scoreboard>(&stored));
+    let report =
+        Scoreboard::from_value_with(stored, |_raw, _found| scoreboard_schema::Verdict::Reject)
+            .unwrap_err();
+    assert_eq!(
+        lines(&report),
+        [
+            "the value itself: no variant: found Object {\"a\": String(\"x\")}, tried Captioned, Tallied"
+        ]
+    );
+    assert_eq!(
+        tried!(scoreboard_schema, report.issues),
+        [
+            (
+                "Captioned",
+                vec!["name: missing: expected String".to_owned()]
+            ),
+            (
+                "Tallied",
+                vec![
+                    "a: invalid: expected I32, found String(\"x\"): invalid type: string \"x\", expected i32"
+                        .to_owned()
+                ]
+            ),
+        ]
+    );
+}
+
+/// A variant's flattened type is handed what the variant's own fields left of the object they sit
+/// in, and none of the tag an internally tagged enum reads there.
+#[test]
+fn a_variants_flattened_type_that_flattens_a_map_is_handed_no_key_of_the_variant() {
+    let made = Tabled::Made {
+        counts: Counts {
+            by_name: HashMap::from([("a".to_owned(), 1_i32)]),
+            title: "t".to_owned(),
+        },
+        id: "i".to_owned(),
+    };
+    let written = serde_json::to_value(&made).unwrap();
+    assert_eq!(
+        written,
+        json!({ "a": 1_i32, "id": "i", "kind": "Made", "title": "t" })
+    );
+    let mut calls = 0_u32;
+    assert_eq!(
+        read_counting!(Tabled, tabled_schema, written, calls),
+        Ok(made)
+    );
+    assert_eq!(calls, 0);
+    let stored = json!({ "a": "x", "id": "i", "kind": "Made", "title": "t" });
+    assert!(!serde_reads::<Tabled>(&stored));
+    assert_eq!(
+        listed!(Tabled, tabled_schema, stored),
+        ["a: invalid: expected I32, found String(\"x\"): invalid type: string \"x\", expected i32"]
+    );
+}
+
+/// A flattened optional enum is absent when what names its variant is absent: the tag of a tagged
+/// one, and any variant serde reads of an untagged one. serde wrote each record, and reads it.
+#[test]
+fn a_flattened_optional_enum_that_is_absent_is_no_issue() {
+    let mut calls = 0_u32;
+    let painted = Painted {
+        own: "x".to_owned(),
+        paint: None,
+    };
+    let painted_written = serde_json::to_value(&painted).unwrap();
+    assert_eq!(painted_written, json!({ "own": "x" }));
+    assert_eq!(
+        read_counting!(Painted, painted_schema, painted_written, calls),
+        Ok(painted)
+    );
+    let reached = Reached {
+        channel: None,
+        own: "x".to_owned(),
+    };
+    let reached_written = serde_json::to_value(&reached).unwrap();
+    assert_eq!(reached_written, json!({ "own": "x" }));
+    assert_eq!(
+        read_counting!(Reached, reached_schema, reached_written, calls),
+        Ok(reached)
+    );
+    assert_eq!(calls, 0);
+}
+
+/// With the keys of a struct flattened beside it in the object, an absent optional enum is still
+/// absent: none of those keys names a variant of it.
+#[test]
+fn an_absent_flattened_optional_enum_beside_another_flattened_type_is_no_issue() {
+    let layered = Layered {
+        audit: Audit {
+            created_by: "ada".to_owned(),
+            revision: 1_i32,
+        },
+        channel: None,
+        paint: None,
+        title: "t".to_owned(),
+    };
+    let written = serde_json::to_value(&layered).unwrap();
+    assert_eq!(
+        written,
+        json!({ "createdBy": "ada", "revision": 1_i32, "title": "t" })
+    );
+    let mut calls = 0_u32;
+    assert_eq!(
+        read_counting!(Layered, layered_schema, written, calls),
+        Ok(layered)
+    );
+    assert_eq!(calls, 0);
+}
+
+/// With the optional enum absent, the object's keys are the outer type's to judge: one nothing
+/// declares is `Unknown`, a variant's key that serde reads no variant from among them.
+#[test]
+fn an_absent_flattened_optional_enum_leaves_the_objects_keys_to_the_outer_type() {
+    let tagged = json!({ "legacy": true, "own": "x" });
+    assert!(serde_reads::<Painted>(&tagged));
+    assert_eq!(
+        listed!(Painted, painted_schema, tagged),
+        ["legacy: unknown: found Bool(true)"]
+    );
+    let untagged = json!({ "legacy": true, "own": "x" });
+    assert!(serde_reads::<Reached>(&untagged));
+    assert_eq!(
+        listed!(Reached, reached_schema, untagged),
+        ["legacy: unknown: found Bool(true)"]
+    );
+    let no_variant = json!({ "address": 5_i32, "own": "x" });
+    assert_eq!(
+        serde_json::from_value::<Reached>(no_variant.clone()).unwrap(),
+        Reached {
+            channel: None,
+            own: "x".to_owned(),
+        }
+    );
+    assert_eq!(
+        listed!(Reached, reached_schema, no_variant),
+        ["address: unknown: found Number(5)"]
+    );
+}
+
+/// With what names its variant in the object and serde reading it, an optional flattened enum is
+/// walked as that variant, and lists what the walk finds at the object's path.
+#[test]
+fn a_flattened_optional_enum_that_is_there_is_walked_as_the_variant_it_names() {
+    let mut calls = 0_u32;
+    let painted = Painted {
+        own: "x".to_owned(),
+        paint: Some(Paint::Solid {
+            color: "red".to_owned(),
+        }),
+    };
+    let painted_written = serde_json::to_value(&painted).unwrap();
+    assert_eq!(
+        painted_written,
+        json!({ "color": "red", "kind": "Solid", "own": "x" })
+    );
+    assert_eq!(
+        read_counting!(Painted, painted_schema, painted_written, calls),
+        Ok(painted)
+    );
+    let reached = Reached {
+        channel: Some(Channel::Mail(ByMail {
+            address: "a@b".to_owned(),
+        })),
+        own: "x".to_owned(),
+    };
+    let reached_written = serde_json::to_value(&reached).unwrap();
+    assert_eq!(reached_written, json!({ "address": "a@b", "own": "x" }));
+    assert_eq!(
+        read_counting!(Reached, reached_schema, reached_written, calls),
+        Ok(reached)
+    );
+    assert_eq!(calls, 0);
+
+    let inside = json!({
+        "kind": "Coated",
+        "own": "x",
+        "version": { "draft": true, "number": 3_i32 },
+    });
+    assert!(serde_reads::<Finished>(&inside));
+    assert_eq!(
+        listed!(Finished, finished_schema, inside),
+        ["version.draft: unknown: found Bool(true)"]
+    );
+    let beside = json!({ "address": "a@b", "legacy": true, "own": "x" });
+    assert!(serde_reads::<Reached>(&beside));
+    assert_eq!(
+        listed!(Reached, reached_schema, beside),
+        ["legacy: unknown: found Bool(true)"]
+    );
+}
+
+/// With its tag in the object and serde not reading the enum, the object holds what the field
+/// would not write: the one issue is `Mistyped` at the object's own path.
+#[test]
+fn a_flattened_optional_enum_named_and_not_read_is_mistyped_at_the_object() {
+    for stored in [
+        json!({ "kind": "Striped", "own": "x" }),
+        json!({ "kind": "Solid", "own": "x" }),
+    ] {
+        assert_eq!(
+            serde_json::from_value::<Painted>(stored.clone()).unwrap(),
+            Painted {
+                own: "x".to_owned(),
+                paint: None,
+            }
+        );
+        let read = Painted::from_value_with(stored.clone(), |_raw, _found| {
+            painted_schema::Verdict::Reject
+        });
+        assert_eq!(
+            read,
+            Err(painted_schema::Unrecovered {
+                issues: vec![painted_schema::Issue::Mistyped {
+                    path: painted_schema::Path(Vec::new()),
+                    expected: painted_schema::Expected::Optional(Box::new(
+                        painted_schema::Expected::Model("Paint")
+                    )),
+                    found: stored,
+                }],
+            })
+        );
+    }
+}
+
+/// An optional externally tagged enum is absent when no key names a variant of it, as before.
+#[test]
+fn an_absent_flattened_optional_externally_tagged_enum_lists_nothing() {
+    let mut calls = 0_u32;
+    let absent = Edged {
+        edge: None,
+        own: "x".to_owned(),
+    };
+    let absent_written = serde_json::to_value(&absent).unwrap();
+    assert_eq!(absent_written, json!({ "own": "x" }));
+    assert_eq!(
+        read_counting!(Edged, edged_schema, absent_written, calls),
+        Ok(absent)
+    );
+    let there = Edged {
+        edge: Some(Edge::Curved { radius: 1.5_f64 }),
+        own: "x".to_owned(),
+    };
+    let there_written = serde_json::to_value(&there).unwrap();
+    assert_eq!(
+        there_written,
+        json!({ "Curved": { "radius": 1.5_f64 }, "own": "x" })
+    );
+    assert_eq!(
+        read_counting!(Edged, edged_schema, there_written, calls),
+        Ok(there)
+    );
+    assert_eq!(calls, 0);
+    let undeclared = json!({ "legacy": true, "own": "x" });
+    assert!(serde_reads::<Edged>(&undeclared));
+    assert_eq!(
+        listed!(Edged, edged_schema, undeclared),
+        ["legacy: unknown: found Bool(true)"]
+    );
+}
+
+/// An optional adjacently tagged enum is absent when its tag's key is: its content key alone
+/// names no variant, and is the outer type's to judge.
+#[test]
+fn an_absent_flattened_optional_adjacently_tagged_enum_lists_nothing() {
+    let mut calls = 0_u32;
+    let absent = Trimmed {
+        own: "x".to_owned(),
+        trim: None,
+    };
+    let absent_written = serde_json::to_value(&absent).unwrap();
+    assert_eq!(absent_written, json!({ "own": "x" }));
+    assert_eq!(
+        read_counting!(Trimmed, trimmed_schema, absent_written, calls),
+        Ok(absent)
+    );
+    let there = Trimmed {
+        own: "x".to_owned(),
+        trim: Some(Trim::Dotted { gap: 2_i32 }),
+    };
+    let there_written = serde_json::to_value(&there).unwrap();
+    assert_eq!(
+        there_written,
+        json!({ "data": { "gap": 2_i32 }, "kind": "Dotted", "own": "x" })
+    );
+    assert_eq!(
+        read_counting!(Trimmed, trimmed_schema, there_written, calls),
+        Ok(there)
+    );
+    assert_eq!(calls, 0);
+    let content_alone = json!({ "data": { "gap": 2_i32 }, "own": "x" });
+    assert!(serde_reads::<Trimmed>(&content_alone));
+    assert_eq!(
+        listed!(Trimmed, trimmed_schema, content_alone),
+        ["data: unknown: found Object {\"gap\": Number(2)}"]
+    );
+}
+
+/// Each flagged type answers whether an object holds what names a value of it: a key of its own
+/// or of a type it flattens for a struct, any key for one that flattens a map, the tag's key or a
+/// variant's for a tagged enum, and a variant serde reads for an untagged one.
+#[test]
+fn each_flagged_type_answers_whether_an_object_names_a_value_of_it() {
+    let named = |stored: Value, asked: fn(&serde_json::Map<String, Value>) -> bool| {
+        asked(stored.as_object().unwrap())
+    };
+    assert!(named(
+        json!({ "createdBy": 7_i32 }),
+        Audit::decode_with_value_named
+    ));
+    assert!(!named(
+        json!({ "legacy": true }),
+        Audit::decode_with_value_named
+    ));
+    assert!(named(
+        json!({ "kind": "Clear" }),
+        Sheet::decode_with_value_named
+    ));
+    assert!(named(
+        json!({ "note": "n" }),
+        Sheet::decode_with_value_named
+    ));
+    assert!(!named(
+        json!({ "legacy": true }),
+        Sheet::decode_with_value_named
+    ));
+    assert!(named(
+        json!({ "legacy": true }),
+        Counts::decode_with_value_named
+    ));
+    assert!(!named(json!({}), Counts::decode_with_value_named));
+    assert!(named(
+        json!({ "kind": 5_i32 }),
+        Paint::decode_with_value_named
+    ));
+    assert!(!named(
+        json!({ "color": "red" }),
+        Paint::decode_with_value_named
+    ));
+    assert!(named(
+        json!({ "Straight": null }),
+        Edge::decode_with_value_named
+    ));
+    assert!(!named(
+        json!({ "radius": 1.5_f64 }),
+        Edge::decode_with_value_named
+    ));
+    assert!(named(
+        json!({ "kind": "Solid" }),
+        Trim::decode_with_value_named
+    ));
+    assert!(!named(json!({ "data": {} }), Trim::decode_with_value_named));
+    assert!(named(
+        json!({ "address": "a@b" }),
+        Channel::decode_with_value_named
+    ));
+    assert!(!named(
+        json!({ "address": 5_i32 }),
+        Channel::decode_with_value_named
+    ));
+    assert!(!named(json!({}), Channel::decode_with_value_named));
 }

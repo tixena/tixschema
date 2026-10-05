@@ -207,6 +207,7 @@ impl EnumWalker<'_> {
             .variants
             .iter()
             .map(|variant| self.external_variant(variant));
+        let named = self.external_named();
         let keyed = self.walker.fields_method(
             true,
             true,
@@ -218,8 +219,22 @@ impl EnumWalker<'_> {
         );
         quote! {
             #walked
+            #named
             #keyed
         }
+    }
+
+    /// `decode_with_{source}_named` of an externally tagged enum: whether `object` holds a key
+    /// naming a variant serde reads.
+    fn external_named(&self) -> TokenStream {
+        let tags: Vec<&String> = self.variants.iter().flat_map(WalkedVariant::tags).collect();
+        if tags.is_empty() {
+            return self.walker.never_named();
+        }
+        self.walker.named_method(
+            true,
+            &quote! { object.keys().any(|key| matches!(key.as_str(), #(#tags)|*)) },
+        )
     }
 
     /// What an externally tagged enum's fields walker runs for one variant: where `object` holds
@@ -374,10 +389,10 @@ impl EnumWalker<'_> {
     fn methods(&self, tagging: &Tagging) -> TokenStream {
         match tagging {
             Tagging::Adjacent { content, tag } => {
-                self.tagged_methods(&self.adjacent_fields(tag, content))
+                self.tagged_methods(tag, &self.adjacent_fields(tag, content))
             }
             Tagging::External => self.external_methods(),
-            Tagging::Internal { tag } => self.tagged_methods(&self.internal_fields(tag)),
+            Tagging::Internal { tag } => self.tagged_methods(tag, &self.internal_fields(tag)),
             Tagging::Plain => {
                 let whole = self.walker.read_whole(&self.walker.own_model());
                 self.walker
@@ -387,12 +402,17 @@ impl EnumWalker<'_> {
         }
     }
 
-    /// The walker of an internally or adjacently tagged enum, whose fields walker runs `fields`.
-    fn tagged_methods(&self, fields: &TokenStream) -> TokenStream {
+    /// The walker of an internally or adjacently tagged enum, which the key `tag` names in an
+    /// object and whose fields walker runs `fields`.
+    fn tagged_methods(&self, tag: &str, fields: &TokenStream) -> TokenStream {
         let walked = self.walker.object_issues_method();
+        let named = self
+            .walker
+            .named_method(true, &quote! { object.contains_key(#tag) });
         let keyed = self.walker.fields_method(true, true, fields);
         quote! {
             #walked
+            #named
             #keyed
         }
     }
@@ -435,7 +455,7 @@ impl EnumWalker<'_> {
                 Shape::Held(Walk {
                     step: Step::Model,
                     ty,
-                }) => flattened_walker_call(source, ty, &object, &[], &out),
+                }) => flattened_walker_call(source, ty, &object.to_token_stream(), &[], &out),
                 // serde reads any other value from the whole object, where no walk reaches it.
                 Shape::Held(_) | Shape::Nothing | Shape::Slots(_) => every_key.clone(),
             };
@@ -472,7 +492,8 @@ impl EnumWalker<'_> {
                     step: Step::Model,
                     ty,
                 }) => {
-                    let walked = flattened_walker_call(source, ty, &object, &[], &into);
+                    let walked =
+                        flattened_walker_call(source, ty, &object.to_token_stream(), &[], &into);
                     quote! { #walked; }
                 }
                 Shape::Held(_) | Shape::Nothing | Shape::Slots(_) => {
@@ -542,6 +563,15 @@ impl EnumWalker<'_> {
                 }
             }
         });
+        // Nothing in an object names an untagged enum but serde reading it as one of its variants.
+        let read = self
+            .walker
+            .source
+            .object_reader(&Ident::new("object", Span::call_site()));
+        let asked = self.walker.named_method(
+            true,
+            &quote! { <Self as serde::Deserialize>::deserialize(#read).is_ok() },
+        );
         let keyed = self
             .walker
             .fields_method(true, true, &self.untagged_fields());
@@ -550,6 +580,7 @@ impl EnumWalker<'_> {
             .filter_map(|variant| self.variant_method(variant));
         quote! {
             #walked
+            #asked
             #keyed
             #(#methods)*
         }
