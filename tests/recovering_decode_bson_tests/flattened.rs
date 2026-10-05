@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use bson::oid::ObjectId;
 use bson::{Bson, Document, doc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use tixschema::model_schema;
 
 // The JSON schema of a type holding a `Version` names its module from here, beside the type.
@@ -516,6 +516,156 @@ struct Trimmed {
     own: String,
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
     trim: Option<Trim>,
+}
+
+/// A struct with a named field, held as text so a map of numbers handed its key refuses it.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Rev {
+    revision: String,
+}
+
+/// A flattened struct, then a flattened type that takes every key it is handed.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Two {
+    #[serde(flatten)]
+    audit: Rev,
+    #[serde(flatten)]
+    counts: Counts,
+    id: String,
+}
+
+/// Internally tagged, with a variant that holds a type that takes every key it is handed.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+enum Filled {
+    Counted(Counts),
+}
+
+/// A single-slot struct over a map, flattened.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Extras(HashMap<String, i32>);
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Bag {
+    #[serde(flatten)]
+    extras: Extras,
+    title: String,
+}
+
+/// A single-slot struct over an `Option` of a struct, flattened.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Newest(Option<Version>);
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Paper {
+    #[serde(flatten)]
+    newest: Newest,
+    title: String,
+}
+
+/// A generic brand filled with a struct, flattened.
+#[model_schema(decode_with, default_types(T = String))]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct Wrap<T>(T);
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Outer {
+    #[serde(flatten)]
+    body: Wrap<Version>,
+    id: String,
+}
+
+/// A plain enum: flattened, serde writes the variant's name as a key holding `null`. It is read
+/// only where it is flattened, which a schema surface refuses.
+#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+enum Mood {
+    Calm,
+    Tense,
+}
+
+/// A flattened plain enum. A schema surface refuses the declaration.
+#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Moody {
+    #[serde(flatten)]
+    mood: Mood,
+    name: String,
+}
+
+/// Internally tagged, with a variant that holds a plain enum. A schema surface refuses the
+/// declaration.
+#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+enum Slot {
+    Empty,
+    Held(Mood),
+}
+
+/// Internally tagged, with a struct variant that flattens a struct and then a type that takes
+/// every key it is handed.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+enum Booked {
+    Gone,
+    Made {
+        #[serde(flatten)]
+        audit: Rev,
+        #[serde(flatten)]
+        counts: Counts,
+        id: String,
+    },
+}
+
+/// A flattened struct, then a flattened `Option` of a type that takes every key it is handed.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Optioned {
+    #[serde(flatten)]
+    audit: Rev,
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    counts: Option<Counts>,
+    id: String,
+}
+
+/// A single-slot struct whose slot a hook reads: serde hands the hook what the struct is handed.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Postmark(#[serde(deserialize_with = "as_written")] Version);
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Franked {
+    id: String,
+    #[serde(flatten)]
+    postmark: Postmark,
+}
+
+/// A single-slot struct over an id, which serde writes as an object and so flattens.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Marker(ObjectId);
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Docket {
+    #[serde(flatten)]
+    marker: Marker,
+    name: String,
 }
 
 fn audit() -> Audit {
@@ -1644,4 +1794,285 @@ fn each_flagged_type_answers_whether_a_document_names_a_value_of_it() {
     assert!(Channel::decode_with_bson_named(&doc! { "address": "a@b" }));
     assert!(!Channel::decode_with_bson_named(&doc! { "address": 5_i32 }));
     assert!(!Channel::decode_with_bson_named(&doc! {}));
+}
+
+fn rev() -> Rev {
+    Rev {
+        revision: "r".to_owned(),
+    }
+}
+
+fn counts() -> Counts {
+    Counts {
+        by_name: HashMap::from([("a".to_owned(), 1_i32)]),
+        title: "t".to_owned(),
+    }
+}
+
+/// A read hook that reads what the type's own reader reads, from whatever it is handed.
+fn as_written<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(deserializer)
+}
+
+/// A flattened type declared after a flattened struct is handed none of that struct's keys, in a
+/// struct, in a variant's fields, and where it is an `Option`.
+#[test]
+fn a_flattened_type_declared_after_a_flattened_struct_is_handed_none_of_its_keys() {
+    let mut calls = 0_u32;
+    let two = Two {
+        audit: rev(),
+        counts: counts(),
+        id: "i".to_owned(),
+    };
+    assert_eq!(
+        written(&two),
+        doc! { "revision": "r", "a": 1_i32, "title": "t", "id": "i" }
+    );
+    assert_eq!(
+        read_counting!(Two, two_schema, written(&two), calls),
+        Ok(two)
+    );
+
+    let made = Booked::Made {
+        audit: rev(),
+        counts: counts(),
+        id: "i".to_owned(),
+    };
+    assert_eq!(
+        read_counting!(Booked, booked_schema, written(&made), calls),
+        Ok(made)
+    );
+
+    for held in [Some(counts()), None] {
+        let optioned = Optioned {
+            audit: rev(),
+            counts: held,
+            id: "i".to_owned(),
+        };
+        assert_eq!(
+            read_counting!(Optioned, optioned_schema, written(&optioned), calls),
+            Ok(optioned)
+        );
+    }
+    assert_eq!(calls, 0);
+}
+
+/// The type an internally tagged variant holds is handed the document without the tag's key.
+#[test]
+fn an_internally_tagged_variants_value_is_handed_the_document_without_the_tag() {
+    let filled = Filled::Counted(counts());
+    assert_eq!(
+        written(&filled),
+        doc! { "kind": "Counted", "a": 1_i32, "title": "t" }
+    );
+    let mut calls = 0_u32;
+    assert_eq!(
+        read_counting!(Filled, filled_schema, written(&filled), calls),
+        Ok(filled)
+    );
+    assert_eq!(calls, 0);
+}
+
+/// A flattened single-slot struct over a map, over an `Option` of a struct and a flattened
+/// generic brand filled with a struct each claim the keys serde reads for them.
+#[test]
+fn a_flattened_single_slot_struct_claims_the_keys_serde_reads_for_it() {
+    let mut calls = 0_u32;
+    let bag = Bag {
+        extras: Extras(HashMap::from([("a".to_owned(), 1_i32)])),
+        title: "t".to_owned(),
+    };
+    assert_eq!(written(&bag), doc! { "a": 1_i32, "title": "t" });
+    assert_eq!(
+        read_counting!(Bag, bag_schema, written(&bag), calls),
+        Ok(bag)
+    );
+
+    let paper = Paper {
+        newest: Newest(Some(Version { number: 3_i32 })),
+        title: "t".to_owned(),
+    };
+    assert_eq!(written(&paper), doc! { "number": 3_i32, "title": "t" });
+    assert_eq!(
+        read_counting!(Paper, paper_schema, written(&paper), calls),
+        Ok(paper)
+    );
+
+    let outer = Outer {
+        body: Wrap(Version { number: 3_i32 }),
+        id: "i".to_owned(),
+    };
+    assert_eq!(written(&outer), doc! { "number": 3_i32, "id": "i" });
+    assert_eq!(
+        read_counting!(Outer, outer_schema, written(&outer), calls),
+        Ok(outer)
+    );
+    assert_eq!(calls, 0);
+}
+
+/// A flattened plain enum is the key naming its variant, holding `null`, and that key is its own:
+/// flattened in a struct, and held by an internally tagged variant.
+#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[test]
+fn a_flattened_plain_enum_claims_the_key_naming_its_variant() {
+    let mut calls = 0_u32;
+    let moody = Moody {
+        mood: Mood::Calm,
+        name: "a".to_owned(),
+    };
+    assert_eq!(written(&moody), doc! { "Calm": Bson::Null, "name": "a" });
+    assert_eq!(
+        read_counting!(Moody, moody_schema, written(&moody), calls),
+        Ok(moody)
+    );
+
+    let slot = Slot::Held(Mood::Calm);
+    assert_eq!(written(&slot), doc! { "kind": "Held", "Calm": Bson::Null });
+    assert_eq!(
+        read_counting!(Slot, slot_schema, written(&slot), calls),
+        Ok(slot)
+    );
+    assert_eq!(calls, 0);
+}
+
+/// An issue that is there is still listed once, where it sits, in each of the shapes above.
+#[test]
+fn an_issue_in_a_type_handed_what_serde_hands_it_is_listed_once_where_it_sits() {
+    let count_as_text = doc! { "a": "x", "id": "i", "revision": "r", "title": "t" };
+    assert!(!serde_reads::<Two>(&count_as_text));
+    assert_eq!(
+        listed!(Two, two_schema, count_as_text),
+        [invalid("a", "I32", string("x"))]
+    );
+    let revision_as_number = doc! { "a": 1_i32, "id": "i", "revision": 5_i32, "title": "t" };
+    assert!(!serde_reads::<Two>(&revision_as_number));
+    assert_eq!(
+        listed!(Two, two_schema, revision_as_number),
+        [invalid("revision", "String", Bson::Int32(5))]
+    );
+
+    let filled_count = doc! { "a": "x", "kind": "Counted", "title": "t" };
+    assert!(!serde_reads::<Filled>(&filled_count));
+    assert_eq!(
+        listed!(Filled, filled_schema, filled_count),
+        [invalid("a", "I32", string("x"))]
+    );
+    let unknown_tag = doc! { "a": 1_i32, "kind": "Emptied", "title": "t" };
+    assert!(!serde_reads::<Filled>(&unknown_tag));
+    assert_eq!(
+        listed!(Filled, filled_schema, unknown_tag),
+        [invalid(
+            "kind",
+            "Variants([\"Counted\"])",
+            string("Emptied")
+        )]
+    );
+
+    let bag_count = doc! { "a": "x", "title": "t" };
+    assert!(!serde_reads::<Bag>(&bag_count));
+    assert_eq!(
+        listed!(Bag, bag_schema, bag_count),
+        [invalid("a", "I32", string("x"))]
+    );
+
+    // serde reads the `Option` as absent, and the document holds what it would not write. The
+    // issue holds what the single-slot struct was handed, which is all it has.
+    let number_as_text = doc! { "number": "3", "title": "t" };
+    assert!(serde_reads::<Paper>(&number_as_text));
+    assert_eq!(
+        listed!(Paper, paper_schema, number_as_text),
+        [mistyped(
+            "",
+            "Optional(Model(\"Version\"))",
+            Bson::Document(doc! { "number": "3" })
+        )]
+    );
+
+    let outer_number = doc! { "id": "i", "number": "3" };
+    assert!(!serde_reads::<Outer>(&outer_number));
+    assert_eq!(
+        listed!(Outer, outer_schema, outer_number),
+        [invalid(
+            "",
+            "TypeParam(\"T\")",
+            Bson::Document(doc! { "number": "3" })
+        )]
+    );
+}
+
+/// A flattened plain enum lists what an externally tagged enum lists for a variant that holds
+/// nothing: nothing where a variant's key holds something other than `null`, which serde refuses,
+/// and `Missing` where no key names a variant.
+#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[test]
+fn a_flattened_plain_enum_lists_what_an_externally_tagged_enum_lists_for_a_unit_variant() {
+    let not_null = doc! { "Calm": 5_i32, "name": "a" };
+    assert!(!serde_reads::<Moody>(&not_null));
+    assert_eq!(listed!(Moody, moody_schema, not_null), [undescribed()]);
+    let no_variant_key = doc! { "name": "a" };
+    assert!(!serde_reads::<Moody>(&no_variant_key));
+    assert_eq!(
+        listed!(Moody, moody_schema, no_variant_key),
+        [missing("", "Variants([\"Calm\", \"Tense\"])")]
+    );
+}
+
+/// A single-slot struct whose slot a hook reads is handed to the hook as serde hands it: it is
+/// read whole, and every key is its own.
+#[test]
+fn a_flattened_single_slot_struct_with_a_hooked_slot_claims_what_its_hook_reads() {
+    let mut calls = 0_u32;
+    let franked = Franked {
+        id: "i".to_owned(),
+        postmark: Postmark(Version { number: 3_i32 }),
+    };
+    assert_eq!(written(&franked), doc! { "id": "i", "number": 3_i32 });
+    assert_eq!(
+        read_counting!(Franked, franked_schema, written(&franked), calls),
+        Ok(franked)
+    );
+    assert_eq!(calls, 0);
+
+    let number_as_text = doc! { "id": "i", "number": "3" };
+    assert!(!serde_reads::<Franked>(&number_as_text));
+    assert_eq!(
+        listed!(Franked, franked_schema, number_as_text),
+        [invalid(
+            "",
+            "Model(\"Version\")",
+            Bson::Document(doc! { "number": "3" })
+        )]
+    );
+}
+
+/// A single-slot struct over an id is flattened as the object serde writes for an id, and the key
+/// of that object is the struct's own, from a document and from a JSON value.
+#[test]
+fn a_flattened_single_slot_struct_over_an_id_claims_the_key_serde_reads_for_it() {
+    let docket = Docket {
+        marker: Marker(oid("6a7cc592ca0574e6efdfe217")),
+        name: "n".to_owned(),
+    };
+    let row = written(&docket);
+    assert_eq!(
+        row,
+        doc! { "$oid": "6a7cc592ca0574e6efdfe217", "name": "n" }
+    );
+    assert!(serde_reads::<Docket>(&row));
+    let mut calls = 0_u32;
+    assert_eq!(
+        read_counting!(Docket, docket_schema, row, calls).as_ref(),
+        Ok(&docket)
+    );
+    let as_json = serde_json::to_value(&docket).unwrap();
+    let from_json = Docket::from_value_with(as_json, |_raw, _found| {
+        calls += 1;
+        docket_schema::Verdict::Reject
+    });
+    assert_eq!(from_json, Ok(docket));
+    assert_eq!(calls, 0);
 }

@@ -39,13 +39,15 @@ use crate::utils::{ident_schema_module_name, type_parameters_in_scope, written_t
 
 /// The type names the flag adds to a schema module.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-const ADDED_TYPE_NAMES: [&str; 8] = [
+const ADDED_TYPE_NAMES: [&str; 10] = [
     "Expected",
     "ExpectedToken",
     "Issue",
     "IssueFromParts",
     "Path",
     "Segment",
+    "Taken",
+    "TakenProbe",
     "Unrecovered",
     "Verdict",
 ];
@@ -107,7 +109,8 @@ enum Flattened<'item> {
     /// that type, then the field's own, which an issue names as expected.
     Optional(&'item Type, &'item Type),
     /// A field no walk reaches: every key counts as its own, and serde's verdict is the read's.
-    Unwalked,
+    /// It holds the field's type, and `None` for a field serde never reads.
+    Unwalked(Option<&'item Type>),
     /// A value read whole from the keys nothing else declares.
     Whole(Walk<'item>),
 }
@@ -121,7 +124,7 @@ impl<'item> Flattened<'item> {
     fn of(field: &'item Field, module_name: &str, parameters: &[String]) -> Self {
         // serde reads nothing into the field, and the keys it wrote for it are still in the object.
         if parse_serde_key_omission(&field.attrs).skips_deserializing {
-            return Self::Unwalked;
+            return Self::Unwalked(None);
         }
         let Walk { step, ty } = member_walk(field, module_name, parameters);
         match step {
@@ -138,7 +141,7 @@ impl<'item> Flattened<'item> {
                 Self::Optional(present.ty, ty)
             }
             Step::Items(_) | Step::Leaf(_) | Step::Positions(_) | Step::Present(_) => {
-                Self::Unwalked
+                Self::Unwalked(Some(&field.ty))
             }
         }
     }
@@ -147,57 +150,92 @@ impl<'item> Flattened<'item> {
     const fn reads_the_rest(&self) -> bool {
         matches!(self, Self::Entries(_) | Self::Whole(_))
     }
+
+    /// The function serde reads the field through, where reading it can take entries out of what
+    /// is left for the flattened fields declared after it. A map takes none.
+    fn taker(&self) -> Option<TokenStream> {
+        match self {
+            Self::Entries(_) | Self::Unwalked(None) => None,
+            Self::Model(read) | Self::Optional(_, read) | Self::Unwalked(Some(read)) => {
+                Some(own_reader(read))
+            }
+            Self::Whole(walk) => Some(match &walk.step {
+                Step::Leaf(whole) => whole.read.clone(),
+                Step::Entries(_)
+                | Step::Items(_)
+                | Step::Model
+                | Step::Positions(_)
+                | Step::Present(_) => own_reader(walk.ty),
+            }),
+        }
+    }
 }
 
 /// What a flattened type's fields walker is handed, which is what serde hands the type: the
-/// entries of the object that the fields read under a key of their own did not take.
+/// entries of the object that neither the fields read under a key of their own nor the flattened
+/// types declared before it took.
 struct Handed<'walk> {
-    /// The copy of those entries the walk binds, and `None` where no field takes a key: the
-    /// object itself is then handed over.
-    left: Option<Ident>,
+    /// What is handed over now: the object, a copy the walk bound of what is left of it, or what
+    /// an earlier flattened type left of either.
+    held: Ident,
     object: &'walk Ident,
+    /// `held` is a copy the walk owns, where every other is a reference.
+    owned: bool,
 }
 
-impl Handed<'_> {
+impl<'walk> Handed<'walk> {
     /// What is handed over, as the argument of a call.
     fn argument(&self) -> TokenStream {
-        let object = self.object;
-        self.left
-            .as_ref()
-            .map_or_else(|| quote! { #object }, |left| quote! { &#left })
+        let held = &self.held;
+        if self.owned {
+            quote! { &#held }
+        } else {
+            quote! { #held }
+        }
     }
 
-    /// What binds the copy: every entry of the object under a key that is none of `own`.
-    fn bound(&self, source: Source, own: &[String]) -> TokenStream {
-        let Some(left) = &self.left else {
-            return TokenStream::new();
-        };
-        let (object, object_type) = (self.object, source.object());
-        quote! {
-            let #left: #object_type = #object
+    /// What `object` hands over where the keys of `own` are taken out of it first: the copy
+    /// bound as `rest` and what binds it, and the object itself where `own` is empty.
+    fn leaving(source: Source, object: &'walk Ident, own: &[String]) -> (Self, TokenStream) {
+        if own.is_empty() {
+            return (Self::whole(object), TokenStream::new());
+        }
+        let (rest, object_type) = (Ident::new("rest", Span::call_site()), source.object());
+        let bound = quote! {
+            let #rest: #object_type = #object
                 .iter()
                 .filter(|(key, _)| !matches!(key.as_str(), #(#own)|*))
                 .map(|(key, held)| (key.clone(), held.clone()))
                 .collect();
-        }
-    }
-
-    /// The name what is handed over is read under.
-    fn name(&self) -> &Ident {
-        self.left.as_ref().unwrap_or(self.object)
+        };
+        let handed = Self {
+            held: rest,
+            object,
+            owned: true,
+        };
+        (handed, bound)
     }
 
     /// `keys`, which a fields walker returned for what it was handed, as keys of the object: a
-    /// key borrowed from the copy does not outlive the walk.
+    /// key borrowed from anything else does not outlive the walk.
     fn of_the_object(&self, keys: &TokenStream) -> TokenStream {
-        if self.left.is_none() {
+        let object = self.object;
+        if self.held == *object {
             return keys.clone();
         }
-        let object = self.object;
         quote! {
             #keys
                 .into_iter()
                 .filter_map(|key| #object.keys().find(|own| own.as_str() == key).map(String::as_str))
+        }
+    }
+
+    /// `object` itself, handed over as it is.
+    fn whole(object: &'walk Ident) -> Self {
+        Self {
+            held: object.clone(),
+            object,
+            owned: false,
         }
     }
 }
@@ -485,6 +523,12 @@ impl Source {
     /// The function a plain value is read through.
     fn leaf(self) -> Ident {
         format_ident!("{}_leaf", self.stem())
+    }
+
+    /// The function answering what serde leaves of an object once it has read a type flattened
+    /// there.
+    fn left(self) -> Ident {
+        format_ident!("{}_left", self.stem())
     }
 
     /// One of the walker's methods: `decode_with_value_issues`, `decode_with_bson_fields`.
@@ -783,6 +827,28 @@ impl Walker<'_> {
         }
     }
 
+    /// What walks each entry of `object`, held at `segments`, as an entry of a map of `values`:
+    /// every one, or each one whose key `unclaimed` holds of.
+    fn entries_walk(
+        &self,
+        values: &Walk<'_>,
+        object: &Ident,
+        segments: &[TokenStream],
+        unclaimed: Option<&TokenStream>,
+    ) -> TokenStream {
+        let item = Ident::new("item", Span::call_site());
+        let each = self.statement(
+            values,
+            &item,
+            &under(segments, &quote! { Ok(key.clone()) }),
+            0,
+        );
+        unclaimed.map_or_else(
+            || quote! { for (key, #item) in #object { #each } },
+            |test| quote! { for (key, #item) in #object { if #test { #each } } },
+        )
+    }
+
     /// The field's type as the constant list of tokens an issue carries for it.
     fn expected(&self, ty: &Type) -> TokenStream {
         let mut def = get_field_def("", ty, "");
@@ -894,7 +960,7 @@ impl Walker<'_> {
             flattened_walker_call(source, model, &argument, segments, &quote! { &mut nested });
         let named = source.method("named");
         let (reader, whole) = (
-            source.object_reader(handed.name()),
+            source.object_reader(&handed.held),
             source.object_value(handed.object),
         );
         let (here, expected) = (path_expression(segments), self.expected(written));
@@ -931,19 +997,7 @@ impl Walker<'_> {
     ) -> TokenStream {
         let (module, source) = (self.module, self.source);
         match flattened {
-            Flattened::Entries(values) => {
-                let item = Ident::new("item", Span::call_site());
-                let each = self.statement(
-                    values,
-                    &item,
-                    &under(segments, &quote! { Ok(key.clone()) }),
-                    0,
-                );
-                unclaimed.map_or_else(
-                    || quote! { for (key, #item) in #object { #each } },
-                    |test| quote! { for (key, #item) in #object { if #test { #each } } },
-                )
-            }
+            Flattened::Entries(values) => self.entries_walk(values, object, segments, unclaimed),
             Flattened::Whole(Walk {
                 step:
                     Step::Leaf(Whole {
@@ -975,7 +1029,7 @@ impl Walker<'_> {
             }
             Flattened::Model(_)
             | Flattened::Optional(_, _)
-            | Flattened::Unwalked
+            | Flattened::Unwalked(_)
             | Flattened::Whole(_) => TokenStream::new(),
         }
     }
@@ -992,45 +1046,105 @@ impl Walker<'_> {
         }
     }
 
+    /// The fields walker of a struct serde writes as the value it holds, and what answers whether
+    /// an object names it: each as the type that flattens that value itself walks and asks it.
+    /// `None` where no key is the value's: serde refuses to flatten it, or reads it as absent.
+    fn held_keyed(&self, walk: &Walk<'_>) -> Option<TokenStream> {
+        let source = self.source;
+        let object = Ident::new("object", Span::call_site());
+        let every_key = Claimed::Every.returned(&object);
+        let any_key = quote! { !object.is_empty() };
+        let (asked, lists, body) = match &walk.step {
+            Step::Entries(values) => {
+                let walked = self.entries_walk(values, &object, &[], None);
+                (any_key, true, quote! { #walked #every_key })
+            }
+            // A hook reads whatever it asks for, and a value of a parameter's type and a JSON value
+            // are whatever fills them, an object among it. An `Option` of one is left to the arm
+            // below: flattened, serde reads it as absent where its reader refuses.
+            Step::Leaf(whole)
+                if (whole.hooked || whole.parameterized || holds_any_value(walk.ty))
+                    && !get_field_def("", walk.ty, "").is_optional() =>
+            {
+                let (whole_object, read) = (
+                    source.object_value(&object),
+                    self.read_whole(&self.expected(walk.ty)),
+                );
+                let walked = quote! {
+                    let found = &#whole_object;
+                    #read;
+                };
+                (any_key, true, quote! { #walked #every_key })
+            }
+            Step::Model => {
+                let (ty, named, fields) =
+                    (walk.ty, source.method("named"), source.method("fields"));
+                (
+                    quote! { <#ty>::#named(object) },
+                    true,
+                    quote! { <#ty>::#fields(object, path, issue, out) },
+                )
+            }
+            Step::Present(present) if matches!(present.step, Step::Model) => {
+                let (model, named) = (present.ty, source.method("named"));
+                let walked =
+                    self.flattened_optional(model, walk.ty, &Handed::whole(&object), &[], true);
+                (
+                    quote! { <#model>::#named(object) },
+                    true,
+                    quote! {
+                        let mut declared = Vec::new();
+                        #walked
+                        declared
+                    },
+                )
+            }
+            // No walk reaches any other value serde reads from the entries: every key counts as
+            // its own, and serde's verdict is the read's.
+            Step::Leaf(_) | Step::Present(_) if reads_entries(walk) => (any_key, false, every_key),
+            Step::Items(_) | Step::Leaf(_) | Step::Positions(_) | Step::Present(_) => return None,
+        };
+        let (named, keyed) = (
+            self.named_method(true, &asked),
+            self.fields_method(true, lists, &body),
+        );
+        Some(quote! {
+            #named
+            #keyed
+        })
+    }
+
     /// The walker of a struct serde writes as the value one field of it holds: a single-slot tuple
     /// struct, and a `#[serde(transparent)]` struct of either kind.
     fn held_methods(&self, walk: &Walk<'_>) -> TokenStream {
-        let source = self.source;
         let found = Ident::new("found", Span::call_site());
-        match &walk.step {
+        let walked = match &walk.step {
             Step::Entries(_) | Step::Items(_) | Step::Positions(_) | Step::Present(_) => self
-                .claiming_no_key(&self.issues_method(&Self::listed(
+                .issues_method(&Self::listed(
                     &found,
                     &self.arms(walk, &found, &[], 0, walk.ty),
-                ))),
+                )),
             // The type's own reader runs whatever hook its slot carries.
             Step::Leaf(_) => {
                 let whole = self.read_whole(&self.expected(walk.ty));
-                self.claiming_no_key(&self.issues_method(&quote! { #whole; }))
+                self.issues_method(&quote! { #whole; })
             }
             Step::Model => {
-                let (ty, issues, named, fields) = (
-                    walk.ty,
-                    source.method("issues"),
-                    source.method("named"),
-                    source.method("fields"),
-                );
-                let walked = self.issues_method(&quote! {
+                let (ty, issues) = (walk.ty, self.source.method("issues"));
+                self.issues_method(&quote! {
                     <#ty>::#issues(found, path, issue, out);
-                });
-                let asked = self.named_method(true, &quote! { <#ty>::#named(object) });
-                let keyed = self.fields_method(
-                    true,
-                    true,
-                    &quote! { <#ty>::#fields(object, path, issue, out) },
-                );
+                })
+            }
+        };
+        self.held_keyed(walk).map_or_else(
+            || self.claiming_no_key(&walked),
+            |keyed| {
                 quote! {
                     #walked
-                    #asked
                     #keyed
                 }
-            }
-        }
+            },
+        )
     }
 
     /// `decode_with_{source}_issues` running `body`.
@@ -1098,20 +1212,49 @@ impl Walker<'_> {
         } else {
             Some(quote! { !matches!(key.as_str(), #(#own)|*) })
         };
-        let handed = Handed {
-            left: (declaring && !own.is_empty()).then(|| Ident::new("rest", Span::call_site())),
-            object,
+        let (mut handed, copied) = if declaring {
+            Handed::leaving(self.source, object, &own)
+        } else {
+            (Handed::whole(object), TokenStream::new())
         };
-        let copied = handed.bound(self.source, &own);
-        let declared = flattened.iter().map(|field| match field {
-            Flattened::Model(model) => self.flattened_model(model, &handed, segments, collects),
-            Flattened::Optional(model, written) => {
-                self.flattened_optional(model, written, &handed, segments, collects)
+        // serde reads the flattened fields in the order declared, each from what the ones before
+        // it left: the readers of those since the last one walked are still to be asked.
+        let mut earlier: Vec<TokenStream> = Vec::new();
+        let mut declared: Vec<TokenStream> = Vec::new();
+        for field in flattened {
+            if field.declares_its_keys() {
+                for read in take(&mut earlier) {
+                    declared.push(self.left_after(&mut handed, &read));
+                }
             }
-            Flattened::Entries(_) | Flattened::Unwalked | Flattened::Whole(_) => TokenStream::new(),
+            declared.push(match field {
+                Flattened::Model(model) => self.flattened_model(model, &handed, segments, collects),
+                Flattened::Optional(model, written) => {
+                    self.flattened_optional(model, written, &handed, segments, collects)
+                }
+                Flattened::Entries(_) | Flattened::Unwalked(_) | Flattened::Whole(_) => {
+                    TokenStream::new()
+                }
+            });
+            earlier.extend(field.taker());
+        }
+        // The keys an earlier flattened type declares are none of the reader's already. A field
+        // no walk reaches declares none, so what serde takes for it is taken out here.
+        let rest = reader.map(|field| {
+            let mut open = Handed::whole(object);
+            let taken: Vec<TokenStream> = flattened
+                .iter()
+                .take_while(|earlier_field| !earlier_field.reads_the_rest())
+                .filter(|earlier_field| matches!(earlier_field, Flattened::Unwalked(_)))
+                .filter_map(Flattened::taker)
+                .map(|read| self.left_after(&mut open, &read))
+                .collect();
+            let walked = self.flattened_rest(field, &open.held, segments, unclaimed.as_ref());
+            quote! {
+                #(#taken)*
+                #walked
+            }
         });
-        let rest =
-            reader.map(|field| self.flattened_rest(field, object, segments, unclaimed.as_ref()));
         KeyedWalk {
             claimed: if takes_the_rest {
                 Claimed::Every
@@ -1127,6 +1270,21 @@ impl Walker<'_> {
                 #rest
             },
         }
+    }
+
+    /// What binds, as what is `handed` over from here on, what serde leaves of it once it has
+    /// read a type flattened there through `read`: the same object where serde takes nothing.
+    fn left_after(&self, handed: &mut Handed<'_>, read: &TokenStream) -> TokenStream {
+        let (module, left_after) = (self.module, self.source.left());
+        let argument = handed.argument();
+        let left = Ident::new("left", Span::call_site());
+        let bound = quote! {
+            let taken = #module::#left_after(#read, #argument);
+            let #left = taken.as_ref().unwrap_or(#argument);
+        };
+        handed.held = left;
+        handed.owned = false;
+        bound
     }
 
     /// `arms` as the statement listing the issues of the value held under `held`.
@@ -1608,7 +1766,7 @@ fn bson_entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
     }
 }
 
-/// `bson_leaf` and the bracket rule it decides `Mistyped` by.
+/// `bson_leaf`, the bracket rule it decides `Mistyped` by, and `bson_left`.
 #[cfg(feature = "bson")]
 fn bson_leaf_items() -> TokenStream {
     quote! {
@@ -1646,6 +1804,25 @@ fn bson_leaf_items() -> TokenStream {
                     _ => None,
                 },
             }
+        }
+
+        /// What serde leaves of `entries` once it has read a type flattened there through `read`,
+        /// and `None` where it takes none of them.
+        pub fn bson_left<T, R>(read: R, entries: &bson::Document) -> Option<bson::Document>
+        where
+            R: FnOnce(TakenProbe) -> core::result::Result<T, serde::de::value::Error>,
+        {
+            let taken = taken_keys(read, entries.keys());
+            if taken.is_empty() {
+                return None;
+            }
+            Some(
+                entries
+                    .iter()
+                    .filter(|(key, _)| !taken.contains(&key.as_str()))
+                    .map(|(key, held)| (key.clone(), held.clone()))
+                    .collect(),
+            )
         }
     }
 }
@@ -1887,10 +2064,13 @@ fn entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
     }
 }
 
-/// Hands the object a flattened field's keys sit in to the fields walker of the model type the
-/// field is declared as, which lists into `out` and returns the keys that are that type's own.
+/// Hands `object`, which is what serde hands a flattened field, to the fields walker of the model
+/// type the field is declared as, which lists into `out` and returns the keys that are that
+/// type's own.
 ///
-/// A type a flagged type flattens carries the flag too, and is one serde can flatten. This builds:
+/// A type a flagged type flattens carries the flag too. One serde refuses to flatten, a tuple
+/// struct or a single-slot struct over text, a list or a tuple, builds as any other: its fields
+/// walker lists nothing and returns no key, and the read carries serde's refusal. This builds:
 ///
 /// ```rust
 /// # extern crate bson2 as bson;
@@ -2124,11 +2304,36 @@ fn held_in<'ty>(
 /// then one value whatever its type holds.
 fn held_walk<'item>(slot: &'item Field, module_name: &str, parameters: &[String]) -> Walk<'item> {
     let hooks = parse_serde_field_hooks(&slot.attrs);
-    if hooked_leaf(&slot.ty, &hooks, module_name, parameters).is_some() {
-        plain_value(&slot.ty, parameters)
-    } else {
-        walk_of(&slot.ty, parameters)
+    if hooked_leaf(&slot.ty, &hooks, module_name, parameters).is_none() {
+        return walk_of(&slot.ty, parameters);
     }
+    Walk {
+        step: Step::Leaf(Whole {
+            hooked: true,
+            parameterized: names_a_parameter(&slot.ty, parameters),
+            read: own_reader(&slot.ty),
+            write: None,
+        }),
+        ty: &slot.ty,
+    }
+}
+
+/// Whether `ty` is written as an id, or an `Option` of one. serde writes an id as an object, and
+/// so reads one flattened.
+fn holds_an_id(ty: &Type) -> bool {
+    let def = get_field_def("", ty, "");
+    def.array_depth == 0
+        && def
+            .expected_members()
+            .last()
+            .is_some_and(|(member, _, _)| *member == "ObjectId")
+}
+
+/// Whether `ty` is written as a type that holds any value, an object among them: a JSON value,
+/// or an `Option` of one.
+fn holds_any_value(ty: &Type) -> bool {
+    let def = get_field_def("", ty, "");
+    def.array_depth == 0 && matches!(def.field_type, FieldDefType::Unknown)
 }
 
 /// The functions a field is read and written back through when its author's serde attributes
@@ -2329,10 +2534,12 @@ fn module_items() -> TokenStream {
     let path = path_items();
     let callback = callback_items();
     let handoff = handoff_items();
+    let taken = taken_items();
     quote! {
         #path
         #callback
         #handoff
+        #taken
     }
 }
 
@@ -2564,6 +2771,19 @@ fn plain_value<'ty>(ty: &'ty Type, parameters: &[String]) -> Walk<'ty> {
     }
 }
 
+/// Whether serde reads a value walked this way from the entries of an object it is flattened in.
+/// It refuses every other value there, and reads an `Option` of one as absent.
+fn reads_entries(walk: &Walk<'_>) -> bool {
+    match &walk.step {
+        Step::Entries(_) | Step::Model => true,
+        Step::Items(_) | Step::Positions(_) => false,
+        Step::Leaf(whole) => {
+            whole.hooked || whole.parameterized || holds_any_value(walk.ty) || holds_an_id(walk.ty)
+        }
+        Step::Present(present) => reads_entries(present),
+    }
+}
+
 /// `hook` with each of its names resolved at the macro's mixed site, and located where its author
 /// wrote it. At the call site, a hook named like a value the walker binds would name that value.
 fn resolved_at_the_mixed_site(mut hook: syn::ExprPath) -> syn::ExprPath {
@@ -2584,6 +2804,127 @@ fn starts_at_a_parameter(type_path: &TypePath, parameters: &[String]) -> bool {
                 .iter()
                 .any(|parameter| segment.ident == parameter)
         })
+}
+
+/// What answers which entries serde takes for a type it reads flattened: a deserializer that
+/// reads nothing and hears what the type's own reader asks for, and `value_left` over it. A type
+/// that fills a parameter carries no flag, so nothing but its own `Deserialize` can say.
+fn taken_items() -> TokenStream {
+    quote! {
+        /// What a type's own `Deserialize` asks of the entries a flattened field is read from,
+        /// which says what serde takes out of them for it.
+        #[derive(Clone, Copy)]
+        #[non_exhaustive]
+        enum Taken {
+            /// The entries under these keys: a struct with named fields.
+            Fields(&'static [&'static str]),
+            /// The first entry one of these names keys: an enum written under its variant's name.
+            Variant(&'static [&'static str]),
+            /// None: a map, and whatever else reads the entries and leaves them.
+            Nothing,
+        }
+
+        /// A deserializer that reads nothing: it hears what a read asks of the entries a flattened
+        /// field is read from, and refuses it.
+        #[non_exhaustive]
+        pub struct TakenProbe(std::rc::Rc<core::cell::Cell<Taken>>);
+
+        impl<'de> serde::Deserializer<'de> for TakenProbe {
+            type Error = serde::de::value::Error;
+
+            fn deserialize_any<V: serde::de::Visitor<'de>>(
+                self,
+                _visitor: V,
+            ) -> core::result::Result<V::Value, Self::Error> {
+                Err(serde::de::Error::custom("nothing is read"))
+            }
+
+            fn deserialize_struct<V: serde::de::Visitor<'de>>(
+                self,
+                _name: &'static str,
+                fields: &'static [&'static str],
+                _visitor: V,
+            ) -> core::result::Result<V::Value, Self::Error> {
+                self.0.set(Taken::Fields(fields));
+                Err(serde::de::Error::custom("nothing is read"))
+            }
+
+            fn deserialize_enum<V: serde::de::Visitor<'de>>(
+                self,
+                _name: &'static str,
+                variants: &'static [&'static str],
+                _visitor: V,
+            ) -> core::result::Result<V::Value, Self::Error> {
+                self.0.set(Taken::Variant(variants));
+                Err(serde::de::Error::custom("nothing is read"))
+            }
+
+            fn deserialize_option<V: serde::de::Visitor<'de>>(
+                self,
+                visitor: V,
+            ) -> core::result::Result<V::Value, Self::Error> {
+                visitor.visit_some(self)
+            }
+
+            fn deserialize_newtype_struct<V: serde::de::Visitor<'de>>(
+                self,
+                _name: &'static str,
+                visitor: V,
+            ) -> core::result::Result<V::Value, Self::Error> {
+                visitor.visit_newtype_struct(self)
+            }
+
+            serde::forward_to_deserialize_any! {
+                bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string bytes byte_buf
+                unit unit_struct seq tuple tuple_struct map identifier ignored_any
+            }
+        }
+
+        /// The keys among `keys` whose entries serde takes when it reads a type flattened there
+        /// through `read`.
+        fn taken_keys<'key, T, R, K>(read: R, mut keys: K) -> Vec<&'key str>
+        where
+            R: FnOnce(TakenProbe) -> core::result::Result<T, serde::de::value::Error>,
+            K: Iterator<Item = &'key String>,
+        {
+            let asked = std::rc::Rc::new(core::cell::Cell::new(Taken::Nothing));
+            let _refused = read(TakenProbe(std::rc::Rc::clone(&asked)));
+            match asked.get() {
+                Taken::Fields(fields) => keys
+                    .map(String::as_str)
+                    .filter(|key| fields.contains(key))
+                    .collect(),
+                Taken::Variant(variants) => keys
+                    .find(|key| variants.contains(&key.as_str()))
+                    .map(String::as_str)
+                    .into_iter()
+                    .collect(),
+                Taken::Nothing => Vec::new(),
+            }
+        }
+
+        /// What serde leaves of `entries` once it has read a type flattened there through `read`,
+        /// and `None` where it takes none of them.
+        pub fn value_left<T, R>(
+            read: R,
+            entries: &serde_json::Map<String, serde_json::Value>,
+        ) -> Option<serde_json::Map<String, serde_json::Value>>
+        where
+            R: FnOnce(TakenProbe) -> core::result::Result<T, serde::de::value::Error>,
+        {
+            let taken = taken_keys(read, entries.keys());
+            if taken.is_empty() {
+                return None;
+            }
+            Some(
+                entries
+                    .iter()
+                    .filter(|(key, _)| !taken.contains(&key.as_str()))
+                    .map(|(key, held)| (key.clone(), held.clone()))
+                    .collect(),
+            )
+        }
+    }
 }
 
 /// The field serde's derive reads a `#[serde(transparent)]` struct as the value of, named or a

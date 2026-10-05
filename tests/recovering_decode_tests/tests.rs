@@ -31,6 +31,7 @@ mod as_text {
 }
 mod enum_shapes;
 mod flattened;
+mod flattened_shapes;
 mod generic_types;
 mod hook_names;
 mod method_parameter_names;

@@ -1,8 +1,8 @@
 //! The walkers of an enum, one per form serde writes an enum in.
 //!
-//! A plain enum is one value. A tagged enum is walked by its tag: the tag is read first, and what
-//! the variant it names holds is walked where that form writes it. An untagged enum is walked as
-//! the variant serde reads the value as.
+//! A plain enum is one value, and the key naming its variant where serde flattens it. A tagged
+//! enum is walked by its tag: the tag is read first, and what the variant it names holds is walked
+//! where that form writes it. An untagged enum is walked as the variant serde reads the value as.
 
 use core::iter::once;
 
@@ -12,7 +12,7 @@ use syn::ext::IdentExt as _;
 use syn::{Fields, ItemEnum, Type, parse_quote};
 
 use super::{
-    Arm, Keyed, Lookup, RecoveringDecode, Shape, Step, Walk, Walker, added_to, binding,
+    Arm, Handed, Keyed, Lookup, RecoveringDecode, Shape, Step, Walk, Walker, added_to, binding,
     flattened_walker_call, not_the_shape, path_expression, written_names,
 };
 use crate::features::serde::{
@@ -163,6 +163,31 @@ impl EnumWalker<'_> {
         }
     }
 
+    /// What an enum serde writes under its variant's name answers of an object and walks in it:
+    /// whether a key there names a variant, and what the first such key holds, the key being the
+    /// enum's own. A plain enum is flattened in that form.
+    fn external_keyed(&self) -> TokenStream {
+        let expected = self.variants_expected();
+        let looked_up = self
+            .variants
+            .iter()
+            .map(|variant| self.external_variant(variant));
+        let named = self.external_named();
+        let keyed = self.walker.fields_method(
+            true,
+            true,
+            &quote! {
+                #(#looked_up)*
+                out.push(issue("Missing", path.to_vec(), #expected, None, None, Vec::new()));
+                Vec::new()
+            },
+        );
+        quote! {
+            #named
+            #keyed
+        }
+    }
+
     /// The walker of an externally tagged enum: a unit variant's tag as text, or an object whose
     /// one key names a variant over what it holds. A value in any other form is read whole.
     fn external_methods(&self) -> TokenStream {
@@ -203,23 +228,9 @@ impl EnumWalker<'_> {
                 _ => #whole,
             }
         });
-        let looked_up = self
-            .variants
-            .iter()
-            .map(|variant| self.external_variant(variant));
-        let named = self.external_named();
-        let keyed = self.walker.fields_method(
-            true,
-            true,
-            &quote! {
-                #(#looked_up)*
-                out.push(issue("Missing", path.to_vec(), #expected, None, None, Vec::new()));
-                Vec::new()
-            },
-        );
+        let keyed = self.external_keyed();
         quote! {
             #walked
-            #named
             #keyed
         }
     }
@@ -316,8 +327,8 @@ impl EnumWalker<'_> {
     /// What `decode_with_{source}_fields` of an internally tagged enum runs: the tag read under
     /// `tag`, then the fields of the variant it names walked in the same object.
     fn internal_fields(&self, tag: &str) -> TokenStream {
+        let source = self.walker.source;
         let object = Ident::new("object", Span::call_site());
-        let keyed = self.walker.source.method("fields");
         let expected = self.variants_expected();
         let every_key = quote! { object.keys().map(String::as_str).collect() };
         let arms = self.variants.iter().map(|variant| {
@@ -330,14 +341,22 @@ impl EnumWalker<'_> {
                         .returning(&object);
                     quote! {{ #walked }}
                 }
+                // serde reads the tag first, and hands the type the object without its entry.
                 Shape::Held(Walk {
                     step: Step::Model,
                     ty,
-                }) => quote! {{
-                    let mut declared = <#ty>::#keyed(object, path, issue, out);
-                    declared.push(#tag);
-                    declared
-                }},
+                }) => {
+                    let (handed, copied) = Handed::leaving(source, &object, &[tag.to_owned()]);
+                    let walked =
+                        flattened_walker_call(source, ty, &handed.argument(), &[], &quote! { out });
+                    let keys = handed.of_the_object(&walked);
+                    quote! {{
+                        #copied
+                        let mut declared: Vec<&str> = #keys.collect();
+                        declared.push(#tag);
+                        declared
+                    }}
+                }
                 Shape::Nothing => quote! { vec![#tag] },
                 // serde reads any other value from the whole object, where no walk reaches it.
                 Shape::Held(_) | Shape::Slots(_) => every_key.clone(),
@@ -395,8 +414,16 @@ impl EnumWalker<'_> {
             Tagging::Internal { tag } => self.tagged_methods(tag, &self.internal_fields(tag)),
             Tagging::Plain => {
                 let whole = self.walker.read_whole(&self.walker.own_model());
-                self.walker
-                    .claiming_no_key(&self.walker.issues_method(&quote! { #whole; }))
+                let walked = self.walker.issues_method(&quote! { #whole; });
+                // With no variant serde reads, no key is the enum's own.
+                if self.variants.is_empty() {
+                    return self.walker.claiming_no_key(&walked);
+                }
+                let keyed = self.external_keyed();
+                quote! {
+                    #walked
+                    #keyed
+                }
             }
             Tagging::Untagged => self.untagged_methods(),
         }
