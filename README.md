@@ -3500,6 +3500,366 @@ export const Event$Schema: ZodType<Event> = z.strictObject({
 
 Chrono types also work in collections (`Vec<NaiveDate>` generates `z.array(z.iso.date())`) and in enums as tuple variant elements (`as_number` is honored on a tuple-variant `DateTime<Tz>` payload).
 
+## Recovering Decode (`decode_with`)
+
+A type that opts in gets two methods that read a value the caller already holds: `from_value_with` reads a `serde_json::Value`, and `from_bson_with` reads a `bson::Document`. Plain serde reads the value. When serde reads it and the value is held in the form the type writes, the decoded value comes back and nothing else happens. When serde refuses it, when it carries a key the type does not declare, or when a value reads but is held in another form than its field writes, a callback supplied with that call is handed the raw value and every issue found in it, once. The callback rejects the record, or fixes the raw value so that plain serde gets one more read.
+
+The flag adds these methods and the types the callback works with. Nothing tixschema generates calls them: a generated dispatcher reads with plain serde, as it did.
+
+### Opting in
+
+Write the flag among the type's `#[model_schema(...)]` arguments: `#[model_schema(decode_with)]`. `decode_with = true` reads the same, and `decode_with = false` is the flag not written. A type without the flag gains nothing: its expansion is what it was, with no method and no type added.
+
+On a type `Record`, the flag generates these two methods:
+
+```rust
+impl Record {
+    pub fn from_value_with<F>(
+        mut value: serde_json::Value,
+        decide: F,
+    ) -> core::result::Result<Self, record_schema::Unrecovered<serde_json::Value>>
+    where
+        F: FnOnce(&mut serde_json::Value, &[record_schema::Issue<serde_json::Value>]) -> record_schema::Verdict,
+    { /* ... */ }
+
+    pub fn from_bson_with<F>(
+        mut document: bson::Document,
+        decide: F,
+    ) -> core::result::Result<Self, record_schema::Unrecovered<bson::Bson>>
+    where
+        F: FnOnce(&mut bson::Document, &[record_schema::Issue<bson::Bson>]) -> record_schema::Verdict,
+    { /* ... */ }
+}
+```
+
+- The callback is the method's own type parameter, named `F` unless the type's declaration already writes that name, with its bound in a `where` clause. It is an `FnOnce`, so the compiler holds it to one run per read.
+- `record_schema` is the module tixschema writes for `Record`. The callback's types are generated into it, once per flagged type.
+- `from_value_with` is generated in a build with tixschema's `serde` feature on, and `from_bson_with` in a build with its `bson` feature on, which `mongodb` turns on.
+
+### What your crate lists
+
+The generated code names `serde_json` and, for `from_bson_with`, the `bson` library, so the crate that declares a flagged type lists them in its own manifest beside `serde`:
+
+```toml
+serde_json = "1"
+# for from_bson_with, at the major version your MongoDB driver uses
+bson = "2.15"
+```
+
+List the `bson` library at the major version your MongoDB driver uses, so the `Document` the driver hands you is the `bson::Document` the method takes. The generated code calls only what both major versions of the library have, and this repository's own tests build it against each: `bson = "2.15"`, and `bson = { version = "3.1", features = ["serde"] }`, with version 3's `serde` feature turned on.
+
+### One call, one chance
+
+1. Plain serde reads the value, and the walker walks it. When serde reads it and the walk finds no issue, the decoded value is returned and the callback is never called.
+2. Otherwise the callback is called once, with the raw value, mutable, and the list of every issue the walk found. A record serde reads still reaches the callback when it carries a key its type does not declare, or a value held in another form than its field writes.
+3. `Verdict::Reject`: the read fails with `Unrecovered`, carrying that list.
+4. `Verdict::Fixed`: plain serde reads the value the callback left, and the walker walks it again. A read with no issue returns the value. Anything else fails the read with `Unrecovered`, carrying the second walk's list. The callback is not called again.
+
+The result is the decoded value or the failure. Nothing reports whether the callback ran or what it changed: a caller that wants to know records it inside its own callback.
+
+### The issues
+
+The callback's types live in the flagged type's own module, `record_schema` for `Record`. An `Issue<V>` is generic over the raw value: `serde_json::Value` from `from_value_with`, `bson::Bson` from `from_bson_with`. One callback receives every issue in the whole record as the outer type's own `Issue`, an issue inside a nested type included, at its full path.
+
+| `Issue` member | What it says | Example |
+|----------------|--------------|---------|
+| `Invalid { path, expected, found, reason }` | The value is there, and serde refuses it for its field. `reason` is serde's own message | A version holding `"number": "2"` where `number` is an `i32`: `Invalid` at `versions[1].number`, expected `I32` |
+| `Missing { path, expected }` | The type requires the key, and it is not there | A record with no `name` where `name` is a `String`: `Missing` at `name`, expected `String` |
+| `Unknown { path, found }` | The key is there, and the type declares no field by that name | A record holding `"legacyField": true`: `Unknown` at `legacyField` |
+| `Mistyped { path, expected, found }` | serde reads the value, but it is held in another form than its field writes: another JSON shape, or another BSON type | An id held as the text `"6a7cc592ca0574e6efdfe217"` where an `ObjectId` writes `{ "$oid": "..." }`: `Mistyped` at `recordId`, expected `ObjectId` |
+| `NoVariant { path, found, variants }` | An untagged enum none of whose variants reads the value. `variants` holds each variant's own list of issues, in the order declared | `{ "country": "one", "digits": "555" }` read as an untagged enum of `Email`, `Phone` and `Versioned`: one `NoVariant`, holding a list for each of the three |
+| `Undescribed { reason }` | serde refuses the value and the walk found nothing that says why. `reason` is serde's own message | `{ "Circle": 5 }` read as an enum whose `Circle` variant holds named fields |
+
+`Undescribed` is added when everything the walk listed is an `Unknown` or a `Mistyped`, or it listed nothing, and serde still refuses the value. A type whose `Deserialize` is written by hand earns it, and so does an undeclared key under `#[serde(deny_unknown_fields)]`, listed beside its `Unknown`.
+
+`Expected` describes a field's type as tixschema classifies it:
+
+- one member per plain category: `Boolean`, `Char`, `String`, `I8` to `I64`, `Isize`, `U8` to `U64`, `Usize`, `F32`, `F64`, `DateTime`, `NaiveDate`, `NaiveDateTime`, `NaiveTime`, `ObjectId`, `Unknown`, and the three literals `BooleanLiteral(bool)`, `NumberLiteral(f64)` and `StringLiteral(&'static str)`;
+- `Model(&'static str)`, a `#[model_schema]` type by its Rust name as the field's type writes it, and `TypeParam(&'static str)`, one of the type's own type parameters by its name;
+- `Array(Box<Expected>)`, `Optional(Box<Expected>)` and `Map(Box<Expected>)`, each carrying what it holds, a map the type of its values, and `Tuple(Vec<Expected>)`, carrying its positions in order: `Array(Model("Version"))`, `Optional(ObjectId)`, `Tuple([String, U32])`;
+- `Variants(&'static [&'static str])`, the tag values a tagged enum accepts, for a tag naming none of them.
+
+`Path` is where an issue sits: `Path(pub Vec<Segment>)`, a `Segment` being `Key(String)` or `Index(usize)`. It displays as `versions[1].number`, and the empty path is the value itself. It carries the helpers a callback fixes the raw value through, each answering whether it did so:
+
+- `set_in_value(&self, root: &mut serde_json::Value, value: serde_json::Value) -> bool` puts `value` at the path, inserting the last key when it is absent. The empty path replaces the whole value. A parent that is not there, or an index past the end of its list, answers `false`.
+- `remove_from_value(&self, root: &mut serde_json::Value) -> bool` removes the key or the item at the path.
+- `set_in_document(&self, root: &mut bson::Document, value: bson::Bson) -> bool` and `remove_from_document(&self, root: &mut bson::Document) -> bool` do the same inside a BSON document, and are generated with the `bson` feature. A path into a document starts at a key, so the empty path sets and removes nothing there.
+
+`Verdict` is the callback's answer, `Reject` or `Fixed`. `Unrecovered<V>` is the failed read, with its issues in `pub issues: Vec<Issue<V>>`. It implements `Debug`, `Display`, one line per issue with its path first, and `std::error::Error`, so `?` carries a failed read into the caller's own error type.
+
+Each of these types is `#[non_exhaustive]`: inside the crate that declares the flagged type a `match` may list every member, and a callback written in another crate needs a wildcard arm.
+
+### What each shape reports
+
+The walker reads each type in the form serde writes it. A type held in another form than the one its walker walks, a struct as something other than an object or a tuple struct as something other than an array, is read whole with the type's own reader, and what is listed for it is serde's verdict: `Invalid` where serde refuses it, and `Mistyped` where serde reads it in a form the type does not write. A struct held as text is `Invalid`; one held as an array of its fields in order, which serde reads, is `Mistyped`.
+
+**A struct with named fields** is an object, each field looked up under the name serde writes it under, after every `rename` and `rename_all`.
+
+- A key that is there is read with the function serde's derive calls for the field: the field type's own `Deserialize`, or the field's `deserialize_with` function or `with` module. A refusal is `Invalid`.
+- A key that is absent is `Missing`, unless serde reads its absence: an `Option` field, a `#[serde(default)]` field or container, or a `#[serde(skip_deserializing)]` field.
+- A key stored under one of a field's `#[serde(alias)]` names counts as that field, and an issue with it is listed at the key it is stored under.
+- A key the type does not declare is `Unknown`. A key the type writes and never reads back, under `skip_deserializing`, is one it declares.
+- A field whose type is another flagged type is walked by that type's walker at the extended path, through a list, a map, an `Option` or a `Box`: `versions[1].number`, `byName.first.number`, `latest.draft`. An optional one is walked when its key is there and does not hold `null`.
+- A value that reads is written back the way its field writes it, through the field's `serialize_with` function or `with` module when it has one, and compared with what is held. A mismatch is `Mistyped`.
+- A `#[model_schema_prop]` constraint on a struct's field hangs no read hook, so the walker reads the value as serde does, and the bound stays `validate()`'s to report.
+
+Read as a struct holding `name: String` and `versions: Vec<Version>`, `{ "name": "Loan", "versions": [{ "number": 1 }, { "number": "2" }], "legacyField": true }` lists `Invalid` at `versions[1].number`, expected `I32`, and `Unknown` at `legacyField`.
+
+**A plain value inside a list or a map** is read on its own, at its own path, with its own expected type. Read as a struct holding `tags: Vec<ObjectId>`, `owners: HashMap<String, ObjectId>` and `counts: Vec<i32>`, an id held as text is `Mistyped` at `tags[1]` and at `owners.alice`, each expecting `ObjectId`, and a number held as text is `Invalid` at `counts[1]`, expecting `I32`. A field holding something other than the list or the map it is written as is one `Invalid` at the field. An optional plain value is read whole at its field, expecting `Optional(ObjectId)`. A field typed `serde_json::Value` holds any value and is never listed.
+
+**A tuple struct and a tuple field** are walked by position, each position a `Segment::Index`. Read as `struct Pair(String, u32)`, `["a", "x"]` lists `Invalid` at `[1]`, expected `U32`, and `["a"]` lists `Missing` at `[1]`. A position the type does not declare is `Unknown`: serde refuses a JSON array longer than the tuple, so `["a", 1, true]` lists `Unknown` at `[2]` beside an `Undescribed`, and serde reads past the position in a BSON list, where the `Unknown` is the only issue. A field `spot: (String, u32)` holding `[5, 1]` lists `Invalid` at `spot[0]`, expected `String`.
+
+**A brand and a single-slot tuple struct** are read as the one value they hold, at the path they sit at, and the issue names what they hold. With `id` a brand over `String`, a struct holding `"id": 5` lists `Invalid` at `id`, expected `String`. The brand is read with its own reader, so a check written on it runs wherever a schema surface hangs it: a brand declared `minLength = 3` lists `"ab"` as `Invalid`. Over a flagged struct with named fields it is walked as that struct: with `pinned` a brand over `Version`, `"pinned": { "number": "3" }` lists `Invalid` at `pinned.number`.
+
+**A unit struct** is the `{}` tixschema makes it write, in which no key is its own: read as `struct Ping;`, `{ "x": 1 }` lists `Unknown` at `x`.
+
+**A `#[serde(transparent)]` struct**, with a named field or with slots, is walked as the value of the one field serde reads it as, and no key is looked up under that field's name. Read as `struct Slug { text: String }` under `transparent`, `5` lists `Invalid` at the value itself, expected `String`. A slot serde does not read is no part of the value: with `tags` a `struct Tags(Vec<String>, #[serde(skip)] u8)` under `transparent`, `"tags": ["a", 7]` lists `Invalid` at `tags[1]`, expected `String`.
+
+**A plain enum** is one value, read with its own reader. Read as `enum Status { Draft, Published }`, `"Archived"` lists `Invalid` at the value itself, expected `Model("Status")`, and `{ "Draft": null }`, which serde reads and the enum does not write, lists `Mistyped`. `from_bson_with` is generated on a plain enum as on every flagged type, and every call to it reaches the callback, a document never being the bare name the enum writes.
+
+**A tagged enum** has its tag read first, and the variant the tag names is walked where that form writes it. The examples read a struct holding one enum of each form as `outline`, `fill` and `stroke`.
+
+- Externally tagged, the enum is a unit variant's name as text, or an object whose one key names a variant over what it holds. A key naming no variant is `Invalid` at the enum's own path, holding the whole value: `"outline": { "Hexagon": {} }` lists it at `outline`, expected `Variants(["Circle", "Empty", "Label"])`. An issue inside a variant sits under the variant's key: `outline.Circle.radius`.
+- Internally tagged, the tag is read from its key, and the variant's fields are walked in the same object. A tag naming no variant is `Invalid` at the tag's key: `"fill": { "color": "red", "kind": "Striped" }` lists it at `fill.kind`, expected `Variants(["Clear", "Solid", "Versioned"])`. An absent tag is `Missing` at that key, and an issue inside a variant sits beside the tag: `fill.number`.
+- Adjacently tagged, the tag is read from one key and what the variant holds is walked under the other: `"stroke": { "data": {}, "kind": "Dashed" }` lists `Missing` at `stroke.data.gap`.
+- A tag naming no variant that serde reads all the same, as the variant marked `#[serde(other)]`, is `Mistyped` at the tag.
+- The content of a variant with named fields, held as something other than an object, is the one place the walk lists nothing: `{ "Circle": 5 }` carries serde's refusal alone, as an `Undescribed`.
+
+**An untagged enum** is walked as the variant serde reads the value as, and that variant alone. Where serde reads it as none, the one issue is a `NoVariant` at the enum's path, holding each variant's own list in the order declared. A constrained member is read through the hook a schema surface hangs on it, so a value its bound refuses takes that variant out.
+
+**A variant's `alias`** is a tag serde reads the variant under, so a tag or a key stored as one names that variant: nothing is listed for the alias, an issue inside the variant is listed under the key it is stored under, `Round.radius` for a `Circle` stored as `Round`, and `Variants` lists each variant's name and then its aliases. **A variant serde never reads**, under `skip_deserializing` or `skip`, is no variant to the walker: a tag naming it is `Invalid`, `Variants` leaves it out, and an untagged enum holds no list for it in its `NoVariant`.
+
+**A `#[serde(flatten)]` field** has its keys among the keys of the object that holds it, so it is walked in that object and its issues sit at that object's path, never under the name of the field. The examples read `struct Sheet`, which declares `title: String` and flattens an `audit: Audit` holding `createdBy` and `revision`, an `extra: Option<Extra>` holding `note` and `weight`, and a `paint: Paint`, an enum internally tagged under `kind`.
+
+- A flattened flagged struct is walked by its own fields walker, and the keys it declares count as declared: `"createdBy": 7` lists `Invalid` at `createdBy`, and a key neither `Sheet` nor a type it flattens declares is `Unknown` once, `legacy` at `legacy`.
+- A flattened `Option` of a flagged struct is read by serde as absent wherever serde does not read the struct from the object. With none of its keys there, nothing is listed. With `note` there and `weight` not, the object holds what the field would not write, and the one issue is a `Mistyped` at the object's own path, expected `Optional(Model("Extra"))`. Where serde reads it, it lists what its own walk finds.
+- A flattened tagged enum is walked under its own keys in that object: a `kind` naming no variant is `Invalid` at `kind`, and an absent one is `Missing` there. An externally tagged enum is walked under the key naming its variant, and an adjacently tagged one under its tag and content keys.
+- A flattened untagged enum whose variants are objects with keys of their own is walked as the variant serde reads from the object, and is one `NoVariant` at the object's path where serde reads none.
+- A flattened map takes every key nothing else declares, and each such value is walked at its key: read as a struct that declares `title` and flattens a `HashMap<String, i32>`, `{ "a": "x", "b": 2, "title": "t" }` lists `Invalid` at `a`, and no key is `Unknown`.
+- A flattened type parameter is read whole, with its own reader, from the keys nothing else declares: one issue at the object's path, expected `TypeParam("T")`.
+- Some flattened fields are walked by nothing: an `Option` of a map, and a second field that takes the keys nothing else declares, after the first one. Every key then counts as declared, so none is `Unknown`, and serde's verdict is the read's: a value serde refuses there is one `Undescribed`.
+- A flattened field of a variant is walked in the object the variant's fields sit in, wherever the enum's form puts that object.
+
+**A generic type** gets its methods on `impl`s of their own, which bound every type parameter, and the type itself, `serde::de::DeserializeOwned`, and `serde::Serialize` as well for `from_bson_with`. A value of a parameter's type is read whole, with that parameter's own reader, and so is a list, a map, an `Option` or a tuple that holds one: read as `Page<Version>`, where `Page<T>` declares `items: Vec<T>`, a bad number inside one item is a single `Invalid` at `items`, expected `Array(TypeParam("T"))`. From a JSON value such a value is never `Mistyped`, nothing there being bound to write it back. From a BSON document it is: an id filling a parameter and stored as text is `Mistyped` at its field.
+
+### Nested types
+
+Every model type a flagged type's fields reach carries the flag too, whatever its shape, or the build fails. The flagged type's walker calls the nested type's walker, so the error names the method the flag would have generated:
+
+```rust
+#[model_schema()]
+#[derive(Deserialize, Serialize)]
+pub struct Version {
+    pub number: i32,
+}
+
+#[model_schema(decode_with)]
+#[derive(Deserialize, Serialize)]
+pub struct Record {
+    pub versions: Vec<Version>,
+}
+```
+
+```text
+error[E0599]: no associated function or constant named `decode_with_value_issues` found for struct `Version` in the current scope
+```
+
+The error is reported at the `#[model_schema(decode_with)]` of the type that names the unflagged one. A type flattened without the flag earns the same error naming `decode_with_value_fields`, and a build with `bson` on earns each a second time, for `decode_with_bson_issues` and `decode_with_bson_fields`.
+
+- **A model type filling a type parameter needs no flag.** It is read as one value, so `Page<Plain>` reads with no flag on `Plain`.
+- **A field typed with an alias of a flagged model type is walked**, the alias being that type: with `#[model_schema()] type EntryAlias = Entry;`, a field `featured: EntryAlias` lists an issue at `featured.name`.
+- **A field typed with an alias of a list or a map does not build**, and its author writes the type in full, `Vec<Version>`. With `#[model_schema()] pub type Versions = Vec<Version>;` and a field `all: Versions`, the walker calls a method on `Vec<Version>`:
+
+  ```text
+  error[E0599]: no associated function or constant named `decode_with_value_issues` found for struct `Vec<Version>` in the current scope
+  ```
+
+- **A field of a type tixschema does not know gets no special treatment.** tixschema takes every type name it does not recognise for another `#[model_schema]` type, so the walker calls that type's walker, and where the type has none the build fails. With a field `timeout: Duration`, `Duration` being `std::time::Duration`, the build earns this beside the `duration_schema` error the same field earns without the flag wherever a schema surface is on:
+
+  ```text
+  error[E0599]: no associated function or constant named `decode_with_value_issues` found for struct `std::time::Duration` in the current scope
+  ```
+
+### What is refused
+
+The flag is refused where the methods cannot be written, with a `compile_error!`, in every feature combination. No other shape is refused.
+
+**On a type alias.** An alias is another name for a type that already exists, so the methods would be that type's. For `pub type DecodeVersions = Vec<DecodeVersion>;`:
+
+```text
+model_schema: type `DecodeVersions`: `#[model_schema(decode_with)]` cannot be written on a type alias: `DecodeVersions` is another name for `Vec<DecodeVersion>`, and the methods would have to be added to that type. Write the flag on the model types the alias reaches.
+```
+
+**On a type that declares a lifetime.** The methods own the value they read, and a decoded value cannot borrow from it. For `pub struct DecodeNamed<'a> { pub name: &'a str }`, and for an enum declaring `'a` alike:
+
+```text
+model_schema: type `DecodeNamed`: `#[model_schema(decode_with)]` cannot be written on a type that borrows: `from_value_with` owns the value it reads, so the decoded `DecodeNamed<'a>` cannot borrow from it for `'a`.
+```
+
+**On a type with a field that borrows.** A reference written in a field borrows from the owned value as a declared lifetime does. For `pub struct DecodeLabelled { pub label: &'static str }`:
+
+```text
+model_schema: type `DecodeLabelled`: `#[model_schema(decode_with)]` cannot be written on a type with a field that borrows: `label` is `&'static str`, and `from_value_with` owns the value it reads, so nothing decoded from it can be borrowed for `'static`. Write the field as an owned type.
+```
+
+The message names the first such field serde reads, a reference held inside an `Option` or a `Vec` included, a tuple position by its number and an enum's field behind its variant: `Named.label`. A field that names a lifetime and borrows nothing from the value is not refused: a `Cow<'static, str>`, which serde reads as an owned value, and a reference in a field serde never reads, under `skip` or `skip_deserializing`.
+
+### Reading from MongoDB
+
+- **A row's `_id` is a key like any other.** Read into a type that does not declare `_id`, it is `Unknown`, and every such read goes to the callback. A type read from MongoDB declares `_id`, or the query projects it out with `_id: 0`.
+- **A value stored as another BSON type than its field writes is `Mistyped`**, serde reading it all the same: a MongoDB query for the field's own type does not match such a value. Numbers count as one type, `Int32`, `Int64`, `Double` and `Decimal128`, strings and symbols as one, and every other BSON type matches only itself. An id stored as its hex text where the field is an `ObjectId` is `Mistyped`; a number stored as an `Int64` where the field writes an `Int32` is no issue.
+- **A `chrono` `DateTime<Tz>` field writes text, or a number under `as_number`**, so a row holding a BSON date in it is `Invalid`, serde refusing it.
+- **A reader on an older model** sends every record a newer model wrote with an added field to the callback, the added key being one its type does not declare.
+- **The `reason` text of an issue is the `bson` library's own wording**, and differs between its two major versions. A callback matches on the member, the path, `expected` and `found`, never on `reason`.
+
+### Cost
+
+Every read walks the record, one that decodes cleanly included: the walk is what finds a key the type does not declare and a value held in another form than its field writes. Each plain value is read a second time and written back, to compare it with what is held. `from_bson_with` also copies the document it reads, `bson::Deserializer::new` taking the value it reads by value.
+
+Measured on one machine in a release build, on the `Record` below holding two versions, a `from_bson_with` read that calls no callback took about four times what plain serde takes to read the same document.
+
+### A complete callback
+
+A `Record` with an inner `Version`, read from the MongoDB rows older writers left. Every type a flagged type reaches carries the flag. The example needs tixschema's `mongodb` and `chrono` features.
+
+```rust
+use bson::oid::ObjectId;
+use bson::{Bson, Document};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use tixschema::model_schema;
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Version {
+    pub number: i32,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Record {
+    #[serde(rename = "recordId")]
+    pub id: ObjectId,
+    pub name: String,
+    pub created_at: DateTime<Utc>,
+    pub versions: Vec<Version>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+```
+
+The callback, a function over `Record` and its inner `Version`. An issue inside a version reaches it as `record_schema::Issue`, at its full path:
+
+```rust
+use record_schema::{Expected, Issue, Verdict};
+
+/// Repairs what older writers left in a `Record` row, inner versions included, and rejects
+/// anything else.
+fn repair_record(row: &mut Document, issues: &[Issue<Bson>]) -> Verdict {
+    for issue in issues {
+        if let Issue::Mistyped {
+            path,
+            expected: Expected::ObjectId,
+            found: Bson::String(hex),
+        } = issue
+        {
+            // the record's id, stored as text by rows written before it was an `ObjectId`
+            let Ok(id) = ObjectId::parse_str(hex) else {
+                return Verdict::Reject;
+            };
+            path.set_in_document(row, Bson::ObjectId(id));
+        } else if let Issue::Invalid {
+            path,
+            expected: Expected::DateTime,
+            found: Bson::DateTime(date),
+            reason: _reason,
+        } = issue
+        {
+            // the creation date, stored as a BSON date by a driver that writes dates natively
+            let Some(created) = DateTime::<Utc>::from_timestamp_millis(date.timestamp_millis())
+            else {
+                return Verdict::Reject;
+            };
+            path.set_in_document(row, Bson::String(created.to_rfc3339()));
+        } else if let Issue::Invalid {
+            path,
+            expected: Expected::DateTime,
+            found: Bson::Int64(millis),
+            reason: _reason,
+        } = issue
+        {
+            // the creation date, stored as epoch milliseconds
+            let Some(created) = DateTime::<Utc>::from_timestamp_millis(*millis) else {
+                return Verdict::Reject;
+            };
+            path.set_in_document(row, Bson::String(created.to_rfc3339()));
+        } else if let Issue::Invalid {
+            path,
+            expected: Expected::I32,
+            found: Bson::String(text),
+            reason: _reason,
+        } = issue
+        {
+            // a version's number, stored as text: the path is `versions[1].number`
+            let Ok(number) = text.parse::<i32>() else {
+                return Verdict::Reject;
+            };
+            path.set_in_document(row, Bson::Int32(number));
+        } else if let Issue::Unknown {
+            path,
+            found: _found,
+        } = issue
+        {
+            // a key no type declares, on the record or on one of its versions
+            path.remove_from_document(row);
+        } else {
+            return Verdict::Reject;
+        }
+    }
+    Verdict::Fixed
+}
+```
+
+A stored row with problems at three levels: the record's id stored as text and its creation date as a BSON date, a version's number stored as text beside a key no version declares, and the row's own `_id`, which `Record` does not declare. Shown as MongoDB Extended JSON:
+
+```json
+{
+  "_id": { "$oid": "6a7cc592ca0574e6efdfe299" },
+  "recordId": "6a7cc592ca0574e6efdfe217",
+  "name": "Loan",
+  "createdAt": { "$date": "2025-10-04T17:46:40Z" },
+  "versions": [{ "number": 1 }, { "number": "2", "draft": true }]
+}
+```
+
+Read with the callback, `row` being that row as a `bson::Document`:
+
+```rust
+let record = Record::from_bson_with(row, repair_record)?;
+```
+
+The callback runs once and is handed five issues, `Found` being the held value as `bson::Bson` prints it. It can read the row's `_id` from the raw document it is handed, `row.get_object_id("_id")`, to record which row it repaired.
+
+| Member | Path | Expected | Found |
+|--------|------|----------|-------|
+| `Mistyped` | `recordId` | `ObjectId` | `String("6a7cc592ca0574e6efdfe217")` |
+| `Invalid` | `createdAt` | `DateTime` | `DateTime(2025-10-04 17:46:40.0 +00:00:00)` |
+| `Invalid` | `versions[1].number` | `I32` | `String("2")` |
+| `Unknown` | `versions[1].draft` | | `Boolean(true)` |
+| `Unknown` | `_id` | | `ObjectId("6a7cc592ca0574e6efdfe299")` |
+
+It answers `Fixed`, the second read finds no issue, and the call returns this `Record`, each version shown by its `number`:
+
+| Field | Value |
+|-------|-------|
+| `id` | `6a7cc592ca0574e6efdfe217` |
+| `name` | `Loan` |
+| `created_at` | `2025-10-04T17:46:40+00:00` |
+| `versions` | `[1, 2]` |
+| `note` | `None` |
+
 ## Feature Flags
 
 The crate uses optional features to control code generation and dependencies. Each feature is enabled or disabled on its own, with two exceptions: `mongodb` turns on `bson`, and `bson` turns on `serde`.
@@ -3511,7 +3871,7 @@ The crate uses optional features to control code generation and dependencies. Ea
 | `jsonschema` | Yes | JSON Schema generation via `json_schema()` method |
 | `typescript` | Yes | TypeScript type generation via `ts_definition()` method |
 | `mongodb` | No | MongoDB support: the ObjectId type, with validation; turns on `bson` |
-| `bson` | No | BSON support; turns on `serde` |
+| `bson` | No | BSON support: `from_bson_with` on types that opt in with [`decode_with`](#recovering-decode-decode_with); turns on `serde` |
 | `chrono` | No | Chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`) |
 | `dart` | No | Dart type generation via `dart_definition()`, with a JSON `fromJson`/`toJson` codec |
 | `swift` | No | Swift type generation with a `Codable` codec |
@@ -3655,6 +4015,8 @@ Supported Serde attributes:
 - `#[serde(skip)]` -- the key is written into no payload and read out of none, so no surface describes the member at all: no TypeScript member, no Zod key, and neither a `properties` nor a `required` entry. On a tuple-struct or tuple-variant slot it takes the slot out of the described tuple, which shortens the arity -- and a variant declaring one slot becomes a unit variant, which is what serde writes for it
 - `#[serde(skip_serializing)]` -- the write half of `skip`: the key is left out of every payload while a supplied one is still read, and every surface answers as it does for `skip_serializing_if`
 - `#[serde(skip_deserializing)]` -- the read half: the key is written into every payload while a supplied one is discarded, so the member keeps a required key
+- `#[serde(alias = "...")]` -- read by the [recovering decode](#recovering-decode-decode_with) only: a key stored under an alias counts as its field, and a tag stored as one names its variant. No schema surface describes an alias
+- `#[serde(deserialize_with = "...")]`, `#[serde(serialize_with = "...")]` and `#[serde(with = "...")]` -- the field's own functions, which the [recovering decode](#recovering-decode-decode_with) reads a value through and writes it back through, as serde's derive does
 
 The three `skip` spellings are three different wires, and [Optional Fields](#optional-fields) reads each one in both directions, positional slots included.
 

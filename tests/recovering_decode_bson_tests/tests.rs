@@ -30,6 +30,7 @@ mod as_text {
     }
 }
 mod flattened;
+mod readme;
 
 use core::any::TypeId;
 use core::error::Error;
