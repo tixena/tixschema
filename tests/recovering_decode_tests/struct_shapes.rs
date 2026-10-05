@@ -1,7 +1,7 @@
 //! `from_value_with` on the structs serde does not write as an object of their fields: a tuple
-//! struct, a single-slot one, a brand, a `transparent` struct with a named field and a unit
-//! struct, and on a tuple wherever a field's type holds one. Each is walked in the form serde
-//! writes it.
+//! struct, a single-slot one, a brand, a `transparent` struct with a named field or with several
+//! slots, and a unit struct, and on a tuple wherever a field's type holds one. Each is walked in
+//! the form serde writes it.
 
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 use core::marker::PhantomData;
@@ -148,6 +148,45 @@ struct Etched {
     text: String,
 }
 
+/// A `transparent` tuple struct beside whose value is a slot serde neither writes nor reads.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct Tags(Vec<String>, #[serde(skip)] u8);
+
+/// A `transparent` tuple struct whose value is its second slot.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct Measured(#[serde(skip)] u8, String);
+
+/// A `transparent` tuple struct with a slot serde never reads, over a model type.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct Stamped(Version, #[serde(skip)] u8);
+
+/// The slots serde's derive passes over without a `skip` when it picks the one a `transparent`
+/// tuple struct is written as: one with a `default`, and a `PhantomData`, which no schema surface
+/// describes.
+#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct Marked<T>(
+    PhantomData<T>,
+    String,
+    #[serde(default, skip_serializing)] u32,
+);
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Filed {
+    measured: Measured,
+    stamped: Stamped,
+    tags: Tags,
+}
+
 #[model_schema(decode_with)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Titled {
@@ -231,6 +270,14 @@ fn titled() -> Titled {
     }
 }
 
+fn filed() -> Filed {
+    Filed {
+        measured: Measured(0, "m".to_owned()),
+        stamped: Stamped(Version { number: 1 }, 0),
+        tags: Tags(vec!["a".to_owned(), "b".to_owned()], 0),
+    }
+}
+
 /// What `from_value_with` lists for `stored`, read as a `Pair` by a decider that rejects it.
 fn pair_issues(stored: Value) -> Vec<String> {
     let read = Pair::from_value_with(stored, |_raw, _found| pair_schema::Verdict::Reject);
@@ -246,6 +293,12 @@ fn labelled_issues(stored: Value) -> Vec<String> {
 /// What `from_value_with` lists for `stored`, read as a `Titled` by a decider that rejects it.
 fn titled_issues(stored: Value) -> Vec<String> {
     let read = Titled::from_value_with(stored, |_raw, _found| titled_schema::Verdict::Reject);
+    lines(&read.unwrap_err())
+}
+
+/// What `from_value_with` lists for `stored`, read as a `Filed` by a decider that rejects it.
+fn filed_issues(stored: Value) -> Vec<String> {
+    let read = Filed::from_value_with(stored, |_raw, _found| filed_schema::Verdict::Reject);
     lines(&read.unwrap_err())
 }
 
@@ -809,6 +862,173 @@ fn a_transparent_struct_is_walked_as_the_field_serde_reads_past_a_default_and_a_
 
     let refused =
         Etched::from_value_with(json!(7_i32), |_raw, _found| etched_schema::Verdict::Reject);
+    assert_eq!(
+        lines(&refused.unwrap_err()),
+        [
+            "the value itself: invalid: expected String, found Number(7): invalid type: integer `7`, expected a string"
+        ]
+    );
+}
+
+/// serde writes a `transparent` tuple struct as the value of the one slot it reads, whatever other
+/// slots it declares, and what it wrote is read back without the decider.
+#[test]
+fn what_serde_wrote_for_a_transparent_tuple_struct_is_read_and_the_decider_never_runs() {
+    let tags = vec!["a".to_owned(), "b".to_owned(), "c".to_owned()];
+    let written = serde_json::to_value(Tags(tags.clone(), 9)).unwrap();
+    assert_eq!(written, json!(["a", "b", "c"]));
+    let plain: Tags = serde_json::from_value(written.clone()).unwrap();
+    assert_eq!(plain, Tags(tags, 0));
+    let mut calls = 0_u32;
+    let read = Tags::from_value_with(written, |_raw, _found| {
+        calls += 1;
+        tags_schema::Verdict::Reject
+    });
+    assert_eq!(read, Ok(plain));
+
+    let stored = serde_json::to_value(filed()).unwrap();
+    assert_eq!(
+        stored,
+        json!({
+            "measured": "m",
+            "stamped": { "number": 1_i32 },
+            "tags": ["a", "b"],
+        })
+    );
+    let filed_read = Filed::from_value_with(stored, |_raw, _found| {
+        calls += 1;
+        filed_schema::Verdict::Reject
+    });
+    assert_eq!(filed_read, Ok(filed()));
+    assert_eq!(calls, 0);
+}
+
+/// A value serde refuses is one issue at the path the struct sits at, naming the type of the slot
+/// the struct is read as, and an item of the list that slot holds is listed at its own index.
+#[test]
+fn a_value_a_transparent_tuple_struct_refuses_is_one_issue_at_the_path_the_struct_sits_at() {
+    serde_json::from_value::<Tags>(json!(5_i32)).unwrap_err();
+    let read = Tags::from_value_with(json!(5_i32), |_raw, _found| tags_schema::Verdict::Reject);
+    assert_eq!(
+        lines(&read.unwrap_err()),
+        ["the value itself: invalid: expected Array(String), found Number(5): not an array"]
+    );
+
+    let mut stored = serde_json::to_value(filed()).unwrap();
+    stored["measured"] = json!(["m"]);
+    stored["tags"] = json!(["a", 7_i32]);
+    assert_eq!(
+        filed_issues(stored),
+        [
+            "measured: invalid: expected String, found Array [String(\"m\")]: invalid type: sequence, expected a string",
+            "tags[1]: invalid: expected String, found Number(7): invalid type: integer `7`, expected a string",
+        ]
+    );
+    let mut unlisted = serde_json::to_value(filed()).unwrap();
+    unlisted["tags"] = json!(5_i32);
+    assert_eq!(
+        filed_issues(unlisted),
+        ["tags: invalid: expected Array(String), found Number(5): not an array"]
+    );
+}
+
+/// The slot the struct is read as is the one serde reads, wherever it is written: the value that
+/// slot holds is read, and the array of the struct's slots is a value serde refuses.
+#[test]
+fn a_transparent_tuple_struct_is_read_as_its_value_wherever_the_slot_is_written() {
+    let written = serde_json::to_value(Measured(9, "m".to_owned())).unwrap();
+    assert_eq!(written, json!("m"));
+    let plain: Measured = serde_json::from_value(written.clone()).unwrap();
+    assert_eq!(plain, Measured(0, "m".to_owned()));
+    let mut calls = 0_u32;
+    let read = Measured::from_value_with(written, |_raw, _found| {
+        calls += 1;
+        measured_schema::Verdict::Reject
+    });
+    assert_eq!(read, Ok(plain));
+    assert_eq!(calls, 0);
+
+    serde_json::from_value::<Measured>(json!(["m"])).unwrap_err();
+    let refused = Measured::from_value_with(json!(["m"]), |_raw, _found| {
+        measured_schema::Verdict::Reject
+    });
+    assert_eq!(
+        lines(&refused.unwrap_err()),
+        [
+            "the value itself: invalid: expected String, found Array [String(\"m\")]: invalid type: sequence, expected a string"
+        ]
+    );
+}
+
+/// Over a model type the struct is that type at the path it sits at: that type's walker lists the
+/// issues, at paths inside that type, and its fields walker is the struct's.
+#[test]
+fn a_transparent_tuple_struct_over_a_model_type_walks_as_that_type() {
+    let read = Stamped::from_value_with(json!({ "draft": true, "number": "3" }), |_raw, _found| {
+        stamped_schema::Verdict::Reject
+    });
+    assert_eq!(
+        lines(&read.unwrap_err()),
+        [
+            "number: invalid: expected I32, found String(\"3\"): invalid type: string \"3\", expected i32",
+            "draft: unknown: found Bool(true)",
+        ]
+    );
+
+    let mut stored = serde_json::to_value(filed()).unwrap();
+    stored["stamped"] = json!({ "number": "3" });
+    assert_eq!(
+        filed_issues(stored),
+        [
+            "stamped.number: invalid: expected I32, found String(\"3\"): invalid type: string \"3\", expected i32"
+        ]
+    );
+    let mut unlisted = serde_json::to_value(filed()).unwrap();
+    unlisted["stamped"] = json!("one");
+    assert_eq!(
+        filed_issues(unlisted),
+        [
+            "stamped: invalid: expected Model(\"Version\"), found String(\"one\"): invalid type: string \"one\", expected struct Version"
+        ]
+    );
+
+    let held = json!({ "legacy": true, "number": "3" });
+    let mut out: Vec<stamped_schema::Issue<Value>> = Vec::new();
+    let declared = Stamped::decode_with_value_fields(
+        held.as_object().unwrap(),
+        &[],
+        stamped_schema::issue_from_parts,
+        &mut out,
+    );
+    assert_eq!(declared, ["number"]);
+    assert_eq!(
+        lines(&stamped_schema::Unrecovered { issues: out }),
+        [
+            "number: invalid: expected I32, found String(\"3\"): invalid type: string \"3\", expected i32"
+        ]
+    );
+}
+
+/// The slot a `transparent` tuple struct is walked as is the one serde's derive reads it as:
+/// neither the one with a `default` nor the `PhantomData`.
+#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[test]
+fn a_transparent_tuple_struct_is_walked_as_the_slot_serde_reads_past_a_default_and_a_marker() {
+    let written = serde_json::to_value(Marked::<u8>(PhantomData, "m".to_owned(), 3)).unwrap();
+    assert_eq!(written, json!("m"));
+    let plain: Marked<u8> = serde_json::from_value(written.clone()).unwrap();
+    assert_eq!(plain, Marked(PhantomData, "m".to_owned(), 0));
+    let mut calls = 0_u32;
+    let read = Marked::<u8>::from_value_with(written, |_raw, _found| {
+        calls += 1;
+        marked_schema::Verdict::Reject
+    });
+    assert_eq!(read, Ok(plain));
+    assert_eq!(calls, 0);
+
+    serde_json::from_value::<Marked<u8>>(json!(7_i32)).unwrap_err();
+    let refused =
+        Marked::<u8>::from_value_with(json!(7_i32), |_raw, _found| marked_schema::Verdict::Reject);
     assert_eq!(
         lines(&refused.unwrap_err()),
         [

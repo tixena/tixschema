@@ -874,6 +874,59 @@ fn a_transparent_struct_is_walked_as_the_one_field_serde_reads_it_as() {
     }
 }
 
+/// serde's derive picks the value of a `#[serde(transparent)]` tuple struct as it picks a named
+/// field's, so whatever other slots the struct declares, it gets the `impl` of the single-slot
+/// one. A struct that derive refuses, and one with no `transparent`, are walked by position.
+#[test]
+fn a_transparent_tuple_struct_is_walked_as_the_one_slot_serde_reads_it_as() {
+    for (slot, wider) in [
+        (
+            "(pub Vec<String>);",
+            "(pub Vec<String>, #[serde(skip)] pub u8);",
+        ),
+        ("(pub String);", "(#[serde(skip)] pub u8, pub String);"),
+        (
+            "(pub Inner);",
+            "(pub Inner, #[serde(skip_deserializing)] pub u8);",
+        ),
+        (
+            "(pub Inner);",
+            "(pub Inner, #[serde(default, skip_serializing)] pub u8);",
+        ),
+        ("(pub Inner);", "(pub Inner, pub PhantomData<u8>);"),
+        (
+            "(pub Inner);",
+            "(pub core::marker::PhantomData<u8>, pub Inner);",
+        ),
+        (
+            "(#[serde(with = \"as_text\")] pub Vec<Inner>);",
+            "(#[serde(with = \"as_text\")] pub Vec<Inner>, #[serde(skip)] pub u8);",
+        ),
+    ] {
+        assert_eq!(
+            type_impl_of(&format!("#[serde(transparent)] pub struct Code{wider}")),
+            type_impl_of(&format!("#[serde(transparent)] pub struct Code{slot}")),
+            "for {wider}"
+        );
+    }
+    assert_eq!(
+        type_impl_of("#[serde(transparent)] pub struct Code<T>(pub T, pub PhantomData<T>);"),
+        type_impl_of("#[serde(transparent)] pub struct Code<T>(pub T);"),
+    );
+    for positional in [
+        "pub struct Code(pub Inner, #[serde(skip)] pub u8);",
+        "#[serde(transparent)] pub struct Code(pub Inner, pub Inner);",
+        "#[serde(transparent)] pub struct Code(#[serde(default)] pub Inner, #[serde(default)] pub u8);",
+    ] {
+        let walk = issues_walk_of(positional);
+        assert!(
+            walk.contains("let Some (items) = found . as_array () else")
+                && walk.contains("items . first ()"),
+            "for {positional}, got: {walk}"
+        );
+    }
+}
+
 /// A unit struct is the `{}` tixschema makes it write: every key is `Unknown`, and the fields
 /// walker reads none of what it is handed, so it binds none of it.
 #[test]

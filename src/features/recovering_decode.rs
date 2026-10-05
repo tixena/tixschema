@@ -230,14 +230,14 @@ enum Shape<'item> {
 
 impl<'item> Shape<'item> {
     fn of(item_struct: &'item ItemStruct, module_name: &str, parameters: &[String]) -> Self {
+        if has_serde_transparent(&item_struct.attrs)
+            && let Some(only) = transparent_field(&item_struct.fields)
+        {
+            return Self::Held(held_walk(only, module_name, parameters));
+        }
         let defaulted = has_serde_default(&item_struct.attrs);
         match &item_struct.fields {
             Fields::Named(named) => {
-                if has_serde_transparent(&item_struct.attrs)
-                    && let Some(only) = transparent_field(named)
-                {
-                    return Self::Held(held_walk(only, module_name, parameters));
-                }
                 let container = parse_serde_type_attributes(&item_struct.attrs);
                 let mut keyed = walked_fields(
                     named,
@@ -912,8 +912,8 @@ impl Walker<'_> {
         }
     }
 
-    /// The walker of a struct serde writes as the value its one slot holds: a single-slot tuple
-    /// struct, and a `#[serde(transparent)]` struct with a named field.
+    /// The walker of a struct serde writes as the value one field of it holds: a single-slot tuple
+    /// struct, and a `#[serde(transparent)]` struct of either kind.
     fn held_methods(&self, walk: &Walk<'_>) -> TokenStream {
         let source = self.source;
         let found = Ident::new("found", Span::call_site());
@@ -2423,11 +2423,11 @@ fn starts_at_a_parameter(type_path: &TypePath, parameters: &[String]) -> bool {
         })
 }
 
-/// The field serde's derive reads a `#[serde(transparent)]` struct as the value of: the one it
-/// reads that has no `default` and is not written `PhantomData`. `None` for any other count, which
-/// that derive refuses.
-fn transparent_field(named: &FieldsNamed) -> Option<&Field> {
-    let mut read = named.named.iter().filter(|field| {
+/// The field serde's derive reads a `#[serde(transparent)]` struct as the value of, named or a
+/// slot: the one it reads that has no `default` and is not written `PhantomData`. `None` for any
+/// other count, which that derive refuses.
+fn transparent_field(fields: &Fields) -> Option<&Field> {
+    let mut read = fields.iter().filter(|field| {
         let omission = parse_serde_key_omission(&field.attrs);
         let marker = matches!(
             written_type(&field.ty),

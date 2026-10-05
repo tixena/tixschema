@@ -347,6 +347,32 @@ struct Assigned {
     owner: Owner,
 }
 
+/// A `transparent` tuple struct beside whose value is a slot serde neither writes nor reads.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct Tags(Vec<String>, #[serde(skip)] u8);
+
+/// A `transparent` tuple struct whose value is its second slot, over an id.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct Keeper(#[serde(skip)] u8, ObjectId);
+
+/// A `transparent` tuple struct with a slot serde never reads, over a model type.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct Stamped(Version, #[serde(skip)] u8);
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Filing {
+    keeper: Keeper,
+    stamped: Stamped,
+    tags: Tags,
+}
+
 #[model_schema(decode_with)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Ping;
@@ -2168,6 +2194,146 @@ fn a_transparent_struct_over_a_model_type_is_read_from_a_document_as_that_type()
     assert_eq!(declared, ["number"]);
     assert_eq!(
         told!(current_schema, out),
+        [invalid("number", "I32", string("3"))]
+    );
+}
+
+/// A `transparent` tuple struct is the value of the one slot serde reads, whatever other slots it
+/// declares, at the path the struct sits at: a list is walked item by item, an id stored as text
+/// is `Mistyped` there, and over a model type the struct walks as that type. No position is looked
+/// up.
+#[test]
+fn a_transparent_tuple_struct_is_walked_as_the_value_of_the_slot_serde_reads() {
+    let filing = Filing {
+        keeper: Keeper(0, oid("6a7cc592ca0574e6efdfe217")),
+        stamped: Stamped(Version { number: 3 }, 0),
+        tags: Tags(vec!["a".to_owned(), "b".to_owned(), "c".to_owned()], 0),
+    };
+    let stored = written(&Filing {
+        keeper: Keeper(9, oid("6a7cc592ca0574e6efdfe217")),
+        stamped: Stamped(Version { number: 3 }, 9),
+        tags: Tags(vec!["a".to_owned(), "b".to_owned(), "c".to_owned()], 9),
+    });
+    assert_eq!(
+        stored,
+        doc! {
+            "keeper": oid("6a7cc592ca0574e6efdfe217"),
+            "stamped": { "number": 3_i32 },
+            "tags": ["a", "b", "c"],
+        }
+    );
+    assert!(serde_reads::<Filing>(&stored));
+    let mut calls = 0_u32;
+    let kept = Filing::from_bson_with(stored, |_raw, _found| {
+        calls += 1;
+        filing_schema::Verdict::Reject
+    });
+    assert_eq!(kept.as_ref(), Ok(&filing));
+    assert_eq!(calls, 0);
+
+    let stored_row = doc! {
+        "keeper": "6a7cc592ca0574e6efdfe217",
+        "stamped": { "number": "3", "draft": true },
+        "tags": ["a", 7_i32, "c"],
+    };
+    let mut seen: Vec<Told> = Vec::new();
+    let read = Filing::from_bson_with(stored_row, |raw, found| {
+        use filing_schema::{Expected, Issue, Verdict};
+
+        seen = told!(filing_schema, found);
+        for issue in found {
+            if let Issue::Mistyped {
+                path,
+                expected: Expected::ObjectId,
+                found: Bson::String(hex),
+            } = issue
+            {
+                path.set_in_document(raw, Bson::ObjectId(oid(hex)));
+            } else if let Issue::Invalid {
+                path,
+                expected,
+                found: _found,
+                reason: _reason,
+            } = issue
+            {
+                let fixed = if *expected == Expected::I32 {
+                    Bson::Int32(3)
+                } else {
+                    string("b")
+                };
+                path.set_in_document(raw, fixed);
+            } else if let Issue::Unknown {
+                path,
+                found: _found,
+            } = issue
+            {
+                path.remove_from_document(raw);
+            } else {
+                return Verdict::Reject;
+            }
+        }
+        Verdict::Fixed
+    });
+    assert_eq!(
+        seen,
+        [
+            mistyped("keeper", "ObjectId", string("6a7cc592ca0574e6efdfe217")),
+            invalid("stamped.number", "I32", string("3")),
+            unknown("stamped.draft", Bson::Boolean(true)),
+            invalid("tags[1]", "String", Bson::Int32(7)),
+        ]
+    );
+    assert_eq!(read, Ok(filing));
+
+    let refused_row = doc! {
+        "keeper": [oid("6a7cc592ca0574e6efdfe217")],
+        "stamped": "three",
+        "tags": 5_i32,
+    };
+    assert!(!serde_reads::<Filing>(&refused_row));
+    let refused =
+        Filing::from_bson_with(refused_row, |_raw, _found| filing_schema::Verdict::Reject);
+    assert_eq!(
+        told!(filing_schema, refused.unwrap_err().issues),
+        [
+            invalid(
+                "keeper",
+                "ObjectId",
+                Bson::Array(vec![Bson::ObjectId(oid("6a7cc592ca0574e6efdfe217"))])
+            ),
+            invalid("stamped", "Model(\"Version\")", string("three")),
+            invalid("tags", "Array(String)", Bson::Int32(5)),
+        ]
+    );
+}
+
+/// Read from a document of its own, a `transparent` tuple struct over a model type lists that
+/// type's issues at paths inside that type, and hands its fields walk to that type.
+#[test]
+fn a_transparent_tuple_struct_over_a_model_type_is_read_from_a_document_as_that_type() {
+    let mut calls = 0_u32;
+    let stamped = Stamped::from_bson_with(doc! { "number": 3_i32 }, |_raw, _found| {
+        calls += 1;
+        stamped_schema::Verdict::Reject
+    });
+    assert_eq!(stamped, Ok(Stamped(Version { number: 3 }, 0)));
+    assert_eq!(calls, 0);
+
+    let refused = Stamped::from_bson_with(doc! { "number": "3" }, |_raw, _found| {
+        stamped_schema::Verdict::Reject
+    });
+    assert_eq!(
+        told!(stamped_schema, refused.unwrap_err().issues),
+        [invalid("number", "I32", string("3"))]
+    );
+
+    let held = doc! { "legacy": true, "number": "3" };
+    let mut out: Vec<stamped_schema::Issue<Bson>> = Vec::new();
+    let declared =
+        Stamped::decode_with_bson_fields(&held, &[], stamped_schema::issue_from_parts, &mut out);
+    assert_eq!(declared, ["number"]);
+    assert_eq!(
+        told!(stamped_schema, out),
         [invalid("number", "I32", string("3"))]
     );
 }
