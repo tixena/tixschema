@@ -144,6 +144,26 @@ macro_rules! tried {
     };
 }
 
+/// One read hook per name: text, refused where it is empty under the hook's own name.
+macro_rules! read_hooks {
+    ($($name:ident),+) => {$(
+        fn $name<'de, D>(deserializer: D) -> Result<String, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            let text = String::deserialize(deserializer)?;
+            if text.is_empty() {
+                return Err(D::Error::custom(concat!(
+                    "`",
+                    stringify!($name),
+                    "` reads no empty text"
+                )));
+            }
+            Ok(text)
+        }
+    )+};
+}
+
 /// One issue less its `reason`: its kind, its path, its expected type, and the value it holds.
 type Told = (&'static str, String, String, Option<Bson>);
 
@@ -562,6 +582,63 @@ struct Sketch {
     contour: Contour,
 }
 
+/// What [`item`] reads: a count, or text that holds one.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Count {
+    Number(u32),
+    Text(String),
+}
+
+/// A read hook named like what the walker binds the value of a key as.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Named {
+    #[serde(deserialize_with = "held")]
+    name: String,
+}
+
+/// One field per name the walker gives a value of its own, each read by the hook of that name.
+/// `stored` is bound where a key has an alias, and `read` is what a writer is handed.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Bound {
+    #[serde(deserialize_with = "found")]
+    found: String,
+    #[serde(deserialize_with = "held")]
+    held: String,
+    #[serde(deserialize_with = "issue")]
+    issue: String,
+    #[serde(deserialize_with = "item", serialize_with = "read")]
+    item: u32,
+    #[serde(alias = "id", deserialize_with = "key")]
+    key: String,
+    #[serde(deserialize_with = "object")]
+    object: String,
+    #[serde(deserialize_with = "out")]
+    out: String,
+    #[serde(deserialize_with = "path")]
+    path: String,
+    #[serde(alias = "saved", deserialize_with = "stored")]
+    stored: String,
+}
+
+/// Adjacently tagged: the tag is bound as `tag`, what the variant holds as `content`, and its
+/// document as `inner`.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "body")]
+enum Adjacent {
+    Note {
+        #[serde(deserialize_with = "content")]
+        content: String,
+        #[serde(deserialize_with = "inner")]
+        inner: String,
+        #[serde(deserialize_with = "tag")]
+        tag: String,
+    },
+}
+
 /// The read hook of [`Hooked::code`]: text that carries no lower-case letter.
 fn upper_only<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
@@ -588,6 +665,30 @@ where
 
 /// The write hook paired with [`parsed`].
 fn shown<S, T>(value: &T, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+    T: Display,
+{
+    serializer.collect_str(value)
+}
+
+read_hooks!(
+    content, found, held, inner, issue, key, object, out, path, stored, tag
+);
+
+/// The read hook of [`Bound::item`]: a count, or text that holds one.
+fn item<'de, D>(deserializer: D) -> Result<u32, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    match Count::deserialize(deserializer)? {
+        Count::Number(count) => Ok(count),
+        Count::Text(text) => text.parse().map_err(D::Error::custom),
+    }
+}
+
+/// The write hook of [`Bound::item`], named like the value the walker hands it: text.
+fn read<S, T>(value: &T, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
     T: Display,
@@ -700,6 +801,20 @@ fn hooked() -> Hooked {
         name: "Loan".to_owned(),
         port: 80,
         seen_at: DateTime::from_timestamp_millis(1_759_600_000_000).unwrap(),
+    }
+}
+
+fn bound() -> Bound {
+    Bound {
+        found: "a".to_owned(),
+        held: "b".to_owned(),
+        issue: "c".to_owned(),
+        item: 5,
+        key: "d".to_owned(),
+        object: "e".to_owned(),
+        out: "f".to_owned(),
+        path: "g".to_owned(),
+        stored: "h".to_owned(),
     }
 }
 
@@ -1276,6 +1391,120 @@ fn a_constraint_on_a_struct_field_is_not_the_walkers_to_check() {
         Err(vec![
             "'name': too short: minimum length is 3, got 2".to_owned()
         ])
+    );
+}
+
+#[test]
+fn a_read_hook_named_like_the_value_a_key_holds_is_the_authors_function() {
+    let mut calls = 0_u32;
+    let read = Named::from_bson_with(doc! { "name": "x" }, |_raw, _found| {
+        calls += 1;
+        named_schema::Verdict::Reject
+    });
+    assert_eq!(
+        read,
+        Ok(Named {
+            name: "x".to_owned()
+        })
+    );
+    assert_eq!(calls, 0);
+}
+
+/// `key` and `stored` are read under their aliases, and `item` as the text its writer writes.
+#[test]
+fn a_hook_named_like_any_value_a_fields_walker_binds_is_the_authors_function() {
+    let stored_row = doc! {
+        "found": "a",
+        "held": "b",
+        "issue": "c",
+        "item": "5",
+        "id": "d",
+        "object": "e",
+        "out": "f",
+        "path": "g",
+        "saved": "h",
+    };
+    let mut calls = 0_u32;
+    let read = Bound::from_bson_with(stored_row, |_raw, _found| {
+        calls += 1;
+        bound_schema::Verdict::Reject
+    });
+    assert_eq!(read, Ok(bound()));
+    assert_eq!(calls, 0);
+}
+
+/// A `String` reads an empty text, so each refusal here is the hook's own.
+#[test]
+fn a_value_a_hook_named_like_a_binding_refuses_is_invalid_at_its_field() {
+    let stored_row = doc! {
+        "found": "",
+        "held": "",
+        "issue": "",
+        "item": "5",
+        "id": "",
+        "object": "",
+        "out": "",
+        "path": "",
+        "saved": "",
+    };
+    let read = Bound::from_bson_with(stored_row, |_raw, _found| bound_schema::Verdict::Reject);
+    let issues = read.unwrap_err().issues;
+    assert_eq!(
+        told!(bound_schema, issues),
+        [
+            "found", "held", "issue", "id", "object", "out", "path", "saved"
+        ]
+        .map(|at| invalid(at, "String", string("")))
+    );
+}
+
+/// `item` reads a count stored as a number, which `read` writes back as text.
+#[test]
+fn a_value_stored_as_another_type_than_a_writer_named_like_a_binding_writes_is_mistyped() {
+    let mut stored_row = written(&bound());
+    stored_row.insert("item", 5_i32);
+    let read = Bound::from_bson_with(stored_row, |_raw, _found| bound_schema::Verdict::Reject);
+    let issues = read.unwrap_err().issues;
+    assert_eq!(
+        told!(bound_schema, issues),
+        [mistyped("item", "U32", Bson::Int32(5))]
+    );
+}
+
+#[test]
+fn a_hook_named_like_a_value_an_enum_walker_binds_reads_a_variants_field() {
+    let stored_row = doc! {
+        "kind": "Note",
+        "body": { "content": "a", "inner": "b", "tag": "c" },
+    };
+    let mut calls = 0_u32;
+    let read = Adjacent::from_bson_with(stored_row, |_raw, _found| {
+        calls += 1;
+        adjacent_schema::Verdict::Reject
+    });
+    assert_eq!(
+        read,
+        Ok(Adjacent::Note {
+            content: "a".to_owned(),
+            inner: "b".to_owned(),
+            tag: "c".to_owned(),
+        })
+    );
+    assert_eq!(calls, 0);
+}
+
+#[test]
+fn a_variants_field_a_hook_named_like_a_binding_refuses_is_invalid_at_the_field() {
+    let stored_row = doc! {
+        "kind": "Note",
+        "body": { "content": "", "inner": "", "tag": "" },
+    };
+    let read =
+        Adjacent::from_bson_with(stored_row, |_raw, _found| adjacent_schema::Verdict::Reject);
+    let issues = read.unwrap_err().issues;
+    assert_eq!(
+        told!(adjacent_schema, issues),
+        ["body.content", "body.inner", "body.tag"].map(|at| invalid(at, "String", string("")))
     );
 }
 

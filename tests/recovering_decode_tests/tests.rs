@@ -31,6 +31,7 @@ mod as_text {
 }
 mod enum_shapes;
 mod generic_types;
+mod hook_names;
 mod shadowing;
 #[cfg(all(feature = "chrono", feature = "mongodb"))]
 mod stored_record;

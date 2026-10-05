@@ -1568,7 +1568,9 @@ fn hooked_leaf(
     let generated = format!("{module_name}::{NAMED_READ_HOOK_PREFIX}");
     let named = |hook: Option<&LitStr>| {
         let path = hook.filter(|path| !path.value().starts_with(&generated))?;
-        path.parse::<syn::ExprPath>().ok()
+        path.parse::<syn::ExprPath>()
+            .ok()
+            .map(resolved_at_the_mixed_site)
     };
     let module = named(hooks.with.as_ref());
     let reader = named(hooks.deserialize_with.as_ref());
@@ -1986,6 +1988,18 @@ fn plain_value<'ty>(ty: &'ty Type, parameters: &[String]) -> Walk<'ty> {
         }),
         ty,
     }
+}
+
+/// `hook` with each of its names resolved at the macro's mixed site, and located where its author
+/// wrote it. At the call site, a hook named like a value the walker binds would name that value.
+fn resolved_at_the_mixed_site(mut hook: syn::ExprPath) -> syn::ExprPath {
+    for segment in &mut hook.path.segments {
+        let written = segment.ident.span();
+        segment
+            .ident
+            .set_span(written.resolved_at(Span::mixed_site()));
+    }
+    hook
 }
 
 /// Whether a path names one of the type's own parameters outright, or a type projected from one.
