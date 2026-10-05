@@ -56,6 +56,47 @@ struct Loose(
 #[serde(transparent)]
 struct RecordId(String);
 
+/// A brand over another brand: serde writes it as the text the inner one holds.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct OwnerRef(RecordId);
+
+/// A brand over a tuple struct: serde writes it as the array the tuple struct is.
+#[model_schema(decode_with, no_display)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct PairRef(Pair);
+
+/// A brand over another brand and one over a tuple struct, each under a key.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Referenced {
+    owner: OwnerRef,
+    pair: PairRef,
+}
+
+/// A flattened brand over text, which serde refuses to flatten at every read. A schema surface
+/// refuses the declaration.
+#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Carded {
+    #[serde(flatten)]
+    id: RecordId,
+    name: String,
+}
+
+/// A flattened tuple struct, which serde refuses to flatten as it refuses a brand over text.
+#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Paired {
+    name: String,
+    #[serde(flatten)]
+    pair: Pair,
+}
+
 /// A single-slot tuple struct with no `transparent`: serde writes it as a brand is written.
 #[model_schema(decode_with)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -588,6 +629,120 @@ fn a_brand_and_a_single_slot_struct_are_read_as_the_value_they_hold() {
             wrapper_schema::Verdict::Reject
         }),
         Ok(Wrapper("w".to_owned()))
+    );
+}
+
+/// A brand over another brand is the value the inner one holds: what serde wrote is read without
+/// the decider, and a value the inner one refuses is its one issue, at the path the outer sits at.
+#[test]
+fn a_brand_over_another_brand_is_read_as_the_value_the_inner_one_holds() {
+    let mut calls = 0_u32;
+    let read = OwnerRef::from_value_with(json!("abc"), |_raw, _found| {
+        calls += 1;
+        owner_ref_schema::Verdict::Reject
+    });
+    assert_eq!(read.ok(), Some(OwnerRef(RecordId("abc".to_owned()))));
+    assert_eq!(calls, 0);
+
+    let refused = OwnerRef::from_value_with(json!(5_i32), |_raw, _found| {
+        owner_ref_schema::Verdict::Reject
+    });
+    assert_eq!(
+        lines(&refused.unwrap_err()),
+        [
+            "the value itself: invalid: expected String, found Number(5): invalid type: integer `5`, expected a string"
+        ]
+    );
+}
+
+/// A brand over a tuple struct is that tuple struct at the path the brand sits at, so an issue
+/// inside it sits at its position there: at the value itself, and under the brand's key.
+#[test]
+fn a_brand_over_a_tuple_struct_walks_as_that_tuple_struct() {
+    let mut calls = 0_u32;
+    let referenced = Referenced {
+        owner: OwnerRef(RecordId("abc".to_owned())),
+        pair: PairRef(Pair("a".to_owned(), 1)),
+    };
+    let written = serde_json::to_value(&referenced).unwrap();
+    assert_eq!(written, json!({ "owner": "abc", "pair": ["a", 1_i32] }));
+    let read = Referenced::from_value_with(written, |_raw, _found| {
+        calls += 1;
+        referenced_schema::Verdict::Reject
+    });
+    assert_eq!(read, Ok(referenced));
+    assert_eq!(calls, 0);
+
+    let alone = PairRef::from_value_with(json!(["a", "x"]), |_raw, _found| {
+        pair_ref_schema::Verdict::Reject
+    });
+    assert_eq!(
+        lines(&alone.unwrap_err()),
+        [
+            "[1]: invalid: expected U32, found String(\"x\"): invalid type: string \"x\", expected u32"
+        ]
+    );
+    let held = Referenced::from_value_with(
+        json!({ "owner": 5_i32, "pair": ["a", "x", true] }),
+        |_raw, _found| referenced_schema::Verdict::Reject,
+    );
+    assert_eq!(
+        lines(&held.unwrap_err()),
+        [
+            "owner: invalid: expected String, found Number(5): invalid type: integer `5`, expected a string",
+            "pair[1]: invalid: expected U32, found String(\"x\"): invalid type: string \"x\", expected u32",
+            "pair[2]: unknown: found Bool(true)",
+        ]
+    );
+}
+
+/// A brand over text, a single-slot struct over text or a list, and a tuple struct each list
+/// nothing inside an object the caller holds, and no key there is theirs, whatever the object
+/// holds. A brand over one of them answers as it does.
+#[test]
+fn a_brand_over_text_a_slot_over_a_list_and_a_tuple_struct_list_nothing_and_return_no_key() {
+    let held = json!({ "0": "a", "legacy": true, "number": "3" });
+    let object = held.as_object().unwrap();
+    for keyed in [
+        RecordId::decode_with_value_fields::<record_id_schema::Issue<Value>>,
+        Wrapper::decode_with_value_fields::<record_id_schema::Issue<Value>>,
+        History::decode_with_value_fields::<record_id_schema::Issue<Value>>,
+        Pair::decode_with_value_fields::<record_id_schema::Issue<Value>>,
+        OwnerRef::decode_with_value_fields::<record_id_schema::Issue<Value>>,
+        PairRef::decode_with_value_fields::<record_id_schema::Issue<Value>>,
+    ] {
+        let mut out = Vec::new();
+        let declared = keyed(object, &[], record_id_schema::issue_from_parts, &mut out);
+        assert_eq!(declared, Vec::<&str>::new());
+        assert_eq!(out, Vec::new());
+    }
+}
+
+/// serde flattens a struct or a map and nothing else, so it refuses every read of a struct that
+/// flattens a brand over text or a tuple struct. The flattened type's fields walker lists nothing
+/// for it, and the read carries the refusal plain serde gives the same value.
+#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[test]
+fn a_struct_flattening_a_type_serde_cannot_flatten_lists_nothing_for_it_beside_serdes_refusal() {
+    let stored = json!({ "name": "n" });
+    let refusal = Carded::deserialize(&stored).unwrap_err().to_string();
+    assert_eq!(refusal, "can only flatten structs and maps");
+    let carded = Carded::from_value_with(stored.clone(), |_raw, _found| {
+        carded_schema::Verdict::Reject
+    });
+    assert_eq!(
+        lines(&carded.unwrap_err()),
+        [format!("undescribed: {refusal}")]
+    );
+
+    assert_eq!(
+        Paired::deserialize(&stored).unwrap_err().to_string(),
+        refusal
+    );
+    let paired = Paired::from_value_with(stored, |_raw, _found| paired_schema::Verdict::Reject);
+    assert_eq!(
+        lines(&paired.unwrap_err()),
+        [format!("undescribed: {refusal}")]
     );
 }
 

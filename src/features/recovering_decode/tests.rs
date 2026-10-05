@@ -202,17 +202,14 @@ fn own_type_parameters(type_impl: proc_macro2::TokenStream) -> Vec<String> {
     named
 }
 
-/// The methods one source adds to a type that gets a fields walker, and to one that gets none.
-fn methods_of(stem: &str, keyed: bool) -> Vec<String> {
-    let mut named = vec![
+/// The methods one source adds to every type, in the order written.
+fn methods_of(stem: &str) -> Vec<String> {
+    vec![
         format!("from_{stem}_with"),
         format!("decode_with_{stem}_report"),
         format!("decode_with_{stem}_issues"),
-    ];
-    if keyed {
-        named.push(format!("decode_with_{stem}_fields"));
-    }
-    named
+        format!("decode_with_{stem}_fields"),
+    ]
 }
 
 /// Every token `tokens` is made of, in order, with each group opened and its delimiters left out.
@@ -809,23 +806,65 @@ fn every_type_the_flag_adds_is_a_name_read_past() {
     assert_eq!(declared, ADDED_TYPE_NAMES);
 }
 
-/// Each struct shape gets the methods serde's form of it has a use for, each named for the flag,
-/// in one `impl`. A type serde cannot flatten gets no fields walker.
+/// Every struct shape gets the same methods, each named for the flag, in one `impl`: a type that
+/// holds it calls both walker methods on it, whatever form serde writes it in.
 #[test]
-fn each_struct_shape_adds_the_methods_its_form_has_a_use_for() {
-    for (source, keyed) in [
-        ("pub struct Pair(pub String, pub u32);", false),
-        ("pub struct Brand(pub String);", false),
-        ("pub struct Tags(pub Vec<Inner>);", false),
-        ("pub struct Pinned(pub Inner);", true),
-        ("pub struct Ping;", true),
+fn every_struct_shape_adds_both_walker_methods() {
+    for source in [
+        "pub struct Pair(pub String, pub u32);",
+        "pub struct Brand(pub String);",
+        "pub struct Tags(pub Vec<Inner>);",
+        "pub struct Pinned(pub Inner);",
+        "pub struct Ping;",
     ] {
-        let mut named = methods_of("value", keyed);
+        let mut named = methods_of("value");
         if cfg!(feature = "bson") {
-            named.extend(methods_of("bson", keyed));
+            named.extend(methods_of("bson"));
         }
         let header = format!("impl {}", source.split([' ', '(', ';']).nth(2).unwrap());
         assert_eq!(added_impls(source), [(header, named)], "for {source}");
+    }
+}
+
+/// The fields walker of a tuple struct, of a single-slot struct over anything but a model type and
+/// of a plain enum lists nothing and returns no key. It reads none of what it is handed, so it
+/// binds none of it.
+#[test]
+fn a_tuple_struct_a_slot_over_no_model_type_and_a_plain_enum_claim_no_key() {
+    let structs = [
+        "pub struct Code(pub String, pub u32);",
+        "pub struct Code(pub String);",
+        "#[serde(transparent)] pub struct Code(pub String);",
+        "pub struct Code(pub Vec<Inner>);",
+        "pub struct Code(pub Option<Inner>);",
+        "pub struct Code(pub HashMap<String, Inner>);",
+        "pub struct Code(pub (String, u32));",
+        "#[serde(transparent)] pub struct Code { pub inner: Vec<Inner> }",
+    ];
+    let emissions = structs
+        .map(type_impl_of)
+        .into_iter()
+        .chain([enum_impl_of("pub enum Code { Draft, Published }")]);
+    for emitted in emissions {
+        assert!(
+            emitted.contains(
+                "pub fn decode_with_value_fields < 'a , I > (_ : & 'a serde_json :: Map < String , serde_json :: Value > , \
+                 _ : & [core :: result :: Result < String , usize >] , \
+                 _ : code_schema :: IssueFromParts < serde_json :: Value , I > , _ : & mut Vec < I > ,) \
+                 -> Vec < & 'a str > { Vec :: new () }"
+            ),
+            "got: {emitted}"
+        );
+        assert_eq!(
+            emitted.contains(
+                "pub fn decode_with_bson_fields < 'a , I > (_ : & 'a bson :: Document , \
+                 _ : & [core :: result :: Result < String , usize >] , \
+                 _ : code_schema :: IssueFromParts < bson :: Bson , I > , _ : & mut Vec < I > ,) \
+                 -> Vec < & 'a str > { Vec :: new () }"
+            ),
+            cfg!(feature = "bson"),
+            "got: {emitted}"
+        );
     }
 }
 
@@ -973,25 +1012,34 @@ fn a_transparent_struct_with_a_named_field_is_walked_as_a_single_slot_struct_is(
     );
 }
 
-/// A `#[serde(transparent)]` struct with a named field gets a fields walker only over a model
-/// type, whose own it hands the walk to. Over anything else it gets none.
+/// A `#[serde(transparent)]` struct with a named field gets a fields walker whatever its field
+/// holds. Over a model type it hands the walk to that type's own. Over anything else it lists
+/// nothing and returns no key.
 #[test]
-fn a_transparent_struct_with_a_named_field_gets_a_fields_walker_only_over_a_model_type() {
-    for (field, keyed) in [
-        ("String", false),
-        ("Vec<Inner>", false),
-        ("Option<Inner>", false),
-        ("Inner", true),
+fn a_transparent_struct_with_a_named_field_gets_a_fields_walker_whatever_it_holds() {
+    for (field, walked) in [
+        ("String", "Vec :: new ()"),
+        ("Vec<Inner>", "Vec :: new ()"),
+        ("Option<Inner>", "Vec :: new ()"),
+        (
+            "Inner",
+            "< Inner > :: decode_with_value_fields (object , path , issue , out)",
+        ),
     ] {
-        let mut named = methods_of("value", keyed);
+        let mut named = methods_of("value");
         if cfg!(feature = "bson") {
-            named.extend(methods_of("bson", keyed));
+            named.extend(methods_of("bson"));
         }
         let source = format!("#[serde(transparent)] pub struct Code {{ pub inner: {field} }}");
         assert_eq!(
             added_impls(&source),
             [("impl Code".to_owned(), named)],
             "for {source}"
+        );
+        let walk = json_fields_walk_of(&source);
+        assert!(
+            walk.contains(&format!("-> Vec < & 'a str > {{ {walked} }}")),
+            "for {source}, got: {walk}"
         );
     }
 }
@@ -1140,7 +1188,7 @@ fn a_generic_type_gets_one_impl_per_source_under_that_sources_bounds() {
          V : Sync + Send + serde :: de :: DeserializeOwned , Vec < W > : Clone , \
          Self : serde :: de :: DeserializeOwned"
             .to_owned(),
-        methods_of("value", true),
+        methods_of("value"),
     )];
     if cfg!(feature = "bson") {
         headers.push((
@@ -1152,7 +1200,7 @@ fn a_generic_type_gets_one_impl_per_source_under_that_sources_bounds() {
              V : Sync + Send + serde :: de :: DeserializeOwned + serde :: Serialize , \
              Vec < W > : Clone , Self : serde :: de :: DeserializeOwned + serde :: Serialize"
                 .to_owned(),
-            methods_of("bson", true),
+            methods_of("bson"),
         ));
     }
     assert_eq!(added, headers);
@@ -1363,21 +1411,20 @@ fn the_bson_walker_of_each_struct_shape_matches_the_librarys_own_types() {
     }
 }
 
-/// Each form serde writes an enum in gets the methods that form has a use for, in one `impl`. A
-/// tagged enum and an untagged one are objects serde can flatten, so each gets a fields walker; a
-/// plain enum gets none, and an untagged one a method per variant it walks itself.
+/// Every form serde writes an enum in gets both walker methods, in one `impl`, a plain enum
+/// included, and an untagged one a method per variant it walks itself beside them.
 #[test]
-fn each_enum_form_adds_the_methods_its_form_has_a_use_for() {
-    let forms: [(&str, bool, &[&str]); 5] = [
-        ("pub enum Status { Draft, Published }", false, &[]),
-        (EXTERNAL, true, &[]),
-        (INTERNAL, true, &[]),
-        (ADJACENT, true, &[]),
-        (UNTAGGED, true, &["email", "word"]),
+fn every_enum_form_adds_both_walker_methods_and_an_untagged_one_a_method_per_variant() {
+    let forms: [(&str, &[&str]); 5] = [
+        ("pub enum Status { Draft, Published }", &[]),
+        (EXTERNAL, &[]),
+        (INTERNAL, &[]),
+        (ADJACENT, &[]),
+        (UNTAGGED, &["email", "word"]),
     ];
-    for (source, keyed, walked) in forms {
+    for (source, walked) in forms {
         let of_source = |stem: &str| {
-            let mut named = methods_of(stem, keyed);
+            let mut named = methods_of(stem);
             named.extend(
                 walked
                     .iter()
@@ -1568,14 +1615,14 @@ fn a_generic_enum_gets_its_methods_under_each_sources_bounds() {
         "impl < T : serde :: de :: DeserializeOwned > Answer < T > \
          where Self : serde :: de :: DeserializeOwned"
             .to_owned(),
-        methods_of("value", true),
+        methods_of("value"),
     )];
     if cfg!(feature = "bson") {
         headers.push((
             "impl < T : serde :: de :: DeserializeOwned + serde :: Serialize > Answer < T > \
              where Self : serde :: de :: DeserializeOwned + serde :: Serialize"
                 .to_owned(),
-            methods_of("bson", true),
+            methods_of("bson"),
         ));
     }
     assert_eq!(added_enum_impls(source), headers);
@@ -1755,7 +1802,7 @@ fn an_untagged_variant_serde_never_reads_is_matched_and_never_walked() {
         assert!(!walk.contains(absent), "found `{absent}` in: {walk}");
     }
     let of_source = |stem: &str| {
-        let mut named = methods_of(stem, true);
+        let mut named = methods_of(stem);
         named.extend(
             ["email", "word"].map(|variant| format!("decode_with_{stem}_variant_{variant}")),
         );

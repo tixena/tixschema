@@ -141,9 +141,10 @@ const SLOT_PROP_KEYS: [&str; 9] = [
 /// One of each struct shape the flag is generated on beside a struct with named fields, each with
 /// the arguments it is declared under.
 #[cfg(feature = "serde")]
-const DECODE_WITH_STRUCT_SHAPES: [(&str, &str); 10] = [
+const DECODE_WITH_STRUCT_SHAPES: [(&str, &str); 11] = [
     ("decode_with", "pub struct DecodePair(pub String, pub u32);"),
     ("decode_with", "pub struct DecodeWrapper(pub String);"),
+    ("decode_with", "pub struct DecodeTags(pub Vec<String>);"),
     (
         "decode_with",
         "#[serde(transparent)] pub struct DecodeBrand(pub String);",
@@ -176,59 +177,45 @@ const DECODE_WITH_STRUCT_SHAPES: [(&str, &str); 10] = [
 ];
 
 /// One enum per form serde writes an enum in, then one per form whose variants carry an alias or
-/// are never read, each with the arguments it is declared under and whether serde can flatten it,
-/// which is what earns it a fields walker.
+/// are never read, each with the arguments it is declared under.
 #[cfg(feature = "serde")]
-const DECODE_WITH_ENUM_FORMS: [(&str, &str, bool); 10] = [
-    (
-        "decode_with",
-        "pub enum DecodeStatus { Draft, Published }",
-        false,
-    ),
+const DECODE_WITH_ENUM_FORMS: [(&str, &str); 10] = [
+    ("decode_with", "pub enum DecodeStatus { Draft, Published }"),
     (
         "decode_with",
         "pub enum DecodeOutline { Circle { radius: f64 }, Empty, Label(String), To(i32, i32) }",
-        true,
     ),
     (
         "decode_with",
         "#[serde(tag = \"kind\")] pub enum DecodeFill { Clear, Solid { color: String }, Versioned(DecodeInner) }",
-        true,
     ),
     (
         "decode_with",
         "#[serde(tag = \"kind\", content = \"data\")] pub enum DecodeStroke { Dashed { gap: u32 }, Hairline, Width(u32) }",
-        true,
     ),
     (
         "decode_with",
         "#[derive(Deserialize)] #[serde(untagged)] pub enum DecodeContact { Email { address: String }, Versioned(DecodeInner) }",
-        true,
     ),
     (
         "decode_with, default_types(T = String)",
         "pub enum DecodeAnswer<T> { Empty, Value(T) }",
-        true,
     ),
     (
         "decode_with",
         "pub enum DecodeContour { #[serde(alias = \"Round\")] Circle { radius: f64 }, #[serde(alias = \"Blank\")] Empty, #[serde(skip)] Lost }",
-        true,
     ),
     (
         "decode_with",
         "#[serde(tag = \"kind\")] pub enum DecodeCoating { #[serde(alias = \"Blank\")] Clear, #[serde(skip_deserializing)] Retired, Solid { color: String } }",
-        true,
     ),
     (
         "decode_with",
         "#[serde(tag = \"kind\", content = \"data\")] pub enum DecodeDash { #[serde(alias = \"Dotted\")] Dashed { gap: u32 }, #[serde(skip_deserializing)] Faded(u32), Hairline }",
-        true,
     ),
     (
         "decode_with",
         "#[derive(Deserialize)] #[serde(untagged)] pub enum DecodeChannel { Email { address: String }, #[serde(skip_deserializing)] Pager { number: i32 } }",
-        true,
     ),
 ];
 
@@ -5914,7 +5901,8 @@ fn expansion_under(args: &str, source: &str) -> String {
 }
 
 /// serde writes a `#[serde(transparent)]` struct with a named field as the value of that field, so
-/// the walker reads that value at the path the struct sits at, and looks no key up.
+/// the walker reads that value at the path the struct sits at, and looks no key up: its fields
+/// walker returns none.
 #[cfg(feature = "serde")]
 #[test]
 fn decode_with_walks_a_transparent_struct_with_a_named_field_as_the_value_of_its_field() {
@@ -5937,7 +5925,11 @@ fn decode_with_walks_a_transparent_struct_with_a_named_field_as_the_value_of_its
         ),
         "got: {walker}"
     );
-    for unwritten in ["decode_with_value_fields", "inner", "\"Missing\""] {
+    assert!(
+        walker.contains("-> Vec < & 'a str > { Vec :: new () }"),
+        "got: {walker}"
+    );
+    for unwritten in ["inner", "\"Missing\""] {
         assert!(
             !walker.contains(unwritten),
             "found `{unwritten}`, got: {walker}"
@@ -5949,12 +5941,12 @@ fn decode_with_walks_a_transparent_struct_with_a_named_field_as_the_value_of_its
     );
 }
 
-/// Every form serde writes an enum in carries the flag: none is refused, each gets the entry point
-/// and its walker, and the ones serde can flatten get a fields walker beside it.
+/// Every form serde writes an enum in carries the flag: none is refused, and each gets the entry
+/// point and both walker methods, a plain enum included.
 #[cfg(feature = "serde")]
 #[test]
 fn decode_with_is_generated_on_every_enum_form_serde_writes() {
-    for (args, source, keyed) in DECODE_WITH_ENUM_FORMS {
+    for (args, source) in DECODE_WITH_ENUM_FORMS {
         let expanded = expansion_under(args, source);
         assert!(
             !expanded.contains("compile_error"),
@@ -5964,6 +5956,7 @@ fn decode_with_is_generated_on_every_enum_form_serde_writes() {
             "pub fn from_value_with < F > (",
             "fn decode_with_value_report (",
             "pub fn decode_with_value_issues < I > (",
+            "pub fn decode_with_value_fields < 'a , I > (",
             "pub enum Issue < V > {",
             "pub fn value_leaf < 'a , T , I , R , W > (",
         ] {
@@ -5973,18 +5966,13 @@ fn decode_with_is_generated_on_every_enum_form_serde_writes() {
             );
         }
         assert_eq!(
-            expanded.contains("pub fn decode_with_value_fields < 'a , I > ("),
-            keyed,
-            "for {source}, got: {expanded}"
-        );
-        assert_eq!(
             expanded.contains("pub fn from_bson_with < F > ("),
             cfg!(feature = "bson"),
             "for {source}, got: {expanded}"
         );
         assert_eq!(
             expanded.contains("pub fn decode_with_bson_fields < 'a , I > ("),
-            keyed && cfg!(feature = "bson"),
+            cfg!(feature = "bson"),
             "for {source}, got: {expanded}"
         );
         assert_eq!(
@@ -6025,7 +6013,7 @@ fn decode_with_reads_an_untagged_enums_constrained_member_through_its_hook() {
 
 /// A tuple struct, a single-slot one with and without `transparent`, a unit struct, a generic type
 /// and a `transparent` struct with a named field each carry the flag: none is refused, and each
-/// gets the entry point and its walker.
+/// gets the entry point and both walker methods.
 #[cfg(feature = "serde")]
 #[test]
 fn decode_with_is_generated_on_every_struct_shape_serde_writes() {
@@ -6039,6 +6027,7 @@ fn decode_with_is_generated_on_every_struct_shape_serde_writes() {
             "pub fn from_value_with < F > (",
             "fn decode_with_value_report (",
             "pub fn decode_with_value_issues < I > (",
+            "pub fn decode_with_value_fields < 'a , I > (",
             "pub enum Issue < V > {",
             "pub fn value_leaf < 'a , T , I , R , W > (",
         ] {
@@ -6049,6 +6038,11 @@ fn decode_with_is_generated_on_every_struct_shape_serde_writes() {
         }
         assert_eq!(
             expanded.contains("pub fn from_bson_with < F > ("),
+            cfg!(feature = "bson"),
+            "for {source}, got: {expanded}"
+        );
+        assert_eq!(
+            expanded.contains("pub fn decode_with_bson_fields < 'a , I > ("),
             cfg!(feature = "bson"),
             "for {source}, got: {expanded}"
         );
@@ -6368,11 +6362,10 @@ fn nothing_decode_with_emits_suppresses_a_lint() {
         "decode_with",
         "pub struct DecodeQuiet { pub name: String, pub spot: (String, u32), pub tags: Vec<String> }",
     );
-    let enum_forms = DECODE_WITH_ENUM_FORMS.map(|(args, source, _keyed)| (args, source));
     for (args, source) in DECODE_WITH_STRUCT_SHAPES
         .into_iter()
         .chain([named_fields])
-        .chain(enum_forms)
+        .chain(DECODE_WITH_ENUM_FORMS)
         .chain(DECODE_WITH_FLATTEN_FORMS)
     {
         let flagged = expansion_under(args, source);
@@ -6397,11 +6390,10 @@ fn what_decode_with_emits_is_written_for_the_lints_a_consumer_denies() {
         "decode_with",
         "pub struct DecodeLinted { pub name: String }",
     );
-    let enum_forms = DECODE_WITH_ENUM_FORMS.map(|(args, source, _keyed)| (args, source));
     for (args, source) in DECODE_WITH_STRUCT_SHAPES
         .into_iter()
         .chain([named_fields])
-        .chain(enum_forms)
+        .chain(DECODE_WITH_ENUM_FORMS)
         .chain(DECODE_WITH_FLATTEN_FORMS)
     {
         let flagged = expansion_under(args, source);

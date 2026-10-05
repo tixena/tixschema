@@ -717,6 +717,16 @@ impl Walker<'_> {
         }
     }
 
+    /// `walked` beside a fields walker that lists nothing and returns no key. A type that holds
+    /// another calls the fields walker of it whatever its shape, so every shape has one.
+    fn claiming_no_key(&self, walked: &TokenStream) -> TokenStream {
+        let keyed = self.fields_method(false, false, &quote! { Vec::new() });
+        quote! {
+            #walked
+            #keyed
+        }
+    }
+
     /// The field's type as the constant list of tokens an issue carries for it.
     fn expected(&self, ty: &Type) -> TokenStream {
         let mut def = get_field_def("", ty, "");
@@ -919,14 +929,14 @@ impl Walker<'_> {
         let found = Ident::new("found", Span::call_site());
         match &walk.step {
             Step::Entries(_) | Step::Items(_) | Step::Positions(_) | Step::Present(_) => self
-                .issues_method(&Self::listed(
+                .claiming_no_key(&self.issues_method(&Self::listed(
                     &found,
                     &self.arms(walk, &found, &[], 0, walk.ty),
-                )),
+                ))),
             // The type's own reader runs whatever hook its slot carries.
             Step::Leaf(_) => {
                 let whole = self.read_whole(&self.expected(walk.ty));
-                self.issues_method(&quote! { #whole; })
+                self.claiming_no_key(&self.issues_method(&quote! { #whole; }))
             }
             Step::Model => {
                 let (ty, issues, fields) =
@@ -1219,10 +1229,10 @@ impl Walker<'_> {
     fn positional_methods(&self, slots: &[Slot<'_>]) -> TokenStream {
         let held_as = self.held_as(&self.source.items_of_found());
         let positions = self.positions(slots, &Ident::new("items", Span::call_site()), &[], 0);
-        self.issues_method(&quote! {
+        self.claiming_no_key(&self.issues_method(&quote! {
             #held_as
             #positions
-        })
+        }))
     }
 
     /// What lists the issues of a tuple held as `items`: each position the tuple declares, then
@@ -1296,15 +1306,10 @@ impl Walker<'_> {
     fn unit_methods(&self) -> TokenStream {
         let held_as = self.held_as(&self.source.object_of_found());
         let undeclared = undeclared_keys(&Ident::new("object", Span::call_site()), &[], &[]);
-        let walked = self.issues_method(&quote! {
+        self.claiming_no_key(&self.issues_method(&quote! {
             #held_as
             #undeclared
-        });
-        let keyed = self.fields_method(false, false, &quote! { Vec::new() });
-        quote! {
-            #walked
-            #keyed
-        }
+        }))
     }
 
     /// The closure writing back the type's own whole value, read with its own reader.

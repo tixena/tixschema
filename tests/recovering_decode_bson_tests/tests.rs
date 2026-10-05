@@ -325,6 +325,50 @@ struct Coded {
 #[serde(transparent)]
 struct Pinned(Version);
 
+/// A brand over text.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct RecordId(String);
+
+/// A brand over another brand: serde writes it as the text the inner one holds.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct OwnerRef(RecordId);
+
+/// A brand over a tuple struct: serde writes it as the list the tuple struct is.
+#[model_schema(decode_with, no_display)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct PairRef(Pair);
+
+/// A brand over a plain enum: serde writes it as the variant's name.
+#[model_schema(decode_with, no_display)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct StatusRef(Status);
+
+/// A brand over another brand, over a tuple struct and over a plain enum, each under a key.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Referenced {
+    owner: OwnerRef,
+    pair: PairRef,
+    status: StatusRef,
+}
+
+/// A flattened brand over text, which serde refuses to flatten at every read. A schema surface
+/// refuses the declaration.
+#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Carded {
+    #[serde(flatten)]
+    id: RecordId,
+    name: String,
+}
+
 /// A `transparent` struct with a named field over an id: serde writes it as the id it holds.
 #[model_schema(decode_with)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -2069,6 +2113,79 @@ fn a_brand_over_a_model_type_hands_its_fields_walk_to_that_type() {
         Ping::decode_with_bson_fields(&held, &[], ping_schema::issue_from_parts, &mut unlisted);
     assert_eq!(keys, Vec::<&str>::new());
     assert_eq!(unlisted, Vec::new());
+}
+
+/// A brand over another brand, over a tuple struct and over a plain enum is the value the type it
+/// holds writes: what serde wrote is read without the decider, and an issue inside the held type
+/// sits at the path the brand sits at.
+#[test]
+fn a_brand_over_a_brand_a_tuple_struct_and_a_plain_enum_walks_as_the_type_it_holds() {
+    let referenced = Referenced {
+        owner: OwnerRef(RecordId("abc".to_owned())),
+        pair: PairRef(Pair("a".to_owned(), 1)),
+        status: StatusRef(Status::Draft),
+    };
+    let stored_row = written(&referenced);
+    assert_eq!(
+        stored_row,
+        doc! { "owner": "abc", "pair": ["a", 1_i64], "status": "Draft" }
+    );
+    let mut calls = 0_u32;
+    let read = Referenced::from_bson_with(stored_row, |_raw, _found| {
+        calls += 1;
+        referenced_schema::Verdict::Reject
+    });
+    assert_eq!(read, Ok(referenced));
+    assert_eq!(calls, 0);
+
+    let refused_row = doc! { "owner": 5_i32, "pair": ["a", "x"], "status": "Archived" };
+    assert!(!serde_reads::<Referenced>(&refused_row));
+    let listed = Referenced::from_bson_with(refused_row, |_raw, _found| {
+        referenced_schema::Verdict::Reject
+    });
+    assert_eq!(
+        told!(referenced_schema, listed.unwrap_err().issues),
+        [
+            invalid("owner", "String", Bson::Int32(5)),
+            invalid("pair[1]", "U32", string("x")),
+            invalid("status", "Model(\"Status\")", string("Archived")),
+        ]
+    );
+}
+
+/// A brand over text, a single-slot struct over text and a tuple struct each list nothing inside
+/// a document the caller holds, and no key there is theirs. A brand over one of them answers as
+/// it does.
+#[test]
+fn a_brand_over_text_and_a_tuple_struct_list_nothing_in_a_document_and_return_no_key() {
+    let held = doc! { "0": "a", "legacy": true };
+    for keyed in [
+        RecordId::decode_with_bson_fields::<record_id_schema::Issue<Bson>>,
+        Wrapper::decode_with_bson_fields::<record_id_schema::Issue<Bson>>,
+        Pair::decode_with_bson_fields::<record_id_schema::Issue<Bson>>,
+        OwnerRef::decode_with_bson_fields::<record_id_schema::Issue<Bson>>,
+        PairRef::decode_with_bson_fields::<record_id_schema::Issue<Bson>>,
+    ] {
+        let mut out = Vec::new();
+        let declared = keyed(&held, &[], record_id_schema::issue_from_parts, &mut out);
+        assert_eq!(declared, Vec::<&str>::new());
+        assert_eq!(out, Vec::new());
+    }
+}
+
+/// serde flattens a struct or a map and nothing else, so it refuses every read of a struct that
+/// flattens a brand over text. The brand's fields walker lists nothing for it, and the read
+/// carries serde's refusal.
+#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[test]
+fn a_struct_flattening_a_type_serde_cannot_flatten_lists_nothing_for_it_beside_serdes_refusal() {
+    let stored_row = doc! { "name": "n" };
+    assert!(!serde_reads::<Carded>(&stored_row));
+    let read = Carded::from_bson_with(stored_row, |_raw, _found| carded_schema::Verdict::Reject);
+    assert_eq!(
+        told!(carded_schema, read.unwrap_err().issues),
+        [undescribed()]
+    );
 }
 
 /// A `transparent` struct with a named field is the value its field holds, at the path the struct

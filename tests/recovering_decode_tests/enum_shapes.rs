@@ -161,6 +161,19 @@ struct Route {
     status: Status,
 }
 
+/// A brand over a plain enum: serde writes it as the variant's name.
+#[model_schema(decode_with, no_display)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct StatusRef(Status);
+
+/// A brand over a plain enum, under a key.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Review {
+    status: StatusRef,
+}
+
 /// Every renaming serde reads off an enum: of its variants, of one variant, of every variant's
 /// fields, and of one variant's fields.
 #[model_schema(decode_with)]
@@ -438,6 +451,45 @@ fn a_plain_enum_is_one_value_read_with_its_own_reader() {
         listed!(Route, route_schema, held),
         [
             "status: invalid: expected Model(\"Status\"), found Number(7): invalid type: integer `7`, expected string or map"
+        ]
+    );
+}
+
+/// A brand over a plain enum is the name the enum writes: what serde wrote is read without the
+/// decider, and a name the enum does not declare is the enum's one issue, at the path the brand
+/// sits at.
+#[test]
+fn a_brand_over_a_plain_enum_is_read_as_the_name_the_enum_writes() {
+    let mut calls = 0_u32;
+    let written = serde_json::to_value(Review {
+        status: StatusRef(Status::Draft),
+    })
+    .unwrap();
+    assert_eq!(written, json!({ "status": "Draft" }));
+    assert_eq!(
+        read_counting!(Review, review_schema, written, calls),
+        Ok(Review {
+            status: StatusRef(Status::Draft),
+        })
+    );
+    assert_eq!(
+        read_counting!(StatusRef, status_ref_schema, json!("Published"), calls),
+        Ok(StatusRef(Status::Published))
+    );
+    assert_eq!(calls, 0);
+
+    let stored = json!("Archived");
+    assert!(!serde_reads::<StatusRef>(&stored));
+    assert_eq!(
+        listed!(StatusRef, status_ref_schema, stored),
+        [
+            "the value itself: invalid: expected Model(\"Status\"), found String(\"Archived\"): unknown variant `Archived`, expected `Draft` or `Published`"
+        ]
+    );
+    assert_eq!(
+        listed!(Review, review_schema, json!({ "status": "Archived" })),
+        [
+            "status: invalid: expected Model(\"Status\"), found String(\"Archived\"): unknown variant `Archived`, expected `Draft` or `Published`"
         ]
     );
 }

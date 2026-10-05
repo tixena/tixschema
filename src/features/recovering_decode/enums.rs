@@ -378,10 +378,10 @@ impl EnumWalker<'_> {
             }
             Tagging::External => self.external_methods(),
             Tagging::Internal { tag } => self.tagged_methods(&self.internal_fields(tag)),
-            // A type serde cannot flatten gets no fields walker.
             Tagging::Plain => {
                 let whole = self.walker.read_whole(&self.walker.own_model());
-                self.walker.issues_method(&quote! { #whole; })
+                self.walker
+                    .claiming_no_key(&self.walker.issues_method(&quote! { #whole; }))
             }
             Tagging::Untagged => self.untagged_methods(),
         }
