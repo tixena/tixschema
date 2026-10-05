@@ -246,7 +246,6 @@ pub fn has_serde_skip_serializing(attrs: &[Attribute]) -> bool {
 
 /// Whether the container is `#[serde(transparent)]`, wherever among its serde attributes the key
 /// is written.
-#[cfg(feature = "serde")]
 pub fn has_serde_transparent(attrs: &[Attribute]) -> bool {
     let mut found = false;
     for attr in attrs {

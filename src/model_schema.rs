@@ -83,7 +83,7 @@ use crate::features::serde::rename_direction_rejection;
 use crate::features::serde::{
     NAMED_READ_HOOK_PREFIX, SerdeFieldMeta, SerdeTypeMeta, derives_deserialize, has_serde_read_hook,
 };
-use crate::features::serde::{has_serde_default, parse_serde_key_omission};
+use crate::features::serde::{has_serde_default, has_serde_transparent, parse_serde_key_omission};
 
 #[cfg(all(
     feature = "serde",
@@ -1438,24 +1438,6 @@ fn process_type_alias(item_type: ItemType, _args: &ModelSchemaArgs) -> TokenStre
         .attrs
         .retain(|attr| !attr.path().is_ident("model_schema"));
     quote! { #alias }
-}
-
-fn has_serde_transparent(attrs: &[syn::Attribute]) -> bool {
-    for attr in attrs {
-        if attr.path().is_ident("serde") {
-            let mut found = false;
-            let _: syn::Result<()> = attr.parse_nested_meta(|nested| {
-                if nested.path.is_ident("transparent") {
-                    found = true;
-                }
-                Ok(())
-            });
-            if found {
-                return true;
-            }
-        }
-    }
-    false
 }
 
 /// Whether `attrs` carries `#[serde(untagged)]`, read off the raw tokens rather than through

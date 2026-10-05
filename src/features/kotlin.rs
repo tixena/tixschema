@@ -21,7 +21,7 @@ use quote::quote;
 use syn::{Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
-use crate::features::serde::parse_serde_key_omission;
+use crate::features::serde::{has_serde_transparent, parse_serde_key_omission};
 use crate::field_type::{
     FieldDef, FieldDefType, VariantKind, classify_variant, get_field_def, is_plain_enum,
     is_sequence_wrapper,
@@ -167,27 +167,6 @@ fn register_kotlin_name(rust_ident: &str, export_name: &str) {
 /// re-publishes that ident too, as a `typealias`.
 fn lookup_kotlin_name(rust_ident: &str) -> Option<String> {
     KOTLIN_NAMES.with(|names| names.borrow().get(rust_ident).cloned())
-}
-
-/// Whether `attrs` carries a bare `#[serde(transparent)]` — the same test `model_schema.rs` and
-/// `features::dart` use to tell a branded newtype from an ordinary tuple struct, duplicated here
-/// rather than widened to `pub(crate)`.
-fn has_serde_transparent(attrs: &[syn::Attribute]) -> bool {
-    for attr in attrs {
-        if attr.path().is_ident("serde") {
-            let mut found = false;
-            let _: syn::Result<()> = attr.parse_nested_meta(|nested| {
-                if nested.path.is_ident("transparent") {
-                    found = true;
-                }
-                Ok(())
-            });
-            if found {
-                return true;
-            }
-        }
-    }
-    false
 }
 
 /// Whether `fields` is a tuple shape (unnamed) with exactly one slot — the shape a branded newtype

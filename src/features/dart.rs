@@ -21,7 +21,7 @@ use quote::quote;
 use syn::{Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
-use crate::features::serde::parse_serde_key_omission;
+use crate::features::serde::{has_serde_transparent, parse_serde_key_omission};
 use crate::field_type::{
     FieldDef, FieldDefType, VariantKind, classify_variant, dart_from_json_argument,
     dart_lower_camel, dart_to_json_argument, get_field_def, is_plain_enum, is_sequence_wrapper,
@@ -159,28 +159,6 @@ fn register_dart_name(rust_ident: &str, export_name: &str) {
             .borrow_mut()
             .insert(rust_ident.to_owned(), export_name.to_owned());
     });
-}
-
-/// Whether `attrs` carries a bare `#[serde(transparent)]` — the same test `model_schema.rs` uses to
-/// tell a branded newtype from an ordinary tuple struct, duplicated here (rather than reached
-/// through a `pub(crate)` widening) since it is a dozen lines of plain `syn` parsing with no feature
-/// dependency of its own.
-fn has_serde_transparent(attrs: &[syn::Attribute]) -> bool {
-    for attr in attrs {
-        if attr.path().is_ident("serde") {
-            let mut found = false;
-            let _: syn::Result<()> = attr.parse_nested_meta(|nested| {
-                if nested.path.is_ident("transparent") {
-                    found = true;
-                }
-                Ok(())
-            });
-            if found {
-                return true;
-            }
-        }
-    }
-    false
 }
 
 /// The module `{ident}_dart` publishes `dart_definition()` from — never a direct inherent
