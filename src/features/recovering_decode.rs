@@ -83,7 +83,7 @@ impl Claimed {
     fn returned(&self, object: &Ident) -> TokenStream {
         match self {
             Self::Bound => quote! { declared },
-            Self::Every => quote! { #object.keys().map(std::string::String::as_str).collect() },
+            Self::Every => quote! { #object.keys().map(::std::string::String::as_str).collect() },
             Self::Listed(keys) => quote! { vec![#(#keys),*] },
         }
     }
@@ -94,12 +94,12 @@ impl Claimed {
             Self::Bound => {
                 let here = path_expression(&under(
                     segments,
-                    &quote! { core::result::Result::Ok(key.clone()) },
+                    &quote! { ::core::result::Result::Ok(key.clone()) },
                 ));
                 quote! {
                     for (key, held) in #object {
                         if !declared.contains(&key.as_str()) {
-                            out.push(issue("Unknown", #here, &[], core::option::Option::Some(held.clone()), core::option::Option::None, std::vec::Vec::new()));
+                            out.push(issue("Unknown", #here, &[], ::core::option::Option::Some(held.clone()), ::core::option::Option::None, ::std::vec::Vec::new()));
                         }
                     }
                 }
@@ -242,7 +242,7 @@ impl<'walk> Handed<'walk> {
         quote! {
             #keys
                 .into_iter()
-                .filter_map(|key| #object.keys().find(|own| own.as_str() == key).map(std::string::String::as_str))
+                .filter_map(|key| #object.keys().find(|own| own.as_str() == key).map(::std::string::String::as_str))
         }
     }
 
@@ -306,9 +306,9 @@ impl Lookup<'_> {
     fn segment(&self) -> TokenStream {
         if self.aliases.is_empty() {
             let key = self.key;
-            quote! { core::result::Result::Ok(#key.to_owned()) }
+            quote! { ::core::result::Result::Ok(#key.to_owned()) }
         } else {
-            quote! { core::result::Result::Ok(stored.to_owned()) }
+            quote! { ::core::result::Result::Ok(stored.to_owned()) }
         }
     }
 }
@@ -532,7 +532,7 @@ impl Source {
         match self {
             #[cfg(feature = "bson")]
             Self::Bson => quote! { bson::Bson::Array(items) = found },
-            Self::Json => quote! { core::option::Option::Some(items) = found.as_array() },
+            Self::Json => quote! { ::core::option::Option::Some(items) = found.as_array() },
         }
     }
 
@@ -556,7 +556,7 @@ impl Source {
         match self {
             #[cfg(feature = "bson")]
             Self::Bson => quote! { bson::Document },
-            Self::Json => quote! { serde_json::Map<std::string::String, serde_json::Value> },
+            Self::Json => quote! { serde_json::Map<::std::string::String, serde_json::Value> },
         }
     }
 
@@ -574,7 +574,7 @@ impl Source {
         match self {
             #[cfg(feature = "bson")]
             Self::Bson => quote! { bson::Bson::Document(object) = found },
-            Self::Json => quote! { core::option::Option::Some(object) = found.as_object() },
+            Self::Json => quote! { ::core::option::Option::Some(object) = found.as_object() },
         }
     }
 
@@ -621,8 +621,8 @@ impl Source {
         let read = pinned.map_or_else(|| quote! { _ }, |ty| quote! { _: &#ty });
         match self {
             #[cfg(feature = "bson")]
-            Self::Bson => quote! { |#read, _| core::option::Option::None },
-            Self::Json => quote! { |#read| core::option::Option::None },
+            Self::Bson => quote! { |#read, _| ::core::option::Option::None },
+            Self::Json => quote! { |#read| ::core::option::Option::None },
         }
     }
 
@@ -666,8 +666,8 @@ impl Source {
             return self.write_back(pinned, through);
         }
         pinned.map_or_else(
-            || quote! { |_| core::option::Option::None },
-            |ty| quote! { |_: &#ty| core::option::Option::None },
+            || quote! { |_| ::core::option::Option::None },
+            |ty| quote! { |_: &#ty| ::core::option::Option::None },
         )
     }
 }
@@ -770,7 +770,10 @@ impl Walker<'_> {
                 let each = self.statement(
                     inner,
                     &item,
-                    &under(segments, &quote! { core::result::Result::Ok(#key.clone()) }),
+                    &under(
+                        segments,
+                        &quote! { ::core::result::Result::Ok(#key.clone()) },
+                    ),
                     depth,
                 );
                 let expected = self.expected(reported);
@@ -792,7 +795,7 @@ impl Walker<'_> {
                 let each = self.statement(
                     inner,
                     &item,
-                    &under(segments, &quote! { core::result::Result::Err(#index) }),
+                    &under(segments, &quote! { ::core::result::Result::Err(#index) }),
                     depth,
                 );
                 let expected = self.expected(reported);
@@ -876,7 +879,7 @@ impl Walker<'_> {
     /// whatever its shape, so every shape has them.
     fn claiming_no_key(&self, walked: &TokenStream) -> TokenStream {
         let named = self.never_named();
-        let keyed = self.fields_method(false, false, &quote! { std::vec::Vec::new() });
+        let keyed = self.fields_method(false, false, &quote! { ::std::vec::Vec::new() });
         quote! {
             #walked
             #named
@@ -897,7 +900,10 @@ impl Walker<'_> {
         let each = self.statement(
             values,
             &item,
-            &under(segments, &quote! { core::result::Result::Ok(key.clone()) }),
+            &under(
+                segments,
+                &quote! { ::core::result::Result::Ok(key.clone()) },
+            ),
             0,
         );
         unclaimed.map_or_else(
@@ -967,10 +973,10 @@ impl Walker<'_> {
             /// its own.
             pub fn #fields<'a, #built>(
                 #object: &'a #object_type,
-                #path: &[core::result::Result<std::string::String, usize>],
+                #path: &[::core::result::Result<::std::string::String, usize>],
                 #issue: #module::IssueFromParts<#value, #built>,
-                #out: &mut std::vec::Vec<#built>,
-            ) -> std::vec::Vec<&'a str> {
+                #out: &mut ::std::vec::Vec<#built>,
+            ) -> ::std::vec::Vec<&'a str> {
                 #body
             }
         }
@@ -1038,11 +1044,11 @@ impl Walker<'_> {
         };
         quote! {
             if #is_named {
-                let mut nested = std::vec::Vec::new();
+                let mut nested = ::std::vec::Vec::new();
                 #walk
                 match <#model as serde::Deserialize>::deserialize(#reader) {
-                    core::result::Result::Ok(_) => out.append(&mut nested),
-                    core::result::Result::Err(_) => out.push(issue("Mistyped", #here, #expected, core::option::Option::Some(#whole), core::option::Option::None, std::vec::Vec::new())),
+                    ::core::result::Result::Ok(_) => out.append(&mut nested),
+                    ::core::result::Result::Err(_) => out.push(issue("Mistyped", #here, #expected, ::core::option::Option::Some(#whole), ::core::option::Option::None, ::std::vec::Vec::new())),
                 }
                 #kept
             }
@@ -1157,7 +1163,7 @@ impl Walker<'_> {
                     self.asked(model, &quote! { <#model>::#named(object) }),
                     true,
                     quote! {
-                        let mut declared = std::vec::Vec::new();
+                        let mut declared = ::std::vec::Vec::new();
                         #walked
                         declared
                     },
@@ -1264,7 +1270,7 @@ impl Walker<'_> {
         let bound = if !collects {
             TokenStream::new()
         } else if own.is_empty() {
-            quote! { let mut declared = std::vec::Vec::new(); }
+            quote! { let mut declared = ::std::vec::Vec::new(); }
         } else {
             quote! { let mut declared = vec![#(#own),*]; }
         };
@@ -1372,9 +1378,9 @@ impl Walker<'_> {
         };
         let there = |pattern: &TokenStream| {
             if under_alias {
-                quote! { core::option::Option::Some((stored, #pattern)) }
+                quote! { ::core::option::Option::Some((stored, #pattern)) }
             } else {
-                quote! { core::option::Option::Some(#pattern) }
+                quote! { ::core::option::Option::Some(#pattern) }
             }
         };
         if lookup.absence_is_read
@@ -1396,15 +1402,15 @@ impl Walker<'_> {
         });
         let absent = if merged {
             let null = self.source.null();
-            quote! { core::option::Option::None | core::option::Option::Some(#null) => {} }
+            quote! { ::core::option::Option::None | ::core::option::Option::Some(#null) => {} }
         } else if lookup.absence_is_read {
-            quote! { core::option::Option::None => {} }
+            quote! { ::core::option::Option::None => {} }
         } else {
             let here = path_expression(&under(
                 segments,
-                &quote! { core::result::Result::Ok(#key.to_owned()) },
+                &quote! { ::core::result::Result::Ok(#key.to_owned()) },
             ));
-            quote! { core::option::Option::None => out.push(issue("Missing", #here, #expected, core::option::Option::None, core::option::Option::None, std::vec::Vec::new())), }
+            quote! { ::core::option::Option::None => out.push(issue("Missing", #here, #expected, ::core::option::Option::None, ::core::option::Option::None, ::std::vec::Vec::new())), }
         };
         if merged {
             quote! { match #found { #absent #(#listed)* } }
@@ -1456,7 +1462,7 @@ impl Walker<'_> {
             let declared = Self::#fields(object, path, issue, out);
             for (key, held) in object {
                 if !declared.contains(&key.as_str()) {
-                    out.push(issue("Unknown", [path, &[core::result::Result::Ok(key.clone())]].concat(), &[], core::option::Option::Some(held.clone()), core::option::Option::None, std::vec::Vec::new()));
+                    out.push(issue("Unknown", [path, &[::core::result::Result::Ok(key.clone())]].concat(), &[], ::core::option::Option::Some(held.clone()), ::core::option::Option::None, ::std::vec::Vec::new()));
                 }
             }
         })
@@ -1528,7 +1534,7 @@ impl Walker<'_> {
     ) -> TokenStream {
         let held = binding("held", depth);
         let index = Literal::usize_unsuffixed(at);
-        let here = under(segments, &quote! { core::result::Result::Err(#index) });
+        let here = under(segments, &quote! { ::core::result::Result::Err(#index) });
         let lookup = if at == 0 {
             quote! { #items.first() }
         } else {
@@ -1546,7 +1552,7 @@ impl Walker<'_> {
         {
             let (pattern, body) = (&only.pattern, &only.body);
             return quote! {
-                if let core::option::Option::Some(#pattern) = #lookup {
+                if let ::core::option::Option::Some(#pattern) = #lookup {
                     #body;
                 }
             };
@@ -1555,18 +1561,18 @@ impl Walker<'_> {
         let merged = slot.absence_is_read && arms.first().is_some_and(|arm| arm.nothing);
         let listed = arms.iter().skip(usize::from(merged)).map(|arm| {
             let (pattern, body) = (&arm.pattern, &arm.body);
-            quote! { core::option::Option::Some(#pattern) => #body, }
+            quote! { ::core::option::Option::Some(#pattern) => #body, }
         });
         if merged {
             let null = self.source.null();
-            return quote! { match #lookup { core::option::Option::None | core::option::Option::Some(#null) => {} #(#listed)* } };
+            return quote! { match #lookup { ::core::option::Option::None | ::core::option::Option::Some(#null) => {} #(#listed)* } };
         }
         let absent = if slot.absence_is_read {
-            quote! { core::option::Option::None => {} }
+            quote! { ::core::option::Option::None => {} }
         } else {
             let path = path_expression(&here);
             let expected = self.expected(slot.ty);
-            quote! { core::option::Option::None => out.push(issue("Missing", #path, #expected, core::option::Option::None, core::option::Option::None, std::vec::Vec::new())), }
+            quote! { ::core::option::Option::None => out.push(issue("Missing", #path, #expected, ::core::option::Option::None, ::core::option::Option::None, ::std::vec::Vec::new())), }
         };
         quote! { match #lookup { #(#listed)* #absent } }
     }
@@ -1597,7 +1603,7 @@ impl Walker<'_> {
         let (index, held) = (binding("index", depth), binding("held", depth));
         let here = path_expression(&under(
             segments,
-            &quote! { core::result::Result::Err(#index) },
+            &quote! { ::core::result::Result::Err(#index) },
         ));
         let undeclared = if slots.is_empty() {
             quote! { #items.iter().enumerate() }
@@ -1608,7 +1614,7 @@ impl Walker<'_> {
         quote! {
             #(#declared)*
             for (#index, #held) in #undeclared {
-                out.push(issue("Unknown", #here, &[], core::option::Option::Some(#held.clone()), core::option::Option::None, std::vec::Vec::new()));
+                out.push(issue("Unknown", #here, &[], ::core::option::Option::Some(#held.clone()), ::core::option::Option::None, ::std::vec::Vec::new()));
             }
         }
     }
@@ -1680,9 +1686,9 @@ impl Walker<'_> {
         quote! {
             <#built>(
                 found: &#value,
-                path: &[core::result::Result<std::string::String, usize>],
+                path: &[::core::result::Result<::std::string::String, usize>],
                 issue: #module::IssueFromParts<#value, #built>,
-                out: &mut std::vec::Vec<#built>,
+                out: &mut ::std::vec::Vec<#built>,
             )
         }
     }
@@ -1742,9 +1748,9 @@ fn read_whole_items() -> TokenStream {
             /// Lists serde's verdict on `found`, read whole as this type at `path`.
             fn #issues<I>(
                 found: &#value,
-                path: &[core::result::Result<std::string::String, usize>],
+                path: &[::core::result::Result<::std::string::String, usize>],
                 issue: IssueFromParts<#value, I>,
-                out: &mut std::vec::Vec<I>,
+                out: &mut ::std::vec::Vec<I>,
             ) {
                 out.extend(#leaf(found, <Self as serde::Deserialize>::deserialize, #unwritten, path.to_vec(), &[("Unknown", &[], 0)], issue));
             }
@@ -1758,12 +1764,12 @@ fn read_whole_items() -> TokenStream {
             /// returns every key: with no walker to say otherwise, all are the type's own.
             fn #fields<'a, I>(
                 object: &'a #object_type,
-                path: &[core::result::Result<std::string::String, usize>],
+                path: &[::core::result::Result<::std::string::String, usize>],
                 issue: IssueFromParts<#value, I>,
-                out: &mut std::vec::Vec<I>,
-            ) -> std::vec::Vec<&'a str> {
+                out: &mut ::std::vec::Vec<I>,
+            ) -> ::std::vec::Vec<&'a str> {
                 Self::#issues(&#whole, path, issue, out);
-                object.keys().map(std::string::String::as_str).collect()
+                object.keys().map(::std::string::String::as_str).collect()
             }
         }
     });
@@ -1906,8 +1912,8 @@ fn asked_items() -> TokenStream {
         #[non_exhaustive]
         pub struct Asked {
             /// It asks for an `Option`, which serde reads as absent where what it holds is refused.
-            optional: core::cell::Cell<bool>,
-            taken: core::cell::Cell<Taken>,
+            optional: ::core::cell::Cell<bool>,
+            taken: ::core::cell::Cell<Taken>,
         }
 
         /// What a read asks for says of the entries serde takes out for it.
@@ -1934,8 +1940,8 @@ fn asked_items() -> TokenStream {
             fn deserialize_any<V: serde::de::Visitor<'de>>(
                 self,
                 _visitor: V,
-            ) -> core::result::Result<V::Value, Self::Error> {
-                core::result::Result::Err(serde::de::Error::custom("nothing is read"))
+            ) -> ::core::result::Result<V::Value, Self::Error> {
+                ::core::result::Result::Err(serde::de::Error::custom("nothing is read"))
             }
 
             fn deserialize_struct<V: serde::de::Visitor<'de>>(
@@ -1943,9 +1949,9 @@ fn asked_items() -> TokenStream {
                 _name: &'static str,
                 fields: &'static [&'static str],
                 _visitor: V,
-            ) -> core::result::Result<V::Value, Self::Error> {
+            ) -> ::core::result::Result<V::Value, Self::Error> {
                 self.0.taken.set(Taken::Fields(fields));
-                core::result::Result::Err(serde::de::Error::custom("nothing is read"))
+                ::core::result::Result::Err(serde::de::Error::custom("nothing is read"))
             }
 
             fn deserialize_enum<V: serde::de::Visitor<'de>>(
@@ -1953,15 +1959,15 @@ fn asked_items() -> TokenStream {
                 _name: &'static str,
                 variants: &'static [&'static str],
                 _visitor: V,
-            ) -> core::result::Result<V::Value, Self::Error> {
+            ) -> ::core::result::Result<V::Value, Self::Error> {
                 self.0.taken.set(Taken::Variant(variants));
-                core::result::Result::Err(serde::de::Error::custom("nothing is read"))
+                ::core::result::Result::Err(serde::de::Error::custom("nothing is read"))
             }
 
             fn deserialize_option<V: serde::de::Visitor<'de>>(
                 self,
                 visitor: V,
-            ) -> core::result::Result<V::Value, Self::Error> {
+            ) -> ::core::result::Result<V::Value, Self::Error> {
                 self.0.optional.set(true);
                 visitor.visit_some(self)
             }
@@ -1970,7 +1976,7 @@ fn asked_items() -> TokenStream {
                 self,
                 _name: &'static str,
                 visitor: V,
-            ) -> core::result::Result<V::Value, Self::Error> {
+            ) -> ::core::result::Result<V::Value, Self::Error> {
                 visitor.visit_newtype_struct(self)
             }
 
@@ -2003,42 +2009,42 @@ fn bson_entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
         pub fn from_bson_with<#decider>(
             document: bson::Document,
             decide: #decider,
-        ) -> core::result::Result<Self, #module::Unrecovered<bson::Bson>>
+        ) -> ::core::result::Result<Self, #module::Unrecovered<bson::Bson>>
         where
-            #decider: core::ops::FnOnce(&mut bson::Document, &[#module::Issue<bson::Bson>]) -> #module::Verdict,
+            #decider: ::core::ops::FnOnce(&mut bson::Document, &[#module::Issue<bson::Bson>]) -> #module::Verdict,
         {
             let mut whole = bson::Bson::Document(document);
             let found = match <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(whole.clone())) {
-                core::result::Result::Ok(decoded) => {
-                    let found = Self::decode_with_bson_report(&whole, core::option::Option::None);
+                ::core::result::Result::Ok(decoded) => {
+                    let found = Self::decode_with_bson_report(&whole, ::core::option::Option::None);
                     if found.is_empty() {
-                        return core::result::Result::Ok(decoded);
+                        return ::core::result::Result::Ok(decoded);
                     }
                     found
                 }
-                core::result::Result::Err(refused) => Self::decode_with_bson_report(&whole, core::option::Option::Some(refused.to_string())),
+                ::core::result::Result::Err(refused) => Self::decode_with_bson_report(&whole, ::core::option::Option::Some(refused.to_string())),
             };
             // `whole` is the document it was built from, so the other arm is never taken.
             let bson::Bson::Document(object) = &mut whole else {
-                return core::result::Result::Err(#module::Unrecovered { issues: found });
+                return ::core::result::Result::Err(#module::Unrecovered { issues: found });
             };
             match decide(object, &found) {
-                #module::Verdict::Reject => core::result::Result::Err(#module::Unrecovered { issues: found }),
+                #module::Verdict::Reject => ::core::result::Result::Err(#module::Unrecovered { issues: found }),
                 #module::Verdict::Fixed => {
                     let read = <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(whole.clone()));
-                    let again = Self::decode_with_bson_report(&whole, read.as_ref().err().map(std::string::ToString::to_string));
+                    let again = Self::decode_with_bson_report(&whole, read.as_ref().err().map(::std::string::ToString::to_string));
                     match read {
-                        core::result::Result::Ok(decoded) if again.is_empty() => core::result::Result::Ok(decoded),
-                        _ => core::result::Result::Err(#module::Unrecovered { issues: again }),
+                        ::core::result::Result::Ok(decoded) if again.is_empty() => ::core::result::Result::Ok(decoded),
+                        _ => ::core::result::Result::Err(#module::Unrecovered { issues: again }),
                     }
                 }
             }
         }
 
-        fn decode_with_bson_report(whole: &bson::Bson, refused: core::option::Option<std::string::String>) -> std::vec::Vec<#module::Issue<bson::Bson>> {
-            let mut out = std::vec::Vec::new();
+        fn decode_with_bson_report(whole: &bson::Bson, refused: ::core::option::Option<::std::string::String>) -> ::std::vec::Vec<#module::Issue<bson::Bson>> {
+            let mut out = ::std::vec::Vec::new();
             Self::decode_with_bson_issues(whole, &[], #module::issue_from_parts, &mut out);
-            if let core::option::Option::Some(reason) = refused
+            if let ::core::option::Option::Some(reason) = refused
                 && out.iter().all(|found| matches!(found, #module::Issue::Unknown { .. } | #module::Issue::Mistyped { .. }))
             {
                 out.push(#module::Issue::Undescribed { reason });
@@ -2059,7 +2065,7 @@ fn bson_leaf_items() -> TokenStream {
             let textual = |b: &bson::Bson| matches!(b, bson::Bson::String(_) | bson::Bson::Symbol(_));
             (numeric(stored) && numeric(written))
                 || (textual(stored) && textual(written))
-                || std::mem::discriminant(stored) == std::mem::discriminant(written)
+                || ::std::mem::discriminant(stored) == ::std::mem::discriminant(written)
         }
 
         /// One BSON value read whole: refused by serde, or read but stored as a type `write`
@@ -2068,22 +2074,22 @@ fn bson_leaf_items() -> TokenStream {
             held: &bson::Bson,
             read: R,
             write: W,
-            path: std::vec::Vec<core::result::Result<std::string::String, usize>>,
+            path: ::std::vec::Vec<::core::result::Result<::std::string::String, usize>>,
             expected: &'static [ExpectedToken],
             issue: IssueFromParts<bson::Bson, I>,
-        ) -> core::option::Option<I>
+        ) -> ::core::option::Option<I>
         where
-            E: core::fmt::Display,
-            R: core::ops::FnOnce(bson::Deserializer) -> core::result::Result<T, E>,
-            W: core::ops::FnOnce(&T, bson::Serializer) -> core::option::Option<bson::Bson>,
+            E: ::core::fmt::Display,
+            R: ::core::ops::FnOnce(bson::Deserializer) -> ::core::result::Result<T, E>,
+            W: ::core::ops::FnOnce(&T, bson::Serializer) -> ::core::option::Option<bson::Bson>,
         {
             match read(bson::Deserializer::new(held.clone())) {
-                core::result::Result::Err(refused) => core::option::Option::Some(issue("Invalid", path, expected, core::option::Option::Some(held.clone()), core::option::Option::Some(refused.to_string()), std::vec::Vec::new())),
-                core::result::Result::Ok(read) => match write(&read, bson::Serializer::new()) {
-                    core::option::Option::Some(written) if !same_bracket(held, &written) => {
-                        core::option::Option::Some(issue("Mistyped", path, expected, core::option::Option::Some(held.clone()), core::option::Option::None, std::vec::Vec::new()))
+                ::core::result::Result::Err(refused) => ::core::option::Option::Some(issue("Invalid", path, expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::Some(refused.to_string()), ::std::vec::Vec::new())),
+                ::core::result::Result::Ok(read) => match write(&read, bson::Serializer::new()) {
+                    ::core::option::Option::Some(written) if !same_bracket(held, &written) => {
+                        ::core::option::Option::Some(issue("Mistyped", path, expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::None, ::std::vec::Vec::new()))
                     }
-                    _ => core::option::Option::None,
+                    _ => ::core::option::Option::None,
                 },
             }
         }
@@ -2094,15 +2100,15 @@ fn bson_leaf_items() -> TokenStream {
             read: R,
             asked: &'asked Asked,
             entries: &bson::Document,
-        ) -> core::option::Option<bson::Document>
+        ) -> ::core::option::Option<bson::Document>
         where
-            R: core::ops::FnOnce(TakenProbe<'asked>) -> core::result::Result<T, serde::de::value::Error>,
+            R: ::core::ops::FnOnce(TakenProbe<'asked>) -> ::core::result::Result<T, serde::de::value::Error>,
         {
             let taken = taken_keys(read, asked, entries.keys());
             if taken.is_empty() {
-                return core::option::Option::None;
+                return ::core::option::Option::None;
             }
-            core::option::Option::Some(
+            ::core::option::Option::Some(
                 entries
                     .iter()
                     .filter(|(key, _)| !taken.contains(&key.as_str()))
@@ -2125,19 +2131,19 @@ fn bson_path_helpers() -> TokenStream {
     quote! {
         /// Puts `value` at this path inside a BSON document, inserting the last key when it is absent.
         pub fn set_in_document(&self, root: &mut bson::Document, value: bson::Bson) -> bool {
-            let core::option::Option::Some((Segment::Key(first), rest)) = self.0.split_first() else { return false };
-            let core::option::Option::Some((last, parents)) = rest.split_last() else {
+            let ::core::option::Option::Some((Segment::Key(first), rest)) = self.0.split_first() else { return false };
+            let ::core::option::Option::Some((last, parents)) = rest.split_last() else {
                 root.insert(first.clone(), value);
                 return true;
             };
-            let core::option::Option::Some(mut slot) = root.get_mut(first) else { return false };
+            let ::core::option::Option::Some(mut slot) = root.get_mut(first) else { return false };
             for segment in parents {
                 let next = match (segment, slot) {
                     (Segment::Key(key), bson::Bson::Document(object)) => object.get_mut(key),
                     (Segment::Index(index), bson::Bson::Array(items)) => items.get_mut(*index),
-                    _ => core::option::Option::None,
+                    _ => ::core::option::Option::None,
                 };
-                let core::option::Option::Some(next) = next else { return false };
+                let ::core::option::Option::Some(next) = next else { return false };
                 slot = next;
             }
             match (last, slot) {
@@ -2155,18 +2161,18 @@ fn bson_path_helpers() -> TokenStream {
 
         /// Removes the key or item at this path inside a BSON document.
         pub fn remove_from_document(&self, root: &mut bson::Document) -> bool {
-            let core::option::Option::Some((Segment::Key(first), rest)) = self.0.split_first() else { return false };
-            let core::option::Option::Some((last, parents)) = rest.split_last() else {
+            let ::core::option::Option::Some((Segment::Key(first), rest)) = self.0.split_first() else { return false };
+            let ::core::option::Option::Some((last, parents)) = rest.split_last() else {
                 return root.remove(first).is_some();
             };
-            let core::option::Option::Some(mut slot) = root.get_mut(first) else { return false };
+            let ::core::option::Option::Some(mut slot) = root.get_mut(first) else { return false };
             for segment in parents {
                 let next = match (segment, slot) {
                     (Segment::Key(key), bson::Bson::Document(object)) => object.get_mut(key),
                     (Segment::Index(index), bson::Bson::Array(items)) => items.get_mut(*index),
-                    _ => core::option::Option::None,
+                    _ => ::core::option::Option::None,
                 };
-                let core::option::Option::Some(next) = next else { return false };
+                let ::core::option::Option::Some(next) = next else { return false };
                 slot = next;
             }
             match (last, slot) {
@@ -2193,7 +2199,7 @@ fn callback_items() -> TokenStream {
         #[derive(Clone, Debug, PartialEq)]
         #[non_exhaustive]
         pub enum Expected {
-            Array(std::boxed::Box<Expected>),
+            Array(::std::boxed::Box<Expected>),
             Boolean,
             BooleanLiteral(bool),
             Char,
@@ -2206,7 +2212,7 @@ fn callback_items() -> TokenStream {
             I64,
             Isize,
             /// The type of the map's values.
-            Map(std::boxed::Box<Expected>),
+            Map(::std::boxed::Box<Expected>),
             /// A `#[model_schema]` type, by its Rust name as the field's type writes it.
             Model(&'static str),
             NaiveDate,
@@ -2214,10 +2220,10 @@ fn callback_items() -> TokenStream {
             NaiveTime,
             NumberLiteral(f64),
             ObjectId,
-            Optional(std::boxed::Box<Expected>),
+            Optional(::std::boxed::Box<Expected>),
             String,
             StringLiteral(&'static str),
-            Tuple(std::vec::Vec<Expected>),
+            Tuple(::std::vec::Vec<Expected>),
             /// One of the type's own type parameters, by its name.
             TypeParam(&'static str),
             Unknown,
@@ -2234,7 +2240,7 @@ fn callback_items() -> TokenStream {
         #[non_exhaustive]
         pub enum Issue<V> {
             /// The key is there, and its field cannot be read from what it holds.
-            Invalid { path: Path, expected: Expected, found: V, reason: std::string::String },
+            Invalid { path: Path, expected: Expected, found: V, reason: ::std::string::String },
             /// The type requires the key, and it is not there.
             Missing { path: Path, expected: Expected },
             /// The key is there, and the type declares no field by that name.
@@ -2243,9 +2249,9 @@ fn callback_items() -> TokenStream {
             /// shape, or another BSON type, which a MongoDB query for the field's own type does not match.
             Mistyped { path: Path, expected: Expected, found: V },
             /// An untagged enum none of whose variants reads the value: each variant's own list.
-            NoVariant { path: Path, found: V, variants: std::vec::Vec<(&'static str, std::vec::Vec<Issue<V>>)> },
+            NoVariant { path: Path, found: V, variants: ::std::vec::Vec<(&'static str, ::std::vec::Vec<Issue<V>>)> },
             /// Serde refused the value and the walk found nothing to say why.
-            Undescribed { reason: std::string::String },
+            Undescribed { reason: ::std::string::String },
         }
 
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2258,14 +2264,14 @@ fn callback_items() -> TokenStream {
         #[derive(Clone, Debug, PartialEq)]
         #[non_exhaustive]
         pub struct Unrecovered<V> {
-            pub issues: std::vec::Vec<Issue<V>>,
+            pub issues: ::std::vec::Vec<Issue<V>>,
         }
 
-        impl<V: core::fmt::Debug> core::fmt::Display for Unrecovered<V> {
-            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        impl<V: ::core::fmt::Debug> ::core::fmt::Display for Unrecovered<V> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let place = |path: &Path| {
                     if path.0.is_empty() {
-                        std::string::String::from("the value itself")
+                        ::std::string::String::from("the value itself")
                     } else {
                         path.to_string()
                     }
@@ -2288,17 +2294,17 @@ fn callback_items() -> TokenStream {
                             write!(f, "{}: mistyped: expected {expected:?}, found {found:?}", place(path))?;
                         }
                         Issue::NoVariant { path, found, variants } => {
-                            let tried: std::vec::Vec<&str> = variants.iter().map(|(variant, _)| *variant).collect();
+                            let tried: ::std::vec::Vec<&str> = variants.iter().map(|(variant, _)| *variant).collect();
                             write!(f, "{}: no variant: found {found:?}, tried {}", place(path), tried.join(", "))?;
                         }
                         Issue::Undescribed { reason } => write!(f, "undescribed: {reason}")?,
                     }
                 }
-                core::result::Result::Ok(())
+                ::core::result::Result::Ok(())
             }
         }
 
-        impl<V: core::fmt::Debug> std::error::Error for Unrecovered<V> {}
+        impl<V: ::core::fmt::Debug> ::std::error::Error for Unrecovered<V> {}
     }
 }
 
@@ -2310,37 +2316,37 @@ fn entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
         pub fn from_value_with<#decider>(
             mut value: serde_json::Value,
             decide: #decider,
-        ) -> core::result::Result<Self, #module::Unrecovered<serde_json::Value>>
+        ) -> ::core::result::Result<Self, #module::Unrecovered<serde_json::Value>>
         where
-            #decider: core::ops::FnOnce(&mut serde_json::Value, &[#module::Issue<serde_json::Value>]) -> #module::Verdict,
+            #decider: ::core::ops::FnOnce(&mut serde_json::Value, &[#module::Issue<serde_json::Value>]) -> #module::Verdict,
         {
             let found = match <Self as serde::Deserialize>::deserialize(&value) {
-                core::result::Result::Ok(decoded) => {
-                    let found = Self::decode_with_value_report(&value, core::option::Option::None);
+                ::core::result::Result::Ok(decoded) => {
+                    let found = Self::decode_with_value_report(&value, ::core::option::Option::None);
                     if found.is_empty() {
-                        return core::result::Result::Ok(decoded);
+                        return ::core::result::Result::Ok(decoded);
                     }
                     found
                 }
-                core::result::Result::Err(refused) => Self::decode_with_value_report(&value, core::option::Option::Some(refused.to_string())),
+                ::core::result::Result::Err(refused) => Self::decode_with_value_report(&value, ::core::option::Option::Some(refused.to_string())),
             };
             match decide(&mut value, &found) {
-                #module::Verdict::Reject => core::result::Result::Err(#module::Unrecovered { issues: found }),
+                #module::Verdict::Reject => ::core::result::Result::Err(#module::Unrecovered { issues: found }),
                 #module::Verdict::Fixed => {
                     let read = <Self as serde::Deserialize>::deserialize(&value);
-                    let again = Self::decode_with_value_report(&value, read.as_ref().err().map(std::string::ToString::to_string));
+                    let again = Self::decode_with_value_report(&value, read.as_ref().err().map(::std::string::ToString::to_string));
                     match read {
-                        core::result::Result::Ok(decoded) if again.is_empty() => core::result::Result::Ok(decoded),
-                        _ => core::result::Result::Err(#module::Unrecovered { issues: again }),
+                        ::core::result::Result::Ok(decoded) if again.is_empty() => ::core::result::Result::Ok(decoded),
+                        _ => ::core::result::Result::Err(#module::Unrecovered { issues: again }),
                     }
                 }
             }
         }
 
-        fn decode_with_value_report(value: &serde_json::Value, refused: core::option::Option<std::string::String>) -> std::vec::Vec<#module::Issue<serde_json::Value>> {
-            let mut out = std::vec::Vec::new();
+        fn decode_with_value_report(value: &serde_json::Value, refused: ::core::option::Option<::std::string::String>) -> ::std::vec::Vec<#module::Issue<serde_json::Value>> {
+            let mut out = ::std::vec::Vec::new();
             Self::decode_with_value_issues(value, &[], #module::issue_from_parts, &mut out);
-            if let core::option::Option::Some(reason) = refused
+            if let ::core::option::Option::Some(reason) = refused
                 && out.iter().all(|found| matches!(found, #module::Issue::Unknown { .. } | #module::Issue::Mistyped { .. }))
             {
                 out.push(#module::Issue::Undescribed { reason });
@@ -2463,18 +2469,18 @@ fn handoff_items() -> TokenStream {
         /// index), expected type, held value, reason, and an untagged enum's lists.
         pub type IssueFromParts<V, I> = fn(
             &'static str,
-            std::vec::Vec<core::result::Result<std::string::String, usize>>,
+            ::std::vec::Vec<::core::result::Result<::std::string::String, usize>>,
             &'static [ExpectedToken],
-            core::option::Option<V>,
-            core::option::Option<std::string::String>,
-            std::vec::Vec<(&'static str, std::vec::Vec<I>)>,
+            ::core::option::Option<V>,
+            ::core::option::Option<::std::string::String>,
+            ::std::vec::Vec<(&'static str, ::std::vec::Vec<I>)>,
         ) -> I;
 
-        fn expected_from_tokens(tokens: &mut std::slice::Iter<'_, ExpectedToken>) -> Expected {
-            let core::option::Option::Some(&(member, names, count)) = tokens.next() else { return Expected::Unknown };
+        fn expected_from_tokens(tokens: &mut ::std::slice::Iter<'_, ExpectedToken>) -> Expected {
+            let ::core::option::Option::Some(&(member, names, count)) = tokens.next() else { return Expected::Unknown };
             let name = names.first().copied().unwrap_or_default();
-            let mut under: std::vec::Vec<Expected> = (0..count).map(|_| expected_from_tokens(tokens)).collect();
-            let first = |under: &mut std::vec::Vec<Expected>| std::boxed::Box::new(under.pop().unwrap_or(Expected::Unknown));
+            let mut under: ::std::vec::Vec<Expected> = (0..count).map(|_| expected_from_tokens(tokens)).collect();
+            let first = |under: &mut ::std::vec::Vec<Expected>| ::std::boxed::Box::new(under.pop().unwrap_or(Expected::Unknown));
             match member {
                 "Array" => Expected::Array(first(&mut under)),
                 "Boolean" => Expected::Boolean,
@@ -2513,27 +2519,27 @@ fn handoff_items() -> TokenStream {
         /// This type's own issue from the standard parts every walker writes.
         pub fn issue_from_parts<V>(
             kind: &'static str,
-            path: std::vec::Vec<core::result::Result<std::string::String, usize>>,
+            path: ::std::vec::Vec<::core::result::Result<::std::string::String, usize>>,
             expected: &'static [ExpectedToken],
-            found: core::option::Option<V>,
-            reason: core::option::Option<std::string::String>,
-            variants: std::vec::Vec<(&'static str, std::vec::Vec<Issue<V>>)>,
+            found: ::core::option::Option<V>,
+            reason: ::core::option::Option<::std::string::String>,
+            variants: ::std::vec::Vec<(&'static str, ::std::vec::Vec<Issue<V>>)>,
         ) -> Issue<V> {
             let path = Path(
                 path.into_iter()
                     .map(|segment| match segment {
-                        core::result::Result::Ok(key) => Segment::Key(key),
-                        core::result::Result::Err(index) => Segment::Index(index),
+                        ::core::result::Result::Ok(key) => Segment::Key(key),
+                        ::core::result::Result::Err(index) => Segment::Index(index),
                     })
                     .collect(),
             );
             let expected = expected_from_tokens(&mut expected.iter());
             match (kind, found, reason) {
-                ("Invalid", core::option::Option::Some(found), core::option::Option::Some(reason)) => Issue::Invalid { path, expected, found, reason },
-                ("Missing", core::option::Option::None, core::option::Option::None) => Issue::Missing { path, expected },
-                ("Unknown", core::option::Option::Some(found), core::option::Option::None) => Issue::Unknown { path, found },
-                ("Mistyped", core::option::Option::Some(found), core::option::Option::None) => Issue::Mistyped { path, expected, found },
-                ("NoVariant", core::option::Option::Some(found), core::option::Option::None) => Issue::NoVariant { path, found, variants },
+                ("Invalid", ::core::option::Option::Some(found), ::core::option::Option::Some(reason)) => Issue::Invalid { path, expected, found, reason },
+                ("Missing", ::core::option::Option::None, ::core::option::Option::None) => Issue::Missing { path, expected },
+                ("Unknown", ::core::option::Option::Some(found), ::core::option::Option::None) => Issue::Unknown { path, found },
+                ("Mistyped", ::core::option::Option::Some(found), ::core::option::Option::None) => Issue::Mistyped { path, expected, found },
+                ("NoVariant", ::core::option::Option::Some(found), ::core::option::Option::None) => Issue::NoVariant { path, found, variants },
                 (_, _, reason) => Issue::Undescribed { reason: reason.unwrap_or_default() },
             }
         }
@@ -2544,21 +2550,21 @@ fn handoff_items() -> TokenStream {
             held: &'a serde_json::Value,
             read: R,
             write: W,
-            path: std::vec::Vec<core::result::Result<std::string::String, usize>>,
+            path: ::std::vec::Vec<::core::result::Result<::std::string::String, usize>>,
             expected: &'static [ExpectedToken],
             issue: IssueFromParts<serde_json::Value, I>,
-        ) -> core::option::Option<I>
+        ) -> ::core::option::Option<I>
         where
-            R: core::ops::FnOnce(&'a serde_json::Value) -> core::result::Result<T, serde_json::Error>,
-            W: core::ops::FnOnce(&T) -> core::option::Option<serde_json::Value>,
+            R: ::core::ops::FnOnce(&'a serde_json::Value) -> ::core::result::Result<T, serde_json::Error>,
+            W: ::core::ops::FnOnce(&T) -> ::core::option::Option<serde_json::Value>,
         {
             match read(held) {
-                core::result::Result::Err(refused) => core::option::Option::Some(issue("Invalid", path, expected, core::option::Option::Some(held.clone()), core::option::Option::Some(refused.to_string()), std::vec::Vec::new())),
-                core::result::Result::Ok(read) => match write(&read) {
-                    core::option::Option::Some(written) if std::mem::discriminant(held) != std::mem::discriminant(&written) => {
-                        core::option::Option::Some(issue("Mistyped", path, expected, core::option::Option::Some(held.clone()), core::option::Option::None, std::vec::Vec::new()))
+                ::core::result::Result::Err(refused) => ::core::option::Option::Some(issue("Invalid", path, expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::Some(refused.to_string()), ::std::vec::Vec::new())),
+                ::core::result::Result::Ok(read) => match write(&read) {
+                    ::core::option::Option::Some(written) if ::std::mem::discriminant(held) != ::std::mem::discriminant(&written) => {
+                        ::core::option::Option::Some(issue("Mistyped", path, expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::None, ::std::vec::Vec::new()))
                     }
-                    _ => core::option::Option::None,
+                    _ => ::core::option::Option::None,
                 },
             }
         }
@@ -2856,7 +2862,7 @@ fn names_a_parameter(ty: &Type, parameters: &[String]) -> bool {
 fn not_the_shape(held: &Ident, path: &TokenStream, expected: &TokenStream, reason: &str) -> Arm {
     Arm {
         body: quote! {
-            out.push(issue("Invalid", #path, #expected, core::option::Option::Some(#held.clone()), core::option::Option::Some(#reason.to_owned()), std::vec::Vec::new()))
+            out.push(issue("Invalid", #path, #expected, ::core::option::Option::Some(#held.clone()), ::core::option::Option::Some(#reason.to_owned()), ::std::vec::Vec::new()))
         },
         nothing: false,
         pattern: quote! { #held },
@@ -2898,18 +2904,18 @@ fn path_items() -> TokenStream {
         #[derive(Clone, Debug, PartialEq, Eq)]
         #[non_exhaustive]
         pub enum Segment {
-            Key(std::string::String),
+            Key(::std::string::String),
             Index(usize),
         }
 
         #[derive(Clone, Debug, Default, PartialEq, Eq)]
         #[non_exhaustive]
-        pub struct Path(pub std::vec::Vec<Segment>);
+        pub struct Path(pub ::std::vec::Vec<Segment>);
 
         impl Path {
             /// Puts `value` at this path inside a JSON value, inserting the last key when it is absent.
             pub fn set_in_value(&self, root: &mut serde_json::Value, value: serde_json::Value) -> bool {
-                let core::option::Option::Some((last, parents)) = self.0.split_last() else {
+                let ::core::option::Option::Some((last, parents)) = self.0.split_last() else {
                     *root = value;
                     return true;
                 };
@@ -2918,9 +2924,9 @@ fn path_items() -> TokenStream {
                     let next = match (segment, slot) {
                         (Segment::Key(key), serde_json::Value::Object(object)) => object.get_mut(key),
                         (Segment::Index(index), serde_json::Value::Array(items)) => items.get_mut(*index),
-                        _ => core::option::Option::None,
+                        _ => ::core::option::Option::None,
                     };
-                    let core::option::Option::Some(next) = next else { return false };
+                    let ::core::option::Option::Some(next) = next else { return false };
                     slot = next;
                 }
                 match (last, slot) {
@@ -2938,15 +2944,15 @@ fn path_items() -> TokenStream {
 
             /// Removes the key or item at this path inside a JSON value.
             pub fn remove_from_value(&self, root: &mut serde_json::Value) -> bool {
-                let core::option::Option::Some((last, parents)) = self.0.split_last() else { return false };
+                let ::core::option::Option::Some((last, parents)) = self.0.split_last() else { return false };
                 let mut slot = root;
                 for segment in parents {
                     let next = match (segment, slot) {
                         (Segment::Key(key), serde_json::Value::Object(object)) => object.get_mut(key),
                         (Segment::Index(index), serde_json::Value::Array(items)) => items.get_mut(*index),
-                        _ => core::option::Option::None,
+                        _ => ::core::option::Option::None,
                     };
-                    let core::option::Option::Some(next) = next else { return false };
+                    let ::core::option::Option::Some(next) = next else { return false };
                     slot = next;
                 }
                 match (last, slot) {
@@ -2962,8 +2968,8 @@ fn path_items() -> TokenStream {
             #in_documents
         }
 
-        impl core::fmt::Display for Path {
-            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        impl ::core::fmt::Display for Path {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 for (position, segment) in self.0.iter().enumerate() {
                     match segment {
                         Segment::Key(key) if position == 0 => write!(f, "{key}")?,
@@ -2971,7 +2977,7 @@ fn path_items() -> TokenStream {
                         Segment::Index(index) => write!(f, "[{index}]")?,
                     }
                 }
-                core::result::Result::Ok(())
+                ::core::result::Result::Ok(())
             }
         }
     }
@@ -3095,7 +3101,7 @@ fn taken_items() -> TokenStream {
         /// it holds is refused.
         pub fn reads_an_option<'asked, T, R>(read: R, asked: &'asked Asked) -> bool
         where
-            R: core::ops::FnOnce(TakenProbe<'asked>) -> core::result::Result<T, serde::de::value::Error>,
+            R: ::core::ops::FnOnce(TakenProbe<'asked>) -> ::core::result::Result<T, serde::de::value::Error>,
         {
             let _refused = read(TakenProbe(asked));
             asked.optional.get()
@@ -3103,21 +3109,21 @@ fn taken_items() -> TokenStream {
 
         /// The keys among `keys` whose entries serde takes when it reads a type flattened there
         /// through `read`.
-        fn taken_keys<'asked, 'key, T, R, K>(read: R, asked: &'asked Asked, mut keys: K) -> std::vec::Vec<&'key str>
+        fn taken_keys<'asked, 'key, T, R, K>(read: R, asked: &'asked Asked, mut keys: K) -> ::std::vec::Vec<&'key str>
         where
-            R: core::ops::FnOnce(TakenProbe<'asked>) -> core::result::Result<T, serde::de::value::Error>,
-            K: core::iter::Iterator<Item = &'key std::string::String>,
+            R: ::core::ops::FnOnce(TakenProbe<'asked>) -> ::core::result::Result<T, serde::de::value::Error>,
+            K: ::core::iter::Iterator<Item = &'key ::std::string::String>,
         {
             let _refused = read(TakenProbe(asked));
             match asked.taken.get() {
                 Taken::Fields(fields) => keys
-                    .map(std::string::String::as_str)
+                    .map(::std::string::String::as_str)
                     .filter(|key| fields.contains(key))
                     .collect(),
-                Taken::Nothing => std::vec::Vec::new(),
+                Taken::Nothing => ::std::vec::Vec::new(),
                 Taken::Variant(variants) => keys
                     .find(|key| variants.contains(&key.as_str()))
-                    .map(std::string::String::as_str)
+                    .map(::std::string::String::as_str)
                     .into_iter()
                     .collect(),
             }
@@ -3128,16 +3134,16 @@ fn taken_items() -> TokenStream {
         pub fn value_remaining<'asked, T, R>(
             read: R,
             asked: &'asked Asked,
-            entries: &serde_json::Map<std::string::String, serde_json::Value>,
-        ) -> core::option::Option<serde_json::Map<std::string::String, serde_json::Value>>
+            entries: &serde_json::Map<::std::string::String, serde_json::Value>,
+        ) -> ::core::option::Option<serde_json::Map<::std::string::String, serde_json::Value>>
         where
-            R: core::ops::FnOnce(TakenProbe<'asked>) -> core::result::Result<T, serde::de::value::Error>,
+            R: ::core::ops::FnOnce(TakenProbe<'asked>) -> ::core::result::Result<T, serde::de::value::Error>,
         {
             let taken = taken_keys(read, asked, entries.keys());
             if taken.is_empty() {
-                return core::option::Option::None;
+                return ::core::option::Option::None;
             }
-            core::option::Option::Some(
+            ::core::option::Option::Some(
                 entries
                     .iter()
                     .filter(|(key, _)| !taken.contains(&key.as_str()))
@@ -3216,10 +3222,10 @@ fn unclaimed_parameter(base: &str, written: &[String]) -> Ident {
 fn undeclared_keys(object: &Ident, declared: &[String], segments: &[TokenStream]) -> TokenStream {
     let here = path_expression(&under(
         segments,
-        &quote! { core::result::Result::Ok(key.clone()) },
+        &quote! { ::core::result::Result::Ok(key.clone()) },
     ));
     let unknown = quote! {
-        out.push(issue("Unknown", #here, &[], core::option::Option::Some(held.clone()), core::option::Option::None, std::vec::Vec::new()));
+        out.push(issue("Unknown", #here, &[], ::core::option::Option::Some(held.clone()), ::core::option::Option::None, ::std::vec::Vec::new()));
     };
     if declared.is_empty() {
         return quote! { for (key, held) in #object { #unknown } };

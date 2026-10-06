@@ -56,7 +56,7 @@ pub fn json_schema_methods(
         let described = guarded_description(
             def_name,
             body,
-            &quote::quote! { std::vec::Vec::new() },
+            &quote::quote! { ::std::vec::Vec::new() },
             false,
         );
         let rooted = rooted_document(
@@ -69,7 +69,7 @@ pub fn json_schema_methods(
 
             pub fn json_schema_within(
                 in_flight: &mut #in_flight_type,
-                hoisted_defs: &mut serde_json::Map<std::string::String, serde_json::Value>,
+                hoisted_defs: &mut serde_json::Map<::std::string::String, serde_json::Value>,
             ) -> serde_json::Value {
                 #described
             }
@@ -95,14 +95,14 @@ pub fn json_schema_methods(
 
         pub fn json_schema_within(
             in_flight: &mut #in_flight_type,
-            hoisted_defs: &mut serde_json::Map<std::string::String, serde_json::Value>,
+            hoisted_defs: &mut serde_json::Map<::std::string::String, serde_json::Value>,
         ) -> serde_json::Value {
             #declared
         }
 
         pub fn json_schema_within_with(
             in_flight: &mut #in_flight_type,
-            hoisted_defs: &mut serde_json::Map<std::string::String, serde_json::Value>,
+            hoisted_defs: &mut serde_json::Map<::std::string::String, serde_json::Value>,
             args: &[serde_json::Value],
         ) -> serde_json::Value {
             #bindings
@@ -116,7 +116,7 @@ pub fn json_schema_methods(
 /// body the definition the name is deferred to will hold; a name declaring no parameter carries an
 /// empty list.
 pub fn in_flight_type() -> proc_macro2::TokenStream {
-    quote::quote! { std::vec::Vec<(&'static str, std::vec::Vec<serde_json::Value>)> }
+    quote::quote! { ::std::vec::Vec<(&'static str, ::std::vec::Vec<serde_json::Value>)> }
 }
 
 /// The filling this frame is writing its body at, read back off the locals the arguments were
@@ -162,8 +162,8 @@ fn guarded_description(
                 // An argument's own recognizable name: another hoisted key (off its `$ref`), or a
                 // primitive's `"type"` keyword. An inlined struct or bare type parameter's `{}`
                 // has neither and contributes nothing to the label — the digest tells those apart.
-                fn argument_label(argument: &serde_json::Value) -> core::option::Option<std::string::String> {
-                    if let core::option::Option::Some(reference) =
+                fn argument_label(argument: &serde_json::Value) -> ::core::option::Option<::std::string::String> {
+                    if let ::core::option::Option::Some(reference) =
                         argument.get("$ref").and_then(serde_json::Value::as_str)
                     {
                         return reference.rsplit('/').next().map(str::to_string);
@@ -175,7 +175,7 @@ fn guarded_description(
                 }
                 let canonical = serde_json::to_string(&filling).unwrap_or_default();
                 let fingerprint = digest(canonical.as_bytes());
-                let labels: std::vec::Vec<std::string::String> = filling.iter().filter_map(argument_label).collect();
+                let labels: ::std::vec::Vec<::std::string::String> = filling.iter().filter_map(argument_label).collect();
                 if labels.is_empty() {
                     format!("{}.{fingerprint:016x}", #def_name)
                 } else {
@@ -189,10 +189,10 @@ fn guarded_description(
         }
     };
     quote::quote! {
-        let filling: std::vec::Vec<serde_json::Value> = #filling;
+        let filling: ::std::vec::Vec<serde_json::Value> = #filling;
         #key_binding
         let pointer = format!("{}{key}", #defs_prefix);
-        if let core::option::Option::Some((_, in_flight_filling)) =
+        if let ::core::option::Option::Some((_, in_flight_filling)) =
             in_flight.iter().find(|(named, _)| *named == #def_name)
         {
             #refusal
@@ -238,7 +238,7 @@ fn refilled_cycle_refusal(def_name: &str) -> proc_macro2::TokenStream {
 fn rooted_document(described: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
     let in_flight_type = in_flight_type();
     quote::quote! {
-        let mut in_flight: #in_flight_type = std::vec::Vec::new();
+        let mut in_flight: #in_flight_type = ::std::vec::Vec::new();
         let mut hoisted_defs = serde_json::Map::new();
         let described = #described;
         if hoisted_defs.is_empty() {
@@ -305,7 +305,7 @@ fn closed_object_body(json_schema_fields: &[proc_macro2::TokenStream]) -> proc_m
             schema_obj.insert("type".to_string(), serde_json::Value::String("object".to_string()));
             schema_obj.insert("additionalProperties".to_string(), serde_json::Value::Bool(false));
             let mut properties = serde_json::Map::new();
-            let mut required = std::vec::Vec::new();
+            let mut required = ::std::vec::Vec::new();
 
             #(#json_schema_fields)*
 
@@ -328,23 +328,23 @@ fn merge_readers() -> proc_macro2::TokenStream {
     let defs_prefix = DEFS_PREFIX;
     quote::quote! {
         fn merge_object_schemas(
-            a: &serde_json::Map<std::string::String, serde_json::Value>,
-            b: &serde_json::Map<std::string::String, serde_json::Value>,
-        ) -> serde_json::Map<std::string::String, serde_json::Value> {
+            a: &serde_json::Map<::std::string::String, serde_json::Value>,
+            b: &serde_json::Map<::std::string::String, serde_json::Value>,
+        ) -> serde_json::Map<::std::string::String, serde_json::Value> {
             let mut out = serde_json::Map::new();
             out.insert("type".to_string(), serde_json::Value::String("object".to_string()));
             let mut properties = serde_json::Map::new();
             for src in [a, b] {
-                if let core::option::Option::Some(p) = src.get("properties").and_then(serde_json::Value::as_object) {
+                if let ::core::option::Option::Some(p) = src.get("properties").and_then(serde_json::Value::as_object) {
                     for (k, v) in p {
                         properties.insert(k.clone(), v.clone());
                     }
                 }
             }
             out.insert("properties".to_string(), serde_json::Value::Object(properties));
-            let mut required: std::vec::Vec<serde_json::Value> = std::vec::Vec::new();
+            let mut required: ::std::vec::Vec<serde_json::Value> = ::std::vec::Vec::new();
             for src in [a, b] {
-                if let core::option::Option::Some(r) = src.get("required").and_then(serde_json::Value::as_array) {
+                if let ::core::option::Option::Some(r) = src.get("required").and_then(serde_json::Value::as_array) {
                     for item in r {
                         if !required.contains(item) {
                             required.push(item.clone());
@@ -360,14 +360,14 @@ fn merge_readers() -> proc_macro2::TokenStream {
         // A merged schema that names itself describes as a reference into the definitions being
         // hoisted — the body it points at is written by then, since the frame that deferred the
         // name fills the entry in before it returns, so the merge reads it back.
-        fn deferred_name(schema: &serde_json::Value) -> core::option::Option<&str> {
+        fn deferred_name(schema: &serde_json::Value) -> ::core::option::Option<&str> {
             schema.get("$ref")?.as_str()?.strip_prefix(#defs_prefix)
         }
 
         // What a description commits its value to on the wire, when it commits to anything. A
         // union of branches and a bare reference name no type of their own, and neither is
         // provably not an object, so both are left to the merge.
-        fn described_type(schema: &serde_json::Value) -> core::option::Option<&str> {
+        fn described_type(schema: &serde_json::Value) -> ::core::option::Option<&str> {
             schema.get("type")?.as_str()
         }
 
@@ -376,13 +376,13 @@ fn merge_readers() -> proc_macro2::TokenStream {
         // branches admit is an error or the ordinary case. `None` means the schema offers no
         // choice, so the expansion has reached something the base can merge rather than descend
         // into.
-        fn union_branches(schema: &serde_json::Value) -> core::option::Option<(&'static str, &[serde_json::Value])> {
+        fn union_branches(schema: &serde_json::Value) -> ::core::option::Option<(&'static str, &[serde_json::Value])> {
             for keyword in ["oneOf", "anyOf"] {
-                if let core::option::Option::Some(union) = schema.get(keyword).and_then(serde_json::Value::as_array) {
-                    return core::option::Option::Some((keyword, union.as_slice()));
+                if let ::core::option::Option::Some(union) = schema.get(keyword).and_then(serde_json::Value::as_array) {
+                    return ::core::option::Option::Some((keyword, union.as_slice()));
                 }
             }
-            core::option::Option::None
+            ::core::option::Option::None
         }
 
         // The variant name a branch of an externally tagged enum's `oneOf` pins, or `None` for
@@ -390,7 +390,7 @@ fn merge_readers() -> proc_macro2::TokenStream {
         // where a bare-string branch is a unit variant pinning the name serde writes; `anyOf` is
         // the first-match choice an untagged enum (or a nullable value) publishes, where a string
         // branch is just a value and nothing tags.
-        fn tagged_unit_variant(schema: &serde_json::Value) -> core::option::Option<&str> {
+        fn tagged_unit_variant(schema: &serde_json::Value) -> ::core::option::Option<&str> {
             (described_type(schema)? == "string").then_some(())?;
             schema.get("const")?.as_str()
         }
@@ -405,24 +405,24 @@ fn merged_tree() -> proc_macro2::TokenStream {
             // naming an item whose own published surface offers a `null` beside its value: no
             // members, so the branch names exactly the keys the object writes on its own.
             Absent,
-            Object(&'defs serde_json::Map<std::string::String, serde_json::Value>),
+            Object(&'defs serde_json::Map<::std::string::String, serde_json::Value>),
             // An externally tagged enum's unit variant, which the description pins as the bare name
             // serde writes for it standing alone. Merged, serde writes that name as a key holding
             // `null` — one member, which the branch carries as the name it is.
             Tagged(&'defs str),
-            Union(&'static str, std::vec::Vec<Branches<'defs>>),
+            Union(&'static str, ::std::vec::Vec<Branches<'defs>>),
         }
 
         enum Merged {
-            Object(serde_json::Map<std::string::String, serde_json::Value>),
-            Union(&'static str, std::vec::Vec<Merged>),
+            Object(serde_json::Map<::std::string::String, serde_json::Value>),
+            Union(&'static str, ::std::vec::Vec<Merged>),
         }
 
         impl Branches<'_> {
             // What one base becomes once this source's choices are written into it: every leaf of
             // the source contributes its members to a copy of the base, under the wrapper the level
             // that offered it was written with.
-            fn merged_into(&self, base: &serde_json::Map<std::string::String, serde_json::Value>) -> Merged {
+            fn merged_into(&self, base: &serde_json::Map<::std::string::String, serde_json::Value>) -> Merged {
                 match *self {
                     // Merged rather than copied: an absent source contributes no members, and the
                     // branch is still a branch of a document whose others were written by the
@@ -449,7 +449,7 @@ fn merged_tree() -> proc_macro2::TokenStream {
                         Merged::Object(merge_object_schemas(base, &written))
                     }
                     Self::Union(spelling, ref branches) => {
-                        let mut merged: std::vec::Vec<Merged> = branches
+                        let mut merged: ::std::vec::Vec<Merged> = branches
                             .iter()
                             .map(|branch| branch.merged_into(base))
                             .collect();
@@ -521,11 +521,11 @@ fn expansion_refusals(diagnostic: &MergeDiagnostic<'_>) -> proc_macro2::TokenStr
         subject,
     } = *diagnostic;
     quote::quote! {
-        fn branch_path(position: &[usize]) -> std::string::String {
+        fn branch_path(position: &[usize]) -> ::std::string::String {
             position
                 .iter()
                 .map(usize::to_string)
-                .collect::<std::vec::Vec<std::string::String>>()
+                .collect::<::std::vec::Vec<::std::string::String>>()
                 .join(".")
         }
 
@@ -556,7 +556,7 @@ fn expansion_refusals(diagnostic: &MergeDiagnostic<'_>) -> proc_macro2::TokenStr
             let path = expanding
                 .iter()
                 .map(|resolved| format!("`{resolved}`"))
-                .collect::<std::vec::Vec<std::string::String>>()
+                .collect::<::std::vec::Vec<::std::string::String>>()
                 .join(" → ");
             panic!(
                 "`{}`: {} `{}` closes a flatten cycle through nested unions — its branch {} names `{}`, already expanding on the path {}, and no finite value inhabits the type; {}",
@@ -584,16 +584,16 @@ fn branch_expansion() -> proc_macro2::TokenStream {
     quote::quote! {
         fn expanded_branches<'defs>(
             schema: &'defs serde_json::Value,
-            hoisted_defs: &'defs serde_json::Map<std::string::String, serde_json::Value>,
-            expanding: &mut std::vec::Vec<&'defs str>,
-            position: &mut std::vec::Vec<usize>,
+            hoisted_defs: &'defs serde_json::Map<::std::string::String, serde_json::Value>,
+            expanding: &mut ::std::vec::Vec<&'defs str>,
+            position: &mut ::std::vec::Vec<usize>,
             label: &str,
-        ) -> core::option::Option<Branches<'defs>> {
-            let mut resolved = core::option::Option::None;
+        ) -> ::core::option::Option<Branches<'defs>> {
+            let mut resolved = ::core::option::Option::None;
             let body = match deferred_name(schema) {
-                core::option::Option::None => schema,
-                core::option::Option::Some(name) => {
-                    let core::option::Option::Some(named_body) = hoisted_defs.get(name).filter(|body| body.is_object())
+                ::core::option::Option::None => schema,
+                ::core::option::Option::Some(name) => {
+                    let ::core::option::Option::Some(named_body) = hoisted_defs.get(name).filter(|body| body.is_object())
                     else {
                         refuse_missing_body(label, position, name);
                     };
@@ -602,35 +602,35 @@ fn branch_expansion() -> proc_macro2::TokenStream {
                     if expanding.contains(&name) {
                         refuse_repeated_name(label, position, name, expanding);
                     }
-                    resolved = core::option::Option::Some(name);
+                    resolved = ::core::option::Option::Some(name);
                     named_body
                 }
             };
 
-            if let core::option::Option::Some(named) = described_type(body) {
+            if let ::core::option::Option::Some(named) = described_type(body) {
                 // A `null` among the choices the flatten edge itself offers is the absence rather
                 // than a refusal: the source is nullable and the payload carrying none of its
                 // members is the one serde reads back as that value — the same two key sets an
                 // `Option` writes. A `null` below that level is a member of a choice serde matched
                 // by shape, and the refusal stands.
                 if named == "null" && position.len() == 1 {
-                    return core::option::Option::Some(Branches::Absent);
+                    return ::core::option::Option::Some(Branches::Absent);
                 }
                 if named != "object" {
                     refuse_non_object(label, position, named);
                 }
             }
 
-            let core::option::Option::Some((spelling, branches)) = union_branches(body) else {
+            let ::core::option::Option::Some((spelling, branches)) = union_branches(body) else {
                 return body.as_object().map(Branches::Object);
             };
 
             // The name guards what is below it and nothing else, so it joins the path only for the
             // descent and leaves it before the level that resolved it answers.
-            if let core::option::Option::Some(name) = resolved {
+            if let ::core::option::Option::Some(name) = resolved {
                 expanding.push(name);
             }
-            let mut expanded: std::vec::Vec<Branches<'defs>> = std::vec::Vec::new();
+            let mut expanded: ::std::vec::Vec<Branches<'defs>> = ::std::vec::Vec::new();
             for (index, branch) in branches.iter().enumerate() {
                 position.push(index + 1);
                 // A unit variant of the choice the flatten edge itself offers is the one depth at
@@ -641,8 +641,8 @@ fn branch_expansion() -> proc_macro2::TokenStream {
                     .then(|| tagged_unit_variant(branch))
                     .flatten();
                 let below = match tagged {
-                    core::option::Option::Some(name) => core::option::Option::Some(Branches::Tagged(name)),
-                    core::option::Option::None => expanded_branches(branch, hoisted_defs, expanding, position, label),
+                    ::core::option::Option::Some(name) => ::core::option::Option::Some(Branches::Tagged(name)),
+                    ::core::option::Option::None => expanded_branches(branch, hoisted_defs, expanding, position, label),
                 };
                 position.pop();
                 expanded.extend(below);
@@ -675,14 +675,14 @@ pub fn merged_object_value(
             #refusals
             #expansion
 
-            let flattened: std::vec::Vec<(&'static str, bool, serde_json::Value)> =
+            let flattened: ::std::vec::Vec<(&'static str, bool, serde_json::Value)> =
                 vec![ #((#labels, #optionals, #values)),* ];
 
             let mut described = Merged::Object(#base);
             for (label, optional, fs) in &flattened {
-                let mut expanding: std::vec::Vec<&str> = std::vec::Vec::new();
-                let mut position: std::vec::Vec<usize> = std::vec::Vec::new();
-                if let core::option::Option::Some(source) =
+                let mut expanding: ::std::vec::Vec<&str> = ::std::vec::Vec::new();
+                let mut position: ::std::vec::Vec<usize> = ::std::vec::Vec::new();
+                if let ::core::option::Option::Some(source) =
                     expanded_branches(fs, hoisted_defs, &mut expanding, &mut position, label)
                 {
                     // The absence is offered around whatever the source described as, so a union
@@ -712,7 +712,7 @@ fn flattened_object_body(
             schema_obj.insert("type".to_string(), serde_json::Value::String("object".to_string()));
             schema_obj.insert("additionalProperties".to_string(), serde_json::Value::Bool(false));
             let mut properties = serde_json::Map::new();
-            let mut required = std::vec::Vec::new();
+            let mut required = ::std::vec::Vec::new();
 
             #(#json_schema_fields)*
 

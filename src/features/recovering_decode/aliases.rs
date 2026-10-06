@@ -39,7 +39,7 @@ impl Reach {
     fn entry_half(&mut self, map: &TokenStream, half: &str) -> TokenStream {
         self.entries = true;
         let named = Ident::new(half, Span::call_site());
-        quote! { <<#map as core::iter::IntoIterator>::Item as super::EntryOf>::#named }
+        quote! { <<#map as ::core::iter::IntoIterator>::Item as super::EntryOf>::#named }
     }
 
     /// Writes each of `fields` that is typed with an alias seen above as the type it names.
@@ -116,7 +116,7 @@ impl Reach {
                 return (parse_quote! { #ident }, false);
             }
             if name == "String" {
-                return (parse_quote! { std::string::String }, false);
+                return (parse_quote! { ::std::string::String }, false);
             }
             if depth < DEPTH
                 && let Some(Declared::Alias(stands_for)) = declared(&name)
@@ -127,7 +127,7 @@ impl Reach {
         }
         if let ([inside], Some(holder)) = (arguments.as_slice(), holder_of_one(&name)) {
             let reaches = if matches!(name.as_str(), "Arc" | "Box" | "Rc") {
-                quote! { <#held as core::ops::Deref>::Target }
+                quote! { <#held as ::core::ops::Deref>::Target }
             } else {
                 item_of(held)
             };
@@ -141,7 +141,7 @@ impl Reach {
             let (valued, _) = self.named(value, &value_half, depth);
             let map = &last.ident;
             return (
-                parse_quote! { std::collections::#map<#keyed, #valued> },
+                parse_quote! { ::std::collections::#map<#keyed, #valued> },
                 false,
             );
         }
@@ -235,21 +235,21 @@ fn from_two_modules_down(path: &TypePath) -> TokenStream {
 fn holder_of_one(name: &str) -> Option<TokenStream> {
     let ident = Ident::new(name, Span::call_site());
     match name {
-        "Arc" => Some(quote! { std::sync::Arc }),
+        "Arc" => Some(quote! { ::std::sync::Arc }),
         "BTreeSet" | "BinaryHeap" | "HashSet" | "VecDeque" => {
-            Some(quote! { std::collections::#ident })
+            Some(quote! { ::std::collections::#ident })
         }
-        "Box" => Some(quote! { std::boxed::Box }),
-        "Option" => Some(quote! { core::option::Option }),
-        "Rc" => Some(quote! { std::rc::Rc }),
-        "Vec" => Some(quote! { std::vec::Vec }),
+        "Box" => Some(quote! { ::std::boxed::Box }),
+        "Option" => Some(quote! { ::core::option::Option }),
+        "Rc" => Some(quote! { ::std::rc::Rc }),
+        "Vec" => Some(quote! { ::std::vec::Vec }),
         _ => None,
     }
 }
 
 /// The type of one item of the list, or of what the `Option`, `held` names.
 fn item_of(held: &TokenStream) -> TokenStream {
-    quote! { <#held as core::iter::IntoIterator>::Item }
+    quote! { <#held as ::core::iter::IntoIterator>::Item }
 }
 
 /// Whether `ty` is written with standard names alone, which mean the same anywhere.
