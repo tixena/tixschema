@@ -56,7 +56,10 @@ fn test_the_merge_wraps_branches_in_the_spelling_its_source_used() {
     .to_string();
 
     assert!(
-        merge.contains("let Some ((spelling , branches)) = union_branches (body)"),
+        merge.contains(
+            "let core :: option :: Option :: Some ((spelling , branches)) = union_branches \
+             (body)"
+        ),
         "{merge}"
     );
     assert!(
@@ -160,7 +163,10 @@ fn test_the_merge_reads_a_tagged_unit_variant_at_the_edges_own_depth() {
         "{merge}"
     );
     assert!(
-        merge.contains("Some (name) => Some (Branches :: Tagged (name))"),
+        merge.contains(
+            "core :: option :: Option :: Some (name) => core :: option :: Option :: Some \
+             (Branches :: Tagged (name))"
+        ),
         "{merge}"
     );
     assert!(
@@ -226,12 +232,16 @@ fn test_the_in_flight_recording_carries_the_filling_beside_the_name() {
     let methods = json_schema_methods("Node", &quote::quote! { body }, &parameters).to_string();
 
     assert!(
-        methods.contains("in_flight : & mut Vec < (& 'static str , Vec < serde_json :: Value >) >"),
+        methods.contains(
+            "in_flight : & mut std :: vec :: Vec < (& 'static str , std :: vec :: Vec < \
+             serde_json :: Value >) >"
+        ),
         "{methods}"
     );
     assert!(
         methods.contains(
-            "let filling : Vec < serde_json :: Value > = vec ! [_arg_value_type . clone ()]"
+            "let filling : std :: vec :: Vec < serde_json :: Value > = vec ! [_arg_value_type . \
+             clone ()]"
         ),
         "{methods}"
     );

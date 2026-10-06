@@ -3974,10 +3974,13 @@ fn struct_schema_example_instantiates_every_type_parameter() {
     let example: proc_macro2::TokenStream = "Report { id: 1 }".parse().unwrap();
     for (generics, expected) in [
         (syn::Generics::default(), "let value : Report ="),
-        (syn::parse_quote!(<A>), "let value : Report < String > ="),
+        (
+            syn::parse_quote!(<A>),
+            "let value : Report < std :: string :: String > =",
+        ),
         (
             syn::parse_quote!(<A, B>),
-            "let value : Report < String , String > =",
+            "let value : Report < std :: string :: String , std :: string :: String > =",
         ),
         (syn::parse_quote!(<'a>), "let value : Report ="),
     ] {
@@ -4005,10 +4008,13 @@ fn struct_schema_example_instantiates_each_parameter_at_its_declared_filling() {
     let count: (syn::Ident, syn::Type) = (syn::parse_quote!(A), syn::parse_quote!(u32));
     let held: (syn::Ident, syn::Type) = (syn::parse_quote!(B), syn::parse_quote!(Vec<u8>));
     for (default_types, expected) in [
-        (vec![count.clone()], "let value : Report < u32 , String > ="),
+        (
+            vec![count.clone()],
+            "let value : Report < u32 , std :: string :: String > =",
+        ),
         (
             vec![held.clone()],
-            "let value : Report < String , Vec < u8 > > =",
+            "let value : Report < std :: string :: String , Vec < u8 > > =",
         ),
         (
             vec![held, count],
@@ -4026,12 +4032,12 @@ fn struct_schema_example_instantiates_each_parameter_at_its_declared_filling() {
     }
 }
 
-/// A filling written as `String` is exactly what an unfilled parameter falls back to, so an item
-/// declaring one and an item declaring none are annotated with the same tokens — reading the
-/// declaration leaves every item the old convention already got right byte for byte as it was.
+/// A filling written as `String` is annotated as its author wrote it. An unfilled parameter falls
+/// back to the standard `String` by its full path, which is the same type wherever the author
+/// declares no `String` of their own.
 #[cfg(feature = "zod")]
 #[test]
-fn a_string_filling_annotates_the_example_as_no_filling_does() {
+fn an_unfilled_parameter_falls_back_to_the_standard_string_by_its_full_path() {
     let name: syn::Ident = syn::parse_quote!(Report);
     let example: proc_macro2::TokenStream = "Report { id: 1 }".parse().unwrap();
     let generics: syn::Generics = syn::parse_quote!(<A>);
@@ -4044,7 +4050,16 @@ fn a_string_filling_annotates_the_example_as_no_filling_does() {
             .unwrap()
             .to_string()
     };
-    assert_eq!(render(&filled), render(&super::ModelSchemaArgs::default()));
+    let written = render(&filled);
+    assert!(
+        written.contains("let value : Report < String > ="),
+        "got: {written}"
+    );
+    let fallen_back = render(&super::ModelSchemaArgs::default());
+    assert!(
+        fallen_back.contains("let value : Report < std :: string :: String > ="),
+        "got: {fallen_back}"
+    );
 }
 
 /// The three shapes a declared default renders as. The third row is the one that matters:
@@ -4274,10 +4289,13 @@ fn branded_schema_example_instantiates_every_parameter() {
     let example: proc_macro2::TokenStream = "DocumentId(\"abc\".to_string())".parse().unwrap();
     for (generic_params, expected) in [
         (Vec::new(), "let value : DocumentId ="),
-        (vec!["A".to_owned()], "let value : DocumentId < String > ="),
+        (
+            vec!["A".to_owned()],
+            "let value : DocumentId < std :: string :: String > =",
+        ),
         (
             vec!["A".to_owned(), "B".to_owned()],
-            "let value : DocumentId < String , String > =",
+            "let value : DocumentId < std :: string :: String , std :: string :: String > =",
         ),
     ] {
         let rendered = super::build_branded_schema_example(
@@ -4310,7 +4328,7 @@ fn branded_schema_example_instantiates_each_parameter_at_its_declared_filling() 
     )
     .to_string();
     assert!(
-        rendered.contains("let value : DocumentId < u32 , String > ="),
+        rendered.contains("let value : DocumentId < u32 , std :: string :: String > ="),
         "Got: {rendered}"
     );
 }
@@ -5973,15 +5991,14 @@ fn decode_with_walks_a_transparent_struct_with_a_named_field_as_the_value_of_its
         .map_or(added, |(methods, _)| methods);
     assert!(
         walker.contains(
-            "{ out . extend (decode_holder_schema :: value_leaf (found , \
-             < Self as serde :: Deserialize > :: deserialize , \
-             | read | serde_json :: to_value (read) . ok () , path . to_vec () , \
-             & [(\"String\" , & [] , 0)] , issue)) ; }"
+            "{ out . extend (decode_holder_schema :: value_leaf (found , < Self as serde :: \
+             Deserialize > :: deserialize , | read | serde_json :: to_value (read) . ok () , \
+             path . to_vec () , & [(\"String\" , & [] , 0)] , issue)) ; }"
         ),
         "got: {walker}"
     );
     assert!(
-        walker.contains("-> Vec < & 'a str > { Vec :: new () }"),
+        walker.contains("-> std :: vec :: Vec < & 'a str > { std :: vec :: Vec :: new () }"),
         "got: {walker}"
     );
     for unwritten in ["inner", "\"Missing\""] {
@@ -6405,7 +6422,7 @@ fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
         "pub fn decode_with_value_named (",
         "pub fn decode_with_value_fields < 'a , I > (",
         "pub enum Segment {",
-        "pub struct Path (pub Vec < Segment >) ;",
+        "pub struct Path (pub std :: vec :: Vec < Segment >) ;",
         "pub enum Expected {",
         "pub enum Issue < V > {",
         "pub enum Verdict {",
@@ -6483,8 +6500,9 @@ fn what_decode_with_emits_is_written_for_the_lints_a_consumer_denies() {
         }
         assert!(!flagged.contains(": impl "), "for {source}, got: {flagged}");
         assert!(
-            flagged.contains("path : & [core :: result :: Result < String , usize >]")
-                && !flagged.contains("& [Result <"),
+            flagged.contains(
+                "path : & [core :: result :: Result < std :: string :: String , usize >]"
+            ) && !flagged.contains("& [Result <"),
             "for {source}, got: {flagged}"
         );
     }
@@ -8014,7 +8032,8 @@ fn the_constrained_path_renders_the_same_to_string_calls_it_always_has() {
             constrained_brand_emission(spelling, "slug_id_schema");
         assert!(
             validate_fn.starts_with(
-                "pub fn validate_value (value : & str) -> core :: result :: Result < () , Vec < String >> {"
+                "pub fn validate_value (value : & str) -> core :: result :: Result < () , std \
+                 :: vec :: Vec < std :: string :: String >> {"
             ),
             "for {spelling}, got: {validate_fn}"
         );
@@ -8052,8 +8071,9 @@ fn a_path_brand_is_checked_through_its_lossy_rendering() {
             constrained_brand_emission(spelling, "asset_path_schema");
         assert!(
             validate_fn.starts_with(
-                "pub fn validate_value (path : & std :: path :: Path) -> core :: result :: Result < () , Vec < String >> { \
-                 let rendered = path . to_string_lossy () ; let value : & str = & rendered ;"
+                "pub fn validate_value (path : & std :: path :: Path) -> core :: result :: \
+                 Result < () , std :: vec :: Vec < std :: string :: String >> { let rendered = \
+                 path . to_string_lossy () ; let value : & str = & rendered ;"
             ),
             "for {spelling}, got: {validate_fn}"
         );
@@ -10015,7 +10035,8 @@ fn a_variant_member_is_reached_through_the_binding_its_arm_made() {
 fn a_bare_field_is_checked_in_place() {
     assert_eq!(
         emitted_validation("String"),
-        "if let Err (reported) = check (& self . field) { errors . extend (reported) ; }"
+        "if let core :: result :: Result :: Err (reported) = check (& self . field) { errors . \
+         extend (reported) ; }"
     );
     assert_eq!(emitted_validation("u32"), emitted_validation("String"));
 }
@@ -10026,7 +10047,9 @@ fn a_bare_field_is_checked_in_place() {
 fn an_option_is_checked_inside_its_some() {
     assert_eq!(
         emitted_validation("Option<String>"),
-        "{ let value_0 = & self . field ; if let Some (value_1) = value_0 { if let Err (reported) = check (value_1) { errors . extend (reported) ; } } }"
+        "{ let value_0 = & self . field ; if let core :: option :: Option :: Some (value_1) = \
+         value_0 { if let core :: result :: Result :: Err (reported) = check (value_1) { errors \
+         . extend (reported) ; } } }"
     );
 }
 
@@ -10035,7 +10058,9 @@ fn an_option_is_checked_inside_its_some() {
 #[cfg(feature = "serde")]
 #[test]
 fn a_transparent_wrapper_is_dereferenced_through() {
-    let expected = "{ let value_0 = & self . field ; let value_1 = & * * value_0 ; if let Err (reported) = check (value_1) { errors . extend (reported) ; } }";
+    let expected = "{ let value_0 = & self . field ; let value_1 = & * * value_0 ; if let core \
+                    :: result :: Result :: Err (reported) = check (value_1) { errors . extend \
+                    (reported) ; } }";
     for spelling in ["Arc<str>", "Box<String>", "Cow<'a, str>", "Rc<str>"] {
         assert_eq!(
             emitted_validation(spelling),
@@ -10050,7 +10075,9 @@ fn a_transparent_wrapper_is_dereferenced_through() {
 #[cfg(feature = "serde")]
 #[test]
 fn a_sequence_is_checked_per_element() {
-    let expected = "{ let value_0 = & self . field ; for value_1 in value_0 { if let Err (reported) = check (value_1) { errors . extend (reported) ; } } }";
+    let expected = "{ let value_0 = & self . field ; for value_1 in value_0 { if let core :: \
+                    result :: Result :: Err (reported) = check (value_1) { errors . extend \
+                    (reported) ; } } }";
     for wrapper in SEQUENCE_WRAPPERS {
         assert_eq!(
             emitted_validation(&format!("{wrapper}<String>")),
@@ -10058,11 +10085,16 @@ fn a_sequence_is_checked_per_element() {
             "wrapper {wrapper}"
         );
     }
-    assert_eq!(emitted_validation("[String ; 2]"), expected);
+    assert_eq!(
+        emitted_validation("[std :: string :: String ; 2]"),
+        expected
+    );
 
     assert_eq!(
         emitted_validation("Vec<Vec<String>>"),
-        "{ let value_0 = & self . field ; for value_1 in value_0 { for value_2 in value_1 { if let Err (reported) = check (value_2) { errors . extend (reported) ; } } } }"
+        "{ let value_0 = & self . field ; for value_1 in value_0 { for value_2 in value_1 { if \
+         let core :: result :: Result :: Err (reported) = check (value_2) { errors . extend \
+         (reported) ; } } } }"
     );
 }
 
@@ -10072,7 +10104,9 @@ fn a_sequence_is_checked_per_element() {
 fn mixed_wrappers_compose_in_written_order() {
     assert_eq!(
         emitted_validation("Option<Arc<[String]>>"),
-        "{ let value_0 = & self . field ; if let Some (value_1) = value_0 { let value_2 = & * * value_1 ; for value_3 in value_2 { if let Err (reported) = check (value_3) { errors . extend (reported) ; } } } }"
+        "{ let value_0 = & self . field ; if let core :: option :: Option :: Some (value_1) = \
+         value_0 { let value_2 = & * * value_1 ; for value_3 in value_2 { if let core :: result \
+         :: Result :: Err (reported) = check (value_3) { errors . extend (reported) ; } } } }"
     );
 }
 
@@ -10137,10 +10171,12 @@ fn emitted_string_deserializer(spelling: &str) -> String {
 fn a_bare_field_deserializes_the_constrained_value_itself() {
     assert_eq!(
         emitted_string_deserializer("String"),
-        "pub fn deserialize_field < 'de , D > (deserializer : D) -> core :: result :: Result < String , D :: Error > \
-         where D : serde :: Deserializer < 'de > , { use serde :: Deserialize ; \
-         let s = String :: deserialize (deserializer) ? ; \
-         validate_field_value (& s) . map_err (| violations : Vec < String > | serde :: de :: Error :: custom (violations . join (\"; \"))) ? ; Ok (s) }"
+        "pub fn deserialize_field < 'de , D > (deserializer : D) -> core :: result :: Result < \
+         std :: string :: String , D :: Error > where D : serde :: Deserializer < 'de > , { use \
+         serde :: Deserialize ; let s = std :: string :: String :: deserialize (deserializer) ? \
+         ; validate_field_value (& s) . map_err (| violations : std :: vec :: Vec < std :: \
+         string :: String > | serde :: de :: Error :: custom (violations . join (\"; \"))) ? ; \
+         core :: result :: Result :: Ok (s) }"
     );
 
     let numeric_ty: syn::Type = syn::parse_str("u32").unwrap();
@@ -10161,10 +10197,12 @@ fn a_bare_field_deserializes_the_constrained_value_itself() {
     .to_string();
     assert!(
         numeric.ends_with(
-            "pub fn deserialize_field < 'de , D > (deserializer : D) -> core :: result :: Result < u32 , D :: Error > \
-             where D : serde :: Deserializer < 'de > , { use serde :: Deserialize ; \
-             let v = u32 :: deserialize (deserializer) ? ; \
-             validate_field_value (& v) . map_err (| violations : Vec < String > | serde :: de :: Error :: custom (violations . join (\"; \"))) ? ; Ok (v) }"
+            "pub fn deserialize_field < 'de , D > (deserializer : D) -> core :: result :: \
+             Result < u32 , D :: Error > where D : serde :: Deserializer < 'de > , { use serde \
+             :: Deserialize ; let v = u32 :: deserialize (deserializer) ? ; \
+             validate_field_value (& v) . map_err (| violations : std :: vec :: Vec < std :: \
+             string :: String > | serde :: de :: Error :: custom (violations . join (\"; \"))) \
+             ? ; core :: result :: Result :: Ok (v) }"
         ),
         "bare numeric deserializer moved: {numeric}"
     );
@@ -10343,14 +10381,18 @@ fn a_constrained_tuple_variant_yields_diagnostics_rather_than_helpers() {
 fn a_wrapped_field_deserializes_its_declared_type() {
     assert_eq!(
         emitted_string_deserializer("Option<String>"),
-        "pub fn deserialize_field < 'de , D > (deserializer : D) -> core :: result :: Result < Option < String > , D :: Error > \
-         where D : serde :: Deserializer < 'de > , \
-         { fn deserialize_validated < 'de , D , T , F > (deserializer : D , check : F) -> core :: result :: Result < T , D :: Error > \
-         where D : serde :: Deserializer < 'de > , T : serde :: Deserialize < 'de > , F : FnOnce (& T) -> core :: result :: Result < () , Vec < String >> , \
-         { use serde :: Deserialize ; let value = T :: deserialize (deserializer) ? ; \
-         check (& value) . map_err (| violations : Vec < String > | serde :: de :: Error :: custom (violations . join (\"; \"))) ? ; Ok (value) } \
-         deserialize_validated (deserializer , | value_0 : & Option < String > | \
-         { if let Some (value_1) = value_0 { validate_field_value (value_1) ? ; } Ok (()) }) }"
+        "pub fn deserialize_field < 'de , D > (deserializer : D) -> core :: result :: Result < \
+         Option < String > , D :: Error > where D : serde :: Deserializer < 'de > , { fn \
+         deserialize_validated < 'de , D , T , F > (deserializer : D , check : F) -> core :: \
+         result :: Result < T , D :: Error > where D : serde :: Deserializer < 'de > , T : \
+         serde :: Deserialize < 'de > , F : core :: ops :: FnOnce (& T) -> core :: result :: Result < () , std \
+         :: vec :: Vec < std :: string :: String >> , { use serde :: Deserialize ; let value = \
+         T :: deserialize (deserializer) ? ; check (& value) . map_err (| violations : std :: \
+         vec :: Vec < std :: string :: String > | serde :: de :: Error :: custom (violations . \
+         join (\"; \"))) ? ; core :: result :: Result :: Ok (value) } deserialize_validated \
+         (deserializer , | value_0 : & Option < String > | { if let core :: option :: Option :: \
+         Some (value_1) = value_0 { validate_field_value (value_1) ? ; } core :: result :: \
+         Result :: Ok (()) }) }"
     );
 }
 
@@ -10365,7 +10407,7 @@ fn wire_walk_of(spelling: &str) -> String {
     build_field_validation(&shape.wraps, MemberAccess::SelfField, &field, &checker)
         .to_string()
         .replace(
-            "if let Err (reported) = validate_field_value (",
+            "if let core :: result :: Result :: Err (reported) = validate_field_value (",
             "validate_field_value (",
         )
         .replace(") { errors . extend (reported) ; }", ") ? ;")
@@ -11018,8 +11060,9 @@ fn a_path_is_checked_through_its_lossy_rendering() {
     let module = emitted_string_module("PathBuf");
     assert!(
         module.starts_with(
-            "pub fn validate_field_value (path : & std :: path :: Path) -> core :: result :: Result < () , Vec < String >> \
-             { let rendered = path . to_string_lossy () ; let value : & str = & rendered ;"
+            "pub fn validate_field_value (path : & std :: path :: Path) -> core :: result :: \
+             Result < () , std :: vec :: Vec < std :: string :: String >> { let rendered = path \
+             . to_string_lossy () ; let value : & str = & rendered ;"
         ),
         "got: {module}"
     );
@@ -11036,10 +11079,12 @@ fn a_path_is_checked_through_its_lossy_rendering() {
 fn a_bare_path_field_deserializes_the_owned_path() {
     assert_eq!(
         emitted_string_deserializer("PathBuf"),
-        "pub fn deserialize_field < 'de , D > (deserializer : D) -> core :: result :: Result < std :: path :: PathBuf , D :: Error > \
-         where D : serde :: Deserializer < 'de > , { use serde :: Deserialize ; \
-         let s = std :: path :: PathBuf :: deserialize (deserializer) ? ; \
-         validate_field_value (& s) . map_err (| violations : Vec < String > | serde :: de :: Error :: custom (violations . join (\"; \"))) ? ; Ok (s) }"
+        "pub fn deserialize_field < 'de , D > (deserializer : D) -> core :: result :: Result < \
+         std :: path :: PathBuf , D :: Error > where D : serde :: Deserializer < 'de > , { use \
+         serde :: Deserialize ; let s = std :: path :: PathBuf :: deserialize (deserializer) ? \
+         ; validate_field_value (& s) . map_err (| violations : std :: vec :: Vec < std :: \
+         string :: String > | serde :: de :: Error :: custom (violations . join (\"; \"))) ? ; \
+         core :: result :: Result :: Ok (s) }"
     );
 }
 
@@ -11062,17 +11107,21 @@ fn a_wrapped_path_field_deserializes_its_declared_type() {
 fn a_trivial_pattern_is_emitted_as_the_call_it_says_the_same_thing_as() {
     assert_eq!(
         emitted_pattern_validator("^/"),
-        "pub fn validate_field_value (value : & str) -> core :: result :: Result < () , Vec < String >> \
-         { let mut errors : Vec < String > = Vec :: new () ; \
-         if ! value . starts_with ('/') { \
-         errors . push (format ! (\"'{}': {}\" , \"field\" , \"does not match pattern '^/'\")) ; } if errors . is_empty () { Ok (()) } else { Err (errors) } } "
+        "pub fn validate_field_value (value : & str) -> core :: result :: Result < () , std :: \
+         vec :: Vec < std :: string :: String >> { let mut errors : std :: vec :: Vec < std :: \
+         string :: String > = std :: vec :: Vec :: new () ; if ! value . starts_with ('/') { \
+         errors . push (format ! (\"'{}': {}\" , \"field\" , \"does not match pattern '^/'\")) \
+         ; } if errors . is_empty () { core :: result :: Result :: Ok (()) } else { core :: \
+         result :: Result :: Err (errors) } } "
     );
     assert_eq!(
         emitted_pattern_validator("^abc$"),
-        "pub fn validate_field_value (value : & str) -> core :: result :: Result < () , Vec < String >> \
-         { let mut errors : Vec < String > = Vec :: new () ; \
-         if value != \"abc\" { \
-         errors . push (format ! (\"'{}': {}\" , \"field\" , \"does not match pattern '^abc$'\")) ; } if errors . is_empty () { Ok (()) } else { Err (errors) } } "
+        "pub fn validate_field_value (value : & str) -> core :: result :: Result < () , std :: \
+         vec :: Vec < std :: string :: String >> { let mut errors : std :: vec :: Vec < std :: \
+         string :: String > = std :: vec :: Vec :: new () ; if value != \"abc\" { errors . push \
+         (format ! (\"'{}': {}\" , \"field\" , \"does not match pattern '^abc$'\")) ; } if \
+         errors . is_empty () { core :: result :: Result :: Ok (()) } else { core :: result :: \
+         Result :: Err (errors) } } "
     );
 }
 
@@ -11083,12 +11132,14 @@ fn a_trivial_pattern_is_emitted_as_the_call_it_says_the_same_thing_as() {
 fn a_pattern_of_any_real_shape_keeps_its_regex() {
     assert_eq!(
         emitted_pattern_validator("^[a-z]+$"),
-        "pub fn validate_field_value (value : & str) -> core :: result :: Result < () , Vec < String >> \
-         { let mut errors : Vec < String > = Vec :: new () ; \
-         { use std :: sync :: LazyLock ; \
-         static RE : LazyLock < regex :: Regex > = LazyLock :: new (|| { regex :: Regex :: new (\"^[a-z]+$\") . unwrap () }) ; \
-         if ! RE . is_match (value) { \
-         errors . push (format ! (\"'{}': {}\" , \"field\" , \"does not match pattern '^[a-z]+$'\")) ; } } if errors . is_empty () { Ok (()) } else { Err (errors) } } "
+        "pub fn validate_field_value (value : & str) -> core :: result :: Result < () , std :: \
+         vec :: Vec < std :: string :: String >> { let mut errors : std :: vec :: Vec < std :: \
+         string :: String > = std :: vec :: Vec :: new () ; { use std :: sync :: LazyLock ; \
+         static RE : LazyLock < regex :: Regex > = LazyLock :: new (|| { regex :: Regex :: new \
+         (\"^[a-z]+$\") . unwrap () }) ; if ! RE . is_match (value) { errors . push (format ! \
+         (\"'{}': {}\" , \"field\" , \"does not match pattern '^[a-z]+$'\")) ; } } if errors . \
+         is_empty () { core :: result :: Result :: Ok (()) } else { core :: result :: Result :: \
+         Err (errors) } } "
     );
 }
 
@@ -12015,10 +12066,12 @@ fn seed_external_registration(item: &syn::ItemEnum) {
 fn the_empty_string_pattern_keeps_the_call_it_was_already_emitted_as() {
     assert_eq!(
         emitted_pattern_validator("^$"),
-        "pub fn validate_field_value (value : & str) -> core :: result :: Result < () , Vec < String >> \
-         { let mut errors : Vec < String > = Vec :: new () ; \
-         if ! value . is_empty () { \
-         errors . push (format ! (\"'{}': {}\" , \"field\" , \"does not match pattern '^$'\")) ; } if errors . is_empty () { Ok (()) } else { Err (errors) } } "
+        "pub fn validate_field_value (value : & str) -> core :: result :: Result < () , std :: \
+         vec :: Vec < std :: string :: String >> { let mut errors : std :: vec :: Vec < std :: \
+         string :: String > = std :: vec :: Vec :: new () ; if ! value . is_empty () { errors . \
+         push (format ! (\"'{}': {}\" , \"field\" , \"does not match pattern '^$'\")) ; } if \
+         errors . is_empty () { core :: result :: Result :: Ok (()) } else { core :: result :: \
+         Result :: Err (errors) } } "
     );
 }
 
@@ -12030,12 +12083,14 @@ fn the_empty_string_pattern_keeps_the_call_it_was_already_emitted_as() {
 fn a_word_boundary_pattern_keeps_its_regex() {
     assert_eq!(
         emitted_pattern_validator(r"\b[0-9A-Za-z_]+"),
-        "pub fn validate_field_value (value : & str) -> core :: result :: Result < () , Vec < String >> \
-         { let mut errors : Vec < String > = Vec :: new () ; \
-         { use std :: sync :: LazyLock ; \
-         static RE : LazyLock < regex :: Regex > = LazyLock :: new (|| { regex :: Regex :: new (\"\\\\b[0-9A-Za-z_]+\") . unwrap () }) ; \
-         if ! RE . is_match (value) { \
-         errors . push (format ! (\"'{}': {}\" , \"field\" , \"does not match pattern '\\\\b[0-9A-Za-z_]+'\")) ; } } if errors . is_empty () { Ok (()) } else { Err (errors) } } "
+        "pub fn validate_field_value (value : & str) -> core :: result :: Result < () , std :: \
+         vec :: Vec < std :: string :: String >> { let mut errors : std :: vec :: Vec < std :: \
+         string :: String > = std :: vec :: Vec :: new () ; { use std :: sync :: LazyLock ; \
+         static RE : LazyLock < regex :: Regex > = LazyLock :: new (|| { regex :: Regex :: new \
+         (\"\\\\b[0-9A-Za-z_]+\") . unwrap () }) ; if ! RE . is_match (value) { errors . push \
+         (format ! (\"'{}': {}\" , \"field\" , \"does not match pattern \
+         '\\\\b[0-9A-Za-z_]+'\")) ; } } if errors . is_empty () { core :: result :: Result :: \
+         Ok (()) } else { core :: result :: Result :: Err (errors) } } "
     );
 }
 

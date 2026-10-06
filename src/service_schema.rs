@@ -747,7 +747,7 @@ fn emitted_trait(declared: &ItemTrait) -> ItemTrait {
                 ReturnType::Type(_, carried) => quote! { #carried },
             };
             operation.sig.output = syn::parse_quote! {
-                -> impl ::core::future::Future<Output = #answered> + Send
+                -> impl ::core::future::Future<Output = #answered> + ::core::marker::Send
             };
         }
     }

@@ -15,6 +15,10 @@
 extern crate alloc;
 
 #[cfg(test)]
+#[path = "service_schema_ws_rpc_proof_tests/shadowing.rs"]
+mod shadowing;
+
+#[cfg(test)]
 #[macro_use]
 #[path = "service_schema_ws_rpc_proof_tests/tests.rs"]
 mod tests;

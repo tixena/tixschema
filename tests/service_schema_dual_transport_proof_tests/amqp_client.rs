@@ -3,9 +3,12 @@
 //! The `use` is what resolves the types the author declared: the macro spells them exactly as they
 //! were written, no crate prefix.
 
+use crate::shadowing::{Box, Clone, Default, Err, None, Ok, Send, Sized, Some, Sync};
 use crate::tests::{
     ArchiveError, GetVersionError, RangeError, SealAck, SweepError, SweepReport, ThumbnailError,
     VersionResponse,
 };
 
 document_service_amqp_rpc_client!();
+
+shadowing_names_built!();

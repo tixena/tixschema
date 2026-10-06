@@ -116,23 +116,23 @@ fn dispatcher_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
                 #codec_fns
 
                 #[doc = #answer_doc]
-                pub async fn answer<S, Ctx>(text: &str, svc: &S, ctx: &Ctx) -> Option<String>
+                pub async fn answer<S, Ctx>(text: &str, svc: &S, ctx: &Ctx) -> ::core::option::Option<::std::string::String>
                 where
-                    S: $crate::#contract<Ctx> + Sync,
-                    Ctx: Sync,
+                    S: $crate::#contract<Ctx> + ::core::marker::Sync,
+                    Ctx: ::core::marker::Sync,
                 {
                     match Frame::decode(text) {
-                        Ok(Frame::Request { id, service, message }) if service == SERVICE => {
+                        ::core::result::Result::Ok(Frame::Request { id, service, message }) if service == SERVICE => {
                             let reply = FrameReply::new(&id);
                             dispatch(svc, ctx, &message, &reply).await;
-                            Some(reply.into_text())
+                            ::core::option::Option::Some(reply.into_text())
                         }
-                        Ok(Frame::Notify { service, message }) if service == SERVICE => {
+                        ::core::result::Result::Ok(Frame::Notify { service, message }) if service == SERVICE => {
                             dispatch(svc, ctx, &message, &FrameReply::new("")).await;
-                            None
+                            ::core::option::Option::None
                         }
-                        Ok(Frame::Ping) => Some(pong_frame()),
-                        _ => None,
+                        ::core::result::Result::Ok(Frame::Ping) => ::core::option::Option::Some(pong_frame()),
+                        _ => ::core::option::Option::None,
                     }
                 }
             };
@@ -161,12 +161,12 @@ fn frame_codec_type(side: Side) -> TokenStream {
             pub enum Frame {
                 /// A call this service is asked to make and must answer.
                 Request {
-                    id: String,
-                    service: String,
+                    id: ::std::string::String,
+                    service: ::std::string::String,
                     message: IncomingMessage,
                 },
                 /// A call this service is told about and owes no reply.
-                Notify { service: String, message: IncomingMessage },
+                Notify { service: ::std::string::String, message: IncomingMessage },
                 /// A liveness probe this side answers with a pong.
                 Ping,
                 /// A reply or a pong: read by the client macro instead.
@@ -179,9 +179,9 @@ fn frame_codec_type(side: Side) -> TokenStream {
             pub enum Frame {
                 /// An answer to a call this side made.
                 Reply {
-                    id: String,
-                    service: String,
-                    envelope: ::serde_json::Map<String, ::serde_json::Value>,
+                    id: ::std::string::String,
+                    service: ::std::string::String,
+                    envelope: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
                 },
                 /// A liveness probe this side answers with a pong.
                 Ping,
@@ -198,9 +198,9 @@ fn frame_codec_type(side: Side) -> TokenStream {
 fn frame_codec_impl(side: Side) -> TokenStream {
     let arms = match side {
         Side::Dispatcher => quote! {
-            let read_message = |on: &::serde_json::Map<String, ::serde_json::Value>| -> ::core::result::Result<IncomingMessage, String> {
+            let read_message = |on: &::serde_json::Map<::std::string::String, ::serde_json::Value>| -> ::core::result::Result<IncomingMessage, ::std::string::String> {
                 let payload = on.get("payload").cloned().unwrap_or(::serde_json::Value::Null);
-                Ok(IncomingMessage::new(
+                ::core::result::Result::Ok(IncomingMessage::new(
                     string_of(on, "operation")?,
                     ::serde_json::to_vec(&payload)
                         .map_err(|unrepresentable| unrepresentable.to_string())?,
@@ -208,18 +208,18 @@ fn frame_codec_impl(side: Side) -> TokenStream {
                 ))
             };
             match string_of(&frame, "kind")?.as_str() {
-                "request" => Ok(Frame::Request {
+                "request" => ::core::result::Result::Ok(Frame::Request {
                     id: string_of(&frame, "id")?,
                     service: string_of(&frame, "service")?,
                     message: read_message(&frame)?,
                 }),
-                "notify" => Ok(Frame::Notify {
+                "notify" => ::core::result::Result::Ok(Frame::Notify {
                     service: string_of(&frame, "service")?,
                     message: read_message(&frame)?,
                 }),
-                "ping" => Ok(Frame::Ping),
-                "reply" | "pong" => Ok(Frame::Ignored),
-                other => Err(format!("unknown frame kind `{other}`")),
+                "ping" => ::core::result::Result::Ok(Frame::Ping),
+                "reply" | "pong" => ::core::result::Result::Ok(Frame::Ignored),
+                other => ::core::result::Result::Err(format!("unknown frame kind `{other}`")),
             }
         },
         Side::Client => quote! {
@@ -229,16 +229,16 @@ fn frame_codec_impl(side: Side) -> TokenStream {
                     for key in ["kind", "id", "service"] {
                         envelope.remove(key);
                     }
-                    Ok(Frame::Reply {
+                    ::core::result::Result::Ok(Frame::Reply {
                         id: string_of(&frame, "id")?,
                         service: string_of(&frame, "service")?,
                         envelope,
                     })
                 }
-                "ping" => Ok(Frame::Ping),
-                "pong" => Ok(Frame::Pong),
-                "request" | "notify" => Ok(Frame::Ignored),
-                other => Err(format!("unknown frame kind `{other}`")),
+                "ping" => ::core::result::Result::Ok(Frame::Ping),
+                "pong" => ::core::result::Result::Ok(Frame::Pong),
+                "request" | "notify" => ::core::result::Result::Ok(Frame::Ignored),
+                other => ::core::result::Result::Err(format!("unknown frame kind `{other}`")),
             }
         },
     };
@@ -247,11 +247,11 @@ fn frame_codec_impl(side: Side) -> TokenStream {
             /// Reads one frame off the wire. Text that is not JSON, is not a JSON object, or
             /// names no `kind` this transport recognises, is refused, naming why. A frame naming
             /// a `kind` the other side reads decodes to `Frame::Ignored` instead.
-            pub fn decode(text: &str) -> ::core::result::Result<Frame, String> {
+            pub fn decode(text: &str) -> ::core::result::Result<Frame, ::std::string::String> {
                 let parsed: ::serde_json::Value = ::serde_json::from_str(text)
                     .map_err(|refused| format!("not JSON: {refused}"))?;
                 let ::serde_json::Value::Object(frame) = parsed else {
-                    return Err("frame is not an object".to_owned());
+                    return ::core::result::Result::Err("frame is not an object".to_owned());
                 };
                 #arms
             }
@@ -264,18 +264,18 @@ fn frame_codec_impl(side: Side) -> TokenStream {
 fn frame_codec_fns() -> TokenStream {
     quote! {
         /// The text frame a liveness probe is answered with.
-        pub fn pong_frame() -> String {
+        pub fn pong_frame() -> ::std::string::String {
             ::serde_json::json!({ "kind": "pong" }).to_string()
         }
 
         /// One required string key off a frame, or `Err` naming it.
         fn string_of(
-            frame: &::serde_json::Map<String, ::serde_json::Value>,
+            frame: &::serde_json::Map<::std::string::String, ::serde_json::Value>,
             key: &str,
-        ) -> ::core::result::Result<String, String> {
+        ) -> ::core::result::Result<::std::string::String, ::std::string::String> {
             match frame.get(key) {
-                Some(::serde_json::Value::String(read)) => Ok(read.clone()),
-                _ => Err(format!("frame carries no string `{key}`")),
+                ::core::option::Option::Some(::serde_json::Value::String(read)) => ::core::result::Result::Ok(read.clone()),
+                _ => ::core::result::Result::Err(format!("frame carries no string `{key}`")),
             }
         }
 
@@ -284,10 +284,10 @@ fn frame_codec_fns() -> TokenStream {
         /// which is what lets it decode into whatever type a binding declared. `headers_table` is
         /// the inverse.
         fn headers_of(
-            frame: &::serde_json::Map<String, ::serde_json::Value>,
-        ) -> Vec<(String, String)> {
-            let Some(::serde_json::Value::Object(headers)) = frame.get("headers") else {
-                return Vec::new();
+            frame: &::serde_json::Map<::std::string::String, ::serde_json::Value>,
+        ) -> ::std::vec::Vec<(::std::string::String, ::std::string::String)> {
+            let ::core::option::Option::Some(::serde_json::Value::Object(headers)) = frame.get("headers") else {
+                return ::std::vec::Vec::new();
             };
             headers
                 .iter()
@@ -299,9 +299,9 @@ fn frame_codec_fns() -> TokenStream {
         /// object a frame carries under `headers` — a reply's own `header_out` values, or a
         /// request's or notify's own `header_in` values. `None` for an empty list, so the key is
         /// left off entirely rather than sent empty.
-        fn headers_table(headers: Vec<(String, String)>) -> Option<::serde_json::Value> {
+        fn headers_table(headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>) -> ::core::option::Option<::serde_json::Value> {
             if headers.is_empty() {
-                return None;
+                return ::core::option::Option::None;
             }
             let mut table = ::serde_json::Map::new();
             for (name, encoded) in headers {
@@ -309,7 +309,7 @@ fn frame_codec_fns() -> TokenStream {
                     .unwrap_or_else(|_| ::serde_json::Value::String(encoded));
                 table.insert(name, value);
             }
-            Some(::serde_json::Value::Object(table))
+            ::core::option::Option::Some(::serde_json::Value::Object(table))
         }
     }
 }
@@ -320,8 +320,8 @@ fn frame_reply_type() -> TokenStream {
         /// The `Reply` a request frame is answered through: renders the reply frame the adapter
         /// sends, and the empty success a `request` naming a one-way operation is left unwritten.
         pub struct FrameReply {
-            id: String,
-            written: ::std::sync::Mutex<Option<String>>,
+            id: ::std::string::String,
+            written: ::std::sync::Mutex<::core::option::Option<::std::string::String>>,
         }
     }
 }
@@ -333,7 +333,7 @@ fn frame_reply_impl() -> TokenStream {
         impl FrameReply {
             /// The reply frame, or the empty success a `request` naming a one-way operation is
             /// answered with — a requester is never left waiting on a reply that never comes.
-            pub fn into_text(self) -> String {
+            pub fn into_text(self) -> ::std::string::String {
                 self.written.into_inner().unwrap().unwrap_or_else(|| {
                     ::serde_json::json!({
                         "kind": "reply",
@@ -349,7 +349,7 @@ fn frame_reply_impl() -> TokenStream {
             pub fn new(id: &str) -> Self {
                 Self {
                     id: id.to_owned(),
-                    written: ::std::sync::Mutex::new(None),
+                    written: ::std::sync::Mutex::new(::core::option::Option::None),
                 }
             }
 
@@ -359,7 +359,7 @@ fn frame_reply_impl() -> TokenStream {
             /// An arm answers only with `Answered` or the fault literal, both objects, so
             /// `answered` is always one; a value that somehow was not still becomes a reply,
             /// carried under `value` rather than merged.
-            fn write(&self, answered: ::serde_json::Value, headers: Vec<(String, String)>) {
+            fn write(&self, answered: ::serde_json::Value, headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>) {
                 let mut envelope = match answered {
                     ::serde_json::Value::Object(carried) => carried,
                     other => {
@@ -374,10 +374,10 @@ fn frame_reply_impl() -> TokenStream {
                     "service".to_owned(),
                     ::serde_json::Value::String(SERVICE.to_owned()),
                 );
-                if let Some(table) = headers_table(headers) {
+                if let ::core::option::Option::Some(table) = headers_table(headers) {
                     envelope.insert("headers".to_owned(), table);
                 }
-                *self.written.lock().unwrap() = Some(::serde_json::Value::Object(envelope).to_string());
+                *self.written.lock().unwrap() = ::core::option::Option::Some(::serde_json::Value::Object(envelope).to_string());
             }
         }
     }
@@ -393,14 +393,14 @@ fn frame_reply_trait_impl(module: &Ident, with_send: bool) -> TokenStream {
             fn send<T>(
                 &self,
                 value: T,
-                headers: Vec<(String, String)>,
-            ) -> impl ::core::future::Future<Output = ()> + Send
+                headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
+            ) -> impl ::core::future::Future<Output = ()> + ::core::marker::Send
             where
-                T: ::serde::Serialize + Send,
+                T: ::serde::Serialize + ::core::marker::Send,
             {
                 match ::serde_json::to_value(&value) {
-                    Ok(answered) => self.write(answered, headers),
-                    Err(unserializable) => ::tracing::error!(
+                    ::core::result::Result::Ok(answered) => self.write(answered, headers),
+                    ::core::result::Result::Err(unserializable) => ::tracing::error!(
                         error = %unserializable,
                         "an answer would not serialize; the caller is left without a reply",
                     ),
@@ -414,13 +414,13 @@ fn frame_reply_trait_impl(module: &Ident, with_send: bool) -> TokenStream {
             fn fault(
                 &self,
                 fault: $crate::#module::ServiceFault,
-            ) -> impl ::core::future::Future<Output = ()> + Send {
+            ) -> impl ::core::future::Future<Output = ()> + ::core::marker::Send {
                 self.write(
                     ::serde_json::json!({
                         "ok": false,
                         "error": { "isServiceFault": true, "fault": fault },
                     }),
-                    Vec::new(),
+                    ::std::vec::Vec::new(),
                 );
                 ::core::future::ready(())
             }
@@ -562,7 +562,7 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
                 // The operations sit apart, under the `Sync` a call's future needs: it borrows
                 // the client across an await, and a borrow is only `Send` where what it borrows
                 // is `Sync`. Binding a client asks for no such thing.
-                impl<T: Transport + Sync> #client<T> {
+                impl<T: Transport + ::core::marker::Sync> #client<T> {
                     #(#methods)*
                 }
 
@@ -582,11 +582,11 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
 /// can hold one - `LedgerClient<FrameSession>` needs a concrete second argument to name.
 fn send_frame_type() -> TokenStream {
     quote! {
-        type SendFrame = Box<
-            dyn Fn(String) -> ::core::pin::Pin<
-                    Box<dyn ::core::future::Future<Output = ::core::result::Result<(), String>> + Send>,
-                > + Send
-                + Sync,
+        type SendFrame = ::std::boxed::Box<
+            dyn ::core::ops::Fn(::std::string::String) -> ::core::pin::Pin<
+                    ::std::boxed::Box<dyn ::core::future::Future<Output = ::core::result::Result<(), ::std::string::String>> + ::core::marker::Send>,
+                > + ::core::marker::Send
+                + ::core::marker::Sync,
         >;
     }
 }
@@ -596,12 +596,12 @@ fn boxed_send_fn() -> TokenStream {
     quote! {
         fn boxed_send<F, Fut>(send: F) -> SendFrame
         where
-            F: Fn(String) -> Fut + Send + Sync + 'static,
-            Fut: ::core::future::Future<Output = ::core::result::Result<(), String>> + Send + 'static,
+            F: ::core::ops::Fn(::std::string::String) -> Fut + ::core::marker::Send + ::core::marker::Sync + 'static,
+            Fut: ::core::future::Future<Output = ::core::result::Result<(), ::std::string::String>> + ::core::marker::Send + 'static,
         {
-            Box::new(move |text| {
-                let sending: ::core::pin::Pin<Box<dyn ::core::future::Future<Output = _> + Send>> =
-                    Box::pin(send(text));
+            ::std::boxed::Box::new(move |text| {
+                let sending: ::core::pin::Pin<::std::boxed::Box<dyn ::core::future::Future<Output = _> + ::core::marker::Send>> =
+                    ::std::boxed::Box::pin(send(text));
                 sending
             })
         }
@@ -625,8 +625,8 @@ fn frame_writer_impl() -> TokenStream {
             /// Binds a writer to the function that puts a text frame on the wire.
             pub fn new<F, Fut>(send: F) -> Self
             where
-                F: Fn(String) -> Fut + Send + Sync + 'static,
-                Fut: ::core::future::Future<Output = ::core::result::Result<(), String>> + Send + 'static,
+                F: ::core::ops::Fn(::std::string::String) -> Fut + ::core::marker::Send + ::core::marker::Sync + 'static,
+                Fut: ::core::future::Future<Output = ::core::result::Result<(), ::std::string::String>> + ::core::marker::Send + 'static,
             {
                 Self(boxed_send(send))
             }
@@ -644,10 +644,10 @@ fn frame_writer_transport_impl() -> TokenStream {
                 &self,
                 operation: &str,
                 payload: T,
-                headers: Vec<(String, String)>,
-            ) -> ::core::result::Result<(), String>
+                headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
+            ) -> ::core::result::Result<(), ::std::string::String>
             where
-                T: ::serde::Serialize + Send,
+                T: ::serde::Serialize + ::core::marker::Send,
             {
                 (self.0)(notify_frame(operation, &payload, headers)?).await
             }
@@ -656,14 +656,14 @@ fn frame_writer_transport_impl() -> TokenStream {
                 &self,
                 operation: &str,
                 _: T,
-                _: Vec<(String, String)>,
-            ) -> impl ::core::future::Future<Output = ::core::result::Result<(Vec<u8>, Vec<(String, String)>), String>> + Send
+                _: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
+            ) -> impl ::core::future::Future<Output = ::core::result::Result<(::std::vec::Vec<u8>, ::std::vec::Vec<(::std::string::String, ::std::string::String)>), ::std::string::String>> + ::core::marker::Send
             where
-                T: ::serde::Serialize + Send,
+                T: ::serde::Serialize + ::core::marker::Send,
             {
                 // No `.await` in this body: a writer answers a call for an answer it cannot wait
                 // on immediately, rather than as `async fn` sugar over nothing that ever yields.
-                ::core::future::ready(Err(format!(
+                ::core::future::ready(::core::result::Result::Err(format!(
                     "`{operation}` expects an answer; a one-way writer carries no correlation \
                      map, use a session"
                 )))
@@ -679,8 +679,8 @@ fn frame_session_types() -> TokenStream {
         /// One outstanding request's own answer: empty until `deliver` or `close` fills it, and
         /// the waker whoever is polling [`Awaiting`] for it parked there meanwhile.
         struct Slot {
-            answer: Option<::core::result::Result<(Vec<u8>, Vec<(String, String)>), String>>,
-            waker: Option<::core::task::Waker>,
+            answer: ::core::option::Option<::core::result::Result<(::std::vec::Vec<u8>, ::std::vec::Vec<(::std::string::String, ::std::string::String)>), ::std::string::String>>,
+            waker: ::core::option::Option<::core::task::Waker>,
         }
 
         /// The `Future` one `request` call awaits: ready once `deliver` or `close` filled its
@@ -692,7 +692,7 @@ fn frame_session_types() -> TokenStream {
         /// keyed by the id it was sent under.
         struct SessionInner {
             next: ::std::sync::atomic::AtomicU64,
-            pending: ::std::sync::Mutex<::std::collections::HashMap<String, ::std::sync::Arc<::std::sync::Mutex<Slot>>>>,
+            pending: ::std::sync::Mutex<::std::collections::HashMap<::std::string::String, ::std::sync::Arc<::std::sync::Mutex<Slot>>>>,
             send: SendFrame,
         }
 
@@ -711,7 +711,7 @@ fn frame_session_types() -> TokenStream {
 fn awaiting_future_impl() -> TokenStream {
     quote! {
         impl ::core::future::Future for Awaiting {
-            type Output = ::core::result::Result<(Vec<u8>, Vec<(String, String)>), String>;
+            type Output = ::core::result::Result<(::std::vec::Vec<u8>, ::std::vec::Vec<(::std::string::String, ::std::string::String)>), ::std::string::String>;
 
             fn poll(
                 self: ::core::pin::Pin<&mut Self>,
@@ -719,9 +719,9 @@ fn awaiting_future_impl() -> TokenStream {
             ) -> ::core::task::Poll<Self::Output> {
                 let mut slot = self.0.lock().unwrap();
                 match slot.answer.take() {
-                    Some(answer) => ::core::task::Poll::Ready(answer),
-                    None => {
-                        slot.waker = Some(context.waker().clone());
+                    ::core::option::Option::Some(answer) => ::core::task::Poll::Ready(answer),
+                    ::core::option::Option::None => {
+                        slot.waker = ::core::option::Option::Some(context.waker().clone());
                         ::core::task::Poll::Pending
                     }
                 }
@@ -741,8 +741,8 @@ fn frame_session_impl() -> TokenStream {
                 let waiting = ::core::mem::take(&mut *self.inner.pending.lock().unwrap());
                 for slot in waiting.into_values() {
                     let mut slot = slot.lock().unwrap();
-                    slot.answer = Some(Err(detail.to_owned()));
-                    if let Some(waker) = slot.waker.take() {
+                    slot.answer = ::core::option::Option::Some(::core::result::Result::Err(detail.to_owned()));
+                    if let ::core::option::Option::Some(waker) = slot.waker.take() {
                         waker.wake();
                     }
                 }
@@ -754,23 +754,23 @@ fn frame_session_impl() -> TokenStream {
             /// and has nothing to do with the third.
             pub async fn deliver(&self, text: &str) {
                 match Frame::decode(text) {
-                    Ok(Frame::Reply {
+                    ::core::result::Result::Ok(Frame::Reply {
                         id,
                         service,
                         envelope,
                     }) if service == SERVICE => {
-                        let Some(slot) = self.inner.pending.lock().unwrap().remove(&id) else {
+                        let ::core::option::Option::Some(slot) = self.inner.pending.lock().unwrap().remove(&id) else {
                             return;
                         };
                         let headers = headers_of(&envelope);
                         let encoded = ::serde_json::to_vec(&envelope).unwrap_or_default();
                         let mut slot = slot.lock().unwrap();
-                        slot.answer = Some(Ok((encoded, headers)));
-                        if let Some(waker) = slot.waker.take() {
+                        slot.answer = ::core::option::Option::Some(::core::result::Result::Ok((encoded, headers)));
+                        if let ::core::option::Option::Some(waker) = slot.waker.take() {
                             waker.wake();
                         }
                     }
-                    Ok(Frame::Ping) => {
+                    ::core::result::Result::Ok(Frame::Ping) => {
                         let _ = (self.inner.send)(pong_frame()).await;
                     }
                     _ => {}
@@ -780,8 +780,8 @@ fn frame_session_impl() -> TokenStream {
             /// Binds a session to the function that puts a text frame on the wire.
             pub fn new<F, Fut>(send: F) -> Self
             where
-                F: Fn(String) -> Fut + Send + Sync + 'static,
-                Fut: ::core::future::Future<Output = ::core::result::Result<(), String>> + Send + 'static,
+                F: ::core::ops::Fn(::std::string::String) -> Fut + ::core::marker::Send + ::core::marker::Sync + 'static,
+                Fut: ::core::future::Future<Output = ::core::result::Result<(), ::std::string::String>> + ::core::marker::Send + 'static,
             {
                 Self {
                     inner: ::std::sync::Arc::new(SessionInner {
@@ -805,10 +805,10 @@ fn frame_session_transport_impl() -> TokenStream {
                 &self,
                 operation: &str,
                 payload: T,
-                headers: Vec<(String, String)>,
-            ) -> ::core::result::Result<(), String>
+                headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
+            ) -> ::core::result::Result<(), ::std::string::String>
             where
-                T: ::serde::Serialize + Send,
+                T: ::serde::Serialize + ::core::marker::Send,
             {
                 (self.inner.send)(notify_frame(operation, &payload, headers)?).await
             }
@@ -817,17 +817,17 @@ fn frame_session_transport_impl() -> TokenStream {
                 &self,
                 operation: &str,
                 payload: T,
-                headers: Vec<(String, String)>,
-            ) -> ::core::result::Result<(Vec<u8>, Vec<(String, String)>), String>
+                headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
+            ) -> ::core::result::Result<(::std::vec::Vec<u8>, ::std::vec::Vec<(::std::string::String, ::std::string::String)>), ::std::string::String>
             where
-                T: ::serde::Serialize + Send,
+                T: ::serde::Serialize + ::core::marker::Send,
             {
                 let id =
                     (self.inner.next.fetch_add(1, ::std::sync::atomic::Ordering::Relaxed) + 1)
                         .to_string();
                 let slot = ::std::sync::Arc::new(::std::sync::Mutex::new(Slot {
-                    answer: None,
-                    waker: None,
+                    answer: ::core::option::Option::None,
+                    waker: ::core::option::Option::None,
                 }));
                 self.inner
                     .pending
@@ -847,7 +847,7 @@ fn frame_session_transport_impl() -> TokenStream {
 fn frame_encoders() -> TokenStream {
     quote! {
         /// The text frame a liveness probe is sent as.
-        pub fn ping_frame() -> String {
+        pub fn ping_frame() -> ::std::string::String {
             ::serde_json::json!({ "kind": "ping" }).to_string()
         }
 
@@ -857,12 +857,12 @@ fn frame_encoders() -> TokenStream {
             id: &str,
             operation: &str,
             payload: &T,
-            headers: Vec<(String, String)>,
-        ) -> ::core::result::Result<String, String>
+            headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
+        ) -> ::core::result::Result<::std::string::String, ::std::string::String>
         where
             T: ::serde::Serialize,
         {
-            encoded_frame("request", Some(id), operation, payload, headers)
+            encoded_frame("request", ::core::option::Option::Some(id), operation, payload, headers)
         }
 
         /// The text frame one one-way call sends: the operation and payload, and, where the
@@ -870,12 +870,12 @@ fn frame_encoders() -> TokenStream {
         pub fn notify_frame<T>(
             operation: &str,
             payload: &T,
-            headers: Vec<(String, String)>,
-        ) -> ::core::result::Result<String, String>
+            headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
+        ) -> ::core::result::Result<::std::string::String, ::std::string::String>
         where
             T: ::serde::Serialize,
         {
-            encoded_frame("notify", None, operation, payload, headers)
+            encoded_frame("notify", ::core::option::Option::None, operation, payload, headers)
         }
 
         /// What `request_frame` and `notify_frame` both build: `kind`, `id` where the call
@@ -883,11 +883,11 @@ fn frame_encoders() -> TokenStream {
         /// `headers`.
         fn encoded_frame<T>(
             kind: &str,
-            id: Option<&str>,
+            id: ::core::option::Option<&str>,
             operation: &str,
             payload: &T,
-            headers: Vec<(String, String)>,
-        ) -> ::core::result::Result<String, String>
+            headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
+        ) -> ::core::result::Result<::std::string::String, ::std::string::String>
         where
             T: ::serde::Serialize,
         {
@@ -895,7 +895,7 @@ fn frame_encoders() -> TokenStream {
                 .map_err(|unrepresentable| unrepresentable.to_string())?;
             let mut frame = ::serde_json::Map::new();
             frame.insert("kind".to_owned(), ::serde_json::Value::String(kind.to_owned()));
-            if let Some(id) = id {
+            if let ::core::option::Option::Some(id) = id {
                 frame.insert("id".to_owned(), ::serde_json::Value::String(id.to_owned()));
             }
             frame.insert(
@@ -907,10 +907,10 @@ fn frame_encoders() -> TokenStream {
                 ::serde_json::Value::String(operation.to_owned()),
             );
             frame.insert("payload".to_owned(), payload);
-            if let Some(table) = headers_table(headers) {
+            if let ::core::option::Option::Some(table) = headers_table(headers) {
                 frame.insert("headers".to_owned(), table);
             }
-            Ok(::serde_json::Value::Object(frame).to_string())
+            ::core::result::Result::Ok(::serde_json::Value::Object(frame).to_string())
         }
     }
 }

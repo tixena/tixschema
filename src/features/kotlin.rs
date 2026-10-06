@@ -648,7 +648,7 @@ fn kotlin_module_tokens(
     let module_ident = kotlin_module_ident(rust_ident, span);
     quote! {
         pub mod #module_ident {
-            pub fn kotlin_definition() -> String {
+            pub fn kotlin_definition() -> std::string::String {
                 #full_source.to_owned()
             }
         }

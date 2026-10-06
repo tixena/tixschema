@@ -24,6 +24,16 @@ use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tixschema::{model_schema, service_schema};
 
+/// Builds every name of `crate::shadowing` as the module that invokes this imports it, which is
+/// what keeps the import in use.
+macro_rules! shadowing_names_built {
+    () => {
+        pub const fn shadowing_names() -> usize {
+            size_of_val(&(Box, Clone, Default, Err, None, Ok, Send, Sized, Some, Sync))
+        }
+    };
+}
+
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct VersionResponse {
@@ -1321,5 +1331,20 @@ fn the_same_back_end_instance_answers_the_same_operation_over_both_transports_un
         ],
         "one `DocumentBackEnd`, reached once per transport, with no trait method touched between \
          the two calls"
+    );
+}
+
+/// Each half is placed beside types named `Ok`, `Err`, `Some`, `None`, `Box`, `Send` and the rest
+/// of what its module imports from `crate::shadowing`: that it compiles there is the assertion.
+#[test]
+fn every_half_is_placed_beside_types_named_after_what_it_expands_to() {
+    assert_eq!(
+        [
+            amqp_client::shadowing_names(),
+            amqp_transport::shadowing_names(),
+            http_rest_client::shadowing_names(),
+            http_rest_transport::shadowing_names(),
+        ],
+        [0; 4]
     );
 }

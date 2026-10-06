@@ -202,3 +202,167 @@ mod a_type_named_sized {
         );
     }
 }
+
+/// A module that declares a model type named `Err` beside a struct whose expansion returns a `Result`.
+#[cfg(all(feature = "serde", feature = "typescript"))]
+mod a_type_named_err {
+    use serde::{Deserialize, Serialize};
+    use tixschema::model_schema;
+
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct BesideErrHolder {
+        pub inner: BesideErrInner,
+        #[model_schema_prop(minLength = 3)]
+        pub name: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub note: Option<String>,
+        pub tags: Vec<String>,
+    }
+
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct BesideErrInner {
+        pub number: i32,
+    }
+
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Err;
+
+    #[test]
+    fn a_struct_declared_beside_it_builds_reads_and_validates() {
+        let read: BesideErrHolder = serde_json::from_value(serde_json::json!({
+            "inner": { "number": 1_i32 },
+            "name": "ab",
+            "tags": ["t"],
+        }))
+        .unwrap();
+        assert_eq!(read.validate().unwrap_err().len(), 1);
+        assert!(BesideErrHolder::ts_definition().contains("  inner: BesideErrInner;"));
+        assert_eq!(serde_json::to_value(Err).unwrap(), serde_json::json!({}));
+    }
+}
+
+/// A module that declares a model type named `None` beside a struct whose expansion matches on an `Option`.
+#[cfg(all(feature = "serde", feature = "typescript"))]
+mod a_type_named_none {
+    use serde::{Deserialize, Serialize};
+    use tixschema::model_schema;
+
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct BesideNoneHolder {
+        pub inner: BesideNoneInner,
+        #[model_schema_prop(minLength = 3)]
+        pub name: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub note: Option<String>,
+        pub tags: Vec<String>,
+    }
+
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct BesideNoneInner {
+        pub number: i32,
+    }
+
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct None;
+
+    #[test]
+    fn a_struct_declared_beside_it_builds_reads_and_validates() {
+        let read: BesideNoneHolder = serde_json::from_value(serde_json::json!({
+            "inner": { "number": 1_i32 },
+            "name": "ab",
+            "tags": ["t"],
+        }))
+        .unwrap();
+        assert_eq!(read.validate().unwrap_err().len(), 1);
+        assert!(BesideNoneHolder::ts_definition().contains("  inner: BesideNoneInner;"));
+        assert_eq!(serde_json::to_value(None).unwrap(), serde_json::json!({}));
+    }
+}
+
+/// A module that declares a model type named `Ok` beside a struct whose expansion returns a `Result`.
+#[cfg(all(feature = "serde", feature = "typescript"))]
+mod a_type_named_ok {
+    use serde::{Deserialize, Serialize};
+    use tixschema::model_schema;
+
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct BesideOkHolder {
+        pub inner: BesideOkInner,
+        #[model_schema_prop(minLength = 3)]
+        pub name: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub note: Option<String>,
+        pub tags: Vec<String>,
+    }
+
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct BesideOkInner {
+        pub number: i32,
+    }
+
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Ok;
+
+    #[test]
+    fn a_struct_declared_beside_it_builds_reads_and_validates() {
+        let read: BesideOkHolder = serde_json::from_value(serde_json::json!({
+            "inner": { "number": 1_i32 },
+            "name": "ab",
+            "tags": ["t"],
+        }))
+        .unwrap();
+        assert_eq!(read.validate().unwrap_err().len(), 1);
+        assert!(BesideOkHolder::ts_definition().contains("  inner: BesideOkInner;"));
+        assert_eq!(serde_json::to_value(Ok).unwrap(), serde_json::json!({}));
+    }
+}
+
+/// A module that declares a model type named `Some` beside a struct whose expansion matches on an `Option`.
+#[cfg(all(feature = "serde", feature = "typescript"))]
+mod a_type_named_some {
+    use serde::{Deserialize, Serialize};
+    use tixschema::model_schema;
+
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct BesideSomeHolder {
+        pub inner: BesideSomeInner,
+        #[model_schema_prop(minLength = 3)]
+        pub name: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub note: Option<String>,
+        pub tags: Vec<String>,
+    }
+
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct BesideSomeInner {
+        pub number: i32,
+    }
+
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Some;
+
+    #[test]
+    fn a_struct_declared_beside_it_builds_reads_and_validates() {
+        let read: BesideSomeHolder = serde_json::from_value(serde_json::json!({
+            "inner": { "number": 1_i32 },
+            "name": "ab",
+            "tags": ["t"],
+        }))
+        .unwrap();
+        assert_eq!(read.validate().unwrap_err().len(), 1);
+        assert!(BesideSomeHolder::ts_definition().contains("  inner: BesideSomeInner;"));
+        assert_eq!(serde_json::to_value(Some).unwrap(), serde_json::json!({}));
+    }
+}

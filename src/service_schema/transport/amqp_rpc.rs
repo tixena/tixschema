@@ -286,29 +286,29 @@ pub(super) fn answer_reader(service: &ServiceDef, generated: &Generated) -> Toke
                 let answered = match ::serde_json::from_slice::<
                     $crate::#module::Answered<S, ReportedError<E>>,
                 >(encoded) {
-                    Ok(answered) => answered,
-                    Err(rejected) => {
-                        return Err(#call_error::Fault(#fault::undeserializable_payload(
+                    ::core::result::Result::Ok(answered) => answered,
+                    ::core::result::Result::Err(rejected) => {
+                        return ::core::result::Result::Err(#call_error::Fault(#fault::undeserializable_payload(
                             operation,
                             &rejected.to_string(),
                         )));
                     }
                 };
                 match answered.carried() {
-                    Ok(Some(value)) => Ok(value),
-                    Ok(None) => Err(#call_error::Fault(#fault::undeserializable_payload(
+                    ::core::result::Result::Ok(::core::option::Option::Some(value)) => ::core::result::Result::Ok(value),
+                    ::core::result::Result::Ok(::core::option::Option::None) => ::core::result::Result::Err(#call_error::Fault(#fault::undeserializable_payload(
                         operation,
                         "the answer said `ok` and carried no value",
                     ))),
-                    Err(None) => Err(#call_error::Fault(#fault::undeserializable_payload(
+                    ::core::result::Result::Err(::core::option::Option::None) => ::core::result::Result::Err(#call_error::Fault(#fault::undeserializable_payload(
                         operation,
                         "the answer said it had failed and carried no error",
                     ))),
-                    Err(Some(ReportedError::Fault(tagged))) => {
-                        Err(#call_error::Fault(tagged.reported(operation)))
+                    ::core::result::Result::Err(::core::option::Option::Some(ReportedError::Fault(tagged))) => {
+                        ::core::result::Result::Err(#call_error::Fault(tagged.reported(operation)))
                     }
-                    Err(Some(ReportedError::Operation(declared))) => {
-                        Err(#call_error::Operation(declared))
+                    ::core::result::Result::Err(::core::option::Option::Some(ReportedError::Operation(declared))) => {
+                        ::core::result::Result::Err(#call_error::Operation(declared))
                     }
                 }
             }
@@ -325,25 +325,25 @@ pub(super) fn answer_reader(service: &ServiceDef, generated: &Generated) -> Toke
                 let answered = match ::serde_json::from_slice::<
                     $crate::#module::Answered<::serde::de::IgnoredAny, ReportedError<E>>,
                 >(encoded) {
-                    Ok(answered) => answered,
-                    Err(rejected) => {
-                        return Err(#call_error::Fault(#fault::undeserializable_payload(
+                    ::core::result::Result::Ok(answered) => answered,
+                    ::core::result::Result::Err(rejected) => {
+                        return ::core::result::Result::Err(#call_error::Fault(#fault::undeserializable_payload(
                             operation,
                             &rejected.to_string(),
                         )));
                     }
                 };
                 match answered.carried_unit() {
-                    Ok(()) => Ok(()),
-                    Err(None) => Err(#call_error::Fault(#fault::undeserializable_payload(
+                    ::core::result::Result::Ok(()) => ::core::result::Result::Ok(()),
+                    ::core::result::Result::Err(::core::option::Option::None) => ::core::result::Result::Err(#call_error::Fault(#fault::undeserializable_payload(
                         operation,
                         "the answer said it had failed and carried no error",
                     ))),
-                    Err(Some(ReportedError::Fault(tagged))) => {
-                        Err(#call_error::Fault(tagged.reported(operation)))
+                    ::core::result::Result::Err(::core::option::Option::Some(ReportedError::Fault(tagged))) => {
+                        ::core::result::Result::Err(#call_error::Fault(tagged.reported(operation)))
                     }
-                    Err(Some(ReportedError::Operation(declared))) => {
-                        Err(#call_error::Operation(declared))
+                    ::core::result::Result::Err(::core::option::Option::Some(ReportedError::Operation(declared))) => {
+                        ::core::result::Result::Err(#call_error::Operation(declared))
                     }
                 }
             }
@@ -386,12 +386,12 @@ fn reply_settled_block(
     if success_names.is_empty() && error_names.is_empty() {
         return quote! {
             match #called {
-                Ok(answered) => {
+                ::core::result::Result::Ok(answered) => {
                     reply
-                        .send($crate::#module::Answered::answering(answered), Vec::new())
+                        .send($crate::#module::Answered::answering(answered), ::std::vec::Vec::new())
                         .await
                 }
-                Err(panicked) => {
+                ::core::result::Result::Err(panicked) => {
                     record_panic(#wire, &panicked);
                     reply
                         .fault($crate::#module::ServiceFault::handler_panic(#wire, &panicked))
@@ -401,37 +401,37 @@ fn reply_settled_block(
         };
     }
     let ok_arm = if success_names.is_empty() {
-        quote! { Ok(value) => Ok(value), }
+        quote! { ::core::result::Result::Ok(value) => ::core::result::Result::Ok(value), }
     } else {
         let idents = header_out_idents(success_names);
         let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
         let element_types: Vec<&Type> = elements.iter().skip(1).copied().collect();
         let pushed = header_pushed_stmts(success_names, &idents, &element_types);
         quote! {
-            Ok((value, #(#idents),*)) => {
+            ::core::result::Result::Ok((value, #(#idents),*)) => {
                 #(#pushed)*
-                Ok(value)
+                ::core::result::Result::Ok(value)
             }
         }
     };
     let err_arm = if error_names.is_empty() {
-        quote! { Err(declared) => Err(declared), }
+        quote! { ::core::result::Result::Err(declared) => ::core::result::Result::Err(declared), }
     } else {
         let idents = header_out_idents(error_names);
         let elements: Vec<&Type> = tuple_elements(error).into_iter().flatten().collect();
         let element_types: Vec<&Type> = elements.iter().skip(1).copied().collect();
         let pushed = header_pushed_stmts(error_names, &idents, &element_types);
         quote! {
-            Err((declared, #(#idents),*)) => {
+            ::core::result::Result::Err((declared, #(#idents),*)) => {
                 #(#pushed)*
-                Err(declared)
+                ::core::result::Result::Err(declared)
             }
         }
     };
     quote! {
         match #called {
-            Ok(answered) => {
-                let mut headers: Vec<(String, String)> = Vec::new();
+            ::core::result::Result::Ok(answered) => {
+                let mut headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)> = ::std::vec::Vec::new();
                 // Neither arm names the operation's success or error type, so
                 // `Answered::answering` below infers both from `answered` alone.
                 let answered = match answered {
@@ -442,7 +442,7 @@ fn reply_settled_block(
                     .send($crate::#module::Answered::answering(answered), headers)
                     .await
             }
-            Err(panicked) => {
+            ::core::result::Result::Err(panicked) => {
                 record_panic(#wire, &panicked);
                 reply
                     .fault($crate::#module::ServiceFault::handler_panic(#wire, &panicked))
@@ -470,7 +470,7 @@ pub(super) fn arm(module: &Ident, operation: &OperationDef) -> TokenStream {
     let called = quote! { caught(move || svc.#method(ctx #(, #call)*)).await };
     let settled = match &operation.outcome {
         OperationOutcome::OneWay => quote! {
-            if let Err(panicked) = #called {
+            if let ::core::result::Result::Err(panicked) = #called {
                 record_panic(#wire, &panicked);
             }
         },
@@ -483,12 +483,12 @@ pub(super) fn arm(module: &Ident, operation: &OperationDef) -> TokenStream {
             let received = match ::serde_json::from_slice::<$crate::#module::#message>(
                 message.payload(),
             ) {
-                Ok(received) => received,
-                Err(rejected) => {
+                ::core::result::Result::Ok(received) => received,
+                ::core::result::Result::Err(rejected) => {
                     return reply.fault(refused_payload(#wire, &rejected)).await;
                 }
             };
-            if let Err(violations) = $crate::#module::#validator(&received) {
+            if let ::core::result::Result::Err(violations) = $crate::#module::#validator(&received) {
                 return reply
                     .fault($crate::#module::ServiceFault::failed_validation(
                         #wire,
@@ -663,7 +663,7 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
                 // The operations sit apart, under the `Sync` a call's future needs: it borrows the
                 // client across an await, and a borrow is only `Send` where what it borrows is
                 // `Sync`. Binding a client asks for no such thing.
-                impl<T: Transport + Sync> #client<T> {
+                impl<T: Transport + ::core::marker::Sync> #client<T> {
                     #(#methods)*
                 }
 
@@ -729,8 +729,8 @@ fn consumer_loop(contract: &Ident) -> TokenStream {
             shutdown: F,
         ) -> ::core::result::Result<Stopped, ::lapin::Error>
         where
-            S: $crate::#contract<Context> + Sync,
-            F: ::core::future::Future<Output = ()> + Send,
+            S: $crate::#contract<Context> + ::core::marker::Sync,
+            F: ::core::future::Future<Output = ()> + ::core::marker::Send,
         {
             declare(channel, queue).await?;
             channel
@@ -747,7 +747,7 @@ fn consumer_loop(contract: &Ident) -> TokenStream {
             ::tracing::info!(queue, prefetch = prefetch.get(), "serving");
 
             let consumer_tag = deliveries.tag();
-            Ok(serve_deliveries(
+            ::core::result::Result::Ok(serve_deliveries(
                 deliveries,
                 prefetch,
                 shutdown,
@@ -764,12 +764,12 @@ fn consumer_loop(contract: &Ident) -> TokenStream {
             service: &S,
             delivered: ::core::result::Result<::lapin::message::Delivery, ::lapin::Error>,
         ) where
-            S: $crate::#contract<Context> + Sync,
+            S: $crate::#contract<Context> + ::core::marker::Sync,
         {
             match delivered {
-                Ok(mut delivery) => {
+                ::core::result::Result::Ok(mut delivery) => {
                     let payload = ::core::mem::take(&mut delivery.data);
-                    let Some(operation) = operation_name(&delivery) else {
+                    let ::core::option::Option::Some(operation) = operation_name(&delivery) else {
                         reject_unaddressed(&delivery).await;
                         return;
                     };
@@ -790,7 +790,7 @@ fn consumer_loop(contract: &Ident) -> TokenStream {
                     dispatch(service, &ctx, &message, &reply).await;
                     acknowledge(&delivery).await;
                 }
-                Err(lost) => {
+                ::core::result::Result::Err(lost) => {
                     ::tracing::error!(error = %lost, queue, "a delivery could not be read");
                 }
             }
@@ -817,7 +817,7 @@ fn consumer_loop_driver() -> TokenStream {
             Delivered: ::futures::Stream,
             Shutdown: ::core::future::Future<Output = ()>,
             Stop: ::core::future::Future<Output = ()>,
-            Handle: FnMut(Delivered::Item) -> Handled,
+            Handle: ::core::ops::FnMut(Delivered::Item) -> Handled,
             Handled: ::core::future::Future<Output = ()>,
         {
             let mut deliveries = ::core::pin::pin!(deliveries);
@@ -830,11 +830,11 @@ fn consumer_loop_driver() -> TokenStream {
                 ::tokio::select! {
                     biased;
                     () = &mut shutdown => break Stopped::ShutdownRequested,
-                    Some(()) = ::futures::StreamExt::next(&mut started) => {}
+                    ::core::option::Option::Some(()) = ::futures::StreamExt::next(&mut started) => {}
                     delivered = ::futures::StreamExt::next(&mut deliveries), if room => {
                         match delivered {
-                            Some(delivered) => started.push(handle(delivered)),
-                            None => break Stopped::ConsumerClosed,
+                            ::core::option::Option::Some(delivered) => started.push(handle(delivered)),
+                            ::core::option::Option::None => break Stopped::ConsumerClosed,
                         }
                     }
                 }
@@ -888,7 +888,7 @@ fn consumer_loop_helpers() -> TokenStream {
             consumer_tag: ::lapin::types::ShortString,
             queue: &str,
         ) {
-            if let Err(refused) = channel
+            if let ::core::result::Result::Err(refused) = channel
                 .basic_cancel(consumer_tag, ::lapin::options::BasicCancelOptions::default())
                 .await
             {
@@ -898,7 +898,7 @@ fn consumer_loop_helpers() -> TokenStream {
 
         /// Settles the delivery, dispatch being done with it.
         async fn acknowledge(delivery: &::lapin::message::Delivery) {
-            if let Err(refused) = delivery
+            if let ::core::result::Result::Err(refused) = delivery
                 .acker
                 .ack(::lapin::options::BasicAckOptions::default())
                 .await
@@ -928,7 +928,7 @@ fn consumer_loop_helpers() -> TokenStream {
                 "a delivery carried no operation-name header and was rejected without being \
                  dispatched",
             );
-            if let Err(refused) = delivery
+            if let ::core::result::Result::Err(refused) = delivery
                 .acker
                 .reject(::lapin::options::BasicRejectOptions { requeue: false })
                 .await
@@ -941,22 +941,22 @@ fn consumer_loop_helpers() -> TokenStream {
         ///
         /// Both string encodings are accepted because a publisher chooses one and the choice is
         /// invisible to it.
-        fn operation_name(delivery: &::lapin::message::Delivery) -> Option<String> {
+        fn operation_name(delivery: &::lapin::message::Delivery) -> ::core::option::Option<::std::string::String> {
             let headers = delivery.properties.headers().as_ref()?;
 
             match headers.inner().get(OPERATION_NAME_HEADER)? {
-                ::lapin::types::AMQPValue::LongString(named) => Some(named.to_string()),
-                ::lapin::types::AMQPValue::ShortString(named) => Some(named.to_string()),
-                _ => None,
+                ::lapin::types::AMQPValue::LongString(named) => ::core::option::Option::Some(named.to_string()),
+                ::lapin::types::AMQPValue::ShortString(named) => ::core::option::Option::Some(named.to_string()),
+                _ => ::core::option::Option::None,
             }
         }
 
         /// Every header this delivery carried, as `(name, value)` text pairs — what a `header_in`
         /// binding reads from. A value not carried as text is left out rather than guessed at,
         /// there being no header binding this bus writes any other way.
-        fn incoming_headers(delivery: &::lapin::message::Delivery) -> Vec<(String, String)> {
-            let Some(headers) = delivery.properties.headers().as_ref() else {
-                return Vec::new();
+        fn incoming_headers(delivery: &::lapin::message::Delivery) -> ::std::vec::Vec<(::std::string::String, ::std::string::String)> {
+            let ::core::option::Option::Some(headers) = delivery.properties.headers().as_ref() else {
+                return ::std::vec::Vec::new();
             };
             headers
                 .inner()
@@ -965,9 +965,9 @@ fn consumer_loop_helpers() -> TokenStream {
                     let text = match value {
                         ::lapin::types::AMQPValue::LongString(text) => text.to_string(),
                         ::lapin::types::AMQPValue::ShortString(text) => text.to_string(),
-                        _ => return None,
+                        _ => return ::core::option::Option::None,
                     };
-                    Some((name.to_string(), text))
+                    ::core::option::Option::Some((name.to_string(), text))
                 })
                 .collect()
         }
@@ -1137,11 +1137,11 @@ pub(super) fn dispatcher_fns(service: &ServiceDef) -> TokenStream {
             #context: &Ctx,
             message: &IncomingMessage,
             reply: &R,
-        ) -> impl ::core::future::Future<Output = ()> + Send
+        ) -> impl ::core::future::Future<Output = ()> + ::core::marker::Send
         where
-            S: $crate::#contract<Ctx> + Sync,
-            Ctx: Sync,
-            R: Reply + Sync,
+            S: $crate::#contract<Ctx> + ::core::marker::Sync,
+            Ctx: ::core::marker::Sync,
+            R: Reply + ::core::marker::Sync,
         {
             async move {
                 match message.operation() {
@@ -1201,10 +1201,10 @@ pub(super) fn fault_mirror() -> TokenStream {
         #[derive(::serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct FaultOnTheWire {
-            detail: String,
-            field: Option<String>,
+            detail: ::std::string::String,
+            field: ::core::option::Option<::std::string::String>,
             kind: FaultKindOnTheWire,
-            operation: String,
+            operation: ::std::string::String,
         }
 
         /// The kinds, spelled as the wire spells them.
@@ -1299,7 +1299,7 @@ pub(super) fn fault_mirror_readers(generated: &Generated) -> TokenStream {
 /// anything else surfaces as the decode failure a missing required header is.
 pub(super) fn header_decoder() -> TokenStream {
     quote! {
-        fn decoded_header<T>(headers: &[(String, String)], name: &str) -> ::core::result::Result<T, String>
+        fn decoded_header<T>(headers: &[(::std::string::String, ::std::string::String)], name: &str) -> ::core::result::Result<T, ::std::string::String>
         where
             T: ::serde::de::DeserializeOwned,
         {
@@ -1317,19 +1317,19 @@ pub(super) fn header_decoder() -> TokenStream {
 /// dropped rather than losing the whole reply over one field that would not encode.
 pub(super) fn header_encoder() -> TokenStream {
     quote! {
-        fn encoded_header<T>(name: &str, value: &T) -> Option<(String, String)>
+        fn encoded_header<T>(name: &str, value: &T) -> ::core::option::Option<(::std::string::String, ::std::string::String)>
         where
             T: ::serde::Serialize,
         {
             match ::serde_json::to_string(value) {
-                Ok(encoded) => Some((name.to_owned(), encoded)),
-                Err(unrepresentable) => {
+                ::core::result::Result::Ok(encoded) => ::core::option::Option::Some((name.to_owned(), encoded)),
+                ::core::result::Result::Err(unrepresentable) => {
                     ::tracing::error!(
                         error = %unrepresentable,
                         header = name,
                         "a reply header would not encode",
                     );
-                    None
+                    ::core::option::Option::None
                 }
             }
         }
@@ -1373,12 +1373,12 @@ fn header_in_reads(module: &Ident, operation: &OperationDef) -> TokenStream {
         // own field's type either.
         quote! {
             let #parameter = match decoded_header(message.headers(), #name) {
-                Ok(decoded) => decoded,
-                Err(detail) => {
+                ::core::result::Result::Ok(decoded) => decoded,
+                ::core::result::Result::Err(detail) => {
                     return reply
                         .fault($crate::#module::ServiceFault::failed_validation(
                             #wire,
-                            Some(#name),
+                            ::core::option::Option::Some(#name),
                             &detail,
                         ))
                         .await;
@@ -1411,15 +1411,15 @@ fn header_pushed_stmts(
         .map(|((name, ident), ty)| {
             if option_inner(ty).is_some() {
                 quote! {
-                    if let Some(value) = &#ident {
-                        if let Some(pair) = encoded_header(#name, value) {
+                    if let ::core::option::Option::Some(value) = &#ident {
+                        if let ::core::option::Option::Some(pair) = encoded_header(#name, value) {
                             headers.push(pair);
                         }
                     }
                 }
             } else {
                 quote! {
-                    if let Some(pair) = encoded_header(#name, &#ident) {
+                    if let ::core::option::Option::Some(pair) = encoded_header(#name, &#ident) {
                         headers.push(pair);
                     }
                 }
@@ -1526,9 +1526,9 @@ pub(super) fn incoming_message(declares_header_in: bool) -> TokenStream {
             /// read through [`operation`](IncomingMessage::operation),
             /// [`payload`](IncomingMessage::payload) and [`headers`](IncomingMessage::headers).
             pub struct IncomingMessage {
-                headers: Vec<(String, String)>,
-                operation: String,
-                payload: Vec<u8>,
+                headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
+                operation: ::std::string::String,
+                payload: ::std::vec::Vec<u8>,
             }
         }
     } else {
@@ -1544,8 +1544,8 @@ pub(super) fn incoming_message(declares_header_in: bool) -> TokenStream {
             /// read through [`operation`](IncomingMessage::operation) and
             /// [`payload`](IncomingMessage::payload).
             pub struct IncomingMessage {
-                operation: String,
-                payload: Vec<u8>,
+                operation: ::std::string::String,
+                payload: ::std::vec::Vec<u8>,
             }
         }
     }
@@ -1572,7 +1572,7 @@ pub(super) fn incoming_message_accessors(declares_header_in: bool) -> TokenStrea
         quote! {
             /// The headers this message carried beside its payload, which is what a `header_in`
             /// binding reads from.
-            pub fn headers(&self) -> &[(String, String)] {
+            pub fn headers(&self) -> &[(::std::string::String, ::std::string::String)] {
                 &self.headers
             }
         }
@@ -1584,9 +1584,9 @@ pub(super) fn incoming_message_accessors(declares_header_in: bool) -> TokenStrea
             /// Binds the operation name and headers the transport read off the wire to the bytes
             /// beside them.
             pub #constness fn new(
-                operation: String,
-                payload: Vec<u8>,
-                #bound: Vec<(String, String)>,
+                operation: ::std::string::String,
+                payload: ::std::vec::Vec<u8>,
+                #bound: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
             ) -> Self {
                 Self { #stored operation, payload }
             }
@@ -1635,10 +1635,10 @@ pub(super) fn method(operation: &OperationDef, generated: &Generated) -> TokenSt
         #[doc = #doc]
         pub fn #named(
             &self #(, #taken)*
-        ) -> impl ::core::future::Future<Output = #answers> + Send {
+        ) -> impl ::core::future::Future<Output = #answers> + ::core::marker::Send {
             async move {
                 #packed
-                if let Err(violations) = $crate::#module::#check(&sending) {
+                if let ::core::result::Result::Err(violations) = $crate::#module::#check(&sending) {
                     #refusal
                 }
                 #headers
@@ -1655,7 +1655,7 @@ pub(super) fn method(operation: &OperationDef, generated: &Generated) -> TokenSt
 fn outbound_headers(operation: &OperationDef, generated: &Generated) -> TokenStream {
     let bindings = header_in_bindings(operation);
     if bindings.is_empty() {
-        return quote! { let headers: Vec<(String, String)> = Vec::new(); };
+        return quote! { let headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)> = ::std::vec::Vec::new(); };
     }
     let pushes = bindings.iter().map(|header| {
         let HeaderIn {
@@ -1666,8 +1666,8 @@ fn outbound_headers(operation: &OperationDef, generated: &Generated) -> TokenStr
         let refusal = header_encode_refusal(operation, generated, name);
         quote! {
             match ::serde_json::to_string(&#parameter) {
-                Ok(encoded) => headers.push((#name.to_owned(), encoded)),
-                Err(unrepresentable) => {
+                ::core::result::Result::Ok(encoded) => headers.push((#name.to_owned(), encoded)),
+                ::core::result::Result::Err(unrepresentable) => {
                     let detail = unrepresentable.to_string();
                     #refusal
                 }
@@ -1675,7 +1675,7 @@ fn outbound_headers(operation: &OperationDef, generated: &Generated) -> TokenStr
         }
     });
     quote! {
-        let mut headers: Vec<(String, String)> = Vec::new();
+        let mut headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)> = ::std::vec::Vec::new();
         #(#pushes)*
     }
 }
@@ -1694,14 +1694,15 @@ fn header_encode_refusal(
         module: _module,
     } = generated;
     let wire = &operation.wire_name;
-    let built = quote! { #fault::failed_validation(#wire, Some(#name), &detail) };
+    let built =
+        quote! { #fault::failed_validation(#wire, ::core::option::Option::Some(#name), &detail) };
     match &operation.outcome {
-        OperationOutcome::OneWay => quote! { return Err(#built); },
+        OperationOutcome::OneWay => quote! { return ::core::result::Result::Err(#built); },
         OperationOutcome::Reply {
             error: _error,
             success: _success,
         } => {
-            quote! { return Err(#call_error::Fault(#built)); }
+            quote! { return ::core::result::Result::Err(#call_error::Fault(#built)); }
         }
     }
 }
@@ -1723,12 +1724,12 @@ fn header_value_decode_lets(
         .map(|((name, ty), ident)| {
             quote! {
                 let #ident: #ty = match decoded_header(&incoming, #name) {
-                    Ok(decoded) => decoded,
-                    Err(detail) => {
-                        return Err(#call_error::Fault(
+                    ::core::result::Result::Ok(decoded) => decoded,
+                    ::core::result::Result::Err(detail) => {
+                        return ::core::result::Result::Err(#call_error::Fault(
                             $crate::#module::ServiceFault::failed_validation(
                                 #wire,
-                                Some(#name),
+                                ::core::option::Option::Some(#name),
                                 &detail,
                             ),
                         ));
@@ -1790,8 +1791,8 @@ fn client_answer_reply(
     match header_out_shape(operation) {
         None if is_unit_type(success) => quote! {
             match self.transport.request(#wire, sending, headers).await {
-                Ok((encoded, _headers)) => read_unit_answer(#wire, &encoded).map(|()| #success),
-                Err(uncarried) => Err(#call_error::Fault(#fault::transport_failure(
+                ::core::result::Result::Ok((encoded, _headers)) => read_unit_answer(#wire, &encoded).map(|()| #success),
+                ::core::result::Result::Err(uncarried) => ::core::result::Result::Err(#call_error::Fault(#fault::transport_failure(
                     #wire,
                     &uncarried,
                 ))),
@@ -1799,8 +1800,8 @@ fn client_answer_reply(
         },
         None => quote! {
             match self.transport.request(#wire, sending, headers).await {
-                Ok((encoded, _headers)) => read_answer(#wire, &encoded),
-                Err(uncarried) => Err(#call_error::Fault(#fault::transport_failure(
+                ::core::result::Result::Ok((encoded, _headers)) => read_answer(#wire, &encoded),
+                ::core::result::Result::Err(uncarried) => ::core::result::Result::Err(#call_error::Fault(#fault::transport_failure(
                     #wire,
                     &uncarried,
                 ))),
@@ -1812,16 +1813,16 @@ fn client_answer_reply(
                 header_value_decode_lets(wire, call_error, module, &names, &header_types, &idents);
             quote! {
                 match self.transport.request(#wire, sending, headers).await {
-                    Ok((encoded, incoming)) => {
+                    ::core::result::Result::Ok((encoded, incoming)) => {
                         match read_answer::<#response, #error>(#wire, &encoded) {
-                            Ok(value) => {
+                            ::core::result::Result::Ok(value) => {
                                 #decodes
-                                Ok((value, #(#idents),*))
+                                ::core::result::Result::Ok((value, #(#idents),*))
                             }
-                            Err(refused) => Err(refused),
+                            ::core::result::Result::Err(refused) => ::core::result::Result::Err(refused),
                         }
                     }
-                    Err(uncarried) => Err(#call_error::Fault(#fault::transport_failure(
+                    ::core::result::Result::Err(uncarried) => ::core::result::Result::Err(#call_error::Fault(#fault::transport_failure(
                         #wire,
                         &uncarried,
                     ))),
@@ -1855,11 +1856,11 @@ fn client_answer_reply_with_error_headers(
         );
         quote! {
             match raw {
-                Ok(value) => Ok(value),
-                Err(#call_error::Fault(reported)) => Err(#call_error::Fault(reported)),
-                Err(#call_error::Operation(head)) => {
+                ::core::result::Result::Ok(value) => ::core::result::Result::Ok(value),
+                ::core::result::Result::Err(#call_error::Fault(reported)) => ::core::result::Result::Err(#call_error::Fault(reported)),
+                ::core::result::Result::Err(#call_error::Operation(head)) => {
                     #decodes
-                    Err(#call_error::Operation((head, #(#idents),*)))
+                    ::core::result::Result::Err(#call_error::Operation((head, #(#idents),*)))
                 }
             }
         }
@@ -1867,11 +1868,11 @@ fn client_answer_reply_with_error_headers(
     match header_out_shape(operation) {
         None if is_unit_type(success) => quote! {
             match self.transport.request(#wire, sending, headers).await {
-                Ok((encoded, incoming)) => {
+                ::core::result::Result::Ok((encoded, incoming)) => {
                     let raw = read_unit_answer::<#error_head>(#wire, &encoded);
                     #reconstruct
                 }
-                Err(uncarried) => Err(#call_error::Fault(#fault::transport_failure(
+                ::core::result::Result::Err(uncarried) => ::core::result::Result::Err(#call_error::Fault(#fault::transport_failure(
                     #wire,
                     &uncarried,
                 ))),
@@ -1879,11 +1880,11 @@ fn client_answer_reply_with_error_headers(
         },
         None => quote! {
             match self.transport.request(#wire, sending, headers).await {
-                Ok((encoded, incoming)) => {
+                ::core::result::Result::Ok((encoded, incoming)) => {
                     let raw = read_answer::<#success, #error_head>(#wire, &encoded);
                     #reconstruct
                 }
-                Err(uncarried) => Err(#call_error::Fault(#fault::transport_failure(
+                ::core::result::Result::Err(uncarried) => ::core::result::Result::Err(#call_error::Fault(#fault::transport_failure(
                     #wire,
                     &uncarried,
                 ))),
@@ -1895,17 +1896,17 @@ fn client_answer_reply_with_error_headers(
                 header_value_decode_lets(wire, call_error, module, &names, &header_types, &idents);
             quote! {
                 match self.transport.request(#wire, sending, headers).await {
-                    Ok((encoded, incoming)) => {
+                    ::core::result::Result::Ok((encoded, incoming)) => {
                         let raw = match read_answer::<#response, #error_head>(#wire, &encoded) {
-                            Ok(value) => {
+                            ::core::result::Result::Ok(value) => {
                                 #decodes
-                                Ok((value, #(#idents),*))
+                                ::core::result::Result::Ok((value, #(#idents),*))
                             }
-                            Err(refused) => Err(refused),
+                            ::core::result::Result::Err(refused) => ::core::result::Result::Err(refused),
                         };
                         #reconstruct
                     }
-                    Err(uncarried) => Err(#call_error::Fault(#fault::transport_failure(
+                    ::core::result::Result::Err(uncarried) => ::core::result::Result::Err(#call_error::Fault(#fault::transport_failure(
                         #wire,
                         &uncarried,
                     ))),
@@ -1973,12 +1974,12 @@ pub(super) fn outbound_refusal(operation: &OperationDef, generated: &Generated) 
         )
     };
     match &operation.outcome {
-        OperationOutcome::OneWay => quote! { return Err(#built); },
+        OperationOutcome::OneWay => quote! { return ::core::result::Result::Err(#built); },
         OperationOutcome::Reply {
             error: _error,
             success: _success,
         } => {
-            quote! { return Err(#call_error::Fault(#built)); }
+            quote! { return ::core::result::Result::Err(#call_error::Fault(#built)); }
         }
     }
 }
@@ -2017,26 +2018,26 @@ pub(super) fn panic_guard() -> TokenStream {
         /// delivery that is never settled, and a caller owed an answer either way. Under
         /// `panic = "abort"` nothing is caught and the process ends, that being the profile's
         /// decision rather than this one's.
-        async fn caught<Making, Running>(making: Making) -> ::core::result::Result<Running::Output, String>
+        async fn caught<Making, Running>(making: Making) -> ::core::result::Result<Running::Output, ::std::string::String>
         where
-            Making: FnOnce() -> Running,
+            Making: ::core::ops::FnOnce() -> Running,
             Running: ::core::future::Future,
         {
             let running =
                 match ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(making)) {
-                    Ok(running) => running,
-                    Err(panicked) => return Err(panic_detail(&*panicked)),
+                    ::core::result::Result::Ok(running) => running,
+                    ::core::result::Result::Err(panicked) => return ::core::result::Result::Err(panic_detail(&*panicked)),
                 };
             let mut running = ::core::pin::pin!(running);
             ::core::future::poll_fn(move |polling| {
                 match ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
                     ::core::future::Future::poll(running.as_mut(), polling)
                 })) {
-                    Ok(::core::task::Poll::Pending) => ::core::task::Poll::Pending,
-                    Ok(::core::task::Poll::Ready(answered)) => {
-                        ::core::task::Poll::Ready(Ok(answered))
+                    ::core::result::Result::Ok(::core::task::Poll::Pending) => ::core::task::Poll::Pending,
+                    ::core::result::Result::Ok(::core::task::Poll::Ready(answered)) => {
+                        ::core::task::Poll::Ready(::core::result::Result::Ok(answered))
                     }
-                    Err(panicked) => ::core::task::Poll::Ready(Err(panic_detail(&*panicked))),
+                    ::core::result::Result::Err(panicked) => ::core::task::Poll::Ready(::core::result::Result::Err(panic_detail(&*panicked))),
                 }
             })
             .await
@@ -2068,11 +2069,11 @@ pub(super) fn panic_guard() -> TokenStream {
         /// What a caught panic said, for the fault's detail. A panic payload is whatever reached
         /// `panic!` — a `&str` for a literal message and a `String` for a formatted one — and
         /// anything else carries nothing a reader could be shown.
-        fn panic_detail(panicked: &(dyn ::core::any::Any + Send)) -> String {
-            if let Some(said) = panicked.downcast_ref::<&str>() {
+        fn panic_detail(panicked: &(dyn ::core::any::Any + ::core::marker::Send)) -> ::std::string::String {
+            if let ::core::option::Option::Some(said) = panicked.downcast_ref::<&str>() {
                 return (*said).to_owned();
             }
-            if let Some(said) = panicked.downcast_ref::<String>() {
+            if let ::core::option::Option::Some(said) = panicked.downcast_ref::<::std::string::String>() {
                 return said.clone();
             }
             "the handler panicked, and said nothing that reads back".to_owned()
@@ -2134,12 +2135,12 @@ pub(super) fn refusal_reader(module: &Ident) -> TokenStream {
         ///
         /// The name it carries is the key as the wire spells it, since that is the name serde was
         /// reading for; a validator's report names the Rust field, that being what it holds.
-        fn serde_named_field(reported: &str) -> Option<&str> {
+        fn serde_named_field(reported: &str) -> ::core::option::Option<&str> {
             let named = reported
                 .strip_prefix("missing field ")
                 .or_else(|| reported.strip_prefix("unknown field "))?;
             let (field, _rest) = named.strip_prefix('`')?.split_once('`')?;
-            Some(field)
+            ::core::option::Option::Some(field)
         }
 
         /// Which fault a serde refusal is, and what it says.
@@ -2184,8 +2185,8 @@ fn reply_handle_type() -> TokenStream {
         /// Everything answering one message needs.
         pub struct ReplyHandle<'reply> {
             channel: &'reply ::lapin::Channel,
-            correlation_id: Option<::lapin::types::ShortString>,
-            reply_to: Option<::lapin::types::ShortString>,
+            correlation_id: ::core::option::Option<::lapin::types::ShortString>,
+            reply_to: ::core::option::Option<::lapin::types::ShortString>,
         }
     }
 }
@@ -2203,30 +2204,30 @@ fn reply_handle_impls(module: &Ident) -> TokenStream {
         impl Reply for ReplyHandle<'_> {
             async fn fault(&self, fault: $crate::#module::ServiceFault) {
                 match ::serde_json::to_value(fault) {
-                    Ok(fault) => {
+                    ::core::result::Result::Ok(fault) => {
                         let framed = framed_fault(&fault);
                         let (kind, body) = reply(&framed);
-                        self.publish(kind, &body, outgoing_headers(&framed, Vec::new()))
+                        self.publish(kind, &body, outgoing_headers(&framed, ::std::vec::Vec::new()))
                             .await;
                     }
-                    Err(unserializable) => ::tracing::error!(
+                    ::core::result::Result::Err(unserializable) => ::tracing::error!(
                         error = %unserializable,
                         "a service fault would not serialize; the caller is left without a reply",
                     ),
                 }
             }
 
-            async fn send<T>(&self, value: T, headers: Vec<(String, String)>)
+            async fn send<T>(&self, value: T, headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>)
             where
-                T: ::serde::Serialize + Send,
+                T: ::serde::Serialize + ::core::marker::Send,
             {
                 match ::serde_json::to_value(value) {
-                    Ok(answered) => {
+                    ::core::result::Result::Ok(answered) => {
                         let (kind, body) = reply(&answered);
                         self.publish(kind, &body, outgoing_headers(&answered, headers))
                             .await;
                     }
-                    Err(unserializable) => ::tracing::error!(
+                    ::core::result::Result::Err(unserializable) => ::tracing::error!(
                         error = %unserializable,
                         "an answer would not serialize; the caller is left without a reply",
                     ),
@@ -2244,25 +2245,25 @@ fn reply_handle_impls(module: &Ident) -> TokenStream {
                 body: &::serde_json::Value,
                 headers: ::lapin::types::FieldTable,
             ) {
-                let Some(reply_to) = self.reply_to.clone() else {
+                let ::core::option::Option::Some(reply_to) = self.reply_to.clone() else {
                     return;
                 };
                 let encoded = match ::serde_json::to_vec(body) {
-                    Ok(encoded) => encoded,
-                    Err(unserializable) => {
+                    ::core::result::Result::Ok(encoded) => encoded,
+                    ::core::result::Result::Err(unserializable) => {
                         ::tracing::error!(error = %unserializable, "a reply would not encode");
                         return;
                     }
                 };
                 let mut properties = ::lapin::BasicProperties::default()
                     .with_type(::lapin::types::ShortString::from(kind));
-                if let Some(correlation_id) = self.correlation_id.clone() {
+                if let ::core::option::Option::Some(correlation_id) = self.correlation_id.clone() {
                     properties = properties.with_correlation_id(correlation_id);
                 }
                 if !headers.inner().is_empty() {
                     properties = properties.with_headers(headers);
                 }
-                if let Err(refused) = self
+                if let ::core::result::Result::Err(refused) = self
                     .channel
                     .basic_publish(
                         ::lapin::types::ShortString::from(""),
@@ -2321,10 +2322,10 @@ pub(super) fn reply_trait(contract: &Ident, module: &Ident, with_send: bool) -> 
             fn send<T>(
                 &self,
                 value: T,
-                headers: Vec<(String, String)>,
-            ) -> impl ::core::future::Future<Output = ()> + Send
+                headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
+            ) -> impl ::core::future::Future<Output = ()> + ::core::marker::Send
             where
-                T: ::serde::Serialize + Send;
+                T: ::serde::Serialize + ::core::marker::Send;
         }
     });
     quote! {
@@ -2334,7 +2335,7 @@ pub(super) fn reply_trait(contract: &Ident, module: &Ident, with_send: bool) -> 
             fn fault(
                 &self,
                 fault: $crate::#module::ServiceFault,
-            ) -> impl ::core::future::Future<Output = ()> + Send;
+            ) -> impl ::core::future::Future<Output = ()> + ::core::marker::Send;
 
             #send
         }
@@ -2463,10 +2464,10 @@ pub(super) fn transport_trait(contract: &Ident) -> TokenStream {
                 &self,
                 operation: &str,
                 payload: T,
-                headers: Vec<(String, String)>,
-            ) -> impl ::core::future::Future<Output = ::core::result::Result<(), String>> + Send
+                headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
+            ) -> impl ::core::future::Future<Output = ::core::result::Result<(), ::std::string::String>> + ::core::marker::Send
             where
-                T: ::serde::Serialize + Send;
+                T: ::serde::Serialize + ::core::marker::Send;
 
             /// Sends a message and answers with the encoded reply and the headers it carried, or
             /// `Err` with what stopped it in words if the call never landed and no reply is
@@ -2475,11 +2476,11 @@ pub(super) fn transport_trait(contract: &Ident) -> TokenStream {
                 &self,
                 operation: &str,
                 payload: T,
-                headers: Vec<(String, String)>,
-            ) -> impl ::core::future::Future<Output = ::core::result::Result<(Vec<u8>, Vec<(String, String)>), String>>
-            + Send
+                headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
+            ) -> impl ::core::future::Future<Output = ::core::result::Result<(::std::vec::Vec<u8>, ::std::vec::Vec<(::std::string::String, ::std::string::String)>), ::std::string::String>>
+            + ::core::marker::Send
             where
-                T: ::serde::Serialize + Send;
+                T: ::serde::Serialize + ::core::marker::Send;
         }
     }
 }
@@ -2511,21 +2512,21 @@ fn wire_framing_fns() -> TokenStream {
         /// One answer, as the reply that carries it: the `type` property naming which of the three
         /// it is, and the body.
         pub fn reply(answered: &::serde_json::Value) -> (&'static str, ::serde_json::Value) {
-            let Some(answered) = answered.as_object() else {
+            let ::core::option::Option::Some(answered) = answered.as_object() else {
                 return (FAULT, unreadable("the service answered with no message"));
             };
-            if answered.get("ok") == Some(&::serde_json::Value::Bool(true)) {
+            if answered.get("ok") == ::core::option::Option::Some(&::serde_json::Value::Bool(true)) {
                 return (
                     RESPONSE,
                     answered.get("value").cloned().unwrap_or(::serde_json::Value::Null),
                 );
             }
-            let Some(error) = answered.get("error") else {
+            let ::core::option::Option::Some(error) = answered.get("error") else {
                 return (FAULT, unreadable("the service answered with no error"));
             };
             match error.get("fault") {
-                Some(fault)
-                    if error.get("isServiceFault") == Some(&::serde_json::Value::Bool(true)) =>
+                ::core::option::Option::Some(fault)
+                    if error.get("isServiceFault") == ::core::option::Option::Some(&::serde_json::Value::Bool(true)) =>
                 {
                     (FAULT, fault.clone())
                 }
@@ -2544,7 +2545,7 @@ fn wire_framing_fns() -> TokenStream {
         /// `answered`'s own `ok` is `false`.
         pub fn outgoing_headers(
             answered: &::serde_json::Value,
-            headers: Vec<(String, String)>,
+            headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
         ) -> ::lapin::types::FieldTable {
             let mut table = ::lapin::types::FieldTable::default();
             for (name, value) in headers {
@@ -2553,7 +2554,7 @@ fn wire_framing_fns() -> TokenStream {
                     ::lapin::types::AMQPValue::LongString(::lapin::types::LongString::from(value)),
                 );
             }
-            if answered.get("ok") == Some(&::serde_json::Value::Bool(false)) {
+            if answered.get("ok") == ::core::option::Option::Some(&::serde_json::Value::Bool(false)) {
                 table.insert(
                     ::lapin::types::ShortString::from(IS_ERROR_HEADER),
                     ::lapin::types::AMQPValue::Boolean(true),

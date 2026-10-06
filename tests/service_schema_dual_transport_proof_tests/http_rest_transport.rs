@@ -8,6 +8,9 @@
 //! carrying an `error_status` table (or falling back to the fixed default binding) has to be in
 //! scope here.
 
+use crate::shadowing::{Box, Clone, Default, Err, None, Ok, Send, Sized, Some, Sync};
 use crate::tests::{ArchiveError, GetVersionError, RangeError, ThumbnailError};
 
 document_service_http_rest_dispatcher!();
+
+shadowing_names_built!();

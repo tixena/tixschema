@@ -140,7 +140,7 @@ fn swift_module_tokens(
     let module_ident = swift_module_ident(rust_ident, span);
     quote! {
         pub mod #module_ident {
-            pub fn swift_definition() -> String {
+            pub fn swift_definition() -> std::string::String {
                 #swift_source.to_owned()
             }
         }

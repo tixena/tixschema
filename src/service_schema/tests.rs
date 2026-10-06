@@ -792,7 +792,7 @@ fn the_emitted_trait_carries_the_context_and_desugars_every_async_operation() {
     );
     assert!(
         emitted.contains(
-            "-> impl :: core :: future :: Future < Output = Result < AvailableBalanceResponse , UsageError > > + Send"
+            "-> impl :: core :: future :: Future < Output = Result < AvailableBalanceResponse , UsageError > > + :: core :: marker :: Send"
         ),
         "got: {emitted}"
     );
@@ -802,7 +802,9 @@ fn the_emitted_trait_carries_the_context_and_desugars_every_async_operation() {
 fn the_emitted_trait_desugars_a_one_way_operation_to_an_empty_output() {
     let emitted = rendered(MIXED_SERVICE);
     assert!(
-        emitted.contains("-> impl :: core :: future :: Future < Output = () > + Send"),
+        emitted.contains(
+            "-> impl :: core :: future :: Future < Output = () > + :: core :: marker :: Send"
+        ),
         "got: {emitted}"
     );
 }
@@ -1124,9 +1126,10 @@ fn dispatch_is_generic_over_the_implementing_type_and_answers_through_the_handle
     assert!(
         emitted.contains(
             "pub fn dispatch < S , Ctx , R > (svc : & S , ctx : & Ctx , message : & \
-             IncomingMessage , reply : & R ,) -> impl :: core :: future :: Future < Output = () > \
-             + Send where S : $ crate :: UsageService < Ctx > + Sync , Ctx : Sync , \
-             R : Reply + Sync"
+             IncomingMessage , reply : & R ,) -> impl :: core :: future :: Future < Output = () \
+             > + :: core :: marker :: Send where S : $ crate :: UsageService < Ctx > + :: core \
+             :: marker :: Sync , Ctx : :: core :: marker :: Sync , R : Reply + :: core :: \
+             marker :: Sync"
         ),
         "it returns nothing, and a trait with `async fn` has no `dyn` form to offer. Got: \
          {emitted}"
@@ -1985,8 +1988,9 @@ fn every_arm_writes_a_caught_panic_down_before_it_answers() {
     let emitted = expanded_over_amqp_rpc(MIXED_SERVICE);
     assert!(
         emitted.contains(
-            "if let Err (panicked) = caught (move || svc . apply_bundle (ctx , received)) . await \
-             { record_panic (\"apply-bundle\" , & panicked) ; }"
+            "if let :: core :: result :: Result :: Err (panicked) = caught (move || svc . \
+             apply_bundle (ctx , received)) . await { record_panic (\"apply-bundle\" , & \
+             panicked) ; }"
         ),
         "a one-way arm answers nobody, so the record is the whole account of the panic there is. \
          Got: {emitted}"
@@ -2037,8 +2041,8 @@ fn a_refusal_and_a_violation_are_read_for_a_field_name_by_the_same_reader() {
     );
     assert!(
         emitted.contains(
-            "fn violated_field (reported : & [String]) -> Option < & str > { \
-                          named_field (reported . first () ?) }"
+            "fn violated_field (reported : & [:: std :: string :: String]) -> :: core :: option \
+             :: Option < & str > { named_field (reported . first () ?) }"
         ),
         "a violation report's field is the first line's, read by the one reader. Got: {emitted}"
     );
@@ -2156,8 +2160,9 @@ fn a_client_method_validates_before_it_reaches_the_transport() {
     );
     assert!(
         emitted.contains(
-            "return Err ($ crate :: usage_service_schema :: CallError :: Fault ($ crate :: \
-             usage_service_schema :: ServiceFault :: failed_validation ("
+            "return :: core :: result :: Result :: Err ($ crate :: usage_service_schema :: \
+             CallError :: Fault ($ crate :: usage_service_schema :: ServiceFault :: \
+             failed_validation ("
         ),
         "the operation never ran, so it is not one of its declared errors. Got: {emitted}"
     );
@@ -2167,8 +2172,10 @@ fn a_client_method_validates_before_it_reaches_the_transport() {
 fn the_transport_seam_gives_a_call_that_never_landed_somewhere_to_be_reported() {
     let client = published_macro(MIXED_SERVICE, "usage_service_amqp_rpc_client");
     for answered in [
-        "Output = :: core :: result :: Result < () , String >",
-        "Output = :: core :: result :: Result < (Vec < u8 > , Vec < (String , String) >) , String >",
+        "Output = :: core :: result :: Result < () , :: std :: string :: String >",
+        "Output = :: core :: result :: Result < (:: std :: vec :: Vec < u8 > , :: std :: vec :: \
+         Vec < (:: std :: string :: String , :: std :: string :: String) >) , :: std :: string \
+         :: String >",
     ] {
         assert!(
             client.contains(answered),
@@ -2178,7 +2185,7 @@ fn the_transport_seam_gives_a_call_that_never_landed_somewhere_to_be_reported() 
         );
     }
     assert!(
-        !client.contains("Output = Vec < u8 > "),
+        !client.contains("Output = :: std :: vec :: Vec < u8 > "),
         "the reply position is the failure arm's `Ok`, not the whole answer. Got: {client}"
     );
     // Both directions, so a seam that grew the arm and a client that ignored it fails here. Each
@@ -2508,7 +2515,10 @@ fn the_incoming_message_publishes_a_constructor_and_two_readers_rather_than_its_
     // it is no longer `const`: a `Vec`'s destructor cannot run inside a `const fn`.
     let body = published_macro(MIXED_SERVICE, "usage_service_amqp_rpc_dispatcher");
     assert!(
-        body.contains("pub struct IncomingMessage { operation : String , payload : Vec < u8 > , }"),
+        body.contains(
+            "pub struct IncomingMessage { operation : :: std :: string :: String , \
+                       payload : :: std :: vec :: Vec < u8 > , }"
+        ),
         "neither field is published, so nothing outside reads or writes one directly. Got: {body}"
     );
     assert!(
@@ -2516,8 +2526,9 @@ fn the_incoming_message_publishes_a_constructor_and_two_readers_rather_than_its_
         "no operation here binds a header, so nothing reads one off the message. Got: {body}"
     );
     for published in [
-        "pub fn new (operation : String , payload : Vec < u8 > , _headers : Vec < (String , \
-         String) > ,) -> Self",
+        "pub fn new (operation : :: std :: string :: String , payload : :: std :: vec :: Vec < \
+         u8 > , _headers : :: std :: vec :: Vec < (:: std :: string :: String , :: std :: \
+         string :: String) > ,) -> Self",
         "pub fn operation (& self) -> & str",
         "pub fn payload (& self) -> & [u8]",
     ] {
@@ -3661,25 +3672,30 @@ fn a_json_operations_expansion_is_unchanged_at_the_token_level() {
     let dispatcher =
         published_macro_over_http_rest(HTTP_SERVICE, "document_service_http_rest_dispatcher");
     for fragment in [
-        "Ok (Ok (value)) => { return json_response (200u16 , :: std :: vec :: Vec :: new () , & \
-         value) ; } Ok (Err (declared_error)) => { let status = 422u16 ; return json_response \
-         (status , :: std :: vec :: Vec :: new () , & declared_error) ; } Err (panicked) => { \
-         record_panic (\"create-document\" , & panicked) ; return handler . on_fault (& $ crate \
-         :: document_service_schema :: ServiceFault :: handler_panic (\"create-document\" , & \
+        ":: core :: result :: Result :: Ok (:: core :: result :: Result :: Ok (value)) => { \
+         return json_response (200u16 , :: std :: vec :: Vec :: new () , & value) ; } :: core \
+         :: result :: Result :: Ok (:: core :: result :: Result :: Err (declared_error)) => { \
+         let status = 422u16 ; return json_response (status , :: std :: vec :: Vec :: new () , \
+         & declared_error) ; } :: core :: result :: Result :: Err (panicked) => { record_panic \
+         (\"create-document\" , & panicked) ; return handler . on_fault (& $ crate :: \
+         document_service_schema :: ServiceFault :: handler_panic (\"create-document\" , & \
          panicked)) ; }",
-        "Ok (Ok ((value , header_out_0))) => { let mut headers : Vec < (String , String) > = :: \
-         std :: vec :: Vec :: new () ; { let rendered : :: std :: string :: String = match :: \
-         serde_json :: to_value (& (header_out_0)) { Ok (:: serde_json :: Value :: String \
-         (rendered)) => rendered , Ok (:: serde_json :: Value :: Bool (rendered)) => rendered . \
-         to_string () , Ok (:: serde_json :: Value :: Number (rendered)) => rendered . \
-         to_string () , Ok (rendered) => rendered . to_string () , Err (_unserializable) => :: \
-         std :: string :: String :: new () , } ; if ! legal_header_value (& rendered) { :: \
-         tracing :: error ! (header = \"etag\" , \"a response header value contained a \
-         character illegal in an HTTP header\" ,) ; return handler . on_fault (& $ crate :: \
-         document_service_schema :: ServiceFault :: handler_panic (\"get-version\" , \"a \
-         response header value contained a character illegal in an HTTP header\" ,)) ; } \
-         headers . push ((\"etag\" . to_owned () , rendered)) ; } return json_response (200u16 \
-         , headers , & value) ; }",
+        ":: core :: result :: Result :: Ok (:: core :: result :: Result :: Ok ((value , \
+         header_out_0))) => { let mut headers : :: std :: vec :: Vec < (:: std :: string :: \
+         String , :: std :: string :: String) > = :: std :: vec :: Vec :: new () ; { let \
+         rendered : :: std :: string :: String = match :: serde_json :: to_value (& \
+         (header_out_0)) { :: core :: result :: Result :: Ok (:: serde_json :: Value :: String \
+         (rendered)) => rendered , :: core :: result :: Result :: Ok (:: serde_json :: Value :: \
+         Bool (rendered)) => rendered . to_string () , :: core :: result :: Result :: Ok (:: \
+         serde_json :: Value :: Number (rendered)) => rendered . to_string () , :: core :: \
+         result :: Result :: Ok (rendered) => rendered . to_string () , :: core :: result :: \
+         Result :: Err (_unserializable) => :: std :: string :: String :: new () , } ; if ! \
+         legal_header_value (& rendered) { :: tracing :: error ! (header = \"etag\" , \"a \
+         response header value contained a character illegal in an HTTP header\" ,) ; return \
+         handler . on_fault (& $ crate :: document_service_schema :: ServiceFault :: \
+         handler_panic (\"get-version\" , \"a response header value contained a character \
+         illegal in an HTTP header\" ,)) ; } headers . push ((\"etag\" . to_owned () , \
+         rendered)) ; } return json_response (200u16 , headers , & value) ; }",
     ] {
         assert!(
             dispatcher.contains(fragment),
@@ -3690,21 +3706,26 @@ fn a_json_operations_expansion_is_unchanged_at_the_token_level() {
     let client = published_macro_over_http_rest(HTTP_SERVICE, "document_service_http_rest_client");
     for fragment in [
         "let status = response . status () ; if status == 200u16 { return match :: serde_json \
-         :: from_slice :: < VersionResponse > (response . body ()) { Ok (value) => { let \
-         header_out_0 : String = match response . header (\"etag\") { Some (text) => match :: \
-         serde_json :: from_value (:: serde_json :: Value :: String ((text) . to_owned ())) { Ok \
-         (value) => value , Err (_rejected) => return Err ($ crate :: document_service_schema :: \
-         CallError :: Fault ($ crate :: document_service_schema :: ServiceFault :: \
-         undeserializable_payload (\"get-version\" , \"a response header did not match its \
-         declared type\" ,) ,)) , } , None => return Err ($ crate :: document_service_schema :: \
+         :: from_slice :: < VersionResponse > (response . body ()) { :: core :: result :: \
+         Result :: Ok (value) => { let header_out_0 : String = match response . header \
+         (\"etag\") { :: core :: option :: Option :: Some (text) => match :: serde_json :: \
+         from_value (:: serde_json :: Value :: String ((text) . to_owned ())) { :: core :: \
+         result :: Result :: Ok (value) => value , :: core :: result :: Result :: Err \
+         (_rejected) => return :: core :: result :: Result :: Err ($ crate :: \
+         document_service_schema :: CallError :: Fault ($ crate :: document_service_schema :: \
+         ServiceFault :: undeserializable_payload (\"get-version\" , \"a response header did \
+         not match its declared type\" ,) ,)) , } , :: core :: option :: Option :: None => \
+         return :: core :: result :: Result :: Err ($ crate :: document_service_schema :: \
          CallError :: Fault ($ crate :: document_service_schema :: ServiceFault :: \
          undeserializable_payload (\"get-version\" , \"a declared response header was missing\" \
-         ,))) , } ; Ok ((value , header_out_0)) }",
+         ,))) , } ; :: core :: result :: Result :: Ok ((value , header_out_0)) }",
         "let status = response . status () ; if status == 200u16 { return match :: serde_json \
-         :: from_slice :: < CreateDocumentResponse > (response . body ()) { Ok (value) => Ok \
-         (value) , Err (rejected) => Err ($ crate :: document_service_schema :: CallError :: \
-         Fault ($ crate :: document_service_schema :: ServiceFault :: undeserializable_payload \
-         (\"create-document\" , & rejected . to_string ()) ,)) , } ; }",
+         :: from_slice :: < CreateDocumentResponse > (response . body ()) { :: core :: result \
+         :: Result :: Ok (value) => :: core :: result :: Result :: Ok (value) , :: core :: \
+         result :: Result :: Err (rejected) => :: core :: result :: Result :: Err ($ crate :: \
+         document_service_schema :: CallError :: Fault ($ crate :: document_service_schema :: \
+         ServiceFault :: undeserializable_payload (\"create-document\" , & rejected . to_string \
+         ()) ,)) , } ; }",
     ] {
         assert!(
             client.contains(fragment),

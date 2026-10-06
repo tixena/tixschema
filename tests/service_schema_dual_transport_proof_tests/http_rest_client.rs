@@ -5,9 +5,12 @@
 //! both spelled bare — the author's own types, resolved where this macro is invoked rather than
 //! where the service was declared.
 
+use crate::shadowing::{Box, Clone, Default, Err, None, Ok, Send, Sized, Some, Sync};
 use crate::tests::{
     ArchiveError, GetVersionError, RangeError, SealAck, SweepError, SweepReport, ThumbnailError,
     VersionResponse,
 };
 
 document_service_http_rest_client!();
+
+shadowing_names_built!();
