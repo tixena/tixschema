@@ -306,7 +306,10 @@ pub struct DeclaredSlots<IdType>(pub IdType, pub Vec<Self>);
 
 fn bundle() -> String {
     [
-        "import { z, type ZodType } from \"zod\";".to_owned(),
+        // `z` bound as a constant, which names no type: the weakest binding a consumer's own
+        // module may hand the bundle.
+        "import * as zod from \"zod\";\nimport type { ZodType } from \"zod\";\n\nconst z = zod;"
+            .to_owned(),
         DeclaredNode::<String>::ts_definition(),
         DeclaredNode::<String>::zod_schema(),
         DeclaredHolder::<String>::ts_definition(),
@@ -476,13 +479,13 @@ fn type_check_a_tuple_struct_that_reaches_itself_loads_and_parses() {
 fn a_union_around_a_factorys_call_is_built_over_a_type_parameter() {
     let zod = DeclaredChain::<String>::zod_schema();
     for member in [
-        "  get next() { return (<Reached$ extends z.core.SomeType>(reached$: Reached$) => \
+        "  get next() { return (<Reached$ extends Parameters<typeof z.array>[0]>(reached$: Reached$) => \
          z.union([z.null().transform(() => undefined), reached$, \
          z.undefined()]).prefault(undefined))(DeclaredChain$SchemaFactory(idType)); },",
-        "  get many() { return (<Reached$ extends z.core.SomeType>(reached$: Reached$) => \
+        "  get many() { return (<Reached$ extends Parameters<typeof z.array>[0]>(reached$: Reached$) => \
          z.union([z.null().transform(() => undefined), z.array(reached$), \
          z.undefined()]).prefault(undefined))(DeclaredChain$SchemaFactory(idType)); },",
-        "  get named() { return (<Reached$ extends z.core.SomeType>(reached$: Reached$) => \
+        "  get named() { return (<Reached$ extends Parameters<typeof z.array>[0]>(reached$: Reached$) => \
          z.union([z.record(z.string(), reached$), \
          z.null()]))(DeclaredChain$SchemaSelf(idType)); },",
     ] {
@@ -497,9 +500,9 @@ fn a_map_of_the_type_itself_is_read_through_the_self_view() {
     let zod = DeclaredMaps::<String>::zod_schema();
     for written in [
         "function DeclaredMaps$SchemaSelf<IdType extends ZodType>(\n  idType: IdType,\n): \
-         ZodType<DeclaredMaps<z.output<IdType>>>;",
+         ZodType<DeclaredMaps<IdType[\"_zod\"][\"output\"]>>;",
         "  get held() { return z.record(z.string(), DeclaredMaps$SchemaSelf(idType)); },",
-        "  get maybe() { return (<Reached$ extends z.core.SomeType>(reached$: Reached$) => \
+        "  get maybe() { return (<Reached$ extends Parameters<typeof z.array>[0]>(reached$: Reached$) => \
          z.union([z.null().transform(() => undefined), z.record(z.string(), reached$), \
          z.undefined()]).prefault(undefined))(DeclaredMaps$SchemaSelf(idType)); },",
         "  get rows() { return z.array(z.record(z.string(), DeclaredMaps$SchemaSelf(idType))); },",

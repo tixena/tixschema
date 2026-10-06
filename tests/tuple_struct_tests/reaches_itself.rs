@@ -80,7 +80,7 @@ fn a_generic_one_reaches_itself_through_a_function_stating_what_it_parses() {
     let zod = NestsUnderAParameter::<String>::zod_schema();
     for written in [
         "function NestsUnderAParameter$SchemaSelf<IdType extends ZodType>(\n  idType: IdType,\n): \
-         ZodType<NestsUnderAParameter<z.output<IdType>>>;\nfunction \
+         ZodType<NestsUnderAParameter<IdType[\"_zod\"][\"output\"]>>;\nfunction \
          NestsUnderAParameter$SchemaSelf(\n  idType: ZodType,\n): ZodType {\n  return \
          NestsUnderAParameter$SchemaFactory(idType);\n}\n\n",
         ") =>\n  z.tuple([idType, z.array(z.lazy(() => \

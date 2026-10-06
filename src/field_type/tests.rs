@@ -963,7 +963,7 @@ fn test_a_union_hands_in_each_factory_call_once_and_leaves_a_longer_name_alone()
             &calls,
             nullable,
         ),
-        "(<Reached$ extends z.core.SomeType, Reached2$ extends z.core.SomeType>(reached$: \
+        "(<Reached$ extends Parameters<typeof z.array>[0], Reached2$ extends Parameters<typeof z.array>[0]>(reached$: \
          Reached$, reached2$: Reached2$) => z.union([z.tuple([reached$, \
          TreeNode$SchemaFactory(t), reached2$, reached$]), z.null()]))(Node$SchemaFactory(t), \
          Leaf$SchemaFactory(t))"
