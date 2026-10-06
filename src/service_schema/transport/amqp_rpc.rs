@@ -222,7 +222,7 @@
 use super::Transport;
 use crate::service_schema::parse::{
     HeaderIn, MultipartPart, OperationDef, OperationInputs, OperationOutcome, ServiceDef,
-    is_unit_type, option_inner, tuple_elements,
+    argument_local, is_unit_type, option_inner, tuple_elements,
 };
 use crate::service_schema::support::{message_alias_ident, message_validator_ident, module_ident};
 use proc_macro2::TokenStream;
@@ -523,14 +523,31 @@ pub(super) fn call_arguments(operation: &OperationDef) -> Vec<TokenStream> {
         OperationInputs::Named(_) => vec![quote! { received }],
     };
     arguments.extend(header_in_bindings(operation).iter().map(|header| {
-        let parameter = &header.parameter;
-        quote! { #parameter }
+        let held = argument_local(&header.parameter);
+        quote! { #held }
     }));
     arguments.extend(multipart_part_bindings(operation).iter().map(|part| {
-        let parameter = &part.parameter;
-        quote! { #parameter }
+        let held = argument_local(&part.parameter);
+        quote! { #held }
     }));
     arguments
+}
+
+/// Each header and part argument a client's method takes, moved into its own local before the
+/// method writes a local of its own: an argument named `path` or `headers` would otherwise be
+/// read as the method's.
+fn held_arguments(operation: &OperationDef) -> TokenStream {
+    let headers = header_in_bindings(operation)
+        .iter()
+        .map(|header| &header.parameter);
+    let parts = multipart_part_bindings(operation)
+        .iter()
+        .map(|part| &part.parameter);
+    let moved = headers.chain(parts).map(|parameter| {
+        let held = argument_local(parameter);
+        quote! { let #held = #parameter; }
+    });
+    quote! { #(#moved)* }
 }
 
 /// The arguments an operation's client method takes, and the message they are packed into before it
@@ -546,12 +563,13 @@ pub(super) fn call_message(
     operation: &OperationDef,
     module: &Ident,
 ) -> (Vec<TokenStream>, TokenStream) {
+    let held = held_arguments(operation);
     match &operation.inputs {
         OperationInputs::Empty => {
             let declared = message_alias_ident(operation);
             (
                 Vec::new(),
-                quote! { let sending = $crate::#module::#declared {}; },
+                quote! { #held let sending = $crate::#module::#declared {}; },
             )
         }
         OperationInputs::Generated(arguments) => {
@@ -563,12 +581,12 @@ pub(super) fn call_message(
             let fields = arguments.iter().map(|(field, _)| field);
             (
                 taken,
-                quote! { let sending = $crate::#module::#declared { #(#fields,)* }; },
+                quote! { #held let sending = $crate::#module::#declared { #(#fields,)* }; },
             )
         }
         OperationInputs::Named(declared) => (
             vec![quote! { req: #declared }],
-            quote! { let sending = req; },
+            quote! { #held let sending = req; },
         ),
     }
 }
@@ -1371,8 +1389,9 @@ fn header_in_reads(module: &Ident, operation: &OperationDef) -> TokenStream {
         // [`call_arguments`]'s later use of `#parameter` as the exact argument
         // `svc.#method(...)` declares it to be — the same way `received.#field` never spells its
         // own field's type either.
+        let held = argument_local(parameter);
         quote! {
-            let #parameter = match decoded_header(message.headers(), #name) {
+            let #held = match decoded_header(message.headers(), #name) {
                 ::core::result::Result::Ok(decoded) => decoded,
                 ::core::result::Result::Err(detail) => {
                     return reply
@@ -1664,8 +1683,9 @@ fn outbound_headers(operation: &OperationDef, generated: &Generated) -> TokenStr
             ty: _ty,
         } = header;
         let refusal = header_encode_refusal(operation, generated, name);
+        let held = argument_local(parameter);
         quote! {
-            match ::serde_json::to_string(&#parameter) {
+            match ::serde_json::to_string(&#held) {
                 ::core::result::Result::Ok(encoded) => headers.push((#name.to_owned(), encoded)),
                 ::core::result::Result::Err(unrepresentable) => {
                     let detail = unrepresentable.to_string();

@@ -60,10 +60,10 @@ use super::amqp_rpc::{
 };
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HeaderIn, HttpShape, MultipartPart, OperationDef,
-    OperationInputs, OperationOutcome, PathSegment, ScalarKind, ServiceDef, error_declared_type,
-    field_ident, is_scalar_named_type, is_unit_type, option_inner, scalar_kind,
-    service_declares_a_placeholder, service_declares_a_stream, service_declares_multipart,
-    tuple_elements, vec_inner, wire_key, written,
+    OperationInputs, OperationOutcome, PathSegment, ScalarKind, ServiceDef, argument_local,
+    error_declared_type, field_ident, is_scalar_named_type, is_unit_type, option_inner,
+    scalar_kind, service_declares_a_placeholder, service_declares_a_stream,
+    service_declares_multipart, tuple_elements, vec_inner, wire_key, written,
 };
 use crate::service_schema::support::{message_alias_ident, message_validator_ident, module_ident};
 use proc_macro2::TokenStream;
@@ -922,11 +922,11 @@ fn take_part_expr(name: &str) -> TokenStream {
 /// publishing no `Deserialize` for it to be read back through.
 fn multipart_part_let(module: &Ident, wire: &str, part: &MultipartPart) -> TokenStream {
     let name = &part.name;
-    let parameter = &part.parameter;
+    let held = argument_local(&part.parameter);
     let declared_type = &part.ty;
     let take = take_part_expr(name);
     quote! {
-        let #parameter: #declared_type = match #take {
+        let #held: #declared_type = match #take {
             ::core::option::Option::Some(IncomingPart::File(source)) => source,
             ::core::option::Option::Some(IncomingPart::Text(_)) => {
                 return handler.on_fault(&$crate::#module::ServiceFault::failed_validation(
@@ -948,7 +948,7 @@ fn multipart_part_let(module: &Ident, wire: &str, part: &MultipartPart) -> Token
 
 fn header_in_let(module: &Ident, wire: &str, header: &HeaderIn) -> TokenStream {
     let name = &header.name;
-    let parameter = &header.parameter;
+    let held = argument_local(&header.parameter);
     let declared_type = &header.ty;
     let decode = decode_expr(declared_type, &quote! { text });
     let absent = if option_inner(declared_type).is_some() {
@@ -963,7 +963,7 @@ fn header_in_let(module: &Ident, wire: &str, header: &HeaderIn) -> TokenStream {
         }
     };
     quote! {
-        let #parameter: #declared_type = {
+        let #held: #declared_type = {
             let source = match request.header(#name) {
                 ::core::option::Option::Some(text) => #decode,
                 ::core::option::Option::None => #absent,
@@ -2179,7 +2179,7 @@ fn header_in_build_stmts(
         .iter()
         .map(|header| {
             let name = &header.name;
-            let parameter = &header.parameter;
+            let held = argument_local(&header.parameter);
             let refusal = header_value_refusal(operation, generated, name);
             let checked = quote! {
                 if !legal_header_value(&rendered) {
@@ -2190,13 +2190,13 @@ fn header_in_build_stmts(
             if option_inner(&header.ty).is_some() {
                 let rendered = encode_expr(&quote! { value });
                 quote! {
-                    if let ::core::option::Option::Some(value) = &#parameter {
+                    if let ::core::option::Option::Some(value) = &#held {
                         let rendered = #rendered;
                         #checked
                     }
                 }
             } else {
-                let rendered = encode_expr(&quote! { #parameter });
+                let rendered = encode_expr(&quote! { #held });
                 quote! {
                     let rendered = #rendered;
                     #checked
@@ -2303,8 +2303,8 @@ fn multipart_parts_build_stmt(operation: &OperationDef, shape: &HttpShape) -> To
         .iter()
         .map(|part| {
             let name = &part.name;
-            let parameter = &part.parameter;
-            quote! { parts.push((#name.to_owned(), OutgoingPart::File(#parameter))); }
+            let held = argument_local(&part.parameter);
+            quote! { parts.push((#name.to_owned(), OutgoingPart::File(#held))); }
         })
         .collect();
     quote! {

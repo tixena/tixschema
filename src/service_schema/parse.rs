@@ -634,6 +634,12 @@ pub fn written(ident: &Ident) -> String {
     ident.unraw().to_string()
 }
 
+/// The local a transport holds an operation's own header or part argument in: a name of its own,
+/// since the argument's may be one of the locals the transport writes around it.
+pub fn argument_local(parameter: &Ident) -> Ident {
+    format_ident!("argument_{}", written(parameter))
+}
+
 /// The identifier a field named `name` is declared with: a raw one where `name` is a keyword.
 pub fn field_ident(name: &str) -> Ident {
     let span = proc_macro2::Span::call_site();
