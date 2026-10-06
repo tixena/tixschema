@@ -13,7 +13,7 @@ use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, ScalarKind, option_inner, scalar_kind,
-    tuple_elements, vec_inner,
+    tuple_elements, vec_inner, written,
 };
 use syn::Type;
 
@@ -50,14 +50,14 @@ pub fn typename(operation: &OperationDef) -> String {
 pub fn binding_params(shape: &HttpShape) -> Vec<(String, String)> {
     let mut params = Vec::new();
     for header in &shape.header_in {
-        let name = RenameRule::CamelCase.apply_to_field(&header.parameter.to_string());
+        let name = RenameRule::CamelCase.apply_to_field(&written(&header.parameter));
         params.push((
             name.clone(),
             get_field_def(&name, &header.ty, "").typescript_typename(),
         ));
     }
     for part in &shape.multipart_parts {
-        let name = RenameRule::CamelCase.apply_to_field(&part.parameter.to_string());
+        let name = RenameRule::CamelCase.apply_to_field(&written(&part.parameter));
         params.push((
             name.clone(),
             get_field_def(&name, &part.ty, "").typescript_typename(),

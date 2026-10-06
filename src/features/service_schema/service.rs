@@ -39,6 +39,7 @@ use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type, option_inner,
+    written,
 };
 use core::fmt::Write as _;
 use syn::Type;
@@ -189,7 +190,7 @@ fn binding_reads(
     let mut stmt = String::new();
     let mut bound = Vec::new();
     for header in &shape.header_in {
-        let name = RenameRule::CamelCase.apply_to_field(&header.parameter.to_string());
+        let name = RenameRule::CamelCase.apply_to_field(&written(&header.parameter));
         let read = format!("{name}Header");
         let schema = get_field_def(&name, &header.ty, "").zod_type();
         let _ = write!(
@@ -204,7 +205,7 @@ fn binding_reads(
         bound.push(format!("{read}.value"));
     }
     for part in &shape.multipart_parts {
-        let name = RenameRule::CamelCase.apply_to_field(&part.parameter.to_string());
+        let name = RenameRule::CamelCase.apply_to_field(&written(&part.parameter));
         let _ = writeln!(
             stmt,
             "        const {name} = parts.find(([name]) => name === \"{part_name}\")?.[1];",

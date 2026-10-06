@@ -1158,6 +1158,104 @@ impl PulseClientService<()> for PulseBackEnd {
     }
 }
 
+/// Operations, arguments and message fields named after words Dart, Swift or Kotlin reserves,
+/// two of them written as raw identifiers. The Rust twin every mobile client's request is read
+/// by: each answer names what the handler was handed.
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LookupFound {
+    pub name: String,
+}
+
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "errorCode")]
+pub enum LookupError {
+    NotFound,
+}
+
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LookupThing {
+    pub class: String,
+    pub var: String,
+}
+
+#[service_schema(transports = ["http_rest", "ws_rpc"])]
+pub trait LookupClientService<Ctx> {
+    #[service_schema_op(http(
+        method = "POST",
+        path = "/items/{in}",
+        header_in("x-kind" = r#type),
+        header_in("x-tenant" = default),
+    ))]
+    async fn r#for(
+        &self,
+        ctx: &Ctx,
+        r#in: String,
+        r#final: String,
+        r#type: String,
+        default: Option<String>,
+    ) -> Result<LookupFound, LookupError>;
+
+    #[service_schema_op(http(method = "GET", path = "/classes/{class}/{object}"))]
+    async fn import(
+        &self,
+        ctx: &Ctx,
+        class: String,
+        object: String,
+        default: Option<String>,
+        var: Option<String>,
+    ) -> Result<LookupFound, LookupError>;
+
+    #[service_schema_op(http(method = "PUT", path = "/things/{class}"))]
+    async fn object(&self, ctx: &Ctx, req: LookupThing) -> Result<LookupFound, LookupError>;
+}
+
+pub struct LookupBackEnd;
+
+impl LookupClientService<()> for LookupBackEnd {
+    async fn r#for(
+        &self,
+        _ctx: &(),
+        r#in: String,
+        r#final: String,
+        r#type: String,
+        default: Option<String>,
+    ) -> Result<LookupFound, LookupError> {
+        ready(()).await;
+        let handed = [Some(r#in), Some(r#final), Some(r#type), default];
+        Ok(LookupFound {
+            name: handed.into_iter().flatten().collect::<Vec<_>>().join("|"),
+        })
+    }
+
+    async fn import(
+        &self,
+        _ctx: &(),
+        class: String,
+        object: String,
+        default: Option<String>,
+        var: Option<String>,
+    ) -> Result<LookupFound, LookupError> {
+        ready(()).await;
+        let handed = [Some(class), Some(object), default, var];
+        Ok(LookupFound {
+            name: handed.into_iter().flatten().collect::<Vec<_>>().join("|"),
+        })
+    }
+
+    async fn object(&self, _ctx: &(), req: LookupThing) -> Result<LookupFound, LookupError> {
+        ready(()).await;
+        if req.class.is_empty() {
+            return Err(LookupError::NotFound);
+        }
+        Ok(LookupFound {
+            name: [req.class, req.var].join("|"),
+        })
+    }
+}
+
 /// A reply operation whose success is `()`.
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]

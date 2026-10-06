@@ -61,8 +61,9 @@ use super::amqp_rpc::{
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HeaderIn, HttpShape, MultipartPart, OperationDef,
     OperationInputs, OperationOutcome, PathSegment, ScalarKind, ServiceDef, error_declared_type,
-    is_scalar_named_type, is_unit_type, option_inner, scalar_kind, service_declares_a_placeholder,
-    service_declares_a_stream, service_declares_multipart, tuple_elements, vec_inner, wire_key,
+    field_ident, is_scalar_named_type, is_unit_type, option_inner, scalar_kind,
+    service_declares_a_placeholder, service_declares_a_stream, service_declares_multipart,
+    tuple_elements, vec_inner, wire_key, written,
 };
 use crate::service_schema::support::{message_alias_ident, message_validator_ident, module_ident};
 use proc_macro2::TokenStream;
@@ -612,7 +613,7 @@ fn has_query_fields(operation: &OperationDef, shape: &HttpShape) -> bool {
     match &operation.inputs {
         OperationInputs::Generated(fields) => fields
             .iter()
-            .any(|(field, _)| !placeholders.contains(&field.to_string())),
+            .any(|(field, _)| !placeholders.contains(&written(field))),
         // `Empty` has no field to read; a bodyless `Named` message is always the one scalar the
         // path binds whole, reading off the placeholder rather than the query.
         OperationInputs::Empty | OperationInputs::Named(_) => false,
@@ -813,6 +814,12 @@ fn dispatch_fn(
     }
 }
 
+/// The local a dispatcher holds the captured text of the placeholder `name` in: a name of its
+/// own, since `name` may be a keyword or one of the dispatcher's own locals.
+fn placeholder_local(name: &str) -> Ident {
+    format_ident!("placeholder_{name}")
+}
+
 /// One operation's arm: match the method and the path template, decode path, query, headers and
 /// body into the operation's own arguments, validate, call the implementation behind the panic
 /// guard, and answer.
@@ -824,7 +831,7 @@ fn dispatch_arm(module: &Ident, operation: &OperationDef, has_stream: bool) -> T
     let placeholder_names = shape.placeholder_names();
     let placeholder_idents: Vec<Ident> = placeholder_names
         .iter()
-        .map(|name| format_ident!("{name}"))
+        .map(|name| placeholder_local(name))
         .collect();
 
     let placeholder_lets = if placeholder_idents.is_empty() {
@@ -1064,7 +1071,7 @@ fn message_value_for_generated(
         && !multipart
         && fields
             .iter()
-            .any(|(field, _)| !placeholder_names.contains(&field.to_string()));
+            .any(|(field, _)| !placeholder_names.contains(&written(field)));
     let base = if multipart {
         quote! { let mut object = ::serde_json::Map::new(); }
     } else if bodied {
@@ -1080,10 +1087,10 @@ fn message_value_for_generated(
     let inserts: TokenStream = fields
         .iter()
         .map(|(field, ty)| {
-            let field_name = field.to_string();
+            let field_name = written(field);
             let key = wire_key(field);
             if placeholder_names.contains(&field_name) {
-                let ident = format_ident!("{field_name}");
+                let ident = placeholder_local(&field_name);
                 let decode = decode_expr(ty, &quote! { #ident.as_str() });
                 quote! { object.insert(#key.to_owned(), #decode); }
             } else if multipart {
@@ -2065,7 +2072,7 @@ fn client_placeholder_value(operation: &OperationDef, placeholder: &str) -> Toke
         // one to bind - so this arm is never reached by a program that compiles.
         OperationInputs::Empty => quote! { () },
         OperationInputs::Generated(_) => {
-            let ident = format_ident!("{placeholder}");
+            let ident = field_ident(placeholder);
             quote! { sending.#ident }
         }
         OperationInputs::Named(declared) => {
@@ -2073,7 +2080,7 @@ fn client_placeholder_value(operation: &OperationDef, placeholder: &str) -> Toke
             if shape.placeholder_names().len() == 1 && is_scalar_named_type(declared) {
                 quote! { sending }
             } else {
-                let ident = format_ident!("{placeholder}");
+                let ident = field_ident(placeholder);
                 quote! { sending.#ident }
             }
         }
@@ -2112,7 +2119,7 @@ fn query_build_stmts(operation: &OperationDef, shape: &HttpShape) -> TokenStream
     let field_pushes: Vec<TokenStream> = fields
         .iter()
         .filter_map(|(field, ty)| {
-            let field_name = field.to_string();
+            let field_name = written(field);
             if placeholders.contains(&field_name) {
                 return None;
             }
@@ -2285,7 +2292,7 @@ fn multipart_parts_build_stmt(operation: &OperationDef, shape: &HttpShape) -> To
     let field_pushes: TokenStream = if let OperationInputs::Generated(fields) = &operation.inputs {
         fields
             .iter()
-            .filter(|(field, _)| !placeholder_names.contains(&field.to_string()))
+            .filter(|(field, _)| !placeholder_names.contains(&written(field)))
             .map(|(field, ty)| multipart_field_push(field, ty))
             .collect()
     } else {

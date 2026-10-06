@@ -30,7 +30,7 @@ use crate::rename_rule::RenameRule;
 #[cfg(feature = "typescript")]
 use crate::service_schema::parse::{BodyKind, HttpShape, ServiceDef, is_unit_type, tuple_elements};
 #[cfg(any(feature = "typescript", feature = "dart", feature = "kotlin"))]
-use crate::service_schema::parse::{OperationDef, OperationOutcome};
+use crate::service_schema::parse::{OperationDef, OperationOutcome, written};
 #[cfg(feature = "typescript")]
 use syn::Type;
 
@@ -65,7 +65,7 @@ pub fn result_name(service: &str, operation: &OperationDef) -> Option<String> {
             success: _success,
         } => Some(format!(
             "{service}{}Result",
-            RenameRule::PascalCase.apply_to_field(&operation.ident.to_string())
+            RenameRule::PascalCase.apply_to_field(&written(&operation.ident))
         )),
     }
 }

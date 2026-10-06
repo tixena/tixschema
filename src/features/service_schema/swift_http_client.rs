@@ -16,10 +16,11 @@
 //!
 //! # A message property is reached in Swift's own spelling
 //!
-//! A generated message's Swift property is always `RenameRule::CamelCase.apply_to_field` of the
-//! raw Rust field name — the same spelling an `http(...)` path placeholder or a bodyless method's
-//! own field name is written in — regardless of any serde rename on the field, since Swift's own
-//! `Codable` synthesis carries the wire spelling through a separate `CodingKeys` enum instead.
+//! A generated message's Swift property is always `swift_field_member` of the Rust field name —
+//! the name an `http(...)` path placeholder or a bodyless method's own field is written in,
+//! camel-cased, and between backticks where Swift reserves the word — regardless of any serde
+//! rename on the field, since Swift's own `Codable` synthesis carries the wire spelling through
+//! a separate `CodingKeys` enum instead.
 //!
 //! # A branded newtype is a value wrapper, not a bare scalar
 //!
@@ -28,17 +29,18 @@
 //! placeholder or header reading a sibling type's value therefore reads `.value`, never the
 //! sibling type itself.
 
+use crate::features::swift::{swift_field_member, swift_member};
 use crate::field_type::{FieldDefType, get_field_def};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
     OperationOutcome, PathSegment, ServiceDef, is_scalar_named_type, is_unit_type, option_inner,
     path_reads_a_named_field, service_declares_a_stream, service_declares_multipart,
-    tuple_elements, vec_inner, wire_key,
+    tuple_elements, vec_inner, wire_key, written,
 };
 use crate::service_schema::support::fault_fields_typescript_name;
 use core::fmt::Write as _;
-use syn::Type;
+use syn::{Ident, Type};
 
 use super::swift_type::swift_typename_of;
 
@@ -157,7 +159,7 @@ fn failure_name(named: &str, operation: &OperationDef) -> Option<String> {
             success: _success,
         } => Some(format!(
             "{named}{}Failure",
-            RenameRule::PascalCase.apply_to_field(&operation.ident.to_string())
+            RenameRule::PascalCase.apply_to_field(&written(&operation.ident))
         )),
     }
 }
@@ -229,22 +231,32 @@ fn client_struct(
     )
 }
 
+/// The Swift name of the method that calls `operation`.
+pub(super) fn swift_call(operation: &OperationDef) -> String {
+    swift_member(&operation.ts_name)
+}
+
+/// The Swift name of an operation's own argument: the Rust identifier, never re-cased, since it
+/// is a function argument rather than a message property.
+pub(super) fn swift_parameter(parameter: &Ident) -> String {
+    swift_member(&written(parameter))
+}
+
 /// One argument per `header_in` binding, then one per `part` binding, after the message —
-/// mirrors the Dart client's own `method_params`: the raw Rust identifier, never re-cased,
-/// since these are function arguments rather than message properties.
+/// mirrors the Dart client's own `method_params`.
 fn method_params(operation: &OperationDef, shape: &HttpShape) -> String {
     let mut params = vec![format!("_ req: {}", message_swift_typename(operation))];
     for header in &shape.header_in {
         params.push(format!(
             "{}: {}",
-            header.parameter,
+            swift_parameter(&header.parameter),
             swift_typename_of(&header.ty)
         ));
     }
     for part in &shape.multipart_parts {
         params.push(format!(
             "{}: {}",
-            part.parameter,
+            swift_parameter(&part.parameter),
             swift_typename_of(&part.ty)
         ));
     }
@@ -322,7 +334,7 @@ fn return_type(named: &str, operation: &OperationDef) -> String {
 fn method(named: &str, fn_prefix: &str, operation: &OperationDef, has_multipart: bool) -> String {
     let shape = HttpShape::of(operation);
     let wire = &operation.wire_name;
-    let call = &operation.ts_name;
+    let call = swift_call(operation);
     let params = method_params(operation, &shape);
     let returns = return_type(named, operation);
     let path_build = path_build_stmt(fn_prefix, operation, &shape);
@@ -369,12 +381,12 @@ fn placeholder_value_swift_expr(
     shape: &HttpShape,
     placeholder: &str,
 ) -> String {
-    let accessor = RenameRule::CamelCase.apply_to_field(placeholder);
+    let accessor = swift_field_member(placeholder);
     match &operation.inputs {
         OperationInputs::Empty => format!("\"\\(req.{accessor})\""),
         OperationInputs::Generated(fields) => fields
             .iter()
-            .find(|(field, _)| *field == placeholder)
+            .find(|(field, _)| written(field) == placeholder)
             .map_or_else(
                 || format!("\"\\(req.{accessor})\""),
                 |(_, ty)| swift_wire_text(ty, &format!("req.{accessor}")),
@@ -421,12 +433,12 @@ fn query_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
     let placeholders = shape.placeholder_names();
     let mut pushes = String::new();
     for (field, ty) in fields {
-        let field_name = field.to_string();
+        let field_name = written(field);
         if placeholders.contains(&field_name) {
             continue;
         }
         let key = wire_key(field);
-        let accessor = RenameRule::CamelCase.apply_to_field(&field_name);
+        let accessor = swift_field_member(&field_name);
         let inner = option_inner(ty).unwrap_or(ty);
         let rendered = swift_wire_text(inner, "value");
         let _ = write!(
@@ -456,7 +468,7 @@ fn header_in_build_stmt(
     let mut stmt = String::from("    var headers: [(String, String)] = []\n");
     for header in &shape.header_in {
         let name = &header.name;
-        let parameter = &header.parameter;
+        let parameter = swift_parameter(&header.parameter);
         let fault_expr = format!(
             "{fn_prefix}HttpOutboundFault(\"{}\", \"{name}\", \"a header value contains a \
              character illegal in an HTTP header\")",
@@ -466,7 +478,7 @@ fn header_in_build_stmt(
         // `text` is substituted twice (check, then append) rather than bound to a `let` first: a
         // bare `{ ... }` block is not a statement Swift accepts outside a closure.
         if let Some(inner) = option_inner(&header.ty) {
-            let text = swift_wire_text(inner, &parameter.to_string());
+            let text = swift_wire_text(inner, &parameter);
             let _ = writeln!(
                 stmt,
                 "    if let {parameter} = {parameter} {{\n      \
@@ -476,7 +488,7 @@ fn header_in_build_stmt(
                  }}"
             );
         } else {
-            let text = swift_wire_text(&header.ty, &parameter.to_string());
+            let text = swift_wire_text(&header.ty, &parameter);
             let _ = writeln!(
                 stmt,
                 "    if !{fn_prefix}LegalHeaderValue({text}) {{\n      {refusal}\n    \
@@ -574,12 +586,12 @@ fn multipart_parts_build_stmt(
     let mut stmt = String::from("    var parts: [(String, any Sendable)] = []\n");
     if let OperationInputs::Generated(fields) = &operation.inputs {
         for (field, ty) in fields {
-            let field_name = field.to_string();
+            let field_name = written(field);
             if placeholders.contains(&field_name) {
                 continue;
             }
             let key = wire_key(field);
-            let accessor = RenameRule::CamelCase.apply_to_field(&field_name);
+            let accessor = swift_field_member(&field_name);
             if let Some(inner) = option_inner(ty) {
                 let text = swift_wire_text(inner, "value");
                 let _ = write!(
@@ -596,7 +608,7 @@ fn multipart_parts_build_stmt(
     }
     for part in &shape.multipart_parts {
         let name = &part.name;
-        let parameter = &part.parameter;
+        let parameter = swift_parameter(&part.parameter);
         let _ = writeln!(stmt, "    parts.append((\"{name}\", {parameter}))");
     }
     stmt

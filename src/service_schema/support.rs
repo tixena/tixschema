@@ -55,7 +55,7 @@
 
 use super::parse::{
     HttpBinding, OperationDef, OperationInputs, OperationOutcome, PathSegment, ServiceDef,
-    error_declared_type, service_declares_a_stream, service_needs_body_source_seam,
+    error_declared_type, service_declares_a_stream, service_needs_body_source_seam, written,
 };
 use super::transport::Transport;
 use crate::rename_rule::RenameRule;
@@ -760,7 +760,7 @@ pub fn message_validator_ident(operation: &OperationDef) -> Ident {
 pub fn message_alias_ident(operation: &OperationDef) -> Ident {
     format_ident!(
         "{}Message",
-        RenameRule::PascalCase.apply_to_field(&operation.ident.to_string()),
+        RenameRule::PascalCase.apply_to_field(&written(&operation.ident)),
         span = operation.ident.span()
     )
 }

@@ -6,8 +6,8 @@
 
 use super::{
     MIXED_SERVICE, NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE, NEWTYPE_HEADER_OUT_HTTP_SERVICE,
-    SWIFT_BYTES_HEADER_OUT_SERVICE, SWIFT_HEADER_VEC_OF_OPTIONS_SERVICE, SWIFT_HTTP_SERVICE,
-    SWIFT_MULTIPART_HTTP_SERVICE, SWIFT_NUMERIC_HEADER_OUT_SERVICE,
+    RESERVED_WORD_SERVICE, SWIFT_BYTES_HEADER_OUT_SERVICE, SWIFT_HEADER_VEC_OF_OPTIONS_SERVICE,
+    SWIFT_HTTP_SERVICE, SWIFT_MULTIPART_HTTP_SERVICE, SWIFT_NUMERIC_HEADER_OUT_SERVICE,
     SWIFT_SINGLE_PLACEHOLDER_HTTP_SERVICE, SWIFT_STREAM_HTTP_SERVICE,
     SWIFT_UNIT_SUCCESS_HTTP_SERVICE, swift_http_client_of,
 };
@@ -692,4 +692,18 @@ fn a_newtype_header_out_element_decodes_through_its_codable_and_faults_when_it_r
         ) && written.contains("a response header did not match its declared type"),
         "got: {written}"
     );
+}
+
+#[test]
+fn a_reserved_word_is_written_between_backticks_in_the_method_the_parameter_and_the_member() {
+    let written = swift_http_client_of(RESERVED_WORD_SERVICE);
+    for escaped in [
+        "public func `for`(_ req: ForRequest, `default`: String?) async",
+        "req.`in`",
+        "if let `default` = `default` {",
+        "public func object(_ req: Thing) async",
+        "WireText(req.`class`)",
+    ] {
+        assert!(written.contains(escaped), "no `{escaped}` in: {written}");
+    }
 }

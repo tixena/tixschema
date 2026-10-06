@@ -25,14 +25,14 @@
 //! unprefixed top-level name.
 
 use super::result::result_name;
-use crate::features::kotlin::kotlin_typename;
+use crate::features::kotlin::{kotlin_name, kotlin_property_name, kotlin_typename};
 use crate::field_type::{FieldDefType, get_field_def};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
     OperationOutcome, PathSegment, ServiceDef, is_scalar_named_type, is_unit_type, option_inner,
     path_reads_a_named_field, service_declares_a_stream, service_declares_multipart,
-    tuple_elements, vec_inner, wire_key,
+    tuple_elements, vec_inner, wire_key, written,
 };
 use crate::service_schema::support::fault_fields_typescript_name;
 use core::fmt::Write as _;
@@ -340,7 +340,7 @@ fn result_interface(named: &str, operation: &OperationDef) -> Option<String> {
          data class Declared(val error: {error_ty}) : {published}\n  \
          data class Fault(val fault: {fault}) : {published}\n\
          }}",
-        operation.ident,
+        written(&operation.ident),
     ))
 }
 
@@ -382,14 +382,14 @@ fn method_params(operation: &OperationDef, shape: &HttpShape) -> String {
     for header in &shape.header_in {
         params.push(format!(
             "{}: {}",
-            kotlin_property(&header.parameter.to_string()),
+            kotlin_property_name(&written(&header.parameter)),
             kotlin_type_of(&header.ty)
         ));
     }
     for part in &shape.multipart_parts {
         params.push(format!(
             "{}: {}",
-            kotlin_property(&part.parameter.to_string()),
+            kotlin_property_name(&written(&part.parameter)),
             kotlin_type_of(&part.ty)
         ));
     }
@@ -415,7 +415,7 @@ fn return_type(named: &str, operation: &OperationDef) -> String {
 fn method(named: &str, fn_prefix: &str, operation: &OperationDef, has_multipart: bool) -> String {
     let shape = HttpShape::of(operation);
     let wire = &operation.wire_name;
-    let call = &operation.ts_name;
+    let call = kotlin_name(&operation.ts_name);
     let params = method_params(operation, &shape);
     let path_build = path_build_stmt(operation, &shape, fn_prefix);
     let query_build = query_build_stmt(operation, &shape, fn_prefix);
@@ -463,12 +463,12 @@ fn placeholder_value_kotlin_expr(
     shape: &HttpShape,
     placeholder: &str,
 ) -> String {
-    let prop = kotlin_property(placeholder);
+    let prop = kotlin_property_name(placeholder);
     match &operation.inputs {
         OperationInputs::Empty => format!("\"${{req.{prop}}}\""),
         OperationInputs::Generated(fields) => fields
             .iter()
-            .find(|(field, _)| field == placeholder)
+            .find(|(field, _)| written(field) == placeholder)
             .map_or_else(
                 || format!("\"${{req.{prop}}}\""),
                 |(_, ty)| kotlin_wire_text(ty, &format!("req.{prop}"), false),
@@ -516,13 +516,13 @@ fn query_build_stmt(operation: &OperationDef, shape: &HttpShape, fn_prefix: &str
     let mut pushes = String::new();
     let mut any = false;
     for (field, ty) in fields {
-        let field_name = field.to_string();
+        let field_name = written(field);
         if placeholders.contains(&field_name) {
             continue;
         }
         any = true;
         let key = wire_key(field);
-        let prop = kotlin_property(&field_name);
+        let prop = kotlin_property_name(&field_name);
         let inner = option_inner(ty).unwrap_or(ty);
         let rendered = kotlin_wire_text(inner, "value", true);
         let _ = write!(
@@ -556,7 +556,7 @@ fn header_in_build_stmt(
     // caller rather than just the block.
     for header in &shape.header_in {
         let name = &header.name;
-        let prop = kotlin_property(&header.parameter.to_string());
+        let prop = kotlin_property_name(&written(&header.parameter));
         let fault_expr = format!(
             "{fn_prefix}HttpOutboundFault(\"{}\", \"{name}\", \"a header value contains a \
              character illegal in an HTTP header\")",
@@ -635,12 +635,12 @@ fn multipart_parts_build_stmt(
     let mut stmt = String::from("    val parts = mutableListOf<Pair<String, Any?>>()\n");
     if let OperationInputs::Generated(fields) = &operation.inputs {
         for (field, ty) in fields {
-            let field_name = field.to_string();
+            let field_name = written(field);
             if placeholders.contains(&field_name) {
                 continue;
             }
             let key = wire_key(field);
-            let prop = kotlin_property(&field_name);
+            let prop = kotlin_property_name(&field_name);
             if let Some(inner) = option_inner(ty) {
                 let text = kotlin_wire_text(inner, "it", true);
                 let _ = writeln!(
@@ -655,7 +655,7 @@ fn multipart_parts_build_stmt(
     }
     for part in &shape.multipart_parts {
         let name = &part.name;
-        let prop = kotlin_property(&part.parameter.to_string());
+        let prop = kotlin_property_name(&written(&part.parameter));
         let _ = writeln!(stmt, "    parts.add(\"{name}\" to {prop})");
     }
     stmt
@@ -1189,13 +1189,6 @@ fn fault_from_body_fn(named: &str, fn_prefix: &str) -> String {
 // Small, Kotlin-flavored value rendering — kept apart from `features::kotlin` itself, which
 // carries no HTTP-shaped knowledge at all.
 // ---------------------------------------------------------------------------------------------
-
-/// `raw`'s own Kotlin property spelling: `conversation_id` -> `conversationId`. Every reference
-/// this module writes to a field or an argument goes through this, since `features::kotlin`
-/// camel-cases every property it declares.
-fn kotlin_property(raw: &str) -> String {
-    RenameRule::CamelCase.apply_to_field(raw)
-}
 
 fn message_kotlin_typename(operation: &OperationDef) -> String {
     match &operation.inputs {

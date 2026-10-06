@@ -178,6 +178,8 @@ test-emitted:
     @[ -d "{{kotlin_libs}}" ] || { echo "No Kotlin jars at {{kotlin_libs}}: run \`just kotlin-libs\`, or set TIXSCHEMA_KOTLIN_LIBS to a directory holding them." >&2; exit 1; }
     @echo "Running the emitted Kotlin client with $(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}")..."
     TIXSCHEMA_KOTLIN_LIBS="{{kotlin_libs}}" TIXSCHEMA_KOTLINC="$(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}")" cargo test --all-features --test service_schema_emitted_client_tests run_kotlin
+    @echo "Running the service named after reserved words through the Dart, Swift and Kotlin clients..."
+    TIXSCHEMA_DART="$(command -v "${TIXSCHEMA_DART:-dart}")" TIXSCHEMA_SWIFT="$(command -v "${TIXSCHEMA_SWIFT:-swift}")" TIXSCHEMA_KOTLIN_LIBS="{{kotlin_libs}}" TIXSCHEMA_KOTLINC="$(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}")" cargo test --all-features --test service_schema_emitted_client_tests run_reserved
     @echo "✅ The emitted clients build the URLs they claim to!"
 
 # Check code without running tests

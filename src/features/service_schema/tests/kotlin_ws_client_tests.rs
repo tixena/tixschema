@@ -6,7 +6,8 @@
 //! scenarios separately, outside this crate's own test suite.
 
 use super::{
-    KOTLIN_UNIT_SUCCESS_HTTP_SERVICE, KOTLIN_WS_SERVICE, MIXED_SERVICE, kotlin_ws_client_of,
+    KOTLIN_UNIT_SUCCESS_HTTP_SERVICE, KOTLIN_WS_SERVICE, MIXED_SERVICE, RESERVED_WORD_SERVICE,
+    kotlin_ws_client_of,
 };
 
 /// The body of one method, one dispatch arm, or one function, from its own start marker through
@@ -534,4 +535,16 @@ fn a_unit_success_answers_the_field_less_ok_member() {
         !method.contains("Result.Ok(Json.decodeFromJsonElement"),
         "a unit success reads no `value` key off the reply. Got: {method}"
     );
+}
+
+#[test]
+fn a_hard_keyword_is_written_between_backticks_in_the_method_and_the_handler() {
+    let written = kotlin_ws_client_of(RESERVED_WORD_SERVICE);
+    for escaped in [
+        "suspend fun `for`(req: ForRequest, default: String?)",
+        "suspend fun `object`(req: Thing)",
+        "handlers.`for`(decoded, default)",
+    ] {
+        assert!(written.contains(escaped), "no `{escaped}` in: {written}");
+    }
 }

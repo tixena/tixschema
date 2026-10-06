@@ -3953,6 +3953,31 @@ The words are each language's own: Dart's [reserved words](https://dart.dev/lang
 
 A plain enum's members are lower-cased by Dart and Swift, so the same rule reaches a variant: `Default` is `default_` in Dart and `` `default` `` in Swift. Kotlin keeps a variant's spelling, which no keyword matches.
 
+A service's clients follow the same rule for an operation, an argument and a path placeholder. An argument Rust needs a raw identifier for binds the placeholder written without it, `r#in` and `{in}`:
+
+```rust
+#[service_schema_op(http(
+    method = "POST",
+    path = "/items/{in}",
+    header_in("x-tenant" = default),
+))]
+async fn r#for(
+    &self,
+    ctx: &Ctx,
+    r#in: String,
+    r#final: String,
+    default: Option<String>,
+) -> Result<Found, FindError>;
+```
+
+| Target | The call |
+|--------|----------|
+| Dart | `client.for_(ForRequest(in_: ..., final_: ...), default_)` |
+| Swift | ``client.`for`(ForRequest(`in`: ..., final: ...), `default`: ...)`` |
+| Kotlin | ``client.`for`(ForRequest(`in` = ..., final = ...), default)`` |
+
+The operation's wire name (`for`), the URL (`/items/...`) and the keys (`final`) are what they are for any other name.
+
 `just test-emitted` runs the emitted clients under their own toolchains. Its Kotlin leg compiles
 against the serialization compiler plugin and the `kotlinx-serialization-json`,
 `kotlinx-serialization-core` and `kotlinx-coroutines-core` jars, which `just kotlin-libs` installs

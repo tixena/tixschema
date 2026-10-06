@@ -44,7 +44,7 @@ use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
     OperationOutcome, PathSegment, ServiceDef, error_declared_type, is_scalar_named_type,
     option_inner, service_declares_a_stream, service_declares_multipart, tuple_elements,
-    type_leaf_name, vec_inner, wire_key,
+    type_leaf_name, vec_inner, wire_key, written,
 };
 use crate::service_schema::support::fault_fields_typescript_name;
 use crate::utils::is_recorded_untagged_enum;
@@ -498,7 +498,7 @@ fn generated_message_build(
         && !multipart
         && fields
             .iter()
-            .any(|(field, _)| !placeholder_names.contains(&field.to_string()));
+            .any(|(field, _)| !placeholder_names.contains(&written(field)));
     let mut setup = if multipart {
         "        const message: Record<string, unknown> = {};\n".to_owned()
     } else if bodied {
@@ -512,7 +512,7 @@ fn generated_message_build(
         "        const message: Record<string, unknown> = {};\n".to_owned()
     };
     for (field, ty) in fields {
-        let field_name = field.to_string();
+        let field_name = written(field);
         let is_placeholder = placeholder_names.contains(&field_name);
         if !is_placeholder && !multipart && bodied {
             // Neither placeholder- nor part-bound, and the method carries a body: the field is
@@ -670,7 +670,7 @@ fn header_in_encode_stmt(shape: &HttpShape, prefix: &str) -> String {
         let name = &header.name;
         let text = format!(
             "{}Text",
-            RenameRule::CamelCase.apply_to_field(&header.parameter.to_string())
+            RenameRule::CamelCase.apply_to_field(&written(&header.parameter))
         );
         let lower = name.to_lowercase();
         let decode = message::decode_ts_expr(&header.ty, &text, prefix);
@@ -809,7 +809,7 @@ fn generated_rule_lines(
     let placeholders = shape.placeholder_names();
     if fields
         .iter()
-        .all(|(field, _)| placeholders.contains(&field.to_string()))
+        .all(|(field, _)| placeholders.contains(&written(field)))
     {
         return vec![
             "a macro-generated message: every field comes from its own placeholder.".to_owned(),

@@ -164,6 +164,10 @@ thread_local! {
     /// bookkeeping over (whole-library resolution means declaration order never matters), so it
     /// stays its own small map.
     static DART_NAMES: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+
+    /// The fields of each struct a class has been emitted for, by their Rust names: what a
+    /// client reading one member off a declared message needs to name it as the class does.
+    static DART_FIELDS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
 }
 
 /// The Dart tokens `item` earns, given the `name = "..."` override an author declared on it (the
@@ -294,6 +298,32 @@ fn dart_member(name: &str, taken: &[&str], written: &[String]) -> String {
         moved.push('_');
     }
     moved
+}
+
+/// The member an emitted class declares for its field `name`, beside its fields `fields`: what a
+/// client reading that field off the message writes.
+#[cfg(feature = "serde")]
+pub fn dart_field_member(name: &str, fields: &[String]) -> String {
+    dart_member(name, &DART_FIELD_NAMES_TAKEN, fields)
+}
+
+/// The fields of the struct `rust_ident`, where its class was emitted above; none otherwise.
+#[cfg(feature = "serde")]
+pub fn dart_fields_of(rust_ident: &str) -> Vec<String> {
+    DART_FIELDS.with(|fields| fields.borrow().get(rust_ident).cloned().unwrap_or_default())
+}
+
+/// Records the fields the struct `rust_ident` declares, for a client emitted after it.
+pub fn record_dart_fields(rust_ident: &str, fields: Vec<String>) {
+    DART_FIELDS.with(|recorded| {
+        recorded.borrow_mut().insert(rust_ident.to_owned(), fields);
+    });
+}
+
+/// `name` as a method or a parameter of an emitted client, which only a reserved word moves.
+#[cfg(feature = "serde")]
+pub fn dart_local(name: &str) -> String {
+    dart_member(name, &[], &[])
 }
 
 /// The wire name a field with Rust name `rust_name` and its own `rename` writes under, once
@@ -1000,6 +1030,15 @@ fn struct_dart_tokens(item_struct: &ItemStruct, name_override: Option<&str>) -> 
     let rust_ident = item_struct.ident.to_string();
     let export_name = compute_item_export_name(&rust_ident, name_override);
     register_dart_name(&rust_ident, &export_name);
+
+    record_dart_fields(
+        &rust_ident,
+        item_struct
+            .fields
+            .iter()
+            .filter_map(|field| Some(field.ident.as_ref()?.unraw().to_string()))
+            .collect(),
+    );
 
     let rule = container_rename_rule(&item_struct.attrs);
     let fields = collect_dart_fields(&item_struct.fields, rule, &type_parameters);

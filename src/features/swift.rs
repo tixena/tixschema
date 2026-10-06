@@ -260,14 +260,21 @@ fn swift_bare(member: &str) -> &str {
     member.trim_matches('`')
 }
 
-/// `name` as a Swift property or enum case: between backticks where Swift reserves the word,
-/// which is the name itself to Swift and to `Codable`.
-fn swift_member(name: &str) -> String {
+/// `name` as a Swift property, enum case, method or parameter: between backticks where Swift
+/// reserves the word, which is the name itself to Swift and to `Codable`.
+pub fn swift_member(name: &str) -> String {
     if SWIFT_RESERVED.contains(&name) {
         format!("`{name}`")
     } else {
         name.to_owned()
     }
+}
+
+/// The property an emitted struct declares for the field with Rust name `rust_name`: what a
+/// client reading that field off the message writes.
+#[cfg(feature = "serde")]
+pub fn swift_field_member(rust_name: &str) -> String {
+    swift_member(&RenameRule::CamelCase.apply_to_field(rust_name))
 }
 
 /// `parameter`, upper-camel-cased: `idType` -> `IdType` — used to name a per-field auxiliary type

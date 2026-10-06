@@ -528,6 +528,29 @@ const NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE: &str = "
     }
 ";
 
+/// An operation, its arguments and a declared message's field, each named after a word Dart,
+/// Swift or Kotlin reserves; two of them are written as raw identifiers.
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+const RESERVED_WORD_SERVICE: &str = "
+    pub trait LookupService<Ctx> {
+        #[service_schema_op(http(
+            method = \"POST\",
+            path = \"/items/{in}\",
+            header_in(\"x-tenant\" = default),
+        ))]
+        async fn r#for(
+            &self,
+            ctx: &Ctx,
+            r#in: String,
+            r#final: String,
+            default: Option<String>,
+        ) -> Result<Found, FindError>;
+
+        #[service_schema_op(http(method = \"PUT\", path = \"/things/{class}\"))]
+        async fn object(&self, ctx: &Ctx, req: Thing) -> Result<Found, FindError>;
+    }
+";
+
 #[cfg(feature = "dart")]
 const DART_SINGLE_PLACEHOLDER_HTTP_SERVICE: &str = "
     pub trait ConversationClientService<Ctx> {
