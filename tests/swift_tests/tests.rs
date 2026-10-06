@@ -245,6 +245,24 @@ pub struct Timestamps {
     pub time: chrono::NaiveTime,
 }
 
+/// Members named after words the client languages reserve, and one none of them does.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReservedMembers {
+    pub class: String,
+    pub r#in: String,
+    pub r#type: String,
+}
+
+/// A plain enum whose members lower-case to words Dart and Swift reserve.
+#[model_schema()]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ReservedMember {
+    Default,
+    In,
+    Other,
+}
+
 // ---------------------------------------------------------------------------------------------
 // Struct.
 // ---------------------------------------------------------------------------------------------
@@ -720,4 +738,40 @@ fn every_fixture_constructs_and_round_trips_through_serde_json() {
         };
         serde_json::to_string(&timestamps).unwrap();
     }
+}
+
+/// Swift takes a reserved word between backticks, as a property, a coding key and an enum case;
+/// the key is the word itself. `type` is reserved in no position a member stands in.
+#[test]
+fn a_member_named_after_a_reserved_word_is_written_between_backticks() {
+    assert_eq!(
+        reserved_members_swift::swift_definition(),
+        "public struct ReservedMembers: Codable, Sendable { public let `class`: String; public \
+         let `in`: String; public let type: String; enum CodingKeys: String, CodingKey { case \
+         `class`; case `in`; case type;  };  }; "
+    );
+    assert_eq!(
+        reserved_member_swift::swift_definition(),
+        "public enum ReservedMember: String, Codable, Sendable { case `default` = \"Default\"; \
+         case `in` = \"In\"; case other = \"Other\";  }"
+    );
+    assert_eq!(
+        serde_json::to_value(ReservedMembers {
+            class: "c".to_owned(),
+            r#in: "i".to_owned(),
+            r#type: "t".to_owned(),
+        })
+        .unwrap(),
+        serde_json::json!({ "class": "c", "in": "i", "type": "t" }),
+        "the keys serde writes, which the definition above reads and writes"
+    );
+    assert_eq!(
+        serde_json::to_value([
+            ReservedMember::Default,
+            ReservedMember::In,
+            ReservedMember::Other
+        ])
+        .unwrap(),
+        serde_json::json!(["Default", "In", "Other"])
+    );
 }

@@ -3939,6 +3939,29 @@ tixschema = { default-features = false, features = ["serde", "zod", "typescript"
 
 CI tests every combination of the feature sets (`web`, `mobile`, `mongo`) via `cargo-hack`; `just test` runs every combination of the plain features locally.
 
+### A member named after a word the client language reserves
+
+A Rust field or variant may carry a name Dart, Swift or Kotlin keeps for itself: `class` and `is` are ordinary Rust field names, `r#in` and `r#for` are legal ones, and a variant named `Default` becomes the member `default` wherever the client lower-cases it. Each emitter writes such a member in the form its language accepts, and the key on the wire stays the one serde writes:
+
+```rust
+#[model_schema()]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Reserved {
+    pub class: String,
+    pub r#in: String,
+}
+```
+
+| Target | The member | The key |
+|--------|-----------|---------|
+| Dart | `final String class_; final String in_;` -- Dart has no escape for a reserved word, so the member takes a trailing underscore: `Reserved(class_: ..., in_: ...)` | `json['class']`, `json['in']` |
+| Swift | ``public let `class`: String; public let `in`: String;`` and ``case `class`; case `in`;`` in `CodingKeys` | `class`, `in` |
+| Kotlin | ``val `class`: String, val `in`: String`` | `class`, `in`, with no `@SerialName` |
+
+The words are each language's own: Dart's [reserved words](https://dart.dev/language/keywords), Swift's [keywords](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/lexicalstructure/#Keywords-and-Punctuation) reserved in a declaration, a statement or an expression, and Kotlin's [hard keywords](https://kotlinlang.org/docs/keyword-reference.html#hard-keywords). A word a language reserves in one context only -- `type` in Swift, `value` in Kotlin, `get` in Dart -- names a member as it is. Dart also moves a field named `dynamic`, the type every emitted `fromJson` and `toJson` is written with, and a plain enum's member named `index`, `values` or `wireValue`, each of which a Dart enum or the emitted one already holds. Where the moved name is one the type writes itself (`class` beside `class_`), it takes a second underscore.
+
+A plain enum's members are lower-cased by Dart and Swift, so the same rule reaches a variant: `Default` is `default_` in Dart and `` `default` `` in Swift. Kotlin keeps a variant's spelling, which no keyword matches.
+
 `just test-emitted` runs the emitted clients under their own toolchains. Its Kotlin leg compiles
 against the serialization compiler plugin and the `kotlinx-serialization-json`,
 `kotlinx-serialization-core` and `kotlinx-coroutines-core` jars, which `just kotlin-libs` installs

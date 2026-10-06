@@ -35,6 +35,40 @@ use crate::utils::{
 #[cfg(feature = "serde")]
 use crate::features::serde::{parse_serde_field_attributes, parse_serde_type_attributes};
 
+/// The words Kotlin reserves everywhere, which name a member only between backticks:
+/// <https://kotlinlang.org/docs/keyword-reference.html#hard-keywords>. A soft keyword or a
+/// modifier such as `value` or `data` is not among them: Kotlin takes one as an identifier.
+const KOTLIN_HARD_KEYWORDS: [&str; 28] = [
+    "as",
+    "break",
+    "class",
+    "continue",
+    "do",
+    "else",
+    "false",
+    "for",
+    "fun",
+    "if",
+    "in",
+    "interface",
+    "is",
+    "null",
+    "object",
+    "package",
+    "return",
+    "super",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typealias",
+    "typeof",
+    "val",
+    "var",
+    "when",
+    "while",
+];
+
 /// One field this module has decided belongs on the wire: its Rust name (camel-cased into the
 /// Kotlin property spelling by [`kotlin_property_name`]), its wire name, whether it is a
 /// `#[serde(flatten)]` source, and the [`FieldDef`] describing its type.
@@ -255,11 +289,23 @@ const fn enum_tag_attrs(_attrs: &[syn::Attribute]) -> EnumTagAttrs {
     }
 }
 
+/// A property's name without the backticks [`kotlin_property_name`] may have put around it: what
+/// a longer identifier is built from, and what the wire name is compared with.
+fn kotlin_bare(property: &str) -> &str {
+    property.trim_matches('`')
+}
+
 /// `rust_name` cased the way a Kotlin property is: `conversation_id` -> `conversationId`. Reuses
 /// serde's own `camelCase` rule (`rename_rule.rs`) rather than a second implementation, since the
-/// two rules coincide exactly on a `snake_case` Rust identifier.
+/// two rules coincide exactly on a `snake_case` Rust identifier. A hard keyword is written between
+/// backticks, which is the name itself to Kotlin and to `kotlinx.serialization`.
 fn kotlin_property_name(rust_name: &str) -> String {
-    RenameRule::CamelCase.apply_to_field(rust_name)
+    let cased = RenameRule::CamelCase.apply_to_field(rust_name);
+    if KOTLIN_HARD_KEYWORDS.contains(&cased.as_str()) {
+        format!("`{cased}`")
+    } else {
+        cased
+    }
 }
 
 /// Whether `field` carries `#[model_schema_prop(nullable)]` — the flag that keeps an `Option<T>`
@@ -710,7 +756,7 @@ fn kotlin_nothing_generic_args(generics: &syn::Generics) -> String {
 /// field whose key may be absent — a bare `Option<T>` without `#[model_schema_prop(nullable)]`.
 fn property_declaration(field: &KotlinField) -> String {
     let prop_name = kotlin_property_name(&field.rust_name);
-    let annotation = if prop_name == field.wire_name {
+    let annotation = if kotlin_bare(&prop_name) == field.wire_name {
         String::new()
     } else {
         format!("@SerialName(\"{}\") ", field.wire_name)
@@ -790,7 +836,7 @@ fn flatten_struct_field_plan(
             "output.json.encodeToJsonElement({inner_serializer}, value.{prop}).jsonObject.forEach {{ (k, v) -> put(k, v) }}"
         )
     };
-    let keys_ident = format!("{prop}Keys");
+    let keys_ident = format!("{}Keys", kotlin_bare(prop));
     let key_read =
         format!("val {keys_ident} = ({inner_serializer}).descriptor.elementNames.toSet()");
     let decode = if field.field_def.is_optional() {
@@ -813,9 +859,10 @@ fn flatten_map_field_plan(
     let serialize = format!(
         "value.{prop}.forEach {{ (k, v) -> put(k, output.json.encodeToJsonElement({value_serializer}, v)) }}"
     );
+    let consumed = format!("{}ConsumedKeys", kotlin_bare(prop));
     let decode = format!(
-        "val {prop}ConsumedKeys = {consumed_keys}; \
-         val {prop} = obj.filterKeys {{ it !in {prop}ConsumedKeys }}.mapValues {{ (_, v) -> input.json.decodeFromJsonElement({value_serializer}, v) }}"
+        "val {consumed} = {consumed_keys}; \
+         val {prop} = obj.filterKeys {{ it !in {consumed} }}.mapValues {{ (_, v) -> input.json.decodeFromJsonElement({value_serializer}, v) }}"
     );
     (serialize, decode)
 }

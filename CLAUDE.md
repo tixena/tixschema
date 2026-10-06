@@ -1137,6 +1137,7 @@ tixschema/
 5. **Using Zod v3** → Generated schemas use v4 syntax and won't work
 6. **Testing without feature combinations** → May break in different feature configurations
 7. **Declaring `u64`/`usize` under `swift` or `kotlin`** → Refused at expansion: neither target has a mapping for an unsigned 64-bit or pointer-sized integer. Use `i64`, or `u32` where the range allows
+8. **A member named after a word Dart, Swift or Kotlin reserves** → Written in the form the language accepts, the wire key unchanged: `dart_member` adds a trailing underscore (Dart has no escape), `swift_member` and `kotlin_property_name` write backticks. Each list (`DART_RESERVED`, `SWIFT_RESERVED`, `KOTLIN_HARD_KEYWORDS`) holds only words the real compiler refused as a member name, so a name that compiled before is emitted as before. A longer identifier built from a member's name (`wireFor`, `forKeys`) reads it through `swift_bare`/`kotlin_bare`
 
 ## Debugging Tips
 

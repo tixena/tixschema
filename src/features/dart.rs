@@ -36,15 +36,52 @@ use crate::utils::{
 #[cfg(feature = "serde")]
 use crate::features::serde::{parse_serde_field_attributes, parse_serde_type_attributes};
 
-/// One field this module has decided belongs on the wire: its Rust name (the Dart field/parameter
-/// spelling — left as Rust wrote it, `snake_case` included, rather than re-cased to Dart's own
-/// lower-camel convention), its wire name, whether the key always reaches the wire, whether it is a
-/// `#[serde(flatten)]` source, and the `FieldDef` describing its type.
+/// What a member of an emitted enum cannot be named beside the reserved words: a member every
+/// Dart enum or object already has, and one the emitted enum declares itself.
+const DART_ENUM_NAMES_TAKEN: [&str; 9] = [
+    "fromJson",
+    "hashCode",
+    "index",
+    "noSuchMethod",
+    "runtimeType",
+    "toJson",
+    "toString",
+    "values",
+    "wireValue",
+];
+
+/// What a field of an emitted class cannot be named beside the reserved words: the type its own
+/// `fromJson` and `toJson` are written with, which a field of that name hides inside the class,
+/// and a member the class already has. Only names that never compiled: a field named `int` hides
+/// that type too, but compiles wherever the class names no `int`, and is left as written.
+const DART_FIELD_NAMES_TAKEN: [&str; 5] = [
+    "dynamic",
+    "noSuchMethod",
+    "runtimeType",
+    "toJson",
+    "toString",
+];
+
+/// The words Dart reserves, which cannot be an identifier anywhere and have no escape:
+/// <https://dart.dev/language/keywords>. A built-in identifier such as `get` or `import` is not
+/// among them: Dart takes one as a member's name.
+const DART_RESERVED: [&str; 33] = [
+    "assert", "break", "case", "catch", "class", "const", "continue", "default", "do", "else",
+    "enum", "extends", "false", "final", "finally", "for", "if", "in", "is", "new", "null",
+    "rethrow", "return", "super", "switch", "this", "throw", "true", "try", "var", "void", "while",
+    "with",
+];
+
+/// One field this module has decided belongs on the wire: its Dart member name (the Rust field's
+/// own spelling, `snake_case` included, rather than re-cased to Dart's own lower-camel
+/// convention, and moved by [`dart_member`] off a name Dart will not take), its wire name, whether
+/// the key always reaches the wire, whether it is a `#[serde(flatten)]` source, and the `FieldDef`
+/// describing its type.
 struct DartField {
     field_def: FieldDef,
     flatten: bool,
+    member: String,
     required: bool,
-    rust_name: String,
     wire_name: String,
 }
 
@@ -244,6 +281,21 @@ const fn field_is_flatten(_attrs: &[syn::Attribute]) -> bool {
     false
 }
 
+/// `name` as a Dart member: itself, or with a trailing underscore where Dart reserves it or the
+/// emitted type has taken it (`taken`). Dart has no escape for a reserved word, so the member
+/// moves and the wire key stays. `written` is every name the item itself writes, which the moved
+/// name steps past.
+fn dart_member(name: &str, taken: &[&str], written: &[String]) -> String {
+    if !DART_RESERVED.contains(&name) && !taken.contains(&name) {
+        return name.to_owned();
+    }
+    let mut moved = format!("{name}_");
+    while written.contains(&moved) {
+        moved.push('_');
+    }
+    moved
+}
+
 /// The wire name a field with Rust name `rust_name` and its own `rename` writes under, once
 /// `rule` — the container's own `rename_all`, [`RenameRule::None`] without the `serde` feature —
 /// has had its say. An explicit rename always wins over the container's rule, matching serde
@@ -301,6 +353,11 @@ fn collect_dart_fields(
     let Fields::Named(named) = fields else {
         return Vec::new();
     };
+    let written: Vec<String> = named
+        .named
+        .iter()
+        .filter_map(|field| Some(field.ident.as_ref()?.unraw().to_string()))
+        .collect();
     let mut collected = Vec::new();
     for field in &named.named {
         let Some(ident) = field.ident.as_ref() else {
@@ -323,7 +380,7 @@ fn collect_dart_fields(
             required: !omission.omits_key,
             flatten: field_is_flatten(&field.attrs),
             field_def,
-            rust_name,
+            member: dart_member(&rust_name, &DART_FIELD_NAMES_TAKEN, &written),
             wire_name,
         });
     }
@@ -824,9 +881,9 @@ fn class_body_parts(fields: &[DartField], extra_to_json: &[String]) -> ClassBody
         .iter()
         .map(|field| {
             if field.required {
-                format!("required this.{},", field.rust_name)
+                format!("required this.{},", field.member)
             } else {
-                format!("this.{},", field.rust_name)
+                format!("this.{},", field.member)
             }
         })
         .collect();
@@ -835,7 +892,7 @@ fn class_body_parts(fields: &[DartField], extra_to_json: &[String]) -> ClassBody
             acc,
             "final {} {};",
             dart_typename(&field.field_def),
-            field.rust_name
+            field.member
         )
         .unwrap();
         acc
@@ -847,18 +904,18 @@ fn class_body_parts(fields: &[DartField], extra_to_json: &[String]) -> ClassBody
             format!("json['{}']", field.wire_name)
         };
         let decode = dart_decode_expr(&field.field_def, &source);
-        write!(acc, "{}: {decode},", field.rust_name).unwrap();
+        write!(acc, "{}: {decode},", field.member).unwrap();
         acc
     });
     let to_json_entries: String = fields
         .iter()
         .map(|field| {
-            let encode = dart_encode_expr(&field.field_def, &field.rust_name, false);
+            let encode = dart_encode_expr(&field.field_def, &field.member, false);
             if field.flatten {
                 if field.field_def.is_optional() {
                     format!(
                         "if ({} != null) ...({encode} as Map<String, dynamic>),",
-                        field.rust_name
+                        field.member
                     )
                 } else {
                     format!("...({encode} as Map<String, dynamic>),")
@@ -868,7 +925,7 @@ fn class_body_parts(fields: &[DartField], extra_to_json: &[String]) -> ClassBody
             } else {
                 format!(
                     "if ({} != null) '{}': {encode},",
-                    field.rust_name, field.wire_name
+                    field.member, field.wire_name
                 )
             }
         })
@@ -1416,10 +1473,15 @@ fn untagged_enum_dart_source(
     format!("{base} {}{typedef}", subclasses.join(" "))
 }
 
-/// One plain-enum variant's Dart member name (lower-camel of its Rust ident) and wire value.
-fn plain_enum_member(variant: &Variant, rule: RenameRule) -> (String, String) {
+/// One plain-enum variant's Dart member name (lower-camel of its Rust ident, moved off a name
+/// Dart will not take; `written` is every member's lower-camel name) and wire value.
+fn plain_enum_member(variant: &Variant, rule: RenameRule, written: &[String]) -> (String, String) {
     let rust_name = variant.ident.to_string();
-    let member_name = dart_lower_camel(&rust_name);
+    let member_name = dart_member(
+        &dart_lower_camel(&rust_name),
+        &DART_ENUM_NAMES_TAKEN,
+        written,
+    );
     let wire = rename_override(&variant.attrs).unwrap_or_else(|| rule.apply_to_variant(&rust_name));
     (member_name, wire)
 }
@@ -1427,10 +1489,15 @@ fn plain_enum_member(variant: &Variant, rule: RenameRule) -> (String, String) {
 /// The Dart tokens a plain (all-unit, string-wire) enum earns: a `String`-backed enhanced enum.
 fn plain_enum_dart_source(item_enum: &ItemEnum, rust_ident: &str, export_name: &str) -> String {
     let rule = container_rename_rule(&item_enum.attrs);
+    let written: Vec<String> = item_enum
+        .variants
+        .iter()
+        .map(|variant| dart_lower_camel(&variant.ident.to_string()))
+        .collect();
     let members: Vec<(String, String)> = item_enum
         .variants
         .iter()
-        .map(|variant| plain_enum_member(variant, rule))
+        .map(|variant| plain_enum_member(variant, rule, &written))
         .collect();
     let member_list = members
         .iter()

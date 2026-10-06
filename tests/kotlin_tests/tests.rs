@@ -330,6 +330,24 @@ pub struct Envelope<T> {
     pub id: String,
 }
 
+/// Members named after words the client languages reserve, and one none of them does.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReservedMembers {
+    pub class: String,
+    pub r#in: String,
+    pub r#type: String,
+}
+
+/// A plain enum whose members lower-case to words Dart and Swift reserve.
+#[model_schema()]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ReservedMember {
+    Default,
+    In,
+    Other,
+}
+
 #[test]
 fn test_every_declared_type_is_constructible() {
     let window_request = WindowRequest {
@@ -1046,5 +1064,39 @@ fn test_generic_flatten_generic_sibling() {
             "val body = lenient.decodeFromJsonElement(Wrapper.serializer(tSerializer), obj)"
         ),
         "got: {kotlin}"
+    );
+}
+
+/// Kotlin takes a hard keyword between backticks, and the serial name is the word itself, so no
+/// `@SerialName` is written. An enum's members keep the Rust spelling, which no keyword matches.
+#[test]
+fn a_member_named_after_a_hard_keyword_is_written_between_backticks() {
+    assert_eq!(
+        reserved_members_kotlin::kotlin_definition(),
+        "@Serializable data class ReservedMembers(val `class`: String, val `in`: String, val \
+         type: String)"
+    );
+    assert_eq!(
+        reserved_member_kotlin::kotlin_definition(),
+        "@Serializable enum class ReservedMember { Default, In, Other }"
+    );
+    assert_eq!(
+        serde_json::to_value(ReservedMembers {
+            class: "c".to_owned(),
+            r#in: "i".to_owned(),
+            r#type: "t".to_owned(),
+        })
+        .unwrap(),
+        serde_json::json!({ "class": "c", "in": "i", "type": "t" }),
+        "the keys serde writes, which the definition above reads and writes"
+    );
+    assert_eq!(
+        serde_json::to_value([
+            ReservedMember::Default,
+            ReservedMember::In,
+            ReservedMember::Other
+        ])
+        .unwrap(),
+        serde_json::json!(["Default", "In", "Other"])
     );
 }

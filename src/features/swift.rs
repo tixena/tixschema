@@ -34,6 +34,64 @@ use crate::utils::{
 #[cfg(feature = "serde")]
 use crate::features::serde::{parse_serde_field_attributes, parse_serde_type_attributes};
 
+/// The words Swift reserves in a declaration, a statement or an expression, which name a member
+/// only between backticks:
+/// <https://docs.swift.org/swift-book/documentation/the-swift-programming-language/lexicalstructure/#Keywords-and-Punctuation>.
+/// A word reserved in one context only, such as `get` or `type`, is not among them.
+const SWIFT_RESERVED: [&str; 51] = [
+    "as",
+    "associatedtype",
+    "await",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "continue",
+    "default",
+    "defer",
+    "deinit",
+    "do",
+    "else",
+    "enum",
+    "extension",
+    "fallthrough",
+    "false",
+    "fileprivate",
+    "for",
+    "func",
+    "guard",
+    "if",
+    "import",
+    "in",
+    "init",
+    "inout",
+    "internal",
+    "is",
+    "let",
+    "nil",
+    "operator",
+    "precedencegroup",
+    "private",
+    "protocol",
+    "public",
+    "repeat",
+    "rethrows",
+    "return",
+    "static",
+    "struct",
+    "subscript",
+    "super",
+    "switch",
+    "throw",
+    "throws",
+    "true",
+    "try",
+    "typealias",
+    "var",
+    "where",
+    "while",
+];
+
 /// One field this module has decided belongs on the wire, resolved to the Swift property it
 /// earns: its Rust name, its lower-camel Swift name, its wire name, whether the key always
 /// reaches the wire, whether it is a `#[serde(flatten)]` source, and the shape that drives its
@@ -193,6 +251,22 @@ fn swift_generic_params(generics: &syn::Generics) -> String {
             .collect::<Vec<_>>()
             .join(", ");
         format!("<{bounded}>")
+    }
+}
+
+/// A member's name without the backticks [`swift_member`] may have put around it: what a longer
+/// identifier is built from, and what the wire name is compared with.
+fn swift_bare(member: &str) -> &str {
+    member.trim_matches('`')
+}
+
+/// `name` as a Swift property or enum case: between backticks where Swift reserves the word,
+/// which is the name itself to Swift and to `Codable`.
+fn swift_member(name: &str) -> String {
+    if SWIFT_RESERVED.contains(&name) {
+        format!("`{name}`")
+    } else {
+        name.to_owned()
     }
 }
 
@@ -796,7 +870,7 @@ fn decode_statement(field: &SwiftField, container: &str) -> String {
             swift = field.swift_name
         )
     };
-    let local = format!("wire{}", swift_upper_camel(&field.swift_name));
+    let local = format!("wire{}", swift_upper_camel(swift_bare(&field.swift_name)));
     let convert = if field.field_def.is_optional() {
         let inner = decode_conversion(
             &field.field_def,
@@ -843,7 +917,7 @@ fn encode_statement(field: &SwiftField, container: &str) -> String {
                 &field.swift_name,
             )
         };
-        let local = format!("wire{}", swift_upper_camel(&field.swift_name));
+        let local = format!("wire{}", swift_upper_camel(swift_bare(&field.swift_name)));
         return if field.required {
             format!(
                 "let {local} = {convert}; try {container}.encode({local}, forKey: .{swift})",
@@ -960,7 +1034,7 @@ fn collect_swift_fields(
             real_type,
             required: !omission.omits_key,
             shape,
-            swift_name,
+            swift_name: swift_member(&swift_name),
             wire_name,
         });
     }
@@ -992,7 +1066,7 @@ fn swift_coding_keys(fields: &[SwiftField], extra: &[(String, String)]) -> Strin
         write!(cases, "case {name} = \"{wire}\"; ").unwrap();
     }
     for field in fields {
-        if field.swift_name == field.wire_name {
+        if swift_bare(&field.swift_name) == field.wire_name {
             write!(cases, "case {}; ", field.swift_name).unwrap();
         } else {
             write!(
@@ -1387,7 +1461,7 @@ fn plain_enum_swift_source(item_enum: &ItemEnum, rust_ident: &str, export_name: 
         .iter()
         .fold(String::new(), |mut acc, variant| {
             let rust_name = variant.ident.to_string();
-            let case_name = RenameRule::CamelCase.apply_to_variant(&rust_name);
+            let case_name = swift_member(&RenameRule::CamelCase.apply_to_variant(&rust_name));
             let wire = rename_override(&variant.attrs)
                 .unwrap_or_else(|| rule.apply_to_variant(&rust_name));
             write!(acc, "case {case_name} = \"{wire}\"; ").unwrap();
@@ -1418,7 +1492,7 @@ fn external_tagged_enum_swift_source(
     let mut encode_arms = String::new();
     for variant in &item_enum.variants {
         let rust_name = variant.ident.to_string();
-        let case_name = RenameRule::CamelCase.apply_to_variant(&rust_name);
+        let case_name = swift_member(&RenameRule::CamelCase.apply_to_variant(&rust_name));
         let wire_tag = rename_override(&variant.attrs)
             .unwrap_or_else(|| variant_rule.apply_to_variant(&rust_name));
         let payload_type =
@@ -1493,7 +1567,7 @@ fn internal_tagged_enum_swift_source(
     let mut encode_arms = String::new();
     for variant in &item_enum.variants {
         let rust_name = variant.ident.to_string();
-        let case_name = RenameRule::CamelCase.apply_to_variant(&rust_name);
+        let case_name = swift_member(&RenameRule::CamelCase.apply_to_variant(&rust_name));
         let wire_tag = rename_override(&variant.attrs)
             .unwrap_or_else(|| variant_rule.apply_to_variant(&rust_name));
         let payload_type =
@@ -1562,7 +1636,7 @@ fn adjacent_tagged_enum_swift_source(
     let mut encode_arms = String::new();
     for variant in &item_enum.variants {
         let rust_name = variant.ident.to_string();
-        let case_name = RenameRule::CamelCase.apply_to_variant(&rust_name);
+        let case_name = swift_member(&RenameRule::CamelCase.apply_to_variant(&rust_name));
         let wire_tag = rename_override(&variant.attrs)
             .unwrap_or_else(|| variant_rule.apply_to_variant(&rust_name));
         let payload_type =
@@ -1628,7 +1702,7 @@ fn untagged_enum_swift_source(
     let mut encode_arms = String::new();
     for variant in &item_enum.variants {
         let rust_name = variant.ident.to_string();
-        let case_name = RenameRule::CamelCase.apply_to_variant(&rust_name);
+        let case_name = swift_member(&RenameRule::CamelCase.apply_to_variant(&rust_name));
         let payload_type =
             resolve_variant_payload(variant, field_rule, type_parameters, export_name, aux);
         cases.push_str(&variant_case(&case_name, payload_type.as_deref()));

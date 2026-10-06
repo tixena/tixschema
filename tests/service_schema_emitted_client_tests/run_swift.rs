@@ -24,10 +24,12 @@ use super::tests::stamp_client_service_schema::{
 };
 use super::tests::swift_codec_fixture::{
     CodecAdjacentTagged, CodecEnvelope, CodecExternalTagged, CodecInternalTagged, CodecMapKeys,
-    CodecOptionsRow, CodecPrimary, CodecTuplePoint, CodecUnitField, CodecUnitPayload,
-    CodecUntagged, codec_adjacent_tagged_swift, codec_envelope_swift, codec_external_tagged_swift,
-    codec_internal_tagged_swift, codec_map_keys_swift, codec_options_row_swift,
-    codec_primary_swift, codec_tuple_point_swift, codec_unit_field_swift, codec_unit_payload_swift,
+    CodecOptionsRow, CodecPrimary, CodecReservedMap, CodecTuplePoint, CodecUnitField,
+    CodecUnitPayload, CodecUntagged, codec_adjacent_tagged_swift, codec_envelope_swift,
+    codec_external_tagged_swift, codec_internal_tagged_swift, codec_map_keys_swift,
+    codec_options_row_swift, codec_primary_swift, codec_reserved, codec_reserved_inner_swift,
+    codec_reserved_kind_swift, codec_reserved_map_swift, codec_reserved_swift,
+    codec_tuple_point_swift, codec_unit_field_swift, codec_unit_payload_swift,
     codec_untagged_swift,
 };
 use super::tests::{
@@ -533,6 +535,19 @@ fn codec_rows() -> Vec<(&'static str, &'static str, serde_json::Value)> {
             })
             .unwrap(),
         ),
+        (
+            "reserved",
+            "CodecReserved",
+            serde_json::to_value(codec_reserved()).unwrap(),
+        ),
+        (
+            "reserved_map",
+            "CodecReservedMap",
+            serde_json::to_value(CodecReservedMap {
+                r#for: HashMap::from([(7, "seven".to_owned())]),
+            })
+            .unwrap(),
+        ),
     ]
 }
 
@@ -576,6 +591,10 @@ fn codec_module(driver: &str) -> String {
         codec_map_keys_swift::swift_definition(),
         codec_unit_payload_swift::swift_definition(),
         codec_unit_field_swift::swift_definition(),
+        codec_reserved_kind_swift::swift_definition(),
+        codec_reserved_inner_swift::swift_definition(),
+        codec_reserved_swift::swift_definition(),
+        codec_reserved_map_swift::swift_definition(),
         driver.to_owned(),
     ]
     .join("\n\n")

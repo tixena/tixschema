@@ -31,11 +31,13 @@ use super::tests::stamp_client_service_schema::{
 };
 use super::tests::swift_codec_fixture::{
     CodecAdjacentTagged, CodecEnvelope, CodecExternalTagged, CodecInternalTagged, CodecMapKeys,
-    CodecOptionsRow, CodecPrimary, CodecTuplePoint, CodecUnitField, CodecUnitPayload,
-    CodecUntagged, codec_adjacent_tagged_kotlin, codec_envelope_kotlin,
+    CodecOptionsRow, CodecPrimary, CodecReservedMap, CodecTuplePoint, CodecUnitField,
+    CodecUnitPayload, CodecUntagged, codec_adjacent_tagged_kotlin, codec_envelope_kotlin,
     codec_external_tagged_kotlin, codec_internal_tagged_kotlin, codec_map_keys_kotlin,
-    codec_options_row_kotlin, codec_primary_kotlin, codec_tuple_point_kotlin,
-    codec_unit_field_kotlin, codec_unit_payload_kotlin, codec_untagged_kotlin,
+    codec_options_row_kotlin, codec_primary_kotlin, codec_reserved, codec_reserved_inner_kotlin,
+    codec_reserved_kind_kotlin, codec_reserved_kotlin, codec_reserved_map_kotlin,
+    codec_tuple_point_kotlin, codec_unit_field_kotlin, codec_unit_payload_kotlin,
+    codec_untagged_kotlin,
 };
 use super::tests::thumbnail_client_service_schema::{
     thumbnail_client_service_fault_fields_kotlin, thumbnail_client_service_fault_kind_kotlin,
@@ -679,6 +681,19 @@ fn codec_rows() -> Vec<(&'static str, &'static str, serde_json::Value)> {
             })
             .unwrap(),
         ),
+        (
+            "reserved",
+            "CodecReserved",
+            serde_json::to_value(codec_reserved()).unwrap(),
+        ),
+        (
+            "reserved_map",
+            "CodecReservedMap",
+            serde_json::to_value(CodecReservedMap {
+                r#for: HashMap::from([(7, "seven".to_owned())]),
+            })
+            .unwrap(),
+        ),
     ]
 }
 
@@ -723,6 +738,10 @@ fn codec_module(driver: &str) -> String {
         codec_map_keys_kotlin::kotlin_definition(),
         codec_unit_payload_kotlin::kotlin_definition(),
         codec_unit_field_kotlin::kotlin_definition(),
+        codec_reserved_kind_kotlin::kotlin_definition(),
+        codec_reserved_inner_kotlin::kotlin_definition(),
+        codec_reserved_kotlin::kotlin_definition(),
+        codec_reserved_map_kotlin::kotlin_definition(),
     ]);
     parts.push(driver.to_owned());
     parts.join("\n\n")

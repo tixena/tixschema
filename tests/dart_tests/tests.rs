@@ -218,6 +218,32 @@ pub struct ProductLookup {
     pub by_slot: HashMap<StockStatus, String>,
 }
 
+/// Members named after words the client languages reserve, and one none of them does.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReservedMembers {
+    pub class: String,
+    pub r#in: String,
+    pub r#type: String,
+}
+
+/// A reserved word beside the name it would have moved to.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReservedBesideItsMove {
+    pub class: String,
+    pub class_: String,
+}
+
+/// A plain enum whose members lower-case to words Dart and Swift reserve.
+#[model_schema()]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ReservedMember {
+    Default,
+    In,
+    Other,
+}
+
 // ---------------------------------------------------------------------------------------------
 // Every declared type is constructible — keeps the compiler from calling any of the above dead
 // code, and doubles as a check that the ordinary Rust side of each declaration still behaves.
@@ -955,5 +981,68 @@ fn test_an_optional_scalar_calls_nothing_and_so_spells_no_null_away() {
         dart.contains("'note': (note == null ? null : note),"),
         "a value that encodes as itself calls nothing on the field, and a `!` there would be \
          `unnecessary_non_null_assertion` noise of the opposite kind. Got: {dart}"
+    );
+}
+
+/// Dart has no escape for a reserved word: the member takes a trailing underscore and the key
+/// stays the one serde writes. `type` is no reserved word of Dart's and keeps its name.
+#[test]
+fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
+    assert_eq!(
+        reserved_members_dart::dart_definition(),
+        "class ReservedMembers { const ReservedMembers({required this.class_,required \
+         this.in_,required this.type,}); final String class_;final String in_;final String type; \
+         factory ReservedMembers.fromJson(Map<String, dynamic> json) => ReservedMembers(class_: \
+         json['class'] as String,in_: json['in'] as String,type: json['type'] as String,); \
+         Map<String, dynamic> toJson() => { 'class': class_,'in': in_,'type': type, }; }"
+    );
+    assert_eq!(
+        reserved_member_dart::dart_definition(),
+        "enum ReservedMember { default_('Default'), in_('In'), other('Other'); const \
+         ReservedMember(this.wireValue); final String wireValue; static ReservedMember \
+         fromJson(String json) => switch (json) { 'Default' => ReservedMember.default_,'In' => \
+         ReservedMember.in_,'Other' => ReservedMember.other, _ => throw ArgumentError('Unknown \
+         ReservedMember: ' + json) }; String toJson() => wireValue; }"
+    );
+    assert_eq!(
+        serde_json::to_value(ReservedMembers {
+            class: "c".to_owned(),
+            r#in: "i".to_owned(),
+            r#type: "t".to_owned(),
+        })
+        .unwrap(),
+        serde_json::json!({ "class": "c", "in": "i", "type": "t" }),
+        "the keys serde writes, which the definition above reads and writes"
+    );
+    assert_eq!(
+        serde_json::to_value([
+            ReservedMember::Default,
+            ReservedMember::In,
+            ReservedMember::Other
+        ])
+        .unwrap(),
+        serde_json::json!(["Default", "In", "Other"])
+    );
+}
+
+/// The moved name steps past a field the struct writes under it, which keeps its own.
+#[test]
+fn a_moved_member_steps_past_a_field_already_written_under_its_name() {
+    let dart = reserved_beside_its_move_dart::dart_definition();
+    assert!(
+        dart.contains("final String class__;final String class_;"),
+        "got: {dart}"
+    );
+    assert!(
+        dart.contains("{ 'class': class__,'class_': class_, }"),
+        "got: {dart}"
+    );
+    assert_eq!(
+        serde_json::to_value(ReservedBesideItsMove {
+            class: "a".to_owned(),
+            class_: "b".to_owned(),
+        })
+        .unwrap(),
+        serde_json::json!({ "class": "a", "class_": "b" })
     );
 }
