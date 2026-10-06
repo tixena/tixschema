@@ -44,6 +44,7 @@
 //! `{ "isServiceFault": true, "fault": <fault fields> }` in its place — the convention every other
 //! surface in this crate already writes for an outbound or a dispatcher-detected fault.
 
+use super::kotlin_http_client::{held_copies, kotlin_held};
 use super::result::result_name;
 use crate::features::kotlin::{kotlin_bare, kotlin_name, kotlin_property_name, kotlin_typename};
 use crate::field_type::get_field_def;
@@ -439,9 +440,10 @@ fn client_headers_build_stmt(shape: &HttpShape) -> String {
     if shape.header_in.is_empty() {
         return "    val headers = buildJsonObject {}\n".to_owned();
     }
-    let mut stmt = String::from("    val headers = buildJsonObject {\n");
+    let mut stmt = held_copies(shape.header_in.iter().map(|header| &header.parameter));
+    stmt.push_str("    val headers = buildJsonObject {\n");
     for header in &shape.header_in {
-        let prop = kotlin_property_name(&written(&header.parameter));
+        let prop = kotlin_held(&header.parameter);
         let name = &header.name;
         if let Some(inner) = option_inner(&header.ty) {
             let inner_ty = kotlin_type_of(inner);
@@ -876,7 +878,7 @@ fn header_in_read_stmt(
     let mut stmt = String::new();
     let mut idents = Vec::new();
     for header in &shape.header_in {
-        let prop = kotlin_property_name(&written(&header.parameter));
+        let prop = kotlin_held(&header.parameter);
         let name = &header.name;
         let raw_ident = format!("{}Raw", kotlin_bare(&prop));
         if let Some(inner) = option_inner(&header.ty) {

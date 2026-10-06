@@ -6,8 +6,8 @@
 //! Swift toolchain, against an in-memory socket, separately from this file's own assertions.
 
 use super::{
-    MIXED_SERVICE, RESERVED_WORD_SERVICE, SWIFT_UNIT_SUCCESS_SERVICE, SWIFT_WS_HEADERS_SERVICE,
-    SWIFT_WS_SERVICE, swift_ws_client_of,
+    MIXED_SERVICE, RESERVED_WORD_SERVICE, SHADOWED_LOCAL_SERVICE, SWIFT_UNIT_SUCCESS_SERVICE,
+    SWIFT_WS_HEADERS_SERVICE, SWIFT_WS_SERVICE, swift_ws_client_of,
 };
 
 /// The body of one declaration, from its own start marker through the closing brace that ends
@@ -535,5 +535,16 @@ fn a_reserved_word_is_written_between_backticks_in_the_method_and_the_parameter(
         "WsHeaderIn(`default`)",
     ] {
         assert!(written.contains(escaped), "no `{escaped}` in: {written}");
+    }
+}
+
+#[test]
+fn an_argument_named_after_a_local_of_the_method_keeps_its_label_and_is_read_by_another_name() {
+    let written = swift_ws_client_of(SHADOWED_LOCAL_SERVICE);
+    for moved in [
+        "public func shadow(_ req: ShadowRequest, headers headers_: String, path path_: String?) async",
+        "WsHeaderIn(headers_)",
+    ] {
+        assert!(written.contains(moved), "no `{moved}` in: {written}");
     }
 }

@@ -3987,6 +3987,8 @@ async fn r#for(
 
 The operation's wire name (`for`), the URL (`/items/...`) and the keys (`final`) are what they are for any other name.
 
+An argument may also be named after a local the generated code writes around it -- `path`, `headers`, `body`, `request` -- and no client or dispatcher reads it as its own. The Rust transports hold a header or part argument in a local of their own. TypeScript and Dart, which take such an argument by position, move its name (`path_`); Swift keeps the label a caller writes and reads the argument by another name (`path path_: String`); Kotlin keeps the parameter and copies it before it writes its own local. Nothing a caller writes changes.
+
 `just test-emitted` runs the emitted clients under their own toolchains. Its Kotlin leg compiles
 against the serialization compiler plugin and the `kotlinx-serialization-json`,
 `kotlinx-serialization-core` and `kotlinx-coroutines-core` jars, which `just kotlin-libs` installs

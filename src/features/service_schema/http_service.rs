@@ -437,12 +437,6 @@ fn empty_message_build(
     (String::new(), "{}".to_owned())
 }
 
-/// The local a dispatcher holds the captured text of the placeholder `name` in: `name` itself,
-/// moved off a word TypeScript refuses.
-fn placeholder_local(name: &str) -> String {
-    message::local_name(name)
-}
-
 /// A `Named` message, TypeScript side: the whole body, the one placeholder's decoded value when
 /// the type is a scalar bound whole, or an object keyed by placeholder.
 fn named_message_build(
@@ -462,7 +456,7 @@ fn named_message_build(
             String::new(),
             message::decode_ts_expr(
                 named_type,
-                &placeholder_local(&placeholder_names[0]),
+                &message::placeholder_local(&placeholder_names[0]),
                 prefix,
             ),
         );
@@ -472,7 +466,7 @@ fn named_message_build(
         let _ = writeln!(
             setup,
             "        message[\"{name}\"] = {};",
-            placeholder_local(name)
+            message::placeholder_local(name)
         );
     }
     (setup, "message".to_owned())
@@ -535,7 +529,8 @@ fn generated_message_build(
         }
         let key = wire_key(field);
         if is_placeholder {
-            let decode = message::decode_ts_expr(ty, &placeholder_local(&field_name), prefix);
+            let decode =
+                message::decode_ts_expr(ty, &message::placeholder_local(&field_name), prefix);
             let _ = writeln!(setup, "        message[\"{key}\"] = {decode};");
         } else if multipart {
             setup.push_str(&multipart_field_insert(&key, ty, prefix));
@@ -661,7 +656,7 @@ fn arm(operation: &OperationDef, ctx: &DispatcherContext) -> String {
             "        const [{}] = captured;",
             placeholder_names
                 .iter()
-                .map(|name| placeholder_local(name))
+                .map(|name| message::placeholder_local(name))
                 .collect::<Vec<_>>()
                 .join(", ")
         );

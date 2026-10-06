@@ -10,8 +10,8 @@
 use super::{
     BYTES_HTTP_SERVICE, EMITTED_CLIENT_TEST_SERVICE, MIXED_HTTP_SERVICE, MIXED_SERVICE,
     MULTIPART_HTTP_SERVICE, PATH_BOUND_HTTP_SERVICE, QUERY_HTTP_SERVICE,
-    REQUIRED_HEADER_HTTP_SERVICE, RESERVED_WORD_SERVICE, STREAM_HTTP_SERVICE,
-    TS_UNIT_SUCCESS_SERVICE, http_service_of,
+    REQUIRED_HEADER_HTTP_SERVICE, RESERVED_WORD_SERVICE, SHADOWED_LOCAL_SERVICE,
+    STREAM_HTTP_SERVICE, TS_UNIT_SUCCESS_SERVICE, http_service_of,
 };
 use crate::utils::record_wire_scalar;
 
@@ -473,6 +473,17 @@ fn a_placeholder_named_after_a_word_typescript_refuses_is_held_under_a_trailing_
         "message[\"in\"] = in_;",
         "const [class_] = captured;",
         "message[\"class\"] = class_;",
+    ] {
+        assert!(written.contains(moved), "no `{moved}` in: {written}");
+    }
+}
+
+#[test]
+fn a_placeholder_named_after_a_local_of_the_dispatcher_is_held_under_another_name() {
+    let written = http_service_of(SHADOWED_LOCAL_SERVICE);
+    for moved in [
+        "const [message_] = captured;",
+        "message[\"message\"] = message_;",
     ] {
         assert!(written.contains(moved), "no `{moved}` in: {written}");
     }

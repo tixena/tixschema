@@ -17,6 +17,69 @@ use crate::service_schema::parse::{
 };
 use syn::{Ident, Type};
 
+/// The locals and parameters an emitted dispatcher's arm writes around a path placeholder's own
+/// local.
+const TAKEN_BY_A_DISPATCHER: [&str; 25] = [
+    "answer",
+    "bytes",
+    "captured",
+    "contentType",
+    "ctx",
+    "declaredError",
+    "dispatched",
+    "envelope",
+    "error",
+    "found",
+    "headers",
+    "headersIn",
+    "message",
+    "method",
+    "parsedBody",
+    "path",
+    "queryMap",
+    "raw",
+    "rejected",
+    "rendered",
+    "replied",
+    "request",
+    "status",
+    "thrown",
+    "value",
+];
+
+/// The locals and parameters an emitted method writes around an operation's own argument: the
+/// REST client's, the client's over a transport, and the dispatcher's.
+const TAKEN_BY_A_METHOD: [&str; 28] = [
+    "answer",
+    "answered",
+    "body",
+    "contentRange",
+    "contentType",
+    "ctx",
+    "declared",
+    "error",
+    "headers",
+    "impl",
+    "operation",
+    "outcome",
+    "parsed",
+    "parts",
+    "path",
+    "payload",
+    "query",
+    "queryParts",
+    "received",
+    "rendered",
+    "replied",
+    "req",
+    "response",
+    "sending",
+    "status",
+    "transport",
+    "uncarried",
+    "validated",
+];
+
 /// The words `tsc` refuses as a parameter or a local in a module: the reserved words, the ones
 /// strict mode adds, and `arguments`, `await` and `eval`.
 const REFUSED_AS_A_NAME: [&str; 48] = [
@@ -98,20 +161,28 @@ pub fn typename(operation: &OperationDef) -> String {
     }
 }
 
-/// `name` as a parameter or a local: with a trailing underscore where TypeScript refuses the
-/// word, having no escape for one.
-pub fn local_name(name: &str) -> String {
-    if REFUSED_AS_A_NAME.contains(&name) {
+/// `name` with a trailing underscore where TypeScript refuses the word, having no escape for
+/// one, and where `taken` holds it: the names written around it, which it would be read as.
+fn moved_off(name: &str, taken: &[&str]) -> String {
+    if REFUSED_AS_A_NAME.contains(&name) || taken.contains(&name) {
         format!("{name}_")
     } else {
         name.to_owned()
     }
 }
 
-/// The TypeScript name of an operation's own argument: its Rust name camel-cased, and moved off
-/// a word TypeScript refuses.
+/// The local a dispatcher's arm holds the captured text of the placeholder `name` in.
+pub fn placeholder_local(name: &str) -> String {
+    moved_off(name, &TAKEN_BY_A_DISPATCHER)
+}
+
+/// The TypeScript name of an operation's own argument: its Rust name camel-cased. An argument is
+/// taken by position, so moving its name changes nothing for a caller.
 pub fn parameter_name(parameter: &Ident) -> String {
-    local_name(&RenameRule::CamelCase.apply_to_field(&written(parameter)))
+    moved_off(
+        &RenameRule::CamelCase.apply_to_field(&written(parameter)),
+        &TAKEN_BY_A_METHOD,
+    )
 }
 
 /// The arguments a bound header and a bound part add after the message, in declaration order,

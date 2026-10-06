@@ -45,7 +45,7 @@ use crate::service_schema::parse::{
 use core::fmt::Write as _;
 use syn::Type;
 
-use super::swift_http_client::{swift_call, swift_parameter};
+use super::swift_http_client::{swift_call, swift_parameter, swift_parameter_declared};
 use super::swift_type::swift_typename_of;
 
 pub fn emit(service: &ServiceDef) -> Vec<String> {
@@ -503,7 +503,7 @@ fn header_in_params(param_ty: &str, shape: &HttpShape) -> String {
         let _ = write!(
             params,
             ", {}: {}",
-            swift_parameter(&header.parameter),
+            swift_parameter_declared(&header.parameter),
             swift_typename_of(&header.ty)
         );
     }

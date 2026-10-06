@@ -573,8 +573,9 @@ fn header_probe_bundle() -> String {
     .join("\n\n")
 }
 
-/// Every surface of `ReservedProbeService`, whose placeholder and header argument are named
-/// after words TypeScript refuses as a parameter or a local.
+/// Every surface of `ReservedProbeService`, whose placeholders and header arguments are named
+/// after words TypeScript refuses as a parameter or a local, and after locals the emitted
+/// functions write themselves.
 #[cfg(feature = "zod")]
 fn reserved_probe_bundle() -> String {
     [
@@ -983,8 +984,9 @@ fn a_header_tuple_implementation_is_accepted_at_the_dispatcher_and_the_attachmen
     );
 }
 
-/// A header argument named `default` and a placeholder named `in`: each is a parameter or a local
-/// somewhere in the bundle, and TypeScript has no escape for a reserved word.
+/// A header argument named `default` and a placeholder named `in`, then ones named `headers`,
+/// `path` and `message`: each is a parameter or a local somewhere in the bundle, where TypeScript
+/// has no escape for a reserved word and refuses a second local of one name.
 #[cfg(feature = "zod")]
 #[test]
 fn a_service_named_after_reserved_words_type_checks_on_every_surface() {

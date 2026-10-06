@@ -25,7 +25,7 @@
 //! unprefixed top-level name.
 
 use super::result::result_name;
-use crate::features::kotlin::{kotlin_name, kotlin_property_name, kotlin_typename};
+use crate::features::kotlin::{kotlin_bare, kotlin_name, kotlin_property_name, kotlin_typename};
 use crate::field_type::{FieldDefType, get_field_def};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
@@ -36,7 +36,48 @@ use crate::service_schema::parse::{
 };
 use crate::service_schema::support::fault_fields_typescript_name;
 use core::fmt::Write as _;
-use syn::Type;
+use syn::{Ident, Type};
+
+/// The locals and parameters an emitted method writes around an operation's own argument: the
+/// REST client's, the `ws_rpc` client's and the `ws_rpc` dispatcher's.
+const TAKEN_BY_A_METHOD: [&str; 36] = [
+    "answered",
+    "assigned",
+    "body",
+    "contentRange",
+    "contentType",
+    "declaredHead",
+    "declaredHeaders",
+    "decoded",
+    "deferred",
+    "error",
+    "fault",
+    "handlers",
+    "headers",
+    "id",
+    "incomingHeaders",
+    "isServiceFault",
+    "it",
+    "ok",
+    "parts",
+    "path",
+    "query",
+    "queryParts",
+    "raw",
+    "rejected",
+    "rendered",
+    "reply",
+    "replyHeaders",
+    "req",
+    "response",
+    "shared",
+    "status",
+    "thrown",
+    "transport",
+    "uncarried",
+    "unexpected",
+    "value",
+];
 
 /// One reply operation's own success shape: the Kotlin type `Ok`'s `value` carries, and any
 /// auxiliary `data class` declaration that type needs published ahead of the sealed result —
@@ -412,11 +453,46 @@ fn return_type(named: &str, operation: &OperationDef) -> String {
     result_name(named, operation).unwrap()
 }
 
+/// The name an emitted method reads an operation's own argument by: the parameter's own, or the
+/// copy [`held_copies`] makes of one named after a name the method writes itself, which Kotlin
+/// would read it as without a word.
+pub(super) fn kotlin_held(parameter: &Ident) -> String {
+    let declared = kotlin_property_name(&written(parameter));
+    let bare = kotlin_bare(&declared);
+    if TAKEN_BY_A_METHOD.contains(&bare) {
+        format!("{bare}_")
+    } else {
+        declared
+    }
+}
+
+/// One copy per argument [`kotlin_held`] moves, written ahead of the method's own locals. The
+/// parameter keeps its name, which a caller may pass it by.
+pub(super) fn held_copies<'parameters>(
+    parameters: impl Iterator<Item = &'parameters Ident>,
+) -> String {
+    parameters.fold(String::new(), |mut copies, parameter| {
+        let declared = kotlin_property_name(&written(parameter));
+        let held = kotlin_held(parameter);
+        if held != declared {
+            let _ = writeln!(copies, "    val {held} = {declared}");
+        }
+        copies
+    })
+}
+
 fn method(named: &str, fn_prefix: &str, operation: &OperationDef, has_multipart: bool) -> String {
     let shape = HttpShape::of(operation);
     let wire = &operation.wire_name;
     let call = kotlin_name(&operation.ts_name);
     let params = method_params(operation, &shape);
+    let copies = held_copies(
+        shape
+            .header_in
+            .iter()
+            .map(|header| &header.parameter)
+            .chain(shape.multipart_parts.iter().map(|part| &part.parameter)),
+    );
     let path_build = path_build_stmt(operation, &shape, fn_prefix);
     let query_build = query_build_stmt(operation, &shape, fn_prefix);
     let headers_build = header_in_build_stmt(named, fn_prefix, operation, &shape);
@@ -441,6 +517,7 @@ fn method(named: &str, fn_prefix: &str, operation: &OperationDef, has_multipart:
     format!(
         "{doc}\n\
          {signature} {{\n\
+{copies}\
 {path_build}\
 {query_build}\
 {headers_build}\
@@ -556,7 +633,7 @@ fn header_in_build_stmt(
     // caller rather than just the block.
     for header in &shape.header_in {
         let name = &header.name;
-        let prop = kotlin_property_name(&written(&header.parameter));
+        let prop = kotlin_held(&header.parameter);
         let fault_expr = format!(
             "{fn_prefix}HttpOutboundFault(\"{}\", \"{name}\", \"a header value contains a \
              character illegal in an HTTP header\")",
@@ -655,7 +732,7 @@ fn multipart_parts_build_stmt(
     }
     for part in &shape.multipart_parts {
         let name = &part.name;
-        let prop = kotlin_property_name(&written(&part.parameter));
+        let prop = kotlin_held(&part.parameter);
         let _ = writeln!(stmt, "    parts.add(\"{name}\" to {prop})");
     }
     stmt

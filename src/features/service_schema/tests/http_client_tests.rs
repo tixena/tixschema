@@ -7,8 +7,8 @@
 
 use super::{
     BYTES_HTTP_SERVICE, MIXED_HTTP_SERVICE, MIXED_SERVICE, MULTIPART_HTTP_SERVICE,
-    OPTIONAL_HEADER_OUT_HTTP_SERVICE, RESERVED_WORD_SERVICE, SINGLE_PLACEHOLDER_HTTP_SERVICE,
-    STREAM_HTTP_SERVICE, TS_UNIT_SUCCESS_SERVICE, http_client_of,
+    OPTIONAL_HEADER_OUT_HTTP_SERVICE, RESERVED_WORD_SERVICE, SHADOWED_LOCAL_SERVICE,
+    SINGLE_PLACEHOLDER_HTTP_SERVICE, STREAM_HTTP_SERVICE, TS_UNIT_SUCCESS_SERVICE, http_client_of,
 };
 
 #[test]
@@ -638,6 +638,18 @@ fn an_argument_named_after_a_word_typescript_refuses_takes_a_trailing_underscore
         "if (default_ !== undefined) {",
         "const rendered = String(default_);",
         "headers.push([\"x-tenant\", rendered]);",
+    ] {
+        assert!(written.contains(moved), "no `{moved}` in: {written}");
+    }
+}
+
+#[test]
+fn an_argument_named_after_a_local_of_the_method_is_moved_off_it() {
+    let written = http_client_of(SHADOWED_LOCAL_SERVICE);
+    for moved in [
+        "async shadow(req: ShadowRequest, headers_: string, path_: string | undefined) {",
+        "const rendered = String(headers_);",
+        "if (path_ !== undefined) {",
     ] {
         assert!(written.contains(moved), "no `{moved}` in: {written}");
     }

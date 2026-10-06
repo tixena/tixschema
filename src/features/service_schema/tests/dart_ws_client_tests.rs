@@ -6,7 +6,8 @@
 
 use super::{
     DART_HEADER_TUPLE_SERVICE, DART_PRIMITIVE_SERVICE, DART_UNIT_SUCCESS_HTTP_SERVICE,
-    DART_WS_SERVICE, MIXED_SERVICE, RESERVED_WORD_SERVICE, dart_ws_client_of,
+    DART_WS_SERVICE, MIXED_SERVICE, RESERVED_WORD_SERVICE, SHADOWED_LOCAL_SERVICE,
+    dart_ws_client_of,
 };
 
 /// The body of one method or dispatch arm, from its own start marker through the closing brace of
@@ -653,6 +654,18 @@ fn a_reserved_word_is_moved_in_the_method_the_parameter_and_the_handler() {
         "required this.for_,",
         "Function(Ctx ctx, ForRequest req, String? default_) for_;",
         "handlers.for_(ctx, decoded, default_)",
+    ] {
+        assert!(written.contains(moved), "no `{moved}` in: {written}");
+    }
+}
+
+#[test]
+fn an_argument_named_after_a_local_of_the_method_is_moved_off_it() {
+    let written = dart_ws_client_of(SHADOWED_LOCAL_SERVICE);
+    for moved in [
+        " shadow(ShadowRequest req, String headers_, String? path_) async {",
+        "'x-headers': headers_,",
+        "handlers.shadow(ctx, decoded, headers_, path_)",
     ] {
         assert!(written.contains(moved), "no `{moved}` in: {written}");
     }

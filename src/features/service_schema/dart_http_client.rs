@@ -73,6 +73,46 @@ use crate::service_schema::support::fault_fields_typescript_name;
 use core::fmt::Write as _;
 use syn::{Ident, Type};
 
+/// The locals and parameters an emitted method writes around an operation's own argument: the
+/// REST client's, the `ws_rpc` client's and the `ws_rpc` dispatcher's. Dart reads a name written
+/// after a local of that name as the local, without a word.
+const TAKEN_BY_A_METHOD: [&str; 34] = [
+    "answer",
+    "answered",
+    "body",
+    "contentRange",
+    "contentType",
+    "ctx",
+    "declared",
+    "declaredHead",
+    "decoded",
+    "e",
+    "error",
+    "fault",
+    "frame",
+    "frames",
+    "handlers",
+    "headers",
+    "headersIn",
+    "onFault",
+    "parts",
+    "path",
+    "query",
+    "queryParts",
+    "rejected",
+    "rendered",
+    "reply",
+    "replyHeaders",
+    "replyId",
+    "req",
+    "response",
+    "status",
+    "subscription",
+    "uncarried",
+    "unexpected",
+    "value",
+];
+
 /// The Dart record a `body = "stream"` operation's own success answers with: a nullable
 /// `contentRange` and the `contentType`, paired with the body as a lazily-pulled
 /// `Stream<List<int>>` — `contentRange` is `null` at the operation's own `ok_status`, the range
@@ -179,12 +219,13 @@ fn client_class(service: &ServiceDef) -> String {
 
 /// The Dart name of the method that calls `operation`.
 pub(super) fn dart_call(operation: &OperationDef) -> String {
-    dart_local(&operation.ts_name)
+    dart_local(&operation.ts_name, &[])
 }
 
-/// The Dart name of an operation's own argument: the Rust identifier, never re-cased.
+/// The Dart name of an operation's own argument: the Rust identifier, never re-cased. An
+/// argument is taken by position, so moving its name changes nothing for a caller.
 pub(super) fn dart_parameter(parameter: &Ident) -> String {
-    dart_local(&written(parameter))
+    dart_local(&written(parameter), &TAKEN_BY_A_METHOD)
 }
 
 /// The member of the message `operation` takes that holds its field `name`, as the message's

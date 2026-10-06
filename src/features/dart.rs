@@ -320,10 +320,11 @@ pub fn record_dart_fields(rust_ident: &str, fields: Vec<String>) {
     });
 }
 
-/// `name` as a method or a parameter of an emitted client, which only a reserved word moves.
+/// `name` as a method or a parameter of an emitted client, moved off a reserved word and off
+/// `taken`, the names written around it.
 #[cfg(feature = "serde")]
-pub fn dart_local(name: &str) -> String {
-    dart_member(name, &[], &[])
+pub fn dart_local(name: &str, taken: &[&str]) -> String {
+    dart_member(name, taken, &[])
 }
 
 /// The wire name a field with Rust name `rust_name` and its own `rename` writes under, once

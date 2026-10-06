@@ -1,5 +1,6 @@
 //! A service whose operations, arguments and message fields are named after words TypeScript,
-//! Dart, Swift or Kotlin reserves, called through each emitted client.
+//! Dart, Swift or Kotlin reserves, and after locals a client writes itself, called through each
+//! emitted client.
 //!
 //! Each client is handed a transport that records what it is sent. Every recorded request is then
 //! read by the Rust dispatcher, whose handler answers with what it was handed: the client reached
@@ -21,12 +22,12 @@ use super::tests::{LookupBackEnd, LookupClientServiceSchema};
 #[cfg(feature = "kotlin")]
 use super::tests::{
     for_request_kotlin, import_request_kotlin, lookup_error_kotlin, lookup_found_kotlin,
-    lookup_thing_kotlin,
+    lookup_thing_kotlin, shadow_request_kotlin,
 };
 #[cfg(feature = "swift")]
 use super::tests::{
     for_request_swift, import_request_swift, lookup_error_swift, lookup_found_swift,
-    lookup_thing_swift,
+    lookup_thing_swift, shadow_request_swift,
 };
 #[cfg(feature = "dart")]
 use super::tests::{lookup_error_dart, lookup_found_dart, lookup_thing_dart};
@@ -66,6 +67,7 @@ void main() async {
   await client.import(ImportRequest(class_: 'k', object: 'o', default_: 'd', var_: 'v'));
   await client.for_(ForRequest(in_: 'i', final_: 'f'), 't', 'n');
   await client.object(LookupThing(class_: 'c', var_: 'w'));
+  await client.shadow(ShadowRequest(message: 'm', sending: 's'), 'b', 'p', 't');
   print(jsonEncode(recorder.sent));
 }
 ";
@@ -87,6 +89,7 @@ fun main() = runBlocking {
     client.import(ImportRequest(`class` = "k", `object` = "o", default = "d", `var` = "v"))
     client.`for`(ForRequest(`in` = "i", final = "f"), "t", "n")
     client.`object`(LookupThing(`class` = "c", `var` = "w"))
+    client.shadow(ShadowRequest(message = "m", sending = "s"), body = "b", path = "p", status = "t")
     val report = buildJsonArray {
         for (request in transport.sent) {
             add(buildJsonObject {
@@ -129,6 +132,7 @@ const client = createLookupClientServiceHttpClient(transport);
 await client.import({ class: "k", object: "o", default: "d", var: "v" });
 await client.for({ in: "i", final: "f" }, "t", "n");
 await client.object({ class: "c", var: "w" });
+await client.shadow({ message: "m", sending: "s" }, "b", "p", "t");
 console.log(JSON.stringify(sent));
 "#;
 
@@ -140,6 +144,7 @@ const ImportRequest$Schema = pass;
 const LookupError$Schema = pass;
 const LookupFound$Schema = pass;
 const LookupThing$Schema = pass;
+const ShadowRequest$Schema = pass;
 ";
 
 /// The Swift twin of [`DART_DRIVER`].
@@ -173,6 +178,7 @@ let client = LookupClientServiceHttpClient(transport: recorder)
 _ = await client.`import`(ImportRequest(`class`: "k", object: "o", `default`: "d", `var`: "v"))
 _ = await client.`for`(ForRequest(`in`: "i", final: "f"), type: "t", `default`: "n")
 _ = await client.object(LookupThing(`class`: "c", `var`: "w"))
+_ = await client.shadow(ShadowRequest(message: "m", sending: "s"), body: "b", path: "p", status: "t")
 let sent = await recorder.sent
 print(String(data: try! JSONEncoder().encode(sent), encoding: .utf8)!)
 "##;
@@ -251,6 +257,7 @@ fn every_argument_read() -> Vec<String> {
         r#"200 {"name":"k|o|d|v"}"#,
         r#"200 {"name":"i|f|t|n"}"#,
         r#"200 {"name":"c|w"}"#,
+        r#"200 {"name":"m|s|b|p|t"}"#,
     ]
     .map(str::to_owned)
     .to_vec()
@@ -287,6 +294,7 @@ fn the_kotlin_client_calls_a_service_named_after_reserved_words() {
         lookup_thing_kotlin::kotlin_definition(),
         import_request_kotlin::kotlin_definition(),
         for_request_kotlin::kotlin_definition(),
+        shadow_request_kotlin::kotlin_definition(),
         lookup_client_service_fault_fields_kotlin::kotlin_definition(),
         lookup_client_service_fault_kind_kotlin::kotlin_definition(),
         LookupClientServiceSchema::kotlin_http_client(),
@@ -322,6 +330,7 @@ fn the_swift_client_calls_a_service_named_after_reserved_words() {
         lookup_thing_swift::swift_definition(),
         import_request_swift::swift_definition(),
         for_request_swift::swift_definition(),
+        shadow_request_swift::swift_definition(),
         lookup_client_service_fault_fields_swift::swift_definition(),
         lookup_client_service_fault_kind_swift::swift_definition(),
         LookupClientServiceSchema::swift_http_client(),
@@ -359,6 +368,13 @@ fn the_rust_dispatcher_reads_each_argument_from_where_its_name_puts_it() {
             "headers": [],
             "body": r#"{"class":"c","var":"w"}"#,
         },
+        {
+            "method": "POST",
+            "path": "/shadows/m",
+            "query": "",
+            "headers": [["x-body", "b"], ["x-path", "p"], ["x-status", "t"]],
+            "body": r#"{"sending":"s"}"#,
+        },
     ]);
     assert_eq!(
         read_by_rust(&sent.to_string()),
@@ -366,6 +382,7 @@ fn the_rust_dispatcher_reads_each_argument_from_where_its_name_puts_it() {
             r#"200 {"name":"i|f|t|n"}"#,
             r#"200 {"name":"k|o|d|v"}"#,
             r#"200 {"name":"c|w"}"#,
+            r#"200 {"name":"m|s|b|p|t"}"#,
         ]
     );
 }
@@ -391,6 +408,7 @@ fn the_route_table_names_each_placeholder_as_the_path_writes_it() {
             ("POST", "/items/{in}", "for", 200, declared),
             ("GET", "/classes/{class}/{object}", "import", 200, declared),
             ("PUT", "/things/{class}", "object", 200, declared),
+            ("POST", "/shadows/{message}", "shadow", 200, declared),
         ]
     );
 }

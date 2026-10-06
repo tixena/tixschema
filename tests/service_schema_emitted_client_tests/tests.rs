@@ -1158,9 +1158,10 @@ impl PulseClientService<()> for PulseBackEnd {
     }
 }
 
-/// Operations, arguments and message fields named after words Dart, Swift or Kotlin reserves,
-/// two of them written as raw identifiers. The Rust twin every mobile client's request is read
-/// by: each answer names what the handler was handed.
+/// Operations, arguments and message fields named after words TypeScript, Dart, Swift or Kotlin
+/// reserves, two of them written as raw identifiers, and one operation whose arguments are named
+/// after locals every client writes itself. The Rust twin each client's request is read by: each
+/// answer names what the handler was handed.
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct LookupFound {
@@ -1210,6 +1211,23 @@ pub trait LookupClientService<Ctx> {
 
     #[service_schema_op(http(method = "PUT", path = "/things/{class}"))]
     async fn object(&self, ctx: &Ctx, req: LookupThing) -> Result<LookupFound, LookupError>;
+
+    #[service_schema_op(http(
+        method = "POST",
+        path = "/shadows/{message}",
+        header_in("x-body" = body),
+        header_in("x-path" = path),
+        header_in("x-status" = status),
+    ))]
+    async fn shadow(
+        &self,
+        ctx: &Ctx,
+        message: String,
+        sending: String,
+        body: String,
+        path: String,
+        status: Option<String>,
+    ) -> Result<LookupFound, LookupError>;
 }
 
 pub struct LookupBackEnd;
@@ -1252,6 +1270,22 @@ impl LookupClientService<()> for LookupBackEnd {
         }
         Ok(LookupFound {
             name: [req.class, req.var].join("|"),
+        })
+    }
+
+    async fn shadow(
+        &self,
+        _ctx: &(),
+        message: String,
+        sending: String,
+        body: String,
+        path: String,
+        status: Option<String>,
+    ) -> Result<LookupFound, LookupError> {
+        ready(()).await;
+        let handed = [Some(message), Some(sending), Some(body), Some(path), status];
+        Ok(LookupFound {
+            name: handed.into_iter().flatten().collect::<Vec<_>>().join("|"),
         })
     }
 }

@@ -44,6 +44,34 @@ use syn::{Ident, Type};
 
 use super::swift_type::swift_typename_of;
 
+/// The locals and parameters an emitted method writes around an operation's own argument: the
+/// REST client's and the `ws_rpc` client's.
+const TAKEN_BY_A_METHOD: [&str; 23] = [
+    "answer",
+    "body",
+    "contentRange",
+    "contentType",
+    "declared",
+    "declaredHead",
+    "decoded",
+    "error",
+    "errorHeaderValues",
+    "fault",
+    "headerValues",
+    "headers",
+    "ok",
+    "parts",
+    "path",
+    "probed",
+    "query",
+    "raw",
+    "req",
+    "response",
+    "status",
+    "transport",
+    "value",
+];
+
 /// The Swift type a `body = "stream"` operation's own success answers with: a nullable
 /// `contentRange` and the `contentType`, paired with the body as an
 /// `AsyncThrowingStream<Data, Error>` — mirrors the Dart client's own `STREAMED_ANSWER_DART_TYPE`.
@@ -236,10 +264,28 @@ pub(super) fn swift_call(operation: &OperationDef) -> String {
     swift_member(&operation.ts_name)
 }
 
-/// The Swift name of an operation's own argument: the Rust identifier, never re-cased, since it
-/// is a function argument rather than a message property.
+/// The name an emitted method reads an operation's own argument by: the Rust identifier, never
+/// re-cased, since it is a function argument rather than a message property, and moved off a
+/// name the method writes itself, which Swift would read it as without a word.
 pub(super) fn swift_parameter(parameter: &Ident) -> String {
-    swift_member(&written(parameter))
+    let name = written(parameter);
+    if TAKEN_BY_A_METHOD.contains(&name.as_str()) {
+        format!("{name}_")
+    } else {
+        swift_member(&name)
+    }
+}
+
+/// An operation's own argument as a method declares it: the label a caller writes, which never
+/// moves, and after it the name the method reads it by where that one did.
+pub(super) fn swift_parameter_declared(parameter: &Ident) -> String {
+    let label = swift_member(&written(parameter));
+    let read_by = swift_parameter(parameter);
+    if label == read_by {
+        label
+    } else {
+        format!("{label} {read_by}")
+    }
 }
 
 /// One argument per `header_in` binding, then one per `part` binding, after the message —
@@ -249,14 +295,14 @@ fn method_params(operation: &OperationDef, shape: &HttpShape) -> String {
     for header in &shape.header_in {
         params.push(format!(
             "{}: {}",
-            swift_parameter(&header.parameter),
+            swift_parameter_declared(&header.parameter),
             swift_typename_of(&header.ty)
         ));
     }
     for part in &shape.multipart_parts {
         params.push(format!(
             "{}: {}",
-            swift_parameter(&part.parameter),
+            swift_parameter_declared(&part.parameter),
             swift_typename_of(&part.ty)
         ));
     }

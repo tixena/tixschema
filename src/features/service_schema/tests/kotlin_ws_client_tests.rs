@@ -7,7 +7,7 @@
 
 use super::{
     KOTLIN_UNIT_SUCCESS_HTTP_SERVICE, KOTLIN_WS_SERVICE, MIXED_SERVICE, RESERVED_WORD_SERVICE,
-    kotlin_ws_client_of,
+    SHADOWED_LOCAL_SERVICE, kotlin_ws_client_of,
 };
 
 /// The body of one method, one dispatch arm, or one function, from its own start marker through
@@ -546,5 +546,17 @@ fn a_hard_keyword_is_written_between_backticks_in_the_method_and_the_handler() {
         "handlers.`for`(decoded, default)",
     ] {
         assert!(written.contains(escaped), "no `{escaped}` in: {written}");
+    }
+}
+
+#[test]
+fn an_argument_named_after_a_local_of_the_method_is_copied_before_the_local_is_written() {
+    let written = kotlin_ws_client_of(SHADOWED_LOCAL_SERVICE);
+    for moved in [
+        "suspend fun shadow(req: ShadowRequest, headers: String, path: String?)",
+        "    val headers_ = headers\n    val path_ = path\n    val headers = buildJsonObject {",
+        "handlers.shadow(decoded, headers_, path_)",
+    ] {
+        assert!(written.contains(moved), "no `{moved}` in: {written}");
     }
 }

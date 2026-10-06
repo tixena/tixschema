@@ -6,10 +6,10 @@
 
 use super::{
     MIXED_SERVICE, NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE, NEWTYPE_HEADER_OUT_HTTP_SERVICE,
-    RESERVED_WORD_SERVICE, SWIFT_BYTES_HEADER_OUT_SERVICE, SWIFT_HEADER_VEC_OF_OPTIONS_SERVICE,
-    SWIFT_HTTP_SERVICE, SWIFT_MULTIPART_HTTP_SERVICE, SWIFT_NUMERIC_HEADER_OUT_SERVICE,
-    SWIFT_SINGLE_PLACEHOLDER_HTTP_SERVICE, SWIFT_STREAM_HTTP_SERVICE,
-    SWIFT_UNIT_SUCCESS_HTTP_SERVICE, swift_http_client_of,
+    RESERVED_WORD_SERVICE, SHADOWED_LOCAL_SERVICE, SWIFT_BYTES_HEADER_OUT_SERVICE,
+    SWIFT_HEADER_VEC_OF_OPTIONS_SERVICE, SWIFT_HTTP_SERVICE, SWIFT_MULTIPART_HTTP_SERVICE,
+    SWIFT_NUMERIC_HEADER_OUT_SERVICE, SWIFT_SINGLE_PLACEHOLDER_HTTP_SERVICE,
+    SWIFT_STREAM_HTTP_SERVICE, SWIFT_UNIT_SUCCESS_HTTP_SERVICE, swift_http_client_of,
 };
 
 /// The body of one method, from its own doc comment through the closing brace of the method
@@ -705,5 +705,17 @@ fn a_reserved_word_is_written_between_backticks_in_the_method_the_parameter_and_
         "WireText(req.`class`)",
     ] {
         assert!(written.contains(escaped), "no `{escaped}` in: {written}");
+    }
+}
+
+#[test]
+fn an_argument_named_after_a_local_of_the_method_keeps_its_label_and_is_read_by_another_name() {
+    let written = swift_http_client_of(SHADOWED_LOCAL_SERVICE);
+    for moved in [
+        "public func shadow(_ req: ShadowRequest, headers headers_: String, path path_: String?) async",
+        "\\(headers_)",
+        "if let path_ = path_ {",
+    ] {
+        assert!(written.contains(moved), "no `{moved}` in: {written}");
     }
 }
