@@ -4127,7 +4127,7 @@ fn declared_default_renders_each_wrapped_shape_the_table_describes() {
         (
             "IdType",
             quote::quote! { Option<DocumentId<String>> },
-            "z.lazy(() => (<Reached$ extends Parameters<typeof z.array>[0]>(reached$: Reached$) => \
+            "z.lazy(() => (<Reached$ extends SomeType>(reached$: Reached$) => \
              z.union([z.null().transform(() => undefined), reached$, z.undefined()]).prefault(undefined))(DocumentId$SchemaFactory(z.string())))",
         ),
         (
@@ -13269,7 +13269,7 @@ fn an_items_own_call_inside_a_map_becomes_its_self_view_and_no_other_call_does()
 #[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
 fn a_unions_arrow_is_handed_the_self_view_for_the_argument_it_writes_inside_a_map() {
-    let arrow = "(<Reached$ extends Parameters<typeof z.array>[0], Reached2$ extends Parameters<typeof z.array>[0]>\
+    let arrow = "(<Reached$ extends SomeType, Reached2$ extends SomeType>\
                  (reached$: Reached$, reached2$: Reached2$) => \
                  z.union([z.tuple([reached$, z.record(z.string(), reached2$)]), z.null()]))";
     let viewed = maps_of_itself_through_the_self_view(

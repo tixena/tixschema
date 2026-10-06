@@ -644,15 +644,17 @@ against what each member takes and answers: `.prefault(undefined)` types its arg
 union's input, and `z.union` over a `z.record` of the call resolves the record's own output. Inside
 a cycle that is the type still being inferred, which `tsc --strict` refuses (TS7023, TS2615).
 `zod_union_around` therefore hands every factory call in through a generic arrow
-(`<Reached$ extends Parameters<typeof z.array>[0]>(reached$: Reached$) => …`) and builds the union over the type
+(`<Reached$ extends SomeType>(reached$: Reached$) => …`) and builds the union over the type
 parameter, so the check is made once against the parameter and the member only instantiates it.
 `FieldDef::zod_factory_calls` lists the calls, outermost only and once each, by the same renderer
 that writes them; the names end in `$`, which no argument `zod_factory_argument` binds can. The
 bound is the one `z.union` and `z.array` are themselves declared with -- `ZodType` there reads the
-schema's output and brings the cycle back. It is read off the value (`ZOD_SCHEMA_BOUND`,
-`Parameters<typeof z.array>[0]`), and the self view writes `T["_zod"]["output"]`: a consumer may
-bind `z` as a constant (`const z = zod;`), which names no type, so nothing emitted writes `z.`
-where a type is read. The bundle `tests/generic_types_tests/declarations.rs` compiles binds it so.
+schema's output and brings the cycle back. It is written bare (`ZOD_SCHEMA_BOUND`, `SomeType`) and
+the self view writes `T["_zod"]["output"]`: a consumer may bind `z` as a constant
+(`const z = zod;`), which names no type, so nothing emitted writes `z.` where a type is read.
+`SomeType` is the consumer's to bring into scope, as `ZodType` and `$brand` are
+(`import type { SomeType } from "zod/v4/core";`). The bundle
+`tests/generic_types_tests/declarations.rs` compiles binds `z` as a constant and imports both.
 
 A map of the item itself is read through the self view as well. `z.record` resolves its own type
 off its value as it is written, and inside the builder the item's own factory answers the
