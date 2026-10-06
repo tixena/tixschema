@@ -50,6 +50,10 @@ const PRELUDE: [&str; 40] = [
     "Vec",
 ];
 
+/// The crates a path may start at, which a module of the consumer's by that name takes over
+/// unless the path is written from the crate root.
+const ROOTS: [&str; 2] = ["core", "std"];
+
 /// The macros whose body is tokens to emit.
 const QUOTING: [&str; 4] = [
     "parse_quote",
@@ -117,7 +121,8 @@ impl Walk<'_> {
         let [earlier, last] = before;
         let follows = |written: char, token: Option<&TokenTree>| matches!(token, Some(TokenTree::Punct(punct)) if punct.as_char() == written);
         let qualified = follows(':', earlier) && follows(':', last);
-        if qualified || follows('#', last) || !PRELUDE.iter().any(|prelude| named == prelude) {
+        let watched = PRELUDE.iter().chain(&ROOTS).any(|bare| named == bare);
+        if qualified || follows('#', last) || !watched {
             return;
         }
         self.found.push(format!(
@@ -133,8 +138,8 @@ impl Walk<'_> {
         let Some(path) = written.strip_prefix('"') else {
             return;
         };
-        if PRELUDE.iter().any(|prelude| {
-            path.strip_prefix(prelude)
+        if PRELUDE.iter().chain(&ROOTS).any(|bare| {
+            path.strip_prefix(bare)
                 .is_some_and(|rest| rest.starts_with("::"))
         }) {
             self.found.push(format!(
@@ -235,6 +240,7 @@ fn the_walk_finds_a_bare_name_and_passes_over_what_is_not_one() {
                 #[derive(Clone, Default)]
                 pub enum Expected { String, Number }
                 #[serde(skip_serializing_if = "Option::is_none")]
+                #[serde(default = "std::string::String::new")]
                 fn made(from: #held) -> ::core::option::Option<std::vec::Vec<Box<u8>>> {
                     Some(Expected::String)
                 }
@@ -256,8 +262,10 @@ fn the_walk_finds_a_bare_name_and_passes_over_what_is_not_one() {
         walk.found,
         [
             "sample.rs:8: \"Option::is_none\"",
-            "sample.rs:9: `Box`",
-            "sample.rs:10: `Some`",
+            "sample.rs:9: \"std::string::String::new\"",
+            "sample.rs:10: `std`",
+            "sample.rs:10: `Box`",
+            "sample.rs:11: `Some`",
         ]
     );
 }

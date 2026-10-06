@@ -1542,7 +1542,10 @@ fn schema_example_value_type(
         default_types
             .iter()
             .find(|(declared, _)| declared == param.as_str())
-            .map_or_else(|| quote! { std::string::String }, |(_, ty)| quote! { #ty })
+            .map_or_else(
+                || quote! { ::std::string::String },
+                |(_, ty)| quote! { #ty },
+            )
     });
     quote! { #name<#(#args),*> }
 }
@@ -1616,7 +1619,7 @@ fn build_struct_delegate_items(
 
     #[cfg(feature = "typescript")]
     items.push(quote! {
-        pub fn ts_definition() -> std::string::String {
+        pub fn ts_definition() -> ::std::string::String {
             #module_ident::Schema::ts_definition()
         }
     });
@@ -1625,7 +1628,7 @@ fn build_struct_delegate_items(
     items.push(if has_example {
         let injected = zod_example_injection(item_name, parameters);
         quote! {
-            pub fn zod_schema() -> std::string::String {
+            pub fn zod_schema() -> ::std::string::String {
                 let base_schema = #module_ident::Schema::zod_schema();
                 let defined = base_schema.strip_suffix(#reexport).unwrap_or(base_schema.as_str());
                 let example_json = serde_json::to_string(&Self::schema_example()).unwrap();
@@ -1636,7 +1639,7 @@ fn build_struct_delegate_items(
         }
     } else {
         quote! {
-            pub fn zod_schema() -> std::string::String {
+            pub fn zod_schema() -> ::std::string::String {
                 #module_ident::Schema::zod_schema()
             }
         }
@@ -1774,11 +1777,11 @@ fn build_struct_validate_method(
             /// Validates all constrained fields and returns all validation errors.
             ///
             /// Returns `Ok(())` if all constraints pass, or `Err(Vec<String>)` with all errors.
-            pub fn validate(&self) -> core::result::Result<(), std::vec::Vec<std::string::String>> {
+            pub fn validate(&self) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
                 use #module_ident::*;
-                let mut errors: std::vec::Vec<std::string::String> = std::vec::Vec::new();
+                let mut errors: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
                 #(#validate_bodies)*
-                if errors.is_empty() { core::result::Result::Ok(()) } else { core::result::Result::Err(errors) }
+                if errors.is_empty() { ::core::result::Result::Ok(()) } else { ::core::result::Result::Err(errors) }
             }
         }
     })
@@ -1867,13 +1870,13 @@ fn build_enum_validate_method(
             /// Validates all constrained fields and returns all validation errors.
             ///
             /// Returns `Ok(())` if all constraints pass, or `Err(Vec<String>)` with all errors.
-            pub fn validate(&self) -> core::result::Result<(), std::vec::Vec<std::string::String>> {
+            pub fn validate(&self) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
                 use #module_ident::*;
-                let mut errors: std::vec::Vec<std::string::String> = std::vec::Vec::new();
+                let mut errors: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
                 match self {
                     #(#arms),*
                 }
-                if errors.is_empty() { core::result::Result::Ok(()) } else { core::result::Result::Err(errors) }
+                if errors.is_empty() { ::core::result::Result::Ok(()) } else { ::core::result::Result::Err(errors) }
             }
         }
     })
@@ -2093,7 +2096,7 @@ fn refused_item_schema_module(ident: &syn::Ident) -> proc_macro2::TokenStream {
 
             pub fn json_schema_within(
                 _in_flight: &mut #in_flight_type,
-                _hoisted_defs: &mut serde_json::Map<std::string::String, serde_json::Value>,
+                _hoisted_defs: &mut serde_json::Map<::std::string::String, serde_json::Value>,
             ) -> serde_json::Value {
                 panic!(#refusal)
             }
@@ -2104,7 +2107,7 @@ fn refused_item_schema_module(ident: &syn::Ident) -> proc_macro2::TokenStream {
 
     #[cfg(feature = "typescript")]
     let ts_definition_method = quote! {
-        pub fn ts_definition() -> std::string::String {
+        pub fn ts_definition() -> ::std::string::String {
             panic!(#refusal)
         }
     };
@@ -2113,7 +2116,7 @@ fn refused_item_schema_module(ident: &syn::Ident) -> proc_macro2::TokenStream {
 
     #[cfg(feature = "zod")]
     let zod_schema_method = quote! {
-        pub fn zod_schema() -> std::string::String {
+        pub fn zod_schema() -> ::std::string::String {
             panic!(#refusal)
         }
     };
@@ -4824,7 +4827,7 @@ fn unit_struct_serde_impls(item_struct: &mut syn::ItemStruct) -> proc_macro2::To
     let serialize_impl = writes.then(|| {
         quote! {
             impl ::serde::Serialize for #name {
-                fn serialize<S: ::serde::Serializer>(&self, serializer: S) -> core::result::Result<S::Ok, S::Error> {
+                fn serialize<S: ::serde::Serializer>(&self, serializer: S) -> ::core::result::Result<S::Ok, S::Error> {
                     use ::serde::ser::SerializeStruct as _;
                     serializer.serialize_struct(#type_name, 0)?.end()
                 }
@@ -4836,7 +4839,7 @@ fn unit_struct_serde_impls(item_struct: &mut syn::ItemStruct) -> proc_macro2::To
         let expecting = format!("an empty object for `{type_name}`");
         quote! {
             impl<'de> ::serde::Deserialize<'de> for #name {
-                fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> core::result::Result<Self, D::Error> {
+                fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> ::core::result::Result<Self, D::Error> {
                     struct UnitStructVisitor;
                     impl<'de> ::serde::de::Visitor<'de> for UnitStructVisitor {
                         type Value = #name;
@@ -4846,9 +4849,9 @@ fn unit_struct_serde_impls(item_struct: &mut syn::ItemStruct) -> proc_macro2::To
                         fn visit_map<A: ::serde::de::MapAccess<'de>>(
                             self,
                             mut map: A,
-                        ) -> core::result::Result<Self::Value, A::Error> {
+                        ) -> ::core::result::Result<Self::Value, A::Error> {
                             while map.next_entry::<::serde::de::IgnoredAny, ::serde::de::IgnoredAny>()?.is_some() {}
-                            core::result::Result::Ok(#name)
+                            ::core::result::Result::Ok(#name)
                         }
                     }
                     deserializer.deserialize_struct(#type_name, &[], UnitStructVisitor)
@@ -5108,7 +5111,7 @@ fn build_tuple_struct_ts_definition_method(
         jsdoc_block(docs, "")
     );
     quote! {
-        pub fn ts_definition() -> std::string::String {
+        pub fn ts_definition() -> ::std::string::String {
             #type_str.to_owned()
         }
     }
@@ -5144,7 +5147,7 @@ fn build_tuple_struct_zod_schema_method(
     #[cfg(not(feature = "typescript"))]
     let schema_str = binding;
     quote! {
-        pub fn zod_schema() -> std::string::String {
+        pub fn zod_schema() -> ::std::string::String {
             #schema_str.to_owned()
         }
     }
@@ -5324,11 +5327,11 @@ fn build_branded_validation(
         }
 
         let validate_fn = quote! {
-            pub fn validate_value(#checked_param) -> core::result::Result<(), std::vec::Vec<std::string::String>> {
+            pub fn validate_value(#checked_param) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
                 #rendering
-                let mut errors: std::vec::Vec<std::string::String> = std::vec::Vec::new();
+                let mut errors: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
                 #(#checks)*
-                if errors.is_empty() { core::result::Result::Ok(()) } else { core::result::Result::Err(errors) }
+                if errors.is_empty() { ::core::result::Result::Ok(()) } else { ::core::result::Result::Err(errors) }
             }
         };
 
@@ -5340,29 +5343,29 @@ fn build_branded_validation(
             quote! {
                 #type_identity
 
-                pub fn deserialize_value<'de, D, T>(deserializer: D) -> core::result::Result<T, D::Error>
+                pub fn deserialize_value<'de, D, T>(deserializer: D) -> ::core::result::Result<T, D::Error>
                 where
                     D: serde::Deserializer<'de>,
-                    T: serde::Deserialize<'de> + std::fmt::Display,
+                    T: serde::Deserialize<'de> + ::std::fmt::Display,
                 {
                     use serde::Deserialize;
                     let v = T::deserialize(deserializer)?;
                     if type_identity::<T>() == type_identity::<#default_ty>() {
                         validate_value(#checked_v).map_err(#refusal)?;
                     }
-                    core::result::Result::Ok(v)
+                    ::core::result::Result::Ok(v)
                 }
             }
         } else {
             quote! {
-                pub fn deserialize_value<'de, D>(deserializer: D) -> core::result::Result<#inner_ty, D::Error>
+                pub fn deserialize_value<'de, D>(deserializer: D) -> ::core::result::Result<#inner_ty, D::Error>
                 where
                     D: serde::Deserializer<'de>,
                 {
                     use serde::Deserialize;
                     let v = <#inner_ty>::deserialize(deserializer)?;
                     validate_value(#checked_v).map_err(#refusal)?;
-                    core::result::Result::Ok(v)
+                    ::core::result::Result::Ok(v)
                 }
             }
         };
@@ -5874,7 +5877,7 @@ fn build_branded_ts_definition_method(
             "export type {item_name}{ts_generics} = {ts_inner_type} & $brand<\"{item_name}\">;{reexport}"
         );
         quote! {
-            pub fn ts_definition() -> std::string::String {
+            pub fn ts_definition() -> ::std::string::String {
                 #type_str.to_string()
             }
         }
@@ -5886,7 +5889,7 @@ fn build_branded_ts_definition_method(
             "export type {item_name}{ts_generics} = {ts_inner_type} & {{ readonly [__brand_{item_name}]: true }};{reexport}"
         );
         quote! {
-            pub fn ts_definition() -> std::string::String {
+            pub fn ts_definition() -> ::std::string::String {
                 format!("{}\n{}", #unique_symbol, #type_str)
             }
         }
@@ -5973,7 +5976,7 @@ fn build_branded_zod_schema_method(
         )
     };
     quote! {
-        pub fn zod_schema() -> std::string::String {
+        pub fn zod_schema() -> ::std::string::String {
             #body.to_owned()
         }
     }
@@ -5998,7 +6001,7 @@ fn build_branded_delegate_items(
 
     #[cfg(feature = "typescript")]
     let delegate_ts = quote! {
-        pub fn ts_definition() -> std::string::String {
+        pub fn ts_definition() -> ::std::string::String {
             #module_ident::Schema::ts_definition()
         }
     };
@@ -6006,13 +6009,13 @@ fn build_branded_delegate_items(
     #[cfg(feature = "zod")]
     let delegate_zod = if has_example {
         quote! {
-            pub fn zod_schema() -> std::string::String {
+            pub fn zod_schema() -> ::std::string::String {
                 let base_schema = #module_ident::Schema::zod_schema();
                 let example_json = serde_json::to_string(&Self::schema_example()).unwrap();
                 // The one `.meta({` a brand writes closes on its own line, and it is the only
                 // place a newline precedes a `})` in what the module emitted — so the close is
                 // the anchor whether the brand or the description was written last.
-                if let core::option::Option::Some(pos) = base_schema.find("\n})") {
+                if let ::core::option::Option::Some(pos) = base_schema.find("\n})") {
                     let mut result = base_schema[..pos].to_string();
                     result.push_str(&format!("\n  example: {},", example_json));
                     result.push_str(&base_schema[pos..]);
@@ -6024,7 +6027,7 @@ fn build_branded_delegate_items(
         }
     } else {
         quote! {
-            pub fn zod_schema() -> std::string::String {
+            pub fn zod_schema() -> ::std::string::String {
                 #module_ident::Schema::zod_schema()
             }
         }
@@ -6066,7 +6069,7 @@ fn build_branded_display_impl(
     display_generics
         .make_where_clause()
         .predicates
-        .push(syn::parse_quote_spanned!(bound_span=> #inner_ty: std::fmt::Display));
+        .push(syn::parse_quote_spanned!(bound_span=> #inner_ty: ::std::fmt::Display));
     let (display_impl_generics, _, display_where_clause) = display_generics.split_for_impl();
     // Spanned whole on the field's type, the member with it, which is where a non-`Display`
     // inner is reported.
@@ -6075,10 +6078,11 @@ fn build_branded_display_impl(
         syn::Member::Named(field_name) => field_name.set_span(inner_field.ty.span()),
         syn::Member::Unnamed(slot) => slot.span = inner_field.ty.span(),
     }
-    let delegate = quote_spanned! {inner_field.ty.span()=> std::fmt::Display::fmt(&self.#held, f) };
+    let delegate =
+        quote_spanned! {inner_field.ty.span()=> ::std::fmt::Display::fmt(&self.#held, f) };
     quote! {
-        impl #display_impl_generics std::fmt::Display for #name #type_generics #display_where_clause {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        impl #display_impl_generics ::std::fmt::Display for #name #type_generics #display_where_clause {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 #delegate
             }
         }
@@ -6132,7 +6136,7 @@ fn build_branded_display_assertion(
         const _: () = {
             const fn assert_display<T>()
             where
-                T: std::fmt::Display,
+                T: ::std::fmt::Display,
             {
             }
             assert_display::<#inner_ty>();
@@ -6216,7 +6220,7 @@ fn inject_branded_serde_attrs(
     if is_generic {
         for param in &mut owned_struct.generics.params {
             if let syn::GenericParam::Type(tp) = param {
-                tp.bounds.push(syn::parse_quote!(std::fmt::Display));
+                tp.bounds.push(syn::parse_quote!(::std::fmt::Display));
             }
         }
         let bounds: Vec<String> = generic_params
@@ -6258,12 +6262,12 @@ fn inject_branded_serde_attrs(
         #deserialize_fn
     };
     let validate_method = quote! {
-        pub fn validate(&self) -> core::result::Result<(), std::vec::Vec<std::string::String>> {
-            let mut errors = std::vec::Vec::new();
-            if let core::result::Result::Err(reported) = #module_ident::validate_value(#checked_inner) {
+        pub fn validate(&self) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
+            let mut errors = ::std::vec::Vec::new();
+            if let ::core::result::Result::Err(reported) = #module_ident::validate_value(#checked_inner) {
                 errors.extend(reported);
             }
-            if errors.is_empty() { core::result::Result::Ok(()) } else { core::result::Result::Err(errors) }
+            if errors.is_empty() { ::core::result::Result::Ok(()) } else { ::core::result::Result::Err(errors) }
         }
     };
     (owned_struct, validation_tokens, validate_method)
@@ -6553,7 +6557,7 @@ fn branded_impl_generics(
     if is_generic && args.has_string_constraints() {
         for param in &mut generics.params {
             if let syn::GenericParam::Type(tp) = param {
-                tp.bounds.push(syn::parse_quote!(std::fmt::Display));
+                tp.bounds.push(syn::parse_quote!(::std::fmt::Display));
             }
         }
     }
@@ -7206,10 +7210,10 @@ fn plain_enum_output(
         impl #impl_generics #name #type_generics #where_clause {
             #(#delegate_impl_items)*
 
-            pub fn enum_members() -> std::vec::Vec<std::string::String> {
+            pub fn enum_members() -> ::std::vec::Vec<::std::string::String> {
                 [
                     #(#enum_values),*
-                ].iter().map(|v| v.to_string()).collect::<std::vec::Vec<_>>()
+                ].iter().map(|v| v.to_string()).collect::<::std::vec::Vec<_>>()
             }
         }
 
@@ -7235,10 +7239,10 @@ fn plain_enum_output(
         #item_enum
 
         impl #impl_generics #name #type_generics #where_clause {
-            pub fn enum_members() -> std::vec::Vec<std::string::String> {
+            pub fn enum_members() -> ::std::vec::Vec<::std::string::String> {
                 [
                     #(#enum_values),*
-                ].iter().map(|v| v.to_string()).collect::<std::vec::Vec<_>>()
+                ].iter().map(|v| v.to_string()).collect::<::std::vec::Vec<_>>()
             }
         }
 
@@ -7527,7 +7531,7 @@ fn discriminated_main_schema_code(
         let mut schema_obj = serde_json::Map::new();
         schema_obj.insert("type".to_string(), serde_json::Value::String("object".to_string()));
         schema_obj.insert("oneOf".to_string(), {
-            let result: std::vec::Vec<serde_json::Value> = vec![
+            let result: ::std::vec::Vec<serde_json::Value> = vec![
                 #(#json_schema_variants), *
             ];
 
@@ -7737,7 +7741,7 @@ fn named_content_json_value(
             let mut schema_obj = serde_json::Map::new();
             schema_obj.insert("type".to_string(), serde_json::Value::String("object".to_string()));
             let mut properties = serde_json::Map::new();
-            let mut required: std::vec::Vec<serde_json::Value> = std::vec::Vec::new();
+            let mut required: ::std::vec::Vec<serde_json::Value> = ::std::vec::Vec::new();
             #(#json_fields)*
             schema_obj.insert("properties".to_string(), serde_json::Value::Object(properties));
             schema_obj.insert("required".to_string(), serde_json::Value::Array(required));
@@ -8084,7 +8088,7 @@ fn join_external_union(
         quote! {
             let mut schema_obj = serde_json::Map::new();
             schema_obj.insert("oneOf".to_string(), {
-                let result: std::vec::Vec<serde_json::Value> = vec![
+                let result: ::std::vec::Vec<serde_json::Value> = vec![
                     #(#json_members), *
                 ];
 
@@ -8890,7 +8894,7 @@ fn untagged_named_json_value(
                 serde_json::Value::String("object".to_string()),
             );
             let mut properties = serde_json::Map::new();
-            let mut required: std::vec::Vec<serde_json::Value> = std::vec::Vec::new();
+            let mut required: ::std::vec::Vec<serde_json::Value> = ::std::vec::Vec::new();
             #(#property_inserts)*
             object_schema.insert(
                 "properties".to_string(),
@@ -9551,7 +9555,7 @@ fn build_untagged_schema_impl_items(
     let main_schema_code = quote! {
         let mut schema_obj = serde_json::Map::new();
         schema_obj.insert("anyOf".to_string(), {
-            let result: std::vec::Vec<serde_json::Value> = vec![
+            let result: ::std::vec::Vec<serde_json::Value> = vec![
                 #(#json_parts), *
             ];
 
@@ -9778,7 +9782,7 @@ fn tagged_variant_json_object(
                 serde_json::Value::Bool(false),
             );
             let mut properties = serde_json::Map::new();
-            let mut required = std::vec::Vec::new();
+            let mut required = ::std::vec::Vec::new();
 
             properties.insert(
                 #tag_name_str.to_string(),
@@ -11474,7 +11478,7 @@ fn build_field_validation(
     let checked = member_access_expr(access, field_ident_tok);
     if wraps.is_empty() {
         return quote! {
-            if let core::result::Result::Err(reported) = #validate_value_fn_ident(#checked) {
+            if let ::core::result::Result::Err(reported) = #validate_value_fn_ident(#checked) {
                 errors.extend(reported);
             }
         };
@@ -11510,7 +11514,7 @@ fn constraint_leaf(
 ) -> proc_macro2::TokenStream {
     match sink {
         CheckSink::Collect => quote! {
-            if let core::result::Result::Err(reported) = #validate_value_fn_ident(#value) {
+            if let ::core::result::Result::Err(reported) = #validate_value_fn_ident(#value) {
                 errors.extend(reported);
             }
         },
@@ -11537,7 +11541,7 @@ fn walk_wraps(
     match *wrap {
         // A `None` writes nothing, so there is nothing for the constraint to describe.
         ConstraintWrap::Optional => quote! {
-            if let core::option::Option::Some(#next) = #value {
+            if let ::core::option::Option::Some(#next) = #value {
                 #inner
             }
         },
@@ -11592,8 +11596,8 @@ fn build_nested_validation(
 fn unpublished_validate_fallback() -> proc_macro2::TokenStream {
     quote! {
         trait UnpublishedValidate {
-            fn validate(&self) -> core::result::Result<(), std::vec::Vec<std::string::String>> {
-                core::result::Result::Ok(())
+            fn validate(&self) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
+                ::core::result::Result::Ok(())
             }
         }
         impl<T: ?::core::marker::Sized> UnpublishedValidate for &T {}
@@ -11624,14 +11628,14 @@ fn unpublished_validate_fallback() -> proc_macro2::TokenStream {
 fn nested_leaf(value: &proc_macro2::Ident, under: Option<&str>) -> proc_macro2::TokenStream {
     let Some(field_name_lit) = under else {
         return quote! {
-            if let core::result::Result::Err(reported) = #value.validate() {
+            if let ::core::result::Result::Err(reported) = #value.validate() {
                 errors.extend(reported);
             }
         };
     };
     let naming = nested_under_fn();
     quote! {
-        if let core::result::Result::Err(reported) = #value.validate() {
+        if let ::core::result::Result::Err(reported) = #value.validate() {
             #naming
             errors.extend(
                 reported
@@ -11653,13 +11657,13 @@ fn nested_leaf(value: &proc_macro2::Ident, under: Option<&str>) -> proc_macro2::
 #[cfg(feature = "serde")]
 fn nested_under_fn() -> proc_macro2::TokenStream {
     quote! {
-        fn nested_under(field: &str, violation: &str) -> std::string::String {
+        fn nested_under(field: &str, violation: &str) -> ::std::string::String {
             match violation
                 .strip_prefix('\'')
                 .and_then(|rest| rest.split_once('\''))
             {
-                core::option::Option::Some((named, tail)) => format!("'{field}.{named}'{tail}"),
-                core::option::Option::None => format!("'{field}': {violation}"),
+                ::core::option::Option::Some((named, tail)) => format!("'{field}.{named}'{tail}"),
+                ::core::option::Option::None => format!("'{field}': {violation}"),
             }
         }
     }
@@ -11682,8 +11686,8 @@ fn reports_a_bound_fn() -> proc_macro2::TokenStream {
                 .strip_prefix('\'')
                 .and_then(|rest| rest.split_once('\''))
             {
-                core::option::Option::Some((_, tail)) => tail.strip_prefix(": ").unwrap_or(tail),
-                core::option::Option::None => reported,
+                ::core::option::Option::Some((_, tail)) => tail.strip_prefix(": ").unwrap_or(tail),
+                ::core::option::Option::None => reported,
             };
             [#(#stems),*].iter().any(|stem| said.starts_with(stem))
         }
@@ -11696,7 +11700,7 @@ fn reports_a_bound_fn() -> proc_macro2::TokenStream {
 #[cfg(feature = "serde")]
 fn refusal_from_violations() -> proc_macro2::TokenStream {
     quote! {
-        |violations: std::vec::Vec<std::string::String>| serde::de::Error::custom(violations.join("; "))
+        |violations: ::std::vec::Vec<::std::string::String>| serde::de::Error::custom(violations.join("; "))
     }
 }
 
@@ -11720,27 +11724,27 @@ fn build_wrapped_deserializer(
     let walk = walk_wraps(wraps, &head, 1, &leaf);
     let refusal = refusal_from_violations();
     quote! {
-        pub fn #deserialize_fn_ident<'de, #(#lifetimes,)* D>(deserializer: D) -> core::result::Result<#field_ty, D::Error>
+        pub fn #deserialize_fn_ident<'de, #(#lifetimes,)* D>(deserializer: D) -> ::core::result::Result<#field_ty, D::Error>
         where
             D: serde::Deserializer<'de>,
         {
             // Nested so that each hook carries its own: a schema module holds one hook per
             // constrained field and a shared name would have to be emitted exactly once.
-            fn deserialize_validated<'de, D, T, F>(deserializer: D, check: F) -> core::result::Result<T, D::Error>
+            fn deserialize_validated<'de, D, T, F>(deserializer: D, check: F) -> ::core::result::Result<T, D::Error>
             where
                 D: serde::Deserializer<'de>,
                 T: serde::Deserialize<'de>,
-                F: core::ops::FnOnce(&T) -> core::result::Result<(), std::vec::Vec<std::string::String>>,
+                F: ::core::ops::FnOnce(&T) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>>,
             {
                 use serde::Deserialize;
                 let value = T::deserialize(deserializer)?;
                 check(&value).map_err(#refusal)?;
-                core::result::Result::Ok(value)
+                ::core::result::Result::Ok(value)
             }
 
             deserialize_validated(deserializer, |#head: &#field_ty| {
                 #walk
-                core::result::Result::Ok(())
+                ::core::result::Result::Ok(())
             })
         }
     }
@@ -11765,7 +11769,7 @@ fn pattern_check(pattern: &str, failure: &proc_macro2::TokenStream) -> proc_macr
         || {
             quote! {
                 {
-                    use std::sync::LazyLock;
+                    use ::std::sync::LazyLock;
                     static RE: LazyLock<regex::Regex> = LazyLock::new(|| {
                         regex::Regex::new(#pattern).unwrap()
                     });
@@ -11829,7 +11833,7 @@ fn checked_value_parts(
 ) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
     if measures_path {
         (
-            quote! { path: &std::path::Path },
+            quote! { path: &::std::path::Path },
             quote! {
                 let rendered = path.to_string_lossy();
                 let value: &str = &rendered;
@@ -11895,20 +11899,20 @@ fn generate_string_validation_code(
         // The owned form of the leaf, which is what a bare field of it is declared as: the
         // borrowed form is unsized and cannot be a field by value.
         let owned = if measures_path {
-            quote! { std::path::PathBuf }
+            quote! { ::std::path::PathBuf }
         } else {
-            quote! { std::string::String }
+            quote! { ::std::string::String }
         };
         let refusal = refusal_from_violations();
         quote! {
-            pub fn #deserialize_fn_ident<'de, D>(deserializer: D) -> core::result::Result<#owned, D::Error>
+            pub fn #deserialize_fn_ident<'de, D>(deserializer: D) -> ::core::result::Result<#owned, D::Error>
             where
                 D: serde::Deserializer<'de>,
             {
                 use serde::Deserialize;
                 let s = #owned::deserialize(deserializer)?;
                 #validate_value_fn_ident(&s).map_err(#refusal)?;
-                core::result::Result::Ok(s)
+                ::core::result::Result::Ok(s)
             }
         }
     } else {
@@ -11922,11 +11926,11 @@ fn generate_string_validation_code(
     };
 
     let module_items = quote! {
-        pub fn #validate_value_fn_ident(#checked_param) -> core::result::Result<(), std::vec::Vec<std::string::String>> {
+        pub fn #validate_value_fn_ident(#checked_param) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
             #rendering
-            let mut errors: std::vec::Vec<std::string::String> = std::vec::Vec::new();
+            let mut errors: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
             #(#checks)*
-            if errors.is_empty() { core::result::Result::Ok(()) } else { core::result::Result::Err(errors) }
+            if errors.is_empty() { ::core::result::Result::Ok(()) } else { ::core::result::Result::Err(errors) }
         }
 
         #deserializer
@@ -11992,14 +11996,14 @@ fn generate_numeric_validation_code(
     let deserializer = if wraps.is_empty() {
         let refusal = refusal_from_violations();
         quote! {
-            pub fn #deserialize_fn_ident<'de, D>(deserializer: D) -> core::result::Result<#rust_type_ident, D::Error>
+            pub fn #deserialize_fn_ident<'de, D>(deserializer: D) -> ::core::result::Result<#rust_type_ident, D::Error>
             where
                 D: serde::Deserializer<'de>,
             {
                 use serde::Deserialize;
                 let v = #rust_type_ident::deserialize(deserializer)?;
                 #validate_value_fn_ident(&v).map_err(#refusal)?;
-                core::result::Result::Ok(v)
+                ::core::result::Result::Ok(v)
             }
         }
     } else {
@@ -12013,10 +12017,10 @@ fn generate_numeric_validation_code(
     };
 
     let module_items = quote! {
-        pub fn #validate_value_fn_ident(value: &#rust_type_ident) -> core::result::Result<(), std::vec::Vec<std::string::String>> {
-            let mut errors: std::vec::Vec<std::string::String> = std::vec::Vec::new();
+        pub fn #validate_value_fn_ident(value: &#rust_type_ident) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
+            let mut errors: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
             #(#checks)*
-            if errors.is_empty() { core::result::Result::Ok(()) } else { core::result::Result::Err(errors) }
+            if errors.is_empty() { ::core::result::Result::Ok(()) } else { ::core::result::Result::Err(errors) }
         }
 
         #deserializer
@@ -13104,7 +13108,7 @@ fn build_named_read_hook(
     let recogniser = reports_a_bound_fn();
     let splitter = joined_violations_fn();
     quote! {
-        pub fn #hook_ident<'de, D>(deserializer: D) -> core::result::Result<#field_ty, D::Error>
+        pub fn #hook_ident<'de, D>(deserializer: D) -> ::core::result::Result<#field_ty, D::Error>
         where
             D: serde::Deserializer<'de>,
         {
@@ -13118,7 +13122,7 @@ fn build_named_read_hook(
                 if !violations.iter().all(|violation| reports_a_bound(violation)) {
                     return refused;
                 }
-                let named: std::vec::Vec<std::string::String> = violations
+                let named: ::std::vec::Vec<::std::string::String> = violations
                     .iter()
                     .map(|violation| nested_under(#wire_name, violation))
                     .collect();
@@ -13138,8 +13142,8 @@ fn build_named_read_hook(
 #[cfg(feature = "serde")]
 fn joined_violations_fn() -> proc_macro2::TokenStream {
     quote! {
-        fn joined_violations(reported: &str) -> std::vec::Vec<&str> {
-            let mut found: std::vec::Vec<&str> = std::vec::Vec::new();
+        fn joined_violations(reported: &str) -> ::std::vec::Vec<&str> {
+            let mut found: ::std::vec::Vec<&str> = ::std::vec::Vec::new();
             let mut rest = reported;
             loop {
                 let cut = rest.match_indices("; ").find_map(|(at, _)| {
@@ -13148,11 +13152,11 @@ fn joined_violations_fn() -> proc_macro2::TokenStream {
                     reports_a_bound(tail).then_some((head, tail))
                 });
                 match cut {
-                    core::option::Option::Some((head, tail)) => {
+                    ::core::option::Option::Some((head, tail)) => {
                         found.push(head);
                         rest = tail;
                     }
-                    core::option::Option::None => {
+                    ::core::option::Option::None => {
                         found.push(rest);
                         return found;
                     }
@@ -13616,7 +13620,7 @@ fn generate_ts_definition_method(
     let json_docs_gen = bind_item_jsdoc_local(docs, false);
 
     quote::quote! {
-        pub fn ts_definition() -> std::string::String {
+        pub fn ts_definition() -> ::std::string::String {
             #json_docs_gen
             #typescript_type_gen
         }
@@ -14096,7 +14100,7 @@ fn zod_example_injection(item_name: &str, parameters: &[String]) -> proc_macro2:
     if parameters.is_empty() {
         return quote! {{
             let example_part = format!(".meta({{\n  example: {}\n}})", example_json);
-            if let core::option::Option::Some(pos) = defined.rfind(';') {
+            if let ::core::option::Option::Some(pos) = defined.rfind(';') {
                 let mut injected = defined[..pos].to_string();
                 injected.push_str(&example_part);
                 injected.push(';');
@@ -14228,7 +14232,7 @@ fn generate_zod_schema_method(
         );
 
         quote::quote! {
-            pub fn zod_schema() -> std::string::String {
+            pub fn zod_schema() -> ::std::string::String {
                 #body.to_owned()
             }
         }
@@ -14258,7 +14262,7 @@ fn generate_zod_schema_method(
 fn bind_item_jsdoc_local(docs: &str, with_json_schema: bool) -> proc_macro2::TokenStream {
     if with_json_schema {
         quote::quote! {
-            let prettified = serde_json::to_string_pretty(&Self::json_schema()).unwrap().lines().map(|l| format!(" * {l}")).collect::<std::vec::Vec<_>>().join("\n");
+            let prettified = serde_json::to_string_pretty(&Self::json_schema()).unwrap().lines().map(|l| format!(" * {l}")).collect::<::std::vec::Vec<_>>().join("\n");
             let docs = format!("/**\n{}\n * JSON Schema:\n{}\n */\n", #docs, prettified);
         }
     } else {
@@ -14317,7 +14321,7 @@ fn generate_plain_enum_ts_definition_method(
         };
 
         quote::quote! {
-            pub fn ts_definition() -> std::string::String {
+            pub fn ts_definition() -> ::std::string::String {
                 #json_docs_gen
                 #typescript_type_gen
             }
@@ -14349,7 +14353,7 @@ fn generate_plain_enum_zod_schema_method(
         #[cfg(feature = "typescript")]
         {
             quote::quote! {
-                pub fn zod_schema() -> std::string::String {
+                pub fn zod_schema() -> ::std::string::String {
                     format!("const {}$RawSchema = z.enum([{}]).meta({{\n  description: \"{}\",\n}});\n\nexport const {}$Schema: ZodType<{}> = {}$RawSchema;{}", #item_name, #schema_code, #description, #item_name, #item_name, #item_name, #reexport)
                 }
             }
@@ -14359,7 +14363,7 @@ fn generate_plain_enum_zod_schema_method(
         #[cfg(not(feature = "typescript"))]
         {
             quote::quote! {
-                pub fn zod_schema() -> std::string::String {
+                pub fn zod_schema() -> ::std::string::String {
                     format!("export const {}$Schema = z.enum([{}]).meta({{\n  description: \"{}\",\n}});{}", #item_name, #schema_code, #description, #reexport)
                 }
             }
@@ -14406,7 +14410,7 @@ fn generate_discriminated_enum_ts_definition_method(
         let reexport = ident_reexport_ts(rust_ident, item_name, ts_generics);
 
         quote::quote! {
-            pub fn ts_definition() -> std::string::String {
+            pub fn ts_definition() -> ::std::string::String {
                 #json_docs_gen
                 let bundled_docs = docs;
                 format!(r#"{bundled_docs}export type {}{} = {};{}
@@ -14451,7 +14455,7 @@ fn generate_discriminated_enum_zod_schema_method(
             &reexport,
         );
         quote::quote! {
-            pub fn zod_schema() -> std::string::String {
+            pub fn zod_schema() -> ::std::string::String {
                 #schema_str.to_owned()
             }
         }
@@ -14515,7 +14519,7 @@ fn generate_ts_alias_method(
     let docs_block = jsdoc_block(docs, "");
 
     quote! {
-        pub fn ts_definition() -> std::string::String {
+        pub fn ts_definition() -> ::std::string::String {
             format!(
                 "{}\nexport type {} = {};{}",
                 #docs_block,
@@ -14597,7 +14601,7 @@ fn generate_alias_zod_method(
             &reexport,
         );
         quote! {
-            pub fn zod_schema() -> std::string::String {
+            pub fn zod_schema() -> ::std::string::String {
                 #body.to_owned()
             }
         }

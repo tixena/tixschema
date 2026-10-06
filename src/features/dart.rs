@@ -212,7 +212,7 @@ fn dart_module_tokens(rust_ident: &str, span: proc_macro2::Span, dart_source: &s
     let module_ident = dart_module_ident(rust_ident, span);
     quote! {
         pub mod #module_ident {
-            pub fn dart_definition() -> std::string::String {
+            pub fn dart_definition() -> ::std::string::String {
                 #dart_source.to_owned()
             }
         }

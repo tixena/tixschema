@@ -397,20 +397,20 @@ fn the_bson_methods_carry_the_signatures_of_their_json_twins() {
         signatures,
         [
             "pub fn from_bson_with < F > (document : bson :: Document , decide : F ,) \
-             -> core :: result :: Result < Self , named_schema :: Unrecovered < bson :: Bson > > \
-             where F : core :: ops :: FnOnce (& mut bson :: Document , & [named_schema :: Issue < bson :: Bson >]) \
+             -> :: core :: result :: Result < Self , named_schema :: Unrecovered < bson :: Bson > > \
+             where F : :: core :: ops :: FnOnce (& mut bson :: Document , & [named_schema :: Issue < bson :: Bson >]) \
              -> named_schema :: Verdict ,",
-            "fn decode_with_bson_report (whole : & bson :: Bson , refused : core :: option :: \
-             Option < std :: string :: String >) -> std :: vec :: Vec < named_schema :: Issue < \
+            "fn decode_with_bson_report (whole : & bson :: Bson , refused : :: core :: option :: \
+             Option < :: std :: string :: String >) -> :: std :: vec :: Vec < named_schema :: Issue < \
              bson :: Bson > >",
-            "pub fn decode_with_bson_issues < I > (found : & bson :: Bson , path : & [core :: \
-             result :: Result < std :: string :: String , usize >] , issue : named_schema :: \
-             IssueFromParts < bson :: Bson , I > , out : & mut std :: vec :: Vec < I > ,)",
+            "pub fn decode_with_bson_issues < I > (found : & bson :: Bson , path : & [:: core :: \
+             result :: Result < :: std :: string :: String , usize >] , issue : named_schema :: \
+             IssueFromParts < bson :: Bson , I > , out : & mut :: std :: vec :: Vec < I > ,)",
             "pub fn decode_with_bson_named (object : & bson :: Document) -> bool",
             "pub fn decode_with_bson_fields < 'a , I > (object : & 'a bson :: Document , path : \
-             & [core :: result :: Result < std :: string :: String , usize >] , issue : \
-             named_schema :: IssueFromParts < bson :: Bson , I > , out : & mut std :: vec :: \
-             Vec < I > ,) -> std :: vec :: Vec < & 'a str >",
+             & [:: core :: result :: Result < :: std :: string :: String , usize >] , issue : \
+             named_schema :: IssueFromParts < bson :: Bson , I > , out : & mut :: std :: vec :: \
+             Vec < I > ,) -> :: std :: vec :: Vec < & 'a str >",
         ]
     );
     // The JSON report is told what serde said as the BSON one is.
@@ -427,8 +427,8 @@ fn the_bson_methods_carry_the_signatures_of_their_json_twins() {
     assert_eq!(
         json_report.as_deref(),
         Some(
-            "fn decode_with_value_report (value : & serde_json :: Value , refused : core :: \
-             option :: Option < std :: string :: String >) -> std :: vec :: Vec < named_schema \
+            "fn decode_with_value_report (value : & serde_json :: Value , refused : :: core :: \
+             option :: Option < :: std :: string :: String >) -> :: std :: vec :: Vec < named_schema \
              :: Issue < serde_json :: Value > >"
         )
     );
@@ -528,10 +528,10 @@ fn from_value_with_reads_the_value_once_per_decode_and_its_report_reads_nothing(
             "for {source}, got: {entry}"
         );
         for told in [
-            "Self :: decode_with_value_report (& value , core :: option :: Option :: None)",
-            "Self :: decode_with_value_report (& value , core :: option :: Option :: Some \
+            "Self :: decode_with_value_report (& value , :: core :: option :: Option :: None)",
+            "Self :: decode_with_value_report (& value , :: core :: option :: Option :: Some \
              (refused . to_string ()))",
-            "Self :: decode_with_value_report (& value , read . as_ref () . err () . map (std :: string :: ToString :: to_string))",
+            "Self :: decode_with_value_report (& value , read . as_ref () . err () . map (:: std :: string :: ToString :: to_string))",
         ] {
             assert_eq!(entry.matches(told).count(), 1, "for {source}, got: {entry}");
         }
@@ -637,12 +637,12 @@ fn the_bson_walker_matches_the_librarys_own_types() {
     let walk = bson_fields_walk_of(EVERY_WALK);
     for written in [
         "match [\"aliased\" , \"old\"] . into_iter () . find_map (| stored | object . get (stored) . map (| held | (stored , held)))",
-        "core :: option :: Option :: Some ((stored , bson :: Bson :: Null)) => { }",
-        "core :: option :: Option :: None | core :: option :: Option :: Some (bson :: Bson :: \
+        ":: core :: option :: Option :: Some ((stored , bson :: Bson :: Null)) => { }",
+        ":: core :: option :: Option :: None | :: core :: option :: Option :: Some (bson :: Bson :: \
          Null) => { }",
-        "core :: option :: Option :: Some (bson :: Bson :: Array (items)) =>",
+        ":: core :: option :: Option :: Some (bson :: Bson :: Array (items)) =>",
         "bson :: Bson :: Array (items_1) =>",
-        "core :: option :: Option :: Some (bson :: Bson :: Document (entries)) =>",
+        ":: core :: option :: Option :: Some (bson :: Bson :: Document (entries)) =>",
         "< Inner > :: decode_with_bson_issues (item_1 ,",
     ] {
         assert!(walk.contains(written), "missing `{written}` in: {walk}");
@@ -734,7 +734,7 @@ fn a_type_with_no_field_to_walk_leaves_the_issue_list_unbound() {
         let walk = fields_walk_of(source);
         assert!(
             walk.contains(
-                ", _ : & mut std :: vec :: Vec < I > ,) -> std :: vec :: Vec < & 'a str > { vec \
+                ", _ : & mut :: std :: vec :: Vec < I > ,) -> :: std :: vec :: Vec < & 'a str > { vec \
                  ! ["
             ),
             "for {source}, got: {walk}"
@@ -743,7 +743,7 @@ fn a_type_with_no_field_to_walk_leaves_the_issue_list_unbound() {
     let walked = fields_walk_of("pub struct Named { pub title: String }");
     assert!(
         walked.contains(
-            ", out : & mut std :: vec :: Vec < I > ,) -> std :: vec :: Vec < & 'a str > { match \
+            ", out : & mut :: std :: vec :: Vec < I > ,) -> :: std :: vec :: Vec < & 'a str > { match \
              object . get (\"title\")"
         ),
         "got: {walked}"
@@ -757,9 +757,9 @@ fn a_bson_walker_with_no_field_to_walk_leaves_the_issue_list_unbound() {
     let unwalked = bson_fields_walk_of("pub struct Blank {}");
     assert!(
         unwalked.starts_with(
-            " < 'a , I > (object : & 'a bson :: Document , path : & [core :: result :: Result < \
-             std :: string :: String , usize >] , issue : blank_schema :: IssueFromParts < bson \
-             :: Bson , I > , _ : & mut std :: vec :: Vec < I > ,) -> std :: vec :: Vec < & 'a \
+            " < 'a , I > (object : & 'a bson :: Document , path : & [:: core :: result :: Result < \
+             :: std :: string :: String , usize >] , issue : blank_schema :: IssueFromParts < bson \
+             :: Bson , I > , _ : & mut :: std :: vec :: Vec < I > ,) -> :: std :: vec :: Vec < & 'a \
              str > { vec ! []"
         ),
         "got: {unwalked}"
@@ -767,7 +767,7 @@ fn a_bson_walker_with_no_field_to_walk_leaves_the_issue_list_unbound() {
     let walked = bson_fields_walk_of("pub struct Named { pub title: String }");
     assert!(
         walked.contains(
-            ", out : & mut std :: vec :: Vec < I > ,) -> std :: vec :: Vec < & 'a str > { match \
+            ", out : & mut :: std :: vec :: Vec < I > ,) -> :: std :: vec :: Vec < & 'a str > { match \
              object . get (\"title\")"
         ),
         "got: {walked}"
@@ -892,20 +892,20 @@ fn a_tuple_struct_and_a_slot_over_text_a_list_or_a_tuple_claim_no_key() {
         let emitted = type_impl_of(source);
         assert!(
             emitted.contains(
-                "pub fn decode_with_value_fields < 'a , I > (_ : & 'a serde_json :: Map < std \
-                 :: string :: String , serde_json :: Value > , _ : & [core :: result :: Result \
-                 < std :: string :: String , usize >] , _ : code_schema :: IssueFromParts < \
-                 serde_json :: Value , I > , _ : & mut std :: vec :: Vec < I > ,) -> std :: vec \
-                 :: Vec < & 'a str > { std :: vec :: Vec :: new () }"
+                "pub fn decode_with_value_fields < 'a , I > (_ : & 'a serde_json :: Map < :: std \
+                 :: string :: String , serde_json :: Value > , _ : & [:: core :: result :: Result \
+                 < :: std :: string :: String , usize >] , _ : code_schema :: IssueFromParts < \
+                 serde_json :: Value , I > , _ : & mut :: std :: vec :: Vec < I > ,) -> :: std :: vec \
+                 :: Vec < & 'a str > { :: std :: vec :: Vec :: new () }"
             ),
             "for {source}, got: {emitted}"
         );
         assert_eq!(
             emitted.contains(
                 "pub fn decode_with_bson_fields < 'a , I > (_ : & 'a bson :: Document , _ : & \
-                 [core :: result :: Result < std :: string :: String , usize >] , _ : \
-                 code_schema :: IssueFromParts < bson :: Bson , I > , _ : & mut std :: vec :: \
-                 Vec < I > ,) -> std :: vec :: Vec < & 'a str > { std :: vec :: Vec :: new () }"
+                 [:: core :: result :: Result < :: std :: string :: String , usize >] , _ : \
+                 code_schema :: IssueFromParts < bson :: Bson , I > , _ : & mut :: std :: vec :: \
+                 Vec < I > ,) -> :: std :: vec :: Vec < & 'a str > { :: std :: vec :: Vec :: new () }"
             ),
             cfg!(feature = "bson"),
             "for {source}, got: {emitted}"
@@ -919,22 +919,22 @@ fn a_tuple_struct_and_a_slot_over_text_a_list_or_a_tuple_claim_no_key() {
 fn a_tuple_struct_is_walked_by_position() {
     let walk = issues_walk_of("pub struct Pair(pub String, pub Inner);");
     for written in [
-        "let core :: option :: Option :: Some (items) = found . as_array () else { out . extend \
+        "let :: core :: option :: Option :: Some (items) = found . as_array () else { out . extend \
          (pair_schema :: value_leaf (found , < Self as serde :: Deserialize > :: deserialize , \
          | read | serde_json :: to_value (read) . ok () , path . to_vec () , & [(\"Model\" , & \
          [\"Pair\"] , 0)] , issue)) ; return ; } ;",
-        "match items . first () { core :: option :: Option :: Some (held) => out . extend \
+        "match items . first () { :: core :: option :: Option :: Some (held) => out . extend \
          (pair_schema :: value_leaf (held , < String as serde :: Deserialize > :: deserialize ,",
-        "None => out . push (issue (\"Missing\" , [path , & [core :: result :: Result :: Err \
-         (0)]] . concat () , & [(\"String\" , & [] , 0)] , core :: option :: Option :: None , \
-         core :: option :: Option :: None , std :: vec :: Vec :: new ())) ,",
-        "match items . get (1) { core :: option :: Option :: Some (held) => < Inner > :: \
-         decode_with_value_issues (held , & [path , & [core :: result :: Result :: Err (1)]] . \
+        "None => out . push (issue (\"Missing\" , [path , & [:: core :: result :: Result :: Err \
+         (0)]] . concat () , & [(\"String\" , & [] , 0)] , :: core :: option :: Option :: None , \
+         :: core :: option :: Option :: None , :: std :: vec :: Vec :: new ())) ,",
+        "match items . get (1) { :: core :: option :: Option :: Some (held) => < Inner > :: \
+         decode_with_value_issues (held , & [path , & [:: core :: result :: Result :: Err (1)]] . \
          concat () , issue , out) ,",
         "for (index , held) in items . iter () . enumerate () . skip (2) { out . push (issue \
-         (\"Unknown\" , [path , & [core :: result :: Result :: Err (index)]] . concat () , & [] \
-         , core :: option :: Option :: Some (held . clone ()) , core :: option :: Option :: \
-         None , std :: vec :: Vec :: new ())) ; }",
+         (\"Unknown\" , [path , & [:: core :: result :: Result :: Err (index)]] . concat () , & [] \
+         , :: core :: option :: Option :: Some (held . clone ()) , :: core :: option :: Option :: \
+         None , :: std :: vec :: Vec :: new ())) ; }",
     ] {
         assert!(walk.contains(written), "missing `{written}` in: {walk}");
     }
@@ -949,7 +949,7 @@ fn a_slot_is_a_position_only_where_serde_reads_one() {
     );
     assert!(
         walk.contains(
-            "if let core :: option :: Option :: Some (held) = items . get (1) { out . extend \
+            "if let :: core :: option :: Option :: Some (held) = items . get (1) { out . extend \
              (loose_schema :: value_leaf (held , < u32 as serde :: Deserialize > :: deserialize \
              ,"
         ),
@@ -1009,7 +1009,7 @@ fn a_single_slot_struct_over_a_model_type_hands_both_walks_to_it() {
         let emitted = type_impl_of(source);
         for written in [
             "{ < Inner > :: decode_with_value_issues (found , path , issue , out) ; }",
-            "-> std :: vec :: Vec < & 'a str > { < Inner > :: decode_with_value_fields (object \
+            "-> :: std :: vec :: Vec < & 'a str > { < Inner > :: decode_with_value_fields (object \
              , path , issue , out) }",
         ] {
             assert!(
@@ -1028,10 +1028,10 @@ fn a_single_slot_struct_over_a_list_or_an_option_walks_what_it_holds() {
     for written in [
         "match found { serde_json :: Value :: Array (items) => { for (index , item) in items . \
          iter () . enumerate () { < Inner > :: decode_with_value_issues (item , & [path , & \
-         [core :: result :: Result :: Err (index)]] . concat () , issue , out) ; } } ,",
+         [:: core :: result :: Result :: Err (index)]] . concat () , issue , out) ; } } ,",
         "found => out . push (issue (\"Invalid\" , path . to_vec () , & [(\"Array\" , & [] , 1) \
-         , (\"Model\" , & [\"Inner\"] , 0)] , core :: option :: Option :: Some (found . clone \
-         ()) , core :: option :: Option :: Some (\"not an array\" . to_owned ()) , std :: vec \
+         , (\"Model\" , & [\"Inner\"] , 0)] , :: core :: option :: Option :: Some (found . clone \
+         ()) , :: core :: option :: Option :: Some (\"not an array\" . to_owned ()) , :: std :: vec \
          :: Vec :: new ())) ,",
     ] {
         assert!(listed.contains(written), "missing `{written}` in: {listed}");
@@ -1085,19 +1085,19 @@ fn a_transparent_struct_with_a_named_field_is_walked_as_a_single_slot_struct_is(
 #[test]
 fn a_transparent_struct_with_a_named_field_gets_a_fields_walker_whatever_it_holds() {
     for (field, walked) in [
-        ("String", "std :: vec :: Vec :: new ()"),
-        ("Vec<Inner>", "std :: vec :: Vec :: new ()"),
+        ("String", ":: std :: vec :: Vec :: new ()"),
+        ("Vec<Inner>", ":: std :: vec :: Vec :: new ()"),
         (
             "Option<Inner>",
-            "let mut declared = std :: vec :: Vec :: new () ; if < Inner > :: \
-             decode_with_value_named (object) { let mut nested = std :: vec :: Vec :: new () ; \
+            "let mut declared = :: std :: vec :: Vec :: new () ; if < Inner > :: \
+             decode_with_value_named (object) { let mut nested = :: std :: vec :: Vec :: new () ; \
              let keys = < Inner > :: decode_with_value_fields (object , path , issue , & mut \
              nested) ; match < Inner as serde :: Deserialize > :: deserialize (serde_json :: \
-             Value :: Object (object . clone ())) { core :: result :: Result :: Ok (_) => out . \
-             append (& mut nested) , core :: result :: Result :: Err (_) => out . push (issue \
+             Value :: Object (object . clone ())) { :: core :: result :: Result :: Ok (_) => out . \
+             append (& mut nested) , :: core :: result :: Result :: Err (_) => out . push (issue \
              (\"Mistyped\" , path . to_vec () , & [(\"Optional\" , & [] , 1) , (\"Model\" , & \
-             [\"Inner\"] , 0)] , core :: option :: Option :: Some (serde_json :: Value :: \
-             Object (object . clone ())) , core :: option :: Option :: None , std :: vec :: Vec \
+             [\"Inner\"] , 0)] , :: core :: option :: Option :: Some (serde_json :: Value :: \
+             Object (object . clone ())) , :: core :: option :: Option :: None , :: std :: vec :: Vec \
              :: new ())) , } declared . extend (keys) ; } declared",
         ),
         (
@@ -1117,7 +1117,9 @@ fn a_transparent_struct_with_a_named_field_gets_a_fields_walker_whatever_it_hold
         );
         let walk = json_fields_walk_of(&source);
         assert!(
-            walk.contains(&format!("-> std :: vec :: Vec < & 'a str > {{ {walked} }}")),
+            walk.contains(&format!(
+                "-> :: std :: vec :: Vec < & 'a str > {{ {walked} }}"
+            )),
             "for {source}, got: {walk}"
         );
     }
@@ -1199,7 +1201,7 @@ fn a_transparent_tuple_struct_is_walked_as_the_one_slot_serde_reads_it_as() {
         let walk = issues_walk_of(positional);
         assert!(
             walk.contains(
-                "let core :: option :: Option :: Some (items) = found . as_array () else"
+                "let :: core :: option :: Option :: Some (items) = found . as_array () else"
             ) && walk.contains("items . first ()"),
             "for {positional}, got: {walk}"
         );
@@ -1212,17 +1214,17 @@ fn a_transparent_tuple_struct_is_walked_as_the_one_slot_serde_reads_it_as() {
 fn a_unit_struct_lists_every_key_and_its_fields_walker_binds_nothing() {
     let emitted = type_impl_of("pub struct Ping;");
     for written in [
-        "let core :: option :: Option :: Some (object) = found . as_object () else { out . \
+        "let :: core :: option :: Option :: Some (object) = found . as_object () else { out . \
          extend (ping_schema :: value_leaf (found , < Self as serde :: Deserialize > :: \
          deserialize ,",
-        "for (key , held) in object { out . push (issue (\"Unknown\" , [path , & [core :: \
-         result :: Result :: Ok (key . clone ())]] . concat () , & [] , core :: option :: \
-         Option :: Some (held . clone ()) , core :: option :: Option :: None , std :: vec :: \
+        "for (key , held) in object { out . push (issue (\"Unknown\" , [path , & [:: core :: \
+         result :: Result :: Ok (key . clone ())]] . concat () , & [] , :: core :: option :: \
+         Option :: Some (held . clone ()) , :: core :: option :: Option :: None , :: std :: vec :: \
          Vec :: new ())) ; }",
-        "pub fn decode_with_value_fields < 'a , I > (_ : & 'a serde_json :: Map < std :: string \
-         :: String , serde_json :: Value > , _ : & [core :: result :: Result < std :: string :: \
+        "pub fn decode_with_value_fields < 'a , I > (_ : & 'a serde_json :: Map < :: std :: string \
+         :: String , serde_json :: Value > , _ : & [:: core :: result :: Result < :: std :: string :: \
          String , usize >] , _ : ping_schema :: IssueFromParts < serde_json :: Value , I > , _ \
-         : & mut std :: vec :: Vec < I > ,) -> std :: vec :: Vec < & 'a str > { std :: vec :: \
+         : & mut :: std :: vec :: Vec < I > ,) -> :: std :: vec :: Vec < & 'a str > { :: std :: vec :: \
          Vec :: new () }",
     ] {
         assert!(
@@ -1243,35 +1245,35 @@ fn a_tuple_in_a_fields_type_is_walked_by_position_wherever_it_is_held() {
     );
     for written in [
         "for (key , item) in entries { match item { serde_json :: Value :: Array (items_1) => { \
-         match items_1 . first () { core :: option :: Option :: Some (held_1) =>",
-        "[path , & [core :: result :: Result :: Ok (\"by_name\" . to_owned ()) , core :: result \
-         :: Result :: Ok (key . clone ()) , core :: result :: Result :: Err (1)]] . concat ()",
-        "match object . get (\"maybe\") { core :: option :: Option :: None | core :: option :: \
-         Option :: Some (serde_json :: Value :: Null) => { } core :: option :: Option :: Some \
+         match items_1 . first () { :: core :: option :: Option :: Some (held_1) =>",
+        "[path , & [:: core :: result :: Result :: Ok (\"by_name\" . to_owned ()) , :: core :: result \
+         :: Result :: Ok (key . clone ()) , :: core :: result :: Result :: Err (1)]] . concat ()",
+        "match object . get (\"maybe\") { :: core :: option :: Option :: None | :: core :: option :: \
+         Option :: Some (serde_json :: Value :: Null) => { } :: core :: option :: Option :: Some \
          (serde_json :: Value :: Array (items)) => { match items . first () {",
-        "Some (held) => out . push (issue (\"Invalid\" , [path , & [core :: result :: Result :: \
+        "Some (held) => out . push (issue (\"Invalid\" , [path , & [:: core :: result :: Result :: \
          Ok (\"maybe\" . to_owned ())]] . concat () , & [(\"Optional\" , & [] , 1) , (\"Tuple\" \
-         , & [] , 2) , (\"String\" , & [] , 0) , (\"U32\" , & [] , 0)] , core :: option :: \
-         Option :: Some (held . clone ()) , core :: option :: Option :: Some (\"not an array\" \
-         . to_owned ()) , std :: vec :: Vec :: new ())) ,",
+         , & [] , 2) , (\"String\" , & [] , 0) , (\"U32\" , & [] , 0)] , :: core :: option :: \
+         Option :: Some (held . clone ()) , :: core :: option :: Option :: Some (\"not an array\" \
+         . to_owned ()) , :: std :: vec :: Vec :: new ())) ,",
         "placed_schema :: value_leaf (held , < () as serde :: Deserialize > :: deserialize ,",
-        "match items . get (1) { core :: option :: Option :: Some (held) => < Inner > :: \
-         decode_with_value_issues (held , & [path , & [core :: result :: Result :: Ok (\"spot\" \
-         . to_owned ()) , core :: result :: Result :: Err (1)]] . concat () , issue , out) ,",
-        "None => out . push (issue (\"Missing\" , [path , & [core :: result :: Result :: Ok \
+        "match items . get (1) { :: core :: option :: Option :: Some (held) => < Inner > :: \
+         decode_with_value_issues (held , & [path , & [:: core :: result :: Result :: Ok (\"spot\" \
+         . to_owned ()) , :: core :: result :: Result :: Err (1)]] . concat () , issue , out) ,",
+        "None => out . push (issue (\"Missing\" , [path , & [:: core :: result :: Result :: Ok \
          (\"spot\" . to_owned ())]] . concat () , & [(\"Tuple\" , & [] , 2) , (\"String\" , & \
-         [] , 0) , (\"Model\" , & [\"Inner\"] , 0)] , core :: option :: Option :: None , core \
-         :: option :: Option :: None , std :: vec :: Vec :: new ())) ,",
+         [] , 0) , (\"Model\" , & [\"Inner\"] , 0)] , :: core :: option :: Option :: None , :: core \
+         :: option :: Option :: None , :: std :: vec :: Vec :: new ())) ,",
         "for (index , item) in items . iter () . enumerate () { match item { serde_json :: Value :: Array (items_1) =>",
         "for (index_1 , held_1) in items_1 . iter () . enumerate () . skip (2) { out . push \
-         (issue (\"Unknown\" , [path , & [core :: result :: Result :: Ok (\"spots\" . to_owned \
-         ()) , core :: result :: Result :: Err (index) , core :: result :: Result :: Err \
+         (issue (\"Unknown\" , [path , & [:: core :: result :: Result :: Ok (\"spots\" . to_owned \
+         ()) , :: core :: result :: Result :: Err (index) , :: core :: result :: Result :: Err \
          (index_1)]] . concat () ,",
-        "item => out . push (issue (\"Invalid\" , [path , & [core :: result :: Result :: Ok \
-         (\"spots\" . to_owned ()) , core :: result :: Result :: Err (index)]] . concat () , & \
-         [(\"Tuple\" , & [] , 2) , (\"String\" , & [] , 0) , (\"U32\" , & [] , 0)] , core :: \
-         option :: Option :: Some (item . clone ()) , core :: option :: Option :: Some (\"not \
-         an array\" . to_owned ()) , std :: vec :: Vec :: new ())) ,",
+        "item => out . push (issue (\"Invalid\" , [path , & [:: core :: result :: Result :: Ok \
+         (\"spots\" . to_owned ()) , :: core :: result :: Result :: Err (index)]] . concat () , & \
+         [(\"Tuple\" , & [] , 2) , (\"String\" , & [] , 0) , (\"U32\" , & [] , 0)] , :: core :: \
+         option :: Option :: Some (item . clone ()) , :: core :: option :: Option :: Some (\"not \
+         an array\" . to_owned ()) , :: std :: vec :: Vec :: new ())) ,",
     ] {
         assert!(walk.contains(written), "missing `{written}` in: {walk}");
     }
@@ -1320,12 +1322,12 @@ fn a_methods_own_type_parameter_is_never_one_the_type_declares() {
         type_impl_of("pub struct Keyed<I, const F: usize, F2> { pub id: I, pub kept: F2 }");
     for written in [
         "pub fn from_value_with < F3 > (mut value : serde_json :: Value , decide : F3 ,)",
-        "where F3 : core :: ops :: FnOnce (& mut serde_json :: Value , & [keyed_schema :: Issue < serde_json :: Value >]) -> keyed_schema :: Verdict ,",
-        "pub fn decode_with_value_issues < I2 > (found : & serde_json :: Value , path : & [core \
-         :: result :: Result < std :: string :: String , usize >] , issue : keyed_schema :: \
-         IssueFromParts < serde_json :: Value , I2 > , out : & mut std :: vec :: Vec < I2 > ,)",
+        "where F3 : :: core :: ops :: FnOnce (& mut serde_json :: Value , & [keyed_schema :: Issue < serde_json :: Value >]) -> keyed_schema :: Verdict ,",
+        "pub fn decode_with_value_issues < I2 > (found : & serde_json :: Value , path : & [:: core \
+         :: result :: Result < :: std :: string :: String , usize >] , issue : keyed_schema :: \
+         IssueFromParts < serde_json :: Value , I2 > , out : & mut :: std :: vec :: Vec < I2 > ,)",
         "pub fn decode_with_value_fields < 'a , I2 > (",
-        "< I as serde :: Deserialize > :: deserialize , | _ | core :: option :: Option :: None \
+        "< I as serde :: Deserialize > :: deserialize , | _ | :: core :: option :: Option :: None \
          ,",
     ] {
         assert!(
@@ -1406,11 +1408,11 @@ fn a_methods_own_type_parameter_is_never_a_name_the_item_writes() {
     }
     let walk = issues_walk_of("pub struct Holder(pub String, pub I);");
     for written in [
-        " < I2 > (found : & serde_json :: Value , path : & [core :: result :: Result < std :: \
+        " < I2 > (found : & serde_json :: Value , path : & [:: core :: result :: Result < :: std :: \
          string :: String , usize >] , issue : holder_schema :: IssueFromParts < serde_json :: \
-         Value , I2 > , out : & mut std :: vec :: Vec < I2 > ,)",
-        "core :: option :: Option :: Some (held) => < I > :: decode_with_value_issues (held , & \
-         [path , & [core :: result :: Result :: Err (1)]] . concat () , issue , out) ,",
+         Value , I2 > , out : & mut :: std :: vec :: Vec < I2 > ,)",
+        ":: core :: option :: Option :: Some (held) => < I > :: decode_with_value_issues (held , & \
+         [path , & [:: core :: result :: Result :: Err (1)]] . concat () , issue , out) ,",
     ] {
         assert!(walk.contains(written), "missing `{written}` in: {walk}");
     }
@@ -1448,33 +1450,33 @@ fn a_parameters_value_and_the_type_itself_are_never_written_back_from_json() {
         .unwrap_or((emitted.as_str(), ""));
     for written in [
         "parcel_schema :: value_leaf (found , < Self as serde :: Deserialize > :: deserialize , \
-         | _ | core :: option :: Option :: None , path . to_vec () , & [(\"Model\" , & \
+         | _ | :: core :: option :: Option :: None , path . to_vec () , & [(\"Model\" , & \
          [\"Parcel\"] , 0)] , issue)",
-        "< (T , u32) as serde :: Deserialize > :: deserialize , | _ | core :: option :: Option \
-         :: None , [path , & [core :: result :: Result :: Ok (\"both\" . to_owned ())]] . \
+        "< (T , u32) as serde :: Deserialize > :: deserialize , | _ | :: core :: option :: Option \
+         :: None , [path , & [:: core :: result :: Result :: Ok (\"both\" . to_owned ())]] . \
          concat () , & [(\"Tuple\" , & [] , 2) , (\"TypeParam\" , & [\"T\"] , 0) , (\"U32\" , & \
          [] , 0)] ,",
-        "< HashMap < String , T > as serde :: Deserialize > :: deserialize , | _ | core :: \
-         option :: Option :: None , [path , & [core :: result :: Result :: Ok (\"extra\" . \
+        "< HashMap < String , T > as serde :: Deserialize > :: deserialize , | _ | :: core :: \
+         option :: Option :: None , [path , & [:: core :: result :: Result :: Ok (\"extra\" . \
          to_owned ())]] . concat () , & [(\"Map\" , & [] , 1) , (\"TypeParam\" , & [\"T\"] , \
          0)] ,",
-        "parcel_schema :: value_leaf (held , lenient , | _ : & T | core :: option :: Option :: \
+        "parcel_schema :: value_leaf (held , lenient , | _ : & T | :: core :: option :: Option :: \
          None ,",
-        "< Self > :: decode_with_value_issues (item , & [path , & [core :: result :: Result :: \
-         Ok (\"inner\" . to_owned ()) , core :: result :: Result :: Err (index)]] . concat () , \
+        "< Self > :: decode_with_value_issues (item , & [path , & [:: core :: result :: Result :: \
+         Ok (\"inner\" . to_owned ()) , :: core :: result :: Result :: Err (index)]] . concat () , \
          issue , out)",
-        "< Vec < T > as serde :: Deserialize > :: deserialize , | _ | core :: option :: Option \
-         :: None , [path , & [core :: result :: Result :: Ok (\"items\" . to_owned ())]] . \
+        "< Vec < T > as serde :: Deserialize > :: deserialize , | _ | :: core :: option :: Option \
+         :: None , [path , & [:: core :: result :: Result :: Ok (\"items\" . to_owned ())]] . \
          concat () , & [(\"Array\" , & [] , 1) , (\"TypeParam\" , & [\"T\"] , 0)] ,",
-        "< T as serde :: Deserialize > :: deserialize , | _ | core :: option :: Option :: None \
-         , [path , & [core :: result :: Result :: Ok (\"one\" . to_owned ())]] . concat () , & \
+        "< T as serde :: Deserialize > :: deserialize , | _ | :: core :: option :: Option :: None \
+         , [path , & [:: core :: result :: Result :: Ok (\"one\" . to_owned ())]] . concat () , & \
          [(\"TypeParam\" , & [\"T\"] , 0)] ,",
-        "< Page < T > > :: decode_with_value_issues (held , & [path , & [core :: result :: \
+        "< Page < T > > :: decode_with_value_issues (held , & [path , & [:: core :: result :: \
          Result :: Ok (\"page\" . to_owned ())]] . concat () , issue , out)",
-        "< T :: Item as serde :: Deserialize > :: deserialize , | _ | core :: option :: Option \
+        "< T :: Item as serde :: Deserialize > :: deserialize , | _ | :: core :: option :: Option \
          :: None ,",
-        "< Option < T > as serde :: Deserialize > :: deserialize , | _ | core :: option :: \
-         Option :: None , [path , & [core :: result :: Result :: Ok (\"sender\" . to_owned \
+        "< Option < T > as serde :: Deserialize > :: deserialize , | _ | :: core :: option :: \
+         Option :: None , [path , & [:: core :: result :: Result :: Ok (\"sender\" . to_owned \
          ())]] . concat () , & [(\"Optional\" , & [] , 1) , (\"TypeParam\" , & [\"T\"] , 0)] ,",
         "< u32 as serde :: Deserialize > :: deserialize , | read | serde_json :: to_value (read) . ok () ,",
     ] {
@@ -1520,20 +1522,20 @@ fn the_bson_walker_of_each_struct_shape_matches_the_librarys_own_types() {
         ),
         (
             "pub struct Pinned(pub Inner);",
-            "-> std :: vec :: Vec < & 'a str > { < Inner > :: decode_with_bson_fields (object , \
+            "-> :: std :: vec :: Vec < & 'a str > { < Inner > :: decode_with_bson_fields (object , \
              path , issue , out) }",
         ),
         (
             "pub struct Ping;",
-            "pub fn decode_with_bson_fields < 'a , I > (_ : & 'a bson :: Document , _ : & [core \
-             :: result :: Result < std :: string :: String , usize >] , _ : ping_schema :: \
-             IssueFromParts < bson :: Bson , I > , _ : & mut std :: vec :: Vec < I > ,) -> std \
-             :: vec :: Vec < & 'a str > { std :: vec :: Vec :: new () }",
+            "pub fn decode_with_bson_fields < 'a , I > (_ : & 'a bson :: Document , _ : & [:: core \
+             :: result :: Result < :: std :: string :: String , usize >] , _ : ping_schema :: \
+             IssueFromParts < bson :: Bson , I > , _ : & mut :: std :: vec :: Vec < I > ,) -> :: std \
+             :: vec :: Vec < & 'a str > { :: std :: vec :: Vec :: new () }",
         ),
         (
             "pub struct Placed { pub spot: (String, u32) }",
-            "core :: option :: Option :: Some (bson :: Bson :: Array (items)) => { match items \
-             . first () { core :: option :: Option :: Some (held) => out . extend \
+            ":: core :: option :: Option :: Some (bson :: Bson :: Array (items)) => { match items \
+             . first () { :: core :: option :: Option :: Some (held) => out . extend \
              (placed_schema :: bson_leaf (held ,",
         ),
     ] {
@@ -1585,7 +1587,7 @@ fn a_plain_enum_is_read_whole_and_one_under_a_tag_is_walked_by_its_tag() {
     let plain = enum_json_of("pub enum Status { Draft, Published }");
     assert!(
         plain.contains(
-            "out : & mut std :: vec :: Vec < I > ,) { out . extend (status_schema :: value_leaf \
+            "out : & mut :: std :: vec :: Vec < I > ,) { out . extend (status_schema :: value_leaf \
              (found , < Self as serde :: Deserialize > :: deserialize , | read | serde_json :: \
              to_value (read) . ok () , path . to_vec () , & [(\"Model\" , & [\"Status\"] , 0)] \
              , issue)) ; }"
@@ -1594,9 +1596,9 @@ fn a_plain_enum_is_read_whole_and_one_under_a_tag_is_walked_by_its_tag() {
     );
     let tagged = enum_json_of("#[serde(tag = \"code\")] pub enum Fault { Db, Io }");
     for written in [
-        "let core :: option :: Option :: Some (tag) = object . get (\"code\") else {",
-        "match tag . as_str () { core :: option :: Option :: Some (\"Db\") => vec ! [\"code\"] \
-         , core :: option :: Option :: Some (\"Io\") => vec ! [\"code\"] , _ => {",
+        "let :: core :: option :: Option :: Some (tag) = object . get (\"code\") else {",
+        "match tag . as_str () { :: core :: option :: Option :: Some (\"Db\") => vec ! [\"code\"] \
+         , :: core :: option :: Option :: Some (\"Io\") => vec ! [\"code\"] , _ => {",
     ] {
         assert!(tagged.contains(written), "missing `{written}` in: {tagged}");
     }
@@ -1610,43 +1612,43 @@ fn an_externally_tagged_enum_is_walked_under_the_key_naming_the_variant() {
     let walk = enum_json_of(EXTERNAL);
     for written in [
         "match found { serde_json :: Value :: String (tag) if matches ! (tag . as_str () , \"Empty\") => { } serde_json :: Value :: Object (object) if object . len () == 1 && object . keys () . any (| key | matches ! (key . as_str () , \"Circle\" | \"Label\" | \"Pinned\" | \"To\")) => { Self :: decode_with_value_fields (object , path , issue , out) ; } _ => out . extend (outline_schema :: value_leaf (found , < Self as serde :: Deserialize > :: deserialize , | read | serde_json :: to_value (read) . ok () , path . to_vec () , & [(\"Variants\" , & [\"Circle\" , \"Empty\" , \"Label\" , \"Pinned\" , \"To\"] , 0)] , issue)) , }",
-        "if let core :: option :: Option :: Some (content) = object . get (\"Circle\") { if let \
+        "if let :: core :: option :: Option :: Some (content) = object . get (\"Circle\") { if let \
          serde_json :: Value :: Object (inner) = content { match inner . get (\"radius\") { \
-         core :: option :: Option :: Some (held) => out . extend (outline_schema :: value_leaf \
+         :: core :: option :: Option :: Some (held) => out . extend (outline_schema :: value_leaf \
          (held , < f64 as serde :: Deserialize > :: deserialize ,",
-        "core :: option :: Option :: None => out . push (issue (\"Missing\" , [path , & [core \
-         :: result :: Result :: Ok (\"Circle\" . to_owned ()) , core :: result :: Result :: Ok \
-         (\"radius\" . to_owned ())]] . concat () , & [(\"F64\" , & [] , 0)] , core :: option \
-         :: Option :: None , core :: option :: Option :: None , std :: vec :: Vec :: new ())) , \
+        ":: core :: option :: Option :: None => out . push (issue (\"Missing\" , [path , & [:: core \
+         :: result :: Result :: Ok (\"Circle\" . to_owned ()) , :: core :: result :: Result :: Ok \
+         (\"radius\" . to_owned ())]] . concat () , & [(\"F64\" , & [] , 0)] , :: core :: option \
+         :: Option :: None , :: core :: option :: Option :: None , :: std :: vec :: Vec :: new ())) , \
          }",
         "for (key , held) in inner { if ! matches ! (key . as_str () , \"radius\") { out . push \
-         (issue (\"Unknown\" , [path , & [core :: result :: Result :: Ok (\"Circle\" . to_owned \
-         ()) , core :: result :: Result :: Ok (key . clone ())]] . concat () , & [] , core :: \
-         option :: Option :: Some (held . clone ()) , core :: option :: Option :: None , std :: \
+         (issue (\"Unknown\" , [path , & [:: core :: result :: Result :: Ok (\"Circle\" . to_owned \
+         ()) , :: core :: result :: Result :: Ok (key . clone ())]] . concat () , & [] , :: core :: \
+         option :: Option :: Some (held . clone ()) , :: core :: option :: Option :: None , :: std :: \
          vec :: Vec :: new ())) ; } } } return vec ! [\"Circle\"] ; }",
         "if object . contains_key (\"Empty\") { return vec ! [\"Empty\"] ; }",
-        "if let core :: option :: Option :: Some (content) = object . get (\"Label\") { out . \
+        "if let :: core :: option :: Option :: Some (content) = object . get (\"Label\") { out . \
          extend (outline_schema :: value_leaf (content , < String as serde :: Deserialize > :: \
-         deserialize , | read | serde_json :: to_value (read) . ok () , [path , & [core :: \
+         deserialize , | read | serde_json :: to_value (read) . ok () , [path , & [:: core :: \
          result :: Result :: Ok (\"Label\" . to_owned ())]] . concat () , & [(\"String\" , & [] \
          , 0)] , issue)) ; return vec ! [\"Label\"] ; }",
-        "if let core :: option :: Option :: Some (content) = object . get (\"Pinned\") { < \
-         Inner > :: decode_with_value_issues (content , & [path , & [core :: result :: Result \
+        "if let :: core :: option :: Option :: Some (content) = object . get (\"Pinned\") { < \
+         Inner > :: decode_with_value_issues (content , & [path , & [:: core :: result :: Result \
          :: Ok (\"Pinned\" . to_owned ())]] . concat () , issue , out) ; return vec ! \
          [\"Pinned\"] ; }",
-        "if let core :: option :: Option :: Some (content) = object . get (\"To\") { match \
+        "if let :: core :: option :: Option :: Some (content) = object . get (\"To\") { match \
          content { serde_json :: Value :: Array (items) => { match items . first () {",
         "for (index , held) in items . iter () . enumerate () . skip (2) { out . push (issue \
-         (\"Unknown\" , [path , & [core :: result :: Result :: Ok (\"To\" . to_owned ()) , core \
+         (\"Unknown\" , [path , & [:: core :: result :: Result :: Ok (\"To\" . to_owned ()) , :: core \
          :: result :: Result :: Err (index)]] . concat () ,",
-        "content => out . push (issue (\"Invalid\" , [path , & [core :: result :: Result :: Ok \
+        "content => out . push (issue (\"Invalid\" , [path , & [:: core :: result :: Result :: Ok \
          (\"To\" . to_owned ())]] . concat () , & [(\"Tuple\" , & [] , 2) , (\"I32\" , & [] , \
-         0) , (\"I32\" , & [] , 0)] , core :: option :: Option :: Some (content . clone ()) , \
-         core :: option :: Option :: Some (\"not an array\" . to_owned ()) , std :: vec :: Vec \
+         0) , (\"I32\" , & [] , 0)] , :: core :: option :: Option :: Some (content . clone ()) , \
+         :: core :: option :: Option :: Some (\"not an array\" . to_owned ()) , :: std :: vec :: Vec \
          :: new ())) , } return vec ! [\"To\"] ; }",
         "out . push (issue (\"Missing\" , path . to_vec () , & [(\"Variants\" , & [\"Circle\" , \
-         \"Empty\" , \"Label\" , \"Pinned\" , \"To\"] , 0)] , core :: option :: Option :: None \
-         , core :: option :: Option :: None , std :: vec :: Vec :: new ())) ; std :: vec :: Vec \
+         \"Empty\" , \"Label\" , \"Pinned\" , \"To\"] , 0)] , :: core :: option :: Option :: None \
+         , :: core :: option :: Option :: None , :: std :: vec :: Vec :: new ())) ; :: std :: vec :: Vec \
          :: new () }",
     ] {
         assert!(walk.contains(written), "missing `{written}` in: {walk}");
@@ -1660,43 +1662,43 @@ fn an_externally_tagged_enum_is_walked_under_the_key_naming_the_variant() {
 fn an_internally_tagged_enum_walks_the_variant_its_tag_names_in_the_same_object() {
     let walk = enum_json_of(INTERNAL);
     for written in [
-        "let core :: option :: Option :: Some (object) = found . as_object () else { out . \
+        "let :: core :: option :: Option :: Some (object) = found . as_object () else { out . \
          extend (fill_schema :: value_leaf (found , < Self as serde :: Deserialize > :: \
          deserialize , | read | serde_json :: to_value (read) . ok () , path . to_vec () , & \
          [(\"Model\" , & [\"Fill\"] , 0)] , issue)) ; return ; } ; let declared = Self :: \
          decode_with_value_fields (object , path , issue , out) ; for (key , held) in object { \
          if ! declared . contains (& key . as_str ()) {",
-        "let core :: option :: Option :: Some (tag) = object . get (\"kind\") else { out . push \
-         (issue (\"Missing\" , [path , & [core :: result :: Result :: Ok (\"kind\" . to_owned \
+        "let :: core :: option :: Option :: Some (tag) = object . get (\"kind\") else { out . push \
+         (issue (\"Missing\" , [path , & [:: core :: result :: Result :: Ok (\"kind\" . to_owned \
          ())]] . concat () , & [(\"Variants\" , & [\"Clear\" , \"Solid\" , \"Versioned\"] , 0)] \
-         , core :: option :: Option :: None , core :: option :: Option :: None , std :: vec :: \
-         Vec :: new ())) ; return object . keys () . map (std :: string :: String :: as_str) . \
+         , :: core :: option :: Option :: None , :: core :: option :: Option :: None , :: std :: vec :: \
+         Vec :: new ())) ; return object . keys () . map (:: std :: string :: String :: as_str) . \
          collect () ; } ;",
-        "match tag . as_str () { core :: option :: Option :: Some (\"Clear\") => vec ! \
-         [\"kind\"] , core :: option :: Option :: Some (\"Solid\") => { match object . get \
+        "match tag . as_str () { :: core :: option :: Option :: Some (\"Clear\") => vec ! \
+         [\"kind\"] , :: core :: option :: Option :: Some (\"Solid\") => { match object . get \
          (\"color\") {",
-        "None => out . push (issue (\"Missing\" , [path , & [core :: result :: Result :: Ok \
-         (\"color\" . to_owned ())]] . concat () , & [(\"String\" , & [] , 0)] , core :: option \
-         :: Option :: None , core :: option :: Option :: None , std :: vec :: Vec :: new ())) , \
+        "None => out . push (issue (\"Missing\" , [path , & [:: core :: result :: Result :: Ok \
+         (\"color\" . to_owned ())]] . concat () , & [(\"String\" , & [] , 0)] , :: core :: option \
+         :: Option :: None , :: core :: option :: Option :: None , :: std :: vec :: Vec :: new ())) , \
          } vec ! [\"kind\" , \"color\"] } ,",
-        "core :: option :: Option :: Some (\"Versioned\") => { let rest : serde_json :: Map < \
-         std :: string :: String , serde_json :: Value > = object . iter () . filter (| (key , \
+        ":: core :: option :: Option :: Some (\"Versioned\") => { let rest : serde_json :: Map < \
+         :: std :: string :: String , serde_json :: Value > = object . iter () . filter (| (key , \
          _) | ! matches ! (key . as_str () , \"kind\")) . map (| (key , held) | (key . clone () \
-         , held . clone ())) . collect () ; let mut declared : std :: vec :: Vec < & str > = < \
+         , held . clone ())) . collect () ; let mut declared : :: std :: vec :: Vec < & str > = < \
          Inner > :: decode_with_value_fields (& rest , path , issue , out) . into_iter () . \
          filter_map (| key | object . keys () . find (| own | own . as_str () == key) . map \
-         (std :: string :: String :: as_str)) . collect () ; declared . push (\"kind\") ; \
+         (:: std :: string :: String :: as_str)) . collect () ; declared . push (\"kind\") ; \
          declared } ,",
-        "_ => { let here = [path , & [core :: result :: Result :: Ok (\"kind\" . to_owned ())]] \
+        "_ => { let here = [path , & [:: core :: result :: Result :: Ok (\"kind\" . to_owned ())]] \
          . concat () ; out . push (match < Self as serde :: Deserialize > :: deserialize \
-         (serde_json :: Value :: Object (object . clone ())) { core :: result :: Result :: Err \
+         (serde_json :: Value :: Object (object . clone ())) { :: core :: result :: Result :: Err \
          (refused) => issue (\"Invalid\" , here , & [(\"Variants\" , & [\"Clear\" , \"Solid\" , \
-         \"Versioned\"] , 0)] , core :: option :: Option :: Some (tag . clone ()) , core :: \
-         option :: Option :: Some (refused . to_string ()) , std :: vec :: Vec :: new ()) , \
-         core :: result :: Result :: Ok (_) => issue (\"Mistyped\" , here , & [(\"Variants\" , \
-         & [\"Clear\" , \"Solid\" , \"Versioned\"] , 0)] , core :: option :: Option :: Some \
-         (tag . clone ()) , core :: option :: Option :: None , std :: vec :: Vec :: new ()) , \
-         }) ; object . keys () . map (std :: string :: String :: as_str) . collect () } } }",
+         \"Versioned\"] , 0)] , :: core :: option :: Option :: Some (tag . clone ()) , :: core :: \
+         option :: Option :: Some (refused . to_string ()) , :: std :: vec :: Vec :: new ()) , \
+         :: core :: result :: Result :: Ok (_) => issue (\"Mistyped\" , here , & [(\"Variants\" , \
+         & [\"Clear\" , \"Solid\" , \"Versioned\"] , 0)] , :: core :: option :: Option :: Some \
+         (tag . clone ()) , :: core :: option :: Option :: None , :: std :: vec :: Vec :: new ()) , \
+         }) ; object . keys () . map (:: std :: string :: String :: as_str) . collect () } } }",
     ] {
         assert!(walk.contains(written), "missing `{written}` in: {walk}");
     }
@@ -1710,9 +1712,9 @@ fn an_internally_tagged_variant_over_no_model_type_walks_nothing() {
     let walk = enum_json_of("#[serde(tag = \"kind\")] pub enum Reply<T> { Lost, Sent(T) }");
     assert!(
         walk.contains(
-            "match tag . as_str () { core :: option :: Option :: Some (\"Lost\") => vec ! \
-             [\"kind\"] , core :: option :: Option :: Some (\"Sent\") => object . keys () . map \
-             (std :: string :: String :: as_str) . collect () , _ => {"
+            "match tag . as_str () { :: core :: option :: Option :: Some (\"Lost\") => vec ! \
+             [\"kind\"] , :: core :: option :: Option :: Some (\"Sent\") => object . keys () . map \
+             (:: std :: string :: String :: as_str) . collect () , _ => {"
         ),
         "got: {walk}"
     );
@@ -1725,47 +1727,47 @@ fn an_internally_tagged_variant_over_no_model_type_walks_nothing() {
 fn an_adjacently_tagged_enum_walks_what_the_variant_holds_under_the_content_key() {
     let walk = enum_json_of(ADJACENT);
     for written in [
-        "return vec ! [\"kind\" , \"data\"] ; } ; match tag . as_str () { core :: option :: \
-         Option :: Some (\"Dashed\") => match object . get (\"data\") { core :: option :: \
+        "return vec ! [\"kind\" , \"data\"] ; } ; match tag . as_str () { :: core :: option :: \
+         Option :: Some (\"Dashed\") => match object . get (\"data\") { :: core :: option :: \
          Option :: Some (content) => if let serde_json :: Value :: Object (inner) = content { \
          match inner . get (\"gap\") {",
         "for (key , held) in inner { if ! matches ! (key . as_str () , \"gap\") { out . push \
-         (issue (\"Unknown\" , [path , & [core :: result :: Result :: Ok (\"data\" . to_owned \
-         ()) , core :: result :: Result :: Ok (key . clone ())]] . concat () ,",
-        "core :: option :: Option :: None => out . push (issue (\"Missing\" , [path , & [core \
+         (issue (\"Unknown\" , [path , & [:: core :: result :: Result :: Ok (\"data\" . to_owned \
+         ()) , :: core :: result :: Result :: Ok (key . clone ())]] . concat () ,",
+        ":: core :: option :: Option :: None => out . push (issue (\"Missing\" , [path , & [:: core \
          :: result :: Result :: Ok (\"data\" . to_owned ())]] . concat () , & [(\"Model\" , & \
-         [\"Stroke\"] , 0)] , core :: option :: Option :: None , core :: option :: Option :: \
-         None , std :: vec :: Vec :: new ())) , } , core :: option :: Option :: Some \
+         [\"Stroke\"] , 0)] , :: core :: option :: Option :: None , :: core :: option :: Option :: \
+         None , :: std :: vec :: Vec :: new ())) , } , :: core :: option :: Option :: Some \
          (\"Hairline\") => { } ,",
-        "core :: option :: Option :: Some (\"Level\") => match object . get (\"data\") { core \
-         :: option :: Option :: None | core :: option :: Option :: Some (serde_json :: Value :: \
-         Null) => { } core :: option :: Option :: Some (content) => < Inner > :: \
-         decode_with_value_issues (content , & [path , & [core :: result :: Result :: Ok \
+        ":: core :: option :: Option :: Some (\"Level\") => match object . get (\"data\") { :: core \
+         :: option :: Option :: None | :: core :: option :: Option :: Some (serde_json :: Value :: \
+         Null) => { } :: core :: option :: Option :: Some (content) => < Inner > :: \
+         decode_with_value_issues (content , & [path , & [:: core :: result :: Result :: Ok \
          (\"data\" . to_owned ())]] . concat () , issue , out) , } ,",
-        "core :: option :: Option :: Some (\"Span\") => match object . get (\"data\") { core :: \
+        ":: core :: option :: Option :: Some (\"Span\") => match object . get (\"data\") { :: core :: \
          option :: Option :: Some (serde_json :: Value :: Array (items)) => { match items . \
          first () {",
-        "core :: option :: Option :: Some (content) => out . push (issue (\"Invalid\" , [path , \
-         & [core :: result :: Result :: Ok (\"data\" . to_owned ())]] . concat () , & \
-         [(\"Tuple\" , & [] , 2) , (\"U32\" , & [] , 0) , (\"U32\" , & [] , 0)] , core :: \
-         option :: Option :: Some (content . clone ()) , core :: option :: Option :: Some \
-         (\"not an array\" . to_owned ()) , std :: vec :: Vec :: new ())) , core :: option :: \
-         Option :: None => out . push (issue (\"Missing\" , [path , & [core :: result :: Result \
+        ":: core :: option :: Option :: Some (content) => out . push (issue (\"Invalid\" , [path , \
+         & [:: core :: result :: Result :: Ok (\"data\" . to_owned ())]] . concat () , & \
+         [(\"Tuple\" , & [] , 2) , (\"U32\" , & [] , 0) , (\"U32\" , & [] , 0)] , :: core :: \
+         option :: Option :: Some (content . clone ()) , :: core :: option :: Option :: Some \
+         (\"not an array\" . to_owned ()) , :: std :: vec :: Vec :: new ())) , :: core :: option :: \
+         Option :: None => out . push (issue (\"Missing\" , [path , & [:: core :: result :: Result \
          :: Ok (\"data\" . to_owned ())]] . concat () , & [(\"Tuple\" , & [] , 2) , (\"U32\" , \
-         & [] , 0) , (\"U32\" , & [] , 0)] , core :: option :: Option :: None , core :: option \
-         :: Option :: None , std :: vec :: Vec :: new ())) , } ,",
-        "core :: option :: Option :: Some (\"Width\") => match object . get (\"data\") { core \
+         & [] , 0) , (\"U32\" , & [] , 0)] , :: core :: option :: Option :: None , :: core :: option \
+         :: Option :: None , :: std :: vec :: Vec :: new ())) , } ,",
+        ":: core :: option :: Option :: Some (\"Width\") => match object . get (\"data\") { :: core \
          :: option :: Option :: Some (content) => out . extend (stroke_schema :: value_leaf \
          (content , < u32 as serde :: Deserialize > :: deserialize , | read | serde_json :: \
-         to_value (read) . ok () , [path , & [core :: result :: Result :: Ok (\"data\" . \
-         to_owned ())]] . concat () , & [(\"U32\" , & [] , 0)] , issue)) , core :: option :: \
-         Option :: None => out . push (issue (\"Missing\" , [path , & [core :: result :: Result \
-         :: Ok (\"data\" . to_owned ())]] . concat () , & [(\"U32\" , & [] , 0)] , core :: \
-         option :: Option :: None , core :: option :: Option :: None , std :: vec :: Vec :: new \
+         to_value (read) . ok () , [path , & [:: core :: result :: Result :: Ok (\"data\" . \
+         to_owned ())]] . concat () , & [(\"U32\" , & [] , 0)] , issue)) , :: core :: option :: \
+         Option :: None => out . push (issue (\"Missing\" , [path , & [:: core :: result :: Result \
+         :: Ok (\"data\" . to_owned ())]] . concat () , & [(\"U32\" , & [] , 0)] , :: core :: \
+         option :: Option :: None , :: core :: option :: Option :: None , :: std :: vec :: Vec :: new \
          ())) , } ,",
-        "core :: result :: Result :: Ok (_) => issue (\"Mistyped\" , here , & [(\"Variants\" , \
-         & [\"Dashed\" , \"Hairline\" , \"Level\" , \"Span\" , \"Width\"] , 0)] , core :: \
-         option :: Option :: Some (tag . clone ()) , core :: option :: Option :: None , std :: \
+        ":: core :: result :: Result :: Ok (_) => issue (\"Mistyped\" , here , & [(\"Variants\" , \
+         & [\"Dashed\" , \"Hairline\" , \"Level\" , \"Span\" , \"Width\"] , 0)] , :: core :: \
+         option :: Option :: Some (tag . clone ()) , :: core :: option :: Option :: None , :: std :: \
          vec :: Vec :: new ()) , }) ; } } vec ! [\"kind\" , \"data\"] }",
     ] {
         assert!(walk.contains(written), "missing `{written}` in: {walk}");
@@ -1780,39 +1782,39 @@ fn an_adjacently_tagged_enum_walks_what_the_variant_holds_under_the_content_key(
 fn an_untagged_enum_is_walked_as_the_variant_serde_reads() {
     let walk = enum_json_of(UNTAGGED);
     for written in [
-        "match < Self as serde :: Deserialize > :: deserialize (found) { core :: result :: \
+        "match < Self as serde :: Deserialize > :: deserialize (found) { :: core :: result :: \
          Result :: Ok (Self :: Email { .. }) => Self :: decode_with_value_variant_email (found \
-         , path , issue , out) , core :: result :: Result :: Ok (Self :: Versioned (..)) => < \
-         Inner > :: decode_with_value_issues (found , path , issue , out) , core :: result :: \
+         , path , issue , out) , :: core :: result :: Result :: Ok (Self :: Versioned (..)) => < \
+         Inner > :: decode_with_value_issues (found , path , issue , out) , :: core :: result :: \
          Result :: Ok (Self :: Word (..)) => Self :: decode_with_value_variant_word (found , \
          path , issue , out) ,",
-        "core :: result :: Result :: Err (_) => { let mut as_email = std :: vec :: Vec :: new \
+        ":: core :: result :: Result :: Err (_) => { let mut as_email = :: std :: vec :: Vec :: new \
          () ; Self :: decode_with_value_variant_email (found , path , issue , & mut as_email) ; \
-         let mut as_versioned = std :: vec :: Vec :: new () ; < Inner > :: \
+         let mut as_versioned = :: std :: vec :: Vec :: new () ; < Inner > :: \
          decode_with_value_issues (found , path , issue , & mut as_versioned) ; let mut as_word \
-         = std :: vec :: Vec :: new () ; Self :: decode_with_value_variant_word (found , path , \
+         = :: std :: vec :: Vec :: new () ; Self :: decode_with_value_variant_word (found , path , \
          issue , & mut as_word) ; out . push (issue (\"NoVariant\" , path . to_vec () , & [] , \
-         core :: option :: Option :: Some (found . clone ()) , core :: option :: Option :: None \
+         :: core :: option :: Option :: Some (found . clone ()) , :: core :: option :: Option :: None \
          , vec ! [(\"Email\" , as_email) , (\"Versioned\" , as_versioned) , (\"Word\" , \
          as_word)])) ; } } }",
         "fn decode_with_value_variant_email < I > (found : & serde_json :: Value , path : & \
-         [core :: result :: Result < std :: string :: String , usize >] , issue : \
-         contact_schema :: IssueFromParts < serde_json :: Value , I > , out : & mut std :: vec \
-         :: Vec < I > ,) { let core :: option :: Option :: Some (object) = found . as_object () \
+         [:: core :: result :: Result < :: std :: string :: String , usize >] , issue : \
+         contact_schema :: IssueFromParts < serde_json :: Value , I > , out : & mut :: std :: vec \
+         :: Vec < I > ,) { let :: core :: option :: Option :: Some (object) = found . as_object () \
          else { out . extend (contact_schema :: value_leaf (found , < Self as serde :: \
          Deserialize > :: deserialize , | read | serde_json :: to_value (read) . ok () , path . \
          to_vec () , & [(\"Model\" , & [\"Contact\"] , 0)] , issue)) ; return ; } ;",
-        "match object . get (\"address\") { core :: option :: Option :: Some (held) => out . \
+        "match object . get (\"address\") { :: core :: option :: Option :: Some (held) => out . \
          extend (contact_schema :: value_leaf (held , contact_schema :: \
          deserialize_email_address , | read : & String | serde_json :: to_value (read) . ok () \
-         , [path , & [core :: result :: Result :: Ok (\"address\" . to_owned ())]] . concat () \
+         , [path , & [:: core :: result :: Result :: Ok (\"address\" . to_owned ())]] . concat () \
          , & [(\"String\" , & [] , 0)] , issue)) ,",
         "for (key , held) in object { if ! matches ! (key . as_str () , \"address\") { out . \
-         push (issue (\"Unknown\" , [path , & [core :: result :: Result :: Ok (key . clone \
+         push (issue (\"Unknown\" , [path , & [:: core :: result :: Result :: Ok (key . clone \
          ())]] . concat () ,",
         "fn decode_with_value_variant_word < I > (found : & serde_json :: Value , path : & \
-         [core :: result :: Result < std :: string :: String , usize >] , issue : \
-         contact_schema :: IssueFromParts < serde_json :: Value , I > , out : & mut std :: vec \
+         [:: core :: result :: Result < :: std :: string :: String , usize >] , issue : \
+         contact_schema :: IssueFromParts < serde_json :: Value , I > , out : & mut :: std :: vec \
          :: Vec < I > ,) { out . extend (contact_schema :: value_leaf (found , < String as \
          serde :: Deserialize > :: deserialize , | read | serde_json :: to_value (read) . ok () \
          , path . to_vec () , & [(\"String\" , & [] , 0)] , issue)) ; }",
@@ -1841,10 +1843,10 @@ fn a_variant_and_its_fields_are_walked_under_the_names_serde_writes() {
         "if matches ! (tag . as_str () , \"pickup\") => { }",
         "matches ! (key . as_str () , \"by_air\" | \"by_sea\")",
         "& [(\"Variants\" , & [\"by_air\" , \"by_sea\" , \"pickup\"] , 0)]",
-        "if let core :: option :: Option :: Some (content) = object . get (\"by_air\") { if let \
+        "if let :: core :: option :: Option :: Some (content) = object . get (\"by_air\") { if let \
          serde_json :: Value :: Object (inner) = content { match inner . get (\"FLIGHT_CODE\") \
          {",
-        "[path , & [core :: result :: Result :: Ok (\"by_sea\" . to_owned ()) , core :: result \
+        "[path , & [:: core :: result :: Result :: Ok (\"by_sea\" . to_owned ()) , :: core :: result \
          :: Result :: Ok (\"vesselName\" . to_owned ())]] . concat ()",
         "if object . contains_key (\"pickup\") { return vec ! [\"pickup\"] ; }",
     ] {
@@ -1864,7 +1866,7 @@ fn a_variants_slot_is_walked_only_where_serde_reads_one() {
         "serde_json :: Value :: String (tag) if matches ! (tag . as_str () , \"Off\") => { }",
         "matches ! (key . as_str () , \"Kept\" | \"Pair\")",
         "if object . contains_key (\"Off\") { return vec ! [\"Off\"] ; }",
-        "if let core :: option :: Option :: Some (held) = items . get (1) { out . extend \
+        "if let :: core :: option :: Option :: Some (held) = items . get (1) { out . extend \
          (loose_schema :: value_leaf (held , < i32 as serde :: Deserialize > :: deserialize ,",
         "in items . iter () . enumerate () . skip (2)",
         "& [(\"Tuple\" , & [] , 2) , (\"I32\" , & [] , 0) , (\"I32\" , & [] , 0)]",
@@ -1898,11 +1900,11 @@ fn a_generic_enum_gets_its_methods_under_each_sources_bounds() {
     let walk = enum_json_of(source);
     for written in [
         "_ => out . extend (answer_schema :: value_leaf (found , < Self as serde :: Deserialize \
-         > :: deserialize , | _ | core :: option :: Option :: None , path . to_vec () , & \
+         > :: deserialize , | _ | :: core :: option :: Option :: None , path . to_vec () , & \
          [(\"Variants\" , & [\"Empty\" , \"Value\"] , 0)] , issue)) ,",
-        "if let core :: option :: Option :: Some (content) = object . get (\"Value\") { out . \
+        "if let :: core :: option :: Option :: Some (content) = object . get (\"Value\") { out . \
          extend (answer_schema :: value_leaf (content , < T as serde :: Deserialize > :: \
-         deserialize , | _ | core :: option :: Option :: None , [path , & [core :: result :: \
+         deserialize , | _ | :: core :: option :: Option :: None , [path , & [:: core :: result :: \
          Result :: Ok (\"Value\" . to_owned ())]] . concat () , & [(\"TypeParam\" , & [\"T\"] , \
          0)] , issue)) ; return vec ! [\"Value\"] ; }",
     ] {
@@ -1924,43 +1926,43 @@ fn the_bson_walker_of_each_enum_form_matches_the_librarys_own_types() {
         ),
         (
             EXTERNAL,
-            "if let core :: option :: Option :: Some (content) = object . get (\"Circle\") { if \
+            "if let :: core :: option :: Option :: Some (content) = object . get (\"Circle\") { if \
              let bson :: Bson :: Document (inner) = content { match inner . get (\"radius\") {",
         ),
         (
             EXTERNAL,
-            "if let core :: option :: Option :: Some (content) = object . get (\"To\") { match \
+            "if let :: core :: option :: Option :: Some (content) = object . get (\"To\") { match \
              content { bson :: Bson :: Array (items) => {",
         ),
         (
             INTERNAL,
-            "core :: option :: Option :: Some (\"Versioned\") => { let rest : bson :: Document \
+            ":: core :: option :: Option :: Some (\"Versioned\") => { let rest : bson :: Document \
              = object . iter () . filter (| (key , _) | ! matches ! (key . as_str () , \
              \"kind\")) . map (| (key , held) | (key . clone () , held . clone ())) . collect \
-             () ; let mut declared : std :: vec :: Vec < & str > = < Inner > :: \
+             () ; let mut declared : :: std :: vec :: Vec < & str > = < Inner > :: \
              decode_with_bson_fields (& rest , path , issue , out) . into_iter () . filter_map \
-             (| key | object . keys () . find (| own | own . as_str () == key) . map (std :: \
+             (| key | object . keys () . find (| own | own . as_str () == key) . map (:: std :: \
              string :: String :: as_str)) . collect () ; declared . push (\"kind\") ; declared \
              } ,",
         ),
         (
             INTERNAL,
             "out . push (match < Self as serde :: Deserialize > :: deserialize (bson :: \
-             Deserializer :: new (bson :: Bson :: Document (object . clone ()))) { core :: \
+             Deserializer :: new (bson :: Bson :: Document (object . clone ()))) { :: core :: \
              result :: Result :: Err (refused) => issue (\"Invalid\" , here ,",
         ),
         (
             ADJACENT,
-            "core :: option :: Option :: Some (\"Level\") => match object . get (\"data\") { \
-             core :: option :: Option :: None | core :: option :: Option :: Some (bson :: Bson \
-             :: Null) => { } core :: option :: Option :: Some (content) => < Inner > :: \
+            ":: core :: option :: Option :: Some (\"Level\") => match object . get (\"data\") { \
+             :: core :: option :: Option :: None | :: core :: option :: Option :: Some (bson :: Bson \
+             :: Null) => { } :: core :: option :: Option :: Some (content) => < Inner > :: \
              decode_with_bson_issues (content ,",
         ),
         (
             UNTAGGED,
             "match < Self as serde :: Deserialize > :: deserialize (bson :: Deserializer :: new \
-             (found . clone ())) { core :: result :: Result :: Ok (Self :: Email { .. }) => \
-             Self :: decode_with_bson_variant_email (found , path , issue , out) , core :: \
+             (found . clone ())) { :: core :: result :: Result :: Ok (Self :: Email { .. }) => \
+             Self :: decode_with_bson_variant_email (found , path , issue , out) , :: core :: \
              result :: Result :: Ok (Self :: Versioned (..)) => < Inner > :: \
              decode_with_bson_issues (found , path , issue , out) ,",
         ),
@@ -1990,22 +1992,22 @@ fn a_tag_stored_as_an_alias_is_matched_by_its_variants_arm() {
     let internal = enum_json_of(ALIASED_INTERNAL);
     assert!(
         internal.contains(
-            "match tag . as_str () { core :: option :: Option :: Some (\"Clear\" | \"Blank\") \
-             => vec ! [\"kind\"] , core :: option :: Option :: Some (\"Solid\") => { match \
+            "match tag . as_str () { :: core :: option :: Option :: Some (\"Clear\" | \"Blank\") \
+             => vec ! [\"kind\"] , :: core :: option :: Option :: Some (\"Solid\") => { match \
              object . get (\"color\") {"
         ),
         "got: {internal}"
     );
     let adjacent = enum_json_of(ALIASED_ADJACENT);
     for written in [
-        "match tag . as_str () { core :: option :: Option :: Some (\"Dashed\" | \"Dotted\" | \
-         \"Broken\") => match object . get (\"data\") { core :: option :: Option :: Some \
+        "match tag . as_str () { :: core :: option :: Option :: Some (\"Dashed\" | \"Dotted\" | \
+         \"Broken\") => match object . get (\"data\") { :: core :: option :: Option :: Some \
          (content) => if let serde_json :: Value :: Object (inner) = content { match inner . \
          get (\"gap\") {",
-        "[path , & [core :: result :: Result :: Ok (\"data\" . to_owned ()) , core :: result :: \
+        "[path , & [:: core :: result :: Result :: Ok (\"data\" . to_owned ()) , :: core :: result :: \
          Result :: Ok (\"gap\" . to_owned ())]] . concat ()",
-        ", core :: option :: Option :: Some (\"Hairline\") => { } , _ => { let here = [path , & \
-         [core :: result :: Result :: Ok (\"kind\" . to_owned ())]] . concat () ;",
+        ", :: core :: option :: Option :: Some (\"Hairline\") => { } , _ => { let here = [path , & \
+         [:: core :: result :: Result :: Ok (\"kind\" . to_owned ())]] . concat () ;",
     ] {
         assert!(
             adjacent.contains(written),
@@ -2023,35 +2025,35 @@ fn an_externally_tagged_variant_is_looked_up_under_its_name_and_each_alias() {
     for written in [
         "serde_json :: Value :: String (tag) if matches ! (tag . as_str () , \"Empty\" | \"Blank\") => { }",
         "object . keys () . any (| key | matches ! (key . as_str () , \"Circle\" | \"Round\" | \"Jump\" | \"Hop\" | \"Leap\" | \"Old\"))",
-        "if let core :: option :: Option :: Some ((tag , content)) = [\"Circle\" , \"Round\"] . \
+        "if let :: core :: option :: Option :: Some ((tag , content)) = [\"Circle\" , \"Round\"] . \
          into_iter () . find_map (| tag | object . get (tag) . map (| content | (tag , \
          content))) { if let serde_json :: Value :: Object (inner) = content { match inner . \
          get (\"radius\") {",
-        "core :: option :: Option :: None => out . push (issue (\"Missing\" , [path , & [core \
-         :: result :: Result :: Ok (tag . to_owned ()) , core :: result :: Result :: Ok \
-         (\"radius\" . to_owned ())]] . concat () , & [(\"F64\" , & [] , 0)] , core :: option \
-         :: Option :: None , core :: option :: Option :: None , std :: vec :: Vec :: new ())) , \
+        ":: core :: option :: Option :: None => out . push (issue (\"Missing\" , [path , & [:: core \
+         :: result :: Result :: Ok (tag . to_owned ()) , :: core :: result :: Result :: Ok \
+         (\"radius\" . to_owned ())]] . concat () , & [(\"F64\" , & [] , 0)] , :: core :: option \
+         :: Option :: None , :: core :: option :: Option :: None , :: std :: vec :: Vec :: new ())) , \
          }",
-        "out . push (issue (\"Unknown\" , [path , & [core :: result :: Result :: Ok (tag . \
-         to_owned ()) , core :: result :: Result :: Ok (key . clone ())]] . concat () , & [] , \
-         core :: option :: Option :: Some (held . clone ()) , core :: option :: Option :: None \
-         , std :: vec :: Vec :: new ())) ; } } } return vec ! [tag] ; }",
-        "if let core :: option :: Option :: Some (tag) = [\"Empty\" , \"Blank\"] . into_iter () \
+        "out . push (issue (\"Unknown\" , [path , & [:: core :: result :: Result :: Ok (tag . \
+         to_owned ()) , :: core :: result :: Result :: Ok (key . clone ())]] . concat () , & [] , \
+         :: core :: option :: Option :: Some (held . clone ()) , :: core :: option :: Option :: None \
+         , :: std :: vec :: Vec :: new ())) ; } } } return vec ! [tag] ; }",
+        "if let :: core :: option :: Option :: Some (tag) = [\"Empty\" , \"Blank\"] . into_iter () \
          . find (| & tag | object . contains_key (tag)) { return vec ! [tag] ; }",
-        "if let core :: option :: Option :: Some ((tag , content)) = [\"Jump\" , \"Hop\" , \
+        "if let :: core :: option :: Option :: Some ((tag , content)) = [\"Jump\" , \"Hop\" , \
          \"Leap\"] . into_iter () . find_map (| tag | object . get (tag) . map (| content | \
          (tag , content))) { match content { serde_json :: Value :: Array (items) => { match \
          items . first () {",
-        "out . push (issue (\"Unknown\" , [path , & [core :: result :: Result :: Ok (tag . \
-         to_owned ()) , core :: result :: Result :: Err (index)]] . concat () ,",
-        "content => out . push (issue (\"Invalid\" , [path , & [core :: result :: Result :: Ok \
+        "out . push (issue (\"Unknown\" , [path , & [:: core :: result :: Result :: Ok (tag . \
+         to_owned ()) , :: core :: result :: Result :: Err (index)]] . concat () ,",
+        "content => out . push (issue (\"Invalid\" , [path , & [:: core :: result :: Result :: Ok \
          (tag . to_owned ())]] . concat () , & [(\"Tuple\" , & [] , 2) , (\"I32\" , & [] , 0) , \
-         (\"I32\" , & [] , 0)] , core :: option :: Option :: Some (content . clone ()) , core \
-         :: option :: Option :: Some (\"not an array\" . to_owned ()) , std :: vec :: Vec :: \
+         (\"I32\" , & [] , 0)] , :: core :: option :: Option :: Some (content . clone ()) , :: core \
+         :: option :: Option :: Some (\"not an array\" . to_owned ()) , :: std :: vec :: Vec :: \
          new ())) , } return vec ! [tag] ; }",
-        "if let core :: option :: Option :: Some (content) = object . get (\"Old\") { out . \
+        "if let :: core :: option :: Option :: Some (content) = object . get (\"Old\") { out . \
          extend (contour_schema :: value_leaf (content , < String as serde :: Deserialize > :: \
-         deserialize , | read | serde_json :: to_value (read) . ok () , [path , & [core :: \
+         deserialize , | read | serde_json :: to_value (read) . ok () , [path , & [:: core :: \
          result :: Result :: Ok (\"Old\" . to_owned ())]] . concat () , & [(\"String\" , & [] , \
          0)] , issue)) ; return vec ! [\"Old\"] ; }",
     ] {
@@ -2063,10 +2065,10 @@ fn an_externally_tagged_variant_is_looked_up_under_its_name_and_each_alias() {
     assert!(
         twice_aliased.contains(
             "match [\"length\" , \"len\"] . into_iter () . find_map (| stored | inner . get \
-             (stored) . map (| held | (stored , held))) { core :: option :: Option :: Some \
+             (stored) . map (| held | (stored , held))) { :: core :: option :: Option :: Some \
              ((stored , held)) => out . extend (trail_schema :: value_leaf (held , < u32 as \
              serde :: Deserialize > :: deserialize , | read | serde_json :: to_value (read) . \
-             ok () , [path , & [core :: result :: Result :: Ok (tag . to_owned ()) , core :: \
+             ok () , [path , & [:: core :: result :: Result :: Ok (tag . to_owned ()) , :: core :: \
              result :: Result :: Ok (stored . to_owned ())]] . concat () ,"
         ),
         "got: {twice_aliased}"
@@ -2115,13 +2117,13 @@ fn variants_lists_every_tag_serde_reads_and_none_of_a_variant_it_never_reads() {
 fn an_untagged_variant_serde_never_reads_is_matched_and_never_walked() {
     let walk = enum_json_of(UNREAD_UNTAGGED);
     for written in [
-        "core :: result :: Result :: Ok (Self :: Word (..)) => Self :: \
-         decode_with_value_variant_word (found , path , issue , out) , core :: result :: Result \
-         :: Ok (Self :: Fax (..) | Self :: Pager { .. }) => { } core :: result :: Result :: Err \
-         (_) => { let mut as_email = std :: vec :: Vec :: new () ;",
-        "let mut as_word = std :: vec :: Vec :: new () ; Self :: decode_with_value_variant_word \
+        ":: core :: result :: Result :: Ok (Self :: Word (..)) => Self :: \
+         decode_with_value_variant_word (found , path , issue , out) , :: core :: result :: Result \
+         :: Ok (Self :: Fax (..) | Self :: Pager { .. }) => { } :: core :: result :: Result :: Err \
+         (_) => { let mut as_email = :: std :: vec :: Vec :: new () ;",
+        "let mut as_word = :: std :: vec :: Vec :: new () ; Self :: decode_with_value_variant_word \
          (found , path , issue , & mut as_word) ; out . push (issue (\"NoVariant\" , path . \
-         to_vec () , & [] , core :: option :: Option :: Some (found . clone ()) , core :: \
+         to_vec () , & [] , :: core :: option :: Option :: Some (found . clone ()) , :: core :: \
          option :: Option :: None , vec ! [(\"Email\" , as_email) , (\"Word\" , as_word)])) ; } \
          } }",
     ] {
@@ -2155,8 +2157,8 @@ fn an_untagged_variant_serde_never_reads_is_matched_and_never_walked() {
     let every_variant_read = enum_json_of(UNTAGGED);
     assert!(
         every_variant_read.contains(
-            "core :: result :: Result :: Ok (Self :: Word (..)) => Self :: \
-             decode_with_value_variant_word (found , path , issue , out) , core :: result :: \
+            ":: core :: result :: Result :: Ok (Self :: Word (..)) => Self :: \
+             decode_with_value_variant_word (found , path , issue , out) , :: core :: result :: \
              Result :: Err (_) => {"
         ),
         "got: {every_variant_read}"
@@ -2174,33 +2176,33 @@ fn the_bson_walker_reads_a_variants_alias_and_skip_as_the_json_one_does() {
         ),
         (
             ALIASED_EXTERNAL,
-            "if let core :: option :: Option :: Some ((tag , content)) = [\"Circle\" , \
+            "if let :: core :: option :: Option :: Some ((tag , content)) = [\"Circle\" , \
              \"Round\"] . into_iter () . find_map (| tag | object . get (tag) . map (| content \
              | (tag , content))) { if let bson :: Bson :: Document (inner) = content { match \
              inner . get (\"radius\") {",
         ),
         (
             ALIASED_EXTERNAL,
-            "if let core :: option :: Option :: Some (tag) = [\"Empty\" , \"Blank\"] . \
+            "if let :: core :: option :: Option :: Some (tag) = [\"Empty\" , \"Blank\"] . \
              into_iter () . find (| & tag | object . contains_key (tag)) { return vec ! [tag] ; \
              }",
         ),
         (
             ALIASED_INTERNAL,
-            "match tag . as_str () { core :: option :: Option :: Some (\"Clear\" | \"Blank\") \
-             => vec ! [\"kind\"] , core :: option :: Option :: Some (\"Solid\") => {",
+            "match tag . as_str () { :: core :: option :: Option :: Some (\"Clear\" | \"Blank\") \
+             => vec ! [\"kind\"] , :: core :: option :: Option :: Some (\"Solid\") => {",
         ),
         (
             ALIASED_ADJACENT,
-            "core :: option :: Option :: Some (\"Dashed\" | \"Dotted\" | \"Broken\") => match \
-             object . get (\"data\") { core :: option :: Option :: Some (content) => if let \
+            ":: core :: option :: Option :: Some (\"Dashed\" | \"Dotted\" | \"Broken\") => match \
+             object . get (\"data\") { :: core :: option :: Option :: Some (content) => if let \
              bson :: Bson :: Document (inner) = content {",
         ),
         (
             UNREAD_UNTAGGED,
-            "core :: result :: Result :: Ok (Self :: Word (..)) => Self :: \
-             decode_with_bson_variant_word (found , path , issue , out) , core :: result :: \
-             Result :: Ok (Self :: Fax (..) | Self :: Pager { .. }) => { } core :: result :: \
+            ":: core :: result :: Result :: Ok (Self :: Word (..)) => Self :: \
+             decode_with_bson_variant_word (found , path , issue , out) , :: core :: result :: \
+             Result :: Ok (Self :: Fax (..) | Self :: Pager { .. }) => { } :: core :: result :: \
              Result :: Err (_) => {",
         ),
     ] {
@@ -2223,33 +2225,33 @@ fn the_bson_walker_reads_a_variants_alias_and_skip_as_the_json_one_does() {
 fn a_flattened_type_is_walked_in_the_outer_object_and_its_keys_are_declared() {
     let walk = json_fields_walk_of(FLATTENING);
     for written in [
-        "-> std :: vec :: Vec < & 'a str > { let mut declared = vec ! [\"title\"] ; match \
-         object . get (\"title\") { core :: option :: Option :: Some (held) =>",
-        "let rest : serde_json :: Map < std :: string :: String , serde_json :: Value > = \
+        "-> :: std :: vec :: Vec < & 'a str > { let mut declared = vec ! [\"title\"] ; match \
+         object . get (\"title\") { :: core :: option :: Option :: Some (held) =>",
+        "let rest : serde_json :: Map < :: std :: string :: String , serde_json :: Value > = \
          object . iter () . filter (| (key , _) | ! matches ! (key . as_str () , \"title\")) . \
          map (| (key , held) | (key . clone () , held . clone ())) . collect () ; declared . \
          extend (< Audit > :: decode_with_value_fields (& rest , path , issue , out) . \
          into_iter () . filter_map (| key | object . keys () . find (| own | own . as_str () == \
-         key) . map (std :: string :: String :: as_str))) ; let taken = entry_schema :: \
+         key) . map (:: std :: string :: String :: as_str))) ; let taken = entry_schema :: \
          value_remaining :: < Audit , _ > (< Audit as serde :: Deserialize > :: deserialize , & \
          entry_schema :: Asked :: default () , & rest) ; let remaining = taken . as_ref () . \
          unwrap_or (& rest) ; if < Extra > :: decode_with_value_named (remaining) { let mut \
-         nested = std :: vec :: Vec :: new () ; let keys = < Extra > :: \
+         nested = :: std :: vec :: Vec :: new () ; let keys = < Extra > :: \
          decode_with_value_fields (remaining , path , issue , & mut nested) ; match < Extra as \
          serde :: Deserialize > :: deserialize (serde_json :: Value :: Object (remaining . \
-         clone ())) { core :: result :: Result :: Ok (_) => out . append (& mut nested) , core \
+         clone ())) { :: core :: result :: Result :: Ok (_) => out . append (& mut nested) , :: core \
          :: result :: Result :: Err (_) => out . push (issue (\"Mistyped\" , path . to_vec () , \
-         & [(\"Optional\" , & [] , 1) , (\"Model\" , & [\"Extra\"] , 0)] , core :: option :: \
-         Option :: Some (serde_json :: Value :: Object (object . clone ())) , core :: option :: \
-         Option :: None , std :: vec :: Vec :: new ())) , } declared . extend (keys . into_iter \
+         & [(\"Optional\" , & [] , 1) , (\"Model\" , & [\"Extra\"] , 0)] , :: core :: option :: \
+         Option :: Some (serde_json :: Value :: Object (object . clone ())) , :: core :: option :: \
+         Option :: None , :: std :: vec :: Vec :: new ())) , } declared . extend (keys . into_iter \
          () . filter_map (| key | object . keys () . find (| own | own . as_str () == key) . \
-         map (std :: string :: String :: as_str))) ; } let taken = entry_schema :: \
+         map (:: std :: string :: String :: as_str))) ; } let taken = entry_schema :: \
          value_remaining :: < Option < Extra > , _ > (< Option < Extra > as serde :: \
          Deserialize > :: deserialize , & entry_schema :: Asked :: default () , remaining) ; \
          let remaining = taken . as_ref () . unwrap_or (remaining) ; declared . extend (< Fill \
          > :: decode_with_value_fields (remaining , path , issue , out) . into_iter () . \
          filter_map (| key | object . keys () . find (| own | own . as_str () == key) . map \
-         (std :: string :: String :: as_str))) ; declared }",
+         (:: std :: string :: String :: as_str))) ; declared }",
     ] {
         assert!(walk.contains(written), "missing `{written}` in: {walk}");
     }
@@ -2259,7 +2261,7 @@ fn a_flattened_type_is_walked_in_the_outer_object_and_its_keys_are_declared() {
          #[serde(flatten, default, skip_serializing_if = \"Option::is_none\")] pub extra: Option<Box<Extra>> }",
     );
     for written in [
-        "{ let mut declared = std :: vec :: Vec :: new () ; declared . extend (< Audit > :: \
+        "{ let mut declared = :: std :: vec :: Vec :: new () ; declared . extend (< Audit > :: \
          decode_with_value_fields (object , path , issue , out)) ;",
         "let taken = boxed_schema :: value_remaining :: < Audit , _ > (< Audit as serde :: Deserialize > :: deserialize , & boxed_schema :: Asked :: default () , object) ; let remaining = taken . as_ref () . unwrap_or (object) ; if < Extra > :: decode_with_value_named (remaining) {",
         "match < Extra as serde :: Deserialize > :: deserialize (serde_json :: Value :: Object (remaining . clone ())) {",
@@ -2284,18 +2286,18 @@ fn a_flattened_type_is_handed_what_the_types_own_fields_left_of_the_object() {
     );
     assert!(
         keyed.contains(
-            "std :: vec :: Vec :: new ())) , } let rest : serde_json :: Map < std :: string :: \
+            ":: std :: vec :: Vec :: new ())) , } let rest : serde_json :: Map < :: std :: string :: \
              String , serde_json :: Value > = object . iter () . filter (| (key , _) | ! \
              matches ! (key . as_str () , \"id\")) . map (| (key , held) | (key . clone () , \
              held . clone ())) . collect () ; declared . extend (< Counts > :: \
              decode_with_value_fields (& rest , path , issue , out) . into_iter () . filter_map \
-             (| key | object . keys () . find (| own | own . as_str () == key) . map (std :: \
+             (| key | object . keys () . find (| own | own . as_str () == key) . map (:: std :: \
              string :: String :: as_str))) ; let taken = report_schema :: value_remaining :: < \
              Counts , _ > (< Counts as serde :: Deserialize > :: deserialize , & report_schema \
              :: Asked :: default () , & rest) ; let remaining = taken . as_ref () . unwrap_or \
              (& rest) ; declared . extend (< Origin > :: decode_with_value_fields (remaining , \
              path , issue , out) . into_iter () . filter_map (| key | object . keys () . find \
-             (| own | own . as_str () == key) . map (std :: string :: String :: as_str))) ; \
+             (| own | own . as_str () == key) . map (:: std :: string :: String :: as_str))) ; \
              declared }"
         ),
         "got: {keyed}"
@@ -2305,7 +2307,7 @@ fn a_flattened_type_is_handed_what_the_types_own_fields_left_of_the_object() {
     let unkeyed = json_fields_walk_of("pub struct Only { #[serde(flatten)] pub counts: Counts }");
     assert!(
         unkeyed.contains(
-            "-> std :: vec :: Vec < & 'a str > { let mut declared = std :: vec :: Vec :: new () \
+            "-> :: std :: vec :: Vec < & 'a str > { let mut declared = :: std :: vec :: Vec :: new () \
              ; declared . extend (< Counts > :: decode_with_value_fields (object , path , issue \
              , out)) ; declared }"
         ),
@@ -2326,15 +2328,15 @@ fn a_flattened_option_is_walked_where_its_type_answers_that_the_object_names_it(
     );
     assert!(
         alone.contains(
-            "-> std :: vec :: Vec < & 'a str > { let mut declared = std :: vec :: Vec :: new () \
-             ; if < Extra > :: decode_with_value_named (object) { let mut nested = std :: vec \
+            "-> :: std :: vec :: Vec < & 'a str > { let mut declared = :: std :: vec :: Vec :: new () \
+             ; if < Extra > :: decode_with_value_named (object) { let mut nested = :: std :: vec \
              :: Vec :: new () ; let keys = < Extra > :: decode_with_value_fields (object , path \
              , issue , & mut nested) ; match < Extra as serde :: Deserialize > :: deserialize \
-             (serde_json :: Value :: Object (object . clone ())) { core :: result :: Result :: \
-             Ok (_) => out . append (& mut nested) , core :: result :: Result :: Err (_) => out \
+             (serde_json :: Value :: Object (object . clone ())) { :: core :: result :: Result :: \
+             Ok (_) => out . append (& mut nested) , :: core :: result :: Result :: Err (_) => out \
              . push (issue (\"Mistyped\" , path . to_vec () , & [(\"Optional\" , & [] , 1) , \
-             (\"Model\" , & [\"Extra\"] , 0)] , core :: option :: Option :: Some (serde_json :: \
-             Value :: Object (object . clone ())) , core :: option :: Option :: None , std :: \
+             (\"Model\" , & [\"Extra\"] , 0)] , :: core :: option :: Option :: Some (serde_json :: \
+             Value :: Object (object . clone ())) , :: core :: option :: Option :: None , :: std :: \
              vec :: Vec :: new ())) , } declared . extend (keys) ; } declared }"
         ),
         "got: {alone}"
@@ -2347,7 +2349,7 @@ fn a_flattened_option_is_walked_where_its_type_answers_that_the_object_names_it(
     );
     assert!(
         unread.contains(
-            "if < Extra > :: decode_with_value_named (& rest) { let mut nested = std :: vec :: \
+            "if < Extra > :: decode_with_value_named (& rest) { let mut nested = :: std :: vec :: \
              Vec :: new () ; < Extra > :: decode_with_value_fields (& rest , path , issue , & \
              mut nested) ; match < Extra as serde :: Deserialize > :: deserialize (serde_json \
              :: Value :: Object (rest . clone ())) {"
@@ -2363,7 +2365,7 @@ fn a_flattened_option_is_walked_where_its_type_answers_that_the_object_names_it(
 /// `decode_with_value_named` as it is emitted, answering `answer`.
 fn value_named(answer: &str) -> String {
     format!(
-        "pub fn decode_with_value_named (object : & serde_json :: Map < std :: string :: String , \
+        "pub fn decode_with_value_named (object : & serde_json :: Map < :: std :: string :: String , \
          serde_json :: Value >) -> bool {{ {answer} }}"
     )
 }
@@ -2446,7 +2448,7 @@ fn every_struct_shape_answers_whether_an_object_names_a_value_of_it() {
         let emitted = type_impl_of(source);
         assert!(
             emitted.contains(
-                "pub fn decode_with_value_named (_ : & serde_json :: Map < std :: string :: \
+                "pub fn decode_with_value_named (_ : & serde_json :: Map < :: std :: string :: \
                  String , serde_json :: Value >) -> bool { false }"
             ),
             "for {source}, got: {emitted}"
@@ -2463,42 +2465,42 @@ fn every_enum_form_answers_whether_an_object_names_a_value_of_it() {
     for (source, answered) in [
         (
             INTERNAL,
-            "pub fn decode_with_value_named (object : & serde_json :: Map < std :: string :: \
+            "pub fn decode_with_value_named (object : & serde_json :: Map < :: std :: string :: \
              String , serde_json :: Value >) -> bool { object . contains_key (\"kind\") }",
         ),
         (
             ADJACENT,
-            "pub fn decode_with_value_named (object : & serde_json :: Map < std :: string :: \
+            "pub fn decode_with_value_named (object : & serde_json :: Map < :: std :: string :: \
              String , serde_json :: Value >) -> bool { object . contains_key (\"kind\") }",
         ),
         (
             EXTERNAL,
-            "pub fn decode_with_value_named (object : & serde_json :: Map < std :: string :: \
+            "pub fn decode_with_value_named (object : & serde_json :: Map < :: std :: string :: \
              String , serde_json :: Value >) -> bool { object . keys () . any (| key | matches \
              ! (key . as_str () , \"Circle\" | \"Empty\" | \"Label\" | \"Pinned\" | \"To\")) }",
         ),
         (
             ALIASED_EXTERNAL,
-            "pub fn decode_with_value_named (object : & serde_json :: Map < std :: string :: \
+            "pub fn decode_with_value_named (object : & serde_json :: Map < :: std :: string :: \
              String , serde_json :: Value >) -> bool { object . keys () . any (| key | matches \
              ! (key . as_str () , \"Circle\" | \"Round\" | \"Empty\" | \"Blank\" | \"Jump\" | \
              \"Hop\" | \"Leap\" | \"Old\")) }",
         ),
         (
             UNTAGGED,
-            "pub fn decode_with_value_named (object : & serde_json :: Map < std :: string :: \
+            "pub fn decode_with_value_named (object : & serde_json :: Map < :: std :: string :: \
              String , serde_json :: Value >) -> bool { < Self as serde :: Deserialize > :: \
              deserialize (serde_json :: Value :: Object (object . clone ())) . is_ok () }",
         ),
         (
             "pub enum Status { Draft, Published }",
-            "pub fn decode_with_value_named (object : & serde_json :: Map < std :: string :: \
+            "pub fn decode_with_value_named (object : & serde_json :: Map < :: std :: string :: \
              String , serde_json :: Value >) -> bool { object . keys () . any (| key | matches \
              ! (key . as_str () , \"Draft\" | \"Published\")) }",
         ),
         (
             "pub enum Never { #[serde(skip)] Lost { at: u32 } }",
-            "pub fn decode_with_value_named (_ : & serde_json :: Map < std :: string :: String \
+            "pub fn decode_with_value_named (_ : & serde_json :: Map < :: std :: string :: String \
              , serde_json :: Value >) -> bool { false }",
         ),
     ] {
@@ -2570,7 +2572,7 @@ fn a_later_flattened_type_is_handed_what_the_earlier_ones_left() {
              object) ; let remaining = taken . as_ref () . unwrap_or (object) ; declared . \
              extend (< Counts > :: decode_with_value_fields (remaining , path , issue , out) . \
              into_iter () . filter_map (| key | object . keys () . find (| own | own . as_str \
-             () == key) . map (std :: string :: String :: as_str))) ; declared }"
+             () == key) . map (:: std :: string :: String :: as_str))) ; declared }"
         ),
         "got: {unkeyed}"
     );
@@ -2635,27 +2637,27 @@ fn the_rest_is_read_without_what_serde_takes_for_an_earlier_field_no_walk_reache
 fn the_schema_module_answers_what_serde_leaves_and_copies_nothing_where_it_takes_nothing() {
     let items = module_items().to_string();
     for written in [
-        "pub struct Asked { # [doc = r\" It asks for an `Option`, which serde reads as absent where what it holds is refused.\"] optional : core :: cell :: Cell < bool > , taken : core :: cell :: Cell < Taken > , }",
+        "pub struct Asked { # [doc = r\" It asks for an `Option`, which serde reads as absent where what it holds is refused.\"] optional : :: core :: cell :: Cell < bool > , taken : :: core :: cell :: Cell < Taken > , }",
         "pub struct TakenProbe < 'asked > (& 'asked Asked) ;",
         "impl < 'de > serde :: Deserializer < 'de > for TakenProbe < '_ > {",
         "self . 0 . taken . set (Taken :: Fields (fields)) ;",
         "self . 0 . taken . set (Taken :: Variant (variants)) ;",
         "self . 0 . optional . set (true) ; visitor . visit_some (self)",
         "visitor . visit_newtype_struct (self)",
-        "pub fn reads_an_option < 'asked , T , R > (read : R , asked : & 'asked Asked) -> bool where R : core :: ops :: FnOnce (TakenProbe < 'asked >) -> core :: result :: Result < T , serde :: de :: value :: Error > , { let _refused = read (TakenProbe (asked)) ; asked . optional . get () }",
+        "pub fn reads_an_option < 'asked , T , R > (read : R , asked : & 'asked Asked) -> bool where R : :: core :: ops :: FnOnce (TakenProbe < 'asked >) -> :: core :: result :: Result < T , serde :: de :: value :: Error > , { let _refused = read (TakenProbe (asked)) ; asked . optional . get () }",
         "pub fn value_remaining < 'asked , T , R > (read : R , asked : & 'asked Asked , entries \
-         : & serde_json :: Map < std :: string :: String , serde_json :: Value > ,) -> core :: \
-         option :: Option < serde_json :: Map < std :: string :: String , serde_json :: Value \
-         >> where R : core :: ops :: FnOnce (TakenProbe < 'asked >) -> core :: result :: Result < T , serde :: \
+         : & serde_json :: Map < :: std :: string :: String , serde_json :: Value > ,) -> :: core :: \
+         option :: Option < serde_json :: Map < :: std :: string :: String , serde_json :: Value \
+         >> where R : :: core :: ops :: FnOnce (TakenProbe < 'asked >) -> :: core :: result :: Result < T , serde :: \
          de :: value :: Error > , { let taken = taken_keys (read , asked , entries . keys ()) ; \
-         if taken . is_empty () { return core :: option :: Option :: None ; }",
+         if taken . is_empty () { return :: core :: option :: Option :: None ; }",
     ] {
         assert!(items.contains(written), "missing `{written}` in: {items}");
     }
     assert_eq!(
         items.contains(
             "pub fn bson_remaining < 'asked , T , R > (read : R , asked : & 'asked Asked , \
-             entries : & bson :: Document ,) -> core :: option :: Option < bson :: Document >"
+             entries : & bson :: Document ,) -> :: core :: option :: Option < bson :: Document >"
         ),
         cfg!(feature = "bson"),
         "got: {items}"
@@ -2675,68 +2677,68 @@ fn a_single_slot_struct_serde_flattens_walks_what_it_holds_as_a_flattened_field_
     for (source, walked) in [
         (
             "pub struct Extras(pub HashMap<String, Inner>);",
-            "-> std :: vec :: Vec < & 'a str > { for (key , item) in object { < Inner > :: \
-             decode_with_value_issues (item , & [path , & [core :: result :: Result :: Ok (key \
-             . clone ())]] . concat () , issue , out) ; } object . keys () . map (std :: string \
+            "-> :: std :: vec :: Vec < & 'a str > { for (key , item) in object { < Inner > :: \
+             decode_with_value_issues (item , & [path , & [:: core :: result :: Result :: Ok (key \
+             . clone ())]] . concat () , issue , out) ; } object . keys () . map (:: std :: string \
              :: String :: as_str) . collect () }",
         ),
         (
             "#[serde(transparent)] pub struct Wrap<T>(pub T);",
-            "-> std :: vec :: Vec < & 'a str > { let found = & serde_json :: Value :: Object \
+            "-> :: std :: vec :: Vec < & 'a str > { let found = & serde_json :: Value :: Object \
              (object . clone ()) ; out . extend (wrap_schema :: value_leaf (found , < Self as \
-             serde :: Deserialize > :: deserialize , | _ | core :: option :: Option :: None , \
+             serde :: Deserialize > :: deserialize , | _ | :: core :: option :: Option :: None , \
              path . to_vec () , & [(\"TypeParam\" , & [\"T\"] , 0)] , issue) . filter (| _ | ! \
              wrap_schema :: reads_an_option :: < Self , _ > (< Self as serde :: Deserialize > \
              :: deserialize , & wrap_schema :: Asked :: default ()))) ; object . keys () . map \
-             (std :: string :: String :: as_str) . collect () }",
+             (:: std :: string :: String :: as_str) . collect () }",
         ),
         (
             "pub struct Anything(pub serde_json::Value);",
-            "-> std :: vec :: Vec < & 'a str > { let found = & serde_json :: Value :: Object \
+            "-> :: std :: vec :: Vec < & 'a str > { let found = & serde_json :: Value :: Object \
              (object . clone ()) ; out . extend (anything_schema :: value_leaf (found , < Self \
-             as serde :: Deserialize > :: deserialize , | _ | core :: option :: Option :: None \
+             as serde :: Deserialize > :: deserialize , | _ | :: core :: option :: Option :: None \
              , path . to_vec () , & [(\"Unknown\" , & [] , 0)] , issue)) ; object . keys () . \
-             map (std :: string :: String :: as_str) . collect () }",
+             map (:: std :: string :: String :: as_str) . collect () }",
         ),
         (
             "pub struct Maybe(pub Option<HashMap<String, i32>>);",
-            ", _ : & mut std :: vec :: Vec < I > ,) -> std :: vec :: Vec < & 'a str > { object \
-             . keys () . map (std :: string :: String :: as_str) . collect () }",
+            ", _ : & mut :: std :: vec :: Vec < I > ,) -> :: std :: vec :: Vec < & 'a str > { object \
+             . keys () . map (:: std :: string :: String :: as_str) . collect () }",
         ),
         (
             "#[serde(transparent)] pub struct Maybe<T>(pub Option<T>);",
-            ", _ : & mut std :: vec :: Vec < I > ,) -> std :: vec :: Vec < & 'a str > { object \
-             . keys () . map (std :: string :: String :: as_str) . collect () }",
+            ", _ : & mut :: std :: vec :: Vec < I > ,) -> :: std :: vec :: Vec < & 'a str > { object \
+             . keys () . map (:: std :: string :: String :: as_str) . collect () }",
         ),
         (
             "pub struct Stamp(#[serde(deserialize_with = \"lenient\")] pub Inner);",
-            "-> std :: vec :: Vec < & 'a str > { let found = & serde_json :: Value :: Object \
+            "-> :: std :: vec :: Vec < & 'a str > { let found = & serde_json :: Value :: Object \
              (object . clone ()) ; out . extend (stamp_schema :: value_leaf (found , < Self as \
-             serde :: Deserialize > :: deserialize , | _ | core :: option :: Option :: None , \
+             serde :: Deserialize > :: deserialize , | _ | :: core :: option :: Option :: None , \
              path . to_vec () , & [(\"Model\" , & [\"Inner\"] , 0)] , issue) . filter (| _ | ! \
              stamp_schema :: reads_an_option :: < Self , _ > (< Self as serde :: Deserialize > \
              :: deserialize , & stamp_schema :: Asked :: default ()))) ; object . keys () . map \
-             (std :: string :: String :: as_str) . collect () }",
+             (:: std :: string :: String :: as_str) . collect () }",
         ),
         (
             "#[serde(transparent)] pub struct Stamp { #[serde(with = \"as_text\")] pub inner: HashMap<String, i32> }",
-            "-> std :: vec :: Vec < & 'a str > { let found = & serde_json :: Value :: Object \
+            "-> :: std :: vec :: Vec < & 'a str > { let found = & serde_json :: Value :: Object \
              (object . clone ()) ; out . extend (stamp_schema :: value_leaf (found , < Self as \
-             serde :: Deserialize > :: deserialize , | _ | core :: option :: Option :: None , \
+             serde :: Deserialize > :: deserialize , | _ | :: core :: option :: Option :: None , \
              path . to_vec () , & [(\"Map\" , & [] , 1) , (\"I32\" , & [] , 0)] , issue) . \
              filter (| _ | ! stamp_schema :: reads_an_option :: < Self , _ > (< Self as serde \
              :: Deserialize > :: deserialize , & stamp_schema :: Asked :: default ()))) ; \
-             object . keys () . map (std :: string :: String :: as_str) . collect () }",
+             object . keys () . map (:: std :: string :: String :: as_str) . collect () }",
         ),
         (
             "pub struct Maybe(#[serde(deserialize_with = \"lenient\")] pub Option<Inner>);",
-            ", _ : & mut std :: vec :: Vec < I > ,) -> std :: vec :: Vec < & 'a str > { object \
-             . keys () . map (std :: string :: String :: as_str) . collect () }",
+            ", _ : & mut :: std :: vec :: Vec < I > ,) -> :: std :: vec :: Vec < & 'a str > { object \
+             . keys () . map (:: std :: string :: String :: as_str) . collect () }",
         ),
         (
             "pub struct Deep(pub Option<Option<Inner>>);",
-            ", _ : & mut std :: vec :: Vec < I > ,) -> std :: vec :: Vec < & 'a str > { object \
-             . keys () . map (std :: string :: String :: as_str) . collect () }",
+            ", _ : & mut :: std :: vec :: Vec < I > ,) -> :: std :: vec :: Vec < & 'a str > { object \
+             . keys () . map (:: std :: string :: String :: as_str) . collect () }",
         ),
     ] {
         let walk = json_fields_walk_of(source);
@@ -2758,10 +2760,10 @@ fn a_single_slot_struct_over_an_id_takes_every_key_and_lists_nothing() {
     ] {
         let emitted = type_impl_of(source);
         for written in [
-            "pub fn decode_with_value_named (object : & serde_json :: Map < std :: string :: \
+            "pub fn decode_with_value_named (object : & serde_json :: Map < :: std :: string :: \
              String , serde_json :: Value >) -> bool { ! object . is_empty () }",
-            ", _ : & mut std :: vec :: Vec < I > ,) -> std :: vec :: Vec < & 'a str > { object \
-             . keys () . map (std :: string :: String :: as_str) . collect () }",
+            ", _ : & mut :: std :: vec :: Vec < I > ,) -> :: std :: vec :: Vec < & 'a str > { object \
+             . keys () . map (:: std :: string :: String :: as_str) . collect () }",
         ] {
             assert!(
                 emitted.contains(written),
@@ -2781,21 +2783,21 @@ fn a_plain_enum_gets_the_fields_walker_of_an_externally_tagged_enum() {
     );
     assert!(
         walk.contains(
-            "-> std :: vec :: Vec < & 'a str > { if let core :: option :: Option :: Some (tag) \
+            "-> :: std :: vec :: Vec < & 'a str > { if let :: core :: option :: Option :: Some (tag) \
              = [\"Draft\" , \"Rough\"] . into_iter () . find (| & tag | object . contains_key \
              (tag)) { return vec ! [tag] ; } if object . contains_key (\"Published\") { return \
              vec ! [\"Published\"] ; } out . push (issue (\"Missing\" , path . to_vec () , & \
-             [(\"Variants\" , & [\"Draft\" , \"Rough\" , \"Published\"] , 0)] , core :: option \
-             :: Option :: None , core :: option :: Option :: None , std :: vec :: Vec :: new \
-             ())) ; std :: vec :: Vec :: new () }"
+             [(\"Variants\" , & [\"Draft\" , \"Rough\" , \"Published\"] , 0)] , :: core :: option \
+             :: Option :: None , :: core :: option :: Option :: None , :: std :: vec :: Vec :: new \
+             ())) ; :: std :: vec :: Vec :: new () }"
         ),
         "got: {walk}"
     );
     let unread = enum_json_of("pub enum Never { #[serde(skip)] Lost }");
     for written in [
-        "pub fn decode_with_value_named (_ : & serde_json :: Map < std :: string :: String , \
+        "pub fn decode_with_value_named (_ : & serde_json :: Map < :: std :: string :: String , \
          serde_json :: Value >) -> bool { false }",
-        ", _ : & mut std :: vec :: Vec < I > ,) -> std :: vec :: Vec < & 'a str > { std :: vec \
+        ", _ : & mut :: std :: vec :: Vec < I > ,) -> :: std :: vec :: Vec < & 'a str > { :: std :: vec \
          :: Vec :: new () }",
     ] {
         assert!(unread.contains(written), "missing `{written}` in: {unread}");
@@ -2816,10 +2818,10 @@ fn a_flattened_map_walks_the_value_of_every_key_nothing_else_declares() {
         beside_a_type.contains(
             "declared . extend (< Audit > :: decode_with_value_fields (& rest , path , issue , \
              out) . into_iter () . filter_map (| key | object . keys () . find (| own | own . \
-             as_str () == key) . map (std :: string :: String :: as_str))) ; for (key , item) \
+             as_str () == key) . map (:: std :: string :: String :: as_str))) ; for (key , item) \
              in object { if ! declared . contains (& key . as_str ()) { < Inner > :: \
-             decode_with_value_issues (item , & [path , & [core :: result :: Result :: Ok (key \
-             . clone ())]] . concat () , issue , out) ; } } object . keys () . map (std :: \
+             decode_with_value_issues (item , & [path , & [:: core :: result :: Result :: Ok (key \
+             . clone ())]] . concat () , issue , out) ; } } object . keys () . map (:: std :: \
              string :: String :: as_str) . collect () }"
         ),
         "got: {beside_a_type}"
@@ -2831,9 +2833,9 @@ fn a_flattened_map_walks_the_value_of_every_key_nothing_else_declares() {
         beside_a_key.contains(
             "for (key , item) in object { if ! matches ! (key . as_str () , \"title\") { out . \
              extend (bag_schema :: value_leaf (item , < i32 as serde :: Deserialize > :: \
-             deserialize , | read | serde_json :: to_value (read) . ok () , [path , & [core :: \
+             deserialize , | read | serde_json :: to_value (read) . ok () , [path , & [:: core :: \
              result :: Result :: Ok (key . clone ())]] . concat () , & [(\"I32\" , & [] , 0)] , \
-             issue)) ; } } object . keys () . map (std :: string :: String :: as_str) . collect \
+             issue)) ; } } object . keys () . map (:: std :: string :: String :: as_str) . collect \
              () }"
         ),
         "got: {beside_a_key}"
@@ -2844,7 +2846,7 @@ fn a_flattened_map_walks_the_value_of_every_key_nothing_else_declares() {
     );
     assert!(
         alone.contains(
-            "-> std :: vec :: Vec < & 'a str > { for (key , item) in object { out . extend \
+            "-> :: std :: vec :: Vec < & 'a str > { for (key , item) in object { out . extend \
              (open_schema :: value_leaf (item , < i32 as serde :: Deserialize > :: deserialize \
              ,"
         ),
@@ -2863,23 +2865,23 @@ fn a_flattened_parameter_is_read_whole_from_the_keys_nothing_else_declares() {
             "out . extend (envelope_schema :: value_leaf (& serde_json :: Value :: Object \
              (object . iter () . filter (| (key , _) | ! matches ! (key . as_str () , \"id\")) \
              . map (| (key , held) | (key . clone () , held . clone ())) . collect ()) , < T as \
-             serde :: Deserialize > :: deserialize , | _ | core :: option :: Option :: None , \
+             serde :: Deserialize > :: deserialize , | _ | :: core :: option :: Option :: None , \
              path . to_vec () , & [(\"TypeParam\" , & [\"T\"] , 0)] , issue) . filter (| _ | ! \
              envelope_schema :: reads_an_option :: < T , _ > (< T as serde :: Deserialize > :: \
              deserialize , & envelope_schema :: Asked :: default ()))) ; object . keys () . map \
-             (std :: string :: String :: as_str) . collect () }"
+             (:: std :: string :: String :: as_str) . collect () }"
         ),
         "got: {walk}"
     );
     let alone = json_fields_walk_of("pub struct Only<T> { #[serde(flatten)] pub body: T }");
     assert!(
         alone.contains(
-            "-> std :: vec :: Vec < & 'a str > { out . extend (only_schema :: value_leaf (& \
+            "-> :: std :: vec :: Vec < & 'a str > { out . extend (only_schema :: value_leaf (& \
              serde_json :: Value :: Object (object . clone ()) , < T as serde :: Deserialize > \
-             :: deserialize , | _ | core :: option :: Option :: None , path . to_vec () , & \
+             :: deserialize , | _ | :: core :: option :: Option :: None , path . to_vec () , & \
              [(\"TypeParam\" , & [\"T\"] , 0)] , issue) . filter (| _ | ! only_schema :: \
              reads_an_option :: < T , _ > (< T as serde :: Deserialize > :: deserialize , & \
-             only_schema :: Asked :: default ()))) ; object . keys () . map (std :: string :: \
+             only_schema :: Asked :: default ()))) ; object . keys () . map (:: std :: string :: \
              String :: as_str) . collect () }"
         ),
         "got: {alone}"
@@ -2893,7 +2895,7 @@ fn a_flattened_parameter_is_read_whole_from_the_keys_nothing_else_declares() {
             "out . extend (hooked_schema :: value_leaf (& serde_json :: Value :: Object (object \
              . iter () . filter (| (key , _) | ! declared . contains (& key . as_str ())) . map \
              (| (key , held) | (key . clone () , held . clone ())) . collect ()) , as_text :: \
-             deserialize , | _ : & HashMap < String , i32 > | core :: option :: Option :: None \
+             deserialize , | _ : & HashMap < String , i32 > | :: core :: option :: Option :: None \
              , path . to_vec () , & [(\"Map\" , & [] , 1) , (\"I32\" , & [] , 0)] , issue) . \
              filter (| _ | ! hooked_schema :: reads_an_option :: < HashMap < String , i32 > , _ \
              > (as_text :: deserialize , & hooked_schema :: Asked :: default ()))) ;"
@@ -2913,14 +2915,14 @@ fn only_the_first_flattened_field_that_takes_the_rest_is_walked() {
     );
     assert!(
         walk.contains(
-            "std :: vec :: Vec :: new ())) , } out . extend (packet_schema :: value_leaf (& \
+            ":: std :: vec :: Vec :: new ())) , } out . extend (packet_schema :: value_leaf (& \
              serde_json :: Value :: Object (object . iter () . filter (| (key , _) | ! matches \
              ! (key . as_str () , \"id\")) . map (| (key , held) | (key . clone () , held . \
              clone ())) . collect ()) , < T as serde :: Deserialize > :: deserialize , | _ | \
-             core :: option :: Option :: None , path . to_vec () , & [(\"TypeParam\" , & \
+             :: core :: option :: Option :: None , path . to_vec () , & [(\"TypeParam\" , & \
              [\"T\"] , 0)] , issue) . filter (| _ | ! packet_schema :: reads_an_option :: < T , \
              _ > (< T as serde :: Deserialize > :: deserialize , & packet_schema :: Asked :: \
-             default ()))) ; object . keys () . map (std :: string :: String :: as_str) . \
+             default ()))) ; object . keys () . map (:: std :: string :: String :: as_str) . \
              collect () }"
         ),
         "got: {walk}"
@@ -2958,8 +2960,8 @@ fn a_flattened_field_no_walk_reaches_takes_every_key_and_lists_nothing() {
         let walk = json_fields_walk_of(source);
         assert!(
             walk.contains(
-                ", _ : & mut std :: vec :: Vec < I > ,) -> std :: vec :: Vec < & 'a str > { \
-                 object . keys () . map (std :: string :: String :: as_str) . collect () }"
+                ", _ : & mut :: std :: vec :: Vec < I > ,) -> :: std :: vec :: Vec < & 'a str > { \
+                 object . keys () . map (:: std :: string :: String :: as_str) . collect () }"
             ),
             "for {source}, got: {walk}"
         );
@@ -2970,9 +2972,9 @@ fn a_flattened_field_no_walk_reaches_takes_every_key_and_lists_nothing() {
     );
     assert!(
         beside_a_type.contains(
-            ", out : & mut std :: vec :: Vec < I > ,) -> std :: vec :: Vec < & 'a str > { < \
+            ", out : & mut :: std :: vec :: Vec < I > ,) -> :: std :: vec :: Vec < & 'a str > { < \
              Audit > :: decode_with_value_fields (object , path , issue , out) ; object . keys \
-             () . map (std :: string :: String :: as_str) . collect () }"
+             () . map (:: std :: string :: String :: as_str) . collect () }"
         ),
         "got: {beside_a_type}"
     );
@@ -3004,8 +3006,8 @@ fn a_flattened_id_is_read_by_no_walk() {
         assert_eq!(
             emitted
                 .matches(
-                    ", _ : & mut std :: vec :: Vec < I > ,) -> std :: vec :: Vec < & 'a str > { \
-                     object . keys () . map (std :: string :: String :: as_str) . collect () }"
+                    ", _ : & mut :: std :: vec :: Vec < I > ,) -> :: std :: vec :: Vec < & 'a str > { \
+                     object . keys () . map (:: std :: string :: String :: as_str) . collect () }"
                 )
                 .count(),
             2,
@@ -3018,7 +3020,7 @@ fn a_flattened_id_is_read_by_no_walk() {
     assert!(
         hooked.contains(
             "out . extend (keyed_schema :: value_leaf (& serde_json :: Value :: Object (object \
-             . clone ()) , as_hex :: deserialize , | _ : & ObjectId | core :: option :: Option \
+             . clone ()) , as_hex :: deserialize , | _ : & ObjectId | :: core :: option :: Option \
              :: None ,"
         ),
         "got: {hooked}"
@@ -3038,7 +3040,7 @@ fn a_flattened_value_read_whole_is_not_written_back_and_an_option_not_seen_is_ab
     );
     assert!(
         hooked.contains(
-            "lenient , | _ : & Option < Inner > | core :: option :: Option :: None , path . \
+            "lenient , | _ : & Option < Inner > | :: core :: option :: Option :: None , path . \
              to_vec () , & [(\"Optional\" , & [] , 1) , (\"Model\" , & [\"Inner\"] , 0)] , \
              issue) . filter (| _ | ! hooked_schema :: reads_an_option :: < Option < Inner > , \
              _ > (lenient , & hooked_schema :: Asked :: default ()))) ;"
@@ -3047,7 +3049,7 @@ fn a_flattened_value_read_whole_is_not_written_back_and_an_option_not_seen_is_ab
     );
     assert_eq!(
         hooked.contains(
-            "lenient , | _ : & Option < Inner > , _ | core :: option :: Option :: None , path . \
+            "lenient , | _ : & Option < Inner > , _ | :: core :: option :: Option :: None , path . \
              to_vec () ,"
         ),
         cfg!(feature = "bson"),
@@ -3058,7 +3060,7 @@ fn a_flattened_value_read_whole_is_not_written_back_and_an_option_not_seen_is_ab
     );
     assert!(
         open.contains(
-            "< serde_json :: Value as serde :: Deserialize > :: deserialize , | _ | core :: \
+            "< serde_json :: Value as serde :: Deserialize > :: deserialize , | _ | :: core :: \
              option :: Option :: None , path . to_vec () , & [(\"Unknown\" , & [] , 0)] , \
              issue)) ;"
         ),
@@ -3080,20 +3082,20 @@ fn a_variants_flattened_field_is_walked_in_the_object_its_fields_sit_in() {
         "pub enum Outline { Gone, Made { #[serde(flatten)] audit: Audit, title: String } }",
     );
     for written in [
-        "if let core :: option :: Option :: Some (content) = object . get (\"Made\") { if let \
+        "if let :: core :: option :: Option :: Some (content) = object . get (\"Made\") { if let \
          serde_json :: Value :: Object (inner) = content { let mut declared = vec ! [\"title\"] \
          ; match inner . get (\"title\") {",
-        "let rest : serde_json :: Map < std :: string :: String , serde_json :: Value > = inner \
+        "let rest : serde_json :: Map < :: std :: string :: String , serde_json :: Value > = inner \
          . iter () . filter (| (key , _) | ! matches ! (key . as_str () , \"title\")) . map (| \
          (key , held) | (key . clone () , held . clone ())) . collect () ; declared . extend (< \
-         Audit > :: decode_with_value_fields (& rest , & [path , & [core :: result :: Result :: \
+         Audit > :: decode_with_value_fields (& rest , & [path , & [:: core :: result :: Result :: \
          Ok (\"Made\" . to_owned ())]] . concat () , issue , out) . into_iter () . filter_map \
-         (| key | inner . keys () . find (| own | own . as_str () == key) . map (std :: string \
+         (| key | inner . keys () . find (| own | own . as_str () == key) . map (:: std :: string \
          :: String :: as_str))) ; for (key , held) in inner { if ! declared . contains (& key . \
-         as_str ()) { out . push (issue (\"Unknown\" , [path , & [core :: result :: Result :: \
-         Ok (\"Made\" . to_owned ()) , core :: result :: Result :: Ok (key . clone ())]] . \
-         concat () , & [] , core :: option :: Option :: Some (held . clone ()) , core :: option \
-         :: Option :: None , std :: vec :: Vec :: new ())) ; } } } return vec ! [\"Made\"] ; }",
+         as_str ()) { out . push (issue (\"Unknown\" , [path , & [:: core :: result :: Result :: \
+         Ok (\"Made\" . to_owned ()) , :: core :: result :: Result :: Ok (key . clone ())]] . \
+         concat () , & [] , :: core :: option :: Option :: Some (held . clone ()) , :: core :: option \
+         :: Option :: None , :: std :: vec :: Vec :: new ())) ; } } } return vec ! [\"Made\"] ; }",
     ] {
         assert!(
             external.contains(written),
@@ -3104,14 +3106,14 @@ fn a_variants_flattened_field_is_walked_in_the_object_its_fields_sit_in() {
         "#[serde(tag = \"kind\")] pub enum Fill { Gone, Made { #[serde(flatten)] audit: Audit, title: String } }",
     );
     for written in [
-        "core :: option :: Option :: Some (\"Made\") => { let mut declared = vec ! [\"kind\" , \
+        ":: core :: option :: Option :: Some (\"Made\") => { let mut declared = vec ! [\"kind\" , \
          \"title\"] ; match object . get (\"title\") {",
-        "let rest : serde_json :: Map < std :: string :: String , serde_json :: Value > = \
+        "let rest : serde_json :: Map < :: std :: string :: String , serde_json :: Value > = \
          object . iter () . filter (| (key , _) | ! matches ! (key . as_str () , \"kind\" | \
          \"title\")) . map (| (key , held) | (key . clone () , held . clone ())) . collect () ; \
          declared . extend (< Audit > :: decode_with_value_fields (& rest , path , issue , out) \
          . into_iter () . filter_map (| key | object . keys () . find (| own | own . as_str () \
-         == key) . map (std :: string :: String :: as_str))) ; declared } ,",
+         == key) . map (:: std :: string :: String :: as_str))) ; declared } ,",
     ] {
         assert!(
             internal.contains(written),
@@ -3122,18 +3124,18 @@ fn a_variants_flattened_field_is_walked_in_the_object_its_fields_sit_in() {
         "#[serde(tag = \"kind\", content = \"data\")] pub enum Stroke { Gone, Made { #[serde(flatten)] audit: Audit, title: String } }",
     );
     for written in [
-        "core :: option :: Option :: Some (\"Made\") => match object . get (\"data\") { core :: \
+        ":: core :: option :: Option :: Some (\"Made\") => match object . get (\"data\") { :: core :: \
          option :: Option :: Some (content) => if let serde_json :: Value :: Object (inner) = \
          content { let mut declared = vec ! [\"title\"] ;",
-        "let rest : serde_json :: Map < std :: string :: String , serde_json :: Value > = inner \
+        "let rest : serde_json :: Map < :: std :: string :: String , serde_json :: Value > = inner \
          . iter () . filter (| (key , _) | ! matches ! (key . as_str () , \"title\")) . map (| \
          (key , held) | (key . clone () , held . clone ())) . collect () ; declared . extend (< \
-         Audit > :: decode_with_value_fields (& rest , & [path , & [core :: result :: Result :: \
+         Audit > :: decode_with_value_fields (& rest , & [path , & [:: core :: result :: Result :: \
          Ok (\"data\" . to_owned ())]] . concat () , issue , out) . into_iter () . filter_map \
-         (| key | inner . keys () . find (| own | own . as_str () == key) . map (std :: string \
+         (| key | inner . keys () . find (| own | own . as_str () == key) . map (:: std :: string \
          :: String :: as_str))) ; for (key , held) in inner { if ! declared . contains (& key . \
-         as_str ()) { out . push (issue (\"Unknown\" , [path , & [core :: result :: Result :: \
-         Ok (\"data\" . to_owned ()) , core :: result :: Result :: Ok (key . clone ())]] . \
+         as_str ()) { out . push (issue (\"Unknown\" , [path , & [:: core :: result :: Result :: \
+         Ok (\"data\" . to_owned ()) , :: core :: result :: Result :: Ok (key . clone ())]] . \
          concat () ,",
     ] {
         assert!(
@@ -3148,14 +3150,14 @@ fn a_variants_flattened_field_is_walked_in_the_object_its_fields_sit_in() {
         untagged.contains(
             "issue)) ; return ; } ; let mut declared = vec ! [\"title\"] ; match object . get (\"title\") {"
         ) && untagged.contains(
-            "let rest : serde_json :: Map < std :: string :: String , serde_json :: Value > = \
+            "let rest : serde_json :: Map < :: std :: string :: String , serde_json :: Value > = \
              object . iter () . filter (| (key , _) | ! matches ! (key . as_str () , \
              \"title\")) . map (| (key , held) | (key . clone () , held . clone ())) . collect \
              () ; declared . extend (< Audit > :: decode_with_value_fields (& rest , path , \
              issue , out) . into_iter () . filter_map (| key | object . keys () . find (| own | \
-             own . as_str () == key) . map (std :: string :: String :: as_str))) ; for (key , \
+             own . as_str () == key) . map (:: std :: string :: String :: as_str))) ; for (key , \
              held) in object { if ! declared . contains (& key . as_str ()) { out . push (issue \
-             (\"Unknown\" , [path , & [core :: result :: Result :: Ok (key . clone ())]] . \
+             (\"Unknown\" , [path , & [:: core :: result :: Result :: Ok (key . clone ())]] . \
              concat () ,"
         ),
         "got: {untagged}"
@@ -3168,8 +3170,8 @@ fn a_variants_flattened_field_is_walked_in_the_object_its_fields_sit_in() {
         open.contains(
             "for (key , item) in inner { if ! matches ! (key . as_str () , \"title\") { out . \
              extend (outline_schema :: value_leaf (item , < i32 as serde :: Deserialize > :: \
-             deserialize , | read | serde_json :: to_value (read) . ok () , [path , & [core :: \
-             result :: Result :: Ok (\"Made\" . to_owned ()) , core :: result :: Result :: Ok \
+             deserialize , | read | serde_json :: to_value (read) . ok () , [path , & [:: core :: \
+             result :: Result :: Ok (\"Made\" . to_owned ()) , :: core :: result :: Result :: Ok \
              (key . clone ())]] . concat () , & [(\"I32\" , & [] , 0)] , issue)) ; } } } return \
              vec ! [\"Made\"] ; }"
         ),
@@ -3188,24 +3190,24 @@ fn an_untagged_enums_fields_walker_walks_the_variant_serde_reads_the_object_as()
         .split_once("pub fn decode_with_value_fields")
         .unwrap();
     for written in [
-        "-> std :: vec :: Vec < & 'a str > { match < Self as serde :: Deserialize > :: \
-         deserialize (serde_json :: Value :: Object (object . clone ())) { core :: result :: \
-         Result :: Ok (Self :: Email { .. }) => { match object . get (\"address\") { core :: \
+        "-> :: std :: vec :: Vec < & 'a str > { match < Self as serde :: Deserialize > :: \
+         deserialize (serde_json :: Value :: Object (object . clone ())) { :: core :: result :: \
+         Result :: Ok (Self :: Email { .. }) => { match object . get (\"address\") { :: core :: \
          option :: Option :: Some (held) => out . extend (contact_schema :: value_leaf (held , \
          contact_schema :: deserialize_email_address ,",
-        "vec ! [\"address\"] } , core :: result :: Result :: Ok (Self :: Versioned (..)) => < \
-         Inner > :: decode_with_value_fields (object , path , issue , out) , core :: result :: \
-         Result :: Ok (Self :: Word (..)) => object . keys () . map (std :: string :: String :: \
-         as_str) . collect () , core :: result :: Result :: Err (_) => { let found = & \
-         serde_json :: Value :: Object (object . clone ()) ; let mut as_email = std :: vec :: \
+        "vec ! [\"address\"] } , :: core :: result :: Result :: Ok (Self :: Versioned (..)) => < \
+         Inner > :: decode_with_value_fields (object , path , issue , out) , :: core :: result :: \
+         Result :: Ok (Self :: Word (..)) => object . keys () . map (:: std :: string :: String :: \
+         as_str) . collect () , :: core :: result :: Result :: Err (_) => { let found = & \
+         serde_json :: Value :: Object (object . clone ()) ; let mut as_email = :: std :: vec :: \
          Vec :: new () ; { let out = & mut as_email ; match object . get (\"address\") {",
-        "std :: vec :: Vec :: new ())) , } } let mut as_versioned = std :: vec :: Vec :: new () \
+        ":: std :: vec :: Vec :: new ())) , } } let mut as_versioned = :: std :: vec :: Vec :: new () \
          ; < Inner > :: decode_with_value_fields (object , path , issue , & mut as_versioned) ; \
-         let mut as_word = std :: vec :: Vec :: new () ; Self :: decode_with_value_variant_word \
+         let mut as_word = :: std :: vec :: Vec :: new () ; Self :: decode_with_value_variant_word \
          (found , path , issue , & mut as_word) ; out . push (issue (\"NoVariant\" , path . \
-         to_vec () , & [] , core :: option :: Option :: Some (found . clone ()) , core :: \
+         to_vec () , & [] , :: core :: option :: Option :: Some (found . clone ()) , :: core :: \
          option :: Option :: None , vec ! [(\"Email\" , as_email) , (\"Versioned\" , \
-         as_versioned) , (\"Word\" , as_word)])) ; object . keys () . map (std :: string :: \
+         as_versioned) , (\"Word\" , as_word)])) ; object . keys () . map (:: std :: string :: \
          String :: as_str) . collect () } } } fn decode_with_value_variant_email < I > (",
     ] {
         assert!(walk.contains(written), "missing `{written}` in: {walk}");
@@ -3213,9 +3215,9 @@ fn an_untagged_enums_fields_walker_walks_the_variant_serde_reads_the_object_as()
     let unread = enum_json_of(UNREAD_UNTAGGED);
     assert!(
         unread.contains(
-            "core :: result :: Result :: Ok (Self :: Word (..)) => object . keys () . map (std \
-             :: string :: String :: as_str) . collect () , core :: result :: Result :: Ok (Self \
-             :: Fax (..) | Self :: Pager { .. }) => std :: vec :: Vec :: new () , core :: \
+            ":: core :: result :: Result :: Ok (Self :: Word (..)) => object . keys () . map (:: std \
+             :: string :: String :: as_str) . collect () , :: core :: result :: Result :: Ok (Self \
+             :: Fax (..) | Self :: Pager { .. }) => :: std :: vec :: Vec :: new () , :: core :: \
              result :: Result :: Err (_) => { let found = & serde_json :: Value :: Object \
              (object . clone ()) ;"
         ),
@@ -3224,8 +3226,8 @@ fn an_untagged_enums_fields_walker_walks_the_variant_serde_reads_the_object_as()
     // A variant with no field to walk lists nothing, so its list is bound and never written to.
     let blank = enum_json_of("#[serde(untagged)] pub enum Sparse { Blank {}, Word(String) }");
     for written in [
-        "core :: result :: Result :: Ok (Self :: Blank { .. }) => { vec ! [] } ,",
-        "let as_blank = std :: vec :: Vec :: new () ; let mut as_word = std :: vec :: Vec :: \
+        ":: core :: result :: Result :: Ok (Self :: Blank { .. }) => { vec ! [] } ,",
+        "let as_blank = :: std :: vec :: Vec :: new () ; let mut as_word = :: std :: vec :: Vec :: \
          new () ;",
     ] {
         assert!(blank.contains(written), "missing `{written}` in: {blank}");
@@ -3244,18 +3246,18 @@ fn the_bson_walker_of_a_flattened_field_matches_the_librarys_own_types() {
          (key . as_str () , \"title\")) . map (| (key , held) | (key . clone () , held . clone \
          ())) . collect () ; declared . extend (< Audit > :: decode_with_bson_fields (& rest , \
          path , issue , out) . into_iter () . filter_map (| key | object . keys () . find (| \
-         own | own . as_str () == key) . map (std :: string :: String :: as_str))) ; let taken \
+         own | own . as_str () == key) . map (:: std :: string :: String :: as_str))) ; let taken \
          = entry_schema :: bson_remaining :: < Audit , _ > (< Audit as serde :: Deserialize > \
          :: deserialize , & entry_schema :: Asked :: default () , & rest) ; let remaining = \
          taken . as_ref () . unwrap_or (& rest) ; if < Extra > :: decode_with_bson_named \
-         (remaining) { let mut nested = std :: vec :: Vec :: new () ; let keys = < Extra > :: \
+         (remaining) { let mut nested = :: std :: vec :: Vec :: new () ; let keys = < Extra > :: \
          decode_with_bson_fields (remaining , path , issue , & mut nested) ;",
         "match < Extra as serde :: Deserialize > :: deserialize (bson :: Deserializer :: new \
-         (bson :: Bson :: Document (remaining . clone ()))) { core :: result :: Result :: Ok \
-         (_) => out . append (& mut nested) , core :: result :: Result :: Err (_) => out . push \
+         (bson :: Bson :: Document (remaining . clone ()))) { :: core :: result :: Result :: Ok \
+         (_) => out . append (& mut nested) , :: core :: result :: Result :: Err (_) => out . push \
          (issue (\"Mistyped\" , path . to_vec () , & [(\"Optional\" , & [] , 1) , (\"Model\" , \
-         & [\"Extra\"] , 0)] , core :: option :: Option :: Some (bson :: Bson :: Document \
-         (object . clone ())) , core :: option :: Option :: None , std :: vec :: Vec :: new \
+         & [\"Extra\"] , 0)] , :: core :: option :: Option :: Some (bson :: Bson :: Document \
+         (object . clone ())) , :: core :: option :: Option :: None , :: std :: vec :: Vec :: new \
          ())) , }",
     ] {
         assert!(
@@ -3269,7 +3271,7 @@ fn the_bson_walker_of_a_flattened_field_matches_the_librarys_own_types() {
             "out . extend (envelope_schema :: bson_leaf (& bson :: Bson :: Document (object . \
              iter () . filter (| (key , _) | ! matches ! (key . as_str () , \"id\")) . map (| \
              (key , held) | (key . clone () , held . clone ())) . collect ()) , < T as serde :: \
-             Deserialize > :: deserialize , | _ , _ | core :: option :: Option :: None , path . \
+             Deserialize > :: deserialize , | _ , _ | :: core :: option :: Option :: None , path . \
              to_vec () , & [(\"TypeParam\" , & [\"T\"] , 0)] , issue) . filter (| _ | ! \
              envelope_schema :: reads_an_option :: < T , _ > (< T as serde :: Deserialize > :: \
              deserialize , & envelope_schema :: Asked :: default ()))) ;"
@@ -3278,11 +3280,11 @@ fn the_bson_walker_of_a_flattened_field_matches_the_librarys_own_types() {
     );
     let untagged = enum_bson_of(UNTAGGED);
     for written in [
-        "-> std :: vec :: Vec < & 'a str > { match < Self as serde :: Deserialize > :: \
+        "-> :: std :: vec :: Vec < & 'a str > { match < Self as serde :: Deserialize > :: \
          deserialize (bson :: Deserializer :: new (bson :: Bson :: Document (object . clone \
-         ()))) { core :: result :: Result :: Ok (Self :: Email { .. }) =>",
-        "core :: result :: Result :: Err (_) => { let found = & bson :: Bson :: Document \
-         (object . clone ()) ; let mut as_email = std :: vec :: Vec :: new () ;",
+         ()))) { :: core :: result :: Result :: Ok (Self :: Email { .. }) =>",
+        ":: core :: result :: Result :: Err (_) => { let found = & bson :: Bson :: Document \
+         (object . clone ()) ; let mut as_email = :: std :: vec :: Vec :: new () ;",
         "< Inner > :: decode_with_bson_fields (object , path , issue , & mut as_versioned) ;",
     ] {
         assert!(
@@ -3349,8 +3351,8 @@ fn a_field_typed_with_an_alias_seen_above_is_walked_as_the_type_the_alias_names(
     let added = super::struct_recovering_decode(&item);
     let (walker, module) = (added.type_impl.to_string(), added.schema_module.to_string());
     for written in [
-        "const _ : fn (types :: Marks) -> std :: collections :: BTreeMap < tally_schema :: \
-         decode_with_at0 :: Tier , std :: vec :: Vec < tally_schema :: decode_with_at1 :: Mark > \
+        "const _ : fn (types :: Marks) -> :: std :: collections :: BTreeMap < tally_schema :: \
+         decode_with_at0 :: Tier , :: std :: vec :: Vec < tally_schema :: decode_with_at1 :: Mark > \
          > = | held | held ;",
         "< tally_schema :: decode_with_at1 :: Mark > :: decode_with_value_issues (",
     ] {
@@ -3359,10 +3361,10 @@ fn a_field_typed_with_an_alias_seen_above_is_walked_as_the_type_the_alias_names(
     assert!(!walker.contains("ReadWhole"), "got: {walker}");
     for written in [
         "pub trait EntryOf { type Key ; type Value ; }",
-        "pub mod decode_with_at0 { pub type Tier = << super :: super :: types :: Marks as core \
+        "pub mod decode_with_at0 { pub type Tier = << super :: super :: types :: Marks as :: core \
          :: iter :: IntoIterator > :: Item as super :: EntryOf > :: Key ; }",
         "pub mod decode_with_at1 { pub type Mark = < << super :: super :: types :: Marks as \
-         core :: iter :: IntoIterator > :: Item as super :: EntryOf > :: Value as core :: iter \
+         :: core :: iter :: IntoIterator > :: Item as super :: EntryOf > :: Value as :: core :: iter \
          :: IntoIterator > :: Item ; }",
     ] {
         assert!(module.contains(written), "missing `{written}` in: {module}");

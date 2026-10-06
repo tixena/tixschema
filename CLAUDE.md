@@ -537,13 +537,16 @@ Rules:
 
 What the macros emit lands in a module the consumer wrote, where a type of theirs may be named
 `Vec`, `String`, `Ok` or `Send`. Nothing inside a `quote!` writes a name the standard prelude
-supplies bare: it is `std::vec::Vec`, `core::option::Option::Some`, `core::result::Result::Ok`,
-`core::marker::Send`, `core::ops::FnOnce`. `src/service_schema/**` writes each with a leading
-`::`; every other emitter writes it without. A path serde reads out of an attribute's text follows
-the same rule (`"::core::option::Option::is_none"`). A name inside `#[derive(...)]` stays bare: a
-derive resolves in the macro namespace, where no type of the consumer's reaches.
+supplies bare: it is `::std::vec::Vec`, `::core::option::Option::Some`,
+`::core::result::Result::Ok`, `::core::marker::Send`, `::core::ops::FnOnce`. Every such path starts
+with `::`: a module of the consumer's may be named `core` or `std`, and a path written
+`core::option::Option` resolves through that module. A path serde reads out of an attribute's text
+follows the same rule (`"::core::option::Option::is_none"`). A name inside `#[derive(...)]` stays
+bare: a derive resolves in the macro namespace, where no type of the consumer's reaches.
 
-`src/emitted_names_tests.rs` reads the crate's own sources and fails on a bare one. A test that
+`src/emitted_names_tests.rs` reads the crate's own sources and fails on a bare name, and on a
+`core` or `std` path that does not start with `::`; `tests/shadowed_core_module_tests.rs` builds
+model types and a service beside a module of each name. A test that
 declares a model type named `Vec` or `String` needs a test binary of its own
 (`tests/shadowed_vec_tests.rs`): the registry is keyed by ident for the whole crate, so a field
 written `Vec` in any later expansion would be read as that type.
