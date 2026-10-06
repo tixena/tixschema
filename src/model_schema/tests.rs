@@ -7846,7 +7846,7 @@ fn display_impl_delegates_from_the_inner_field_span() {
         located_source_texts(&tokens).join(" "),
         "UserId String String String String String String String String String String String \
          String String String String String String String String String String String String \
-         String String",
+         String String String String String String",
         "the interpolated type name, then every token of the where-clause predicate (the bound is \
          spanned on the field, so a non-`Display` inner is blamed there rather than at the \
          attribute), then the call that hands the formatting to the inner field"
@@ -8032,7 +8032,7 @@ fn the_constrained_path_renders_the_same_to_string_calls_it_always_has() {
             constrained_brand_emission(spelling, "slug_id_schema");
         assert!(
             validate_fn.starts_with(
-                "pub fn validate_value (value : & str) -> :: core :: result :: Result < () , std \
+                "pub fn validate_value (value : & str) -> :: core :: result :: Result < () , :: std \
                  :: vec :: Vec < :: std :: string :: String >> {"
             ),
             "for {spelling}, got: {validate_fn}"
@@ -10058,7 +10058,7 @@ fn an_option_is_checked_inside_its_some() {
 #[cfg(feature = "serde")]
 #[test]
 fn a_transparent_wrapper_is_dereferenced_through() {
-    let expected = "{ let value_0 = & self . field ; let value_1 = & * * value_0 ; if let core \
+    let expected = "{ let value_0 = & self . field ; let value_1 = & * * value_0 ; if let :: core \
                     :: result :: Result :: Err (reported) = check (value_1) { errors . extend \
                     (reported) ; } }";
     for spelling in ["Arc<str>", "Box<String>", "Cow<'a, str>", "Rc<str>"] {
@@ -10385,7 +10385,7 @@ fn a_wrapped_field_deserializes_its_declared_type() {
          Option < String > , D :: Error > where D : serde :: Deserializer < 'de > , { fn \
          deserialize_validated < 'de , D , T , F > (deserializer : D , check : F) -> :: core :: \
          result :: Result < T , D :: Error > where D : serde :: Deserializer < 'de > , T : \
-         serde :: Deserialize < 'de > , F : :: core :: ops :: FnOnce (& T) -> :: core :: result :: Result < () , std \
+         serde :: Deserialize < 'de > , F : :: core :: ops :: FnOnce (& T) -> :: core :: result :: Result < () , :: std \
          :: vec :: Vec < :: std :: string :: String >> , { use serde :: Deserialize ; let value = \
          T :: deserialize (deserializer) ? ; check (& value) . map_err (| violations : :: std :: \
          vec :: Vec < :: std :: string :: String > | serde :: de :: Error :: custom (violations . \

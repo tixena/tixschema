@@ -892,7 +892,7 @@ fn a_tuple_struct_and_a_slot_over_text_a_list_or_a_tuple_claim_no_key() {
         let emitted = type_impl_of(source);
         assert!(
             emitted.contains(
-                "pub fn decode_with_value_fields < 'a , I > (_ : & 'a serde_json :: Map < std \
+                "pub fn decode_with_value_fields < 'a , I > (_ : & 'a serde_json :: Map < :: std \
                  :: string :: String , serde_json :: Value > , _ : & [:: core :: result :: Result \
                  < :: std :: string :: String , usize >] , _ : code_schema :: IssueFromParts < \
                  serde_json :: Value , I > , _ : & mut :: std :: vec :: Vec < I > ,) -> :: std :: vec \
@@ -1117,7 +1117,9 @@ fn a_transparent_struct_with_a_named_field_gets_a_fields_walker_whatever_it_hold
         );
         let walk = json_fields_walk_of(&source);
         assert!(
-            walk.contains(&format!("-> :: std :: vec :: Vec < & 'a str > {{ {walked} }}")),
+            walk.contains(&format!(
+                "-> :: std :: vec :: Vec < & 'a str > {{ {walked} }}"
+            )),
             "for {source}, got: {walk}"
         );
     }
@@ -1260,7 +1262,7 @@ fn a_tuple_in_a_fields_type_is_walked_by_position_wherever_it_is_held() {
          . to_owned ()) , :: core :: result :: Result :: Err (1)]] . concat () , issue , out) ,",
         "None => out . push (issue (\"Missing\" , [path , & [:: core :: result :: Result :: Ok \
          (\"spot\" . to_owned ())]] . concat () , & [(\"Tuple\" , & [] , 2) , (\"String\" , & \
-         [] , 0) , (\"Model\" , & [\"Inner\"] , 0)] , :: core :: option :: Option :: None , core \
+         [] , 0) , (\"Model\" , & [\"Inner\"] , 0)] , :: core :: option :: Option :: None , :: core \
          :: option :: Option :: None , :: std :: vec :: Vec :: new ())) ,",
         "for (index , item) in items . iter () . enumerate () { match item { serde_json :: Value :: Array (items_1) =>",
         "for (index_1 , held_1) in items_1 . iter () . enumerate () . skip (2) { out . push \
@@ -1321,7 +1323,7 @@ fn a_methods_own_type_parameter_is_never_one_the_type_declares() {
     for written in [
         "pub fn from_value_with < F3 > (mut value : serde_json :: Value , decide : F3 ,)",
         "where F3 : :: core :: ops :: FnOnce (& mut serde_json :: Value , & [keyed_schema :: Issue < serde_json :: Value >]) -> keyed_schema :: Verdict ,",
-        "pub fn decode_with_value_issues < I2 > (found : & serde_json :: Value , path : & [core \
+        "pub fn decode_with_value_issues < I2 > (found : & serde_json :: Value , path : & [:: core \
          :: result :: Result < :: std :: string :: String , usize >] , issue : keyed_schema :: \
          IssueFromParts < serde_json :: Value , I2 > , out : & mut :: std :: vec :: Vec < I2 > ,)",
         "pub fn decode_with_value_fields < 'a , I2 > (",
@@ -1525,9 +1527,9 @@ fn the_bson_walker_of_each_struct_shape_matches_the_librarys_own_types() {
         ),
         (
             "pub struct Ping;",
-            "pub fn decode_with_bson_fields < 'a , I > (_ : & 'a bson :: Document , _ : & [core \
+            "pub fn decode_with_bson_fields < 'a , I > (_ : & 'a bson :: Document , _ : & [:: core \
              :: result :: Result < :: std :: string :: String , usize >] , _ : ping_schema :: \
-             IssueFromParts < bson :: Bson , I > , _ : & mut :: std :: vec :: Vec < I > ,) -> std \
+             IssueFromParts < bson :: Bson , I > , _ : & mut :: std :: vec :: Vec < I > ,) -> :: std \
              :: vec :: Vec < & 'a str > { :: std :: vec :: Vec :: new () }",
         ),
         (
@@ -1614,7 +1616,7 @@ fn an_externally_tagged_enum_is_walked_under_the_key_naming_the_variant() {
          serde_json :: Value :: Object (inner) = content { match inner . get (\"radius\") { \
          :: core :: option :: Option :: Some (held) => out . extend (outline_schema :: value_leaf \
          (held , < f64 as serde :: Deserialize > :: deserialize ,",
-        ":: core :: option :: Option :: None => out . push (issue (\"Missing\" , [path , & [core \
+        ":: core :: option :: Option :: None => out . push (issue (\"Missing\" , [path , & [:: core \
          :: result :: Result :: Ok (\"Circle\" . to_owned ()) , :: core :: result :: Result :: Ok \
          (\"radius\" . to_owned ())]] . concat () , & [(\"F64\" , & [] , 0)] , :: core :: option \
          :: Option :: None , :: core :: option :: Option :: None , :: std :: vec :: Vec :: new ())) , \
@@ -1637,7 +1639,7 @@ fn an_externally_tagged_enum_is_walked_under_the_key_naming_the_variant() {
         "if let :: core :: option :: Option :: Some (content) = object . get (\"To\") { match \
          content { serde_json :: Value :: Array (items) => { match items . first () {",
         "for (index , held) in items . iter () . enumerate () . skip (2) { out . push (issue \
-         (\"Unknown\" , [path , & [:: core :: result :: Result :: Ok (\"To\" . to_owned ()) , core \
+         (\"Unknown\" , [path , & [:: core :: result :: Result :: Ok (\"To\" . to_owned ()) , :: core \
          :: result :: Result :: Err (index)]] . concat () ,",
         "content => out . push (issue (\"Invalid\" , [path , & [:: core :: result :: Result :: Ok \
          (\"To\" . to_owned ())]] . concat () , & [(\"Tuple\" , & [] , 2) , (\"I32\" , & [] , \
@@ -1732,12 +1734,12 @@ fn an_adjacently_tagged_enum_walks_what_the_variant_holds_under_the_content_key(
         "for (key , held) in inner { if ! matches ! (key . as_str () , \"gap\") { out . push \
          (issue (\"Unknown\" , [path , & [:: core :: result :: Result :: Ok (\"data\" . to_owned \
          ()) , :: core :: result :: Result :: Ok (key . clone ())]] . concat () ,",
-        ":: core :: option :: Option :: None => out . push (issue (\"Missing\" , [path , & [core \
+        ":: core :: option :: Option :: None => out . push (issue (\"Missing\" , [path , & [:: core \
          :: result :: Result :: Ok (\"data\" . to_owned ())]] . concat () , & [(\"Model\" , & \
          [\"Stroke\"] , 0)] , :: core :: option :: Option :: None , :: core :: option :: Option :: \
          None , :: std :: vec :: Vec :: new ())) , } , :: core :: option :: Option :: Some \
          (\"Hairline\") => { } ,",
-        ":: core :: option :: Option :: Some (\"Level\") => match object . get (\"data\") { core \
+        ":: core :: option :: Option :: Some (\"Level\") => match object . get (\"data\") { :: core \
          :: option :: Option :: None | :: core :: option :: Option :: Some (serde_json :: Value :: \
          Null) => { } :: core :: option :: Option :: Some (content) => < Inner > :: \
          decode_with_value_issues (content , & [path , & [:: core :: result :: Result :: Ok \
@@ -1754,7 +1756,7 @@ fn an_adjacently_tagged_enum_walks_what_the_variant_holds_under_the_content_key(
          :: Ok (\"data\" . to_owned ())]] . concat () , & [(\"Tuple\" , & [] , 2) , (\"U32\" , \
          & [] , 0) , (\"U32\" , & [] , 0)] , :: core :: option :: Option :: None , :: core :: option \
          :: Option :: None , :: std :: vec :: Vec :: new ())) , } ,",
-        ":: core :: option :: Option :: Some (\"Width\") => match object . get (\"data\") { core \
+        ":: core :: option :: Option :: Some (\"Width\") => match object . get (\"data\") { :: core \
          :: option :: Option :: Some (content) => out . extend (stroke_schema :: value_leaf \
          (content , < u32 as serde :: Deserialize > :: deserialize , | read | serde_json :: \
          to_value (read) . ok () , [path , & [:: core :: result :: Result :: Ok (\"data\" . \
@@ -2027,7 +2029,7 @@ fn an_externally_tagged_variant_is_looked_up_under_its_name_and_each_alias() {
          into_iter () . find_map (| tag | object . get (tag) . map (| content | (tag , \
          content))) { if let serde_json :: Value :: Object (inner) = content { match inner . \
          get (\"radius\") {",
-        ":: core :: option :: Option :: None => out . push (issue (\"Missing\" , [path , & [core \
+        ":: core :: option :: Option :: None => out . push (issue (\"Missing\" , [path , & [:: core \
          :: result :: Result :: Ok (tag . to_owned ()) , :: core :: result :: Result :: Ok \
          (\"radius\" . to_owned ())]] . concat () , & [(\"F64\" , & [] , 0)] , :: core :: option \
          :: Option :: None , :: core :: option :: Option :: None , :: std :: vec :: Vec :: new ())) , \
@@ -2046,7 +2048,7 @@ fn an_externally_tagged_variant_is_looked_up_under_its_name_and_each_alias() {
          to_owned ()) , :: core :: result :: Result :: Err (index)]] . concat () ,",
         "content => out . push (issue (\"Invalid\" , [path , & [:: core :: result :: Result :: Ok \
          (tag . to_owned ())]] . concat () , & [(\"Tuple\" , & [] , 2) , (\"I32\" , & [] , 0) , \
-         (\"I32\" , & [] , 0)] , :: core :: option :: Option :: Some (content . clone ()) , core \
+         (\"I32\" , & [] , 0)] , :: core :: option :: Option :: Some (content . clone ()) , :: core \
          :: option :: Option :: Some (\"not an array\" . to_owned ()) , :: std :: vec :: Vec :: \
          new ())) , } return vec ! [tag] ; }",
         "if let :: core :: option :: Option :: Some (content) = object . get (\"Old\") { out . \
@@ -2237,7 +2239,7 @@ fn a_flattened_type_is_walked_in_the_outer_object_and_its_keys_are_declared() {
          nested = :: std :: vec :: Vec :: new () ; let keys = < Extra > :: \
          decode_with_value_fields (remaining , path , issue , & mut nested) ; match < Extra as \
          serde :: Deserialize > :: deserialize (serde_json :: Value :: Object (remaining . \
-         clone ())) { :: core :: result :: Result :: Ok (_) => out . append (& mut nested) , core \
+         clone ())) { :: core :: result :: Result :: Ok (_) => out . append (& mut nested) , :: core \
          :: result :: Result :: Err (_) => out . push (issue (\"Mistyped\" , path . to_vec () , \
          & [(\"Optional\" , & [] , 1) , (\"Model\" , & [\"Extra\"] , 0)] , :: core :: option :: \
          Option :: Some (serde_json :: Value :: Object (object . clone ())) , :: core :: option :: \
@@ -3213,7 +3215,7 @@ fn an_untagged_enums_fields_walker_walks_the_variant_serde_reads_the_object_as()
     let unread = enum_json_of(UNREAD_UNTAGGED);
     assert!(
         unread.contains(
-            ":: core :: result :: Result :: Ok (Self :: Word (..)) => object . keys () . map (std \
+            ":: core :: result :: Result :: Ok (Self :: Word (..)) => object . keys () . map (:: std \
              :: string :: String :: as_str) . collect () , :: core :: result :: Result :: Ok (Self \
              :: Fax (..) | Self :: Pager { .. }) => :: std :: vec :: Vec :: new () , :: core :: \
              result :: Result :: Err (_) => { let found = & serde_json :: Value :: Object \
@@ -3359,7 +3361,7 @@ fn a_field_typed_with_an_alias_seen_above_is_walked_as_the_type_the_alias_names(
     assert!(!walker.contains("ReadWhole"), "got: {walker}");
     for written in [
         "pub trait EntryOf { type Key ; type Value ; }",
-        "pub mod decode_with_at0 { pub type Tier = << super :: super :: types :: Marks as core \
+        "pub mod decode_with_at0 { pub type Tier = << super :: super :: types :: Marks as :: core \
          :: iter :: IntoIterator > :: Item as super :: EntryOf > :: Key ; }",
         "pub mod decode_with_at1 { pub type Mark = < << super :: super :: types :: Marks as \
          :: core :: iter :: IntoIterator > :: Item as super :: EntryOf > :: Value as :: core :: iter \
