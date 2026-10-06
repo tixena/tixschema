@@ -4,11 +4,14 @@
 //! tests read structure, the same way `tests/dart_tests/tests.rs` reads the plain `dart` backend's
 //! own output: a substring that must appear, and a name that must not.
 
+use crate::features::dart::record_dart_fields;
+
 use super::{
     DART_BYTES_HEADER_OUT_SERVICE, DART_HTTP_SERVICE, DART_MULTIPART_HTTP_SERVICE,
     DART_PRIMITIVE_SERVICE, DART_SINGLE_PLACEHOLDER_HTTP_SERVICE, DART_STREAM_HTTP_SERVICE,
     DART_UNIT_SUCCESS_HTTP_SERVICE, MIXED_SERVICE, NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE,
-    NEWTYPE_HEADER_OUT_HTTP_SERVICE, dart_http_client_of,
+    NEWTYPE_HEADER_OUT_HTTP_SERVICE, RESERVED_WORD_SERVICE, SHADOWED_LOCAL_SERVICE,
+    dart_http_client_of,
 };
 
 /// The `send` signature every service's transport interface carries, whatever it declares.
@@ -845,4 +848,40 @@ fn a_newtype_header_out_element_decodes_through_its_codec_and_faults_when_it_ref
         ) && written.contains("a response header did not match its declared type"),
         "got: {written}"
     );
+}
+
+#[test]
+fn a_reserved_word_is_moved_in_the_method_the_parameter_and_the_requests_member() {
+    let written = dart_http_client_of(RESERVED_WORD_SERVICE);
+    for moved in [
+        " for_(ForRequest req, String? default_) async {",
+        "'${req.in_}'",
+        "if (default_ != null) {",
+        " object(Thing req) async {",
+        "HttpWireText(req.class_)",
+    ] {
+        assert!(written.contains(moved), "no `{moved}` in: {written}");
+    }
+}
+
+#[test]
+fn a_declared_messages_member_is_read_past_a_field_already_named_as_it_would_be_moved() {
+    record_dart_fields("Thing", vec!["class".to_owned(), "class_".to_owned()]);
+    let written = dart_http_client_of(RESERVED_WORD_SERVICE);
+    assert!(
+        written.contains("HttpWireText(req.class__)"),
+        "`class_` is a field of the message's own, so `class` is declared `class__`. Got: {written}"
+    );
+}
+
+#[test]
+fn an_argument_named_after_a_local_of_the_method_is_moved_off_it() {
+    let written = dart_http_client_of(SHADOWED_LOCAL_SERVICE);
+    for moved in [
+        " shadow(ShadowRequest req, String headers_, String? path_) async {",
+        "final rendered = '${headers_}';",
+        "if (path_ != null) {",
+    ] {
+        assert!(written.contains(moved), "no `{moved}` in: {written}");
+    }
 }

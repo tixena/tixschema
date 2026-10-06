@@ -9,7 +9,8 @@ use super::{
     KOTLIN_BYTES_HEADER_OUT_SERVICE, KOTLIN_HTTP_SERVICE, KOTLIN_MULTIPART_HTTP_SERVICE,
     KOTLIN_NUMERIC_HEADER_OUT_SERVICE, KOTLIN_SINGLE_PLACEHOLDER_HTTP_SERVICE,
     KOTLIN_STREAM_HTTP_SERVICE, KOTLIN_UNIT_SUCCESS_HTTP_SERVICE, MIXED_SERVICE,
-    NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE, NEWTYPE_HEADER_OUT_HTTP_SERVICE, kotlin_http_client_of,
+    NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE, NEWTYPE_HEADER_OUT_HTTP_SERVICE, RESERVED_WORD_SERVICE,
+    SHADOWED_LOCAL_SERVICE, kotlin_http_client_of,
 };
 
 /// The body of one method, from its own doc comment through the closing brace of the method
@@ -343,4 +344,29 @@ fn a_newtype_header_out_element_decodes_through_its_serializer_and_faults_when_i
         ) && written.contains("a response header did not match its declared type"),
         "got: {written}"
     );
+}
+
+#[test]
+fn a_hard_keyword_is_written_between_backticks_in_the_method_and_the_requests_member() {
+    let written = kotlin_http_client_of(RESERVED_WORD_SERVICE);
+    for escaped in [
+        "suspend fun `for`(req: ForRequest, default: String?)",
+        "${req.`in`}",
+        "suspend fun `object`(req: Thing)",
+        "WireText(req.`class`)",
+    ] {
+        assert!(written.contains(escaped), "no `{escaped}` in: {written}");
+    }
+}
+
+#[test]
+fn an_argument_named_after_a_local_of_the_method_is_copied_before_the_local_is_written() {
+    let written = kotlin_http_client_of(SHADOWED_LOCAL_SERVICE);
+    for moved in [
+        "suspend fun shadow(req: ShadowRequest, headers: String, path: String?)",
+        "    val headers_ = headers\n    val path_ = path\n    var path = \"\"",
+        "path_?.let {",
+    ] {
+        assert!(written.contains(moved), "no `{moved}` in: {written}");
+    }
 }

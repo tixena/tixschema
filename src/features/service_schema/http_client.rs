@@ -55,7 +55,7 @@ use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
     OperationOutcome, PathSegment, ScalarKind, ServiceDef, is_scalar_named_type, is_unit_type,
     option_inner, scalar_kind, service_declares_a_stream, service_declares_multipart,
-    tuple_elements, vec_inner, wire_key,
+    tuple_elements, vec_inner, wire_key, written,
 };
 use core::fmt::Write as _;
 use syn::Type;
@@ -340,7 +340,7 @@ fn query_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
     let placeholders = shape.placeholder_names();
     let mut pushes = String::new();
     for (field, ty) in fields {
-        let field_name = field.to_string();
+        let field_name = written(field);
         if placeholders.contains(&field_name) {
             continue;
         }
@@ -379,7 +379,7 @@ fn header_in_build_stmt(prefix: &str, operation: &OperationDef, shape: &HttpShap
     let mut stmt = String::from("      const headers: Array<[string, string]> = [];\n");
     for header in &shape.header_in {
         let name = &header.name;
-        let parameter = RenameRule::CamelCase.apply_to_field(&header.parameter.to_string());
+        let parameter = message::parameter_name(&header.parameter);
         let fault_expr = format!(
             "{prefix}HttpOutboundFault(\"{}\", [{{ path: [\"{name}\"], message: \"a header \
              value contains a character illegal in an HTTP header\" }}])",
@@ -436,7 +436,7 @@ fn multipart_parts_build_stmt(
     let mut stmt = String::from("      const parts: Array<[string, unknown]> = [];\n");
     if let OperationInputs::Generated(fields) = &operation.inputs {
         for (field, ty) in fields {
-            let field_name = field.to_string();
+            let field_name = written(field);
             if placeholders.contains(&field_name) {
                 continue;
             }
@@ -459,7 +459,7 @@ fn multipart_parts_build_stmt(
     }
     for part in &shape.multipart_parts {
         let name = &part.name;
-        let parameter = RenameRule::CamelCase.apply_to_field(&part.parameter.to_string());
+        let parameter = message::parameter_name(&part.parameter);
         let _ = writeln!(stmt, "      parts.push([\"{name}\", {parameter}]);");
     }
     stmt

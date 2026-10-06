@@ -40,11 +40,12 @@ use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
-    option_inner, tuple_elements,
+    option_inner, tuple_elements, written,
 };
 use core::fmt::Write as _;
 use syn::Type;
 
+use super::swift_http_client::{swift_call, swift_parameter, swift_parameter_declared};
 use super::swift_type::swift_typename_of;
 
 pub fn emit(service: &ServiceDef) -> Vec<String> {
@@ -94,7 +95,7 @@ fn failure_name(named: &str, operation: &OperationDef) -> Option<String> {
             success: _success,
         } => Some(format!(
             "{named}{}Failure",
-            RenameRule::PascalCase.apply_to_field(&operation.ident.to_string())
+            RenameRule::PascalCase.apply_to_field(&written(&operation.ident))
         )),
     }
 }
@@ -494,15 +495,15 @@ fn operation_method(
     }
 }
 
-/// One argument per `header_in` binding, after the message — the raw Rust identifier, never
-/// re-cased, mirrors `swift_http_client`'s own `method_params`.
+/// One argument per `header_in` binding, after the message — mirrors `swift_http_client`'s own
+/// `method_params`.
 fn header_in_params(param_ty: &str, shape: &HttpShape) -> String {
     let mut params = format!("_ req: {param_ty}");
     for header in &shape.header_in {
         let _ = write!(
             params,
             ", {}: {}",
-            header.parameter,
+            swift_parameter_declared(&header.parameter),
             swift_typename_of(&header.ty)
         );
     }
@@ -520,7 +521,8 @@ fn header_in_build_stmt(named: &str, shape: &HttpShape) -> String {
         let _ = writeln!(
             entries,
             "      \"{}\": {named}WsHeaderIn({}),",
-            header.name, header.parameter
+            header.name,
+            swift_parameter(&header.parameter)
         );
     }
     format!("    let headers: [String: {named}WsHeaderIn]? = [\n{entries}    ]\n")
@@ -533,7 +535,7 @@ fn one_way_method(
     has_header_in: bool,
     aux: &mut Vec<String>,
 ) -> String {
-    let call = &operation.ts_name;
+    let call = swift_call(operation);
     let wire = &operation.wire_name;
     let (param_ty, param_aux) = message_swift_type(operation);
     aux.extend(param_aux);
@@ -653,7 +655,7 @@ fn success_block(
             .map_or_else(|| swift_typename_of(success), |ty| swift_typename_of(ty));
         let headers_ty = format!(
             "{named}Ws{}SuccessHeaders",
-            RenameRule::PascalCase.apply_to_field(&operation.ident.to_string())
+            RenameRule::PascalCase.apply_to_field(&written(&operation.ident))
         );
         let (headers_struct, header_idents) =
             header_read_struct(&headers_ty, &shape.header_out, &elements, 1, "headerOut");
@@ -685,7 +687,7 @@ fn success_block(
     }
     let field_hint = format!(
         "{named}{}Success",
-        RenameRule::PascalCase.apply_to_field(&operation.ident.to_string())
+        RenameRule::PascalCase.apply_to_field(&written(&operation.ident))
     );
     let (success_ty, success_aux) =
         swift_reference_type(&get_field_def("value", success, ""), &field_hint);
@@ -716,7 +718,7 @@ fn declared_error_block(
     if shape.error_header_out.is_empty() {
         let error_hint = format!(
             "{named}{}Error",
-            RenameRule::PascalCase.apply_to_field(&operation.ident.to_string())
+            RenameRule::PascalCase.apply_to_field(&written(&operation.ident))
         );
         let (error_ty, error_aux) =
             swift_reference_type(&get_field_def("error", error, ""), &error_hint);
@@ -737,7 +739,7 @@ fn declared_error_block(
         .map_or_else(|| swift_typename_of(error), |ty| swift_typename_of(ty));
     let headers_ty = format!(
         "{named}Ws{}ErrorHeaders",
-        RenameRule::PascalCase.apply_to_field(&operation.ident.to_string())
+        RenameRule::PascalCase.apply_to_field(&written(&operation.ident))
     );
     let (headers_struct, header_idents) = header_read_struct(
         &headers_ty,
@@ -775,7 +777,7 @@ fn reply_method(
     has_header_in: bool,
     aux: &mut Vec<String>,
 ) -> String {
-    let call = &operation.ts_name;
+    let call = swift_call(operation);
     let wire = &operation.wire_name;
     let (param_ty, param_aux) = message_swift_type(operation);
     aux.extend(param_aux);

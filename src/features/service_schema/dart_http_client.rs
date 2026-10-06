@@ -58,17 +58,60 @@
 //! back, and one with no multipart operation sends an empty `parts`.
 
 use super::result::result_name;
-use crate::features::dart::{dart_json_decode, dart_json_encode, dart_typename};
+use crate::features::dart::{
+    dart_field_member, dart_fields_of, dart_json_decode, dart_json_encode, dart_local,
+    dart_typename,
+};
 use crate::field_type::{FieldDefType, get_field_def};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
     OperationOutcome, PathSegment, ServiceDef, is_scalar_named_type, is_unit_type, option_inner,
-    path_reads_a_named_field, tuple_elements, vec_inner, wire_key,
+    path_reads_a_named_field, tuple_elements, type_leaf_name, vec_inner, wire_key, written,
 };
 use crate::service_schema::support::fault_fields_typescript_name;
 use core::fmt::Write as _;
-use syn::Type;
+use syn::{Ident, Type};
+
+/// The locals and parameters an emitted method writes around an operation's own argument: the
+/// REST client's, the `ws_rpc` client's and the `ws_rpc` dispatcher's. Dart reads a name written
+/// after a local of that name as the local, without a word.
+const TAKEN_BY_A_METHOD: [&str; 34] = [
+    "answer",
+    "answered",
+    "body",
+    "contentRange",
+    "contentType",
+    "ctx",
+    "declared",
+    "declaredHead",
+    "decoded",
+    "e",
+    "error",
+    "fault",
+    "frame",
+    "frames",
+    "handlers",
+    "headers",
+    "headersIn",
+    "onFault",
+    "parts",
+    "path",
+    "query",
+    "queryParts",
+    "rejected",
+    "rendered",
+    "reply",
+    "replyHeaders",
+    "replyId",
+    "req",
+    "response",
+    "status",
+    "subscription",
+    "uncarried",
+    "unexpected",
+    "value",
+];
 
 /// The Dart record a `body = "stream"` operation's own success answers with: a nullable
 /// `contentRange` and the `contentType`, paired with the body as a lazily-pulled
@@ -174,16 +217,48 @@ fn client_class(service: &ServiceDef) -> String {
     )
 }
 
+/// The Dart name of the method that calls `operation`.
+pub(super) fn dart_call(operation: &OperationDef) -> String {
+    dart_local(&operation.ts_name, &[])
+}
+
+/// The Dart name of an operation's own argument: the Rust identifier, never re-cased. An
+/// argument is taken by position, so moving its name changes nothing for a caller.
+pub(super) fn dart_parameter(parameter: &Ident) -> String {
+    dart_local(&written(parameter), &TAKEN_BY_A_METHOD)
+}
+
+/// The member of the message `operation` takes that holds its field `name`, as the message's
+/// own class declares it. A declared message's other fields are known where it is declared above
+/// the service.
+fn request_member(operation: &OperationDef, name: &str) -> String {
+    let fields: Vec<String> = match &operation.inputs {
+        OperationInputs::Generated(fields) => {
+            fields.iter().map(|(field, _)| written(field)).collect()
+        }
+        OperationInputs::Named(message) => dart_fields_of(&type_leaf_name(message)),
+        OperationInputs::Empty => Vec::new(),
+    };
+    dart_field_member(name, &fields)
+}
+
 /// The parameter list a method takes: the message first, then one argument per `header_in`
-/// binding, then one per `part` binding, in declaration order — the raw Rust identifier, spelled
-/// exactly as the rest of this crate's Dart output spells a field, never re-cased.
+/// binding, then one per `part` binding, in declaration order.
 fn method_params(operation: &OperationDef, shape: &HttpShape) -> String {
     let mut params = vec![format!("{} req", message_dart_typename(operation))];
     for header in &shape.header_in {
-        params.push(format!("{} {}", dart_type_of(&header.ty), header.parameter));
+        params.push(format!(
+            "{} {}",
+            dart_type_of(&header.ty),
+            dart_parameter(&header.parameter)
+        ));
     }
     for part in &shape.multipart_parts {
-        params.push(format!("{} {}", dart_type_of(&part.ty), part.parameter));
+        params.push(format!(
+            "{} {}",
+            dart_type_of(&part.ty),
+            dart_parameter(&part.parameter)
+        ));
     }
     params.join(", ")
 }
@@ -262,7 +337,7 @@ pub(super) fn carries_no_value(operation: &OperationDef, shape: &HttpShape) -> b
 fn method(named: &str, fn_prefix: &str, operation: &OperationDef) -> String {
     let shape = HttpShape::of(operation);
     let wire = &operation.wire_name;
-    let call = &operation.ts_name;
+    let call = dart_call(operation);
     let params = method_params(operation, &shape);
     let returns = return_type(named, operation);
     let path_build = path_build_stmt(fn_prefix, operation, &shape);
@@ -311,20 +386,21 @@ fn placeholder_value_dart_expr(
     shape: &HttpShape,
     placeholder: &str,
 ) -> String {
+    let member = request_member(operation, placeholder);
     match &operation.inputs {
-        OperationInputs::Empty => format!("'${{req.{placeholder}}}'"),
+        OperationInputs::Empty => format!("'${{req.{member}}}'"),
         OperationInputs::Generated(fields) => fields
             .iter()
-            .find(|(field, _)| field == placeholder)
+            .find(|(field, _)| written(field) == placeholder)
             .map_or_else(
-                || format!("'${{req.{placeholder}}}'"),
-                |(_, ty)| dart_wire_text(ty, &format!("req.{placeholder}"), false),
+                || format!("'${{req.{member}}}'"),
+                |(_, ty)| dart_wire_text(ty, &format!("req.{member}"), false),
             ),
         OperationInputs::Named(declared) => {
             if shape.placeholder_names().len() == 1 && is_scalar_named_type(declared) {
                 dart_wire_text(declared, "req", true)
             } else {
-                format!("{}(req.{placeholder})", wire_text_call(fn_prefix))
+                format!("{}(req.{member})", wire_text_call(fn_prefix))
             }
         }
     }
@@ -362,18 +438,19 @@ fn query_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
     let placeholders = shape.placeholder_names();
     let mut pushes = String::new();
     for (field, ty) in fields {
-        let field_name = field.to_string();
+        let field_name = written(field);
         if placeholders.contains(&field_name) {
             continue;
         }
         let key = wire_key(field);
+        let member = request_member(operation, &field_name);
         // A bodyless method's own field, unbound to a placeholder, is always `Option<...>` — a
         // required field with nowhere else to go is refused at parse time.
         let inner = option_inner(ty).unwrap_or(ty);
         let rendered = dart_wire_text(inner, "value", true);
         let _ = write!(
             pushes,
-            "    {{\n      final value = req.{field_name};\n      if (value != null) {{\n        \
+            "    {{\n      final value = req.{member};\n      if (value != null) {{\n        \
              queryParts.add('{key}=' + Uri.encodeComponent({rendered}));\n      \
              }}\n    }}\n"
         );
@@ -398,7 +475,7 @@ fn header_in_build_stmt(
     let mut stmt = String::from("    final headers = <(String, String)>[];\n");
     for header in &shape.header_in {
         let name = &header.name;
-        let parameter = &header.parameter;
+        let parameter = dart_parameter(&header.parameter);
         let fault_expr = format!(
             "_{fn_prefix}HttpOutboundFault('{}', '{name}', 'a header value contains a \
              character illegal in an HTTP header')",
@@ -411,7 +488,7 @@ fn header_in_build_stmt(
              headers.add(('{name}', rendered));\n"
         );
         if let Some(inner) = option_inner(&header.ty) {
-            let text = dart_wire_text(inner, &parameter.to_string(), true);
+            let text = dart_wire_text(inner, &parameter, true);
             let _ = writeln!(
                 stmt,
                 "    if ({parameter} != null) {{\n      \
@@ -419,7 +496,7 @@ fn header_in_build_stmt(
                  }}"
             );
         } else {
-            let text = dart_wire_text(&header.ty, &parameter.to_string(), true);
+            let text = dart_wire_text(&header.ty, &parameter, true);
             let _ = writeln!(
                 stmt,
                 "    {{\n      final rendered = {text};\n{checked}    }}"
@@ -460,28 +537,29 @@ fn multipart_parts_build_stmt(operation: &OperationDef, shape: &HttpShape) -> St
     let mut stmt = String::from("    final parts = <(String, dynamic)>[];\n");
     if let OperationInputs::Generated(fields) = &operation.inputs {
         for (field, ty) in fields {
-            let field_name = field.to_string();
+            let field_name = written(field);
             if placeholders.contains(&field_name) {
                 continue;
             }
             let key = wire_key(field);
+            let member = request_member(operation, &field_name);
             if let Some(inner) = option_inner(ty) {
-                let text = dart_wire_text(inner, &format!("req.{field_name}!"), false);
+                let text = dart_wire_text(inner, &format!("req.{member}!"), false);
                 let _ = write!(
                     stmt,
-                    "    if (req.{field_name} != null) {{\n      \
+                    "    if (req.{member} != null) {{\n      \
                      parts.add(('{key}', {text}));\n    \
                      }}\n"
                 );
             } else {
-                let text = dart_wire_text(ty, &format!("req.{field_name}"), false);
+                let text = dart_wire_text(ty, &format!("req.{member}"), false);
                 let _ = writeln!(stmt, "    parts.add(('{key}', {text}));");
             }
         }
     }
     for part in &shape.multipart_parts {
         let name = &part.name;
-        let parameter = &part.parameter;
+        let parameter = dart_parameter(&part.parameter);
         let _ = writeln!(stmt, "    parts.add(('{name}', {parameter}));");
     }
     stmt

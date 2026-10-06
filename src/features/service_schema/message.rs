@@ -13,9 +13,125 @@ use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, ScalarKind, option_inner, scalar_kind,
-    tuple_elements, vec_inner,
+    tuple_elements, vec_inner, written,
 };
-use syn::Type;
+use syn::{Ident, Type};
+
+/// The locals and parameters an emitted dispatcher's arm writes around a path placeholder's own
+/// local.
+const TAKEN_BY_A_DISPATCHER: [&str; 25] = [
+    "answer",
+    "bytes",
+    "captured",
+    "contentType",
+    "ctx",
+    "declaredError",
+    "dispatched",
+    "envelope",
+    "error",
+    "found",
+    "headers",
+    "headersIn",
+    "message",
+    "method",
+    "parsedBody",
+    "path",
+    "queryMap",
+    "raw",
+    "rejected",
+    "rendered",
+    "replied",
+    "request",
+    "status",
+    "thrown",
+    "value",
+];
+
+/// The locals and parameters an emitted method writes around an operation's own argument: the
+/// REST client's, the client's over a transport, and the dispatcher's.
+const TAKEN_BY_A_METHOD: [&str; 28] = [
+    "answer",
+    "answered",
+    "body",
+    "contentRange",
+    "contentType",
+    "ctx",
+    "declared",
+    "error",
+    "headers",
+    "impl",
+    "operation",
+    "outcome",
+    "parsed",
+    "parts",
+    "path",
+    "payload",
+    "query",
+    "queryParts",
+    "received",
+    "rendered",
+    "replied",
+    "req",
+    "response",
+    "sending",
+    "status",
+    "transport",
+    "uncarried",
+    "validated",
+];
+
+/// The words `tsc` refuses as a parameter or a local in a module: the reserved words, the ones
+/// strict mode adds, and `arguments`, `await` and `eval`.
+const REFUSED_AS_A_NAME: [&str; 48] = [
+    "arguments",
+    "await",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "debugger",
+    "default",
+    "delete",
+    "do",
+    "else",
+    "enum",
+    "eval",
+    "export",
+    "extends",
+    "false",
+    "finally",
+    "for",
+    "function",
+    "if",
+    "implements",
+    "import",
+    "in",
+    "instanceof",
+    "interface",
+    "let",
+    "new",
+    "null",
+    "package",
+    "private",
+    "protected",
+    "public",
+    "return",
+    "static",
+    "super",
+    "switch",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typeof",
+    "var",
+    "void",
+    "while",
+    "with",
+    "yield",
+];
 
 /// The schema the message validates against: the one `#[model_schema()]` published for it, read
 /// through the same field walk every other reference to the type goes through rather than by
@@ -45,19 +161,43 @@ pub fn typename(operation: &OperationDef) -> String {
     }
 }
 
+/// `name` with a trailing underscore where TypeScript refuses the word, having no escape for
+/// one, and where `taken` holds it: the names written around it, which it would be read as.
+fn moved_off(name: &str, taken: &[&str]) -> String {
+    if REFUSED_AS_A_NAME.contains(&name) || taken.contains(&name) {
+        format!("{name}_")
+    } else {
+        name.to_owned()
+    }
+}
+
+/// The local a dispatcher's arm holds the captured text of the placeholder `name` in.
+pub fn placeholder_local(name: &str) -> String {
+    moved_off(name, &TAKEN_BY_A_DISPATCHER)
+}
+
+/// The TypeScript name of an operation's own argument: its Rust name camel-cased. An argument is
+/// taken by position, so moving its name changes nothing for a caller.
+pub fn parameter_name(parameter: &Ident) -> String {
+    moved_off(
+        &RenameRule::CamelCase.apply_to_field(&written(parameter)),
+        &TAKEN_BY_A_METHOD,
+    )
+}
+
 /// The arguments a bound header and a bound part add after the message, in declaration order,
 /// named and typed the same way for the client's method and the implementation's.
 pub fn binding_params(shape: &HttpShape) -> Vec<(String, String)> {
     let mut params = Vec::new();
     for header in &shape.header_in {
-        let name = RenameRule::CamelCase.apply_to_field(&header.parameter.to_string());
+        let name = parameter_name(&header.parameter);
         params.push((
             name.clone(),
             get_field_def(&name, &header.ty, "").typescript_typename(),
         ));
     }
     for part in &shape.multipart_parts {
-        let name = RenameRule::CamelCase.apply_to_field(&part.parameter.to_string());
+        let name = parameter_name(&part.parameter);
         params.push((
             name.clone(),
             get_field_def(&name, &part.ty, "").typescript_typename(),

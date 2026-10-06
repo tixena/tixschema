@@ -651,6 +651,18 @@ that writes them; the names end in `$`, which no argument `zod_factory_argument`
 bound is the one `z.union` and `z.array` are themselves declared with -- `ZodType` there reads the
 schema's output and brings the cycle back.
 
+A map of the item itself is read through the self view as well. `z.record` resolves its own type
+off its value as it is written, and inside the builder the item's own factory answers the
+builder's return type, still being inferred: `tsc --strict` refuses a record of it nested in
+another call (TS2345) and resolves a second record's output to `unknown` after a first (TS2322).
+`maps_of_itself_through_the_self_view`, called from `zod_factory_block` under `typescript`,
+rewrites the item's own factory call to `X$SchemaSelf(…)` wherever it is written inside a
+`z.record`/`z.partialRecord`, and hands a union's arrow the view where the arrow writes its
+argument inside one. `zod_factory_block` emits the view for whatever builder calls it, a tuple
+struct's included. A list or an `Option` of the item, and a reference to another generic item,
+keep the factory's call. Without `typescript` there is no `X<…>` to declare the view with, and
+nothing is rewritten.
+
 ### Declaring a Default Type per Parameter
 
 JSON Schema has no type parameters, so a generic item's document is built from one concrete
@@ -1157,7 +1169,8 @@ tixschema/
 5. **Using Zod v3** → Generated schemas use v4 syntax and won't work
 6. **Testing without feature combinations** → May break in different feature configurations
 7. **Declaring `u64`/`usize` under `swift` or `kotlin`** → Refused at expansion: neither target has a mapping for an unsigned 64-bit or pointer-sized integer. Use `i64`, or `u32` where the range allows
-8. **A member named after a word Dart, Swift or Kotlin reserves** → Written in the form the language accepts, the wire key unchanged: `dart_member` adds a trailing underscore (Dart has no escape), `swift_member` and `kotlin_property_name` write backticks. Each list (`DART_RESERVED`, `SWIFT_RESERVED`, `KOTLIN_HARD_KEYWORDS`) holds only words the real compiler refused as a member name, so a name that compiled before is emitted as before. A longer identifier built from a member's name (`wireFor`, `forKeys`) reads it through `swift_bare`/`kotlin_bare`
+8. **A member named after a word Dart, Swift or Kotlin reserves** → Written in the form the language accepts, the wire key unchanged: `dart_member` adds a trailing underscore (Dart has no escape), `swift_member` and `kotlin_property_name` write backticks. Each list (`DART_RESERVED`, `SWIFT_RESERVED`, `KOTLIN_HARD_KEYWORDS`) holds only words the real compiler refused as a member name, so a name that compiled before is emitted as before. A longer identifier built from a member's name (`wireFor`, `forKeys`) reads it through `swift_bare`/`kotlin_bare`. The service clients name a method, a parameter and a request's member through the same seams (`dart_local`/`dart_field_member`, `swift_member`/`swift_field_member`, `kotlin_name`/`kotlin_property_name`), and every name the service code reads as text goes through `parse::written`, which drops a raw identifier's `r#`; `parse::field_ident` writes it back where a keyword-named field is read in Rust. The TypeScript emitters name a header or part argument through `message::parameter_name` and a placeholder's local through `message::local_name`, which add a trailing underscore to a word `tsc` refuses as a parameter or a local in a module (`REFUSED_AS_A_NAME`, each one measured)
+9. **An argument or placeholder named after a local the generated code writes around it** (`path`, `headers`, `body`, `request`, `message`) → Never read as that local, and never a change to what a caller writes. The Rust transports hold a header or part argument in `parse::argument_local` (`argument_{name}`), bound there by a dispatcher and moved there by a client's method ahead of its own locals, and a path placeholder in `placeholder_{name}`. Each client emitter holds a `TAKEN_BY_A_METHOD` list of the locals and parameters its methods write: TypeScript (`message::parameter_name`) and Dart (`dart_parameter`) move a positional argument's name, Swift keeps the label and moves the name the method reads it by (`swift_parameter_declared`), Kotlin keeps the parameter and copies it first (`held_copies`, `kotlin_held`). A local added to an emitted method goes into that emitter's list
 
 ## Debugging Tips
 

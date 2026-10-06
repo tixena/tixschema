@@ -61,7 +61,7 @@
 //! one-way handler returns, a fault reply for anything that goes wrong before or during dispatch,
 //! so a pending caller is never left hanging.
 
-use super::dart_http_client::message_type;
+use super::dart_http_client::{dart_call, dart_parameter, message_type};
 use super::result::result_name;
 use crate::features::dart::{dart_json_decode, dart_json_encode, dart_typename};
 use crate::field_type::get_field_def;
@@ -405,7 +405,11 @@ fn return_type(named: &str, operation: &OperationDef) -> String {
 fn client_method_params(operation: &OperationDef, shape: &HttpShape) -> String {
     let mut params = vec![format!("{} req", message_dart_typename(operation))];
     for header in &shape.header_in {
-        params.push(format!("{} {}", dart_type_of(&header.ty), header.parameter));
+        params.push(format!(
+            "{} {}",
+            dart_type_of(&header.ty),
+            dart_parameter(&header.parameter)
+        ));
     }
     params.join(", ")
 }
@@ -418,7 +422,7 @@ fn header_in_build_stmt(shape: &HttpShape) -> String {
     }
     let mut entries = String::new();
     for header in &shape.header_in {
-        let encoded = dart_json_encode(&header.ty, &header.parameter.to_string(), true);
+        let encoded = dart_json_encode(&header.ty, &dart_parameter(&header.parameter), true);
         let _ = writeln!(entries, "      '{}': {encoded},", header.name);
     }
     format!("    final headers = <String, dynamic>{{\n{entries}    }};\n")
@@ -428,7 +432,7 @@ fn client_method(named: &str, operation: &OperationDef, headered: bool) -> Strin
     let fn_prefix = RenameRule::CamelCase.apply_to_variant(named);
     let shape = HttpShape::of(operation);
     let wire = &operation.wire_name;
-    let call = &operation.ts_name;
+    let call = dart_call(operation);
     let returns = return_type(named, operation);
     let doc = format!("  /// Calls `{wire}` over `ws_rpc`.");
     let sent = message_encode(operation);
@@ -712,7 +716,11 @@ fn handler_signature(operation: &OperationDef, shape: &HttpShape) -> String {
     let req_ty = message_dart_typename(operation);
     let mut params = vec!["Ctx ctx".to_owned(), format!("{req_ty} req")];
     for header in &shape.header_in {
-        params.push(format!("{} {}", dart_type_of(&header.ty), header.parameter));
+        params.push(format!(
+            "{} {}",
+            dart_type_of(&header.ty),
+            dart_parameter(&header.parameter)
+        ));
     }
     let joined = params.join(", ");
     match &operation.outcome {
@@ -737,7 +745,7 @@ fn handlers_class(service: &ServiceDef) -> String {
     let mut fields = String::new();
     for operation in &service.operations {
         let shape = HttpShape::of(operation);
-        let call = &operation.ts_name;
+        let call = dart_call(operation);
         let signature = handler_signature(operation, &shape);
         let _ = writeln!(params, "    required this.{call},");
         let _ = writeln!(fields, "  final {signature} {call};");
@@ -908,7 +916,7 @@ fn header_in_read_stmts(
     let mut idents = Vec::new();
     for header in &shape.header_in {
         let name = &header.name;
-        let parameter = header.parameter.to_string();
+        let parameter = dart_parameter(&header.parameter);
         let dart_ty = dart_type_of(&header.ty);
         let decode = dart_json_decode(&header.ty, &format!("headersIn?['{name}']"));
         let _ = write!(
@@ -948,7 +956,7 @@ fn header_call_args(header_locals: &[String]) -> String {
 fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> String {
     let shape = HttpShape::of(operation);
     let wire = &operation.wire_name;
-    let call = &operation.ts_name;
+    let call = dart_call(operation);
     let req_ty = message_dart_typename(operation);
     let received = message_decode(operation, "frame['payload']");
     let mut arm = format!(
@@ -978,7 +986,7 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
                 named,
                 fn_prefix,
                 wire,
-                call,
+                &call,
                 &header_args,
             ));
         }
@@ -990,7 +998,7 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
             };
             arm.push_str(&reply_dispatch_arm(
                 &naming,
-                call,
+                &call,
                 &header_args,
                 &shape,
                 success,

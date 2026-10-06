@@ -44,13 +44,14 @@
 //! `{ "isServiceFault": true, "fault": <fault fields> }` in its place — the convention every other
 //! surface in this crate already writes for an outbound or a dispatcher-detected fault.
 
+use super::kotlin_http_client::{held_copies, kotlin_held};
 use super::result::result_name;
-use crate::features::kotlin::kotlin_typename;
+use crate::features::kotlin::{kotlin_bare, kotlin_name, kotlin_property_name, kotlin_typename};
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
-    option_inner, tuple_elements,
+    option_inner, tuple_elements, written,
 };
 use crate::service_schema::support::fault_fields_typescript_name;
 use core::fmt::Write as _;
@@ -426,7 +427,7 @@ fn client_method_params(shape: &HttpShape, req_ty: &str) -> String {
     for header in &shape.header_in {
         params.push(format!(
             "{}: {}",
-            kotlin_property(&header.parameter.to_string()),
+            kotlin_property_name(&written(&header.parameter)),
             kotlin_type_of(&header.ty)
         ));
     }
@@ -439,9 +440,10 @@ fn client_headers_build_stmt(shape: &HttpShape) -> String {
     if shape.header_in.is_empty() {
         return "    val headers = buildJsonObject {}\n".to_owned();
     }
-    let mut stmt = String::from("    val headers = buildJsonObject {\n");
+    let mut stmt = held_copies(shape.header_in.iter().map(|header| &header.parameter));
+    stmt.push_str("    val headers = buildJsonObject {\n");
     for header in &shape.header_in {
-        let prop = kotlin_property(&header.parameter.to_string());
+        let prop = kotlin_held(&header.parameter);
         let name = &header.name;
         if let Some(inner) = option_inner(&header.ty) {
             let inner_ty = kotlin_type_of(inner);
@@ -469,7 +471,7 @@ fn client_method(
     has_headers: bool,
 ) -> String {
     let wire = &operation.wire_name;
-    let call = &operation.ts_name;
+    let call = kotlin_name(&operation.ts_name);
     let req_ty = message_kotlin_typename(operation);
     let shape = HttpShape::of(operation);
     let params = client_method_params(&shape, &req_ty);
@@ -696,7 +698,7 @@ fn handler_params(operation: &OperationDef, shape: &HttpShape) -> String {
     for header in &shape.header_in {
         params.push(format!(
             "{}: {}",
-            kotlin_property(&header.parameter.to_string()),
+            kotlin_property_name(&written(&header.parameter)),
             kotlin_type_of(&header.ty)
         ));
     }
@@ -704,7 +706,7 @@ fn handler_params(operation: &OperationDef, shape: &HttpShape) -> String {
 }
 
 fn handler_member(named: &str, operation: &OperationDef) -> String {
-    let call = &operation.ts_name;
+    let call = kotlin_name(&operation.ts_name);
     let shape = HttpShape::of(operation);
     let params = handler_params(operation, &shape);
     result_name(named, operation).map_or_else(
@@ -876,9 +878,9 @@ fn header_in_read_stmt(
     let mut stmt = String::new();
     let mut idents = Vec::new();
     for header in &shape.header_in {
-        let prop = kotlin_property(&header.parameter.to_string());
+        let prop = kotlin_held(&header.parameter);
         let name = &header.name;
-        let raw_ident = format!("{prop}Raw");
+        let raw_ident = format!("{}Raw", kotlin_bare(&prop));
         if let Some(inner) = option_inner(&header.ty) {
             let inner_ty = kotlin_type_of(inner);
             let decode_fault = fault_reply_stmt(named, "fault");
@@ -1055,7 +1057,7 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
     let call_args = call_arg_list.join(", ");
     match &operation.outcome {
         OperationOutcome::OneWay => {
-            let call = &operation.ts_name;
+            let call = kotlin_name(&operation.ts_name);
             let panic_fault = fault_reply_stmt(named, "fault");
             let ack = reply_frame_expr(named, "true", "value", "JsonNull");
             let _ = write!(
@@ -1073,7 +1075,7 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
             );
         }
         OperationOutcome::Reply { error, success } => {
-            let call = &operation.ts_name;
+            let call = kotlin_name(&operation.ts_name);
             let result = result_name(named, operation).unwrap();
             let panic_fault = fault_reply_stmt(named, "fault");
             let ok_line = ok_arm(named, &result, &shape, success);
@@ -1191,10 +1193,6 @@ fn fault_helper_validation(named: &str, fn_prefix: &str, needs_field: bool) -> S
 // Small, Kotlin-flavored value rendering, duplicated from `kotlin_http_client` rather than shared
 // with it: this module needs none of its HTTP-shaped machinery.
 // ---------------------------------------------------------------------------------------------
-
-fn kotlin_property(raw: &str) -> String {
-    RenameRule::CamelCase.apply_to_field(raw)
-}
 
 /// The message's Kotlin type: the type the operation named, or the one the macro declared for an
 /// operation that named none.

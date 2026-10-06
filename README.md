@@ -1028,7 +1028,15 @@ pub struct Chain<IdType> {
   get next() { return (<Reached$ extends z.core.SomeType>(reached$: Reached$) => z.union([z.null().transform(() => undefined), reached$, z.undefined()]).prefault(undefined))(Chain$SchemaFactory(idType)); },
 ```
 
-It parses exactly what the plain union parses: an absent key, a `null` and an `undefined` all answer `undefined`, under a key that is there. An optional list or map of the type is built inside the arrow the same way (`z.array(reached$)`, `z.record(z.string(), reached$)`), and a member that reaches two generic types takes one parameter for each. One shape is still refused by the compiler: a generic type that holds a map of itself that is not optional, written *above* an optional map of itself. Writing the optional one first type-checks, and so does marking it `nullable`.
+It parses exactly what the plain union parses: an absent key, a `null` and an `undefined` all answer `undefined`, under a key that is there. An optional list or map of the type is built inside the arrow the same way (`z.array(reached$)`, `z.record(z.string(), reached$)`), and a member that reaches two generic types takes one parameter for each.
+
+A map of the type itself goes one step further. A map's own type is read off what it holds as soon as the map is written, and for a generic type holding itself that is the builder's own return type, which is still being worked out. So inside a map the type is reached through the function a tuple struct reaches itself through, `X$SchemaSelf`, declared to return what the factory's schema parses:
+
+```typescript
+  get by_key() { return z.record(z.string(), Chain$SchemaSelf(idType)); },
+```
+
+Where the map is optional, that call is what the arrow is handed. A list or an `Option` of the type keeps the factory's own call, and with it the factory's precise type.
 
 #### Declaring the default type
 
@@ -3952,6 +3960,34 @@ pub struct Reserved {
 The words are each language's own: Dart's [reserved words](https://dart.dev/language/keywords), Swift's [keywords](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/lexicalstructure/#Keywords-and-Punctuation) reserved in a declaration, a statement or an expression, and Kotlin's [hard keywords](https://kotlinlang.org/docs/keyword-reference.html#hard-keywords). A word a language reserves in one context only -- `type` in Swift, `value` in Kotlin, `get` in Dart -- names a member as it is. Dart also moves a field named `dynamic`, the type every emitted `fromJson` and `toJson` is written with, and a plain enum's member named `index`, `values` or `wireValue`, each of which a Dart enum or the emitted one already holds. Where the moved name is one the type writes itself (`class` beside `class_`), it takes a second underscore.
 
 A plain enum's members are lower-cased by Dart and Swift, so the same rule reaches a variant: `Default` is `default_` in Dart and `` `default` `` in Swift. Kotlin keeps a variant's spelling, which no keyword matches.
+
+A service's clients follow the same rule for an operation, an argument and a path placeholder. An argument Rust needs a raw identifier for binds the placeholder written without it, `r#in` and `{in}`:
+
+```rust
+#[service_schema_op(http(
+    method = "POST",
+    path = "/items/{in}",
+    header_in("x-tenant" = default),
+))]
+async fn r#for(
+    &self,
+    ctx: &Ctx,
+    r#in: String,
+    r#final: String,
+    default: Option<String>,
+) -> Result<Found, FindError>;
+```
+
+| Target | The call |
+|--------|----------|
+| TypeScript | `client.for({ in: ..., final: ... }, default_)` -- a method and a property take any word, an argument takes a trailing underscore |
+| Dart | `client.for_(ForRequest(in_: ..., final_: ...), default_)` |
+| Swift | ``client.`for`(ForRequest(`in`: ..., final: ...), `default`: ...)`` |
+| Kotlin | ``client.`for`(ForRequest(`in` = ..., final = ...), default)`` |
+
+The operation's wire name (`for`), the URL (`/items/...`) and the keys (`final`) are what they are for any other name.
+
+An argument may also be named after a local the generated code writes around it -- `path`, `headers`, `body`, `request` -- and no client or dispatcher reads it as its own. The Rust transports hold a header or part argument in a local of their own. TypeScript and Dart, which take such an argument by position, move its name (`path_`); Swift keeps the label a caller writes and reads the argument by another name (`path path_: String`); Kotlin keeps the parameter and copies it before it writes its own local. Nothing a caller writes changes.
 
 `just test-emitted` runs the emitted clients under their own toolchains. Its Kotlin leg compiles
 against the serialization compiler plugin and the `kotlinx-serialization-json`,

@@ -3826,3 +3826,34 @@ fn argument_order_does_not_change_the_expansion() {
     .to_string();
     assert_eq!(forward, reversed);
 }
+
+/// A header argument is held in a local of its own on every transport, in the dispatcher and in
+/// the client: the argument's own name may be one of the locals the transport writes around it.
+#[test]
+fn a_header_argument_is_held_in_a_local_of_its_own_on_every_transport() {
+    for expansion in [
+        expansion_over_amqp_rpc(HTTP_SERVICE),
+        expansion_over_ws_rpc(HTTP_SERVICE),
+        expansion_over_http_rest(HTTP_SERVICE),
+    ] {
+        // Without the literals, which hold the clients written in other languages.
+        let over = without_literals(expansion).to_string();
+        assert!(
+            over.contains("let argument_byte_range = byte_range ;"),
+            "the client moves the argument before it writes a local. Got: {over}"
+        );
+        for own_name in ["& byte_range", "let byte_range"] {
+            let read = over
+                .find(own_name)
+                .map(|at| &over[at.saturating_sub(120)..at + 60]);
+            assert_eq!(
+                read, None,
+                "nothing reads or binds the argument's own name after it is moved"
+            );
+        }
+        assert!(
+            over.contains(", argument_byte_range)"),
+            "the dispatcher hands the handler its own local. Got: {over}"
+        );
+    }
+}

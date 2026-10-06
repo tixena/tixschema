@@ -7,8 +7,8 @@
 
 use super::{
     BYTES_HTTP_SERVICE, MIXED_HTTP_SERVICE, MIXED_SERVICE, MULTIPART_HTTP_SERVICE,
-    OPTIONAL_HEADER_OUT_HTTP_SERVICE, SINGLE_PLACEHOLDER_HTTP_SERVICE, STREAM_HTTP_SERVICE,
-    TS_UNIT_SUCCESS_SERVICE, http_client_of,
+    OPTIONAL_HEADER_OUT_HTTP_SERVICE, RESERVED_WORD_SERVICE, SHADOWED_LOCAL_SERVICE,
+    SINGLE_PLACEHOLDER_HTTP_SERVICE, STREAM_HTTP_SERVICE, TS_UNIT_SUCCESS_SERVICE, http_client_of,
 };
 
 #[test]
@@ -628,4 +628,29 @@ fn method_body(written: &str, call: &str) -> String {
         .map(|(body, _)| body.to_owned());
     assert!(found.is_some(), "no `{call}` method found. Got: {written}");
     found.unwrap()
+}
+
+#[test]
+fn an_argument_named_after_a_word_typescript_refuses_takes_a_trailing_underscore() {
+    let written = http_client_of(RESERVED_WORD_SERVICE);
+    for moved in [
+        "async for(req: ForRequest, default_: string | undefined) {",
+        "if (default_ !== undefined) {",
+        "const rendered = String(default_);",
+        "headers.push([\"x-tenant\", rendered]);",
+    ] {
+        assert!(written.contains(moved), "no `{moved}` in: {written}");
+    }
+}
+
+#[test]
+fn an_argument_named_after_a_local_of_the_method_is_moved_off_it() {
+    let written = http_client_of(SHADOWED_LOCAL_SERVICE);
+    for moved in [
+        "async shadow(req: ShadowRequest, headers_: string, path_: string | undefined) {",
+        "const rendered = String(headers_);",
+        "if (path_ !== undefined) {",
+    ] {
+        assert!(written.contains(moved), "no `{moved}` in: {written}");
+    }
 }

@@ -291,21 +291,25 @@ const fn enum_tag_attrs(_attrs: &[syn::Attribute]) -> EnumTagAttrs {
 
 /// A property's name without the backticks [`kotlin_property_name`] may have put around it: what
 /// a longer identifier is built from, and what the wire name is compared with.
-fn kotlin_bare(property: &str) -> &str {
+pub fn kotlin_bare(property: &str) -> &str {
     property.trim_matches('`')
+}
+
+/// `cased`, a name already cased as Kotlin writes one, between backticks where it is a hard
+/// keyword, which is the name itself to Kotlin and to `kotlinx.serialization`.
+pub fn kotlin_name(cased: &str) -> String {
+    if KOTLIN_HARD_KEYWORDS.contains(&cased) {
+        format!("`{cased}`")
+    } else {
+        cased.to_owned()
+    }
 }
 
 /// `rust_name` cased the way a Kotlin property is: `conversation_id` -> `conversationId`. Reuses
 /// serde's own `camelCase` rule (`rename_rule.rs`) rather than a second implementation, since the
-/// two rules coincide exactly on a `snake_case` Rust identifier. A hard keyword is written between
-/// backticks, which is the name itself to Kotlin and to `kotlinx.serialization`.
-fn kotlin_property_name(rust_name: &str) -> String {
-    let cased = RenameRule::CamelCase.apply_to_field(rust_name);
-    if KOTLIN_HARD_KEYWORDS.contains(&cased.as_str()) {
-        format!("`{cased}`")
-    } else {
-        cased
-    }
+/// two rules coincide exactly on a `snake_case` Rust identifier.
+pub fn kotlin_property_name(rust_name: &str) -> String {
+    kotlin_name(&RenameRule::CamelCase.apply_to_field(rust_name))
 }
 
 /// Whether `field` carries `#[model_schema_prop(nullable)]` — the flag that keeps an `Option<T>`

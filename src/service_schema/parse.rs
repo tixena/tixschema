@@ -42,6 +42,7 @@ use crate::utils::{is_recorded_unit_struct_type, is_recorded_untagged_enum, is_w
 use proc_macro2::TokenTree;
 use quote::{ToTokens as _, format_ident};
 use std::collections::{HashMap, HashSet};
+use syn::ext::IdentExt as _;
 use syn::meta::ParseNestedMeta;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned as _;
@@ -172,7 +173,7 @@ impl OperationDef {
             OperationInputs::Named(_) => None,
             OperationInputs::Empty | OperationInputs::Generated(_) => Some(format_ident!(
                 "{}Request",
-                RenameRule::PascalCase.apply_to_field(&self.ident.to_string()),
+                RenameRule::PascalCase.apply_to_field(&written(&self.ident)),
                 span = self.ident.span()
             )),
         }
@@ -628,11 +629,33 @@ pub fn error_declared_type(error_header_out_len: usize, error: &Type) -> &Type {
         .unwrap_or(error)
 }
 
+/// `ident` as it is named anywhere but in Rust: a raw identifier (`r#in`) without its `r#`.
+pub fn written(ident: &Ident) -> String {
+    ident.unraw().to_string()
+}
+
+/// The local a transport holds an operation's own header or part argument in: a name of its own,
+/// since the argument's may be one of the locals the transport writes around it.
+pub fn argument_local(parameter: &Ident) -> Ident {
+    format_ident!("argument_{}", written(parameter))
+}
+
+/// The identifier a field named `name` is declared with: a raw one where `name` is a keyword.
+pub fn field_ident(name: &str) -> Ident {
+    let span = proc_macro2::Span::call_site();
+    if syn::parse_str::<Ident>(name).is_ok() || matches!(name, "Self" | "crate" | "self" | "super")
+    {
+        Ident::new(name, span)
+    } else {
+        Ident::new_raw(name, span)
+    }
+}
+
 /// The camelCase wire key one of an operation's own generated fields is read or written under:
 /// a path segment, a query parameter and a header value all coerce against the same key a JSON
 /// body would carry the field under.
 pub fn wire_key(field: &Ident) -> String {
-    RenameRule::CamelCase.apply_to_field(&field.to_string())
+    RenameRule::CamelCase.apply_to_field(&written(field))
 }
 
 /// The name a declared type's own value carries at its leaf path segment — `WindowError` out of
@@ -949,7 +972,7 @@ fn operation_inputs(
                 plain_argument_name_message(named),
             ));
         };
-        if extra_claims.contains(&argument.ident.to_string()) {
+        if extra_claims.contains(&written(&argument.ident)) {
             continue;
         }
         carried.push((argument.ident.clone(), typed.ty.as_ref().clone()));
@@ -1001,11 +1024,11 @@ fn parse_operation(operation: &TraitItemFn, context: &Ident) -> Result<Operation
         .map(|raw| {
             raw.header_in
                 .iter()
-                .map(|(_, parameter)| parameter.to_string())
+                .map(|(_, parameter)| written(parameter))
                 .chain(
                     raw.multipart_parts
                         .iter()
-                        .map(|(_, parameter)| parameter.to_string()),
+                        .map(|(_, parameter)| written(parameter)),
                 )
                 .collect()
         })
@@ -1017,7 +1040,7 @@ fn parse_operation(operation: &TraitItemFn, context: &Ident) -> Result<Operation
         .http
         .map(|raw| build_http_binding(&ident, operation, raw, &inputs, &outcome))
         .transpose()?;
-    let declared = ident.to_string();
+    let declared = written(&ident);
     Ok(OperationDef {
         http,
         ident,
@@ -1047,7 +1070,7 @@ fn extra_arguments(operation: &TraitItemFn) -> HashMap<String, Type> {
             let Pat::Ident(named) = typed.pat.as_ref() else {
                 return None;
             };
-            Some((named.ident.to_string(), typed.ty.as_ref().clone()))
+            Some((written(&named.ident), typed.ty.as_ref().clone()))
         })
         .collect()
 }
@@ -1058,11 +1081,11 @@ fn named_message_argument<'op>(operation: &'op TraitItemFn, raw: &RawHttp) -> Op
     let claimed: HashSet<String> = raw
         .header_in
         .iter()
-        .map(|(_, parameter)| parameter.to_string())
+        .map(|(_, parameter)| written(parameter))
         .chain(
             raw.multipart_parts
                 .iter()
-                .map(|(_, parameter)| parameter.to_string()),
+                .map(|(_, parameter)| written(parameter)),
         )
         .collect();
     operation.sig.inputs.iter().skip(2).find_map(|input| {
@@ -1072,7 +1095,7 @@ fn named_message_argument<'op>(operation: &'op TraitItemFn, raw: &RawHttp) -> Op
         let Pat::Ident(named) = typed.pat.as_ref() else {
             return None;
         };
-        (!claimed.contains(&named.ident.to_string())).then_some(&named.ident)
+        (!claimed.contains(&written(&named.ident))).then_some(&named.ident)
     })
 }
 
@@ -1968,7 +1991,7 @@ fn build_http_binding(
 
     let existing = extra_arguments(operation);
     for (name, parameter) in &raw.header_in {
-        if !existing.contains_key(&parameter.to_string()) {
+        if !existing.contains_key(&written(parameter)) {
             refusals = Some(combined(
                 refusals.take(),
                 syn::Error::new(
@@ -2040,7 +2063,7 @@ fn build_http_binding(
             .header_in
             .into_iter()
             .filter_map(|(name, parameter)| {
-                let ty = existing.get(&parameter.to_string())?.clone();
+                let ty = existing.get(&written(&parameter))?.clone();
                 Some(HeaderIn {
                     name: name.value(),
                     parameter,
@@ -2058,7 +2081,7 @@ fn build_http_binding(
             .multipart_parts
             .into_iter()
             .filter_map(|(name, parameter)| {
-                let ty = existing.get(&parameter.to_string())?.clone();
+                let ty = existing.get(&written(&parameter))?.clone();
                 Some(MultipartPart {
                     name: name.value(),
                     parameter,
@@ -2371,7 +2394,7 @@ fn multipart_refusals(
 ) -> Option<syn::Error> {
     let mut refusals: Option<syn::Error> = None;
     for (name, parameter) in &raw.multipart_parts {
-        if !existing.contains_key(&parameter.to_string()) {
+        if !existing.contains_key(&written(parameter)) {
             refusals = Some(combined(
                 refusals.take(),
                 syn::Error::new(
@@ -2406,11 +2429,11 @@ fn multipart_refusals(
     let claimed: HashSet<String> = raw
         .header_in
         .iter()
-        .map(|(_, parameter)| parameter.to_string())
+        .map(|(_, parameter)| written(parameter))
         .chain(
             raw.multipart_parts
                 .iter()
-                .map(|(_, parameter)| parameter.to_string()),
+                .map(|(_, parameter)| written(parameter)),
         )
         .collect();
     // A sorted, owned snapshot rather than iterating `existing` (a `HashMap`) directly: the
@@ -2474,7 +2497,10 @@ fn placeholder_refusals(
 
     let mut refusals: Option<syn::Error> = None;
     for &placeholder in &placeholders {
-        if !fields.iter().any(|(field, _)| field == placeholder) {
+        if !fields
+            .iter()
+            .any(|(field, _)| written(field) == placeholder)
+        {
             refusals = Some(combined(
                 refusals.take(),
                 syn::Error::new(
@@ -2487,7 +2513,7 @@ fn placeholder_refusals(
 
     if !method.carries_a_body() {
         for (field, ty) in fields {
-            let named = field.to_string();
+            let named = written(field);
             if placeholders.contains(&named.as_str()) || is_option_type(ty) {
                 continue;
             }

@@ -44,7 +44,7 @@ use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
     OperationOutcome, PathSegment, ServiceDef, error_declared_type, is_scalar_named_type,
     option_inner, service_declares_a_stream, service_declares_multipart, tuple_elements,
-    type_leaf_name, vec_inner, wire_key,
+    type_leaf_name, vec_inner, wire_key, written,
 };
 use crate::service_schema::support::fault_fields_typescript_name;
 use crate::utils::is_recorded_untagged_enum;
@@ -454,12 +454,20 @@ fn named_message_build(
     if placeholder_names.len() == 1 && is_scalar_named_type(named_type) {
         return (
             String::new(),
-            message::decode_ts_expr(named_type, &placeholder_names[0], prefix),
+            message::decode_ts_expr(
+                named_type,
+                &message::placeholder_local(&placeholder_names[0]),
+                prefix,
+            ),
         );
     }
     let mut setup = parsed_body_base_stmt();
     for name in placeholder_names {
-        let _ = writeln!(setup, "        message[\"{name}\"] = {name};");
+        let _ = writeln!(
+            setup,
+            "        message[\"{name}\"] = {};",
+            message::placeholder_local(name)
+        );
     }
     (setup, "message".to_owned())
 }
@@ -498,7 +506,7 @@ fn generated_message_build(
         && !multipart
         && fields
             .iter()
-            .any(|(field, _)| !placeholder_names.contains(&field.to_string()));
+            .any(|(field, _)| !placeholder_names.contains(&written(field)));
     let mut setup = if multipart {
         "        const message: Record<string, unknown> = {};\n".to_owned()
     } else if bodied {
@@ -512,7 +520,7 @@ fn generated_message_build(
         "        const message: Record<string, unknown> = {};\n".to_owned()
     };
     for (field, ty) in fields {
-        let field_name = field.to_string();
+        let field_name = written(field);
         let is_placeholder = placeholder_names.contains(&field_name);
         if !is_placeholder && !multipart && bodied {
             // Neither placeholder- nor part-bound, and the method carries a body: the field is
@@ -521,7 +529,8 @@ fn generated_message_build(
         }
         let key = wire_key(field);
         if is_placeholder {
-            let decode = message::decode_ts_expr(ty, &field_name, prefix);
+            let decode =
+                message::decode_ts_expr(ty, &message::placeholder_local(&field_name), prefix);
             let _ = writeln!(setup, "        message[\"{key}\"] = {decode};");
         } else if multipart {
             setup.push_str(&multipart_field_insert(&key, ty, prefix));
@@ -645,7 +654,11 @@ fn arm(operation: &OperationDef, ctx: &DispatcherContext) -> String {
         let _ = writeln!(
             out,
             "        const [{}] = captured;",
-            placeholder_names.join(", ")
+            placeholder_names
+                .iter()
+                .map(|name| message::placeholder_local(name))
+                .collect::<Vec<_>>()
+                .join(", ")
         );
     }
     let (setup, message_expr) = message_build(operation, &shape, prefix);
@@ -670,7 +683,7 @@ fn header_in_encode_stmt(shape: &HttpShape, prefix: &str) -> String {
         let name = &header.name;
         let text = format!(
             "{}Text",
-            RenameRule::CamelCase.apply_to_field(&header.parameter.to_string())
+            RenameRule::CamelCase.apply_to_field(&written(&header.parameter))
         );
         let lower = name.to_lowercase();
         let decode = message::decode_ts_expr(&header.ty, &text, prefix);
@@ -809,7 +822,7 @@ fn generated_rule_lines(
     let placeholders = shape.placeholder_names();
     if fields
         .iter()
-        .all(|(field, _)| placeholders.contains(&field.to_string()))
+        .all(|(field, _)| placeholders.contains(&written(field)))
     {
         return vec![
             "a macro-generated message: every field comes from its own placeholder.".to_owned(),

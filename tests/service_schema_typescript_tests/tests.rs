@@ -1424,6 +1424,87 @@ impl HeaderProbeService<()> for HeaderProbeBackEnd {
     }
 }
 
+/// One operation whose placeholder and header argument are named after words TypeScript refuses
+/// as a parameter or a local, and one whose are named after locals the emitted functions write
+/// themselves.
+#[service_schema(transports = [])]
+pub trait ReservedProbeService<Ctx> {
+    #[service_schema_op(http(
+        method = "POST",
+        path = "/items/{in}",
+        header_in("x-tenant" = default),
+    ))]
+    async fn r#for(
+        &self,
+        ctx: &Ctx,
+        r#in: String,
+        r#final: String,
+        default: Option<String>,
+    ) -> Result<HeaderProbeDocument, HeaderProbeError>;
+
+    #[service_schema_op(http(
+        method = "POST",
+        path = "/shadows/{message}",
+        header_in("x-headers" = headers),
+        header_in("x-path" = path),
+    ))]
+    async fn shadow(
+        &self,
+        ctx: &Ctx,
+        message: String,
+        sending: String,
+        headers: String,
+        path: Option<String>,
+    ) -> Result<HeaderProbeDocument, HeaderProbeError>;
+}
+
+pub struct ReservedProbeBackEnd;
+
+impl ReservedProbeService<()> for ReservedProbeBackEnd {
+    async fn r#for(
+        &self,
+        _ctx: &(),
+        r#in: String,
+        r#final: String,
+        default: Option<String>,
+    ) -> Result<HeaderProbeDocument, HeaderProbeError> {
+        ready(()).await;
+        if r#in.is_empty() {
+            Err(HeaderProbeError::Missing)
+        } else {
+            Ok(HeaderProbeDocument {
+                title: [Some(r#in), Some(r#final), default]
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<_>>()
+                    .join("|"),
+            })
+        }
+    }
+
+    async fn shadow(
+        &self,
+        _ctx: &(),
+        message: String,
+        sending: String,
+        headers: String,
+        path: Option<String>,
+    ) -> Result<HeaderProbeDocument, HeaderProbeError> {
+        ready(()).await;
+        if message.is_empty() {
+            Err(HeaderProbeError::Missing)
+        } else {
+            Ok(HeaderProbeDocument {
+                title: [Some(message), Some(sending), Some(headers), path]
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<_>>()
+                    .join("|"),
+            })
+        }
+    }
+}
+
 /// The probe never suspends, so one poll answers it; `None` says an assumption about the bodies
 /// above stopped holding rather than that the runtime is missing.
 fn poll_once<Answered>(answering: Answered) -> Option<Answered::Output>
@@ -1464,6 +1545,45 @@ fn the_unit_success_service_is_still_implementable_and_callable() {
     ))
     .unwrap();
     assert!(answered.is_ok(), "got: {answered:?}");
+}
+
+#[test]
+fn a_service_named_after_reserved_words_is_still_implementable_and_callable() {
+    let answered = poll_once(ReservedProbeBackEnd.r#for(
+        &(),
+        "i".to_owned(),
+        "f".to_owned(),
+        Some("n".to_owned()),
+    ))
+    .unwrap();
+    assert_eq!(answered.unwrap().title, "i|f|n");
+    let refused =
+        poll_once(ReservedProbeBackEnd.r#for(&(), String::new(), String::new(), None)).unwrap();
+    assert!(
+        matches!(refused, Err(HeaderProbeError::Missing)),
+        "got: {refused:?}"
+    );
+    let shadowed = poll_once(ReservedProbeBackEnd.shadow(
+        &(),
+        "m".to_owned(),
+        "s".to_owned(),
+        "h".to_owned(),
+        Some("p".to_owned()),
+    ))
+    .unwrap();
+    assert_eq!(shadowed.unwrap().title, "m|s|h|p");
+    let unnamed = poll_once(ReservedProbeBackEnd.shadow(
+        &(),
+        String::new(),
+        String::new(),
+        String::new(),
+        None,
+    ))
+    .unwrap();
+    assert!(
+        matches!(unnamed, Err(HeaderProbeError::Missing)),
+        "got: {unnamed:?}"
+    );
 }
 
 #[test]

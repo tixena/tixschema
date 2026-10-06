@@ -304,7 +304,7 @@ fn method(service: &ServiceDef, operation: &OperationDef) -> String {
             shape
                 .header_in
                 .iter()
-                .map(|header| RenameRule::CamelCase.apply_to_field(&header.parameter.to_string())),
+                .map(|header| message::parameter_name(&header.parameter)),
         )
         .collect::<Vec<_>>()
         .join(", ");
@@ -337,7 +337,7 @@ fn method_params(operation: &OperationDef) -> String {
     let shape = HttpShape::of(operation);
     once(format!("req: {}", message::typename(operation)))
         .chain(shape.header_in.iter().map(|header| {
-            let name = RenameRule::CamelCase.apply_to_field(&header.parameter.to_string());
+            let name = message::parameter_name(&header.parameter);
             let ty = get_field_def(&name, &header.ty, "").typescript_typename();
             format!("{name}: {ty}")
         }))
@@ -355,7 +355,7 @@ fn header_in_build_stmt(shape: &HttpShape) -> (String, String) {
     let mut stmt = String::from("      const headers: Array<[string, string]> = [];\n");
     for header in &shape.header_in {
         let name = &header.name;
-        let parameter = RenameRule::CamelCase.apply_to_field(&header.parameter.to_string());
+        let parameter = message::parameter_name(&header.parameter);
         let value = if option_inner(&header.ty).is_some() {
             format!("{parameter} ?? null")
         } else {
