@@ -119,12 +119,12 @@ fn decode_expr(ty: &Type, raw: &TokenStream) -> TokenStream {
         ScalarKind::Number => quote! {
             {
                 let raw_text = #raw;
-                if let Ok(as_integer) = raw_text.parse::<i64>() {
+                if let ::core::result::Result::Ok(as_integer) = raw_text.parse::<i64>() {
                     ::serde_json::Value::from(as_integer)
-                } else if let Ok(as_float) = raw_text.parse::<f64>() {
+                } else if let ::core::result::Result::Ok(as_float) = raw_text.parse::<f64>() {
                     match ::serde_json::Number::from_f64(as_float) {
-                        Some(number) => ::serde_json::Value::Number(number),
-                        None => ::serde_json::Value::String(raw_text.to_owned()),
+                        ::core::option::Option::Some(number) => ::serde_json::Value::Number(number),
+                        ::core::option::Option::None => ::serde_json::Value::String(raw_text.to_owned()),
                     }
                 } else {
                     ::serde_json::Value::String(raw_text.to_owned())
@@ -142,11 +142,11 @@ fn decode_expr(ty: &Type, raw: &TokenStream) -> TokenStream {
 fn encode_expr(value: &TokenStream) -> TokenStream {
     quote! {
         match ::serde_json::to_value(&(#value)) {
-            Ok(::serde_json::Value::String(rendered)) => rendered,
-            Ok(::serde_json::Value::Bool(rendered)) => rendered.to_string(),
-            Ok(::serde_json::Value::Number(rendered)) => rendered.to_string(),
-            Ok(rendered) => rendered.to_string(),
-            Err(_unserializable) => ::std::string::String::new(),
+            ::core::result::Result::Ok(::serde_json::Value::String(rendered)) => rendered,
+            ::core::result::Result::Ok(::serde_json::Value::Bool(rendered)) => rendered.to_string(),
+            ::core::result::Result::Ok(::serde_json::Value::Number(rendered)) => rendered.to_string(),
+            ::core::result::Result::Ok(rendered) => rendered.to_string(),
+            ::core::result::Result::Err(_unserializable) => ::std::string::String::new(),
         }
     }
 }
@@ -339,11 +339,11 @@ fn incoming_request_items() -> TokenStream {
         /// its own request type carries them as (`Uri::path()` and `Uri::query()`, for one) - and
         /// the query string is unparsed, `dispatch` reading it itself.
         pub struct IncomingRequest {
-            body: Vec<u8>,
-            headers: Vec<(String, String)>,
-            method: String,
-            path: String,
-            query: String,
+            body: ::std::vec::Vec<u8>,
+            headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
+            method: ::std::string::String,
+            path: ::std::string::String,
+            query: ::std::string::String,
         }
 
         impl IncomingRequest {
@@ -353,7 +353,7 @@ fn incoming_request_items() -> TokenStream {
             }
 
             /// One request header, read case-insensitively as HTTP headers are.
-            pub fn header(&self, name: &str) -> Option<&str> {
+            pub fn header(&self, name: &str) -> ::core::option::Option<&str> {
                 self.headers
                     .iter()
                     .find(|(carried, _)| carried.eq_ignore_ascii_case(name))
@@ -361,7 +361,7 @@ fn incoming_request_items() -> TokenStream {
             }
 
             /// Every header this request carried, in the order it carried them.
-            pub fn headers(&self) -> &[(String, String)] {
+            pub fn headers(&self) -> &[(::std::string::String, ::std::string::String)] {
                 &self.headers
             }
 
@@ -372,11 +372,11 @@ fn incoming_request_items() -> TokenStream {
 
             /// Binds one request as an adapter read it off the wire.
             pub const fn new(
-                method: String,
-                path: String,
-                query: String,
-                headers: Vec<(String, String)>,
-                body: Vec<u8>,
+                method: ::std::string::String,
+                path: ::std::string::String,
+                query: ::std::string::String,
+                headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
+                body: ::std::vec::Vec<u8>,
             ) -> Self {
                 Self {
                     method,
@@ -409,7 +409,7 @@ fn incoming_part_type(module: &Ident) -> TokenStream {
     quote! {
         /// One multipart request part: text content, or a file part's undrained bytes.
         pub enum IncomingPart {
-            File(::std::boxed::Box<dyn $crate::#module::BodySource + Send>),
+            File(::std::boxed::Box<dyn $crate::#module::BodySource + ::core::marker::Send>),
             Text(::std::string::String),
         }
     }
@@ -425,8 +425,8 @@ fn outgoing_response_items(has_stream: bool, module: &Ident) -> TokenStream {
             /// One HTTP response in plain terms, for an adapter to write back however its own
             /// framework answers a request.
             pub struct OutgoingResponse {
-                body: Vec<u8>,
-                headers: Vec<(String, String)>,
+                body: ::std::vec::Vec<u8>,
+                headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
                 status: u16,
             }
 
@@ -437,14 +437,14 @@ fn outgoing_response_items(has_stream: bool, module: &Ident) -> TokenStream {
                 }
 
                 /// Every header this response carries, in the order they were written.
-                pub fn headers(&self) -> &[(String, String)] {
+                pub fn headers(&self) -> &[(::std::string::String, ::std::string::String)] {
                     &self.headers
                 }
 
                 /// Binds one response - what a `FaultHandler` an owner installed builds its answer
                 /// with, there being no other way to fill this type's private fields from outside
                 /// the module `dispatch` was placed in.
-                pub const fn new(status: u16, headers: Vec<(String, String)>, body: Vec<u8>) -> Self {
+                pub const fn new(status: u16, headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>, body: ::std::vec::Vec<u8>) -> Self {
                     Self {
                         status,
                         headers,
@@ -463,21 +463,21 @@ fn outgoing_response_items(has_stream: bool, module: &Ident) -> TokenStream {
         /// One HTTP response body, undrained: bytes already in hand, or a source an adapter pulls
         /// from a chunk at a time on the way to the wire.
         pub enum OutgoingBody {
-            Bytes(Vec<u8>),
-            Stream(::std::boxed::Box<dyn $crate::#module::BodySource + Send>),
+            Bytes(::std::vec::Vec<u8>),
+            Stream(::std::boxed::Box<dyn $crate::#module::BodySource + ::core::marker::Send>),
         }
 
         /// One HTTP response in plain terms, for an adapter to write back however its own
         /// framework answers a request.
         pub struct OutgoingResponse {
             body: OutgoingBody,
-            headers: Vec<(String, String)>,
+            headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
             status: u16,
         }
 
         impl OutgoingResponse {
             /// Every header this response carries, in the order they were written.
-            pub fn headers(&self) -> &[(String, String)] {
+            pub fn headers(&self) -> &[(::std::string::String, ::std::string::String)] {
                 &self.headers
             }
 
@@ -490,7 +490,7 @@ fn outgoing_response_items(has_stream: bool, module: &Ident) -> TokenStream {
             /// Binds one response - what a `FaultHandler` an owner installed builds its answer
             /// with, there being no other way to fill this type's private fields from outside the
             /// module `dispatch` was placed in.
-            pub const fn new(status: u16, headers: Vec<(String, String)>, body: OutgoingBody) -> Self {
+            pub const fn new(status: u16, headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>, body: OutgoingBody) -> Self {
                 Self {
                     status,
                     headers,
@@ -518,7 +518,7 @@ fn path_token_type(has_placeholder: bool) -> TokenStream {
                 let end = rest.find('/').unwrap_or(rest.len());
                 let (value, remainder) = rest.split_at(end);
                 if value.is_empty() {
-                    return None;
+                    return ::core::option::Option::None;
                 }
                 captured.push(value.to_owned());
                 rest = remainder;
@@ -541,7 +541,7 @@ fn path_token_type(has_placeholder: bool) -> TokenStream {
         /// Matches `path` against `template` left to right, and answers what each placeholder
         /// captured, in order - or `None` where a literal disagrees, a placeholder captures
         /// nothing, or text remains once the template is exhausted.
-        fn match_path(template: &[PathToken], path: &str) -> Option<::std::vec::Vec<String>> {
+        fn match_path(template: &[PathToken], path: &str) -> ::core::option::Option<::std::vec::Vec<::std::string::String>> {
             let mut rest = path;
             #captured_binding
             for token in template {
@@ -562,7 +562,7 @@ fn query_parsing_helpers() -> TokenStream {
     quote! {
         /// A query string, read into its keys and values. Repeated keys keep the last value; a
         /// `%XX` escape decodes to the byte it names and anything else is read verbatim.
-        fn parse_query(raw: &str) -> ::std::collections::HashMap<String, String> {
+        fn parse_query(raw: &str) -> ::std::collections::HashMap<::std::string::String, ::std::string::String> {
             let mut parsed = ::std::collections::HashMap::new();
             for pair in raw.split('&') {
                 if pair.is_empty() {
@@ -577,7 +577,7 @@ fn query_parsing_helpers() -> TokenStream {
         /// `%XX` escapes decoded back to bytes and reassembled as text, lossily where the result is
         /// not valid UTF-8 - a query value is a caller's own words, not this crate's to reject on
         /// that alone.
-        fn percent_decoded(raw: &str) -> String {
+        fn percent_decoded(raw: &str) -> ::std::string::String {
             let bytes = raw.as_bytes();
             let mut decoded = ::std::vec::Vec::with_capacity(bytes.len());
             let mut index = 0;
@@ -587,7 +587,7 @@ fn query_parsing_helpers() -> TokenStream {
                     let hex = ::core::str::from_utf8(&bytes[index + 1..index + 3])
                         .ok()
                         .and_then(|hex| u8::from_str_radix(hex, 16).ok());
-                    if let Some(value) = hex {
+                    if let ::core::option::Option::Some(value) = hex {
                         decoded.push(value);
                         index += 3;
                         continue;
@@ -596,7 +596,7 @@ fn query_parsing_helpers() -> TokenStream {
                 decoded.push(byte);
                 index += 1;
             }
-            String::from_utf8_lossy(&decoded).into_owned()
+            ::std::string::String::from_utf8_lossy(&decoded).into_owned()
         }
     }
 }
@@ -683,12 +683,12 @@ fn response_builders(has_stream: bool, writes_response_header: bool) -> TokenStr
         /// Serializes `value` as the body, under `status` and whatever `headers` the caller
         /// already built. A value that will not serialize is answered as a fault instead - the
         /// dispatcher's own defect, not the caller's.
-        fn json_response<T>(status: u16, mut headers: Vec<(String, String)>, value: &T) -> OutgoingResponse
+        fn json_response<T>(status: u16, mut headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>, value: &T) -> OutgoingResponse
         where
             T: ::serde::Serialize,
         {
             match ::serde_json::to_vec(value) {
-                Ok(body) => {
+                ::core::result::Result::Ok(body) => {
                     headers.push(("content-type".to_owned(), "application/json".to_owned()));
                     OutgoingResponse {
                         status,
@@ -696,7 +696,7 @@ fn response_builders(has_stream: bool, writes_response_header: bool) -> TokenStr
                         #ok_body,
                     }
                 }
-                Err(unserializable) => {
+                ::core::result::Result::Err(unserializable) => {
                     ::tracing::error!(
                         error = %unserializable,
                         "an answer would not serialize; the caller is told a defect answered instead",
@@ -795,11 +795,11 @@ fn dispatch_fn(
             request: &IncomingRequest,
             #parts_param
             handler: &H,
-        ) -> impl ::core::future::Future<Output = OutgoingResponse> + Send
+        ) -> impl ::core::future::Future<Output = OutgoingResponse> + ::core::marker::Send
         where
-            S: $crate::#contract<Ctx> + Sync,
-            Ctx: Sync,
-            H: FaultHandler + Sync,
+            S: $crate::#contract<Ctx> + ::core::marker::Sync,
+            Ctx: ::core::marker::Sync,
+            H: FaultHandler + ::core::marker::Sync,
         {
             async move {
                 let method = request.method();
@@ -860,10 +860,10 @@ fn dispatch_arm(module: &Ident, operation: &OperationDef, has_stream: bool) -> T
     let validator = message_validator_ident(operation);
     let decode_and_validate = quote! {
         let received: $crate::#module::#message_alias = match ::serde_json::from_value(#value_expr) {
-            Ok(received) => received,
-            Err(rejected) => return handler.on_fault(&refused_payload(#wire, &rejected)),
+            ::core::result::Result::Ok(received) => received,
+            ::core::result::Result::Err(rejected) => return handler.on_fault(&refused_payload(#wire, &rejected)),
         };
-        if let Err(violations) = $crate::#module::#validator(&received) {
+        if let ::core::result::Result::Err(violations) = $crate::#module::#validator(&received) {
             return handler.on_fault(&$crate::#module::ServiceFault::failed_validation(
                 #wire,
                 $crate::#module::violated_field(&violations),
@@ -885,7 +885,7 @@ fn dispatch_arm(module: &Ident, operation: &OperationDef, has_stream: bool) -> T
 
     quote! {
         if method == #method_str {
-            if let Some(#captured_binding) = match_path(&[#(#path_tokens),*], path) {
+            if let ::core::option::Option::Some(#captured_binding) = match_path(&[#(#path_tokens),*], path) {
                 #placeholder_lets
                 #header_in_lets
                 #multipart_part_lets
@@ -920,18 +920,18 @@ fn multipart_part_let(module: &Ident, wire: &str, part: &MultipartPart) -> Token
     let take = take_part_expr(name);
     quote! {
         let #parameter: #declared_type = match #take {
-            Some(IncomingPart::File(source)) => source,
-            Some(IncomingPart::Text(_)) => {
+            ::core::option::Option::Some(IncomingPart::File(source)) => source,
+            ::core::option::Option::Some(IncomingPart::Text(_)) => {
                 return handler.on_fault(&$crate::#module::ServiceFault::failed_validation(
                     #wire,
-                    Some(#name),
+                    ::core::option::Option::Some(#name),
                     "expected a file part, found a text part",
                 ));
             }
-            None => {
+            ::core::option::Option::None => {
                 return handler.on_fault(&$crate::#module::ServiceFault::failed_validation(
                     #wire,
-                    Some(#name),
+                    ::core::option::Option::Some(#name),
                     "a required multipart part was not carried",
                 ));
             }
@@ -950,7 +950,7 @@ fn header_in_let(module: &Ident, wire: &str, header: &HeaderIn) -> TokenStream {
         quote! {
             return handler.on_fault(&$crate::#module::ServiceFault::failed_validation(
                 #wire,
-                Some(#name),
+                ::core::option::Option::Some(#name),
                 "a required header was not carried",
             ))
         }
@@ -958,12 +958,12 @@ fn header_in_let(module: &Ident, wire: &str, header: &HeaderIn) -> TokenStream {
     quote! {
         let #parameter: #declared_type = {
             let source = match request.header(#name) {
-                Some(text) => #decode,
-                None => #absent,
+                ::core::option::Option::Some(text) => #decode,
+                ::core::option::Option::None => #absent,
             };
             match ::serde_json::from_value(source) {
-                Ok(value) => value,
-                Err(rejected) => return handler.on_fault(&refused_payload(#wire, &rejected)),
+                ::core::result::Result::Ok(value) => value,
+                ::core::result::Result::Err(rejected) => return handler.on_fault(&refused_payload(#wire, &rejected)),
             }
         };
     }
@@ -1011,8 +1011,8 @@ fn message_value(
 fn from_body_expr(wire: &str) -> TokenStream {
     quote! {
         match ::serde_json::from_slice(request.body()) {
-            Ok(value) => value,
-            Err(rejected) => return handler.on_fault(&refused_payload(#wire, &rejected)),
+            ::core::result::Result::Ok(value) => value,
+            ::core::result::Result::Err(rejected) => return handler.on_fault(&refused_payload(#wire, &rejected)),
         }
     }
 }
@@ -1091,11 +1091,11 @@ fn message_value_for_generated(
                 let decode = decode_expr(ty, &quote! { text });
                 quote! {
                     object.insert(#key.to_owned(), match #take {
-                        Some(IncomingPart::Text(text)) => {
+                        ::core::option::Option::Some(IncomingPart::Text(text)) => {
                             let text = text.as_str();
                             #decode
                         }
-                        Some(IncomingPart::File(_)) | None => ::serde_json::Value::Null,
+                        ::core::option::Option::Some(IncomingPart::File(_)) | ::core::option::Option::None => ::serde_json::Value::Null,
                     });
                 }
             } else if bodied {
@@ -1104,8 +1104,8 @@ fn message_value_for_generated(
                 let decode = decode_expr(ty, &quote! { text });
                 quote! {
                     object.insert(#key.to_owned(), match query_map.get(#key).map(::std::string::String::as_str) {
-                        Some(text) => #decode,
-                        None => ::serde_json::Value::Null,
+                        ::core::option::Option::Some(text) => #decode,
+                        ::core::option::Option::None => ::serde_json::Value::Null,
                     });
                 }
             }
@@ -1124,8 +1124,8 @@ fn object_base(bodied: bool) -> TokenStream {
     if bodied {
         quote! {
             let mut object = match ::serde_json::from_slice(request.body()) {
-                Ok(::serde_json::Value::Object(map)) => map,
-                Ok(_) | Err(_) => ::serde_json::Map::new(),
+                ::core::result::Result::Ok(::serde_json::Value::Object(map)) => map,
+                ::core::result::Result::Ok(_) | ::core::result::Result::Err(_) => ::serde_json::Map::new(),
             };
         }
     } else {
@@ -1192,7 +1192,7 @@ fn checked_header_pushes(
                 let render = encode_expr(&quote! { value });
                 let push = checked_header_push(wire, module, name, &render);
                 quote! {
-                    if let Some(value) = &#ident {
+                    if let ::core::option::Option::Some(value) = &#ident {
                         #push
                     }
                 }
@@ -1232,7 +1232,7 @@ fn declared_error_arm(
     let status_expr = error_status_expr(shape, error_head);
     if shape.error_header_out.is_empty() {
         quote! {
-            Ok(Err(declared_error)) => {
+            ::core::result::Result::Ok(::core::result::Result::Err(declared_error)) => {
                 let status = #status_expr;
                 return json_response(status, ::std::vec::Vec::new(), &declared_error);
             }
@@ -1249,9 +1249,9 @@ fn declared_error_arm(
             &element_types,
         );
         quote! {
-            Ok(Err((declared_error, #(#idents),*))) => {
+            ::core::result::Result::Ok(::core::result::Result::Err((declared_error, #(#idents),*))) => {
                 let status = #status_expr;
-                let mut headers: Vec<(String, String)> = ::std::vec::Vec::new();
+                let mut headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)> = ::std::vec::Vec::new();
                 #pushes
                 return json_response(status, headers, &declared_error);
             }
@@ -1280,12 +1280,12 @@ fn answer_block(
             let empty_body = body_field(has_stream, &quote! { ::std::vec::Vec::new() });
             quote! {
                 match #called {
-                    Ok(()) => return OutgoingResponse {
+                    ::core::result::Result::Ok(()) => return OutgoingResponse {
                         status: #ok_status,
                         headers: ::std::vec::Vec::new(),
                         #empty_body,
                     },
-                    Err(panicked) => { #panic_fault }
+                    ::core::result::Result::Err(panicked) => { #panic_fault }
                 }
             }
         }
@@ -1308,23 +1308,23 @@ fn answer_block(
                     let empty_body = body_field(has_stream, &quote! { ::std::vec::Vec::new() });
                     quote! {
                         match #called {
-                            Ok(Ok(_)) => return OutgoingResponse {
+                            ::core::result::Result::Ok(::core::result::Result::Ok(_)) => return OutgoingResponse {
                                 status: #ok_status,
                                 headers: ::std::vec::Vec::new(),
                                 #empty_body,
                             },
                             #error_arm
-                            Err(panicked) => { #panic_fault }
+                            ::core::result::Result::Err(panicked) => { #panic_fault }
                         }
                     }
                 } else {
                     quote! {
                         match #called {
-                            Ok(Ok(value)) => {
+                            ::core::result::Result::Ok(::core::result::Result::Ok(value)) => {
                                 return json_response(#ok_status, ::std::vec::Vec::new(), &value);
                             }
                             #error_arm
-                            Err(panicked) => { #panic_fault }
+                            ::core::result::Result::Err(panicked) => { #panic_fault }
                         }
                     }
                 }
@@ -1341,13 +1341,13 @@ fn answer_block(
                 );
                 quote! {
                     match #called {
-                        Ok(Ok((value, #(#header_idents),*))) => {
-                            let mut headers: Vec<(String, String)> = ::std::vec::Vec::new();
+                        ::core::result::Result::Ok(::core::result::Result::Ok((value, #(#header_idents),*))) => {
+                            let mut headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)> = ::std::vec::Vec::new();
                             #header_pushes
                             return json_response(#ok_status, headers, &value);
                         }
                         #error_arm
-                        Err(panicked) => { #panic_fault }
+                        ::core::result::Result::Err(panicked) => { #panic_fault }
                     }
                 }
             }
@@ -1381,8 +1381,8 @@ fn bytes_answer_block(
     if shape.header_out.is_empty() {
         quote! {
             match #called {
-                Ok(Ok((body, content_type))) => {
-                    let mut headers: Vec<(String, String)> = ::std::vec::Vec::new();
+                ::core::result::Result::Ok(::core::result::Result::Ok((body, content_type))) => {
+                    let mut headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)> = ::std::vec::Vec::new();
                     #content_type_push
                     return OutgoingResponse {
                         status: #ok_status,
@@ -1391,7 +1391,7 @@ fn bytes_answer_block(
                     };
                 }
                 #error_arm
-                Err(panicked) => { #panic_fault }
+                ::core::result::Result::Err(panicked) => { #panic_fault }
             }
         }
     } else {
@@ -1407,8 +1407,8 @@ fn bytes_answer_block(
         );
         quote! {
             match #called {
-                Ok(Ok((body, content_type, #(#header_idents),*))) => {
-                    let mut headers: Vec<(String, String)> = ::std::vec::Vec::new();
+                ::core::result::Result::Ok(::core::result::Result::Ok((body, content_type, #(#header_idents),*))) => {
+                    let mut headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)> = ::std::vec::Vec::new();
                     #content_type_push
                     #header_pushes
                     return OutgoingResponse {
@@ -1418,7 +1418,7 @@ fn bytes_answer_block(
                     };
                 }
                 #error_arm
-                Err(panicked) => { #panic_fault }
+                ::core::result::Result::Err(panicked) => { #panic_fault }
             }
         }
     }
@@ -1450,8 +1450,8 @@ fn stream_answer_block(arm: &AnswerArm<'_>, shape: &HttpShape, success: &Type) -
     if shape.header_out.is_empty() {
         quote! {
             match #called {
-                Ok(Ok($crate::#module::StreamedAnswer::Full { source, content_type })) => {
-                    let mut headers: Vec<(String, String)> = ::std::vec::Vec::new();
+                ::core::result::Result::Ok(::core::result::Result::Ok($crate::#module::StreamedAnswer::Full { source, content_type })) => {
+                    let mut headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)> = ::std::vec::Vec::new();
                     #content_type_push
                     return OutgoingResponse {
                         status: #ok_status,
@@ -1459,12 +1459,12 @@ fn stream_answer_block(arm: &AnswerArm<'_>, shape: &HttpShape, success: &Type) -
                         body: OutgoingBody::Stream(source),
                     };
                 }
-                Ok(Ok($crate::#module::StreamedAnswer::Partial {
+                ::core::result::Result::Ok(::core::result::Result::Ok($crate::#module::StreamedAnswer::Partial {
                     source,
                     content_range,
                     content_type,
                 })) => {
-                    let mut headers: Vec<(String, String)> = ::std::vec::Vec::new();
+                    let mut headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)> = ::std::vec::Vec::new();
                     #content_type_push
                     #content_range_push
                     return OutgoingResponse {
@@ -1474,7 +1474,7 @@ fn stream_answer_block(arm: &AnswerArm<'_>, shape: &HttpShape, success: &Type) -
                     };
                 }
                 #error_arm
-                Err(panicked) => { #panic_fault }
+                ::core::result::Result::Err(panicked) => { #panic_fault }
             }
         }
     } else {
@@ -1490,11 +1490,11 @@ fn stream_answer_block(arm: &AnswerArm<'_>, shape: &HttpShape, success: &Type) -
         );
         quote! {
             match #called {
-                Ok(Ok((
+                ::core::result::Result::Ok(::core::result::Result::Ok((
                     $crate::#module::StreamedAnswer::Full { source, content_type },
                     #(#header_idents),*
                 ))) => {
-                    let mut headers: Vec<(String, String)> = ::std::vec::Vec::new();
+                    let mut headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)> = ::std::vec::Vec::new();
                     #content_type_push
                     #header_pushes
                     return OutgoingResponse {
@@ -1503,11 +1503,11 @@ fn stream_answer_block(arm: &AnswerArm<'_>, shape: &HttpShape, success: &Type) -
                         body: OutgoingBody::Stream(source),
                     };
                 }
-                Ok(Ok((
+                ::core::result::Result::Ok(::core::result::Result::Ok((
                     $crate::#module::StreamedAnswer::Partial { source, content_range, content_type },
                     #(#header_idents),*
                 ))) => {
-                    let mut headers: Vec<(String, String)> = ::std::vec::Vec::new();
+                    let mut headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)> = ::std::vec::Vec::new();
                     #content_type_push
                     #content_range_push
                     #header_pushes
@@ -1518,7 +1518,7 @@ fn stream_answer_block(arm: &AnswerArm<'_>, shape: &HttpShape, success: &Type) -
                     };
                 }
                 #error_arm
-                Err(panicked) => { #panic_fault }
+                ::core::result::Result::Err(panicked) => { #panic_fault }
             }
         }
     }
@@ -1627,7 +1627,7 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
                     }
                 }
 
-                impl<T: Transport + Sync> #client<T> {
+                impl<T: Transport + ::core::marker::Sync> #client<T> {
                     #(#methods)*
                 }
 
@@ -1659,7 +1659,7 @@ fn outgoing_request_items(has_multipart: bool, module: &Ident) -> TokenStream {
         quote! {
             /// One outgoing multipart part: text content, or a file part's own undrained handle.
             pub enum OutgoingPart {
-                File(::std::boxed::Box<dyn $crate::#module::BodySource + Send>),
+                File(::std::boxed::Box<dyn $crate::#module::BodySource + ::core::marker::Send>),
                 Text(::std::string::String),
             }
         }
@@ -1667,7 +1667,7 @@ fn outgoing_request_items(has_multipart: bool, module: &Ident) -> TokenStream {
         TokenStream::new()
     };
     let parts_field = if has_multipart {
-        quote! { parts: Vec<(String, OutgoingPart)>, }
+        quote! { parts: ::std::vec::Vec<(::std::string::String, OutgoingPart)>, }
     } else {
         TokenStream::new()
     };
@@ -1676,7 +1676,7 @@ fn outgoing_request_items(has_multipart: bool, module: &Ident) -> TokenStream {
             /// Takes every part a `body = "multipart"` method built - by value, since a file
             /// part's own handle has to be owned by whichever adapter finally sends it. Empty
             /// for any other body kind.
-            pub fn into_parts(self) -> Vec<(String, OutgoingPart)> {
+            pub fn into_parts(self) -> ::std::vec::Vec<(::std::string::String, OutgoingPart)> {
                 self.parts
             }
         }
@@ -1688,12 +1688,12 @@ fn outgoing_request_items(has_multipart: bool, module: &Ident) -> TokenStream {
 
         /// One outgoing HTTP request, in plain terms: nothing here names a framework.
         pub struct OutgoingRequest {
-            body: Vec<u8>,
-            headers: Vec<(String, String)>,
-            method: String,
+            body: ::std::vec::Vec<u8>,
+            headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
+            method: ::std::string::String,
             #parts_field
-            path: String,
-            query: String,
+            path: ::std::string::String,
+            query: ::std::string::String,
         }
 
         impl OutgoingRequest {
@@ -1704,7 +1704,7 @@ fn outgoing_request_items(has_multipart: bool, module: &Ident) -> TokenStream {
             }
 
             /// Every header this request carries.
-            pub fn headers(&self) -> &[(String, String)] {
+            pub fn headers(&self) -> &[(::std::string::String, ::std::string::String)] {
                 &self.headers
             }
 
@@ -1736,8 +1736,8 @@ fn plain_transport_items(outgoing_request: &TokenStream) -> TokenStream {
 
         /// One HTTP response as the seam read it back.
         pub struct IncomingResponse {
-            body: Vec<u8>,
-            headers: Vec<(String, String)>,
+            body: ::std::vec::Vec<u8>,
+            headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
             status: u16,
         }
 
@@ -1748,7 +1748,7 @@ fn plain_transport_items(outgoing_request: &TokenStream) -> TokenStream {
             }
 
             /// One response header, read case-insensitively as HTTP headers are.
-            pub fn header(&self, name: &str) -> Option<&str> {
+            pub fn header(&self, name: &str) -> ::core::option::Option<&str> {
                 self.headers
                     .iter()
                     .find(|(carried, _)| carried.eq_ignore_ascii_case(name))
@@ -1756,7 +1756,7 @@ fn plain_transport_items(outgoing_request: &TokenStream) -> TokenStream {
             }
 
             /// Binds one response as the seam implementation read it off the wire.
-            pub const fn new(status: u16, headers: Vec<(String, String)>, body: Vec<u8>) -> Self {
+            pub const fn new(status: u16, headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>, body: ::std::vec::Vec<u8>) -> Self {
                 Self {
                     status,
                     headers,
@@ -1778,7 +1778,7 @@ fn plain_transport_items(outgoing_request: &TokenStream) -> TokenStream {
             fn send(
                 &self,
                 request: OutgoingRequest,
-            ) -> impl ::core::future::Future<Output = Result<IncomingResponse, String>> + Send;
+            ) -> impl ::core::future::Future<Output = ::core::result::Result<IncomingResponse, ::std::string::String>> + ::core::marker::Send;
         }
     }
 }
@@ -1792,14 +1792,14 @@ fn streamed_transport_items(outgoing_request: &TokenStream, module: &Ident) -> T
         /// One HTTP response body, as the seam read it back: bytes already in hand, or a source a
         /// client pulls from a chunk at a time rather than buffering the whole answer first.
         pub enum IncomingBody {
-            Bytes(Vec<u8>),
-            Stream(::std::boxed::Box<dyn $crate::#module::BodySource + Send>),
+            Bytes(::std::vec::Vec<u8>),
+            Stream(::std::boxed::Box<dyn $crate::#module::BodySource + ::core::marker::Send>),
         }
 
         /// One HTTP response as the seam read it back.
         pub struct IncomingResponse {
             body: IncomingBody,
-            headers: Vec<(String, String)>,
+            headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
             status: u16,
         }
 
@@ -1815,7 +1815,7 @@ fn streamed_transport_items(outgoing_request: &TokenStream, module: &Ident) -> T
             }
 
             /// One response header, read case-insensitively as HTTP headers are.
-            pub fn header(&self, name: &str) -> Option<&str> {
+            pub fn header(&self, name: &str) -> ::core::option::Option<&str> {
                 self.headers
                     .iter()
                     .find(|(carried, _)| carried.eq_ignore_ascii_case(name))
@@ -1829,7 +1829,7 @@ fn streamed_transport_items(outgoing_request: &TokenStream, module: &Ident) -> T
             }
 
             /// Binds one response as the seam implementation read it off the wire.
-            pub const fn new(status: u16, headers: Vec<(String, String)>, body: IncomingBody) -> Self {
+            pub const fn new(status: u16, headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>, body: IncomingBody) -> Self {
                 Self {
                     status,
                     headers,
@@ -1851,7 +1851,7 @@ fn streamed_transport_items(outgoing_request: &TokenStream, module: &Ident) -> T
             fn send(
                 &self,
                 request: OutgoingRequest,
-            ) -> impl ::core::future::Future<Output = Result<IncomingResponse, String>> + Send;
+            ) -> impl ::core::future::Future<Output = ::core::result::Result<IncomingResponse, ::std::string::String>> + ::core::marker::Send;
         }
     }
 }
@@ -1869,10 +1869,10 @@ fn client_fault_mirror_types(generated: &Generated) -> TokenStream {
         #[derive(::serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct FaultOnTheWire {
-            detail: String,
-            field: Option<String>,
+            detail: ::std::string::String,
+            field: ::core::option::Option<::std::string::String>,
             kind: FaultKindOnTheWire,
-            operation: String,
+            operation: ::std::string::String,
         }
 
         #[derive(::serde::Deserialize)]
@@ -1924,8 +1924,8 @@ fn client_fault_mirror_fn(generated: &Generated) -> TokenStream {
     quote! {
         fn fault_from_body(operation: &str, body: &[u8]) -> #fault {
             match ::serde_json::from_slice::<FaultOnTheWire>(body) {
-                Ok(mirrored) => mirrored.into_fault(),
-                Err(rejected) => {
+                ::core::result::Result::Ok(mirrored) => mirrored.into_fault(),
+                ::core::result::Result::Err(rejected) => {
                     #fault::undeserializable_payload(operation, &rejected.to_string())
                 }
             }
@@ -1937,8 +1937,8 @@ fn client_fault_mirror_fn(generated: &Generated) -> TokenStream {
 /// `&`, `=`, `%` or a space travels as one segment or one value rather than reopening the template.
 fn percent_encode_helper() -> TokenStream {
     quote! {
-        fn percent_encoded(raw: &str) -> String {
-            let mut encoded = String::with_capacity(raw.len());
+        fn percent_encoded(raw: &str) -> ::std::string::String {
+            let mut encoded = ::std::string::String::with_capacity(raw.len());
             for byte in raw.bytes() {
                 match byte {
                     b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
@@ -2006,11 +2006,11 @@ fn client_method(
 
     let (transport_failure, decode) = match &operation.outcome {
         OperationOutcome::OneWay => (
-            quote! { Err(#fault::transport_failure(#wire, &uncarried)) },
+            quote! { ::core::result::Result::Err(#fault::transport_failure(#wire, &uncarried)) },
             one_way_decode(wire, &shape, fault),
         ),
         OperationOutcome::Reply { error, success } => (
-            quote! { Err(#call_error::Fault(#fault::transport_failure(#wire, &uncarried))) },
+            quote! { ::core::result::Result::Err(#call_error::Fault(#fault::transport_failure(#wire, &uncarried))) },
             reply_decode(wire, &shape, call_error, fault, error, success, module),
         ),
     };
@@ -2027,10 +2027,10 @@ fn client_method(
         #[doc = #doc]
         pub fn #named(
             &self #(, #taken)*
-        ) -> impl ::core::future::Future<Output = #answers> + Send {
+        ) -> impl ::core::future::Future<Output = #answers> + ::core::marker::Send {
             async move {
                 #packed
-                if let Err(violations) = $crate::#module::#validator(&sending) {
+                if let ::core::result::Result::Err(violations) = $crate::#module::#validator(&sending) {
                     #refusal
                 }
                 #path_build
@@ -2047,8 +2047,8 @@ fn client_method(
                     #parts_field
                 };
                 let response = match self.transport.send(request).await {
-                    Ok(response) => response,
-                    Err(uncarried) => return #transport_failure,
+                    ::core::result::Result::Ok(response) => response,
+                    ::core::result::Result::Err(uncarried) => return #transport_failure,
                 };
                 #decode
             }
@@ -2094,19 +2094,19 @@ fn path_build_stmts(operation: &OperationDef, shape: &HttpShape) -> TokenStream 
         })
         .collect();
     quote! {
-        let mut path = String::new();
+        let mut path = ::std::string::String::new();
         #pushes
     }
 }
 
 fn query_build_stmts(operation: &OperationDef, shape: &HttpShape) -> TokenStream {
     if shape.method.carries_a_body() {
-        return quote! { let query = String::new(); };
+        return quote! { let query = ::std::string::String::new(); };
     }
     // `Empty` sends no query, and a bodyless `Named` message is always the one scalar the path
     // binds whole, reading off the placeholder rather than the query — only `Generated` builds one.
     let OperationInputs::Generated(fields) = &operation.inputs else {
-        return quote! { let query = String::new(); };
+        return quote! { let query = ::std::string::String::new(); };
     };
     let placeholders = shape.placeholder_names();
     let field_pushes: Vec<TokenStream> = fields
@@ -2123,7 +2123,7 @@ fn query_build_stmts(operation: &OperationDef, shape: &HttpShape) -> TokenStream
                 || {
                     let rendered = encode_expr(&quote! { value });
                     quote! {
-                        if let Some(value) = &sending.#field {
+                        if let ::core::option::Option::Some(value) = &sending.#field {
                             query_parts.push(format!("{}={}", #key, percent_encoded(&#rendered)));
                         }
                     }
@@ -2131,11 +2131,11 @@ fn query_build_stmts(operation: &OperationDef, shape: &HttpShape) -> TokenStream
                 |_inner| {
                     let rendered = encode_expr(&quote! { element });
                     quote! {
-                        if let Some(values) = &sending.#field {
+                        if let ::core::option::Option::Some(values) = &sending.#field {
                             let joined = values
                                 .iter()
                                 .map(|element| #rendered)
-                                .collect::<Vec<String>>()
+                                .collect::<::std::vec::Vec<::std::string::String>>()
                                 .join(",");
                             query_parts.push(format!("{}={}", #key, percent_encoded(&joined)));
                         }
@@ -2145,12 +2145,12 @@ fn query_build_stmts(operation: &OperationDef, shape: &HttpShape) -> TokenStream
         })
         .collect();
     if field_pushes.is_empty() {
-        return quote! { let query = String::new(); };
+        return quote! { let query = ::std::string::String::new(); };
     }
     let pushes: TokenStream = field_pushes.into_iter().collect();
     quote! {
         let query = {
-            let mut query_parts: Vec<String> = ::std::vec::Vec::new();
+            let mut query_parts: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
             #pushes
             query_parts.join("&")
         };
@@ -2165,7 +2165,7 @@ fn header_in_build_stmts(
     shape: &HttpShape,
 ) -> TokenStream {
     if shape.header_in.is_empty() {
-        return quote! { let headers: Vec<(String, String)> = ::std::vec::Vec::new(); };
+        return quote! { let headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)> = ::std::vec::Vec::new(); };
     }
     let pushes: TokenStream = shape
         .header_in
@@ -2183,7 +2183,7 @@ fn header_in_build_stmts(
             if option_inner(&header.ty).is_some() {
                 let rendered = encode_expr(&quote! { value });
                 quote! {
-                    if let Some(value) = &#parameter {
+                    if let ::core::option::Option::Some(value) = &#parameter {
                         let rendered = #rendered;
                         #checked
                     }
@@ -2198,7 +2198,7 @@ fn header_in_build_stmts(
         })
         .collect();
     quote! {
-        let mut headers: Vec<(String, String)> = ::std::vec::Vec::new();
+        let mut headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)> = ::std::vec::Vec::new();
         #pushes
     }
 }
@@ -2219,16 +2219,16 @@ fn header_value_refusal(
     let built = quote! {
         #fault::failed_validation(
             #wire,
-            Some(#name),
+            ::core::option::Option::Some(#name),
             "a header value contains a character illegal in an HTTP header",
         )
     };
     match &operation.outcome {
-        OperationOutcome::OneWay => quote! { return Err(#built); },
+        OperationOutcome::OneWay => quote! { return ::core::result::Result::Err(#built); },
         OperationOutcome::Reply {
             error: _error,
             success: _success,
-        } => quote! { return Err(#call_error::Fault(#built)); },
+        } => quote! { return ::core::result::Result::Err(#call_error::Fault(#built)); },
     }
 }
 
@@ -2250,7 +2250,7 @@ fn multipart_field_push(field: &Ident, ty: &Type) -> TokenStream {
                 let joined = value
                     .iter()
                     .map(|element| #rendered)
-                    .collect::<::std::vec::Vec<String>>()
+                    .collect::<::std::vec::Vec<::std::string::String>>()
                     .join(",");
                 parts.push((#key.to_owned(), OutgoingPart::Text(joined)));
             }
@@ -2258,7 +2258,7 @@ fn multipart_field_push(field: &Ident, ty: &Type) -> TokenStream {
     );
     if option_inner(ty).is_some() {
         quote! {
-            if let Some(value) = &sending.#field {
+            if let ::core::option::Option::Some(value) = &sending.#field {
                 #push
             }
         }
@@ -2341,10 +2341,10 @@ fn header_value_read_lets(
             let decode = decode_expr(element_ty, &quote! { text });
             // An `Option<T>` element reads a missing header as `None`; anything else faults.
             let absent = if option_inner(element_ty).is_some() {
-                quote! { None }
+                quote! { ::core::option::Option::None }
             } else {
                 quote! {
-                    return Err(#call_error::Fault(#fault::undeserializable_payload(
+                    return ::core::result::Result::Err(#call_error::Fault(#fault::undeserializable_payload(
                         #wire,
                         "a declared response header was missing",
                     )))
@@ -2352,16 +2352,16 @@ fn header_value_read_lets(
             };
             quote! {
                 let #ident: #element_ty = match response.header(#name) {
-                    Some(text) => match ::serde_json::from_value(#decode) {
-                        Ok(value) => value,
-                        Err(_rejected) => return Err(#call_error::Fault(
+                    ::core::option::Option::Some(text) => match ::serde_json::from_value(#decode) {
+                        ::core::result::Result::Ok(value) => value,
+                        ::core::result::Result::Err(_rejected) => return ::core::result::Result::Err(#call_error::Fault(
                             #fault::undeserializable_payload(
                                 #wire,
                                 "a response header did not match its declared type",
                             ),
                         )),
                     },
-                    None => #absent,
+                    ::core::option::Option::None => #absent,
                 };
             }
         })
@@ -2380,8 +2380,8 @@ fn declared_error_read_block(
     if shape.error_header_out.is_empty() {
         quote! {
             return match ::serde_json::from_slice::<#error>(response.body()) {
-                Ok(declared) => Err(#call_error::Operation(declared)),
-                Err(rejected) => Err(#call_error::Fault(
+                ::core::result::Result::Ok(declared) => ::core::result::Result::Err(#call_error::Operation(declared)),
+                ::core::result::Result::Err(rejected) => ::core::result::Result::Err(#call_error::Fault(
                     #fault::undeserializable_payload(#wire, &rejected.to_string()),
                 )),
             };
@@ -2401,12 +2401,12 @@ fn declared_error_read_block(
         );
         quote! {
             match ::serde_json::from_slice::<#head>(response.body()) {
-                Ok(declared_error) => {
+                ::core::result::Result::Ok(declared_error) => {
                     #header_lets
-                    return Err(#call_error::Operation((declared_error, #(#header_idents),*)));
+                    return ::core::result::Result::Err(#call_error::Operation((declared_error, #(#header_idents),*)));
                 }
-                Err(rejected) => {
-                    return Err(#call_error::Fault(
+                ::core::result::Result::Err(rejected) => {
+                    return ::core::result::Result::Err(#call_error::Fault(
                         #fault::undeserializable_payload(#wire, &rejected.to_string()),
                     ));
                 }
@@ -2420,12 +2420,12 @@ fn one_way_decode(wire: &str, shape: &HttpShape, fault: &TokenStream) -> TokenSt
     quote! {
         let status = response.status();
         if status == #ok_status {
-            return Ok(());
+            return ::core::result::Result::Ok(());
         }
         if matches!(status, 400 | 404 | 500) {
-            return Err(fault_from_body(#wire, response.body()));
+            return ::core::result::Result::Err(fault_from_body(#wire, response.body()));
         }
-        Err(#fault::undeserializable_payload(
+        ::core::result::Result::Err(#fault::undeserializable_payload(
             #wire,
             &format!("an unexpected status ({status}) answered"),
         ))
@@ -2455,7 +2455,7 @@ fn reply_decode(
         // client reads both straight back, no `serde_json` involved on the success path.
         if shape.header_out.is_empty() {
             quote! {
-                return Ok((
+                return ::core::result::Result::Ok((
                     response.body().to_vec(),
                     response.header("content-type").unwrap_or_default().to_owned(),
                 ));
@@ -2477,7 +2477,7 @@ fn reply_decode(
             );
             quote! {
                 #header_lets
-                return Ok((
+                return ::core::result::Result::Ok((
                     response.body().to_vec(),
                     response.header("content-type").unwrap_or_default().to_owned(),
                     #(#header_idents),*
@@ -2487,12 +2487,12 @@ fn reply_decode(
     } else if shape.header_out.is_empty() {
         if is_unit_type(success) {
             // `#success`, not a literal `()`: answers a recorded unit struct by name too.
-            quote! { return Ok(#success); }
+            quote! { return ::core::result::Result::Ok(#success); }
         } else {
             quote! {
                 return match ::serde_json::from_slice::<#success>(response.body()) {
-                    Ok(value) => Ok(value),
-                    Err(rejected) => Err(#call_error::Fault(
+                    ::core::result::Result::Ok(value) => ::core::result::Result::Ok(value),
+                    ::core::result::Result::Err(rejected) => ::core::result::Result::Err(#call_error::Fault(
                         #fault::undeserializable_payload(#wire, &rejected.to_string()),
                     )),
                 };
@@ -2515,11 +2515,11 @@ fn reply_decode(
         );
         quote! {
             return match ::serde_json::from_slice::<#first>(response.body()) {
-                Ok(value) => {
+                ::core::result::Result::Ok(value) => {
                     #header_lets
-                    Ok((value, #(#header_idents),*))
+                    ::core::result::Result::Ok((value, #(#header_idents),*))
                 }
-                Err(rejected) => Err(#call_error::Fault(
+                ::core::result::Result::Err(rejected) => ::core::result::Result::Err(#call_error::Fault(
                     #fault::undeserializable_payload(#wire, &rejected.to_string()),
                 )),
             };
@@ -2535,9 +2535,9 @@ fn reply_decode(
             #error_block
         }
         if matches!(status, 400 | 404 | 500) {
-            return Err(#call_error::Fault(fault_from_body(#wire, response.body())));
+            return ::core::result::Result::Err(#call_error::Fault(fault_from_body(#wire, response.body())));
         }
-        Err(#call_error::Fault(#fault::undeserializable_payload(
+        ::core::result::Result::Err(#call_error::Fault(#fault::undeserializable_payload(
             #wire,
             &format!("an unexpected status ({status}) answered"),
         )))
@@ -2574,9 +2574,9 @@ fn stream_reply_decode(
             #error_block
         }
         if matches!(status, 400 | 404 | 500) {
-            return Err(#call_error::Fault(fault_from_body(#wire, response.body())));
+            return ::core::result::Result::Err(#call_error::Fault(fault_from_body(#wire, response.body())));
         }
-        Err(#call_error::Fault(#fault::undeserializable_payload(
+        ::core::result::Result::Err(#call_error::Fault(#fault::undeserializable_payload(
             #wire,
             &format!("an unexpected status ({status}) answered"),
         )))
@@ -2587,12 +2587,12 @@ fn stream_reply_decode(
             if status == 206 {
                 let content_range = response.header("content-range").unwrap_or_default().to_owned();
                 let content_type = response.header("content-type").unwrap_or_default().to_owned();
-                let source: ::std::boxed::Box<dyn $crate::#module::BodySource + Send> =
+                let source: ::std::boxed::Box<dyn $crate::#module::BodySource + ::core::marker::Send> =
                     match response.into_body() {
                         IncomingBody::Bytes(bytes) => ::std::boxed::Box::new(::std::io::Cursor::new(bytes)),
                         IncomingBody::Stream(source) => source,
                     };
-                return Ok($crate::#module::StreamedAnswer::Partial {
+                return ::core::result::Result::Ok($crate::#module::StreamedAnswer::Partial {
                     source,
                     content_range,
                     content_type,
@@ -2600,12 +2600,12 @@ fn stream_reply_decode(
             }
             if status == #ok_status {
                 let content_type = response.header("content-type").unwrap_or_default().to_owned();
-                let source: ::std::boxed::Box<dyn $crate::#module::BodySource + Send> =
+                let source: ::std::boxed::Box<dyn $crate::#module::BodySource + ::core::marker::Send> =
                     match response.into_body() {
                         IncomingBody::Bytes(bytes) => ::std::boxed::Box::new(::std::io::Cursor::new(bytes)),
                         IncomingBody::Stream(source) => source,
                     };
-                return Ok($crate::#module::StreamedAnswer::Full { source, content_type });
+                return ::core::result::Result::Ok($crate::#module::StreamedAnswer::Full { source, content_type });
             }
             #tail
         }
@@ -2627,12 +2627,12 @@ fn stream_reply_decode(
                 let content_range = response.header("content-range").unwrap_or_default().to_owned();
                 let content_type = response.header("content-type").unwrap_or_default().to_owned();
                 #header_lets
-                let source: ::std::boxed::Box<dyn $crate::#module::BodySource + Send> =
+                let source: ::std::boxed::Box<dyn $crate::#module::BodySource + ::core::marker::Send> =
                     match response.into_body() {
                         IncomingBody::Bytes(bytes) => ::std::boxed::Box::new(::std::io::Cursor::new(bytes)),
                         IncomingBody::Stream(source) => source,
                     };
-                return Ok((
+                return ::core::result::Result::Ok((
                     $crate::#module::StreamedAnswer::Partial { source, content_range, content_type },
                     #(#header_idents),*
                 ));
@@ -2640,12 +2640,12 @@ fn stream_reply_decode(
             if status == #ok_status {
                 let content_type = response.header("content-type").unwrap_or_default().to_owned();
                 #header_lets
-                let source: ::std::boxed::Box<dyn $crate::#module::BodySource + Send> =
+                let source: ::std::boxed::Box<dyn $crate::#module::BodySource + ::core::marker::Send> =
                     match response.into_body() {
                         IncomingBody::Bytes(bytes) => ::std::boxed::Box::new(::std::io::Cursor::new(bytes)),
                         IncomingBody::Stream(source) => source,
                     };
-                return Ok((
+                return ::core::result::Result::Ok((
                     $crate::#module::StreamedAnswer::Full { source, content_type },
                     #(#header_idents),*
                 ));

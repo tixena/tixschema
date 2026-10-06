@@ -103,7 +103,7 @@ struct Paired {
 struct Wrapper(String);
 
 /// A brand whose own reader refuses text shorter than three characters. Only a schema surface
-/// hangs that check.
+/// hangs that check, and the declaration is refused in a build with none.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[model_schema(decode_with, minLength = 3)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -141,7 +141,7 @@ struct Slug {
 }
 
 /// A `transparent` struct with a named field over a model type.
-#[model_schema(decode_with)]
+#[model_schema(decode_with, no_display)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Current {
@@ -149,7 +149,7 @@ struct Current {
 }
 
 /// A `transparent` struct with a named field over a list of model types.
-#[model_schema(decode_with)]
+#[model_schema(decode_with, no_display)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Revisions {
@@ -849,6 +849,14 @@ fn what_serde_wrote_for_a_transparent_struct_is_read_and_the_decider_never_runs(
     });
     assert_eq!(titled_read, Ok(titled()));
     assert_eq!(calls, 0);
+}
+
+/// The values the decode reads for a transparent struct are the ones its own JSON Schema admits:
+/// the value of its field, with no key.
+#[cfg(feature = "jsonschema")]
+#[test]
+fn a_transparent_structs_json_schema_admits_what_the_decode_reads() {
+    assert_eq!(Slug::json_schema(), json!({ "type": "string" }));
 }
 
 /// A value serde refuses is one issue at the path the struct sits at, naming the type of its

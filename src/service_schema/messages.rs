@@ -154,7 +154,7 @@ fn message(declared: &GeneratedMessage, non_exhaustive: bool) -> TokenStream {
             // a query parameter or an unclaimed header the caller left out defaults to `None`
             // rather than being written as a `null` nothing here declared.
             quote! {
-                #[serde(default, skip_serializing_if = "Option::is_none")]
+                #[serde(default, skip_serializing_if = "::core::option::Option::is_none")]
                 pub #field: #carried
             }
         } else {

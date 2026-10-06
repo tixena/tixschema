@@ -18,10 +18,11 @@ use std::collections::HashMap;
 
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
+use syn::ext::IdentExt as _;
+use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
-use crate::features::serde::parse_serde_key_omission;
+use crate::features::serde::{brand_field, parse_serde_key_omission, struct_tag};
 use crate::field_type::{
     FieldDef, FieldDefType, VariantKind, classify_variant, get_field_def, is_plain_enum,
     is_sequence_wrapper,
@@ -33,6 +34,40 @@ use crate::utils::{
 
 #[cfg(feature = "serde")]
 use crate::features::serde::{parse_serde_field_attributes, parse_serde_type_attributes};
+
+/// The words Kotlin reserves everywhere, which name a member only between backticks:
+/// <https://kotlinlang.org/docs/keyword-reference.html#hard-keywords>. A soft keyword or a
+/// modifier such as `value` or `data` is not among them: Kotlin takes one as an identifier.
+const KOTLIN_HARD_KEYWORDS: [&str; 28] = [
+    "as",
+    "break",
+    "class",
+    "continue",
+    "do",
+    "else",
+    "false",
+    "for",
+    "fun",
+    "if",
+    "in",
+    "interface",
+    "is",
+    "null",
+    "object",
+    "package",
+    "return",
+    "super",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typealias",
+    "typeof",
+    "val",
+    "var",
+    "when",
+    "while",
+];
 
 /// One field this module has decided belongs on the wire: its Rust name (camel-cased into the
 /// Kotlin property spelling by [`kotlin_property_name`]), its wire name, whether it is a
@@ -169,43 +204,9 @@ fn lookup_kotlin_name(rust_ident: &str) -> Option<String> {
     KOTLIN_NAMES.with(|names| names.borrow().get(rust_ident).cloned())
 }
 
-/// Whether `attrs` carries a bare `#[serde(transparent)]` — the same test `model_schema.rs` and
-/// `features::dart` use to tell a branded newtype from an ordinary tuple struct, duplicated here
-/// rather than widened to `pub(crate)`.
-fn has_serde_transparent(attrs: &[syn::Attribute]) -> bool {
-    for attr in attrs {
-        if attr.path().is_ident("serde") {
-            let mut found = false;
-            let _: syn::Result<()> = attr.parse_nested_meta(|nested| {
-                if nested.path.is_ident("transparent") {
-                    found = true;
-                }
-                Ok(())
-            });
-            if found {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-/// Whether `fields` is a tuple shape (unnamed) with exactly one slot — the shape a branded newtype
-/// and a bare-value (non-branded) newtype struct share on the wire, both writing the slot's value
-/// alone.
-fn is_single_slot(fields: &Fields) -> bool {
-    matches!(fields, Fields::Unnamed(unnamed) if unnamed.unnamed.len() == 1)
-}
-
-/// The `FieldDef` of a single-slot tuple shape's one field, its type parameters already erased.
-fn single_slot_field(fields: &Fields, type_parameters: &[String]) -> FieldDef {
-    let Fields::Unnamed(unnamed) = fields else {
-        return get_field_def("value", &syn::parse_quote!(()), "");
-    };
-    let Some(slot) = unnamed.unnamed.first() else {
-        return get_field_def("value", &syn::parse_quote!(()), "");
-    };
-    let mut field_def = field_def_with_prop_meta("value", &slot.ty, &slot.attrs);
+/// The `FieldDef` of the field a brand is the value of, its type parameters already erased.
+fn brand_value_field(held: &Field, type_parameters: &[String]) -> FieldDef {
+    let mut field_def = field_def_with_prop_meta("value", &held.ty, &held.attrs);
     field_def.erase_type_parameters(type_parameters);
     field_def
 }
@@ -288,11 +289,23 @@ const fn enum_tag_attrs(_attrs: &[syn::Attribute]) -> EnumTagAttrs {
     }
 }
 
+/// A property's name without the backticks [`kotlin_property_name`] may have put around it: what
+/// a longer identifier is built from, and what the wire name is compared with.
+fn kotlin_bare(property: &str) -> &str {
+    property.trim_matches('`')
+}
+
 /// `rust_name` cased the way a Kotlin property is: `conversation_id` -> `conversationId`. Reuses
 /// serde's own `camelCase` rule (`rename_rule.rs`) rather than a second implementation, since the
-/// two rules coincide exactly on a `snake_case` Rust identifier.
+/// two rules coincide exactly on a `snake_case` Rust identifier. A hard keyword is written between
+/// backticks, which is the name itself to Kotlin and to `kotlinx.serialization`.
 fn kotlin_property_name(rust_name: &str) -> String {
-    RenameRule::CamelCase.apply_to_field(rust_name)
+    let cased = RenameRule::CamelCase.apply_to_field(rust_name);
+    if KOTLIN_HARD_KEYWORDS.contains(&cased.as_str()) {
+        format!("`{cased}`")
+    } else {
+        cased
+    }
 }
 
 /// Whether `field` carries `#[model_schema_prop(nullable)]` — the flag that keeps an `Option<T>`
@@ -328,7 +341,7 @@ fn collect_kotlin_fields(
         let Some(ident) = field.ident.as_ref() else {
             continue;
         };
-        let rust_name = ident.to_string();
+        let rust_name = ident.unraw().to_string();
         let omission = parse_serde_key_omission(&field.attrs);
         if omission.absent_from_wire() {
             continue;
@@ -681,7 +694,7 @@ fn kotlin_module_tokens(
     let module_ident = kotlin_module_ident(rust_ident, span);
     quote! {
         pub mod #module_ident {
-            pub fn kotlin_definition() -> String {
+            pub fn kotlin_definition() -> std::string::String {
                 #full_source.to_owned()
             }
         }
@@ -743,7 +756,7 @@ fn kotlin_nothing_generic_args(generics: &syn::Generics) -> String {
 /// field whose key may be absent — a bare `Option<T>` without `#[model_schema_prop(nullable)]`.
 fn property_declaration(field: &KotlinField) -> String {
     let prop_name = kotlin_property_name(&field.rust_name);
-    let annotation = if prop_name == field.wire_name {
+    let annotation = if kotlin_bare(&prop_name) == field.wire_name {
         String::new()
     } else {
         format!("@SerialName(\"{}\") ", field.wire_name)
@@ -823,7 +836,7 @@ fn flatten_struct_field_plan(
             "output.json.encodeToJsonElement({inner_serializer}, value.{prop}).jsonObject.forEach {{ (k, v) -> put(k, v) }}"
         )
     };
-    let keys_ident = format!("{prop}Keys");
+    let keys_ident = format!("{}Keys", kotlin_bare(prop));
     let key_read =
         format!("val {keys_ident} = ({inner_serializer}).descriptor.elementNames.toSet()");
     let decode = if field.field_def.is_optional() {
@@ -846,9 +859,10 @@ fn flatten_map_field_plan(
     let serialize = format!(
         "value.{prop}.forEach {{ (k, v) -> put(k, output.json.encodeToJsonElement({value_serializer}, v)) }}"
     );
+    let consumed = format!("{}ConsumedKeys", kotlin_bare(prop));
     let decode = format!(
-        "val {prop}ConsumedKeys = {consumed_keys}; \
-         val {prop} = obj.filterKeys {{ it !in {prop}ConsumedKeys }}.mapValues {{ (_, v) -> input.json.decodeFromJsonElement({value_serializer}, v) }}"
+        "val {consumed} = {consumed_keys}; \
+         val {prop} = obj.filterKeys {{ it !in {consumed} }}.mapValues {{ (_, v) -> input.json.decodeFromJsonElement({value_serializer}, v) }}"
     );
     (serialize, decode)
 }
@@ -916,10 +930,16 @@ fn flatten_merging_serializer(
     generic_params: &str,
     type_parameters: &[String],
     fields: &[KotlinField],
+    own_tag: Option<&(String, String)>,
 ) -> String {
     let self_type = format!("{export_name}{generic_params}");
     let serializer_head = serializer_declaration(export_name, type_parameters);
-    let plan = flatten_plan(fields, type_parameters);
+    let mut plan = flatten_plan(fields, type_parameters);
+    // A struct's own tag is written ahead of everything merged into the object.
+    if let Some((key, named)) = own_tag {
+        plan.serialize_stmts
+            .insert(0, format!("put(\"{key}\", \"{named}\")"));
+    }
 
     let lenient_field = if plan.needs_lenient {
         "private val lenient = Json { ignoreUnknownKeys = true }; "
@@ -951,8 +971,8 @@ fn flatten_merging_serializer(
 /// `#[serde(flatten)]` fields also earns a generated merging [`KSerializer`](flatten_merging_serializer).
 fn struct_kotlin_tokens(item_struct: &ItemStruct, name_override: Option<&str>) -> TokenStream {
     let type_parameters = type_parameters_in_scope(&item_struct.generics);
-    if has_serde_transparent(&item_struct.attrs) && is_single_slot(&item_struct.fields) {
-        let value_field = single_slot_field(&item_struct.fields, &type_parameters);
+    if let Some(held) = brand_field(item_struct) {
+        let value_field = brand_value_field(held, &type_parameters);
         return value_class_tokens(
             &item_struct.ident,
             &item_struct.generics,
@@ -983,10 +1003,24 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, name_override: Option<&str>) -
             data_class_params(&fields)
         )
     };
+    let own_tag = struct_tag(item_struct);
     let kotlin_source = if fields.iter().any(|field| field.flatten) {
-        let serializer =
-            flatten_merging_serializer(&export_name, &generic_params, &type_parameters, &fields);
+        let serializer = flatten_merging_serializer(
+            &export_name,
+            &generic_params,
+            &type_parameters,
+            &fields,
+            own_tag.as_ref(),
+        );
         format!("@Serializable(with = {export_name}Serializer::class) {body} {serializer}{alias}")
+    } else if let Some((key, named)) = own_tag {
+        // A struct's own tag: a property outside the constructor, always written and holding the
+        // struct's name unless a payload says otherwise, as serde writes it and reads past it.
+        format!(
+            "@OptIn(ExperimentalSerializationApi::class) @Serializable {body} {{ \
+             @SerialName(\"{key}\") @EncodeDefault val kotlinSchemaTag: String = \"{named}\" \
+             }}{alias}"
+        )
     } else {
         format!("@Serializable {body}{alias}")
     };

@@ -18,10 +18,11 @@ use std::collections::HashMap;
 
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
+use syn::ext::IdentExt as _;
+use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
-use crate::features::serde::parse_serde_key_omission;
+use crate::features::serde::{brand_field, parse_serde_key_omission, struct_tag};
 use crate::field_type::{
     FieldDef, FieldDefType, VariantKind, classify_variant, dart_from_json_argument,
     dart_lower_camel, dart_to_json_argument, get_field_def, is_plain_enum, is_sequence_wrapper,
@@ -35,15 +36,52 @@ use crate::utils::{
 #[cfg(feature = "serde")]
 use crate::features::serde::{parse_serde_field_attributes, parse_serde_type_attributes};
 
-/// One field this module has decided belongs on the wire: its Rust name (the Dart field/parameter
-/// spelling — left as Rust wrote it, `snake_case` included, rather than re-cased to Dart's own
-/// lower-camel convention), its wire name, whether the key always reaches the wire, whether it is a
-/// `#[serde(flatten)]` source, and the `FieldDef` describing its type.
+/// What a member of an emitted enum cannot be named beside the reserved words: a member every
+/// Dart enum or object already has, and one the emitted enum declares itself.
+const DART_ENUM_NAMES_TAKEN: [&str; 9] = [
+    "fromJson",
+    "hashCode",
+    "index",
+    "noSuchMethod",
+    "runtimeType",
+    "toJson",
+    "toString",
+    "values",
+    "wireValue",
+];
+
+/// What a field of an emitted class cannot be named beside the reserved words: the type its own
+/// `fromJson` and `toJson` are written with, which a field of that name hides inside the class,
+/// and a member the class already has. Only names that never compiled: a field named `int` hides
+/// that type too, but compiles wherever the class names no `int`, and is left as written.
+const DART_FIELD_NAMES_TAKEN: [&str; 5] = [
+    "dynamic",
+    "noSuchMethod",
+    "runtimeType",
+    "toJson",
+    "toString",
+];
+
+/// The words Dart reserves, which cannot be an identifier anywhere and have no escape:
+/// <https://dart.dev/language/keywords>. A built-in identifier such as `get` or `import` is not
+/// among them: Dart takes one as a member's name.
+const DART_RESERVED: [&str; 33] = [
+    "assert", "break", "case", "catch", "class", "const", "continue", "default", "do", "else",
+    "enum", "extends", "false", "final", "finally", "for", "if", "in", "is", "new", "null",
+    "rethrow", "return", "super", "switch", "this", "throw", "true", "try", "var", "void", "while",
+    "with",
+];
+
+/// One field this module has decided belongs on the wire: its Dart member name (the Rust field's
+/// own spelling, `snake_case` included, rather than re-cased to Dart's own lower-camel
+/// convention, and moved by [`dart_member`] off a name Dart will not take), its wire name, whether
+/// the key always reaches the wire, whether it is a `#[serde(flatten)]` source, and the `FieldDef`
+/// describing its type.
 struct DartField {
     field_def: FieldDef,
     flatten: bool,
+    member: String,
     required: bool,
-    rust_name: String,
     wire_name: String,
 }
 
@@ -161,28 +199,6 @@ fn register_dart_name(rust_ident: &str, export_name: &str) {
     });
 }
 
-/// Whether `attrs` carries a bare `#[serde(transparent)]` — the same test `model_schema.rs` uses to
-/// tell a branded newtype from an ordinary tuple struct, duplicated here (rather than reached
-/// through a `pub(crate)` widening) since it is a dozen lines of plain `syn` parsing with no feature
-/// dependency of its own.
-fn has_serde_transparent(attrs: &[syn::Attribute]) -> bool {
-    for attr in attrs {
-        if attr.path().is_ident("serde") {
-            let mut found = false;
-            let _: syn::Result<()> = attr.parse_nested_meta(|nested| {
-                if nested.path.is_ident("transparent") {
-                    found = true;
-                }
-                Ok(())
-            });
-            if found {
-                return true;
-            }
-        }
-    }
-    false
-}
-
 /// The module `{ident}_dart` publishes `dart_definition()` from — never a direct inherent
 /// `impl {ident}`. A Rust type alias is not a new type: `impl SlotAliasKey { .. }` for
 /// `type SlotAliasKey = MetricSlot;` is really `impl MetricSlot { .. }`, which either collides
@@ -196,7 +212,7 @@ fn dart_module_tokens(rust_ident: &str, span: proc_macro2::Span, dart_source: &s
     let module_ident = dart_module_ident(rust_ident, span);
     quote! {
         pub mod #module_ident {
-            pub fn dart_definition() -> String {
+            pub fn dart_definition() -> std::string::String {
                 #dart_source.to_owned()
             }
         }
@@ -265,6 +281,21 @@ const fn field_is_flatten(_attrs: &[syn::Attribute]) -> bool {
     false
 }
 
+/// `name` as a Dart member: itself, or with a trailing underscore where Dart reserves it or the
+/// emitted type has taken it (`taken`). Dart has no escape for a reserved word, so the member
+/// moves and the wire key stays. `written` is every name the item itself writes, which the moved
+/// name steps past.
+fn dart_member(name: &str, taken: &[&str], written: &[String]) -> String {
+    if !DART_RESERVED.contains(&name) && !taken.contains(&name) {
+        return name.to_owned();
+    }
+    let mut moved = format!("{name}_");
+    while written.contains(&moved) {
+        moved.push('_');
+    }
+    moved
+}
+
 /// The wire name a field with Rust name `rust_name` and its own `rename` writes under, once
 /// `rule` — the container's own `rename_all`, [`RenameRule::None`] without the `serde` feature —
 /// has had its say. An explicit rename always wins over the container's rule, matching serde
@@ -322,12 +353,17 @@ fn collect_dart_fields(
     let Fields::Named(named) = fields else {
         return Vec::new();
     };
+    let written: Vec<String> = named
+        .named
+        .iter()
+        .filter_map(|field| Some(field.ident.as_ref()?.unraw().to_string()))
+        .collect();
     let mut collected = Vec::new();
     for field in &named.named {
         let Some(ident) = field.ident.as_ref() else {
             continue;
         };
-        let rust_name = ident.to_string();
+        let rust_name = ident.unraw().to_string();
         let omission = parse_serde_key_omission(&field.attrs);
         if omission.absent_from_wire() {
             continue;
@@ -344,7 +380,7 @@ fn collect_dart_fields(
             required: !omission.omits_key,
             flatten: field_is_flatten(&field.attrs),
             field_def,
-            rust_name,
+            member: dart_member(&rust_name, &DART_FIELD_NAMES_TAKEN, &written),
             wire_name,
         });
     }
@@ -845,9 +881,9 @@ fn class_body_parts(fields: &[DartField], extra_to_json: &[String]) -> ClassBody
         .iter()
         .map(|field| {
             if field.required {
-                format!("required this.{},", field.rust_name)
+                format!("required this.{},", field.member)
             } else {
-                format!("this.{},", field.rust_name)
+                format!("this.{},", field.member)
             }
         })
         .collect();
@@ -856,7 +892,7 @@ fn class_body_parts(fields: &[DartField], extra_to_json: &[String]) -> ClassBody
             acc,
             "final {} {};",
             dart_typename(&field.field_def),
-            field.rust_name
+            field.member
         )
         .unwrap();
         acc
@@ -868,18 +904,18 @@ fn class_body_parts(fields: &[DartField], extra_to_json: &[String]) -> ClassBody
             format!("json['{}']", field.wire_name)
         };
         let decode = dart_decode_expr(&field.field_def, &source);
-        write!(acc, "{}: {decode},", field.rust_name).unwrap();
+        write!(acc, "{}: {decode},", field.member).unwrap();
         acc
     });
     let to_json_entries: String = fields
         .iter()
         .map(|field| {
-            let encode = dart_encode_expr(&field.field_def, &field.rust_name, false);
+            let encode = dart_encode_expr(&field.field_def, &field.member, false);
             if field.flatten {
                 if field.field_def.is_optional() {
                     format!(
                         "if ({} != null) ...({encode} as Map<String, dynamic>),",
-                        field.rust_name
+                        field.member
                     )
                 } else {
                     format!("...({encode} as Map<String, dynamic>),")
@@ -889,7 +925,7 @@ fn class_body_parts(fields: &[DartField], extra_to_json: &[String]) -> ClassBody
             } else {
                 format!(
                     "if ({} != null) '{}': {encode},",
-                    field.rust_name, field.wire_name
+                    field.member, field.wire_name
                 )
             }
         })
@@ -937,9 +973,10 @@ fn class_body(
     class_name: &str,
     generic_params: &str,
     fields: &[DartField],
+    extra_to_json: &[String],
     codec: &GenericCodec,
 ) -> String {
-    let content = class_body_content(class_name, fields, &[], codec);
+    let content = class_body_content(class_name, fields, extra_to_json, codec);
     format!("class {class_name}{generic_params} {{ {content} }}")
 }
 
@@ -947,8 +984,8 @@ fn class_body(
 /// when `name = "..."` moved its published name elsewhere.
 fn struct_dart_tokens(item_struct: &ItemStruct, name_override: Option<&str>) -> TokenStream {
     let type_parameters = type_parameters_in_scope(&item_struct.generics);
-    if has_serde_transparent(&item_struct.attrs) && is_single_slot(&item_struct.fields) {
-        let value_field = single_slot_field(&item_struct.fields, &type_parameters);
+    if let Some(held) = brand_field(item_struct) {
+        let value_field = brand_value_field(held, &type_parameters);
         return value_wrapper_tokens(
             &item_struct.ident,
             &item_struct.generics,
@@ -968,33 +1005,21 @@ fn struct_dart_tokens(item_struct: &ItemStruct, name_override: Option<&str>) -> 
     let fields = collect_dart_fields(&item_struct.fields, rule, &type_parameters);
     let generic_params = dart_generic_params(&item_struct.generics);
     let codec = generic_codec(&type_parameters);
-    let body = class_body(&export_name, &generic_params, &fields, &codec);
+    // A struct's own tag is written ahead of its fields and read past, as serde does both.
+    let own_tag: Vec<String> = struct_tag(item_struct)
+        .into_iter()
+        .map(|(key, named)| format!("'{key}': '{named}',"))
+        .collect();
+    let body = class_body(&export_name, &generic_params, &fields, &own_tag, &codec);
     let typedef = ident_typedef(&rust_ident, &export_name, &generic_params);
     let dart_source = format!("{body}{typedef}");
 
     dart_module_tokens(&rust_ident, item_struct.ident.span(), &dart_source)
 }
 
-/// Whether `fields` is a tuple shape (unnamed) with exactly one slot — the shape a branded newtype
-/// and a bare-value (non-branded) newtype struct share on the wire, both writing the slot's value
-/// alone.
-fn is_single_slot(fields: &Fields) -> bool {
-    matches!(fields, Fields::Unnamed(unnamed) if unnamed.unnamed.len() == 1)
-}
-
-/// The `FieldDef` of a single-slot tuple shape's one field, its type parameters already erased.
-/// Falls back to describing an empty value for a shape that is not actually single-slot — never
-/// reached given [`is_single_slot`] gates every caller, but left panic-free regardless, since a
-/// generator that panics on an input another guard has already refused is strictly worse than one
-/// that answers with something harmless.
-fn single_slot_field(fields: &Fields, type_parameters: &[String]) -> FieldDef {
-    let Fields::Unnamed(unnamed) = fields else {
-        return get_field_def("value", &syn::parse_quote!(()), "");
-    };
-    let Some(slot) = unnamed.unnamed.first() else {
-        return get_field_def("value", &syn::parse_quote!(()), "");
-    };
-    let mut field_def = field_def_with_prop_meta("value", &slot.ty, &slot.attrs);
+/// The `FieldDef` of the field a brand is the value of, its type parameters already erased.
+fn brand_value_field(held: &Field, type_parameters: &[String]) -> FieldDef {
+    let mut field_def = field_def_with_prop_meta("value", &held.ty, &held.attrs);
     field_def.erase_type_parameters(type_parameters);
     field_def
 }
@@ -1448,10 +1473,15 @@ fn untagged_enum_dart_source(
     format!("{base} {}{typedef}", subclasses.join(" "))
 }
 
-/// One plain-enum variant's Dart member name (lower-camel of its Rust ident) and wire value.
-fn plain_enum_member(variant: &Variant, rule: RenameRule) -> (String, String) {
+/// One plain-enum variant's Dart member name (lower-camel of its Rust ident, moved off a name
+/// Dart will not take; `written` is every member's lower-camel name) and wire value.
+fn plain_enum_member(variant: &Variant, rule: RenameRule, written: &[String]) -> (String, String) {
     let rust_name = variant.ident.to_string();
-    let member_name = dart_lower_camel(&rust_name);
+    let member_name = dart_member(
+        &dart_lower_camel(&rust_name),
+        &DART_ENUM_NAMES_TAKEN,
+        written,
+    );
     let wire = rename_override(&variant.attrs).unwrap_or_else(|| rule.apply_to_variant(&rust_name));
     (member_name, wire)
 }
@@ -1459,10 +1489,15 @@ fn plain_enum_member(variant: &Variant, rule: RenameRule) -> (String, String) {
 /// The Dart tokens a plain (all-unit, string-wire) enum earns: a `String`-backed enhanced enum.
 fn plain_enum_dart_source(item_enum: &ItemEnum, rust_ident: &str, export_name: &str) -> String {
     let rule = container_rename_rule(&item_enum.attrs);
+    let written: Vec<String> = item_enum
+        .variants
+        .iter()
+        .map(|variant| dart_lower_camel(&variant.ident.to_string()))
+        .collect();
     let members: Vec<(String, String)> = item_enum
         .variants
         .iter()
-        .map(|variant| plain_enum_member(variant, rule))
+        .map(|variant| plain_enum_member(variant, rule, &written))
         .collect();
     let member_list = members
         .iter()

@@ -833,6 +833,18 @@ export const DynamicValue$Schema: ZodType<DynamicValue> = z.discriminatedUnion("
 ]);
 ```
 
+A tuple struct has no key to write a getter on, so a slot that reaches the struct itself, or a type declared below it, is read behind `z.lazy` instead:
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct NestsInASlot(pub String, pub Vec<Self>);
+```
+
+```typescript
+const NestsInASlot$RawSchema = z.tuple([z.string(), z.lazy(() => z.array(NestsInASlot$Schema))]);
+```
+
 ### Type Aliases
 
 The `#[model_schema()]` macro supports `type` alias statements, creating semantic type aliases that appear in the generated TypeScript output. Use the `name` argument to control the generated TypeScript name.
@@ -990,9 +1002,33 @@ const buildNode$Schema = <IdType extends ZodType>(
   get children() { return z.array(Node$SchemaFactory(idType)); },
   id: idType,
 });
+
+interface Node$SchemaOf<IdType extends ZodType> extends ReturnType<
+  typeof buildNode$Schema<IdType>
+> {}
 ```
 
-The member is written as a getter so that the call is made after the factory has reached its cache rather than while its object is still being built. Where a cycle spans two types, the reference the getter is written on is the one pointing *forward* -- at a type declared below -- because that is the reference no cycle can be built without: if every reference in a cycle named something already declared, declaration positions would have to decrease all the way round. Deferring those leaves nothing that can cycle, and every reference pointing back at a type already declared is written as it stands.
+The member is written as a getter so that the call is made after the factory has reached its cache rather than while its object is still being built. A type whose builder defers a reference reads its schema type back under an `interface` rather than the `type` alias every other generic type keeps: a declaration file (`.d.ts`) writes a type that reaches itself only by name, and an alias is written there as the structure it resolves to, with `any` at the point the structure recurs. Under the interface the member is declared `z.ZodArray<Node$SchemaOf<IdType>>`, so a second package reading the declarations parses `children` as `Node<…>` all the way down.
+
+A generic tuple struct that holds itself has no getter to defer behind, and the types of a tuple's slots are read as the tuple is built, so its builder cannot read its own factory's type there. It reaches itself through a function of its own, `X$SchemaSelf`, declared to return what the factory's schema parses -- `ZodType<X<z.output<IdType>>>` -- and called behind `z.lazy`. The factory keeps its own precise return type. Where a cycle spans two types, the reference the getter is written on is the one pointing *forward* -- at a type declared below -- because that is the reference no cycle can be built without: if every reference in a cycle named something already declared, declaration positions would have to decrease all the way round. Deferring those leaves nothing that can cycle, and every reference pointing back at a type already declared is written as it stands.
+
+An `Option` of a generic type is written as a union, and a union is checked against what each of its members takes and answers. For the schema a factory returns that is the very type still being worked out wherever the member belongs to a cycle, and the TypeScript compiler refuses it as a type that references itself. So wherever a union is written around a factory's call -- an `Option` field, or one marked `nullable` -- the call is handed in through a generic arrow, and the union is built over the arrow's type parameter:
+
+```rust
+#[model_schema(default_types(IdType = String))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Chain<IdType> {
+    pub id: IdType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next: Option<Box<Self>>,
+}
+```
+
+```typescript
+  get next() { return (<Reached$ extends z.core.SomeType>(reached$: Reached$) => z.union([z.null().transform(() => undefined), reached$, z.undefined()]).prefault(undefined))(Chain$SchemaFactory(idType)); },
+```
+
+It parses exactly what the plain union parses: an absent key, a `null` and an `undefined` all answer `undefined`, under a key that is there. An optional list or map of the type is built inside the arrow the same way (`z.array(reached$)`, `z.record(z.string(), reached$)`), and a member that reaches two generic types takes one parameter for each. One shape is still refused by the compiler: a generic type that holds a map of itself that is not optional, written *above* an optional map of itself. Writing the optional one first type-checks, and so does marking it `nullable`.
 
 #### Declaring the default type
 
@@ -1100,6 +1136,8 @@ The value's type is whatever the instantiation supplies, so nothing here holds i
 
 `#[serde(transparent)]` tuple structs with a single public field generate branded TypeScript types. The newtype is invisible in JSON serialization but carries a distinct type identity in TypeScript, preventing accidental mixing of different ID types.
 
+A `#[serde(transparent)]` struct with named fields is the same brand, over the one field serde reads it as -- the one that is not skipped for reading, carries no `default` and is not written `PhantomData`. serde writes `struct Slug { text: String }` as the string alone, exactly as it writes `struct Slug(String)`, so the two publish the same thing on every surface, and everything this section says of the slot holds for that field: the `Display` requirement and `no_display`, the checks written on the type, and no `#[model_schema_prop(...)]` on the field itself.
+
 ```rust
 use tixschema::model_schema;
 use serde::{Deserialize, Serialize};
@@ -1178,7 +1216,7 @@ Notes:
 - The description is written before the brand in a factory and after it in a `const`. Inside a factory the receiver is the parameter the caller filled, and Zod's `.meta()` returns `this` — which TypeScript resolves back to that bare parameter, dropping the marker `.brand<"Name">()` had just added. Both orders build the same schema.
 - Serde transparent serialization works normally -- the wrapper is invisible in JSON.
 - An item whose published expression *is* another item's binding -- an alias of a brand, a one-slot tuple struct over one, and the `$SchemaDefault` of either where it declares a parameter -- is annotated `typeof {Name}$RawSchema` rather than `ZodType<{Name}>`, so the brand's narrowing survives the republish; `.brand()` narrows at the value position, which a restated `ZodType<{Name}>` discards. An item that builds an expression of its own keeps `ZodType<{Name}>`.
-- The slot takes no `#[model_schema_prop(...)]`. A brand publishes its inner's own schema with a `.brand()` written onto it, so no key written on the slot -- `pattern`, `as`, `preprocess`, `literal`, `ts_optional`, `nullable`, any of them -- reaches any surface, and one written there is refused with a message naming the spelling that does work. The three checks a brand carries are written on the type itself: `#[model_schema(pattern = "...", minLength = N, maxLength = N)]`, under [Branded Newtype Validation Constraints](#branded-newtype-validation-constraints). This is about the *slot* of a single-field tuple struct; a `#[serde(transparent)]` struct with a **named** field is no brand, and its field attributes are read as any other named field's are.
+- The slot takes no `#[model_schema_prop(...)]`. A brand publishes its inner's own schema with a `.brand()` written onto it, so no key written on the slot -- `pattern`, `as`, `preprocess`, `literal`, `ts_optional`, `nullable`, any of them -- reaches any surface, and one written there is refused with a message naming the spelling that does work. The three checks a brand carries are written on the type itself: `#[model_schema(pattern = "...", minLength = N, maxLength = N)]`, under [Branded Newtype Validation Constraints](#branded-newtype-validation-constraints). The same holds for the field a `#[serde(transparent)]` struct with named fields is the value of.
 - Use branded newtypes for opaque IDs and phantom types to prevent passing the wrong ID type across domain boundaries.
 
 #### A Named Inner Must Carry `#[model_schema()]`
@@ -3642,11 +3680,11 @@ Read as a struct holding `name: String` and `versions: Vec<Version>`, `{ "name":
 - Some flattened fields are walked by nothing: an `Option` of a map, an `ObjectId`, which serde writes as an object and so flattens, and a second field that takes the keys nothing else declares, after the first one. Every key then counts as declared, so none is `Unknown`, and serde's verdict is the read's: a value serde refuses there is one `Undescribed`.
 - A flattened field of a variant is walked in the object the variant's fields sit in, wherever the enum's form puts that object.
 
-**A generic type** gets its methods on `impl`s of their own, which bound every type parameter, and the type itself, `serde::de::DeserializeOwned`, and `serde::Serialize` as well for `from_bson_with`. A value of a parameter's type is read whole, with that parameter's own reader, and so is a list, a map, an `Option` or a tuple that holds one: read as `Page<Version>`, where `Page<T>` declares `items: Vec<T>`, a bad number inside one item is a single `Invalid` at `items`, expected `Array(TypeParam("T"))`. From a JSON value such a value is never `Mistyped`, nothing there being bound to write it back. From a BSON document it is: an id filling a parameter and stored as text is `Mistyped` at its field.
+**A generic type** gets its methods on `impl`s of their own, which bound every type parameter, and the type itself, `serde::de::DeserializeOwned`, and `serde::Serialize` as well for `from_bson_with`. A type that itself bounds a parameter `Serialize` or `DeserializeOwned` has that bound written a second time on these `impl`s, which clippy reports at the declaration as `trait_duplication_in_bounds` (a `nursery` lint), as it already does for the `Serialize` bound serde's own derive repeats; leave the bound off the type and neither is reported, serde's derive and these `impl`s each adding what they need. A value of a parameter's type is read whole, with that parameter's own reader, and so is a list, a map, an `Option` or a tuple that holds one: read as `Page<Version>`, where `Page<T>` declares `items: Vec<T>`, a bad number inside one item is a single `Invalid` at `items`, expected `Array(TypeParam("T"))`. From a JSON value such a value is never `Mistyped`, nothing there being bound to write it back. From a BSON document it is: an id filling a parameter and stored as text is `Mistyped` at its field.
 
 ### Nested types
 
-Every model type a flagged type's fields reach carries the flag too, whatever its shape, or the build fails. The flagged type's walker calls the nested type's walker, so the error names the method the flag would have generated:
+Every model type a flagged type's fields reach carries the flag too, whatever its shape. Where the model type is declared above the flagged one and has no flag, the build fails: the flagged type's walker calls the nested type's walker, so the error names the method the flag would have generated:
 
 ```rust
 #[model_schema()]
@@ -3670,17 +3708,8 @@ The error is reported at the `#[model_schema(decode_with)]` of the type that nam
 
 - **A model type filling a type parameter needs no flag.** It is read as one value, so `Page<Plain>` reads with no flag on `Plain`.
 - **A field typed with an alias of a flagged model type is walked**, the alias being that type: with `#[model_schema()] type EntryAlias = Entry;`, a field `featured: EntryAlias` lists an issue at `featured.name`.
-- **A field typed with an alias of a list or a map does not build**, and its author writes the type in full, `Vec<Version>`. With `#[model_schema()] pub type Versions = Vec<Version>;` and a field `all: Versions`, the walker calls a method on `Vec<Version>`:
-
-  ```text
-  error[E0599]: no associated function or constant named `decode_with_value_issues` found for struct `Vec<Version>` in the current scope
-  ```
-
-- **A field of a type tixschema does not know gets no special treatment.** tixschema takes every type name it does not recognise for another `#[model_schema]` type, so the walker calls that type's walker, and where the type has none the build fails. With a field `timeout: Duration`, `Duration` being `std::time::Duration`, the build earns this beside the `duration_schema` error the same field earns without the flag wherever a schema surface is on:
-
-  ```text
-  error[E0599]: no associated function or constant named `decode_with_value_issues` found for struct `std::time::Duration` in the current scope
-  ```
+- **A field typed with an alias of a list or a map is walked as that list or map**, where `#[model_schema]` is written on the alias and the alias is declared above the type that names it. With `#[model_schema()] pub type Versions = Vec<Version>;` and a field `all: Versions`, `{ "all": [{ "number": 1 }, { "number": "2" }] }` lists `Invalid` at `all[1].number`, and with `#[model_schema()] pub type Counts = HashMap<String, i32>;` and a field `counts: Counts`, `{ "counts": { "a": "x", "b": 2 } }` lists `Invalid` at `counts.a`, expected `I32`. The field publishes under the alias's name on every schema surface, as it does without the flag. The alias may be declared in another module: what it holds is reached from the field's own type, so nothing the alias is written with has to be in scope beside the field. An alias that takes a type parameter, and one declared below the type that names it, are read whole, as the next point says.
+- **A field of a type tixschema has not seen is read whole.** A name `#[model_schema]` was not written on above the flagged type may be a `type` alias with no `#[model_schema]`, a type from another crate, or a model type declared below, and tixschema cannot tell which. So the walker asks the type for its walker, and where the type has none it reads the value whole, with the type's own `Deserialize`: a value serde refuses is one `Invalid` at the field, expected `Unknown`, and flattened, the field takes every key nothing else declares. With `pub type Properties = serde_json::Map<String, Value>;` and a field `properties: Properties`, any object reads with no issue and `{ "properties": 5 }` lists `Invalid` at `properties`. A flagged model type declared below is walked by its own walker all the same. An unflagged one declared below is read whole, where one declared above fails the build. A field `timeout: Duration`, `Duration` being `std::time::Duration`, is read whole too; the `duration_schema` error the same field earns wherever a schema surface is on is no part of the flag and is unchanged.
 
 ### What is refused
 
@@ -3901,6 +3930,29 @@ tixschema = { default-features = false, features = ["serde", "zod", "typescript"
 
 CI tests every combination of the feature sets (`web`, `mobile`, `mongo`) via `cargo-hack`; `just test` runs every combination of the plain features locally.
 
+### A member named after a word the client language reserves
+
+A Rust field or variant may carry a name Dart, Swift or Kotlin keeps for itself: `class` and `is` are ordinary Rust field names, `r#in` and `r#for` are legal ones, and a variant named `Default` becomes the member `default` wherever the client lower-cases it. Each emitter writes such a member in the form its language accepts, and the key on the wire stays the one serde writes:
+
+```rust
+#[model_schema()]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Reserved {
+    pub class: String,
+    pub r#in: String,
+}
+```
+
+| Target | The member | The key |
+|--------|-----------|---------|
+| Dart | `final String class_; final String in_;` -- Dart has no escape for a reserved word, so the member takes a trailing underscore: `Reserved(class_: ..., in_: ...)` | `json['class']`, `json['in']` |
+| Swift | ``public let `class`: String; public let `in`: String;`` and ``case `class`; case `in`;`` in `CodingKeys` | `class`, `in` |
+| Kotlin | ``val `class`: String, val `in`: String`` | `class`, `in`, with no `@SerialName` |
+
+The words are each language's own: Dart's [reserved words](https://dart.dev/language/keywords), Swift's [keywords](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/lexicalstructure/#Keywords-and-Punctuation) reserved in a declaration, a statement or an expression, and Kotlin's [hard keywords](https://kotlinlang.org/docs/keyword-reference.html#hard-keywords). A word a language reserves in one context only -- `type` in Swift, `value` in Kotlin, `get` in Dart -- names a member as it is. Dart also moves a field named `dynamic`, the type every emitted `fromJson` and `toJson` is written with, and a plain enum's member named `index`, `values` or `wireValue`, each of which a Dart enum or the emitted one already holds. Where the moved name is one the type writes itself (`class` beside `class_`), it takes a second underscore.
+
+A plain enum's members are lower-cased by Dart and Swift, so the same rule reaches a variant: `Default` is `default_` in Dart and `` `default` `` in Swift. Kotlin keeps a variant's spelling, which no keyword matches.
+
 `just test-emitted` runs the emitted clients under their own toolchains. Its Kotlin leg compiles
 against the serialization compiler plugin and the `kotlinx-serialization-json`,
 `kotlinx-serialization-core` and `kotlinx-coroutines-core` jars, which `just kotlin-libs` installs
@@ -4013,6 +4065,7 @@ Supported Serde attributes:
 - `#[serde(rename = "...")]` -- rename individual fields
 - `#[serde(rename_all = "camelCase")]` -- rename all fields with a naming convention
 - `#[serde(tag = "...")]` -- internally tagged enums: the variant's data is written beside the discriminator
+- `#[serde(tag = "...")]` on a struct -- the struct's name is written under that key, and every surface describes the key: see [A Struct's Own Tag](#a-structs-own-tag)
 - `#[serde(tag = "...", content = "...")]` -- adjacently tagged enums
 - `#[serde(untagged)]` -- untagged enums generate a union (`A | B`) / Zod `z.union([...])` / JSON Schema `anyOf`
 - `#[serde(flatten)]` -- flatten a field into the parent as an intersection type (`A & B`) / Zod `.and(...)`
@@ -4027,6 +4080,33 @@ Supported Serde attributes:
 The three `skip` spellings are three different wires, and [Optional Fields](#optional-fields) reads each one in both directions, positional slots included.
 
 If the `serde` feature is disabled but serde attributes are present, you will see compile-time warnings and field names will not be transformed.
+
+### A Struct's Own Tag
+
+`#[serde(tag = "...")]` on a struct makes serde write the struct's name under that key, ahead of its fields. Every surface describes the key as a required member whose only value is that name -- the struct's ident, or its `#[serde(rename = "...")]`:
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub struct Tagged {
+    pub name: String,
+}
+```
+
+```typescript
+export type Tagged = {
+  kind: "Tagged";
+  name: string;
+};
+
+const Tagged$RawSchema = z.strictObject({
+  kind: z.literal("Tagged"),
+  name: z.string(),
+});
+```
+
+The JSON Schema lists `kind` in `required` as `{"type": "string", "const": "Tagged"}`, and the Dart, Swift and Kotlin types write the key and read a payload with it or without it. serde reads the struct either way too, whatever value the key holds, so the schemas describe what the struct writes. A struct that flattens a tagged one is written with the key in its own object, which is what its intersection describes. A field of the struct that writes the same key is refused, since serde would write the key twice.
 
 ## Important Notes
 
@@ -4273,6 +4353,34 @@ pub struct MyType {
     // fields...
 }
 ```
+
+#### A Model Type Declared in Another Module
+
+**Error:** `cannot find module or crate <type>_schema in this scope` (`E0433`), reported at the field's type.
+
+With the `jsonschema` feature on, a field naming a `#[model_schema]` type reaches that type's generated `{type}_schema` module by its bare name, so the module has to be in scope where the referencing type is declared. Import it beside the type:
+
+```rust
+pub mod version {
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Serialize)]
+    pub struct Version {
+        pub number: i32,
+    }
+}
+
+pub mod record {
+    use crate::version::{Version, version_schema};
+
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Serialize)]
+    pub struct Record {
+        pub versions: Vec<Version>,
+    }
+}
+```
+
+rustc's help line suggests `cargo add version_schema`; there is no such crate. The module is generated next to `Version`, in the module that declares it.
 
 ### Runtime Issues
 

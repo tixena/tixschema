@@ -5,5 +5,9 @@
 //! surface against the wire value serde actually writes.
 
 #[cfg(test)]
+#[path = "tuple_struct_tests/reaches_itself.rs"]
+mod reaches_itself;
+
+#[cfg(test)]
 #[path = "tuple_struct_tests/tests.rs"]
 mod tests;

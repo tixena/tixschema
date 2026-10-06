@@ -108,6 +108,56 @@ pub mod swift_codec_fixture {
         pub tiers: HashMap<CodecPrimary, String>,
     }
 
+    /// Row 8: members named after words the client languages reserve (`class`, `in`, `is`,
+    /// `var`, `while`, `as`, `fun`) and one none of them reserves (`type`). The flattened member
+    /// is named after one too.
+    #[model_schema()]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct CodecReserved {
+        #[serde(flatten)]
+        pub r#as: CodecReservedInner,
+        pub class: String,
+        pub fun: String,
+        pub r#in: String,
+        pub is: bool,
+        pub kinds: Vec<CodecReservedKind>,
+        pub r#type: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub var: Option<String>,
+        pub r#while: Vec<String>,
+    }
+
+    /// What `CodecReserved` flattens in.
+    #[model_schema()]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct CodecReservedInner {
+        pub r#for: i32,
+        pub object: String,
+    }
+
+    /// A plain enum whose members, lower-cased as Dart and Swift write them, are reserved words
+    /// (`class`, `default`, `in`) or names a Dart enum already has (`index`, `values`,
+    /// `wireValue`).
+    #[model_schema()]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub enum CodecReservedKind {
+        Class,
+        Default,
+        In,
+        Index,
+        Values,
+        WireValue,
+    }
+
+    /// Row 9: a map whose key needs a wrapper, under a reserved word: the Swift codec names a
+    /// local after the member.
+    #[cfg(any(feature = "swift", feature = "kotlin"))]
+    #[model_schema()]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct CodecReservedMap {
+        pub r#for: HashMap<u32, String>,
+    }
+
     /// The wire's no-data type: serde writes and reads `{}` for it, never `null`.
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -119,6 +169,31 @@ pub mod swift_codec_fixture {
     pub struct CodecUnitField {
         pub label: String,
         pub payload: CodecUnitPayload,
+    }
+
+    /// The value row 8 and the Dart group both round-trip.
+    pub fn codec_reserved() -> CodecReserved {
+        CodecReserved {
+            r#as: CodecReservedInner {
+                r#for: 4,
+                object: "o".to_owned(),
+            },
+            class: "c".to_owned(),
+            fun: "f".to_owned(),
+            r#in: "i".to_owned(),
+            is: true,
+            kinds: vec![
+                CodecReservedKind::Class,
+                CodecReservedKind::Default,
+                CodecReservedKind::In,
+                CodecReservedKind::Index,
+                CodecReservedKind::Values,
+                CodecReservedKind::WireValue,
+            ],
+            r#type: "t".to_owned(),
+            var: Some("v".to_owned()),
+            r#while: vec!["w".to_owned()],
+        }
     }
 }
 

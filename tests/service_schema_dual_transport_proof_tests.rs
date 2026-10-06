@@ -15,6 +15,10 @@
 #![cfg(feature = "serde")]
 
 #[cfg(test)]
+#[path = "service_schema_dual_transport_proof_tests/shadowing.rs"]
+mod shadowing;
+
+#[cfg(test)]
 #[macro_use]
 #[path = "service_schema_dual_transport_proof_tests/tests.rs"]
 mod tests;

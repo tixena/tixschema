@@ -1254,6 +1254,37 @@ impl FieldDef {
         self.zod_preprocess_wrap(self.zod_array_base())
     }
 
+    /// Every factory call this field's schema is written with, outermost only and once each, in
+    /// the text [`Self::zod_array_base`] writes it as.
+    #[cfg(feature = "zod")]
+    fn zod_factory_calls(&self, calls: &mut Vec<String>) {
+        if let FieldDefType::Map(key, value) = &self.field_type {
+            key.zod_factory_calls(calls);
+            value.zod_factory_calls(calls);
+        } else if let FieldDefType::Tuple(elements) = &self.field_type {
+            for element in elements {
+                element.zod_factory_calls(calls);
+            }
+        } else if let FieldDefType::SiblingType(name, arguments) = &self.field_type {
+            let call = if let [element] = arguments.as_slice()
+                && is_sequence_wrapper(name)
+            {
+                return element.zod_factory_calls(calls);
+            } else if let Some(info) = lookup_alias_info(name) {
+                publishes_zod_factory(name).then(|| zod_factory_call(&info.export_name, arguments))
+            } else {
+                (!arguments.is_empty()).then(|| zod_factory_call(name, arguments))
+            };
+            if let Some(written) = call
+                && !calls.contains(&written)
+            {
+                calls.push(written);
+            }
+        } else {
+            // Every other type is a leaf, which names no item.
+        }
+    }
+
     /// The whole record call a map is written as, read off its key: the constructor moves with the
     /// key schema, because `z.record` over an enumerated key demands every member — the two strings
     /// a `bool` writes and the members of a plain enum are both such an enumeration — and a map
@@ -1363,14 +1394,19 @@ impl FieldDef {
     /// Generates the Zod schema string for this field (requires "zod" feature).
     pub fn zod_type(&self) -> String {
         if self.is_optional() {
+            let mut calls = Vec::new();
+            self.zod_factory_calls(&mut calls);
             if self.has_nullable() {
-                let union = format!("z.union([{}, z.null()])", self.zod_array_base());
+                let union = zod_union_around(&self.zod_array_base(), &calls, |held| {
+                    format!("z.union([{held}, z.null()])")
+                });
                 self.zod_preprocess_wrap(union)
             } else {
-                let pre_result = self.zod_base();
-                format!(
-                    "z.union([z.null().transform(() => undefined), {pre_result}, z.undefined()]).prefault(undefined)"
-                )
+                zod_union_around(&self.zod_base(), &calls, |held| {
+                    format!(
+                        "z.union([z.null().transform(() => undefined), {held}, z.undefined()]).prefault(undefined)"
+                    )
+                })
             }
         } else {
             let pre_result = self.zod_base();
@@ -1435,6 +1471,54 @@ pub fn format_number_literal(value: f64) -> String {
     } else {
         value.to_string()
     }
+}
+
+/// The union `union` writes around `held`, with every factory call in `held` handed in through a
+/// generic arrow. Checking a union reads what each member takes and answers, and a factory's own
+/// schema is the type still being inferred there, so a type parameter stands in for it. The names
+/// end in `$`, which no argument a factory binds can.
+#[cfg(feature = "zod")]
+fn zod_union_around(held: &str, calls: &[String], union: impl Fn(&str) -> String) -> String {
+    if calls.is_empty() {
+        return union(held);
+    }
+    let mut body = held.to_owned();
+    let mut types = Vec::new();
+    let mut values = Vec::new();
+    for (call, position) in calls.iter().zip(1_usize..) {
+        let numbered = if position == 1 {
+            String::new()
+        } else {
+            position.to_string()
+        };
+        body = replace_call(&body, call, &format!("reached{numbered}$"));
+        types.push(format!("Reached{numbered}$ extends z.core.SomeType"));
+        values.push(format!("reached{numbered}$: Reached{numbered}$"));
+    }
+    format!(
+        "(<{}>({}) => {})({})",
+        types.join(", "),
+        values.join(", "),
+        union(&body),
+        calls.join(", ")
+    )
+}
+
+/// `schema` with `call` replaced by `name` wherever it starts a name of its own, so that a call to
+/// `Node$SchemaFactory` is not found inside one to `TreeNode$SchemaFactory`.
+#[cfg(feature = "zod")]
+fn replace_call(schema: &str, call: &str, name: &str) -> String {
+    let mut pieces = schema.split(call);
+    let mut replaced = pieces.next().unwrap_or_default().to_owned();
+    for piece in pieces {
+        let inside_a_name = replaced
+            .chars()
+            .next_back()
+            .is_some_and(|last| last.is_alphanumeric() || last == '_' || last == '$');
+        replaced.push_str(if inside_a_name { call } else { name });
+        replaced.push_str(piece);
+    }
+    replaced
 }
 
 /// A reference to a type that publishes a factory, as the call it has to be. Each argument is

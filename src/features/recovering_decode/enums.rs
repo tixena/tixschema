@@ -11,9 +11,10 @@ use quote::{ToTokens as _, format_ident, quote};
 use syn::ext::IdentExt as _;
 use syn::{Fields, ItemEnum, Type, parse_quote};
 
+use super::aliases::Reach;
 use super::{
-    Arm, Handed, Keyed, Lookup, RecoveringDecode, Shape, Step, Walk, Walker, added_to, binding,
-    flattened_walker_call, not_the_shape, path_expression, written_names,
+    Arm, Handed, Keyed, Lookup, RecoveringDecode, Shape, Step, Walk, Walker, Written, added_to,
+    binding, flattened_walker_call, not_the_shape, path_expression, written_names,
 };
 use crate::features::serde::{
     parse_serde_field_attributes, parse_serde_key_omission, parse_serde_type_attributes,
@@ -97,12 +98,12 @@ impl EnumWalker<'_> {
         let arms = self.variants.iter().map(|variant| {
             let tags = variant.tags();
             let walked = self.keyed_content(&variant.content, content);
-            quote! { Some(#(#tags)|*) => #walked, }
+            quote! { core::option::Option::Some(#(#tags)|*) => #walked, }
         });
         let missing = missing_tag(tag, &expected);
         let unknown = self.unknown_tag(tag, &expected);
         quote! {
-            let Some(tag) = object.get(#tag) else {
+            let core::option::Option::Some(tag) = object.get(#tag) else {
                 #missing
                 return vec![#tag, #content];
             };
@@ -178,8 +179,8 @@ impl EnumWalker<'_> {
             true,
             &quote! {
                 #(#looked_up)*
-                out.push(issue("Missing", path.to_vec(), #expected, None, None, Vec::new()));
-                Vec::new()
+                out.push(issue("Missing", path.to_vec(), #expected, core::option::Option::None, core::option::Option::None, std::vec::Vec::new()));
+                std::vec::Vec::new()
             },
         );
         quote! {
@@ -261,13 +262,13 @@ impl EnumWalker<'_> {
             quote! { #name }
         };
         let content = Ident::new("content", Span::call_site());
-        let segments = [quote! { Ok(#stored.to_owned()) }];
+        let segments = [quote! { core::result::Result::Ok(#stored.to_owned()) }];
         let walked = match &variant.content {
             Shape::Fields(keyed) => self.held_fields(keyed, &content, &segments),
             Shape::Nothing => {
                 return if aliased {
                     quote! {
-                        if let Some(tag) = [#(#tags),*].into_iter().find(|&tag| object.contains_key(tag)) {
+                        if let core::option::Option::Some(tag) = [#(#tags),*].into_iter().find(|&tag| object.contains_key(tag)) {
                             return vec![tag];
                         }
                     }
@@ -285,7 +286,7 @@ impl EnumWalker<'_> {
         };
         let (there, found) = if aliased {
             (
-                quote! { Some((tag, content)) },
+                quote! { core::option::Option::Some((tag, content)) },
                 quote! {
                     [#(#tags),*]
                         .into_iter()
@@ -293,7 +294,10 @@ impl EnumWalker<'_> {
                 },
             )
         } else {
-            (quote! { Some(content) }, quote! { object.get(#name) })
+            (
+                quote! { core::option::Option::Some(content) },
+                quote! { object.get(#name) },
+            )
         };
         quote! {
             if let #there = #found {
@@ -330,7 +334,7 @@ impl EnumWalker<'_> {
         let source = self.walker.source;
         let object = Ident::new("object", Span::call_site());
         let expected = self.variants_expected();
-        let every_key = quote! { object.keys().map(String::as_str).collect() };
+        let every_key = quote! { object.keys().map(std::string::String::as_str).collect() };
         let arms = self.variants.iter().map(|variant| {
             let tags = variant.tags();
             let declared = match &variant.content {
@@ -352,7 +356,7 @@ impl EnumWalker<'_> {
                     let keys = handed.of_the_object(&walked);
                     quote! {{
                         #copied
-                        let mut declared: Vec<&str> = #keys.collect();
+                        let mut declared: std::vec::Vec<&str> = #keys.collect();
                         declared.push(#tag);
                         declared
                     }}
@@ -361,12 +365,12 @@ impl EnumWalker<'_> {
                 // serde reads any other value from the whole object, where no walk reaches it.
                 Shape::Held(_) | Shape::Slots(_) => every_key.clone(),
             };
-            quote! { Some(#(#tags)|*) => #declared, }
+            quote! { core::option::Option::Some(#(#tags)|*) => #declared, }
         });
         let missing = missing_tag(tag, &expected);
         let unknown = self.unknown_tag(tag, &expected);
         quote! {
-            let Some(tag) = object.get(#tag) else {
+            let core::option::Option::Some(tag) = object.get(#tag) else {
                 #missing
                 return #every_key;
             };
@@ -452,10 +456,10 @@ impl EnumWalker<'_> {
             .source
             .object_reader(&Ident::new("object", Span::call_site()));
         quote! {
-            let here = [path, &[Ok(#tag.to_owned())]].concat();
+            let here = [path, &[core::result::Result::Ok(#tag.to_owned())]].concat();
             out.push(match <Self as serde::Deserialize>::deserialize(#reader) {
-                Err(refused) => issue("Invalid", here, #expected, Some(tag.clone()), Some(refused.to_string()), Vec::new()),
-                Ok(_) => issue("Mistyped", here, #expected, Some(tag.clone()), None, Vec::new()),
+                core::result::Result::Err(refused) => issue("Invalid", here, #expected, core::option::Option::Some(tag.clone()), core::option::Option::Some(refused.to_string()), std::vec::Vec::new()),
+                core::result::Result::Ok(_) => issue("Mistyped", here, #expected, core::option::Option::Some(tag.clone()), core::option::Option::None, std::vec::Vec::new()),
             });
         }
     }
@@ -467,7 +471,7 @@ impl EnumWalker<'_> {
         let source = self.walker.source;
         let object = Ident::new("object", Span::call_site());
         let reader = source.object_reader(&object);
-        let every_key = quote! { object.keys().map(String::as_str).collect() };
+        let every_key = quote! { object.keys().map(std::string::String::as_str).collect() };
         let out = quote! { out };
         let picked = self.variants.iter().map(|variant| {
             let pattern = &variant.pattern;
@@ -486,14 +490,14 @@ impl EnumWalker<'_> {
                 // serde reads any other value from the whole object, where no walk reaches it.
                 Shape::Held(_) | Shape::Nothing | Shape::Slots(_) => every_key.clone(),
             };
-            quote! { Ok(#pattern) => #declared, }
+            quote! { core::result::Result::Ok(#pattern) => #declared, }
         });
         // serde gives none of these back, and the match on what it gives stays exhaustive.
         let unread = if self.never_read.is_empty() {
             TokenStream::new()
         } else {
             let patterns = self.never_read.iter().map(|variant| &variant.pattern);
-            quote! { Ok(#(#patterns)|*) => Vec::new(), }
+            quote! { core::result::Result::Ok(#(#patterns)|*) => std::vec::Vec::new(), }
         };
         let lists: Vec<Ident> = self
             .variants
@@ -507,7 +511,7 @@ impl EnumWalker<'_> {
                 Shape::Fields(keyed) => {
                     let walked = self.walker.keyed(keyed, None, &object, &[], false);
                     if !walked.lists {
-                        return quote! { let #list = Vec::new(); };
+                        return quote! { let #list = std::vec::Vec::new(); };
                     }
                     let walk = walked.walk;
                     quote! {{
@@ -529,7 +533,7 @@ impl EnumWalker<'_> {
                 }
             };
             quote! {
-                let mut #list = Vec::new();
+                let mut #list = std::vec::Vec::new();
                 #walked
             }
         });
@@ -539,10 +543,10 @@ impl EnumWalker<'_> {
             match <Self as serde::Deserialize>::deserialize(#reader) {
                 #(#picked)*
                 #unread
-                Err(_) => {
+                core::result::Result::Err(_) => {
                     let found = &#whole;
                     #(#tried)*
-                    out.push(issue("NoVariant", path.to_vec(), &[], Some(found.clone()), None, vec![#((#names, #lists)),*]));
+                    out.push(issue("NoVariant", path.to_vec(), &[], core::option::Option::Some(found.clone()), core::option::Option::None, vec![#((#names, #lists)),*]));
                     #every_key
                 }
             }
@@ -559,14 +563,14 @@ impl EnumWalker<'_> {
                 &variant.pattern,
                 self.variant_call(variant, &quote! { out }),
             );
-            quote! { Ok(#pattern) => #walked, }
+            quote! { core::result::Result::Ok(#pattern) => #walked, }
         });
         // serde gives none of these back, and the match on what it gives stays exhaustive.
         let unread = if self.never_read.is_empty() {
             TokenStream::new()
         } else {
             let patterns = self.never_read.iter().map(|variant| &variant.pattern);
-            quote! { Ok(#(#patterns)|*) => {} }
+            quote! { core::result::Result::Ok(#(#patterns)|*) => {} }
         };
         let lists: Vec<Ident> = variants
             .iter()
@@ -575,7 +579,7 @@ impl EnumWalker<'_> {
         let tried = variants.iter().zip(&lists).map(|(variant, list)| {
             let walked = self.variant_call(variant, &quote! { &mut #list });
             quote! {
-                let mut #list = Vec::new();
+                let mut #list = std::vec::Vec::new();
                 #walked;
             }
         });
@@ -584,9 +588,9 @@ impl EnumWalker<'_> {
             match <Self as serde::Deserialize>::deserialize(#reader) {
                 #(#picked)*
                 #unread
-                Err(_) => {
+                core::result::Result::Err(_) => {
                     #(#tried)*
-                    out.push(issue("NoVariant", path.to_vec(), &[], Some(found.clone()), None, vec![#((#names, #lists)),*]));
+                    out.push(issue("NoVariant", path.to_vec(), &[], core::option::Option::Some(found.clone()), core::option::Option::None, vec![#((#names, #lists)),*]));
                 }
             }
         });
@@ -622,7 +626,9 @@ impl EnumWalker<'_> {
         }) = &variant.content
         {
             let issues = self.walker.source.method("issues");
-            return quote! { <#ty>::#issues(found, path, issue, #out) };
+            return self
+                .walker
+                .asked(ty, &quote! { <#ty>::#issues(found, path, issue, #out) });
         }
         let method = self
             .walker
@@ -685,9 +691,14 @@ impl EnumWalker<'_> {
 pub fn enum_recovering_decode(item_enum: &ItemEnum) -> RecoveringDecode {
     let module_name = ident_schema_module_name(&item_enum.ident.to_string());
     let parameters = type_parameters_in_scope(&item_enum.generics);
-    let tagging = Tagging::of(item_enum);
+    let mut reach = Reach::new(&module_name);
+    let mut walked = item_enum.clone();
+    for variant in &mut walked.variants {
+        reach.fields(&mut variant.fields);
+    }
+    let tagging = Tagging::of(&walked);
     let (never_read, variants): (Vec<WalkedVariant<'_>>, Vec<WalkedVariant<'_>>) =
-        walked_variants(item_enum, &module_name, &parameters)
+        walked_variants(&walked, &module_name, &parameters)
             .into_iter()
             .partition(|variant| variant.never_read);
     added_to(
@@ -695,7 +706,10 @@ pub fn enum_recovering_decode(item_enum: &ItemEnum) -> RecoveringDecode {
         &item_enum.generics,
         &module_name,
         &parameters,
-        &written_names(item_enum.to_token_stream()),
+        &Written {
+            names: written_names(item_enum.to_token_stream()),
+            reach: &reach,
+        },
         |walker| {
             EnumWalker {
                 never_read: &never_read,
@@ -710,7 +724,7 @@ pub fn enum_recovering_decode(item_enum: &ItemEnum) -> RecoveringDecode {
 /// What lists a tag that is not there, under the key `tag` it is read from.
 fn missing_tag(tag: &str, expected: &TokenStream) -> TokenStream {
     quote! {
-        out.push(issue("Missing", [path, &[Ok(#tag.to_owned())]].concat(), #expected, None, None, Vec::new()));
+        out.push(issue("Missing", [path, &[core::result::Result::Ok(#tag.to_owned())]].concat(), #expected, core::option::Option::None, core::option::Option::None, std::vec::Vec::new()));
     }
 }
 

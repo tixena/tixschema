@@ -243,6 +243,35 @@ mod zod {
         assert!(!zod.contains("ArchiveNode$Schema)"), "Got: {zod}");
     }
 
+    /// A declaration file writes a type that reaches itself only by name, and an interface is what
+    /// it writes by name: a builder that defers a reference reads its type back under one, and one
+    /// that defers none keeps the alias.
+    #[test]
+    fn a_generic_that_defers_a_reference_reads_its_schema_type_back_under_an_interface() {
+        let node = ArchiveNode::<String>::zod_schema();
+        assert!(
+            node.contains(
+                "interface ArchiveNode$SchemaOf<IdType extends ZodType> extends ReturnType<\n  \
+                 typeof buildArchiveNode$Schema<IdType>\n> {}\n"
+            ),
+            "Got: {node}"
+        );
+
+        let branch = ArchiveBranch::<String>::zod_schema();
+        assert!(
+            branch.contains(
+                "interface ArchiveBranch$SchemaOf<IdType extends ZodType> extends ReturnType<"
+            ),
+            "Got: {branch}"
+        );
+
+        let trunk = ArchiveTrunk::<String>::zod_schema();
+        assert!(
+            trunk.contains("type ArchiveTrunk$SchemaOf<IdType extends ZodType> = ReturnType<"),
+            "Got: {trunk}"
+        );
+    }
+
     /// A cycle between two generic types is ended at the reference written *forward* — naming a
     /// type declared below, which a cycle cannot be built without. That one is deferred; the
     /// backward reference is read as it stands, since what's left after deferring forward
@@ -516,6 +545,9 @@ mod readme {
                 "  get children() { return z.array(Node$SchemaFactory(idType)); },",
                 "  id: idType,",
                 "});",
+                "interface Node$SchemaOf<IdType extends ZodType> extends ReturnType<",
+                "  typeof buildNode$Schema<IdType>",
+                "> {}",
             ],
         );
     }

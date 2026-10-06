@@ -193,7 +193,7 @@ fn ts_seam(service: &ServiceDef) -> TokenStream {
         #[doc = " Every TypeScript type this service publishes: the messages the macro declared"]
         #[doc = " for it, the fault a caller can receive, and one result type per operation that"]
         #[doc = " answers."]
-        pub fn ts_definition() -> String {
+        pub fn ts_definition() -> std::string::String {
             [#(#published),*].join("\n\n")
         }
 
@@ -220,20 +220,20 @@ fn dart_seam(service: &ServiceDef) -> TokenStream {
         #[doc = " Every Dart type this service publishes: the messages the macro declared for it,"]
         #[doc = " the fault kind and fields, and one result pair per operation that answers — the"]
         #[doc = " Dart twin of `ts_definition()`."]
-        pub fn dart_definition() -> String {
+        pub fn dart_definition() -> std::string::String {
             [#(#definition),*].join("\n\n")
         }
 
         #[doc = " The service's generated Dart `http_rest` client: the transport seam, the client"]
         #[doc = " class, and the one-way refusal a call still throws."]
-        pub fn dart_http_client() -> String {
+        pub fn dart_http_client() -> std::string::String {
             #client.to_owned()
         }
 
         #[doc = " The service's generated Dart `ws_rpc` client: the transport over a sink and a"]
         #[doc = " stream, the client class, the one-way refusal a call still throws, and the"]
         #[doc = " dispatcher attachment."]
-        pub fn dart_ws_client() -> String {
+        pub fn dart_ws_client() -> std::string::String {
             #ws_client.to_owned()
         }
     }
@@ -254,14 +254,14 @@ fn swift_seam(service: &ServiceDef) -> TokenStream {
     quote! {
         #[doc = " The service's generated Swift `http_rest` client: the transport seam, one"]
         #[doc = " `async` method per operation, and the fault helpers every method reaches for."]
-        pub fn swift_http_client() -> String {
+        pub fn swift_http_client() -> std::string::String {
             #http_client.to_owned()
         }
 
         #[doc = " The service's generated Swift `ws_rpc` client: the socket seam, the heartbeat"]
         #[doc = " options, and the actor that correlates requests to their replies and answers"]
         #[doc = " one method per operation."]
-        pub fn swift_ws_client() -> String {
+        pub fn swift_ws_client() -> std::string::String {
             #ws_client.to_owned()
         }
     }
@@ -277,14 +277,14 @@ fn kotlin_seam(service: &ServiceDef) -> TokenStream {
         #[doc = " The service's generated Kotlin `http_rest` client: request/response data"]
         #[doc = " classes, the transport seam, one sealed result per reply operation, and the"]
         #[doc = " client class with one `suspend` method per operation."]
-        pub fn kotlin_http_client() -> String {
+        pub fn kotlin_http_client() -> std::string::String {
             #client.to_owned()
         }
 
         #[doc = " The service's generated Kotlin `ws_rpc` client: the transport that owns the"]
         #[doc = " socket, the client class answering `kotlin_http_client()`'s own sealed result,"]
         #[doc = " and the dispatcher attachment for a service the app implements."]
-        pub fn kotlin_ws_client() -> String {
+        pub fn kotlin_ws_client() -> std::string::String {
             #ws_client.to_owned()
         }
     }
@@ -317,13 +317,13 @@ fn seam(service: &ServiceDef) -> TokenStream {
     quote! {
         #[doc = " The service's generated TypeScript client: the transport seam it is bound"]
         #[doc = " to, the type its methods are declared on, and the factory that binds one."]
-        pub fn ts_client() -> String {
+        pub fn ts_client() -> std::string::String {
             #client.to_owned()
         }
 
         #[doc = " The service's generated `http_rest` TypeScript client: the plain-terms request"]
         #[doc = " and response seam, the client type, and the factory that binds one to it."]
-        pub fn ts_http_client() -> String {
+        pub fn ts_http_client() -> std::string::String {
             #http_client.to_owned()
         }
 
@@ -331,27 +331,27 @@ fn seam(service: &ServiceDef) -> TokenStream {
         #[doc = " request and response shapes, a fault handler with the Rust transport's own"]
         #[doc = " defaults, and the dispatcher that matches, assembles the message the way the"]
         #[doc = " Rust dispatcher does, and drives `create{Service}Dispatcher`."]
-        pub fn ts_http_service() -> String {
+        pub fn ts_http_service() -> std::string::String {
             #http_service.to_owned()
         }
 
         #[doc = " The service's implementable TypeScript interface, the outcome types an"]
         #[doc = " implementation answers with, and the dispatcher factory that drives one."]
-        pub fn ts_service() -> String {
+        pub fn ts_service() -> std::string::String {
             #service_side.to_owned()
         }
 
         #[doc = " The service's generated `ws_rpc` TypeScript transport: the socket seam a platform"]
         #[doc = " `WebSocket` satisfies, the heartbeat options, and the factory that binds one to"]
         #[doc = " the `ts_client()` seam."]
-        pub fn ts_ws_client() -> String {
+        pub fn ts_ws_client() -> std::string::String {
             #ws_client.to_owned()
         }
 
         #[doc = " The service's generated `ws_rpc` dispatcher attachment: serves a service the"]
         #[doc = " browser implements off one socket, handing a refused push to the required"]
         #[doc = " `onFault`."]
-        pub fn ts_ws_service() -> String {
+        pub fn ts_ws_service() -> std::string::String {
             #ws_service.to_owned()
         }
 
@@ -359,7 +359,7 @@ fn seam(service: &ServiceDef) -> TokenStream {
         #[doc = " produced, builds a context per connection, answers probes, and hands one socket"]
         #[doc = " to a second service. Wraps `ts_ws_service()`'s attachment, so a bundle names that"]
         #[doc = " first."]
-        pub fn ts_ws_server() -> String {
+        pub fn ts_ws_server() -> std::string::String {
             #ws_server.to_owned()
         }
     }

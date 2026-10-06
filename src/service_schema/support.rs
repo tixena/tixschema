@@ -283,12 +283,12 @@ fn streamed_answer_type() -> TokenStream {
         pub enum StreamedAnswer {
             /// The whole body.
             Full {
-                source: ::std::boxed::Box<dyn BodySource + Send>,
+                source: ::std::boxed::Box<dyn BodySource + ::core::marker::Send>,
                 content_type: ::std::string::String,
             },
             /// A byte-range slice, with the `content-range` header it answers under.
             Partial {
-                source: ::std::boxed::Box<dyn BodySource + Send>,
+                source: ::std::boxed::Box<dyn BodySource + ::core::marker::Send>,
                 content_range: ::std::string::String,
                 content_type: ::std::string::String,
             },
@@ -645,26 +645,26 @@ fn answered_envelope() -> TokenStream {
         #[derive(::serde::Deserialize, ::serde::Serialize)]
         #[serde(rename_all = "camelCase")]
         pub struct Answered<T, E> {
-            #[serde(skip_serializing_if = "Option::is_none")]
-            error: Option<E>,
+            #[serde(skip_serializing_if = "::core::option::Option::is_none")]
+            error: ::core::option::Option<E>,
             ok: bool,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            value: Option<T>,
+            #[serde(skip_serializing_if = "::core::option::Option::is_none")]
+            value: ::core::option::Option<T>,
         }
 
         impl<T, E> Answered<T, E> {
             /// The envelope around the outcome an implementation produced.
-            pub fn answering(outcome: Result<T, E>) -> Self {
+            pub fn answering(outcome: ::core::result::Result<T, E>) -> Self {
                 match outcome {
-                    Ok(value) => Self {
-                        error: None,
+                    ::core::result::Result::Ok(value) => Self {
+                        error: ::core::option::Option::None,
                         ok: true,
-                        value: Some(value),
+                        value: ::core::option::Option::Some(value),
                     },
-                    Err(declared) => Self {
-                        error: Some(declared),
+                    ::core::result::Result::Err(declared) => Self {
+                        error: ::core::option::Option::Some(declared),
                         ok: false,
-                        value: None,
+                        value: ::core::option::Option::None,
                     },
                 }
             }
@@ -674,17 +674,17 @@ fn answered_envelope() -> TokenStream {
             /// The arm is the `ok` flag's, and what it carries is `None` where the envelope
             /// contradicted itself — `ok` with no value, a failure with no error. That is a defect
             /// on the wire, which the reader answers for rather than this.
-            pub fn carried(self) -> Result<Option<T>, Option<E>> {
+            pub fn carried(self) -> ::core::result::Result<::core::option::Option<T>, ::core::option::Option<E>> {
                 if self.ok {
-                    Ok(self.value)
+                    ::core::result::Result::Ok(self.value)
                 } else {
-                    Err(self.error)
+                    ::core::result::Result::Err(self.error)
                 }
             }
 
             /// What the envelope said, `ok` alone: `value` is never read, whatever it holds.
-            pub fn carried_unit(self) -> Result<(), Option<E>> {
-                if self.ok { Ok(()) } else { Err(self.error) }
+            pub fn carried_unit(self) -> ::core::result::Result<(), ::core::option::Option<E>> {
+                if self.ok { ::core::result::Result::Ok(()) } else { ::core::result::Result::Err(self.error) }
             }
         }
     }
@@ -710,8 +710,8 @@ fn message_validation() -> TokenStream {
             /// declared none passes here.
             pub trait MessageValidation {
                 /// `Ok(())`, there being nothing declared to check.
-                fn validate(&self) -> Result<(), Vec<String>> {
-                    Ok(())
+                fn validate(&self) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
+                    ::core::result::Result::Ok(())
                 }
             }
 
@@ -778,7 +778,7 @@ fn message_validators(service: &ServiceDef) -> TokenStream {
         let in_scope = message_validation_in_scope();
         quote! {
             #[doc = #doc]
-            pub fn #named(received: &#message) -> Result<(), Vec<String>> {
+            pub fn #named(received: &#message) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
                 #in_scope
                 received.validate()
             }
@@ -817,19 +817,19 @@ fn violation_readers() -> TokenStream {
         /// `deserialize_with` hook running the very check `validate()` runs, and the hook hands
         /// serde that check's message verbatim — so a payload refused before it ever became a
         /// message still names the field it got wrong.
-        pub fn named_field(reported: &str) -> Option<&str> {
+        pub fn named_field(reported: &str) -> ::core::option::Option<&str> {
             let (field, _rest) = reported.strip_prefix('\'')?.split_once('\'')?;
-            Some(field)
+            ::core::option::Option::Some(field)
         }
 
         /// Everything that failed, in one line, for the fault's detail.
-        pub fn violation_detail(reported: &[String]) -> String {
+        pub fn violation_detail(reported: &[::std::string::String]) -> ::std::string::String {
             reported.join("; ")
         }
 
         /// The field a violation report names, which is its first line's. A violation naming no
         /// field, as a constrained newtype's does, leaves the fault's field empty.
-        pub fn violated_field(reported: &[String]) -> Option<&str> {
+        pub fn violated_field(reported: &[::std::string::String]) -> ::core::option::Option<&str> {
             named_field(reported.first()?)
         }
     }
@@ -988,7 +988,7 @@ fn fault_accessors() -> TokenStream {
             /// a payload refused for its shape rather than its values, an operation name nothing
             /// answers to, a handler that panicked.
             #[must_use]
-            pub fn field(&self) -> Option<&str> {
+            pub fn field(&self) -> ::core::option::Option<&str> {
                 self.field.as_deref()
             }
 
@@ -1039,7 +1039,7 @@ fn fault_constructors() -> TokenStream {
         impl ServiceFault {
             /// A message that failed its own schema, naming the field when the violation named one.
             #[must_use]
-            pub fn failed_validation(operation: &str, field: Option<&str>, detail: &str) -> Self {
+            pub fn failed_validation(operation: &str, field: ::core::option::Option<&str>, detail: &str) -> Self {
                 Self {
                     detail: detail.to_owned(),
                     field: field.map(str::to_owned),
@@ -1053,7 +1053,7 @@ fn fault_constructors() -> TokenStream {
             pub fn handler_panic(operation: &str, detail: &str) -> Self {
                 Self {
                     detail: detail.to_owned(),
-                    field: None,
+                    field: ::core::option::Option::None,
                     kind: ServiceFaultKind::HandlerPanic,
                     operation: operation.to_owned(),
                 }
@@ -1066,7 +1066,7 @@ fn fault_constructors() -> TokenStream {
                     detail: detail.to_owned(),
                     // The transport reports that the call did not travel, not that a value inside
                     // it was wrong, so there is no field to name.
-                    field: None,
+                    field: ::core::option::Option::None,
                     kind: ServiceFaultKind::TransportFailure,
                     operation: operation.to_owned(),
                 }
@@ -1081,7 +1081,7 @@ fn fault_constructors() -> TokenStream {
                     // serde_json classified as the bytes not being a document: bytes that are not
                     // JSON at all, a document that ends early. Nothing was read far enough for a
                     // key to be what went wrong, so there is no field to name.
-                    field: None,
+                    field: ::core::option::Option::None,
                     kind: ServiceFaultKind::UndeserializablePayload,
                     operation: operation.to_owned(),
                 }
@@ -1092,7 +1092,7 @@ fn fault_constructors() -> TokenStream {
             pub fn unknown_operation(operation: &str) -> Self {
                 Self {
                     detail: "the service answers to no operation by that name".to_owned(),
-                    field: None,
+                    field: ::core::option::Option::None,
                     kind: ServiceFaultKind::UnknownOperation,
                     operation: operation.to_owned(),
                 }
@@ -1186,14 +1186,14 @@ fn fault_declaration(declared: &Ident, non_exhaustive: bool) -> TokenStream {
         #[derive(Clone, Debug, Eq, PartialEq, ::serde::Serialize)]
         #[serde(rename_all = "camelCase")]
         pub struct #fields {
-            detail: String,
+            detail: ::std::string::String,
             // Omitted rather than written as `null` when there is no field to name, which is the
             // same convention the reply envelope follows and what lets the generated TypeScript
             // spell it `string | undefined` and be right about the wire.
-            #[serde(skip_serializing_if = "Option::is_none")]
-            field: Option<String>,
+            #[serde(skip_serializing_if = "::core::option::Option::is_none")]
+            field: ::core::option::Option<::std::string::String>,
             kind: #kind,
-            operation: String,
+            operation: ::std::string::String,
         }
 
         #[doc = #alias_doc]
@@ -1211,7 +1211,7 @@ fn renderings() -> TokenStream {
         impl ::core::fmt::Display for ServiceFault {
             fn fmt(&self, formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 match self.field.as_deref() {
-                    Some(named) => ::core::write!(
+                    ::core::option::Option::Some(named) => ::core::write!(
                         formatter,
                         "{} in operation `{}`, field `{}`: {}",
                         self.kind,
@@ -1219,7 +1219,7 @@ fn renderings() -> TokenStream {
                         named,
                         self.detail
                     ),
-                    None => ::core::write!(
+                    ::core::option::Option::None => ::core::write!(
                         formatter,
                         "{} in operation `{}`: {}",
                         self.kind,

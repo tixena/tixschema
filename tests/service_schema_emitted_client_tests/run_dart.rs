@@ -8,7 +8,9 @@
 
 use super::runtime::ran;
 use super::tests::swift_codec_fixture::{
-    CodecUnitField, CodecUnitPayload, codec_unit_field_dart, codec_unit_payload_dart,
+    CodecUnitField, CodecUnitPayload, codec_reserved, codec_reserved_dart,
+    codec_reserved_inner_dart, codec_reserved_kind_dart, codec_unit_field_dart,
+    codec_unit_payload_dart,
 };
 use super::tests::{
     ContentClientServiceSchema, ConversationClientServiceSchema, EchoClientServiceSchema,
@@ -22,6 +24,36 @@ use super::tests::{
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
 const RUNTIME_VAR: &str = "TIXSCHEMA_DART";
+
+/// The reserved-word group's own driver: builds a `CodecReserved` under the names Dart leaves a
+/// member whose own name it will not take -- a trailing underscore -- writes it to JSON, decodes
+/// it back, and re-encodes. `as`, `fun` and `type` are no reserved word of Dart's and keep their
+/// names.
+const RESERVED_DRIVER: &str = "
+void main() {
+  final value = CodecReserved(
+    as: CodecReservedInner(for_: 4, object: 'o'),
+    class_: 'c',
+    fun: 'f',
+    in_: 'i',
+    is_: true,
+    kinds: [
+      CodecReservedKind.class_,
+      CodecReservedKind.default_,
+      CodecReservedKind.in_,
+      CodecReservedKind.index_,
+      CodecReservedKind.values_,
+      CodecReservedKind.wireValue_,
+    ],
+    type: 't',
+    var_: 'v',
+    while_: ['w'],
+  );
+  final encoded = jsonEncode(value.toJson());
+  final decoded = CodecReserved.fromJson(jsonDecode(encoded) as Map<String, dynamic>);
+  print(jsonEncode(decoded.toJson()));
+}
+";
 
 /// The unit-field group's own driver: constructs a `CodecUnitField`, writes it to JSON, decodes it
 /// back, and re-encodes — proving the round trip stays `{}` both ways.
@@ -476,6 +508,36 @@ fn a_scalar_message_is_still_the_whole_segment() {
 // A unit-struct field's own round trip: construct it, write it to JSON, decode it back, and
 // re-encode — `{}` both ways, through the pair's own generated `fromJson`/`toJson`.
 // -------------------------------------------------------------------------------------------
+
+fn reserved_module() -> String {
+    [
+        "import 'dart:convert';".to_owned(),
+        codec_reserved_kind_dart::dart_definition(),
+        codec_reserved_inner_dart::dart_definition(),
+        codec_reserved_dart::dart_definition(),
+        RESERVED_DRIVER.to_owned(),
+    ]
+    .join("\n\n")
+}
+
+#[test]
+fn a_member_named_after_a_reserved_word_compiles_and_keeps_its_key() {
+    let Some(written) = ran(
+        "dart",
+        RUNTIME_VAR,
+        "dart",
+        "reserved.dart",
+        &reserved_module(),
+    ) else {
+        return;
+    };
+    let value: serde_json::Value = serde_json::from_str(written.trim()).unwrap();
+    assert_eq!(
+        value,
+        serde_json::to_value(codec_reserved()).unwrap(),
+        "Dart writes what serde writes for the same value"
+    );
+}
 
 fn unit_field_module() -> String {
     [

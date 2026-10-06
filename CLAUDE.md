@@ -97,7 +97,7 @@ just ci
    - Parses Serde attributes when `serde` feature enabled
    - Extracts example code from doc comments (` ```rust example` fences)
    - Generates methods: `ts_definition()`, optionally `json_schema()`, optionally `schema_example()`, and optionally `validate()`
-   - `process_branded_newtype()`: handles `#[serde(transparent)]` single-field tuple structs, generating Zod brand schemas or `unique symbol` branded TypeScript types
+   - `process_branded_newtype()`: handles `#[serde(transparent)]` structs serde writes as the value of one field -- a single-slot tuple struct, or a struct with named fields -- generating Zod brand schemas or `unique symbol` branded TypeScript types
 
 3. **Type Analysis** ([field_type.rs](src/field_type.rs))
    - `FieldDef`: Core data structure representing a field's type, optionality, docs, etc.
@@ -351,17 +351,25 @@ pub struct UserProfile {
 }
 ```
 
+A struct's own `#[serde(tag = "...")]` writes the struct's serde name under that key, and every
+surface describes it. `struct_tag` in `src/features/serde.rs` answers the key and the name (the
+ident, or the container's `rename`); `with_struct_tag` puts the pair ahead of the struct's members
+as a required string literal and refuses a field that writes the same key, which serde would write
+twice. Dart writes it into `toJson`, Swift encodes it under `SwiftSchemaTagCodingKeys`, and Kotlin
+holds it in an `@EncodeDefault` property outside the constructor; all three read a payload with
+the key or without it, as serde does.
+
 ### 7. Field Validation Attributes (`#[model_schema_prop(...)]`)
 
-All validation constraints generate checks in **Zod (frontend), JSON Schema, and Rust (Serde deserialization)**:
+All validation constraints generate checks in **Zod (frontend), JSON Schema, and Rust**. In Rust the check runs in `validate()`. It also runs as serde reads the payload in one position only: a member of an untagged enum, where the check decides which variant the payload is:
 
-| Attribute | Field Type | Zod | JSON Schema | Rust serde |
+| Attribute | Field Type | Zod | JSON Schema | Rust |
 |-----------|------------|-----|-------------|------------|
-| `pattern = "regex"` | `String` | `.check(z.regex(/regex/))` | `"pattern"` | validator + deserializer |
-| `minLength = N` | `String` | `.min(N)` | `"minLength"` | validator + deserializer |
-| `maxLength = N` | `String` | `.max(N)` | `"maxLength"` | validator + deserializer |
-| `minimum = N` | numeric | `.min(N)` | `"minimum"` | validator + deserializer |
-| `maximum = N` | numeric | `.max(N)` | `"maximum"` | validator + deserializer |
+| `pattern = "regex"` | `String` | `.check(z.regex(/regex/))` | `"pattern"` | `validate()`; the read too on an untagged enum's member |
+| `minLength = N` | `String` | `.min(N)` | `"minLength"` | `validate()`; the read too on an untagged enum's member |
+| `maxLength = N` | `String` | `.max(N)` | `"maxLength"` | `validate()`; the read too on an untagged enum's member |
+| `minimum = N` | numeric | `.min(N)` | `"minimum"` | `validate()`; the read too on an untagged enum's member |
+| `maximum = N` | numeric | `.max(N)` | `"maximum"` | `validate()`; the read too on an untagged enum's member |
 | `literal = "val"` | `String` | `z.literal("val")` | `{"type": "string", "const": "val"}` | — |
 | `literal = true` | `bool` | `z.literal(true)` | `{"type": "boolean", "const": true}` | — |
 | `literal = 214` | numeric | `z.literal(214)` | `{"type": "number", "const": 214}` | — |
@@ -403,7 +411,7 @@ pub struct User {
 
 #### Generated `validate()` method
 
-When any field has constraints, the macro generates a `validate(&self) -> Result<(), Vec<String>>` method that aggregates all per-field errors. This is useful when constructing instances in code rather than through serde (serde validates automatically):
+When any field has constraints, the macro generates a `validate(&self) -> Result<(), Vec<String>>` method that aggregates all per-field errors. On a struct field, and on a field of a tagged enum's variant, this is the only place the constraint is checked: serde reads a payload that breaks it:
 
 ```rust
 let result = my_instance.validate();
@@ -415,7 +423,7 @@ match result {
 
 The macro also generates into the type's schema module:
 - `validate_{field}_value(&FieldType) -> Result<(), String>` — pure static validator per field
-- `deserialize_{field}(D) -> Result<FieldType, E>` — serde hook that calls the static validator
+- `deserialize_{variant}_{field}(D) -> Result<FieldType, E>` — serde hook that calls the static validator, generated only for a member of an untagged enum, the one position where the check runs on the read
 
 For a generic type (one with type parameters), `validate()` is emitted only at the declared default
 instantiation — `impl DocumentId<String> { pub fn validate(&self) -> Result<(), Vec<String>> { … } }`,
@@ -430,7 +438,7 @@ constraints.
 
 ### 8. Branded Newtypes
 
-Single-field tuple structs with `#[serde(transparent)]` are treated as branded/opaque types. The brand publishes under its Rust ident unless `#[model_schema(name = "...")]` names another, and that name reaches the surface twice: as the exported type and as the brand tag the values carry.
+Single-field tuple structs with `#[serde(transparent)]` are treated as branded/opaque types, and so is a `#[serde(transparent)]` struct with named fields, over the one field serde reads it as: `brand_field` in `src/features/serde.rs` is the one seam every surface asks, the web three and Dart, Swift and Kotlin alike, and `transparent_field` beside it is serde's own rule for which named field that is (read, no `default`, not `PhantomData`). The brand publishes under its Rust ident unless `#[model_schema(name = "...")]` names another, and that name reaches the surface twice: as the exported type and as the brand tag the values carry.
 
 A non-generic brand publishes a `$RawSchema`/`$Schema` const pair:
 
@@ -517,12 +525,28 @@ Rules:
   `.brand()` written onto it, so no key written there reaches any surface, and one written there is
   refused at `exec_model_schema` — the ungated seam, so the verdict is the same in every feature
   combination — with the item re-emitted stripped of it. The three checks a brand does carry are
-  written on the type: `#[model_schema(pattern = "...", minLength = N, maxLength = N)]`. A
-  `#[serde(transparent)]` struct with a *named* field is no brand and is untouched
+  written on the type: `#[model_schema(pattern = "...", minLength = N, maxLength = N)]`. The
+  field a `#[serde(transparent)]` struct with *named* fields is the value of is that slot, and is
+  held to the same
 - An item whose published expression *is* another item's binding — an alias of a brand, a one-slot
   tuple struct over one, and the `$SchemaDefault` of either where it declares a parameter — is
   annotated `typeof {Name}$RawSchema` rather than `ZodType<{Name}>`, so the brand's narrowing
   survives the republish. An item that builds an expression of its own keeps `ZodType<{Name}>`
+
+### 9. Generated Rust Writes Standard Names by Their Full Path
+
+What the macros emit lands in a module the consumer wrote, where a type of theirs may be named
+`Vec`, `String`, `Ok` or `Send`. Nothing inside a `quote!` writes a name the standard prelude
+supplies bare: it is `std::vec::Vec`, `core::option::Option::Some`, `core::result::Result::Ok`,
+`core::marker::Send`, `core::ops::FnOnce`. `src/service_schema/**` writes each with a leading
+`::`; every other emitter writes it without. A path serde reads out of an attribute's text follows
+the same rule (`"::core::option::Option::is_none"`). A name inside `#[derive(...)]` stays bare: a
+derive resolves in the macro namespace, where no type of the consumer's reaches.
+
+`src/emitted_names_tests.rs` reads the crate's own sources and fails on a bare one. A test that
+declares a model type named `Vec` or `String` needs a test binary of its own
+(`tests/shadowed_vec_tests.rs`): the registry is keyed by ident for the whole crate, so a field
+written `Vec` in any later expansion would be read as that type.
 
 ### Generic Types and Zod Factories
 
@@ -580,7 +604,23 @@ A generic type may reach itself, directly or through a second type reaching back
 hoists it into `$defs` once and points a `$ref` at that definition; TypeScript writes the name
 inside itself with its arguments; Zod calls the factory again with the argument the outer call was
 handed, the memo cache being what ends the recursion — the schema is cached before the recursive
-call is made. Which of the item's two bindings a self-reference names is read off the store
+call is made. A builder that defers a reference — a member behind a getter, an operand behind
+`z.lazy` — reads its type back under `interface X$SchemaOf<…> extends ReturnType<…> {}` where every
+other generic item keeps the `type` alias: `zod_schema_of` decides, off `defers_a_reference`. A
+declaration file writes a type that reaches itself only by name, and writes an alias as the
+structure it resolves to, with `any` where that structure recurs; the interface is what a second
+package, reading the `.d.ts`, parses the recursive member through.
+`tests/generic_types_tests/declarations.rs` compiles that second package for real.
+
+A tuple struct has no key to write a getter on. `tuple_slot_zod` writes a slot that reaches the
+struct itself, or a type declared below it, behind `z.lazy` through `deferred_zod_operand`; read
+as it stands, the slot names a binding still being built and the module throws as it is imported.
+For a struct with no parameter that is the whole of it, the binding being annotated
+`ZodType<X>`. A generic one cannot read its own factory's type inside the tuple, whose slot types
+are read as the tuple is built: `zod_self_view` writes `X$SchemaSelf`, an overload declared to
+return `ZodType<X<z.output<T>>>` over an implementation that hands back the factory's schema, and
+the slot calls that behind `z.lazy`. The same test file loads the bundle under `node` and parses
+through both. Which of the item's two bindings a self-reference names is read off the store
 `record_zod_factory` writes, and that is written at `exec_model_schema` ahead of every shape rather
 than where the binding is finally spelled: the fields are rendered before then, so an answer stored
 on the item's own registry entry would be read before the item had put one there.
@@ -595,6 +635,18 @@ forward, since declaration positions cannot strictly decrease all the way round 
 left once those are deferred cannot cycle. The deferral is a getter rather than `z.lazy`, which at
 an operand
 position collapses the factory's inferred return type to `any`.
+
+A union written around a factory's call -- the `Option` wrap, or the `nullable` one -- is checked
+against what each member takes and answers: `.prefault(undefined)` types its argument by the
+union's input, and `z.union` over a `z.record` of the call resolves the record's own output. Inside
+a cycle that is the type still being inferred, which `tsc --strict` refuses (TS7023, TS2615).
+`zod_union_around` therefore hands every factory call in through a generic arrow
+(`<Reached$ extends z.core.SomeType>(reached$: Reached$) => …`) and builds the union over the type
+parameter, so the check is made once against the parameter and the member only instantiates it.
+`FieldDef::zod_factory_calls` lists the calls, outermost only and once each, by the same renderer
+that writes them; the names end in `$`, which no argument `zod_factory_argument` binds can. The
+bound is the one `z.union` and `z.array` are themselves declared with -- `ZodType` there reads the
+schema's output and brings the cycle back.
 
 ### Declaring a Default Type per Parameter
 
@@ -685,6 +737,23 @@ consumer's view; this is what a change to the emitter has to keep.
   declaration: each `{type}_schema` module declares the same aliases of standard types
   (`ExpectedToken`, `IssueFromParts`), and `issue_from_parts` turns the parts into that module's
   own `Issue`.
+- **A field's type is walked by what tixschema has seen of it.** `record_declaration` notes at
+  `exec_model_schema`, in every build with `serde`, whether a name is a struct or an enum or an
+  alias, and what a parameterless alias names. A model type seen above is called as it stands, so
+  one with no flag fails the build (E0599), as before. Any other type goes through
+  `Walker::asked`: the call is written in a block with `{type}_schema::ReadWhole` in scope, so a
+  type with a walker of its own answers with it (an inherent function wins over a trait's) and
+  one with none is read whole. `<()>::decode_with_read_whole()` beside the call keeps the import
+  and the trait's methods in use where the type answers itself; without it a consumer that denies
+  warnings fails on `unused_imports` and `dead_code`. The trait is added to the module only where
+  a walker asks for it.
+- **An alias seen above is walked as the type it names.** `aliases::Reach` writes the field's type
+  out again in a clone of the item the walker is then run on: a standard type by its full path,
+  and every other type under an alias in `{type}_schema::decode_with_at{N}` that reaches it from
+  the field's own type (`<<Counts as IntoIterator>::Item as EntryOf>::Value`) and keeps its last
+  name, which is what the walker reads a type by. Nothing the alias was written with has to
+  resolve beside the field. A `const _: fn(Written) -> WrittenOut = |held| held;` beside the type
+  holds the two to one type.
 - **Every name the flag adds is its own.** Each method carries the flag's name
   (`decode_with_value_issues`, `decode_with_bson_fields`, `decode_with_value_named`), and a
   method's own type parameters take a name the item does not write (`unclaimed_parameter`): `F`
@@ -949,7 +1018,7 @@ The CI pipeline ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs:
 3. `just lint-sets` (clippy over every combination of the feature sets)
 4. `cargo test --verbose` (basic tests)
 5. `just test-sets` (every combination of the `web`, `mobile` and `mongo` feature sets via cargo-hack)
-6. `just typecheck-ts` (the emitted TypeScript through a real `tsc --strict`)
+6. `just typecheck-ts` (the emitted TypeScript through a real `tsc --strict`, and a second package compiled against the declarations emitted for it)
 7. `just test-emitted` (the emitted Node, Dart, Swift and Kotlin clients run under their own toolchains)
 8. `cargo audit`
 9. Discord notification with build status
@@ -1085,6 +1154,7 @@ tixschema/
 5. **Using Zod v3** → Generated schemas use v4 syntax and won't work
 6. **Testing without feature combinations** → May break in different feature configurations
 7. **Declaring `u64`/`usize` under `swift` or `kotlin`** → Refused at expansion: neither target has a mapping for an unsigned 64-bit or pointer-sized integer. Use `i64`, or `u32` where the range allows
+8. **A member named after a word Dart, Swift or Kotlin reserves** → Written in the form the language accepts, the wire key unchanged: `dart_member` adds a trailing underscore (Dart has no escape), `swift_member` and `kotlin_property_name` write backticks. Each list (`DART_RESERVED`, `SWIFT_RESERVED`, `KOTLIN_HARD_KEYWORDS`) holds only words the real compiler refused as a member name, so a name that compiled before is emitted as before. A longer identifier built from a member's name (`wireFor`, `forKeys`) reads it through `swift_bare`/`kotlin_bare`
 
 ## Debugging Tips
 

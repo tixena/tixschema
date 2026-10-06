@@ -55,6 +55,10 @@ never require one, and a run that did not type-check anything says so rather tha
 just typecheck-ts
 ```
 
+Its last check compiles a second package against the declarations the compiler emits for a bundle
+of types that reach themselves, and loads that bundle under `node`. Both read `zod` itself: set
+`TIXSCHEMA_NODE_MODULES` to a directory whose `node_modules` holds `zod`.
+
 ### Measuring What a Consumer's Lint Levels Say About the Transport Macros
 
 `#[service_schema(transports = [...])]` hands both halves of a service to the consumer as

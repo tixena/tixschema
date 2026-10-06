@@ -1,4 +1,6 @@
 mod bound_message;
+#[cfg(test)]
+mod emitted_names_tests;
 mod features;
 mod field_type;
 mod model_schema;

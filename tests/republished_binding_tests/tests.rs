@@ -433,10 +433,6 @@ fn a_composite_over_a_brand_keeps_the_annotation_naming_its_own_type() {
             "export const HoldsBrands$Schema: ZodType<HoldsBrands> = HoldsBrands$RawSchema;",
         ),
         (
-            NamedWrapper::zod_schema(),
-            "export const NamedWrapper$Schema: ZodType<NamedWrapper> = NamedWrapper$RawSchema;",
-        ),
-        (
             BrandOrNumber::zod_schema(),
             "export const BrandOrNumber$Schema: ZodType<BrandOrNumber> = BrandOrNumber$RawSchema;",
         ),
@@ -448,6 +444,20 @@ fn a_composite_over_a_brand_keeps_the_annotation_naming_its_own_type() {
             FlattenOnly::zod_schema(),
             "export const FlattenOnly$Schema: ZodType<FlattenOnly> = FlattenOnly$RawSchema;",
         ),
+    ] {
+        assert!(zod.contains(line), "want: {line}\ngot: {zod}");
+    }
+}
+
+/// A transparent struct with a named field over a brand is a brand over it, as the tuple form is,
+/// and reads its annotation back off the value it published.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+#[test]
+fn a_named_transparent_struct_over_a_brand_is_a_brand_over_it() {
+    let zod = NamedWrapper::zod_schema();
+    for line in [
+        "const NamedWrapper$RawSchema = CorrelationId$Schema.brand<\"NamedWrapper\">()",
+        "export const NamedWrapper$Schema: typeof NamedWrapper$RawSchema = NamedWrapper$RawSchema;",
     ] {
         assert!(zod.contains(line), "want: {line}\ngot: {zod}");
     }

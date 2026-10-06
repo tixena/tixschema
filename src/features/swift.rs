@@ -16,10 +16,11 @@ use std::collections::HashMap;
 
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
+use syn::ext::IdentExt as _;
+use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
-use crate::features::serde::parse_serde_key_omission;
+use crate::features::serde::{brand_field, parse_serde_key_omission, struct_tag};
 use crate::field_type::{
     FieldDef, FieldDefType, VariantKind, classify_variant, get_field_def, is_plain_enum,
     is_sequence_wrapper,
@@ -32,6 +33,64 @@ use crate::utils::{
 
 #[cfg(feature = "serde")]
 use crate::features::serde::{parse_serde_field_attributes, parse_serde_type_attributes};
+
+/// The words Swift reserves in a declaration, a statement or an expression, which name a member
+/// only between backticks:
+/// <https://docs.swift.org/swift-book/documentation/the-swift-programming-language/lexicalstructure/#Keywords-and-Punctuation>.
+/// A word reserved in one context only, such as `get` or `type`, is not among them.
+const SWIFT_RESERVED: [&str; 51] = [
+    "as",
+    "associatedtype",
+    "await",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "continue",
+    "default",
+    "defer",
+    "deinit",
+    "do",
+    "else",
+    "enum",
+    "extension",
+    "fallthrough",
+    "false",
+    "fileprivate",
+    "for",
+    "func",
+    "guard",
+    "if",
+    "import",
+    "in",
+    "init",
+    "inout",
+    "internal",
+    "is",
+    "let",
+    "nil",
+    "operator",
+    "precedencegroup",
+    "private",
+    "protocol",
+    "public",
+    "repeat",
+    "rethrows",
+    "return",
+    "static",
+    "struct",
+    "subscript",
+    "super",
+    "switch",
+    "throw",
+    "throws",
+    "true",
+    "try",
+    "typealias",
+    "var",
+    "where",
+    "while",
+];
 
 /// One field this module has decided belongs on the wire, resolved to the Swift property it
 /// earns: its Rust name, its lower-camel Swift name, its wire name, whether the key always
@@ -128,26 +187,6 @@ fn register_swift_name(rust_ident: &str, export_name: &str) {
     });
 }
 
-/// Whether `attrs` carries a bare `#[serde(transparent)]` — duplicated from `features::dart` since
-/// it is a dozen lines of plain `syn` parsing with no feature dependency of its own.
-fn has_serde_transparent(attrs: &[syn::Attribute]) -> bool {
-    for attr in attrs {
-        if attr.path().is_ident("serde") {
-            let mut found = false;
-            let _: syn::Result<()> = attr.parse_nested_meta(|nested| {
-                if nested.path.is_ident("transparent") {
-                    found = true;
-                }
-                Ok(())
-            });
-            if found {
-                return true;
-            }
-        }
-    }
-    false
-}
-
 /// The module `{ident}_swift` publishes `swift_definition()` from — never a direct inherent
 /// `impl {ident}`, for the same reason `dart::dart_module_tokens` gives: a Rust type alias is not
 /// a new type, and a module name is never collapsed through one the way an impl target is.
@@ -159,7 +198,7 @@ fn swift_module_tokens(
     let module_ident = swift_module_ident(rust_ident, span);
     quote! {
         pub mod #module_ident {
-            pub fn swift_definition() -> String {
+            pub fn swift_definition() -> std::string::String {
                 #swift_source.to_owned()
             }
         }
@@ -212,6 +251,22 @@ fn swift_generic_params(generics: &syn::Generics) -> String {
             .collect::<Vec<_>>()
             .join(", ");
         format!("<{bounded}>")
+    }
+}
+
+/// A member's name without the backticks [`swift_member`] may have put around it: what a longer
+/// identifier is built from, and what the wire name is compared with.
+fn swift_bare(member: &str) -> &str {
+    member.trim_matches('`')
+}
+
+/// `name` as a Swift property or enum case: between backticks where Swift reserves the word,
+/// which is the name itself to Swift and to `Codable`.
+fn swift_member(name: &str) -> String {
+    if SWIFT_RESERVED.contains(&name) {
+        format!("`{name}`")
+    } else {
+        name.to_owned()
     }
 }
 
@@ -815,7 +870,7 @@ fn decode_statement(field: &SwiftField, container: &str) -> String {
             swift = field.swift_name
         )
     };
-    let local = format!("wire{}", swift_upper_camel(&field.swift_name));
+    let local = format!("wire{}", swift_upper_camel(swift_bare(&field.swift_name)));
     let convert = if field.field_def.is_optional() {
         let inner = decode_conversion(
             &field.field_def,
@@ -862,7 +917,7 @@ fn encode_statement(field: &SwiftField, container: &str) -> String {
                 &field.swift_name,
             )
         };
-        let local = format!("wire{}", swift_upper_camel(&field.swift_name));
+        let local = format!("wire{}", swift_upper_camel(swift_bare(&field.swift_name)));
         return if field.required {
             format!(
                 "let {local} = {convert}; try {container}.encode({local}, forKey: .{swift})",
@@ -959,7 +1014,7 @@ fn collect_swift_fields(
         let Some(ident) = field.ident.as_ref() else {
             continue;
         };
-        let rust_name = ident.to_string();
+        let rust_name = ident.unraw().to_string();
         let omission = parse_serde_key_omission(&field.attrs);
         if omission.absent_from_wire() {
             continue;
@@ -979,7 +1034,7 @@ fn collect_swift_fields(
             real_type,
             required: !omission.omits_key,
             shape,
-            swift_name,
+            swift_name: swift_member(&swift_name),
             wire_name,
         });
     }
@@ -1011,7 +1066,7 @@ fn swift_coding_keys(fields: &[SwiftField], extra: &[(String, String)]) -> Strin
         write!(cases, "case {name} = \"{wire}\"; ").unwrap();
     }
     for field in fields {
-        if field.swift_name == field.wire_name {
+        if swift_bare(&field.swift_name) == field.wire_name {
             write!(cases, "case {}; ", field.swift_name).unwrap();
         } else {
             write!(
@@ -1028,7 +1083,11 @@ fn swift_coding_keys(fields: &[SwiftField], extra: &[(String, String)]) -> Strin
 /// The body (properties, `CodingKeys`, and — only where synthesis cannot reach — `init(from:)`,
 /// `encode(to:)` and the memberwise initializer it costs) for a set of [`SwiftField`]s.
 /// `extra_coding_keys` lists cases with no matching field (an internally-tagged variant's tag).
-fn struct_body_content(fields: &[SwiftField], extra_coding_keys: &[(String, String)]) -> String {
+fn struct_body_content(
+    fields: &[SwiftField],
+    extra_coding_keys: &[(String, String)],
+    own_tag: Option<&(String, String)>,
+) -> String {
     let props = fields.iter().fold(String::new(), |mut acc, field| {
         write!(
             acc,
@@ -1039,9 +1098,12 @@ fn struct_body_content(fields: &[SwiftField], extra_coding_keys: &[(String, Stri
         acc
     });
     let coding_keys = swift_coding_keys(fields, extra_coding_keys);
-    let needs_decode = fields
-        .iter()
-        .any(|field| field.flatten || !matches!(field.shape.leaf_conversion, LeafConversion::None));
+    // A struct's own tag has no property to synthesize a codec from, so both halves are written
+    // out: the tag is encoded under a key set of its own, and decoding reads past it.
+    let needs_decode = own_tag.is_some()
+        || fields.iter().any(|field| {
+            field.flatten || !matches!(field.shape.leaf_conversion, LeafConversion::None)
+        });
     let needs_encode = needs_decode || fields.iter().any(field_is_nullable_flag);
 
     let memberwise_init = if needs_decode {
@@ -1055,10 +1117,12 @@ fn struct_body_content(fields: &[SwiftField], extra_coding_keys: &[(String, Stri
             .map(|field| decode_statement(field, "container"))
             .collect::<Vec<_>>()
             .join("; ");
-        format!(
-            "public init(from decoder: Decoder) throws {{ \
-             let container = try decoder.container(keyedBy: CodingKeys.self); {statements} }}; "
-        )
+        let container = if fields.is_empty() {
+            ""
+        } else {
+            "let container = try decoder.container(keyedBy: CodingKeys.self); "
+        };
+        format!("public init(from decoder: Decoder) throws {{ {container}{statements} }}; ")
     } else {
         String::new()
     };
@@ -1068,14 +1132,30 @@ fn struct_body_content(fields: &[SwiftField], extra_coding_keys: &[(String, Stri
             .map(|field| encode_statement(field, "container"))
             .collect::<Vec<_>>()
             .join("; ");
+        let container = if fields.is_empty() {
+            ""
+        } else {
+            "var container = encoder.container(keyedBy: CodingKeys.self); "
+        };
+        let tag = own_tag.map_or_else(String::new, |(_, named)| {
+            format!(
+                "var tagged = encoder.container(keyedBy: SwiftSchemaTagCodingKeys.self); \
+                 try tagged.encode(\"{named}\", forKey: .swiftSchemaTag); "
+            )
+        });
         format!(
-            "public func encode(to encoder: Encoder) throws {{ \
-             var container = encoder.container(keyedBy: CodingKeys.self); {statements} }} "
+            "public func encode(to encoder: Encoder) throws {{ {tag}{container}{statements} }} "
         )
     } else {
         String::new()
     };
-    format!("{props}{coding_keys} {memberwise_init}{init_method}{encode_method}")
+    let tag_keys = own_tag.map_or_else(String::new, |(key, _)| {
+        format!(
+            "private enum SwiftSchemaTagCodingKeys: String, CodingKey {{ \
+             case swiftSchemaTag = \"{key}\" }}; "
+        )
+    });
+    format!("{props}{coding_keys} {tag_keys}{memberwise_init}{init_method}{encode_method}")
 }
 
 /// The explicit memberwise `public init(...)` a custom `init(from:)` costs a struct — Swift
@@ -1096,8 +1176,13 @@ fn memberwise_initializer(fields: &[SwiftField]) -> String {
 /// The `public struct {export_name}{generics}: Codable, Sendable { ... }` a named-field struct or
 /// a struct-shaped variant payload earns, with the `DateTime` helpers appended when a field needs
 /// them.
-fn struct_declaration(export_name: &str, generic_params: &str, fields: &[SwiftField]) -> String {
-    let content = struct_body_content(fields, &[]);
+fn struct_declaration(
+    export_name: &str,
+    generic_params: &str,
+    fields: &[SwiftField],
+    own_tag: Option<&(String, String)>,
+) -> String {
+    let content = struct_body_content(fields, &[], own_tag);
     let helpers = datetime_helpers_for(export_name, fields);
     format!(
         "public struct {export_name}{generic_params}: Codable, Sendable {{ {content} }}; {helpers}"
@@ -1112,8 +1197,8 @@ fn struct_declaration(export_name: &str, generic_params: &str, fields: &[SwiftFi
 /// ident when `name = "..."` moved its published name elsewhere.
 fn struct_swift_tokens(item_struct: &ItemStruct, name_override: Option<&str>) -> TokenStream {
     let type_parameters = type_parameters_in_scope(&item_struct.generics);
-    if has_serde_transparent(&item_struct.attrs) && is_single_slot(&item_struct.fields) {
-        let value_field = single_slot_field(&item_struct.fields, &type_parameters);
+    if let Some(held) = brand_field(item_struct) {
+        let value_field = brand_value_field(held, &type_parameters);
         return value_wrapper_tokens(
             &item_struct.ident,
             &item_struct.generics,
@@ -1139,7 +1224,8 @@ fn struct_swift_tokens(item_struct: &ItemStruct, name_override: Option<&str>) ->
         &export_name,
         &mut aux,
     );
-    let body = struct_declaration(&export_name, &generic_params, &fields);
+    let own_tag = struct_tag(item_struct);
+    let body = struct_declaration(&export_name, &generic_params, &fields, own_tag.as_ref());
     let typealias = ident_typealias(&rust_ident, &export_name, &generic_params);
     let swift_source = if aux.is_empty() {
         format!("{body}{typealias}")
@@ -1150,21 +1236,9 @@ fn struct_swift_tokens(item_struct: &ItemStruct, name_override: Option<&str>) ->
     swift_module_tokens(&rust_ident, item_struct.ident.span(), &swift_source)
 }
 
-/// Whether `fields` is a tuple shape (unnamed) with exactly one slot — the shape a branded
-/// newtype and a bare-value tuple struct share on the wire.
-fn is_single_slot(fields: &Fields) -> bool {
-    matches!(fields, Fields::Unnamed(unnamed) if unnamed.unnamed.len() == 1)
-}
-
-/// The `FieldDef` of a single-slot tuple shape's one field, its type parameters already erased.
-fn single_slot_field(fields: &Fields, type_parameters: &[String]) -> FieldDef {
-    let Fields::Unnamed(unnamed) = fields else {
-        return get_field_def("value", &syn::parse_quote!(()), "");
-    };
-    let Some(slot) = unnamed.unnamed.first() else {
-        return get_field_def("value", &syn::parse_quote!(()), "");
-    };
-    let mut field_def = field_def_with_prop_meta("value", &slot.ty, &slot.attrs);
+/// The `FieldDef` of the field a brand is the value of, its type parameters already erased.
+fn brand_value_field(held: &Field, type_parameters: &[String]) -> FieldDef {
+    let mut field_def = field_def_with_prop_meta("value", &held.ty, &held.attrs);
     field_def.erase_type_parameters(type_parameters);
     field_def
 }
@@ -1328,7 +1402,7 @@ fn resolve_variant_payload(
                 &struct_name,
                 aux,
             );
-            aux.push(struct_declaration(&struct_name, "", &fields));
+            aux.push(struct_declaration(&struct_name, "", &fields, None));
             Some(struct_name)
         }
         VariantKind::TupleSingle => {
@@ -1387,7 +1461,7 @@ fn plain_enum_swift_source(item_enum: &ItemEnum, rust_ident: &str, export_name: 
         .iter()
         .fold(String::new(), |mut acc, variant| {
             let rust_name = variant.ident.to_string();
-            let case_name = RenameRule::CamelCase.apply_to_variant(&rust_name);
+            let case_name = swift_member(&RenameRule::CamelCase.apply_to_variant(&rust_name));
             let wire = rename_override(&variant.attrs)
                 .unwrap_or_else(|| rule.apply_to_variant(&rust_name));
             write!(acc, "case {case_name} = \"{wire}\"; ").unwrap();
@@ -1418,7 +1492,7 @@ fn external_tagged_enum_swift_source(
     let mut encode_arms = String::new();
     for variant in &item_enum.variants {
         let rust_name = variant.ident.to_string();
-        let case_name = RenameRule::CamelCase.apply_to_variant(&rust_name);
+        let case_name = swift_member(&RenameRule::CamelCase.apply_to_variant(&rust_name));
         let wire_tag = rename_override(&variant.attrs)
             .unwrap_or_else(|| variant_rule.apply_to_variant(&rust_name));
         let payload_type =
@@ -1493,7 +1567,7 @@ fn internal_tagged_enum_swift_source(
     let mut encode_arms = String::new();
     for variant in &item_enum.variants {
         let rust_name = variant.ident.to_string();
-        let case_name = RenameRule::CamelCase.apply_to_variant(&rust_name);
+        let case_name = swift_member(&RenameRule::CamelCase.apply_to_variant(&rust_name));
         let wire_tag = rename_override(&variant.attrs)
             .unwrap_or_else(|| variant_rule.apply_to_variant(&rust_name));
         let payload_type =
@@ -1562,7 +1636,7 @@ fn adjacent_tagged_enum_swift_source(
     let mut encode_arms = String::new();
     for variant in &item_enum.variants {
         let rust_name = variant.ident.to_string();
-        let case_name = RenameRule::CamelCase.apply_to_variant(&rust_name);
+        let case_name = swift_member(&RenameRule::CamelCase.apply_to_variant(&rust_name));
         let wire_tag = rename_override(&variant.attrs)
             .unwrap_or_else(|| variant_rule.apply_to_variant(&rust_name));
         let payload_type =
@@ -1628,7 +1702,7 @@ fn untagged_enum_swift_source(
     let mut encode_arms = String::new();
     for variant in &item_enum.variants {
         let rust_name = variant.ident.to_string();
-        let case_name = RenameRule::CamelCase.apply_to_variant(&rust_name);
+        let case_name = swift_member(&RenameRule::CamelCase.apply_to_variant(&rust_name));
         let payload_type =
             resolve_variant_payload(variant, field_rule, type_parameters, export_name, aux);
         cases.push_str(&variant_case(&case_name, payload_type.as_deref()));

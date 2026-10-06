@@ -945,3 +945,31 @@ fn test_optional_and_array_wrap_the_category_in_the_order_written() {
         ]
     );
 }
+
+/// The name `Node$SchemaFactory(t)` is replaced where it stands alone and left inside the longer
+/// `TreeNode$SchemaFactory(t)`, and a call written twice is handed in once.
+#[cfg(feature = "zod")]
+#[test]
+fn test_a_union_hands_in_each_factory_call_once_and_leaves_a_longer_name_alone() {
+    let nullable = |held: &str| format!("z.union([{held}, z.null()])");
+    let calls = [
+        "Node$SchemaFactory(t)".to_owned(),
+        "Leaf$SchemaFactory(t)".to_owned(),
+    ];
+    assert_eq!(
+        super::zod_union_around(
+            "z.tuple([Node$SchemaFactory(t), TreeNode$SchemaFactory(t), Leaf$SchemaFactory(t), \
+             Node$SchemaFactory(t)])",
+            &calls,
+            nullable,
+        ),
+        "(<Reached$ extends z.core.SomeType, Reached2$ extends z.core.SomeType>(reached$: \
+         Reached$, reached2$: Reached2$) => z.union([z.tuple([reached$, \
+         TreeNode$SchemaFactory(t), reached2$, reached$]), z.null()]))(Node$SchemaFactory(t), \
+         Leaf$SchemaFactory(t))"
+    );
+    assert_eq!(
+        super::zod_union_around("z.string()", &[], nullable),
+        "z.union([z.string(), z.null()])"
+    );
+}

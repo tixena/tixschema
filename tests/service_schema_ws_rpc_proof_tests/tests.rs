@@ -27,6 +27,16 @@ use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tixschema::{model_schema, service_schema};
 
+/// Builds every name of `crate::shadowing` as the module that invokes this imports it, which is
+/// what keeps the import in use.
+macro_rules! shadowing_names_built {
+    () => {
+        pub const fn shadowing_names() -> usize {
+            size_of_val(&(Box, Clone, Default, Err, None, Ok, Send, Sized, Some, Sync))
+        }
+    };
+}
+
 #[model_schema()]
 #[derive(Deserialize, Serialize)]
 pub struct TouchRequest {
@@ -899,4 +909,19 @@ fn a_session_events_client_exposes_the_transport_it_was_bound_to() {
     }
     .unwrap();
     assert!(refused.contains("probe"), "got: {refused}");
+}
+
+/// Each half is placed beside types named `Ok`, `Err`, `Some`, `None`, `Box`, `Send` and the rest
+/// of what its module imports from `crate::shadowing`: that it compiles there is the assertion.
+#[test]
+fn every_half_is_placed_beside_types_named_after_what_it_expands_to() {
+    assert_eq!(
+        [
+            events_client::shadowing_names(),
+            events_transport::shadowing_names(),
+            ws_client::shadowing_names(),
+            ws_transport::shadowing_names(),
+        ],
+        [0; 4]
+    );
 }

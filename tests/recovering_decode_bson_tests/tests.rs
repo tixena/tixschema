@@ -29,6 +29,7 @@ mod as_text {
         serializer.collect_str(value)
     }
 }
+mod aliased;
 mod flattened;
 mod readme;
 
@@ -333,7 +334,7 @@ struct OwnerId(ObjectId);
 struct Wrapper(String);
 
 /// A brand whose own reader refuses text shorter than three characters. Only a schema surface
-/// hangs that check.
+/// hangs that check, and the declaration is refused in a build with none.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[model_schema(decode_with, minLength = 3)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -406,7 +407,7 @@ struct Owner {
 }
 
 /// A `transparent` struct with a named field over a model type.
-#[model_schema(decode_with)]
+#[model_schema(decode_with, no_display)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Current {
