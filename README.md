@@ -833,6 +833,18 @@ export const DynamicValue$Schema: ZodType<DynamicValue> = z.discriminatedUnion("
 ]);
 ```
 
+A tuple struct has no key to write a getter on, so a slot that reaches the struct itself, or a type declared below it, is read behind `z.lazy` instead:
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct NestsInASlot(pub String, pub Vec<Self>);
+```
+
+```typescript
+const NestsInASlot$RawSchema = z.tuple([z.string(), z.lazy(() => z.array(NestsInASlot$Schema))]);
+```
+
 ### Type Aliases
 
 The `#[model_schema()]` macro supports `type` alias statements, creating semantic type aliases that appear in the generated TypeScript output. Use the `name` argument to control the generated TypeScript name.
@@ -996,7 +1008,9 @@ interface Node$SchemaOf<IdType extends ZodType> extends ReturnType<
 > {}
 ```
 
-The member is written as a getter so that the call is made after the factory has reached its cache rather than while its object is still being built. A type whose builder defers a reference reads its schema type back under an `interface` rather than the `type` alias every other generic type keeps: a declaration file (`.d.ts`) writes a type that reaches itself only by name, and an alias is written there as the structure it resolves to, with `any` at the point the structure recurs. Under the interface the member is declared `z.ZodArray<Node$SchemaOf<IdType>>`, so a second package reading the declarations parses `children` as `Node<…>` all the way down. Where a cycle spans two types, the reference the getter is written on is the one pointing *forward* -- at a type declared below -- because that is the reference no cycle can be built without: if every reference in a cycle named something already declared, declaration positions would have to decrease all the way round. Deferring those leaves nothing that can cycle, and every reference pointing back at a type already declared is written as it stands.
+The member is written as a getter so that the call is made after the factory has reached its cache rather than while its object is still being built. A type whose builder defers a reference reads its schema type back under an `interface` rather than the `type` alias every other generic type keeps: a declaration file (`.d.ts`) writes a type that reaches itself only by name, and an alias is written there as the structure it resolves to, with `any` at the point the structure recurs. Under the interface the member is declared `z.ZodArray<Node$SchemaOf<IdType>>`, so a second package reading the declarations parses `children` as `Node<…>` all the way down.
+
+A generic tuple struct that holds itself has no getter to defer behind, and the types of a tuple's slots are read as the tuple is built, so its builder cannot read its own factory's type there. It reaches itself through a function of its own, `X$SchemaSelf`, declared to return what the factory's schema parses -- `ZodType<X<z.output<IdType>>>` -- and called behind `z.lazy`. The factory keeps its own precise return type. Where a cycle spans two types, the reference the getter is written on is the one pointing *forward* -- at a type declared below -- because that is the reference no cycle can be built without: if every reference in a cycle named something already declared, declaration positions would have to decrease all the way round. Deferring those leaves nothing that can cycle, and every reference pointing back at a type already declared is written as it stands.
 
 #### Declaring the default type
 

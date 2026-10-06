@@ -595,7 +595,17 @@ other generic item keeps the `type` alias: `zod_schema_of` decides, off `defers_
 declaration file writes a type that reaches itself only by name, and writes an alias as the
 structure it resolves to, with `any` where that structure recurs; the interface is what a second
 package, reading the `.d.ts`, parses the recursive member through.
-`tests/generic_types_tests/declarations.rs` compiles that second package for real. Which of the item's two bindings a self-reference names is read off the store
+`tests/generic_types_tests/declarations.rs` compiles that second package for real.
+
+A tuple struct has no key to write a getter on. `tuple_slot_zod` writes a slot that reaches the
+struct itself, or a type declared below it, behind `z.lazy` through `deferred_zod_operand`; read
+as it stands, the slot names a binding still being built and the module throws as it is imported.
+For a struct with no parameter that is the whole of it, the binding being annotated
+`ZodType<X>`. A generic one cannot read its own factory's type inside the tuple, whose slot types
+are read as the tuple is built: `zod_self_view` writes `X$SchemaSelf`, an overload declared to
+return `ZodType<X<z.output<T>>>` over an implementation that hands back the factory's schema, and
+the slot calls that behind `z.lazy`. The same test file loads the bundle under `node` and parses
+through both. Which of the item's two bindings a self-reference names is read off the store
 `record_zod_factory` writes, and that is written at `exec_model_schema` ahead of every shape rather
 than where the binding is finally spelled: the fields are rendered before then, so an answer stored
 on the item's own registry entry would be read before the item had put one there.

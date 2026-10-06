@@ -755,6 +755,15 @@ struct PublishedBinding<'binding> {
     republished: bool,
 }
 
+/// The item a tuple struct's slots are written inside, which a slot may reach back to.
+#[cfg(feature = "zod")]
+struct SlotOwner<'item> {
+    item_name: &'item str,
+    #[cfg(feature = "typescript")]
+    parameters: &'item [String],
+    rust_ident: &'item str,
+}
+
 /// What [`default_zod_rendering`] found: a self-contained expression left eager, or a name
 /// [`deferred_zod_operand`] still has to wrap — [`zod_default_block`] needs to know which, since a
 /// constrained brand's checks chain onto an eager expression but must land inside a deferred thunk.
@@ -4940,18 +4949,92 @@ fn tuple_struct_ts_body(shape: &TupleStructShape) -> String {
 
 /// [`tuple_struct_ts_body`] for the Zod surface.
 #[cfg(feature = "zod")]
-fn tuple_struct_zod_body(shape: &TupleStructShape) -> String {
+fn tuple_struct_zod_body(shape: &TupleStructShape, owner: &SlotOwner<'_>) -> String {
     match shape {
         TupleStructShape::Array(slots) => format!(
             "z.tuple([{}])",
             slots
                 .iter()
-                .map(FieldDef::zod_slot_type)
+                .map(|slot| tuple_slot_zod(slot, owner))
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
-        TupleStructShape::BareValue(slot) => slot.zod_slot_type(),
+        TupleStructShape::BareValue(slot) => tuple_slot_zod(slot, owner),
     }
+}
+
+/// One slot as a tuple struct writes it. A slot that reaches the struct itself, or a type declared
+/// below it, is written behind `z.lazy`: `z.tuple` takes an array, which has no getter to defer a
+/// member behind.
+#[cfg(feature = "zod")]
+fn tuple_slot_zod(slot: &FieldDef, owner: &SlotOwner<'_>) -> String {
+    let written = slot.zod_slot_type();
+    let reaches_itself = slot.contains_type_reference(owner.item_name)
+        || slot.contains_type_reference(owner.rust_ident);
+    #[cfg(feature = "typescript")]
+    if reaches_itself && !owner.parameters.is_empty() {
+        let own_call = format!(
+            "{}$SchemaFactory({})",
+            owner.item_name,
+            zod_factory_argument_names(owner.parameters)
+        );
+        if written.contains(&own_call) {
+            return written.replace(&own_call, &deferred_zod_operand(&zod_self_view_call(owner)));
+        }
+    }
+    if reaches_itself || slot.reaches_a_type_declared_later() {
+        deferred_zod_operand(&written)
+    } else {
+        written
+    }
+}
+
+/// The names a factory's arguments are bound under, as a call hands them on.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+fn zod_factory_argument_names(parameters: &[String]) -> String {
+    parameters
+        .iter()
+        .map(|parameter| zod_factory_argument(parameter))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// The call a generic tuple struct's builder reaches the struct itself through.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+fn zod_self_view_call(owner: &SlotOwner<'_>) -> String {
+    format!(
+        "{}$SchemaSelf({})",
+        owner.item_name,
+        zod_factory_argument_names(owner.parameters)
+    )
+}
+
+/// The function [`zod_self_view_call`] names, for a body that calls it. A tuple's slot types are
+/// read as the tuple is built, so a builder that read its own factory's type there would be
+/// reading its own return type. The overload states what the factory's schema parses instead, and
+/// the implementation beneath it hands that schema over, as the factory's own overload does for
+/// its cache.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+fn zod_self_view(owner: &SlotOwner<'_>, zod_body: &str) -> String {
+    if !zod_body.contains(&zod_self_view_call(owner)) {
+        return String::new();
+    }
+    let item_name = owner.item_name;
+    let outputs = owner
+        .parameters
+        .iter()
+        .map(|parameter| format!("z.output<{parameter}>"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "function {item_name}$SchemaSelf{}({}\n): ZodType<{item_name}<{outputs}>>;\n\
+         function {item_name}$SchemaSelf({}\n): ZodType {{\n  return \
+         {item_name}$SchemaFactory({});\n}}\n\n",
+        zod_factory_bounds(owner.parameters),
+        zod_factory_arguments(owner.parameters),
+        zod_factory_widened_arguments(owner.parameters),
+        zod_factory_argument_names(owner.parameters)
+    )
 }
 
 /// [`tuple_struct_ts_body`] for the JSON-schema surface, as a standalone `serde_json::Value`
@@ -5008,9 +5091,23 @@ fn build_tuple_struct_zod_schema_method(
     zod_body: &str,
 ) -> proc_macro2::TokenStream {
     let reexport = zod_binding_reexport(rust_ident, item_name, parameters);
-    let schema_str = zod_published_binding(
+    let binding = zod_published_binding(
         item_name, rust_ident, parameters, published, "", zod_body, &reexport,
     );
+    #[cfg(feature = "typescript")]
+    let schema_str = format!(
+        "{}{binding}",
+        zod_self_view(
+            &SlotOwner {
+                item_name,
+                parameters,
+                rust_ident,
+            },
+            zod_body
+        )
+    );
+    #[cfg(not(feature = "typescript"))]
+    let schema_str = binding;
     quote! {
         pub fn zod_schema() -> String {
             #schema_str.to_owned()
@@ -5092,7 +5189,15 @@ fn process_tuple_struct(
                 default_types: &args.default_types,
                 republished: tuple_struct_republishes_slot(&shape),
             },
-            &tuple_struct_zod_body(&shape),
+            &tuple_struct_zod_body(
+                &shape,
+                &SlotOwner {
+                    item_name: &item_name,
+                    #[cfg(feature = "typescript")]
+                    parameters: &type_parameters_in_scope(&item_struct.generics),
+                    rust_ident: &name.to_string(),
+                },
+            ),
         ),
     ];
 

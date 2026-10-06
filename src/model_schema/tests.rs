@@ -10520,13 +10520,22 @@ fn a_tuple_struct_describes_as_its_arity_in_typescript() {
 #[cfg(feature = "zod")]
 #[test]
 fn a_tuple_struct_describes_as_its_arity_in_zod() {
-    assert_eq!(tuple_struct_zod_body(&whole_tuple(&[])), "z.tuple([])");
+    let owner = super::SlotOwner {
+        item_name: "Whole",
+        #[cfg(feature = "typescript")]
+        parameters: &[],
+        rust_ident: "Whole",
+    };
     assert_eq!(
-        tuple_struct_zod_body(&whole_tuple(&["String"])),
+        tuple_struct_zod_body(&whole_tuple(&[]), &owner),
+        "z.tuple([])"
+    );
+    assert_eq!(
+        tuple_struct_zod_body(&whole_tuple(&["String"]), &owner),
         "z.string()"
     );
     assert_eq!(
-        tuple_struct_zod_body(&whole_tuple(&["String", "u32"])),
+        tuple_struct_zod_body(&whole_tuple(&["String", "u32"]), &owner),
         "z.tuple([z.string(), z.number().int()])"
     );
 }
