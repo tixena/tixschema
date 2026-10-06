@@ -626,6 +626,39 @@ thread_local! {
     static PUBLISHED_NAMES: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
 }
 
+/// What a name `#[model_schema]` was written on stands for, as an expansion that follows it reads
+/// it.
+#[cfg(feature = "serde")]
+#[derive(Clone)]
+pub enum Declared {
+    /// A type alias that takes no parameter: the type it names, as it was written.
+    Alias(String),
+    /// A struct or an enum.
+    Model,
+}
+
+#[cfg(feature = "serde")]
+thread_local! {
+    /// What each name `#[model_schema]` has been written on so far declares. Kept in every
+    /// build that reads a value, with or without a schema surface, so a recovering decode
+    /// answers the same in all of them.
+    static DECLARED: RefCell<HashMap<String, Declared>> = RefCell::new(HashMap::new());
+}
+
+/// What `rust_ident` declares, where `#[model_schema]` has been written on it above.
+#[cfg(feature = "serde")]
+pub fn declared(rust_ident: &str) -> Option<Declared> {
+    DECLARED.with(|names| names.borrow().get(rust_ident).cloned())
+}
+
+/// Records what `rust_ident` declares for the expansions that follow.
+#[cfg(feature = "serde")]
+pub fn record_declared(rust_ident: &str, declares: Declared) {
+    DECLARED.with(|names| {
+        names.borrow_mut().insert(rust_ident.to_owned(), declares);
+    });
+}
+
 /// Claims `published` for `rust_ident`, answering with the ident already holding it — and `None`
 /// where the claim is free or is this ident's own. The emitted names are one flat namespace, so
 /// two declarations reaching one name overwrite each other on every surface rather than merging.

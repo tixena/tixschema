@@ -29,6 +29,7 @@ mod as_text {
         serializer.collect_str(value)
     }
 }
+mod aliased;
 mod flattened;
 mod readme;
 

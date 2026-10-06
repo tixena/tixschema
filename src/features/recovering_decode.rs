@@ -8,6 +8,7 @@
 //! declaration: each module declares the same aliases of standard types, and a walker builds
 //! whatever issue type the constructor it is handed builds.
 
+mod aliases;
 pub mod enums;
 
 use core::iter::once;
@@ -25,6 +26,7 @@ use syn::{
     parse_quote,
 };
 
+use self::aliases::Reach;
 use crate::features::serde::{
     NAMED_READ_HOOK_PREFIX, SerdeFieldHooks, has_serde_default, has_serde_read_hook,
     has_serde_skip_serializing, has_serde_transparent, parse_serde_field_attributes,
@@ -36,17 +38,21 @@ use crate::field_type::{
     is_transparent_wrapper,
 };
 use crate::rename_rule::resolve_rename_rule;
-use crate::utils::{ident_schema_module_name, type_parameters_in_scope, written_type};
+use crate::utils::{
+    Declared, declared, ident_schema_module_name, type_parameters_in_scope, written_type,
+};
 
 /// The type names the flag adds to a schema module.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-const ADDED_TYPE_NAMES: [&str; 11] = [
+const ADDED_TYPE_NAMES: [&str; 13] = [
     "Asked",
+    "EntryOf",
     "Expected",
     "ExpectedToken",
     "Issue",
     "IssueFromParts",
     "Path",
+    "ReadWhole",
     "Segment",
     "Taken",
     "TakenProbe",
@@ -722,6 +728,14 @@ struct Whole {
     write: Option<TokenStream>,
 }
 
+/// What a type's item writes, as the walker's methods are written from it.
+struct Written<'reach> {
+    /// Every name the item writes.
+    names: Vec<String>,
+    /// What the item's fields reach through the aliases they are typed with.
+    reach: &'reach Reach,
+}
+
 /// What the generated code names of the type it is generated for, and the source it walks.
 struct Walker<'item> {
     /// The type parameter each walker method builds its issues as.
@@ -810,7 +824,7 @@ impl Walker<'_> {
                 }]
             }
             Step::Model => vec![Arm {
-                body: model_walker_call(source, walk.ty, held, segments),
+                body: self.asked(walk.ty, &model_walker_call(source, walk.ty, held, segments)),
                 nothing: false,
                 pattern: quote! { #held },
             }],
@@ -835,6 +849,24 @@ impl Walker<'_> {
                 }];
                 arms.extend(self.arms(inner, held, segments, depth, walk.ty));
                 arms
+            }
+        }
+    }
+
+    /// `call`, a walker method called on `ty`. A struct or an enum `#[model_schema]` was written
+    /// on above is called as it stands, so one with no flag fails the build. Any other type is
+    /// asked with `ReadWhole` in scope, which answers for a type with no walker of its own; the
+    /// call beside it keeps the trait in use where the type has one.
+    fn asked(&self, ty: &Type, call: &TokenStream) -> TokenStream {
+        if walks_itself(ty, 0) {
+            return call.clone();
+        }
+        let module = self.module;
+        quote! {
+            {
+                use #module::ReadWhole as _;
+                <()>::decode_with_read_whole();
+                #call
             }
         }
     }
@@ -953,12 +985,15 @@ impl Walker<'_> {
         segments: &[TokenStream],
         collects: bool,
     ) -> TokenStream {
-        let walked = flattened_walker_call(
-            self.source,
+        let walked = self.asked(
             model,
-            &handed.argument(),
-            segments,
-            &quote! { out },
+            &flattened_walker_call(
+                self.source,
+                model,
+                &handed.argument(),
+                segments,
+                &quote! { out },
+            ),
         );
         if collects {
             let keys = handed.of_the_object(&walked);
@@ -981,9 +1016,12 @@ impl Walker<'_> {
     ) -> TokenStream {
         let source = self.source;
         let argument = handed.argument();
-        let walked =
-            flattened_walker_call(source, model, &argument, segments, &quote! { &mut nested });
+        let walked = self.asked(
+            model,
+            &flattened_walker_call(source, model, &argument, segments, &quote! { &mut nested }),
+        );
         let named = source.method("named");
+        let is_named = self.asked(model, &quote! { <#model>::#named(#argument) });
         let (reader, whole) = (
             source.object_reader(&handed.held),
             source.object_value(handed.object),
@@ -999,7 +1037,7 @@ impl Walker<'_> {
             (quote! { #walked; }, TokenStream::new())
         };
         quote! {
-            if <#model>::#named(#argument) {
+            if #is_named {
                 let mut nested = std::vec::Vec::new();
                 #walk
                 match <#model as serde::Deserialize>::deserialize(#reader) {
@@ -1106,9 +1144,9 @@ impl Walker<'_> {
                 let (ty, named, fields) =
                     (walk.ty, source.method("named"), source.method("fields"));
                 (
-                    quote! { <#ty>::#named(object) },
+                    self.asked(ty, &quote! { <#ty>::#named(object) }),
                     true,
-                    quote! { <#ty>::#fields(object, path, issue, out) },
+                    self.asked(ty, &quote! { <#ty>::#fields(object, path, issue, out) }),
                 )
             }
             Step::Present(present) if matches!(present.step, Step::Model) => {
@@ -1116,7 +1154,7 @@ impl Walker<'_> {
                 let walked =
                     self.flattened_optional(model, walk.ty, &Handed::whole(&object), &[], true);
                 (
-                    quote! { <#model>::#named(object) },
+                    self.asked(model, &quote! { <#model>::#named(object) }),
                     true,
                     quote! {
                         let mut declared = std::vec::Vec::new();
@@ -1157,9 +1195,8 @@ impl Walker<'_> {
             }
             Step::Model => {
                 let (ty, issues) = (walk.ty, self.source.method("issues"));
-                self.issues_method(&quote! {
-                    <#ty>::#issues(found, path, issue, out);
-                })
+                let walked = self.asked(ty, &quote! { <#ty>::#issues(found, path, issue, out) });
+                self.issues_method(&quote! { #walked; })
             }
         };
         self.held_keyed(walk).map_or_else(
@@ -1463,7 +1500,7 @@ impl Walker<'_> {
             .then(|| quote! { object.keys().any(|key| matches!(key.as_str(), #(#keys)|*)) });
         let flattened = keyed.flattened.iter().filter_map(|field| {
             if let Flattened::Model(model) | Flattened::Optional(model, _) = field {
-                Some(quote! { <#model>::#named(object) })
+                Some(self.asked(model, &quote! { <#model>::#named(object) }))
             } else {
                 None
             }
@@ -1680,6 +1717,82 @@ impl Walker<'_> {
     }
 }
 
+/// `ReadWhole`: what a field's type answers where it has no walker of its own.
+///
+/// A walker method called as `<Type>::decode_with_value_issues(..)` is the type's own where it has
+/// one, and this trait's where it has none and the trait is in scope. So a field typed with a
+/// type the walk cannot see into, such as an alias of a foreign map, builds, and is read whole.
+fn read_whole_items() -> TokenStream {
+    let object = Ident::new("object", Span::call_site());
+    let own: Type = parse_quote! { Self };
+    let methods = Source::GENERATED.iter().map(|&source| {
+        let (issues, named, fields, leaf) = (
+            source.method("issues"),
+            source.method("named"),
+            source.method("fields"),
+            source.leaf(),
+        );
+        let (value, object_type) = (source.value(), source.object());
+        let (reader, whole, unwritten) = (
+            source.object_reader(&object),
+            source.object_value(&object),
+            source.unwritten(Some(&own)),
+        );
+        quote! {
+            /// Lists serde's verdict on `found`, read whole as this type at `path`.
+            fn #issues<I>(
+                found: &#value,
+                path: &[core::result::Result<std::string::String, usize>],
+                issue: IssueFromParts<#value, I>,
+                out: &mut std::vec::Vec<I>,
+            ) {
+                out.extend(#leaf(found, <Self as serde::Deserialize>::deserialize, #unwritten, path.to_vec(), &[("Unknown", &[], 0)], issue));
+            }
+
+            /// Whether `object` holds a key and serde reads this type from its entries.
+            fn #named(object: &#object_type) -> bool {
+                !object.is_empty() && <Self as serde::Deserialize>::deserialize(#reader).is_ok()
+            }
+
+            /// Lists serde's verdict on the entries of `object`, read whole as this type, and
+            /// returns every key: with no walker to say otherwise, all are the type's own.
+            fn #fields<'a, I>(
+                object: &'a #object_type,
+                path: &[core::result::Result<std::string::String, usize>],
+                issue: IssueFromParts<#value, I>,
+                out: &mut std::vec::Vec<I>,
+            ) -> std::vec::Vec<&'a str> {
+                Self::#issues(&#whole, path, issue, out);
+                object.keys().map(std::string::String::as_str).collect()
+            }
+        }
+    });
+    let every = Source::GENERATED.iter().map(|&source| {
+        let (issues, named, fields) = (
+            source.method("issues"),
+            source.method("named"),
+            source.method("fields"),
+        );
+        quote! { Self::#issues::<()>, Self::#named, Self::#fields::<()> }
+    });
+    quote! {
+        /// What a field's type answers where it has no walker of its own: it is read whole, with
+        /// its own `Deserialize`.
+        pub trait ReadWhole: serde::de::DeserializeOwned {
+            #(#methods)*
+
+            /// Called beside every walker a field's type is asked for, which keeps this trait in
+            /// use where the type answers with its own.
+            fn decode_with_read_whole() {
+                fn kept<U>(_: &U) {}
+                kept(&(#(#every),*));
+            }
+        }
+
+        impl<T: serde::de::DeserializeOwned> ReadWhole for T {}
+    }
+}
+
 /// `tokens` with every bare use of a type name the flag adds written `super::Name`.
 ///
 /// A schema module reads the author's scope through `use super::*`, which an item of the same
@@ -1714,26 +1827,33 @@ pub fn reading_the_authors_scope(tokens: TokenStream) -> TokenStream {
 pub fn struct_recovering_decode(item_struct: &ItemStruct) -> RecoveringDecode {
     let module_name = ident_schema_module_name(&item_struct.ident.to_string());
     let parameters = type_parameters_in_scope(&item_struct.generics);
-    let shape = Shape::of(item_struct, &module_name, &parameters);
+    let mut reach = Reach::new(&module_name);
+    let mut walked = item_struct.clone();
+    reach.fields(&mut walked.fields);
+    let shape = Shape::of(&walked, &module_name, &parameters);
     added_to(
         &item_struct.ident,
         &item_struct.generics,
         &module_name,
         &parameters,
-        &written_names(item_struct.to_token_stream()),
+        &Written {
+            names: written_names(item_struct.to_token_stream()),
+            reach: &reach,
+        },
         |walker| walker.methods(&shape),
     )
 }
 
 /// What the flag adds to the type `name` declares under `generics`: the callback's types, and per
-/// source the entry point beside what `methods` writes for that source's walker. `written` is
-/// every name the type's item writes, none of which a method's own type parameter takes.
+/// source the entry point beside what `methods` writes for that source's walker. `written` holds
+/// every name the type's item writes, none of which a method's own type parameter takes, and what
+/// its fields reach through the aliases they are typed with.
 fn added_to<M>(
     name: &Ident,
     generics: &Generics,
     module_name: &str,
     parameters: &[String],
-    written: &[String],
+    written: &Written<'_>,
     methods: M,
 ) -> RecoveringDecode
 where
@@ -1741,8 +1861,8 @@ where
 {
     let own_name = name.to_string();
     let module = Ident::new(module_name, Span::call_site());
-    let decider = unclaimed_parameter("F", written);
-    let issue_parameter = unclaimed_parameter("I", written);
+    let decider = unclaimed_parameter("F", &written.names);
+    let issue_parameter = unclaimed_parameter("I", &written.names);
     let of_sources: Vec<TokenStream> = Source::GENERATED
         .iter()
         .map(|&source| {
@@ -1761,9 +1881,19 @@ where
             }
         })
         .collect();
+    let mut type_impl = type_impls(name, generics, !parameters.is_empty(), &of_sources);
+    let mut items = module_items();
+    if written_names(type_impl.clone())
+        .iter()
+        .any(|written_name| written_name == "ReadWhole")
+    {
+        items.extend(read_whole_items());
+    }
+    items.extend(written.reach.module_items());
+    type_impl.extend(written.reach.guards());
     RecoveringDecode {
-        schema_module: placed_in_schema_module(&module, &module_items()),
-        type_impl: type_impls(name, generics, !parameters.is_empty(), &of_sources),
+        schema_module: placed_in_schema_module(&module, &items),
+        type_impl,
     }
 }
 
@@ -2636,11 +2766,11 @@ fn member_walk<'item>(
 ///
 /// A build with `bson` on earns the same error a second time, naming `decode_with_bson_issues`.
 ///
-/// An alias is the type it stands for, so the call reaches whatever the alias names. A field typed
-/// with an alias of a flagged model type builds. One typed with an alias of a list does not, where
-/// the first example, which writes the list in full, does:
+/// An alias is the type it stands for. A field typed with an alias of a flagged model type calls
+/// that type's walker. One typed with an alias of a list or a map that `#[model_schema]` was
+/// written on above is walked as the list or the map (see `aliases`), so this builds:
 ///
-/// ```rust,compile_fail
+/// ```rust
 /// # extern crate bson2 as bson;
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
@@ -2661,22 +2791,6 @@ fn member_walk<'item>(
 /// }
 ///
 /// fn main() {}
-/// ```
-///
-/// Compiled standalone the same way, this is the only error it earned, verbatim but for a note
-/// listing the constructors `Vec` has, left out where the dots are:
-///
-/// ```text
-/// error[E0599]: no associated function or constant named `decode_with_value_issues` found for struct `Vec<Version>` in the current scope
-///    --> tests/zz_probe.rs:13:1
-///     |
-///  13 | #[model_schema(decode_with)]
-///     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ associated function or constant not found in `Vec<Version>`
-///     |
-/// ...
-///     = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
-///
-/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
 fn model_walker_call(
     source: Source,
@@ -3252,6 +3366,26 @@ fn walked_slot<'item>(
         ty: &slot.ty,
         walk: member_walk(slot, module_name, parameters),
     })
+}
+
+/// Whether the walker of `ty` is called as it stands: `ty` is the type being walked, or a struct
+/// or an enum `#[model_schema]` was written on above, under its own name or an alias of it.
+fn walks_itself(ty: &Type, depth: usize) -> bool {
+    let Type::Path(named) = written_type(ty) else {
+        return false;
+    };
+    let Some(last) = named.path.segments.last() else {
+        return false;
+    };
+    if last.ident == "Self" {
+        return true;
+    }
+    match declared(&last.ident.unraw().to_string()) {
+        Some(Declared::Model) => true,
+        Some(Declared::Alias(aliased_as)) if depth < 8 => syn::parse_str::<Type>(&aliased_as)
+            .is_ok_and(|aliased| walks_itself(&aliased, depth.saturating_add(1))),
+        Some(Declared::Alias(_)) | None => false,
+    }
 }
 
 /// Every name `tokens` write: each identifier, and each word of a string, which is where a serde

@@ -11,9 +11,10 @@ use quote::{ToTokens as _, format_ident, quote};
 use syn::ext::IdentExt as _;
 use syn::{Fields, ItemEnum, Type, parse_quote};
 
+use super::aliases::Reach;
 use super::{
-    Arm, Handed, Keyed, Lookup, RecoveringDecode, Shape, Step, Walk, Walker, added_to, binding,
-    flattened_walker_call, not_the_shape, path_expression, written_names,
+    Arm, Handed, Keyed, Lookup, RecoveringDecode, Shape, Step, Walk, Walker, Written, added_to,
+    binding, flattened_walker_call, not_the_shape, path_expression, written_names,
 };
 use crate::features::serde::{
     parse_serde_field_attributes, parse_serde_key_omission, parse_serde_type_attributes,
@@ -625,7 +626,9 @@ impl EnumWalker<'_> {
         }) = &variant.content
         {
             let issues = self.walker.source.method("issues");
-            return quote! { <#ty>::#issues(found, path, issue, #out) };
+            return self
+                .walker
+                .asked(ty, &quote! { <#ty>::#issues(found, path, issue, #out) });
         }
         let method = self
             .walker
@@ -688,9 +691,14 @@ impl EnumWalker<'_> {
 pub fn enum_recovering_decode(item_enum: &ItemEnum) -> RecoveringDecode {
     let module_name = ident_schema_module_name(&item_enum.ident.to_string());
     let parameters = type_parameters_in_scope(&item_enum.generics);
-    let tagging = Tagging::of(item_enum);
+    let mut reach = Reach::new(&module_name);
+    let mut walked = item_enum.clone();
+    for variant in &mut walked.variants {
+        reach.fields(&mut variant.fields);
+    }
+    let tagging = Tagging::of(&walked);
     let (never_read, variants): (Vec<WalkedVariant<'_>>, Vec<WalkedVariant<'_>>) =
-        walked_variants(item_enum, &module_name, &parameters)
+        walked_variants(&walked, &module_name, &parameters)
             .into_iter()
             .partition(|variant| variant.never_read);
     added_to(
@@ -698,7 +706,10 @@ pub fn enum_recovering_decode(item_enum: &ItemEnum) -> RecoveringDecode {
         &item_enum.generics,
         &module_name,
         &parameters,
-        &written_names(item_enum.to_token_stream()),
+        &Written {
+            names: written_names(item_enum.to_token_stream()),
+            reach: &reach,
+        },
         |walker| {
             EnumWalker {
                 never_read: &never_read,

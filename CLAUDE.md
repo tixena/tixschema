@@ -737,6 +737,23 @@ consumer's view; this is what a change to the emitter has to keep.
   declaration: each `{type}_schema` module declares the same aliases of standard types
   (`ExpectedToken`, `IssueFromParts`), and `issue_from_parts` turns the parts into that module's
   own `Issue`.
+- **A field's type is walked by what tixschema has seen of it.** `record_declaration` notes at
+  `exec_model_schema`, in every build with `serde`, whether a name is a struct or an enum or an
+  alias, and what a parameterless alias names. A model type seen above is called as it stands, so
+  one with no flag fails the build (E0599), as before. Any other type goes through
+  `Walker::asked`: the call is written in a block with `{type}_schema::ReadWhole` in scope, so a
+  type with a walker of its own answers with it (an inherent function wins over a trait's) and
+  one with none is read whole. `<()>::decode_with_read_whole()` beside the call keeps the import
+  and the trait's methods in use where the type answers itself; without it a consumer that denies
+  warnings fails on `unused_imports` and `dead_code`. The trait is added to the module only where
+  a walker asks for it.
+- **An alias seen above is walked as the type it names.** `aliases::Reach` writes the field's type
+  out again in a clone of the item the walker is then run on: a standard type by its full path,
+  and every other type under an alias in `{type}_schema::decode_with_at{N}` that reaches it from
+  the field's own type (`<<Counts as IntoIterator>::Item as EntryOf>::Value`) and keeps its last
+  name, which is what the walker reads a type by. Nothing the alias was written with has to
+  resolve beside the field. A `const _: fn(Written) -> WrittenOut = |held| held;` beside the type
+  holds the two to one type.
 - **Every name the flag adds is its own.** Each method carries the flag's name
   (`decode_with_value_issues`, `decode_with_bson_fields`, `decode_with_value_named`), and a
   method's own type parameters take a name the item does not write (`unclaimed_parameter`): `F`

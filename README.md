@@ -3684,7 +3684,7 @@ Read as a struct holding `name: String` and `versions: Vec<Version>`, `{ "name":
 
 ### Nested types
 
-Every model type a flagged type's fields reach carries the flag too, whatever its shape, or the build fails. The flagged type's walker calls the nested type's walker, so the error names the method the flag would have generated:
+Every model type a flagged type's fields reach carries the flag too, whatever its shape. Where the model type is declared above the flagged one and has no flag, the build fails: the flagged type's walker calls the nested type's walker, so the error names the method the flag would have generated:
 
 ```rust
 #[model_schema()]
@@ -3708,17 +3708,8 @@ The error is reported at the `#[model_schema(decode_with)]` of the type that nam
 
 - **A model type filling a type parameter needs no flag.** It is read as one value, so `Page<Plain>` reads with no flag on `Plain`.
 - **A field typed with an alias of a flagged model type is walked**, the alias being that type: with `#[model_schema()] type EntryAlias = Entry;`, a field `featured: EntryAlias` lists an issue at `featured.name`.
-- **A field typed with an alias of a list or a map does not build**, and its author writes the type in full, `Vec<Version>`. With `#[model_schema()] pub type Versions = Vec<Version>;` and a field `all: Versions`, the walker calls a method on `Vec<Version>`:
-
-  ```text
-  error[E0599]: no associated function or constant named `decode_with_value_issues` found for struct `Vec<Version>` in the current scope
-  ```
-
-- **A field of a type tixschema does not know gets no special treatment.** tixschema takes every type name it does not recognise for another `#[model_schema]` type, so the walker calls that type's walker, and where the type has none the build fails. With a field `timeout: Duration`, `Duration` being `std::time::Duration`, the build earns this beside the `duration_schema` error the same field earns without the flag wherever a schema surface is on:
-
-  ```text
-  error[E0599]: no associated function or constant named `decode_with_value_issues` found for struct `std::time::Duration` in the current scope
-  ```
+- **A field typed with an alias of a list or a map is walked as that list or map**, where `#[model_schema]` is written on the alias and the alias is declared above the type that names it. With `#[model_schema()] pub type Versions = Vec<Version>;` and a field `all: Versions`, `{ "all": [{ "number": 1 }, { "number": "2" }] }` lists `Invalid` at `all[1].number`, and with `#[model_schema()] pub type Counts = HashMap<String, i32>;` and a field `counts: Counts`, `{ "counts": { "a": "x", "b": 2 } }` lists `Invalid` at `counts.a`, expected `I32`. The field publishes under the alias's name on every schema surface, as it does without the flag. The alias may be declared in another module: what it holds is reached from the field's own type, so nothing the alias is written with has to be in scope beside the field. An alias that takes a type parameter, and one declared below the type that names it, are read whole, as the next point says.
+- **A field of a type tixschema has not seen is read whole.** A name `#[model_schema]` was not written on above the flagged type may be a `type` alias with no `#[model_schema]`, a type from another crate, or a model type declared below, and tixschema cannot tell which. So the walker asks the type for its walker, and where the type has none it reads the value whole, with the type's own `Deserialize`: a value serde refuses is one `Invalid` at the field, expected `Unknown`, and flattened, the field takes every key nothing else declares. With `pub type Properties = serde_json::Map<String, Value>;` and a field `properties: Properties`, any object reads with no issue and `{ "properties": 5 }` lists `Invalid` at `properties`. A flagged model type declared below is walked by its own walker all the same. An unflagged one declared below is read whole, where one declared above fails the build. A field `timeout: Duration`, `Duration` being `std::time::Duration`, is read whole too; the `duration_schema` error the same field earns wherever a schema surface is on is no part of the flag and is unchanged.
 
 ### What is refused
 

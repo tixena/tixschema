@@ -1,7 +1,10 @@
-use super::enums::enum_recovering_decode;
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-use super::{ADDED_TYPE_NAMES, reading_the_authors_scope};
-use super::{module_items, struct_recovering_decode};
+use super::aliases::entry_of_items;
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+use super::{ADDED_TYPE_NAMES, read_whole_items, reading_the_authors_scope};
+use super::{RecoveringDecode, module_items, written_names};
+use crate::utils::{Declared, record_declared};
+use quote::ToTokens as _;
 
 /// One of every way a field is walked: read whole, through each kind of hook, item by item, and by
 /// another type's walker, under its name or an alias.
@@ -46,6 +49,28 @@ const FLATTENING: &str = "pub struct Entry { #[serde(flatten)] pub audit: Audit,
 /// A flattened type parameter beside a key of the type's own.
 const FLATTENING_A_PARAMETER: &str =
     "pub struct Envelope<T> { #[serde(flatten)] pub body: T, pub id: String }";
+
+/// The enum emitter, run as it runs beside model types declared above the enum: every type the
+/// item names is taken for one, so its walker is called as it stands.
+fn enum_recovering_decode(item: &syn::ItemEnum) -> RecoveringDecode {
+    seen_as_models(item.to_token_stream());
+    super::enums::enum_recovering_decode(item)
+}
+
+/// Records every capitalized name `tokens` write as a model type declared above.
+fn seen_as_models(tokens: proc_macro2::TokenStream) {
+    for name in written_names(tokens) {
+        if name.starts_with(char::is_uppercase) {
+            record_declared(&name, Declared::Model);
+        }
+    }
+}
+
+/// The struct emitter, run the same way.
+fn struct_recovering_decode(item: &syn::ItemStruct) -> RecoveringDecode {
+    seen_as_models(item.to_token_stream());
+    super::struct_recovering_decode(item)
+}
 
 /// The `impl` the flag adds to `source`, as text.
 fn type_impl_of(source: &str) -> String {
@@ -804,7 +829,10 @@ fn only_a_bare_added_name_is_read_from_the_authors_scope() {
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn every_type_the_flag_adds_is_a_name_read_past() {
-    let added: syn::File = syn::parse2(module_items()).unwrap();
+    let mut every = module_items();
+    every.extend(read_whole_items());
+    every.extend(entry_of_items());
+    let added: syn::File = syn::parse2(every).unwrap();
     let mut declared: Vec<String> = added
         .items
         .iter()
@@ -813,6 +841,8 @@ fn every_type_the_flag_adds_is_a_name_read_past() {
                 Some(declared_enum.ident.to_string())
             } else if let syn::Item::Struct(declared_struct) = item {
                 Some(declared_struct.ident.to_string())
+            } else if let syn::Item::Trait(declared_trait) = item {
+                Some(declared_trait.ident.to_string())
             } else if let syn::Item::Type(declared_alias) = item {
                 Some(declared_alias.ident.to_string())
             } else {
@@ -3264,4 +3294,96 @@ fn the_bson_walker_of_a_flattened_field_matches_the_librarys_own_types() {
         assert!(!bson.contains("serde_json"), "got: {bson}");
         assert!(!bson.contains("decode_with_value"), "got: {bson}");
     }
+}
+
+/// A type no `#[model_schema]` was written on above is asked with `ReadWhole` in scope, beside
+/// the call that keeps the trait in use, and the trait is added to the module only then. A model
+/// type seen above is called as it stands, so one with no flag still fails the build.
+#[test]
+fn a_field_of_a_type_not_seen_above_is_asked_with_the_whole_read_in_scope() {
+    let item: syn::ItemStruct =
+        syn::parse_str("pub struct Page { pub properties: Properties }").unwrap();
+    let unseen = super::struct_recovering_decode(&item);
+    let (walker, module) = (
+        unseen.type_impl.to_string(),
+        unseen.schema_module.to_string(),
+    );
+    assert!(
+        walker.contains(
+            "{ use page_schema :: ReadWhole as _ ; < () > :: decode_with_read_whole () ; < \
+             Properties > :: decode_with_value_issues (held ,"
+        ),
+        "got: {walker}"
+    );
+    assert!(
+        module.contains("pub trait ReadWhole : serde :: de :: DeserializeOwned"),
+        "got: {module}"
+    );
+    assert!(
+        module.contains("impl < T : serde :: de :: DeserializeOwned > ReadWhole for T { }"),
+        "got: {module}"
+    );
+
+    let seen = struct_recovering_decode(&item);
+    let (strict, plain) = (seen.type_impl.to_string(), seen.schema_module.to_string());
+    assert!(
+        strict.contains("=> < Properties > :: decode_with_value_issues (held ,"),
+        "got: {strict}"
+    );
+    assert!(!strict.contains("ReadWhole"), "got: {strict}");
+    assert!(!plain.contains("ReadWhole"), "got: {plain}");
+}
+
+/// An alias seen above is written out as the type it names: a standard type by its full path, and
+/// every other type under an alias that reaches it from the field's own type and keeps its name.
+/// A check beside the type holds the two to one type.
+#[test]
+fn a_field_typed_with_an_alias_seen_above_is_walked_as_the_type_the_alias_names() {
+    record_declared(
+        "Marks",
+        Declared::Alias("BTreeMap < Tier , Vec < Mark > >".to_owned()),
+    );
+    record_declared("Mark", Declared::Model);
+    let item: syn::ItemStruct =
+        syn::parse_str("pub struct Tally { pub marks: types::Marks }").unwrap();
+    let added = super::struct_recovering_decode(&item);
+    let (walker, module) = (added.type_impl.to_string(), added.schema_module.to_string());
+    for written in [
+        "const _ : fn (types :: Marks) -> std :: collections :: BTreeMap < tally_schema :: \
+         decode_with_at0 :: Tier , std :: vec :: Vec < tally_schema :: decode_with_at1 :: Mark > \
+         > = | held | held ;",
+        "< tally_schema :: decode_with_at1 :: Mark > :: decode_with_value_issues (",
+    ] {
+        assert!(walker.contains(written), "missing `{written}` in: {walker}");
+    }
+    assert!(!walker.contains("ReadWhole"), "got: {walker}");
+    for written in [
+        "pub trait EntryOf { type Key ; type Value ; }",
+        "pub mod decode_with_at0 { pub type Tier = << super :: super :: types :: Marks as core \
+         :: iter :: IntoIterator > :: Item as super :: EntryOf > :: Key ; }",
+        "pub mod decode_with_at1 { pub type Mark = < << super :: super :: types :: Marks as \
+         core :: iter :: IntoIterator > :: Item as super :: EntryOf > :: Value as core :: iter \
+         :: IntoIterator > :: Item ; }",
+    ] {
+        assert!(module.contains(written), "missing `{written}` in: {module}");
+    }
+}
+
+/// An alias of one model type is that type: the field is left as it is written, and the type's
+/// own walker is called under the alias.
+#[test]
+fn a_field_typed_with_an_alias_of_a_model_type_is_left_as_it_is_written() {
+    record_declared("Featured", Declared::Alias("Entry".to_owned()));
+    record_declared("Entry", Declared::Model);
+    let item: syn::ItemStruct =
+        syn::parse_str("pub struct Shelf { pub featured: Featured }").unwrap();
+    let added = super::struct_recovering_decode(&item);
+    let (walker, module) = (added.type_impl.to_string(), added.schema_module.to_string());
+    assert!(
+        walker.contains("=> < Featured > :: decode_with_value_issues (held ,"),
+        "got: {walker}"
+    );
+    assert!(!walker.contains("const _"), "got: {walker}");
+    assert!(!walker.contains("ReadWhole"), "got: {walker}");
+    assert!(!module.contains("decode_with_at0"), "got: {module}");
 }

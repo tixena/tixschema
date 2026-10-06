@@ -68,7 +68,7 @@ use crate::utils::{
 };
 
 #[cfg(feature = "serde")]
-use crate::utils::{TrivialPattern, trivial_pattern};
+use crate::utils::{Declared, TrivialPattern, record_declared, trivial_pattern};
 
 #[cfg(all(
     feature = "serde",
@@ -1255,7 +1255,7 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // field written at the item's own name reads that answer back the way any other reference
     // does. Recorded here, ahead of every shape, because a self-reference is rendered while the
     // item's own expansion is still running and would otherwise read an answer nobody had given.
-    record_own_zod_binding(&item);
+    record_item(&item);
     // Whether a filling satisfies the bounds its parameter declares is a question about trait
     // impls, which a proc macro cannot answer — so it is asked here, of the compiler, and read off
     // the item before the shapes take it.
@@ -2447,6 +2447,18 @@ fn written_spelling(tokens: &impl quote::ToTokens) -> String {
         .replace("& ", "&")
 }
 
+/// What an item leaves for the expansions after it, ahead of the shape it is dispatched to: which
+/// Zod binding it publishes, and what it declares.
+#[cfg(any(feature = "serde", feature = "zod"))]
+fn record_item(item: &Item) {
+    record_own_zod_binding(item);
+    record_declaration(item);
+}
+
+/// Nothing, in a build that neither publishes a Zod binding nor reads a value.
+#[cfg(not(any(feature = "serde", feature = "zod")))]
+const fn record_item(_item: &Item) {}
+
 /// Records which of the two Zod bindings an item publishes, ahead of the shape it is dispatched to.
 #[cfg(feature = "zod")]
 fn record_own_zod_binding(item: &Item) {
@@ -2462,8 +2474,8 @@ fn record_own_zod_binding(item: &Item) {
     );
 }
 
-/// Nothing, in a build that publishes no Zod binding at all.
-#[cfg(not(feature = "zod"))]
+/// Nothing, in a build that reads a value and publishes no Zod binding.
+#[cfg(all(feature = "serde", not(feature = "zod")))]
 const fn record_own_zod_binding(_item: &Item) {}
 
 /// The parameters an item declares — the three shapes `model_schema` expands each bind their own;
@@ -4657,6 +4669,29 @@ fn struct_output_with_unit_impls(
     log::trace!("{output}");
     output
 }
+
+/// Records what the item declares for the recovering decodes expanded after it, which walk a
+/// field typed with a model type differently from one typed with an alias. An alias that takes
+/// a parameter is left out: what it names depends on what fills it.
+#[cfg(feature = "serde")]
+fn record_declaration(item: &Item) {
+    if let Item::Type(alias) = item {
+        if alias.generics.params.is_empty() {
+            record_declared(
+                &alias.ident.to_string(),
+                Declared::Alias(quote::ToTokens::to_token_stream(&alias.ty).to_string()),
+            );
+        }
+    } else if let Some(ident) = item_schema_ident(item) {
+        record_declared(&ident.to_string(), Declared::Model);
+    } else {
+        // `#[model_schema]` is written on nothing else.
+    }
+}
+
+/// Without `serde` nothing reads a value, so nothing reads what an item declares.
+#[cfg(all(feature = "zod", not(feature = "serde")))]
+const fn record_declaration(_item: &Item) {}
 
 /// What `decode_with` adds to a struct, read off the struct as it is emitted. Empty without the
 /// flag.
