@@ -621,7 +621,7 @@ as it stands, the slot names a binding still being built and the module throws a
 For a struct with no parameter that is the whole of it, the binding being annotated
 `ZodType<X>`. A generic one cannot read its own factory's type inside the tuple, whose slot types
 are read as the tuple is built: `zod_self_view` writes `X$SchemaSelf`, an overload declared to
-return `ZodType<X<z.output<T>>>` over an implementation that hands back the factory's schema, and
+return `ZodType<X<T["_zod"]["output"]>>` over an implementation that hands back the factory's schema, and
 the slot calls that behind `z.lazy`. The same test file loads the bundle under `node` and parses
 through both. Which of the item's two bindings a self-reference names is read off the store
 `record_zod_factory` writes, and that is written at `exec_model_schema` ahead of every shape rather
@@ -644,12 +644,17 @@ against what each member takes and answers: `.prefault(undefined)` types its arg
 union's input, and `z.union` over a `z.record` of the call resolves the record's own output. Inside
 a cycle that is the type still being inferred, which `tsc --strict` refuses (TS7023, TS2615).
 `zod_union_around` therefore hands every factory call in through a generic arrow
-(`<Reached$ extends z.core.SomeType>(reached$: Reached$) => …`) and builds the union over the type
+(`<Reached$ extends SomeType>(reached$: Reached$) => …`) and builds the union over the type
 parameter, so the check is made once against the parameter and the member only instantiates it.
 `FieldDef::zod_factory_calls` lists the calls, outermost only and once each, by the same renderer
 that writes them; the names end in `$`, which no argument `zod_factory_argument` binds can. The
 bound is the one `z.union` and `z.array` are themselves declared with -- `ZodType` there reads the
-schema's output and brings the cycle back.
+schema's output and brings the cycle back. It is written bare (`ZOD_SCHEMA_BOUND`, `SomeType`) and
+the self view writes `T["_zod"]["output"]`: a consumer may bind `z` as a constant
+(`const z = zod;`), which names no type, so nothing emitted writes `z.` where a type is read.
+`SomeType` is the consumer's to bring into scope, as `ZodType` and `$brand` are
+(`import type { SomeType } from "zod/v4/core";`). The bundle
+`tests/generic_types_tests/declarations.rs` compiles binds `z` as a constant and imports both.
 
 A map of the item itself is read through the self view as well. `z.record` resolves its own type
 off its value as it is written, and inside the builder the item's own factory answers the

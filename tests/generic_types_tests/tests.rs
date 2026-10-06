@@ -558,7 +558,7 @@ mod zod {
         assert!(
             zod.contains(
                 "= SlottedDefault$SchemaFactory(z.lazy(() => (<Reached$ extends \
-                 z.core.SomeType>(reached$: Reached$) => z.union([z.null().transform(() => \
+                 SomeType>(reached$: Reached$) => z.union([z.null().transform(() => \
                  undefined), reached$, z.undefined()]).prefault(undefined))(Tagged$SchemaFactory(z.\
                  string()))));"
             ),

@@ -45,6 +45,13 @@ const BOOLEAN_KEY_TYPESCRIPT: &str = "\"true\" | \"false\"";
 #[cfg(feature = "zod")]
 const BOOLEAN_KEY_ZOD: &str = "z.enum([\"true\", \"false\"])";
 
+/// What `z.array` and `z.union` take: the bound a schema handed in through a type parameter is
+/// held to. Written bare, as `ZodType` is, for the consumer's module to bring into scope: a
+/// consumer may bind `z` as a constant, which names no type, so nothing emitted writes `z.` where
+/// a type is read.
+#[cfg(feature = "zod")]
+pub const ZOD_SCHEMA_BOUND: &str = "SomeType";
+
 /// A `DateTime<Tz>` key is the RFC 3339 string chrono renders it into, offset always written.
 #[cfg(all(feature = "chrono", feature = "zod"))]
 const TIMESTAMP_KEY_ZOD: &str = "z.iso.datetime({ offset: true })";
@@ -1492,7 +1499,7 @@ fn zod_union_around(held: &str, calls: &[String], union: impl Fn(&str) -> String
             position.to_string()
         };
         body = replace_call(&body, call, &format!("reached{numbered}$"));
-        types.push(format!("Reached{numbered}$ extends z.core.SomeType"));
+        types.push(format!("Reached{numbered}$ extends {ZOD_SCHEMA_BOUND}"));
         values.push(format!("reached{numbered}$: Reached{numbered}$"));
     }
     format!(

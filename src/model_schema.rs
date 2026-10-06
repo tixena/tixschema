@@ -21,6 +21,8 @@ use syn::spanned::Spanned as _;
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use syn::Ident;
 
+#[cfg(all(feature = "zod", feature = "typescript"))]
+use crate::field_type::ZOD_SCHEMA_BOUND;
 use crate::{
     field_type::{
         FieldDef, FieldDefType, VariantKind, classify_variant, format_number_literal,
@@ -5067,7 +5069,7 @@ fn zod_self_view(item_name: &str, parameters: &[String], builder: &str) -> Strin
     }
     let outputs = parameters
         .iter()
-        .map(|parameter| format!("z.output<{parameter}>"))
+        .map(|parameter| format!("{parameter}[\"_zod\"][\"output\"]"))
         .collect::<Vec<_>>()
         .join(", ");
     format!(
@@ -5179,7 +5181,7 @@ fn handed_arguments(handed: &str) -> Vec<&str> {
 fn arrows_over_maps(zod: &str, call: &str, view: &str) -> String {
     let mut written = String::new();
     let mut copied = 0_usize;
-    for (at, _) in zod.match_indices("(<Reached$ extends z.core.SomeType") {
+    for (at, _) in zod.match_indices(&format!("(<Reached$ extends {ZOD_SCHEMA_BOUND}")) {
         if at < copied {
             continue;
         }
