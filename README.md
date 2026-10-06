@@ -4018,7 +4018,10 @@ impl MyEntities {
 }
 
 pub fn generate_ts_schemas(target_path: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let mut file_contents = String::from("import { z } from \"zod\";\n\n");
+    let mut file_contents = String::from(
+        "import { z, type ZodType, type $brand } from \"zod\";\n\
+         import type { SomeType } from \"zod/v4/core\";\n\n",
+    );
     let (header, type_definitions) = MyEntities::get_entities();
 
     file_contents.push_str(&format!("/*\n * {}\n */\n\n", header));
@@ -4035,6 +4038,15 @@ fn generate_typescript() {
     generate_ts_schemas("../frontend/src/types/generated.ts").unwrap();
 }
 ```
+
+The bundle declares everything it names except what that header brings in. `z` is used as a value only, so the header may bind it however the consuming codebase does (`const z = zod;` works). These types are named bare and are the header's to supply:
+
+| Type | Named where |
+|------|-------------|
+| `ZodType` | every schema's annotation, and a factory's parameters |
+| `$brand` | a branded newtype's type |
+| `SomeType` | an optional or `nullable` field that holds a generic type |
+| `ObjectId` | an `ObjectId` field, under the `mongodb` feature: the consuming codebase declares it, as `{ $oid: string }` or as the type its own driver gives it |
 
 ### Alternatives
 

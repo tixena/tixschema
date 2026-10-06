@@ -904,7 +904,10 @@ impl MyEntities {
 
 // Generation function
 pub fn generate_ts_schemas(target_path: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let mut file_contents = String::from("import { z } from \"zod\";\n\n");
+    let mut file_contents = String::from(
+        "import { z, type ZodType, type $brand } from \"zod\";\n\
+         import type { SomeType } from \"zod/v4/core\";\n\n",
+    );
     let (header, type_definitions) = MyEntities::get_entities();
 
     file_contents.push_str(&format!("/*\n * {}\n */\n\n", header));
