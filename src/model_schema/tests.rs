@@ -29,6 +29,9 @@ use super::{WireLeaf, flatten_edge_guard_error, record_wire_leaves, record_zod_u
 #[cfg(feature = "zod")]
 use super::{MergedOperand, SourceAbsence};
 
+#[cfg(all(feature = "zod", feature = "typescript"))]
+use super::maps_of_itself_through_the_self_view;
+
 #[cfg(feature = "typescript")]
 use super::tuple_struct_ts_body;
 
@@ -13231,4 +13234,66 @@ fn a_constrained_generic_brand_defines_its_own_type_identity() {
     )
     .to_string();
     assert!(!concrete.contains("type_identity"), "got: {concrete}");
+}
+
+/// The arguments a two-parameter `Pair` binds.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+fn pair_parameters() -> Vec<String> {
+    vec!["Left".to_owned(), "Right".to_owned()]
+}
+
+#[cfg(all(feature = "zod", feature = "typescript"))]
+#[test]
+fn an_items_own_call_inside_a_map_becomes_its_self_view_and_no_other_call_does() {
+    let viewed = maps_of_itself_through_the_self_view(
+        "Pair",
+        &pair_parameters(),
+        "z.strictObject({\n  \
+         get held() { return z.array(z.record(z.string(), Pair$SchemaFactory(left, right))); },\n  \
+         get list() { return z.array(Pair$SchemaFactory(left, right)); },\n  \
+         get other() { return z.record(z.string(), SpotPair$SchemaFactory(left, right)); },\n  \
+         get turned() { return z.record(z.string(), Pair$SchemaFactory(right, left)); },\n\
+         })",
+    );
+    assert_eq!(
+        viewed,
+        "z.strictObject({\n  \
+         get held() { return z.array(z.record(z.string(), Pair$SchemaSelf(left, right))); },\n  \
+         get list() { return z.array(Pair$SchemaFactory(left, right)); },\n  \
+         get other() { return z.record(z.string(), SpotPair$SchemaFactory(left, right)); },\n  \
+         get turned() { return z.record(z.string(), Pair$SchemaFactory(right, left)); },\n\
+         })"
+    );
+}
+
+#[cfg(all(feature = "zod", feature = "typescript"))]
+#[test]
+fn a_unions_arrow_is_handed_the_self_view_for_the_argument_it_writes_inside_a_map() {
+    let arrow = "(<Reached$ extends z.core.SomeType, Reached2$ extends z.core.SomeType>\
+                 (reached$: Reached$, reached2$: Reached2$) => \
+                 z.union([z.tuple([reached$, z.record(z.string(), reached2$)]), z.null()]))";
+    let viewed = maps_of_itself_through_the_self_view(
+        "Pair",
+        &pair_parameters(),
+        &format!("{arrow}(Pair$SchemaFactory(left, right), Pair$SchemaFactory(left, right))"),
+    );
+    assert_eq!(
+        viewed,
+        format!("{arrow}(Pair$SchemaFactory(left, right), Pair$SchemaSelf(left, right))"),
+        "the first argument is written outside every map and keeps the factory's own type"
+    );
+}
+
+#[cfg(all(feature = "zod", feature = "typescript"))]
+#[test]
+fn a_parenthesis_inside_a_quoted_text_does_not_end_a_map() {
+    let viewed = maps_of_itself_through_the_self_view(
+        "Pair",
+        &pair_parameters(),
+        "z.record(z.string().meta({ description: \"a ) b\" }), Pair$SchemaFactory(left, right))",
+    );
+    assert_eq!(
+        viewed,
+        "z.record(z.string().meta({ description: \"a ) b\" }), Pair$SchemaSelf(left, right))"
+    );
 }

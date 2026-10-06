@@ -53,9 +53,16 @@ const MODULES_VAR: &str = "TIXSCHEMA_NODE_MODULES";
 /// themselves: an absent key and a `null` both answer `undefined` under a key that is there, a
 /// nested value is read all the way down, and a wrong one is refused at any depth.
 const OPTIONAL_DRIVER: &str = r#"import { z } from "zod";
-import { DeclaredAhead$SchemaFactory, DeclaredChain$SchemaFactory } from "./lib/index.js";
+import {
+  DeclaredAhead$SchemaFactory,
+  DeclaredChain$SchemaFactory,
+  DeclaredMaps$SchemaFactory,
+} from "./lib/index.js";
 
 const chain = DeclaredChain$SchemaFactory(z.string());
+const maps = DeclaredMaps$SchemaFactory(z.string());
+const leaf = (id) => ({ held: {}, id, rows: [] });
+const mapped = maps.parse({ held: { a: leaf("b") }, id: "a", maybe: null, rows: [{ k: leaf("c") }] });
 const ahead = DeclaredAhead$SchemaFactory(z.string());
 const absent = chain.parse({ id: "a", named: null });
 const nulled = chain.parse({ id: "a", by_key: null, many: null, named: null, next: null });
@@ -79,12 +86,18 @@ console.log(
       behind: [{ id: "f" }, { id: "g", ahead: { id: "b", behind: [] } }],
     }).success,
     ahead.safeParse({ id: "a", behind: [{ id: "f", ahead: 5 }] }).success,
+    "maybe" in mapped && mapped.maybe === undefined && mapped.held.a.id === "b",
+    maps.safeParse({ held: {}, id: "a", maybe: { m: leaf("d") }, rows: [] }).success,
+    maps.safeParse({ held: { a: leaf(5) }, id: "a", rows: [] }).success,
+    maps.safeParse({ held: {}, id: "a", maybe: { m: leaf(5) }, rows: [] }).success,
+    maps.safeParse({ held: {}, id: "a", rows: [{ k: leaf(5) }] }).success,
   ]),
 );
 "#;
 
 /// What that driver prints.
-const OPTIONAL_LOADED: &str = "[true,true,true,false,false,false,true,false]";
+const OPTIONAL_LOADED: &str =
+    "[true,true,true,false,false,false,true,false,true,true,false,false,false]";
 
 const NODE_VAR: &str = "TIXSCHEMA_NODE";
 
@@ -97,6 +110,9 @@ const CONSUMER: &str = r#"import {
   type DeclaredChoice,
   DeclaredChoice$SchemaFactory,
   DeclaredHolder$SchemaFactory,
+  type DeclaredMaps,
+  DeclaredMaps$SchemaDefault,
+  DeclaredMaps$SchemaFactory,
   type DeclaredNode,
   DeclaredNode$SchemaDefault,
   DeclaredNode$SchemaFactory,
@@ -145,6 +161,26 @@ export function keyedFromFactory(
   parsed: z.infer<typeof chain>
 ): Partial<Record<string, DeclaredChain<string>>> | undefined {
   return parsed.by_key;
+}
+
+const maps = DeclaredMaps$SchemaFactory(z.string());
+
+export function heldMapFromFactory(
+  parsed: z.infer<typeof maps>
+): Partial<Record<string, DeclaredMaps<string>>> {
+  return parsed.held;
+}
+
+export function maybeMapFromDefault(
+  parsed: z.infer<typeof DeclaredMaps$SchemaDefault>
+): Partial<Record<string, DeclaredMaps<string>>> | undefined {
+  return parsed.maybe;
+}
+
+export function rowsFromFactory(
+  parsed: z.infer<typeof maps>
+): Partial<Record<string, DeclaredMaps<string>>>[] {
+  return parsed.rows;
 }
 
 const ahead = DeclaredAhead$SchemaFactory(z.string());
@@ -223,6 +259,18 @@ pub struct DeclaredChain<IdType> {
     pub next: Option<Box<Self>>,
 }
 
+/// A generic type holding a map of itself, an optional map of itself below it, and a list of maps
+/// of itself: the three a builder cannot read its own factory's type for.
+#[model_schema(default_types(IdType = String))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeclaredMaps<IdType> {
+    pub held: HashMap<String, Self>,
+    pub id: IdType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub maybe: Option<HashMap<String, Self>>,
+    pub rows: Vec<HashMap<String, Self>>,
+}
+
 /// An internally tagged enum whose variant holds a list of the enum.
 #[model_schema(default_types(IdType = String))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -271,6 +319,8 @@ fn bundle() -> String {
         DeclaredSlots::<String>::zod_schema(),
         DeclaredChain::<String>::ts_definition(),
         DeclaredChain::<String>::zod_schema(),
+        DeclaredMaps::<String>::ts_definition(),
+        DeclaredMaps::<String>::zod_schema(),
         DeclaredAhead::<String>::ts_definition(),
         DeclaredAhead::<String>::zod_schema(),
         DeclaredBehind::<String>::ts_definition(),
@@ -434,8 +484,32 @@ fn a_union_around_a_factorys_call_is_built_over_a_type_parameter() {
          z.undefined()]).prefault(undefined))(DeclaredChain$SchemaFactory(idType)); },",
         "  get named() { return (<Reached$ extends z.core.SomeType>(reached$: Reached$) => \
          z.union([z.record(z.string(), reached$), \
-         z.null()]))(DeclaredChain$SchemaFactory(idType)); },",
+         z.null()]))(DeclaredChain$SchemaSelf(idType)); },",
     ] {
         assert!(zod.contains(member), "missing `{member}` in: {zod}");
     }
+}
+
+/// A map reads its own type off what it holds, which is the builder's own return type where it
+/// holds the type itself: the builder states that type through the self view instead.
+#[test]
+fn a_map_of_the_type_itself_is_read_through_the_self_view() {
+    let zod = DeclaredMaps::<String>::zod_schema();
+    for written in [
+        "function DeclaredMaps$SchemaSelf<IdType extends ZodType>(\n  idType: IdType,\n): \
+         ZodType<DeclaredMaps<z.output<IdType>>>;",
+        "  get held() { return z.record(z.string(), DeclaredMaps$SchemaSelf(idType)); },",
+        "  get maybe() { return (<Reached$ extends z.core.SomeType>(reached$: Reached$) => \
+         z.union([z.null().transform(() => undefined), z.record(z.string(), reached$), \
+         z.undefined()]).prefault(undefined))(DeclaredMaps$SchemaSelf(idType)); },",
+        "  get rows() { return z.array(z.record(z.string(), DeclaredMaps$SchemaSelf(idType))); },",
+    ] {
+        assert!(zod.contains(written), "missing `{written}` in: {zod}");
+    }
+    let node = DeclaredNode::<String>::zod_schema();
+    assert!(
+        node.contains("  get children() { return z.array(DeclaredNode$SchemaFactory(idType)); },")
+            && !node.contains("$SchemaSelf"),
+        "a list of the type itself keeps the factory's own type. Got: {node}"
+    );
 }

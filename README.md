@@ -1028,7 +1028,15 @@ pub struct Chain<IdType> {
   get next() { return (<Reached$ extends z.core.SomeType>(reached$: Reached$) => z.union([z.null().transform(() => undefined), reached$, z.undefined()]).prefault(undefined))(Chain$SchemaFactory(idType)); },
 ```
 
-It parses exactly what the plain union parses: an absent key, a `null` and an `undefined` all answer `undefined`, under a key that is there. An optional list or map of the type is built inside the arrow the same way (`z.array(reached$)`, `z.record(z.string(), reached$)`), and a member that reaches two generic types takes one parameter for each. One shape is still refused by the compiler: a generic type that holds a map of itself that is not optional, written *above* an optional map of itself. Writing the optional one first type-checks, and so does marking it `nullable`.
+It parses exactly what the plain union parses: an absent key, a `null` and an `undefined` all answer `undefined`, under a key that is there. An optional list or map of the type is built inside the arrow the same way (`z.array(reached$)`, `z.record(z.string(), reached$)`), and a member that reaches two generic types takes one parameter for each.
+
+A map of the type itself goes one step further. A map's own type is read off what it holds as soon as the map is written, and for a generic type holding itself that is the builder's own return type, which is still being worked out. So inside a map the type is reached through the function a tuple struct reaches itself through, `X$SchemaSelf`, declared to return what the factory's schema parses:
+
+```typescript
+  get by_key() { return z.record(z.string(), Chain$SchemaSelf(idType)); },
+```
+
+Where the map is optional, that call is what the arrow is handed. A list or an `Option` of the type keeps the factory's own call, and with it the factory's precise type.
 
 #### Declaring the default type
 

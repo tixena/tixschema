@@ -2,6 +2,8 @@ extern crate alloc;
 
 use alloc::borrow::ToOwned;
 use core::fmt::Write as _;
+#[cfg(all(feature = "zod", feature = "typescript"))]
+use core::ops::Range;
 
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -5011,13 +5013,12 @@ fn tuple_slot_zod(slot: &FieldDef, owner: &SlotOwner<'_>) -> String {
         || slot.contains_type_reference(owner.rust_ident);
     #[cfg(feature = "typescript")]
     if reaches_itself && !owner.parameters.is_empty() {
-        let own_call = format!(
-            "{}$SchemaFactory({})",
-            owner.item_name,
-            zod_factory_argument_names(owner.parameters)
-        );
+        let own_call = zod_own_factory_call(owner.item_name, owner.parameters);
         if written.contains(&own_call) {
-            return written.replace(&own_call, &deferred_zod_operand(&zod_self_view_call(owner)));
+            return written.replace(
+                &own_call,
+                &deferred_zod_operand(&zod_self_view_call(owner.item_name, owner.parameters)),
+            );
         }
     }
     if reaches_itself || slot.reaches_a_type_declared_later() {
@@ -5037,29 +5038,34 @@ fn zod_factory_argument_names(parameters: &[String]) -> String {
         .join(", ")
 }
 
-/// The call a generic tuple struct's builder reaches the struct itself through.
+/// The call a generic item's builder reaches the item itself through, where reading its own
+/// factory's type would be reading its own return type.
 #[cfg(all(feature = "zod", feature = "typescript"))]
-fn zod_self_view_call(owner: &SlotOwner<'_>) -> String {
+fn zod_self_view_call(item_name: &str, parameters: &[String]) -> String {
     format!(
-        "{}$SchemaSelf({})",
-        owner.item_name,
-        zod_factory_argument_names(owner.parameters)
+        "{item_name}$SchemaSelf({})",
+        zod_factory_argument_names(parameters)
     )
 }
 
-/// The function [`zod_self_view_call`] names, for a body that calls it. A tuple's slot types are
-/// read as the tuple is built, so a builder that read its own factory's type there would be
-/// reading its own return type. The overload states what the factory's schema parses instead, and
-/// the implementation beneath it hands that schema over, as the factory's own overload does for
-/// its cache.
+/// The call a generic item's builder makes to its own factory, with the arguments it was handed.
 #[cfg(all(feature = "zod", feature = "typescript"))]
-fn zod_self_view(owner: &SlotOwner<'_>, zod_body: &str) -> String {
-    if !zod_body.contains(&zod_self_view_call(owner)) {
+fn zod_own_factory_call(item_name: &str, parameters: &[String]) -> String {
+    format!(
+        "{item_name}$SchemaFactory({})",
+        zod_factory_argument_names(parameters)
+    )
+}
+
+/// The function [`zod_self_view_call`] names, for a builder that calls it. The overload states
+/// what the factory's schema parses, and the implementation beneath it hands that schema over,
+/// as the factory's own overload does for its cache.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+fn zod_self_view(item_name: &str, parameters: &[String], builder: &str) -> String {
+    if !builder.contains(&zod_self_view_call(item_name, parameters)) {
         return String::new();
     }
-    let item_name = owner.item_name;
-    let outputs = owner
-        .parameters
+    let outputs = parameters
         .iter()
         .map(|parameter| format!("z.output<{parameter}>"))
         .collect::<Vec<_>>()
@@ -5068,11 +5074,163 @@ fn zod_self_view(owner: &SlotOwner<'_>, zod_body: &str) -> String {
         "function {item_name}$SchemaSelf{}({}\n): ZodType<{item_name}<{outputs}>>;\n\
          function {item_name}$SchemaSelf({}\n): ZodType {{\n  return \
          {item_name}$SchemaFactory({});\n}}\n\n",
-        zod_factory_bounds(owner.parameters),
-        zod_factory_arguments(owner.parameters),
-        zod_factory_widened_arguments(owner.parameters),
-        zod_factory_argument_names(owner.parameters)
+        zod_factory_bounds(parameters),
+        zod_factory_arguments(parameters),
+        zod_factory_widened_arguments(parameters),
+        zod_factory_argument_names(parameters)
     )
+}
+
+/// The end of the call whose opening parenthesis is at `open`, one past its closing one. Text
+/// between double quotes is passed over.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+fn call_end(zod: &str, open: usize) -> usize {
+    let mut depth = 0_usize;
+    let mut quoted = false;
+    let mut escaped = false;
+    for (at, written) in zod.char_indices().skip_while(|(at, _)| *at < open) {
+        if quoted {
+            if escaped {
+                escaped = false;
+            } else if written == '\\' {
+                escaped = true;
+            } else if written == '"' {
+                quoted = false;
+            } else {
+                // Any other character of the text.
+            }
+        } else if written == '"' {
+            quoted = true;
+        } else if written == '(' {
+            depth = depth.saturating_add(1);
+        } else if written == ')' {
+            depth = depth.saturating_sub(1);
+            if depth == 0 {
+                return at.saturating_add(1);
+            }
+        } else {
+            // Nothing a call's extent is read from.
+        }
+    }
+    zod.len()
+}
+
+/// Every map `zod` writes, as the range of its record call.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+fn record_calls(zod: &str) -> Vec<Range<usize>> {
+    ["z.record(", "z.partialRecord("]
+        .iter()
+        .flat_map(|opening| {
+            zod.match_indices(opening).map(|(at, written)| {
+                at..call_end(zod, at.saturating_add(written.len()).saturating_sub(1))
+            })
+        })
+        .collect()
+}
+
+/// `zod` with each `call` written inside a map replaced by `view`. A call that ends a longer
+/// name (`TreeNode$SchemaFactory` for `Node$SchemaFactory`) is another item's.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+fn inside_maps(zod: &str, call: &str, view: &str) -> String {
+    let maps = record_calls(zod);
+    let mut written = String::new();
+    let mut copied = 0_usize;
+    for (at, _) in zod.match_indices(call) {
+        let ends_a_name = zod[..at]
+            .chars()
+            .next_back()
+            .is_some_and(|last| last.is_alphanumeric() || last == '_' || last == '$');
+        if ends_a_name || !maps.iter().any(|map| map.contains(&at)) {
+            continue;
+        }
+        written.push_str(&zod[copied..at]);
+        written.push_str(view);
+        copied = at.saturating_add(call.len());
+    }
+    written.push_str(&zod[copied..]);
+    written
+}
+
+/// The arguments `handed` lists, split where a comma stands outside every call.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+fn handed_arguments(handed: &str) -> Vec<&str> {
+    let mut arguments = Vec::new();
+    let mut depth = 0_usize;
+    let mut from = 0_usize;
+    for (at, written) in handed.char_indices() {
+        if written == '(' {
+            depth = depth.saturating_add(1);
+        } else if written == ')' {
+            depth = depth.saturating_sub(1);
+        } else if written == ',' && depth == 0 {
+            arguments.push(handed[from..at].trim());
+            from = at.saturating_add(1);
+        } else {
+            // Part of the argument being read.
+        }
+    }
+    arguments.push(handed[from..].trim());
+    arguments
+}
+
+/// `zod` with each union's arrow handed `view` in place of `call`, where the arrow writes that
+/// argument inside a map. The arrow is the one `zod_union_around` writes in `field_type.rs`.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+fn arrows_over_maps(zod: &str, call: &str, view: &str) -> String {
+    let mut written = String::new();
+    let mut copied = 0_usize;
+    for (at, _) in zod.match_indices("(<Reached$ extends z.core.SomeType") {
+        if at < copied {
+            continue;
+        }
+        let arrow_end = call_end(zod, at);
+        if !zod[arrow_end..].starts_with('(') {
+            continue;
+        }
+        let handed_end = call_end(zod, arrow_end);
+        let handed = &zod[arrow_end.saturating_add(1)..handed_end.saturating_sub(1)];
+        let arrow = &zod[at..arrow_end];
+        let maps = record_calls(arrow);
+        let arguments: Vec<String> = handed_arguments(handed)
+            .into_iter()
+            .zip(1_usize..)
+            .map(|(argument, position)| {
+                let name = if position == 1 {
+                    "reached$".to_owned()
+                } else {
+                    format!("reached{position}$")
+                };
+                let in_a_map = arrow
+                    .match_indices(&name)
+                    .any(|(named_at, _)| maps.iter().any(|map| map.contains(&named_at)));
+                if argument == call && in_a_map {
+                    view.to_owned()
+                } else {
+                    argument.to_owned()
+                }
+            })
+            .collect();
+        written.push_str(&zod[copied..=arrow_end]);
+        written.push_str(&arguments.join(", "));
+        copied = handed_end.saturating_sub(1);
+    }
+    written.push_str(&zod[copied..]);
+    written
+}
+
+/// `zod`, a generic item's builder, with each reference the item makes to itself inside a map
+/// made through its self view. A map's own type is read off what it holds as the builder's
+/// return type is still being inferred, which `tsc --strict` refuses (TS2345) or resolves to
+/// `unknown` (TS2322); the view states the type instead.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+fn maps_of_itself_through_the_self_view(
+    item_name: &str,
+    parameters: &[String],
+    zod: &str,
+) -> String {
+    let call = zod_own_factory_call(item_name, parameters);
+    let view = zod_self_view_call(item_name, parameters);
+    inside_maps(&arrows_over_maps(zod, &call, &view), &call, &view)
 }
 
 /// [`tuple_struct_ts_body`] for the JSON-schema surface, as a standalone `serde_json::Value`
@@ -5129,23 +5287,9 @@ fn build_tuple_struct_zod_schema_method(
     zod_body: &str,
 ) -> proc_macro2::TokenStream {
     let reexport = zod_binding_reexport(rust_ident, item_name, parameters);
-    let binding = zod_published_binding(
+    let schema_str = zod_published_binding(
         item_name, rust_ident, parameters, published, "", zod_body, &reexport,
     );
-    #[cfg(feature = "typescript")]
-    let schema_str = format!(
-        "{}{binding}",
-        zod_self_view(
-            &SlotOwner {
-                item_name,
-                parameters,
-                rust_ident,
-            },
-            zod_body
-        )
-    );
-    #[cfg(not(feature = "typescript"))]
-    let schema_str = binding;
     quote! {
         pub fn zod_schema() -> ::std::string::String {
             #schema_str.to_owned()
@@ -13954,10 +14098,42 @@ fn defers_a_reference(zod: &str) -> bool {
     zod.contains("() { return ") || zod.contains("z.lazy(() => ")
 }
 
-/// What a generic type's Zod surface is written as: the builder holding the schema its arguments
-/// compose into, the return type read back off it, the cache interfaces, and the exported factory.
+/// What a generic type's Zod surface is written as, with each map the type holds of itself read
+/// through its self view where a TypeScript type is there to declare the view with.
 #[cfg(feature = "zod")]
 fn zod_factory_block(
+    item_name: &str,
+    rust_ident: &str,
+    parameters: &[String],
+    defaults: &ZodDefaultInputs<'_>,
+    preamble: &str,
+    expression: &str,
+    reexport: &str,
+) -> String {
+    #[cfg(feature = "typescript")]
+    {
+        zod_factory_block_around(
+            item_name,
+            rust_ident,
+            parameters,
+            defaults,
+            &maps_of_itself_through_the_self_view(item_name, parameters, preamble),
+            &maps_of_itself_through_the_self_view(item_name, parameters, expression),
+            reexport,
+        )
+    }
+    #[cfg(not(feature = "typescript"))]
+    {
+        zod_factory_block_around(
+            item_name, rust_ident, parameters, defaults, preamble, expression, reexport,
+        )
+    }
+}
+
+/// The builder holding the schema a generic type's arguments compose into, the return type read
+/// back off it, the cache interfaces, and the exported factory.
+#[cfg(feature = "zod")]
+fn zod_factory_block_around(
     item_name: &str,
     rust_ident: &str,
     parameters: &[String],
@@ -14001,7 +14177,14 @@ fn zod_factory_block(
     let default_block = zod_default_block(item_name, rust_ident, parameters, defaults);
     let declaration = zod_factory_declaration(item_name, parameters, &bounds);
 
-    format!("{built}\n\n{declarations}{declaration} {{\n{body}\n}}{default_block}{reexport}")
+    #[cfg(feature = "typescript")]
+    let self_view = zod_self_view(item_name, parameters, &built);
+    #[cfg(not(feature = "typescript"))]
+    let self_view = String::new();
+
+    format!(
+        "{self_view}{built}\n\n{declarations}{declaration} {{\n{body}\n}}{default_block}{reexport}"
+    )
 }
 
 /// Whether an item's published Zod expression *is* a sibling's own binding rather than an

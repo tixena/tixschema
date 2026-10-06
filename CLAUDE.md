@@ -651,6 +651,18 @@ that writes them; the names end in `$`, which no argument `zod_factory_argument`
 bound is the one `z.union` and `z.array` are themselves declared with -- `ZodType` there reads the
 schema's output and brings the cycle back.
 
+A map of the item itself is read through the self view as well. `z.record` resolves its own type
+off its value as it is written, and inside the builder the item's own factory answers the
+builder's return type, still being inferred: `tsc --strict` refuses a record of it nested in
+another call (TS2345) and resolves a second record's output to `unknown` after a first (TS2322).
+`maps_of_itself_through_the_self_view`, called from `zod_factory_block` under `typescript`,
+rewrites the item's own factory call to `X$SchemaSelf(…)` wherever it is written inside a
+`z.record`/`z.partialRecord`, and hands a union's arrow the view where the arrow writes its
+argument inside one. `zod_factory_block` emits the view for whatever builder calls it, a tuple
+struct's included. A list or an `Option` of the item, and a reference to another generic item,
+keep the factory's call. Without `typescript` there is no `X<…>` to declare the view with, and
+nothing is rewritten.
+
 ### Declaring a Default Type per Parameter
 
 JSON Schema has no type parameters, so a generic item's document is built from one concrete
