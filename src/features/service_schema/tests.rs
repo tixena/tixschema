@@ -528,9 +528,14 @@ const NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE: &str = "
     }
 ";
 
-/// An operation, its arguments and a declared message's field, each named after a word Dart,
-/// Swift or Kotlin reserves; two of them are written as raw identifiers.
-#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+/// An operation, its arguments and a declared message's field, each named after a word
+/// TypeScript, Dart, Swift or Kotlin reserves; two of them are written as raw identifiers.
+#[cfg(any(
+    feature = "dart",
+    feature = "kotlin",
+    feature = "swift",
+    all(feature = "typescript", feature = "zod")
+))]
 const RESERVED_WORD_SERVICE: &str = "
     pub trait LookupService<Ctx> {
         #[service_schema_op(http(

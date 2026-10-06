@@ -10,7 +10,8 @@
 use super::{
     BYTES_HTTP_SERVICE, EMITTED_CLIENT_TEST_SERVICE, MIXED_HTTP_SERVICE, MIXED_SERVICE,
     MULTIPART_HTTP_SERVICE, PATH_BOUND_HTTP_SERVICE, QUERY_HTTP_SERVICE,
-    REQUIRED_HEADER_HTTP_SERVICE, STREAM_HTTP_SERVICE, TS_UNIT_SUCCESS_SERVICE, http_service_of,
+    REQUIRED_HEADER_HTTP_SERVICE, RESERVED_WORD_SERVICE, STREAM_HTTP_SERVICE,
+    TS_UNIT_SUCCESS_SERVICE, http_service_of,
 };
 use crate::utils::record_wire_scalar;
 
@@ -462,4 +463,17 @@ fn a_unit_success_reaches_the_same_answer_closure_as_any_other_reply() {
         written.contains("return answer(ctx, \"ping\", message, [], 204, () => 422);"),
         "got: {written}"
     );
+}
+
+#[test]
+fn a_placeholder_named_after_a_word_typescript_refuses_is_held_under_a_trailing_underscore() {
+    let written = http_service_of(RESERVED_WORD_SERVICE);
+    for moved in [
+        "const [in_] = captured;",
+        "message[\"in\"] = in_;",
+        "const [class_] = captured;",
+        "message[\"class\"] = class_;",
+    ] {
+        assert!(written.contains(moved), "no `{moved}` in: {written}");
+    }
 }

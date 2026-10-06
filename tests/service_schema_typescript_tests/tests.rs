@@ -1424,6 +1424,49 @@ impl HeaderProbeService<()> for HeaderProbeBackEnd {
     }
 }
 
+/// An operation whose placeholder and header argument are named after words TypeScript refuses
+/// as a parameter or a local.
+#[service_schema(transports = [])]
+pub trait ReservedProbeService<Ctx> {
+    #[service_schema_op(http(
+        method = "POST",
+        path = "/items/{in}",
+        header_in("x-tenant" = default),
+    ))]
+    async fn r#for(
+        &self,
+        ctx: &Ctx,
+        r#in: String,
+        r#final: String,
+        default: Option<String>,
+    ) -> Result<HeaderProbeDocument, HeaderProbeError>;
+}
+
+pub struct ReservedProbeBackEnd;
+
+impl ReservedProbeService<()> for ReservedProbeBackEnd {
+    async fn r#for(
+        &self,
+        _ctx: &(),
+        r#in: String,
+        r#final: String,
+        default: Option<String>,
+    ) -> Result<HeaderProbeDocument, HeaderProbeError> {
+        ready(()).await;
+        if r#in.is_empty() {
+            Err(HeaderProbeError::Missing)
+        } else {
+            Ok(HeaderProbeDocument {
+                title: [Some(r#in), Some(r#final), default]
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<_>>()
+                    .join("|"),
+            })
+        }
+    }
+}
+
 /// The probe never suspends, so one poll answers it; `None` says an assumption about the bodies
 /// above stopped holding rather than that the runtime is missing.
 fn poll_once<Answered>(answering: Answered) -> Option<Answered::Output>
@@ -1464,6 +1507,24 @@ fn the_unit_success_service_is_still_implementable_and_callable() {
     ))
     .unwrap();
     assert!(answered.is_ok(), "got: {answered:?}");
+}
+
+#[test]
+fn a_service_named_after_reserved_words_is_still_implementable_and_callable() {
+    let answered = poll_once(ReservedProbeBackEnd.r#for(
+        &(),
+        "i".to_owned(),
+        "f".to_owned(),
+        Some("n".to_owned()),
+    ))
+    .unwrap();
+    assert_eq!(answered.unwrap().title, "i|f|n");
+    let refused =
+        poll_once(ReservedProbeBackEnd.r#for(&(), String::new(), String::new(), None)).unwrap();
+    assert!(
+        matches!(refused, Err(HeaderProbeError::Missing)),
+        "got: {refused:?}"
+    );
 }
 
 #[test]

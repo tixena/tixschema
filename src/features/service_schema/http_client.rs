@@ -379,7 +379,7 @@ fn header_in_build_stmt(prefix: &str, operation: &OperationDef, shape: &HttpShap
     let mut stmt = String::from("      const headers: Array<[string, string]> = [];\n");
     for header in &shape.header_in {
         let name = &header.name;
-        let parameter = RenameRule::CamelCase.apply_to_field(&written(&header.parameter));
+        let parameter = message::parameter_name(&header.parameter);
         let fault_expr = format!(
             "{prefix}HttpOutboundFault(\"{}\", [{{ path: [\"{name}\"], message: \"a header \
              value contains a character illegal in an HTTP header\" }}])",
@@ -459,7 +459,7 @@ fn multipart_parts_build_stmt(
     }
     for part in &shape.multipart_parts {
         let name = &part.name;
-        let parameter = RenameRule::CamelCase.apply_to_field(&written(&part.parameter));
+        let parameter = message::parameter_name(&part.parameter);
         let _ = writeln!(stmt, "      parts.push([\"{name}\", {parameter}]);");
     }
     stmt

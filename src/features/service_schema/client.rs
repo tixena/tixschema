@@ -51,7 +51,7 @@ use super::result::result_name;
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
-    HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type, option_inner, written,
+    HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type, option_inner,
 };
 use core::fmt::Write as _;
 use core::iter::once;
@@ -304,7 +304,7 @@ fn method(service: &ServiceDef, operation: &OperationDef) -> String {
             shape
                 .header_in
                 .iter()
-                .map(|header| RenameRule::CamelCase.apply_to_field(&written(&header.parameter))),
+                .map(|header| message::parameter_name(&header.parameter)),
         )
         .collect::<Vec<_>>()
         .join(", ");
@@ -337,7 +337,7 @@ fn method_params(operation: &OperationDef) -> String {
     let shape = HttpShape::of(operation);
     once(format!("req: {}", message::typename(operation)))
         .chain(shape.header_in.iter().map(|header| {
-            let name = RenameRule::CamelCase.apply_to_field(&written(&header.parameter));
+            let name = message::parameter_name(&header.parameter);
             let ty = get_field_def(&name, &header.ty, "").typescript_typename();
             format!("{name}: {ty}")
         }))
@@ -355,7 +355,7 @@ fn header_in_build_stmt(shape: &HttpShape) -> (String, String) {
     let mut stmt = String::from("      const headers: Array<[string, string]> = [];\n");
     for header in &shape.header_in {
         let name = &header.name;
-        let parameter = RenameRule::CamelCase.apply_to_field(&written(&header.parameter));
+        let parameter = message::parameter_name(&header.parameter);
         let value = if option_inner(&header.ty).is_some() {
             format!("{parameter} ?? null")
         } else {

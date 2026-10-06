@@ -1,18 +1,14 @@
-//! A service whose operations, arguments and message fields are named after words Dart, Swift or
-//! Kotlin reserves, called through each emitted client.
+//! A service whose operations, arguments and message fields are named after words TypeScript,
+//! Dart, Swift or Kotlin reserves, called through each emitted client.
 //!
 //! Each client is handed a transport that records what it is sent. Every recorded request is then
 //! read by the Rust dispatcher, whose handler answers with what it was handed: the client reached
 //! the URL, the headers and the body the Rust side reads.
 
 use super::lookup_http_rest_transport;
-#[cfg(any(feature = "dart", feature = "swift"))]
 use super::runtime::ran;
 #[cfg(feature = "kotlin")]
 use super::runtime::ran_kotlin;
-use super::tests::LookupBackEnd;
-#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
-use super::tests::LookupClientServiceSchema;
 #[cfg(feature = "kotlin")]
 use super::tests::lookup_client_service_schema::{
     lookup_client_service_fault_fields_kotlin, lookup_client_service_fault_kind_kotlin,
@@ -21,6 +17,7 @@ use super::tests::lookup_client_service_schema::{
 use super::tests::lookup_client_service_schema::{
     lookup_client_service_fault_fields_swift, lookup_client_service_fault_kind_swift,
 };
+use super::tests::{LookupBackEnd, LookupClientServiceSchema};
 #[cfg(feature = "kotlin")]
 use super::tests::{
     for_request_kotlin, import_request_kotlin, lookup_error_kotlin, lookup_found_kotlin,
@@ -118,6 +115,32 @@ const KOTLIN_IMPORTS: &str = "import kotlinx.coroutines.*\n\
      import kotlinx.serialization.descriptors.*\n\
      import kotlinx.serialization.encoding.*\n\
      import kotlinx.serialization.builtins.*";
+
+/// The TypeScript twin of [`DART_DRIVER`], under node.
+const NODE_DRIVER: &str = r#"
+const sent = [];
+const transport = {
+  async send(request) {
+    sent.push(request);
+    return { status: 200, headers: [], body: JSON.stringify({ name: "" }) };
+  },
+};
+const client = createLookupClientServiceHttpClient(transport);
+await client.import({ class: "k", object: "o", default: "d", var: "v" });
+await client.for({ in: "i", final: "f" }, "t", "n");
+await client.object({ class: "c", var: "w" });
+console.log(JSON.stringify(sent));
+"#;
+
+/// The schemas the emitted TypeScript client names, passing every value through untouched.
+const NODE_SCHEMA_STUBS: &str =
+    "const pass = { safeParse: (value) => ({ success: true, data: value }) };
+const ForRequest$Schema = pass;
+const ImportRequest$Schema = pass;
+const LookupError$Schema = pass;
+const LookupFound$Schema = pass;
+const LookupThing$Schema = pass;
+";
 
 /// The Swift twin of [`DART_DRIVER`].
 #[cfg(feature = "swift")]
@@ -223,7 +246,6 @@ fn read_by_rust(printed: &str) -> Vec<String> {
 }
 
 /// What every client's three calls come to once the Rust handlers have read them.
-#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 fn every_argument_read() -> Vec<String> {
     [
         r#"200 {"name":"k|o|d|v"}"#,
@@ -273,6 +295,18 @@ fn the_kotlin_client_calls_a_service_named_after_reserved_words() {
     ]
     .join("\n\n");
     let Some(printed) = ran_kotlin(&module) else {
+        return;
+    };
+    assert_eq!(read_by_rust(&printed), every_argument_read(), "{printed}");
+}
+
+#[test]
+fn the_typescript_client_calls_a_service_named_after_reserved_words() {
+    let module = format!(
+        "{NODE_SCHEMA_STUBS}\n{client}\n{NODE_DRIVER}",
+        client = LookupClientServiceSchema::ts_http_client()
+    );
+    let Some(printed) = ran("node", "TIXSCHEMA_NODE", "node", "client.mts", &module) else {
         return;
     };
     assert_eq!(read_by_rust(&printed), every_argument_read(), "{printed}");

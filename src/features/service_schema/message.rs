@@ -15,7 +15,60 @@ use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, ScalarKind, option_inner, scalar_kind,
     tuple_elements, vec_inner, written,
 };
-use syn::Type;
+use syn::{Ident, Type};
+
+/// The words `tsc` refuses as a parameter or a local in a module: the reserved words, the ones
+/// strict mode adds, and `arguments`, `await` and `eval`.
+const REFUSED_AS_A_NAME: [&str; 48] = [
+    "arguments",
+    "await",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "debugger",
+    "default",
+    "delete",
+    "do",
+    "else",
+    "enum",
+    "eval",
+    "export",
+    "extends",
+    "false",
+    "finally",
+    "for",
+    "function",
+    "if",
+    "implements",
+    "import",
+    "in",
+    "instanceof",
+    "interface",
+    "let",
+    "new",
+    "null",
+    "package",
+    "private",
+    "protected",
+    "public",
+    "return",
+    "static",
+    "super",
+    "switch",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typeof",
+    "var",
+    "void",
+    "while",
+    "with",
+    "yield",
+];
 
 /// The schema the message validates against: the one `#[model_schema()]` published for it, read
 /// through the same field walk every other reference to the type goes through rather than by
@@ -45,19 +98,35 @@ pub fn typename(operation: &OperationDef) -> String {
     }
 }
 
+/// `name` as a parameter or a local: with a trailing underscore where TypeScript refuses the
+/// word, having no escape for one.
+pub fn local_name(name: &str) -> String {
+    if REFUSED_AS_A_NAME.contains(&name) {
+        format!("{name}_")
+    } else {
+        name.to_owned()
+    }
+}
+
+/// The TypeScript name of an operation's own argument: its Rust name camel-cased, and moved off
+/// a word TypeScript refuses.
+pub fn parameter_name(parameter: &Ident) -> String {
+    local_name(&RenameRule::CamelCase.apply_to_field(&written(parameter)))
+}
+
 /// The arguments a bound header and a bound part add after the message, in declaration order,
 /// named and typed the same way for the client's method and the implementation's.
 pub fn binding_params(shape: &HttpShape) -> Vec<(String, String)> {
     let mut params = Vec::new();
     for header in &shape.header_in {
-        let name = RenameRule::CamelCase.apply_to_field(&written(&header.parameter));
+        let name = parameter_name(&header.parameter);
         params.push((
             name.clone(),
             get_field_def(&name, &header.ty, "").typescript_typename(),
         ));
     }
     for part in &shape.multipart_parts {
-        let name = RenameRule::CamelCase.apply_to_field(&written(&part.parameter));
+        let name = parameter_name(&part.parameter);
         params.push((
             name.clone(),
             get_field_def(&name, &part.ty, "").typescript_typename(),

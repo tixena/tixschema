@@ -28,8 +28,8 @@ use super::{
 };
 #[cfg(feature = "zod")]
 use super::{
-    HeaderProbeDocument, HeaderProbeError, HeaderProbeServiceSchema, UnitPingError,
-    UnitPingRequest, UnitPingServiceSchema,
+    HeaderProbeDocument, HeaderProbeError, HeaderProbeServiceSchema, ReservedProbeServiceSchema,
+    UnitPingError, UnitPingRequest, UnitPingServiceSchema,
 };
 use std::env;
 use std::env::temp_dir;
@@ -573,6 +573,26 @@ fn header_probe_bundle() -> String {
     .join("\n\n")
 }
 
+/// Every surface of `ReservedProbeService`, whose placeholder and header argument are named
+/// after words TypeScript refuses as a parameter or a local.
+#[cfg(feature = "zod")]
+fn reserved_probe_bundle() -> String {
+    [
+        HeaderProbeDocument::ts_definition(),
+        HeaderProbeDocument::zod_schema(),
+        HeaderProbeError::ts_definition(),
+        HeaderProbeError::zod_schema(),
+        ReservedProbeServiceSchema::ts_definition(),
+        ReservedProbeServiceSchema::ts_client(),
+        ReservedProbeServiceSchema::ts_service(),
+        ReservedProbeServiceSchema::ts_ws_client(),
+        ReservedProbeServiceSchema::ts_ws_service(),
+        ReservedProbeServiceSchema::ts_http_client(),
+        ReservedProbeServiceSchema::ts_http_service(),
+    ]
+    .join("\n\n")
+}
+
 /// Said on the process's own stderr rather than through `eprintln!`, which `cargo test` captures
 /// and only shows for a test that failed. A stand-down is a pass that proved nothing, so it has to
 /// be visible on a run where everything passed.
@@ -960,5 +980,20 @@ fn a_header_tuple_implementation_is_accepted_at_the_dispatcher_and_the_attachmen
     assert!(
         accepted,
         "an implementation answering header tuples does not compile:\n{said}"
+    );
+}
+
+/// A header argument named `default` and a placeholder named `in`: each is a parameter or a local
+/// somewhere in the bundle, and TypeScript has no escape for a reserved word.
+#[cfg(feature = "zod")]
+#[test]
+fn a_service_named_after_reserved_words_type_checks_on_every_surface() {
+    let files = bundled(reserved_probe_bundle());
+    let Some((accepted, said)) = compiled("reserved-words", &files) else {
+        return;
+    };
+    assert!(
+        accepted,
+        "a service named after reserved words does not compile:\n{said}"
     );
 }

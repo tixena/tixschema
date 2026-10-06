@@ -205,7 +205,7 @@ fn binding_reads(
         bound.push(format!("{read}.value"));
     }
     for part in &shape.multipart_parts {
-        let name = RenameRule::CamelCase.apply_to_field(&written(&part.parameter));
+        let name = message::parameter_name(&part.parameter);
         let _ = writeln!(
             stmt,
             "        const {name} = parts.find(([name]) => name === \"{part_name}\")?.[1];",

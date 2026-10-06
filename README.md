@@ -3972,6 +3972,7 @@ async fn r#for(
 
 | Target | The call |
 |--------|----------|
+| TypeScript | `client.for({ in: ..., final: ... }, default_)` -- a method and a property take any word, an argument takes a trailing underscore |
 | Dart | `client.for_(ForRequest(in_: ..., final_: ...), default_)` |
 | Swift | ``client.`for`(ForRequest(`in`: ..., final: ...), `default`: ...)`` |
 | Kotlin | ``client.`for`(ForRequest(`in` = ..., final = ...), default)`` |
