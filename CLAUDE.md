@@ -636,6 +636,18 @@ left once those are deferred cannot cycle. The deferral is a getter rather than 
 an operand
 position collapses the factory's inferred return type to `any`.
 
+A union written around a factory's call -- the `Option` wrap, or the `nullable` one -- is checked
+against what each member takes and answers: `.prefault(undefined)` types its argument by the
+union's input, and `z.union` over a `z.record` of the call resolves the record's own output. Inside
+a cycle that is the type still being inferred, which `tsc --strict` refuses (TS7023, TS2615).
+`zod_union_around` therefore hands every factory call in through a generic arrow
+(`<Reached$ extends z.core.SomeType>(reached$: Reached$) => …`) and builds the union over the type
+parameter, so the check is made once against the parameter and the member only instantiates it.
+`FieldDef::zod_factory_calls` lists the calls, outermost only and once each, by the same renderer
+that writes them; the names end in `$`, which no argument `zod_factory_argument` binds can. The
+bound is the one `z.union` and `z.array` are themselves declared with -- `ZodType` there reads the
+schema's output and brings the cycle back.
+
 ### Declaring a Default Type per Parameter
 
 JSON Schema has no type parameters, so a generic item's document is built from one concrete

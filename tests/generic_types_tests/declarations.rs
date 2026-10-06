@@ -8,11 +8,13 @@
 //! stands down, saying so on the process's own stderr. `just typecheck-ts` refuses to.
 //!
 //! The same bundle is then loaded under `node` (on `PATH`, or named in `TIXSCHEMA_NODE`): a tuple
-//! struct that reaches itself is the one shape whose module used to throw as it was imported.
+//! struct that reaches itself is the one shape whose module used to throw as it was imported, and
+//! a union written around a factory's call has to parse what the plain union parses.
 
 #![cfg(all(unix, feature = "serde", feature = "typescript", feature = "zod"))]
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::env;
 use std::env::temp_dir;
 use std::fs;
@@ -47,10 +49,51 @@ console.log(
 
 const MODULES_VAR: &str = "TIXSCHEMA_NODE_MODULES";
 
+/// Loads the compiled bundle and parses through the types that hold an optional one of
+/// themselves: an absent key and a `null` both answer `undefined` under a key that is there, a
+/// nested value is read all the way down, and a wrong one is refused at any depth.
+const OPTIONAL_DRIVER: &str = r#"import { z } from "zod";
+import { DeclaredAhead$SchemaFactory, DeclaredChain$SchemaFactory } from "./lib/index.js";
+
+const chain = DeclaredChain$SchemaFactory(z.string());
+const ahead = DeclaredAhead$SchemaFactory(z.string());
+const absent = chain.parse({ id: "a", named: null });
+const nulled = chain.parse({ id: "a", by_key: null, many: null, named: null, next: null });
+const nested = {
+  id: "a",
+  by_key: { k: { id: "d", named: null } },
+  many: [{ id: "c", named: {} }],
+  named: { n: { id: "e", named: null } },
+  next: { id: "b", named: null, next: { id: "f", named: null } },
+};
+console.log(
+  JSON.stringify([
+    "next" in absent && absent.next === undefined && "by_key" in absent && "many" in absent,
+    nulled.next === undefined && nulled.many === undefined && nulled.by_key === undefined,
+    chain.safeParse(nested).success,
+    chain.safeParse({ id: "a", named: null, next: { id: 5, named: null } }).success,
+    chain.safeParse({ id: "a", named: null, by_key: { k: 5 } }).success,
+    chain.safeParse({ id: "a", named: { n: 5 } }).success,
+    ahead.safeParse({
+      id: "a",
+      behind: [{ id: "f" }, { id: "g", ahead: { id: "b", behind: [] } }],
+    }).success,
+    ahead.safeParse({ id: "a", behind: [{ id: "f", ahead: 5 }] }).success,
+  ]),
+);
+"#;
+
+/// What that driver prints.
+const OPTIONAL_LOADED: &str = "[true,true,true,false,false,false,true,false]";
+
 const NODE_VAR: &str = "TIXSCHEMA_NODE";
 
 /// The second package: it names the first only through `./lib`, where the declarations are.
 const CONSUMER: &str = r#"import {
+  type DeclaredAhead,
+  DeclaredAhead$SchemaFactory,
+  type DeclaredChain,
+  DeclaredChain$SchemaFactory,
   type DeclaredChoice,
   DeclaredChoice$SchemaFactory,
   DeclaredHolder$SchemaFactory,
@@ -91,6 +134,26 @@ const slots = DeclaredSlots$SchemaFactory(z.string());
 export function slotsFromFactory(parsed: z.infer<typeof slots>): DeclaredSlots<string>[] {
   return parsed[1];
 }
+
+const chain = DeclaredChain$SchemaFactory(z.string());
+
+export function nextFromFactory(parsed: z.infer<typeof chain>): DeclaredChain<string> | undefined {
+  return parsed.next;
+}
+
+export function keyedFromFactory(
+  parsed: z.infer<typeof chain>
+): Partial<Record<string, DeclaredChain<string>>> | undefined {
+  return parsed.by_key;
+}
+
+const ahead = DeclaredAhead$SchemaFactory(z.string());
+
+export function aheadFromFactory(
+  parsed: z.infer<typeof ahead>
+): (DeclaredAhead<string> | undefined)[] {
+  return parsed.behind.map((held) => held.ahead);
+}
 "#;
 
 const CONSUMER_PROJECT: &str = r#"{
@@ -126,6 +189,39 @@ const PROJECT: &str = r#"{
 "#;
 
 static STOOD_DOWN: Once = Once::new();
+
+/// One of a cycle of two, declared above the type its list holds.
+#[model_schema(default_types(IdType = String))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeclaredAhead<IdType> {
+    pub behind: Vec<DeclaredBehind<IdType>>,
+    pub id: IdType,
+}
+
+/// The other of that cycle, holding an optional one of the type declared above it.
+#[model_schema(default_types(IdType = String))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeclaredBehind<IdType> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ahead: Option<Box<DeclaredAhead<IdType>>>,
+    pub id: IdType,
+}
+
+/// A generic type holding an optional one of itself, an optional list and an optional map of
+/// itself, and a map of itself that is `null` where there is none.
+#[model_schema(default_types(IdType = String))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeclaredChain<IdType> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub by_key: Option<HashMap<String, Self>>,
+    pub id: IdType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub many: Option<Vec<Self>>,
+    #[model_schema_prop(nullable)]
+    pub named: Option<HashMap<String, Self>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next: Option<Box<Self>>,
+}
 
 /// An internally tagged enum whose variant holds a list of the enum.
 #[model_schema(default_types(IdType = String))]
@@ -173,6 +269,12 @@ fn bundle() -> String {
         DeclaredPlainSlots::zod_schema(),
         DeclaredSlots::<String>::ts_definition(),
         DeclaredSlots::<String>::zod_schema(),
+        DeclaredChain::<String>::ts_definition(),
+        DeclaredChain::<String>::zod_schema(),
+        DeclaredAhead::<String>::ts_definition(),
+        DeclaredAhead::<String>::zod_schema(),
+        DeclaredBehind::<String>::ts_definition(),
+        DeclaredBehind::<String>::zod_schema(),
     ]
     .join("\n\n")
 }
@@ -272,12 +374,11 @@ fn type_check_a_recursive_generic_keeps_its_type_in_another_package() {
     );
 }
 
-#[test]
-fn type_check_a_tuple_struct_that_reaches_itself_loads_and_parses() {
-    let Some(at) = built("loaded") else {
-        return;
-    };
-    fs::write(at.join("run.mjs"), DRIVER).unwrap();
+/// What `driver` prints once the bundle built for the check `named` is loaded under `node`, with
+/// what it wrote to its stderr, or `None` where the bundle or the runtime is not reachable.
+fn loaded(named: &str, driver: &str) -> Option<(String, String)> {
+    let at = built(named)?;
+    fs::write(at.join("run.mjs"), driver).unwrap();
     let named_node = env::var(NODE_VAR).ok();
     let node = named_node.clone().unwrap_or_else(|| "node".to_owned());
     let run = Command::new(&node).arg("run.mjs").current_dir(&at).output();
@@ -289,12 +390,52 @@ fn type_check_a_tuple_struct_that_reaches_itself_loads_and_parses() {
             run.unwrap_err()
         );
         stand_down();
+        return None;
+    };
+    Some((
+        String::from_utf8_lossy(&ran.stdout).trim().to_owned(),
+        String::from_utf8_lossy(&ran.stderr).into_owned(),
+    ))
+}
+
+#[test]
+fn type_check_a_generic_that_holds_an_optional_one_of_itself_loads_and_parses() {
+    let Some((printed, failed)) = loaded("optional", OPTIONAL_DRIVER) else {
         return;
     };
     assert_eq!(
-        String::from_utf8_lossy(&ran.stdout).trim(),
-        LOADED,
-        "the bundle does not load and parse under node:\n{}",
-        String::from_utf8_lossy(&ran.stderr)
+        printed, OPTIONAL_LOADED,
+        "the bundle does not load and parse under node:\n{failed}"
     );
+}
+
+#[test]
+fn type_check_a_tuple_struct_that_reaches_itself_loads_and_parses() {
+    let Some((printed, failed)) = loaded("loaded", DRIVER) else {
+        return;
+    };
+    assert_eq!(
+        printed, LOADED,
+        "the bundle does not load and parse under node:\n{failed}"
+    );
+}
+
+/// The union is built over a type parameter, and the factory's call is the argument: the text
+/// the README shows for the member.
+#[test]
+fn a_union_around_a_factorys_call_is_built_over_a_type_parameter() {
+    let zod = DeclaredChain::<String>::zod_schema();
+    for member in [
+        "  get next() { return (<Reached$ extends z.core.SomeType>(reached$: Reached$) => \
+         z.union([z.null().transform(() => undefined), reached$, \
+         z.undefined()]).prefault(undefined))(DeclaredChain$SchemaFactory(idType)); },",
+        "  get many() { return (<Reached$ extends z.core.SomeType>(reached$: Reached$) => \
+         z.union([z.null().transform(() => undefined), z.array(reached$), \
+         z.undefined()]).prefault(undefined))(DeclaredChain$SchemaFactory(idType)); },",
+        "  get named() { return (<Reached$ extends z.core.SomeType>(reached$: Reached$) => \
+         z.union([z.record(z.string(), reached$), \
+         z.null()]))(DeclaredChain$SchemaFactory(idType)); },",
+    ] {
+        assert!(zod.contains(member), "missing `{member}` in: {zod}");
+    }
 }

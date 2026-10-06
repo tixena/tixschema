@@ -557,9 +557,10 @@ mod zod {
         let zod = SlottedDefault::<Option<Tagged<String>>>::zod_schema();
         assert!(
             zod.contains(
-                "= SlottedDefault$SchemaFactory(z.lazy(() => \
-                 z.union([z.null().transform(() => undefined), Tagged$SchemaFactory(z.string()), \
-                 z.undefined()]).prefault(undefined)));"
+                "= SlottedDefault$SchemaFactory(z.lazy(() => (<Reached$ extends \
+                 z.core.SomeType>(reached$: Reached$) => z.union([z.null().transform(() => \
+                 undefined), reached$, z.undefined()]).prefault(undefined))(Tagged$SchemaFactory(z.\
+                 string()))));"
             ),
             "Got: {zod}"
         );

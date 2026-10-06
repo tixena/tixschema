@@ -4124,8 +4124,8 @@ fn declared_default_renders_each_wrapped_shape_the_table_describes() {
         (
             "IdType",
             quote::quote! { Option<DocumentId<String>> },
-            "z.lazy(() => \
-             z.union([z.null().transform(() => undefined), DocumentId$SchemaFactory(z.string()), z.undefined()]).prefault(undefined))",
+            "z.lazy(() => (<Reached$ extends z.core.SomeType>(reached$: Reached$) => \
+             z.union([z.null().transform(() => undefined), reached$, z.undefined()]).prefault(undefined))(DocumentId$SchemaFactory(z.string())))",
         ),
         (
             "IdType",

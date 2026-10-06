@@ -1012,6 +1012,24 @@ The member is written as a getter so that the call is made after the factory has
 
 A generic tuple struct that holds itself has no getter to defer behind, and the types of a tuple's slots are read as the tuple is built, so its builder cannot read its own factory's type there. It reaches itself through a function of its own, `X$SchemaSelf`, declared to return what the factory's schema parses -- `ZodType<X<z.output<IdType>>>` -- and called behind `z.lazy`. The factory keeps its own precise return type. Where a cycle spans two types, the reference the getter is written on is the one pointing *forward* -- at a type declared below -- because that is the reference no cycle can be built without: if every reference in a cycle named something already declared, declaration positions would have to decrease all the way round. Deferring those leaves nothing that can cycle, and every reference pointing back at a type already declared is written as it stands.
 
+An `Option` of a generic type is written as a union, and a union is checked against what each of its members takes and answers. For the schema a factory returns that is the very type still being worked out wherever the member belongs to a cycle, and the TypeScript compiler refuses it as a type that references itself. So wherever a union is written around a factory's call -- an `Option` field, or one marked `nullable` -- the call is handed in through a generic arrow, and the union is built over the arrow's type parameter:
+
+```rust
+#[model_schema(default_types(IdType = String))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Chain<IdType> {
+    pub id: IdType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next: Option<Box<Self>>,
+}
+```
+
+```typescript
+  get next() { return (<Reached$ extends z.core.SomeType>(reached$: Reached$) => z.union([z.null().transform(() => undefined), reached$, z.undefined()]).prefault(undefined))(Chain$SchemaFactory(idType)); },
+```
+
+It parses exactly what the plain union parses: an absent key, a `null` and an `undefined` all answer `undefined`, under a key that is there. An optional list or map of the type is built inside the arrow the same way (`z.array(reached$)`, `z.record(z.string(), reached$)`), and a member that reaches two generic types takes one parameter for each. One shape is still refused by the compiler: a generic type that holds a map of itself that is not optional, written *above* an optional map of itself. Writing the optional one first type-checks, and so does marking it `nullable`.
+
 #### Declaring the default type
 
 JSON Schema has no type parameters. A generic type's document has to be built from one concrete filling, and nothing in the declaration says which — so `default_types` says it, one `Parameter = Type` pair per type parameter:
