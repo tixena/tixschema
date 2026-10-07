@@ -47,6 +47,13 @@ mod beside_the_tuple_form {
     pub struct TupleSlug(pub String);
 
     /// What is written for the tuple form, under the names the named form is written with.
+    #[cfg(any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    ))]
     fn under_the_named_name(written: &str) -> String {
         written
             .replace("TupleSlug", "NamedSlug")
