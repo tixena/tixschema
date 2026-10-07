@@ -6112,11 +6112,13 @@ fn decode_with_is_generated_on_every_enum_form_serde_writes() {
         );
         for emitted in [
             "pub fn from_value_with < F > (",
+            "pub fn from_value_piped (",
             "fn decode_with_value_report (",
             "pub fn decode_with_value_issues < I > (",
             "pub fn decode_with_value_named (",
             "pub fn decode_with_value_fields < 'a , I > (",
             "pub enum Issue < V > {",
+            "pub enum Resolution {",
             "pub fn value_leaf < 'a , T , I , R , W > (",
         ] {
             assert!(
@@ -6126,6 +6128,11 @@ fn decode_with_is_generated_on_every_enum_form_serde_writes() {
         }
         assert_eq!(
             expanded.contains("pub fn from_bson_with < F > ("),
+            cfg!(feature = "bson"),
+            "for {source}, got: {expanded}"
+        );
+        assert_eq!(
+            expanded.contains("pub fn from_bson_piped ("),
             cfg!(feature = "bson"),
             "for {source}, got: {expanded}"
         );
@@ -6189,11 +6196,13 @@ fn decode_with_is_generated_on_every_struct_shape_serde_writes() {
         );
         for emitted in [
             "pub fn from_value_with < F > (",
+            "pub fn from_value_piped (",
             "fn decode_with_value_report (",
             "pub fn decode_with_value_issues < I > (",
             "pub fn decode_with_value_named (",
             "pub fn decode_with_value_fields < 'a , I > (",
             "pub enum Issue < V > {",
+            "pub enum Resolution {",
             "pub fn value_leaf < 'a , T , I , R , W > (",
         ] {
             assert!(
@@ -6203,6 +6212,11 @@ fn decode_with_is_generated_on_every_struct_shape_serde_writes() {
         }
         assert_eq!(
             expanded.contains("pub fn from_bson_with < F > ("),
+            cfg!(feature = "bson"),
+            "for {source}, got: {expanded}"
+        );
+        assert_eq!(
+            expanded.contains("pub fn from_bson_piped ("),
             cfg!(feature = "bson"),
             "for {source}, got: {expanded}"
         );
@@ -6503,6 +6517,7 @@ fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
     for emitted in [
         "pub mod decode_flagged_schema {",
         "pub fn from_value_with < F > (",
+        "pub fn from_value_piped (",
         "fn decode_with_value_report (",
         "pub fn decode_with_value_issues < I > (",
         "pub fn decode_with_value_named (",
@@ -6512,6 +6527,9 @@ fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
         "pub enum Expected {",
         "pub enum Issue < V > {",
         "pub enum Verdict {",
+        "pub enum Resolution {",
+        "pub type Resolver < 'r , D , V > =",
+        "pub fn unsettled < D , V : :: core :: clone :: Clone > (",
         "pub struct Unrecovered < V > {",
         "pub type ExpectedToken =",
         "pub type IssueFromParts < V , I > =",
@@ -6575,6 +6593,7 @@ fn what_decode_with_emits_is_written_for_the_lints_a_consumer_denies() {
             "pub enum Expected {",
             "pub enum Issue < V > {",
             "pub enum Verdict {",
+            "pub enum Resolution {",
             "pub struct Unrecovered < V > {",
             "pub struct Asked {",
             "pub struct TakenProbe < 'asked > (",

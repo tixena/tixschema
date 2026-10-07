@@ -3,9 +3,11 @@
 //! A flagged type gets `from_value_with`, which reads a `serde_json::Value` with plain serde,
 //! walks it in the form serde writes that type in, and hands every issue the walk finds to a
 //! callback once. A build with `bson` on adds `from_bson_with`, the same read of a
-//! `bson::Document`, written with what both major versions of the `bson` library have. The
-//! callback's types go into the type's own `{type}_schema` module. Two flagged types share no
-//! declaration: each module declares the same aliases of standard types, and a walker builds
+//! `bson::Document`, written with what both major versions of the `bson` library have.
+//! `from_value_piped` and `from_bson_piped` are the same reads over resolvers run in order, each
+//! answering one issue at a time, and refuse with only the issues none settled. The callback's
+//! types and the resolvers' go into the type's own `{type}_schema` module. Two flagged types share
+//! no declaration: each module declares the same aliases of standard types, and a walker builds
 //! whatever issue type the constructor it is handed builds.
 
 mod aliases;
@@ -46,7 +48,7 @@ use crate::utils::{
 
 /// The type names the flag adds to a schema module.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-const ADDED_TYPE_NAMES: [&str; 13] = [
+const ADDED_TYPE_NAMES: [&str; 15] = [
     "Asked",
     "EntryOf",
     "Expected",
@@ -55,6 +57,8 @@ const ADDED_TYPE_NAMES: [&str; 13] = [
     "IssueFromParts",
     "Path",
     "ReadWhole",
+    "Resolution",
+    "Resolver",
     "Segment",
     "Taken",
     "TakenProbe",
@@ -2149,11 +2153,38 @@ fn bson_bound_items() -> TokenStream {
     TokenStream::new()
 }
 
-/// `from_bson_with` and the report it runs. Every value is read through `bson::Deserializer::new`,
-/// which both major versions of the `bson` library have, and which takes what it reads by value:
-/// the document is held as the `bson::Bson` the walker borrows, and copied once per read by serde.
+/// `from_bson_with`, `from_bson_piped` and the report they run. Every value is read through
+/// `bson::Deserializer::new`, which both major versions of the `bson` library have, and which
+/// takes what it reads by value: the document is held as the `bson::Bson` the walker borrows, and
+/// copied once per read by serde. Both entry points open with the same read and close with the
+/// same one.
 #[cfg(feature = "bson")]
 fn bson_entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
+    let first_read = quote! {
+        let mut whole = bson::Bson::Document(document);
+        let found = match <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(whole.clone())) {
+            ::core::result::Result::Ok(decoded) => {
+                let found = Self::decode_with_bson_report(&whole, ::core::option::Option::None);
+                if found.is_empty() {
+                    return ::core::result::Result::Ok(decoded);
+                }
+                found
+            }
+            ::core::result::Result::Err(refused) => Self::decode_with_bson_report(&whole, ::core::option::Option::Some(refused.to_string())),
+        };
+        // `whole` is the document it was built from, so the other arm is never taken.
+        let bson::Bson::Document(object) = &mut whole else {
+            return ::core::result::Result::Err(#module::Unrecovered { issues: found });
+        };
+    };
+    let second_read = quote! {
+        let read = <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(whole.clone()));
+        let again = Self::decode_with_bson_report(&whole, read.as_ref().err().map(::std::string::ToString::to_string));
+        match read {
+            ::core::result::Result::Ok(decoded) if again.is_empty() => ::core::result::Result::Ok(decoded),
+            _ => ::core::result::Result::Err(#module::Unrecovered { issues: again }),
+        }
+    };
     quote! {
         /// Reads `document` as this type, handing every issue found in it to `decide`, once.
         pub fn from_bson_with<#decider>(
@@ -2163,32 +2194,27 @@ fn bson_entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
         where
             #decider: ::core::ops::FnOnce(&mut bson::Document, &[#module::Issue<bson::Bson>]) -> #module::Verdict,
         {
-            let mut whole = bson::Bson::Document(document);
-            let found = match <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(whole.clone())) {
-                ::core::result::Result::Ok(decoded) => {
-                    let found = Self::decode_with_bson_report(&whole, ::core::option::Option::None);
-                    if found.is_empty() {
-                        return ::core::result::Result::Ok(decoded);
-                    }
-                    found
-                }
-                ::core::result::Result::Err(refused) => Self::decode_with_bson_report(&whole, ::core::option::Option::Some(refused.to_string())),
-            };
-            // `whole` is the document it was built from, so the other arm is never taken.
-            let bson::Bson::Document(object) = &mut whole else {
-                return ::core::result::Result::Err(#module::Unrecovered { issues: found });
-            };
+            #first_read
             match decide(object, &found) {
                 #module::Verdict::Reject => ::core::result::Result::Err(#module::Unrecovered { issues: found }),
                 #module::Verdict::Fixed => {
-                    let read = <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(whole.clone()));
-                    let again = Self::decode_with_bson_report(&whole, read.as_ref().err().map(::std::string::ToString::to_string));
-                    match read {
-                        ::core::result::Result::Ok(decoded) if again.is_empty() => ::core::result::Result::Ok(decoded),
-                        _ => ::core::result::Result::Err(#module::Unrecovered { issues: again }),
-                    }
+                    #second_read
                 }
             }
+        }
+
+        /// Reads `document` as this type, running `resolvers` in order over every issue found in
+        /// it, once, and reading it again when every issue was settled.
+        pub fn from_bson_piped(
+            document: bson::Document,
+            resolvers: &[#module::Resolver<'_, bson::Document, bson::Bson>],
+        ) -> ::core::result::Result<Self, #module::Unrecovered<bson::Bson>> {
+            #first_read
+            let left = #module::unsettled(object, &found, resolvers);
+            if !left.is_empty() {
+                return ::core::result::Result::Err(#module::Unrecovered { issues: left });
+            }
+            #second_read
         }
 
         fn decode_with_bson_report(whole: &bson::Bson, refused: ::core::option::Option<::std::string::String>) -> ::std::vec::Vec<#module::Issue<bson::Bson>> {
@@ -2343,8 +2369,9 @@ fn bson_path_helpers() -> TokenStream {
     TokenStream::new()
 }
 
-/// The types a callback works with.
+/// The types a callback works with, and beside its verdict what a resolver answers with.
 fn callback_items() -> TokenStream {
+    let resolvers = resolver_items();
     quote! {
         #[derive(Clone, Debug, PartialEq)]
         #[non_exhaustive]
@@ -2411,6 +2438,8 @@ fn callback_items() -> TokenStream {
             Fixed,
         }
 
+        #resolvers
+
         #[derive(Clone, Debug, PartialEq)]
         #[non_exhaustive]
         pub struct Unrecovered<V> {
@@ -2458,9 +2487,30 @@ fn callback_items() -> TokenStream {
     }
 }
 
-/// `from_value_with` and the report it runs. The report is told what serde said of the value, so
-/// each decode reads the value with serde once.
+/// `from_value_with`, `from_value_piped` and the report they run. The report is told what serde
+/// said of the value, so each decode reads the value with serde once. Both entry points open
+/// with the same read and close with the same one.
 fn entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
+    let first_read = quote! {
+        let found = match <Self as serde::Deserialize>::deserialize(&value) {
+            ::core::result::Result::Ok(decoded) => {
+                let found = Self::decode_with_value_report(&value, ::core::option::Option::None);
+                if found.is_empty() {
+                    return ::core::result::Result::Ok(decoded);
+                }
+                found
+            }
+            ::core::result::Result::Err(refused) => Self::decode_with_value_report(&value, ::core::option::Option::Some(refused.to_string())),
+        };
+    };
+    let second_read = quote! {
+        let read = <Self as serde::Deserialize>::deserialize(&value);
+        let again = Self::decode_with_value_report(&value, read.as_ref().err().map(::std::string::ToString::to_string));
+        match read {
+            ::core::result::Result::Ok(decoded) if again.is_empty() => ::core::result::Result::Ok(decoded),
+            _ => ::core::result::Result::Err(#module::Unrecovered { issues: again }),
+        }
+    };
     quote! {
         /// Reads `value` as this type, handing every issue found in it to `decide`, once.
         pub fn from_value_with<#decider>(
@@ -2470,27 +2520,27 @@ fn entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
         where
             #decider: ::core::ops::FnOnce(&mut serde_json::Value, &[#module::Issue<serde_json::Value>]) -> #module::Verdict,
         {
-            let found = match <Self as serde::Deserialize>::deserialize(&value) {
-                ::core::result::Result::Ok(decoded) => {
-                    let found = Self::decode_with_value_report(&value, ::core::option::Option::None);
-                    if found.is_empty() {
-                        return ::core::result::Result::Ok(decoded);
-                    }
-                    found
-                }
-                ::core::result::Result::Err(refused) => Self::decode_with_value_report(&value, ::core::option::Option::Some(refused.to_string())),
-            };
+            #first_read
             match decide(&mut value, &found) {
                 #module::Verdict::Reject => ::core::result::Result::Err(#module::Unrecovered { issues: found }),
                 #module::Verdict::Fixed => {
-                    let read = <Self as serde::Deserialize>::deserialize(&value);
-                    let again = Self::decode_with_value_report(&value, read.as_ref().err().map(::std::string::ToString::to_string));
-                    match read {
-                        ::core::result::Result::Ok(decoded) if again.is_empty() => ::core::result::Result::Ok(decoded),
-                        _ => ::core::result::Result::Err(#module::Unrecovered { issues: again }),
-                    }
+                    #second_read
                 }
             }
+        }
+
+        /// Reads `value` as this type, running `resolvers` in order over every issue found in it,
+        /// once, and reading it again when every issue was settled.
+        pub fn from_value_piped(
+            mut value: serde_json::Value,
+            resolvers: &[#module::Resolver<'_, serde_json::Value, serde_json::Value>],
+        ) -> ::core::result::Result<Self, #module::Unrecovered<serde_json::Value>> {
+            #first_read
+            let left = #module::unsettled(&mut value, &found, resolvers);
+            if !left.is_empty() {
+                return ::core::result::Result::Err(#module::Unrecovered { issues: left });
+            }
+            #second_read
         }
 
         fn decode_with_value_report(value: &serde_json::Value, refused: ::core::option::Option<::std::string::String>) -> ::std::vec::Vec<#module::Issue<serde_json::Value>> {
@@ -3229,6 +3279,53 @@ fn resolved_at_the_mixed_site(mut hook: syn::ExprPath) -> syn::ExprPath {
             .set_span(written.resolved_at(Span::mixed_site()));
     }
     hook
+}
+
+/// `Resolution`, `Resolver`, and `unsettled`, the pipe that runs resolvers over a read's issues.
+fn resolver_items() -> TokenStream {
+    quote! {
+        /// What a resolver answers for one issue.
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        #[non_exhaustive]
+        pub enum Resolution {
+            /// Repaired; no later resolver sees it.
+            Settled,
+            /// Known, and not to be repaired: the read fails; no later resolver sees it.
+            Rejected,
+            /// Not this resolver's; the next one sees it.
+            NotTouched,
+        }
+
+        /// A resolver over a raw value `D` whose issues hold values `V`.
+        pub type Resolver<'r, D, V> = &'r dyn ::core::ops::Fn(&mut D, &Issue<V>) -> Resolution;
+
+        /// Runs `resolvers` in order, each seeing only the issues every resolver before it left
+        /// `NotTouched`, and answers the issues none settled, in the order they were found.
+        pub fn unsettled<D, V: ::core::clone::Clone>(
+            raw: &mut D,
+            issues: &[Issue<V>],
+            resolvers: &[Resolver<'_, D, V>],
+        ) -> ::std::vec::Vec<Issue<V>> {
+            // `None` while every resolver so far answered `NotTouched`.
+            let mut answers: ::std::vec::Vec<::core::option::Option<Resolution>> = ::std::vec![::core::option::Option::None; issues.len()];
+            for resolve in resolvers {
+                for (issue, answer) in issues.iter().zip(answers.iter_mut()) {
+                    if answer.is_none() {
+                        match resolve(raw, issue) {
+                            Resolution::NotTouched => {}
+                            decided => *answer = ::core::option::Option::Some(decided),
+                        }
+                    }
+                }
+            }
+            issues
+                .iter()
+                .zip(answers)
+                .filter(|(_issue, answer)| *answer != ::core::option::Option::Some(Resolution::Settled))
+                .map(|(issue, _answer)| issue.clone())
+                .collect()
+        }
+    }
 }
 
 /// Whether a path names one of the type's own parameters outright, or a type projected from one.

@@ -231,6 +231,7 @@ fn own_type_parameters(type_impl: proc_macro2::TokenStream) -> Vec<String> {
 fn methods_of(stem: &str) -> Vec<String> {
     vec![
         format!("from_{stem}_with"),
+        format!("from_{stem}_piped"),
         format!("decode_with_{stem}_report"),
         format!("decode_with_{stem}_issues"),
         format!("decode_with_{stem}_named"),
@@ -355,6 +356,7 @@ fn every_added_method_but_the_entry_point_carries_the_flags_name() {
     assert_eq!(methods.len(), added.items.len());
     let mut named = vec![
         "from_value_with",
+        "from_value_piped",
         "decode_with_value_report",
         "decode_with_value_issues",
         "decode_with_value_named",
@@ -363,6 +365,7 @@ fn every_added_method_but_the_entry_point_carries_the_flags_name() {
     if cfg!(feature = "bson") {
         named.extend([
             "from_bson_with",
+            "from_bson_piped",
             "decode_with_bson_report",
             "decode_with_bson_issues",
             "decode_with_bson_named",
@@ -372,7 +375,7 @@ fn every_added_method_but_the_entry_point_carries_the_flags_name() {
     assert_eq!(methods, named);
 }
 
-/// The BSON entry point and walker are written as their JSON twins are: a named type parameter
+/// The BSON entry points and walker are written as their JSON twins are: a named type parameter
 /// under a `where` clause, `core::result::Result` in full, and a report only the type calls.
 #[cfg(feature = "bson")]
 #[test]
@@ -400,6 +403,9 @@ fn the_bson_methods_carry_the_signatures_of_their_json_twins() {
              -> :: core :: result :: Result < Self , named_schema :: Unrecovered < bson :: Bson > > \
              where F : :: core :: ops :: FnOnce (& mut bson :: Document , & [named_schema :: Issue < bson :: Bson >]) \
              -> named_schema :: Verdict ,",
+            "pub fn from_bson_piped (document : bson :: Document , resolvers : & [named_schema :: \
+             Resolver < '_ , bson :: Document , bson :: Bson >] ,) -> :: core :: result :: Result < \
+             Self , named_schema :: Unrecovered < bson :: Bson > >",
             "fn decode_with_bson_report (whole : & bson :: Bson , refused : :: core :: option :: \
              Option < :: std :: string :: String >) -> :: std :: vec :: Vec < named_schema :: Issue < \
              bson :: Bson > >",
@@ -586,6 +592,112 @@ fn from_bson_with_copies_the_document_once_per_read_by_serde_and_its_report_copi
     }
 }
 
+/// A piped entry point opens with the read its callback twin opens with and closes with the read
+/// that twin makes after `Fixed`. Between the two it runs the pipe once, over the value the
+/// callback is handed, and refuses with what the pipe answers.
+#[test]
+fn a_piped_entry_point_makes_the_two_reads_of_its_callback_twin_around_the_pipe() {
+    let mut sources = vec![("value", "& mut value")];
+    if cfg!(feature = "bson") {
+        sources.push(("bson", "object"));
+    }
+    for (source, type_impl) in impls_of_every_shape() {
+        for (stem, raw) in &sources {
+            let with = body_of(type_impl.clone(), &format!("from_{stem}_with"));
+            let (first_read, decided) = with.split_once("match decide (").unwrap();
+            let (_verdicts, after_fixed) = decided.split_once(":: Verdict :: Fixed => { ").unwrap();
+            let second_read = after_fixed.strip_suffix(" } } }").unwrap();
+
+            let piped = body_of(type_impl.clone(), &format!("from_{stem}_piped"));
+            let (opened, piping) = piped.split_once("let left = ").unwrap();
+            let (pipe, closing) = piping.split_once("{ issues : left }) ; } ").unwrap();
+            assert_eq!(opened, first_read, "for {source}");
+            assert_eq!(
+                closing.strip_suffix(" }"),
+                Some(second_read),
+                "for {source}"
+            );
+            assert!(
+                pipe.contains(&format!(
+                    ":: unsettled ({raw} , & found , resolvers) ; if ! left . is_empty () {{ return"
+                )),
+                "for {source}, got: {pipe}"
+            );
+            assert_eq!(piped.matches("unsettled").count(), 1, "for {source}");
+        }
+    }
+}
+
+/// A resolver answers one issue with one of three states. The pipe takes its resolvers as trait
+/// objects, which a closure holding state is one of, and names the standard items it reads in
+/// full.
+#[test]
+fn the_schema_module_declares_what_a_resolver_answers_and_the_pipe_that_runs_them() {
+    let added: syn::File = syn::parse2(module_items()).unwrap();
+    let answers: Vec<(bool, Vec<String>)> = added
+        .items
+        .iter()
+        .filter_map(|item| {
+            if let syn::Item::Enum(declared) = item
+                && declared.ident == "Resolution"
+            {
+                Some((
+                    declared
+                        .attrs
+                        .iter()
+                        .any(|attribute| attribute.path().is_ident("non_exhaustive")),
+                    declared
+                        .variants
+                        .iter()
+                        .map(|variant| variant.ident.to_string())
+                        .collect(),
+                ))
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(
+        answers,
+        [(
+            true,
+            vec![
+                "Settled".to_owned(),
+                "Rejected".to_owned(),
+                "NotTouched".to_owned()
+            ]
+        )]
+    );
+    let written: Vec<String> = added
+        .items
+        .iter()
+        .filter_map(|item| {
+            if let syn::Item::Type(alias) = item
+                && alias.ident == "Resolver"
+            {
+                let (generics, aliased) = (&alias.generics, &alias.ty);
+                Some(quote::quote!(#generics = #aliased).to_string())
+            } else if let syn::Item::Fn(function) = item
+                && function.sig.ident == "unsettled"
+            {
+                let (visibility, signature) = (&function.vis, &function.sig);
+                Some(quote::quote!(#visibility #signature).to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(
+        written,
+        [
+            "< 'r , D , V > = & 'r dyn :: core :: ops :: Fn (& mut D , & Issue < V >) -> Resolution",
+            "pub fn unsettled < D , V : :: core :: clone :: Clone > (raw : & mut D , issues : & \
+             [Issue < V >] , resolvers : & [Resolver < '_ , D , V >] ,) -> :: std :: vec :: Vec < \
+             Issue < V > >",
+        ]
+    );
+}
+
 /// The BSON items sit where the JSON ones do: the helpers inside the one `impl Path`, and the
 /// function a value is read through in the module, once.
 #[cfg(feature = "bson")]
@@ -615,6 +727,7 @@ fn the_bson_items_are_emitted_beside_the_json_ones() {
     assert_eq!(
         functions,
         [
+            "unsettled",
             "expected_from_tokens",
             "issue_from_parts",
             "value_leaf",

@@ -32,6 +32,7 @@ mod as_text {
 mod aliased;
 mod bounds;
 mod flattened;
+mod piped;
 mod readme;
 
 use core::any::TypeId;
