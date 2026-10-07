@@ -30,6 +30,7 @@ mod as_text {
     }
 }
 mod aliased;
+mod bounds;
 mod enum_shapes;
 mod flattened;
 mod flattened_shapes;
@@ -599,26 +600,38 @@ fn a_read_that_calls_no_callback_runs_a_fields_reader_twice() {
     assert_eq!(NUMBER_READS.load(Ordering::Relaxed), 2);
 }
 
-/// A constraint on a struct's field hangs no read hook: serde reads the value, so the walker does,
-/// and the bound is `validate()`'s to report.
+/// A constraint on a struct's field hangs no read hook: serde reads the value, and the walker
+/// holds what it read to the bound, where a schema surface is on to publish its validator.
 #[test]
-fn a_constraint_on_a_struct_field_is_not_the_walkers_to_check() {
+fn a_constraint_on_a_struct_field_is_the_walkers_to_check() {
     let stored = json!({ "code": "AB", "count": "5", "name": "ab", "port": "80" });
+    assert_eq!(
+        serde_json::from_value::<Hooked>(stored.clone())
+            .unwrap()
+            .name,
+        "ab"
+    );
     let mut calls = 0_u32;
     let read = Hooked::from_value_with(stored, |_raw, _found| {
         calls += 1;
         hooked_schema::Verdict::Reject
-    })
-    .unwrap();
-    assert_eq!(read.name, "ab");
-    assert_eq!(calls, 0);
+    });
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-    assert_eq!(
-        read.validate(),
-        Err(vec![
-            "'name': too short: minimum length is 3, got 2".to_owned()
-        ])
-    );
+    {
+        assert_eq!(
+            lines(&read.unwrap_err()),
+            [
+                "name: invalid: expected String, found String(\"ab\"): too short: minimum length \
+                 is 3, got 2"
+            ]
+        );
+        assert_eq!(calls, 1);
+    }
+    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    {
+        assert_eq!(read.unwrap().name, "ab");
+        assert_eq!(calls, 0);
+    }
 }
 
 #[cfg(feature = "chrono")]

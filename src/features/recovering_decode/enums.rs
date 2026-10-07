@@ -128,7 +128,7 @@ impl EnumWalker<'_> {
                 nothing: false,
                 pattern: quote! { #held },
             }],
-            Shape::Held(walk) => self.walker.arms(walk, held, segments, 0, walk.ty),
+            Shape::Held(walk) => self.walker.arms(walk, held, segments, 0, walk.ty, None),
             Shape::Nothing => Vec::new(),
             Shape::Slots(slots) => {
                 let items = binding("items", 0);

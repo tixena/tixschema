@@ -15,7 +15,12 @@ use syn::{Field, Item, ItemType, Meta, Token};
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use quote::quote_spanned;
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "serde",
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema"
+))]
 use syn::spanned::Spanned as _;
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
@@ -72,7 +77,10 @@ use crate::utils::{
 };
 
 #[cfg(feature = "serde")]
-use crate::utils::{Declared, TrivialPattern, record_declared, trivial_pattern};
+use crate::utils::{
+    Declared, TrivialPattern, forget_field_validators, record_declared, record_field_validator,
+    trivial_pattern,
+};
 
 #[cfg(all(
     feature = "serde",
@@ -365,6 +373,9 @@ struct ConstrainedShape {
 /// The value a constrained field ultimately writes, and how it is spelled.
 #[cfg(feature = "serde")]
 enum ConstraintLeaf {
+    /// A type declared elsewhere, as the field writes it: a brand measured on the text its own
+    /// expansion publishes, or an alias of a string.
+    Named(Box<syn::Type>),
     /// The bare Rust numeric type, which is the validator's parameter type.
     Number(&'static str),
     /// A filesystem path, whose checks read its `to_string_lossy` rendering.
@@ -4682,6 +4693,8 @@ fn struct_output_with_unit_impls(
 /// a parameter is left out: what it names depends on what fills it.
 #[cfg(feature = "serde")]
 fn record_declaration(item: &Item) {
+    // An item's walker reads the validators of its own fields, recorded as they are expanded.
+    forget_field_validators();
     if let Item::Type(alias) = item {
         if alias.generics.params.is_empty() {
             record_declared(
@@ -6433,6 +6446,7 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
     let name = parts.name;
     let delegate_impl_items = parts.delegate_impl_items;
     let schema_example_tokens = parts.schema_example_tokens;
+    let bound_text_method = branded_bound_text_method(item_struct);
     // A generic brand's `validate()` moves to its own default-only `impl` — see
     // `branded_validate_split`'s doc comment.
     let (validate_method, default_validate_impl) = branded_validate_split(
@@ -6472,6 +6486,7 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
             #(#delegate_impl_items)*
             #schema_example_tokens
             #validate_method
+            #bound_text_method
         }
 
         #default_validate_impl
@@ -6682,6 +6697,112 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
         validate_method: &validate_method,
         validation_tokens: &validation_tokens,
     })
+}
+
+/// `model_schema_bound_text`: the text a bound written on a field of this brand's type is measured
+/// on. Published where the brand's inner is itself a string or a path, so a brand over anything
+/// else has none and such a bound is refused where it was written.
+///
+/// This builds, and `validate()` holds `latest` to the bound:
+///
+/// ```rust
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema()]
+/// #[derive(Deserialize, Serialize)]
+/// #[serde(transparent)]
+/// pub struct Label(pub String);
+///
+/// #[model_schema()]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Record {
+///     #[model_schema_prop(minLength = 1)]
+///     pub latest: Label,
+/// }
+///
+/// fn main() {
+///     let empty = Record { latest: Label(String::new()) };
+///     assert!(empty.validate().is_err());
+/// }
+/// ```
+///
+/// The run below types the field with a struct instead, and nothing else changed:
+///
+/// ```rust,compile_fail
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema()]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Version {
+///     pub number: i32,
+/// }
+///
+/// #[model_schema()]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Record {
+///     #[model_schema_prop(minLength = 1)]
+///     pub latest: Version,
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// A `compile_fail` doctest asserts only that some error was raised, so the snippet was compiled
+/// standalone as an ordinary test file, and this is the only error it earned:
+///
+/// ```text
+/// error[E0277]: model_schema: field `latest`: `minLength` cannot apply to `Version`
+///   --> tests/zz_probe.rs:14:17
+///    |
+/// 10 | #[model_schema()]
+///    | ----------------- in this attribute macro expansion
+/// ...
+/// 14 |     pub latest: Version,
+///    |                 ^^^^^^^ this type holds no string for the bound to measure
+///    |
+/// help: the trait `BoundedText` is not implemented for `Version`
+///    = note: a length or a pattern is measured on a `String`, on a path, or on a `#[serde(transparent)]` brand over one of them that `#[model_schema]` was written on: declare the field as one of those, or drop the bound
+/// ```
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn branded_bound_text_method(item_struct: &syn::ItemStruct) -> proc_macro2::TokenStream {
+    let Some(inner_field) = brand_field(item_struct) else {
+        return quote! {};
+    };
+    let held = brand_member(inner_field);
+    let Some(shape) = constrained_shape(&inner_field.ty) else {
+        return quote! {};
+    };
+    if !shape
+        .wraps
+        .iter()
+        .all(|wrap| matches!(wrap, ConstraintWrap::Transparent))
+    {
+        return quote! {};
+    }
+    let text = match shape.leaf {
+        ConstraintLeaf::Path => quote! { self.#held.to_string_lossy() },
+        ConstraintLeaf::Str => quote! { ::std::borrow::Cow::Borrowed(&*self.#held) },
+        ConstraintLeaf::Named(_) | ConstraintLeaf::Number(_) => return quote! {},
+    };
+    quote! {
+        pub fn model_schema_bound_text(&self) -> ::std::borrow::Cow<'_, str> {
+            #text
+        }
+    }
+}
+
+/// Without `serde` no validator is generated, so nothing measures a brand's text.
+#[cfg(all(
+    not(feature = "serde"),
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn branded_bound_text_method(_item_struct: &syn::ItemStruct) -> proc_macro2::TokenStream {
+    quote! {}
 }
 
 /// Clones a branded newtype's generics, adding a `Display` bound to each type parameter when the
@@ -9120,9 +9241,10 @@ fn field_json_schema_value(fld: &FieldDef) -> proc_macro2::TokenStream {
     }
 
     let inner = match &fld.field_type {
-        FieldDefType::SiblingType(name, arguments) => {
-            sibling_json_schema_value(name, arguments, fld.type_span)
-        }
+        FieldDefType::SiblingType(name, arguments) => named_field_json_schema_value(
+            fld,
+            &sibling_json_schema_value(name, arguments, fld.type_span),
+        ),
         FieldDefType::String => string_field_json_schema_value(fld),
         FieldDefType::Char => {
             quote! { serde_json::json!({ "type": "string", "minLength": 1, "maxLength": 1 }) }
@@ -10477,6 +10599,36 @@ fn sibling_schema_module_ident(name: &str, span: proc_macro2::Span) -> Ident {
     Ident::new(module_name.as_str(), span)
 }
 
+/// `described`, a named type's own schema, narrowed from inside an `allOf` by the length and
+/// pattern bounds written on the field holding it, or `described` alone where none was written.
+#[cfg(feature = "jsonschema")]
+fn named_field_json_schema_value(
+    fld: &FieldDef,
+    described: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    let Some(meta) = &fld.model_schema_prop_meta else {
+        return described.clone();
+    };
+    let mut narrowing: Vec<proc_macro2::TokenStream> = Vec::new();
+    if let Some(min_len) = meta.min_length {
+        let len = min_len as u64;
+        narrowing.push(quote! { "minLength": #len });
+    }
+    if let Some(max_len) = meta.max_length {
+        let len = max_len as u64;
+        narrowing.push(quote! { "maxLength": #len });
+    }
+    if let Some(pattern) = &meta.pattern {
+        narrowing.push(quote! { "pattern": #pattern });
+    }
+    if narrowing.is_empty() {
+        return described.clone();
+    }
+    quote! {
+        serde_json::json!({ "allOf": [#described, { #(#narrowing),* }] })
+    }
+}
+
 /// A sibling's own schema as a standalone `serde_json::Value` expression: the module the reference
 /// resolves to, asked for the schema it publishes.
 #[cfg(feature = "jsonschema")]
@@ -11343,7 +11495,7 @@ fn build_sibling_type_field_schema(
     generate_type_schema(
         fld,
         field_name_str,
-        &sibling_json_schema_value(name, lst, fld.type_span),
+        &named_field_json_schema_value(fld, &sibling_json_schema_value(name, lst, fld.type_span)),
     )
 }
 
@@ -11896,11 +12048,42 @@ fn build_wrapped_deserializer(
     }
 }
 
+/// The closure a recovering read lists a field's broken bound with: `validator` run on every
+/// value the bound reaches inside one of type `ty`, answering each violation without the field's
+/// name, which the issue's path already carries. `None` where the bound reaches nothing of `ty`.
+#[cfg(feature = "serde")]
+pub fn recovering_bound_check(
+    validator: &proc_macro2::TokenStream,
+    field_name: &str,
+    ty: &syn::Type,
+) -> Option<proc_macro2::TokenStream> {
+    let shape = constrained_shape(ty)?;
+    let head = wrap_binding(0);
+    let value = walked_value(&shape.wraps);
+    let leaf = quote! {
+        if let ::core::result::Result::Err(reported) = #validator(#value) {
+            errors.extend(reported);
+        }
+    };
+    let walk = walk_wraps(&shape.wraps, &head, 1, &leaf);
+    let named = format!("'{field_name}': ");
+    Some(quote! {
+        |#head: &#ty| -> ::std::vec::Vec<::std::string::String> {
+            let mut errors: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
+            #walk
+            errors
+                .iter()
+                .map(|violation| violation.strip_prefix(#named).unwrap_or(violation).to_owned())
+                .collect()
+        }
+    })
+}
+
 /// The stem the per-field helpers are named from: `validate_{stem}_value` and `deserialize_{stem}`.
 /// A field name is unique only within its variant, while one schema module holds every variant's
 /// helpers — so a variant's field carries its variant into the stem to avoid collisions.
 #[cfg(feature = "serde")]
-fn helper_name_stem(field_ident: &str, variant_ident: Option<&str>) -> String {
+pub fn helper_name_stem(field_ident: &str, variant_ident: Option<&str>) -> String {
     variant_ident.map_or_else(
         || field_ident.to_owned(),
         |variant| format!("{}_{field_ident}", to_snake_case(variant)),
@@ -11990,6 +12173,111 @@ fn checked_value_parts(
     }
 }
 
+/// The parameter a field's string validator takes, the rendering its checks read `value` from, and
+/// the owned form of the leaf, which is what a bare field of it is declared as.
+#[cfg(feature = "serde")]
+fn string_leaf_parts(
+    leaf: &ConstraintLeaf,
+    field_name: &str,
+    meta: &ModelSchemaPropMeta,
+) -> (
+    proc_macro2::TokenStream,
+    proc_macro2::TokenStream,
+    proc_macro2::TokenStream,
+) {
+    match leaf {
+        ConstraintLeaf::Named(named) => (
+            quote! { named: &#named },
+            named_leaf_rendering(named, field_name, meta),
+            quote! { #named },
+        ),
+        ConstraintLeaf::Path => {
+            let (param, rendering) = checked_value_parts(true);
+            (param, rendering, quote! { ::std::path::PathBuf })
+        }
+        ConstraintLeaf::Number(_) | ConstraintLeaf::Str => {
+            let (param, rendering) = checked_value_parts(false);
+            (param, rendering, quote! { ::std::string::String })
+        }
+    }
+}
+
+/// Reads the text of a named leaf. A brand's own expansion publishes `model_schema_bound_text`,
+/// and an inherent method is found ahead of a trait's; the trait declared here answers for an alias
+/// of a string or a path, and refuses every other type in the words written on it.
+#[cfg(feature = "serde")]
+fn named_leaf_rendering(
+    named: &syn::Type,
+    field_name: &str,
+    meta: &ModelSchemaPropMeta,
+) -> proc_macro2::TokenStream {
+    let keys = [
+        ("minLength", meta.min_length.is_some()),
+        ("maxLength", meta.max_length.is_some()),
+        ("pattern", meta.pattern.is_some()),
+    ]
+    .into_iter()
+    .filter_map(|(key, written)| written.then_some(key))
+    .collect::<Vec<_>>()
+    .join("`, `");
+    let message = format!(
+        "model_schema: {}: `{keys}` cannot apply to `{{Self}}`",
+        field_label(field_name)
+    );
+    // Located on the field's type, with the macro's own hygiene: see `build_branded_validation`.
+    let read = proc_macro2::Ident::new(
+        "model_schema_bound_text",
+        named.span().resolved_at(proc_macro2::Span::call_site()),
+    );
+    quote! {
+        #[diagnostic::on_unimplemented(
+            message = #message,
+            label = "this type holds no string for the bound to measure",
+            note = "a length or a pattern is measured on a `String`, on a path, or on a `#[serde(transparent)]` brand over one of them that `#[model_schema]` was written on: declare the field as one of those, or drop the bound"
+        )]
+        trait BoundedText {
+            fn bounded_text(&self) -> ::std::borrow::Cow<'_, str>;
+        }
+        impl BoundedText for str {
+            fn bounded_text(&self) -> ::std::borrow::Cow<'_, str> {
+                ::std::borrow::Cow::Borrowed(self)
+            }
+        }
+        impl BoundedText for ::std::string::String {
+            fn bounded_text(&self) -> ::std::borrow::Cow<'_, str> {
+                ::std::borrow::Cow::Borrowed(self)
+            }
+        }
+        impl BoundedText for ::std::path::Path {
+            fn bounded_text(&self) -> ::std::borrow::Cow<'_, str> {
+                self.to_string_lossy()
+            }
+        }
+        impl BoundedText for ::std::path::PathBuf {
+            fn bounded_text(&self) -> ::std::borrow::Cow<'_, str> {
+                self.to_string_lossy()
+            }
+        }
+        trait UnbrandedText {
+            fn model_schema_bound_text(&self) -> ::std::borrow::Cow<'_, str>
+            where
+                Self: BoundedText;
+        }
+        impl<T: ?::core::marker::Sized> UnbrandedText for T {
+            fn model_schema_bound_text(&self) -> ::std::borrow::Cow<'_, str>
+            where
+                Self: BoundedText,
+            {
+                BoundedText::bounded_text(self)
+            }
+        }
+        // Keeps both traits in use where the leaf answers with a method of its own.
+        let _: ::std::borrow::Cow<'_, str> = UnbrandedText::model_schema_bound_text("");
+        let rendered = named.#read();
+        let value: &str = &rendered;
+    }
+}
+
 /// Generates the static validator for a string-shaped field with constraints, plus the serde
 /// deserializer — written against the constrained value itself when the field is bare, and against
 /// the field's declared type when it is wrapped.
@@ -12010,10 +12298,8 @@ fn generate_string_validation_code(
     let deserialize_fn_ident =
         proc_macro2::Ident::new(&deserialize_fn_name, proc_macro2::Span::call_site());
 
-    let measures_path = matches!(shape.leaf, ConstraintLeaf::Path);
-    let (checked_param, rendering) = checked_value_parts(measures_path);
-
     let field_name_lit = member.unraw().to_string();
+    let (checked_param, rendering, owned) = string_leaf_parts(&shape.leaf, &field_name_lit, meta);
 
     let measured = quote! { value.len() };
     let mut checks: Vec<proc_macro2::TokenStream> = Vec::new();
@@ -12042,13 +12328,6 @@ fn generate_string_validation_code(
     }
 
     let deserializer = if wraps.is_empty() {
-        // The owned form of the leaf, which is what a bare field of it is declared as: the
-        // borrowed form is unsized and cannot be a field by value.
-        let owned = if measures_path {
-            quote! { ::std::path::PathBuf }
-        } else {
-            quote! { ::std::string::String }
-        };
         let refusal = refusal_from_violations();
         quote! {
             pub fn #deserialize_fn_ident<'de, D>(deserializer: D) -> ::core::result::Result<#owned, D::Error>
@@ -12202,7 +12481,8 @@ fn constrained_shape(ty: &syn::Type) -> Option<ConstrainedShape> {
                 collect_lifetimes(args, &mut lifetimes);
                 current = sole_type_argument(args)?;
             } else if matches!(segment.arguments, syn::PathArguments::None) {
-                let leaf = leaf_for_ident(&segment.ident.to_string())?;
+                let leaf = leaf_for_ident(&segment.ident.to_string())
+                    .unwrap_or_else(|| ConstraintLeaf::Named(Box::new(current.clone())));
                 return Some(ConstrainedShape {
                     leaf,
                     lifetimes,
@@ -12785,6 +13065,40 @@ fn check_fixed_shape_constraints(
                  instead — declare its type as a branded newtype carrying the bound — or drop it."
             ),
         ));
+    }
+    if let Some((name, generic)) = field_def.named_shape() {
+        let range = [
+            ("minimum", prop_meta.minimum.is_some()),
+            ("maximum", prop_meta.maximum.is_some()),
+        ]
+        .into_iter()
+        .filter_map(|(key, is_written)| is_written.then_some(key))
+        .collect::<Vec<_>>();
+        if !range.is_empty() {
+            let range_keys = range.join("`, `");
+            return Err(syn::Error::new_spanned(
+                field,
+                format!(
+                    "model_schema: {label}: `{range_keys}` cannot apply to `{name}` — a range is \
+                     spelled against a number this crate writes itself, and `{name}` is a type \
+                     declared elsewhere, which every surface writes by its name: the constraint \
+                     would reach neither Zod, nor the JSON schema, nor the generated validator. \
+                     Carry the value in a numeric field the bound can measure, or drop it."
+                ),
+            ));
+        }
+        if generic {
+            return Err(syn::Error::new_spanned(
+                field,
+                format!(
+                    "model_schema: {label}: `{keys}` cannot apply to `{name}<…>` — what that type \
+                     writes is decided by the arguments it is filled with, so no surface has one \
+                     string to measure: the constraint would reach neither Zod, nor the JSON \
+                     schema, nor the generated validator. Declare the field as a `String`, or as a \
+                     branded newtype over one that declares no type parameter, or drop it."
+                ),
+            ));
+        }
     }
     let Some(parameter) = field_def.parameter_shape_name() else {
         return Ok(());
@@ -13494,17 +13808,19 @@ fn generate_field_validation(
     } else {
         MemberAccess::SelfField
     };
-    let generated = match shape.leaf {
-        ConstraintLeaf::Path | ConstraintLeaf::Str => has_string_constraints.then(|| {
-            generate_string_validation_code(
-                member,
-                &helper_stem,
-                model_schema_prop_meta,
-                &shape,
-                &field.ty,
-                access,
-            )
-        }),
+    let generated = match &shape.leaf {
+        ConstraintLeaf::Named(_) | ConstraintLeaf::Path | ConstraintLeaf::Str => {
+            has_string_constraints.then(|| {
+                generate_string_validation_code(
+                    member,
+                    &helper_stem,
+                    model_schema_prop_meta,
+                    &shape,
+                    &field.ty,
+                    access,
+                )
+            })
+        }
         ConstraintLeaf::Number(rust_type) => has_numeric_constraints.then(|| {
             generate_numeric_validation_code(
                 member,
@@ -13521,6 +13837,9 @@ fn generate_field_validation(
         return (None, None, None);
     };
 
+    if gate == ConstraintGate::Validator {
+        record_field_validator(module_name, &helper_stem);
+    }
     if gate == ConstraintGate::Deserializer {
         let deserialize_with_path = format!("{module_name}::deserialize_{helper_stem}");
         let path_lit = syn::LitStr::new(&deserialize_with_path, proc_macro2::Span::call_site());

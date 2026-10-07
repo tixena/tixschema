@@ -625,6 +625,20 @@ impl FieldDef {
         }
     }
 
+    /// The type declared elsewhere a bound written on this field lands on, and whether it is
+    /// written with arguments. A sequence is asked through its element.
+    pub fn named_shape(&self) -> Option<(&str, bool)> {
+        let FieldDefType::SiblingType(name, arguments) = &self.field_type else {
+            return None;
+        };
+        if let [element] = arguments.as_slice()
+            && is_sequence_wrapper(name)
+        {
+            return element.named_shape();
+        }
+        Some((name, !arguments.is_empty()))
+    }
+
     /// Whether this field's rendering reads any other item's own module-scope Zod binding — a
     /// factory call or a bare `$Schema` const — at any depth, wrapped or named directly. Deferral
     /// asks a wider question than the direct-sibling fold gate does:
@@ -1190,10 +1204,10 @@ impl FieldDef {
                     if publishes_zod_factory(name) {
                         zod_factory_call(&info.export_name, lst)
                     } else {
-                        format!("{}$Schema", info.export_name)
+                        format!("{}$Schema{}", info.export_name, self.zod_named_checks())
                     }
                 } else if lst.is_empty() {
-                    format!("{name}$Schema")
+                    format!("{name}$Schema{}", self.zod_named_checks())
                 } else {
                     // A name the registry does not hold yet, written with arguments, is a generic
                     // type expanded after this one: only a factory can take them.
@@ -1320,6 +1334,35 @@ impl FieldDef {
     #[cfg(feature = "zod")]
     pub fn zod_merged_schema(&self) -> String {
         self.zod_base()
+    }
+
+    /// The field's length and pattern bounds as one `.check(…)` written onto a named type's
+    /// schema, or nothing where none was written. `.check` is declared on every schema and returns
+    /// the schema's own type, so a brand keeps its brand and a binding annotated `ZodType` takes it.
+    #[cfg(feature = "zod")]
+    fn zod_named_checks(&self) -> String {
+        let Some(meta) = &self.model_schema_prop_meta else {
+            return String::new();
+        };
+        let mut checks: Vec<String> = Vec::new();
+        if let Some(min_len) = meta.min_length {
+            let reported = zod_error_arg(Bound::MinLength(min_len));
+            checks.push(format!("z.minLength({min_len}, {reported})"));
+        }
+        if let Some(max_len) = meta.max_length {
+            let reported = zod_error_arg(Bound::MaxLength(max_len));
+            checks.push(format!("z.maxLength({max_len}, {reported})"));
+        }
+        if let Some(pattern) = &meta.pattern {
+            let literal_body = escape_js_regex_literal(pattern);
+            let reported = zod_error_arg(Bound::Pattern(pattern));
+            checks.push(format!("z.regex(/{literal_body}/, {reported})"));
+        }
+        if checks.is_empty() {
+            String::new()
+        } else {
+            format!(".check({})", checks.join(", "))
+        }
     }
 
     /// Builds the Zod schema string for a numeric field, applying any min/max constraints.

@@ -624,6 +624,8 @@ fn the_bson_items_are_emitted_beside_the_json_ones() {
             "reads_an_option",
             "taken_keys",
             "value_remaining",
+            "value_bound",
+            "bson_bound",
         ]
     );
 }
