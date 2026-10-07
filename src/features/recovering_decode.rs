@@ -8,10 +8,13 @@
 //! answering one issue at a time, and refuse with only the issues none settled. The callback's
 //! types and the resolvers' go into the type's own `{type}_schema` module. Two flagged types share
 //! no declaration: each module declares the same aliases of standard types, and a walker builds
-//! whatever issue type the constructor it is handed builds.
+//! whatever issue type the constructor it is handed builds. A build with `mongodb` on adds the
+//! query types to that module: `Filter`, `Update`, and the typed paths that build them (`query`).
 
 mod aliases;
 pub mod enums;
+#[cfg(feature = "mongodb")]
+mod query;
 
 use core::iter::once;
 use core::mem::take;
@@ -46,15 +49,47 @@ use crate::utils::{
     written_type,
 };
 
-/// The type names the flag adds to a schema module.
+/// How many type names the flag adds to a schema module.
+#[cfg(all(
+    any(feature = "typescript", feature = "zod", feature = "jsonschema"),
+    not(feature = "mongodb")
+))]
+const ADDED_TYPE_COUNT: usize = 15;
+
+/// How many type names the flag adds to a schema module, the query types among them.
+#[cfg(all(
+    any(feature = "typescript", feature = "zod", feature = "jsonschema"),
+    feature = "mongodb"
+))]
+const ADDED_TYPE_COUNT: usize = 26;
+
+/// The type names the flag adds to a schema module. The query types are there under `mongodb`.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-const ADDED_TYPE_NAMES: [&str; 15] = [
+const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
     "Asked",
+    #[cfg(feature = "mongodb")]
+    "Element",
     "EntryOf",
     "Expected",
     "ExpectedToken",
+    #[cfg(feature = "mongodb")]
+    "Field",
+    #[cfg(feature = "mongodb")]
+    "Filter",
     "Issue",
     "IssueFromParts",
+    #[cfg(feature = "mongodb")]
+    "ListField",
+    #[cfg(feature = "mongodb")]
+    "Model",
+    #[cfg(feature = "mongodb")]
+    "ModelList",
+    #[cfg(feature = "mongodb")]
+    "MongoPath",
+    #[cfg(feature = "mongodb")]
+    "OptionalField",
+    #[cfg(feature = "mongodb")]
+    "OptionalModel",
     "Path",
     "ReadWhole",
     "Resolution",
@@ -63,7 +98,11 @@ const ADDED_TYPE_NAMES: [&str; 15] = [
     "Taken",
     "TakenProbe",
     "Unrecovered",
+    #[cfg(feature = "mongodb")]
+    "Update",
     "Verdict",
+    #[cfg(feature = "mongodb")]
+    "WriteError",
 ];
 
 /// One arm reading a value that is there: the pattern it is held under, and what is listed for it.
@@ -3019,12 +3058,14 @@ fn module_items() -> TokenStream {
     let handoff = handoff_items();
     let taken = taken_items();
     let bound = bound_items();
+    let query = query_items();
     quote! {
         #path
         #callback
         #handoff
         #taken
         #bound
+        #query
     }
 }
 
@@ -3254,6 +3295,18 @@ fn plain_value<'ty>(ty: &'ty Type, parameters: &[String]) -> Walk<'ty> {
         }),
         ty,
     }
+}
+
+/// `Filter`, `Update` and the typed paths that build them.
+#[cfg(feature = "mongodb")]
+fn query_items() -> TokenStream {
+    query::query_items()
+}
+
+/// A build without `mongodb` writes no filter and no update.
+#[cfg(not(feature = "mongodb"))]
+fn query_items() -> TokenStream {
+    TokenStream::new()
 }
 
 /// Whether serde reads a value walked this way from the entries of an object it is flattened in.

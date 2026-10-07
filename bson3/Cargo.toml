@@ -31,8 +31,9 @@ kotlin = ["tixschema/kotlin"]
 [dev-dependencies]
 tixschema = { path = "..", default-features = false }
 # `bson-3` in place of the driver's default `compat-3-0-0`, which turns `bson-2` on: the driver's
-# `Document` is then the one this `bson` declares.
-bson = { version = "3.1", features = ["serde"] }
+# `Document` is then the one this `bson` declares. `chrono-0_4` is the feature its hook storing a
+# chrono date as a BSON date sits behind.
+bson = { version = "3.1", features = ["serde", "chrono-0_4"] }
 mongodb = { version = "3.9", default-features = false, features = ["bson-3", "compat-3-3-0", "rustls-tls", "dns-resolver"] }
 # As tixschema's own manifest lists them.
 serde = { version = "1", features = ["derive", "rc"] }

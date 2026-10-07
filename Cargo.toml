@@ -30,7 +30,8 @@ mongodb = ">=3.7"
 # Test-only: what the recovering decode generates names the crate `bson`, and builds against
 # both of its major versions. The tests here bind that name to version 2, which the driver above
 # is built for. Version 3 is built in `bson3/`, a package of its own with a driver built for it.
-bson2 = { package = "bson", version = "2.15" }
+# `chrono-0_4` is the feature its hook storing a chrono date as a BSON date sits behind.
+bson2 = { package = "bson", version = "2.15", features = ["chrono-0_4"] }
 # Test-only: `rc` supplies serde's `Rc`/`Arc` impls, without which the wire criterion the
 # transparent-wrapper coverage rests on cannot be read off an `Rc`/`Arc` field at all.
 serde = { version = "1", features = ["derive", "rc"] }

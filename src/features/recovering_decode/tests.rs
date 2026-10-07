@@ -334,6 +334,36 @@ fn path_methods() -> Vec<String> {
         .collect()
 }
 
+/// The methods `added` declares in the inherent `impl` blocks of its types, each with the name of
+/// the type it is declared on, in the order written.
+#[cfg(feature = "mongodb")]
+fn query_methods(added: &syn::File) -> Vec<(String, &syn::ImplItemFn)> {
+    added
+        .items
+        .iter()
+        .filter_map(|item| {
+            if let syn::Item::Impl(block) = item
+                && block.trait_.is_none()
+                && let syn::Type::Path(own) = &*block.self_ty
+                && let Some(named) = own.path.segments.last()
+            {
+                Some((named.ident.to_string(), &block.items))
+            } else {
+                None
+            }
+        })
+        .flat_map(|(on, members)| {
+            members.iter().filter_map(move |member| {
+                if let syn::ImplItem::Fn(method) = member {
+                    Some((on.clone(), method))
+                } else {
+                    None
+                }
+            })
+        })
+        .collect()
+}
+
 /// Every method the flag adds carries the flag's name, so none can meet one the type's author
 /// wrote. Each entry point is the one it is named for.
 #[test]
@@ -699,7 +729,8 @@ fn the_schema_module_declares_what_a_resolver_answers_and_the_pipe_that_runs_the
 }
 
 /// The BSON items sit where the JSON ones do: the helpers inside the one `impl Path`, and the
-/// function a value is read through in the module, once.
+/// function a value is read through in the module, once. Under `mongodb` the query types add one
+/// function after them, which a path with no hook writes its values through.
 #[cfg(feature = "bson")]
 #[test]
 fn the_bson_items_are_emitted_beside_the_json_ones() {
@@ -739,8 +770,260 @@ fn the_bson_items_are_emitted_beside_the_json_ones() {
             "value_remaining",
             "value_bound",
             "bson_bound",
+            #[cfg(feature = "mongodb")]
+            "write_plain",
         ]
     );
+}
+
+/// The query types are in the module in a build with `mongodb` and in no other, each one
+/// `#[non_exhaustive]`, beside the alias of the error a value that cannot be written fails with.
+#[test]
+fn the_query_types_are_declared_under_mongodb_alone_and_none_is_exhaustive() {
+    let query_types = [
+        "MongoPath",
+        "Filter",
+        "Update",
+        "Field",
+        "OptionalField",
+        "Element",
+        "ListField",
+        "Model",
+        "OptionalModel",
+        "ModelList",
+    ];
+    let added: syn::File = syn::parse2(module_items()).unwrap();
+    let declared: Vec<(String, bool)> = added
+        .items
+        .iter()
+        .filter_map(|item| {
+            if let syn::Item::Struct(declared) = item
+                && query_types.contains(&declared.ident.to_string().as_str())
+            {
+                Some((
+                    declared.ident.to_string(),
+                    declared
+                        .attrs
+                        .iter()
+                        .any(|attribute| attribute.path().is_ident("non_exhaustive")),
+                ))
+            } else {
+                None
+            }
+        })
+        .collect();
+    let expected: Vec<(String, bool)> = if cfg!(feature = "mongodb") {
+        query_types
+            .iter()
+            .map(|named| ((*named).to_owned(), true))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    assert_eq!(declared, expected);
+    let aliased = added
+        .items
+        .iter()
+        .any(|item| matches!(item, syn::Item::Type(alias) if alias.ident == "WriteError"));
+    assert_eq!(aliased, cfg!(feature = "mongodb"));
+}
+
+/// Each query type has the operators of its kind and no other: a path every row holds compares
+/// and sets, one a row may leave out adds `$exists` and `$unset`, a list has the operators over
+/// its elements, and a nested model has the ones over its whole value.
+#[cfg(feature = "mongodb")]
+#[test]
+fn each_query_type_has_the_operators_of_its_kind() {
+    let added: syn::File = syn::parse2(module_items()).unwrap();
+    for (named, operators) in [
+        ("MongoPath", &["under", "at", "key"][..]),
+        ("Filter", &["raw", "and", "or", "negated", "into_document"]),
+        ("Update", &["raw", "and", "into_document"]),
+        (
+            "Field",
+            &[
+                "plain",
+                "hooked",
+                "segments",
+                "eq",
+                "ne",
+                "gt",
+                "gte",
+                "lt",
+                "lte",
+                "is_in",
+                "not_in",
+                "set",
+                "set_on_insert",
+                "regex",
+            ],
+        ),
+        ("OptionalField", &["plain", "hooked", "exists", "unset"]),
+        ("Element", &["eq", "ne", "gt", "gte", "lt", "lte"]),
+        (
+            "ListField",
+            &[
+                "plain",
+                "hooked",
+                "contains",
+                "contains_any",
+                "contains_none",
+                "size",
+                "element",
+                "elem_match",
+                "push",
+                "pull",
+                "set",
+                "set_on_insert",
+            ],
+        ),
+        (
+            "Model",
+            &[
+                "plain",
+                "eq",
+                "ne",
+                "is_in",
+                "not_in",
+                "set",
+                "set_on_insert",
+            ],
+        ),
+        ("OptionalModel", &["plain", "exists", "unset", "set"]),
+        (
+            "ModelList",
+            &["plain", "elem_match", "size", "push", "pull", "set"],
+        ),
+    ] {
+        let public: Vec<String> = query_methods(&added)
+            .into_iter()
+            .filter(|(on, method)| on == named && matches!(method.vis, syn::Visibility::Public(_)))
+            .map(|(_on, method)| method.sig.ident.to_string())
+            .collect();
+        assert_eq!(public, operators, "for {named}");
+    }
+}
+
+/// An operator that writes a value takes it by value, as the type its path is declared with, and
+/// answers the error a value that cannot be written fails with. One that writes none answers the
+/// filter or the update itself.
+#[cfg(feature = "mongodb")]
+#[test]
+fn an_operator_that_writes_a_value_takes_it_by_value_and_answers_a_write_error() {
+    let added: syn::File = syn::parse2(super::query::query_items()).unwrap();
+    for (on, method) in query_methods(&added) {
+        let signature = method.sig.to_token_stream().to_string();
+        let answered = method.sig.output.to_token_stream().to_string();
+        let writes = ["value : V", "value : M", "values : I"]
+            .iter()
+            .any(|taken| signature.contains(taken));
+        assert_eq!(
+            answered.ends_with(", WriteError >"),
+            writes,
+            "for {on}: {signature}"
+        );
+        assert!(
+            !signature.contains("value : &") && !signature.contains("values : &"),
+            "for {on}: {signature}"
+        );
+    }
+}
+
+/// A consumer denying clippy's `restriction` set denies it over the query types too: no function
+/// takes `impl Trait`, and every bound sits in a `where` clause on a named type parameter.
+#[cfg(feature = "mongodb")]
+#[test]
+fn every_bound_of_a_query_function_is_written_in_a_where_clause() {
+    let added: syn::File = syn::parse2(super::query::query_items()).unwrap();
+    let functions = added.items.iter().filter_map(|item| {
+        if let syn::Item::Fn(function) = item {
+            Some(&function.sig)
+        } else {
+            None
+        }
+    });
+    let methods = query_methods(&added);
+    for signature in functions.chain(methods.iter().map(|(_on, method)| &method.sig)) {
+        let written = signature.to_token_stream().to_string();
+        assert!(
+            signature.generics.params.iter().all(|parameter| matches!(
+                parameter,
+                syn::GenericParam::Type(named) if named.bounds.is_empty()
+            )),
+            "for {written}"
+        );
+        assert!(!written.contains("impl "), "for {written}");
+    }
+}
+
+/// A filter carries the rows it is over and an update the rows it changes, as two standard types,
+/// and every function that takes one asks for its marker: neither stands where the other is
+/// asked. A list of models asks a filter over its element's rows.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_filter_and_an_update_each_carry_a_marker_of_their_own() {
+    let emitted = super::query::query_items();
+    let packed: String = emitted.to_string().split_whitespace().collect();
+    for carried in [
+        "impl<Root>::core::convert::AsRef<::core::marker::PhantomData<Root>>forFilter<Root>",
+        "impl<Root>::core::convert::AsRef<::core::marker::PhantomData<fn(Root)->Root>>forUpdate<Root>",
+    ] {
+        assert!(packed.contains(carried), "missing `{carried}`");
+    }
+    assert_eq!(packed.matches("AsRef<").count(), 8);
+    let added: syn::File = syn::parse2(emitted).unwrap();
+    let asked: Vec<(String, String)> = query_methods(&added)
+        .into_iter()
+        .filter_map(|(on, method)| {
+            let bounds = method.sig.generics.where_clause.as_ref()?;
+            let bound = bounds.to_token_stream().to_string();
+            let (_taken, marker) =
+                bound.split_once("AsRef < :: core :: marker :: PhantomData <")?;
+            Some((
+                format!("{on}::{}", method.sig.ident),
+                marker.trim_matches([' ', ',', '>']).to_owned(),
+            ))
+        })
+        .collect();
+    let expected = [
+        ("Filter::joined", "Root"),
+        ("Filter::and", "Root"),
+        ("Filter::or", "Root"),
+        ("Update::and", "fn (Root) -> Root"),
+        ("ModelList::elem_match", "M"),
+        ("ModelList::pull", "M"),
+    ]
+    .map(|(function, marker)| (function.to_owned(), marker.to_owned()));
+    assert_eq!(asked, expected);
+}
+
+/// Of the `bson` library the query types name only what both of its major versions have: the
+/// serializer, a value with five of its members, and a document. No `doc!` is written.
+#[cfg(feature = "mongodb")]
+#[test]
+fn the_query_types_name_only_what_both_majors_of_the_bson_library_have() {
+    let written = super::query::query_items().to_string();
+    let named_after = |prefix: &str| {
+        let mut found: Vec<&str> = written
+            .split(prefix)
+            .skip(1)
+            .filter_map(|rest| {
+                rest.split(|read: char| !(read.is_ascii_alphanumeric() || read == '_'))
+                    .next()
+            })
+            .collect();
+        found.sort_unstable();
+        found.dedup();
+        found
+    };
+    assert_eq!(named_after("bson :: "), ["Bson", "Document", "Serializer"]);
+    assert_eq!(
+        named_after("bson :: Bson :: "),
+        ["Array", "Boolean", "Document", "Int64", "String"]
+    );
+    assert_eq!(named_after("bson :: Document :: "), ["new"]);
+    assert_eq!(named_after("bson :: Serializer :: "), ["new"]);
+    assert!(!written.contains("doc !"), "got: {written}");
 }
 
 /// The BSON walk is the JSON one over the library's own types: a list, a map and `null` are

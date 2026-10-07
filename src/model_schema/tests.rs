@@ -6508,6 +6508,7 @@ fn an_item_without_decode_with_expands_as_it_did() {
 
 /// The flag written alone and written `true` generate the same thing, in every build that reads
 /// serde's attributes: the entry point, the walker, and the callback's types in the type's module.
+/// The query types are in that module under `mongodb`, and in no other build.
 #[cfg(feature = "serde")]
 #[test]
 fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
@@ -6539,6 +6540,25 @@ fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
         assert!(
             flagged.contains(emitted),
             "missing `{emitted}`, got: {flagged}"
+        );
+    }
+    for query_type in [
+        "pub type WriteError =",
+        "pub struct MongoPath {",
+        "pub struct Filter < Root > {",
+        "pub struct Update < Root > {",
+        "pub struct Field < Root , V > {",
+        "pub struct OptionalField < Root , V > {",
+        "pub struct Element < V > {",
+        "pub struct ListField < Root , V > {",
+        "pub struct Model < Root , M , F > {",
+        "pub struct OptionalModel < Root , M , F > {",
+        "pub struct ModelList < Root , M , F > {",
+    ] {
+        assert_eq!(
+            flagged.contains(query_type),
+            cfg!(feature = "mongodb"),
+            "for `{query_type}`, got: {flagged}"
         );
     }
 }
@@ -6597,6 +6617,26 @@ fn what_decode_with_emits_is_written_for_the_lints_a_consumer_denies() {
             "pub struct Unrecovered < V > {",
             "pub struct Asked {",
             "pub struct TakenProbe < 'asked > (",
+            #[cfg(feature = "mongodb")]
+            "pub struct MongoPath {",
+            #[cfg(feature = "mongodb")]
+            "pub struct Filter < Root > {",
+            #[cfg(feature = "mongodb")]
+            "pub struct Update < Root > {",
+            #[cfg(feature = "mongodb")]
+            "pub struct Field < Root , V > {",
+            #[cfg(feature = "mongodb")]
+            "pub struct OptionalField < Root , V > {",
+            #[cfg(feature = "mongodb")]
+            "pub struct Element < V > {",
+            #[cfg(feature = "mongodb")]
+            "pub struct ListField < Root , V > {",
+            #[cfg(feature = "mongodb")]
+            "pub struct Model < Root , M , F > {",
+            #[cfg(feature = "mongodb")]
+            "pub struct OptionalModel < Root , M , F > {",
+            #[cfg(feature = "mongodb")]
+            "pub struct ModelList < Root , M , F > {",
         ] {
             assert!(
                 flagged.contains(&format!("# [non_exhaustive] {declared}")),
