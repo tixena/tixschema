@@ -645,6 +645,37 @@ thread_local! {
     static DECLARED: RefCell<HashMap<String, Declared>> = RefCell::new(HashMap::new());
 }
 
+#[cfg(feature = "serde")]
+thread_local! {
+    /// The fields a validator was published for, by schema module and helper stem: those of the
+    /// item being expanded, read by the recovering decode of that same item.
+    static FIELD_VALIDATORS: RefCell<HashSet<(String, String)>> = RefCell::new(HashSet::new());
+}
+
+/// Whether `module` holds `validate_{stem}_value`, the validator of a field's own bound.
+#[cfg(feature = "serde")]
+pub fn has_field_validator(module: &str, stem: &str) -> bool {
+    FIELD_VALIDATORS.with(|held| {
+        held.borrow()
+            .contains(&(module.to_owned(), stem.to_owned()))
+    })
+}
+
+/// Records that `module` holds `validate_{stem}_value`.
+#[cfg(feature = "serde")]
+pub fn record_field_validator(module: &str, stem: &str) {
+    FIELD_VALIDATORS.with(|held| {
+        held.borrow_mut()
+            .insert((module.to_owned(), stem.to_owned()));
+    });
+}
+
+/// Forgets every validator recorded: the walker of an item reads only that item's own.
+#[cfg(feature = "serde")]
+pub fn forget_field_validators() {
+    FIELD_VALIDATORS.with(|held| held.borrow_mut().clear());
+}
+
 /// What `rust_ident` declares, where `#[model_schema]` has been written on it above.
 #[cfg(feature = "serde")]
 pub fn declared(rust_ident: &str) -> Option<Declared> {

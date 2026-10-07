@@ -3442,6 +3442,89 @@ fn a_bound_on_a_map_or_tuple_field_is_refused() {
     }
 }
 
+/// A range is spelled against a number this crate writes itself. A type declared elsewhere is
+/// written by its name on every surface, so a range beside one is refused where it is written.
+#[test]
+fn a_range_on_a_field_typed_with_a_named_type_is_refused() {
+    for (constraint, key) in [
+        (quote::quote! { minimum = 5 }, "minimum"),
+        (quote::quote! { maximum = 5 }, "maximum"),
+    ] {
+        for field_type in [
+            quote::quote! { Count },
+            quote::quote! { Option<Count> },
+            quote::quote! { Vec<Count> },
+            quote::quote! { HashSet<Count> },
+        ] {
+            let errors = field_prop_guard_errors(&syn::parse_quote! {
+                struct Report {
+                    #[model_schema_prop(#constraint)]
+                    total: #field_type,
+                }
+            });
+            assert_eq!(errors.len(), 1, "for {key} on {field_type}: {errors:?}");
+            for needle in ["compile_error", "field `total`", key, "`Count`"] {
+                assert!(
+                    errors[0].contains(needle),
+                    "{needle} missing for {key} on {field_type}: {}",
+                    errors[0]
+                );
+            }
+        }
+    }
+}
+
+/// What a type written with arguments writes is decided by what fills it, so a length or a pattern
+/// beside one has no one string to measure.
+#[test]
+fn a_length_on_a_field_typed_with_a_generic_named_type_is_refused() {
+    for (constraint, key) in [
+        (quote::quote! { minLength = 3 }, "minLength"),
+        (quote::quote! { maxLength = 3 }, "maxLength"),
+        (quote::quote! { pattern = "^[a-z]+$" }, "pattern"),
+    ] {
+        for field_type in [
+            quote::quote! { UserId<String> },
+            quote::quote! { Option<UserId<String>> },
+            quote::quote! { Vec<UserId<String>> },
+        ] {
+            let errors = field_prop_guard_errors(&syn::parse_quote! {
+                struct Report {
+                    #[model_schema_prop(#constraint)]
+                    owner: #field_type,
+                }
+            });
+            assert_eq!(errors.len(), 1, "for {key} on {field_type}: {errors:?}");
+            for needle in ["compile_error", "field `owner`", key, "`UserId<"] {
+                assert!(
+                    errors[0].contains(needle),
+                    "{needle} missing for {key} on {field_type}: {}",
+                    errors[0]
+                );
+            }
+        }
+    }
+}
+
+/// A length or a pattern on a field typed with a type that declares no parameter is the
+/// compiler's to answer, by whether the type publishes its text: the expansion refuses nothing.
+#[test]
+fn a_length_on_a_field_typed_with_a_named_type_is_left_to_the_compiler() {
+    for field_type in [
+        quote::quote! { Slug },
+        quote::quote! { Option<Slug> },
+        quote::quote! { Vec<Slug> },
+    ] {
+        let errors = field_prop_guard_errors(&syn::parse_quote! {
+            struct Report {
+                #[model_schema_prop(minLength = 3, pattern = "^[a-z]+$")]
+                slug: #field_type,
+            }
+        });
+        assert!(errors.is_empty(), "for {field_type}: {errors:?}");
+    }
+}
+
 /// A map or tuple field carrying no bound must not acquire one of these errors, and neither must the
 /// keys that name or wrap the rendering rather than constrain a value.
 #[test]
@@ -10518,8 +10601,7 @@ fn only_an_outermost_option_without_a_default_gets_one_injected() {
 #[test]
 fn a_field_without_a_constrainable_value_has_no_shape() {
     for spelling in [
-        "Tag",
-        "Option<Tag>",
+        "Tagged<String>",
         "HashMap<String, String>",
         "(String, String)",
     ] {
@@ -10528,6 +10610,27 @@ fn a_field_without_a_constrainable_value_has_no_shape() {
             constrained_shape(&ty).is_none(),
             "spelling {spelling} should reach no constrainable value"
         );
+    }
+}
+
+/// A type declared elsewhere is the leaf itself, as the field writes it, under the same wrappers a
+/// string is reached through.
+#[cfg(feature = "serde")]
+#[test]
+fn a_field_typed_with_a_named_type_ends_on_that_type() {
+    for (spelling, leaf, depth) in [
+        ("Tag", "Tag", 0),
+        ("Option<Tag>", "Tag", 1),
+        ("Vec<Box<tags::Tag>>", "tags :: Tag", 2),
+    ] {
+        let ty: syn::Type = syn::parse_str(spelling).unwrap();
+        let shape = constrained_shape(&ty).unwrap();
+        let written = match shape.leaf {
+            ConstraintLeaf::Named(named) => quote::ToTokens::to_token_stream(&named).to_string(),
+            ConstraintLeaf::Number(_) | ConstraintLeaf::Path | ConstraintLeaf::Str => String::new(),
+        };
+        assert_eq!(written, leaf, "for {spelling}");
+        assert_eq!(shape.wraps.len(), depth, "for {spelling}");
     }
 }
 
@@ -12498,6 +12601,65 @@ fn expansion_with_args_over(args: &str, source: &str) -> proc_macro2::TokenStrea
         syn::parse_str(args).unwrap(),
         syn::parse_str(source).unwrap(),
     )
+}
+
+/// A brand over a string or a path publishes the text a field's bound is measured on. A brand over
+/// anything else publishes none, which is what refuses such a bound where it is written.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn a_brand_publishes_its_text_only_over_a_string_or_a_path() {
+    for (args, source, text) in [
+        (
+            "",
+            "#[serde(transparent)] pub struct TextSlug(pub String);",
+            Some(":: std :: borrow :: Cow :: Borrowed (& * self . 0)"),
+        ),
+        (
+            "",
+            "#[serde(transparent)] pub struct TextShared(pub Arc<str>);",
+            Some(":: std :: borrow :: Cow :: Borrowed (& * self . 0)"),
+        ),
+        (
+            "",
+            "#[serde(transparent)] pub struct TextNamed { pub text: String }",
+            Some(":: std :: borrow :: Cow :: Borrowed (& * self . text)"),
+        ),
+        (
+            "no_display",
+            "#[serde(transparent)] pub struct TextDir(pub PathBuf);",
+            Some("self . 0 . to_string_lossy ()"),
+        ),
+        (
+            "",
+            "#[serde(transparent)] pub struct TextCount(pub u32);",
+            None,
+        ),
+        (
+            "no_display",
+            "#[serde(transparent)] pub struct TextMany(pub Vec<String>);",
+            None,
+        ),
+        (
+            "default_types(IdType = String)",
+            "#[serde(transparent)] pub struct TextId<IdType>(pub IdType);",
+            None,
+        ),
+    ] {
+        let tokens = expansion_with_args_over(args, source).to_string();
+        assert!(!tokens.contains("compile_error"), "for {source}: {tokens}");
+        let published =
+            "pub fn model_schema_bound_text (& self) -> :: std :: borrow :: Cow < '_ , str >";
+        match text {
+            Some(written) => assert!(
+                tokens.contains(&format!("{published} {{ {written} }}")),
+                "for {source}: {tokens}"
+            ),
+            None => assert!(!tokens.contains("model_schema_bound_text"), "for {source}"),
+        }
+    }
 }
 
 /// serde writes a struct's own tag and a field under the same key as two entries of one object,

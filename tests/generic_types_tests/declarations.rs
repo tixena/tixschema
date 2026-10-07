@@ -26,6 +26,32 @@ use std::process::{Command, id};
 use std::sync::Once;
 use tixschema::model_schema;
 
+/// What the bounded driver prints: each broken bound under its key in the bound's own words, and
+/// a value inside every bound as it was sent.
+const BOUNDED: &str = "[[\"later: too long: maximum length is 3, got 4\",\"many.1: too short: \
+                       minimum length is 2, got 1\",\"sort: too short: minimum length is 1, got \
+                       0\"],[\"sort: does not match pattern '^[a-z.]*$'\"],{\"later\":\"abc\",\
+                       \"many\":[\"ab\"],\"sort\":\"a.b\"},{\"later\":\"abc\",\"many\":[]}]";
+
+/// Loads the compiled bundle and parses through the struct whose fields bound a brand.
+const BOUNDED_DRIVER: &str = r#"import { DeclaredBounded$Schema } from "./lib/index.js";
+
+const said = (value) => {
+  const read = DeclaredBounded$Schema.safeParse(value);
+  return read.success
+    ? read.data
+    : read.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`);
+};
+console.log(
+  JSON.stringify([
+    said({ later: "abcd", many: ["ab", "c"], sort: "" }),
+    said({ later: "abc", many: [], sort: "A" }),
+    said({ later: "abc", many: ["ab"], sort: "a.b" }),
+    said({ later: "abc", many: [] }),
+  ]),
+);
+"#;
+
 const COMPILER_VAR: &str = "TIXSCHEMA_TSC";
 
 /// What the driver prints: each tuple struct takes a nested value and refuses one that is wrong
@@ -226,6 +252,30 @@ const PROJECT: &str = r#"{
 
 static STOOD_DOWN: Once = Once::new();
 
+/// A struct whose fields bound a brand over a string: one declared below it, a list of one
+/// declared above, and an optional one.
+#[model_schema()]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeclaredBounded {
+    #[model_schema_prop(maxLength = 3)]
+    pub later: DeclaredLabel,
+    #[model_schema_prop(minLength = 2)]
+    pub many: Vec<DeclaredPath>,
+    #[model_schema_prop(minLength = 1, pattern = "^[a-z.]*$")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sort: Option<DeclaredPath>,
+}
+
+#[model_schema()]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct DeclaredLabel(pub String);
+
+#[model_schema()]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct DeclaredPath(pub String);
+
 /// One of a cycle of two, declared above the type its list holds.
 #[model_schema(default_types(IdType = String))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -308,9 +358,15 @@ fn bundle() -> String {
     [
         // `z` bound as a constant, which names no type: the weakest binding a consumer's own
         // module may hand the bundle.
-        "import * as zod from \"zod\";\nimport type { ZodType } from \"zod\";\nimport type { SomeType } \
-         from \"zod/v4/core\";\n\nconst z = zod;"
+        "import * as zod from \"zod\";\nimport type { ZodType, $brand } from \"zod\";\nimport type { \
+         SomeType } from \"zod/v4/core\";\n\nconst z = zod;"
             .to_owned(),
+        DeclaredPath::ts_definition(),
+        DeclaredPath::zod_schema(),
+        DeclaredBounded::ts_definition(),
+        DeclaredBounded::zod_schema(),
+        DeclaredLabel::ts_definition(),
+        DeclaredLabel::zod_schema(),
         DeclaredNode::<String>::ts_definition(),
         DeclaredNode::<String>::zod_schema(),
         DeclaredHolder::<String>::ts_definition(),
@@ -470,6 +526,19 @@ fn type_check_a_tuple_struct_that_reaches_itself_loads_and_parses() {
     };
     assert_eq!(
         printed, LOADED,
+        "the bundle does not load and parse under node:\n{failed}"
+    );
+}
+
+/// A bound written on a field typed with a brand reaches the brand's schema as a check: the bundle
+/// compiles under the compiler, and zod refuses what breaks it in the bound's own words.
+#[test]
+fn type_check_a_bound_on_a_field_typed_with_a_brand_loads_and_parses() {
+    let Some((printed, failed)) = loaded("bounded", BOUNDED_DRIVER) else {
+        return;
+    };
+    assert_eq!(
+        printed, BOUNDED,
         "the bundle does not load and parse under node:\n{failed}"
     );
 }

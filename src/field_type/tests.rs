@@ -1,6 +1,8 @@
 use super::{FieldDef, FieldDefType};
 
 #[cfg(feature = "zod")]
+use crate::features::model_schema_prop::ModelSchemaPropMeta;
+#[cfg(feature = "zod")]
 use crate::utils::{AliasKind, register_alias_info};
 
 /// The wrappers whose fields write a JSON array of their element, named here as they reach the
@@ -90,6 +92,38 @@ fn test_sequence_wrappers_render_as_zod_arrays() {
             "for: {wrapper}"
         );
     }
+}
+
+/// A named type takes the field's length and pattern as one `.check(…)` on its own schema, through
+/// a sequence as well, and a named type with no bound beside it is written as before.
+#[test]
+#[cfg(feature = "zod")]
+fn a_named_type_takes_a_fields_length_and_pattern_as_one_check() {
+    let bounded = |field_type: FieldDefType| {
+        let mut bounded = field(field_type);
+        bounded.model_schema_prop_meta = Some(ModelSchemaPropMeta {
+            max_length: Some(9),
+            min_length: Some(1),
+            pattern: Some("^[a-z]+$".to_owned()),
+            ..ModelSchemaPropMeta::default()
+        });
+        bounded
+    };
+    let checked = "MetricTag$Schema.check(\
+        z.minLength(1, { error: (issue) => `too short: minimum length is 1, got ${String(issue.input).length}` }), \
+        z.maxLength(9, { error: (issue) => `too long: maximum length is 9, got ${String(issue.input).length}` }), \
+        z.regex(/^[a-z]+$/, { error: \"does not match pattern '^[a-z]+$'\" }))";
+    let named = || FieldDefType::SiblingType("MetricTag".to_owned(), vec![]);
+    assert_eq!(bounded(named()).zod_type(), checked);
+    assert_eq!(
+        bounded(FieldDefType::SiblingType(
+            "HashSet".to_owned(),
+            vec![field(named())]
+        ))
+        .zod_type(),
+        format!("z.array({checked})")
+    );
+    assert_eq!(field(named()).zod_type(), "MetricTag$Schema");
 }
 
 /// A slot — a tuple element or a map entry — holds the same array a field does, and an `Option`

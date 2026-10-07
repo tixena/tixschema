@@ -361,7 +361,7 @@ the key or without it, as serde does.
 
 ### 7. Field Validation Attributes (`#[model_schema_prop(...)]`)
 
-All validation constraints generate checks in **Zod (frontend), JSON Schema, and Rust**. In Rust the check runs in `validate()`. It also runs as serde reads the payload in one position only: a member of an untagged enum, where the check decides which variant the payload is:
+All validation constraints generate checks in **Zod (frontend), JSON Schema, and Rust**. In Rust the check runs in `validate()`, and in the recovering decode of a type declared with `decode_with`, which lists each violation as an issue. It also runs as serde reads the payload in one position only: a member of an untagged enum, where the check decides which variant the payload is:
 
 | Attribute | Field Type | Zod | JSON Schema | Rust |
 |-----------|------------|-----|-------------|------------|
@@ -377,6 +377,17 @@ All validation constraints generate checks in **Zod (frontend), JSON Schema, and
 | `ts_optional` | `Option<T>` | — | — | — (TypeScript-only) |
 | `as_number` | `DateTime<Tz>` | inline `z.preprocess(..., z.number())` | — | serde `with = chrono::serde::ts_milliseconds` injected |
 | `nullable` | `Option<T>` | `z.union([T, z.null()])`, key required | `anyOf: [T, {"type":"null"}]`, key required | guard: refuses a key-dropping serde attr |
+
+A length or a pattern on a field typed with a type declared elsewhere reaches a brand over a
+string. `constrained_shape` ends on `ConstraintLeaf::Named`, the field's validator takes the leaf
+itself, and `named_leaf_rendering` reads its text through `model_schema_bound_text`, which
+`branded_bound_text_method` publishes on a brand whose inner is a string or a path. An inherent
+method is found ahead of a trait's, so the block-local `UnbrandedText` answers only for an alias of
+a string or a path, and its `#[diagnostic::on_unimplemented]` is the refusal every other type
+gets, at the field. Zod writes the checks as one `.check(…)` on the named schema
+(`zod_named_checks`), and JSON Schema narrows it inside an `allOf`
+(`named_field_json_schema_value`). `check_fixed_shape_constraints` refuses a range on any named
+type and a length on one written with arguments, in every build.
 
 Multiple constraints on one field are combined. Multiple `preprocess` functions nest:
 `z.preprocess(fn1, z.preprocess(fn2, innerSchema))`.
@@ -774,6 +785,14 @@ consumer's view; this is what a change to the emitter has to keep.
   name, which is what the walker reads a type by. Nothing the alias was written with has to
   resolve beside the field. A `const _: fn(Written) -> WrittenOut = |held| held;` beside the type
   holds the two to one type.
+- **A field's bound is the walker's to list.** `generate_field_validation` records each validator
+  it publishes under the `Validator` gate (`record_field_validator`, by schema module and helper
+  stem), `walked_field` reads it back, and `Walker::bounded` writes one `{source}_bound` call
+  beside the read of each value the bound reaches: the validator run on what serde read, one
+  `Invalid` per violation, the field's name taken off the sentence. `recovering_bound_check`
+  builds the closure from the walk's own type at that position, so a list is checked item by item
+  at its index. The registry is cleared per item at `exec_model_schema`, and holds nothing in a
+  build with no schema surface, where no validator is published.
 - **Every name the flag adds is its own.** Each method carries the flag's name
   (`decode_with_value_issues`, `decode_with_bson_fields`, `decode_with_value_named`), and a
   method's own type parameters take a name the item does not write (`unclaimed_parameter`): `F`

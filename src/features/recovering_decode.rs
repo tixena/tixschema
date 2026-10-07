@@ -37,9 +37,11 @@ use crate::field_type::{
     FieldDefType, get_field_def, is_refused_sequence_wrapper, is_sequence_wrapper,
     is_transparent_wrapper,
 };
+use crate::model_schema::{helper_name_stem, recovering_bound_check};
 use crate::rename_rule::resolve_rename_rule;
 use crate::utils::{
-    Declared, declared, ident_schema_module_name, type_parameters_in_scope, written_type,
+    Declared, declared, has_field_validator, ident_schema_module_name, type_parameters_in_scope,
+    written_type,
 };
 
 /// The type names the flag adds to a schema module.
@@ -352,6 +354,7 @@ impl<'item> Shape<'item> {
                     defaulted,
                     module_name,
                     parameters,
+                    None,
                 );
                 // serde writes a struct's `tag` as a key of the object and reads past it.
                 keyed.declared.extend(container.tag);
@@ -391,6 +394,7 @@ impl<'item> Shape<'item> {
                     false,
                     module_name,
                     parameters,
+                    Some(&variant.ident.to_string()),
                 ))
             }
             Fields::Unit => Self::Nothing,
@@ -440,6 +444,11 @@ impl Source {
         #[cfg(feature = "bson")]
         Self::Bson,
     ];
+
+    /// The function a value is held to a field's bound through.
+    fn bound(self) -> Ident {
+        format_ident!("{}_bound", self.stem())
+    }
 
     /// `generics` with what this source's walker reads and writes a value with joined to every type
     /// parameter and to the type itself, which carries whatever more serde's derive asks of one. A
@@ -704,6 +713,13 @@ impl Walk<'_> {
     }
 }
 
+/// The validator tixschema published for a field's own bound, which serde's read does not run.
+struct FieldValidator {
+    /// The field's name, as the validator writes it in front of each violation.
+    named: String,
+    validator: Ident,
+}
+
 /// One field of the struct as its walker reads it.
 struct WalkedField<'item> {
     /// serde reads the field when its key is missing.
@@ -711,6 +727,7 @@ struct WalkedField<'item> {
     aliases: Vec<String>,
     key: String,
     ty: &'item Type,
+    validator: Option<FieldValidator>,
     /// `None` for a key the type writes and never reads back.
     walk: Option<Walk<'item>>,
 }
@@ -757,8 +774,9 @@ impl Walker<'_> {
         segments: &[TokenStream],
         depth: usize,
         reported: &Type,
+        validator: Option<&FieldValidator>,
     ) -> Vec<Arm> {
-        let (module, source) = (self.module, self.source);
+        let source = self.source;
         let path = path_expression(segments);
         match &walk.step {
             Step::Entries(inner) => {
@@ -775,6 +793,7 @@ impl Walker<'_> {
                         &quote! { ::core::result::Result::Ok(#key.clone()) },
                     ),
                     depth,
+                    None,
                 );
                 let expected = self.expected(reported);
                 vec![
@@ -797,6 +816,7 @@ impl Walker<'_> {
                     &item,
                     &under(segments, &quote! { ::core::result::Result::Err(#index) }),
                     depth,
+                    validator,
                 );
                 let expected = self.expected(reported);
                 vec![
@@ -808,29 +828,8 @@ impl Walker<'_> {
                     not_the_shape(held, &path, &expected, "not an array"),
                 ]
             }
-            Step::Leaf(Whole {
-                hooked,
-                parameterized,
-                read,
-                write,
-            }) => {
-                let expected = self.expected(walk.ty);
-                let leaf = source.leaf();
-                let written =
-                    source.written(*parameterized, hooked.then_some(walk.ty), write.as_ref());
-                vec![Arm {
-                    body: quote! {
-                        out.extend(#module::#leaf(#held, #read, #written, #path, #expected, issue))
-                    },
-                    nothing: false,
-                    pattern: quote! { #held },
-                }]
-            }
-            Step::Model => vec![Arm {
-                body: self.asked(walk.ty, &model_walker_call(source, walk.ty, held, segments)),
-                nothing: false,
-                pattern: quote! { #held },
-            }],
+            Step::Leaf(whole) => vec![self.leaf_arm(whole, walk.ty, held, &path, validator)],
+            Step::Model => vec![self.model_arm(walk.ty, held, segments, validator)],
             Step::Positions(slots) => {
                 let items = binding("items", depth);
                 let positions = self.positions(slots, &items, segments, depth);
@@ -850,7 +849,7 @@ impl Walker<'_> {
                     nothing: true,
                     pattern: source.null(),
                 }];
-                arms.extend(self.arms(inner, held, segments, depth, walk.ty));
+                arms.extend(self.arms(inner, held, segments, depth, walk.ty, validator));
                 arms
             }
         }
@@ -872,6 +871,32 @@ impl Walker<'_> {
                 #call
             }
         }
+    }
+
+    /// `listed` followed by what holds the value under `held`, read through `read` as `ty`, to the
+    /// bound `validator` checks: one `Invalid` per violation, at the value. `listed` alone where
+    /// the field has no validator, or its bound reaches nothing of `ty`.
+    fn bounded(
+        &self,
+        listed: &TokenStream,
+        validator: Option<&FieldValidator>,
+        ty: &Type,
+        held: &Ident,
+        read: &TokenStream,
+        path: &TokenStream,
+    ) -> TokenStream {
+        let (module, bound) = (self.module, self.source.bound());
+        let Some(check) = validator.and_then(|field| {
+            let checked_by = &field.validator;
+            recovering_bound_check(&quote! { #module::#checked_by }, &field.named, ty)
+        }) else {
+            return listed.clone();
+        };
+        let expected = self.expected(ty);
+        quote! {{
+            #listed;
+            out.extend(#module::#bound(#held, #read, #check, #path, #expected, issue));
+        }}
     }
 
     /// `walked` beside what a type with no key of its own answers: no object names it, and its
@@ -905,6 +930,7 @@ impl Walker<'_> {
                 &quote! { ::core::result::Result::Ok(key.clone()) },
             ),
             0,
+            None,
         );
         unclaimed.map_or_else(
             || quote! { for (key, #item) in #object { #each } },
@@ -944,7 +970,14 @@ impl Walker<'_> {
             key: &field.key,
         };
         let held = Ident::new("held", Span::call_site());
-        let arms = self.arms(walk, &held, &under(segments, &lookup.segment()), 0, walk.ty);
+        let arms = self.arms(
+            walk,
+            &held,
+            &under(segments, &lookup.segment()),
+            0,
+            walk.ty,
+            field.validator.as_ref(),
+        );
         self.looked_up(&lookup, object, segments, &arms, &self.expected(field.ty))
     }
 
@@ -1192,7 +1225,7 @@ impl Walker<'_> {
             Step::Entries(_) | Step::Items(_) | Step::Positions(_) | Step::Present(_) => self
                 .issues_method(&Self::listed(
                     &found,
-                    &self.arms(walk, &found, &[], 0, walk.ty),
+                    &self.arms(walk, &found, &[], 0, walk.ty, None),
                 )),
             // The type's own reader runs whatever hook its slot carries.
             Step::Leaf(_) => {
@@ -1341,6 +1374,30 @@ impl Walker<'_> {
         }
     }
 
+    /// The arm of a plain value of type `ty` held under `held`: read whole, and held to the bound
+    /// `validator` checks.
+    fn leaf_arm(
+        &self,
+        whole: &Whole,
+        ty: &Type,
+        held: &Ident,
+        path: &TokenStream,
+        validator: Option<&FieldValidator>,
+    ) -> Arm {
+        let (module, source) = (self.module, self.source);
+        let (expected, leaf) = (self.expected(ty), source.leaf());
+        let (read, pinned) = (&whole.read, whole.hooked.then_some(ty));
+        let written = source.written(whole.parameterized, pinned, whole.write.as_ref());
+        let listed = quote! {
+            out.extend(#module::#leaf(#held, #read, #written, #path, #expected, issue))
+        };
+        Arm {
+            body: self.bounded(&listed, validator, ty, held, read, path),
+            nothing: false,
+            pattern: quote! { #held },
+        }
+    }
+
     /// `arms` as the statement listing the issues of the value held under `held`.
     fn listed(held: &Ident, arms: &[Arm]) -> TokenStream {
         if let [only] = arms {
@@ -1426,6 +1483,24 @@ impl Walker<'_> {
             Shape::Held(walk) => self.held_methods(walk),
             Shape::Nothing => self.unit_methods(),
             Shape::Slots(slots) => self.positional_methods(slots),
+        }
+    }
+
+    /// The arm of a value held under `held` whose type `ty` has a walker of its own, held to the
+    /// bound `validator` checks as well.
+    fn model_arm(
+        &self,
+        ty: &Type,
+        held: &Ident,
+        segments: &[TokenStream],
+        validator: Option<&FieldValidator>,
+    ) -> Arm {
+        let asked = self.asked(ty, &model_walker_call(self.source, ty, held, segments));
+        let path = path_expression(segments);
+        Arm {
+            body: self.bounded(&asked, validator, ty, held, &own_reader(ty), &path),
+            nothing: false,
+            pattern: quote! { #held },
         }
     }
 
@@ -1546,6 +1621,7 @@ impl Walker<'_> {
             &here,
             depth.saturating_add(1),
             slot.walk.ty,
+            None,
         );
         if slot.absence_is_read
             && let [only] = arms.as_slice()
@@ -1700,10 +1776,18 @@ impl Walker<'_> {
         held: &Ident,
         segments: &[TokenStream],
         depth: usize,
+        validator: Option<&FieldValidator>,
     ) -> TokenStream {
         Self::listed(
             held,
-            &self.arms(walk, held, segments, depth.saturating_add(1), walk.ty),
+            &self.arms(
+                walk,
+                held,
+                segments,
+                depth.saturating_add(1),
+                walk.ty,
+                validator,
+            ),
         )
     }
 
@@ -1997,6 +2081,72 @@ fn binding(stem: &str, depth: usize) -> Ident {
         format!("{stem}_{depth}")
     };
     Ident::new(&name, Span::call_site())
+}
+
+/// `value_bound` and `bson_bound`: what holds a value serde read to the bound its field declares.
+fn bound_items() -> TokenStream {
+    let bson_bound = bson_bound_items();
+    quote! {
+        /// What a field's bound refuses of one JSON value `read` reads: an issue per violation
+        /// `check` answers, and none where the value does not read.
+        pub fn value_bound<'a, T, I, R, C>(
+            held: &'a serde_json::Value,
+            read: R,
+            check: C,
+            path: ::std::vec::Vec<::core::result::Result<::std::string::String, usize>>,
+            expected: &'static [ExpectedToken],
+            issue: IssueFromParts<serde_json::Value, I>,
+        ) -> ::std::vec::Vec<I>
+        where
+            R: ::core::ops::FnOnce(&'a serde_json::Value) -> ::core::result::Result<T, serde_json::Error>,
+            C: ::core::ops::FnOnce(&T) -> ::std::vec::Vec<::std::string::String>,
+        {
+            let ::core::result::Result::Ok(read) = read(held) else {
+                return ::std::vec::Vec::new();
+            };
+            check(&read)
+                .into_iter()
+                .map(|reason| issue("Invalid", path.clone(), expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::Some(reason), ::std::vec::Vec::new()))
+                .collect()
+        }
+
+        #bson_bound
+    }
+}
+
+/// `bson_bound`.
+#[cfg(feature = "bson")]
+fn bson_bound_items() -> TokenStream {
+    quote! {
+        /// What a field's bound refuses of one BSON value `read` reads: an issue per violation
+        /// `check` answers, and none where the value does not read.
+        pub fn bson_bound<T, I, E, R, C>(
+            held: &bson::Bson,
+            read: R,
+            check: C,
+            path: ::std::vec::Vec<::core::result::Result<::std::string::String, usize>>,
+            expected: &'static [ExpectedToken],
+            issue: IssueFromParts<bson::Bson, I>,
+        ) -> ::std::vec::Vec<I>
+        where
+            R: ::core::ops::FnOnce(bson::Deserializer) -> ::core::result::Result<T, E>,
+            C: ::core::ops::FnOnce(&T) -> ::std::vec::Vec<::std::string::String>,
+        {
+            let ::core::result::Result::Ok(read) = read(bson::Deserializer::new(held.clone())) else {
+                return ::std::vec::Vec::new();
+            };
+            check(&read)
+                .into_iter()
+                .map(|reason| issue("Invalid", path.clone(), expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::Some(reason), ::std::vec::Vec::new()))
+                .collect()
+        }
+    }
+}
+
+/// A build without `bson` reads no BSON value.
+#[cfg(not(feature = "bson"))]
+fn bson_bound_items() -> TokenStream {
+    TokenStream::new()
 }
 
 /// `from_bson_with` and the report it runs. Every value is read through `bson::Deserializer::new`,
@@ -2818,11 +2968,13 @@ fn module_items() -> TokenStream {
     let callback = callback_items();
     let handoff = handoff_items();
     let taken = taken_items();
+    let bound = bound_items();
     quote! {
         #path
         #callback
         #handoff
         #taken
+        #bound
     }
 }
 
@@ -3297,6 +3449,7 @@ fn walked_field<'item>(
     container_defaulted: bool,
     module_name: &str,
     parameters: &[String],
+    variant: Option<&str>,
 ) -> Option<WalkedField<'item>> {
     let ident = field.ident.as_ref()?;
     if is_off_the_wire(field) {
@@ -3308,6 +3461,8 @@ fn walked_field<'item>(
         resolve_rename_rule(rename_all).apply_to_field(&ident.unraw().to_string())
     });
     let walk = (!omission.skips_deserializing).then(|| member_walk(field, module_name, parameters));
+    let named = ident.unraw().to_string();
+    let stem = helper_name_stem(&named, variant);
     // With a read hook on the field, serde's derive no longer reads a missing key as `None`.
     let optional =
         !has_serde_read_hook(&field.attrs) && get_field_def("", &field.ty, "").is_optional();
@@ -3316,6 +3471,10 @@ fn walked_field<'item>(
         aliases: meta.aliases,
         key,
         ty: &field.ty,
+        validator: has_field_validator(module_name, &stem).then(|| FieldValidator {
+            named,
+            validator: format_ident!("validate_{stem}_value"),
+        }),
         walk,
     })
 }
@@ -3328,6 +3487,7 @@ fn walked_fields<'item>(
     container_defaulted: bool,
     module_name: &str,
     parameters: &[String],
+    variant: Option<&str>,
 ) -> Keyed<'item> {
     let mut fields: Vec<WalkedField<'item>> = Vec::new();
     let mut flattened: Vec<Flattened<'item>> = Vec::new();
@@ -3339,6 +3499,7 @@ fn walked_fields<'item>(
                 container_defaulted,
                 module_name,
                 parameters,
+                variant,
             ));
         } else if is_off_the_wire(field) {
             // serde neither writes nor reads the field, so no key in the object is its own.

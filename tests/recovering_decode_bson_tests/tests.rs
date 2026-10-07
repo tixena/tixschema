@@ -30,6 +30,7 @@ mod as_text {
     }
 }
 mod aliased;
+mod bounds;
 mod flattened;
 mod readme;
 
@@ -1565,27 +1566,37 @@ fn a_hooked_field_stored_as_its_hook_writes_it_is_no_issue() {
     assert_eq!(calls, 0);
 }
 
-/// A constraint on a struct's field hangs no read hook: serde reads the value, so the walker does,
-/// and the bound is `validate()`'s to report.
+/// A constraint on a struct's field hangs no read hook: serde reads the value, and the walker
+/// holds what it read to the bound, where a schema surface is on to publish its validator.
 #[test]
-fn a_constraint_on_a_struct_field_is_not_the_walkers_to_check() {
+fn a_constraint_on_a_struct_field_is_the_walkers_to_check() {
     let mut stored_row = written(&hooked());
     stored_row.insert("name", "Lo");
     let mut calls = 0_u32;
     let read = Hooked::from_bson_with(stored_row, |_raw, _found| {
         calls += 1;
         hooked_schema::Verdict::Reject
-    })
-    .unwrap();
-    assert_eq!(read.name, "Lo");
-    assert_eq!(calls, 0);
+    });
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-    assert_eq!(
-        read.validate(),
-        Err(vec![
-            "'name': too short: minimum length is 3, got 2".to_owned()
-        ])
-    );
+    {
+        let refused = read.unwrap_err();
+        assert_eq!(
+            told!(hooked_schema, refused.issues),
+            vec![invalid("name", "String", Bson::String("Lo".to_owned()))]
+        );
+        assert!(
+            refused
+                .to_string()
+                .ends_with("too short: minimum length is 3, got 2"),
+            "got: {refused}"
+        );
+        assert_eq!(calls, 1);
+    }
+    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    {
+        assert_eq!(read.unwrap().name, "Lo");
+        assert_eq!(calls, 0);
+    }
 }
 
 #[test]

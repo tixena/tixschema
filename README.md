@@ -1287,6 +1287,8 @@ A generic brand carries the requirement as a `Display` bound on each type parame
 
 You can add `pattern`, `minLength`, and `maxLength` constraints directly on the `#[model_schema()]` attribute for branded newtypes. Constraints are enforced in three places: the generated Zod schema, serde deserialization, and a `validate()` method on the type. A brand is the one Rust position where the check still runs on the read, and it has to: a message holding a branded field publishes no `validate()` that reaches into it, so the read is the only thing there is.
 
+A bound written here holds every value of the brand. One that should hold a single field is written on that field instead, and the brand keeps none: see [A field typed with a branded string](#a-field-typed-with-a-branded-string).
+
 **The inner type has to be one whose schema is a string** — `String`, `PathBuf`, `ObjectId`, a chrono date/time type, or a named type whose own schema is one of those. A numeric, boolean, container (`Vec`, array, `HashMap`, tuple), or opaque inner is rejected at expansion time, because the three constraints are string checks and each surface would read them differently: Zod's `.min`/`.max` become bounds on the value itself, JSON Schema ignores `minLength`/`maxLength`/`pattern` outside `"type": "string"`, and `validate()` measures the inner's `Display` rendering.
 
 **A named inner is judged by what the named type publishes**, not by the fact that it is a name. The brand appends its checks to that type's own schema binding — `Inner$Schema.min(3, ...)` — so a name whose schema is an object, a union, a `z.enum`, a number, an array or `z.unknown()` is rejected exactly as the same shape spelled directly is, and the refusal names both the brand and the inner. A brand over `serde_json::Value` is opaque, and so is a brand over that brand.
@@ -2896,6 +2898,45 @@ beside. Carry the value in a `String` field if it needs one.
 
 A `PathBuf` field carries the same three constraints, as does the `Path` borrow behind a wrapper (`Box<Path>`, `Cow<'_, Path>`, `Arc<Path>`, `Rc<Path>`): serde writes a path as a JSON string, which is what the three surfaces render a constrained string for. The checks measure that string -- the path's `to_string_lossy` rendering, which is the exact wire value for every path serde can write, a path that is not UTF-8 being one serde refuses to serialize at all.
 
+#### A field typed with a branded string
+
+A field typed with a [branded newtype](#branded-newtypes) over a string carries the same three constraints, and the bound holds that field alone. The brand keeps none, so another field of the same type reads any value:
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct FullPath(pub String);
+
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+pub struct GroupTag {
+    #[model_schema_prop(minLength = 1)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sort_field: Option<FullPath>,
+    pub source: FullPath,
+}
+```
+
+- `validate()` reports `'sort_field': too short: minimum length is 1, got 0` for `Some(FullPath(String::new()))`, and nothing for an empty `source`.
+- The Zod schema writes the checks onto the brand's own schema, so the parsed value keeps its brand: `FullPath$Schema.check(z.minLength(1, { error: ... }))`.
+- The JSON Schema narrows the brand's document from inside an `allOf`: `{ "allOf": [{ "type": "string" }, { "minLength": 1 }] }`.
+
+The bound reaches the brand through the wrappers it reaches a `String` through -- `Option`, a sequence, `Box`/`Rc`/`Arc`/`Cow` -- and whether the brand is declared above the field's type or below it. The validator measures the text the brand publishes for it: `model_schema_bound_text()`, a method `#[model_schema]` adds to every brand whose inner is a `String`, a `str`, a `PathBuf` or a `Path`, directly or behind `Box`/`Rc`/`Arc`/`Cow`. A `#[model_schema]` alias of a `String` or a `PathBuf` that takes no parameter is measured as the type it names.
+
+A length or a pattern on a field typed with anything else is a compile error at the field, because no surface has a string to measure there: a struct, an enum, a brand over a number, a `bool`, a `char`, a `serde_json::Value`.
+
+```text
+error[E0277]: model_schema: field `latest`: `minLength` cannot apply to `Version`
+   |
+14 |     pub latest: Version,
+   |                 ^^^^^^^ this type holds no string for the bound to measure
+   |
+   = note: a length or a pattern is measured on a `String`, on a path, or on a `#[serde(transparent)]` brand over one of them that `#[model_schema]` was written on: declare the field as one of those, or drop the bound
+```
+
+Two more placements are refused as the field is expanded: a length or a pattern on a type written with arguments (`UserId<String>`), which writes whatever its arguments make it, and `minimum` or `maximum` on a field typed with any type declared elsewhere, a range being spelled against a number this crate writes itself.
+
 #### What a `pattern` may contain
 
 One `pattern` string reaches three readers: the generated Rust validator builds it with `regex::Regex::new`, the Zod schema splices it between `/` delimiters as a regex literal, and the JSON Schema `pattern` keyword is an ECMA-262 regex. A pattern is accepted only if all three read it, and read it the same way; otherwise the derive fails at expansion with the construct named.
@@ -3052,6 +3093,8 @@ A field still generates both helpers into its schema module: `validate_{field}_v
 
 - **A member of an `#[serde(untagged)]` enum**, where whether the member is admissible is what chooses which variant the payload is. The check is part of reading the value rather than part of judging it -- exactly as it is under `anyOf` and `z.union` on the two schema surfaces the same type publishes -- and `validate()` cannot stand in for it, since by the time it runs the variant has already been chosen. A wrapped member's hook deserializes the member's own declared type and then runs the same walk `validate()` runs over it; the two differ in that `validate()` answers with every violation in the instance while a `Deserializer` answers with one line, so the read stops at the first value that broke a bound and hands serde that value's violations joined by `; `.
 - **A constrained brand**, where the same reasoning applies wherever the brand is used as an untagged member. The hook is on the brand's type rather than on the field, so it is one hook covering every position the brand appears in.
+
+The [recovering decode](#recovering-decode-decode_with) is where a field's bound is checked on a read that is asked for it: `from_value_with` and `from_bson_with` run each field's validator on the value serde read and list every violation as an issue of its own, which is what lets a callback repair a stored value. See [What each shape reports](#what-each-shape-reports).
 
 A field whose key may be left out keeps that reading. Where a member is hung with the hook -- an untagged variant's, which is the one position that is -- an `Option` written outermost (under any number of transparent wrappers) is given `#[serde(default)]` alongside it, since a `deserialize_with` otherwise turns a missing key into an error; a field that writes its own `default` keeps the one it wrote. Off the hook there is nothing to put back and no `default` is written, so a required key that goes missing is still the error it always was.
 
@@ -3597,7 +3640,7 @@ List the `bson` library at the major version your MongoDB driver uses, so the `D
 ### One call, one chance
 
 1. Plain serde reads the value, and the walker walks it. When serde reads it and the walk finds no issue, the decoded value is returned and the callback is never called.
-2. Otherwise the callback is called once, with the raw value, mutable, and the list of every issue the walk found. A record serde reads still reaches the callback when it carries a key its type does not declare, or a value held in another form than its field writes.
+2. Otherwise the callback is called once, with the raw value, mutable, and the list of every issue the walk found. A record serde reads still reaches the callback when it carries a key its type does not declare, a value held in another form than its field writes, or a value that breaks a bound its field declares.
 3. `Verdict::Reject`: the read fails with `Unrecovered`, carrying that list.
 4. `Verdict::Fixed`: plain serde reads the value the callback left, and the walker walks it again. A read with no issue returns the value. Anything else fails the read with `Unrecovered`, carrying the second walk's list. The callback is not called again.
 
@@ -3647,7 +3690,7 @@ The walker reads each type in the form serde writes it. A type held in another f
 - A key the type does not declare is `Unknown`. A key the type writes and never reads back, under `skip_deserializing`, is one it declares.
 - A field whose type is another flagged type is walked by that type's walker at the extended path, through a list, a map, an `Option` or a `Box`: `versions[1].number`, `byName.first.number`, `latest.draft`. An optional one is walked when its key is there and does not hold `null`.
 - A value that reads is written back the way its field writes it, through the field's `serialize_with` function or `with` module when it has one, and compared with what is held. A mismatch is `Mistyped`.
-- A `#[model_schema_prop]` constraint on a struct's field hangs no read hook, so the walker reads the value as serde does, and the bound stays `validate()`'s to report.
+- A `#[model_schema_prop]` bound on a field hangs no read hook, so serde reads a value that breaks it. The walker runs the field's validator on what serde read, and lists each violation as an `Invalid` of its own at the value, with the bound's sentence as its `reason`: `humanName` holding `""` under `minLength = 1` lists `Invalid` at `humanName`, reason `too short: minimum length is 1, got 0`. A value that breaks two bounds lists two issues, an item of a list is listed at its index (`tags[1]`), and a field of a tagged enum's variant is listed the same way. A callback repairs the value at the issue's path. A validator is published only where a schema surface is on (`typescript`, `zod` or `jsonschema`), so a build with none lists nothing.
 
 Read as a struct holding `name: String` and `versions: Vec<Version>`, `{ "name": "Loan", "versions": [{ "number": 1 }, { "number": "2" }], "legacyField": true }` lists `Invalid` at `versions[1].number`, expected `I32`, and `Unknown` at `legacyField`.
 
