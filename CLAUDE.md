@@ -799,9 +799,18 @@ consumer's view; this is what a change to the emitter has to keep.
   and `I`, numbered where the item writes one.
 - **The emitted code names only what both major versions of the `bson` library have.** Every BSON
   value is read through `bson::Deserializer::new` and written through `bson::Serializer::new`.
-  `tests/recovering_decode_bson_tests/` is compiled once per major, by
-  `recovering_decode_bson2_tests.rs` and `recovering_decode_bson3_tests.rs`, each binding the name
-  `bson` with an `extern crate`.
+  `tests/recovering_decode_bson_tests/` is compiled once per major, each time beside a MongoDB
+  driver built for that major: by `tests/recovering_decode_bson2_tests.rs` here, which binds the
+  name `bson` to version 2 with an `extern crate`, and by
+  `bson3/tests/recovering_decode_bson3_tests.rs` in `bson3/`, a package of its own whose `bson` is
+  version 3.
+- **`bson3/` mirrors this package's manifest.** One package holds one build of the driver, and one
+  build serves one major, so the version 3 tests cannot sit in `tests/`. The shared sources read
+  `cfg(feature = "...")` and are linted in whichever package compiles them, so `bson3/Cargo.toml`
+  declares every feature under the same name, each turning on `tixschema/<name>`, and carries the
+  lint tables entry for entry; `bson3/tests/mirrored_manifest_tests.rs` fails when either drifts.
+  Every `just` recipe that tests, lints, checks or formats this package runs the same line over
+  `bson3/Cargo.toml`.
 - **Nothing emitted carries `#[allow]`, `#[expect]` or `#[doc(hidden)]`.** A consumer's lint levels
   reach what the macro emits into their crate: every added type is `#[non_exhaustive]`, no added
   function takes `impl Trait` as a parameter, and a `Result` is written `core::result::Result`.
@@ -1057,9 +1066,9 @@ The CI pipeline ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs:
 
 1. `cargo build --verbose`
 2. `just check` (cargo check + clippy)
-3. `just lint-sets` (clippy over every combination of the feature sets)
+3. `just lint-sets` (clippy over every combination of the feature sets, in this package and in `bson3/`)
 4. `cargo test --verbose` (basic tests)
-5. `just test-sets` (every combination of the `web`, `mobile` and `mongo` feature sets via cargo-hack)
+5. `just test-sets` (every combination of the `web`, `mobile` and `mongo` feature sets via cargo-hack, in this package and in `bson3/`)
 6. `just typecheck-ts` (the emitted TypeScript through a real `tsc --strict`, and a second package compiled against the declarations emitted for it)
 7. `just test-emitted` (the emitted Node, Dart, Swift and Kotlin clients run under their own toolchains)
 8. `cargo audit`
@@ -1178,10 +1187,16 @@ tixschema/
 │   ├── mongodb_real_tests.rs
 │   ├── recovering_decode_tests.rs        # from_value_with
 │   ├── recovering_decode_bson2_tests.rs  # from_bson_with, against bson 2
-│   ├── recovering_decode_bson3_tests.rs  # from_bson_with, against bson 3
+│   ├── recovering_decode_bson_tests/     # The BSON suite both majors compile
 │   ├── edge_cases_tests.rs
 │   ├── semantic_types_tests.rs
 │   └── ...
+├── bson3/                        # A package of its own: bson 3, and a MongoDB driver built for it
+│   ├── Cargo.toml                # The root's features and lint tables, mirrored
+│   ├── src/lib.rs                # Empty: the package holds tests only
+│   └── tests/
+│       ├── mirrored_manifest_tests.rs        # Fails when the two manifests drift
+│       └── recovering_decode_bson3_tests.rs  # from_bson_with, against bson 3
 ├── justfile                      # Task runner (commands)
 ├── Cargo.toml                    # Dependencies, features
 └── README.md                     # User documentation

@@ -35,7 +35,6 @@ mod flattened;
 mod piped;
 mod readme;
 
-use core::any::TypeId;
 use core::error::Error;
 use core::fmt::Display;
 use core::str::FromStr;
@@ -835,9 +834,10 @@ where
     serializer.collect_str(value)
 }
 
-/// Whether the name `bson` is bound to version 2 of the library in the binary this is built into.
+/// Whether the name `bson` is bound to version 2 of the library in the package this is built in:
+/// tixschema's own binds it to version 2, and `bson3/` to version 3.
 fn built_against_version_2() -> bool {
-    TypeId::of::<Bson>() == TypeId::of::<bson2::Bson>()
+    env!("CARGO_PKG_NAME") == "tixschema"
 }
 
 /// What `value` is stored as, written through the serializer both versions of the library have.

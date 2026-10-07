@@ -3635,7 +3635,7 @@ serde_json = "1"
 bson = "2.15"
 ```
 
-List the `bson` library at the major version your MongoDB driver uses, so the `Document` the driver hands you is the `bson::Document` the method takes. The generated code calls only what both major versions of the library have, and this repository's own tests build it against each: `bson = "2.15"`, and `bson = { version = "3.1", features = ["serde"] }`, with version 3's `serde` feature turned on.
+List the `bson` library at the major version your MongoDB driver uses, so the `Document` the driver hands you is the `bson::Document` the method takes. The generated code calls only what both major versions of the library have, and this repository's own tests build it against each, beside a MongoDB driver built for that version: `bson = "2.15"` in the crate's own `tests/`, and `bson = { version = "3.1", features = ["serde"] }`, with version 3's `serde` feature turned on, in `bson3/`, a package of its own.
 
 ### One call, one chance
 
