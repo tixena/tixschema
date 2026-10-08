@@ -36,6 +36,7 @@ jobs:
           ~/.cargo/registry
           ~/.cargo/git
           target
+          bson3/target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: |
           ${{ runner.os }}-cargo-
@@ -115,11 +116,11 @@ jobs:
 
     - name: Run security audit
       id: audit
-      # No Cargo.lock is committed (library crate), so generate one to scan.
+      # No Cargo.lock is committed (library crate), so the recipe generates one to scan for each
+      # of the two packages, this one and `bson3/`.
       run: |
         echo "🛡️ Running security audit..."
-        cargo generate-lockfile
-        cargo audit
+        just audit
 
     - name: Send Discord notification
       if: always()
