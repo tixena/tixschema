@@ -3,8 +3,8 @@
 //! driver built for it, so every check is compiled against both.
 //!
 //! `live` runs the operations against a real collection, and stands down where no server is
-//! named. `offline` holds what needs no server: the error, and the read of a row once the driver
-//! has handed it over.
+//! named. `offline` holds what needs no server: the error, the read of a row once the driver has
+//! handed it over, a row refused before it is sent, and what a read holds before it is awaited.
 
 mod live;
 mod offline;
@@ -16,7 +16,7 @@ use bson::{Bson, Document, doc};
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-use invoice_schema::{Expected, Issue, Path, Resolution, Segment};
+use invoice_schema::{Expected, Filter, Issue, OperationError, Path, Resolution, Segment};
 
 /// The `_id` of the row every check seeds.
 const SEEDED_ID: &str = "6a7cc592ca0574e6efdfe217";
@@ -38,6 +38,23 @@ struct Invoice {
     #[serde(rename = "_id")]
     id: ObjectId,
     number: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    paid_at: Option<String>,
+    status: InvoiceStatus,
+    total: u32,
+}
+
+#[model_schema(decode_with)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+enum InvoiceStatus {
+    Draft,
+    Paid,
+    PastDue,
+}
+
+/// A filter every row of the collection matches.
+fn every_row() -> Filter<Invoice> {
+    Filter::raw(doc! {})
 }
 
 /// What the seeded row reads as.
@@ -49,6 +66,39 @@ fn invoice() -> Invoice {
         },
         id: seeded_id(),
         number: "INV-0042".to_owned(),
+        paid_at: None,
+        status: InvoiceStatus::PastDue,
+        total: 1_250_u32,
+    }
+}
+
+/// Whether `refused` is the row [`unreadable`] stores, told by its `_id` and its one issue.
+fn names_the_unreadable_row(refused: &OperationError) -> bool {
+    matches!(
+        refused,
+        OperationError::Unreadable { row, issues }
+            if *row == format!("ObjectId(\"{SEEDED_ID}\")")
+                && matches!(
+                    issues.as_slice(),
+                    [Issue::Invalid {
+                        path,
+                        expected: Expected::U32,
+                        found: Bson::String(text),
+                        reason: _reason,
+                    }] if *path == open_invoices() && text == "3"
+                )
+    )
+}
+
+/// The invoice numbered `at`, past due, under an `_id` of its own and a total that grows with
+/// its number.
+fn numbered(at: u32) -> Invoice {
+    let id = format!("{seeded}{at:08x}", seeded = &SEEDED_ID[..16]);
+    Invoice {
+        id: ObjectId::parse_str(id).unwrap(),
+        number: format!("INV-{at:04}"),
+        total: at * 100_u32,
+        ..invoice()
     }
 }
 
@@ -66,11 +116,22 @@ fn readable() -> Document {
         "customer": { "name": "Acme", "openInvoices": 3_i64 },
         "_id": seeded_id(),
         "number": "INV-0042",
+        "status": "PastDue",
+        "total": 1_250_i64,
     }
 }
 
 fn seeded_id() -> ObjectId {
     ObjectId::parse_str(SEEDED_ID).unwrap()
+}
+
+/// `row` as the document the type writes for it.
+fn stored(row: &Invoice) -> Document {
+    row.serialize(bson::Serializer::new())
+        .unwrap()
+        .as_document()
+        .unwrap()
+        .clone()
 }
 
 /// The row as an older writer left it, with `openInvoices: "3"`.
@@ -79,6 +140,8 @@ fn unreadable() -> Document {
         "customer": { "name": "Acme", "openInvoices": "3" },
         "_id": seeded_id(),
         "number": "INV-0042",
+        "status": "PastDue",
+        "total": 1_250_i64,
     }
 }
 

@@ -121,8 +121,11 @@ impl Walk<'_> {
         let [earlier, last] = before;
         let follows = |written: char, token: Option<&TokenTree>| matches!(token, Some(TokenTree::Punct(punct)) if punct.as_char() == written);
         let qualified = follows(':', earlier) && follows(':', last);
+        // A name written after `type` is declared there, and reads nothing in scope: an `impl`
+        // of a standard trait declares the trait's own associated type under its name.
+        let declared = matches!(last, Some(TokenTree::Ident(keyword)) if keyword == "type");
         let watched = PRELUDE.iter().chain(&ROOTS).any(|bare| named == bare);
-        if qualified || follows('#', last) || !watched {
+        if qualified || declared || follows('#', last) || !watched {
             return;
         }
         self.found.push(format!(
@@ -244,6 +247,13 @@ fn the_walk_finds_a_bare_name_and_passes_over_what_is_not_one() {
                 fn made(from: #held) -> ::core::option::Option<std::vec::Vec<Box<u8>>> {
                     Some(Expected::String)
                 }
+                impl ::core::future::IntoFuture for Expected {
+                    type IntoFuture = ::core::future::Ready<()>;
+                    type Output = ();
+                    fn into_future(self) -> <Self as IntoFuture>::IntoFuture {
+                        ::core::future::ready(())
+                    }
+                }
             }
         }
     "#;
@@ -266,6 +276,7 @@ fn the_walk_finds_a_bare_name_and_passes_over_what_is_not_one() {
             "sample.rs:10: `std`",
             "sample.rs:10: `Box`",
             "sample.rs:11: `Some`",
+            "sample.rs:16: `IntoFuture`",
         ]
     );
 }

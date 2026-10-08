@@ -1,5 +1,5 @@
 //! A flagged type nothing calls an operation on, in a module that denies every unused item: no
-//! lint names an operation the flag adds as never used.
+//! lint names an operation the flag adds, or the read they answer, as never used.
 
 #![deny(unused)]
 

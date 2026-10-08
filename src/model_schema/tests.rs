@@ -190,14 +190,25 @@ const TYPED_PATHS: [&str; 3] = [
     "pub const fn mongo_fields_under <",
 ];
 
-/// What `mongodb` adds for a flagged type's operations: the error they fail with in its module,
-/// and on the type the two reads of one row and the read of a stored row they share.
+/// What `mongodb` adds for a flagged type's operations: in its module the error they fail with
+/// and the read they answer, and on the type the reads and the count, the writes, and the read
+/// and the write of one stored row they share.
 #[cfg(feature = "serde")]
-const OPERATIONS: [&str; 4] = [
+const OPERATIONS: [&str; 14] = [
     "pub enum OperationError {",
-    "pub async fn find_one <",
-    "pub async fn find_one_with <",
+    "pub struct Read < 'c , T , O > {",
+    "pub fn find_one <",
+    "pub fn find_one_with < 'c ,",
+    "pub fn find <",
+    "pub fn find_with < 'c ,",
+    "pub fn count <",
+    "pub fn insert_one < 'c > (",
+    "pub async fn update_one <",
+    "pub async fn update_many <",
+    "pub async fn delete_one <",
+    "pub async fn delete_many <",
     "fn mongo_read_row (",
+    "fn mongo_written_row (",
 ];
 
 /// One enum per form serde writes an enum in, then one per form whose variants carry an alias or
@@ -6287,8 +6298,18 @@ fn a_type_without_decode_with_gets_no_typed_path_and_no_operation() {
             "MONGO_FIELDS",
             "mongo_fields_under",
             "OperationError",
+            "pub struct Read <",
             "find_one",
+            "pub fn find <",
+            "find_with",
+            "pub fn count <",
+            "insert_one",
+            "update_one",
+            "update_many",
+            "delete_one",
+            "delete_many",
             "mongo_read_row",
+            "mongo_written_row",
         ] {
             assert!(
                 !expanded.contains(added),
@@ -6639,8 +6660,8 @@ fn an_item_without_decode_with_expands_as_it_did() {
 
 /// The flag written alone and written `true` generate the same thing, in every build that reads
 /// serde's attributes: the entry point, the walker, and the callback's types in the type's module.
-/// The query types and the error the operations fail with are in that module under `mongodb`, and
-/// in no other build.
+/// The query types, the error the operations fail with and the read they answer are in that
+/// module under `mongodb`, and in no other build.
 #[cfg(feature = "serde")]
 #[test]
 fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
@@ -6676,6 +6697,7 @@ fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
     }
     for under_mongodb in [
         "pub enum OperationError {",
+        "pub struct Read < 'c , T , O > {",
         "pub type WriteError =",
         "pub struct MongoPath {",
         "pub struct Filter < Root > {",
@@ -6752,6 +6774,8 @@ fn what_decode_with_emits_is_written_for_the_lints_a_consumer_denies() {
             "pub struct TakenProbe < 'asked > (",
             #[cfg(feature = "mongodb")]
             "pub enum OperationError {",
+            #[cfg(feature = "mongodb")]
+            "pub struct Read < 'c , T , O > {",
             #[cfg(feature = "mongodb")]
             "pub struct MongoPath {",
             #[cfg(feature = "mongodb")]

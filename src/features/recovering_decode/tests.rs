@@ -50,9 +50,22 @@ const FLATTENING: &str = "pub struct Entry { #[serde(flatten)] pub audit: Audit,
 const FLATTENING_A_PARAMETER: &str =
     "pub struct Envelope<T> { #[serde(flatten)] pub body: T, pub id: String }";
 
-/// What `mongodb` adds to every type beside its BSON entry points, in the order written: the two
-/// reads of one row, and the read of a stored row both end with.
-const OPERATIONS: [&str; 3] = ["find_one", "find_one_with", "mongo_read_row"];
+/// What `mongodb` adds to every type beside its BSON entry points, in the order written: the
+/// reads and the count, the writes, and the read and the write of one stored row they share.
+const OPERATIONS: [&str; 12] = [
+    "find_one",
+    "find_one_with",
+    "find",
+    "find_with",
+    "count",
+    "insert_one",
+    "update_one",
+    "update_many",
+    "delete_one",
+    "delete_many",
+    "mongo_read_row",
+    "mongo_written_row",
+];
 
 /// The enum emitter, run as it runs beside model types declared above the enum: every type the
 /// item names is taken for one, so its walker is called as it stands.
@@ -267,6 +280,28 @@ fn paths_module_items(_source: &str) -> proc_macro2::TokenStream {
     proc_macro2::TokenStream::new()
 }
 
+/// The operations the flag adds to a struct of named fields, each as its visibility and its
+/// signature, in the order written.
+#[cfg(feature = "mongodb")]
+fn operation_signatures() -> Vec<String> {
+    let item: syn::ItemStruct = syn::parse_str("pub struct Named { pub title: String }").unwrap();
+    let added: syn::ItemImpl = syn::parse2(struct_recovering_decode(&item).type_impl).unwrap();
+    added
+        .items
+        .iter()
+        .filter_map(|added_item| {
+            if let syn::ImplItem::Fn(method) = added_item
+                && OPERATIONS.contains(&method.sig.ident.to_string().as_str())
+            {
+                let (visibility, signature) = (&method.vis, &method.sig);
+                Some(quote::quote!(#visibility #signature).to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 /// The methods one source adds to every type, in the order written. Under `mongodb` the
 /// operations sit beside the BSON entry points.
 fn methods_of(stem: &str) -> Vec<String> {
@@ -376,6 +411,63 @@ fn path_methods() -> Vec<String> {
             }
         })
         .collect()
+}
+
+/// Every token `tokens` is made of, in order, with each group opened between two parentheses,
+/// whatever its own delimiters.
+#[cfg(feature = "mongodb")]
+fn bounded_tokens(tokens: proc_macro2::TokenStream, bounded: &mut Vec<String>) {
+    for token in tokens {
+        if let proc_macro2::TokenTree::Group(group) = token {
+            bounded.push("(".to_owned());
+            bounded_tokens(group.stream(), bounded);
+            bounded.push(")".to_owned());
+        } else {
+            bounded.push(token.to_string());
+        }
+    }
+}
+
+/// The module or crate each path among `emitted` starts at, each once, sorted: a lowercase name
+/// ahead of `::` that no earlier segment of a path leads to.
+#[cfg(feature = "mongodb")]
+fn path_roots(emitted: proc_macro2::TokenStream) -> Vec<String> {
+    const KEYWORDS: [&str; 6] = ["as", "dyn", "impl", "let", "match", "mut"];
+    let mut leaves = Vec::new();
+    bounded_tokens(emitted, &mut leaves);
+    // Each `::` as one token. Of three colons in a row the first ends a name and its type apart.
+    let mut tokens: Vec<String> = Vec::new();
+    for leaf in leaves {
+        match (leaf.as_str(), tokens.last().map(String::as_str)) {
+            (":", Some(":")) => {
+                tokens.pop();
+                tokens.push("::".to_owned());
+            }
+            (":", Some("::")) => {
+                tokens.pop();
+                tokens.extend([":".to_owned(), "::".to_owned()]);
+            }
+            _ => tokens.push(leaf),
+        }
+    }
+    let named = |token: &str| {
+        token.starts_with(|first: char| first.is_alphabetic() || first == '_')
+            && !KEYWORDS.contains(&token)
+    };
+    let mut roots: Vec<String> = (0..tokens.len().saturating_sub(1))
+        .filter(|&at| {
+            let led = at > 0 && tokens[at - 1] == "::";
+            let continued = led && at > 1 && (named(&tokens[at - 2]) || tokens[at - 2] == ">");
+            named(&tokens[at])
+                && tokens[at].starts_with(|first: char| first.is_ascii_lowercase())
+                && tokens[at + 1] == "::"
+                && !continued
+        })
+        .map(|at| tokens[at].clone())
+        .collect();
+    roots.sort_unstable();
+    roots.dedup();
+    roots
 }
 
 /// The methods `added` declares in the inherent `impl` blocks of its types, each with the name of
@@ -1178,72 +1270,119 @@ fn the_operation_error_tells_each_failure_and_answers_its_source() {
     assert_eq!(emitted.matches("From <").count(), 1, "got: {emitted}");
 }
 
-/// A read takes the collection as one of documents, and as its filter any filter over the rows of
-/// the type, asked by the marker a filter carries in a `where` clause, so that an update does not
-/// stand there. It answers the row or `None`, and fails with the type's own `OperationError`.
+/// A read and a count take the collection as one of documents, and as their filter any filter
+/// over the rows of the type, asked by the marker a filter carries in a `where` clause, so that
+/// an update does not stand there. None is `async`: each answers the read the module declares,
+/// over the type and what the read answers once awaited.
 #[cfg(feature = "mongodb")]
 #[test]
-fn a_read_takes_any_filter_over_the_types_rows_and_answers_the_row_or_none() {
-    let item: syn::ItemStruct = syn::parse_str("pub struct Named { pub title: String }").unwrap();
-    let added: syn::ItemImpl = syn::parse2(struct_recovering_decode(&item).type_impl).unwrap();
-    let signatures: Vec<String> = added
-        .items
-        .iter()
-        .filter_map(|added_item| {
-            if let syn::ImplItem::Fn(method) = added_item
-                && OPERATIONS.contains(&method.sig.ident.to_string().as_str())
-            {
-                let (visibility, signature) = (&method.vis, &method.sig);
-                Some(quote::quote!(#visibility #signature).to_string())
-            } else {
-                None
-            }
-        })
-        .collect();
+fn a_read_and_a_count_take_any_filter_over_the_types_rows_and_answer_a_read() {
+    let filtered = "where F : :: core :: convert :: Into < bson :: Document > + :: core :: \
+                    convert :: AsRef < :: core :: marker :: PhantomData < Self > > ,";
+    let plain = |named: &str, answers: &str| {
+        format!(
+            "pub fn {named} < F > (collection : & mongodb :: Collection < bson :: Document > , \
+             filter : F ,) -> named_schema :: Read < '_ , Self , {answers} > {filtered}"
+        )
+    };
+    let resolved = |named: &str, answers: &str| {
+        format!(
+            "pub fn {named} < 'c , F > (collection : & 'c mongodb :: Collection < bson :: \
+             Document > , filter : F , resolvers : & 'c [named_schema :: Resolver < 'c , bson :: \
+             Document , bson :: Bson >] ,) -> named_schema :: Read < 'c , Self , {answers} > \
+             {filtered}"
+        )
+    };
+    let one = ":: core :: option :: Option < Self >";
+    let every = ":: std :: vec :: Vec < Self >";
     assert_eq!(
-        signatures,
+        operation_signatures()[..5],
         [
-            "pub async fn find_one < F > (collection : & mongodb :: Collection < bson :: Document \
-             > , filter : F ,) -> :: core :: result :: Result < :: core :: option :: Option < Self \
-             > , named_schema :: OperationError > where F : :: core :: convert :: Into < bson :: \
-             Document > + :: core :: convert :: AsRef < :: core :: marker :: PhantomData < Self > \
-             > ,",
-            "pub async fn find_one_with < F > (collection : & mongodb :: Collection < bson :: \
-             Document > , filter : F , resolvers : & [named_schema :: Resolver < '_ , bson :: \
-             Document , bson :: Bson >] ,) -> :: core :: result :: Result < :: core :: option :: \
-             Option < Self > , named_schema :: OperationError > where F : :: core :: convert :: \
-             Into < bson :: Document > + :: core :: convert :: AsRef < :: core :: marker :: \
-             PhantomData < Self > > ,",
-            "fn mongo_read_row (row : bson :: Document , resolvers : & [named_schema :: Resolver \
-             < '_ , bson :: Document , bson :: Bson >] ,) -> :: core :: result :: Result < Self , \
-             named_schema :: OperationError >",
+            plain("find_one", one),
+            resolved("find_one_with", one),
+            plain("find", every),
+            resolved("find_with", every),
+            plain("count", "u64"),
         ]
     );
 }
 
-/// Whatever the type's shape, `find_one` is `find_one_with` with no resolvers. That one asks the
-/// driver for one document, reports what the driver fails with as `Database`, and hands the row
-/// to the read of a stored row, which takes the row's `_id` as text and goes through
-/// `from_bson_piped`: no operation reads a row with plain serde.
+/// A write answers what the driver's own method of its name answers, and fails with the type's
+/// own `OperationError`. An update is asked by the marker an update carries, under a second
+/// parameter, so the two arguments cannot change places. `insert_one` is no `async fn`: what it
+/// answers is a future that holds no borrow of the value, and says so in its type.
 #[cfg(feature = "mongodb")]
 #[test]
-fn a_read_hands_the_row_the_driver_answers_to_the_piped_entry_point() {
+fn a_write_answers_what_the_drivers_own_method_answers() {
+    let filtered = "F : :: core :: convert :: Into < bson :: Document > + :: core :: convert :: \
+                    AsRef < :: core :: marker :: PhantomData < Self > > ,";
+    let update = |named: &str| {
+        format!(
+            "pub async fn {named} < F , U > (collection : & mongodb :: Collection < bson :: \
+             Document > , filter : F , update : U ,) -> :: core :: result :: Result < mongodb :: \
+             results :: UpdateResult , named_schema :: OperationError > where {filtered} U : :: \
+             core :: convert :: Into < bson :: Document > + :: core :: convert :: AsRef < :: core \
+             :: marker :: PhantomData < fn (Self) -> Self > > ,"
+        )
+    };
+    let delete = |named: &str| {
+        format!(
+            "pub async fn {named} < F > (collection : & mongodb :: Collection < bson :: Document \
+             > , filter : F ,) -> :: core :: result :: Result < mongodb :: results :: \
+             DeleteResult , named_schema :: OperationError > where {filtered}"
+        )
+    };
+    assert_eq!(
+        operation_signatures()[5..],
+        [
+            "pub fn insert_one < 'c > (& self , collection : & 'c mongodb :: Collection < bson :: \
+             Document > ,) -> :: core :: pin :: Pin < :: std :: boxed :: Box < dyn :: core :: \
+             future :: Future < Output = :: core :: result :: Result < mongodb :: results :: \
+             InsertOneResult , named_schema :: OperationError > > + :: core :: marker :: Send + 'c \
+             > >"
+            .to_owned(),
+            update("update_one"),
+            update("update_many"),
+            delete("delete_one"),
+            delete("delete_many"),
+            "fn mongo_read_row (row : bson :: Document , resolvers : & [named_schema :: Resolver \
+             < '_ , bson :: Document , bson :: Bson >] ,) -> :: core :: result :: Result < Self , \
+             named_schema :: OperationError >"
+                .to_owned(),
+            "fn mongo_written_row (& self) -> :: core :: result :: Result < bson :: Document , \
+             named_schema :: OperationError >"
+                .to_owned(),
+        ]
+    );
+}
+
+/// Whatever the type's shape, a read with no resolvers is its twin with none, and each twin and
+/// the count build a `Read` over the filter as a document and the read of one stored row. That
+/// read takes the row's `_id` as text and goes through `from_bson_piped`: no operation reads a
+/// row with plain serde.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_read_is_built_over_the_read_of_one_stored_row() {
+    let filtered = ":: Read :: new (collection , :: core :: convert :: Into :: < bson :: Document \
+                    > :: into (filter) ,";
     for (source, type_impl) in impls_of_every_shape() {
-        assert_eq!(
-            body_of(type_impl.clone(), "find_one"),
-            "{ Self :: find_one_with (collection , filter , & []) . await }",
-            "for {source}"
-        );
-        let with = body_of(type_impl.clone(), "find_one_with");
+        for (plain, twin) in [("find_one", "find_one_with"), ("find", "find_with")] {
+            assert_eq!(
+                body_of(type_impl.clone(), plain),
+                format!("{{ Self :: {twin} (collection , filter , & []) }}"),
+                "for {source}"
+            );
+            let built = body_of(type_impl.clone(), twin);
+            assert!(
+                built.contains(filtered)
+                    && built.ends_with(" resolvers , Self :: mongo_read_row) }"),
+                "for {source}, got: {built}"
+            );
+        }
+        let counted = body_of(type_impl.clone(), "count");
         assert!(
-            with.starts_with(
-                "{ let found = collection . find_one (:: core :: convert :: Into :: < bson :: \
-                 Document > :: into (filter)) . await . map_err ("
-            ) && with.ends_with(
-                ":: OperationError :: Database) ? ; found . map (| row | Self :: mongo_read_row \
-                 (row , resolvers)) . transpose () }"
-            ),
-            "for {source}, got: {with}"
+            counted.contains(filtered) && counted.ends_with(" & [] , Self :: mongo_read_row) }"),
+            "for {source}, got: {counted}"
         );
         let row = body_of(type_impl.clone(), "mongo_read_row");
         assert!(
@@ -1256,23 +1395,282 @@ fn a_read_hands_the_row_the_driver_answers_to_the_piped_entry_point() {
             ),
             "for {source}, got: {row}"
         );
-        for read in OPERATIONS {
-            let body = body_of(type_impl.clone(), read);
+        for operation in OPERATIONS {
+            let body = body_of(type_impl.clone(), operation);
             assert!(!body.contains("eserialize"), "for {source}, got: {body}");
         }
     }
 }
 
-/// Of the driver the operations name the collection and its error, and of the `bson` library a
-/// document, a value and the serializer: each is one path under both of the library's major
-/// versions. Every bound is in a `where` clause, and nothing they add is hidden from a lint.
+/// Whatever the type's shape, `insert_one` writes the value before it answers, through
+/// `bson::Serializer::new`, and what it answers refuses with what the write refused before it
+/// asks the driver anything. A value not written as a document is refused with the serializer's
+/// own error. Each other write hands the driver its documents, and its failure is `Database`.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_write_hands_the_driver_documents_and_an_insert_writes_its_row_first() {
+    let as_document = ":: core :: convert :: Into :: < bson :: Document > :: into";
+    let refused = ":: OperationError :: Database) }";
+    let refused_as = ":: WriteError as :: serde :: ser :: Error > :: custom (\"a row is stored as \
+                      a document, and this value is not written as one\" ,) ,)) , } }";
+    for (source, type_impl) in impls_of_every_shape() {
+        let inserted = body_of(type_impl.clone(), "insert_one");
+        assert!(
+            inserted.starts_with(
+                "{ let written = self . mongo_written_row () ; :: std :: boxed :: Box :: pin \
+                 (async move { collection . insert_one (written ?) . await . map_err ("
+            ) && inserted.ends_with(":: OperationError :: Database) }) }"),
+            "for {source}, got: {inserted}"
+        );
+        for updated in ["update_one", "update_many"] {
+            let body = body_of(type_impl.clone(), updated);
+            assert!(
+                body.starts_with(&format!(
+                    "{{ collection . {updated} ({as_document} (filter) , {as_document} (update)) \
+                     . await . map_err ("
+                )) && body.ends_with(refused),
+                "for {source}, got: {body}"
+            );
+        }
+        for deleted in ["delete_one", "delete_many"] {
+            let body = body_of(type_impl.clone(), deleted);
+            assert!(
+                body.starts_with(&format!(
+                    "{{ collection . {deleted} ({as_document} (filter)) . await . map_err ("
+                )) && body.ends_with(refused),
+                "for {source}, got: {body}"
+            );
+        }
+        let written = body_of(type_impl.clone(), "mongo_written_row");
+        assert!(
+            written.starts_with(
+                "{ match :: serde :: Serialize :: serialize (self , bson :: Serializer :: new ()) \
+                 . map_err ("
+            ) && written.contains(
+                ":: OperationError :: Unwritable) ? { bson :: Bson :: Document (row) => :: core \
+                 :: result :: Result :: Ok (row) , _ => :: core :: result :: Result :: Err ("
+            ) && written.ends_with(refused_as),
+            "for {source}, got: {written}"
+        );
+    }
+}
+
+/// `Read` is in the module in a build with `mongodb` and in no other: `#[non_exhaustive]`, to be
+/// used, every member private, over the type it reads and what it answers. It is told as a value
+/// through an impl written out, and awaited through one `IntoFuture` per answer.
+#[test]
+fn the_read_is_declared_under_mongodb_alone() {
+    let added: syn::File = syn::parse2(module_items()).unwrap();
+    let declared: Vec<(Vec<String>, String, bool)> = added
+        .items
+        .iter()
+        .filter_map(|item| {
+            if let syn::Item::Struct(declared) = item
+                && declared.ident == "Read"
+            {
+                Some((
+                    declared
+                        .attrs
+                        .iter()
+                        .filter(|attribute| !attribute.path().is_ident("doc"))
+                        .map(|attribute| attribute.meta.to_token_stream().to_string())
+                        .collect(),
+                    declared.generics.to_token_stream().to_string(),
+                    declared
+                        .fields
+                        .iter()
+                        .all(|member| matches!(member.vis, syn::Visibility::Inherited)),
+                ))
+            } else {
+                None
+            }
+        })
+        .collect();
+    let implemented: Vec<String> = added
+        .items
+        .iter()
+        .filter_map(|item| {
+            if let syn::Item::Impl(block) = item
+                && let syn::Type::Path(own) = &*block.self_ty
+                && own.path.segments.last()?.ident == "Read"
+                && let Some((implemented, _for)) = &block.trait_
+            {
+                let on = &block.self_ty;
+                Some(quote::quote!(#implemented for #on).to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+    if cfg!(feature = "mongodb") {
+        assert_eq!(
+            declared,
+            [(
+                vec![
+                    "must_use = \"a read asks nothing of MongoDB until it is awaited\"".to_owned(),
+                    "non_exhaustive".to_owned(),
+                ],
+                "< 'c , T , O >".to_owned(),
+                true,
+            )]
+        );
+        assert_eq!(
+            implemented,
+            [
+                ":: core :: fmt :: Debug for Read < '_ , T , O >",
+                ":: core :: future :: IntoFuture for Read < 'c , T , :: std :: vec :: Vec < T > >",
+                ":: core :: future :: IntoFuture for Read < 'c , T , :: core :: option :: Option < \
+                 T > >",
+                ":: core :: future :: IntoFuture for Read < 'c , T , u64 >",
+            ]
+        );
+    } else {
+        assert!(declared.is_empty(), "got: {declared:?}");
+        assert!(implemented.is_empty(), "got: {implemented:?}");
+    }
+}
+
+/// A read takes five options and no projection, each as the driver's own option takes it, and
+/// each handing the read back. It is built from what a type's operations hand it, the read of
+/// one stored row among them, so its module names no type of its author's.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_read_takes_five_options_each_as_the_drivers_own_takes_it() {
+    let added: syn::File = syn::parse2(super::operations::read_items()).unwrap();
+    let signatures: Vec<String> = query_methods(&added)
+        .into_iter()
+        .map(|(on, method)| {
+            let (visibility, signature) = (&method.vis, &method.sig);
+            format!("{on}: {}", quote::quote!(#visibility #signature))
+        })
+        .collect();
+    assert_eq!(
+        signatures,
+        [
+            "Read: pub fn new (collection : & 'c mongodb :: Collection < bson :: Document > , \
+             filter : bson :: Document , resolvers : & 'c [Resolver < 'c , bson :: Document , \
+             bson :: Bson >] , read : fn (bson :: Document , & [Resolver < '_ , bson :: Document \
+             , bson :: Bson >]) -> :: core :: result :: Result < T , OperationError > ,) -> Self",
+            "Read: pub fn sort (mut self , sort : bson :: Document) -> Self",
+            "Read: pub fn limit (mut self , limit : i64) -> Self",
+            "Read: pub fn skip (mut self , skip : u64) -> Self",
+            "Read: pub fn hint (mut self , hint : mongodb :: options :: Hint) -> Self",
+            "Read: pub fn collation (mut self , collation : mongodb :: options :: Collation) -> \
+             Self",
+        ]
+    );
+    let written = added.to_token_stream().to_string();
+    for option in ["sort", "limit", "skip", "hint", "collation"] {
+        assert!(
+            written.contains(&format!(
+                "{{ self . {option} = :: core :: option :: Option :: Some ({option}) ; self }}"
+            )),
+            "for {option}, got: {written}"
+        );
+    }
+    assert!(!written.contains("projection"), "got: {written}");
+}
+
+/// What awaits a read is a boxed future that is `Send`, written with standard names alone. Each
+/// answer asks the driver's own method and hands it the options that method has: a read of one
+/// row is sent no limit, and a count no order, and its limit unsigned and never `0`.
+#[cfg(feature = "mongodb")]
+#[test]
+fn each_answer_awaits_the_drivers_own_method_under_the_options_it_has() {
+    let written = super::operations::read_items().to_string();
+    let awaited: Vec<&str> = written
+        .split("impl < 'c , T > :: core :: future :: IntoFuture for Read < 'c , T , ")
+        .skip(1)
+        .collect();
+    let expected = [
+        (
+            ":: std :: vec :: Vec < T > > where T : :: core :: marker :: Send + 'c , {",
+            "find",
+            vec!["sort", "limit", "skip", "hint", "collation"],
+        ),
+        (
+            ":: core :: option :: Option < T > > where T : 'c , {",
+            "find_one",
+            vec!["sort", "skip", "hint", "collation"],
+        ),
+        (
+            "u64 > where T : 'c , {",
+            "count_documents",
+            vec!["limit", "skip", "hint", "collation"],
+        ),
+    ];
+    assert_eq!(awaited.len(), expected.len(), "got: {written}");
+    for (block, (answer, asked, sent)) in awaited.into_iter().zip(expected) {
+        assert!(block.starts_with(answer), "for {asked}, got: {block}");
+        for through in [
+            "type IntoFuture = :: core :: pin :: Pin < :: std :: boxed :: Box < dyn :: core :: \
+             future :: Future < Output = Self :: Output > + :: core :: marker :: Send + 'c >> ;"
+                .to_owned(),
+            "fn into_future (self) -> Self :: IntoFuture { :: std :: boxed :: Box :: pin (async \
+             move {"
+                .to_owned(),
+            format!("let mut asked = self . collection . {asked} (self . filter) ;"),
+        ] {
+            assert!(block.contains(&through), "for {asked}, got: {block}");
+        }
+        let handed: Vec<&str> = block
+            .split("asked = asked . ")
+            .skip(1)
+            .filter_map(|rest| rest.split(' ').next())
+            .collect();
+        assert_eq!(handed, sent, "for {asked}");
+    }
+    assert!(
+        written.contains(
+            "self . limit . map (:: core :: primitive :: i64 :: unsigned_abs) . filter (| limit | \
+             * limit != 0) { asked = asked . limit (limit) ; }"
+        ),
+        "got: {written}"
+    );
+}
+
+/// The read of many rows asks the cursor for one row at a time with the driver's own methods,
+/// and reads each through the function it was built over. The first row that does not read ends
+/// the read with what that row was refused with, so no partial list is answered. The read of one
+/// row hands over the row the driver answers, and a count answers the driver's number.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_read_of_many_rows_reads_the_cursor_row_by_row_and_ends_at_the_first_refused() {
+    let written = super::operations::read_items().to_string();
+    for through in [
+        "let mut cursor = asked . await . map_err (OperationError :: Database) ? ; let mut rows = \
+         :: std :: vec :: Vec :: new () ; while cursor . advance () . await . map_err \
+         (OperationError :: Database) ? { let row = cursor . deserialize_current () . map_err \
+         (OperationError :: Database) ? ; rows . push ((self . read) (row , self . resolvers) ?) \
+         ; } :: core :: result :: Result :: Ok (rows) })",
+        "let found = asked . await . map_err (OperationError :: Database) ? ; found . map (| row \
+         | (self . read) (row , self . resolvers)) . transpose () })",
+        "{ asked = asked . collation (collation) ; } asked . await . map_err (OperationError :: \
+         Database) })",
+    ] {
+        assert!(
+            written.contains(through),
+            "missing `{through}` in: {written}"
+        );
+    }
+    for absent in ["futures", "Stream", "try_collect", "next ("] {
+        assert!(!written.contains(absent), "found `{absent}` in: {written}");
+    }
+}
+
+/// Of the driver the operations name the collection, its error, two options and three results,
+/// and of the `bson` library a document, a value and the serializer: each is one path under both
+/// of the library's major versions. Every bound is in a `where` clause, and nothing they add is
+/// hidden from a lint.
 #[cfg(feature = "mongodb")]
 #[test]
 fn the_operations_name_only_what_both_majors_of_the_bson_library_have() {
     let module: proc_macro2::Ident = syn::parse_quote!(row_schema);
     let filter: proc_macro2::Ident = syn::parse_quote!(F);
+    let update: proc_macro2::Ident = syn::parse_quote!(U);
     let mut emitted = super::operations::error_items();
-    emitted.extend(super::operations::read_methods(&module, &filter));
+    emitted.extend(super::operations::read_items());
+    emitted.extend(super::operations::methods(&module, &filter, &update));
     let written = emitted.to_string();
     let named_after = |prefix: &str| {
         let mut found: Vec<&str> = written
@@ -1287,13 +1685,38 @@ fn the_operations_name_only_what_both_majors_of_the_bson_library_have() {
         found.dedup();
         found
     };
-    assert_eq!(named_after("mongodb :: "), ["Collection", "error"]);
+    assert_eq!(
+        named_after("mongodb :: "),
+        ["Collection", "error", "options", "results"]
+    );
     assert_eq!(named_after("mongodb :: error :: "), ["Error"]);
+    assert_eq!(named_after("mongodb :: options :: "), ["Collation", "Hint"]);
+    assert_eq!(
+        named_after("mongodb :: results :: "),
+        ["DeleteResult", "InsertOneResult", "UpdateResult"]
+    );
     assert_eq!(named_after("bson :: "), ["Bson", "Document", "Serializer"]);
-    for absent in ["doc !", "# [allow", "# [expect", "doc (hidden)", ": impl "] {
+    assert_eq!(named_after("bson :: Bson :: "), ["Document"]);
+    assert_eq!(named_after("bson :: Serializer :: "), ["new"]);
+    for absent in [
+        "doc !",
+        "# [allow",
+        "# [expect",
+        "doc (hidden)",
+        ": impl ",
+        "futures",
+        "tokio",
+    ] {
         assert!(!written.contains(absent), "found `{absent}` in: {written}");
     }
-    assert!(!written.contains("< F :"), "got: {written}");
+    for inline in ["< F :", "< U :", "< T :", "< O :"] {
+        assert!(!written.contains(inline), "found `{inline}` in: {written}");
+    }
+    assert_eq!(
+        path_roots(emitted),
+        ["bson", "core", "mongodb", "row_schema", "serde", "std"],
+        "a path starts at the type's own module or at a crate a consumer already lists"
+    );
 }
 
 /// The BSON walk is the JSON one over the library's own types: a list, a map and `null` are
@@ -2027,17 +2450,66 @@ fn a_methods_own_type_parameter_is_never_one_the_type_declares() {
     }
 }
 
+/// An operation takes its filter under the name a callback is taken under and its update under
+/// `U`, each the next free name where the item writes it: a filter and an update stay two
+/// parameters whatever the item names.
+#[cfg(feature = "mongodb")]
+#[test]
+fn an_operations_filter_and_update_are_never_names_the_item_writes() {
+    for (source, named) in [
+        (
+            "pub struct Holder { pub unit: U }",
+            ["F", "I", "Root", "U2"],
+        ),
+        (
+            "pub struct U { pub name: String }",
+            ["F", "I", "Root", "U2"],
+        ),
+        (
+            "pub struct Holder { pub frame: F, pub unit: U, pub other: U2 }",
+            ["F2", "I", "Root", "U3"],
+        ),
+    ] {
+        let item: syn::ItemStruct = syn::parse_str(source).unwrap();
+        let type_impl = struct_recovering_decode(&item).type_impl;
+        assert_eq!(
+            own_type_parameters(type_impl.clone()),
+            named,
+            "for {source}"
+        );
+        let [filter, _issue, _root, update] = named;
+        let emitted = type_impl.to_string();
+        for written in [
+            format!("pub async fn update_one < {filter} , {update} > ("),
+            format!("filter : {filter} , update : {update} ,)"),
+            format!("pub async fn delete_many < {filter} > ("),
+            format!("pub fn find_with < 'c , {filter} > ("),
+        ] {
+            assert!(
+                emitted.contains(&written),
+                "for {source}, missing `{written}` in: {emitted}"
+            );
+        }
+    }
+    let carried: syn::ItemEnum = syn::parse_str("pub enum Carried { Held(U), Unit }").unwrap();
+    assert_eq!(
+        own_type_parameters(enum_recovering_decode(&carried).type_impl),
+        ["F", "I", "Root", "U2"]
+    );
+}
+
 /// A method's own type parameter hides a type of its name wherever the method's body writes one,
 /// so each takes the next free name where the item writes `F` or `I` anywhere: a field's type, a
 /// type held inside one, the item's own name, the path of a hook. Every other item keeps both.
 /// Under `mongodb` the function that builds the typed paths names the row type the same way:
-/// `Root`, and the next free name where the item writes that.
+/// `Root`, and the next free name where the item writes that. An operation names its update `U`,
+/// which none of these items writes.
 #[test]
 fn a_methods_own_type_parameter_is_never_a_name_the_item_writes() {
     let expected = |named: [&str; 2], root: &str| {
         let mut every: Vec<String> = named.map(str::to_owned).to_vec();
         if cfg!(feature = "mongodb") {
-            every.push(root.to_owned());
+            every.extend([root.to_owned(), "U".to_owned()]);
         }
         every
     };

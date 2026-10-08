@@ -11,8 +11,8 @@
 //! whatever issue type the constructor it is handed builds. A build with `mongodb` on adds the
 //! query types to that module: `Filter`, `Update`, and the typed paths that build them (`query`).
 //! It adds the type's own paths too, `MongoFields` there and `MONGO_FIELDS` on the type (`fields`),
-//! and the operations: `OperationError` there, `find_one` and `find_one_with` on the type
-//! (`operations`).
+//! and the operations: `OperationError` and `Read` there, and on the type the reads, `count`,
+//! `insert_one`, the updates and the deletes (`operations`).
 
 mod aliases;
 pub mod enums;
@@ -64,15 +64,15 @@ use crate::utils::{
 const ADDED_TYPE_COUNT: usize = 15;
 
 /// How many type names the flag adds to a schema module, the query types, the type's own struct
-/// of paths and the error its operations fail with among them.
+/// of paths, the error its operations fail with and the read they answer among them.
 #[cfg(all(
     any(feature = "typescript", feature = "zod", feature = "jsonschema"),
     feature = "mongodb"
 ))]
-const ADDED_TYPE_COUNT: usize = 28;
+const ADDED_TYPE_COUNT: usize = 29;
 
 /// The type names the flag adds to a schema module. The query types, the type's own struct of
-/// paths and the error its operations fail with are there under `mongodb`.
+/// paths, the error its operations fail with and the read they answer are there under `mongodb`.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
     "Asked",
@@ -104,6 +104,8 @@ const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
     #[cfg(feature = "mongodb")]
     "OptionalModel",
     "Path",
+    #[cfg(feature = "mongodb")]
+    "Read",
     "ReadWhole",
     "Resolution",
     "Resolver",
@@ -527,12 +529,13 @@ impl Source {
         }
     }
 
-    /// The entry point and the report it runs.
-    fn entry_methods(self, module: &Ident, decider: &Ident) -> TokenStream {
+    /// The entry point and the report it runs. `written` holds every name the type's item
+    /// writes, none of which a method's own type parameter takes.
+    fn entry_methods(self, module: &Ident, written: &[String]) -> TokenStream {
         match self {
             #[cfg(feature = "bson")]
-            Self::Bson => bson_entry_methods(module, decider),
-            Self::Json => entry_methods(module, decider),
+            Self::Bson => bson_entry_methods(module, written),
+            Self::Json => entry_methods(module, &unclaimed_parameter("F", written)),
         }
     }
 
@@ -2016,7 +2019,6 @@ where
 {
     let own_name = name.to_string();
     let module = Ident::new(module_name, Span::call_site());
-    let decider = unclaimed_parameter("F", &written.names);
     let issue_parameter = unclaimed_parameter("I", &written.names);
     let of_sources: Vec<TokenStream> = Source::GENERATED
         .iter()
@@ -2028,7 +2030,7 @@ where
                 parameters,
                 source,
             };
-            let entry = source.entry_methods(&module, &decider);
+            let entry = source.entry_methods(&module, &written.names);
             let walk_methods = methods(&walker);
             quote! {
                 #entry
@@ -2287,8 +2289,9 @@ fn bson_bound_items() -> TokenStream {
 /// copied once per read by serde. Both entry points open with the same read and close with the
 /// same one. Under `mongodb` the operations that read a stored row through them sit beside them.
 #[cfg(feature = "bson")]
-fn bson_entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
-    let operations = operation_methods(module, decider);
+fn bson_entry_methods(module: &Ident, written: &[String]) -> TokenStream {
+    let decider = unclaimed_parameter("F", written);
+    let operations = operation_methods(module, written);
     let first_read = quote! {
         let mut whole = bson::Bson::Document(document);
         let found = match <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(whole.clone())) {
@@ -3206,10 +3209,13 @@ fn not_the_shape(held: &Ident, path: &TokenStream, expected: &TokenStream, reaso
     }
 }
 
-/// `OperationError`, which every operation on the type fails with.
+/// `OperationError`, which every operation on the type fails with, and `Read`, which its reads
+/// answer.
 #[cfg(feature = "mongodb")]
 fn operation_items() -> TokenStream {
-    operations::error_items()
+    let mut items = operations::error_items();
+    items.extend(operations::read_items());
+    items
 }
 
 /// A build without `mongodb` writes no operation, so nothing for one to fail with.
@@ -3218,15 +3224,20 @@ fn operation_items() -> TokenStream {
     TokenStream::new()
 }
 
-/// `find_one` and `find_one_with`, each taking its filter as the type parameter `filter` names.
+/// The operations on the type. Each takes its filter and its update as a type parameter of its
+/// own, under a name `written`, every name the type's item writes, does not hold.
 #[cfg(feature = "mongodb")]
-fn operation_methods(module: &Ident, filter: &Ident) -> TokenStream {
-    operations::read_methods(module, filter)
+fn operation_methods(module: &Ident, written: &[String]) -> TokenStream {
+    operations::methods(
+        module,
+        &unclaimed_parameter("F", written),
+        &unclaimed_parameter("U", written),
+    )
 }
 
 /// A build without `mongodb` gives a type no operation.
 #[cfg(all(feature = "bson", not(feature = "mongodb")))]
-fn operation_methods(_module: &Ident, _filter: &Ident) -> TokenStream {
+fn operation_methods(_module: &Ident, _written: &[String]) -> TokenStream {
     TokenStream::new()
 }
 

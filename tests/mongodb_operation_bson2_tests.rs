@@ -1,6 +1,7 @@
-//! The operations `#[model_schema(decode_with)]` adds under `mongodb`: `find_one`, `find_one_with`
-//! and the `OperationError` they fail with, built against version 2 of the `bson` library, which
-//! this package's MongoDB driver is built for.
+//! The operations `#[model_schema(decode_with)]` adds under `mongodb`: the reads, `count`,
+//! `insert_one`, the updates and the deletes, with the `Read` the first answer and the
+//! `OperationError` they all fail with, built against version 2 of the `bson` library, which this
+//! package's MongoDB driver is built for.
 
 extern crate bson2 as bson;
 

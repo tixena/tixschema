@@ -1,18 +1,59 @@
-//! What needs no MongoDB server: the error every operation fails with, and the read of a row once
-//! the driver has handed it over.
+//! What needs no MongoDB server: the error every operation fails with, the read of a row once the
+//! driver has handed it over, a row refused before it is sent, and what a read holds before it is
+//! awaited. No check here opens a connection.
 
+use core::cell::Cell;
 use core::error::Error;
 
 use bson::{Bson, Document, doc};
-use mongodb::Collection;
-use mongodb::options::ClientOptions;
-use serde::Serialize as _;
+use mongodb::options::{ClientOptions, Collation, Hint};
+use mongodb::{Client, Collection};
+use serde::{Deserialize, Serialize};
+use tixschema::model_schema;
 
-use super::invoice_schema::{Expected, Field, Filter, Issue, MongoPath, OperationError};
+use super::invoice_schema::{Field, Filter, MongoPath, OperationError, Resolver};
 use super::{
-    Customer, Invoice, SEEDED_ID, customer_schema, invoice, open_invoices, readable, seeded_id,
-    unreadable, whole_number_as_text,
+    Customer, Invoice, InvoiceStatus, SEEDED_ID, customer_schema, invoice, invoice_status_schema,
+    names_the_unreadable_row, readable, seeded_id, unreadable, whole_number_as_text,
 };
+
+/// A row whose total is of whatever type fills `T`: an unsigned one can hold more than BSON has
+/// a number for.
+#[model_schema(decode_with, default_types(T = u32))]
+#[derive(Debug, Deserialize, Serialize)]
+struct Ledger<T> {
+    total: T,
+}
+
+/// A row that crosses threads and that no two threads share: what it has seen is kept in a
+/// `Cell`, off the wire.
+#[model_schema(decode_with)]
+#[derive(Debug, Default, Deserialize, Serialize)]
+struct Tally {
+    #[serde(skip)]
+    seen: Cell<u32>,
+    total: u32,
+}
+
+/// Compiles only where what awaits an operation on a row no two threads share can be moved to
+/// another thread: the future of an insert holds no borrow of the row.
+fn a_row_no_two_threads_share_is_sendable(held: &Collection<Document>) {
+    let every = || tally_schema::Filter::<Tally>::raw(doc! {});
+    sendable(&Tally::default().insert_one(held));
+    sendable(&Tally::find(held, every()).into_future());
+    sendable(&Tally::find_one(held, every()).into_future());
+    sendable(&Tally::count(held, every()).into_future());
+}
+
+/// Compiles only where a row with a type parameter gets the operations at what fills it, and
+/// what awaits each can be moved to another thread.
+fn a_row_with_a_type_parameter_is_sendable(held: &Collection<Document>) {
+    let every = || ledger_schema::Filter::<Ledger<u64>>::raw(doc! {});
+    sendable(&Ledger { total: 7_u64 }.insert_one(held));
+    sendable(&Ledger::<u64>::find(held, every()).into_future());
+    sendable(&Ledger::<u64>::count(held, every()).into_future());
+    sendable(&Ledger::<u64>::delete_many(held, every()));
+}
 
 /// Compiles only where `checked` does. It is never called, so no collection is asked for.
 const fn compiles<C>(_checked: &C)
@@ -28,6 +69,45 @@ where
 {
 }
 
+/// Compiles only where each operation can be moved to another thread: a read as it is answered
+/// and as it is awaited, and the future of each write.
+fn every_operation_is_sendable(held: &Collection<Document>) {
+    let resolvers: [Resolver<'_, Document, Bson>; 1] = [&whole_number_as_text];
+    let paid = || {
+        Invoice::MONGO_FIELDS
+            .status
+            .set(InvoiceStatus::Paid)
+            .unwrap()
+    };
+    sendable(&Invoice::find_one(held, numbered()));
+    sendable(&Invoice::find_one(held, numbered()).into_future());
+    sendable(&Invoice::find_one_with(held, numbered(), &resolvers));
+    sendable(&Invoice::find_one_with(held, numbered(), &resolvers).into_future());
+    sendable(&Invoice::find(held, numbered()));
+    sendable(&Invoice::find(held, numbered()).into_future());
+    sendable(&Invoice::find_with(held, numbered(), &resolvers));
+    sendable(&Invoice::find_with(held, numbered(), &resolvers).into_future());
+    sendable(&Invoice::count(held, numbered()));
+    sendable(&Invoice::count(held, numbered()).into_future());
+    sendable(&invoice().insert_one(held));
+    sendable(&Invoice::update_one(held, numbered(), paid()));
+    sendable(&Invoice::update_many(held, numbered(), paid()));
+    sendable(&Invoice::delete_one(held, numbered()));
+    sendable(&Invoice::delete_many(held, numbered()));
+}
+
+/// A collection of a client that opens no connection until an operation asks it for one: a
+/// load-balanced client watches no server.
+async fn never_connected() -> Collection<Document> {
+    let options = ClientOptions::parse("mongodb://127.0.0.1:1/?loadBalanced=true")
+        .await
+        .unwrap();
+    Client::with_options(options)
+        .unwrap()
+        .database("tixschema_offline")
+        .collection("never_asked")
+}
+
 fn numbered() -> Filter<Invoice> {
     Invoice::MONGO_FIELDS
         .number
@@ -39,16 +119,6 @@ fn numbered() -> Filter<Invoice> {
 fn over_the_limit() -> Result<Filter<Invoice>, OperationError> {
     let limit: Field<Invoice, u64> = Field::plain(MongoPath::under(MongoPath::ROOT, "limit"));
     Ok(limit.eq(u64::MAX)?)
-}
-
-/// Compiles only where the future of each read can be moved to another thread.
-fn reads_are_sendable(held: &Collection<Document>) {
-    sendable(&Invoice::find_one(held, numbered()));
-    sendable(&Invoice::find_one_with(
-        held,
-        numbered(),
-        &[&whole_number_as_text],
-    ));
 }
 
 const fn sendable<T>(_held: &T)
@@ -110,6 +180,38 @@ fn a_type_with_no_id_refuses_a_stored_row_until_a_resolver_settles_it() {
     );
 }
 
+/// A module declared inside a function reaches none of that function's items, so the read a
+/// type's operations answer is told the type it reads, and names none of its author's.
+#[tokio::test]
+async fn a_row_declared_inside_a_function_reads_and_writes_itself() {
+    #[model_schema(decode_with)]
+    #[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
+    struct Note {
+        text: String,
+    }
+
+    let kept = || Note {
+        text: "kept".to_owned(),
+    };
+    assert_eq!(kept().mongo_written_row().unwrap(), doc! { "text": "kept" });
+    assert_eq!(
+        Note::mongo_read_row(doc! { "text": "kept" }, &[]).unwrap(),
+        kept()
+    );
+
+    let never = never_connected().await;
+    let filter = || Note::MONGO_FIELDS.text.eq("kept".to_owned()).unwrap();
+    let read: note_schema::Read<'_, Note, Vec<Note>> = Note::find(&never, filter()).limit(1_i64);
+    assert_eq!(
+        format!("{read:?}"),
+        format!(
+            "Read {{ filter: {:?}, sort: None, limit: Some(1), skip: None, hint: None, \
+             collation: None, resolvers: 0, .. }}",
+            Document::from(filter())
+        )
+    );
+}
+
 /// The read `find_one_with` makes of the row the driver hands it: as the type where the row
 /// reads, as the type once a resolver has repaired it, and refused by its issue where none has.
 #[test]
@@ -125,23 +227,7 @@ fn a_stored_row_reads_as_the_operations_read_it() {
         invoice()
     );
     let refused = Invoice::mongo_read_row(unreadable(), &[]).unwrap_err();
-    assert!(
-        matches!(
-            &refused,
-            OperationError::Unreadable { row, issues }
-                if *row == format!("ObjectId(\"{SEEDED_ID}\")")
-                    && matches!(
-                        issues.as_slice(),
-                        [Issue::Invalid {
-                            path,
-                            expected: Expected::U32,
-                            found: Bson::String(text),
-                            reason: _reason,
-                        }] if *path == open_invoices() && text == "3"
-                    )
-        ),
-        "got: {refused:?}"
-    );
+    assert!(names_the_unreadable_row(&refused), "got: {refused:?}");
 }
 
 /// The issues are told as a refused `from_bson_piped` tells them, whose last words are the `bson`
@@ -165,6 +251,88 @@ fn an_unreadable_row_is_told_by_its_id_and_its_issues_and_has_no_source() {
     assert!(refused.source().is_none(), "got: {:?}", refused.source());
 }
 
+/// A read holds what it is given and asks nothing of MongoDB until it is awaited, and neither of
+/// these is.
+#[tokio::test]
+async fn a_read_holds_the_options_it_is_given() {
+    let never = never_connected().await;
+    let filter = Document::from(numbered());
+    let (sort, hint) = (doc! { "total": -1_i32 }, Hint::Name("total_-1".to_owned()));
+    let collation = Collation::builder().locale("en").build();
+    let resolvers: [Resolver<'_, Document, Bson>; 1] = [&whole_number_as_text];
+
+    let plain = Invoice::count(&never, numbered());
+    assert_eq!(
+        format!("{plain:?}"),
+        format!(
+            "Read {{ filter: {filter:?}, sort: None, limit: None, skip: None, hint: None, \
+             collation: None, resolvers: 0, .. }}"
+        )
+    );
+    let under_options = Invoice::find_with(&never, numbered(), &resolvers)
+        .sort(sort.clone())
+        .limit(2_i64)
+        .skip(1_u64)
+        .hint(hint.clone())
+        .collation(collation.clone());
+    assert_eq!(
+        format!("{under_options:?}"),
+        format!(
+            "Read {{ filter: {filter:?}, sort: Some({sort:?}), limit: Some(2), skip: Some(1), \
+             hint: Some({hint:?}), collation: Some({collation:?}), resolvers: 1, .. }}"
+        )
+    );
+}
+
+/// A value serde writes as text is no row: it is refused by the serializer's own error before the
+/// client is asked for a connection.
+#[tokio::test]
+async fn a_value_not_written_as_a_document_is_refused_before_any_connection() {
+    let never = never_connected().await;
+    let refused = InvoiceStatus::Paid.insert_one(&never).await.unwrap_err();
+    assert!(
+        matches!(
+            refused,
+            invoice_status_schema::OperationError::Unwritable(_)
+        ),
+        "got: {refused:?}"
+    );
+    let told = refused.to_string();
+    assert!(
+        told.starts_with("a value could not be written as BSON: ")
+            && told.contains("a row is stored as a document, and this value is not written as one"),
+        "got: {told}"
+    );
+}
+
+/// The row is dropped before what `insert_one` answers is awaited, and the refusal is the
+/// write's own: the client is never asked for a connection, which nothing would answer.
+#[tokio::test]
+async fn an_unwritable_row_is_refused_before_any_connection() {
+    let never = never_connected().await;
+    let told = u64::MAX
+        .serialize(bson::Serializer::new())
+        .unwrap_err()
+        .to_string();
+    let answered = {
+        let over = Ledger { total: u64::MAX };
+        over.insert_one(&never)
+    };
+    let refused = answered.await.unwrap_err();
+    assert!(
+        matches!(refused, ledger_schema::OperationError::Unwritable(_)),
+        "got: {refused:?}"
+    );
+    assert_eq!(
+        refused.to_string(),
+        format!("a value could not be written as BSON: {told}")
+    );
+    assert_eq!(refused.source().map(ToString::to_string), Some(told));
+
+    let stored = Ledger { total: 7_u64 }.mongo_written_row().unwrap();
+    assert_eq!(stored, doc! { "total": 7_i64 });
+}
+
 #[test]
 fn a_value_bson_cannot_hold_is_unwritable_and_its_source() {
     let told = u64::MAX
@@ -184,9 +352,19 @@ fn a_value_bson_cannot_hold_is_unwritable_and_its_source() {
 }
 
 #[test]
-fn the_error_and_both_reads_cross_threads() {
+fn the_error_and_every_operation_cross_threads() {
     crosses_threads::<OperationError>();
-    compiles(&reads_are_sendable);
+    compiles(&every_operation_is_sendable);
+    compiles(&a_row_no_two_threads_share_is_sendable);
+    compiles(&a_row_with_a_type_parameter_is_sendable);
+}
+
+#[test]
+fn what_a_row_keeps_off_the_wire_is_not_stored() {
+    let tally = Tally::default();
+    tally.seen.set(7_u32);
+    assert_eq!(tally.mongo_written_row().unwrap(), doc! { "total": 0_i64 });
+    assert_eq!(tally.seen.get(), 7_u32);
 }
 
 /// The text keeps the BSON type of the `_id`: the text `3` and the number `3` are two rows.
