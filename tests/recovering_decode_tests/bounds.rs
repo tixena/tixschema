@@ -177,6 +177,61 @@ fn a_callback_that_removes_what_breaks_a_bound_recovers_the_read() {
     );
 }
 
+/// A tag that breaks two bounds is two issues at one path, alike but for the reason. One repair
+/// of the value answers both, and a removal run once for each takes the next tag with it.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn two_bounds_broken_by_one_value_are_repaired_once_at_its_path() {
+    use bounded_group_schema::{Issue, Verdict};
+
+    let stored =
+        || json!({ "level": 1_u32, "source": "Items", "tags": ["A", "ok"], "title": "ok" });
+    let (listed, _calls) = rejected(stored());
+    assert_eq!(
+        lines(&listed.unwrap_err()),
+        [
+            "tags[0]: invalid: expected String, found String(\"A\"): too short: minimum length is \
+             2, got 1",
+            "tags[0]: invalid: expected String, found String(\"A\"): does not match pattern \
+             '^[a-z]+$'",
+        ]
+    );
+
+    let set_once = BoundedGroup::from_value_with(stored(), |raw, found| {
+        let [
+            Issue::Invalid {
+                path,
+                expected: _expected,
+                found: _found,
+                reason: _reason,
+            },
+            _pattern,
+        ] = found
+        else {
+            return Verdict::Reject;
+        };
+        path.set_in_value(raw, json!("aa"));
+        Verdict::Fixed
+    });
+    assert_eq!(set_once.unwrap().tags, ["aa", "ok"]);
+
+    let removed_for_each = BoundedGroup::from_value_with(stored(), |raw, found| {
+        for issue in found {
+            if let Issue::Invalid {
+                path,
+                expected: _expected,
+                found: _found,
+                reason: _reason,
+            } = issue
+            {
+                path.remove_from_value(raw);
+            }
+        }
+        Verdict::Fixed
+    });
+    assert_eq!(removed_for_each.unwrap().tags, Vec::<String>::new());
+}
+
 #[test]
 fn a_value_inside_every_bound_never_reaches_the_callback() {
     let stored = json!({

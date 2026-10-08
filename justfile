@@ -6,10 +6,10 @@ kotlinx_coroutines_version := "1.11.0"
 kotlin_libs := env("TIXSCHEMA_KOTLIN_LIBS", home_directory() / ".local/share/tixschema/kotlin-libs")
 
 # `bson3/` is a package of its own, which builds the BSON suite against version 3 of the `bson`
-# library. Each recipe that tests, lints, checks, formats or cleans this package runs the same line
-# over `bson3/Cargo.toml`. The exceptions: `typecheck-ts` and `test-emitted` name test binaries
-# only this package holds, and `docs`, `bench` and the two coverage recipes have nothing to read
-# in `bson3/`, whose library is empty.
+# library. Each recipe that tests, lints, checks, formats, audits or cleans this package runs the
+# same line over `bson3/Cargo.toml`. The exceptions: `typecheck-ts` and `test-emitted` name test
+# binaries only this package holds, and `docs`, `bench` and the two coverage recipes have nothing
+# to read in `bson3/`, whose library is empty.
 
 # Default recipe - runs comprehensive tests
 default: test
@@ -244,6 +244,19 @@ check-all:
     cargo hack check --feature-powerset
     cargo hack check --manifest-path bson3/Cargo.toml --feature-powerset
     @echo "✅ All feature combinations check passed!"
+
+# Audit the dependencies each package resolves, with cargo-audit; what CI runs.
+#
+# No Cargo.lock is committed (library crate), and this package and `bson3/` resolve into one each,
+# so each lock file is generated afresh, as a new clone resolves it, and scanned on its own. An
+# advisory in either fails the recipe. Outside `all` and `ci`: neither installs cargo-audit.
+audit:
+    @echo "Auditing the dependencies of this package and of bson3/..."
+    cargo generate-lockfile
+    cargo audit
+    cargo generate-lockfile --manifest-path bson3/Cargo.toml
+    cargo audit --file bson3/Cargo.lock
+    @echo "✅ No advisory in either lock file!"
 
 # Format code
 fmt:

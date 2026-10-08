@@ -230,6 +230,73 @@ fn a_stored_row_reads_as_the_operations_read_it() {
     assert!(names_the_unreadable_row(&refused), "got: {refused:?}");
 }
 
+/// serde reads a name that breaks its bound. A read with no resolver refuses the row over the
+/// bound's issue, told in the bound's own words under both major versions of the library, and a
+/// resolver repairs it. A build with no schema surface publishes no validator, and reads the row.
+#[test]
+fn a_row_that_breaks_a_bound_is_unreadable_until_a_resolver_repairs_it() {
+    let mut nameless = readable();
+    nameless
+        .get_document_mut("customer")
+        .unwrap()
+        .insert("name", "");
+    let read = Invoice::mongo_read_row(nameless.clone(), &[]);
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    {
+        use super::invoice_schema::{Expected, Issue, Path, Resolution, Segment};
+
+        let refused = read.unwrap_err();
+        assert!(
+            matches!(
+                &refused,
+                OperationError::Unreadable { row, issues }
+                    if *row == format!("ObjectId(\"{SEEDED_ID}\")")
+                        && *issues == [Issue::Invalid {
+                            path: Path(vec![
+                                Segment::Key("customer".to_owned()),
+                                Segment::Key("name".to_owned()),
+                            ]),
+                            expected: Expected::String,
+                            found: Bson::String(String::new()),
+                            reason: "too short: minimum length is 1, got 0".to_owned(),
+                        }]
+            ),
+            "got: {refused:?}"
+        );
+        assert_eq!(
+            refused.to_string(),
+            format!(
+                "the row ObjectId(\"{SEEDED_ID}\") does not read as expected: customer.name: \
+                 invalid: expected String, found String(\"\"): too short: minimum length is 1, \
+                 got 0"
+            )
+        );
+
+        let unnamed = |raw: &mut Document, issue: &Issue<Bson>| {
+            let Issue::Invalid {
+                path,
+                expected: Expected::String,
+                found: Bson::String(held),
+                reason: _reason,
+            } = issue
+            else {
+                return Resolution::NotTouched;
+            };
+            let named =
+                held.is_empty() && path.set_in_document(raw, Bson::String("unnamed".to_owned()));
+            if named {
+                Resolution::Settled
+            } else {
+                Resolution::NotTouched
+            }
+        };
+        let repaired = Invoice::mongo_read_row(nameless, &[&unnamed]).unwrap();
+        assert_eq!(repaired.customer.name, "unnamed");
+    }
+    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    assert_eq!(read.unwrap().customer.name, "");
+}
+
 /// The issues are told as a refused `from_bson_piped` tells them, whose last words are the `bson`
 /// library's own and differ between its major versions.
 #[test]

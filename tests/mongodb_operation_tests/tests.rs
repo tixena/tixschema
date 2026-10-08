@@ -29,6 +29,7 @@ const SEEDED_ID: &str = "6a7cc592ca0574e6efdfe217";
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Customer {
+    #[model_schema_prop(minLength = 1)]
     name: String,
     open_invoices: u32,
 }

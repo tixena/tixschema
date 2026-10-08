@@ -42,6 +42,14 @@ chrono = { version = ">=0.4.40", features = ["serde"] }
 regex = ">=1.10"
 tokio = { version = ">=1.53.1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
 
+# Transitive dep floors — pinned to fix known vulnerabilities:
+# - bytes >=1.11.1: RUSTSEC-2026-0007 (integer overflow in BytesMut::reserve)
+# - time >=0.3.47: RUSTSEC-2026-0009 (DoS via stack exhaustion)
+# As tixschema's own manifest pins them: this package resolves into a lock file of its own, which
+# a floor written there does not reach. `tests/mirrored_manifest_tests.rs` holds the two together.
+bytes = ">=1.11.1"
+time = ">=0.3.47"
+
 # tixschema's own table, entry for entry: the shared sources are linted at one level wherever they
 # are compiled. `tests/mirrored_manifest_tests.rs` holds the two tables together.
 [lints.clippy]

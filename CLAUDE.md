@@ -66,6 +66,9 @@ just fmt
 
 # Check all feature combinations without running tests
 just check-all
+
+# Audit the dependencies this package and bson3/ resolve, each from a lock file generated for it (needs cargo-audit)
+just audit
 ```
 
 ### Build & Documentation
@@ -897,9 +900,11 @@ sections are the consumer's view; this is what a change to the emitter has to ke
   build serves one major, so the version 3 tests cannot sit in `tests/`. The shared sources read
   `cfg(feature = "...")` and are linted in whichever package compiles them, so `bson3/Cargo.toml`
   declares every feature under the same name, each turning on `tixschema/<name>`, and carries the
-  lint tables entry for entry; `bson3/tests/mirrored_manifest_tests.rs` fails when either drifts.
-  Every `just` recipe that tests, lints, checks or formats this package runs the same line over
-  `bson3/Cargo.toml`.
+  lint tables entry for entry. It resolves into a lock file of its own, so it also pins every
+  advisory floor this manifest pins, the dependencies under the comment `# Transitive dep floors`,
+  at that version or above. `bson3/tests/mirrored_manifest_tests.rs` fails when any of the three
+  drifts. Every `just` recipe that tests, lints, checks, formats or audits this package runs the
+  same line over `bson3/Cargo.toml`.
 - **Nothing emitted carries `#[allow]`, `#[expect]` or `#[doc(hidden)]`.** A consumer's lint levels
   reach what the macro emits into their crate: every added type is `#[non_exhaustive]`, no added
   function takes `impl Trait` as a parameter, and a `Result` is written `core::result::Result`.
@@ -1175,7 +1180,7 @@ The CI pipeline ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs:
 5. `just test-sets` (every combination of the `web`, `mobile` and `mongo` feature sets via cargo-hack, in this package and in `bson3/`)
 6. `just typecheck-ts` (the emitted TypeScript through a real `tsc --strict`, and a second package compiled against the declarations emitted for it)
 7. `just test-emitted` (the emitted Node, Dart, Swift and Kotlin clients run under their own toolchains)
-8. `cargo audit`
+8. `just audit` (`cargo audit` over a lock file generated for each package, this one and `bson3/`)
 9. Discord notification with build status
 
 CI installs every toolchain those groups need: Node with `zod`, `ws` and `typescript`, Dart, and the Kotlin jars; Swift, Kotlin and a JRE come with the runner image. Inside a plain `cargo test` those groups stand down and pass when their toolchain is missing, so only `just typecheck-ts` and `just test-emitted` prove anything: both refuse to stand down.

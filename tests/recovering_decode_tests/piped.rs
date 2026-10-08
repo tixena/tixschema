@@ -16,6 +16,7 @@ use super::lines;
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Customer {
+    #[model_schema_prop(minLength = 1)]
     name: String,
     open_invoices: u32,
 }
@@ -24,7 +25,19 @@ struct Customer {
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Invoice {
     customer: Customer,
+    #[model_schema_prop(minLength = 8, pattern = "^INV-[0-9]+$")]
     number: String,
+}
+
+/// What a read lists at `number` for the bare `42`, under the bound whose sentence is `reason`.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+fn bare_number(reason: &str) -> Issue<Value> {
+    Issue::Invalid {
+        path: Path(vec![Segment::Key("number".to_owned())]),
+        expected: Expected::String,
+        found: Value::String("42".to_owned()),
+        reason: reason.to_owned(),
+    }
 }
 
 /// A customer an older writer stored as JSON text: parsed into an object.
@@ -63,6 +76,31 @@ fn whole_number_as_text(raw: &mut Value, issue: &Issue<Value>) -> Resolution {
         .trim()
         .parse::<i64>()
         .is_ok_and(|number| number >= 0_i64 && path.set_in_value(raw, Value::from(number)));
+    if settled {
+        Resolution::Settled
+    } else {
+        Resolution::Rejected
+    }
+}
+
+/// A number an older writer stored bare: written as the type writes it.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+fn number_without_prefix(raw: &mut Value, issue: &Issue<Value>) -> Resolution {
+    let Issue::Invalid {
+        path,
+        expected: Expected::String,
+        found: Value::String(bare),
+        reason: _reason,
+    } = issue
+    else {
+        return Resolution::NotTouched;
+    };
+    if path.to_string() != "number" {
+        return Resolution::NotTouched;
+    }
+    let settled = bare
+        .parse::<u32>()
+        .is_ok_and(|number| path.set_in_value(raw, Value::from(format!("INV-{number:04}"))));
     if settled {
         Resolution::Settled
     } else {
@@ -140,6 +178,100 @@ fn an_issue_a_resolver_rejects_refuses_the_read_and_is_the_one_it_holds() {
             "customer.openInvoices: invalid: expected U32, found String(\"-3\"): invalid type: \
              string \"-3\", expected u32"
         ]
+    );
+}
+
+/// serde reads a name that breaks its bound, and the read hands the resolvers the bound's issue.
+/// A build with no schema surface publishes no validator, and lists nothing.
+#[test]
+fn a_broken_bound_is_handed_to_the_resolvers() {
+    let stored = json!({
+        "customer": { "name": "", "openInvoices": 3_u32 },
+        "number": "INV-0042",
+    });
+    let handed = Mutex::new(Vec::new());
+    let noted = |_raw: &mut Value, issue: &Issue<Value>| {
+        handed.lock().unwrap().push(issue.clone());
+        Resolution::NotTouched
+    };
+    let read = Invoice::from_value_piped(stored, &[&noted]);
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    {
+        let nameless = Issue::Invalid {
+            path: Path(vec![
+                Segment::Key("customer".to_owned()),
+                Segment::Key("name".to_owned()),
+            ]),
+            expected: Expected::String,
+            found: Value::String(String::new()),
+            reason: "too short: minimum length is 1, got 0".to_owned(),
+        };
+        let refused = read.unwrap_err();
+        assert_eq!(*handed.lock().unwrap(), refused.issues);
+        assert_eq!(refused.issues, [nameless]);
+    }
+    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    {
+        assert_eq!(read.unwrap().customer.name, "");
+        assert!(handed.lock().unwrap().is_empty());
+    }
+}
+
+/// A number that breaks two bounds is two issues at one path, each holding the value as it was
+/// stored. The resolver is handed both and answers each, its repair already in the raw value when
+/// it is handed the second.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn a_resolver_answers_both_issues_of_a_value_that_breaks_two_bounds() {
+    let stored = json!({
+        "customer": { "name": "Acme", "openInvoices": 3_u32 },
+        "number": "42",
+    });
+    let handed = Mutex::new(Vec::new());
+    let noted = |raw: &mut Value, issue: &Issue<Value>| {
+        handed
+            .lock()
+            .unwrap()
+            .push((raw["number"].clone(), issue.clone()));
+        number_without_prefix(raw, issue)
+    };
+    let read = Invoice::from_value_piped(stored, &[&noted]);
+    assert_eq!(read.unwrap().number, "INV-0042");
+    assert_eq!(
+        *handed.lock().unwrap(),
+        [
+            (
+                json!("42"),
+                bare_number("too short: minimum length is 8, got 2")
+            ),
+            (
+                json!("INV-0042"),
+                bare_number("does not match pattern '^INV-[0-9]+$'")
+            ),
+        ]
+    );
+}
+
+/// The pipe counts issues, never paths. A resolver that repairs only a number still held bare
+/// leaves the second issue `NotTouched`, and that issue refuses the read of the repaired value.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn an_issue_left_not_touched_at_a_repaired_value_refuses_the_read() {
+    let stored = json!({
+        "customer": { "name": "Acme", "openInvoices": 3_u32 },
+        "number": "42",
+    });
+    let while_bare = |raw: &mut Value, issue: &Issue<Value>| {
+        if raw["number"] == "42" {
+            number_without_prefix(raw, issue)
+        } else {
+            Resolution::NotTouched
+        }
+    };
+    let refused = Invoice::from_value_piped(stored, &[&while_bare]).unwrap_err();
+    assert_eq!(
+        refused.issues,
+        [bare_number("does not match pattern '^INV-[0-9]+$'")]
     );
 }
 
