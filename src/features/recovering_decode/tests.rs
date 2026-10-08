@@ -50,6 +50,10 @@ const FLATTENING: &str = "pub struct Entry { #[serde(flatten)] pub audit: Audit,
 const FLATTENING_A_PARAMETER: &str =
     "pub struct Envelope<T> { #[serde(flatten)] pub body: T, pub id: String }";
 
+/// What `mongodb` adds to every type beside its BSON entry points, in the order written: the two
+/// reads of one row, and the read of a stored row both end with.
+const OPERATIONS: [&str; 3] = ["find_one", "find_one_with", "mongo_read_row"];
+
 /// The enum emitter, run as it runs beside model types declared above the enum: every type the
 /// item names is taken for one, so its walker is called as it stands.
 fn enum_recovering_decode(item: &syn::ItemEnum) -> RecoveringDecode {
@@ -263,16 +267,20 @@ fn paths_module_items(_source: &str) -> proc_macro2::TokenStream {
     proc_macro2::TokenStream::new()
 }
 
-/// The methods one source adds to every type, in the order written.
+/// The methods one source adds to every type, in the order written. Under `mongodb` the
+/// operations sit beside the BSON entry points.
 fn methods_of(stem: &str) -> Vec<String> {
-    vec![
-        format!("from_{stem}_with"),
-        format!("from_{stem}_piped"),
+    let mut named = vec![format!("from_{stem}_with"), format!("from_{stem}_piped")];
+    if stem == "bson" && cfg!(feature = "mongodb") {
+        named.extend(OPERATIONS.map(str::to_owned));
+    }
+    named.extend([
         format!("decode_with_{stem}_report"),
         format!("decode_with_{stem}_issues"),
         format!("decode_with_{stem}_named"),
         format!("decode_with_{stem}_fields"),
-    ]
+    ]);
+    named
 }
 
 /// Every token `tokens` is made of, in order, with each group opened and its delimiters left out.
@@ -401,7 +409,7 @@ fn query_methods(added: &syn::File) -> Vec<(String, &syn::ImplItemFn)> {
 }
 
 /// Every const and method the flag adds carries the flag's name, so none can meet one the type's
-/// author wrote. Each entry point is the one it is named for.
+/// author wrote. Each entry point is the one it is named for, and so is each operation.
 #[test]
 fn every_added_method_but_the_entry_point_carries_the_flags_name() {
     let item: syn::ItemStruct =
@@ -419,9 +427,11 @@ fn every_added_method_but_the_entry_point_carries_the_flags_name() {
         "decode_with_value_fields",
     ];
     if cfg!(feature = "bson") {
+        named.extend(["from_bson_with", "from_bson_piped"]);
+        if cfg!(feature = "mongodb") {
+            named.extend(OPERATIONS);
+        }
         named.extend([
-            "from_bson_with",
-            "from_bson_piped",
             "decode_with_bson_report",
             "decode_with_bson_issues",
             "decode_with_bson_named",
@@ -689,8 +699,9 @@ fn a_piped_entry_point_makes_the_two_reads_of_its_callback_twin_around_the_pipe(
 }
 
 /// A resolver answers one issue with one of three states. The pipe takes its resolvers as trait
-/// objects, which a closure holding state is one of, and names the standard items it reads in
-/// full.
+/// objects, which a closure holding configuration is one of, and names the standard items it
+/// reads in full. A resolver is `Sync`: a read that waits for a row holds its resolvers while it
+/// waits, and can move to another thread only where they can be shared with one.
 #[test]
 fn the_schema_module_declares_what_a_resolver_answers_and_the_pipe_that_runs_them() {
     let added: syn::File = syn::parse2(module_items()).unwrap();
@@ -750,7 +761,8 @@ fn the_schema_module_declares_what_a_resolver_answers_and_the_pipe_that_runs_the
     assert_eq!(
         written,
         [
-            "< 'r , D , V > = & 'r dyn :: core :: ops :: Fn (& mut D , & Issue < V >) -> Resolution",
+            "< 'r , D , V > = & 'r (dyn :: core :: ops :: Fn (& mut D , & Issue < V >) -> \
+             Resolution + :: core :: marker :: Sync)",
             "pub fn unsettled < D , V : :: core :: clone :: Clone > (raw : & mut D , issues : & \
              [Issue < V >] , resolvers : & [Resolver < '_ , D , V >] ,) -> :: std :: vec :: Vec < \
              Issue < V > >",
@@ -1054,6 +1066,234 @@ fn the_query_types_name_only_what_both_majors_of_the_bson_library_have() {
     assert_eq!(named_after("bson :: Document :: "), ["new"]);
     assert_eq!(named_after("bson :: Serializer :: "), ["new"]);
     assert!(!written.contains("doc !"), "got: {written}");
+}
+
+/// `OperationError` is in the module in a build with `mongodb` and in no other: one of three
+/// failures, `#[non_exhaustive]`, an error through impls written out, with one conversion into it.
+#[test]
+fn the_operation_error_is_declared_under_mongodb_alone() {
+    let added: syn::File = syn::parse2(module_items()).unwrap();
+    let declared: Vec<(Vec<String>, Vec<String>)> = added
+        .items
+        .iter()
+        .filter_map(|item| {
+            if let syn::Item::Enum(declared) = item
+                && declared.ident == "OperationError"
+            {
+                Some((
+                    declared
+                        .attrs
+                        .iter()
+                        .filter(|attribute| !attribute.path().is_ident("doc"))
+                        .map(|attribute| attribute.meta.to_token_stream().to_string())
+                        .collect(),
+                    declared
+                        .variants
+                        .iter()
+                        .map(|variant| {
+                            let (named, held) = (&variant.ident, &variant.fields);
+                            quote::quote!(#named #held).to_string()
+                        })
+                        .collect(),
+                ))
+            } else {
+                None
+            }
+        })
+        .collect();
+    let implemented: Vec<String> = added
+        .items
+        .iter()
+        .filter_map(|item| {
+            if let syn::Item::Impl(block) = item
+                && block.self_ty == syn::parse_quote!(OperationError)
+            {
+                block
+                    .trait_
+                    .as_ref()
+                    .map(|(implemented, _for)| implemented.to_token_stream().to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+    if cfg!(feature = "mongodb") {
+        assert_eq!(
+            declared,
+            [(
+                vec!["derive (Debug)".to_owned(), "non_exhaustive".to_owned()],
+                vec![
+                    "Database (mongodb :: error :: Error)".to_owned(),
+                    "Unreadable { row : :: std :: string :: String , issues : :: std :: vec :: Vec \
+                     < Issue < bson :: Bson > > }"
+                        .to_owned(),
+                    "Unwritable (WriteError)".to_owned(),
+                ]
+            )]
+        );
+        assert_eq!(
+            implemented,
+            [
+                ":: core :: fmt :: Display",
+                ":: std :: error :: Error",
+                ":: core :: convert :: From < E >",
+            ]
+        );
+    } else {
+        assert!(declared.is_empty(), "got: {declared:?}");
+        assert!(implemented.is_empty(), "got: {implemented:?}");
+    }
+}
+
+/// Each failure is told in one sentence that ends with what failed, a row that does not read by
+/// its issues as a refused read lists them. The driver's error and the `bson` library's are each
+/// the source of the failure that holds it. The one conversion is from the error a typed filter
+/// or update fails with, named by a bound: an `impl` for the alias itself does not build beside
+/// the standard `From<T> for T`.
+#[cfg(feature = "mongodb")]
+#[test]
+fn the_operation_error_tells_each_failure_and_answers_its_source() {
+    let emitted = super::operations::error_items().to_string();
+    for written in [
+        "Self :: Database (refused) => write ! (f , \"MongoDB refused the operation or could not \
+         be reached: {refused}\") ,",
+        "Self :: Unreadable { row , issues } => { write ! (f , \"the row {row} does not read as \
+         expected: \") ? ; :: core :: fmt :: Display :: fmt (& Unrecovered { issues : issues . \
+         clone () } , f) }",
+        "Self :: Unwritable (refused) => write ! (f , \"a value could not be written as BSON: \
+         {refused}\") ,",
+        "fn source (& self) -> :: core :: option :: Option < & (dyn :: std :: error :: Error + \
+         'static) > { match self { Self :: Database (refused) => :: core :: option :: Option :: \
+         Some (refused) , Self :: Unreadable { .. } => :: core :: option :: Option :: None , Self \
+         :: Unwritable (refused) => :: core :: option :: Option :: Some (refused) , } }",
+        "impl < E > :: core :: convert :: From < E > for OperationError where E : :: serde :: ser \
+         :: Error , bson :: Serializer : :: serde :: Serializer < Error = E > , { fn from \
+         (refused : E) -> Self { Self :: Unwritable (refused) } }",
+    ] {
+        assert!(
+            emitted.contains(written),
+            "missing `{written}` in: {emitted}"
+        );
+    }
+    assert_eq!(emitted.matches("From <").count(), 1, "got: {emitted}");
+}
+
+/// A read takes the collection as one of documents, and as its filter any filter over the rows of
+/// the type, asked by the marker a filter carries in a `where` clause, so that an update does not
+/// stand there. It answers the row or `None`, and fails with the type's own `OperationError`.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_read_takes_any_filter_over_the_types_rows_and_answers_the_row_or_none() {
+    let item: syn::ItemStruct = syn::parse_str("pub struct Named { pub title: String }").unwrap();
+    let added: syn::ItemImpl = syn::parse2(struct_recovering_decode(&item).type_impl).unwrap();
+    let signatures: Vec<String> = added
+        .items
+        .iter()
+        .filter_map(|added_item| {
+            if let syn::ImplItem::Fn(method) = added_item
+                && OPERATIONS.contains(&method.sig.ident.to_string().as_str())
+            {
+                let (visibility, signature) = (&method.vis, &method.sig);
+                Some(quote::quote!(#visibility #signature).to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(
+        signatures,
+        [
+            "pub async fn find_one < F > (collection : & mongodb :: Collection < bson :: Document \
+             > , filter : F ,) -> :: core :: result :: Result < :: core :: option :: Option < Self \
+             > , named_schema :: OperationError > where F : :: core :: convert :: Into < bson :: \
+             Document > + :: core :: convert :: AsRef < :: core :: marker :: PhantomData < Self > \
+             > ,",
+            "pub async fn find_one_with < F > (collection : & mongodb :: Collection < bson :: \
+             Document > , filter : F , resolvers : & [named_schema :: Resolver < '_ , bson :: \
+             Document , bson :: Bson >] ,) -> :: core :: result :: Result < :: core :: option :: \
+             Option < Self > , named_schema :: OperationError > where F : :: core :: convert :: \
+             Into < bson :: Document > + :: core :: convert :: AsRef < :: core :: marker :: \
+             PhantomData < Self > > ,",
+            "fn mongo_read_row (row : bson :: Document , resolvers : & [named_schema :: Resolver \
+             < '_ , bson :: Document , bson :: Bson >] ,) -> :: core :: result :: Result < Self , \
+             named_schema :: OperationError >",
+        ]
+    );
+}
+
+/// Whatever the type's shape, `find_one` is `find_one_with` with no resolvers. That one asks the
+/// driver for one document, reports what the driver fails with as `Database`, and hands the row
+/// to the read of a stored row, which takes the row's `_id` as text and goes through
+/// `from_bson_piped`: no operation reads a row with plain serde.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_read_hands_the_row_the_driver_answers_to_the_piped_entry_point() {
+    for (source, type_impl) in impls_of_every_shape() {
+        assert_eq!(
+            body_of(type_impl.clone(), "find_one"),
+            "{ Self :: find_one_with (collection , filter , & []) . await }",
+            "for {source}"
+        );
+        let with = body_of(type_impl.clone(), "find_one_with");
+        assert!(
+            with.starts_with(
+                "{ let found = collection . find_one (:: core :: convert :: Into :: < bson :: \
+                 Document > :: into (filter)) . await . map_err ("
+            ) && with.ends_with(
+                ":: OperationError :: Database) ? ; found . map (| row | Self :: mongo_read_row \
+                 (row , resolvers)) . transpose () }"
+            ),
+            "for {source}, got: {with}"
+        );
+        let row = body_of(type_impl.clone(), "mongo_read_row");
+        assert!(
+            row.starts_with(
+                "{ let id = row . get (\"_id\") . map_or_else (| | :: std :: string :: String :: \
+                 from (\"without an _id\") , :: std :: string :: ToString :: to_string) ; Self :: \
+                 from_bson_piped (row , resolvers) . map_err (| refused |"
+            ) && row.ends_with(
+                ":: OperationError :: Unreadable { row : id , issues : refused . issues }) }"
+            ),
+            "for {source}, got: {row}"
+        );
+        for read in OPERATIONS {
+            let body = body_of(type_impl.clone(), read);
+            assert!(!body.contains("eserialize"), "for {source}, got: {body}");
+        }
+    }
+}
+
+/// Of the driver the operations name the collection and its error, and of the `bson` library a
+/// document, a value and the serializer: each is one path under both of the library's major
+/// versions. Every bound is in a `where` clause, and nothing they add is hidden from a lint.
+#[cfg(feature = "mongodb")]
+#[test]
+fn the_operations_name_only_what_both_majors_of_the_bson_library_have() {
+    let module: proc_macro2::Ident = syn::parse_quote!(row_schema);
+    let filter: proc_macro2::Ident = syn::parse_quote!(F);
+    let mut emitted = super::operations::error_items();
+    emitted.extend(super::operations::read_methods(&module, &filter));
+    let written = emitted.to_string();
+    let named_after = |prefix: &str| {
+        let mut found: Vec<&str> = written
+            .split(prefix)
+            .skip(1)
+            .filter_map(|rest| {
+                rest.split(|read: char| !(read.is_ascii_alphanumeric() || read == '_'))
+                    .next()
+            })
+            .collect();
+        found.sort_unstable();
+        found.dedup();
+        found
+    };
+    assert_eq!(named_after("mongodb :: "), ["Collection", "error"]);
+    assert_eq!(named_after("mongodb :: error :: "), ["Error"]);
+    assert_eq!(named_after("bson :: "), ["Bson", "Document", "Serializer"]);
+    for absent in ["doc !", "# [allow", "# [expect", "doc (hidden)", ": impl "] {
+        assert!(!written.contains(absent), "found `{absent}` in: {written}");
+    }
+    assert!(!written.contains("< F :"), "got: {written}");
 }
 
 /// The BSON walk is the JSON one over the library's own types: a list, a map and `null` are

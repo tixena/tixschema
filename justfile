@@ -214,6 +214,20 @@ test-emitted:
     TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" TIXSCHEMA_DART="$(command -v "${TIXSCHEMA_DART:-dart}")" TIXSCHEMA_SWIFT="$(command -v "${TIXSCHEMA_SWIFT:-swift}")" TIXSCHEMA_KOTLIN_LIBS="{{kotlin_libs}}" TIXSCHEMA_KOTLINC="$(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}")" cargo test --all-features --test service_schema_emitted_client_tests run_reserved
     @echo "✅ The emitted clients build the URLs they claim to!"
 
+# Run the generated MongoDB operations against the server TIXSCHEMA_MONGODB_URI names, under both
+# bson majors; refuses to stand down.
+#
+# Deliberately outside `all` and `ci`: no MongoDB server comes with a fresh clone or with the CI
+# runner, and the live checks inside `cargo test` stand down when the variable names none, saying
+# so on stderr. Set, a value that is no address or a server that does not answer fails the check.
+test-mongodb:
+    @test -n "${TIXSCHEMA_MONGODB_URI:-}" || { echo "No MongoDB server: set TIXSCHEMA_MONGODB_URI to one's address, as in mongodb://127.0.0.1:27017." >&2; exit 1; }
+    @echo "Running the operations against the server TIXSCHEMA_MONGODB_URI names, bson 2..."
+    cargo test --features mongo --test mongodb_operation_bson2_tests -- --nocapture --test-threads=1
+    @echo "Running the operations against the server TIXSCHEMA_MONGODB_URI names, bson 3..."
+    cargo test --manifest-path bson3/Cargo.toml --features mongo --test mongodb_operation_bson3_tests -- --nocapture --test-threads=1
+    @echo "✅ The operations ran against a real collection under both bson majors!"
+
 # Check code without running tests
 check:
     @echo "Checking code..."

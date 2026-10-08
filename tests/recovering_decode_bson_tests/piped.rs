@@ -1,7 +1,7 @@
 //! `from_bson_piped`: resolvers run in order over every issue a read finds, once, each answering
 //! one issue, and a refused read holds only the issues none settled.
 
-use core::cell::Cell;
+use core::sync::atomic::{AtomicU32, Ordering};
 
 use bson::{Bson, Document, doc};
 use serde::{Deserialize, Serialize};
@@ -147,19 +147,19 @@ fn a_later_resolver_is_never_handed_an_issue_an_earlier_one_settled() {
         "customer": { "name": "Acme", "openInvoices": "3" },
         "number": "INV-0042",
     };
-    let handed = Cell::new(0_u32);
+    let handed = AtomicU32::new(0);
     let rejecting = |_raw: &mut Document, _issue: &Issue<Bson>| {
-        handed.set(handed.get() + 1);
+        handed.fetch_add(1, Ordering::Relaxed);
         Resolution::Rejected
     };
     let read = Invoice::from_bson_piped(stored.clone(), &[&whole_number_as_text, &rejecting]);
     assert_eq!(read, Ok(invoice()));
-    assert_eq!(handed.get(), 0);
+    assert_eq!(handed.load(Ordering::Relaxed), 0);
 
     let refused =
         Invoice::from_bson_piped(stored, &[&rejecting, &whole_number_as_text]).unwrap_err();
     assert_eq!(refused.issues.len(), 1);
-    assert_eq!(handed.get(), 1);
+    assert_eq!(handed.load(Ordering::Relaxed), 1);
 }
 
 /// The pipe runs once: the issue a repair uncovers is listed by the second read, and the resolver
@@ -170,9 +170,9 @@ fn an_issue_a_repair_uncovers_refuses_the_read() {
         "customer": "{\"name\":\"Acme\",\"openInvoices\":\"3\"}",
         "number": "INV-0042",
     };
-    let handed = Cell::new(0_u32);
+    let handed = AtomicU32::new(0);
     let counted = |raw: &mut Document, issue: &Issue<Bson>| {
-        handed.set(handed.get() + 1);
+        handed.fetch_add(1, Ordering::Relaxed);
         whole_number_as_text(raw, issue)
     };
     let refused = Invoice::from_bson_piped(stored, &[&customer_as_text, &counted]).unwrap_err();
@@ -182,5 +182,5 @@ fn an_issue_a_repair_uncovers_refuses_the_read() {
         shown.starts_with("customer.openInvoices: invalid: expected U32, found String(\"3\"): "),
         "got: {shown}"
     );
-    assert_eq!(handed.get(), 0);
+    assert_eq!(handed.load(Ordering::Relaxed), 0);
 }

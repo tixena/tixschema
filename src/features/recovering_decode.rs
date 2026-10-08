@@ -10,12 +10,16 @@
 //! no declaration: each module declares the same aliases of standard types, and a walker builds
 //! whatever issue type the constructor it is handed builds. A build with `mongodb` on adds the
 //! query types to that module: `Filter`, `Update`, and the typed paths that build them (`query`).
-//! It adds the type's own paths too, `MongoFields` there and `MONGO_FIELDS` on the type (`fields`).
+//! It adds the type's own paths too, `MongoFields` there and `MONGO_FIELDS` on the type (`fields`),
+//! and the operations: `OperationError` there, `find_one` and `find_one_with` on the type
+//! (`operations`).
 
 mod aliases;
 pub mod enums;
 #[cfg(feature = "mongodb")]
 mod fields;
+#[cfg(feature = "mongodb")]
+mod operations;
 #[cfg(feature = "mongodb")]
 mod query;
 
@@ -59,16 +63,16 @@ use crate::utils::{
 ))]
 const ADDED_TYPE_COUNT: usize = 15;
 
-/// How many type names the flag adds to a schema module, the query types and the type's own
-/// struct of paths among them.
+/// How many type names the flag adds to a schema module, the query types, the type's own struct
+/// of paths and the error its operations fail with among them.
 #[cfg(all(
     any(feature = "typescript", feature = "zod", feature = "jsonschema"),
     feature = "mongodb"
 ))]
-const ADDED_TYPE_COUNT: usize = 27;
+const ADDED_TYPE_COUNT: usize = 28;
 
-/// The type names the flag adds to a schema module. The query types and the type's own struct of
-/// paths are there under `mongodb`.
+/// The type names the flag adds to a schema module. The query types, the type's own struct of
+/// paths and the error its operations fail with are there under `mongodb`.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
     "Asked",
@@ -93,6 +97,8 @@ const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
     "MongoFields",
     #[cfg(feature = "mongodb")]
     "MongoPath",
+    #[cfg(feature = "mongodb")]
+    "OperationError",
     #[cfg(feature = "mongodb")]
     "OptionalField",
     #[cfg(feature = "mongodb")]
@@ -2279,9 +2285,10 @@ fn bson_bound_items() -> TokenStream {
 /// `bson::Deserializer::new`, which both major versions of the `bson` library have, and which
 /// takes what it reads by value: the document is held as the `bson::Bson` the walker borrows, and
 /// copied once per read by serde. Both entry points open with the same read and close with the
-/// same one.
+/// same one. Under `mongodb` the operations that read a stored row through them sit beside them.
 #[cfg(feature = "bson")]
 fn bson_entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
+    let operations = operation_methods(module, decider);
     let first_read = quote! {
         let mut whole = bson::Bson::Document(document);
         let found = match <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(whole.clone())) {
@@ -2338,6 +2345,8 @@ fn bson_entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
             }
             #second_read
         }
+
+        #operations
 
         fn decode_with_bson_report(whole: &bson::Bson, refused: ::core::option::Option<::std::string::String>) -> ::std::vec::Vec<#module::Issue<bson::Bson>> {
             let mut out = ::std::vec::Vec::new();
@@ -3142,6 +3151,7 @@ fn module_items() -> TokenStream {
     let taken = taken_items();
     let bound = bound_items();
     let query = query_items();
+    let operation = operation_items();
     quote! {
         #path
         #callback
@@ -3149,6 +3159,7 @@ fn module_items() -> TokenStream {
         #taken
         #bound
         #query
+        #operation
     }
 }
 
@@ -3193,6 +3204,30 @@ fn not_the_shape(held: &Ident, path: &TokenStream, expected: &TokenStream, reaso
         nothing: false,
         pattern: quote! { #held },
     }
+}
+
+/// `OperationError`, which every operation on the type fails with.
+#[cfg(feature = "mongodb")]
+fn operation_items() -> TokenStream {
+    operations::error_items()
+}
+
+/// A build without `mongodb` writes no operation, so nothing for one to fail with.
+#[cfg(not(feature = "mongodb"))]
+fn operation_items() -> TokenStream {
+    TokenStream::new()
+}
+
+/// `find_one` and `find_one_with`, each taking its filter as the type parameter `filter` names.
+#[cfg(feature = "mongodb")]
+fn operation_methods(module: &Ident, filter: &Ident) -> TokenStream {
+    operations::read_methods(module, filter)
+}
+
+/// A build without `mongodb` gives a type no operation.
+#[cfg(all(feature = "bson", not(feature = "mongodb")))]
+fn operation_methods(_module: &Ident, _filter: &Ident) -> TokenStream {
+    TokenStream::new()
 }
 
 fn own_reader(ty: &Type) -> TokenStream {
@@ -3434,8 +3469,9 @@ fn resolver_items() -> TokenStream {
             NotTouched,
         }
 
-        /// A resolver over a raw value `D` whose issues hold values `V`.
-        pub type Resolver<'r, D, V> = &'r dyn ::core::ops::Fn(&mut D, &Issue<V>) -> Resolution;
+        /// A resolver over a raw value `D` whose issues hold values `V`. It is `Sync`, so that a
+        /// read which waits for a row can hold its resolvers and still move to another thread.
+        pub type Resolver<'r, D, V> = &'r (dyn ::core::ops::Fn(&mut D, &Issue<V>) -> Resolution + ::core::marker::Sync);
 
         /// Runs `resolvers` in order, each seeing only the issues every resolver before it left
         /// `NotTouched`, and answers the issues none settled, in the order they were found.

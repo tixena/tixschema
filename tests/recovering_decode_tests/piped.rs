@@ -2,7 +2,7 @@
 //! handed only what the ones before it left `NotTouched`, and a refused read holds only the issues
 //! none settled.
 
-use core::cell::RefCell;
+use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -73,10 +73,10 @@ fn whole_number_as_text(raw: &mut Value, issue: &Issue<Value>) -> Resolution {
 /// A resolver that notes the key of every issue it is handed in `seen`, settles the one at
 /// `settled` and rejects the one at `rejected`.
 fn noting<'seen>(
-    seen: &'seen RefCell<Vec<String>>,
+    seen: &'seen Mutex<Vec<String>>,
     settled: Option<&'seen str>,
     rejected: Option<&'seen str>,
-) -> impl Fn(&mut Value, &Issue<Value>) -> Resolution + 'seen {
+) -> impl Fn(&mut Value, &Issue<Value>) -> Resolution + Sync + 'seen {
     move |_raw, issue| {
         let key = if let Issue::Unknown {
             path,
@@ -94,7 +94,7 @@ fn noting<'seen>(
         } else {
             Resolution::NotTouched
         };
-        seen.borrow_mut().push(key);
+        seen.lock().unwrap().push(key);
         answer
     }
 }
@@ -154,18 +154,18 @@ fn the_pipe_hands_a_resolver_only_what_the_earlier_ones_left_not_touched() {
         unknown_at("d"),
     ];
     let (first_seen, second_seen, third_seen) = (
-        RefCell::new(Vec::new()),
-        RefCell::new(Vec::new()),
-        RefCell::new(Vec::new()),
+        Mutex::new(Vec::new()),
+        Mutex::new(Vec::new()),
+        Mutex::new(Vec::new()),
     );
     let first = noting(&first_seen, None, Some("c"));
     let second = noting(&second_seen, Some("a"), None);
     let third = noting(&third_seen, None, None);
     let mut raw = json!({});
     let left = invoice_schema::unsettled(&mut raw, &issues, &[&first, &second, &third]);
-    assert_eq!(*first_seen.borrow(), ["a", "b", "c", "d"]);
-    assert_eq!(*second_seen.borrow(), ["a", "b", "d"]);
-    assert_eq!(*third_seen.borrow(), ["b", "d"]);
+    assert_eq!(*first_seen.lock().unwrap(), ["a", "b", "c", "d"]);
+    assert_eq!(*second_seen.lock().unwrap(), ["a", "b", "d"]);
+    assert_eq!(*third_seen.lock().unwrap(), ["b", "d"]);
     assert_eq!(left, [unknown_at("b"), unknown_at("c"), unknown_at("d")]);
 }
 
@@ -174,13 +174,13 @@ fn the_pipe_answers_every_issue_where_no_resolver_settles_one() {
     let issues = [unknown_at("a"), unknown_at("b")];
     let mut raw = json!({});
     assert_eq!(invoice_schema::unsettled(&mut raw, &issues, &[]), issues);
-    let seen = RefCell::new(Vec::new());
+    let seen = Mutex::new(Vec::new());
     let touching_nothing = noting(&seen, None, None);
     assert_eq!(
         invoice_schema::unsettled(&mut raw, &issues, &[&touching_nothing]),
         issues
     );
-    assert_eq!(*seen.borrow(), ["a", "b"]);
+    assert_eq!(*seen.lock().unwrap(), ["a", "b"]);
 }
 
 /// A resolver repairs the value the pipe is handed, and the issue it settled is not among the

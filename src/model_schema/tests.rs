@@ -190,6 +190,16 @@ const TYPED_PATHS: [&str; 3] = [
     "pub const fn mongo_fields_under <",
 ];
 
+/// What `mongodb` adds for a flagged type's operations: the error they fail with in its module,
+/// and on the type the two reads of one row and the read of a stored row they share.
+#[cfg(feature = "serde")]
+const OPERATIONS: [&str; 4] = [
+    "pub enum OperationError {",
+    "pub async fn find_one <",
+    "pub async fn find_one_with <",
+    "fn mongo_read_row (",
+];
+
 /// One enum per form serde writes an enum in, then one per form whose variants carry an alias or
 /// are never read, each with the arguments it is declared under.
 #[cfg(feature = "serde")]
@@ -6157,11 +6167,11 @@ fn decode_with_is_generated_on_every_enum_form_serde_writes() {
             cfg!(feature = "bson"),
             "for {source}, got: {expanded}"
         );
-        for typed_paths in TYPED_PATHS {
+        for under_mongodb in TYPED_PATHS.iter().chain(&OPERATIONS) {
             assert_eq!(
-                expanded.contains(typed_paths),
+                expanded.contains(under_mongodb),
                 cfg!(feature = "mongodb"),
-                "for {source} and `{typed_paths}`, got: {expanded}"
+                "for {source} and `{under_mongodb}`, got: {expanded}"
             );
         }
         assert_eq!(
@@ -6248,21 +6258,22 @@ fn decode_with_is_generated_on_every_struct_shape_serde_writes() {
             cfg!(feature = "bson"),
             "for {source}, got: {expanded}"
         );
-        for typed_paths in TYPED_PATHS {
+        for under_mongodb in TYPED_PATHS.iter().chain(&OPERATIONS) {
             assert_eq!(
-                expanded.contains(typed_paths),
+                expanded.contains(under_mongodb),
                 cfg!(feature = "mongodb"),
-                "for {source} and `{typed_paths}`, got: {expanded}"
+                "for {source} and `{under_mongodb}`, got: {expanded}"
             );
         }
     }
 }
 
-/// The typed paths come with the flag and with nothing else: in every build, each shape and form
-/// the flag is generated on expands with none of them once the flag is taken off it.
+/// The typed paths and the operations come with the flag and with nothing else: in every build,
+/// each shape and form the flag is generated on expands with none of them once the flag is taken
+/// off it.
 #[cfg(feature = "serde")]
 #[test]
-fn a_type_without_decode_with_gets_no_typed_path() {
+fn a_type_without_decode_with_gets_no_typed_path_and_no_operation() {
     for (args, source) in DECODE_WITH_STRUCT_SHAPES
         .iter()
         .chain(&DECODE_WITH_ENUM_FORMS)
@@ -6271,7 +6282,14 @@ fn a_type_without_decode_with_gets_no_typed_path() {
             .trim_start_matches("decode_with")
             .trim_start_matches(", ");
         let expanded = expansion_under(unflagged, source);
-        for added in ["MongoFields", "MONGO_FIELDS", "mongo_fields_under"] {
+        for added in [
+            "MongoFields",
+            "MONGO_FIELDS",
+            "mongo_fields_under",
+            "OperationError",
+            "find_one",
+            "mongo_read_row",
+        ] {
             assert!(
                 !expanded.contains(added),
                 "for {source}, found `{added}` in: {expanded}"
@@ -6621,7 +6639,8 @@ fn an_item_without_decode_with_expands_as_it_did() {
 
 /// The flag written alone and written `true` generate the same thing, in every build that reads
 /// serde's attributes: the entry point, the walker, and the callback's types in the type's module.
-/// The query types are in that module under `mongodb`, and in no other build.
+/// The query types and the error the operations fail with are in that module under `mongodb`, and
+/// in no other build.
 #[cfg(feature = "serde")]
 #[test]
 fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
@@ -6655,7 +6674,8 @@ fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
             "missing `{emitted}`, got: {flagged}"
         );
     }
-    for query_type in [
+    for under_mongodb in [
+        "pub enum OperationError {",
         "pub type WriteError =",
         "pub struct MongoPath {",
         "pub struct Filter < Root > {",
@@ -6669,9 +6689,9 @@ fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
         "pub struct ModelList < Root , M , F > {",
     ] {
         assert_eq!(
-            flagged.contains(query_type),
+            flagged.contains(under_mongodb),
             cfg!(feature = "mongodb"),
-            "for `{query_type}`, got: {flagged}"
+            "for `{under_mongodb}`, got: {flagged}"
         );
     }
 }
@@ -6730,6 +6750,8 @@ fn what_decode_with_emits_is_written_for_the_lints_a_consumer_denies() {
             "pub struct Unrecovered < V > {",
             "pub struct Asked {",
             "pub struct TakenProbe < 'asked > (",
+            #[cfg(feature = "mongodb")]
+            "pub enum OperationError {",
             #[cfg(feature = "mongodb")]
             "pub struct MongoPath {",
             #[cfg(feature = "mongodb")]
