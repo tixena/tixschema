@@ -3,10 +3,7 @@
 use bson::doc;
 use bson::oid::ObjectId;
 
-use super::{
-    Address, INVOICE, Invoice, InvoiceId, InvoiceStatus, LINE_ITEM, LineItem, Point,
-    invoice_schema, shown,
-};
+use super::{Address, Invoice, InvoiceId, InvoiceStatus, LineItem, Point, invoice_schema, shown};
 
 fn line_item() -> LineItem {
     LineItem {
@@ -18,7 +15,7 @@ fn line_item() -> LineItem {
 
 #[test]
 fn a_comparison_writes_its_operator_over_a_value_of_the_fields_own_type() {
-    let invoice = INVOICE;
+    let invoice = Invoice::MONGO_FIELDS;
     let id = InvoiceId(ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap());
     assert_eq!(
         shown(invoice.id.eq(id).unwrap()),
@@ -60,7 +57,7 @@ fn a_comparison_writes_its_operator_over_a_value_of_the_fields_own_type() {
 /// below a nested model.
 #[test]
 fn a_pattern_is_matched_on_a_path_of_text() {
-    let invoice = INVOICE;
+    let invoice = Invoice::MONGO_FIELDS;
     assert_eq!(
         shown(invoice.number.regex("^inv-", "i")),
         r#"{ "number": { "$regex": "^inv-", "$options": "i" } }"#
@@ -77,7 +74,7 @@ fn a_pattern_is_matched_on_a_path_of_text() {
 
 #[test]
 fn a_list_of_plain_values_is_matched_through_its_elements() {
-    let invoice = INVOICE;
+    let invoice = Invoice::MONGO_FIELDS;
     assert_eq!(
         shown(
             invoice.scores.elem_match(
@@ -106,7 +103,7 @@ fn a_list_of_plain_values_is_matched_through_its_elements() {
 /// to a filter over the rows of the element's own type, and so does `$pull`.
 #[test]
 fn a_list_of_models_is_matched_by_a_filter_over_its_element() {
-    let invoice = INVOICE;
+    let invoice = Invoice::MONGO_FIELDS;
     assert_eq!(
         shown(invoice.items.price.gt(100.0_f64).unwrap()),
         r#"{ "items.price": { "$gt": Double(100.0) } }"#
@@ -114,11 +111,11 @@ fn a_list_of_models_is_matched_by_a_filter_over_its_element() {
     assert_eq!(
         shown(
             invoice.items.elem_match(
-                LINE_ITEM
+                LineItem::MONGO_FIELDS
                     .price
                     .gt(100.0_f64)
                     .unwrap()
-                    .and(LINE_ITEM.article.eq("B-7".to_owned()).unwrap())
+                    .and(LineItem::MONGO_FIELDS.article.eq("B-7".to_owned()).unwrap())
             )
         ),
         r#"{ "items": { "$elemMatch": { "$and": [{ "price": { "$gt": Double(100.0) } }, { "sku": { "$eq": "B-7" } }] } } }"#
@@ -127,7 +124,7 @@ fn a_list_of_models_is_matched_by_a_filter_over_its_element() {
         shown(
             invoice
                 .items
-                .elem_match(LINE_ITEM.quantity.gte(2_u32).unwrap())
+                .elem_match(LineItem::MONGO_FIELDS.quantity.gte(2_u32).unwrap())
         ),
         r#"{ "items": { "$elemMatch": { "quantity": { "$gte": Int64(2) } } } }"#
     );
@@ -140,14 +137,18 @@ fn a_list_of_models_is_matched_by_a_filter_over_its_element() {
         r#"{ "$push": { "items": { "sku": "C-3", "price": Double(4.0), "quantity": Int64(9) } } }"#
     );
     assert_eq!(
-        shown(invoice.items.pull(LINE_ITEM.quantity.lt(1_u32).unwrap())),
+        shown(
+            invoice
+                .items
+                .pull(LineItem::MONGO_FIELDS.quantity.lt(1_u32).unwrap())
+        ),
         r#"{ "$pull": { "items": { "quantity": { "$lt": Int64(1) } } } }"#
     );
 }
 
 #[test]
 fn a_model_a_row_may_leave_out_is_tested_for_removed_and_set_whole() {
-    let invoice = INVOICE;
+    let invoice = Invoice::MONGO_FIELDS;
     assert_eq!(
         shown(invoice.billing.city.eq("Santo Domingo".to_owned()).unwrap()),
         r#"{ "billing.city": { "$eq": "Santo Domingo" } }"#
@@ -178,7 +179,7 @@ fn a_model_a_row_may_leave_out_is_tested_for_removed_and_set_whole() {
 /// serde writes as an array.
 #[test]
 fn a_nested_model_is_compared_whole_and_by_each_path_below_it() {
-    let invoice = INVOICE;
+    let invoice = Invoice::MONGO_FIELDS;
     assert_eq!(
         shown(invoice.origin.0.gt(18.0_f64).unwrap()),
         r#"{ "origin.0": { "$gt": Double(18.0) } }"#
@@ -197,7 +198,7 @@ fn a_nested_model_is_compared_whole_and_by_each_path_below_it() {
 /// merged, whichever module's `Update` wrote them.
 #[test]
 fn an_update_writes_its_operator_and_several_merge_into_one() {
-    let invoice = INVOICE;
+    let invoice = Invoice::MONGO_FIELDS;
     assert_eq!(
         shown(invoice.tags.push("reviewed".to_owned()).unwrap()),
         r#"{ "$push": { "tags": "reviewed" } }"#
@@ -230,7 +231,7 @@ fn an_update_writes_its_operator_and_several_merge_into_one() {
 /// and handed over as the document the driver takes.
 #[test]
 fn a_path_a_row_may_leave_out_compares_and_sets_as_any_path_does() {
-    let invoice = INVOICE;
+    let invoice = Invoice::MONGO_FIELDS;
     assert_eq!(
         shown(invoice.customer.open_invoices.lte(3_u32).unwrap()),
         r#"{ "customer.openInvoices": { "$lte": Int64(3) } }"#
@@ -264,7 +265,7 @@ fn a_path_a_row_may_leave_out_compares_and_sets_as_any_path_does() {
 /// A list is tested for one value and for any of several, changed by element, and set whole.
 #[test]
 fn a_list_of_plain_values_is_tested_by_value_and_changed_by_element_or_whole() {
-    let invoice = INVOICE;
+    let invoice = Invoice::MONGO_FIELDS;
     assert_eq!(
         shown(invoice.scores.contains(5_u32).unwrap()),
         r#"{ "scores": { "$eq": Int64(5) } }"#
@@ -319,7 +320,7 @@ fn a_list_of_plain_values_is_tested_by_value_and_changed_by_element_or_whole() {
 /// Every operator over a nested model's whole value, and a list of models set whole.
 #[test]
 fn a_nested_model_is_tested_and_set_as_one_whole_value() {
-    let invoice = INVOICE;
+    let invoice = Invoice::MONGO_FIELDS;
     assert_eq!(
         shown(invoice.origin.ne(Point(0.0_f64, 0.0_f64)).unwrap()),
         r#"{ "origin": { "$ne": [Double(0.0), Double(0.0)] } }"#

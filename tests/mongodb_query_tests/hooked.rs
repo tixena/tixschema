@@ -4,22 +4,15 @@
 //!
 //! The hook is the consumer's attribute, and each major version of the `bson` library names its
 //! own, so each binary supplies the two at its root: `date_hook` over a date, and
-//! `optional_date_hook` over an `Option` of one.
+//! `optional_date_hook` over an `Option` of one. The function that hands a value to the hook is
+//! generated on the type, beside the paths.
 
-use bson::Bson;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-use super::{Keys, shown};
+use super::shown;
 use crate::{date_hook, optional_date_hook};
-
-/// The paths of a [`Template`] that is the row itself.
-const TEMPLATE: TemplatePaths<Template> = template_paths(template_schema::MongoPath::ROOT);
-
-/// The paths of a [`PublishWindow`] that is the row itself.
-const WINDOW: PublishWindowPaths<PublishWindow> =
-    publish_window_paths(publish_window_schema::MongoPath::ROOT);
 
 #[model_schema(decode_with)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -37,11 +30,17 @@ struct PublishWindow {
     to_date: Option<DateTime<Utc>>,
 }
 
-/// The paths of a [`PublishWindow`], under whatever leads to it in a row of `Root`.
-struct PublishWindowPaths<Root> {
-    announced: publish_window_schema::Field<Root, DateTime<Utc>>,
-    from_date: publish_window_schema::Field<Root, DateTime<Utc>>,
-    to_date: publish_window_schema::OptionalField<Root, DateTime<Utc>>,
+/// Dates stored as the milliseconds since the epoch, through the hook `as_number` hangs on a
+/// field: over a date, and over an `Option` of one.
+#[model_schema(decode_with)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Stamped {
+    #[model_schema_prop(as_number)]
+    created_at: DateTime<Utc>,
+    #[model_schema_prop(as_number)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    seen_at: Option<DateTime<Utc>>,
 }
 
 #[model_schema(decode_with)]
@@ -52,52 +51,9 @@ struct Template {
     publish_template_to: PublishWindow,
 }
 
-/// The paths of a [`Template`], under whatever leads to it in a row of `Root`.
-struct TemplatePaths<Root> {
-    publish_template_to: template_schema::Model<Root, PublishWindow, PublishWindowPaths<Root>>,
-}
-
 /// The instant every case writes: `2026-10-07T17:40:00Z`.
 fn now() -> DateTime<Utc> {
     "2026-10-07T17:40:00Z".parse().unwrap()
-}
-
-const fn publish_window_paths<Root>(prefix: Keys) -> PublishWindowPaths<Root> {
-    PublishWindowPaths {
-        announced: publish_window_schema::Field::plain(publish_window_schema::MongoPath::under(
-            prefix,
-            "announced",
-        )),
-        from_date: publish_window_schema::Field::hooked(
-            publish_window_schema::MongoPath::under(prefix, "fromDate"),
-            write_from_date,
-        ),
-        to_date: publish_window_schema::OptionalField::hooked(
-            publish_window_schema::MongoPath::under(prefix, "toDate"),
-            write_to_date,
-        ),
-    }
-}
-
-const fn template_paths<Root>(prefix: Keys) -> TemplatePaths<Root> {
-    TemplatePaths {
-        publish_template_to: template_schema::Model::plain(
-            template_schema::MongoPath::under(prefix, "publishTemplateTo"),
-            publish_window_paths(
-                template_schema::MongoPath::under(prefix, "publishTemplateTo").segments,
-            ),
-        ),
-    }
-}
-
-/// `from_date` as its hook writes it.
-fn write_from_date(value: DateTime<Utc>) -> Result<Bson, publish_window_schema::WriteError> {
-    date_hook::serialize(&value, bson::Serializer::new())
-}
-
-/// `to_date` as its hook writes it: the hook reads the field's own type, an `Option`.
-fn write_to_date(value: DateTime<Utc>) -> Result<Bson, publish_window_schema::WriteError> {
-    optional_date_hook::serialize(&Some(value), bson::Serializer::new())
 }
 
 /// The consumer's own filter, `"publishTemplateTo.toDate": { "$lt": now }`: a path below a nested
@@ -105,7 +61,13 @@ fn write_to_date(value: DateTime<Utc>) -> Result<Bson, publish_window_schema::Wr
 #[test]
 fn a_hooked_date_in_an_option_is_written_as_a_bson_date() {
     assert_eq!(
-        shown(TEMPLATE.publish_template_to.to_date.lt(now()).unwrap()),
+        shown(
+            Template::MONGO_FIELDS
+                .publish_template_to
+                .to_date
+                .lt(now())
+                .unwrap()
+        ),
         r#"{ "publishTemplateTo.toDate": { "$lt": Date(1791394800000 ms) } }"#
     );
 }
@@ -113,7 +75,13 @@ fn a_hooked_date_in_an_option_is_written_as_a_bson_date() {
 #[test]
 fn a_hooked_date_is_written_as_a_bson_date() {
     assert_eq!(
-        shown(TEMPLATE.publish_template_to.from_date.lt(now()).unwrap()),
+        shown(
+            Template::MONGO_FIELDS
+                .publish_template_to
+                .from_date
+                .lt(now())
+                .unwrap()
+        ),
         r#"{ "publishTemplateTo.fromDate": { "$lt": Date(1791394800000 ms) } }"#
     );
 }
@@ -124,24 +92,24 @@ fn a_hooked_date_is_written_as_a_bson_date() {
 fn every_operator_of_a_hooked_path_writes_through_the_hook() {
     assert_eq!(
         shown(
-            WINDOW
+            PublishWindow::MONGO_FIELDS
                 .to_date
                 .gte(now())
                 .unwrap()
-                .and(WINDOW.from_date.lt(now()).unwrap())
+                .and(PublishWindow::MONGO_FIELDS.from_date.lt(now()).unwrap())
         ),
         r#"{ "$and": [{ "toDate": { "$gte": Date(1791394800000 ms) } }, { "fromDate": { "$lt": Date(1791394800000 ms) } }] }"#
     );
     assert_eq!(
-        shown(WINDOW.to_date.is_in([now()]).unwrap()),
+        shown(PublishWindow::MONGO_FIELDS.to_date.is_in([now()]).unwrap()),
         r#"{ "toDate": { "$in": [Date(1791394800000 ms)] } }"#
     );
     assert_eq!(
-        shown(WINDOW.to_date.set(now()).unwrap()),
+        shown(PublishWindow::MONGO_FIELDS.to_date.set(now()).unwrap()),
         r#"{ "$set": { "toDate": Date(1791394800000 ms) } }"#
     );
     assert_eq!(
-        shown(WINDOW.to_date.unset()),
+        shown(PublishWindow::MONGO_FIELDS.to_date.unset()),
         r#"{ "$unset": { "toDate": "" } }"#
     );
 }
@@ -150,7 +118,7 @@ fn every_operator_of_a_hooked_path_writes_through_the_hook() {
 #[test]
 fn a_date_with_no_hook_is_written_as_text() {
     assert_eq!(
-        shown(WINDOW.announced.lt(now()).unwrap()),
+        shown(PublishWindow::MONGO_FIELDS.announced.lt(now()).unwrap()),
         r#"{ "announced": { "$lt": "2026-10-07T17:40:00Z" } }"#
     );
 }
@@ -173,15 +141,59 @@ fn a_hooked_path_writes_what_serde_stores_for_the_field() {
     for (key, filter) in [
         (
             "fromDate",
-            WINDOW.from_date.eq(now()).unwrap().into_document(),
+            PublishWindow::MONGO_FIELDS
+                .from_date
+                .eq(now())
+                .unwrap()
+                .into_document(),
         ),
-        ("toDate", WINDOW.to_date.eq(now()).unwrap().into_document()),
+        (
+            "toDate",
+            PublishWindow::MONGO_FIELDS
+                .to_date
+                .eq(now())
+                .unwrap()
+                .into_document(),
+        ),
         (
             "announced",
-            WINDOW.announced.eq(now()).unwrap().into_document(),
+            PublishWindow::MONGO_FIELDS
+                .announced
+                .eq(now())
+                .unwrap()
+                .into_document(),
         ),
     ] {
         let written = filter.get_document(key).unwrap().get("$eq");
         assert_eq!(written, stored.get(key), "for {key}");
     }
+}
+
+/// A field under `as_number` is stored as a number, through the hook the flag hangs on it, and
+/// so is what its path writes: over a date, and over an `Option` of one.
+#[test]
+fn a_date_under_as_number_is_written_as_a_number() {
+    let stamped = Stamped::MONGO_FIELDS;
+    assert_eq!(
+        shown(stamped.created_at.lt(now()).unwrap()),
+        r#"{ "createdAt": { "$lt": Int64(1791394800000) } }"#
+    );
+    assert_eq!(
+        shown(stamped.seen_at.lt(now()).unwrap()),
+        r#"{ "seenAt": { "$lt": Int64(1791394800000) } }"#
+    );
+    assert_eq!(
+        shown(stamped.seen_at.exists(false)),
+        r#"{ "seenAt": { "$exists": false } }"#
+    );
+    let row = Stamped {
+        created_at: now(),
+        seen_at: Some(now()),
+    }
+    .serialize(bson::Serializer::new())
+    .unwrap();
+    assert_eq!(
+        shown(row.as_document().unwrap().clone()),
+        r#"{ "createdAt": Int64(1791394800000), "seenAt": Int64(1791394800000) }"#
+    );
 }

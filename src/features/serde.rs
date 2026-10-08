@@ -108,6 +108,15 @@ pub struct SerdeFieldMeta {
     pub skip: bool,             // Whether to skip the field
 }
 
+/// What the renaming keys of a container, a variant or a field name in the direction serde writes.
+#[cfg(feature = "mongodb")]
+#[derive(Default)]
+pub struct WrittenRenames {
+    pub rename: Option<String>,
+    pub rename_all: Option<String>,
+    pub rename_all_fields: Option<String>,
+}
+
 /// Walks the serde attributes for exactly the keys [`SerdeKeyOmission`] names, ignoring every
 /// other one. Attributes wrapped in a `cfg_attr` are not reached — a predicate a proc macro cannot
 /// evaluate is not one this walk may guess at.
@@ -431,6 +440,45 @@ fn read_renaming(nested: &ParseNestedMeta<'_>, key: &str) -> syn::Result<Option<
     } else {
         Ok(None)
     }
+}
+
+/// Reads each renaming key for what it names when serde writes, which is the key a stored value
+/// is under whatever the same key names for reading. A list form counts by its `serialize` side.
+#[cfg(feature = "mongodb")]
+pub fn parse_written_renames(attrs: &[Attribute]) -> WrittenRenames {
+    let mut written = WrittenRenames::default();
+
+    for attr in attrs {
+        if !attr.path().is_ident("serde") {
+            continue;
+        }
+        attr.parse_nested_meta(|nested| {
+            let slot = if nested.path.is_ident("rename") {
+                &mut written.rename
+            } else if nested.path.is_ident("rename_all") {
+                &mut written.rename_all
+            } else if nested.path.is_ident("rename_all_fields") {
+                &mut written.rename_all_fields
+            } else {
+                return consume_unread_value(&nested);
+            };
+            if nested.input.peek(Token![=]) {
+                *slot = Some(nested.value()?.parse::<LitStr>()?.value());
+            } else if nested.input.peek(Paren)
+                && let Some(serialize) = parse_rename_directions(&nested)?.serialize
+            {
+                *slot = Some(serialize);
+            } else {
+                // A list that writes no `serialize` leaves the name serde writes as it was.
+            }
+            Ok(())
+        })
+        .unwrap_or_else(|e| {
+            log::trace!("Failed to parse serde rename attribute: {e}");
+        });
+    }
+
+    written
 }
 
 /// The refusal the item's own list-form renaming earns when its two directions do not name one key,

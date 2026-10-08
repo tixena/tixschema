@@ -18,7 +18,7 @@ use crate::utils::{Declared, declared, written_type};
 const DEPTH: usize = 8;
 
 /// The types that mean the same wherever they are written.
-const PRIMITIVES: [&str; 17] = [
+pub const PRIMITIVES: [&str; 17] = [
     "bool", "char", "f32", "f64", "i128", "i16", "i32", "i64", "i8", "isize", "str", "u128", "u16",
     "u32", "u64", "u8", "usize",
 ];

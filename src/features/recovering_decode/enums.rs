@@ -13,8 +13,8 @@ use syn::{Fields, ItemEnum, Type, parse_quote};
 
 use super::aliases::Reach;
 use super::{
-    Arm, Handed, Keyed, Lookup, RecoveringDecode, Shape, Step, Walk, Walker, Written, added_to,
-    binding, flattened_walker_call, not_the_shape, path_expression, written_names,
+    Arm, Handed, Keyed, Lookup, RecoveringDecode, Shape, Step, TypedPaths, Walk, Walker, Written,
+    added_to, binding, flattened_walker_call, not_the_shape, path_expression, written_names,
 };
 use crate::features::serde::{
     parse_serde_field_attributes, parse_serde_key_omission, parse_serde_type_attributes,
@@ -24,7 +24,7 @@ use crate::rename_rule::resolve_rename_rule;
 use crate::utils::{ident_schema_module_name, to_snake_case, type_parameters_in_scope};
 
 /// The form serde writes an enum in, read off its attributes as the schema surfaces read them.
-enum Tagging {
+pub enum Tagging {
     /// `tag` and `content`: the variant's name under one key, what it holds under another.
     Adjacent { content: String, tag: String },
     /// No attribute: the variant's name as the one key of an object, over what it holds.
@@ -38,7 +38,7 @@ enum Tagging {
 }
 
 impl Tagging {
-    fn of(item_enum: &ItemEnum) -> Self {
+    pub fn of(item_enum: &ItemEnum) -> Self {
         let container = parse_serde_type_attributes(&item_enum.attrs);
         if container.untagged {
             return Self::Untagged;
@@ -701,15 +701,18 @@ pub fn enum_recovering_decode(item_enum: &ItemEnum) -> RecoveringDecode {
         walked_variants(&walked, &module_name, &parameters)
             .into_iter()
             .partition(|variant| variant.never_read);
+    let names = written_names(item_enum.to_token_stream());
+    let paths = enum_paths(item_enum, &names);
     added_to(
         &item_enum.ident,
         &item_enum.generics,
         &module_name,
         &parameters,
         &Written {
-            names: written_names(item_enum.to_token_stream()),
+            names,
             reach: &reach,
         },
+        &paths,
         |walker| {
             EnumWalker {
                 never_read: &never_read,
@@ -719,6 +722,19 @@ pub fn enum_recovering_decode(item_enum: &ItemEnum) -> RecoveringDecode {
             .methods(&tagging)
         },
     )
+}
+
+/// The typed MongoDB paths of an enum: `MongoFields` for its module, and for its `impl` the const
+/// and the function that build it.
+#[cfg(feature = "mongodb")]
+fn enum_paths(item_enum: &ItemEnum, written: &[String]) -> TypedPaths {
+    super::fields::enum_paths(item_enum, written)
+}
+
+/// A build without `mongodb` writes no typed path.
+#[cfg(not(feature = "mongodb"))]
+fn enum_paths(_item_enum: &ItemEnum, _written: &[String]) -> TypedPaths {
+    TypedPaths::default()
 }
 
 /// What lists a tag that is not there, under the key `tag` it is read from.

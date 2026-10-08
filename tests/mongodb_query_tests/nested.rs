@@ -1,12 +1,12 @@
 //! A nested model's paths, built by its own function under the key the outer type holds it at,
 //! and its filters joined with the outer type's: three types deep, each one's module holding its
-//! own `Filter` and `Update`.
+//! own `Filter` and `Update`, and each one's expansion writing its own keys alone.
 
 use core::marker::PhantomData;
 
 use bson::{Document, doc};
 
-use super::{ADDRESS, CUSTOMER, INVOICE, Invoice, ORDER, invoice_schema, shown};
+use super::{Address, Customer, Invoice, Order, invoice_schema, shown};
 
 /// What a generated read of `Invoice` asks of its filter: a filter over the rows of `Invoice`,
 /// of whichever module's `Filter` type.
@@ -29,7 +29,7 @@ where
 
 #[test]
 fn a_nested_path_writes_every_key_that_leads_to_it() {
-    let invoice = INVOICE;
+    let invoice = Invoice::MONGO_FIELDS;
     assert_eq!(
         shown(
             invoice
@@ -68,7 +68,7 @@ fn a_nested_path_writes_every_key_that_leads_to_it() {
 fn a_models_paths_start_at_whatever_holds_it() {
     assert_eq!(
         shown(
-            ORDER
+            Order::MONGO_FIELDS
                 .customer
                 .address
                 .city
@@ -78,11 +78,22 @@ fn a_models_paths_start_at_whatever_holds_it() {
         r#"{ "customer.address.city": { "$eq": "Santiago" } }"#
     );
     assert_eq!(
-        shown(CUSTOMER.address.city.eq("Santiago".to_owned()).unwrap()),
+        shown(
+            Customer::MONGO_FIELDS
+                .address
+                .city
+                .eq("Santiago".to_owned())
+                .unwrap()
+        ),
         r#"{ "address.city": { "$eq": "Santiago" } }"#
     );
     assert_eq!(
-        shown(ADDRESS.city.eq("Santiago".to_owned()).unwrap()),
+        shown(
+            Address::MONGO_FIELDS
+                .city
+                .eq("Santiago".to_owned())
+                .unwrap()
+        ),
         r#"{ "city": { "$eq": "Santiago" } }"#
     );
 }
@@ -91,7 +102,7 @@ fn a_models_paths_start_at_whatever_holds_it() {
 /// module's filter takes the outermost's just as well.
 #[test]
 fn the_filters_of_three_modules_join_into_one() {
-    let invoice = INVOICE;
+    let invoice = Invoice::MONGO_FIELDS;
     assert_eq!(
         shown(
             invoice
@@ -122,7 +133,7 @@ fn the_filters_of_three_modules_join_into_one() {
         ),
         r#"{ "$or": [{ "customer.address.city": { "$eq": "Santo Domingo" } }, { "total": { "$gt": Double(1000.0) } }] }"#
     );
-    let order = ORDER;
+    let order = Order::MONGO_FIELDS;
     assert_eq!(
         shown(
             order
@@ -147,7 +158,7 @@ fn the_filters_of_three_modules_join_into_one() {
 /// wrote them.
 #[test]
 fn an_operation_takes_a_filter_and_an_update_of_any_module_over_its_rows() {
-    let invoice = INVOICE;
+    let invoice = Invoice::MONGO_FIELDS;
     assert_eq!(
         shown(taken_by_a_read(
             invoice
@@ -184,7 +195,7 @@ fn an_operation_takes_a_filter_and_an_update_of_any_module_over_its_rows() {
 fn a_document_written_by_hand_joins_the_typed_paths_through_raw() {
     assert_eq!(
         shown(
-            INVOICE
+            Invoice::MONGO_FIELDS
                 .total
                 .gt(1000.0_f64)
                 .unwrap()
@@ -200,7 +211,7 @@ fn a_document_written_by_hand_joins_the_typed_paths_through_raw() {
 /// one beside the typed ones.
 #[test]
 fn the_updates_of_three_modules_merge_into_one() {
-    let invoice = INVOICE;
+    let invoice = Invoice::MONGO_FIELDS;
     assert_eq!(
         shown(
             invoice

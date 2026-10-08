@@ -102,13 +102,18 @@ fn enum_bson_of(source: &str) -> String {
     bson.to_owned()
 }
 
-/// The statements `decode_with_value_fields` runs for `source`, as text.
+/// The statements `decode_with_value_fields` runs for `source`, as text, to the end of the `impl`
+/// with the typed paths `mongodb` writes after the walkers taken out of it.
 fn fields_walk_of(source: &str) -> String {
     let emitted = type_impl_of(source);
     let (_, walk) = emitted
         .split_once("pub fn decode_with_value_fields")
         .unwrap();
-    walk.to_owned()
+    walk.split_once("# [doc = r\" The typed MongoDB paths of this type")
+        .map_or_else(
+            || walk.to_owned(),
+            |(walkers, _paths)| format!("{walkers}}}"),
+        )
 }
 
 /// The statements `decode_with_value_fields` runs for `source`, as text, up to the BSON entry
@@ -148,8 +153,8 @@ fn emission_of(source: &str) -> String {
     format!("{} {}", added.schema_module, added.type_impl)
 }
 
-/// The `impl`s the flag adds to `source`: each one's header as text, and its methods in the order
-/// written.
+/// The `impl`s the flag adds to `source`: each one's header as text, and its consts and methods
+/// in the order written.
 fn added_impls(source: &str) -> Vec<(String, Vec<String>)> {
     let item: syn::ItemStruct = syn::parse_str(source).unwrap();
     impls_in(struct_recovering_decode(&item).type_impl)
@@ -161,7 +166,8 @@ fn added_enum_impls(source: &str) -> Vec<(String, Vec<String>)> {
     impls_in(enum_recovering_decode(&item).type_impl)
 }
 
-/// Every `impl` among `type_impl`: its header as text, and its methods in the order written.
+/// Every `impl` among `type_impl`: its header as text, and its consts and methods in the order
+/// written.
 fn impls_in(type_impl: proc_macro2::TokenStream) -> Vec<(String, Vec<String>)> {
     let added: syn::File = syn::parse2(type_impl).unwrap();
     let impls: Vec<(String, Vec<String>)> = added
@@ -176,17 +182,7 @@ fn impls_in(type_impl: proc_macro2::TokenStream) -> Vec<(String, Vec<String>)> {
                 &block.self_ty,
                 &block.generics.where_clause,
             );
-            let methods: Vec<String> = block
-                .items
-                .iter()
-                .filter_map(|member| {
-                    if let syn::ImplItem::Fn(method) = member {
-                        Some(method.sig.ident.to_string())
-                    } else {
-                        None
-                    }
-                })
-                .collect();
+            let methods: Vec<String> = block.items.iter().filter_map(member_name).collect();
             assert_eq!(methods.len(), block.items.len());
             Some((
                 quote::quote!(impl #generics #self_ty #where_clause).to_string(),
@@ -196,6 +192,17 @@ fn impls_in(type_impl: proc_macro2::TokenStream) -> Vec<(String, Vec<String>)> {
         .collect();
     assert_eq!(impls.len(), added.items.len());
     impls
+}
+
+/// The name of a const or a method of an `impl`, and `None` for any other member of one.
+fn member_name(member: &syn::ImplItem) -> Option<String> {
+    if let syn::ImplItem::Fn(method) = member {
+        Some(method.sig.ident.to_string())
+    } else if let syn::ImplItem::Const(constant) = member {
+        Some(constant.ident.to_string())
+    } else {
+        None
+    }
 }
 
 /// The names the methods among `type_impl` give type parameters of their own, each once, sorted.
@@ -225,6 +232,35 @@ fn own_type_parameters(type_impl: proc_macro2::TokenStream) -> Vec<String> {
     named.sort_unstable();
     named.dedup();
     named
+}
+
+/// What the typed paths add to every type, in the order written: under `mongodb`, the const that
+/// holds them and the function that builds them, and nothing in a build without it.
+fn paths_members() -> Vec<String> {
+    if cfg!(feature = "mongodb") {
+        vec!["MONGO_FIELDS".to_owned(), "mongo_fields_under".to_owned()]
+    } else {
+        Vec::new()
+    }
+}
+
+/// What the typed paths of the struct `source` declares add to its schema module.
+#[cfg(all(
+    feature = "mongodb",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn paths_module_items(source: &str) -> proc_macro2::TokenStream {
+    let item: syn::ItemStruct = syn::parse_str(source).unwrap();
+    super::fields::struct_paths(&item, &[]).module_items
+}
+
+/// A build without `mongodb` writes no typed path.
+#[cfg(all(
+    not(feature = "mongodb"),
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn paths_module_items(_source: &str) -> proc_macro2::TokenStream {
+    proc_macro2::TokenStream::new()
 }
 
 /// The methods one source adds to every type, in the order written.
@@ -364,25 +400,15 @@ fn query_methods(added: &syn::File) -> Vec<(String, &syn::ImplItemFn)> {
         .collect()
 }
 
-/// Every method the flag adds carries the flag's name, so none can meet one the type's author
-/// wrote. Each entry point is the one it is named for.
+/// Every const and method the flag adds carries the flag's name, so none can meet one the type's
+/// author wrote. Each entry point is the one it is named for.
 #[test]
 fn every_added_method_but_the_entry_point_carries_the_flags_name() {
     let item: syn::ItemStruct =
         syn::parse_str("pub struct Named { pub title: String, pub versions: Vec<Version> }")
             .unwrap();
     let added: syn::ItemImpl = syn::parse2(struct_recovering_decode(&item).type_impl).unwrap();
-    let methods: Vec<String> = added
-        .items
-        .iter()
-        .filter_map(|added_item| {
-            if let syn::ImplItem::Fn(method) = added_item {
-                Some(method.sig.ident.to_string())
-            } else {
-                None
-            }
-        })
-        .collect();
+    let methods: Vec<String> = added.items.iter().filter_map(member_name).collect();
     assert_eq!(methods.len(), added.items.len());
     let mut named = vec![
         "from_value_with",
@@ -401,6 +427,10 @@ fn every_added_method_but_the_entry_point_carries_the_flags_name() {
             "decode_with_bson_named",
             "decode_with_bson_fields",
         ]);
+    }
+    // The typed paths carry the name of the feature that adds them.
+    if cfg!(feature = "mongodb") {
+        named.extend(["MONGO_FIELDS", "mongo_fields_under"]);
     }
     assert_eq!(methods, named);
 }
@@ -1230,6 +1260,7 @@ fn every_type_the_flag_adds_is_a_name_read_past() {
     let mut every = module_items();
     every.extend(read_whole_items());
     every.extend(entry_of_items());
+    every.extend(paths_module_items("pub struct Named { pub title: String }"));
     let added: syn::File = syn::parse2(every).unwrap();
     let mut declared: Vec<String> = added
         .items
@@ -1268,6 +1299,7 @@ fn every_struct_shape_adds_the_same_methods() {
         if cfg!(feature = "bson") {
             named.extend(methods_of("bson"));
         }
+        named.extend(paths_members());
         let header = format!("impl {}", source.split([' ', '(', ';']).nth(2).unwrap());
         assert_eq!(added_impls(source), [(header, named)], "for {source}");
     }
@@ -1507,6 +1539,7 @@ fn a_transparent_struct_with_a_named_field_gets_a_fields_walker_whatever_it_hold
         if cfg!(feature = "bson") {
             named.extend(methods_of("bson"));
         }
+        named.extend(paths_members());
         let source = format!("#[serde(transparent)] pub struct Code {{ pub inner: {field} }}");
         assert_eq!(
             added_impls(&source),
@@ -1680,7 +1713,8 @@ fn a_tuple_in_a_fields_type_is_walked_by_position_wherever_it_is_held() {
 /// A type with a type parameter gets one `impl` per source. Each joins what that source reads and
 /// writes a value with to the bounds the type declares, on every parameter and on the type itself.
 /// A parameter is bounded in one place: its `where` predicate where the type wrote one, taking
-/// along what the type wrote beside its name, and beside its name otherwise.
+/// along what the type wrote beside its name, and beside its name otherwise. Under `mongodb` its
+/// typed paths get an `impl` of their own, under what a path writes a value with.
 #[test]
 fn a_generic_type_gets_one_impl_per_source_under_that_sources_bounds() {
     let added = added_impls(
@@ -1707,6 +1741,16 @@ fn a_generic_type_gets_one_impl_per_source_under_that_sources_bounds() {
              Vec < W > : Clone , Self : serde :: de :: DeserializeOwned + serde :: Serialize"
                 .to_owned(),
             methods_of("bson"),
+        ));
+    }
+    if cfg!(feature = "mongodb") {
+        headers.push((
+            "impl < T : Clone + :: serde :: Serialize , const N : usize , U , V , \
+             W : :: serde :: Serialize > Page < T , N , U , V , W > \
+             where U : Copy + :: serde :: Serialize , V : Sync + Send + :: serde :: Serialize , \
+             Vec < W > : Clone , Self : :: serde :: Serialize"
+                .to_owned(),
+            paths_members(),
         ));
     }
     assert_eq!(added, headers);
@@ -1746,61 +1790,81 @@ fn a_methods_own_type_parameter_is_never_one_the_type_declares() {
 /// A method's own type parameter hides a type of its name wherever the method's body writes one,
 /// so each takes the next free name where the item writes `F` or `I` anywhere: a field's type, a
 /// type held inside one, the item's own name, the path of a hook. Every other item keeps both.
+/// Under `mongodb` the function that builds the typed paths names the row type the same way:
+/// `Root`, and the next free name where the item writes that.
 #[test]
 fn a_methods_own_type_parameter_is_never_a_name_the_item_writes() {
-    for (source, named) in [
-        ("pub struct Holder { pub inner: Inner }", ["F", "I"]),
-        ("pub struct Holder { pub inner: I }", ["F", "I2"]),
-        ("pub struct Holder { pub inner: r#I }", ["F", "I2"]),
+    let expected = |named: [&str; 2], root: &str| {
+        let mut every: Vec<String> = named.map(str::to_owned).to_vec();
+        if cfg!(feature = "mongodb") {
+            every.push(root.to_owned());
+        }
+        every
+    };
+    for (source, named, root) in [
+        ("pub struct Holder { pub inner: Inner }", ["F", "I"], "Root"),
+        ("pub struct Holder { pub inner: I }", ["F", "I2"], "Root"),
+        ("pub struct Holder { pub inner: r#I }", ["F", "I2"], "Root"),
         (
             "pub struct Holder { pub keyed: HashMap<String, Vec<Option<(I, i32)>>> }",
             ["F", "I2"],
+            "Root",
         ),
-        ("pub struct I { pub number: i32 }", ["F", "I2"]),
+        ("pub struct I { pub number: i32 }", ["F", "I2"], "Root"),
         (
             "pub struct Holder { #[serde(deserialize_with = \"I::positive\")] pub score: i32 }",
             ["F", "I2"],
+            "Root",
         ),
         (
             "pub struct Holder { #[serde(flatten)] pub inner: I }",
             ["F", "I2"],
+            "Root",
         ),
         (
             "pub struct Holder { #[serde(deserialize_with = \"parsed::<I, _>\")] pub score: i32 }",
             ["F", "I2"],
+            "Root",
         ),
-        ("pub struct F(pub String);", ["F2", "I"]),
+        ("pub struct F(pub String);", ["F2", "I"], "Root"),
         (
             "pub struct Holder { pub frame: F, pub inner: I, pub other: I2 }",
             ["F2", "I3"],
+            "Root",
         ),
+        ("pub struct Holder { pub top: Root }", ["F", "I"], "Root2"),
+        ("pub struct Root { pub name: String }", ["F", "I"], "Root2"),
     ] {
         let item: syn::ItemStruct = syn::parse_str(source).unwrap();
         assert_eq!(
             own_type_parameters(struct_recovering_decode(&item).type_impl),
-            named,
+            expected(named, root),
             "for {source}"
         );
     }
-    for (source, named) in [
-        (EXTERNAL, ["F", "I"]),
+    for (source, named, root) in [
+        (EXTERNAL, ["F", "I"], "Root"),
         (
             "pub enum Carried { Alone(I), Named { inner: I }, Paired(I, i32) }",
             ["F", "I2"],
+            "Root",
         ),
         (
             "#[serde(untagged)] pub enum Alternate { Model(I), Text(String) }",
             ["F", "I2"],
+            "Root",
         ),
         (
             "#[serde(tag = \"kind\")] pub enum Framed { Held(F) }",
             ["F2", "I"],
+            "Root",
         ),
+        ("pub enum Tree { Leaf, Root(String) }", ["F", "I"], "Root2"),
     ] {
         let item: syn::ItemEnum = syn::parse_str(source).unwrap();
         assert_eq!(
             own_type_parameters(enum_recovering_decode(&item).type_impl),
-            named,
+            expected(named, root),
             "for {source}"
         );
     }
@@ -1972,6 +2036,7 @@ fn every_enum_form_adds_the_same_methods_and_an_untagged_one_a_method_per_varian
         if cfg!(feature = "bson") {
             named.extend(of_source("bson"));
         }
+        named.extend(paths_members());
         let (_attributes, declared) = source.split_once("pub enum ").unwrap();
         let header = format!("impl {}", declared.split(' ').next().unwrap());
         assert_eq!(added_enum_impls(source), [(header, named)], "for {source}");
@@ -2294,6 +2359,13 @@ fn a_generic_enum_gets_its_methods_under_each_sources_bounds() {
             methods_of("bson"),
         ));
     }
+    if cfg!(feature = "mongodb") {
+        headers.push((
+            "impl < T : :: serde :: Serialize > Answer < T > where Self : :: serde :: Serialize"
+                .to_owned(),
+            paths_members(),
+        ));
+    }
     assert_eq!(added_enum_impls(source), headers);
     let walk = enum_json_of(source);
     for written in [
@@ -2548,6 +2620,7 @@ fn an_untagged_variant_serde_never_reads_is_matched_and_never_walked() {
     if cfg!(feature = "bson") {
         named.extend(of_source("bson"));
     }
+    named.extend(paths_members());
     assert_eq!(
         added_enum_impls(UNREAD_UNTAGGED),
         [("impl Reach".to_owned(), named)]
@@ -3786,4 +3859,787 @@ fn a_field_typed_with_an_alias_of_a_model_type_is_left_as_it_is_written() {
     assert!(!walker.contains("const _"), "got: {walker}");
     assert!(!walker.contains("ReadWhole"), "got: {walker}");
     assert!(!module.contains("decode_with_at0"), "got: {module}");
+}
+
+/// What the typed paths add for the struct `source` declares, with every space taken out: what
+/// goes into its module, then what goes into its `impl`. Each name of `seen` is a struct or an
+/// enum `#[model_schema]` was written on above it, as the struct's own name is by then.
+#[cfg(feature = "mongodb")]
+fn typed_paths_of(source: &str, seen: &[&str]) -> (String, String) {
+    let item: syn::ItemStruct = syn::parse_str(source).unwrap();
+    record_declared(&item.ident.to_string(), Declared::Model);
+    for name in seen {
+        record_declared(name, Declared::Model);
+    }
+    let paths = super::fields::struct_paths(&item, &written_names(item.to_token_stream()));
+    (
+        paths.module_items.to_string().split_whitespace().collect(),
+        paths.type_items.to_string().split_whitespace().collect(),
+    )
+}
+
+/// [`typed_paths_of`] for the enum `source` declares.
+#[cfg(feature = "mongodb")]
+fn typed_enum_paths_of(source: &str, seen: &[&str]) -> (String, String) {
+    let item: syn::ItemEnum = syn::parse_str(source).unwrap();
+    record_declared(&item.ident.to_string(), Declared::Model);
+    for name in seen {
+        record_declared(name, Declared::Model);
+    }
+    let paths = super::fields::enum_paths(&item, &written_names(item.to_token_stream()));
+    (
+        paths.module_items.to_string().split_whitespace().collect(),
+        paths.type_items.to_string().split_whitespace().collect(),
+    )
+}
+
+/// A field is a member of the kind serde writes its value as: a value every row holds, one a row
+/// may leave out, a list, and each of the three over a struct or an enum declared above, which
+/// then holds that type's own struct of paths. A wrapper serde writes as the value it holds
+/// changes the type an operator takes and nothing of the kind.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_field_is_the_member_of_the_kind_serde_writes_it_as() {
+    let nested = "super::inner_schema::MongoFields<Root>";
+    for (field, member) in [
+        ("String", "self::Field<Root,String>".to_owned()),
+        ("Option<u8>", "self::OptionalField<Root,u8>".to_owned()),
+        ("Vec<u8>", "self::ListField<Root,u8>".to_owned()),
+        ("[u8; 4]", "self::ListField<Root,u8>".to_owned()),
+        ("HashSet<u8>", "self::ListField<Root,u8>".to_owned()),
+        ("Inner", format!("self::Model<Root,super::Inner,{nested}>")),
+        ("Option<Inner>", format!("self::OptionalModel<Root,super::Inner,{nested}>")),
+        ("Vec<Inner>", format!("self::ModelList<Root,super::Inner,{nested}>")),
+        ("Box<Inner>", format!("self::Model<Root,Box<super::Inner>,{nested}>")),
+        (
+            "Option<Box<Inner>>",
+            format!("self::OptionalModel<Root,Box<super::Inner>,{nested}>"),
+        ),
+        (
+            "Wrapper<Inner>",
+            "self::Model<Root,super::Wrapper<super::Inner>,super::wrapper_schema::MongoFields<Root,super::Inner>>"
+                .to_owned(),
+        ),
+        ("Option<Vec<u8>>", "self::OptionalField<Root,Vec<u8>>".to_owned()),
+        ("Vec<Vec<Inner>>", "self::ListField<Root,Vec<super::Inner>>".to_owned()),
+        ("(u8, Inner)", "self::Field<Root,(u8,super::Inner)>".to_owned()),
+    ] {
+        let source = format!("pub struct Row {{ pub a: {field} }}");
+        let (module, _on_the_type) = typed_paths_of(&source, &["Inner", "Wrapper"]);
+        assert!(
+            module.contains(&format!("{{puba:{member}}}")),
+            "for {field}, got: {module}"
+        );
+    }
+    let (_module, on_the_type) = typed_paths_of("pub struct Row { pub a: Inner }", &["Inner"]);
+    assert!(
+        on_the_type.contains(
+            "row_schema::MongoFields{a:row_schema::Model::plain(row_schema::MongoPath::under(prefix,\"a\"),\
+             <Inner>::mongo_fields_under(row_schema::MongoPath::under(prefix,\"a\").segments))}"
+        ),
+        "got: {on_the_type}"
+    );
+}
+
+/// A type tixschema has not seen as a flagged model where the field is expanded is one whole
+/// value: one declared below or in another crate, the type itself under either of its names, and
+/// one a path the module cannot read the last name of leads to. The module writes a name in scope
+/// beside the type through `super`, and a longer path as its author wrote it.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_type_not_seen_above_is_one_whole_value_named_through_super() {
+    for (field, member) in [
+        ("Unseen", "self::Field<Root,super::Unseen>"),
+        ("Option<Unseen>", "self::OptionalField<Root,super::Unseen>"),
+        ("Vec<Self>", "self::ListField<Root,super::Row>"),
+        (
+            "Option<Box<Row>>",
+            "self::OptionalField<Root,Box<super::Row>>",
+        ),
+        ("other::Thing", "self::Field<Root,other::Thing>"),
+        (
+            "self::other::Thing",
+            "self::Field<Root,super::other::Thing>",
+        ),
+        ("super::Thing", "self::Field<Root,super::super::Thing>"),
+        ("crate::Thing", "self::Field<Root,crate::Thing>"),
+        (
+            "::std::string::String",
+            "self::Field<Root,::std::string::String>",
+        ),
+        (
+            "DateTime<Utc>",
+            "self::Field<Root,super::DateTime<super::Utc>>",
+        ),
+        (
+            "Cow<'static, str>",
+            "self::Field<Root,super::Cow<'static,str>>",
+        ),
+    ] {
+        let source = format!("pub struct Row {{ pub a: {field} }}");
+        let (module, on_the_type) = typed_paths_of(&source, &[]);
+        assert!(
+            module.contains(&format!("{{puba:{member}}}")),
+            "for {field}, got: {module}"
+        );
+        assert!(
+            !on_the_type.contains(">::mongo_fields_under("),
+            "for {field}, got: {on_the_type}"
+        );
+    }
+}
+
+/// A key serde never writes has no member, and neither has a map, whose keys are data: bare, in
+/// an `Option`, or flattened. A flattened value that is no flagged model has no key of its own to
+/// be one whole value under.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_key_serde_never_writes_and_a_map_have_no_member() {
+    for field in [
+        "#[serde(skip)] pub a: u8",
+        "#[serde(skip_serializing)] pub a: u8",
+        "pub a: HashMap<String, Inner>",
+        "pub a: BTreeMap<String, u8>",
+        "pub a: Option<HashMap<String, u8>>",
+        "#[serde(flatten)] pub a: HashMap<String, u8>",
+        "#[serde(flatten)] pub a: Unseen",
+        "#[serde(flatten, with = \"hook\")] pub a: Inner",
+    ] {
+        let source = format!("pub struct Row {{ {field}, pub b: u8 }}");
+        let (module, on_the_type) = typed_paths_of(&source, &["Inner"]);
+        assert!(
+            module.contains("pubstructMongoFields<Root>{pubb:self::Field<Root,u8>}"),
+            "for {field}, got: {module}"
+        );
+        assert!(
+            on_the_type.contains("row_schema::MongoFields{b:row_schema::Field::plain("),
+            "for {field}, got: {on_the_type}"
+        );
+    }
+}
+
+/// A flagged type is asked for its own paths only where its walker is called as it stands. A
+/// value a hook writes is handed to that hook by a function added to the type, under an `Option`
+/// as `Some`, and is one whole value; so is a value serde never reads back, and one a hook reads.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_hooked_field_and_one_serde_never_reads_back_are_one_whole_value() {
+    for (field, member, built) in [
+        (
+            "#[serde(skip_deserializing)] pub a: Inner",
+            "self::Field<Root,super::Inner>",
+            "row_schema::Field::plain(",
+        ),
+        (
+            "#[serde(deserialize_with = \"read\")] pub a: Option<Inner>",
+            "self::OptionalField<Root,super::Inner>",
+            "row_schema::OptionalField::plain(",
+        ),
+        (
+            "#[serde(with = \"hook\")] pub a: Inner",
+            "self::Field<Root,super::Inner>",
+            "row_schema::Field::hooked(row_schema::MongoPath::under(prefix,\"a\"),Self::mongo_write_a)",
+        ),
+        (
+            "#[serde(serialize_with = \"shown\")] pub a: Vec<u8>",
+            "self::Field<Root,Vec<u8>>",
+            "row_schema::Field::hooked(row_schema::MongoPath::under(prefix,\"a\"),Self::mongo_write_a)",
+        ),
+        (
+            "#[serde(with = \"hook\")] pub a: Option<u8>",
+            "self::OptionalField<Root,u8>",
+            "row_schema::OptionalField::hooked(row_schema::MongoPath::under(prefix,\"a\"),Self::mongo_write_a)",
+        ),
+    ] {
+        let source = format!("pub struct Row {{ {field} }}");
+        let (module, on_the_type) = typed_paths_of(&source, &["Inner"]);
+        assert!(
+            module.contains(&format!("{{puba:{member}}}")),
+            "for {field}, got: {module}"
+        );
+        assert!(
+            on_the_type.contains(built),
+            "for {field}, got: {on_the_type}"
+        );
+    }
+    let (_module, bare) = typed_paths_of(
+        "pub struct Row { #[serde(with = \"hook\")] pub a: u8 }",
+        &[],
+    );
+    assert!(
+        bare.contains(
+            "fnmongo_write_a(value:u8)->::core::result::Result<bson::Bson,row_schema::WriteError>\
+             {hook::serialize(&value,bson::Serializer::new())}"
+        ),
+        "got: {bare}"
+    );
+    let (_declared, optional) = typed_paths_of(
+        "pub struct Row { #[serde(serialize_with = \"shown\")] pub a: Option<u8> }",
+        &[],
+    );
+    assert!(
+        optional.contains(
+            "fnmongo_write_a(value:u8)->::core::result::Result<bson::Bson,row_schema::WriteError>\
+             {shown(&::core::option::Option::Some(value),bson::Serializer::new())}"
+        ),
+        "got: {optional}"
+    );
+}
+
+/// A member is under its field's own name and writes the key serde does: the field's `rename`,
+/// or its name cased by the struct's `rename_all`. A flattened model has no key of its own, so
+/// its struct of paths is built under the keys that lead to the struct that flattens it.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_member_is_named_after_its_field_and_writes_the_key_serde_does() {
+    let (module, on_the_type) = typed_paths_of(
+        "#[serde(rename_all = \"camelCase\")] pub struct Row { #[serde(rename = \"_id\")] pub id: u8, \
+         pub paid_at: u8, pub r#type: u8, #[serde(flatten)] pub audit: Inner, \
+         #[serde(flatten)] pub extra: Option<Inner> }",
+        &["Inner"],
+    );
+    assert!(
+        module.contains(
+            "{pubid:self::Field<Root,u8>,pubpaid_at:self::Field<Root,u8>,pubr#type:self::Field<Root,u8>,\
+             pubaudit:super::inner_schema::MongoFields<Root>,\
+             pubextra:super::inner_schema::MongoFields<Root>}"
+        ),
+        "got: {module}"
+    );
+    for built in [
+        "id:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"_id\"))",
+        "paid_at:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"paidAt\"))",
+        "r#type:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"type\"))",
+        "audit:<Inner>::mongo_fields_under(prefix)",
+        "extra:<Inner>::mongo_fields_under(prefix)",
+    ] {
+        assert!(
+            on_the_type.contains(built),
+            "missing `{built}` in: {on_the_type}"
+        );
+    }
+}
+
+/// A struct serde writes as one value, or as nothing, is the path of that value: its struct of
+/// paths holds nothing else and dereferences to it. The path is the struct's last parameter, with
+/// no default, and the type's own `impl` writes it: the module names no type of its author's.
+/// Only a value serde writes as text is matched by a pattern, on an `impl` over any such path.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_type_serde_writes_as_one_value_is_the_path_of_that_value() {
+    for (source, declared, arguments, text) in [
+        (
+            "#[serde(transparent)] pub struct Row(pub String);",
+            "pubstructMongoFields<Root,Whole>{",
+            "",
+            true,
+        ),
+        (
+            "pub struct Row(pub u32);",
+            "pubstructMongoFields<Root,Whole>{",
+            "",
+            false,
+        ),
+        (
+            "#[serde(transparent)] pub struct Row { pub held: String, #[serde(skip)] pub cached: u8 }",
+            "pubstructMongoFields<Root,Whole>{",
+            "",
+            true,
+        ),
+        (
+            "pub struct Row(#[serde(with = \"hook\")] pub String);",
+            "pubstructMongoFields<Root,Whole>{",
+            "",
+            false,
+        ),
+        (
+            "pub struct Row;",
+            "pubstructMongoFields<Root,Whole>{",
+            "",
+            false,
+        ),
+        (
+            "pub struct Row<T: Clone>(pub T);",
+            "pubstructMongoFields<Root,T:Clone,Whole>{",
+            ",T",
+            false,
+        ),
+        (
+            "pub struct Row<Whole>(pub Whole);",
+            "pubstructMongoFields<Root,Whole,Whole2>{",
+            ",Whole",
+            false,
+        ),
+    ] {
+        let (module, on_the_type) = typed_paths_of(source, &[]);
+        assert!(module.contains(declared), "for {source}, got: {module}");
+        assert!(
+            module.contains("typeTarget=Whole") || module.contains("typeTarget=Whole2"),
+            "for {source}, got: {module}"
+        );
+        // The type's name is written once, in what the struct is told as.
+        assert!(
+            !module.contains("super::") && module.matches("Row").count() == 1,
+            "for {source}, got: {module}"
+        );
+        assert_eq!(
+            module.contains("pubfnregex("),
+            text,
+            "for {source}, got: {module}"
+        );
+        for written in [
+            format!(
+                "pubconstMONGO_FIELDS:row_schema::MongoFields<Self{arguments},row_schema::Field<Self,Self>>="
+            ),
+            format!(
+                "->row_schema::MongoFields<Root{arguments},row_schema::Field<Root,Self>>\
+                 {{row_schema::MongoFields::built(row_schema::Field::plain(row_schema::MongoPath::at(prefix)))}}"
+            ),
+        ] {
+            assert!(
+                on_the_type.contains(&written),
+                "for {source}, missing `{written}` in: {on_the_type}"
+            );
+        }
+    }
+    let (brand, _brand) = typed_paths_of("#[serde(transparent)] pub struct Row(pub String);", &[]);
+    assert!(
+        brand.contains("impl<Root,Value>MongoFields<Root,self::Field<Root,Value>>{"),
+        "got: {brand}"
+    );
+    let (generic, _generic) = typed_paths_of(
+        "#[serde(transparent)] pub struct Row<Value> { pub held: String, pub kept: PhantomData<Value> }",
+        &[],
+    );
+    assert!(
+        generic
+            .contains("impl<Root,Value,Value2>MongoFields<Root,Value,self::Field<Root,Value2>>{"),
+        "got: {generic}"
+    );
+    let (plain_enum, on_the_enum) = typed_enum_paths_of("pub enum Row { Draft, Paid }", &[]);
+    assert!(
+        plain_enum.contains("pubstructMongoFields<Root,Whole>{") && !plain_enum.contains("super::"),
+        "got: {plain_enum}"
+    );
+    assert!(
+        on_the_enum.contains(
+            "pubconstMONGO_FIELDS:row_schema::MongoFields<Self,row_schema::Field<Self,Self>>="
+        ),
+        "got: {on_the_enum}"
+    );
+}
+
+/// A type declared above that serde writes as one value is held with its path written out, since
+/// its struct of paths names no type: bare and under an `Option` it keeps its own struct. A list
+/// of one is a list of plain values, whose elements an operator is written over with no key. A
+/// flattened one has no key to sit at the level of what holds it, and no member.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_type_written_as_one_value_is_held_with_its_path_written_out() {
+    record_declared("Brand", Declared::OneValue);
+    record_declared("Sleeve", Declared::OneValue);
+    let own =
+        "super::brand_schema::MongoFields<Root,super::brand_schema::Field<Root,super::Brand>>";
+    for (field, member) in [
+        ("Brand", format!("self::Model<Root,super::Brand,{own}>")),
+        (
+            "Option<Brand>",
+            format!("self::OptionalModel<Root,super::Brand,{own}>"),
+        ),
+        (
+            "Box<Brand>",
+            format!("self::Model<Root,Box<super::Brand>,{own}>"),
+        ),
+        ("Vec<Brand>", "self::ListField<Root,super::Brand>".to_owned()),
+        ("[Brand; 2]", "self::ListField<Root,super::Brand>".to_owned()),
+        (
+            "Vec<Box<Brand>>",
+            "self::ListField<Root,Box<super::Brand>>".to_owned(),
+        ),
+        (
+            "Option<Vec<Brand>>",
+            "self::OptionalField<Root,Vec<super::Brand>>".to_owned(),
+        ),
+        (
+            "Sleeve<Inner>",
+            "self::Model<Root,super::Sleeve<super::Inner>,super::sleeve_schema::MongoFields<Root,super::Inner,\
+             super::sleeve_schema::Field<Root,super::Sleeve<super::Inner>>>>"
+                .to_owned(),
+        ),
+        ("Vec<Inner>", "self::ModelList<Root,super::Inner,super::inner_schema::MongoFields<Root>>".to_owned()),
+    ] {
+        let source = format!("pub struct Row {{ pub a: {field} }}");
+        let (module, _on_the_type) = typed_paths_of(&source, &["Inner"]);
+        assert!(
+            module.contains(&format!("{{puba:{member}}}")),
+            "for {field}, got: {module}"
+        );
+    }
+    let (_module, listed) = typed_paths_of("pub struct Row { pub a: Vec<Brand> }", &[]);
+    assert!(
+        listed.contains(
+            "row_schema::MongoFields{a:row_schema::ListField::plain(row_schema::MongoPath::under(prefix,\"a\"))}"
+        ),
+        "got: {listed}"
+    );
+    let (flattened, _flattened) = typed_paths_of(
+        "pub struct Row { #[serde(flatten)] pub a: Brand, pub b: u8 }",
+        &[],
+    );
+    assert!(
+        flattened.contains("pubstructMongoFields<Root>{pubb:self::Field<Root,u8>}"),
+        "got: {flattened}"
+    );
+    let (_untagged, in_place) = typed_enum_paths_of(
+        "#[serde(untagged)] pub enum Row { Held(Brand), Listed(Vec<Brand>) }",
+        &[],
+    );
+    for built in [
+        "held:row_schema::Model::plain(row_schema::MongoPath::at(prefix),<Brand>::mongo_fields_under(prefix))",
+        "listed:row_schema::ListField::plain(row_schema::MongoPath::at(prefix))",
+    ] {
+        assert!(in_place.contains(built), "missing `{built}` in: {in_place}");
+    }
+    let (tagged, beside) = typed_enum_paths_of(
+        "#[serde(tag = \"kind\")] pub enum Row { Wire(Brand), Cash }",
+        &[],
+    );
+    let emitted = format!("{tagged}{beside}");
+    assert!(!emitted.contains("wire:"), "got: {emitted}");
+}
+
+/// A path is under the name serde writes. A renaming written as a list counts by its `serialize`
+/// side whatever it names for reading, and one that writes no `serialize` leaves the name as it
+/// was: on a field, on a variant, and as the rule that cases either.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_renaming_written_as_a_list_counts_by_what_serde_writes() {
+    let (_module, on_the_struct) = typed_paths_of(
+        "#[serde(rename_all(serialize = \"camelCase\"))] pub struct Row { \
+         #[serde(rename(serialize = \"written\", deserialize = \"read\"))] pub both_ways: u8, \
+         #[serde(rename(serialize = \"only_written\"))] pub write_way: u8, \
+         #[serde(rename(deserialize = \"only_read\"))] pub read_way: u8, \
+         #[serde(rename(serialize = \"apart\"))] #[serde(rename(deserialize = \"from\"))] pub two_lists: u8, \
+         pub cased_by_rule: u8 }",
+        &[],
+    );
+    for built in [
+        "both_ways:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"written\"))",
+        "write_way:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"only_written\"))",
+        "read_way:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"readWay\"))",
+        "two_lists:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"apart\"))",
+        "cased_by_rule:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"casedByRule\"))",
+    ] {
+        assert!(
+            on_the_struct.contains(built),
+            "missing `{built}` in: {on_the_struct}"
+        );
+    }
+    let (read_rule, on_the_read_rule) = typed_paths_of(
+        "#[serde(rename_all(deserialize = \"camelCase\"))] pub struct Row { pub paid_at: u8 }",
+        &[],
+    );
+    assert!(
+        on_the_read_rule.contains("row_schema::MongoPath::under(prefix,\"paid_at\")"),
+        "got: {read_rule}{on_the_read_rule}"
+    );
+    let (tagged, on_the_tagged) = typed_enum_paths_of(
+        "#[serde(tag = \"kind\", rename_all(serialize = \"kebab-case\"), \
+         rename_all_fields(serialize = \"camelCase\"))] pub enum Row { \
+         #[serde(rename(serialize = \"byAir\", deserialize = \"air\"))] Air { flight_code: u8 }, \
+         OverLand { road_name: u8 }, \
+         #[serde(rename_all(serialize = \"SCREAMING_SNAKE_CASE\"))] Sea { ship_name: u8 } }",
+        &[],
+    );
+    let by_tag = format!("{tagged}{on_the_tagged}");
+    for written in [
+        "pubfnis_air(&self)->self::Filter<Root>{self.tagged(\"byAir\")}",
+        "pubfnis_over_land(&self)->self::Filter<Root>{self.tagged(\"over-land\")}",
+        "pubfnis_sea(&self)->self::Filter<Root>{self.tagged(\"sea\")}",
+        "flight_code:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"flightCode\"))",
+        "road_name:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"roadName\"))",
+        "ship_name:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"SHIP_NAME\"))",
+    ] {
+        assert!(by_tag.contains(written), "missing `{written}` in: {by_tag}");
+    }
+    let (keyed, on_the_keyed) = typed_enum_paths_of(
+        "#[serde(rename_all(serialize = \"kebab-case\"))] pub enum Row { \
+         #[serde(rename(serialize = \"byHand\"))] Courier { badge: u8 }, DropBox(u8), NotSent }",
+        &[],
+    );
+    let by_key = format!("{keyed}{on_the_keyed}");
+    for written in [
+        "pubfnis_courier(&self)->self::Filter<Root>{self.keyed(\"byHand\")}",
+        "row_schema::MongoPath::under(row_schema::MongoPath::under(prefix,\"byHand\").segments,\"badge\")",
+        "drop_box:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"drop-box\"))",
+        "bson::Bson::String(\"not-sent\".to_owned())",
+    ] {
+        assert!(by_key.contains(written), "missing `{written}` in: {by_key}");
+    }
+}
+
+/// What serde writes as one value is what the registry records as one, at the seam every item's
+/// declaration is recorded at: a struct written as the value of one slot, a unit struct, and an
+/// enum no variant of which holds a value and no attribute tags.
+#[test]
+fn a_struct_or_an_enum_is_written_as_one_value_or_under_keys_of_its_own() {
+    for (source, one_value) in [
+        ("#[serde(transparent)] pub struct Row(pub String);", true),
+        ("pub struct Row(pub u32);", true),
+        ("pub struct Row;", true),
+        (
+            "#[serde(transparent)] pub struct Row { pub held: String, #[serde(skip)] pub cached: u8 }",
+            true,
+        ),
+        ("pub enum Row { Draft, Paid }", true),
+        ("pub struct Row { pub held: String }", false),
+        ("pub struct Row(pub u32, pub u32);", false),
+        ("pub struct Row {}", false),
+        ("pub enum Row { Draft, Paid(u32) }", false),
+        (
+            "#[serde(tag = \"kind\")] pub enum Row { Draft, Paid }",
+            false,
+        ),
+        (
+            "#[serde(tag = \"t\", content = \"c\")] pub enum Row { Draft, Paid }",
+            false,
+        ),
+        ("#[serde(untagged)] pub enum Row { Draft, Paid }", false),
+        ("pub type Row = String;", false),
+    ] {
+        let item: syn::Item = syn::parse_str(source).unwrap();
+        assert_eq!(
+            super::written_as_one_value(&item),
+            one_value,
+            "for {source}"
+        );
+    }
+}
+
+/// A tuple struct's paths are a tuple struct, each slot's key the position serde writes it at. A
+/// slot serde never writes keeps its place as `()`, so a member's position is its slot's.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_tuple_structs_paths_are_by_position() {
+    let (module, on_the_type) = typed_paths_of(
+        "pub struct Row(pub f64, #[serde(skip)] pub u8, pub Inner);",
+        &["Inner"],
+    );
+    assert!(
+        module.contains(
+            "pubstructMongoFields<Root>(pubself::Field<Root,f64>,pub(),\
+             pubself::Model<Root,super::Inner,super::inner_schema::MongoFields<Root>>);"
+        ),
+        "got: {module}"
+    );
+    assert!(
+        on_the_type.contains(
+            "row_schema::MongoFields(row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"0\")),(),\
+             row_schema::Model::plain(row_schema::MongoPath::under(prefix,\"1\"),"
+        ),
+        "got: {on_the_type}"
+    );
+}
+
+/// A generic type's struct of paths carries the type's own parameters after the row type, under
+/// the bounds the type declares. Members are public and what the struct keeps for itself is not,
+/// so a struct that keeps anything holds its members in a struct of their own and dereferences
+/// to it: here a marker of the parameter no member names. With no member at all the function
+/// that builds the struct reads no key.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_struct_of_paths_carries_the_types_own_parameters_and_never_mixes_what_it_keeps() {
+    let (bounded, _on_the_type) = typed_paths_of(
+        "pub struct Row<T: Clone + Shown, const N: usize, U = String> where T: Send \
+         { pub a: T, pub b: [u8; N], pub c: Option<U> }",
+        &[],
+    );
+    assert!(
+        bounded.contains(
+            "pubstructMongoFields<Root,T:Clone+super::Shown,constN:usize,U=String>whereT:Send\
+             {puba:self::Field<Root,T>,pubb:self::ListField<Root,u8>,pubc:self::OptionalField<Root,U>}"
+        ),
+        "got: {bounded}"
+    );
+    let (marked, on_the_type) = typed_paths_of(
+        "pub struct Row<T> { pub a: u8, pub b: HashMap<String, T> }",
+        &[],
+    );
+    for written in [
+        "pubstructMongoFields<Root,T>{members:self::mongo_members::Members<Root>,\
+         unused:::core::marker::PhantomData<fn()->(T,)>,}",
+        "pubconstfnbuilt(members:self::mongo_members::Members<Root>,)->Self",
+        "impl<Root,T>::core::ops::DerefforMongoFields<Root,T>{typeTarget=self::mongo_members::Members<Root>;",
+        "pubmodmongo_members{usesuper::*;",
+        "pubstructMembers<Root>{puba:super::Field<Root,u8>}",
+    ] {
+        assert!(marked.contains(written), "missing `{written}` in: {marked}");
+    }
+    assert!(
+        on_the_type.contains(
+            "pubconstMONGO_FIELDS:row_schema::MongoFields<Self,T>=Self::mongo_fields_under(row_schema::MongoPath::ROOT);"
+        ),
+        "got: {on_the_type}"
+    );
+    assert!(
+        on_the_type.contains(
+            "->row_schema::MongoFields<Root,T>{row_schema::MongoFields::built(row_schema::mongo_members::Members{a:"
+        ),
+        "got: {on_the_type}"
+    );
+    let (empty, unread) = typed_paths_of("pub struct Row { pub b: HashMap<String, u8> }", &[]);
+    assert!(
+        empty.contains(
+            "pubstructMongoFields<Root>{unused:::core::marker::PhantomData<fn()->(Root,)>,}"
+        ),
+        "got: {empty}"
+    );
+    assert!(
+        unread.contains(
+            "pubconstfnmongo_fields_under<Root>(_:[::core::option::Option<&'staticstr>;8],)\
+             ->row_schema::MongoFields<Root>{row_schema::MongoFields::built()}"
+        ),
+        "got: {unread}"
+    );
+}
+
+/// An enum's struct of paths keeps the path that names its variant, and answers `is_{variant}`
+/// from it: the tag's key under a tag, and the enum's own under a variant's name. What a variant
+/// holds is a member under the variant's name: beside the tag, under the content key, under the
+/// name serde writes the variant as, or where the enum itself is.
+#[cfg(feature = "mongodb")]
+#[test]
+fn an_enums_paths_are_where_its_form_writes_what_each_variant_holds() {
+    for (source, asked, written) in [
+        (
+            "#[serde(tag = \"kind\", rename_all = \"camelCase\")] pub enum Row { Cash, \
+             #[serde(rename_all = \"camelCase\")] Card { exp_month: u32 }, Wire(Inner), Odd(u8) }",
+            "row_schema::MongoFields::built(row_schema::MongoPath::under(prefix,\"kind\"),",
+            &[
+                "card:row_schema::mongo_members::Card{exp_month:row_schema::Field::plain(\
+                 row_schema::MongoPath::under(prefix,\"expMonth\"))}",
+                "wire:<Inner>::mongo_fields_under(prefix)",
+                "pubfnis_cash(&self)->self::Filter<Root>{self.tagged(\"cash\")}",
+                "pubfnis_odd(&self)->self::Filter<Root>{self.tagged(\"odd\")}",
+            ][..],
+        ),
+        (
+            "#[serde(tag = \"t\", content = \"c\")] pub enum Row { Pickup, Locker(u32), \
+             Door(Inner), Span(u32, u32) }",
+            "row_schema::MongoFields::built(row_schema::MongoPath::under(prefix,\"t\"),",
+            &[
+                "locker:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"c\"))",
+                "door:row_schema::Model::plain(row_schema::MongoPath::under(prefix,\"c\"),\
+                 <Inner>::mongo_fields_under(row_schema::MongoPath::under(prefix,\"c\").segments))",
+                "span:row_schema::mongo_members::Span(row_schema::Field::plain(row_schema::MongoPath::under(\
+                 row_schema::MongoPath::under(prefix,\"c\").segments,\"0\")),",
+                "pubfnis_pickup(&self)->self::Filter<Root>{self.tagged(\"Pickup\")}",
+            ],
+        ),
+        (
+            "#[serde(rename_all = \"camelCase\")] pub enum Row { NoDiscount, Percent(f64), \
+             Coupon { code: String } }",
+            "row_schema::MongoFields::built(row_schema::MongoPath::at(prefix),",
+            &[
+                "percent:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"percent\"))",
+                "coupon:row_schema::mongo_members::Coupon{code:row_schema::Field::plain(row_schema::MongoPath::under(\
+                 row_schema::MongoPath::under(prefix,\"coupon\").segments,\"code\"))}",
+                "pubfnis_no_discount(&self)->self::Filter<Root>{self::Filter::held(self.asked.key(),\"$eq\",\
+                 bson::Bson::String(\"noDiscount\".to_owned()))}",
+                "pubfnis_coupon(&self)->self::Filter<Root>{self.keyed(\"coupon\")}",
+            ],
+        ),
+        (
+            "#[serde(untagged)] pub enum Row { Number(u32), Detailed { code: String }, Held(Inner) }",
+            "row_schema::MongoFields{number:row_schema::Field::plain(row_schema::MongoPath::at(prefix)),",
+            &[
+                "detailed:row_schema::mongo_members::Detailed{code:row_schema::Field::plain(\
+                 row_schema::MongoPath::under(prefix,\"code\"))}",
+                "held:<Inner>::mongo_fields_under(prefix)",
+            ],
+        ),
+    ] {
+        let (module, on_the_type) = typed_enum_paths_of(source, &["Inner"]);
+        assert!(
+            on_the_type.contains(asked),
+            "for {source}, got: {on_the_type}"
+        );
+        let emitted = format!("{module}{on_the_type}");
+        for found in written {
+            assert!(
+                emitted.contains(found),
+                "for {source}, missing `{found}` in: {emitted}"
+            );
+        }
+        assert_eq!(
+            module.contains("pubfnis_"),
+            !source.contains("untagged"),
+            "for {source}, got: {module}"
+        );
+    }
+}
+
+/// A variant serde never writes has neither member nor `is_{variant}`. A struct `mongo_members`
+/// holds is never named as a prelude type or as a parameter, which every member beside it that
+/// names one would otherwise read in its place.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_variant_serde_never_writes_has_no_path_and_a_members_struct_takes_no_name_in_use() {
+    let (module, on_the_type) = typed_enum_paths_of(
+        "pub enum Row<T> { #[serde(skip)] Lost { at: u8 }, #[serde(skip_serializing)] Old(u8), \
+         String { text: String }, T { held: T }, Members { count: u8 } }",
+        &[],
+    );
+    let emitted = format!("{module}{on_the_type}");
+    for absent in ["lost:", "old:", "is_lost", "is_old", "Lost", "Old"] {
+        assert!(!emitted.contains(absent), "found `{absent}` in: {emitted}");
+    }
+    for written in [
+        "pubstructString2<Root>{pubtext:super::Field<Root,String>}",
+        "pubstructT2<Root,T>{pubheld:super::Field<Root,T>}",
+        "pubstructMembers<Root>{pubcount:super::Field<Root,u8>}",
+        "pubstructMembers2<Root,T>{pubstring:self::String2<Root>,pubt:self::T2<Root,T>,pubmembers:self::Members<Root>}",
+    ] {
+        assert!(
+            emitted.contains(written),
+            "missing `{written}` in: {emitted}"
+        );
+    }
+}
+
+/// Of the `bson` library the typed paths name only what both of its major versions have, the
+/// serializer and two members of a value, and nothing they add is hidden from a lint or a reader.
+#[cfg(feature = "mongodb")]
+#[test]
+fn the_typed_paths_name_only_what_both_majors_of_the_bson_library_have() {
+    let (hooked, on_the_type) = typed_paths_of(
+        "pub struct Row { #[serde(with = \"hook\")] pub a: u8, pub b: Inner, pub c: Vec<u8> }",
+        &["Inner"],
+    );
+    let (external, _external) =
+        typed_enum_paths_of("pub enum Row { Empty, Label(String), To(i32, i32) }", &[]);
+    let (tagged, _tagged) = typed_enum_paths_of(
+        "#[serde(tag = \"kind\")] pub enum Row { Clear, Solid { color: String } }",
+        &[],
+    );
+    let written = [hooked, on_the_type, external, tagged].concat();
+    let named_after = |prefix: &str| {
+        let mut found: Vec<&str> = written
+            .split(prefix)
+            .skip(1)
+            .filter_map(|rest| {
+                rest.split(|read: char| !(read.is_ascii_alphanumeric() || read == '_'))
+                    .next()
+            })
+            .collect();
+        found.sort_unstable();
+        found.dedup();
+        found
+    };
+    assert_eq!(named_after("bson::"), ["Bson", "Serializer"]);
+    assert_eq!(named_after("bson::Bson::"), ["Boolean", "String"]);
+    assert_eq!(named_after("bson::Serializer::"), ["new"]);
+    for absent in ["doc!", "#[allow", "#[expect", "doc(hidden)"] {
+        assert!(!written.contains(absent), "found `{absent}` in: {written}");
+    }
 }

@@ -105,7 +105,9 @@ use crate::features::serde::{brand_field, has_serde_default, parse_serde_key_omi
 ))]
 use crate::features::recovering_decode::reading_the_authors_scope;
 #[cfg(feature = "serde")]
-use crate::features::recovering_decode::{enums::enum_recovering_decode, struct_recovering_decode};
+use crate::features::recovering_decode::{
+    enums::enum_recovering_decode, struct_recovering_decode, written_as_one_value,
+};
 // The type is named where a positional slot's own omission is read: the tuple-struct walk, which
 // only a describing build performs, and the variant walk, which every build performs.
 use crate::features::serde::SerdeKeyOmission;
@@ -4689,8 +4691,9 @@ fn struct_output_with_unit_impls(
 }
 
 /// Records what the item declares for the recovering decodes expanded after it, which walk a
-/// field typed with a model type differently from one typed with an alias. An alias that takes
-/// a parameter is left out: what it names depends on what fills it.
+/// field typed with a model type differently from one typed with an alias, and whose typed paths
+/// reach below a model serde writes under keys and stop at one it writes as one value. An alias
+/// that takes a parameter is left out: what it names depends on what fills it.
 #[cfg(feature = "serde")]
 fn record_declaration(item: &Item) {
     // An item's walker reads the validators of its own fields, recorded as they are expanded.
@@ -4703,7 +4706,12 @@ fn record_declaration(item: &Item) {
             );
         }
     } else if let Some(ident) = item_schema_ident(item) {
-        record_declared(&ident.to_string(), Declared::Model);
+        let declares = if written_as_one_value(item) {
+            Declared::OneValue
+        } else {
+            Declared::Model
+        };
+        record_declared(&ident.to_string(), declares);
     } else {
         // `#[model_schema]` is written on nothing else.
     }

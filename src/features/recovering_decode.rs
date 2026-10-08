@@ -10,9 +10,12 @@
 //! no declaration: each module declares the same aliases of standard types, and a walker builds
 //! whatever issue type the constructor it is handed builds. A build with `mongodb` on adds the
 //! query types to that module: `Filter`, `Update`, and the typed paths that build them (`query`).
+//! It adds the type's own paths too, `MongoFields` there and `MONGO_FIELDS` on the type (`fields`).
 
 mod aliases;
 pub mod enums;
+#[cfg(feature = "mongodb")]
+mod fields;
 #[cfg(feature = "mongodb")]
 mod query;
 
@@ -26,9 +29,9 @@ use quote::{ToTokens as _, format_ident, quote};
 use syn::ext::IdentExt as _;
 use syn::punctuated::Punctuated;
 use syn::{
-    Field, Fields, FieldsNamed, GenericArgument, GenericParam, Generics, ItemStruct, Lit, LitStr,
-    PathArguments, PredicateType, Token, Type, TypeParamBound, TypePath, Variant, WherePredicate,
-    parse_quote,
+    Field, Fields, FieldsNamed, GenericArgument, GenericParam, Generics, Item, ItemStruct, Lit,
+    LitStr, PathArguments, PredicateType, Token, Type, TypeParamBound, TypePath, Variant,
+    WherePredicate, parse_quote,
 };
 
 use self::aliases::Reach;
@@ -56,14 +59,16 @@ use crate::utils::{
 ))]
 const ADDED_TYPE_COUNT: usize = 15;
 
-/// How many type names the flag adds to a schema module, the query types among them.
+/// How many type names the flag adds to a schema module, the query types and the type's own
+/// struct of paths among them.
 #[cfg(all(
     any(feature = "typescript", feature = "zod", feature = "jsonschema"),
     feature = "mongodb"
 ))]
-const ADDED_TYPE_COUNT: usize = 26;
+const ADDED_TYPE_COUNT: usize = 27;
 
-/// The type names the flag adds to a schema module. The query types are there under `mongodb`.
+/// The type names the flag adds to a schema module. The query types and the type's own struct of
+/// paths are there under `mongodb`.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
     "Asked",
@@ -84,6 +89,8 @@ const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
     "Model",
     #[cfg(feature = "mongodb")]
     "ModelList",
+    #[cfg(feature = "mongodb")]
+    "MongoFields",
     #[cfg(feature = "mongodb")]
     "MongoPath",
     #[cfg(feature = "mongodb")]
@@ -502,38 +509,7 @@ impl Source {
             Self::Bson => parse_quote!(serde::de::DeserializeOwned + serde::Serialize),
             Self::Json => parse_quote!(serde::de::DeserializeOwned),
         };
-        let mut bounded = generics.clone();
-        bounded
-            .make_where_clause()
-            .predicates
-            .push(parse_quote!(Self: #bounds));
-        let mut predicates: Vec<&mut PredicateType> = bounded
-            .where_clause
-            .iter_mut()
-            .flat_map(|clause| &mut clause.predicates)
-            .filter_map(|predicate| {
-                if let WherePredicate::Type(bounding) = predicate {
-                    Some(bounding)
-                } else {
-                    None
-                }
-            })
-            .collect();
-        for parameter in &mut bounded.params {
-            let GenericParam::Type(declared) = parameter else {
-                continue;
-            };
-            let bounding = predicates.iter_mut().find(|bounding| {
-                matches!(&bounding.bounded_ty, Type::Path(named) if named.path.is_ident(&declared.ident))
-            });
-            if let Some(in_where) = bounding {
-                in_where.bounds.extend(take(&mut declared.bounds));
-                in_where.bounds.extend(bounds.clone());
-            } else {
-                declared.bounds.extend(bounds.clone());
-            }
-        }
-        bounded
+        bounded_by(generics, &bounds)
     }
 
     /// The pattern a map is held under, binding its entries.
@@ -738,6 +714,15 @@ enum Step<'ty> {
     Positions(Vec<Slot<'ty>>),
     /// An optional value, walked when it is not `null`.
     Present(Box<Walk<'ty>>),
+}
+
+/// What `mongodb` adds for a type's typed paths. Empty in a build without it.
+#[derive(Default)]
+struct TypedPaths {
+    /// `MongoFields`, and the structs it holds, for the `{type}_schema` module.
+    module_items: TokenStream,
+    /// `MONGO_FIELDS`, `mongo_fields_under` and what they call, for the type's own `impl`.
+    type_items: TokenStream,
 }
 
 struct Walk<'ty> {
@@ -1964,29 +1949,60 @@ pub fn struct_recovering_decode(item_struct: &ItemStruct) -> RecoveringDecode {
     let mut walked = item_struct.clone();
     reach.fields(&mut walked.fields);
     let shape = Shape::of(&walked, &module_name, &parameters);
+    let names = written_names(item_struct.to_token_stream());
+    let paths = struct_paths(item_struct, &names);
     added_to(
         &item_struct.ident,
         &item_struct.generics,
         &module_name,
         &parameters,
         &Written {
-            names: written_names(item_struct.to_token_stream()),
+            names,
             reach: &reach,
         },
+        &paths,
         |walker| walker.methods(&shape),
     )
+}
+
+/// The slot serde writes a struct as the value of: the field `#[serde(transparent)]` reads the
+/// struct as, or the only slot of a tuple struct.
+pub fn value_slot(item_struct: &ItemStruct) -> Option<&Field> {
+    let transparent = if has_serde_transparent(&item_struct.attrs) {
+        transparent_field(&item_struct.fields)
+    } else {
+        None
+    };
+    transparent.or_else(|| match &item_struct.fields {
+        Fields::Unnamed(slots) if slots.unnamed.len() == 1 => slots.unnamed.first(),
+        Fields::Named(_) | Fields::Unit | Fields::Unnamed(_) => None,
+    })
+}
+
+/// Whether serde writes `item` as one value, under no key of its own: a struct written as the
+/// value of one slot, a unit struct, or an enum no variant of which holds a value and no
+/// attribute tags.
+pub fn written_as_one_value(item: &Item) -> bool {
+    if let Item::Enum(item_enum) = item {
+        matches!(enums::Tagging::of(item_enum), enums::Tagging::Plain)
+    } else if let Item::Struct(item_struct) = item {
+        matches!(item_struct.fields, Fields::Unit) || value_slot(item_struct).is_some()
+    } else {
+        false
+    }
 }
 
 /// What the flag adds to the type `name` declares under `generics`: the callback's types, and per
 /// source the entry point beside what `methods` writes for that source's walker. `written` holds
 /// every name the type's item writes, none of which a method's own type parameter takes, and what
-/// its fields reach through the aliases they are typed with.
+/// its fields reach through the aliases they are typed with. `paths` holds the type's typed paths.
 fn added_to<M>(
     name: &Ident,
     generics: &Generics,
     module_name: &str,
     parameters: &[String],
     written: &Written<'_>,
+    paths: &TypedPaths,
     methods: M,
 ) -> RecoveringDecode
 where
@@ -2014,8 +2030,15 @@ where
             }
         })
         .collect();
-    let mut type_impl = type_impls(name, generics, !parameters.is_empty(), &of_sources);
+    let mut type_impl = type_impls(
+        name,
+        generics,
+        !parameters.is_empty(),
+        &of_sources,
+        &paths.type_items,
+    );
     let mut items = module_items();
+    items.extend(paths.module_items.clone());
     if written_names(type_impl.clone())
         .iter()
         .any(|written_name| written_name == "ReadWhole")
@@ -2115,6 +2138,28 @@ fn asked_items() -> TokenStream {
     }
 }
 
+/// What brings the author's scope into a `{type}_schema` module written here: a struct of paths
+/// names the types its author wrote as that author wrote them.
+#[cfg(all(
+    feature = "mongodb",
+    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
+))]
+fn authors_scope() -> TokenStream {
+    quote! { use super::*; }
+}
+
+/// A build without `mongodb` writes no struct of paths, and its module names nothing of the
+/// author's.
+#[cfg(not(any(
+    feature = "mongodb",
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema"
+)))]
+fn authors_scope() -> TokenStream {
+    TokenStream::new()
+}
+
 /// A loop's binding at `depth`: the plain name at the first level, and a numbered one under it,
 /// where an outer index or key is still read to build the path.
 fn binding(stem: &str, depth: usize) -> Ident {
@@ -2124,6 +2169,44 @@ fn binding(stem: &str, depth: usize) -> Ident {
         format!("{stem}_{depth}")
     };
     Ident::new(&name, Span::call_site())
+}
+
+/// `generics` with `bounds` joined to every type parameter and to the type itself, which carries
+/// whatever more serde's derive asks of one. A parameter stays bounded in one place: its `where`
+/// predicate if it has one, else its name.
+fn bounded_by(generics: &Generics, bounds: &Punctuated<TypeParamBound, Token![+]>) -> Generics {
+    let mut bounded = generics.clone();
+    bounded
+        .make_where_clause()
+        .predicates
+        .push(parse_quote!(Self: #bounds));
+    let mut predicates: Vec<&mut PredicateType> = bounded
+        .where_clause
+        .iter_mut()
+        .flat_map(|clause| &mut clause.predicates)
+        .filter_map(|predicate| {
+            if let WherePredicate::Type(bounding) = predicate {
+                Some(bounding)
+            } else {
+                None
+            }
+        })
+        .collect();
+    for parameter in &mut bounded.params {
+        let GenericParam::Type(declared) = parameter else {
+            continue;
+        };
+        let bounding = predicates.iter_mut().find(|bounding| {
+            matches!(&bounding.bounded_ty, Type::Path(named) if named.path.is_ident(&declared.ident))
+        });
+        if let Some(in_where) = bounding {
+            in_where.bounds.extend(take(&mut declared.bounds));
+            in_where.bounds.extend(bounds.clone());
+        } else {
+            declared.bounds.extend(bounds.clone());
+        }
+    }
+    bounded
 }
 
 /// `value_bound` and `bson_bound`: what holds a value serde read to the bound its field declares.
@@ -3125,8 +3208,10 @@ fn placed_in_schema_module(_module: &Ident, items: &TokenStream) -> TokenStream 
 /// `items` in a `{type}_schema` module written here, no schema surface writing one in this build.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 fn placed_in_schema_module(module: &Ident, items: &TokenStream) -> TokenStream {
+    let scope = authors_scope();
     quote! {
         pub mod #module {
+            #scope
             #items
         }
     }
@@ -3391,6 +3476,19 @@ fn starts_at_a_parameter(type_path: &TypePath, parameters: &[String]) -> bool {
         })
 }
 
+/// The typed MongoDB paths of a struct: `MongoFields` for its module, and for its `impl` the const
+/// and the function that build it.
+#[cfg(feature = "mongodb")]
+fn struct_paths(item_struct: &ItemStruct, written: &[String]) -> TypedPaths {
+    fields::struct_paths(item_struct, written)
+}
+
+/// A build without `mongodb` writes no typed path.
+#[cfg(not(feature = "mongodb"))]
+fn struct_paths(_item_struct: &ItemStruct, _written: &[String]) -> TypedPaths {
+    TypedPaths::default()
+}
+
 /// What answers what serde does with a type it reads flattened: the two questions asked of the
 /// type's own reader through the deserializer of [`asked_items`]. A type that fills a parameter
 /// carries no flag, so nothing but its own `Deserialize` can say.
@@ -3475,20 +3573,23 @@ fn type_arguments(arguments: &PathArguments) -> impl Iterator<Item = &Type> {
         })
 }
 
-/// The `impl`s holding `methods`, which lists what each generated source adds. A type with a type
-/// parameter gets one `impl` per source, under the bounds that source reads and writes a value
-/// with, and every other type one `impl` for them all.
+/// The `impl`s holding `methods`, which lists what each generated source adds, and `paths`, the
+/// type's typed paths. A type with a type parameter gets one `impl` per source, under the bounds
+/// that source reads and writes a value with, and one for its paths, under the bound a path
+/// writes a value with. Every other type gets one `impl` for them all.
 fn type_impls(
     name: &Ident,
     generics: &Generics,
     generic: bool,
     methods: &[TokenStream],
+    paths: &TokenStream,
 ) -> TokenStream {
     if !generic {
         let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
         return quote! {
             impl #impl_generics #name #type_generics #where_clause {
                 #(#methods)*
+                #paths
             }
         };
     }
@@ -3504,7 +3605,19 @@ fn type_impls(
                 }
             }
         });
-    quote! { #(#impls)* }
+    let of_paths = (!paths.is_empty()).then(|| {
+        let bounded = bounded_by(generics, &parse_quote!(::serde::Serialize));
+        let (impl_generics, type_generics, where_clause) = bounded.split_for_impl();
+        quote! {
+            impl #impl_generics #name #type_generics #where_clause {
+                #paths
+            }
+        }
+    });
+    quote! {
+        #(#impls)*
+        #of_paths
+    }
 }
 
 /// A name for a type parameter of a method's own: `base`, numbered where the item writes that
@@ -3698,7 +3811,7 @@ fn walks_itself(ty: &Type, depth: usize) -> bool {
         return true;
     }
     match declared(&last.ident.unraw().to_string()) {
-        Some(Declared::Model) => true,
+        Some(Declared::Model | Declared::OneValue) => true,
         Some(Declared::Alias(aliased_as)) if depth < 8 => syn::parse_str::<Type>(&aliased_as)
             .is_ok_and(|aliased| walks_itself(&aliased, depth.saturating_add(1))),
         Some(Declared::Alias(_)) | None => false,
