@@ -56,6 +56,14 @@ pub const ZOD_SCHEMA_BOUND: &str = "SomeType";
 #[cfg(all(feature = "chrono", feature = "zod"))]
 const TIMESTAMP_KEY_ZOD: &str = "z.iso.datetime({ offset: true })";
 
+/// The two kinds of bound `model_schema_prop` carries, named by what each is measured on: a length
+/// or a pattern on a string, a range on a number.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BoundKind {
+    Range,
+    Text,
+}
+
 /// Classifies how an enum variant stores its data, driving the TypeScript/Zod generation strategy
 /// for discriminated union variants.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1150,6 +1158,19 @@ impl FieldDef {
             }
         } else {
             pre_result
+        }
+    }
+
+    /// The kind of bound no surface reads beside this field, its own value being what the other
+    /// kind is measured on: a number has no length or pattern, a string no range. The refusal and
+    /// the docs are both written from it, as from [`Self::constraints_reach_nothing`].
+    pub const fn unmeasured_bound(&self) -> Option<BoundKind> {
+        if self.field_type.is_numeric() {
+            Some(BoundKind::Text)
+        } else if matches!(self.field_type, FieldDefType::String) {
+            Some(BoundKind::Range)
+        } else {
+            None
         }
     }
 

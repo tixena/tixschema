@@ -30,7 +30,7 @@ use syn::Ident;
 use crate::field_type::ZOD_SCHEMA_BOUND;
 use crate::{
     field_type::{
-        FieldDef, FieldDefType, VariantKind, classify_variant, format_number_literal,
+        BoundKind, FieldDef, FieldDefType, VariantKind, classify_variant, format_number_literal,
         get_field_def, is_plain_enum,
     },
     utils::{get_field_docs, get_variant_docs, strip_examples_from_docs},
@@ -368,6 +368,7 @@ struct ConstrainedShape {
     leaf: ConstraintLeaf,
     /// Every non-`'static` lifetime the field's type spells, deduplicated. A free function that
     /// returns that type has to declare them itself — nothing of the struct's is in scope there.
+    /// The lifetime of a borrowed `str` is left out, no hook being emitted for one.
     lifetimes: Vec<syn::Lifetime>,
     wraps: Vec<ConstraintWrap>,
 }
@@ -432,10 +433,12 @@ enum MemberAccess {
 }
 
 /// A wrapper a constrained field can be written under, outermost first: `Option` yields its `Some`,
-/// a sequence yields each element, a transparent wrapper yields what it derefs to.
+/// a sequence yields each element, a transparent wrapper yields what it derefs to, and a reference
+/// yields the `str` it borrows, which only the validator reaches.
 #[cfg(feature = "serde")]
 #[derive(Clone, Copy)]
 enum ConstraintWrap {
+    Borrowed,
     Optional,
     Sequence,
     Transparent,
@@ -11856,7 +11859,7 @@ fn walk_wraps(
                 #inner
             }
         },
-        ConstraintWrap::Transparent => quote! {
+        ConstraintWrap::Borrowed | ConstraintWrap::Transparent => quote! {
             let #next = &**#value;
             #inner
         },
@@ -12288,7 +12291,7 @@ fn named_leaf_rendering(
 
 /// Generates the static validator for a string-shaped field with constraints, plus the serde
 /// deserializer — written against the constrained value itself when the field is bare, and against
-/// the field's declared type when it is wrapped.
+/// the field's declared type when it is wrapped. A borrowed `str` gets the validator alone.
 #[cfg(feature = "serde")]
 fn generate_string_validation_code(
     member: &proc_macro2::Ident,
@@ -12335,7 +12338,9 @@ fn generate_string_validation_code(
         checks.push(pattern_check(pattern, &quote! { errors.push(#reported); }));
     }
 
-    let deserializer = if wraps.is_empty() {
+    let deserializer = if ends_on_a_borrow(wraps) {
+        quote! {}
+    } else if wraps.is_empty() {
         let refusal = refusal_from_violations();
         quote! {
             pub fn #deserialize_fn_ident<'de, D>(deserializer: D) -> ::core::result::Result<#owned, D::Error>
@@ -12482,6 +12487,12 @@ fn constrained_shape(ty: &syn::Type) -> Option<ConstrainedShape> {
         } else if let syn::Type::Slice(slice) = current {
             wraps.push(ConstraintWrap::Sequence);
             current = &slice.elem;
+        } else if let syn::Type::Reference(reference) = current {
+            if !names_str(&reference.elem) {
+                return None;
+            }
+            wraps.push(ConstraintWrap::Borrowed);
+            current = &reference.elem;
         } else if let syn::Type::Path(path) = current {
             let segment = path.path.segments.last()?;
             if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
@@ -12584,6 +12595,15 @@ fn blocking_interior_mutability_wrapper(ty: &syn::Type) -> Option<String> {
             return None;
         }
     }
+}
+
+/// Whether a reference borrows `str`, the one borrow a bound is read through.
+#[cfg(feature = "serde")]
+fn names_str(borrowed: &syn::Type) -> bool {
+    let syn::Type::Path(named) = written_type(borrowed) else {
+        return false;
+    };
+    named.qself.is_none() && named.path.is_ident("str")
 }
 
 /// Adds the lifetimes a wrapper spells to the ones already collected, skipping `'static` — which
@@ -13025,16 +13045,66 @@ fn flag_guard_error(field: &Field, label: &str, result: Result<(), String>) -> O
 /// The bound keys a `model_schema_prop` meta carries, named as they were written, so a guard
 /// refusing them can point at the keys to remove rather than at the attribute as a whole.
 fn written_constraint_keys(prop_meta: &ModelSchemaPropMeta) -> Vec<&'static str> {
-    [
-        ("minLength", prop_meta.min_length.is_some()),
-        ("maxLength", prop_meta.max_length.is_some()),
-        ("pattern", prop_meta.pattern.is_some()),
-        ("minimum", prop_meta.minimum.is_some()),
-        ("maximum", prop_meta.maximum.is_some()),
-    ]
-    .into_iter()
-    .filter_map(|(key, written)| written.then_some(key))
-    .collect()
+    let mut written = written_keys_of(prop_meta, BoundKind::Text);
+    written.extend(written_keys_of(prop_meta, BoundKind::Range));
+    written
+}
+
+/// The keys of one kind a `model_schema_prop` meta carries, named as they were written.
+fn written_keys_of(prop_meta: &ModelSchemaPropMeta, kind: BoundKind) -> Vec<&'static str> {
+    let keys = match kind {
+        BoundKind::Range => vec![
+            ("minimum", prop_meta.minimum.is_some()),
+            ("maximum", prop_meta.maximum.is_some()),
+        ],
+        BoundKind::Text => vec![
+            ("minLength", prop_meta.min_length.is_some()),
+            ("maxLength", prop_meta.max_length.is_some()),
+            ("pattern", prop_meta.pattern.is_some()),
+        ],
+    };
+    keys.into_iter()
+        .filter_map(|(key, written)| written.then_some(key))
+        .collect()
+}
+
+/// Rejects a bound of the kind the field's own value is not measured by: a length or a pattern on
+/// a number, a range on a string.
+fn check_bound_kind(
+    field: &Field,
+    field_def: &FieldDef,
+    prop_meta: &ModelSchemaPropMeta,
+    label: &str,
+) -> Result<(), syn::Error> {
+    let Some(kind) = field_def.unmeasured_bound() else {
+        return Ok(());
+    };
+    let misplaced = written_keys_of(prop_meta, kind);
+    if misplaced.is_empty() {
+        return Ok(());
+    }
+    let keys = misplaced.join("`, `");
+    let declared = written_spelling(&field.ty);
+    let (measured, written, kept) = match kind {
+        BoundKind::Range => (
+            "a range is measured on a number",
+            "a string",
+            "`minLength`, `maxLength` or `pattern`",
+        ),
+        BoundKind::Text => (
+            "a length or a pattern is measured on a string",
+            "a number",
+            "`minimum` or `maximum`",
+        ),
+    };
+    Err(syn::Error::new_spanned(
+        field,
+        format!(
+            "model_schema: {label}: `{keys}` cannot apply to a `{declared}` field — {measured}, \
+             and this field writes {written}: the constraint would reach neither Zod, nor the \
+             JSON schema, nor the generated validator. Bound {written} with {kept}, or drop it."
+        ),
+    ))
 }
 
 /// Rejects a length, pattern or range written on a field no surface reads one beside.
@@ -13048,6 +13118,7 @@ fn check_fixed_shape_constraints(
     if written.is_empty() {
         return Ok(());
     }
+    check_bound_kind(field, field_def, prop_meta, label)?;
     let keys = written.join("`, `");
     if let Some(name) = field_def.fixed_shape_name() {
         return Err(syn::Error::new_spanned(
@@ -13075,13 +13146,7 @@ fn check_fixed_shape_constraints(
         ));
     }
     if let Some((name, generic)) = field_def.named_shape() {
-        let range = [
-            ("minimum", prop_meta.minimum.is_some()),
-            ("maximum", prop_meta.maximum.is_some()),
-        ]
-        .into_iter()
-        .filter_map(|(key, is_written)| is_written.then_some(key))
-        .collect::<Vec<_>>();
+        let range = written_keys_of(prop_meta, BoundKind::Range);
         if !range.is_empty() {
             let range_keys = range.join("`, `");
             return Err(syn::Error::new_spanned(
@@ -13701,6 +13766,12 @@ fn named_bound_member(field_ident: &proc_macro2::Ident, index: usize) -> BoundMe
     }
 }
 
+/// Whether the walk ends on a borrowed `str`, the one constrained value no hook is emitted for.
+#[cfg(feature = "serde")]
+const fn ends_on_a_borrow(wraps: &[ConstraintWrap]) -> bool {
+    matches!(wraps.last(), Some(ConstraintWrap::Borrowed))
+}
+
 /// Whether the field needs a `#[serde(default)]` written for it alongside the `deserialize_with`.
 #[cfg(feature = "serde")]
 fn needs_injected_default(wraps: &[ConstraintWrap], has_default: bool) -> bool {
@@ -13848,7 +13919,9 @@ fn generate_field_validation(
     if gate == ConstraintGate::Validator {
         record_field_validator(module_name, &helper_stem);
     }
-    if gate == ConstraintGate::Deserializer {
+    // A borrowed `str` publishes no hook, so nothing is hung on one: its bound is the validator's
+    // alone, an untagged member included.
+    if gate == ConstraintGate::Deserializer && !ends_on_a_borrow(&shape.wraps) {
         let deserialize_with_path = format!("{module_name}::deserialize_{helper_stem}");
         let path_lit = syn::LitStr::new(&deserialize_with_path, proc_macro2::Span::call_site());
         injected_attrs.push(syn::parse_quote! {
@@ -13913,18 +13986,23 @@ fn apply_constraint_docs(field_def: &mut FieldDef, final_name: &str) {
     let Some(meta) = &field_def.model_schema_prop_meta else {
         return;
     };
+    let unmeasured = field_def.unmeasured_bound();
     let mut constraint_docs: Vec<String> = Vec::new();
-    if let Some(min_len) = meta.min_length {
-        constraint_docs.push(format!(" * Minimum length: {min_len}"));
+    if unmeasured != Some(BoundKind::Text) {
+        if let Some(min_len) = meta.min_length {
+            constraint_docs.push(format!(" * Minimum length: {min_len}"));
+        }
+        if let Some(max_len) = meta.max_length {
+            constraint_docs.push(format!(" * Maximum length: {max_len}"));
+        }
     }
-    if let Some(max_len) = meta.max_length {
-        constraint_docs.push(format!(" * Maximum length: {max_len}"));
-    }
-    if let Some(minimum) = meta.minimum {
-        constraint_docs.push(format!(" * Minimum value: {minimum}"));
-    }
-    if let Some(maximum) = meta.maximum {
-        constraint_docs.push(format!(" * Maximum value: {maximum}"));
+    if unmeasured != Some(BoundKind::Range) {
+        if let Some(minimum) = meta.minimum {
+            constraint_docs.push(format!(" * Minimum value: {minimum}"));
+        }
+        if let Some(maximum) = meta.maximum {
+            constraint_docs.push(format!(" * Maximum value: {maximum}"));
+        }
     }
     if !constraint_docs.is_empty() {
         let extra_docs = constraint_docs.join("\n");

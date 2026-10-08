@@ -3474,6 +3474,191 @@ fn a_bound_on_a_map_or_tuple_field_is_refused() {
     }
 }
 
+/// A number has no length and no pattern, so one written beside it reaches no surface: refused
+/// where it is written, under every wrapper the number is reached through.
+#[test]
+fn a_length_or_a_pattern_on_a_numeric_field_is_refused() {
+    for (constraint, key) in [
+        (quote::quote! { minLength = 3 }, "minLength"),
+        (quote::quote! { maxLength = 3 }, "maxLength"),
+        (quote::quote! { pattern = "^[0-9]+$" }, "pattern"),
+    ] {
+        for (field_type, declared) in [
+            (quote::quote! { u32 }, "`u32`"),
+            (quote::quote! { f64 }, "`f64`"),
+            (quote::quote! { isize }, "`isize`"),
+            (quote::quote! { Option<i64> }, "`Option<i64>`"),
+            (quote::quote! { Vec<u8> }, "`Vec<u8>`"),
+            (quote::quote! { [f32; 2] }, "f32"),
+            (quote::quote! { &'static u16 }, "`&'static u16`"),
+        ] {
+            let errors = field_prop_guard_errors(&syn::parse_quote! {
+                struct Report {
+                    #[model_schema_prop(#constraint)]
+                    count: #field_type,
+                }
+            });
+            assert_eq!(errors.len(), 1, "for {key} on {field_type}: {errors:?}");
+            for needle in [
+                "compile_error",
+                "field `count`",
+                key,
+                declared,
+                "writes a number",
+                "`minimum` or `maximum`",
+            ] {
+                assert!(
+                    errors[0].contains(needle),
+                    "{needle} missing for {key} on {field_type}: {}",
+                    errors[0]
+                );
+            }
+        }
+    }
+}
+
+/// A string has no range, so one written beside it reaches no surface: refused where it is
+/// written, whichever of its spellings the string is held in.
+#[test]
+fn a_range_on_a_string_field_is_refused() {
+    for (constraint, key) in [
+        (quote::quote! { minimum = 5 }, "minimum"),
+        (quote::quote! { maximum = 5 }, "maximum"),
+    ] {
+        for (field_type, declared) in [
+            (quote::quote! { String }, "`String`"),
+            (quote::quote! { Option<String> }, "`Option<String>`"),
+            (quote::quote! { Vec<String> }, "`Vec<String>`"),
+            (quote::quote! { &'static str }, "`&'static str`"),
+            (quote::quote! { Cow<'static, str> }, "`Cow<'static, str>`"),
+            (quote::quote! { Box<str> }, "`Box<str>`"),
+            (quote::quote! { PathBuf }, "`PathBuf`"),
+        ] {
+            let errors = field_prop_guard_errors(&syn::parse_quote! {
+                struct Report {
+                    #[model_schema_prop(#constraint)]
+                    name: #field_type,
+                }
+            });
+            assert_eq!(errors.len(), 1, "for {key} on {field_type}: {errors:?}");
+            for needle in [
+                "compile_error",
+                "field `name`",
+                key,
+                declared,
+                "writes a string",
+                "`minLength`, `maxLength` or `pattern`",
+            ] {
+                assert!(
+                    errors[0].contains(needle),
+                    "{needle} missing for {key} on {field_type}: {}",
+                    errors[0]
+                );
+            }
+        }
+    }
+}
+
+/// The refusal names the keys of the wrong kind and no other: a key of the field's own kind
+/// written beside them is one the surfaces render.
+#[test]
+fn a_bound_of_the_wrong_kind_is_named_without_the_keys_beside_it() {
+    let on_a_number = field_prop_guard_errors(&syn::parse_quote! {
+        struct Report {
+            #[model_schema_prop(minimum = 1, minLength = 3, pattern = "^[0-9]+$")]
+            count: u32,
+        }
+    });
+    assert_eq!(on_a_number.len(), 1, "got: {on_a_number:?}");
+    assert!(
+        on_a_number[0].contains("`minLength`, `pattern` cannot apply"),
+        "got: {}",
+        on_a_number[0]
+    );
+    assert!(
+        !on_a_number[0].contains("`minimum`,"),
+        "got: {}",
+        on_a_number[0]
+    );
+
+    let on_a_string = field_prop_guard_errors(&syn::parse_quote! {
+        struct Report {
+            #[model_schema_prop(minLength = 3, minimum = 1, maximum = 9)]
+            name: String,
+        }
+    });
+    assert_eq!(on_a_string.len(), 1, "got: {on_a_string:?}");
+    assert!(
+        on_a_string[0].contains("`minimum`, `maximum` cannot apply"),
+        "got: {}",
+        on_a_string[0]
+    );
+}
+
+/// The README prints both refusals, each held here to what the guard says.
+#[test]
+fn the_readme_shows_the_refusal_of_a_bound_of_the_wrong_kind() {
+    let readme = include_str!("../../README.md");
+    let on_a_number: syn::ItemStruct = syn::parse_quote! {
+        struct Product {
+            #[model_schema_prop(minLength = 3)]
+            age_restriction: u32,
+        }
+    };
+    let on_a_string: syn::ItemStruct = syn::parse_quote! {
+        struct UserProfile {
+            #[model_schema_prop(minimum = 3)]
+            username: String,
+        }
+    };
+    for (item, shown) in [
+        (
+            on_a_number,
+            "model_schema: field `age_restriction`: `minLength` cannot apply to a `u32` field \u{2014} \
+             a length or a pattern is measured on a string, and this field writes a number: the \
+             constraint would reach neither Zod, nor the JSON schema, nor the generated \
+             validator. Bound a number with `minimum` or `maximum`, or drop it.",
+        ),
+        (
+            on_a_string,
+            "model_schema: field `username`: `minimum` cannot apply to a `String` field \u{2014} a \
+             range is measured on a number, and this field writes a string: the constraint would \
+             reach neither Zod, nor the JSON schema, nor the generated validator. Bound a string \
+             with `minLength`, `maxLength` or `pattern`, or drop it.",
+        ),
+    ] {
+        let errors = field_prop_guard_errors(&item);
+        assert_eq!(errors.len(), 1, "got: {errors:?}");
+        assert!(errors[0].contains(shown), "got: {}", errors[0]);
+        assert!(
+            readme.contains(&format!("error: {shown}")),
+            "the README no longer shows: {shown}"
+        );
+    }
+}
+
+/// A bound of the field's own kind clears the guard: a range on a number, and a length or a
+/// pattern on a string, a borrowed one included.
+#[test]
+fn a_bound_of_the_fields_own_kind_is_left_alone() {
+    for field in [
+        quote::quote! { #[model_schema_prop(minimum = 0, maximum = 9)] count: u32 },
+        quote::quote! { #[model_schema_prop(minimum = 0.5)] ratio: Option<f64> },
+        quote::quote! { #[model_schema_prop(maximum = 9)] counts: Vec<i16> },
+        quote::quote! { #[model_schema_prop(minLength = 3, pattern = "^[a-z]+$")] name: String },
+        quote::quote! { #[model_schema_prop(maxLength = 9)] name: &'static str },
+        quote::quote! { #[model_schema_prop(minLength = 3)] names: Vec<&'static str> },
+        quote::quote! { #[model_schema_prop(minLength = 3)] path: PathBuf },
+    ] {
+        let errors = field_prop_guard_errors(&syn::parse_quote! {
+            struct Report {
+                #field
+            }
+        });
+        assert!(errors.is_empty(), "for {field}: {errors:?}");
+    }
+}
+
 /// A range is spelled against a number this crate writes itself. A type declared elsewhere is
 /// written by its name on every surface, so a range beside one is refused where it is written.
 #[test]
@@ -3774,6 +3959,49 @@ fn the_constraint_docs_are_written_only_where_the_bound_is_kept() {
         });
         assert!(docs.is_empty(), "for {field}, got: {docs}");
     }
+}
+
+/// A bound of the wrong kind is refused, so the docs say nothing of it, and a bound of the field's
+/// own kind written beside it keeps its line.
+#[test]
+fn the_constraint_docs_are_silent_for_a_bound_of_the_wrong_kind() {
+    for field in [
+        quote::quote! { #[model_schema_prop(minLength = 3, maxLength = 9)] count: u32 },
+        quote::quote! { #[model_schema_prop(minLength = 3)] counts: Option<Vec<f64>> },
+        quote::quote! { #[model_schema_prop(minimum = 5, maximum = 9)] name: String },
+        quote::quote! { #[model_schema_prop(minimum = 5)] name: &'static str },
+    ] {
+        let docs = field_docs_after_meta(&syn::parse_quote! {
+            struct Report {
+                #field
+            }
+        });
+        assert!(docs.is_empty(), "for {field}, got: {docs}");
+    }
+
+    let on_a_number = field_docs_after_meta(&syn::parse_quote! {
+        struct Report {
+            #[model_schema_prop(minLength = 3, minimum = 5)]
+            count: u32,
+        }
+    });
+    assert!(on_a_number.contains("Minimum value: 5"), "{on_a_number}");
+    assert!(!on_a_number.contains("Minimum length"), "{on_a_number}");
+
+    let on_a_borrowed_string = field_docs_after_meta(&syn::parse_quote! {
+        struct Report {
+            #[model_schema_prop(minLength = 3, minimum = 5)]
+            name: &'static str,
+        }
+    });
+    assert!(
+        on_a_borrowed_string.contains("Minimum length: 3"),
+        "{on_a_borrowed_string}"
+    );
+    assert!(
+        !on_a_borrowed_string.contains("Minimum value"),
+        "{on_a_borrowed_string}"
+    );
 }
 
 /// The `JSDoc` was the one place a bound on a parameter-typed field appeared at all — every gate it
@@ -10374,6 +10602,28 @@ fn a_transparent_wrapper_is_dereferenced_through() {
     }
 }
 
+/// A reference to `str` writes the string it borrows, so the walk reaches the `str` through it as
+/// it does through a `Box`, at whatever depth the reference is written.
+#[cfg(feature = "serde")]
+#[test]
+fn a_borrowed_str_is_dereferenced_through() {
+    for spelling in ["&'a str", "&'static str", "&'a mut str"] {
+        assert_eq!(
+            emitted_validation(spelling),
+            emitted_validation("Box<str>"),
+            "spelling {spelling}"
+        );
+    }
+    assert_eq!(
+        emitted_validation("Option<&'a str>"),
+        emitted_validation("Option<Box<str>>")
+    );
+    assert_eq!(
+        emitted_validation("Vec<&'a str>"),
+        emitted_validation("Vec<Box<str>>")
+    );
+}
+
 /// Every sequence spelling writes an array of its element, so each element answers for the
 /// constraint — one level per depth, the innermost being where it lands.
 #[cfg(feature = "serde")]
@@ -10773,6 +11023,79 @@ fn a_borrowed_field_type_carries_its_lifetime_into_the_hook() {
     );
 }
 
+/// A borrowed `str` publishes its validator and no hook: reading one through a function would
+/// change which payloads a type reads, and the bound is the validator's alone. Its owned twin
+/// keeps both helpers.
+#[cfg(feature = "serde")]
+#[test]
+fn a_borrowed_str_publishes_its_validator_and_no_hook() {
+    for spelling in [
+        "&'a str",
+        "&'static str",
+        "Option<&'a str>",
+        "Vec<&'static str>",
+    ] {
+        let module = emitted_string_module(spelling);
+        assert!(
+            module.starts_with("pub fn validate_field_value (value : & str)"),
+            "for {spelling}: {module}"
+        );
+        assert!(
+            !module.contains("deserialize_field"),
+            "a hook was emitted for {spelling}: {module}"
+        );
+    }
+    for spelling in ["String", "Option<String>", "Vec<Box<str>>", "Cow<'a, str>"] {
+        assert!(
+            emitted_string_module(spelling).contains("pub fn deserialize_field"),
+            "the hook of {spelling} went missing"
+        );
+    }
+}
+
+/// Nothing is hung on a borrowed `str` member of an untagged enum, bare or wrapped, with a reader
+/// of its author's or without: the read of one is what it is with no bound, and the validator
+/// still holds it. An owned member keeps the hook, and the default beside it under an `Option`.
+#[cfg(feature = "serde")]
+#[test]
+fn a_borrowed_str_member_is_hung_with_no_hook() {
+    let min_length = ModelSchemaPropMeta {
+        min_length: Some(3),
+        ..ModelSchemaPropMeta::default()
+    };
+
+    for field in [
+        quote::quote! { note: &'a str },
+        quote::quote! { note: &'static str },
+        quote::quote! { #[serde(borrow)] note: Option<&'a str> },
+        quote::quote! { #[serde(borrow)] note: Vec<&'a str> },
+        quote::quote! { #[serde(deserialize_with = "trimmed")] note: &'a str },
+        quote::quote! { #[serde(with = "trimmed")] note: &'a str },
+    ] {
+        let borrowed: syn::ItemStruct = syn::parse_quote! { struct Probe<'a> { #field } };
+        for gate in [ConstraintGate::Deserializer, ConstraintGate::Validator] {
+            assert_eq!(
+                generated_field_validation(&borrowed, &min_length, gate),
+                (true, true, None, 0),
+                "for {field} under {gate:?}"
+            );
+        }
+    }
+
+    let owned: syn::ItemStruct = syn::parse_quote! { struct Probe { note: String } };
+    assert_eq!(
+        generated_field_validation(&owned, &min_length, ConstraintGate::Deserializer),
+        (true, true, None, 1)
+    );
+    let owned_optional: syn::ItemStruct =
+        syn::parse_quote! { struct Probe { note: Option<String> } };
+    assert_eq!(
+        generated_field_validation(&owned_optional, &min_length, ConstraintGate::Deserializer),
+        (true, true, None, 2),
+        "the hook, and the default that keeps a missing key a `None` under it"
+    );
+}
+
 /// serde reads a missing key for an `Option` as a `None` only while the field deserializes itself,
 /// so the hook that replaces that reading is given the default which restores it — and only there.
 #[cfg(feature = "serde")]
@@ -10822,6 +11145,28 @@ fn a_field_without_a_constrainable_value_has_no_shape() {
         "Tagged<String>",
         "HashMap<String, String>",
         "(String, String)",
+    ] {
+        let ty: syn::Type = syn::parse_str(spelling).unwrap();
+        assert!(
+            constrained_shape(&ty).is_none(),
+            "spelling {spelling} should reach no constrainable value"
+        );
+    }
+}
+
+/// `str` is the one borrow a bound is read through. A reference to anything else has no shape, and
+/// so no validator, exactly as before a borrowed `str` had one.
+#[cfg(feature = "serde")]
+#[test]
+fn a_reference_to_anything_but_str_has_no_shape() {
+    for spelling in [
+        "&'a String",
+        "&'a [String]",
+        "&'a u32",
+        "&'a Path",
+        "&'a Slug",
+        "&'a &'a str",
+        "Option<&'a String>",
     ] {
         let ty: syn::Type = syn::parse_str(spelling).unwrap();
         assert!(
