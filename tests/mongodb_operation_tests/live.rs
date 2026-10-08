@@ -39,7 +39,7 @@ const SERVER_VAR: &str = "TIXSCHEMA_MONGODB_URI";
 static STOOD_DOWN: Once = Once::new();
 
 /// An empty collection of its own for the check `named`, or `None` where no server is named.
-async fn collection(named: &str) -> Option<Collection<Document>> {
+pub(super) async fn collection(named: &str) -> Option<Collection<Document>> {
     let address = named_server()?;
     let parsed = ClientOptions::parse(&address).await;
     assert!(
@@ -71,7 +71,7 @@ fn named_server() -> Option<String> {
     named
 }
 
-fn say(answered: &str) {
+pub(super) fn say(answered: &str) {
     eprintln!("[bson {BSON_MAJOR}, live] {answered}");
 }
 

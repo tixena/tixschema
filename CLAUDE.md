@@ -51,6 +51,9 @@ just test-emitted
 
 # Install the Kotlin jars test-emitted compiles against, into ~/.local/share/tixschema/kotlin-libs
 just kotlin-libs
+
+# Run the MongoDB operations against the server TIXSCHEMA_MONGODB_URI names; refuses to stand down
+just test-mongodb
 ```
 
 ### Code Quality
@@ -110,7 +113,7 @@ just ci
    - `zod.rs`: Generates Zod v4 schema strings (`z.string()`, `z.union()`, etc.), embeds examples in `.meta()`
    - `jsonschema.rs`: Generates JSON schema objects
    - `object_id.rs`: MongoDB ObjectId type detection and schema generation
-   - `recovering_decode.rs`: Generates what `#[model_schema(decode_with)]` adds to a type: `from_value_with`, `from_bson_with` under `bson`, the walker of each, and the callback's types in `{type}_schema`. `recovering_decode/enums.rs` holds the walkers of an enum
+   - `recovering_decode.rs`: Generates what `#[model_schema(decode_with)]` adds to a type: `from_value_with` and `from_value_piped`, `from_bson_with` and `from_bson_piped` under `bson`, the walker of each, and the callback's and the resolvers' types in `{type}_schema`. `recovering_decode/enums.rs` holds the walkers of an enum. Under `mongodb` three more files emit into the same module and onto the same type: `recovering_decode/query.rs` the query types (`Filter`, `Update`, the path kinds), `recovering_decode/fields.rs` the type's own typed paths (`MongoFields`, `MONGO_FIELDS`, `mongo_fields_under`), and `recovering_decode/operations.rs` the operations (`find_one`, `find`, `count`, `insert_one`, the updates and the deletes, with `Read` and `OperationError`)
    - `model_schema_prop.rs`: Parses field-level customization attributes (`pattern`, `minLength`, `maxLength`, `minimum`, `maximum`, `literal`, `as`, `preprocess`)
 
 5. **Code Generation** ([generation/](src/generation/))
@@ -178,8 +181,8 @@ The crate uses optional features for minimal dependencies:
 - `serde`: Enables Serde attribute parsing and field renaming
 - `zod`: Enables Zod schema generation (v4 syntax)
 - `jsonschema`: Enables `json_schema()` method generation
-- `mongodb`: Enables MongoDB ObjectId type support
-- `bson`: BSON support, turned on by `mongodb`; turns on `serde`. Generates `from_bson_with` on types that opt in with `decode_with`
+- `mongodb`: Enables MongoDB ObjectId type support; turns on `bson`. On a type that opts in with `decode_with` it also generates the typed field paths (`MONGO_FIELDS`, `mongo_fields_under`), the filters and updates they build, and the operations over a `mongodb::Collection<bson::Document>` of the type's rows. A consuming crate that declares such a type lists the `mongodb` driver, built for the major version of `bson` it lists
+- `bson`: BSON support, turned on by `mongodb`; turns on `serde`. Generates `from_bson_with` and `from_bson_piped` on types that opt in with `decode_with`
 - `typescript`: Enables TypeScript type generation
 - `chrono`: Enables chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`)
 - `dart`: Enables Dart type generation with a JSON codec, and the Dart HTTP client
@@ -754,8 +757,11 @@ copy of `typeid::of` (see `THIRD-PARTY-NOTICES`), so a consumer adds no dependen
 
 `#[model_schema(decode_with)]` gives a type `from_value_with`, and `from_bson_with` under `bson`:
 plain serde reads the value, a walker lists every issue in it, and a callback supplied with the
-call rejects the record or fixes it once. `README.md`'s "Recovering Decode" section is the
-consumer's view; this is what a change to the emitter has to keep.
+call rejects the record or fixes it once. `from_value_piped` and `from_bson_piped` are the same
+reads over resolvers run in order, each answering one issue. Under `mongodb` the type also gets
+its typed MongoDB paths, the filters and updates they build, and the operations that read and
+write its rows. `README.md`'s "Recovering Decode" and "MongoDB Operations and Typed Filters"
+sections are the consumer's view; this is what a change to the emitter has to keep.
 
 - **The flag is read at `exec_model_schema`.** `decode_with_guard_errors` runs there, ungated, so
   the refusals -- a type alias, a type that declares a lifetime, a field that borrows -- are the
@@ -793,10 +799,79 @@ consumer's view; this is what a change to the emitter has to keep.
   builds the closure from the walk's own type at that position, so a list is checked item by item
   at its index. The registry is cleared per item at `exec_model_schema`, and holds nothing in a
   build with no schema surface, where no validator is published.
-- **Every name the flag adds is its own.** Each method carries the flag's name
+- **Every name the flag adds is its own.** Each walker method carries the flag's name
   (`decode_with_value_issues`, `decode_with_bson_fields`, `decode_with_value_named`), and a
   method's own type parameters take a name the item does not write (`unclaimed_parameter`): `F`
-  and `I`, numbered where the item writes one.
+  and `I`, and under `mongodb` `Root` and `U`, numbered where the item writes one. An entry point
+  and an operation are the name they are called by (`from_bson_piped`, `find_one`), and the typed
+  paths carry the feature's (`MONGO_FIELDS`, `mongo_fields_under`, `mongo_write_{field}`,
+  `mongo_read_row`). `every_added_method_but_the_entry_point_carries_the_flags_name` pins the
+  whole list in order: a function of the author's own under one of those names is a duplicate
+  definition (E0592).
+- **Both entry points of a source share its two reads.** `entry_methods` and `bson_entry_methods`
+  build the first read and the second read once, as token fragments, and splice them into the
+  callback entry point and into the piped one, so neither read can change for one and not the
+  other. `resolver_items` writes `Resolution`, `Resolver` and `unsettled`, the pipe, beside
+  `Verdict`. `Resolver` is `&dyn Fn + Sync`: a read that waits for MongoDB holds its resolvers, and
+  without the bound its future is not `Send`, which clippy's `future_not_send` reports at every
+  flagged type of a consumer that denies it.
+- **What `mongodb` adds is emitted under `#[cfg(feature = "mongodb")]`, and nothing of it in any
+  other build.** `query.rs` writes the query types into the module (`query_items`, spliced by
+  `module_items`). `fields.rs` writes `MongoFields` into the module, and onto the type
+  `MONGO_FIELDS`, `mongo_fields_under` and one `mongo_write_{field}` per hooked field
+  (`struct_paths`, `enum_paths`). `operations.rs` writes `OperationError` and `Read` into the
+  module (`error_items`, `read_items`) and the operations onto the type, beside the BSON entry
+  points and under their bounds (`methods`, called from `bson_entry_methods`). Each is reached
+  through a `cfg`'d pair in `recovering_decode.rs`, whose other half answers nothing, so a type
+  without the flag expands as before and a flagged type in a build without `mongodb` gains no
+  operation and no path.
+- **Two flagged types share no declaration; what one expansion writes about another is fixed.**
+  A field typed with a flagged model holds that model's own struct of paths, named
+  `super::{type}_schema::MongoFields<Root, ..>` and built by
+  `<Model>::mongo_fields_under::<Root>(prefix)`, `prefix` being the keys so far as
+  `[Option<&'static str>; 8]`. The name `MongoFields`, the function's name and signature and the
+  array of eight keys are the whole of what crosses from one type's expansion to another's: a
+  change to any of them changes every flagged type at once. A type serde writes as one value
+  (`written_as_one_value`, recorded as `Declared::OneValue`) is one path, `MongoFields<Root, ..,
+  Whole>`, whose path type the type's own `impl` and every holder write, so its module names no
+  type of its author's and builds inside a function body.
+- **A member is typed only where its walker is called.** `Own::seen_model` reaches a struct or an
+  enum `#[model_schema]` was written on above (`declared`), never the type itself, one declared
+  below, an alias or another crate's type: each of those is one whole value, and so is a field
+  under a hook or one serde never reads back, where no walker is called either. A hooked field's
+  path writes through `mongo_write_{field}`, which calls the hook as the attribute writes it.
+- **A path is under the name serde writes.** `parse_written_renames` reads `rename`, `rename_all`
+  and `rename_all_fields` for their `serialize` side in every build, where the schema surfaces
+  refuse a list whose two sides differ.
+- **Two standard traits join filters and updates across modules.** A `Filter<Root>` is
+  `Into<bson::Document>` and `AsRef<PhantomData<Root>>`, and an `Update<Root>` is
+  `Into<bson::Document>` and `AsRef<PhantomData<fn(Root) -> Root>>`. `Filter::and`, `Filter::or`,
+  `Update::and`, `ModelList::elem_match`, `ModelList::pull` and every operation take a filter or
+  an update by those bounds, never as the module's own type: that is what lets a filter built from
+  a nested model's path, a `customer_schema::Filter<Invoice>`, join and be taken, and what refuses
+  an update where a filter is asked. `a_filter_and_an_update_each_carry_a_marker_of_their_own`
+  pins each bound.
+- **The operations hand the driver documents, and read each row themselves.** The collection is
+  `mongodb::Collection<bson::Document>`: a row is read through `from_bson_piped`
+  (`mongo_read_row`) and written through `bson::Serializer::new` (`mongo_written_row`), never by
+  the driver's serde, and many rows are read with the cursor's own `advance` and
+  `deserialize_current`, so a consumer lists no `futures`. `WriteError` is
+  `<bson::Serializer as serde::Serializer>::Error`, one path under both majors. `OperationError`
+  converts from it through an `impl` bounded on that path; no `From` of the driver's error can
+  stand beside that one, so `Database` is built by name.
+- **A read answers `Read`, never a future of its own.** `find_one`, `find`, `count` and the two
+  that take resolvers answer `{type}_schema::Read<'c, T, O>`, which holds the function that reads
+  one row, so the module names no type of its author's. It takes the five options, and
+  `IntoFuture` is implemented once per answer (`Vec<T>`, `Option<T>`, `u64`), each handing the
+  driver's method the options that method has. What is awaited is a boxed `Send` future.
+  `insert_one` writes the row when it is called and answers a boxed `Send` future too: an
+  `async fn` over `&self` is `Send` only where the type is `Sync`.
+- **The lists of what the flag adds are pinned.** `ADDED_TYPE_NAMES`, with `ADDED_TYPE_COUNT`, is
+  every type name the flag puts into a schema module, the ones `mongodb` adds under their own
+  `cfg`: `reading_the_authors_scope` reads past those names, and
+  `every_type_the_flag_adds_is_a_name_read_past` holds the list to what the module declares.
+  `OPERATIONS` in `recovering_decode/tests.rs` is what `mongodb` adds to the type. A type or a
+  method the flag gains joins its list in the same change.
 - **The emitted code names only what both major versions of the `bson` library have.** Every BSON
   value is read through `bson::Deserializer::new` and written through `bson::Serializer::new`.
   `tests/recovering_decode_bson_tests/` is compiled once per major, each time beside a MongoDB
@@ -814,9 +889,24 @@ consumer's view; this is what a change to the emitter has to keep.
 - **Nothing emitted carries `#[allow]`, `#[expect]` or `#[doc(hidden)]`.** A consumer's lint levels
   reach what the macro emits into their crate: every added type is `#[non_exhaustive]`, no added
   function takes `impl Trait` as a parameter, and a `Result` is written `core::result::Result`.
-- **The README's example is pinned.** `tests/recovering_decode_bson_tests/readme.rs` holds the
-  README's declarations and its callback as one text with the code that compiles, and runs the
-  README's stored row against both `bson` majors.
+- **The MongoDB suites are compiled once per `bson` major, and the live checks stand down.**
+  `tests/mongodb_query_tests/` asserts the document each path writes, and
+  `tests/mongodb_operation_tests/` the operations: `offline.rs` what needs no server, `live.rs`
+  against a real collection. Each is compiled by a binary here, bound to version 2, and by one in
+  `bson3/`. A live check reads `TIXSCHEMA_MONGODB_URI`; without it the check passes having run
+  nothing, and says so once on the process's own stderr. `just test-mongodb` refuses to stand
+  down, and sits outside `all` and `ci`: no MongoDB server comes with a clone or with the CI
+  runner.
+- **The README's examples are pinned.** Each is held as one text with the code that compiles, and
+  what it prints is run: `tests/recovering_decode_bson_tests/readme.rs` (the callback) and
+  `readme_resolvers.rs` (the resolvers), `tests/mongodb_operation_tests/readme.rs` with
+  `readme/paths.rs`, `readme/operations.rs` and `readme/stored_forms.rs` (the model, every table
+  of documents, the operations, what each failure is told as), and
+  `tests/mongodb_query_tests/readme.rs` (a hooked date). A table row of a document is read off
+  the call by `stringify!`, so the README's cell is the code. A line that ends in the `bson`
+  library's own wording is shown under each major, and each binary holds the run to its own
+  through its `BSON_MAJOR`. The README's operations run against a collection in
+  `live_the_readme_examples_run_against_a_collection`, which stands down like every live check.
 
 ### Adding Examples to Types
 
@@ -1076,6 +1166,8 @@ The CI pipeline ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs:
 
 CI installs every toolchain those groups need: Node with `zod`, `ws` and `typescript`, Dart, and the Kotlin jars; Swift, Kotlin and a JRE come with the runner image. Inside a plain `cargo test` those groups stand down and pass when their toolchain is missing, so only `just typecheck-ts` and `just test-emitted` prove anything: both refuse to stand down.
 
+The MongoDB operations' live checks stand down the same way where `TIXSCHEMA_MONGODB_URI` names no server, and CI names none: `just test-mongodb` is the recipe that refuses to, and no step of the pipeline runs it.
+
 **Before pushing**, run `just ci` locally to replicate the CI pipeline.
 
 ## MongoDB ObjectId Support
@@ -1173,7 +1265,13 @@ tixschema/
 │   │   ├── zod.rs                # Zod schema generation
 │   │   ├── jsonschema.rs         # JSON schema generation
 │   │   ├── object_id.rs          # ObjectId support
-│   │   ├── recovering_decode.rs  # decode_with: from_value_with, from_bson_with, walkers
+│   │   ├── recovering_decode.rs  # decode_with: the entry points, the walkers, the resolvers
+│   │   ├── recovering_decode/
+│   │   │   ├── enums.rs          # The walkers of an enum
+│   │   │   ├── aliases.rs        # A field typed with an alias, walked as the type it names
+│   │   │   ├── query.rs          # mongodb: Filter, Update and the path kinds
+│   │   │   ├── fields.rs         # mongodb: MongoFields, MONGO_FIELDS, mongo_fields_under
+│   │   │   └── operations.rs     # mongodb: OperationError, Read and the operations
 │   │   └── model_schema_prop.rs  # Field attribute parsing
 │   └── generation/
 │       ├── mod.rs
@@ -1185,9 +1283,13 @@ tixschema/
 │   ├── serde_tests.rs
 │   ├── mongodb_tests.rs
 │   ├── mongodb_real_tests.rs
-│   ├── recovering_decode_tests.rs        # from_value_with
-│   ├── recovering_decode_bson2_tests.rs  # from_bson_with, against bson 2
+│   ├── recovering_decode_tests.rs        # from_value_with, from_value_piped
+│   ├── recovering_decode_bson2_tests.rs  # from_bson_with, from_bson_piped, against bson 2
 │   ├── recovering_decode_bson_tests/     # The BSON suite both majors compile
+│   ├── mongodb_query_bson2_tests.rs      # The typed paths, filters and updates, against bson 2
+│   ├── mongodb_query_tests/              # The query suite both majors compile
+│   ├── mongodb_operation_bson2_tests.rs  # The operations, against bson 2
+│   ├── mongodb_operation_tests/          # The operation suite both majors compile: offline, live, readme
 │   ├── edge_cases_tests.rs
 │   ├── semantic_types_tests.rs
 │   └── ...
@@ -1196,7 +1298,9 @@ tixschema/
 │   ├── src/lib.rs                # Empty: the package holds tests only
 │   └── tests/
 │       ├── mirrored_manifest_tests.rs        # Fails when the two manifests drift
-│       └── recovering_decode_bson3_tests.rs  # from_bson_with, against bson 3
+│       ├── mongodb_operation_bson3_tests.rs  # The operations, against bson 3
+│       ├── mongodb_query_bson3_tests.rs      # The typed paths, filters and updates, against bson 3
+│       └── recovering_decode_bson3_tests.rs  # from_bson_with, from_bson_piped, against bson 3
 ├── justfile                      # Task runner (commands)
 ├── Cargo.toml                    # Dependencies, features
 └── README.md                     # User documentation

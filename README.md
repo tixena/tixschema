@@ -3591,15 +3591,15 @@ Chrono types also work in collections (`Vec<NaiveDate>` generates `z.array(z.iso
 
 ## Recovering Decode (`decode_with`)
 
-A type that opts in gets two methods that read a value the caller already holds: `from_value_with` reads a `serde_json::Value`, and `from_bson_with` reads a `bson::Document`. Plain serde reads the value. When serde reads it and the value is held in the form the type writes, the decoded value comes back and nothing else happens. When serde refuses it, when it carries a key the type does not declare, or when a value reads but is held in another form than its field writes, a callback supplied with that call is handed the raw value and every issue found in it, once. The callback rejects the record, or fixes the raw value so that plain serde gets one more read.
+A type that opts in gets methods that read a value the caller already holds: `from_value_with` and `from_value_piped` read a `serde_json::Value`, and `from_bson_with` and `from_bson_piped` read a `bson::Document`. Plain serde reads the value. When serde reads it and the value is held in the form the type writes, the decoded value comes back and nothing else happens. When serde refuses it, when it carries a key the type does not declare, or when a value reads but is held in another form than its field writes, the raw value and every issue found in it are handed over, once. A `with` method hands them to a callback supplied with that call, which rejects the record or fixes the raw value. A `piped` method hands them to [resolvers](#resolvers) supplied with that call, small functions that each answer one issue at a time. Either way plain serde then gets one more read.
 
-The flag adds these methods and the types the callback works with. Nothing tixschema generates calls them: a generated dispatcher reads with plain serde, as it did.
+The flag adds these methods and the types the callback and the resolvers work with. A generated dispatcher reads with plain serde, as it did, and in a build without the `mongodb` feature nothing tixschema generates calls them. With `mongodb` on, a flagged type also reads and writes its own rows in a collection, and those reads go through `from_bson_piped`: see [MongoDB Operations and Typed Filters](#mongodb-operations-and-typed-filters).
 
 ### Opting in
 
 Write the flag among the type's `#[model_schema(...)]` arguments: `#[model_schema(decode_with)]`. `decode_with = true` reads the same, and `decode_with = false` is the flag not written. A type without the flag gains nothing: its expansion is what it was, with no method and no type added.
 
-On a type `Record`, the flag generates these two methods:
+On a type `Record`, the flag generates these methods:
 
 ```rust
 impl Record {
@@ -3611,6 +3611,12 @@ impl Record {
         F: FnOnce(&mut serde_json::Value, &[record_schema::Issue<serde_json::Value>]) -> record_schema::Verdict,
     { /* ... */ }
 
+    pub fn from_value_piped(
+        mut value: serde_json::Value,
+        resolvers: &[record_schema::Resolver<'_, serde_json::Value, serde_json::Value>],
+    ) -> core::result::Result<Self, record_schema::Unrecovered<serde_json::Value>>
+    { /* ... */ }
+
     pub fn from_bson_with<F>(
         document: bson::Document,
         decide: F,
@@ -3618,12 +3624,19 @@ impl Record {
     where
         F: FnOnce(&mut bson::Document, &[record_schema::Issue<bson::Bson>]) -> record_schema::Verdict,
     { /* ... */ }
+
+    pub fn from_bson_piped(
+        document: bson::Document,
+        resolvers: &[record_schema::Resolver<'_, bson::Document, bson::Bson>],
+    ) -> core::result::Result<Self, record_schema::Unrecovered<bson::Bson>>
+    { /* ... */ }
 }
 ```
 
 - The callback is the method's own type parameter, named `F` unless the type's declaration already writes that name, with its bound in a `where` clause. It is an `FnOnce`, so the compiler holds it to one run per read.
-- `record_schema` is the module tixschema writes for `Record`. The callback's types are generated into it, once per flagged type.
-- `from_value_with` is generated in a build with tixschema's `serde` feature on, and `from_bson_with` in a build with its `bson` feature on, which `mongodb` turns on.
+- The resolvers of a `piped` method are a slice, in the order they are to run: `&[&first, &second]`. An empty slice, `&[]`, is a read any issue refuses.
+- `record_schema` is the module tixschema writes for `Record`. The callback's types and the resolvers' are generated into it, once per flagged type.
+- `from_value_with` and `from_value_piped` are generated in a build with tixschema's `serde` feature on, and `from_bson_with` and `from_bson_piped` in a build with its `bson` feature on, which `mongodb` turns on.
 
 ### What your crate lists
 
@@ -3637,18 +3650,23 @@ bson = "2.15"
 
 List the `bson` library at the major version your MongoDB driver uses, so the `Document` the driver hands you is the `bson::Document` the method takes. The generated code calls only what both major versions of the library have, and this repository's own tests build it against each, beside a MongoDB driver built for that version: `bson = "2.15"` in the crate's own `tests/`, and `bson = { version = "3.1", features = ["serde"] }`, with version 3's `serde` feature turned on, in `bson3/`, a package of its own.
 
+With tixschema's `mongodb` feature on, the generated code names the `mongodb` driver too, in every crate that declares a flagged type, for the operations the type gains. [The driver your crate lists](#the-driver-your-crate-lists) has the lines for each major version of `bson`.
+
 ### One call, one chance
 
-1. Plain serde reads the value, and the walker walks it. When serde reads it and the walk finds no issue, the decoded value is returned and the callback is never called.
-2. Otherwise the callback is called once, with the raw value, mutable, and the list of every issue the walk found. A record serde reads still reaches the callback when it carries a key its type does not declare, a value held in another form than its field writes, or a value that breaks a bound its field declares.
-3. `Verdict::Reject`: the read fails with `Unrecovered`, carrying that list.
-4. `Verdict::Fixed`: plain serde reads the value the callback left, and the walker walks it again. A read with no issue returns the value. Anything else fails the read with `Unrecovered`, carrying the second walk's list. The callback is not called again.
+A read is one call. What it finds is handed over once, to a callback or to resolvers, and the value is then read one more time.
 
-The result is the decoded value or the failure. Nothing reports whether the callback ran or what it changed: a caller that wants to know records it inside its own callback.
+1. Plain serde reads the value, and the walker walks it. When serde reads it and the walk finds no issue, the decoded value is returned, and neither the callback nor any resolver is called.
+2. Otherwise every issue the walk found is handed over, with the raw value, mutable. A record serde reads still gets there when it carries a key its type does not declare, a value held in another form than its field writes, or a value that breaks a bound its field declares.
+3. `from_value_with` and `from_bson_with` call their callback once, with the whole list. `Verdict::Reject` fails the read with `Unrecovered`, carrying that list. `Verdict::Fixed` goes on to the second read.
+4. `from_value_piped` and `from_bson_piped` run their resolvers in the order given, each over one issue at a time. A resolver answers an issue `Settled`, it repaired the raw value; `Rejected`, the issue is known and is not to be repaired; or `NotTouched`, the issue is not its own. An issue answered `Settled` or `Rejected` is handed to no later resolver, and one left `NotTouched` goes on to the next. Once the last resolver has run, any issue that is not `Settled` fails the read with `Unrecovered`, carrying only those issues, in the order the walk found them. With every issue settled, the second read follows.
+5. The second read: plain serde reads the value as it was left, and the walker walks it again. A read with no issue returns the value. Anything else fails the read with `Unrecovered`, carrying the second walk's list. Neither the callback nor a resolver is called again: an issue a repair uncovers fails the read.
+
+The result is the decoded value or the failure. Nothing reports whether the callback or a resolver ran, or what it changed: a caller that wants to know records it inside its own callback or resolver.
 
 ### The issues
 
-The callback's types live in the flagged type's own module, `record_schema` for `Record`. An `Issue<V>` is generic over the raw value: `serde_json::Value` from `from_value_with`, `bson::Bson` from `from_bson_with`. One callback receives every issue in the whole record as the outer type's own `Issue`, an issue inside a nested type included, at its full path.
+The callback's types and the resolvers' live in the flagged type's own module, `record_schema` for `Record`. An `Issue<V>` is generic over the raw value: `serde_json::Value` from `from_value_with` and `from_value_piped`, `bson::Bson` from `from_bson_with` and `from_bson_piped`. One callback receives every issue in the whole record as the outer type's own `Issue`, an issue inside a nested type included, at its full path, and so does each resolver, one issue at a time.
 
 | `Issue` member | What it says | Example |
 |----------------|--------------|---------|
@@ -3674,7 +3692,9 @@ The callback's types live in the flagged type's own module, `record_schema` for 
 - `remove_from_value(&self, root: &mut serde_json::Value) -> bool` removes the key or the item at the path.
 - `set_in_document(&self, root: &mut bson::Document, value: bson::Bson) -> bool` and `remove_from_document(&self, root: &mut bson::Document) -> bool` do the same inside a BSON document, and are generated with the `bson` feature. A path into a document starts at a key, so the empty path sets and removes nothing there.
 
-`Verdict` is the callback's answer, `Reject` or `Fixed`. `Unrecovered<V>` is the failed read, with its issues in `pub issues: Vec<Issue<V>>`. It implements `Debug`, `Display`, one line per issue with its path first, and `std::error::Error`, so `?` carries a failed read into the caller's own error type.
+`Verdict` is the callback's answer, `Reject` or `Fixed`. `Resolution` is a resolver's answer for one issue, `Settled`, `Rejected` or `NotTouched`. `Resolver<'r, D, V>` is the type a `piped` method takes each resolver as, `&'r (dyn Fn(&mut D, &Issue<V>) -> Resolution + Sync)`: `D` is the raw value, `serde_json::Value` or `bson::Document`, and `V` what an issue holds. `unsettled(raw, issues, resolvers)` is the pipe a `piped` method runs, a public function of the module: it runs the resolvers in order and answers the issues none settled.
+
+`Unrecovered<V>` is the failed read, with its issues in `pub issues: Vec<Issue<V>>`. It implements `Debug`, `Display`, one line per issue with its path first, and `std::error::Error`, so `?` carries a failed read into the caller's own error type.
 
 Each of these types is `#[non_exhaustive]`: inside the crate that declares the flagged type a `match` may list every member, and a callback written in another crate needs a wildcard arm.
 
@@ -3788,11 +3808,12 @@ The message names the first such field serde reads, a reference held inside an `
 
 ### Reading from MongoDB
 
-- **A row's `_id` is a key like any other.** Read into a type that does not declare `_id`, it is `Unknown`, and every such read goes to the callback. A type read from MongoDB declares `_id`, or the query projects it out with `_id: 0`.
+- **A row's `_id` is a key like any other.** Read into a type that does not declare `_id`, it is `Unknown`, and every such read goes to the callback or the resolvers. A type read from MongoDB declares `_id`, or the query projects it out with `_id: 0`, or a resolver settles the key by taking it out, as [Rows that do not read as the type](#rows-that-do-not-read-as-the-type) shows.
 - **A value stored as another BSON type than its field writes is `Mistyped`**, serde reading it all the same: a MongoDB query for the field's own type does not match such a value. Numbers count as one type, `Int32`, `Int64`, `Double` and `Decimal128`, strings and symbols as one, and every other BSON type matches only itself. An id stored as its hex text where the field is an `ObjectId` is `Mistyped`; a number stored as an `Int64` where the field writes an `Int32` is no issue.
 - **A `chrono` `DateTime<Tz>` field writes text, or a number under `as_number`**, so a row holding a BSON date in it is `Invalid`, serde refusing it.
 - **A reader on an older model** sends every record a newer model wrote with an added field to the callback, the added key being one its type does not declare.
-- **The `reason` text of an issue is the `bson` library's own wording**, and differs between its two major versions. A callback matches on the member, the path, `expected` and `found`, never on `reason`.
+- **The `reason` text of an issue is the `bson` library's own wording**, and differs between its two major versions. A callback or a resolver matches on the member, the path, `expected` and `found`, never on `reason`.
+- **With tixschema's `mongodb` feature on, a flagged type reads its own rows from a collection**, each through `from_bson_piped`: [MongoDB Operations and Typed Filters](#mongodb-operations-and-typed-filters).
 
 ### Cost
 
@@ -3946,6 +3967,983 @@ It answers `Fixed`, the second read finds no issue, and the call returns this `R
 | `versions` | `[1, 2]` |
 | `note` | `None` |
 
+### Resolvers
+
+`from_bson_piped` and `from_value_piped` take resolvers where `from_bson_with` and `from_value_with` take one callback. A resolver is a function over the raw value and one issue, and it answers that issue alone: `Settled`, `Rejected` or `NotTouched`. Each resolver knows one repair, so a read is handed the ones its rows need, in the order they are to run.
+
+A resolver is written against one type's own `Issue`, and serves that type: `invoice_schema::Issue` and `order_schema::Issue` are two types, each flagged type's module holding its own copy of everything the flag adds. An issue inside a nested type reaches the outer type's resolvers as the outer type's own `Issue`, at its full path, so a resolver for `Invoice` repairs what is wrong inside its `Customer`.
+
+An `Invoice` that holds a `Customer`, both read from the rows older writers left. The example needs tixschema's `bson` feature.
+
+```rust
+use bson::{Bson, Document, doc};
+use serde::{Deserialize, Serialize};
+use tixschema::model_schema;
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Customer {
+    pub name: String,
+    pub open_invoices: u32,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Invoice {
+    pub customer: Customer,
+    pub number: String,
+}
+```
+
+Two resolvers. Each looks for the one issue it repairs and answers `NotTouched` for any other:
+
+```rust
+use invoice_schema::{Expected, Issue, Resolution};
+
+/// A customer an older writer stored as JSON text: parsed into a document.
+fn customer_as_text(raw: &mut Document, issue: &Issue<Bson>) -> Resolution {
+    let Issue::Invalid {
+        path,
+        expected: Expected::Model("Customer"),
+        found: Bson::String(text),
+        reason: _reason,
+    } = issue
+    else {
+        return Resolution::NotTouched;
+    };
+    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(text) else {
+        return Resolution::Rejected;
+    };
+    // Each major version of the library names its own function for this; both have the serializer.
+    let Ok(Bson::Document(customer)) = parsed.serialize(bson::Serializer::new()) else {
+        return Resolution::Rejected;
+    };
+    if path.set_in_document(raw, Bson::Document(customer)) {
+        Resolution::Settled
+    } else {
+        Resolution::Rejected
+    }
+}
+
+/// A whole number an older writer stored as text; a negative count is refused.
+fn whole_number_as_text(raw: &mut Document, issue: &Issue<Bson>) -> Resolution {
+    let Issue::Invalid {
+        path,
+        expected: Expected::U32,
+        found: Bson::String(text),
+        reason: _reason,
+    } = issue
+    else {
+        return Resolution::NotTouched;
+    };
+    let settled = text
+        .trim()
+        .parse::<i64>()
+        .is_ok_and(|number| number >= 0_i64 && path.set_in_document(raw, Bson::Int64(number)));
+    if settled {
+        Resolution::Settled
+    } else {
+        Resolution::Rejected
+    }
+}
+```
+
+Five stored rows, and the read of each with both resolvers:
+
+```rust
+/// Five rows older writers left.
+fn stored_rows() -> [Document; 5] {
+    [
+        // a count stored as text
+        doc! {
+            "customer": { "name": "Acme", "openInvoices": "3" },
+            "number": "INV-0042",
+        },
+        // a count stored as text that is no count
+        doc! {
+            "customer": { "name": "Acme", "openInvoices": "-3" },
+            "number": "INV-0042",
+        },
+        // a key no type declares
+        doc! {
+            "customer": { "name": "Acme", "openInvoices": 3 },
+            "legacy": true,
+            "number": "INV-0042",
+        },
+        // a customer stored as text, beside a key no type declares
+        doc! {
+            "customer": "{\"name\":\"Acme\",\"openInvoices\":3}",
+            "legacy": true,
+            "number": "INV-0042",
+        },
+        // a customer stored as text, whose count is text too
+        doc! {
+            "customer": "{\"name\":\"Acme\",\"openInvoices\":\"3\"}",
+            "number": "INV-0042",
+        },
+    ]
+}
+
+/// One stored row read with both resolvers, told in one line.
+fn told(row: Document) -> String {
+    match Invoice::from_bson_piped(row, &[&customer_as_text, &whole_number_as_text]) {
+        Ok(invoice) => format!("read as {invoice:?}"),
+        Err(refused) => format!("refused: {refused}"),
+    }
+}
+```
+
+The five rows told in order, under version 2 of the `bson` library:
+
+```text
+read as Invoice { customer: Customer { name: "Acme", open_invoices: 3 }, number: "INV-0042" }
+refused: customer.openInvoices: invalid: expected U32, found String("-3"): invalid type: string "-3", expected u32
+refused: legacy: unknown: found Boolean(true)
+refused: legacy: unknown: found Boolean(true)
+refused: customer.openInvoices: invalid: expected U32, found String("3"): invalid type: string "3", expected u32
+```
+
+1. The first row reads. `customer_as_text` leaves its one issue `NotTouched`, `whole_number_as_text` settles it, and the second read finds no issue.
+2. The second is refused by the resolver that knows its issue: `whole_number_as_text` answers `Rejected` for a count below zero.
+3. The third is refused over an issue no resolver knows. Both leave the key `legacy` `NotTouched`.
+4. The fourth is refused over that same issue, and that one alone: `customer_as_text` settled the customer stored as text, and a settled issue is not among the ones a refused read holds.
+5. The fifth is refused by the second read. `customer_as_text` settles the customer, every issue of the first read is then settled, and the read of what the resolvers left finds the count inside that customer held as text. No resolver is handed that issue: the resolvers run once.
+
+The second and the fifth line end in the `bson` library's own wording, which its two major versions write differently. Under version 3 the same two lines read:
+
+```text
+refused: customer.openInvoices: invalid: expected U32, found String("-3"): BSON error. Kind: A deserialization-related error occurred. Message: invalid type: string "-3", expected u32.
+refused: customer.openInvoices: invalid: expected U32, found String("3"): BSON error. Kind: A deserialization-related error occurred. Message: invalid type: string "3", expected u32.
+```
+
+What the pipe holds every read to:
+
+- **Resolvers run in the order of the slice.** Each one is handed, one at a time and in the order the read found them, the issues every resolver before it left `NotTouched`.
+- **`Settled` says the resolver repaired the raw value.** Nothing checks the repair but the second read, which lists the issue again where the value still does not read.
+- **`Rejected` fails the read.** The issue is known and is not to be repaired. No later resolver is handed it, and the failed read holds it.
+- **An issue every resolver leaves `NotTouched` fails the read** as well, and the failed read holds it.
+- **A failed read holds the issues no resolver settled**, in the order they were found, as `Unrecovered`. With no resolver at all, `&[]`, that is every issue.
+- **A resolver is `Sync`.** It is a function, or a closure that holds what it needs, taken by reference: `&[&customer_as_text, &counted]`. A closure that counts in a `Cell` or a `RefCell` is refused (`E0277`, `` `Cell<u32>` cannot be shared between threads safely``), and one that counts in an atomic or behind a `Mutex` is taken. It is what lets a read that waits for MongoDB hold its resolvers and still move to another thread.
+
+`from_value_piped` is the same read of a `serde_json::Value`. Its resolvers take `&mut serde_json::Value` and `&Issue<serde_json::Value>`, and repair through `set_in_value` and `remove_from_value`.
+
+## MongoDB Operations and Typed Filters
+
+With tixschema's `mongodb` feature on, a type declared with [`#[model_schema(decode_with)]`](#recovering-decode-decode_with) reads and writes its own rows in a MongoDB collection, and names its own fields in the filters and updates it does so with:
+
+- **Typed paths.** `MONGO_FIELDS`, a const on the type, holds one path per key serde writes for it. A path builds a filter or an update from a value of its field's own type, so a field that does not exist and a value of another type are compile errors.
+- **Operations.** `find_one`, `find`, `count`, `insert_one`, `update_one`, `update_many`, `delete_one` and `delete_many`, over a `mongodb::Collection<bson::Document>`. Every row a read is handed goes through the recovering decode, so a row that does not read as the type is reported by its `_id` and its issues, and `find_one_with` and `find_with` take the [resolvers](#resolvers) that repair one.
+
+The flag is what turns both on. A type without `decode_with` gains nothing in any build, and a flagged type in a build without `mongodb` has the recovering decode alone.
+
+Everything is generated into the flagged type's own `<type>_schema` module, beside the issue types: `invoice_schema::Filter`, `invoice_schema::OperationError` and `invoice_schema::Read` are `Invoice`'s own, and `customer_schema` holds a copy of each for `Customer`. Two flagged types share no declaration. So a filter, an update, a resolver and an `OperationError` each belong to one type. Two modules meet in one place: a filter or an update built from a nested model's path is over the outer type's rows, and joins the outer type's own ([Filters and updates](#filters-and-updates)).
+
+No line of this section is the answer of a MongoDB server. A document shown is the one a call writes, as `bson::Document` displays it, and an answer is the driver's own result type.
+
+### The driver your crate lists
+
+The code generated for a flagged type names the `mongodb` driver, so a crate that declares one lists the driver beside `bson`, `serde` and `serde_json`, whether or not it calls an operation. Without it the build fails at the type's `#[model_schema(decode_with)]`, with ``error[E0433]: cannot find module or crate `mongodb` in this scope``.
+
+The crate's `bson` is the major version its driver is built for. The driver's default features build it for version 2 of the `bson` library:
+
+```toml
+mongodb = "3.9"
+bson = "2.15"
+```
+
+With its default features off and `bson-3` on, it is built for version 3:
+
+```toml
+mongodb = { version = "3.9", default-features = false, features = ["bson-3", "compat-3-3-0", "rustls-tls", "dns-resolver"] }
+bson = { version = "3.1", features = ["serde"] }
+```
+
+`compat-3-3-0`, `rustls-tls` and `dns-resolver` are part of the driver's defaults, written out because turning the defaults off turns them off too. The crate's own `tests/` build against the driver at its default features and `bson` 2.15, and `bson3/`, this repository's package for version 3, against the second pair.
+
+A `bson` of the other major version fails the build at each flagged type, the generated operations handing the driver a `Document` it does not take:
+
+```text
+error[E0308]: mismatched types
+ --> src/lib.rs:8:1
+  |
+8 | #[model_schema(decode_with)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  | |
+  | expected `mongodb::bson::Document`, found `bson::Document`
+  | arguments to this method are incorrect
+  |
+note: there are multiple different versions of crate `bson` in the dependency graph
+```
+
+The note goes on to name the two versions, each at its place in the Cargo registry of the machine that compiled it.
+
+### The model of the examples
+
+The examples of this section share one model: an `Invoice`, and the types it holds. Every one of them carries the flag, and each is declared above the type that holds it.
+
+```rust
+use std::collections::HashMap;
+
+use bson::oid::ObjectId;
+use serde::{Deserialize, Serialize};
+use tixschema::model_schema;
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Address {
+    pub city: String,
+    pub postal_code: String,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Customer {
+    pub address: Address,
+    pub name: String,
+    pub open_invoices: u32,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum InvoiceStatus {
+    Draft,
+    Paid,
+    PastDue,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct LineItem {
+    pub price: f64,
+    pub quantity: u32,
+    pub sku: String,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum Payment {
+    Card { last4: String },
+    Cash,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Invoice {
+    #[serde(rename = "_id")]
+    pub id: ObjectId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub billing: Option<Address>,
+    pub customer: Customer,
+    pub details: HashMap<String, String>,
+    pub items: Vec<LineItem>,
+    pub number: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paid_at: Option<String>,
+    pub payment: Payment,
+    pub status: InvoiceStatus,
+    pub tags: Vec<String>,
+    pub total: f64,
+}
+```
+
+### The paths of a type
+
+`Invoice::MONGO_FIELDS` is an `invoice_schema::MongoFields<Invoice>`: one member per field of `Invoice`, under the field's Rust name, each the path of the key serde writes that field under. The type of the field decides the kind of the member:
+
+| Member | Its kind |
+|--------|----------|
+| `id` | `Field<Invoice, ObjectId>` |
+| `billing` | `OptionalModel<Invoice, Address, _>` |
+| `customer` | `Model<Invoice, Customer, _>` |
+| `details` | none: a map's keys are data |
+| `items` | `ModelList<Invoice, LineItem, _>` |
+| `number` | `Field<Invoice, String>` |
+| `paid_at` | `OptionalField<Invoice, String>` |
+| `payment` | `Model<Invoice, Payment, _>` |
+| `status` | `Model<Invoice, InvoiceStatus, _>` |
+| `tags` | `ListField<Invoice, String>` |
+| `total` | `Field<Invoice, f64>` |
+
+Each kind is a type of `invoice_schema`. The first parameter is the row a filter is over, the second the value an operator takes, and `_` stands for the nested type's own struct of paths: `customer_schema::MongoFields<Invoice>` for `customer`, built by `Customer` under the key `customer`. A `Model`, an `OptionalModel` and a `ModelList` dereference to that struct, so `Invoice::MONGO_FIELDS.customer.address.city` is the path of a city three types down, and the key it writes is `customer.address.city`.
+
+A path builds a `Filter<Invoice>` or an `Update<Invoice>`, the two documents an operation takes. Building one asks nothing of MongoDB:
+
+```rust
+use bson::doc;
+
+use invoice_schema::{Filter, Update, WriteError};
+
+/// Unpaid invoices of one city that are past due or above an amount.
+fn to_chase(city: &str, above: f64) -> Result<Filter<Invoice>, WriteError> {
+    let paths = Invoice::MONGO_FIELDS;
+    Ok(paths
+        .status
+        .eq(InvoiceStatus::PastDue)?
+        .or(paths.total.gt(above)?)
+        .and(paths.customer.address.city.eq(city.to_owned())?)
+        .and(paths.paid_at.exists(false)))
+}
+
+/// What paying an invoice changes.
+fn paid(at: &str) -> Result<Update<Invoice>, WriteError> {
+    let paths = Invoice::MONGO_FIELDS;
+    Ok(paths
+        .status
+        .set(InvoiceStatus::Paid)?
+        .and(paths.paid_at.set(at.to_owned())?)
+        .and(paths.customer.open_invoices.set(0)?)
+        .and(paths.tags.push("settled".to_owned())?))
+}
+```
+
+| Written | The document it builds |
+|---------|------------------------|
+| `to_chase("Moca", 1000.5)?` | `{ "$and": [{ "$or": [{ "status": { "$eq": "past-due" } }, { "total": { "$gt": 1000.5 } }] }, { "customer.address.city": { "$eq": "Moca" } }, { "paidAt": { "$exists": false } }] }` |
+| `paid("2026-10-07T17:40:00Z")?` | `{ "$set": { "status": "paid", "paidAt": "2026-10-07T17:40:00Z", "customer.openInvoices": 0 }, "$push": { "tags": "settled" } }` |
+
+- **A value is of the field's own type, taken by value.** `paths.status.eq` takes an `InvoiceStatus`, and the text serde writes for one is refused: `paths.status.eq("past-due")` is ``error[E0308]: mismatched types``, ``expected `InvoiceStatus`, found `&str` ``. `paths.total.gt` takes an `f64`.
+- **A value is written the way its field is stored**, by the type's own `Serialize` through `bson::Serializer::new()`: `InvoiceStatus::PastDue` as the text `past-due`, a `u32` as a 64-bit integer, an `ObjectId` as one.
+- **A key is the name serde writes**: `paid_at` is the key `paidAt`, and `open_invoices` under `customer` is `customer.openInvoices`.
+- **An operator that writes a value answers a `Result`**, since a value may be one BSON cannot hold; the error is `WriteError`, the `bson` library's own serialization error, `bson::ser::Error` in version 2 and `bson::error::Error` in version 3. An operator that writes none, such as `exists`, `unset`, `size`, `regex` and `is_<variant>`, answers the filter or the update itself.
+- **A path is a value, and `MONGO_FIELDS` a const.** `const TOTAL: invoice_schema::Field<Invoice, f64> = Invoice::MONGO_FIELDS.total;` holds one member of the row. A path below a nested model is reached by dereferencing, which a `const` item cannot do: held in one, `Invoice::MONGO_FIELDS.customer.address.city` is ``error[E0015]: cannot perform non-const deref coercion on `invoice_schema::Model<Invoice, Customer, customer_schema::MongoFields<Invoice>>` in constants``. In a function body it compiles.
+
+### Operators
+
+Every operator, once, with the document it writes. `paths` is `Invoice::MONGO_FIELDS`, and `item` is `LineItem::MONGO_FIELDS`.
+
+**A value every row holds, a `Field`.** The comparisons, membership in a list of values, and the two operators that set it. `regex` is there where the value is a `String`, and takes MongoDB's options as text:
+
+| Written | The document it builds |
+|---------|------------------------|
+| `paths.number.eq("INV-0042".to_owned())?` | `{ "number": { "$eq": "INV-0042" } }` |
+| `paths.number.ne("INV-0042".to_owned())?` | `{ "number": { "$ne": "INV-0042" } }` |
+| `paths.total.gt(1000.5)?` | `{ "total": { "$gt": 1000.5 } }` |
+| `paths.total.gte(1000.5)?` | `{ "total": { "$gte": 1000.5 } }` |
+| `paths.total.lt(1000.5)?` | `{ "total": { "$lt": 1000.5 } }` |
+| `paths.total.lte(1000.5)?` | `{ "total": { "$lte": 1000.5 } }` |
+| `paths.number.is_in(["INV-0042".to_owned(), "INV-0043".to_owned()])?` | `{ "number": { "$in": ["INV-0042", "INV-0043"] } }` |
+| `paths.number.not_in(["INV-0042".to_owned()])?` | `{ "number": { "$nin": ["INV-0042"] } }` |
+| `paths.number.regex("^INV-", "i")` | `{ "number": { "$regex": "^INV-", "$options": "i" } }` |
+| `paths.total.set(99.5)?` | `{ "$set": { "total": 99.5 } }` |
+| `paths.number.set_on_insert("INV-0099".to_owned())?` | `{ "$setOnInsert": { "number": "INV-0099" } }` |
+
+**A value a row may leave out, an `OptionalField`.** Every operator of a `Field`, and two of its own: `exists`, which takes whether the key is to be there, and `unset`:
+
+| Written | The document it builds |
+|---------|------------------------|
+| `paths.paid_at.exists(false)` | `{ "paidAt": { "$exists": false } }` |
+| `paths.paid_at.unset()` | `{ "$unset": { "paidAt": "" } }` |
+| `paths.paid_at.lt("2026-10-01".to_owned())?` | `{ "paidAt": { "$lt": "2026-10-01" } }` |
+
+`unset` is on a path a row may leave out and on no other: `paths.number.unset()` is ``error[E0599]: no method named `unset` found for struct `invoice_schema::Field<Root, V>` in the current scope``.
+
+**A type serde writes as one value**, here the plain enum `InvoiceStatus`. It is one path with the operators of a `Field`:
+
+| Written | The document it builds |
+|---------|------------------------|
+| `paths.status.eq(InvoiceStatus::PastDue)?` | `{ "status": { "$eq": "past-due" } }` |
+| `paths.status.is_in([InvoiceStatus::Draft, InvoiceStatus::PastDue])?` | `{ "status": { "$in": ["draft", "past-due"] } }` |
+| `paths.status.set(InvoiceStatus::Paid)?` | `{ "$set": { "status": "paid" } }` |
+
+**A list of plain values, a `ListField`.** A list is matched through its elements: `contains` asks for one value, `contains_any` and `contains_none` for several, and `elem_match` holds one element to every condition of an `Element`, which `element()` starts and `eq`, `ne`, `gt`, `gte`, `lt` and `lte` add to. `size` takes how many elements the list holds. `push` and `pull` change one element, and `set` and `set_on_insert` take the whole list:
+
+| Written | The document it builds |
+|---------|------------------------|
+| `paths.tags.contains("export".to_owned())?` | `{ "tags": { "$eq": "export" } }` |
+| `paths.tags.contains_any(["export".to_owned(), "priority".to_owned()])?` | `{ "tags": { "$in": ["export", "priority"] } }` |
+| `paths.tags.contains_none(["void".to_owned()])?` | `{ "tags": { "$nin": ["void"] } }` |
+| `paths.tags.size(0)` | `{ "tags": { "$size": 0 } }` |
+| `paths.tags.elem_match(paths.tags.element().gte("a".to_owned())?.lt("n".to_owned())?)` | `{ "tags": { "$elemMatch": { "$gte": "a", "$lt": "n" } } }` |
+| `paths.tags.push("reviewed".to_owned())?` | `{ "$push": { "tags": "reviewed" } }` |
+| `paths.tags.pull("draft".to_owned())?` | `{ "$pull": { "tags": "draft" } }` |
+| `paths.tags.set(["new".to_owned()])?` | `{ "$set": { "tags": ["new"] } }` |
+| `paths.tags.set_on_insert(["new".to_owned()])?` | `{ "$setOnInsert": { "tags": ["new"] } }` |
+
+A comparison of the list itself is no operator: `paths.tags.gt("export".to_owned())` does not compile (`E0599`).
+
+**A nested model, a `Model`.** Its own paths are below it, and it is one whole value as well: `eq`, `ne`, `is_in`, `not_in`, `set` and `set_on_insert` take the model itself. `moca()` is an `Address`:
+
+```rust
+/// The address the examples write.
+fn moca() -> Address {
+    Address {
+        city: "Moca".to_owned(),
+        postal_code: "56000".to_owned(),
+    }
+}
+```
+
+| Written | The document it builds |
+|---------|------------------------|
+| `paths.customer.name.eq("Acme".to_owned())?` | `{ "customer.name": { "$eq": "Acme" } }` |
+| `paths.customer.address.city.eq("Moca".to_owned())?` | `{ "customer.address.city": { "$eq": "Moca" } }` |
+| `paths.customer.address.eq(moca())?` | `{ "customer.address": { "$eq": { "city": "Moca", "postalCode": "56000" } } }` |
+| `paths.customer.address.ne(moca())?` | `{ "customer.address": { "$ne": { "city": "Moca", "postalCode": "56000" } } }` |
+| `paths.customer.address.is_in([moca()])?` | `{ "customer.address": { "$in": [{ "city": "Moca", "postalCode": "56000" }] } }` |
+| `paths.customer.address.not_in([moca()])?` | `{ "customer.address": { "$nin": [{ "city": "Moca", "postalCode": "56000" }] } }` |
+| `paths.customer.address.set(moca())?` | `{ "$set": { "customer.address": { "city": "Moca", "postalCode": "56000" } } }` |
+| `paths.customer.address.set_on_insert(moca())?` | `{ "$setOnInsert": { "customer.address": { "city": "Moca", "postalCode": "56000" } } }` |
+
+**A nested model a row may leave out, an `OptionalModel`.** Its paths, and `exists`, `unset` and `set` over the whole value:
+
+| Written | The document it builds |
+|---------|------------------------|
+| `paths.billing.city.eq("Moca".to_owned())?` | `{ "billing.city": { "$eq": "Moca" } }` |
+| `paths.billing.exists(true)` | `{ "billing": { "$exists": true } }` |
+| `paths.billing.unset()` | `{ "$unset": { "billing": "" } }` |
+| `paths.billing.set(moca())?` | `{ "$set": { "billing": { "city": "Moca", "postalCode": "56000" } } }` |
+
+**A list of nested models, a `ModelList`.** A path below it matches where any element does. `elem_match` holds one element to a filter over the rows of the element's own type, and `pull` takes out every element such a filter matches. `size`, `push` and `set` are those of a list. `bolts()` is a `LineItem`:
+
+```rust
+/// The line item the examples write.
+fn bolts() -> LineItem {
+    LineItem {
+        price: 4.5,
+        quantity: 9,
+        sku: "C-3".to_owned(),
+    }
+}
+```
+
+| Written | The document it builds |
+|---------|------------------------|
+| `paths.items.price.gt(100.5)?` | `{ "items.price": { "$gt": 100.5 } }` |
+| `paths.items.elem_match(item.quantity.gte(2)?.and(item.sku.eq("B-7".to_owned())?))` | `{ "items": { "$elemMatch": { "$and": [{ "quantity": { "$gte": 2 } }, { "sku": { "$eq": "B-7" } }] } } }` |
+| `paths.items.size(2)` | `{ "items": { "$size": 2 } }` |
+| `paths.items.push(bolts())?` | `{ "$push": { "items": { "price": 4.5, "quantity": 9, "sku": "C-3" } } }` |
+| `paths.items.pull(item.quantity.lt(1)?)` | `{ "$pull": { "items": { "quantity": { "$lt": 1 } } } }` |
+| `paths.items.set([bolts()])?` | `{ "$set": { "items": [{ "price": 4.5, "quantity": 9, "sku": "C-3" }] } }` |
+
+**An enum under a tag**, here `Payment`. `is_<variant>()` asks which variant a row holds, a variant's fields are reached through a member named after the variant in snake case, and the enum is one whole value as any nested model is:
+
+| Written | The document it builds |
+|---------|------------------------|
+| `paths.payment.is_card()` | `{ "payment.kind": { "$eq": "card" } }` |
+| `paths.payment.is_cash()` | `{ "payment.kind": { "$eq": "cash" } }` |
+| `paths.payment.card.last4.eq("4242".to_owned())?` | `{ "payment.last4": { "$eq": "4242" } }` |
+| `paths.payment.set(Payment::Cash)?` | `{ "$set": { "payment": { "kind": "cash" } } }` |
+
+### Filters and updates
+
+`and` and `or` join two filters over the same rows, and `negated` turns one around. `and` on an update merges two updates of the same rows: the keys of each operator are put together, and a key both write keeps the later value. `Filter::raw` and `Update::raw` take a document written by hand, for what has no typed form:
+
+| Written | The document it builds |
+|---------|------------------------|
+| `paths.total.gt(1000.5)?.and(paths.paid_at.exists(false))` | `{ "$and": [{ "total": { "$gt": 1000.5 } }, { "paidAt": { "$exists": false } }] }` |
+| `paths.total.gt(1000.5)?.or(paths.paid_at.exists(false))` | `{ "$or": [{ "total": { "$gt": 1000.5 } }, { "paidAt": { "$exists": false } }] }` |
+| `paths.paid_at.exists(true).negated()` | `{ "$nor": [{ "paidAt": { "$exists": true } }] }` |
+| `Filter::<Invoice>::raw(doc! { "details.costCenter": "CC-7" })` | `{ "details.costCenter": "CC-7" }` |
+| `paths.total.set(99.5)?.and(paths.paid_at.unset())` | `{ "$set": { "total": 99.5 }, "$unset": { "paidAt": "" } }` |
+| `Update::<Invoice>::raw(doc! { "$inc": { "total": 12.5 } })` | `{ "$inc": { "total": 12.5 } }` |
+
+- **A filter joins a filter over the same rows, whichever module it comes from.** `paths.customer.address.city.eq(..)` is an `address_schema::Filter<Invoice>`, and `to_chase` above hands it to `and` on an `invoice_schema::Filter<Invoice>`. What `and` and `or` ask of their argument is that it turn into a `bson::Document` and carry the row type, which every module's `Filter` does through two standard traits, `Into<bson::Document>` and `AsRef<PhantomData<Root>>`. The answer is of the type `and` was called on.
+- **A filter over another type's rows is refused.** Handed `Order::MONGO_FIELDS.placed.eq(true)?`, `and` on a filter over `Invoice` is ``error[E0277]: the trait bound `order_schema::Filter<Order>: AsRef<PhantomData<Invoice>>` is not satisfied``.
+- **An update is refused where a filter is asked, and a filter where an update is.** An update carries `AsRef<PhantomData<fn(Root) -> Root>>` in place of a filter's marker. `paths.total.gt(1000.0)?.and(paths.total.set(0.0)?)` is ``error[E0277]: the trait bound `Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied``, and `paths.total.set(0.0)?.and(paths.total.gt(1000.0)?)` is ``error[E0277]: the trait bound `invoice_schema::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied``.
+- **A document is not a filter until `Filter::raw` makes it one.** `and` handed a `doc! { .. }` as it stands is ``error[E0277]: the trait bound `bson::Document: AsRef<PhantomData<Invoice>>` is not satisfied``. `raw` gives the document the row type of what it joins, and nothing checks what it holds: its keys and its values are the caller's.
+- **`into_document()` hands over the document** of a filter or an update, and so does `bson::Document::from`, for a call made on the driver itself.
+
+A map has no path, its keys being data, and an operator the typed paths do not write has no method. Both are written by hand and joined to the typed ones:
+
+```rust
+/// Invoices of one cost center that are no draft. `details` is a map: its keys are data.
+fn of_cost_center(code: &str) -> Result<Filter<Invoice>, WriteError> {
+    let paths = Invoice::MONGO_FIELDS;
+    Ok(paths
+        .status
+        .ne(InvoiceStatus::Draft)?
+        .and(Filter::raw(doc! { "details.costCenter": code })))
+}
+
+/// A surcharge: `$inc`, an operator the typed paths do not write, beside one they do.
+fn surcharged(by: f64) -> Result<Update<Invoice>, WriteError> {
+    let paths = Invoice::MONGO_FIELDS;
+    Ok(paths
+        .tags
+        .push("surcharged".to_owned())?
+        .and(Update::raw(doc! { "$inc": { "total": by } })))
+}
+```
+
+| Written | The document it builds |
+|---------|------------------------|
+| `of_cost_center("CC-7")?` | `{ "$and": [{ "status": { "$ne": "draft" } }, { "details.costCenter": "CC-7" }] }` |
+| `surcharged(12.5)?` | `{ "$push": { "tags": "surcharged" }, "$inc": { "total": 12.5 } }` |
+
+### What each field becomes
+
+A member is there for every key serde writes, and its kind follows from how serde writes the field:
+
+| The field | Its member |
+|-----------|------------|
+| A plain value `T` | `Field<Root, T>` |
+| `Option<T>` | `OptionalField<Root, T>` |
+| `Vec<T>`, `VecDeque<T>`, `HashSet<T>`, `BTreeSet<T>`, `BinaryHeap<T>`, `LinkedList<T>`, `[T; N]`, `[T]` | `ListField<Root, T>` |
+| A struct or an enum `M` declared with `#[model_schema(decode_with)]` above the type | `Model<Root, M, _>`, with `M`'s own paths below it |
+| `Option<M>` | `OptionalModel<Root, M, _>` |
+| A list of `M` | `ModelList<Root, M, _>` |
+| `Box`, `Rc`, `Arc`, `Cow`, `Cell`, `Mutex`, `RefCell` or `RwLock` around any of these | The kind of what it holds. An operator over one wrapped value takes the type as written, `Box<Customer>` |
+| `#[serde(flatten)]` of `M`, or of `Option<M>` | `M`'s own paths, built under the keys of the type that flattens it |
+| A flattened field of any other type | No member: it has no key of its own |
+| A map: bare, in an `Option`, behind one of those wrappers, flattened | No member |
+| A type tixschema has not seen as a flagged model: another crate's, one declared below, a `type` alias, the type itself | One whole value: `Field`, `OptionalField` or `ListField` over it |
+| A member typed with one of the type's own parameters | One whole value of what fills it |
+| `Option<Vec<T>>` | `OptionalField<Root, Vec<T>>`: one whole list a row may leave out |
+| A list of lists | `ListField<Root, Vec<T>>`: each element is one whole list |
+| A tuple | `Field<Root, (A, B)>`: one whole value |
+| A field serde never writes, under `skip` or `skip_serializing` | No member |
+| A field with a hook that writes it: `with`, `serialize_with`, the one `as_number` adds | `Field`, or `OptionalField` for an `Option`, whose values are written through the hook |
+| A field serde writes and never reads back, under `skip_deserializing`, or reads through `deserialize_with` alone | One whole value, of the kind its `Option` or its list is |
+
+What a flagged type's own struct of paths holds follows from the shape serde writes the type in:
+
+| The flagged type | Its paths |
+|------------------|-----------|
+| A struct with named fields | One member per field, under the field's Rust name |
+| A tuple struct with several slots | A tuple of paths, each slot's key its position: with `origin` a `struct Point(f64, f64)`, `paths.origin.0` writes the key `origin.0`. A slot serde never writes keeps its place as `()` |
+| An internally tagged enum | `is_<variant>()` is `$eq` on the tag's key. A variant's fields sit beside the tag, under a member named after the variant; a variant that holds one flagged model has that model's paths there |
+| An adjacently tagged enum | The same `is_<variant>()`. What a variant holds is under the content key: its fields, one value, or a tuple of positions |
+| An externally tagged enum | What a variant holds is under the name serde writes the variant as. `is_<variant>()` is `$exists` on that key, and `$eq` with the name for a variant that holds nothing |
+| An untagged enum | One member per variant that holds a value, its paths at the enum's own key. No `is_<variant>()`: nothing stored names the variant |
+| A brand, a single-slot tuple struct, a `#[serde(transparent)]` struct, a plain enum, a unit struct | One path at the type's own key, with the operators of a `Field`, and `regex` where the one value is a `String` |
+
+- **A type serde writes as one value is one path.** Held by another type it is still a `Model` or an `OptionalModel`, which dereference to that one path: `paths.status.eq(InvoiceStatus::PastDue)`. A list of one is a `ListField`, a list of plain values matched through `contains` and `element()`. A filter over the rows of such a type has no key to write its operator under, so `elem_match` on that list takes an `Element` and refuses one (``error[E0308]: `?` operator has incompatible types``).
+- **A path is under the name serde writes.** `rename` on a field, `rename_all` on the type, `rename` and `rename_all` on a variant and `rename_all_fields` on an enum all count. A renaming written as a list counts by its `serialize` side, `rename(serialize = "ref", deserialize = "ref")` being the key `ref`. A list whose two sides name two keys is refused by every schema surface, as before; a build with none takes it, and the path is the key that is written.
+- **A member of an enum is named after its variant, in snake case**: a variant `OverLand` is the member `over_land` and the method `is_over_land()`. A variant serde never writes has neither.
+- **A generic type has its paths at each filling**: with `Wrapper<T>` declaring `inner: T` and `label: String`, `Wrapper::<u32>::MONGO_FIELDS.inner` is a `Field<Wrapper<u32>, u32>`.
+
+**A field with a serde hook is compared the way it is stored.** A `chrono` date writes text, so a date kept as a BSON date carries the `bson` library's hook, and a filter on it has to write a BSON date too. The path writes its values through the field's own hook, here bound as `date_hook`:
+
+```rust
+// version 2 of the `bson` library
+use bson::serde_helpers::chrono_datetime_as_bson_datetime as date_hook;
+// version 3
+use bson::serde_helpers::datetime::FromChrono04DateTime as date_hook;
+```
+
+```rust
+use window_schema::{Filter, WriteError};
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Window {
+    #[serde(with = "date_hook")]
+    pub closes_at: DateTime<Utc>,
+    pub opens_at: DateTime<Utc>,
+}
+
+/// Windows that close before an instant, and windows that open before it.
+fn closing_before(instant: DateTime<Utc>) -> Result<[Filter<Window>; 2], WriteError> {
+    let paths = Window::MONGO_FIELDS;
+    Ok([paths.closes_at.lt(instant)?, paths.opens_at.lt(instant)?])
+}
+```
+
+For the instant `2026-10-07T17:40:00Z`, the two filters, the hooked date as a BSON date and the plain one as text:
+
+```text
+{ "closesAt": { "$lt": DateTime("2026-10-07 17:40:00.0 +00:00:00") } }
+{ "opensAt": { "$lt": "2026-10-07T17:40:00Z" } }
+```
+
+Each hook lives behind the `bson` library's `chrono-0_4` feature. The path of the attribute is called as it is written, type arguments included, so a hook written `::serde_with::As::<Option<FromChrono04DateTime>>` on an `Option` of a date is the one its path writes through. A hook on a field that holds a list writes the whole list, so that field is one whole value, a `Field<Root, Vec<T>>`.
+
+### A type tixschema has not seen
+
+A field typed with a flagged model reaches that model's paths only where tixschema has already expanded the model: a struct or an enum `#[model_schema]` is written on **above** the type that holds it, in the same crate. A type of another crate, one declared below, a plain `type` alias and the type itself are held as one whole value, a `Field`, an `OptionalField` or a `ListField` over the type, with the operators of that kind over the whole value. This is the reason every model of the section's examples is declared above `Invoice`.
+
+The paths below such a member are the nested type's own, and its own function builds them: `mongo_fields_under` takes the keys leading to the value, and the row type the paths are asked as. `segments()` gives the keys of a `Field` or an `OptionalField`:
+
+```rust
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Shipment {
+    pub carrier: Carrier,
+    pub code: String,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Carrier {
+    pub name: String,
+}
+
+/// Shipments of one carrier. `Carrier` is declared below `Shipment`, so the paths below it are
+/// built by `Carrier`'s own function, under the keys the member's path holds.
+fn carried_by(name: &str) -> Result<shipment_schema::Filter<Shipment>, WriteError> {
+    let shipment = Shipment::MONGO_FIELDS;
+    let carrier = Carrier::mongo_fields_under::<Shipment>(shipment.carrier.segments());
+    Ok(shipment
+        .code
+        .regex("^S-", "")
+        .and(carrier.name.eq(name.to_owned())?))
+}
+```
+
+| Written | The document it builds |
+|---------|------------------------|
+| `carried_by("Acme Freight")?` | `{ "$and": [{ "code": { "$regex": "^S-", "$options": "" } }, { "carrier.name": { "$eq": "Acme Freight" } }] }` |
+
+`Shipment::MONGO_FIELDS.carrier` is a `Field<Shipment, Carrier>` there, and `carrier.name` a path over the rows of `Shipment` under the key `carrier.name`. Its filter is a `carrier_schema::Filter<Shipment>`, which joins a `shipment_schema::Filter<Shipment>` as any filter over those rows does.
+
+- **`mongo_fields_under` is on every flagged type**: `pub const fn mongo_fields_under<Root>(prefix: [Option<&'static str>; 8])`, which answers the type's `<type>_schema::MongoFields` over the rows of `Root`. `MONGO_FIELDS` is that function called with no key, `<type>_schema::MongoPath::ROOT`, and the type itself as `Root`.
+- **A path holds at most eight keys.** The keys of a path are held in that array of eight, which is what lets a path be built in a `const`. A ninth key stops the build where the path is built in one: ``error[E0080]: evaluation panicked: a typed MongoDB path holds at most 8 keys``. Built in a function, the same path panics with that sentence when it runs.
+- **`MongoPath` is the keys of one path.** `MongoPath::under(prefix, "name")` adds a key, its `segments` are the array `mongo_fields_under` takes, and `key()` is the dotted key MongoDB reads. The module's `Path` is another type: where an issue of the recovering decode sits.
+- **A path can be built by hand** through the constructors the generated ones are built with, `Field::plain(MongoPath::under(MongoPath::ROOT, "total"))` and its twins on `OptionalField` and `ListField`. Such a path writes whatever key it is given: nothing checks it against the type.
+
+### The operations
+
+Each operation is a function on the flagged type, over a `mongodb::Collection<bson::Document>`. The collection is one of documents, never of the type: a row is read through the recovering decode and written through the type's own `Serialize`, not by the driver's serde.
+
+| Operation | What it sends | What it answers |
+|-----------|---------------|-----------------|
+| `Invoice::find_one(collection, filter)` | The driver's `find_one` | `Option<Invoice>`: the first row the filter matches, read as the type, and `None` where it matches none |
+| `Invoice::find_one_with(collection, filter, resolvers)` | The same | The same, with the resolvers run over the row's issues |
+| `Invoice::find(collection, filter)` | The driver's `find` | `Vec<Invoice>`: every row the filter matches |
+| `Invoice::find_with(collection, filter, resolvers)` | The same | The same, with the resolvers run over each row's issues |
+| `Invoice::count(collection, filter)` | The driver's `count_documents` | `u64`: how many rows the filter matches. No row is read |
+| `invoice.insert_one(collection)` | The driver's `insert_one`, with the value written as a document | The driver's `mongodb::results::InsertOneResult` |
+| `Invoice::update_one(collection, filter, update)` | The driver's `update_one` | The driver's `mongodb::results::UpdateResult` |
+| `Invoice::update_many(collection, filter, update)` | The driver's `update_many` | The same |
+| `Invoice::delete_one(collection, filter)` | The driver's `delete_one` | The driver's `mongodb::results::DeleteResult` |
+| `Invoice::delete_many(collection, filter)` | The driver's `delete_many` | The same |
+
+Every one of them fails with the type's own [`OperationError`](#operationerror). Each bound to what it answers, in a function that compiles:
+
+```rust
+use bson::{Bson, Document, doc};
+use mongodb::Collection;
+use mongodb::options::{Collation, Hint};
+use mongodb::results::{DeleteResult, InsertOneResult, UpdateResult};
+use tokio::task::JoinHandle;
+
+use invoice_schema::{Expected, Filter, Issue, OperationError, Read, Resolution, Resolver};
+
+/// Every operation, each bound to what it answers.
+async fn every_operation(
+    invoices: &Collection<Document>,
+    invoice: &Invoice,
+) -> Result<(), OperationError> {
+    let paths = Invoice::MONGO_FIELDS;
+    let drafts = || paths.status.eq(InvoiceStatus::Draft);
+    let voided = || paths.total.set(0.0_f64);
+    let resolvers: [Resolver<'_, Document, Bson>; 1] = [&whole_number_as_text];
+
+    let _stored: InsertOneResult = invoice.insert_one(invoices).await?;
+    let _first: Option<Invoice> = Invoice::find_one(invoices, drafts()?).await?;
+    let _repaired: Option<Invoice> =
+        Invoice::find_one_with(invoices, drafts()?, &resolvers).await?;
+    let _every: Vec<Invoice> = Invoice::find(invoices, drafts()?).await?;
+    let _every_repaired: Vec<Invoice> = Invoice::find_with(invoices, drafts()?, &resolvers).await?;
+    let _how_many: u64 = Invoice::count(invoices, drafts()?).await?;
+    let _changed: UpdateResult = Invoice::update_one(invoices, drafts()?, voided()?).await?;
+    let _all_changed: UpdateResult = Invoice::update_many(invoices, drafts()?, voided()?).await?;
+    let _deleted: DeleteResult = Invoice::delete_one(invoices, drafts()?).await?;
+    let _all_deleted: DeleteResult = Invoice::delete_many(invoices, drafts()?).await?;
+    Ok(())
+}
+```
+
+`whole_number_as_text` is the resolver of [Resolvers](#resolvers), written there against another `Invoice` and here against this one: the same text, over `invoice_schema::Issue`.
+
+- **A filter is any filter over the type's rows**, whichever module's `Filter` it is. One that starts from a nested model's path, a `customer_schema::Filter<Invoice>`, is taken as it stands. A filter over another type's rows and an update are refused, by the bound a filter joins another under.
+- **A filter and an update cannot change places.** `Invoice::update_one(invoices, paths.status.set(InvoiceStatus::Paid)?, paths.number.eq("INV-0042".to_owned())?)` does not compile: ``error[E0277]: the trait bound `invoice_schema::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied`` for the update handed as the filter, and ``error[E0277]: the trait bound `invoice_schema::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied`` for the filter handed as the update.
+- **A read of many rows fails as a whole.** The rows are read one at a time as the driver hands them over, and the first that does not read ends the read with that row's `_id` and its issues. No row is answered.
+- **`insert_one` writes the row when it is called**, before anything is awaited. A value BSON cannot hold, and a type serde writes as anything but a document, a plain enum or a brand, answer `OperationError::Unwritable` without MongoDB being asked anything. What is awaited holds no borrow of the value.
+- **The updates and the deletes answer what the driver answers**: `UpdateResult` with its `matched_count`, `modified_count` and `upserted_id`, `DeleteResult` with its `deleted_count`, and `InsertOneResult` with the `inserted_id` of the row.
+- **Every operation can be moved to another thread.** What each answers is `Send`, the resolvers of a read being `Sync`. A read of many rows asks that the row type be `Send`, the rows read so far being held while the next is awaited.
+
+### Read options
+
+`find_one`, `find`, `count` and the two that take resolvers do not answer a future. They answer a `<type>_schema::Read<'c, T, O>`, a read that asks nothing of MongoDB until it is awaited, and that takes the options it is to be run under first. `T` is the row type, and `O` what the read answers: `Vec<T>`, `Option<T>` or `u64`.
+
+```rust
+/// The largest unpaid invoices of one customer, largest first, and how many it has unpaid.
+async fn largest_unpaid(
+    invoices: &Collection<Document>,
+    customer: &str,
+    at_most: i64,
+) -> Result<(Vec<Invoice>, u64), OperationError> {
+    let paths = Invoice::MONGO_FIELDS;
+    let unpaid = || {
+        paths
+            .customer
+            .name
+            .eq(customer.to_owned())
+            .map(|named| named.and(paths.paid_at.exists(false)))
+    };
+    let largest = Invoice::find_with(invoices, unpaid()?, &[&whole_number_as_text])
+        .sort(doc! { "total": -1_i32 })
+        .limit(at_most)
+        .await?;
+    let how_many = Invoice::count(invoices, unpaid()?).await?;
+    Ok((largest, how_many))
+}
+
+/// One page of invoices in the order of their numbers: a read under every option it takes,
+/// which asks nothing of MongoDB until it is awaited.
+fn page(invoices: &Collection<Document>, at: u64) -> Read<'_, Invoice, Vec<Invoice>> {
+    Invoice::find(invoices, Filter::raw(doc! {}))
+        .sort(doc! { "number": 1_i32 })
+        .skip(at * 20)
+        .limit(20)
+        .hint(Hint::Name("number_1".to_owned()))
+        .collation(Collation::builder().locale("en").build())
+}
+```
+
+| Option | Takes | Sent with |
+|--------|-------|-----------|
+| `sort` | A `bson::Document`, each key with `1` or `-1` | `find` and `find_one` |
+| `limit` | An `i64`, as the driver's `find` takes it: `0` is every row | `find`, as given. A count is held to the same number: it is sent the limit's absolute value, and none for `0` |
+| `skip` | A `u64`, the rows to pass over | `find`, `find_one` and `count` |
+| `hint` | A `mongodb::options::Hint`, the index to use | `find`, `find_one` and `count` |
+| `collation` | A `mongodb::options::Collation` | `find`, `find_one` and `count` |
+
+- **An option the driver's own method does not have is not sent**: `limit` on a read of one row, which answers the first row whatever the limit, and `sort` on a count, which is the same in any order.
+- **A sort is a document written by hand**, its keys the ones serde writes. There is no projection: a read answers the whole type.
+- **What `unpaid` builds in `largest_unpaid` is a `customer_schema::Filter<Invoice>`**, since it starts from a path below `customer`. `find_with` and `count` take it as it stands.
+- **An option is handed to the driver as it is given.** What a collation folds, and which hint MongoDB takes or refuses, are MongoDB's own to answer.
+- **A read is `#[must_use]`.** One that is never awaited asks nothing, and the compiler says so: ``unused `invoice_schema::Read` that must be used``, with the note `a read asks nothing of MongoDB until it is awaited`.
+- **A read is turned into a future by `.await`**, and is not one before. It implements `IntoFuture`, not `Future`, so something that takes a future is handed `.into_future()`, and a read handed over as it stands is ``error[E0277]: `invoice_schema::Read<'_, Invoice, Vec<Invoice>>` is not a future``:
+
+```rust
+/// A count handed to something that takes a future, which a read is not until it is turned
+/// into one.
+fn counted_elsewhere(
+    invoices: &'static Collection<Document>,
+) -> JoinHandle<Result<u64, OperationError>> {
+    tokio::spawn(Invoice::count(invoices, Filter::raw(doc! {})).into_future())
+}
+```
+
+### Rows that do not read as the type
+
+`find_one` and `find` take no resolver, so any issue in a row refuses it: a key the type does not declare, a value held in another form, a value serde refuses. `find_one_with` and `find_with` take the resolvers that repair such a row, and run them over each row's issues as [`from_bson_piped`](#resolvers) does, once.
+
+A row older writers left, an invoice whose customer holds `"openInvoices": "3"`, is refused by the plain read with `OperationError::Unreadable`. Under version 2 of the `bson` library it displays as:
+
+```text
+the row ObjectId("6a7cc592ca0574e6efdfe217") does not read as expected: customer.openInvoices: invalid: expected U32, found String("3"): invalid type: string "3", expected u32
+```
+
+and under version 3, whose own wording the end of the line is:
+
+```text
+the row ObjectId("6a7cc592ca0574e6efdfe217") does not read as expected: customer.openInvoices: invalid: expected U32, found String("3"): BSON error. Kind: A deserialization-related error occurred. Message: invalid type: string "3", expected u32.
+```
+
+Read with `&[&whole_number_as_text]`, the same row reads.
+
+**A type that declares no `_id` is refused on every stored row.** MongoDB stores every row under an `_id`, and to a type that does not declare one it is a key like any other, `Unknown` at `_id`. `Customer` declares none. A stored customer read by `Customer::find_one` fails with:
+
+```text
+the row ObjectId("6a7cc592ca0574e6efdfe217") does not read as expected: _id: unknown: found ObjectId("6a7cc592ca0574e6efdfe217")
+```
+
+A type whose rows are stored declares the `_id`, as `Invoice` does with `#[serde(rename = "_id")]`, or reads through a resolver that settles the key by taking it out:
+
+```rust
+/// The `_id` MongoDB stores every row under, which `Customer` does not declare: taken out.
+fn id_dropped(
+    raw: &mut Document,
+    issue: &customer_schema::Issue<Bson>,
+) -> customer_schema::Resolution {
+    use customer_schema::{Issue, Resolution};
+
+    let Issue::Unknown {
+        path,
+        found: _found,
+    } = issue
+    else {
+        return Resolution::NotTouched;
+    };
+    if path.to_string() == "_id" && path.remove_from_document(raw) {
+        Resolution::Settled
+    } else {
+        Resolution::NotTouched
+    }
+}
+
+/// A customer by name, from a collection whose rows are customers.
+async fn customer_named(
+    customers: &Collection<Document>,
+    name: &str,
+) -> Result<Option<Customer>, customer_schema::OperationError> {
+    let named = Customer::MONGO_FIELDS.name.eq(name.to_owned())?;
+    Customer::find_one_with(customers, named, &[&id_dropped]).await
+}
+```
+
+With that resolver the same row reads as:
+
+```text
+Customer { address: Address { city: "Moca", postal_code: "56000" }, name: "Acme", open_invoices: 3 }
+```
+
+`insert_one` on such a type sends a row with no `_id`. MongoDB stores every row under one, so the stored row is one this type's own `find_one` refuses.
+
+### `OperationError`
+
+Every operation fails with `<type>_schema::OperationError`, the type's own:
+
+| Member | When | It displays as |
+|--------|------|----------------|
+| `Database(mongodb::error::Error)` | MongoDB refused the operation, or could not be reached | `MongoDB refused the operation or could not be reached: `, then the driver's own error |
+| `Unreadable { row, issues }` | A row did not read as the type | `the row `, the row's `_id`, ` does not read as expected: `, then one line per issue |
+| `Unwritable(WriteError)` | A value of a filter, an update or an insert could not be written as BSON | `a value could not be written as BSON: `, then the `bson` library's own error |
+
+- **`row` is the row's `_id` as `bson::Bson` displays it**, which keeps its BSON type in the text, so that the text `3` and the number `3` are told apart:
+
+| The row's `_id` | `row` |
+|-----------------|-------|
+| an `ObjectId` | `ObjectId("6a7cc592ca0574e6efdfe217")` |
+| the text `abc` | `"abc"` |
+| the text `3` | `"3"` |
+| the number `3` | `3` |
+| no `_id` | `without an _id` |
+
+- **`issues` holds the issues no resolver settled**, as the type's own `Issue<bson::Bson>`, in the order they were found. The end of an issue's line is the `bson` library's own wording and differs between its major versions: match on the member, the path, `expected` and `found`.
+- **`?` turns a `WriteError` into `OperationError`**, so a filter or an update is built with `?` inside a function that answers `OperationError`, as every example of this section does.
+- **`?` does not turn the driver's own error into it.** A call made on the driver itself is turned by name, `.map_err(OperationError::Database)`; with `?` alone it is ``error[E0277]: `?` couldn't convert the error``.
+- **It is an error like any other**: `Debug`, `Display`, `std::error::Error`, `Send`, `Sync` and `'static`. `source()` is the driver's error for `Database` and the `bson` library's for `Unwritable`, and `Unreadable` has none. It is `#[non_exhaustive]`, as each type the flag adds is.
+
+### What a row stores
+
+A row is written by the type's own `Serialize`, and a value of a filter or an update the same way, so what a filter writes is what the field stores. Two cases stand apart, and in both the type reads and writes as JSON as before.
+
+**A member whose serde form depends on the format has two stored forms.** The generated reads and writes go through `bson::Serializer::new()` and `bson::Deserializer::new(..)`, which call themselves human-readable. A typed `Collection<T>` of the driver writes through the `bson` library's raw serializer, which does not. `std::net::IpAddr` is such a member: no schema surface describes it, so the example is one of a build with tixschema's `mongo` features alone.
+
+```rust
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Host {
+    pub address: IpAddr,
+}
+```
+
+`insert_one` stores a host at `127.0.0.1` as:
+
+```text
+{ "address": "127.0.0.1" }
+```
+
+The same value written through a typed `Collection<Host>` is stored as `{ "address": { "V4": [127, 0, 0, 1] } }`, and a row in that form is refused by the generated read, as an `Invalid` at `address`. Under version 2 of the `bson` library, and then under version 3:
+
+```text
+the row without an _id does not read as expected: address: invalid: expected Unknown, found Document({"V4": Array([Int32(127), Int32(0), Int32(0), Int32(1)])}): invalid type: map, expected IP address
+the row without an _id does not read as expected: address: invalid: expected Unknown, found Document({"V4": Array([Int32(127), Int32(0), Int32(0), Int32(1)])}): BSON error. Kind: A deserialization-related error occurred. Message: invalid type: map, expected IP address.
+```
+
+`ObjectId`, `bson::DateTime` and `bson::Uuid` are stored in one form by both serializers.
+
+**A map whose key is not text is neither written nor read as BSON.** tixschema takes a map keyed by a number, a `bool`, a `char` or a `chrono` date, because serde writes such a key as text into JSON. The `bson` library does not:
+
+```rust
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Roster {
+    pub by_number: HashMap<u32, String>,
+}
+```
+
+A roster holding the entry `7` to `seven` is written as JSON, `{"byNumber":{"7":"seven"}}`, and read back from it. `insert_one` answers `Unwritable` for it, under version 2 of the `bson` library and then under version 3:
+
+```text
+a value could not be written as BSON: Invalid map key type: 7
+a value could not be written as BSON: BSON error. Kind: A serialization error occurred. Message: invalid document key type: int64.
+```
+
+and a stored row `{ "byNumber": { "7": "seven" } }` is refused by every read with one `Undescribed` issue, which names no path:
+
+```text
+the row without an _id does not read as expected: undescribed: invalid type: string "7", expected u32
+the row without an _id does not read as expected: undescribed: BSON error. Kind: A deserialization-related error occurred. Message: invalid type: string "7", expected u32.
+```
+
+Nothing says so where the type is declared.
+
+### A query the operations do not cover
+
+The operations cover a filter, an update and the five read options. An aggregation, an upsert, a find-one-and-update and a projection are calls on the driver itself, on the same `Collection<bson::Document>`:
+
+- a typed filter or update is handed to the driver as a document, through `into_document()`;
+- each row the driver answers is read with `from_bson_piped` or `from_bson_with`, into a flagged type;
+- a row is read as the driver's cursor hands it over, with `advance` and `deserialize_current`, so reading many rows asks no `futures` crate of the caller, as the generated `find` asks none.
+
+An aggregation answers rows that are no rows of `Invoice`, so they are read as a flagged type of their own:
+
+```rust
+/// What one customer was billed: no row of `Invoice`, so no read of `Invoice` answers it.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Billed {
+    #[serde(rename = "_id")]
+    pub customer: String,
+    pub total: f64,
+}
+
+/// What each customer was billed, by an aggregation run on the driver itself. Each row it
+/// answers is read as the operations read one, and fails as they fail.
+async fn billed(
+    invoices: &Collection<Document>,
+) -> Result<Vec<Billed>, billed_schema::OperationError> {
+    use billed_schema::OperationError;
+
+    let pipeline = [
+        doc! { "$group": { "_id": "$customer.name", "total": { "$sum": "$total" } } },
+        doc! { "$sort": { "_id": 1_i32 } },
+    ];
+    let mut cursor = invoices
+        .aggregate(pipeline)
+        .await
+        .map_err(OperationError::Database)?;
+    let mut rows = Vec::new();
+    while cursor.advance().await.map_err(OperationError::Database)? {
+        let row = cursor
+            .deserialize_current()
+            .map_err(OperationError::Database)?;
+        let id = row
+            .get("_id")
+            .map_or_else(|| "without an _id".to_owned(), ToString::to_string);
+        let read =
+            Billed::from_bson_piped(row, &[]).map_err(|refused| OperationError::Unreadable {
+                row: id,
+                issues: refused.issues,
+            })?;
+        rows.push(read);
+    }
+    Ok(rows)
+}
+```
+
+The function fails with `Billed`'s own `OperationError`, built as the generated reads build it: `Database` by name for each call on the driver, and `Unreadable` from the row's `_id` and the issues of the refused read.
+
+### Limits
+
+- **A flagged model declared in another module needs its `<type>_schema` module in scope** beside the type that holds it, in every build with `mongodb`: the struct of paths names the nested model's own through the module above it. The JSON Schema surface already asks for that import ([A Model Type Declared in Another Module](#a-model-type-declared-in-another-module)). With `Address` declared in a module `address` and imported alone, the build fails at the field typed with it: ``error[E0433]: cannot find `address_schema` in `super` ``, with the compiler's own help, `consider importing this module: crate::address::address_schema`. `use crate::address::{Address, address_schema};` resolves it.
+- **Two flagged types declared in one function body, one holding the other, do not build under `mongodb`.** A module written inside a function reaches none of that function's items, and the outer type's struct of paths names the inner type and its module: ``error[E0433]: cannot find `inner_schema` in `super` `` and ``error[E0425]: cannot find type `Inner` in module `super` ``. A flagged type alone in a function body builds, a struct of standard types and a type serde writes as one value alike. Declare the inner type at module level, as [Function-Local Types](#function-local-types) says for the schema surfaces.
+- **An operation is a function of the type itself, under its own name.** A flagged type that already has a function of its own called `find_one`, `find_one_with`, `find`, `find_with`, `count`, `insert_one`, `update_one`, `update_many`, `delete_one` or `delete_many` builds without `mongodb` and stops building with it. For a type with a `count` of its own: ``error[E0592]: duplicate definitions with name `count` ``.
+- **A variant named `In` has an `is_in()` that a `Model` hides.** `Model` has an `is_in` of its own, over the whole value, so `paths.movement.is_in()` is ``error[E0061]: this method takes 1 argument but 0 arguments were supplied``. The variant's own is reached by dereferencing first, `(*paths.movement).is_in()`, and the variant's fields under the raw name, `paths.movement.r#in`.
+- **A slot of a tuple struct under `skip_serializing_if` moves the positions after it.** The paths are written for a value that holds every slot. With `pair` a tuple struct of an `Option<u32>` under `skip_serializing_if` and then a `String`, `paths.pair.1` writes the key `pair.1`, and a value whose first slot is `None` is stored as `{ "pair": ["x"] }`, its text at position `0`.
+
+### This repository's checks against a server
+
+The checks that run the operations against a real collection are in `tests/mongodb_operation_tests/`: `live.rs`, and this section's own examples beside it. Both major versions of the `bson` library compile them.
+
+- **They read `TIXSCHEMA_MONGODB_URI`**, a MongoDB connection string. Each check works in a collection of its own in the database `tixschema_live`, named after the check, the `bson` major and the process, and drops it when it is done.
+- **Without the variable every one of them stands down**, and says so once on stderr: a `cargo test` that passes with no server named has run none of them. With the variable set, a value that is no address and a server that does not answer are failures.
+- **`just test-mongodb` refuses to stand down.** It stops with `No MongoDB server: set TIXSCHEMA_MONGODB_URI to one's address, as in mongodb://127.0.0.1:27017.` where the variable is not set, and runs the checks under both major versions where it is.
+- **CI does not run them**: no MongoDB server comes with the CI runner. What `cargo test` proves with no server is what needs none: the documents the paths write, the read of a row once the driver has handed it over, and a row refused before it is sent.
+
 ## Feature Flags
 
 The crate uses optional features to control code generation and dependencies. Each feature is enabled or disabled on its own, with two exceptions: `mongodb` turns on `bson`, and `bson` turns on `serde`.
@@ -3956,8 +4954,8 @@ The crate uses optional features to control code generation and dependencies. Ea
 | `zod` | Yes | Zod v4 schema generation alongside TypeScript types |
 | `jsonschema` | Yes | JSON Schema generation via `json_schema()` method |
 | `typescript` | Yes | TypeScript type generation via `ts_definition()` method |
-| `mongodb` | No | MongoDB support: the ObjectId type, with validation; turns on `bson` |
-| `bson` | No | BSON support: `from_bson_with` on types that opt in with [`decode_with`](#recovering-decode-decode_with); turns on `serde` |
+| `mongodb` | No | MongoDB support: the ObjectId type, with validation, and on types that opt in with [`decode_with`](#recovering-decode-decode_with) the [typed field paths, filters, updates and operations](#mongodb-operations-and-typed-filters) over a collection of their rows; turns on `bson` |
+| `bson` | No | BSON support: `from_bson_with` and `from_bson_piped` on types that opt in with [`decode_with`](#recovering-decode-decode_with); turns on `serde` |
 | `chrono` | No | Chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`) |
 | `dart` | No | Dart type generation via `dart_definition()`, with a JSON `fromJson`/`toJson` codec |
 | `swift` | No | Swift type generation with a `Codable` codec |
@@ -4432,6 +5430,8 @@ fn builds_the_schema() {
 }
 ```
 
+With the `mongodb` feature on, two `#[model_schema(decode_with)]` types declared in one function body, one holding the other, fail to build as well, and in a build with no schema surface too: [Limits](#limits) has the two errors.
+
 #### Missing Derives
 
 **Error:** Various compilation errors related to traits.
@@ -4472,6 +5472,8 @@ pub mod record {
 ```
 
 rustc's help line suggests `cargo add version_schema`; there is no such crate. The module is generated next to `Version`, in the module that declares it.
+
+With the `mongodb` feature on, a `#[model_schema(decode_with)]` type asks for the same import in every build, `jsonschema` or not, for each flagged type one of its fields is typed with: its typed MongoDB paths name that type's own. The error is then ``cannot find `version_schema` in `super` `` (`E0433`), reported at the field's type, and the same import resolves it. [Limits](#limits) has it beside the other limits of the paths.
 
 ### Runtime Issues
 

@@ -15,6 +15,7 @@ mod nested;
 mod one_direction;
 mod one_value;
 mod operators;
+mod readme;
 mod shadowing;
 mod shapes;
 mod stored;

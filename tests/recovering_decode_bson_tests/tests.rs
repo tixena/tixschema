@@ -34,6 +34,7 @@ mod bounds;
 mod flattened;
 mod piped;
 mod readme;
+mod readme_resolvers;
 
 use core::error::Error;
 use core::fmt::Display;

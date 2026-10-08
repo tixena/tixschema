@@ -5,9 +5,12 @@
 //! `live` runs the operations against a real collection, and stands down where no server is
 //! named. `offline` holds what needs no server: the error, the read of a row once the driver has
 //! handed it over, a row refused before it is sent, and what a read holds before it is awaited.
+//! `readme` holds the README's examples of the typed paths and of the operations as one text
+//! with the code that compiles.
 
 mod live;
 mod offline;
+mod readme;
 mod shadowing;
 mod uncalled;
 
