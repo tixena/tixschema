@@ -37,6 +37,9 @@ mod flattened_shapes;
 mod generic_types;
 mod hook_names;
 mod method_parameter_names;
+// A build that describes a type refuses a renaming whose two directions name two keys.
+#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+mod one_direction;
 mod piped;
 mod shadowing;
 #[cfg(all(feature = "chrono", feature = "mongodb"))]

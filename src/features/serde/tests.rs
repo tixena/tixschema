@@ -610,7 +610,6 @@ fn test_list_form_bound_earns_no_rename_refusal() {
 
 /// What serde writes is named by the `serialize` side of a list, whatever the list names for
 /// reading. A list that names reading alone, and `bound(...)`, name nothing serde writes.
-#[cfg(feature = "mongodb")]
 #[test]
 fn test_written_renames_read_the_serialize_side_of_each_key() {
     let container: syn::ItemEnum = syn::parse_quote! {
@@ -657,6 +656,58 @@ fn test_written_renames_read_the_serialize_side_of_each_key() {
             None,
             Some("both".to_owned()),
             Some("out_name".to_owned()),
+        ]
+    );
+}
+
+/// What serde reads is named by the `deserialize` side of a list, whatever the list names for
+/// writing. A list that names writing alone, and `bound(...)`, name nothing serde reads.
+#[test]
+fn test_read_renames_read_the_deserialize_side_of_each_key() {
+    let container: syn::ItemEnum = syn::parse_quote! {
+        #[serde(
+            rename_all(serialize = "camelCase", deserialize = "snake_case"),
+            rename_all_fields(deserialize = "kebab-case"),
+            bound(deserialize = "T: Clone")
+        )]
+        enum E<T> {
+            #[serde(rename(deserialize = "in_name"), rename_all(serialize = "camelCase"))]
+            Held { value: T },
+        }
+    };
+    let read = parse_read_renames(&container.attrs);
+    assert_eq!(read.rename, None);
+    assert_eq!(read.rename_all.as_deref(), Some("snake_case"));
+    assert_eq!(read.rename_all_fields.as_deref(), Some("kebab-case"));
+    let variant = parse_read_renames(&container.variants[0].attrs);
+    assert_eq!(variant.rename.as_deref(), Some("in_name"));
+    assert_eq!(variant.rename_all, None);
+
+    let item: syn::ItemStruct = syn::parse_quote! {
+        struct S {
+            #[serde(rename(serialize = "out_name", deserialize = "in_name"), flatten)]
+            apart: u32,
+            #[serde(rename = "both")]
+            single: u32,
+            #[serde(rename(serialize = "out_name"))]
+            #[serde(rename(deserialize = "in_name"))]
+            two_lists: u32,
+            #[serde(rename(serialize = "out_name"))]
+            write_only: u32,
+        }
+    };
+    let fields: Vec<Option<String>> = item
+        .fields
+        .iter()
+        .map(|field| parse_read_renames(&field.attrs).rename)
+        .collect();
+    assert_eq!(
+        fields,
+        [
+            Some("in_name".to_owned()),
+            Some("both".to_owned()),
+            Some("in_name".to_owned()),
+            None,
         ]
     );
 }

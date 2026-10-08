@@ -1758,7 +1758,7 @@ fn without_mongodb_the_bson_walker_reaches_an_id_as_a_model_type() {
     let walk = bson_fields_walk_of(EVERY_WALK);
     assert!(
         walk.contains(
-            "for (key , item) in entries { < ObjectId > :: decode_with_bson_issues (item , & [path , & [Ok (\"owners\" . to_owned ()) , Ok (key . clone ())]] . concat () , issue , out) ; }"
+            "for (key , item) in entries { < ObjectId > :: decode_with_bson_issues (item , & [path , & [:: core :: result :: Result :: Ok (\"owners\" . to_owned ()) , :: core :: result :: Result :: Ok (key . clone ())]] . concat () , issue , out) ; }"
         ),
         "got: {walk}"
     );

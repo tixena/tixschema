@@ -108,10 +108,11 @@ pub struct SerdeFieldMeta {
     pub skip: bool,             // Whether to skip the field
 }
 
-/// What the renaming keys of a container, a variant or a field name in the direction serde writes.
-#[cfg(feature = "mongodb")]
+/// What the renaming keys of a container, a variant or a field name in one of serde's two
+/// directions.
+#[cfg(feature = "serde")]
 #[derive(Default)]
-pub struct WrittenRenames {
+pub struct DirectedRenames {
     pub rename: Option<String>,
     pub rename_all: Option<String>,
     pub rename_all_fields: Option<String>,
@@ -442,11 +443,14 @@ fn read_renaming(nested: &ParseNestedMeta<'_>, key: &str) -> syn::Result<Option<
     }
 }
 
-/// Reads each renaming key for what it names when serde writes, which is the key a stored value
-/// is under whatever the same key names for reading. A list form counts by its `serialize` side.
-#[cfg(feature = "mongodb")]
-pub fn parse_written_renames(attrs: &[Attribute]) -> WrittenRenames {
-    let mut written = WrittenRenames::default();
+/// Reads each renaming key for what it names in the direction `side` takes out of a list form. A
+/// key written `key = "..."` names that in both.
+#[cfg(feature = "serde")]
+fn parse_directed_renames(
+    attrs: &[Attribute],
+    side: fn(RenameDirections) -> Option<String>,
+) -> DirectedRenames {
+    let mut renames = DirectedRenames::default();
 
     for attr in attrs {
         if !attr.path().is_ident("serde") {
@@ -454,22 +458,22 @@ pub fn parse_written_renames(attrs: &[Attribute]) -> WrittenRenames {
         }
         attr.parse_nested_meta(|nested| {
             let slot = if nested.path.is_ident("rename") {
-                &mut written.rename
+                &mut renames.rename
             } else if nested.path.is_ident("rename_all") {
-                &mut written.rename_all
+                &mut renames.rename_all
             } else if nested.path.is_ident("rename_all_fields") {
-                &mut written.rename_all_fields
+                &mut renames.rename_all_fields
             } else {
                 return consume_unread_value(&nested);
             };
             if nested.input.peek(Token![=]) {
                 *slot = Some(nested.value()?.parse::<LitStr>()?.value());
             } else if nested.input.peek(Paren)
-                && let Some(serialize) = parse_rename_directions(&nested)?.serialize
+                && let Some(named) = side(parse_rename_directions(&nested)?)
             {
-                *slot = Some(serialize);
+                *slot = Some(named);
             } else {
-                // A list that writes no `serialize` leaves the name serde writes as it was.
+                // A list that leaves the direction out leaves its name as it was.
             }
             Ok(())
         })
@@ -478,7 +482,21 @@ pub fn parse_written_renames(attrs: &[Attribute]) -> WrittenRenames {
         });
     }
 
-    written
+    renames
+}
+
+/// Reads each renaming key for what it names when serde reads, which is the key a value is read
+/// from whatever the same key names for writing. A list form counts by its `deserialize` side.
+#[cfg(feature = "serde")]
+pub fn parse_read_renames(attrs: &[Attribute]) -> DirectedRenames {
+    parse_directed_renames(attrs, |directions| directions.deserialize)
+}
+
+/// Reads each renaming key for what it names when serde writes, which is the key a stored value
+/// is under whatever the same key names for reading. A list form counts by its `serialize` side.
+#[cfg(feature = "serde")]
+pub fn parse_written_renames(attrs: &[Attribute]) -> DirectedRenames {
+    parse_directed_renames(attrs, |directions| directions.serialize)
 }
 
 /// The refusal the item's own list-form renaming earns when its two directions do not name one key,

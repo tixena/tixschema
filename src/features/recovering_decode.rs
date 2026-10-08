@@ -41,9 +41,9 @@ use syn::{
 use self::aliases::Reach;
 use crate::features::serde::{
     NAMED_READ_HOOK_PREFIX, SerdeFieldHooks, has_serde_default, has_serde_read_hook,
-    has_serde_skip_serializing, has_serde_transparent, parse_serde_field_attributes,
-    parse_serde_field_hooks, parse_serde_key_omission, parse_serde_type_attributes,
-    transparent_field,
+    has_serde_skip_serializing, has_serde_transparent, parse_read_renames,
+    parse_serde_field_attributes, parse_serde_field_hooks, parse_serde_key_omission,
+    parse_serde_type_attributes, parse_written_renames, transparent_field,
 };
 use crate::field_type::{
     FieldDefType, get_field_def, is_refused_sequence_wrapper, is_sequence_wrapper,
@@ -126,6 +126,13 @@ struct Arm {
     /// The arm lists nothing: a `null` where the field is optional.
     nothing: bool,
     pattern: TokenStream,
+}
+
+/// The casing rule a container gives its fields in each of serde's two directions.
+#[derive(Clone, Copy)]
+struct Casing<'rule> {
+    read: Option<&'rule str>,
+    written: Option<&'rule str>,
 }
 
 /// Where the walk of an object's fields leaves the keys that are the object's own.
@@ -406,9 +413,16 @@ impl<'item> Shape<'item> {
         match &item_struct.fields {
             Fields::Named(named) => {
                 let container = parse_serde_type_attributes(&item_struct.attrs);
+                let (read, written) = (
+                    parse_read_renames(&item_struct.attrs).rename_all,
+                    parse_written_renames(&item_struct.attrs).rename_all,
+                );
                 let mut keyed = walked_fields(
                     named,
-                    container.rename_all.as_deref(),
+                    Casing {
+                        read: read.as_deref(),
+                        written: written.as_deref(),
+                    },
                     defaulted,
                     module_name,
                     parameters,
@@ -439,16 +453,22 @@ impl<'item> Shape<'item> {
     /// `rename_all_fields` where it writes none.
     fn of_variant(
         variant: &'item Variant,
-        rename_all_fields: Option<&str>,
+        rename_all_fields: Casing<'_>,
         module_name: &str,
         parameters: &[String],
     ) -> Self {
         match &variant.fields {
             Fields::Named(named) => {
-                let own = parse_serde_type_attributes(&variant.attrs).rename_all;
+                let (read, written) = (
+                    parse_read_renames(&variant.attrs).rename_all,
+                    parse_written_renames(&variant.attrs).rename_all,
+                );
                 Self::Fields(walked_fields(
                     named,
-                    own.as_deref().or(rename_all_fields),
+                    Casing {
+                        read: read.as_deref().or(rename_all_fields.read),
+                        written: written.as_deref().or(rename_all_fields.written),
+                    },
                     false,
                     module_name,
                     parameters,
@@ -3755,7 +3775,7 @@ fn walk_of<'ty>(ty: &'ty Type, parameters: &[String]) -> Walk<'ty> {
 /// One field as the walker reads it, or `None` for a field serde neither writes nor reads.
 fn walked_field<'item>(
     field: &'item Field,
-    rename_all: Option<&str>,
+    rename_all: Casing<'_>,
     container_defaulted: bool,
     module_name: &str,
     parameters: &[String],
@@ -3767,9 +3787,17 @@ fn walked_field<'item>(
     }
     let omission = parse_serde_key_omission(&field.attrs);
     let meta = parse_serde_field_attributes(&field.attrs);
-    let key = meta.rename.unwrap_or_else(|| {
-        resolve_rename_rule(rename_all).apply_to_field(&ident.unraw().to_string())
-    });
+    // The key of a field serde never reads is the one serde writes it under.
+    let (renamed, rule) = if omission.skips_deserializing {
+        (
+            parse_written_renames(&field.attrs).rename,
+            rename_all.written,
+        )
+    } else {
+        (parse_read_renames(&field.attrs).rename, rename_all.read)
+    };
+    let key = renamed
+        .unwrap_or_else(|| resolve_rename_rule(rule).apply_to_field(&ident.unraw().to_string()));
     let walk = (!omission.skips_deserializing).then(|| member_walk(field, module_name, parameters));
     let named = ident.unraw().to_string();
     let stem = helper_name_stem(&named, variant);
@@ -3793,7 +3821,7 @@ fn walked_field<'item>(
 /// every such key, and the flattened ones apart.
 fn walked_fields<'item>(
     named: &'item FieldsNamed,
-    rename_all: Option<&str>,
+    rename_all: Casing<'_>,
     container_defaulted: bool,
     module_name: &str,
     parameters: &[String],
