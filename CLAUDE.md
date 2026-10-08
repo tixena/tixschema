@@ -392,6 +392,20 @@ gets, at the field. Zod writes the checks as one `.check(…)` on the named sche
 (`named_field_json_schema_value`). `check_fixed_shape_constraints` refuses a range on any named
 type and a length on one written with arguments, in every build.
 
+A bound of the wrong kind is refused there as well, by `check_bound_kind`, in every build: a length
+or a pattern on a numeric field, and a range on a string field, under any wrapper, naming the field
+and only the keys of the wrong kind. `FieldDef::unmeasured_bound` is the one question the refusal
+and `apply_constraint_docs` are both written from, so the TypeScript comment states no bound the
+refusal turned away.
+
+A borrowed `str` is held to its bound by `validate()`, as a `String` is. It is the one reference
+`constrained_shape` reads through (`ConstraintWrap::Borrowed`, which `names_str` decides):
+`validate()` reaches the `str` through `&'a str` at any depth, and a reference to anything else has
+no shape and no validator. A borrowed field publishes its validator and no `deserialize_{field}`
+hook (`ends_on_a_borrow`), and `generate_field_validation` hangs nothing on one. A borrowed `str`
+member of an untagged enum is therefore the one constrained member the read does not check: it is
+read as it is with no bound written, and `validate()` answers for the bound.
+
 Multiple constraints on one field are combined. Multiple `preprocess` functions nest:
 `z.preprocess(fn1, z.preprocess(fn2, innerSchema))`.
 
