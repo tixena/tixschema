@@ -3,13 +3,25 @@
 //! A flagged type gets `from_value_with`, which reads a `serde_json::Value` with plain serde,
 //! walks it in the form serde writes that type in, and hands every issue the walk finds to a
 //! callback once. A build with `bson` on adds `from_bson_with`, the same read of a
-//! `bson::Document`, written with what both major versions of the `bson` library have. The
-//! callback's types go into the type's own `{type}_schema` module. Two flagged types share no
-//! declaration: each module declares the same aliases of standard types, and a walker builds
-//! whatever issue type the constructor it is handed builds.
+//! `bson::Document`, written with what both major versions of the `bson` library have.
+//! `from_value_piped` and `from_bson_piped` are the same reads over resolvers run in order, each
+//! answering one issue at a time, and refuse with only the issues none settled. The callback's
+//! types and the resolvers' go into the type's own `{type}_schema` module. Two flagged types share
+//! no declaration: each module declares the same aliases of standard types, and a walker builds
+//! whatever issue type the constructor it is handed builds. A build with `mongodb` on adds the
+//! query types to that module: `Filter`, `Update`, and the typed paths that build them (`query`).
+//! It adds the type's own paths too, `MongoFields` there and `MONGO_FIELDS` on the type (`fields`),
+//! and the operations: `OperationError` and `Read` there, and on the type the reads, `count`,
+//! `insert_one`, the updates and the deletes (`operations`).
 
 mod aliases;
 pub mod enums;
+#[cfg(feature = "mongodb")]
+mod fields;
+#[cfg(feature = "mongodb")]
+mod operations;
+#[cfg(feature = "mongodb")]
+mod query;
 
 use core::iter::once;
 use core::mem::take;
@@ -21,9 +33,9 @@ use quote::{ToTokens as _, format_ident, quote};
 use syn::ext::IdentExt as _;
 use syn::punctuated::Punctuated;
 use syn::{
-    Field, Fields, FieldsNamed, GenericArgument, GenericParam, Generics, ItemStruct, Lit, LitStr,
-    PathArguments, PredicateType, Token, Type, TypeParamBound, TypePath, Variant, WherePredicate,
-    parse_quote,
+    Field, Fields, FieldsNamed, GenericArgument, GenericParam, Generics, Item, ItemStruct, Lit,
+    LitStr, PathArguments, PredicateType, Token, Type, TypeParamBound, TypePath, Variant,
+    WherePredicate, parse_quote,
 };
 
 use self::aliases::Reach;
@@ -44,22 +56,68 @@ use crate::utils::{
     written_type,
 };
 
-/// The type names the flag adds to a schema module.
+/// How many type names the flag adds to a schema module.
+#[cfg(all(
+    any(feature = "typescript", feature = "zod", feature = "jsonschema"),
+    not(feature = "mongodb")
+))]
+const ADDED_TYPE_COUNT: usize = 15;
+
+/// How many type names the flag adds to a schema module, the query types, the type's own struct
+/// of paths, the error its operations fail with and the read they answer among them.
+#[cfg(all(
+    any(feature = "typescript", feature = "zod", feature = "jsonschema"),
+    feature = "mongodb"
+))]
+const ADDED_TYPE_COUNT: usize = 29;
+
+/// The type names the flag adds to a schema module. The query types, the type's own struct of
+/// paths, the error its operations fail with and the read they answer are there under `mongodb`.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-const ADDED_TYPE_NAMES: [&str; 13] = [
+const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
     "Asked",
+    #[cfg(feature = "mongodb")]
+    "Element",
     "EntryOf",
     "Expected",
     "ExpectedToken",
+    #[cfg(feature = "mongodb")]
+    "Field",
+    #[cfg(feature = "mongodb")]
+    "Filter",
     "Issue",
     "IssueFromParts",
+    #[cfg(feature = "mongodb")]
+    "ListField",
+    #[cfg(feature = "mongodb")]
+    "Model",
+    #[cfg(feature = "mongodb")]
+    "ModelList",
+    #[cfg(feature = "mongodb")]
+    "MongoFields",
+    #[cfg(feature = "mongodb")]
+    "MongoPath",
+    #[cfg(feature = "mongodb")]
+    "OperationError",
+    #[cfg(feature = "mongodb")]
+    "OptionalField",
+    #[cfg(feature = "mongodb")]
+    "OptionalModel",
     "Path",
+    #[cfg(feature = "mongodb")]
+    "Read",
     "ReadWhole",
+    "Resolution",
+    "Resolver",
     "Segment",
     "Taken",
     "TakenProbe",
     "Unrecovered",
+    #[cfg(feature = "mongodb")]
+    "Update",
     "Verdict",
+    #[cfg(feature = "mongodb")]
+    "WriteError",
 ];
 
 /// One arm reading a value that is there: the pattern it is held under, and what is listed for it.
@@ -459,38 +517,7 @@ impl Source {
             Self::Bson => parse_quote!(serde::de::DeserializeOwned + serde::Serialize),
             Self::Json => parse_quote!(serde::de::DeserializeOwned),
         };
-        let mut bounded = generics.clone();
-        bounded
-            .make_where_clause()
-            .predicates
-            .push(parse_quote!(Self: #bounds));
-        let mut predicates: Vec<&mut PredicateType> = bounded
-            .where_clause
-            .iter_mut()
-            .flat_map(|clause| &mut clause.predicates)
-            .filter_map(|predicate| {
-                if let WherePredicate::Type(bounding) = predicate {
-                    Some(bounding)
-                } else {
-                    None
-                }
-            })
-            .collect();
-        for parameter in &mut bounded.params {
-            let GenericParam::Type(declared) = parameter else {
-                continue;
-            };
-            let bounding = predicates.iter_mut().find(|bounding| {
-                matches!(&bounding.bounded_ty, Type::Path(named) if named.path.is_ident(&declared.ident))
-            });
-            if let Some(in_where) = bounding {
-                in_where.bounds.extend(take(&mut declared.bounds));
-                in_where.bounds.extend(bounds.clone());
-            } else {
-                declared.bounds.extend(bounds.clone());
-            }
-        }
-        bounded
+        bounded_by(generics, &bounds)
     }
 
     /// The pattern a map is held under, binding its entries.
@@ -502,12 +529,13 @@ impl Source {
         }
     }
 
-    /// The entry point and the report it runs.
-    fn entry_methods(self, module: &Ident, decider: &Ident) -> TokenStream {
+    /// The entry point and the report it runs. `written` holds every name the type's item
+    /// writes, none of which a method's own type parameter takes.
+    fn entry_methods(self, module: &Ident, written: &[String]) -> TokenStream {
         match self {
             #[cfg(feature = "bson")]
-            Self::Bson => bson_entry_methods(module, decider),
-            Self::Json => entry_methods(module, decider),
+            Self::Bson => bson_entry_methods(module, written),
+            Self::Json => entry_methods(module, &unclaimed_parameter("F", written)),
         }
     }
 
@@ -695,6 +723,15 @@ enum Step<'ty> {
     Positions(Vec<Slot<'ty>>),
     /// An optional value, walked when it is not `null`.
     Present(Box<Walk<'ty>>),
+}
+
+/// What `mongodb` adds for a type's typed paths. Empty in a build without it.
+#[derive(Default)]
+struct TypedPaths {
+    /// `MongoFields`, and the structs it holds, for the `{type}_schema` module.
+    module_items: TokenStream,
+    /// `MONGO_FIELDS`, `mongo_fields_under` and what they call, for the type's own `impl`.
+    type_items: TokenStream,
 }
 
 struct Walk<'ty> {
@@ -1921,29 +1958,60 @@ pub fn struct_recovering_decode(item_struct: &ItemStruct) -> RecoveringDecode {
     let mut walked = item_struct.clone();
     reach.fields(&mut walked.fields);
     let shape = Shape::of(&walked, &module_name, &parameters);
+    let names = written_names(item_struct.to_token_stream());
+    let paths = struct_paths(item_struct, &names);
     added_to(
         &item_struct.ident,
         &item_struct.generics,
         &module_name,
         &parameters,
         &Written {
-            names: written_names(item_struct.to_token_stream()),
+            names,
             reach: &reach,
         },
+        &paths,
         |walker| walker.methods(&shape),
     )
+}
+
+/// The slot serde writes a struct as the value of: the field `#[serde(transparent)]` reads the
+/// struct as, or the only slot of a tuple struct.
+pub fn value_slot(item_struct: &ItemStruct) -> Option<&Field> {
+    let transparent = if has_serde_transparent(&item_struct.attrs) {
+        transparent_field(&item_struct.fields)
+    } else {
+        None
+    };
+    transparent.or_else(|| match &item_struct.fields {
+        Fields::Unnamed(slots) if slots.unnamed.len() == 1 => slots.unnamed.first(),
+        Fields::Named(_) | Fields::Unit | Fields::Unnamed(_) => None,
+    })
+}
+
+/// Whether serde writes `item` as one value, under no key of its own: a struct written as the
+/// value of one slot, a unit struct, or an enum no variant of which holds a value and no
+/// attribute tags.
+pub fn written_as_one_value(item: &Item) -> bool {
+    if let Item::Enum(item_enum) = item {
+        matches!(enums::Tagging::of(item_enum), enums::Tagging::Plain)
+    } else if let Item::Struct(item_struct) = item {
+        matches!(item_struct.fields, Fields::Unit) || value_slot(item_struct).is_some()
+    } else {
+        false
+    }
 }
 
 /// What the flag adds to the type `name` declares under `generics`: the callback's types, and per
 /// source the entry point beside what `methods` writes for that source's walker. `written` holds
 /// every name the type's item writes, none of which a method's own type parameter takes, and what
-/// its fields reach through the aliases they are typed with.
+/// its fields reach through the aliases they are typed with. `paths` holds the type's typed paths.
 fn added_to<M>(
     name: &Ident,
     generics: &Generics,
     module_name: &str,
     parameters: &[String],
     written: &Written<'_>,
+    paths: &TypedPaths,
     methods: M,
 ) -> RecoveringDecode
 where
@@ -1951,7 +2019,6 @@ where
 {
     let own_name = name.to_string();
     let module = Ident::new(module_name, Span::call_site());
-    let decider = unclaimed_parameter("F", &written.names);
     let issue_parameter = unclaimed_parameter("I", &written.names);
     let of_sources: Vec<TokenStream> = Source::GENERATED
         .iter()
@@ -1963,7 +2030,7 @@ where
                 parameters,
                 source,
             };
-            let entry = source.entry_methods(&module, &decider);
+            let entry = source.entry_methods(&module, &written.names);
             let walk_methods = methods(&walker);
             quote! {
                 #entry
@@ -1971,8 +2038,15 @@ where
             }
         })
         .collect();
-    let mut type_impl = type_impls(name, generics, !parameters.is_empty(), &of_sources);
+    let mut type_impl = type_impls(
+        name,
+        generics,
+        !parameters.is_empty(),
+        &of_sources,
+        &paths.type_items,
+    );
     let mut items = module_items();
+    items.extend(paths.module_items.clone());
     if written_names(type_impl.clone())
         .iter()
         .any(|written_name| written_name == "ReadWhole")
@@ -2072,6 +2146,28 @@ fn asked_items() -> TokenStream {
     }
 }
 
+/// What brings the author's scope into a `{type}_schema` module written here: a struct of paths
+/// names the types its author wrote as that author wrote them.
+#[cfg(all(
+    feature = "mongodb",
+    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
+))]
+fn authors_scope() -> TokenStream {
+    quote! { use super::*; }
+}
+
+/// A build without `mongodb` writes no struct of paths, and its module names nothing of the
+/// author's.
+#[cfg(not(any(
+    feature = "mongodb",
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema"
+)))]
+fn authors_scope() -> TokenStream {
+    TokenStream::new()
+}
+
 /// A loop's binding at `depth`: the plain name at the first level, and a numbered one under it,
 /// where an outer index or key is still read to build the path.
 fn binding(stem: &str, depth: usize) -> Ident {
@@ -2081,6 +2177,44 @@ fn binding(stem: &str, depth: usize) -> Ident {
         format!("{stem}_{depth}")
     };
     Ident::new(&name, Span::call_site())
+}
+
+/// `generics` with `bounds` joined to every type parameter and to the type itself, which carries
+/// whatever more serde's derive asks of one. A parameter stays bounded in one place: its `where`
+/// predicate if it has one, else its name.
+fn bounded_by(generics: &Generics, bounds: &Punctuated<TypeParamBound, Token![+]>) -> Generics {
+    let mut bounded = generics.clone();
+    bounded
+        .make_where_clause()
+        .predicates
+        .push(parse_quote!(Self: #bounds));
+    let mut predicates: Vec<&mut PredicateType> = bounded
+        .where_clause
+        .iter_mut()
+        .flat_map(|clause| &mut clause.predicates)
+        .filter_map(|predicate| {
+            if let WherePredicate::Type(bounding) = predicate {
+                Some(bounding)
+            } else {
+                None
+            }
+        })
+        .collect();
+    for parameter in &mut bounded.params {
+        let GenericParam::Type(declared) = parameter else {
+            continue;
+        };
+        let bounding = predicates.iter_mut().find(|bounding| {
+            matches!(&bounding.bounded_ty, Type::Path(named) if named.path.is_ident(&declared.ident))
+        });
+        if let Some(in_where) = bounding {
+            in_where.bounds.extend(take(&mut declared.bounds));
+            in_where.bounds.extend(bounds.clone());
+        } else {
+            declared.bounds.extend(bounds.clone());
+        }
+    }
+    bounded
 }
 
 /// `value_bound` and `bson_bound`: what holds a value serde read to the bound its field declares.
@@ -2149,11 +2283,40 @@ fn bson_bound_items() -> TokenStream {
     TokenStream::new()
 }
 
-/// `from_bson_with` and the report it runs. Every value is read through `bson::Deserializer::new`,
-/// which both major versions of the `bson` library have, and which takes what it reads by value:
-/// the document is held as the `bson::Bson` the walker borrows, and copied once per read by serde.
+/// `from_bson_with`, `from_bson_piped` and the report they run. Every value is read through
+/// `bson::Deserializer::new`, which both major versions of the `bson` library have, and which
+/// takes what it reads by value: the document is held as the `bson::Bson` the walker borrows, and
+/// copied once per read by serde. Both entry points open with the same read and close with the
+/// same one. Under `mongodb` the operations that read a stored row through them sit beside them.
 #[cfg(feature = "bson")]
-fn bson_entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
+fn bson_entry_methods(module: &Ident, written: &[String]) -> TokenStream {
+    let decider = unclaimed_parameter("F", written);
+    let operations = operation_methods(module, written);
+    let first_read = quote! {
+        let mut whole = bson::Bson::Document(document);
+        let found = match <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(whole.clone())) {
+            ::core::result::Result::Ok(decoded) => {
+                let found = Self::decode_with_bson_report(&whole, ::core::option::Option::None);
+                if found.is_empty() {
+                    return ::core::result::Result::Ok(decoded);
+                }
+                found
+            }
+            ::core::result::Result::Err(refused) => Self::decode_with_bson_report(&whole, ::core::option::Option::Some(refused.to_string())),
+        };
+        // `whole` is the document it was built from, so the other arm is never taken.
+        let bson::Bson::Document(object) = &mut whole else {
+            return ::core::result::Result::Err(#module::Unrecovered { issues: found });
+        };
+    };
+    let second_read = quote! {
+        let read = <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(whole.clone()));
+        let again = Self::decode_with_bson_report(&whole, read.as_ref().err().map(::std::string::ToString::to_string));
+        match read {
+            ::core::result::Result::Ok(decoded) if again.is_empty() => ::core::result::Result::Ok(decoded),
+            _ => ::core::result::Result::Err(#module::Unrecovered { issues: again }),
+        }
+    };
     quote! {
         /// Reads `document` as this type, handing every issue found in it to `decide`, once.
         pub fn from_bson_with<#decider>(
@@ -2163,33 +2326,30 @@ fn bson_entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
         where
             #decider: ::core::ops::FnOnce(&mut bson::Document, &[#module::Issue<bson::Bson>]) -> #module::Verdict,
         {
-            let mut whole = bson::Bson::Document(document);
-            let found = match <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(whole.clone())) {
-                ::core::result::Result::Ok(decoded) => {
-                    let found = Self::decode_with_bson_report(&whole, ::core::option::Option::None);
-                    if found.is_empty() {
-                        return ::core::result::Result::Ok(decoded);
-                    }
-                    found
-                }
-                ::core::result::Result::Err(refused) => Self::decode_with_bson_report(&whole, ::core::option::Option::Some(refused.to_string())),
-            };
-            // `whole` is the document it was built from, so the other arm is never taken.
-            let bson::Bson::Document(object) = &mut whole else {
-                return ::core::result::Result::Err(#module::Unrecovered { issues: found });
-            };
+            #first_read
             match decide(object, &found) {
                 #module::Verdict::Reject => ::core::result::Result::Err(#module::Unrecovered { issues: found }),
                 #module::Verdict::Fixed => {
-                    let read = <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(whole.clone()));
-                    let again = Self::decode_with_bson_report(&whole, read.as_ref().err().map(::std::string::ToString::to_string));
-                    match read {
-                        ::core::result::Result::Ok(decoded) if again.is_empty() => ::core::result::Result::Ok(decoded),
-                        _ => ::core::result::Result::Err(#module::Unrecovered { issues: again }),
-                    }
+                    #second_read
                 }
             }
         }
+
+        /// Reads `document` as this type, running `resolvers` in order over every issue found in
+        /// it, once, and reading it again when every issue was settled.
+        pub fn from_bson_piped(
+            document: bson::Document,
+            resolvers: &[#module::Resolver<'_, bson::Document, bson::Bson>],
+        ) -> ::core::result::Result<Self, #module::Unrecovered<bson::Bson>> {
+            #first_read
+            let left = #module::unsettled(object, &found, resolvers);
+            if !left.is_empty() {
+                return ::core::result::Result::Err(#module::Unrecovered { issues: left });
+            }
+            #second_read
+        }
+
+        #operations
 
         fn decode_with_bson_report(whole: &bson::Bson, refused: ::core::option::Option<::std::string::String>) -> ::std::vec::Vec<#module::Issue<bson::Bson>> {
             let mut out = ::std::vec::Vec::new();
@@ -2343,8 +2503,9 @@ fn bson_path_helpers() -> TokenStream {
     TokenStream::new()
 }
 
-/// The types a callback works with.
+/// The types a callback works with, and beside its verdict what a resolver answers with.
 fn callback_items() -> TokenStream {
+    let resolvers = resolver_items();
     quote! {
         #[derive(Clone, Debug, PartialEq)]
         #[non_exhaustive]
@@ -2411,6 +2572,8 @@ fn callback_items() -> TokenStream {
             Fixed,
         }
 
+        #resolvers
+
         #[derive(Clone, Debug, PartialEq)]
         #[non_exhaustive]
         pub struct Unrecovered<V> {
@@ -2458,9 +2621,30 @@ fn callback_items() -> TokenStream {
     }
 }
 
-/// `from_value_with` and the report it runs. The report is told what serde said of the value, so
-/// each decode reads the value with serde once.
+/// `from_value_with`, `from_value_piped` and the report they run. The report is told what serde
+/// said of the value, so each decode reads the value with serde once. Both entry points open
+/// with the same read and close with the same one.
 fn entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
+    let first_read = quote! {
+        let found = match <Self as serde::Deserialize>::deserialize(&value) {
+            ::core::result::Result::Ok(decoded) => {
+                let found = Self::decode_with_value_report(&value, ::core::option::Option::None);
+                if found.is_empty() {
+                    return ::core::result::Result::Ok(decoded);
+                }
+                found
+            }
+            ::core::result::Result::Err(refused) => Self::decode_with_value_report(&value, ::core::option::Option::Some(refused.to_string())),
+        };
+    };
+    let second_read = quote! {
+        let read = <Self as serde::Deserialize>::deserialize(&value);
+        let again = Self::decode_with_value_report(&value, read.as_ref().err().map(::std::string::ToString::to_string));
+        match read {
+            ::core::result::Result::Ok(decoded) if again.is_empty() => ::core::result::Result::Ok(decoded),
+            _ => ::core::result::Result::Err(#module::Unrecovered { issues: again }),
+        }
+    };
     quote! {
         /// Reads `value` as this type, handing every issue found in it to `decide`, once.
         pub fn from_value_with<#decider>(
@@ -2470,27 +2654,27 @@ fn entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
         where
             #decider: ::core::ops::FnOnce(&mut serde_json::Value, &[#module::Issue<serde_json::Value>]) -> #module::Verdict,
         {
-            let found = match <Self as serde::Deserialize>::deserialize(&value) {
-                ::core::result::Result::Ok(decoded) => {
-                    let found = Self::decode_with_value_report(&value, ::core::option::Option::None);
-                    if found.is_empty() {
-                        return ::core::result::Result::Ok(decoded);
-                    }
-                    found
-                }
-                ::core::result::Result::Err(refused) => Self::decode_with_value_report(&value, ::core::option::Option::Some(refused.to_string())),
-            };
+            #first_read
             match decide(&mut value, &found) {
                 #module::Verdict::Reject => ::core::result::Result::Err(#module::Unrecovered { issues: found }),
                 #module::Verdict::Fixed => {
-                    let read = <Self as serde::Deserialize>::deserialize(&value);
-                    let again = Self::decode_with_value_report(&value, read.as_ref().err().map(::std::string::ToString::to_string));
-                    match read {
-                        ::core::result::Result::Ok(decoded) if again.is_empty() => ::core::result::Result::Ok(decoded),
-                        _ => ::core::result::Result::Err(#module::Unrecovered { issues: again }),
-                    }
+                    #second_read
                 }
             }
+        }
+
+        /// Reads `value` as this type, running `resolvers` in order over every issue found in it,
+        /// once, and reading it again when every issue was settled.
+        pub fn from_value_piped(
+            mut value: serde_json::Value,
+            resolvers: &[#module::Resolver<'_, serde_json::Value, serde_json::Value>],
+        ) -> ::core::result::Result<Self, #module::Unrecovered<serde_json::Value>> {
+            #first_read
+            let left = #module::unsettled(&mut value, &found, resolvers);
+            if !left.is_empty() {
+                return ::core::result::Result::Err(#module::Unrecovered { issues: left });
+            }
+            #second_read
         }
 
         fn decode_with_value_report(value: &serde_json::Value, refused: ::core::option::Option<::std::string::String>) -> ::std::vec::Vec<#module::Issue<serde_json::Value>> {
@@ -2969,12 +3153,16 @@ fn module_items() -> TokenStream {
     let handoff = handoff_items();
     let taken = taken_items();
     let bound = bound_items();
+    let query = query_items();
+    let operation = operation_items();
     quote! {
         #path
         #callback
         #handoff
         #taken
         #bound
+        #query
+        #operation
     }
 }
 
@@ -3021,6 +3209,38 @@ fn not_the_shape(held: &Ident, path: &TokenStream, expected: &TokenStream, reaso
     }
 }
 
+/// `OperationError`, which every operation on the type fails with, and `Read`, which its reads
+/// answer.
+#[cfg(feature = "mongodb")]
+fn operation_items() -> TokenStream {
+    let mut items = operations::error_items();
+    items.extend(operations::read_items());
+    items
+}
+
+/// A build without `mongodb` writes no operation, so nothing for one to fail with.
+#[cfg(not(feature = "mongodb"))]
+fn operation_items() -> TokenStream {
+    TokenStream::new()
+}
+
+/// The operations on the type. Each takes its filter and its update as a type parameter of its
+/// own, under a name `written`, every name the type's item writes, does not hold.
+#[cfg(feature = "mongodb")]
+fn operation_methods(module: &Ident, written: &[String]) -> TokenStream {
+    operations::methods(
+        module,
+        &unclaimed_parameter("F", written),
+        &unclaimed_parameter("U", written),
+    )
+}
+
+/// A build without `mongodb` gives a type no operation.
+#[cfg(all(feature = "bson", not(feature = "mongodb")))]
+fn operation_methods(_module: &Ident, _written: &[String]) -> TokenStream {
+    TokenStream::new()
+}
+
 fn own_reader(ty: &Type) -> TokenStream {
     quote! { <#ty as serde::Deserialize>::deserialize }
 }
@@ -3034,8 +3254,10 @@ fn placed_in_schema_module(_module: &Ident, items: &TokenStream) -> TokenStream 
 /// `items` in a `{type}_schema` module written here, no schema surface writing one in this build.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 fn placed_in_schema_module(module: &Ident, items: &TokenStream) -> TokenStream {
+    let scope = authors_scope();
     quote! {
         pub mod #module {
+            #scope
             #items
         }
     }
@@ -3206,6 +3428,18 @@ fn plain_value<'ty>(ty: &'ty Type, parameters: &[String]) -> Walk<'ty> {
     }
 }
 
+/// `Filter`, `Update` and the typed paths that build them.
+#[cfg(feature = "mongodb")]
+fn query_items() -> TokenStream {
+    query::query_items()
+}
+
+/// A build without `mongodb` writes no filter and no update.
+#[cfg(not(feature = "mongodb"))]
+fn query_items() -> TokenStream {
+    TokenStream::new()
+}
+
 /// Whether serde reads a value walked this way from the entries of an object it is flattened in.
 /// It refuses every other value there, and reads an `Option` of one as absent.
 fn reads_entries(walk: &Walk<'_>) -> bool {
@@ -3231,6 +3465,54 @@ fn resolved_at_the_mixed_site(mut hook: syn::ExprPath) -> syn::ExprPath {
     hook
 }
 
+/// `Resolution`, `Resolver`, and `unsettled`, the pipe that runs resolvers over a read's issues.
+fn resolver_items() -> TokenStream {
+    quote! {
+        /// What a resolver answers for one issue.
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        #[non_exhaustive]
+        pub enum Resolution {
+            /// Repaired; no later resolver sees it.
+            Settled,
+            /// Known, and not to be repaired: the read fails; no later resolver sees it.
+            Rejected,
+            /// Not this resolver's; the next one sees it.
+            NotTouched,
+        }
+
+        /// A resolver over a raw value `D` whose issues hold values `V`. It is `Sync`, so that a
+        /// read which waits for a row can hold its resolvers and still move to another thread.
+        pub type Resolver<'r, D, V> = &'r (dyn ::core::ops::Fn(&mut D, &Issue<V>) -> Resolution + ::core::marker::Sync);
+
+        /// Runs `resolvers` in order, each seeing only the issues every resolver before it left
+        /// `NotTouched`, and answers the issues none settled, in the order they were found.
+        pub fn unsettled<D, V: ::core::clone::Clone>(
+            raw: &mut D,
+            issues: &[Issue<V>],
+            resolvers: &[Resolver<'_, D, V>],
+        ) -> ::std::vec::Vec<Issue<V>> {
+            // `None` while every resolver so far answered `NotTouched`.
+            let mut answers: ::std::vec::Vec<::core::option::Option<Resolution>> = ::std::vec![::core::option::Option::None; issues.len()];
+            for resolve in resolvers {
+                for (issue, answer) in issues.iter().zip(answers.iter_mut()) {
+                    if answer.is_none() {
+                        match resolve(raw, issue) {
+                            Resolution::NotTouched => {}
+                            decided => *answer = ::core::option::Option::Some(decided),
+                        }
+                    }
+                }
+            }
+            issues
+                .iter()
+                .zip(answers)
+                .filter(|(_issue, answer)| *answer != ::core::option::Option::Some(Resolution::Settled))
+                .map(|(issue, _answer)| issue.clone())
+                .collect()
+        }
+    }
+}
+
 /// Whether a path names one of the type's own parameters outright, or a type projected from one.
 fn starts_at_a_parameter(type_path: &TypePath, parameters: &[String]) -> bool {
     type_path.qself.is_none()
@@ -3239,6 +3521,19 @@ fn starts_at_a_parameter(type_path: &TypePath, parameters: &[String]) -> bool {
                 .iter()
                 .any(|parameter| segment.ident == parameter)
         })
+}
+
+/// The typed MongoDB paths of a struct: `MongoFields` for its module, and for its `impl` the const
+/// and the function that build it.
+#[cfg(feature = "mongodb")]
+fn struct_paths(item_struct: &ItemStruct, written: &[String]) -> TypedPaths {
+    fields::struct_paths(item_struct, written)
+}
+
+/// A build without `mongodb` writes no typed path.
+#[cfg(not(feature = "mongodb"))]
+fn struct_paths(_item_struct: &ItemStruct, _written: &[String]) -> TypedPaths {
+    TypedPaths::default()
 }
 
 /// What answers what serde does with a type it reads flattened: the two questions asked of the
@@ -3325,20 +3620,23 @@ fn type_arguments(arguments: &PathArguments) -> impl Iterator<Item = &Type> {
         })
 }
 
-/// The `impl`s holding `methods`, which lists what each generated source adds. A type with a type
-/// parameter gets one `impl` per source, under the bounds that source reads and writes a value
-/// with, and every other type one `impl` for them all.
+/// The `impl`s holding `methods`, which lists what each generated source adds, and `paths`, the
+/// type's typed paths. A type with a type parameter gets one `impl` per source, under the bounds
+/// that source reads and writes a value with, and one for its paths, under the bound a path
+/// writes a value with. Every other type gets one `impl` for them all.
 fn type_impls(
     name: &Ident,
     generics: &Generics,
     generic: bool,
     methods: &[TokenStream],
+    paths: &TokenStream,
 ) -> TokenStream {
     if !generic {
         let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
         return quote! {
             impl #impl_generics #name #type_generics #where_clause {
                 #(#methods)*
+                #paths
             }
         };
     }
@@ -3354,7 +3652,19 @@ fn type_impls(
                 }
             }
         });
-    quote! { #(#impls)* }
+    let of_paths = (!paths.is_empty()).then(|| {
+        let bounded = bounded_by(generics, &parse_quote!(::serde::Serialize));
+        let (impl_generics, type_generics, where_clause) = bounded.split_for_impl();
+        quote! {
+            impl #impl_generics #name #type_generics #where_clause {
+                #paths
+            }
+        }
+    });
+    quote! {
+        #(#impls)*
+        #of_paths
+    }
 }
 
 /// A name for a type parameter of a method's own: `base`, numbered where the item writes that
@@ -3548,7 +3858,7 @@ fn walks_itself(ty: &Type, depth: usize) -> bool {
         return true;
     }
     match declared(&last.ident.unraw().to_string()) {
-        Some(Declared::Model) => true,
+        Some(Declared::Model | Declared::OneValue) => true,
         Some(Declared::Alias(aliased_as)) if depth < 8 => syn::parse_str::<Type>(&aliased_as)
             .is_ok_and(|aliased| walks_itself(&aliased, depth.saturating_add(1))),
         Some(Declared::Alias(_)) | None => false,

@@ -53,6 +53,8 @@ use super::{
 
 use syn::spanned::Spanned as _;
 
+#[cfg(feature = "serde")]
+use crate::utils::{Declared, declared};
 use crate::utils::{is_recorded_untagged_enum, record_untagged_enum};
 
 /// The variants of [`rendered_discriminated_union`]'s enum, in the order they are declared.
@@ -177,6 +179,36 @@ const DECODE_WITH_STRUCT_SHAPES: [(&str, &str); 11] = [
         "decode_with, default_types(T = String)",
         "#[serde(transparent)] pub struct DecodeSleeve<T> { pub inner: T }",
     ),
+];
+
+/// What `mongodb` adds for a flagged type's typed paths: the struct of them in its module, and on
+/// the type the const that holds them and the function that builds them.
+#[cfg(feature = "serde")]
+const TYPED_PATHS: [&str; 3] = [
+    "pub struct MongoFields <",
+    "pub const MONGO_FIELDS :",
+    "pub const fn mongo_fields_under <",
+];
+
+/// What `mongodb` adds for a flagged type's operations: in its module the error they fail with
+/// and the read they answer, and on the type the reads and the count, the writes, and the read
+/// and the write of one stored row they share.
+#[cfg(feature = "serde")]
+const OPERATIONS: [&str; 14] = [
+    "pub enum OperationError {",
+    "pub struct Read < 'c , T , O > {",
+    "pub fn find_one <",
+    "pub fn find_one_with < 'c ,",
+    "pub fn find <",
+    "pub fn find_with < 'c ,",
+    "pub fn count <",
+    "pub fn insert_one < 'c > (",
+    "pub async fn update_one <",
+    "pub async fn update_many <",
+    "pub async fn delete_one <",
+    "pub async fn delete_many <",
+    "fn mongo_read_row (",
+    "fn mongo_written_row (",
 ];
 
 /// One enum per form serde writes an enum in, then one per form whose variants carry an alias or
@@ -6112,11 +6144,13 @@ fn decode_with_is_generated_on_every_enum_form_serde_writes() {
         );
         for emitted in [
             "pub fn from_value_with < F > (",
+            "pub fn from_value_piped (",
             "fn decode_with_value_report (",
             "pub fn decode_with_value_issues < I > (",
             "pub fn decode_with_value_named (",
             "pub fn decode_with_value_fields < 'a , I > (",
             "pub enum Issue < V > {",
+            "pub enum Resolution {",
             "pub fn value_leaf < 'a , T , I , R , W > (",
         ] {
             assert!(
@@ -6130,6 +6164,11 @@ fn decode_with_is_generated_on_every_enum_form_serde_writes() {
             "for {source}, got: {expanded}"
         );
         assert_eq!(
+            expanded.contains("pub fn from_bson_piped ("),
+            cfg!(feature = "bson"),
+            "for {source}, got: {expanded}"
+        );
+        assert_eq!(
             expanded.contains("pub fn decode_with_bson_fields < 'a , I > ("),
             cfg!(feature = "bson"),
             "for {source}, got: {expanded}"
@@ -6139,6 +6178,13 @@ fn decode_with_is_generated_on_every_enum_form_serde_writes() {
             cfg!(feature = "bson"),
             "for {source}, got: {expanded}"
         );
+        for under_mongodb in TYPED_PATHS.iter().chain(&OPERATIONS) {
+            assert_eq!(
+                expanded.contains(under_mongodb),
+                cfg!(feature = "mongodb"),
+                "for {source} and `{under_mongodb}`, got: {expanded}"
+            );
+        }
         assert_eq!(
             expanded.matches("_schema {").count(),
             1,
@@ -6189,11 +6235,13 @@ fn decode_with_is_generated_on_every_struct_shape_serde_writes() {
         );
         for emitted in [
             "pub fn from_value_with < F > (",
+            "pub fn from_value_piped (",
             "fn decode_with_value_report (",
             "pub fn decode_with_value_issues < I > (",
             "pub fn decode_with_value_named (",
             "pub fn decode_with_value_fields < 'a , I > (",
             "pub enum Issue < V > {",
+            "pub enum Resolution {",
             "pub fn value_leaf < 'a , T , I , R , W > (",
         ] {
             assert!(
@@ -6207,6 +6255,11 @@ fn decode_with_is_generated_on_every_struct_shape_serde_writes() {
             "for {source}, got: {expanded}"
         );
         assert_eq!(
+            expanded.contains("pub fn from_bson_piped ("),
+            cfg!(feature = "bson"),
+            "for {source}, got: {expanded}"
+        );
+        assert_eq!(
             expanded.contains("pub fn decode_with_bson_named ("),
             cfg!(feature = "bson"),
             "for {source}, got: {expanded}"
@@ -6215,6 +6268,119 @@ fn decode_with_is_generated_on_every_struct_shape_serde_writes() {
             expanded.contains("pub fn decode_with_bson_fields < 'a , I > ("),
             cfg!(feature = "bson"),
             "for {source}, got: {expanded}"
+        );
+        for under_mongodb in TYPED_PATHS.iter().chain(&OPERATIONS) {
+            assert_eq!(
+                expanded.contains(under_mongodb),
+                cfg!(feature = "mongodb"),
+                "for {source} and `{under_mongodb}`, got: {expanded}"
+            );
+        }
+    }
+}
+
+/// The typed paths and the operations come with the flag and with nothing else: in every build,
+/// each shape and form the flag is generated on expands with none of them once the flag is taken
+/// off it.
+#[cfg(feature = "serde")]
+#[test]
+fn a_type_without_decode_with_gets_no_typed_path_and_no_operation() {
+    for (args, source) in DECODE_WITH_STRUCT_SHAPES
+        .iter()
+        .chain(&DECODE_WITH_ENUM_FORMS)
+    {
+        let unflagged = args
+            .trim_start_matches("decode_with")
+            .trim_start_matches(", ");
+        let expanded = expansion_under(unflagged, source);
+        for added in [
+            "MongoFields",
+            "MONGO_FIELDS",
+            "mongo_fields_under",
+            "OperationError",
+            "pub struct Read <",
+            "find_one",
+            "pub fn find <",
+            "find_with",
+            "pub fn count <",
+            "insert_one",
+            "update_one",
+            "update_many",
+            "delete_one",
+            "delete_many",
+            "mongo_read_row",
+            "mongo_written_row",
+        ] {
+            assert!(
+                !expanded.contains(added),
+                "for {source}, found `{added}` in: {expanded}"
+            );
+        }
+    }
+}
+
+/// An item is recorded ahead of the shape it is dispatched to with whether serde writes it as one
+/// value, in every build that reads a value, flagged or not.
+#[cfg(feature = "serde")]
+#[test]
+fn an_item_is_recorded_as_one_value_where_serde_writes_it_as_one() {
+    for (source, one_value) in [
+        (
+            "#[serde(transparent)] pub struct SeenBrand(pub String);",
+            true,
+        ),
+        ("pub struct SeenSlot(pub u32);", true),
+        ("pub struct SeenUnit;", true),
+        ("pub enum SeenPlain { Draft, Paid }", true),
+        ("pub struct SeenKeyed { pub held: String }", false),
+        ("pub struct SeenPair(pub u32, pub u32);", false),
+        (
+            "#[serde(tag = \"kind\")] pub enum SeenTagged { Draft, Paid }",
+            false,
+        ),
+    ] {
+        let item: syn::Item = syn::parse_str(source).unwrap();
+        let name = super::item_schema_ident(&item).unwrap().to_string();
+        let _expanded = expansion_under("", source);
+        assert_eq!(
+            matches!(declared(&name), Some(Declared::OneValue)),
+            one_value,
+            "for {source}"
+        );
+        assert_eq!(
+            matches!(declared(&name), Some(Declared::Model)),
+            !one_value,
+            "for {source}"
+        );
+    }
+}
+
+/// What the registry holds of a type declared above reaches the typed paths of a type that holds
+/// it: one written as one value is held with its path written out and listed as plain values,
+/// and one written under keys of its own is asked for its paths in both places.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_type_declared_above_is_held_by_how_serde_writes_it() {
+    let _brand = expansion_under(
+        "decode_with",
+        "#[serde(transparent)] pub struct HeldBrand(pub String);",
+    );
+    let _keyed = expansion_under("decode_with", "pub struct HeldKeyed { pub held: String }");
+    let expanded = expansion_under(
+        "decode_with",
+        "pub struct HeldBy { pub brand: HeldBrand, pub brands: Vec<HeldBrand>, \
+         pub keyed: HeldKeyed, pub keyeds: Vec<HeldKeyed> }",
+    );
+    for emitted in [
+        "pub brand : self :: Model < Root , super :: HeldBrand , super :: held_brand_schema :: MongoFields \
+         < Root , super :: held_brand_schema :: Field < Root , super :: HeldBrand > > >",
+        "pub brands : self :: ListField < Root , super :: HeldBrand >",
+        "pub keyed : self :: Model < Root , super :: HeldKeyed , super :: held_keyed_schema :: MongoFields < Root > >",
+        "pub keyeds : self :: ModelList < Root , super :: HeldKeyed , super :: held_keyed_schema :: MongoFields < Root > >",
+    ] {
+        assert!(
+            expanded.contains(emitted),
+            "missing `{emitted}`, got: {expanded}"
         );
     }
 }
@@ -6494,6 +6660,8 @@ fn an_item_without_decode_with_expands_as_it_did() {
 
 /// The flag written alone and written `true` generate the same thing, in every build that reads
 /// serde's attributes: the entry point, the walker, and the callback's types in the type's module.
+/// The query types, the error the operations fail with and the read they answer are in that
+/// module under `mongodb`, and in no other build.
 #[cfg(feature = "serde")]
 #[test]
 fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
@@ -6503,6 +6671,7 @@ fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
     for emitted in [
         "pub mod decode_flagged_schema {",
         "pub fn from_value_with < F > (",
+        "pub fn from_value_piped (",
         "fn decode_with_value_report (",
         "pub fn decode_with_value_issues < I > (",
         "pub fn decode_with_value_named (",
@@ -6512,6 +6681,9 @@ fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
         "pub enum Expected {",
         "pub enum Issue < V > {",
         "pub enum Verdict {",
+        "pub enum Resolution {",
+        "pub type Resolver < 'r , D , V > =",
+        "pub fn unsettled < D , V : :: core :: clone :: Clone > (",
         "pub struct Unrecovered < V > {",
         "pub type ExpectedToken =",
         "pub type IssueFromParts < V , I > =",
@@ -6521,6 +6693,27 @@ fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
         assert!(
             flagged.contains(emitted),
             "missing `{emitted}`, got: {flagged}"
+        );
+    }
+    for under_mongodb in [
+        "pub enum OperationError {",
+        "pub struct Read < 'c , T , O > {",
+        "pub type WriteError =",
+        "pub struct MongoPath {",
+        "pub struct Filter < Root > {",
+        "pub struct Update < Root > {",
+        "pub struct Field < Root , V > {",
+        "pub struct OptionalField < Root , V > {",
+        "pub struct Element < V > {",
+        "pub struct ListField < Root , V > {",
+        "pub struct Model < Root , M , F > {",
+        "pub struct OptionalModel < Root , M , F > {",
+        "pub struct ModelList < Root , M , F > {",
+    ] {
+        assert_eq!(
+            flagged.contains(under_mongodb),
+            cfg!(feature = "mongodb"),
+            "for `{under_mongodb}`, got: {flagged}"
         );
     }
 }
@@ -6575,9 +6768,34 @@ fn what_decode_with_emits_is_written_for_the_lints_a_consumer_denies() {
             "pub enum Expected {",
             "pub enum Issue < V > {",
             "pub enum Verdict {",
+            "pub enum Resolution {",
             "pub struct Unrecovered < V > {",
             "pub struct Asked {",
             "pub struct TakenProbe < 'asked > (",
+            #[cfg(feature = "mongodb")]
+            "pub enum OperationError {",
+            #[cfg(feature = "mongodb")]
+            "pub struct Read < 'c , T , O > {",
+            #[cfg(feature = "mongodb")]
+            "pub struct MongoPath {",
+            #[cfg(feature = "mongodb")]
+            "pub struct Filter < Root > {",
+            #[cfg(feature = "mongodb")]
+            "pub struct Update < Root > {",
+            #[cfg(feature = "mongodb")]
+            "pub struct Field < Root , V > {",
+            #[cfg(feature = "mongodb")]
+            "pub struct OptionalField < Root , V > {",
+            #[cfg(feature = "mongodb")]
+            "pub struct Element < V > {",
+            #[cfg(feature = "mongodb")]
+            "pub struct ListField < Root , V > {",
+            #[cfg(feature = "mongodb")]
+            "pub struct Model < Root , M , F > {",
+            #[cfg(feature = "mongodb")]
+            "pub struct OptionalModel < Root , M , F > {",
+            #[cfg(feature = "mongodb")]
+            "pub struct ModelList < Root , M , F > {",
         ] {
             assert!(
                 flagged.contains(&format!("# [non_exhaustive] {declared}")),

@@ -1,0 +1,75 @@
+[package]
+name = "tixschema-bson3-tests"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# A root of its own: its driver is built for bson 3, and the root package's for bson 2. In one
+# workspace Cargo would build one driver for both.
+[workspace]
+
+[features]
+# One for one with tixschema's own, under the same names: the shared test sources read
+# `cfg(feature = "...")`, and this package is where they read it from.
+default = ["web"]
+
+web = ["tixschema/web", "serde", "zod", "jsonschema", "typescript"]
+mobile = ["tixschema/mobile", "serde", "dart", "swift", "kotlin"]
+mongo = ["tixschema/mongo", "mongodb", "chrono"]
+
+serde = ["tixschema/serde"]
+zod = ["tixschema/zod"]
+jsonschema = ["tixschema/jsonschema"]
+mongodb = ["tixschema/mongodb", "bson"]
+bson = ["tixschema/bson", "serde"]
+typescript = ["tixschema/typescript"]
+chrono = ["tixschema/chrono"]
+dart = ["tixschema/dart"]
+swift = ["tixschema/swift"]
+kotlin = ["tixschema/kotlin"]
+
+[dev-dependencies]
+tixschema = { path = "..", default-features = false }
+# `bson-3` in place of the driver's default `compat-3-0-0`, which turns `bson-2` on: the driver's
+# `Document` is then the one this `bson` declares. `chrono-0_4` is the feature its hook storing a
+# chrono date as a BSON date sits behind.
+bson = { version = "3.1", features = ["serde", "chrono-0_4"] }
+mongodb = { version = "3.9", default-features = false, features = ["bson-3", "compat-3-3-0", "rustls-tls", "dns-resolver"] }
+# As tixschema's own manifest lists them.
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = "1"
+chrono = { version = ">=0.4.40", features = ["serde"] }
+regex = ">=1.10"
+tokio = { version = ">=1.53.1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
+
+# tixschema's own table, entry for entry: the shared sources are linted at one level wherever they
+# are compiled. `tests/mirrored_manifest_tests.rs` holds the two tables together.
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+restriction = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+missing_trait_methods = "allow"
+blanket_clippy_restriction_lints = "allow"
+implicit_return = "allow"
+pub_with_shorthand = "allow"
+module_name_repetitions = "allow"
+question_mark_used = "allow"
+self_named_module_files = "allow"
+separated_literal_suffix = "allow"
+single_call_fn = "allow"
+print_stderr = "allow"
+indexing_slicing = "allow"
+arithmetic_side_effects = "allow"
+string_slice = "allow"
+let_underscore_must_use = "allow"
+missing_docs_in_private_items = "allow"
+missing_inline_in_public_items = "allow"
+as_conversions = "allow"
+unwrap_used = "allow"
+pattern_type_mismatch = "allow"
+min_ident_chars = "allow"
+redundant_test_prefix = "allow"
+integer_division = "allow"
+integer_division_remainder_used = "allow"
+implicit_hasher = "allow"

@@ -5,6 +5,12 @@ kotlinx_serialization_version := "1.11.0"
 kotlinx_coroutines_version := "1.11.0"
 kotlin_libs := env("TIXSCHEMA_KOTLIN_LIBS", home_directory() / ".local/share/tixschema/kotlin-libs")
 
+# `bson3/` is a package of its own, which builds the BSON suite against version 3 of the `bson`
+# library. Each recipe that tests, lints, checks, formats or cleans this package runs the same line
+# over `bson3/Cargo.toml`. The exceptions: `typecheck-ts` and `test-emitted` name test binaries
+# only this package holds, and `docs`, `bench` and the two coverage recipes have nothing to read
+# in `bson3/`, whose library is empty.
+
 # Default recipe - runs comprehensive tests
 default: test
 
@@ -20,12 +26,14 @@ install-tools:
 test:
     @echo "Testing all feature combinations..."
     cargo hack test --feature-powerset --exclude-features web,mobile,mongo
+    cargo hack test --manifest-path bson3/Cargo.toml --feature-powerset --exclude-features web,mobile,mongo
     @echo "✅ All feature combinations passed!"
 
 # Test all combinations with verbose output
 test-verbose:
     @echo "Testing all feature combinations (verbose)..."
     cargo hack test --feature-powerset --exclude-features web,mobile,mongo --verbose
+    cargo hack test --manifest-path bson3/Cargo.toml --feature-powerset --exclude-features web,mobile,mongo --verbose
     @echo "✅ All feature combinations passed!"
 
 # Test the powerset of the feature sets (`web`, `mobile`, `mongo`), plus the default set. Every
@@ -34,6 +42,7 @@ test-verbose:
 test-sets:
     @echo "Testing every combination of the feature sets..."
     cargo hack test --feature-powerset --include-features web,mobile,mongo
+    cargo hack test --manifest-path bson3/Cargo.toml --feature-powerset --include-features web,mobile,mongo
     @echo "✅ All feature-set combinations passed!"
 
 # Test specific feature combinations manually
@@ -46,18 +55,27 @@ test-named-features:
     cargo test --no-default-features --features "serde,zod"
     cargo test --no-default-features --features "serde,zod,mongodb"
     cargo test --all-features
+    cargo test --manifest-path bson3/Cargo.toml --no-default-features
+    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "zod"
+    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "typescript"
+    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "typescript,zod"
+    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "serde,zod"
+    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "serde,zod,mongodb"
+    cargo test --manifest-path bson3/Cargo.toml --all-features
     @echo "✅ Key feature combinations passed!"
 
 # Test with default features
 test-default:
     @echo "Testing with default features..."
     cargo test
+    cargo test --manifest-path bson3/Cargo.toml
     @echo "✅ Default features test passed!"
 
 # Test with no features (minimal build)
 test-minimal:
     @echo "Testing with no features..."
     cargo test --no-default-features
+    cargo test --manifest-path bson3/Cargo.toml --no-default-features
     @echo "✅ Minimal test passed!"
 
 # Test specific feature combinations individually
@@ -72,29 +90,43 @@ test-combinations:
     cargo test --no-default-features --features "serde,typescript"
     cargo test --no-default-features --features "zod,typescript"
     cargo test --no-default-features --features "serde,zod,typescript"
+    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "serde"
+    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "zod"
+    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "jsonschema"
+    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "mongodb"
+    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "typescript"
+    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "serde,zod"
+    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "serde,typescript"
+    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "zod,typescript"
+    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "serde,zod,typescript"
     @echo "✅ Individual combinations passed!"
 
 # Quick test - just run default tests
 quick:
     @echo "Quick test with default features..."
     cargo test
+    cargo test --manifest-path bson3/Cargo.toml
 
 # Lint Rust (clippy + fmt check). Lint levels are configured in Cargo.toml [lints.clippy].
 lint:
     cargo clippy --all-targets -- -D warnings
+    cargo clippy --manifest-path bson3/Cargo.toml --all-targets -- -D warnings
     cargo fmt --check
+    cargo fmt --manifest-path bson3/Cargo.toml --check
 
 # Lint every feature combination (clippy over the full feature powerset). Fails on any
 # warning in any toggle, including feature-gated test code that `lint` (default features) misses.
 lint-all:
     @echo "Linting all feature combinations..."
     cargo hack clippy --feature-powerset --exclude-features web,mobile,mongo --all-targets -- -D warnings
+    cargo hack clippy --manifest-path bson3/Cargo.toml --feature-powerset --exclude-features web,mobile,mongo --all-targets -- -D warnings
     @echo "✅ All feature combinations lint passed!"
 
 # Lint the powerset of the feature sets, the counterpart of `test-sets`; what CI runs.
 lint-sets:
     @echo "Linting every combination of the feature sets..."
     cargo hack clippy --feature-powerset --include-features web,mobile,mongo --all-targets -- -D warnings
+    cargo hack clippy --manifest-path bson3/Cargo.toml --feature-powerset --include-features web,mobile,mongo --all-targets -- -D warnings
     @echo "✅ All feature-set combinations lint passed!"
 
 # Type-check the emitted TypeScript bundle with a real compiler, in the build that publishes the
@@ -182,10 +214,25 @@ test-emitted:
     TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" TIXSCHEMA_DART="$(command -v "${TIXSCHEMA_DART:-dart}")" TIXSCHEMA_SWIFT="$(command -v "${TIXSCHEMA_SWIFT:-swift}")" TIXSCHEMA_KOTLIN_LIBS="{{kotlin_libs}}" TIXSCHEMA_KOTLINC="$(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}")" cargo test --all-features --test service_schema_emitted_client_tests run_reserved
     @echo "✅ The emitted clients build the URLs they claim to!"
 
+# Run the generated MongoDB operations against the server TIXSCHEMA_MONGODB_URI names, under both
+# bson majors; refuses to stand down.
+#
+# Deliberately outside `all` and `ci`: no MongoDB server comes with a fresh clone or with the CI
+# runner, and the live checks inside `cargo test` stand down when the variable names none, saying
+# so on stderr. Set, a value that is no address or a server that does not answer fails the check.
+test-mongodb:
+    @test -n "${TIXSCHEMA_MONGODB_URI:-}" || { echo "No MongoDB server: set TIXSCHEMA_MONGODB_URI to one's address, as in mongodb://127.0.0.1:27017." >&2; exit 1; }
+    @echo "Running the operations against the server TIXSCHEMA_MONGODB_URI names, bson 2..."
+    cargo test --features mongo --test mongodb_operation_bson2_tests -- --nocapture --test-threads=1
+    @echo "Running the operations against the server TIXSCHEMA_MONGODB_URI names, bson 3..."
+    cargo test --manifest-path bson3/Cargo.toml --features mongo --test mongodb_operation_bson3_tests -- --nocapture --test-threads=1
+    @echo "✅ The operations ran against a real collection under both bson majors!"
+
 # Check code without running tests
 check:
     @echo "Checking code..."
     cargo check
+    cargo check --manifest-path bson3/Cargo.toml
     just lint
     @echo "✅ Code check passed!"
 
@@ -193,18 +240,21 @@ check:
 check-all:
     @echo "Checking all feature combinations..."
     cargo hack check --feature-powerset
+    cargo hack check --manifest-path bson3/Cargo.toml --feature-powerset
     @echo "✅ All feature combinations check passed!"
 
 # Format code
 fmt:
     @echo "Formatting code..."
     cargo fmt
+    cargo fmt --manifest-path bson3/Cargo.toml
     @echo "✅ Code formatted!"
 
 # Clean build artifacts
 clean:
     @echo "Cleaning build artifacts..."
     cargo clean
+    cargo clean --manifest-path bson3/Cargo.toml
     @echo "✅ Build artifacts cleaned!"
 
 # Full pipeline (standardized `all` entry point across tixena repos): lints and key feature
@@ -221,6 +271,7 @@ all-powerset: lint lint-all test
 # chrono, mongodb) the default-features `lint` misses, without the powerset's build per combination.
 lint-all-features:
     cargo clippy --all-targets --all-features -- -D warnings
+    cargo clippy --manifest-path bson3/Cargo.toml --all-targets --all-features -- -D warnings
 
 # Full CI pipeline - what CI would run
 ci: clean check-all lint-all test fmt
@@ -241,6 +292,7 @@ docs-open: docs
 test-name TEST_NAME:
     @echo "Running specific test: {{TEST_NAME}}"
     cargo test {{TEST_NAME}}
+    cargo test --manifest-path bson3/Cargo.toml {{TEST_NAME}}
 
 # Generate code coverage report (requires cargo-llvm-cov)
 test-coverage:

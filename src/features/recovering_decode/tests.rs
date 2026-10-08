@@ -50,6 +50,23 @@ const FLATTENING: &str = "pub struct Entry { #[serde(flatten)] pub audit: Audit,
 const FLATTENING_A_PARAMETER: &str =
     "pub struct Envelope<T> { #[serde(flatten)] pub body: T, pub id: String }";
 
+/// What `mongodb` adds to every type beside its BSON entry points, in the order written: the
+/// reads and the count, the writes, and the read and the write of one stored row they share.
+const OPERATIONS: [&str; 12] = [
+    "find_one",
+    "find_one_with",
+    "find",
+    "find_with",
+    "count",
+    "insert_one",
+    "update_one",
+    "update_many",
+    "delete_one",
+    "delete_many",
+    "mongo_read_row",
+    "mongo_written_row",
+];
+
 /// The enum emitter, run as it runs beside model types declared above the enum: every type the
 /// item names is taken for one, so its walker is called as it stands.
 fn enum_recovering_decode(item: &syn::ItemEnum) -> RecoveringDecode {
@@ -102,13 +119,18 @@ fn enum_bson_of(source: &str) -> String {
     bson.to_owned()
 }
 
-/// The statements `decode_with_value_fields` runs for `source`, as text.
+/// The statements `decode_with_value_fields` runs for `source`, as text, to the end of the `impl`
+/// with the typed paths `mongodb` writes after the walkers taken out of it.
 fn fields_walk_of(source: &str) -> String {
     let emitted = type_impl_of(source);
     let (_, walk) = emitted
         .split_once("pub fn decode_with_value_fields")
         .unwrap();
-    walk.to_owned()
+    walk.split_once("# [doc = r\" The typed MongoDB paths of this type")
+        .map_or_else(
+            || walk.to_owned(),
+            |(walkers, _paths)| format!("{walkers}}}"),
+        )
 }
 
 /// The statements `decode_with_value_fields` runs for `source`, as text, up to the BSON entry
@@ -148,8 +170,8 @@ fn emission_of(source: &str) -> String {
     format!("{} {}", added.schema_module, added.type_impl)
 }
 
-/// The `impl`s the flag adds to `source`: each one's header as text, and its methods in the order
-/// written.
+/// The `impl`s the flag adds to `source`: each one's header as text, and its consts and methods
+/// in the order written.
 fn added_impls(source: &str) -> Vec<(String, Vec<String>)> {
     let item: syn::ItemStruct = syn::parse_str(source).unwrap();
     impls_in(struct_recovering_decode(&item).type_impl)
@@ -161,7 +183,8 @@ fn added_enum_impls(source: &str) -> Vec<(String, Vec<String>)> {
     impls_in(enum_recovering_decode(&item).type_impl)
 }
 
-/// Every `impl` among `type_impl`: its header as text, and its methods in the order written.
+/// Every `impl` among `type_impl`: its header as text, and its consts and methods in the order
+/// written.
 fn impls_in(type_impl: proc_macro2::TokenStream) -> Vec<(String, Vec<String>)> {
     let added: syn::File = syn::parse2(type_impl).unwrap();
     let impls: Vec<(String, Vec<String>)> = added
@@ -176,17 +199,7 @@ fn impls_in(type_impl: proc_macro2::TokenStream) -> Vec<(String, Vec<String>)> {
                 &block.self_ty,
                 &block.generics.where_clause,
             );
-            let methods: Vec<String> = block
-                .items
-                .iter()
-                .filter_map(|member| {
-                    if let syn::ImplItem::Fn(method) = member {
-                        Some(method.sig.ident.to_string())
-                    } else {
-                        None
-                    }
-                })
-                .collect();
+            let methods: Vec<String> = block.items.iter().filter_map(member_name).collect();
             assert_eq!(methods.len(), block.items.len());
             Some((
                 quote::quote!(impl #generics #self_ty #where_clause).to_string(),
@@ -196,6 +209,17 @@ fn impls_in(type_impl: proc_macro2::TokenStream) -> Vec<(String, Vec<String>)> {
         .collect();
     assert_eq!(impls.len(), added.items.len());
     impls
+}
+
+/// The name of a const or a method of an `impl`, and `None` for any other member of one.
+fn member_name(member: &syn::ImplItem) -> Option<String> {
+    if let syn::ImplItem::Fn(method) = member {
+        Some(method.sig.ident.to_string())
+    } else if let syn::ImplItem::Const(constant) = member {
+        Some(constant.ident.to_string())
+    } else {
+        None
+    }
 }
 
 /// The names the methods among `type_impl` give type parameters of their own, each once, sorted.
@@ -227,15 +251,71 @@ fn own_type_parameters(type_impl: proc_macro2::TokenStream) -> Vec<String> {
     named
 }
 
-/// The methods one source adds to every type, in the order written.
+/// What the typed paths add to every type, in the order written: under `mongodb`, the const that
+/// holds them and the function that builds them, and nothing in a build without it.
+fn paths_members() -> Vec<String> {
+    if cfg!(feature = "mongodb") {
+        vec!["MONGO_FIELDS".to_owned(), "mongo_fields_under".to_owned()]
+    } else {
+        Vec::new()
+    }
+}
+
+/// What the typed paths of the struct `source` declares add to its schema module.
+#[cfg(all(
+    feature = "mongodb",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn paths_module_items(source: &str) -> proc_macro2::TokenStream {
+    let item: syn::ItemStruct = syn::parse_str(source).unwrap();
+    super::fields::struct_paths(&item, &[]).module_items
+}
+
+/// A build without `mongodb` writes no typed path.
+#[cfg(all(
+    not(feature = "mongodb"),
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn paths_module_items(_source: &str) -> proc_macro2::TokenStream {
+    proc_macro2::TokenStream::new()
+}
+
+/// The operations the flag adds to a struct of named fields, each as its visibility and its
+/// signature, in the order written.
+#[cfg(feature = "mongodb")]
+fn operation_signatures() -> Vec<String> {
+    let item: syn::ItemStruct = syn::parse_str("pub struct Named { pub title: String }").unwrap();
+    let added: syn::ItemImpl = syn::parse2(struct_recovering_decode(&item).type_impl).unwrap();
+    added
+        .items
+        .iter()
+        .filter_map(|added_item| {
+            if let syn::ImplItem::Fn(method) = added_item
+                && OPERATIONS.contains(&method.sig.ident.to_string().as_str())
+            {
+                let (visibility, signature) = (&method.vis, &method.sig);
+                Some(quote::quote!(#visibility #signature).to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// The methods one source adds to every type, in the order written. Under `mongodb` the
+/// operations sit beside the BSON entry points.
 fn methods_of(stem: &str) -> Vec<String> {
-    vec![
-        format!("from_{stem}_with"),
+    let mut named = vec![format!("from_{stem}_with"), format!("from_{stem}_piped")];
+    if stem == "bson" && cfg!(feature = "mongodb") {
+        named.extend(OPERATIONS.map(str::to_owned));
+    }
+    named.extend([
         format!("decode_with_{stem}_report"),
         format!("decode_with_{stem}_issues"),
         format!("decode_with_{stem}_named"),
         format!("decode_with_{stem}_fields"),
-    ]
+    ]);
+    named
 }
 
 /// Every token `tokens` is made of, in order, with each group opened and its delimiters left out.
@@ -333,46 +413,131 @@ fn path_methods() -> Vec<String> {
         .collect()
 }
 
-/// Every method the flag adds carries the flag's name, so none can meet one the type's author
-/// wrote. Each entry point is the one it is named for.
+/// Every token `tokens` is made of, in order, with each group opened between two parentheses,
+/// whatever its own delimiters.
+#[cfg(feature = "mongodb")]
+fn bounded_tokens(tokens: proc_macro2::TokenStream, bounded: &mut Vec<String>) {
+    for token in tokens {
+        if let proc_macro2::TokenTree::Group(group) = token {
+            bounded.push("(".to_owned());
+            bounded_tokens(group.stream(), bounded);
+            bounded.push(")".to_owned());
+        } else {
+            bounded.push(token.to_string());
+        }
+    }
+}
+
+/// The module or crate each path among `emitted` starts at, each once, sorted: a lowercase name
+/// ahead of `::` that no earlier segment of a path leads to.
+#[cfg(feature = "mongodb")]
+fn path_roots(emitted: proc_macro2::TokenStream) -> Vec<String> {
+    const KEYWORDS: [&str; 6] = ["as", "dyn", "impl", "let", "match", "mut"];
+    let mut leaves = Vec::new();
+    bounded_tokens(emitted, &mut leaves);
+    // Each `::` as one token. Of three colons in a row the first ends a name and its type apart.
+    let mut tokens: Vec<String> = Vec::new();
+    for leaf in leaves {
+        match (leaf.as_str(), tokens.last().map(String::as_str)) {
+            (":", Some(":")) => {
+                tokens.pop();
+                tokens.push("::".to_owned());
+            }
+            (":", Some("::")) => {
+                tokens.pop();
+                tokens.extend([":".to_owned(), "::".to_owned()]);
+            }
+            _ => tokens.push(leaf),
+        }
+    }
+    let named = |token: &str| {
+        token.starts_with(|first: char| first.is_alphabetic() || first == '_')
+            && !KEYWORDS.contains(&token)
+    };
+    let mut roots: Vec<String> = (0..tokens.len().saturating_sub(1))
+        .filter(|&at| {
+            let led = at > 0 && tokens[at - 1] == "::";
+            let continued = led && at > 1 && (named(&tokens[at - 2]) || tokens[at - 2] == ">");
+            named(&tokens[at])
+                && tokens[at].starts_with(|first: char| first.is_ascii_lowercase())
+                && tokens[at + 1] == "::"
+                && !continued
+        })
+        .map(|at| tokens[at].clone())
+        .collect();
+    roots.sort_unstable();
+    roots.dedup();
+    roots
+}
+
+/// The methods `added` declares in the inherent `impl` blocks of its types, each with the name of
+/// the type it is declared on, in the order written.
+#[cfg(feature = "mongodb")]
+fn query_methods(added: &syn::File) -> Vec<(String, &syn::ImplItemFn)> {
+    added
+        .items
+        .iter()
+        .filter_map(|item| {
+            if let syn::Item::Impl(block) = item
+                && block.trait_.is_none()
+                && let syn::Type::Path(own) = &*block.self_ty
+                && let Some(named) = own.path.segments.last()
+            {
+                Some((named.ident.to_string(), &block.items))
+            } else {
+                None
+            }
+        })
+        .flat_map(|(on, members)| {
+            members.iter().filter_map(move |member| {
+                if let syn::ImplItem::Fn(method) = member {
+                    Some((on.clone(), method))
+                } else {
+                    None
+                }
+            })
+        })
+        .collect()
+}
+
+/// Every const and method the flag adds carries the flag's name, so none can meet one the type's
+/// author wrote. Each entry point is the one it is named for, and so is each operation.
 #[test]
 fn every_added_method_but_the_entry_point_carries_the_flags_name() {
     let item: syn::ItemStruct =
         syn::parse_str("pub struct Named { pub title: String, pub versions: Vec<Version> }")
             .unwrap();
     let added: syn::ItemImpl = syn::parse2(struct_recovering_decode(&item).type_impl).unwrap();
-    let methods: Vec<String> = added
-        .items
-        .iter()
-        .filter_map(|added_item| {
-            if let syn::ImplItem::Fn(method) = added_item {
-                Some(method.sig.ident.to_string())
-            } else {
-                None
-            }
-        })
-        .collect();
+    let methods: Vec<String> = added.items.iter().filter_map(member_name).collect();
     assert_eq!(methods.len(), added.items.len());
     let mut named = vec![
         "from_value_with",
+        "from_value_piped",
         "decode_with_value_report",
         "decode_with_value_issues",
         "decode_with_value_named",
         "decode_with_value_fields",
     ];
     if cfg!(feature = "bson") {
+        named.extend(["from_bson_with", "from_bson_piped"]);
+        if cfg!(feature = "mongodb") {
+            named.extend(OPERATIONS);
+        }
         named.extend([
-            "from_bson_with",
             "decode_with_bson_report",
             "decode_with_bson_issues",
             "decode_with_bson_named",
             "decode_with_bson_fields",
         ]);
     }
+    // The typed paths carry the name of the feature that adds them.
+    if cfg!(feature = "mongodb") {
+        named.extend(["MONGO_FIELDS", "mongo_fields_under"]);
+    }
     assert_eq!(methods, named);
 }
 
-/// The BSON entry point and walker are written as their JSON twins are: a named type parameter
+/// The BSON entry points and walker are written as their JSON twins are: a named type parameter
 /// under a `where` clause, `core::result::Result` in full, and a report only the type calls.
 #[cfg(feature = "bson")]
 #[test]
@@ -400,6 +565,9 @@ fn the_bson_methods_carry_the_signatures_of_their_json_twins() {
              -> :: core :: result :: Result < Self , named_schema :: Unrecovered < bson :: Bson > > \
              where F : :: core :: ops :: FnOnce (& mut bson :: Document , & [named_schema :: Issue < bson :: Bson >]) \
              -> named_schema :: Verdict ,",
+            "pub fn from_bson_piped (document : bson :: Document , resolvers : & [named_schema :: \
+             Resolver < '_ , bson :: Document , bson :: Bson >] ,) -> :: core :: result :: Result < \
+             Self , named_schema :: Unrecovered < bson :: Bson > >",
             "fn decode_with_bson_report (whole : & bson :: Bson , refused : :: core :: option :: \
              Option < :: std :: string :: String >) -> :: std :: vec :: Vec < named_schema :: Issue < \
              bson :: Bson > >",
@@ -586,8 +754,117 @@ fn from_bson_with_copies_the_document_once_per_read_by_serde_and_its_report_copi
     }
 }
 
+/// A piped entry point opens with the read its callback twin opens with and closes with the read
+/// that twin makes after `Fixed`. Between the two it runs the pipe once, over the value the
+/// callback is handed, and refuses with what the pipe answers.
+#[test]
+fn a_piped_entry_point_makes_the_two_reads_of_its_callback_twin_around_the_pipe() {
+    let mut sources = vec![("value", "& mut value")];
+    if cfg!(feature = "bson") {
+        sources.push(("bson", "object"));
+    }
+    for (source, type_impl) in impls_of_every_shape() {
+        for (stem, raw) in &sources {
+            let with = body_of(type_impl.clone(), &format!("from_{stem}_with"));
+            let (first_read, decided) = with.split_once("match decide (").unwrap();
+            let (_verdicts, after_fixed) = decided.split_once(":: Verdict :: Fixed => { ").unwrap();
+            let second_read = after_fixed.strip_suffix(" } } }").unwrap();
+
+            let piped = body_of(type_impl.clone(), &format!("from_{stem}_piped"));
+            let (opened, piping) = piped.split_once("let left = ").unwrap();
+            let (pipe, closing) = piping.split_once("{ issues : left }) ; } ").unwrap();
+            assert_eq!(opened, first_read, "for {source}");
+            assert_eq!(
+                closing.strip_suffix(" }"),
+                Some(second_read),
+                "for {source}"
+            );
+            assert!(
+                pipe.contains(&format!(
+                    ":: unsettled ({raw} , & found , resolvers) ; if ! left . is_empty () {{ return"
+                )),
+                "for {source}, got: {pipe}"
+            );
+            assert_eq!(piped.matches("unsettled").count(), 1, "for {source}");
+        }
+    }
+}
+
+/// A resolver answers one issue with one of three states. The pipe takes its resolvers as trait
+/// objects, which a closure holding configuration is one of, and names the standard items it
+/// reads in full. A resolver is `Sync`: a read that waits for a row holds its resolvers while it
+/// waits, and can move to another thread only where they can be shared with one.
+#[test]
+fn the_schema_module_declares_what_a_resolver_answers_and_the_pipe_that_runs_them() {
+    let added: syn::File = syn::parse2(module_items()).unwrap();
+    let answers: Vec<(bool, Vec<String>)> = added
+        .items
+        .iter()
+        .filter_map(|item| {
+            if let syn::Item::Enum(declared) = item
+                && declared.ident == "Resolution"
+            {
+                Some((
+                    declared
+                        .attrs
+                        .iter()
+                        .any(|attribute| attribute.path().is_ident("non_exhaustive")),
+                    declared
+                        .variants
+                        .iter()
+                        .map(|variant| variant.ident.to_string())
+                        .collect(),
+                ))
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(
+        answers,
+        [(
+            true,
+            vec![
+                "Settled".to_owned(),
+                "Rejected".to_owned(),
+                "NotTouched".to_owned()
+            ]
+        )]
+    );
+    let written: Vec<String> = added
+        .items
+        .iter()
+        .filter_map(|item| {
+            if let syn::Item::Type(alias) = item
+                && alias.ident == "Resolver"
+            {
+                let (generics, aliased) = (&alias.generics, &alias.ty);
+                Some(quote::quote!(#generics = #aliased).to_string())
+            } else if let syn::Item::Fn(function) = item
+                && function.sig.ident == "unsettled"
+            {
+                let (visibility, signature) = (&function.vis, &function.sig);
+                Some(quote::quote!(#visibility #signature).to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(
+        written,
+        [
+            "< 'r , D , V > = & 'r (dyn :: core :: ops :: Fn (& mut D , & Issue < V >) -> \
+             Resolution + :: core :: marker :: Sync)",
+            "pub fn unsettled < D , V : :: core :: clone :: Clone > (raw : & mut D , issues : & \
+             [Issue < V >] , resolvers : & [Resolver < '_ , D , V >] ,) -> :: std :: vec :: Vec < \
+             Issue < V > >",
+        ]
+    );
+}
+
 /// The BSON items sit where the JSON ones do: the helpers inside the one `impl Path`, and the
-/// function a value is read through in the module, once.
+/// function a value is read through in the module, once. Under `mongodb` the query types add one
+/// function after them, which a path with no hook writes its values through.
 #[cfg(feature = "bson")]
 #[test]
 fn the_bson_items_are_emitted_beside_the_json_ones() {
@@ -615,6 +892,7 @@ fn the_bson_items_are_emitted_beside_the_json_ones() {
     assert_eq!(
         functions,
         [
+            "unsettled",
             "expected_from_tokens",
             "issue_from_parts",
             "value_leaf",
@@ -626,7 +904,818 @@ fn the_bson_items_are_emitted_beside_the_json_ones() {
             "value_remaining",
             "value_bound",
             "bson_bound",
+            #[cfg(feature = "mongodb")]
+            "write_plain",
         ]
+    );
+}
+
+/// The query types are in the module in a build with `mongodb` and in no other, each one
+/// `#[non_exhaustive]`, beside the alias of the error a value that cannot be written fails with.
+#[test]
+fn the_query_types_are_declared_under_mongodb_alone_and_none_is_exhaustive() {
+    let query_types = [
+        "MongoPath",
+        "Filter",
+        "Update",
+        "Field",
+        "OptionalField",
+        "Element",
+        "ListField",
+        "Model",
+        "OptionalModel",
+        "ModelList",
+    ];
+    let added: syn::File = syn::parse2(module_items()).unwrap();
+    let declared: Vec<(String, bool)> = added
+        .items
+        .iter()
+        .filter_map(|item| {
+            if let syn::Item::Struct(declared) = item
+                && query_types.contains(&declared.ident.to_string().as_str())
+            {
+                Some((
+                    declared.ident.to_string(),
+                    declared
+                        .attrs
+                        .iter()
+                        .any(|attribute| attribute.path().is_ident("non_exhaustive")),
+                ))
+            } else {
+                None
+            }
+        })
+        .collect();
+    let expected: Vec<(String, bool)> = if cfg!(feature = "mongodb") {
+        query_types
+            .iter()
+            .map(|named| ((*named).to_owned(), true))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    assert_eq!(declared, expected);
+    let aliased = added
+        .items
+        .iter()
+        .any(|item| matches!(item, syn::Item::Type(alias) if alias.ident == "WriteError"));
+    assert_eq!(aliased, cfg!(feature = "mongodb"));
+}
+
+/// Each query type has the operators of its kind and no other: a path every row holds compares
+/// and sets, one a row may leave out adds `$exists` and `$unset`, a list has the operators over
+/// its elements, and a nested model has the ones over its whole value.
+#[cfg(feature = "mongodb")]
+#[test]
+fn each_query_type_has_the_operators_of_its_kind() {
+    let added: syn::File = syn::parse2(module_items()).unwrap();
+    for (named, operators) in [
+        ("MongoPath", &["under", "at", "key"][..]),
+        ("Filter", &["raw", "and", "or", "negated", "into_document"]),
+        ("Update", &["raw", "and", "into_document"]),
+        (
+            "Field",
+            &[
+                "plain",
+                "hooked",
+                "segments",
+                "eq",
+                "ne",
+                "gt",
+                "gte",
+                "lt",
+                "lte",
+                "is_in",
+                "not_in",
+                "set",
+                "set_on_insert",
+                "regex",
+            ],
+        ),
+        ("OptionalField", &["plain", "hooked", "exists", "unset"]),
+        ("Element", &["eq", "ne", "gt", "gte", "lt", "lte"]),
+        (
+            "ListField",
+            &[
+                "plain",
+                "hooked",
+                "contains",
+                "contains_any",
+                "contains_none",
+                "size",
+                "element",
+                "elem_match",
+                "push",
+                "pull",
+                "set",
+                "set_on_insert",
+            ],
+        ),
+        (
+            "Model",
+            &[
+                "plain",
+                "eq",
+                "ne",
+                "is_in",
+                "not_in",
+                "set",
+                "set_on_insert",
+            ],
+        ),
+        ("OptionalModel", &["plain", "exists", "unset", "set"]),
+        (
+            "ModelList",
+            &["plain", "elem_match", "size", "push", "pull", "set"],
+        ),
+    ] {
+        let public: Vec<String> = query_methods(&added)
+            .into_iter()
+            .filter(|(on, method)| on == named && matches!(method.vis, syn::Visibility::Public(_)))
+            .map(|(_on, method)| method.sig.ident.to_string())
+            .collect();
+        assert_eq!(public, operators, "for {named}");
+    }
+}
+
+/// An operator that writes a value takes it by value, as the type its path is declared with, and
+/// answers the error a value that cannot be written fails with. One that writes none answers the
+/// filter or the update itself.
+#[cfg(feature = "mongodb")]
+#[test]
+fn an_operator_that_writes_a_value_takes_it_by_value_and_answers_a_write_error() {
+    let added: syn::File = syn::parse2(super::query::query_items()).unwrap();
+    for (on, method) in query_methods(&added) {
+        let signature = method.sig.to_token_stream().to_string();
+        let answered = method.sig.output.to_token_stream().to_string();
+        let writes = ["value : V", "value : M", "values : I"]
+            .iter()
+            .any(|taken| signature.contains(taken));
+        assert_eq!(
+            answered.ends_with(", WriteError >"),
+            writes,
+            "for {on}: {signature}"
+        );
+        assert!(
+            !signature.contains("value : &") && !signature.contains("values : &"),
+            "for {on}: {signature}"
+        );
+    }
+}
+
+/// A consumer denying clippy's `restriction` set denies it over the query types too: no function
+/// takes `impl Trait`, and every bound sits in a `where` clause on a named type parameter.
+#[cfg(feature = "mongodb")]
+#[test]
+fn every_bound_of_a_query_function_is_written_in_a_where_clause() {
+    let added: syn::File = syn::parse2(super::query::query_items()).unwrap();
+    let functions = added.items.iter().filter_map(|item| {
+        if let syn::Item::Fn(function) = item {
+            Some(&function.sig)
+        } else {
+            None
+        }
+    });
+    let methods = query_methods(&added);
+    for signature in functions.chain(methods.iter().map(|(_on, method)| &method.sig)) {
+        let written = signature.to_token_stream().to_string();
+        assert!(
+            signature.generics.params.iter().all(|parameter| matches!(
+                parameter,
+                syn::GenericParam::Type(named) if named.bounds.is_empty()
+            )),
+            "for {written}"
+        );
+        assert!(!written.contains("impl "), "for {written}");
+    }
+}
+
+/// A filter carries the rows it is over and an update the rows it changes, as two standard types,
+/// and every function that takes one asks for its marker: neither stands where the other is
+/// asked. A list of models asks a filter over its element's rows.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_filter_and_an_update_each_carry_a_marker_of_their_own() {
+    let emitted = super::query::query_items();
+    let packed: String = emitted.to_string().split_whitespace().collect();
+    for carried in [
+        "impl<Root>::core::convert::AsRef<::core::marker::PhantomData<Root>>forFilter<Root>",
+        "impl<Root>::core::convert::AsRef<::core::marker::PhantomData<fn(Root)->Root>>forUpdate<Root>",
+    ] {
+        assert!(packed.contains(carried), "missing `{carried}`");
+    }
+    assert_eq!(packed.matches("AsRef<").count(), 8);
+    let added: syn::File = syn::parse2(emitted).unwrap();
+    let asked: Vec<(String, String)> = query_methods(&added)
+        .into_iter()
+        .filter_map(|(on, method)| {
+            let bounds = method.sig.generics.where_clause.as_ref()?;
+            let bound = bounds.to_token_stream().to_string();
+            let (_taken, marker) =
+                bound.split_once("AsRef < :: core :: marker :: PhantomData <")?;
+            Some((
+                format!("{on}::{}", method.sig.ident),
+                marker.trim_matches([' ', ',', '>']).to_owned(),
+            ))
+        })
+        .collect();
+    let expected = [
+        ("Filter::joined", "Root"),
+        ("Filter::and", "Root"),
+        ("Filter::or", "Root"),
+        ("Update::and", "fn (Root) -> Root"),
+        ("ModelList::elem_match", "M"),
+        ("ModelList::pull", "M"),
+    ]
+    .map(|(function, marker)| (function.to_owned(), marker.to_owned()));
+    assert_eq!(asked, expected);
+}
+
+/// Of the `bson` library the query types name only what both of its major versions have: the
+/// serializer, a value with five of its members, and a document. No `doc!` is written.
+#[cfg(feature = "mongodb")]
+#[test]
+fn the_query_types_name_only_what_both_majors_of_the_bson_library_have() {
+    let written = super::query::query_items().to_string();
+    let named_after = |prefix: &str| {
+        let mut found: Vec<&str> = written
+            .split(prefix)
+            .skip(1)
+            .filter_map(|rest| {
+                rest.split(|read: char| !(read.is_ascii_alphanumeric() || read == '_'))
+                    .next()
+            })
+            .collect();
+        found.sort_unstable();
+        found.dedup();
+        found
+    };
+    assert_eq!(named_after("bson :: "), ["Bson", "Document", "Serializer"]);
+    assert_eq!(
+        named_after("bson :: Bson :: "),
+        ["Array", "Boolean", "Document", "Int64", "String"]
+    );
+    assert_eq!(named_after("bson :: Document :: "), ["new"]);
+    assert_eq!(named_after("bson :: Serializer :: "), ["new"]);
+    assert!(!written.contains("doc !"), "got: {written}");
+}
+
+/// `OperationError` is in the module in a build with `mongodb` and in no other: one of three
+/// failures, `#[non_exhaustive]`, an error through impls written out, with one conversion into it.
+#[test]
+fn the_operation_error_is_declared_under_mongodb_alone() {
+    let added: syn::File = syn::parse2(module_items()).unwrap();
+    let declared: Vec<(Vec<String>, Vec<String>)> = added
+        .items
+        .iter()
+        .filter_map(|item| {
+            if let syn::Item::Enum(declared) = item
+                && declared.ident == "OperationError"
+            {
+                Some((
+                    declared
+                        .attrs
+                        .iter()
+                        .filter(|attribute| !attribute.path().is_ident("doc"))
+                        .map(|attribute| attribute.meta.to_token_stream().to_string())
+                        .collect(),
+                    declared
+                        .variants
+                        .iter()
+                        .map(|variant| {
+                            let (named, held) = (&variant.ident, &variant.fields);
+                            quote::quote!(#named #held).to_string()
+                        })
+                        .collect(),
+                ))
+            } else {
+                None
+            }
+        })
+        .collect();
+    let implemented: Vec<String> = added
+        .items
+        .iter()
+        .filter_map(|item| {
+            if let syn::Item::Impl(block) = item
+                && block.self_ty == syn::parse_quote!(OperationError)
+            {
+                block
+                    .trait_
+                    .as_ref()
+                    .map(|(implemented, _for)| implemented.to_token_stream().to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+    if cfg!(feature = "mongodb") {
+        assert_eq!(
+            declared,
+            [(
+                vec!["derive (Debug)".to_owned(), "non_exhaustive".to_owned()],
+                vec![
+                    "Database (mongodb :: error :: Error)".to_owned(),
+                    "Unreadable { row : :: std :: string :: String , issues : :: std :: vec :: Vec \
+                     < Issue < bson :: Bson > > }"
+                        .to_owned(),
+                    "Unwritable (WriteError)".to_owned(),
+                ]
+            )]
+        );
+        assert_eq!(
+            implemented,
+            [
+                ":: core :: fmt :: Display",
+                ":: std :: error :: Error",
+                ":: core :: convert :: From < E >",
+            ]
+        );
+    } else {
+        assert!(declared.is_empty(), "got: {declared:?}");
+        assert!(implemented.is_empty(), "got: {implemented:?}");
+    }
+}
+
+/// Each failure is told in one sentence that ends with what failed, a row that does not read by
+/// its issues as a refused read lists them. The driver's error and the `bson` library's are each
+/// the source of the failure that holds it. The one conversion is from the error a typed filter
+/// or update fails with, named by a bound: an `impl` for the alias itself does not build beside
+/// the standard `From<T> for T`.
+#[cfg(feature = "mongodb")]
+#[test]
+fn the_operation_error_tells_each_failure_and_answers_its_source() {
+    let emitted = super::operations::error_items().to_string();
+    for written in [
+        "Self :: Database (refused) => write ! (f , \"MongoDB refused the operation or could not \
+         be reached: {refused}\") ,",
+        "Self :: Unreadable { row , issues } => { write ! (f , \"the row {row} does not read as \
+         expected: \") ? ; :: core :: fmt :: Display :: fmt (& Unrecovered { issues : issues . \
+         clone () } , f) }",
+        "Self :: Unwritable (refused) => write ! (f , \"a value could not be written as BSON: \
+         {refused}\") ,",
+        "fn source (& self) -> :: core :: option :: Option < & (dyn :: std :: error :: Error + \
+         'static) > { match self { Self :: Database (refused) => :: core :: option :: Option :: \
+         Some (refused) , Self :: Unreadable { .. } => :: core :: option :: Option :: None , Self \
+         :: Unwritable (refused) => :: core :: option :: Option :: Some (refused) , } }",
+        "impl < E > :: core :: convert :: From < E > for OperationError where E : :: serde :: ser \
+         :: Error , bson :: Serializer : :: serde :: Serializer < Error = E > , { fn from \
+         (refused : E) -> Self { Self :: Unwritable (refused) } }",
+    ] {
+        assert!(
+            emitted.contains(written),
+            "missing `{written}` in: {emitted}"
+        );
+    }
+    assert_eq!(emitted.matches("From <").count(), 1, "got: {emitted}");
+}
+
+/// A read and a count take the collection as one of documents, and as their filter any filter
+/// over the rows of the type, asked by the marker a filter carries in a `where` clause, so that
+/// an update does not stand there. None is `async`: each answers the read the module declares,
+/// over the type and what the read answers once awaited.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_read_and_a_count_take_any_filter_over_the_types_rows_and_answer_a_read() {
+    let filtered = "where F : :: core :: convert :: Into < bson :: Document > + :: core :: \
+                    convert :: AsRef < :: core :: marker :: PhantomData < Self > > ,";
+    let plain = |named: &str, answers: &str| {
+        format!(
+            "pub fn {named} < F > (collection : & mongodb :: Collection < bson :: Document > , \
+             filter : F ,) -> named_schema :: Read < '_ , Self , {answers} > {filtered}"
+        )
+    };
+    let resolved = |named: &str, answers: &str| {
+        format!(
+            "pub fn {named} < 'c , F > (collection : & 'c mongodb :: Collection < bson :: \
+             Document > , filter : F , resolvers : & 'c [named_schema :: Resolver < 'c , bson :: \
+             Document , bson :: Bson >] ,) -> named_schema :: Read < 'c , Self , {answers} > \
+             {filtered}"
+        )
+    };
+    let one = ":: core :: option :: Option < Self >";
+    let every = ":: std :: vec :: Vec < Self >";
+    assert_eq!(
+        operation_signatures()[..5],
+        [
+            plain("find_one", one),
+            resolved("find_one_with", one),
+            plain("find", every),
+            resolved("find_with", every),
+            plain("count", "u64"),
+        ]
+    );
+}
+
+/// A write answers what the driver's own method of its name answers, and fails with the type's
+/// own `OperationError`. An update is asked by the marker an update carries, under a second
+/// parameter, so the two arguments cannot change places. `insert_one` is no `async fn`: what it
+/// answers is a future that holds no borrow of the value, and says so in its type.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_write_answers_what_the_drivers_own_method_answers() {
+    let filtered = "F : :: core :: convert :: Into < bson :: Document > + :: core :: convert :: \
+                    AsRef < :: core :: marker :: PhantomData < Self > > ,";
+    let update = |named: &str| {
+        format!(
+            "pub async fn {named} < F , U > (collection : & mongodb :: Collection < bson :: \
+             Document > , filter : F , update : U ,) -> :: core :: result :: Result < mongodb :: \
+             results :: UpdateResult , named_schema :: OperationError > where {filtered} U : :: \
+             core :: convert :: Into < bson :: Document > + :: core :: convert :: AsRef < :: core \
+             :: marker :: PhantomData < fn (Self) -> Self > > ,"
+        )
+    };
+    let delete = |named: &str| {
+        format!(
+            "pub async fn {named} < F > (collection : & mongodb :: Collection < bson :: Document \
+             > , filter : F ,) -> :: core :: result :: Result < mongodb :: results :: \
+             DeleteResult , named_schema :: OperationError > where {filtered}"
+        )
+    };
+    assert_eq!(
+        operation_signatures()[5..],
+        [
+            "pub fn insert_one < 'c > (& self , collection : & 'c mongodb :: Collection < bson :: \
+             Document > ,) -> :: core :: pin :: Pin < :: std :: boxed :: Box < dyn :: core :: \
+             future :: Future < Output = :: core :: result :: Result < mongodb :: results :: \
+             InsertOneResult , named_schema :: OperationError > > + :: core :: marker :: Send + 'c \
+             > >"
+            .to_owned(),
+            update("update_one"),
+            update("update_many"),
+            delete("delete_one"),
+            delete("delete_many"),
+            "fn mongo_read_row (row : bson :: Document , resolvers : & [named_schema :: Resolver \
+             < '_ , bson :: Document , bson :: Bson >] ,) -> :: core :: result :: Result < Self , \
+             named_schema :: OperationError >"
+                .to_owned(),
+            "fn mongo_written_row (& self) -> :: core :: result :: Result < bson :: Document , \
+             named_schema :: OperationError >"
+                .to_owned(),
+        ]
+    );
+}
+
+/// Whatever the type's shape, a read with no resolvers is its twin with none, and each twin and
+/// the count build a `Read` over the filter as a document and the read of one stored row. That
+/// read takes the row's `_id` as text and goes through `from_bson_piped`: no operation reads a
+/// row with plain serde.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_read_is_built_over_the_read_of_one_stored_row() {
+    let filtered = ":: Read :: new (collection , :: core :: convert :: Into :: < bson :: Document \
+                    > :: into (filter) ,";
+    for (source, type_impl) in impls_of_every_shape() {
+        for (plain, twin) in [("find_one", "find_one_with"), ("find", "find_with")] {
+            assert_eq!(
+                body_of(type_impl.clone(), plain),
+                format!("{{ Self :: {twin} (collection , filter , & []) }}"),
+                "for {source}"
+            );
+            let built = body_of(type_impl.clone(), twin);
+            assert!(
+                built.contains(filtered)
+                    && built.ends_with(" resolvers , Self :: mongo_read_row) }"),
+                "for {source}, got: {built}"
+            );
+        }
+        let counted = body_of(type_impl.clone(), "count");
+        assert!(
+            counted.contains(filtered) && counted.ends_with(" & [] , Self :: mongo_read_row) }"),
+            "for {source}, got: {counted}"
+        );
+        let row = body_of(type_impl.clone(), "mongo_read_row");
+        assert!(
+            row.starts_with(
+                "{ let id = row . get (\"_id\") . map_or_else (| | :: std :: string :: String :: \
+                 from (\"without an _id\") , :: std :: string :: ToString :: to_string) ; Self :: \
+                 from_bson_piped (row , resolvers) . map_err (| refused |"
+            ) && row.ends_with(
+                ":: OperationError :: Unreadable { row : id , issues : refused . issues }) }"
+            ),
+            "for {source}, got: {row}"
+        );
+        for operation in OPERATIONS {
+            let body = body_of(type_impl.clone(), operation);
+            assert!(!body.contains("eserialize"), "for {source}, got: {body}");
+        }
+    }
+}
+
+/// Whatever the type's shape, `insert_one` writes the value before it answers, through
+/// `bson::Serializer::new`, and what it answers refuses with what the write refused before it
+/// asks the driver anything. A value not written as a document is refused with the serializer's
+/// own error. Each other write hands the driver its documents, and its failure is `Database`.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_write_hands_the_driver_documents_and_an_insert_writes_its_row_first() {
+    let as_document = ":: core :: convert :: Into :: < bson :: Document > :: into";
+    let refused = ":: OperationError :: Database) }";
+    let refused_as = ":: WriteError as :: serde :: ser :: Error > :: custom (\"a row is stored as \
+                      a document, and this value is not written as one\" ,) ,)) , } }";
+    for (source, type_impl) in impls_of_every_shape() {
+        let inserted = body_of(type_impl.clone(), "insert_one");
+        assert!(
+            inserted.starts_with(
+                "{ let written = self . mongo_written_row () ; :: std :: boxed :: Box :: pin \
+                 (async move { collection . insert_one (written ?) . await . map_err ("
+            ) && inserted.ends_with(":: OperationError :: Database) }) }"),
+            "for {source}, got: {inserted}"
+        );
+        for updated in ["update_one", "update_many"] {
+            let body = body_of(type_impl.clone(), updated);
+            assert!(
+                body.starts_with(&format!(
+                    "{{ collection . {updated} ({as_document} (filter) , {as_document} (update)) \
+                     . await . map_err ("
+                )) && body.ends_with(refused),
+                "for {source}, got: {body}"
+            );
+        }
+        for deleted in ["delete_one", "delete_many"] {
+            let body = body_of(type_impl.clone(), deleted);
+            assert!(
+                body.starts_with(&format!(
+                    "{{ collection . {deleted} ({as_document} (filter)) . await . map_err ("
+                )) && body.ends_with(refused),
+                "for {source}, got: {body}"
+            );
+        }
+        let written = body_of(type_impl.clone(), "mongo_written_row");
+        assert!(
+            written.starts_with(
+                "{ match :: serde :: Serialize :: serialize (self , bson :: Serializer :: new ()) \
+                 . map_err ("
+            ) && written.contains(
+                ":: OperationError :: Unwritable) ? { bson :: Bson :: Document (row) => :: core \
+                 :: result :: Result :: Ok (row) , _ => :: core :: result :: Result :: Err ("
+            ) && written.ends_with(refused_as),
+            "for {source}, got: {written}"
+        );
+    }
+}
+
+/// `Read` is in the module in a build with `mongodb` and in no other: `#[non_exhaustive]`, to be
+/// used, every member private, over the type it reads and what it answers. It is told as a value
+/// through an impl written out, and awaited through one `IntoFuture` per answer.
+#[test]
+fn the_read_is_declared_under_mongodb_alone() {
+    let added: syn::File = syn::parse2(module_items()).unwrap();
+    let declared: Vec<(Vec<String>, String, bool)> = added
+        .items
+        .iter()
+        .filter_map(|item| {
+            if let syn::Item::Struct(declared) = item
+                && declared.ident == "Read"
+            {
+                Some((
+                    declared
+                        .attrs
+                        .iter()
+                        .filter(|attribute| !attribute.path().is_ident("doc"))
+                        .map(|attribute| attribute.meta.to_token_stream().to_string())
+                        .collect(),
+                    declared.generics.to_token_stream().to_string(),
+                    declared
+                        .fields
+                        .iter()
+                        .all(|member| matches!(member.vis, syn::Visibility::Inherited)),
+                ))
+            } else {
+                None
+            }
+        })
+        .collect();
+    let implemented: Vec<String> = added
+        .items
+        .iter()
+        .filter_map(|item| {
+            if let syn::Item::Impl(block) = item
+                && let syn::Type::Path(own) = &*block.self_ty
+                && own.path.segments.last()?.ident == "Read"
+                && let Some((implemented, _for)) = &block.trait_
+            {
+                let on = &block.self_ty;
+                Some(quote::quote!(#implemented for #on).to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+    if cfg!(feature = "mongodb") {
+        assert_eq!(
+            declared,
+            [(
+                vec![
+                    "must_use = \"a read asks nothing of MongoDB until it is awaited\"".to_owned(),
+                    "non_exhaustive".to_owned(),
+                ],
+                "< 'c , T , O >".to_owned(),
+                true,
+            )]
+        );
+        assert_eq!(
+            implemented,
+            [
+                ":: core :: fmt :: Debug for Read < '_ , T , O >",
+                ":: core :: future :: IntoFuture for Read < 'c , T , :: std :: vec :: Vec < T > >",
+                ":: core :: future :: IntoFuture for Read < 'c , T , :: core :: option :: Option < \
+                 T > >",
+                ":: core :: future :: IntoFuture for Read < 'c , T , u64 >",
+            ]
+        );
+    } else {
+        assert!(declared.is_empty(), "got: {declared:?}");
+        assert!(implemented.is_empty(), "got: {implemented:?}");
+    }
+}
+
+/// A read takes five options and no projection, each as the driver's own option takes it, and
+/// each handing the read back. It is built from what a type's operations hand it, the read of
+/// one stored row among them, so its module names no type of its author's.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_read_takes_five_options_each_as_the_drivers_own_takes_it() {
+    let added: syn::File = syn::parse2(super::operations::read_items()).unwrap();
+    let signatures: Vec<String> = query_methods(&added)
+        .into_iter()
+        .map(|(on, method)| {
+            let (visibility, signature) = (&method.vis, &method.sig);
+            format!("{on}: {}", quote::quote!(#visibility #signature))
+        })
+        .collect();
+    assert_eq!(
+        signatures,
+        [
+            "Read: pub fn new (collection : & 'c mongodb :: Collection < bson :: Document > , \
+             filter : bson :: Document , resolvers : & 'c [Resolver < 'c , bson :: Document , \
+             bson :: Bson >] , read : fn (bson :: Document , & [Resolver < '_ , bson :: Document \
+             , bson :: Bson >]) -> :: core :: result :: Result < T , OperationError > ,) -> Self",
+            "Read: pub fn sort (mut self , sort : bson :: Document) -> Self",
+            "Read: pub fn limit (mut self , limit : i64) -> Self",
+            "Read: pub fn skip (mut self , skip : u64) -> Self",
+            "Read: pub fn hint (mut self , hint : mongodb :: options :: Hint) -> Self",
+            "Read: pub fn collation (mut self , collation : mongodb :: options :: Collation) -> \
+             Self",
+        ]
+    );
+    let written = added.to_token_stream().to_string();
+    for option in ["sort", "limit", "skip", "hint", "collation"] {
+        assert!(
+            written.contains(&format!(
+                "{{ self . {option} = :: core :: option :: Option :: Some ({option}) ; self }}"
+            )),
+            "for {option}, got: {written}"
+        );
+    }
+    assert!(!written.contains("projection"), "got: {written}");
+}
+
+/// What awaits a read is a boxed future that is `Send`, written with standard names alone. Each
+/// answer asks the driver's own method and hands it the options that method has: a read of one
+/// row is sent no limit, and a count no order, and its limit unsigned and never `0`.
+#[cfg(feature = "mongodb")]
+#[test]
+fn each_answer_awaits_the_drivers_own_method_under_the_options_it_has() {
+    let written = super::operations::read_items().to_string();
+    let awaited: Vec<&str> = written
+        .split("impl < 'c , T > :: core :: future :: IntoFuture for Read < 'c , T , ")
+        .skip(1)
+        .collect();
+    let expected = [
+        (
+            ":: std :: vec :: Vec < T > > where T : :: core :: marker :: Send + 'c , {",
+            "find",
+            vec!["sort", "limit", "skip", "hint", "collation"],
+        ),
+        (
+            ":: core :: option :: Option < T > > where T : 'c , {",
+            "find_one",
+            vec!["sort", "skip", "hint", "collation"],
+        ),
+        (
+            "u64 > where T : 'c , {",
+            "count_documents",
+            vec!["limit", "skip", "hint", "collation"],
+        ),
+    ];
+    assert_eq!(awaited.len(), expected.len(), "got: {written}");
+    for (block, (answer, asked, sent)) in awaited.into_iter().zip(expected) {
+        assert!(block.starts_with(answer), "for {asked}, got: {block}");
+        for through in [
+            "type IntoFuture = :: core :: pin :: Pin < :: std :: boxed :: Box < dyn :: core :: \
+             future :: Future < Output = Self :: Output > + :: core :: marker :: Send + 'c >> ;"
+                .to_owned(),
+            "fn into_future (self) -> Self :: IntoFuture { :: std :: boxed :: Box :: pin (async \
+             move {"
+                .to_owned(),
+            format!("let mut asked = self . collection . {asked} (self . filter) ;"),
+        ] {
+            assert!(block.contains(&through), "for {asked}, got: {block}");
+        }
+        let handed: Vec<&str> = block
+            .split("asked = asked . ")
+            .skip(1)
+            .filter_map(|rest| rest.split(' ').next())
+            .collect();
+        assert_eq!(handed, sent, "for {asked}");
+    }
+    assert!(
+        written.contains(
+            "self . limit . map (:: core :: primitive :: i64 :: unsigned_abs) . filter (| limit | \
+             * limit != 0) { asked = asked . limit (limit) ; }"
+        ),
+        "got: {written}"
+    );
+}
+
+/// The read of many rows asks the cursor for one row at a time with the driver's own methods,
+/// and reads each through the function it was built over. The first row that does not read ends
+/// the read with what that row was refused with, so no partial list is answered. The read of one
+/// row hands over the row the driver answers, and a count answers the driver's number.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_read_of_many_rows_reads_the_cursor_row_by_row_and_ends_at_the_first_refused() {
+    let written = super::operations::read_items().to_string();
+    for through in [
+        "let mut cursor = asked . await . map_err (OperationError :: Database) ? ; let mut rows = \
+         :: std :: vec :: Vec :: new () ; while cursor . advance () . await . map_err \
+         (OperationError :: Database) ? { let row = cursor . deserialize_current () . map_err \
+         (OperationError :: Database) ? ; rows . push ((self . read) (row , self . resolvers) ?) \
+         ; } :: core :: result :: Result :: Ok (rows) })",
+        "let found = asked . await . map_err (OperationError :: Database) ? ; found . map (| row \
+         | (self . read) (row , self . resolvers)) . transpose () })",
+        "{ asked = asked . collation (collation) ; } asked . await . map_err (OperationError :: \
+         Database) })",
+    ] {
+        assert!(
+            written.contains(through),
+            "missing `{through}` in: {written}"
+        );
+    }
+    for absent in ["futures", "Stream", "try_collect", "next ("] {
+        assert!(!written.contains(absent), "found `{absent}` in: {written}");
+    }
+}
+
+/// Of the driver the operations name the collection, its error, two options and three results,
+/// and of the `bson` library a document, a value and the serializer: each is one path under both
+/// of the library's major versions. Every bound is in a `where` clause, and nothing they add is
+/// hidden from a lint.
+#[cfg(feature = "mongodb")]
+#[test]
+fn the_operations_name_only_what_both_majors_of_the_bson_library_have() {
+    let module: proc_macro2::Ident = syn::parse_quote!(row_schema);
+    let filter: proc_macro2::Ident = syn::parse_quote!(F);
+    let update: proc_macro2::Ident = syn::parse_quote!(U);
+    let mut emitted = super::operations::error_items();
+    emitted.extend(super::operations::read_items());
+    emitted.extend(super::operations::methods(&module, &filter, &update));
+    let written = emitted.to_string();
+    let named_after = |prefix: &str| {
+        let mut found: Vec<&str> = written
+            .split(prefix)
+            .skip(1)
+            .filter_map(|rest| {
+                rest.split(|read: char| !(read.is_ascii_alphanumeric() || read == '_'))
+                    .next()
+            })
+            .collect();
+        found.sort_unstable();
+        found.dedup();
+        found
+    };
+    assert_eq!(
+        named_after("mongodb :: "),
+        ["Collection", "error", "options", "results"]
+    );
+    assert_eq!(named_after("mongodb :: error :: "), ["Error"]);
+    assert_eq!(named_after("mongodb :: options :: "), ["Collation", "Hint"]);
+    assert_eq!(
+        named_after("mongodb :: results :: "),
+        ["DeleteResult", "InsertOneResult", "UpdateResult"]
+    );
+    assert_eq!(named_after("bson :: "), ["Bson", "Document", "Serializer"]);
+    assert_eq!(named_after("bson :: Bson :: "), ["Document"]);
+    assert_eq!(named_after("bson :: Serializer :: "), ["new"]);
+    for absent in [
+        "doc !",
+        "# [allow",
+        "# [expect",
+        "doc (hidden)",
+        ": impl ",
+        "futures",
+        "tokio",
+    ] {
+        assert!(!written.contains(absent), "found `{absent}` in: {written}");
+    }
+    for inline in ["< F :", "< U :", "< T :", "< O :"] {
+        assert!(!written.contains(inline), "found `{inline}` in: {written}");
+    }
+    assert_eq!(
+        path_roots(emitted),
+        ["bson", "core", "mongodb", "row_schema", "serde", "std"],
+        "a path starts at the type's own module or at a crate a consumer already lists"
     );
 }
 
@@ -834,6 +1923,7 @@ fn every_type_the_flag_adds_is_a_name_read_past() {
     let mut every = module_items();
     every.extend(read_whole_items());
     every.extend(entry_of_items());
+    every.extend(paths_module_items("pub struct Named { pub title: String }"));
     let added: syn::File = syn::parse2(every).unwrap();
     let mut declared: Vec<String> = added
         .items
@@ -872,6 +1962,7 @@ fn every_struct_shape_adds_the_same_methods() {
         if cfg!(feature = "bson") {
             named.extend(methods_of("bson"));
         }
+        named.extend(paths_members());
         let header = format!("impl {}", source.split([' ', '(', ';']).nth(2).unwrap());
         assert_eq!(added_impls(source), [(header, named)], "for {source}");
     }
@@ -1111,6 +2202,7 @@ fn a_transparent_struct_with_a_named_field_gets_a_fields_walker_whatever_it_hold
         if cfg!(feature = "bson") {
             named.extend(methods_of("bson"));
         }
+        named.extend(paths_members());
         let source = format!("#[serde(transparent)] pub struct Code {{ pub inner: {field} }}");
         assert_eq!(
             added_impls(&source),
@@ -1284,7 +2376,8 @@ fn a_tuple_in_a_fields_type_is_walked_by_position_wherever_it_is_held() {
 /// A type with a type parameter gets one `impl` per source. Each joins what that source reads and
 /// writes a value with to the bounds the type declares, on every parameter and on the type itself.
 /// A parameter is bounded in one place: its `where` predicate where the type wrote one, taking
-/// along what the type wrote beside its name, and beside its name otherwise.
+/// along what the type wrote beside its name, and beside its name otherwise. Under `mongodb` its
+/// typed paths get an `impl` of their own, under what a path writes a value with.
 #[test]
 fn a_generic_type_gets_one_impl_per_source_under_that_sources_bounds() {
     let added = added_impls(
@@ -1311,6 +2404,16 @@ fn a_generic_type_gets_one_impl_per_source_under_that_sources_bounds() {
              Vec < W > : Clone , Self : serde :: de :: DeserializeOwned + serde :: Serialize"
                 .to_owned(),
             methods_of("bson"),
+        ));
+    }
+    if cfg!(feature = "mongodb") {
+        headers.push((
+            "impl < T : Clone + :: serde :: Serialize , const N : usize , U , V , \
+             W : :: serde :: Serialize > Page < T , N , U , V , W > \
+             where U : Copy + :: serde :: Serialize , V : Sync + Send + :: serde :: Serialize , \
+             Vec < W > : Clone , Self : :: serde :: Serialize"
+                .to_owned(),
+            paths_members(),
         ));
     }
     assert_eq!(added, headers);
@@ -1347,64 +2450,133 @@ fn a_methods_own_type_parameter_is_never_one_the_type_declares() {
     }
 }
 
+/// An operation takes its filter under the name a callback is taken under and its update under
+/// `U`, each the next free name where the item writes it: a filter and an update stay two
+/// parameters whatever the item names.
+#[cfg(feature = "mongodb")]
+#[test]
+fn an_operations_filter_and_update_are_never_names_the_item_writes() {
+    for (source, named) in [
+        (
+            "pub struct Holder { pub unit: U }",
+            ["F", "I", "Root", "U2"],
+        ),
+        (
+            "pub struct U { pub name: String }",
+            ["F", "I", "Root", "U2"],
+        ),
+        (
+            "pub struct Holder { pub frame: F, pub unit: U, pub other: U2 }",
+            ["F2", "I", "Root", "U3"],
+        ),
+    ] {
+        let item: syn::ItemStruct = syn::parse_str(source).unwrap();
+        let type_impl = struct_recovering_decode(&item).type_impl;
+        assert_eq!(
+            own_type_parameters(type_impl.clone()),
+            named,
+            "for {source}"
+        );
+        let [filter, _issue, _root, update] = named;
+        let emitted = type_impl.to_string();
+        for written in [
+            format!("pub async fn update_one < {filter} , {update} > ("),
+            format!("filter : {filter} , update : {update} ,)"),
+            format!("pub async fn delete_many < {filter} > ("),
+            format!("pub fn find_with < 'c , {filter} > ("),
+        ] {
+            assert!(
+                emitted.contains(&written),
+                "for {source}, missing `{written}` in: {emitted}"
+            );
+        }
+    }
+    let carried: syn::ItemEnum = syn::parse_str("pub enum Carried { Held(U), Unit }").unwrap();
+    assert_eq!(
+        own_type_parameters(enum_recovering_decode(&carried).type_impl),
+        ["F", "I", "Root", "U2"]
+    );
+}
+
 /// A method's own type parameter hides a type of its name wherever the method's body writes one,
 /// so each takes the next free name where the item writes `F` or `I` anywhere: a field's type, a
 /// type held inside one, the item's own name, the path of a hook. Every other item keeps both.
+/// Under `mongodb` the function that builds the typed paths names the row type the same way:
+/// `Root`, and the next free name where the item writes that. An operation names its update `U`,
+/// which none of these items writes.
 #[test]
 fn a_methods_own_type_parameter_is_never_a_name_the_item_writes() {
-    for (source, named) in [
-        ("pub struct Holder { pub inner: Inner }", ["F", "I"]),
-        ("pub struct Holder { pub inner: I }", ["F", "I2"]),
-        ("pub struct Holder { pub inner: r#I }", ["F", "I2"]),
+    let expected = |named: [&str; 2], root: &str| {
+        let mut every: Vec<String> = named.map(str::to_owned).to_vec();
+        if cfg!(feature = "mongodb") {
+            every.extend([root.to_owned(), "U".to_owned()]);
+        }
+        every
+    };
+    for (source, named, root) in [
+        ("pub struct Holder { pub inner: Inner }", ["F", "I"], "Root"),
+        ("pub struct Holder { pub inner: I }", ["F", "I2"], "Root"),
+        ("pub struct Holder { pub inner: r#I }", ["F", "I2"], "Root"),
         (
             "pub struct Holder { pub keyed: HashMap<String, Vec<Option<(I, i32)>>> }",
             ["F", "I2"],
+            "Root",
         ),
-        ("pub struct I { pub number: i32 }", ["F", "I2"]),
+        ("pub struct I { pub number: i32 }", ["F", "I2"], "Root"),
         (
             "pub struct Holder { #[serde(deserialize_with = \"I::positive\")] pub score: i32 }",
             ["F", "I2"],
+            "Root",
         ),
         (
             "pub struct Holder { #[serde(flatten)] pub inner: I }",
             ["F", "I2"],
+            "Root",
         ),
         (
             "pub struct Holder { #[serde(deserialize_with = \"parsed::<I, _>\")] pub score: i32 }",
             ["F", "I2"],
+            "Root",
         ),
-        ("pub struct F(pub String);", ["F2", "I"]),
+        ("pub struct F(pub String);", ["F2", "I"], "Root"),
         (
             "pub struct Holder { pub frame: F, pub inner: I, pub other: I2 }",
             ["F2", "I3"],
+            "Root",
         ),
+        ("pub struct Holder { pub top: Root }", ["F", "I"], "Root2"),
+        ("pub struct Root { pub name: String }", ["F", "I"], "Root2"),
     ] {
         let item: syn::ItemStruct = syn::parse_str(source).unwrap();
         assert_eq!(
             own_type_parameters(struct_recovering_decode(&item).type_impl),
-            named,
+            expected(named, root),
             "for {source}"
         );
     }
-    for (source, named) in [
-        (EXTERNAL, ["F", "I"]),
+    for (source, named, root) in [
+        (EXTERNAL, ["F", "I"], "Root"),
         (
             "pub enum Carried { Alone(I), Named { inner: I }, Paired(I, i32) }",
             ["F", "I2"],
+            "Root",
         ),
         (
             "#[serde(untagged)] pub enum Alternate { Model(I), Text(String) }",
             ["F", "I2"],
+            "Root",
         ),
         (
             "#[serde(tag = \"kind\")] pub enum Framed { Held(F) }",
             ["F2", "I"],
+            "Root",
         ),
+        ("pub enum Tree { Leaf, Root(String) }", ["F", "I"], "Root2"),
     ] {
         let item: syn::ItemEnum = syn::parse_str(source).unwrap();
         assert_eq!(
             own_type_parameters(enum_recovering_decode(&item).type_impl),
-            named,
+            expected(named, root),
             "for {source}"
         );
     }
@@ -1576,6 +2748,7 @@ fn every_enum_form_adds_the_same_methods_and_an_untagged_one_a_method_per_varian
         if cfg!(feature = "bson") {
             named.extend(of_source("bson"));
         }
+        named.extend(paths_members());
         let (_attributes, declared) = source.split_once("pub enum ").unwrap();
         let header = format!("impl {}", declared.split(' ').next().unwrap());
         assert_eq!(added_enum_impls(source), [(header, named)], "for {source}");
@@ -1898,6 +3071,13 @@ fn a_generic_enum_gets_its_methods_under_each_sources_bounds() {
             methods_of("bson"),
         ));
     }
+    if cfg!(feature = "mongodb") {
+        headers.push((
+            "impl < T : :: serde :: Serialize > Answer < T > where Self : :: serde :: Serialize"
+                .to_owned(),
+            paths_members(),
+        ));
+    }
     assert_eq!(added_enum_impls(source), headers);
     let walk = enum_json_of(source);
     for written in [
@@ -2152,6 +3332,7 @@ fn an_untagged_variant_serde_never_reads_is_matched_and_never_walked() {
     if cfg!(feature = "bson") {
         named.extend(of_source("bson"));
     }
+    named.extend(paths_members());
     assert_eq!(
         added_enum_impls(UNREAD_UNTAGGED),
         [("impl Reach".to_owned(), named)]
@@ -3390,4 +4571,787 @@ fn a_field_typed_with_an_alias_of_a_model_type_is_left_as_it_is_written() {
     assert!(!walker.contains("const _"), "got: {walker}");
     assert!(!walker.contains("ReadWhole"), "got: {walker}");
     assert!(!module.contains("decode_with_at0"), "got: {module}");
+}
+
+/// What the typed paths add for the struct `source` declares, with every space taken out: what
+/// goes into its module, then what goes into its `impl`. Each name of `seen` is a struct or an
+/// enum `#[model_schema]` was written on above it, as the struct's own name is by then.
+#[cfg(feature = "mongodb")]
+fn typed_paths_of(source: &str, seen: &[&str]) -> (String, String) {
+    let item: syn::ItemStruct = syn::parse_str(source).unwrap();
+    record_declared(&item.ident.to_string(), Declared::Model);
+    for name in seen {
+        record_declared(name, Declared::Model);
+    }
+    let paths = super::fields::struct_paths(&item, &written_names(item.to_token_stream()));
+    (
+        paths.module_items.to_string().split_whitespace().collect(),
+        paths.type_items.to_string().split_whitespace().collect(),
+    )
+}
+
+/// [`typed_paths_of`] for the enum `source` declares.
+#[cfg(feature = "mongodb")]
+fn typed_enum_paths_of(source: &str, seen: &[&str]) -> (String, String) {
+    let item: syn::ItemEnum = syn::parse_str(source).unwrap();
+    record_declared(&item.ident.to_string(), Declared::Model);
+    for name in seen {
+        record_declared(name, Declared::Model);
+    }
+    let paths = super::fields::enum_paths(&item, &written_names(item.to_token_stream()));
+    (
+        paths.module_items.to_string().split_whitespace().collect(),
+        paths.type_items.to_string().split_whitespace().collect(),
+    )
+}
+
+/// A field is a member of the kind serde writes its value as: a value every row holds, one a row
+/// may leave out, a list, and each of the three over a struct or an enum declared above, which
+/// then holds that type's own struct of paths. A wrapper serde writes as the value it holds
+/// changes the type an operator takes and nothing of the kind.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_field_is_the_member_of_the_kind_serde_writes_it_as() {
+    let nested = "super::inner_schema::MongoFields<Root>";
+    for (field, member) in [
+        ("String", "self::Field<Root,String>".to_owned()),
+        ("Option<u8>", "self::OptionalField<Root,u8>".to_owned()),
+        ("Vec<u8>", "self::ListField<Root,u8>".to_owned()),
+        ("[u8; 4]", "self::ListField<Root,u8>".to_owned()),
+        ("HashSet<u8>", "self::ListField<Root,u8>".to_owned()),
+        ("Inner", format!("self::Model<Root,super::Inner,{nested}>")),
+        ("Option<Inner>", format!("self::OptionalModel<Root,super::Inner,{nested}>")),
+        ("Vec<Inner>", format!("self::ModelList<Root,super::Inner,{nested}>")),
+        ("Box<Inner>", format!("self::Model<Root,Box<super::Inner>,{nested}>")),
+        (
+            "Option<Box<Inner>>",
+            format!("self::OptionalModel<Root,Box<super::Inner>,{nested}>"),
+        ),
+        (
+            "Wrapper<Inner>",
+            "self::Model<Root,super::Wrapper<super::Inner>,super::wrapper_schema::MongoFields<Root,super::Inner>>"
+                .to_owned(),
+        ),
+        ("Option<Vec<u8>>", "self::OptionalField<Root,Vec<u8>>".to_owned()),
+        ("Vec<Vec<Inner>>", "self::ListField<Root,Vec<super::Inner>>".to_owned()),
+        ("(u8, Inner)", "self::Field<Root,(u8,super::Inner)>".to_owned()),
+    ] {
+        let source = format!("pub struct Row {{ pub a: {field} }}");
+        let (module, _on_the_type) = typed_paths_of(&source, &["Inner", "Wrapper"]);
+        assert!(
+            module.contains(&format!("{{puba:{member}}}")),
+            "for {field}, got: {module}"
+        );
+    }
+    let (_module, on_the_type) = typed_paths_of("pub struct Row { pub a: Inner }", &["Inner"]);
+    assert!(
+        on_the_type.contains(
+            "row_schema::MongoFields{a:row_schema::Model::plain(row_schema::MongoPath::under(prefix,\"a\"),\
+             <Inner>::mongo_fields_under(row_schema::MongoPath::under(prefix,\"a\").segments))}"
+        ),
+        "got: {on_the_type}"
+    );
+}
+
+/// A type tixschema has not seen as a flagged model where the field is expanded is one whole
+/// value: one declared below or in another crate, the type itself under either of its names, and
+/// one a path the module cannot read the last name of leads to. The module writes a name in scope
+/// beside the type through `super`, and a longer path as its author wrote it.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_type_not_seen_above_is_one_whole_value_named_through_super() {
+    for (field, member) in [
+        ("Unseen", "self::Field<Root,super::Unseen>"),
+        ("Option<Unseen>", "self::OptionalField<Root,super::Unseen>"),
+        ("Vec<Self>", "self::ListField<Root,super::Row>"),
+        (
+            "Option<Box<Row>>",
+            "self::OptionalField<Root,Box<super::Row>>",
+        ),
+        ("other::Thing", "self::Field<Root,other::Thing>"),
+        (
+            "self::other::Thing",
+            "self::Field<Root,super::other::Thing>",
+        ),
+        ("super::Thing", "self::Field<Root,super::super::Thing>"),
+        ("crate::Thing", "self::Field<Root,crate::Thing>"),
+        (
+            "::std::string::String",
+            "self::Field<Root,::std::string::String>",
+        ),
+        (
+            "DateTime<Utc>",
+            "self::Field<Root,super::DateTime<super::Utc>>",
+        ),
+        (
+            "Cow<'static, str>",
+            "self::Field<Root,super::Cow<'static,str>>",
+        ),
+    ] {
+        let source = format!("pub struct Row {{ pub a: {field} }}");
+        let (module, on_the_type) = typed_paths_of(&source, &[]);
+        assert!(
+            module.contains(&format!("{{puba:{member}}}")),
+            "for {field}, got: {module}"
+        );
+        assert!(
+            !on_the_type.contains(">::mongo_fields_under("),
+            "for {field}, got: {on_the_type}"
+        );
+    }
+}
+
+/// A key serde never writes has no member, and neither has a map, whose keys are data: bare, in
+/// an `Option`, or flattened. A flattened value that is no flagged model has no key of its own to
+/// be one whole value under.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_key_serde_never_writes_and_a_map_have_no_member() {
+    for field in [
+        "#[serde(skip)] pub a: u8",
+        "#[serde(skip_serializing)] pub a: u8",
+        "pub a: HashMap<String, Inner>",
+        "pub a: BTreeMap<String, u8>",
+        "pub a: Option<HashMap<String, u8>>",
+        "#[serde(flatten)] pub a: HashMap<String, u8>",
+        "#[serde(flatten)] pub a: Unseen",
+        "#[serde(flatten, with = \"hook\")] pub a: Inner",
+    ] {
+        let source = format!("pub struct Row {{ {field}, pub b: u8 }}");
+        let (module, on_the_type) = typed_paths_of(&source, &["Inner"]);
+        assert!(
+            module.contains("pubstructMongoFields<Root>{pubb:self::Field<Root,u8>}"),
+            "for {field}, got: {module}"
+        );
+        assert!(
+            on_the_type.contains("row_schema::MongoFields{b:row_schema::Field::plain("),
+            "for {field}, got: {on_the_type}"
+        );
+    }
+}
+
+/// A flagged type is asked for its own paths only where its walker is called as it stands. A
+/// value a hook writes is handed to that hook by a function added to the type, under an `Option`
+/// as `Some`, and is one whole value; so is a value serde never reads back, and one a hook reads.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_hooked_field_and_one_serde_never_reads_back_are_one_whole_value() {
+    for (field, member, built) in [
+        (
+            "#[serde(skip_deserializing)] pub a: Inner",
+            "self::Field<Root,super::Inner>",
+            "row_schema::Field::plain(",
+        ),
+        (
+            "#[serde(deserialize_with = \"read\")] pub a: Option<Inner>",
+            "self::OptionalField<Root,super::Inner>",
+            "row_schema::OptionalField::plain(",
+        ),
+        (
+            "#[serde(with = \"hook\")] pub a: Inner",
+            "self::Field<Root,super::Inner>",
+            "row_schema::Field::hooked(row_schema::MongoPath::under(prefix,\"a\"),Self::mongo_write_a)",
+        ),
+        (
+            "#[serde(serialize_with = \"shown\")] pub a: Vec<u8>",
+            "self::Field<Root,Vec<u8>>",
+            "row_schema::Field::hooked(row_schema::MongoPath::under(prefix,\"a\"),Self::mongo_write_a)",
+        ),
+        (
+            "#[serde(with = \"hook\")] pub a: Option<u8>",
+            "self::OptionalField<Root,u8>",
+            "row_schema::OptionalField::hooked(row_schema::MongoPath::under(prefix,\"a\"),Self::mongo_write_a)",
+        ),
+    ] {
+        let source = format!("pub struct Row {{ {field} }}");
+        let (module, on_the_type) = typed_paths_of(&source, &["Inner"]);
+        assert!(
+            module.contains(&format!("{{puba:{member}}}")),
+            "for {field}, got: {module}"
+        );
+        assert!(
+            on_the_type.contains(built),
+            "for {field}, got: {on_the_type}"
+        );
+    }
+    let (_module, bare) = typed_paths_of(
+        "pub struct Row { #[serde(with = \"hook\")] pub a: u8 }",
+        &[],
+    );
+    assert!(
+        bare.contains(
+            "fnmongo_write_a(value:u8)->::core::result::Result<bson::Bson,row_schema::WriteError>\
+             {hook::serialize(&value,bson::Serializer::new())}"
+        ),
+        "got: {bare}"
+    );
+    let (_declared, optional) = typed_paths_of(
+        "pub struct Row { #[serde(serialize_with = \"shown\")] pub a: Option<u8> }",
+        &[],
+    );
+    assert!(
+        optional.contains(
+            "fnmongo_write_a(value:u8)->::core::result::Result<bson::Bson,row_schema::WriteError>\
+             {shown(&::core::option::Option::Some(value),bson::Serializer::new())}"
+        ),
+        "got: {optional}"
+    );
+}
+
+/// A member is under its field's own name and writes the key serde does: the field's `rename`,
+/// or its name cased by the struct's `rename_all`. A flattened model has no key of its own, so
+/// its struct of paths is built under the keys that lead to the struct that flattens it.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_member_is_named_after_its_field_and_writes_the_key_serde_does() {
+    let (module, on_the_type) = typed_paths_of(
+        "#[serde(rename_all = \"camelCase\")] pub struct Row { #[serde(rename = \"_id\")] pub id: u8, \
+         pub paid_at: u8, pub r#type: u8, #[serde(flatten)] pub audit: Inner, \
+         #[serde(flatten)] pub extra: Option<Inner> }",
+        &["Inner"],
+    );
+    assert!(
+        module.contains(
+            "{pubid:self::Field<Root,u8>,pubpaid_at:self::Field<Root,u8>,pubr#type:self::Field<Root,u8>,\
+             pubaudit:super::inner_schema::MongoFields<Root>,\
+             pubextra:super::inner_schema::MongoFields<Root>}"
+        ),
+        "got: {module}"
+    );
+    for built in [
+        "id:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"_id\"))",
+        "paid_at:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"paidAt\"))",
+        "r#type:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"type\"))",
+        "audit:<Inner>::mongo_fields_under(prefix)",
+        "extra:<Inner>::mongo_fields_under(prefix)",
+    ] {
+        assert!(
+            on_the_type.contains(built),
+            "missing `{built}` in: {on_the_type}"
+        );
+    }
+}
+
+/// A struct serde writes as one value, or as nothing, is the path of that value: its struct of
+/// paths holds nothing else and dereferences to it. The path is the struct's last parameter, with
+/// no default, and the type's own `impl` writes it: the module names no type of its author's.
+/// Only a value serde writes as text is matched by a pattern, on an `impl` over any such path.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_type_serde_writes_as_one_value_is_the_path_of_that_value() {
+    for (source, declared, arguments, text) in [
+        (
+            "#[serde(transparent)] pub struct Row(pub String);",
+            "pubstructMongoFields<Root,Whole>{",
+            "",
+            true,
+        ),
+        (
+            "pub struct Row(pub u32);",
+            "pubstructMongoFields<Root,Whole>{",
+            "",
+            false,
+        ),
+        (
+            "#[serde(transparent)] pub struct Row { pub held: String, #[serde(skip)] pub cached: u8 }",
+            "pubstructMongoFields<Root,Whole>{",
+            "",
+            true,
+        ),
+        (
+            "pub struct Row(#[serde(with = \"hook\")] pub String);",
+            "pubstructMongoFields<Root,Whole>{",
+            "",
+            false,
+        ),
+        (
+            "pub struct Row;",
+            "pubstructMongoFields<Root,Whole>{",
+            "",
+            false,
+        ),
+        (
+            "pub struct Row<T: Clone>(pub T);",
+            "pubstructMongoFields<Root,T:Clone,Whole>{",
+            ",T",
+            false,
+        ),
+        (
+            "pub struct Row<Whole>(pub Whole);",
+            "pubstructMongoFields<Root,Whole,Whole2>{",
+            ",Whole",
+            false,
+        ),
+    ] {
+        let (module, on_the_type) = typed_paths_of(source, &[]);
+        assert!(module.contains(declared), "for {source}, got: {module}");
+        assert!(
+            module.contains("typeTarget=Whole") || module.contains("typeTarget=Whole2"),
+            "for {source}, got: {module}"
+        );
+        // The type's name is written once, in what the struct is told as.
+        assert!(
+            !module.contains("super::") && module.matches("Row").count() == 1,
+            "for {source}, got: {module}"
+        );
+        assert_eq!(
+            module.contains("pubfnregex("),
+            text,
+            "for {source}, got: {module}"
+        );
+        for written in [
+            format!(
+                "pubconstMONGO_FIELDS:row_schema::MongoFields<Self{arguments},row_schema::Field<Self,Self>>="
+            ),
+            format!(
+                "->row_schema::MongoFields<Root{arguments},row_schema::Field<Root,Self>>\
+                 {{row_schema::MongoFields::built(row_schema::Field::plain(row_schema::MongoPath::at(prefix)))}}"
+            ),
+        ] {
+            assert!(
+                on_the_type.contains(&written),
+                "for {source}, missing `{written}` in: {on_the_type}"
+            );
+        }
+    }
+    let (brand, _brand) = typed_paths_of("#[serde(transparent)] pub struct Row(pub String);", &[]);
+    assert!(
+        brand.contains("impl<Root,Value>MongoFields<Root,self::Field<Root,Value>>{"),
+        "got: {brand}"
+    );
+    let (generic, _generic) = typed_paths_of(
+        "#[serde(transparent)] pub struct Row<Value> { pub held: String, pub kept: PhantomData<Value> }",
+        &[],
+    );
+    assert!(
+        generic
+            .contains("impl<Root,Value,Value2>MongoFields<Root,Value,self::Field<Root,Value2>>{"),
+        "got: {generic}"
+    );
+    let (plain_enum, on_the_enum) = typed_enum_paths_of("pub enum Row { Draft, Paid }", &[]);
+    assert!(
+        plain_enum.contains("pubstructMongoFields<Root,Whole>{") && !plain_enum.contains("super::"),
+        "got: {plain_enum}"
+    );
+    assert!(
+        on_the_enum.contains(
+            "pubconstMONGO_FIELDS:row_schema::MongoFields<Self,row_schema::Field<Self,Self>>="
+        ),
+        "got: {on_the_enum}"
+    );
+}
+
+/// A type declared above that serde writes as one value is held with its path written out, since
+/// its struct of paths names no type: bare and under an `Option` it keeps its own struct. A list
+/// of one is a list of plain values, whose elements an operator is written over with no key. A
+/// flattened one has no key to sit at the level of what holds it, and no member.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_type_written_as_one_value_is_held_with_its_path_written_out() {
+    record_declared("Brand", Declared::OneValue);
+    record_declared("Sleeve", Declared::OneValue);
+    let own =
+        "super::brand_schema::MongoFields<Root,super::brand_schema::Field<Root,super::Brand>>";
+    for (field, member) in [
+        ("Brand", format!("self::Model<Root,super::Brand,{own}>")),
+        (
+            "Option<Brand>",
+            format!("self::OptionalModel<Root,super::Brand,{own}>"),
+        ),
+        (
+            "Box<Brand>",
+            format!("self::Model<Root,Box<super::Brand>,{own}>"),
+        ),
+        ("Vec<Brand>", "self::ListField<Root,super::Brand>".to_owned()),
+        ("[Brand; 2]", "self::ListField<Root,super::Brand>".to_owned()),
+        (
+            "Vec<Box<Brand>>",
+            "self::ListField<Root,Box<super::Brand>>".to_owned(),
+        ),
+        (
+            "Option<Vec<Brand>>",
+            "self::OptionalField<Root,Vec<super::Brand>>".to_owned(),
+        ),
+        (
+            "Sleeve<Inner>",
+            "self::Model<Root,super::Sleeve<super::Inner>,super::sleeve_schema::MongoFields<Root,super::Inner,\
+             super::sleeve_schema::Field<Root,super::Sleeve<super::Inner>>>>"
+                .to_owned(),
+        ),
+        ("Vec<Inner>", "self::ModelList<Root,super::Inner,super::inner_schema::MongoFields<Root>>".to_owned()),
+    ] {
+        let source = format!("pub struct Row {{ pub a: {field} }}");
+        let (module, _on_the_type) = typed_paths_of(&source, &["Inner"]);
+        assert!(
+            module.contains(&format!("{{puba:{member}}}")),
+            "for {field}, got: {module}"
+        );
+    }
+    let (_module, listed) = typed_paths_of("pub struct Row { pub a: Vec<Brand> }", &[]);
+    assert!(
+        listed.contains(
+            "row_schema::MongoFields{a:row_schema::ListField::plain(row_schema::MongoPath::under(prefix,\"a\"))}"
+        ),
+        "got: {listed}"
+    );
+    let (flattened, _flattened) = typed_paths_of(
+        "pub struct Row { #[serde(flatten)] pub a: Brand, pub b: u8 }",
+        &[],
+    );
+    assert!(
+        flattened.contains("pubstructMongoFields<Root>{pubb:self::Field<Root,u8>}"),
+        "got: {flattened}"
+    );
+    let (_untagged, in_place) = typed_enum_paths_of(
+        "#[serde(untagged)] pub enum Row { Held(Brand), Listed(Vec<Brand>) }",
+        &[],
+    );
+    for built in [
+        "held:row_schema::Model::plain(row_schema::MongoPath::at(prefix),<Brand>::mongo_fields_under(prefix))",
+        "listed:row_schema::ListField::plain(row_schema::MongoPath::at(prefix))",
+    ] {
+        assert!(in_place.contains(built), "missing `{built}` in: {in_place}");
+    }
+    let (tagged, beside) = typed_enum_paths_of(
+        "#[serde(tag = \"kind\")] pub enum Row { Wire(Brand), Cash }",
+        &[],
+    );
+    let emitted = format!("{tagged}{beside}");
+    assert!(!emitted.contains("wire:"), "got: {emitted}");
+}
+
+/// A path is under the name serde writes. A renaming written as a list counts by its `serialize`
+/// side whatever it names for reading, and one that writes no `serialize` leaves the name as it
+/// was: on a field, on a variant, and as the rule that cases either.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_renaming_written_as_a_list_counts_by_what_serde_writes() {
+    let (_module, on_the_struct) = typed_paths_of(
+        "#[serde(rename_all(serialize = \"camelCase\"))] pub struct Row { \
+         #[serde(rename(serialize = \"written\", deserialize = \"read\"))] pub both_ways: u8, \
+         #[serde(rename(serialize = \"only_written\"))] pub write_way: u8, \
+         #[serde(rename(deserialize = \"only_read\"))] pub read_way: u8, \
+         #[serde(rename(serialize = \"apart\"))] #[serde(rename(deserialize = \"from\"))] pub two_lists: u8, \
+         pub cased_by_rule: u8 }",
+        &[],
+    );
+    for built in [
+        "both_ways:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"written\"))",
+        "write_way:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"only_written\"))",
+        "read_way:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"readWay\"))",
+        "two_lists:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"apart\"))",
+        "cased_by_rule:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"casedByRule\"))",
+    ] {
+        assert!(
+            on_the_struct.contains(built),
+            "missing `{built}` in: {on_the_struct}"
+        );
+    }
+    let (read_rule, on_the_read_rule) = typed_paths_of(
+        "#[serde(rename_all(deserialize = \"camelCase\"))] pub struct Row { pub paid_at: u8 }",
+        &[],
+    );
+    assert!(
+        on_the_read_rule.contains("row_schema::MongoPath::under(prefix,\"paid_at\")"),
+        "got: {read_rule}{on_the_read_rule}"
+    );
+    let (tagged, on_the_tagged) = typed_enum_paths_of(
+        "#[serde(tag = \"kind\", rename_all(serialize = \"kebab-case\"), \
+         rename_all_fields(serialize = \"camelCase\"))] pub enum Row { \
+         #[serde(rename(serialize = \"byAir\", deserialize = \"air\"))] Air { flight_code: u8 }, \
+         OverLand { road_name: u8 }, \
+         #[serde(rename_all(serialize = \"SCREAMING_SNAKE_CASE\"))] Sea { ship_name: u8 } }",
+        &[],
+    );
+    let by_tag = format!("{tagged}{on_the_tagged}");
+    for written in [
+        "pubfnis_air(&self)->self::Filter<Root>{self.tagged(\"byAir\")}",
+        "pubfnis_over_land(&self)->self::Filter<Root>{self.tagged(\"over-land\")}",
+        "pubfnis_sea(&self)->self::Filter<Root>{self.tagged(\"sea\")}",
+        "flight_code:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"flightCode\"))",
+        "road_name:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"roadName\"))",
+        "ship_name:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"SHIP_NAME\"))",
+    ] {
+        assert!(by_tag.contains(written), "missing `{written}` in: {by_tag}");
+    }
+    let (keyed, on_the_keyed) = typed_enum_paths_of(
+        "#[serde(rename_all(serialize = \"kebab-case\"))] pub enum Row { \
+         #[serde(rename(serialize = \"byHand\"))] Courier { badge: u8 }, DropBox(u8), NotSent }",
+        &[],
+    );
+    let by_key = format!("{keyed}{on_the_keyed}");
+    for written in [
+        "pubfnis_courier(&self)->self::Filter<Root>{self.keyed(\"byHand\")}",
+        "row_schema::MongoPath::under(row_schema::MongoPath::under(prefix,\"byHand\").segments,\"badge\")",
+        "drop_box:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"drop-box\"))",
+        "bson::Bson::String(\"not-sent\".to_owned())",
+    ] {
+        assert!(by_key.contains(written), "missing `{written}` in: {by_key}");
+    }
+}
+
+/// What serde writes as one value is what the registry records as one, at the seam every item's
+/// declaration is recorded at: a struct written as the value of one slot, a unit struct, and an
+/// enum no variant of which holds a value and no attribute tags.
+#[test]
+fn a_struct_or_an_enum_is_written_as_one_value_or_under_keys_of_its_own() {
+    for (source, one_value) in [
+        ("#[serde(transparent)] pub struct Row(pub String);", true),
+        ("pub struct Row(pub u32);", true),
+        ("pub struct Row;", true),
+        (
+            "#[serde(transparent)] pub struct Row { pub held: String, #[serde(skip)] pub cached: u8 }",
+            true,
+        ),
+        ("pub enum Row { Draft, Paid }", true),
+        ("pub struct Row { pub held: String }", false),
+        ("pub struct Row(pub u32, pub u32);", false),
+        ("pub struct Row {}", false),
+        ("pub enum Row { Draft, Paid(u32) }", false),
+        (
+            "#[serde(tag = \"kind\")] pub enum Row { Draft, Paid }",
+            false,
+        ),
+        (
+            "#[serde(tag = \"t\", content = \"c\")] pub enum Row { Draft, Paid }",
+            false,
+        ),
+        ("#[serde(untagged)] pub enum Row { Draft, Paid }", false),
+        ("pub type Row = String;", false),
+    ] {
+        let item: syn::Item = syn::parse_str(source).unwrap();
+        assert_eq!(
+            super::written_as_one_value(&item),
+            one_value,
+            "for {source}"
+        );
+    }
+}
+
+/// A tuple struct's paths are a tuple struct, each slot's key the position serde writes it at. A
+/// slot serde never writes keeps its place as `()`, so a member's position is its slot's.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_tuple_structs_paths_are_by_position() {
+    let (module, on_the_type) = typed_paths_of(
+        "pub struct Row(pub f64, #[serde(skip)] pub u8, pub Inner);",
+        &["Inner"],
+    );
+    assert!(
+        module.contains(
+            "pubstructMongoFields<Root>(pubself::Field<Root,f64>,pub(),\
+             pubself::Model<Root,super::Inner,super::inner_schema::MongoFields<Root>>);"
+        ),
+        "got: {module}"
+    );
+    assert!(
+        on_the_type.contains(
+            "row_schema::MongoFields(row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"0\")),(),\
+             row_schema::Model::plain(row_schema::MongoPath::under(prefix,\"1\"),"
+        ),
+        "got: {on_the_type}"
+    );
+}
+
+/// A generic type's struct of paths carries the type's own parameters after the row type, under
+/// the bounds the type declares. Members are public and what the struct keeps for itself is not,
+/// so a struct that keeps anything holds its members in a struct of their own and dereferences
+/// to it: here a marker of the parameter no member names. With no member at all the function
+/// that builds the struct reads no key.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_struct_of_paths_carries_the_types_own_parameters_and_never_mixes_what_it_keeps() {
+    let (bounded, _on_the_type) = typed_paths_of(
+        "pub struct Row<T: Clone + Shown, const N: usize, U = String> where T: Send \
+         { pub a: T, pub b: [u8; N], pub c: Option<U> }",
+        &[],
+    );
+    assert!(
+        bounded.contains(
+            "pubstructMongoFields<Root,T:Clone+super::Shown,constN:usize,U=String>whereT:Send\
+             {puba:self::Field<Root,T>,pubb:self::ListField<Root,u8>,pubc:self::OptionalField<Root,U>}"
+        ),
+        "got: {bounded}"
+    );
+    let (marked, on_the_type) = typed_paths_of(
+        "pub struct Row<T> { pub a: u8, pub b: HashMap<String, T> }",
+        &[],
+    );
+    for written in [
+        "pubstructMongoFields<Root,T>{members:self::mongo_members::Members<Root>,\
+         unused:::core::marker::PhantomData<fn()->(T,)>,}",
+        "pubconstfnbuilt(members:self::mongo_members::Members<Root>,)->Self",
+        "impl<Root,T>::core::ops::DerefforMongoFields<Root,T>{typeTarget=self::mongo_members::Members<Root>;",
+        "pubmodmongo_members{usesuper::*;",
+        "pubstructMembers<Root>{puba:super::Field<Root,u8>}",
+    ] {
+        assert!(marked.contains(written), "missing `{written}` in: {marked}");
+    }
+    assert!(
+        on_the_type.contains(
+            "pubconstMONGO_FIELDS:row_schema::MongoFields<Self,T>=Self::mongo_fields_under(row_schema::MongoPath::ROOT);"
+        ),
+        "got: {on_the_type}"
+    );
+    assert!(
+        on_the_type.contains(
+            "->row_schema::MongoFields<Root,T>{row_schema::MongoFields::built(row_schema::mongo_members::Members{a:"
+        ),
+        "got: {on_the_type}"
+    );
+    let (empty, unread) = typed_paths_of("pub struct Row { pub b: HashMap<String, u8> }", &[]);
+    assert!(
+        empty.contains(
+            "pubstructMongoFields<Root>{unused:::core::marker::PhantomData<fn()->(Root,)>,}"
+        ),
+        "got: {empty}"
+    );
+    assert!(
+        unread.contains(
+            "pubconstfnmongo_fields_under<Root>(_:[::core::option::Option<&'staticstr>;8],)\
+             ->row_schema::MongoFields<Root>{row_schema::MongoFields::built()}"
+        ),
+        "got: {unread}"
+    );
+}
+
+/// An enum's struct of paths keeps the path that names its variant, and answers `is_{variant}`
+/// from it: the tag's key under a tag, and the enum's own under a variant's name. What a variant
+/// holds is a member under the variant's name: beside the tag, under the content key, under the
+/// name serde writes the variant as, or where the enum itself is.
+#[cfg(feature = "mongodb")]
+#[test]
+fn an_enums_paths_are_where_its_form_writes_what_each_variant_holds() {
+    for (source, asked, written) in [
+        (
+            "#[serde(tag = \"kind\", rename_all = \"camelCase\")] pub enum Row { Cash, \
+             #[serde(rename_all = \"camelCase\")] Card { exp_month: u32 }, Wire(Inner), Odd(u8) }",
+            "row_schema::MongoFields::built(row_schema::MongoPath::under(prefix,\"kind\"),",
+            &[
+                "card:row_schema::mongo_members::Card{exp_month:row_schema::Field::plain(\
+                 row_schema::MongoPath::under(prefix,\"expMonth\"))}",
+                "wire:<Inner>::mongo_fields_under(prefix)",
+                "pubfnis_cash(&self)->self::Filter<Root>{self.tagged(\"cash\")}",
+                "pubfnis_odd(&self)->self::Filter<Root>{self.tagged(\"odd\")}",
+            ][..],
+        ),
+        (
+            "#[serde(tag = \"t\", content = \"c\")] pub enum Row { Pickup, Locker(u32), \
+             Door(Inner), Span(u32, u32) }",
+            "row_schema::MongoFields::built(row_schema::MongoPath::under(prefix,\"t\"),",
+            &[
+                "locker:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"c\"))",
+                "door:row_schema::Model::plain(row_schema::MongoPath::under(prefix,\"c\"),\
+                 <Inner>::mongo_fields_under(row_schema::MongoPath::under(prefix,\"c\").segments))",
+                "span:row_schema::mongo_members::Span(row_schema::Field::plain(row_schema::MongoPath::under(\
+                 row_schema::MongoPath::under(prefix,\"c\").segments,\"0\")),",
+                "pubfnis_pickup(&self)->self::Filter<Root>{self.tagged(\"Pickup\")}",
+            ],
+        ),
+        (
+            "#[serde(rename_all = \"camelCase\")] pub enum Row { NoDiscount, Percent(f64), \
+             Coupon { code: String } }",
+            "row_schema::MongoFields::built(row_schema::MongoPath::at(prefix),",
+            &[
+                "percent:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"percent\"))",
+                "coupon:row_schema::mongo_members::Coupon{code:row_schema::Field::plain(row_schema::MongoPath::under(\
+                 row_schema::MongoPath::under(prefix,\"coupon\").segments,\"code\"))}",
+                "pubfnis_no_discount(&self)->self::Filter<Root>{self::Filter::held(self.asked.key(),\"$eq\",\
+                 bson::Bson::String(\"noDiscount\".to_owned()))}",
+                "pubfnis_coupon(&self)->self::Filter<Root>{self.keyed(\"coupon\")}",
+            ],
+        ),
+        (
+            "#[serde(untagged)] pub enum Row { Number(u32), Detailed { code: String }, Held(Inner) }",
+            "row_schema::MongoFields{number:row_schema::Field::plain(row_schema::MongoPath::at(prefix)),",
+            &[
+                "detailed:row_schema::mongo_members::Detailed{code:row_schema::Field::plain(\
+                 row_schema::MongoPath::under(prefix,\"code\"))}",
+                "held:<Inner>::mongo_fields_under(prefix)",
+            ],
+        ),
+    ] {
+        let (module, on_the_type) = typed_enum_paths_of(source, &["Inner"]);
+        assert!(
+            on_the_type.contains(asked),
+            "for {source}, got: {on_the_type}"
+        );
+        let emitted = format!("{module}{on_the_type}");
+        for found in written {
+            assert!(
+                emitted.contains(found),
+                "for {source}, missing `{found}` in: {emitted}"
+            );
+        }
+        assert_eq!(
+            module.contains("pubfnis_"),
+            !source.contains("untagged"),
+            "for {source}, got: {module}"
+        );
+    }
+}
+
+/// A variant serde never writes has neither member nor `is_{variant}`. A struct `mongo_members`
+/// holds is never named as a prelude type or as a parameter, which every member beside it that
+/// names one would otherwise read in its place.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_variant_serde_never_writes_has_no_path_and_a_members_struct_takes_no_name_in_use() {
+    let (module, on_the_type) = typed_enum_paths_of(
+        "pub enum Row<T> { #[serde(skip)] Lost { at: u8 }, #[serde(skip_serializing)] Old(u8), \
+         String { text: String }, T { held: T }, Members { count: u8 } }",
+        &[],
+    );
+    let emitted = format!("{module}{on_the_type}");
+    for absent in ["lost:", "old:", "is_lost", "is_old", "Lost", "Old"] {
+        assert!(!emitted.contains(absent), "found `{absent}` in: {emitted}");
+    }
+    for written in [
+        "pubstructString2<Root>{pubtext:super::Field<Root,String>}",
+        "pubstructT2<Root,T>{pubheld:super::Field<Root,T>}",
+        "pubstructMembers<Root>{pubcount:super::Field<Root,u8>}",
+        "pubstructMembers2<Root,T>{pubstring:self::String2<Root>,pubt:self::T2<Root,T>,pubmembers:self::Members<Root>}",
+    ] {
+        assert!(
+            emitted.contains(written),
+            "missing `{written}` in: {emitted}"
+        );
+    }
+}
+
+/// Of the `bson` library the typed paths name only what both of its major versions have, the
+/// serializer and two members of a value, and nothing they add is hidden from a lint or a reader.
+#[cfg(feature = "mongodb")]
+#[test]
+fn the_typed_paths_name_only_what_both_majors_of_the_bson_library_have() {
+    let (hooked, on_the_type) = typed_paths_of(
+        "pub struct Row { #[serde(with = \"hook\")] pub a: u8, pub b: Inner, pub c: Vec<u8> }",
+        &["Inner"],
+    );
+    let (external, _external) =
+        typed_enum_paths_of("pub enum Row { Empty, Label(String), To(i32, i32) }", &[]);
+    let (tagged, _tagged) = typed_enum_paths_of(
+        "#[serde(tag = \"kind\")] pub enum Row { Clear, Solid { color: String } }",
+        &[],
+    );
+    let written = [hooked, on_the_type, external, tagged].concat();
+    let named_after = |prefix: &str| {
+        let mut found: Vec<&str> = written
+            .split(prefix)
+            .skip(1)
+            .filter_map(|rest| {
+                rest.split(|read: char| !(read.is_ascii_alphanumeric() || read == '_'))
+                    .next()
+            })
+            .collect();
+        found.sort_unstable();
+        found.dedup();
+        found
+    };
+    assert_eq!(named_after("bson::"), ["Bson", "Serializer"]);
+    assert_eq!(named_after("bson::Bson::"), ["Boolean", "String"]);
+    assert_eq!(named_after("bson::Serializer::"), ["new"]);
+    for absent in ["doc!", "#[allow", "#[expect", "doc(hidden)"] {
+        assert!(!written.contains(absent), "found `{absent}` in: {written}");
+    }
 }

@@ -608,6 +608,59 @@ fn test_list_form_bound_earns_no_rename_refusal() {
     assert!(rename_direction_rejection(field_attrs(&item)).is_none());
 }
 
+/// What serde writes is named by the `serialize` side of a list, whatever the list names for
+/// reading. A list that names reading alone, and `bound(...)`, name nothing serde writes.
+#[cfg(feature = "mongodb")]
+#[test]
+fn test_written_renames_read_the_serialize_side_of_each_key() {
+    let container: syn::ItemEnum = syn::parse_quote! {
+        #[serde(
+            rename_all(serialize = "camelCase", deserialize = "snake_case"),
+            rename_all_fields(serialize = "kebab-case"),
+            bound(serialize = "T: Clone")
+        )]
+        enum E<T> {
+            #[serde(rename(serialize = "out_name"), rename_all(deserialize = "camelCase"))]
+            Held { value: T },
+        }
+    };
+    let written = parse_written_renames(&container.attrs);
+    assert_eq!(written.rename, None);
+    assert_eq!(written.rename_all.as_deref(), Some("camelCase"));
+    assert_eq!(written.rename_all_fields.as_deref(), Some("kebab-case"));
+    let variant = parse_written_renames(&container.variants[0].attrs);
+    assert_eq!(variant.rename.as_deref(), Some("out_name"));
+    assert_eq!(variant.rename_all, None);
+
+    let item: syn::ItemStruct = syn::parse_quote! {
+        struct S {
+            #[serde(rename(serialize = "out_name", deserialize = "in_name"), flatten)]
+            apart: u32,
+            #[serde(rename(deserialize = "in_name"))]
+            read_only: u32,
+            #[serde(rename = "both")]
+            single: u32,
+            #[serde(rename(serialize = "out_name"))]
+            #[serde(rename(deserialize = "in_name"))]
+            two_lists: u32,
+        }
+    };
+    let fields: Vec<Option<String>> = item
+        .fields
+        .iter()
+        .map(|field| parse_written_renames(&field.attrs).rename)
+        .collect();
+    assert_eq!(
+        fields,
+        [
+            Some("out_name".to_owned()),
+            None,
+            Some("both".to_owned()),
+            Some("out_name".to_owned()),
+        ]
+    );
+}
+
 /// `transparent` is read wherever it is written among a container's serde attributes: a key with a
 /// value or a list written ahead of it does not end the walk.
 #[test]

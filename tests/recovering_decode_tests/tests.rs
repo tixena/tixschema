@@ -37,6 +37,7 @@ mod flattened_shapes;
 mod generic_types;
 mod hook_names;
 mod method_parameter_names;
+mod piped;
 mod shadowing;
 #[cfg(all(feature = "chrono", feature = "mongodb"))]
 mod stored_record;
