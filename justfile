@@ -54,6 +54,7 @@ test-named-features:
     cargo test --no-default-features --features "typescript,zod"
     cargo test --no-default-features --features "serde,zod"
     cargo test --no-default-features --features "serde,zod,mongodb"
+    cargo test --no-default-features --features "serde,bson"
     cargo test --all-features
     cargo test --manifest-path bson3/Cargo.toml --no-default-features
     cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "zod"
@@ -61,6 +62,7 @@ test-named-features:
     cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "typescript,zod"
     cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "serde,zod"
     cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "serde,zod,mongodb"
+    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "serde,bson"
     cargo test --manifest-path bson3/Cargo.toml --all-features
     @echo "✅ Key feature combinations passed!"
 

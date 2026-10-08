@@ -13,11 +13,13 @@ use syn::{Fields, ItemEnum, Type, parse_quote};
 
 use super::aliases::Reach;
 use super::{
-    Arm, Handed, Keyed, Lookup, RecoveringDecode, Shape, Step, TypedPaths, Walk, Walker, Written,
-    added_to, binding, flattened_walker_call, not_the_shape, path_expression, written_names,
+    Arm, Casing, Handed, Keyed, Lookup, RecoveringDecode, Shape, Step, TypedPaths, Walk, Walker,
+    Written, added_to, binding, flattened_walker_call, not_the_shape, path_expression,
+    written_names,
 };
 use crate::features::serde::{
-    parse_serde_field_attributes, parse_serde_key_omission, parse_serde_type_attributes,
+    parse_read_renames, parse_serde_field_attributes, parse_serde_key_omission,
+    parse_serde_type_attributes, parse_written_renames,
 };
 use crate::field_type::{get_field_def, is_plain_enum};
 use crate::rename_rule::resolve_rename_rule;
@@ -61,7 +63,7 @@ struct WalkedVariant<'item> {
     aliases: Vec<String>,
     /// What the variant holds, in the form serde writes it beside the variant's name.
     content: Shape<'item>,
-    /// The name serde writes the variant under.
+    /// The name serde reads the variant under.
     name: String,
     /// serde reads no value as the variant: it is under `skip_deserializing` or `skip`.
     never_read: bool,
@@ -750,7 +752,14 @@ fn walked_variants<'item>(
     module_name: &str,
     parameters: &[String],
 ) -> Vec<WalkedVariant<'item>> {
-    let container = parse_serde_type_attributes(&item_enum.attrs);
+    let (container, written) = (
+        parse_read_renames(&item_enum.attrs),
+        parse_written_renames(&item_enum.attrs),
+    );
+    let rename_all_fields = Casing {
+        read: container.rename_all_fields.as_deref(),
+        written: written.rename_all_fields.as_deref(),
+    };
     item_enum
         .variants
         .iter()
@@ -758,9 +767,12 @@ fn walked_variants<'item>(
             let ident = &variant.ident;
             let rust_name = ident.unraw().to_string();
             let meta = parse_serde_field_attributes(&variant.attrs);
-            let name = meta.rename.unwrap_or_else(|| {
-                resolve_rename_rule(container.rename_all.as_deref()).apply_to_variant(&rust_name)
-            });
+            let name = parse_read_renames(&variant.attrs)
+                .rename
+                .unwrap_or_else(|| {
+                    resolve_rename_rule(container.rename_all.as_deref())
+                        .apply_to_variant(&rust_name)
+                });
             let pattern = match &variant.fields {
                 Fields::Named(_) => quote! { Self::#ident { .. } },
                 Fields::Unit => quote! { Self::#ident },
@@ -769,12 +781,7 @@ fn walked_variants<'item>(
             let stem = to_snake_case(&rust_name);
             WalkedVariant {
                 aliases: meta.aliases,
-                content: Shape::of_variant(
-                    variant,
-                    container.rename_all_fields.as_deref(),
-                    module_name,
-                    parameters,
-                ),
+                content: Shape::of_variant(variant, rename_all_fields, module_name, parameters),
                 name,
                 never_read: parse_serde_key_omission(&variant.attrs).skips_deserializing,
                 pattern,
