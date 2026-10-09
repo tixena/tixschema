@@ -157,9 +157,6 @@ mod the_bundle_one_registration_line_produces {
     }
 
     /// Every schema the bundle's client and dispatcher parse with is declared by the same bundle.
-    /// A schema is a value rather than a type, so none of the checks that read declared type names
-    /// reach it: a bundle naming a `$Schema` nothing declares reads exactly like one that does,
-    /// and is a file that will not compile.
     #[cfg(feature = "zod")]
     #[test]
     fn every_schema_the_bundle_parses_with_is_declared_by_the_bundle() {
@@ -175,13 +172,6 @@ mod the_bundle_one_registration_line_produces {
         }
     }
 
-    /// What a bundle writer gets for leaving an author type's `zod_schema()` line out: the bundle
-    /// above with `author_schemas()` dropped and nothing else changed.
-    ///
-    /// The service's own line carries the schemas of the messages the macro declared and nobody
-    /// else's — it does not own a type the author named and cannot publish its schema line — so a
-    /// bundle naming only its types parses through a value it never declares. Nothing on the Rust
-    /// side refuses that bundle; it is a file the consuming codebase fails to compile.
     #[cfg(feature = "zod")]
     #[test]
     fn a_bundle_missing_an_author_type_s_schema_line_parses_through_a_value_it_never_declares() {
@@ -270,15 +260,6 @@ mod the_bundle_one_registration_line_produces {
         );
     }
 
-    /// The seal on the published fault, read off the bundle a consuming codebase writes.
-    ///
-    /// **What this proves and what it cannot.** Nothing here compiles the bundle; the group in
-    /// `type_check.rs` does that. What this reads is the structure the refusal rests on:
-    /// `ProbeServiceFault` is not an object type but an intersection, one half of which is a
-    /// required property keyed on a symbol the bundle declares and exports nowhere. An object
-    /// literal cannot carry that property, because a module outside the bundle cannot name the
-    /// symbol to write it and a module inside has no value to write. Whether `tsc` then rejects a
-    /// given fabrication is a claim only `tsc` can settle.
     #[test]
     fn the_published_fault_is_the_fields_under_a_brand_the_bundle_exports_nowhere() {
         let (_, written) = written_bundle("tixschema_service_bundle_seal.ts");
@@ -307,15 +288,6 @@ mod the_bundle_one_registration_line_produces {
         );
     }
 
-    /// Every fault the bundle builds is minted the one way: the fields, then the assertion into the
-    /// sealed type. Read off the emitted text, so a constructor added later is compared without
-    /// this test being edited.
-    ///
-    /// The assertion is what the seal costs. TypeScript cannot write a property keyed on a symbol
-    /// with no runtime value, so the generated code asserts from the fields type — the one
-    /// direction an assertion is unambiguously sound in, the sealed type being assignable to the
-    /// type it is asserted from. Keeping every mint to this form is what makes fabricating a fault
-    /// a greppable act rather than something an annotated literal does silently.
     #[cfg(feature = "zod")]
     #[test]
     fn every_fault_the_bundle_builds_is_minted_from_the_fields_and_sealed() {
@@ -349,9 +321,6 @@ mod the_bundle_one_registration_line_produces {
         );
     }
 
-    /// The brand is a type and never a value, so nothing the wire carries changed: the symbol's
-    /// name appears in no reply the dispatcher writes, and the keys a fault carries are the ones
-    /// the *fields* type declares.
     #[test]
     fn the_brand_reaches_no_reply_the_dispatcher_writes() {
         let encoded = super::dispatched("nothing-answers-to-this", b"{}", "probe");
@@ -369,9 +338,7 @@ mod the_bundle_one_registration_line_produces {
         );
     }
 
-    /// The bundle a consuming codebase with more than one service writes. Every published name
-    /// carries its service, so nothing here is declared twice — which is the whole reason for the
-    /// prefix, TypeScript having no per-service scope to lean on.
+    /// The bundle a consuming codebase with more than one service writes.
     #[test]
     fn two_services_in_one_bundle_declare_nothing_twice() {
         let mut both = vec![
@@ -415,8 +382,7 @@ mod the_bundle_one_registration_line_produces {
             "got: {declared:?}"
         );
         // The seal is a declaration in the flat file like any other, so two services carry two of
-        // them and the dedup above is what says so. A shared symbol would let one service's
-        // generated code mint the other's fault.
+        // them and the dedup above is what says so.
         assert!(
             declared.contains(&"probeServiceFaultSeal")
                 && declared.contains(&"auditServiceFaultSeal"),
@@ -427,9 +393,8 @@ mod the_bundle_one_registration_line_produces {
                 && declared.contains(&"AuditServiceGetBalanceResult"),
             "two services declaring one operation name publish two result types. Got: {declared:?}"
         );
-        // A generated message publishes under the operation's own name, with no service prefix to
-        // separate it, so two services' generated messages sharing one flat file is the case that
-        // has to be seen rather than assumed. Both are here, and the dedup above covers them.
+        // A generated message publishes under the operation's own name, with no service prefix, so
+        // two services' generated messages sharing one flat file has to be seen.
         for message in ["SweepRequest", "ApplyBundleRequest", "ReconcileRequest"] {
             assert_eq!(
                 two.matches(&format!("export type {message} =")).count(),
@@ -470,13 +435,6 @@ mod the_bundle_one_registration_line_produces {
         }
     }
 
-    /// The other half: a bundle written by a build with no Zod surface carries none of the five.
-    ///
-    /// Both the client and the dispatcher parse a message against the schema `#[model_schema()]`
-    /// writes for it, and this build writes none. What used to be published here was a client that
-    /// forwarded whatever it was handed and a dispatcher that narrowed an unread payload with `as`
-    /// — a bundle that read like the checked one and admitted anything, while the Rust half of the
-    /// same service went on validating.
     #[cfg(not(feature = "zod"))]
     #[test]
     fn a_bundle_written_without_the_zod_surface_carries_no_client_and_no_dispatcher() {
@@ -495,10 +453,6 @@ mod the_bundle_one_registration_line_produces {
         );
     }
 
-    /// Every name the client and the implementable service refer to is declared by the same
-    /// bundle: the message each member takes, the result types, the outcome types and the fault.
-    /// Read off the text rather than from a list written here, so a name they start referring to
-    /// is checked without this test being edited.
     #[cfg(feature = "zod")]
     #[test]
     fn the_client_and_the_service_name_only_types_the_bundle_declares() {
@@ -511,8 +465,7 @@ mod the_bundle_one_registration_line_produces {
                 reached.push(rest.split_once('>').unwrap_or((rest, "")).0.to_owned());
             }
             // A member of the client type or of the interface, which is where a method names both
-            // the message it takes and the type it answers with. The transport's own members take
-            // an `unknown` payload and answer a type parameter, so neither reaches this.
+            // the message it takes and the type it answers with.
             let Some((taken, answered)) = line.split_once("): Promise<") else {
                 continue;
             };
@@ -794,11 +747,6 @@ mod the_envelope_typescript_declares_is_the_one_rust_writes {
         written
     }
 
-    /// The published union and the wire, compared as sets rather than one sampled value.
-    ///
-    /// The kind a dispatch happens to produce is one of four, and a test that reads only that one
-    /// would pass while the other three drifted. Both sides here are derived: the literals come off
-    /// the emitted text, the values off serde.
     #[test]
     fn the_kinds_the_published_union_declares_are_exactly_the_ones_serde_writes() {
         let mut admitted = literals("ProbeServiceFaultKind");
@@ -811,9 +759,6 @@ mod the_envelope_typescript_declares_is_the_one_rust_writes {
         );
     }
 
-    /// The kinds a dispatcher can actually reach, read off bytes it wrote rather than off the enum.
-    ///
-    /// `handler-panic` is not among them: nothing builds one today, which is tracked separately.
     #[test]
     fn each_kind_a_dispatch_can_produce_is_one_the_published_union_admits() {
         let admitted = literals("ProbeServiceFaultKind");
@@ -850,12 +795,6 @@ mod the_envelope_typescript_declares_is_the_one_rust_writes {
         }
     }
 
-    /// The one operation shape with no envelope at all, read on both sides.
-    ///
-    /// A one-way arm answers nothing on the Rust side, and the TypeScript for the same operation
-    /// says so twice — the method answers `Promise<void>` and the dispatcher arm returns
-    /// `undefined`. If either side started carrying a value the other would be wrong about the
-    /// wire, and no envelope comparison would catch it, there being no envelope.
     #[cfg(feature = "zod")]
     #[test]
     fn a_one_way_operation_puts_nothing_on_the_wire_and_says_so_in_both_languages() {
@@ -905,11 +844,6 @@ mod the_envelope_typescript_declares_is_the_one_rust_writes {
         named
     }
 
-    /// A name only one of the two dispatchers answers to is a call that cannot cross.
-    ///
-    /// The names come off the emitted TypeScript; the verdict comes off the Rust dispatcher driven
-    /// over each one. Neither side is a list written here, so an operation renamed on one side and
-    /// not the other lands as a fault this reads.
     #[cfg(feature = "zod")]
     #[test]
     fn every_operation_the_typescript_dispatcher_answers_to_is_one_the_rust_one_answers_to() {
@@ -944,9 +878,6 @@ mod the_envelope_typescript_declares_is_the_one_rust_writes {
         );
     }
 
-    /// The other half of the framing: a fault written the way the emitted TypeScript dispatcher
-    /// writes one, read back by the generated Rust client. If the tag key or the member the fault
-    /// rides in disagreed, this would not narrow.
     #[cfg(feature = "zod")]
     #[test]
     fn a_fault_framed_the_way_typescript_frames_one_is_read_back_by_the_rust_client() {
@@ -979,9 +910,6 @@ mod the_envelope_typescript_declares_is_the_one_rust_writes {
         assert_eq!(read.operation(), "nothing-answers-to-this");
     }
 
-    /// The pair above is the shape of every operation rather than of one: each method the client
-    /// publishes sends under its own wire name and reads that same framing back through the same
-    /// reader, whichever arms the operation declared.
     #[cfg(feature = "zod")]
     #[test]
     fn every_operation_the_client_publishes_reads_that_framing_back_the_same_way() {
@@ -1035,8 +963,7 @@ pub struct Capture {
 #[cfg(feature = "typescript")]
 impl Capture {
     // Everything a dispatch settled, read only by the group that compares the wire against the
-    // published client and dispatcher — and those are published only where the Zod surface they
-    // parse against is.
+    // published client and dispatcher.
     #[cfg(feature = "zod")]
     fn answered(&self) -> Vec<Vec<u8>> {
         self.answered.lock().unwrap().clone()
@@ -1161,6 +1088,7 @@ pub enum ProbeError {
     InsufficientBalance,
 }
 
+/// The context a call is handed, carrying a logger's name.
 pub struct ProbeContext {
     pub logger_name: String,
 }
@@ -1247,6 +1175,7 @@ pub trait AuditService<Ctx> {
     async fn reconcile(&self, ctx: &Ctx) -> Result<BalanceResponse, CreditWriteError>;
 }
 
+/// The implementation of `AuditService` these tests dispatch to.
 pub struct AuditBackEnd;
 
 impl AuditService<ProbeContext> for AuditBackEnd {
@@ -1269,6 +1198,7 @@ impl AuditService<ProbeContext> for AuditBackEnd {
     }
 }
 
+/// The implementation of `ProbeService` these tests dispatch to.
 pub struct ProbeBackEnd {
     pub granted_credits: u32,
 }
@@ -1356,6 +1286,7 @@ pub trait UnitPingService<Ctx> {
     async fn ping(&self, ctx: &Ctx, req: UnitPingRequest) -> Result<(), UnitPingError>;
 }
 
+/// The implementation of `UnitPingService` these tests dispatch to.
 pub struct UnitPingBackEnd;
 
 impl UnitPingService<()> for UnitPingBackEnd {
@@ -1404,6 +1335,7 @@ pub trait HeaderProbeService<Ctx> {
     ) -> Result<(HeaderProbeDocument, String, Option<u32>), (HeaderProbeError, Option<String>)>;
 }
 
+/// The implementation of `HeaderProbeService` these tests dispatch to.
 pub struct HeaderProbeBackEnd;
 
 impl HeaderProbeService<()> for HeaderProbeBackEnd {
@@ -1458,6 +1390,7 @@ pub trait ReservedProbeService<Ctx> {
     ) -> Result<HeaderProbeDocument, HeaderProbeError>;
 }
 
+/// The implementation of `ReservedProbeService` these tests dispatch to.
 pub struct ReservedProbeBackEnd;
 
 impl ReservedProbeService<()> for ReservedProbeBackEnd {
@@ -1519,8 +1452,6 @@ where
     }
 }
 
-/// Read in every feature combination: the TypeScript emission is additive, so the trait the macro
-/// emits is still the trait an implementation satisfies and a caller calls.
 #[test]
 fn the_second_service_answers_the_operation_its_generated_message_was_declared_for() {
     let answered = poll_once(AuditBackEnd.reconcile(&ProbeContext {

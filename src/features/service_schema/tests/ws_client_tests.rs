@@ -1,10 +1,4 @@
 //! The `ws_rpc` TypeScript transport, read off the emitted text.
-//!
-//! What these prove and what they cannot: the structure of the emitted TypeScript — the seam's own
-//! shape, that it names no platform class, that the schema tables carry one entry per
-//! request-and-reply operation and none for a one-way one. No TypeScript toolchain is reachable
-//! here, so none of them type-checks the bundle; `tests/service_schema_typescript_tests/type_check.rs`
-//! is what proves a browser `WebSocket` satisfies the seam it names.
 
 use super::{MIXED_SERVICE, TS_HEADER_TUPLE_SERVICE, ws_client_of};
 
@@ -106,9 +100,6 @@ fn each_table_entry_names_the_operation_s_own_declared_schema() {
     );
 }
 
-/// A unit success (`Result<(), E>`) carries no `value` on the wire — the envelope is `ok` alone —
-/// so a table entry for it would check a real reply against a schema nothing on the wire is meant
-/// to satisfy, failing every valid one.
 #[test]
 fn a_unit_success_names_no_entry_in_the_success_table_but_its_error_still_does() {
     const UNIT_SUCCESS_SERVICE: &str = "
@@ -266,8 +257,6 @@ fn an_inbound_ping_is_answered_with_a_pong_and_an_inbound_pong_re_arms_the_next_
     );
 }
 
-/// A header tuple's table entries name its body alone: the headers ride the frame's own
-/// `headers`, not the `value` or `error` a table entry checks.
 #[test]
 fn a_header_tuple_s_table_entries_name_its_body_alone() {
     let written = ws_client_of(TS_HEADER_TUPLE_SERVICE);
@@ -281,9 +270,6 @@ fn a_header_tuple_s_table_entries_name_its_body_alone() {
     );
 }
 
-/// Both outbound frames carry the seam's headers under `headers`, left off where there are none,
-/// and a reply's `headers` reach the caller beside the checked envelope — mirrors the Rust
-/// `headers_table` and `headers_of`.
 #[test]
 fn headers_ride_the_frame_s_own_headers_object_both_ways() {
     let written = ws_client_of(MIXED_SERVICE);

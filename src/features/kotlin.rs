@@ -5,12 +5,6 @@
 //! decoder itself, so most shapes carry nothing beyond `@Serializable`/`@SerialName`. The four
 //! shapes the plugin cannot express declaratively (an adjacently- or externally-tagged enum, an
 //! untagged enum, and a tuple) carry a small generated `KSerializer` beside them instead.
-//!
-//! Fully independent of the `typescript`/`zod`/`jsonschema` module-and-delegate machinery, exactly
-//! as `features::dart` is: it reads its own borrow of the item ahead of the
-//! `process_struct`/`process_enum`/`process_type_alias` dispatch and carries no factory-cache or
-//! forward-reference deferral of its own, Kotlin resolving a reference across the whole file
-//! regardless of declaration order just as Dart does.
 
 use core::cell::{Cell, RefCell};
 use core::iter::once;
@@ -35,9 +29,8 @@ use crate::utils::{
 #[cfg(feature = "serde")]
 use crate::features::serde::{parse_serde_field_attributes, parse_serde_type_attributes};
 
-/// The words Kotlin reserves everywhere, which name a member only between backticks:
-/// <https://kotlinlang.org/docs/keyword-reference.html#hard-keywords>. A soft keyword or a
-/// modifier such as `value` or `data` is not among them: Kotlin takes one as an identifier.
+/// The words Kotlin reserves everywhere, which name a member only between backticks. A soft keyword
+/// or a modifier such as `value` or `data` is not among them.
 const KOTLIN_HARD_KEYWORDS: [&str; 28] = [
     "as",
     "break",

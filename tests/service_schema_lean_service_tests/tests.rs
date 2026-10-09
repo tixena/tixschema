@@ -198,8 +198,6 @@ where
     }
 }
 
-/// A one-way arm reaches its implementation and answers nobody, with no answer reader and no fault
-/// mirror anywhere in the module it was placed in.
 #[test]
 fn a_one_way_service_dispatches_into_its_implementation_and_settles_nothing() {
     let backend = NoteBackEnd::default();
@@ -222,8 +220,6 @@ fn a_one_way_service_dispatches_into_its_implementation_and_settles_nothing() {
     );
 }
 
-/// The one failure a one-way call still owes its caller: a transport that could not put the
-/// message out. It is reported without any of the machinery that reads a reply back.
 #[test]
 fn a_one_way_client_reports_a_transport_that_could_not_put_the_message_out() {
     let client = note_amqp_client::NoteServiceClient::new(RefusingTransport);
@@ -248,8 +244,6 @@ fn a_one_way_client_reports_a_transport_that_could_not_put_the_message_out() {
     assert_eq!(client.transport(), &RefusingTransport);
 }
 
-/// A dispatcher for a service with no operation is the fallback arm and nothing else: it reads the
-/// name off the message and answers, reaching neither an implementation nor a context.
 #[test]
 fn a_service_declaring_no_operation_still_settles_a_delivery_that_names_one() {
     let reply = Recorder::default();
@@ -274,17 +268,12 @@ fn a_service_declaring_no_operation_still_settles_a_delivery_that_names_one() {
     );
 }
 
-/// A client for a service with no operation publishes the binding and the transport it was bound
-/// to, and no method for anything to call.
 #[test]
 fn a_client_for_a_service_declaring_no_operation_still_binds_a_transport() {
     let client = bare_amqp_client::BareServiceClient::new(RefusingTransport);
     assert_eq!(client.transport(), &RefusingTransport);
 }
 
-/// The handle carries an answer arm whether or not a service ever reaches it: a one-way arm
-/// answers nobody, a bare service has no arm at all, and a transport implementing `Reply` writes
-/// both arms either way.
 #[test]
 fn the_reply_handle_carries_an_answer_arm_neither_lean_service_ever_reaches() {
     let bare = Recorder::default();
@@ -306,8 +295,6 @@ fn the_reply_handle_carries_an_answer_arm_neither_lean_service_ever_reaches() {
     }
 }
 
-/// The seam carries both arms for the same reason: a one-way client only ever notifies, and a
-/// bare client reaches neither arm at all.
 #[test]
 fn the_transport_seam_carries_the_arms_neither_lean_client_ever_reaches() {
     for called in [
@@ -338,8 +325,6 @@ fn the_transport_seam_carries_the_arms_neither_lean_client_ever_reaches() {
     assert_eq!(sent, Err("the message never went out".to_owned()));
 }
 
-/// A delivery keeps its bytes and hands them back through the reader, in a module whose dispatcher
-/// has no arm to read them.
 #[test]
 fn a_delivery_hands_its_bytes_back_where_no_arm_reads_them() {
     let delivered = bare_amqp_transport::IncomingMessage::new(

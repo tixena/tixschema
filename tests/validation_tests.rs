@@ -1,3 +1,5 @@
+//! The test binary of `validation_tests/`.
+
 extern crate alloc;
 
 #[cfg(test)]

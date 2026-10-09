@@ -1,16 +1,4 @@
 //! The wire is the arbiter, read in both directions before any surface is asserted.
-//!
-//! Three spellings drop a field out of one direction or both: a bare `skip` drops the key from
-//! both read and write, so no surface has a member to describe; `skip_serializing` alone drops
-//! the key on the way out but still reads a supplied one, so its member is described under an
-//! optional key; `skip_deserializing` alone writes the key in every payload, so its member keeps
-//! a required one.
-//!
-//! Dropping the member is stricter than serde on the read side, deliberately. Recorded against
-//! zod 4.4.3 under node v26.2.0: `z.strictObject({ id: z.string() })` rejects
-//! `{ id: "1", internal: ["x"] }` with `unrecognized_keys`, while serde accepts that same payload
-//! and discards the value — the surfaces describe the payload serde *writes*, and serde writes
-//! that key in no payload at all.
 
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -84,8 +72,6 @@ fn skipped_field() -> SkippedField {
     }
 }
 
-/// serde writes no payload carrying the key and reads the value out of none — the pair every
-/// surface expectation below is measured against.
 #[test]
 fn the_skipped_key_is_written_in_no_payload_and_read_out_of_none() {
     assert_eq!(
@@ -148,8 +134,7 @@ fn the_read_half_alone_writes_the_key_in_every_payload() {
     assert_eq!(supplied.roles, Vec::<String>::new());
 }
 
-/// No member at all — not an optional one. The name appears nowhere in the emission, the embedded
-/// JSON schema in the `JSDoc` block included.
+/// No member at all — not an optional one.
 #[test]
 #[cfg(feature = "typescript")]
 fn typescript_writes_no_member_for_the_field_serde_never_carries() {
@@ -182,8 +167,6 @@ fn typescript_answers_the_two_halves_the_way_it_answers_the_word() {
     assert!(ts.contains("id: string;"), "Got: {ts}");
 }
 
-/// The members serde does carry keep the spellings the omission contract gave them: an optional
-/// key where the write half was dropped, a required one where only the read half was.
 #[test]
 #[cfg(feature = "typescript")]
 fn typescript_leaves_the_half_dropped_members_as_they_stand() {
@@ -201,8 +184,6 @@ fn typescript_leaves_the_half_dropped_members_as_they_stand() {
     assert!(!read_half.contains("roles?"), "Got: {read_half}");
 }
 
-/// No key in the object, which is what makes the surrounding `z.strictObject` reject a payload
-/// carrying one — stricter than serde, and the module doc says why that is the honest spelling.
 #[test]
 #[cfg(feature = "zod")]
 fn zod_writes_no_key_for_the_field_serde_never_carries() {
@@ -257,9 +238,7 @@ fn the_json_schema_neither_describes_nor_requires_the_field_serde_never_carries(
 #[cfg(feature = "jsonschema")]
 fn the_json_schema_drops_the_variant_member_too() {
     let tagged = SkippedVariantField::json_schema();
-    // With `serde`, `kind` is read as the internal tag and the member sits beside it. Without
-    // `serde`, the tag attribute can't be read at all, so the type falls back to the adjacent
-    // form (`src/model_schema.rs:5178-5180`) and the member nests one level down, under `value`.
+    // With `serde`, `kind` is read as the internal tag and the member sits beside it.
     #[cfg(feature = "serde")]
     let member = &tagged["oneOf"][0];
     #[cfg(not(feature = "serde"))]

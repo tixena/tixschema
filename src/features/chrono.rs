@@ -1,13 +1,4 @@
 //! Chrono date/time type support.
-//!
-//! This module handles chrono type detection and generates appropriate
-//! TypeScript and Zod schema code when the `chrono` feature is enabled.
-//!
-//! ## Supported Types
-//! - `NaiveDate` - Date without timezone (ISO 8601 format: "2025-11-29")
-//! - `NaiveTime` - Time without timezone (format: "14:30:00")
-//! - `NaiveDateTime` - `DateTime` without timezone (format: "2025-11-29T14:30:00")
-//! - `DateTime<Tz>` - `DateTime` with timezone (format: "2025-11-29T14:30:00Z")
 
 /// Generates TypeScript type name for `NaiveDate`.
 pub fn get_naive_date_typescript_type() -> String {

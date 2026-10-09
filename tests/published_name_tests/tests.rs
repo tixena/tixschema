@@ -1,3 +1,5 @@
+//! Tests that a type is published under its whole Rust ident, on every surface.
+
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
@@ -125,8 +127,6 @@ fn the_json_definition_is_keyed_by_the_whole_ident() {
     }
 }
 
-/// Nothing is read off the spelling of a name: the shortened one a taken suffix would have left
-/// is written by no surface, at the declaration or at a reference to it.
 #[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn no_surface_writes_the_name_a_taken_suffix_would_leave() {
@@ -252,8 +252,6 @@ fn a_self_naming_untagged_member_defers_to_the_overridden_name() {
     );
 }
 
-/// A member key reaches the same seam a type name does, so it too is written exactly as serde
-/// writes it.
 #[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn a_typescript_member_key_is_written_exactly_as_serde_writes_it() {
@@ -279,9 +277,6 @@ fn a_json_member_key_is_written_exactly_as_serde_writes_it() {
     );
 }
 
-/// The module an item publishes its schema in is named from the Rust ident, whole: a reference
-/// standing above the declaration has nothing else to name it by, and an override is not
-/// recoverable from that ident.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn the_schema_module_is_named_from_the_whole_ident() {

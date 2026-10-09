@@ -1,65 +1,6 @@
 //! The Dart `ws_rpc` client: a transport over the sink and stream a `WebSocketChannel` already
 //! exposes, a per-operation client that calls out, and a dispatcher attachment for a service the
 //! app implements — one service, one `emit()`, emitting both halves together.
-//!
-//! # Sink and stream, not a socket class
-//!
-//! Nothing here names `web_socket_channel` or `dart:io`: the transport's constructor asks for
-//! `StreamSink<dynamic>`/`Stream<dynamic>`, the pair every `WebSocketChannel` already exposes, so a
-//! caller hands over `channel.sink`/`channel.stream` and no adapter has to be written.
-//!
-//! # The attachment's seam is a record, not the transport class
-//!
-//! `WebSocketChannel.stream` is single-subscription: a second `stream.listen` on the same stream
-//! throws, so only the transport itself may call `listen`. A second service sharing that socket
-//! still needs a way to reach frames it did not ask for, but Dart has no structural class typing
-//! and each service's [`emit`] is independent, so `attach{Named}WsDispatcher` can name neither the
-//! calling service's own transport class nor a shared base class without this module emitting the
-//! same class twice for every pair of services on one crate. A record is structural: every
-//! `{Named}WsTransport` exposes the identically-shaped `frames` — a broadcast `Stream` fed by every
-//! inbound frame the transport does not itself correlate to a pending `request`, paired with the
-//! function that writes a frame back — and `attach{Named}WsDispatcher` takes that record rather
-//! than a transport, so it composes across services sharing one socket the same way the
-//! `http_rest` Dart client's own structural transport seam does.
-//!
-//! # A caller reads the outcome, exactly as the `http_rest` Dart client does
-//!
-//! A reply operation answers `Future<{Named}{Operation}Result>` — [`super::dart_result`]'s own
-//! sealed pair, the same one `http_rest` answers — and never throws for a declared error or a
-//! fault; a one-way operation still answers `Future<void>` and throws the fault-only
-//! `{Named}WsRefusal`, having no reply arm to carry a fault through. The fault type either arm
-//! carries (`{Named}FaultFields`) is the same shape [`super::dart_http_client`] already answers
-//! with.
-//!
-//! # A decode failure is a failed-validation fault, not an undeserializable-payload one
-//!
-//! `http_rest` answers a body that will not decode with `undeserializablePayload` — a status
-//! answered a shape its own code did not promise. `ws_rpc` has no status to make that distinction
-//! with: a reply that will not decode is a reply that failed the check the transport was always
-//! going to make against the declared type, which is `failedValidation` under this crate's own
-//! vocabulary instead.
-//!
-//! # The wire's own fault shape
-//!
-//! A reply's `error` key carries the operation's declared error verbatim, or
-//! `{ isServiceFault: true, fault: <FaultFields> }` in its place — the same convention
-//! [`super::client`] and [`super::service`] (`ts_client()`/`ts_service()`) already write for an
-//! outbound or a dispatcher-detected fault on a bus-style transport.
-//!
-//! # Headers ride beside the payload
-//!
-//! `header_in` rides the frame's own `headers` map (`null` sent for `None`, never left out); a
-//! `header_out`/`error_header_out` tuple's head rides `value`/`error`, the rest `headers`.
-//!
-//! # A handler signals its declared error the same way a caller reads it
-//!
-//! `{Named}Handlers` answers a reply operation with `Future<Success>` and throws the operation's own
-//! declared error to signal it — Dart's idiom for a `Future`, the same one `{Named}WsRefusal` still
-//! uses on the calling side. Anything else a handler throws is unexpected and reaches `onFault`
-//! instead. Whenever the inbound frame carried an id — a caller waiting on a reply, whether the
-//! operation is one-way or not — the attachment answers it: `ok: true, value: null` once a
-//! one-way handler returns, a fault reply for anything that goes wrong before or during dispatch,
-//! so a pending caller is never left hanging.
 
 use super::dart_http_client::{dart_call, dart_parameter, message_type};
 use super::result::result_name;
@@ -74,9 +15,8 @@ use crate::service_schema::support::fault_fields_typescript_name;
 use core::fmt::Write as _;
 use syn::Type;
 
-/// The structural seam `{Named}WsTransport.frames` publishes and `attach{Named}WsDispatcher`
-/// takes: identically spelled for every service, so an attachment for one service composes over
-/// any other service's own transport sharing its connection without naming that transport's type.
+/// The seam `{Named}WsTransport.frames` publishes and `attach{Named}WsDispatcher` takes, spelled
+/// identically for every service so one service's attachment composes over another's transport.
 const FRAMES_RECORD_TYPE: &str =
     "({Stream<Map<String, dynamic>> inbound, void Function(Map<String, dynamic>) send})";
 
@@ -140,10 +80,6 @@ fn declares_any_header(service: &ServiceDef) -> bool {
     })
 }
 
-// ---------------------------------------------------------------------------------------------
-// Liveness: how often a transport pings, and how long it waits for the answering pong.
-// ---------------------------------------------------------------------------------------------
-
 fn heartbeat_class(named: &str) -> String {
     format!(
         "/// How often a `{named}` `ws_rpc` transport pings the far side, and how long it waits\n\
@@ -163,11 +99,6 @@ fn heartbeat_class(named: &str) -> String {
          }}"
     )
 }
-
-// ---------------------------------------------------------------------------------------------
-// The transport: one `stream.listen`, request/reply correlation, the heartbeat, and the fan-out
-// an attachment hangs off.
-// ---------------------------------------------------------------------------------------------
 
 fn transport_class(named: &str, headered: bool) -> String {
     format!(
@@ -346,11 +277,6 @@ fn transport_class_rest(named: &str) -> String {
     )
 }
 
-// ---------------------------------------------------------------------------------------------
-// The one exception a client still throws: a one-way method's own fault, having no reply arm to
-// carry it through instead. Identical in shape to `dart_http_client`'s own.
-// ---------------------------------------------------------------------------------------------
-
 fn refusal_class(named: &str) -> String {
     let fields = fault_fields_typescript_name(named);
     format!(
@@ -365,11 +291,6 @@ fn refusal_class(named: &str) -> String {
          }}"
     )
 }
-
-// ---------------------------------------------------------------------------------------------
-// The client: one class, one constructor, one method per operation, calling out over the
-// transport's own `request`/`notify`.
-// ---------------------------------------------------------------------------------------------
 
 fn client_class(service: &ServiceDef, headered: bool) -> String {
     let named = service.ident.to_string();
@@ -704,11 +625,6 @@ fn declared_error_decode_stmts(
     );
     stmt
 }
-
-// ---------------------------------------------------------------------------------------------
-// Handlers: what an app implementing this service answers inbound frames with, and the
-// attachment that dispatches them.
-// ---------------------------------------------------------------------------------------------
 
 /// A handler's own signature: context, message, one argument per `header_in` binding, its
 /// declared success out — a reply operation signals its declared error by throwing it.
@@ -1116,10 +1032,6 @@ fn reply_dispatch_arm(
     arm
 }
 
-// ---------------------------------------------------------------------------------------------
-// The faults every method and every dispatch arm reaches for.
-// ---------------------------------------------------------------------------------------------
-
 fn fault_helpers(named: &str, fn_prefix: &str, headered: bool) -> Vec<String> {
     let failed_validation_doc = format!(
         "The fault a `{named}` `ws_rpc` reply answers with when it will not become the \
@@ -1201,11 +1113,6 @@ fn failed_validation_fault_helper(named: &str, fn_prefix: &str) -> String {
          );"
     )
 }
-
-// ---------------------------------------------------------------------------------------------
-// Small, Dart-flavored value rendering, duplicated from `dart_http_client` rather than shared
-// with it: this module needs none of its header/query/body-kind machinery, only a type's name.
-// ---------------------------------------------------------------------------------------------
 
 /// The message's Dart type: the type the operation named, or the one the macro declared for an
 /// operation that named none — mirrors `dart_http_client`'s own `message_dart_typename`.

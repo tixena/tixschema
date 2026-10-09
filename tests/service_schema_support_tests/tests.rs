@@ -1,12 +1,5 @@
 //! Two services declared through the macro, one transport serving both, and the call error a
 //! client hands back.
-//!
-//! The reply handle is exercised rather than merely implemented: `send` is handed a value the
-//! transport serializes itself, which is what keeps the wire format out of the generator, and a
-//! one-way operation reaches it with nothing at all.
-//!
-//! This file is outside the module the fault is declared in, so what it builds through the fault's
-//! own constructors is what a hand-written dispatcher can build.
 
 #![cfg(feature = "serde")]
 
@@ -18,22 +11,26 @@ use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tixschema::service_schema;
 
+/// The message of the purge operation.
 #[derive(Deserialize, Serialize)]
 pub struct PurgeRequest {
     pub organization_id: String,
 }
 
+/// The error the sweep service declares.
 #[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case", tag = "errorCode")]
 pub enum SweepError {
     DbError,
 }
 
+/// What a sweep answers with.
 #[derive(Deserialize, Serialize)]
 pub struct SweepReport {
     pub swept: u32,
 }
 
+/// The implementation these tests call: it records what it purged and answers a fixed sweep count.
 pub struct ProbeBackEnd {
     purged: Mutex<Vec<String>>,
     swept: u32,
@@ -268,11 +265,6 @@ fn a_call_error_carries_the_error_the_operation_declared() {
     );
 }
 
-/// Every kind a fault reports, built from here rather than from inside the generated module.
-///
-/// The path resolving is the whole of what this pins: a dispatcher that cannot name a constructor
-/// has no way to answer a defect, and spelling `pub` in the expansion says nothing about whether
-/// the name reaches a caller.
 #[test]
 fn every_kind_of_fault_is_built_through_its_own_constructor_from_outside_the_module() {
     use sweep_service_schema::{ServiceFault, ServiceFaultKind};

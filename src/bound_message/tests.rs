@@ -49,8 +49,6 @@ fn a_bound_that_quotes_nothing_back_states_only_itself() {
     );
 }
 
-/// A brand is the value rather than a member of anything, so nothing writes a field into its
-/// report — the field it is held in does that, on both sides of the wire.
 #[cfg(feature = "serde")]
 #[test]
 fn a_report_with_no_field_to_name_names_none() {
@@ -99,8 +97,6 @@ fn a_pattern_states_itself_and_takes_no_function() {
     );
 }
 
-/// The one bound carrying text somebody else wrote is the one rendered into a quoted string, so
-/// what a pattern spells cannot end that string early or eat the escape after it.
 #[cfg(feature = "zod")]
 #[test]
 fn a_pattern_reaches_the_quoted_string_escaped() {
@@ -110,12 +106,7 @@ fn a_pattern_reaches_the_quoted_string_escaped() {
     );
 }
 
-/// The list a reader tells this crate's sentences by, held against the sentences themselves. A
-/// bound whose stem is missing from the list would report words no reader recognises, and a stem
-/// nothing writes would let a reader claim a sentence that is not one of ours.
-///
-/// Gated with the list itself: a build with no serde feature has no reader and so no list to hold
-/// the sentences against. The Zod spelling of the same sentences is checked above.
+/// The list a reader tells this crate's sentences by, held against the sentences themselves.
 #[cfg(feature = "serde")]
 #[test]
 fn every_sentence_opens_with_a_stem_the_list_spells_and_no_stem_is_unwritten() {

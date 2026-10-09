@@ -1,8 +1,7 @@
+//! Unit tests of the `ObjectId` support: its detection, its TypeScript type and its Zod schema.
+
 use super::*;
 
-/// The `$oid` strings the two surfaces were told apart by, with the verdict a flagless ECMA-262
-/// regex gives each: `new RegExp(OBJECT_ID_HEX_PATTERN).test(oid)` under node v26.2.0. The upper-
-/// case hex is the one a flag turns, and the lower-case one is what `ObjectId::to_hex()` writes.
 #[cfg(feature = "mongodb")]
 const OBJECT_ID_HEX_STRINGS: [(&str, bool); 2] = [
     ("507f1f77bcf86cd799439011", true),
@@ -53,12 +52,6 @@ fn javascript_literal(source: &str, flags: &str) -> regex::Regex {
     regex::Regex::new(&format!("{case_folding}{source}")).unwrap()
 }
 
-/// Both surfaces constrain `$oid` by one hex under one case rule.
-///
-/// A JSON Schema `pattern` is a flagless ECMA-262 regex with nowhere to hold a flag, so agreement
-/// can only come from the source spelling — which leaves the Zod literal's flag set as the one
-/// place the two can part ways, and an empty one as the only way they cannot. The contract both
-/// describe is what serde writes, and `ObjectId::to_hex()` writes lower-case.
 #[cfg(feature = "mongodb")]
 #[test]
 fn test_both_object_id_surfaces_read_one_hex_under_one_case_rule() {

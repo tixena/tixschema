@@ -1,3 +1,5 @@
+//! The test binary of `language_parity_tests/`.
+
 #[cfg(test)]
 #[macro_use]
 #[path = "language_parity_tests/tests.rs"]

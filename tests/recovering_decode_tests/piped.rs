@@ -182,7 +182,6 @@ fn an_issue_a_resolver_rejects_refuses_the_read_and_is_the_one_it_holds() {
 }
 
 /// serde reads a name that breaks its bound, and the read hands the resolvers the bound's issue.
-/// A build with no schema surface publishes no validator, and lists nothing.
 #[test]
 fn a_broken_bound_is_handed_to_the_resolvers() {
     let stored = json!({
@@ -217,9 +216,6 @@ fn a_broken_bound_is_handed_to_the_resolvers() {
     }
 }
 
-/// A number that breaks two bounds is two issues at one path, each holding the value as it was
-/// stored. The resolver is handed both and answers each, its repair already in the raw value when
-/// it is handed the second.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_resolver_answers_both_issues_of_a_value_that_breaks_two_bounds() {
@@ -252,8 +248,7 @@ fn a_resolver_answers_both_issues_of_a_value_that_breaks_two_bounds() {
     );
 }
 
-/// The pipe counts issues, never paths. A resolver that repairs only a number still held bare
-/// leaves the second issue `NotTouched`, and that issue refuses the read of the repaired value.
+/// The pipe counts issues, never paths.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn an_issue_left_not_touched_at_a_repaired_value_refuses_the_read() {
@@ -275,8 +270,7 @@ fn an_issue_left_not_touched_at_a_repaired_value_refuses_the_read() {
     );
 }
 
-/// Each resolver is handed only the issues every one before it left `NotTouched`, once each. What
-/// none settled comes back in the order it was found, whichever resolver answered it first.
+/// Each resolver is handed only the issues every one before it left `NotTouched`, once each.
 #[test]
 fn the_pipe_hands_a_resolver_only_what_the_earlier_ones_left_not_touched() {
     let issues = [
@@ -315,8 +309,6 @@ fn the_pipe_answers_every_issue_where_no_resolver_settles_one() {
     assert_eq!(*seen.lock().unwrap(), ["a", "b"]);
 }
 
-/// A resolver repairs the value the pipe is handed, and the issue it settled is not among the
-/// ones the pipe answers.
 #[test]
 fn the_pipe_leaves_out_a_settled_issue_and_keeps_its_repair() {
     let mut raw = json!({

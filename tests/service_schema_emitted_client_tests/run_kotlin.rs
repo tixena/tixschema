@@ -2,11 +2,6 @@
 //! decoded from the JSON Rust wrote and re-encoded; the `http_rest` client's own URLs (the same
 //! three `run_dart.rs` asserts); the `ws_rpc` client's own scenarios against a fake socket; and
 //! the mini server, sharing its socket with a second service, against frames sent by hand.
-//!
-//! Every group compiles one `main.kt` with `kotlinc` and runs the result with `java` — no package
-//! manifest, no Gradle — standing down exactly as [`super::run_dart`] does where no Kotlin
-//! toolchain is reachable. A single fake socket class carries every `ws_rpc` scenario: unpaired
-//! and fed by hand for the client group, paired for the mini-server group's own live connection.
 
 #![cfg(feature = "kotlin")]
 
@@ -54,9 +49,8 @@ use super::tests::{
 };
 use std::collections::HashMap;
 
-/// Every import a driver in this file reaches for, across all four groups — `kotlinx.serialization`
-/// needs the `descriptors`/`encoding` packages by name; a wildcard on the top-level package alone
-/// leaves `SerialDescriptor`, `Encoder` and `Decoder` unresolved.
+/// Every import a driver in this file reaches for: `kotlinx.serialization` needs the `descriptors`
+/// and `encoding` packages by name.
 const KOTLIN_IMPORTS: &str = "import kotlinx.coroutines.*\n\
      import kotlinx.coroutines.flow.*\n\
      import kotlinx.serialization.*\n\
@@ -148,9 +142,8 @@ fun main() = runBlocking {
 }
 "#;
 
-/// Group 2's own driver: a recording `ConversationClientServiceHttpTransport` answering 200 for
-/// every call but `DELETE`, which it answers 204 — then the three calls `run_dart.rs` makes of
-/// the same three URLs, reported as one JSON array of `{method, path, query}`.
+/// A recording `ConversationClientServiceHttpTransport` answering 200 for every call but `DELETE`,
+/// which it answers 204; the calls are reported as one JSON array.
 const REST_DRIVER: &str = r#"
 class RecordingTransport : ConversationClientServiceHttpTransport {
     val sent = mutableListOf<ConversationClientServiceHttpRequest>()
@@ -181,8 +174,7 @@ fun main() = runBlocking {
 "#;
 
 /// The one fake socket every `ws_rpc` group drives: `deliver` stands in for an inbound frame
-/// arriving (group 3, unpaired), `peer` stands in for a live connection (group 4, paired). Each
-/// group compiles its own separate `main.kt` — a fresh `java` process per group, never shared.
+/// arriving (group 3, unpaired), `peer` stands in for a live connection (group 4, paired).
 const FAKE_SOCKET: &str = r#"
 class FakeSocket(private val scope: CoroutineScope) : ConversationClientServiceWsSocket {
     var peer: FakeSocket? = null
@@ -219,9 +211,8 @@ fun requestId(sent: String?): String? {
 }
 "#;
 
-/// Group 3's own driver: five scenarios against a fake socket fed by hand — a ping answered with
-/// one pong, a missed pong closing the socket, a reply that fails validation, a request settled
-/// when the transport closes, and a frame for another service dropped while the genuine reply resolves.
+/// Five scenarios against a fake socket fed by hand: a ping answered, a missed pong, a reply that
+/// fails validation, a request settled on close, another service's frame dropped.
 const WS_CLIENT_DRIVER: &str = r#"
 fun main() = runBlocking {
     val pingSocket = FakeSocket(this)
@@ -284,9 +275,8 @@ fun main() = runBlocking {
 }
 "#;
 
-/// Group 4's own driver: the mini server against a connected fake-socket pair — every frame that
-/// carries an id answered, the one-way included; a declared error; a bad-payload notify reaching
-/// `onFault` only; sharing the socket with `PulseClientService`; and `share()` throwing once detached.
+/// The mini server against a connected fake-socket pair: every frame with an id answered, a
+/// declared error, a bad-payload notify, a shared socket, `share()` after detach.
 const MINI_SERVER_DRIVER: &str = r#"
 fun connectedPair(scope: CoroutineScope): Pair<FakeSocket, FakeSocket> {
     val a = FakeSocket(scope)
@@ -396,9 +386,7 @@ fun main() = runBlocking {
 "#;
 
 /// A stub `ThumbnailClientServiceHttpTransport` answering by path alone, driving the emitted
-/// client's own declared-error and `header_out` decode - the Kotlin twin of the Node, Dart and
-/// Swift client tests on the same fixture. Shares its compiled program with `StampClientService`'s
-/// own `x-age` (`Option<u32>`) read: present, absent, and present but not a number.
+/// client's declared-error and `header_out` decode.
 const THUMBNAIL_DRIVER: &str = r#"
 class ThumbnailRecorder : ThumbnailClientServiceHttpTransport {
     override suspend fun send(request: ThumbnailClientServiceHttpRequest): ThumbnailClientServiceHttpResponse {
@@ -492,11 +480,6 @@ fun main() = runBlocking {
     println(report.toString())
 }
 "#;
-
-// -------------------------------------------------------------------------------------------
-// The generated text every group but the codec one drives: `ConversationClientService`'s own
-// declared types, its fault pair, and both of its clients.
-// -------------------------------------------------------------------------------------------
 
 fn client_definitions() -> Vec<String> {
     vec![
@@ -595,11 +578,6 @@ fn mini_server_module(driver: &str) -> String {
     parts.push(driver.to_owned());
     parts.join("\n\n")
 }
-
-// -------------------------------------------------------------------------------------------
-// Group 1: the codec rows the Kotlin spike proved, decoded from the JSON Rust wrote and
-// re-encoded.
-// -------------------------------------------------------------------------------------------
 
 /// One row: the name it prints under, the Kotlin type it decodes into, and the JSON Rust wrote
 /// for it — the same value the printed, re-encoded JSON must equal.
@@ -780,10 +758,6 @@ fn every_awkward_shape_round_trips_through_the_serializer() {
     }
 }
 
-// -------------------------------------------------------------------------------------------
-// Group 2: the REST client's own URLs — the same three `run_dart.rs` asserts.
-// -------------------------------------------------------------------------------------------
-
 /// What the recorder captured, or `None` where no toolchain was reachable.
 fn driven_rest() -> Option<Vec<serde_json::Value>> {
     let written = ran_kotlin(&client_module(REST_DRIVER))?;
@@ -826,10 +800,6 @@ fn a_lone_placeholder_sends_the_field_it_names_and_the_rest_as_a_query() {
     );
 }
 
-// -------------------------------------------------------------------------------------------
-// Group 3: the `ws_rpc` client against a fake socket fed by hand.
-// -------------------------------------------------------------------------------------------
-
 /// What the driver's own report printed, or `None` where no toolchain was reachable.
 fn driven_ws_client() -> Option<serde_json::Value> {
     let written = ran_kotlin(&client_module(&format!(
@@ -860,10 +830,6 @@ fn the_ws_client_probes_answers_checks_and_settles() {
     );
     assert_eq!(written["foreignResolvedOk"], true, "got: {written:#?}");
 }
-
-// -------------------------------------------------------------------------------------------
-// Group 4: the mini server, sharing its socket with `PulseClientService`.
-// -------------------------------------------------------------------------------------------
 
 #[test]
 fn the_mini_server_answers_every_frame_with_an_id_and_shares_the_socket() {

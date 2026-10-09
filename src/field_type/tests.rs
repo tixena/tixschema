@@ -1,3 +1,6 @@
+//! Unit tests of `FieldDef`: how a written type is read, and what it renders as in TypeScript and
+//! Zod.
+
 use super::{FieldDef, FieldDefType};
 
 #[cfg(feature = "zod")]
@@ -94,8 +97,6 @@ fn test_sequence_wrappers_render_as_zod_arrays() {
     }
 }
 
-/// A named type takes the field's length and pattern as one `.check(…)` on its own schema, through
-/// a sequence as well, and a named type with no bound beside it is written as before.
 #[test]
 #[cfg(feature = "zod")]
 fn a_named_type_takes_a_fields_length_and_pattern_as_one_check() {
@@ -126,8 +127,6 @@ fn a_named_type_takes_a_fields_length_and_pattern_as_one_check() {
     assert_eq!(field(named()).zod_type(), "MetricTag$Schema");
 }
 
-/// A slot — a tuple element or a map entry — holds the same array a field does, and an `Option`
-/// there is the null-flavored one the slot always uses, applied to that array rather than inside it.
 #[test]
 fn test_sequence_in_a_slot_renders_as_the_array_it_writes() {
     for wrapper in SEQUENCE_WRAPPERS {
@@ -160,8 +159,6 @@ fn test_sequence_in_a_slot_renders_as_the_array_it_writes() {
     }
 }
 
-/// A sequence wrapper inside a `Vec` is two arrays on the wire, so it is two on the surfaces: the wrapper's own
-/// array wrap is the element's, and the field it sits in keeps the wrap the parser gave it.
 #[test]
 fn test_sequence_within_an_array_field_nests_both_wraps() {
     for wrapper in SEQUENCE_WRAPPERS {
@@ -181,8 +178,6 @@ fn test_sequence_within_an_array_field_nests_both_wraps() {
     }
 }
 
-/// An `Option` around a sequence wrapper is the field's own, not the array's: the wrapper answers for what the
-/// array holds and nothing about whether the key is there.
 #[test]
 fn test_optional_sequence_field_keeps_the_field_level_optionality() {
     let mut optional = sequence_of("HashSet", FieldDefType::String);
@@ -195,8 +190,6 @@ fn test_optional_sequence_field_keeps_the_field_level_optionality() {
     );
 }
 
-/// A `Vec` inside a sequence wrapper is the mirror of the case above: the element already carries a
-/// level and the wrapper adds its own, so both survive rather than one standing in for the other.
 #[test]
 fn test_an_array_element_within_a_sequence_nests_both_wraps() {
     for wrapper in SEQUENCE_WRAPPERS {
@@ -217,8 +210,6 @@ fn test_an_array_element_within_a_sequence_nests_both_wraps() {
     }
 }
 
-/// The parser counts a level per wrapper written rather than setting a flag one wrapper can only
-/// set again, so the depth a field was written at is the depth the surfaces are handed.
 #[test]
 fn test_the_parser_counts_one_array_level_per_wrapper_written() {
     for (spelling, array_depth) in [
@@ -238,9 +229,6 @@ fn test_the_parser_counts_one_array_level_per_wrapper_written() {
     }
 }
 
-/// A fixed-size array is written at one level and bounds that level alone, so the count lands on
-/// the level the `[T; N]` spells rather than on the field. A count the expansion cannot read (a
-/// const generic, a `const` item, a computed expression) or a slice leaves the level unbounded.
 #[test]
 fn test_the_parser_records_a_fixed_array_length_at_the_level_it_bounds() {
     for (spelling, array_lengths) in [
@@ -267,9 +255,6 @@ fn test_the_parser_records_a_fixed_array_length_at_the_level_it_bounds() {
     }
 }
 
-/// A sequence wrapper normalizes onto its element before any surface reads it, and a bound has to
-/// survive that move from either side of the wrapper: the array written inside it keeps its own
-/// level, and the array it is written inside moves up by the level the wrapper adds.
 #[test]
 fn test_a_fixed_array_keeps_its_bound_across_the_sequence_normalization() {
     for wrapper in SEQUENCE_WRAPPERS {
@@ -284,8 +269,6 @@ fn test_a_fixed_array_keeps_its_bound_across_the_sequence_normalization() {
 }
 
 /// The covered list, stated once so it is a decision rather than a spelling that happened to work.
-/// The names on the false side are not uncovered by omission: each is a type the parser answers for
-/// in a way of its own.
 #[test]
 fn test_the_covered_transparent_wrappers_are_exactly_the_recorded_list() {
     for name in [
@@ -298,9 +281,6 @@ fn test_the_covered_transparent_wrappers_are_exactly_the_recorded_list() {
     }
 }
 
-/// The covered sequence list, stated once so it is a decision rather than a spelling that happened
-/// to work. `LinkedList` is on the false side deliberately: it writes the array `Vec` writes, so
-/// the covered spelling already describes it and a field written as one is refused instead.
 #[test]
 fn test_the_covered_sequence_wrappers_are_exactly_the_recorded_list() {
     for name in ["BTreeSet", "BinaryHeap", "HashSet", "Vec", "VecDeque"] {
@@ -311,8 +291,6 @@ fn test_the_covered_sequence_wrappers_are_exactly_the_recorded_list() {
     }
 }
 
-/// The ownership/borrow split the covered list is built from: only the first four implement
-/// `Deref`, which is what a constraint's generated validator needs to reach through one.
 #[test]
 fn test_ownership_and_interior_mutability_partition_the_covered_list() {
     for name in ["Arc", "Box", "Cow", "Rc"] {
@@ -325,8 +303,6 @@ fn test_ownership_and_interior_mutability_partition_the_covered_list() {
     }
 }
 
-/// A covered wrapper writes nothing of its own, so the field it wraps is the field the parser
-/// produces — name and docs included, both of which belong to where the field was written.
 #[test]
 fn test_a_transparent_wrapper_parses_as_the_field_it_wraps() {
     for spelling in [
@@ -353,8 +329,6 @@ fn test_a_transparent_wrapper_parses_as_the_field_it_wraps() {
     }
 }
 
-/// What a `None` costs is the `Option`'s answer at either side of a wrapper that is not on the
-/// wire: the flag is lifted onto the field exactly as the bare spelling lifts it.
 #[test]
 fn test_a_transparent_wrapper_carries_the_optionality_of_what_it_wraps() {
     for spelling in [
@@ -376,8 +350,6 @@ fn test_a_transparent_wrapper_carries_the_optionality_of_what_it_wraps() {
     }
 }
 
-/// The array levels a field was written at are counted the same through a wrapper, whichever side
-/// of it the sequence was written on — a boxed slice included, being the sequence a `Box` holds.
 #[test]
 fn test_a_transparent_wrapper_keeps_the_array_levels_of_what_it_wraps() {
     for spelling in [
@@ -399,8 +371,6 @@ fn test_a_transparent_wrapper_keeps_the_array_levels_of_what_it_wraps() {
     }
 }
 
-/// The borrowed form of a mapped owned type writes what the owned form writes, and a wrapper or a
-/// reference is how a field reaches it at all.
 #[test]
 fn test_a_borrowed_string_parses_as_a_string() {
     for spelling in [
@@ -428,9 +398,6 @@ fn test_a_borrowed_string_parses_as_a_string() {
     }
 }
 
-/// `OsString`/`OsStr` are the owned/borrowed pair held out of the string mapping: serde writes
-/// them as an externally tagged enum naming the target platform, so no portable schema describes
-/// them. The parse leaves them as siblings and reports them from wherever they were written.
 #[test]
 fn test_an_os_string_is_reported_wherever_it_was_written() {
     for spelling in [
@@ -458,8 +425,6 @@ fn test_an_os_string_is_reported_wherever_it_was_written() {
     }
 }
 
-/// The report is for those two names alone: a path, a string, and a user type that merely carries
-/// one of them inside its own name all describe a wire form and stay unreported.
 #[test]
 fn test_a_schematizable_field_is_not_reported_as_an_os_string() {
     for spelling in [
@@ -478,8 +443,6 @@ fn test_a_schematizable_field_is_not_reported_as_an_os_string() {
     }
 }
 
-/// The cell/lock/lazy-init types and the borrow guards serde writes nothing for: the parse leaves
-/// each a sibling, and the report names it from wherever it was written.
 #[test]
 fn test_an_unsupported_std_wrapper_is_reported_wherever_it_was_written() {
     for (spelling, expected) in [
@@ -509,8 +472,6 @@ fn test_an_unsupported_std_wrapper_is_reported_wherever_it_was_written() {
     }
 }
 
-/// The report is for those nine names alone: the wrappers the crate reads straight through, and a
-/// user type that merely carries one of the names inside its own, all describe a wire form.
 #[test]
 fn test_a_schematizable_field_is_not_reported_as_an_unsupported_std_wrapper() {
     for spelling in [
@@ -537,8 +498,6 @@ fn test_a_schematizable_field_is_not_reported_as_an_unsupported_std_wrapper() {
     }
 }
 
-/// `LinkedList` is on the false side because it is refused by a list of its own: serde writes it,
-/// so the message it earns names the covered spelling rather than a missing wire form.
 #[test]
 fn test_the_unsupported_std_wrapper_list_is_exactly_the_nine_names() {
     for name in [
@@ -571,9 +530,6 @@ fn test_the_unsupported_std_wrapper_list_is_exactly_the_nine_names() {
     }
 }
 
-/// An `Option` written inside a sequence wrapper and one written around it are two different
-/// values on the wire — `[null]` against `null` — so the parse keeps them apart: each is recorded
-/// at the level it was written at, the element's below the array and the field's own at the top.
 #[test]
 fn test_the_parser_records_the_level_each_option_was_written_at() {
     for (spelling, array_depth, nullable_levels) in [
@@ -598,9 +554,6 @@ fn test_the_parser_records_the_level_each_option_was_written_at() {
     }
 }
 
-/// A covered wrapper writes the array its element decides, so the element's own `Option` is
-/// recorded at the level the wrapper puts it at — the same level the `Vec` spelling of the same
-/// field records it at, whichever wrapper name was written.
 #[test]
 fn test_a_covered_wrapper_records_its_element_option_where_the_vec_spelling_does() {
     let vec_spelling: syn::Type = syn::parse_str("Vec<Option<u32>>").unwrap();
@@ -653,9 +606,7 @@ fn assert_reads_alike(parsed: &FieldDef, expected: &FieldDef, at: &str) {
     assert_eq!(parsed.nullable_levels, expected.nullable_levels, "{at}");
 }
 
-/// A substituted type is the type it names. The grouping describes nothing about the value, so it
-/// reaches no classification: every spelling reads as its written twin, however many expansions
-/// passed it on.
+/// A substituted type is the type it names.
 #[test]
 fn test_a_substituted_type_reads_as_the_written_one() {
     for spelling in [
@@ -682,9 +633,6 @@ fn test_a_substituted_type_reads_as_the_written_one() {
     }
 }
 
-/// A substitution written inside a shape the author spelled out is read through on the way down:
-/// the shape is theirs, the grouping is not, and the field is the one they would have written by
-/// hand.
 #[test]
 fn test_a_substitution_inside_a_written_shape_is_read_through() {
     let grouped = proc_macro2::Group::new(
@@ -709,9 +657,6 @@ fn test_a_substitution_inside_a_written_shape_is_read_through() {
     }
 }
 
-/// [`FieldDef::reaches_a_type_declared_later`]'s zero-argument arm: a bare sibling reference to an
-/// unregistered `#[model_schema]` item defers exactly as a generic forward reference already does;
-/// a registered name stays the eager baseline.
 #[cfg(feature = "zod")]
 #[test]
 fn test_reaches_a_type_declared_later_answers_for_a_zero_argument_sibling() {
@@ -740,9 +685,6 @@ fn test_reaches_a_type_declared_later_answers_for_a_zero_argument_sibling() {
     );
 }
 
-/// A sequence wrapper's own name is never itself a forward reference, registered or not — it
-/// renders as the array its element describes rather than a binding of its own — while an
-/// unregistered element inside it still is, through the `any()` clause beside the exclusion.
 #[cfg(feature = "zod")]
 #[test]
 fn test_a_sequence_wrapper_name_is_never_itself_a_forward_reference() {
@@ -771,8 +713,6 @@ fn test_boolean_literal_typescript() {
     );
 }
 
-/// A whole value renders without the trailing `.0` `f64`'s own `Display` carries; a fractional one
-/// keeps its digits.
 #[test]
 fn test_number_literal_typescript_has_no_trailing_zero() {
     assert_eq!(
@@ -903,8 +843,7 @@ fn test_a_literal_category_is_expected_with_its_value() {
     }
 }
 
-/// A name the classifier does not know is another model type, by the name its field writes. One of
-/// the item's own parameters is named the same way.
+/// A name the classifier does not know is another model type, by the name its field writes.
 #[cfg(feature = "serde")]
 #[test]
 fn test_a_named_type_is_expected_as_a_model_by_the_name_written() {
@@ -925,8 +864,6 @@ fn test_a_named_type_is_expected_as_a_model_by_the_name_written() {
     );
 }
 
-/// A map is expected by the type of its values, a tuple by its members in order, and every std
-/// sequence as the array serde writes for it.
 #[cfg(feature = "serde")]
 #[test]
 fn test_a_composite_category_is_expected_before_the_members_under_it() {
@@ -947,8 +884,6 @@ fn test_a_composite_category_is_expected_before_the_members_under_it() {
     }
 }
 
-/// `Optional` and `Array` wrap the category outermost first, one per level it was written at, and a
-/// wrapper serde writes as the value it holds adds none.
 #[cfg(feature = "serde")]
 #[test]
 fn test_optional_and_array_wrap_the_category_in_the_order_written() {
@@ -980,8 +915,6 @@ fn test_optional_and_array_wrap_the_category_in_the_order_written() {
     );
 }
 
-/// The name `Node$SchemaFactory(t)` is replaced where it stands alone and left inside the longer
-/// `TreeNode$SchemaFactory(t)`, and a call written twice is handed in once.
 #[cfg(feature = "zod")]
 #[test]
 fn test_a_union_hands_in_each_factory_call_once_and_leaves_a_longer_name_alone() {

@@ -1,3 +1,5 @@
+//! Tests of the chrono date and time types on every surface.
+
 /// An epoch-seconds hook, written by hand, to prove `as_number` holds back its injected
 /// millisecond hook where a field already reads itself through one of its own.
 mod epoch_seconds {
@@ -548,8 +550,6 @@ fn test_enum_keyed_chrono_map_json_schema() {
     }
 }
 
-/// A chrono value is rendered where the map's members are described, exactly as it is in field
-/// position: a `String` key opens the set of member names, never the schema those members carry.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_string_keyed_chrono_map_json_schema() {
@@ -603,8 +603,6 @@ fn test_string_keyed_chrono_map_json_schema() {
     );
 }
 
-/// A nested map's members reach the same chrono mapping the outer members reach: the format is the
-/// value type's, and no depth of nesting is allowed to drop it.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_nested_string_keyed_chrono_map_json_schema() {
@@ -646,8 +644,6 @@ fn test_nested_string_keyed_chrono_map_json_schema() {
     }
 }
 
-/// TypeScript and Zod recurse through a map value on their own, so a nested chrono value keeps its
-/// rendering on those surfaces too — pinned so the three stay in step.
 #[test]
 #[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_nested_string_keyed_chrono_map_typescript_and_zod() {

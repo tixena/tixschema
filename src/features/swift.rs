@@ -1,14 +1,4 @@
 //! Swift type and `Codable`-codec generation.
-//!
-//! Emits one `swift_definition()` method per `#[model_schema]` item — a Swift `struct` or `enum`
-//! conforming to `Codable, Sendable`, generating the way the Dart backend generates:
-//! `swift_schema_dispatch` is called directly from `exec_model_schema`, ahead of the
-//! `process_struct`/`process_enum`/`process_type_alias` dispatch that consumes the item, and reads
-//! its own borrow of it. Where Dart hand-writes `fromJson`/`toJson` for every field, Swift's own
-//! `Codable` synthesis covers the common shapes once a `CodingKeys` enum carries the wire
-//! spelling; a hand-written `init(from:)`/`encode(to:)` is written only where synthesis cannot
-//! reach — a `nullable` field, a non-string map key, a tuple, and the three enum shapes serde
-//! writes as something other than `{"case": payload}`.
 
 use core::cell::RefCell;
 use core::fmt::Write as _;
@@ -34,10 +24,8 @@ use crate::utils::{
 #[cfg(feature = "serde")]
 use crate::features::serde::{parse_serde_field_attributes, parse_serde_type_attributes};
 
-/// The words Swift reserves in a declaration, a statement or an expression, which name a member
-/// only between backticks:
-/// <https://docs.swift.org/swift-book/documentation/the-swift-programming-language/lexicalstructure/#Keywords-and-Punctuation>.
-/// A word reserved in one context only, such as `get` or `type`, is not among them.
+/// The words Swift reserves in a declaration, a statement or an expression. A word reserved in one
+/// context only, such as `get` or `type`, is not among them.
 const SWIFT_RESERVED: [&str; 51] = [
     "as",
     "associatedtype",
@@ -358,10 +346,6 @@ const fn enum_tag_attrs(_attrs: &[syn::Attribute]) -> EnumTagAttrs {
         untagged: false,
     }
 }
-
-// ---------------------------------------------------------------------------------------------
-// Width table and per-field shape resolution.
-// ---------------------------------------------------------------------------------------------
 
 /// Whether `field` carries `#[model_schema_prop(as_number)]`.
 #[cfg(feature = "chrono")]
@@ -761,10 +745,6 @@ fn wrap_array_levels(field: &FieldDef, leaf: &str) -> String {
     })
 }
 
-// ---------------------------------------------------------------------------------------------
-// Decode/encode statement builders.
-// ---------------------------------------------------------------------------------------------
-
 /// The leaf conversion reading `expr` (a value of [`SwiftFieldShape::wire_leaf`]'s type) into
 /// [`SwiftFieldShape::real_leaf`]'s type.
 fn decode_leaf(shape: &SwiftFieldShape, expr: &str) -> String {
@@ -998,11 +978,6 @@ const fn datetime_helpers_for(_export_name: &str, _fields: &[SwiftField]) -> Str
     String::new()
 }
 
-// ---------------------------------------------------------------------------------------------
-// Struct field collection and class body assembly — shared by a named-field struct and a
-// struct-shaped enum variant's own payload type.
-// ---------------------------------------------------------------------------------------------
-
 /// Walks a named-field struct's or a struct-shaped enum variant's fields into [`SwiftField`]s,
 /// dropping any field a serde attribute takes off the wire in both directions — mirrors
 /// `dart::collect_dart_fields`.
@@ -1196,10 +1171,6 @@ fn struct_declaration(
     )
 }
 
-// ---------------------------------------------------------------------------------------------
-// Structs, branded newtypes, tuple structs and aliases.
-// ---------------------------------------------------------------------------------------------
-
 /// The Swift tokens a named-field struct earns: a struct, plus a `typealias` under its own Rust
 /// ident when `name = "..."` moved its published name elsewhere.
 fn struct_swift_tokens(item_struct: &ItemStruct, name_override: Option<&str>) -> TokenStream {
@@ -1383,10 +1354,6 @@ fn alias_swift_tokens(item_type: &ItemType, name_override: Option<&str>) -> Toke
     };
     swift_module_tokens(&rust_ident, item_type.ident.span(), &swift_source)
 }
-
-// ---------------------------------------------------------------------------------------------
-// Enums: plain, externally tagged (the default), internally tagged, adjacently tagged, untagged.
-// ---------------------------------------------------------------------------------------------
 
 /// One variant's own payload, resolved to at most one associated value: `None` for a `Unit`
 /// variant, an existing type for a `TupleSingle` slot, or a freshly generated struct (pushed

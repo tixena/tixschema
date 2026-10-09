@@ -1,11 +1,4 @@
 //! A dispatcher written by hand against the contract half alone.
-//!
-//! Nothing here is expanded from a tixschema macro. The service next door asked for no transport,
-//! so this is what a consumer writes when the shape a generated dispatcher imposes — operation-name
-//! routing over opaque bytes, one reply per message — is not their bus's. Every name it reaches
-//! is one the service's own module publishes: the trait, the message types, the fault and its
-//! constructors, the validation fallback, the readers that turn a violation report into a field and
-//! a detail, and the envelope an answer travels in.
 
 use crate::declarations::probe_service_schema::message_validation::MessageValidation as _;
 use crate::declarations::probe_service_schema::{
@@ -24,6 +17,7 @@ pub struct ProbeContext {
     pub logger_name: String,
 }
 
+/// The implementation of `ProbeService` these tests dispatch to.
 pub struct ProbeBackEnd {
     pub granted_credits: u32,
 }

@@ -18,9 +18,8 @@ const RUNTIME_VAR: &str = "TIXSCHEMA_NODE";
 /// the emitted transport checks a reply against.
 const REQUIRED_PACKAGES: &[&str] = &["ws", "zod"];
 
-/// `onceEmitter` waits on a Node `EventEmitter` (the `ws` server and its raw sockets); `onceEvent`
-/// waits on the DOM-shaped `addEventListener` seam (Node's built-in client `WebSocket`); `until`
-/// polls a predicate rather than sleeping a guessed duration.
+/// `onceEmitter` waits on a Node `EventEmitter`, `onceEvent` on the `addEventListener` seam, and
+/// `until` polls a predicate instead of sleeping a guessed duration.
 const HELPERS: &str = "
 function onceEmitter(emitter, event) {
   return new Promise((resolve) => emitter.once(event, resolve));
@@ -40,9 +39,8 @@ async function until(predicate, timeoutMs = 2000) {
 }
 ";
 
-/// `window` answers the two-field page every scenario reads off; a `conversationId` of
-/// `"slow-4"` is scenario 4's own hook to hold the handler open past the client's close, so it can
-/// observe the connection's cancellation signal directly rather than racing a fixed sleep against it.
+/// `window` answers the two-field page every scenario reads; a `conversationId` of `"slow-4"` holds
+/// the handler open past the client's close.
 const IMPL_AND_MAKE_SERVER: &str = r#"
 let lastHandlerSawAborted;
 let handlerReturned;
@@ -277,8 +275,7 @@ main().catch((error) => { console.error(error); process.exit(1); });
 "#;
 
 /// Scenario 7: the per-connection cost, measured with in-memory stand-in sockets rather than real
-/// `ws` connections. Heap growth is printed on the Rust side, never asserted — the design's own
-/// figures are a single unpinned run, not a budget.
+/// `ws` connections.
 const SCENARIO_7_DRIVER: &str = r#"
 function stubSocket() {
   const listeners = {};
@@ -317,9 +314,8 @@ function main() {
 main();
 "#;
 
-/// Scenario 8: a second service reached through `connection.share()` answers only its own frames,
-/// one `pong` answers one `ping`, a third service's frame is answered by nobody, closing the
-/// connection detaches the shared attachment, and `share` after close throws.
+/// A second service reached through `connection.share()` answers only its own frames, and closing
+/// the connection detaches it.
 const SHARE_DRIVER: &str = r#"
 let sharedDetached = false;
 function attachInventoryServiceStub(socket) {
@@ -665,7 +661,6 @@ fn two_services_share_one_socket_through_the_connection() {
     );
 }
 
-/// A `"value": null` reply normalizes to `value: undefined`.
 #[test]
 fn a_rust_shaped_unit_success_reply_normalizes_to_value_undefined() {
     let Some(result) = run_unit_success_scenario() else {

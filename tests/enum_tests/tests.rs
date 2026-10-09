@@ -1,3 +1,5 @@
+//! Tests of enums: plain enums and discriminated unions on every surface.
+
 #[cfg(all(
     test,
     any(
@@ -21,9 +23,7 @@ use serde_json::Value;
 ))]
 use tixschema::model_schema;
 
-// A tagged enum whose tag is written after a serde key this crate has no use for. Reaching the tag
-// at all means consuming that key's value: left on the parse stream it ends the attribute walk on
-// the comma that follows, and the surfaces then describe a wire serde is not writing.
+// A tagged enum whose tag is written after a serde key this crate has no use for.
 #[cfg(all(
     test,
     feature = "serde",
@@ -377,9 +377,6 @@ fn test_discriminated_union_ts_definition() {
     assert!(zod_schema.contains("z.discriminatedUnion(\"type\""));
 }
 
-/// The tag is written after a key this crate ignores, so it is reached only if that key's value is
-/// consumed. Each surface has to describe the discriminated wire serde writes, and has to describe
-/// it exactly as it does for the same declaration with nothing to ignore.
 #[test]
 #[cfg(all(feature = "typescript", feature = "serde"))]
 fn test_tag_written_after_an_ignored_key_reaches_the_ts_definition() {

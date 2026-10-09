@@ -1,42 +1,5 @@
 //! The seal on the published fault: the two declarations that turn a structural object type into
 //! one only the generated code can write, and the form every generated constructor mints through.
-//!
-//! # What the seal is for
-//!
-//! A fault reports a failure the operation never declared, so an implementation that could mint one
-//! could report a defect it did not have, and a caller reading a fault could not tell that one from
-//! a real one. Rust refuses the literal an implementation would write with `E0451`, the fields
-//! being private, and refuses the fault a place to be answered with: an operation's signature
-//! admits only its own error type.
-//!
-//! TypeScript has no such scope, and a plain structural object type is writable by anyone who can
-//! name it. So the fault's own fields publish under a name of their own — the Rust struct is
-//! declared as `<Service>FaultFields`, and a type publishes under the ident it was declared with —
-//! and the name a caller reads is declared here as those fields intersected with one property keyed
-//! on a `unique symbol` the bundle declares and exports nowhere. A module that cannot name the
-//! symbol cannot write the property, and a value without the property is not a fault.
-//!
-//! # What it costs a caller, which is nothing
-//!
-//! The brand is a type-level property with no runtime value behind it — the symbol is
-//! `declare const`, so nothing is emitted for it and no fault carries an extra key on the wire.
-//! Every read is untouched: a caller still narrows on `isServiceFault`, still reads `fault.kind`,
-//! `fault.detail`, `fault.field` and `fault.operation`, and still switches exhaustively over the
-//! kind. Only writing one stops compiling.
-//!
-//! # How far it goes
-//!
-//! It stops the two routes a service implementation would take: an object literal under a
-//! `<Service>Fault` annotation, and a structurally-equal value assigned into a `<Service>Fault`
-//! position. Neither carries the branded property, and neither can be given one.
-//!
-//! It does not stop a deliberate type assertion. `built as UsageServiceFault` compiles, as does
-//! anything laundered through `any` or `unknown`, and no TypeScript construct refuses those — the
-//! language has no `E0451`. The generated constructors mint through exactly that assertion, in
-//! [`minted`], which is the one direction an assertion is unambiguously sound in: the sealed type
-//! is assignable to the fields type it is asserted from. What the seal buys is that fabricating a
-//! fault is a deliberate, greppable act rather than something a plain annotated literal does
-//! silently.
 
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::ServiceDef;

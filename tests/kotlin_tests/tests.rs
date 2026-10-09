@@ -11,10 +11,6 @@ use serde::{Deserialize, Serialize};
 
 use tixschema::model_schema;
 
-// ---------------------------------------------------------------------------------------------
-// Struct: a renamed key and an optional field — the design's own worked example.
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WindowRequest {
@@ -22,10 +18,6 @@ pub struct WindowRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<i32>,
 }
-
-// ---------------------------------------------------------------------------------------------
-// The width table.
-// ---------------------------------------------------------------------------------------------
 
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -47,10 +39,6 @@ pub struct Widths {
     pub tiny_unsigned: u8,
 }
 
-// ---------------------------------------------------------------------------------------------
-// Plain enum.
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema()]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -60,10 +48,6 @@ pub enum Status {
     Pending,
 }
 
-// ---------------------------------------------------------------------------------------------
-// Internally tagged enum.
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind")]
@@ -71,10 +55,6 @@ pub enum WindowError {
     NotFound,
     RateLimited { retry_after_ms: i64 },
 }
-
-// ---------------------------------------------------------------------------------------------
-// Adjacently tagged enum (`tag` + `content`).
-// ---------------------------------------------------------------------------------------------
 
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -84,10 +64,6 @@ pub enum DynamicValue {
     Nothing,
     Number(i64),
 }
-
-// ---------------------------------------------------------------------------------------------
-// Externally tagged enum (serde's own default).
-// ---------------------------------------------------------------------------------------------
 
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -105,10 +81,6 @@ pub enum SimpleChoice {
     Value(String),
 }
 
-// ---------------------------------------------------------------------------------------------
-// Untagged enum.
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -117,27 +89,15 @@ pub enum DateValue {
     Iso(String),
 }
 
-// ---------------------------------------------------------------------------------------------
-// Tuple field.
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HoldsTuple {
     pub coords: (String, i64),
 }
 
-// ---------------------------------------------------------------------------------------------
-// A unit struct: no data, `{}` on the wire, `object` in Kotlin — see `test_unit_struct_is_an_object`.
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Ping;
-
-// ---------------------------------------------------------------------------------------------
-// Non-string map keys: a numeric key and a plain-enum key.
-// ---------------------------------------------------------------------------------------------
 
 #[model_schema()]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -156,10 +116,6 @@ pub struct MapKeys {
     pub by_slot: HashMap<Slot, String>,
 }
 
-// ---------------------------------------------------------------------------------------------
-// Dates and `as_number`, `ObjectId`.
-// ---------------------------------------------------------------------------------------------
-
 #[cfg(feature = "chrono")]
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -176,18 +132,10 @@ pub struct HasId {
     pub id: ObjectId,
 }
 
-// ---------------------------------------------------------------------------------------------
-// Branded newtype and a non-branded bare tuple struct — both `@JvmInline value class`.
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct CorrelationId(pub String);
-
-// ---------------------------------------------------------------------------------------------
-// The `name` override moving a type's published Kotlin name.
-// ---------------------------------------------------------------------------------------------
 
 #[model_schema(name = "RenamedWidget")]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -195,21 +143,11 @@ pub struct Widget {
     pub label: String,
 }
 
-// ---------------------------------------------------------------------------------------------
-// A generic struct: `kotlinx.serialization` covers this through its own compiler plugin, at the
-// bare type parameter — no factory or converter argument for this module to thread through.
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema(default_types(T = String))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Wrapper<T> {
     pub value: T,
 }
-
-// ---------------------------------------------------------------------------------------------
-// A generic enum with a unit variant: the sealed base declares its parameters `out`, and the unit
-// variant implements it at `Nothing` rather than repeating an unbound `T`.
-// ---------------------------------------------------------------------------------------------
 
 #[model_schema(default_types(T = String))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -217,11 +155,6 @@ pub enum Choice<T> {
     None,
     Value(T),
 }
-
-// ---------------------------------------------------------------------------------------------
-// The same generic enum, adjacently tagged: the constructor-injected serializer class carries the
-// tag/content dispatch exactly as the non-generic shape does.
-// ---------------------------------------------------------------------------------------------
 
 #[model_schema(default_types(T = String))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -231,11 +164,6 @@ pub enum AdjacentChoice<T> {
     Value(T),
 }
 
-// ---------------------------------------------------------------------------------------------
-// A generic untagged enum: the try-each-variant serializer names each subclass's own constructor
-// serializer instead of a reified lookup.
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema(default_types(T = String))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -244,20 +172,12 @@ pub enum UntaggedChoice<T> {
     Value(T),
 }
 
-// ---------------------------------------------------------------------------------------------
-// Two type parameters: one constructor serializer per parameter.
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema(default_types(L = String, R = i64))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Either<L, R> {
     Left(L),
     Right(R),
 }
-
-// ---------------------------------------------------------------------------------------------
-// A type parameter reached through a `Vec` and through an `Option`.
-// ---------------------------------------------------------------------------------------------
 
 #[model_schema(default_types(T = String))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -266,19 +186,9 @@ pub enum ManyChoice<T> {
     Maybe(Option<T>),
 }
 
-// ---------------------------------------------------------------------------------------------
-// A generic tuple struct: the same constructor-injected serializer class, on the tuple-struct path.
-// Named `GenericPair` rather than `Pair` to avoid shadowing `kotlin.Pair` in the emitted file.
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema(default_types(T = String))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GenericPair<T>(pub T, pub u32);
-
-// ---------------------------------------------------------------------------------------------
-// `#[serde(flatten)]`: a flattened struct, a flattened `Option<Struct>`, and a flattened map — each
-// earns a generated merging `KSerializer` beside the ordinary `@Serializable` data class.
-// ---------------------------------------------------------------------------------------------
 
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1067,8 +977,6 @@ fn test_generic_flatten_generic_sibling() {
     );
 }
 
-/// Kotlin takes a hard keyword between backticks, and the serial name is the word itself, so no
-/// `@SerialName` is written. An enum's members keep the Rust spelling, which no keyword matches.
 #[test]
 fn a_member_named_after_a_hard_keyword_is_written_between_backticks() {
     assert_eq!(

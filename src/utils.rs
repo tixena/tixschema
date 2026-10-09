@@ -1,3 +1,6 @@
+//! Helpers the expansions share: naming, doc comments and their examples, the registry of declared
+//! items, and the checks a `pattern` goes through.
+
 use core::cell::RefCell;
 #[cfg(feature = "zod")]
 use core::mem;
@@ -50,10 +53,7 @@ const UNICODE_CLASS_READ_AS: &str = "an escaped `p` or `P` followed by a literal
 const UNICODE_CLASS_WRITTEN: &str = "a Unicode class -- `\\p{...}`, `\\pL` or `\\P{...}`";
 
 /// Why a construct both grammars parse still cannot go to the JavaScript surfaces: a flagless
-/// literal tests one UTF-16 code unit where the `regex` crate tests one character, so a lone
-/// character outside the Basic Multilingual Plane fills a one-character pattern there and never
-/// here. Writing the class out settles which characters are named; it cannot settle how many code
-/// units one of them is, and a spliced literal carries no `u` flag to settle it with.
+/// literal tests one UTF-16 code unit where the `regex` crate tests one character.
 const ASTRAL_DIVERGENCE: &str = "a character outside the Basic Multilingual Plane, which the \
                                  `regex` crate counts as one character and a flagless literal as \
                                  the two code units it is written from -- so the set is the same \
@@ -82,18 +82,13 @@ pub enum AliasKind {
     /// A plain unit enum, or an alias chain ending in one.
     EnumMembers,
     /// serde writes it as neither a string nor anything it will stringify, so it keys no map at
-    /// all: a struct, a brand over one or over a container, a non-plain enum, or an alias whose
-    /// target is any of those.
+    /// all.
     NoEnumMembers,
-    /// No `enum_members()`, but serde writes it as a bare string: `String` and `PathBuf`, a
-    /// `#[serde(transparent)]` brand over one of those or over a plain enum, whose variant name is
-    /// itself a bare string, and an alias chain ending in any of them. Such a type keys a map
-    /// exactly as `String` does, under its own name.
+    /// No `enum_members()`, but serde writes it as a bare string, so it keys a map exactly as
+    /// `String` does, under its own name.
     StringWire,
     /// No `enum_members()` and no bare string either, but serde stringifies it into a key all the
-    /// same — a number, a `bool`, a chrono rendering, or a brand over one of those. The map is an
-    /// object with nothing said about its members, which is what the bare inner already describes
-    /// as. Which of those wire forms it stands for is [`MapKeyWire`]'s answer, not this one.
+    /// same — a number, a `bool`, a chrono rendering, or a brand over one of those.
     Stringified,
     /// Undecidable at this expansion — an alias naming a type that was not registered before it.
     Unknown,
@@ -221,9 +216,8 @@ pub enum PublishedShape {
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[derive(Clone)]
 pub struct ShapeQuestion {
-    /// What each argument the reference wrote resolves to, in the order it wrote them — the filling
-    /// a recorded parameter position takes, and `None` where that argument is one a string check
-    /// lands on.
+    /// What each argument the reference wrote resolves to, in the order written; `None` where the
+    /// argument is one a string check lands on.
     pub argument_shapes: Vec<Option<&'static str>>,
     /// The brand that wrote the checks, named so the refusal says which declaration to fix.
     pub brand: String,
@@ -231,42 +225,36 @@ pub struct ShapeQuestion {
     pub inner: String,
 }
 
+/// What the registry records of a declared item: the name it is published as, and what each surface
+/// reads to reference it.
 #[derive(Clone)]
 pub struct AliasInfo {
     pub export_name: String,
     /// What an externally tagged enum's variants are spelled as where an object flattens the enum
     /// itself, one per variant in the order the union writes them, and empty for every other item.
-    /// Filled by [`record_flatten_variants`] once that enum's own expansion has rendered them.
     #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
     pub flatten_variants: Vec<FlattenVariant>,
     /// The form a key written under this name renders in, which [`AliasKind::Stringified`] alone
-    /// does not separate. Filled by [`record_key_wire`] for the three shapes that can carry a wire
-    /// form other than the plain name — a plain enum, a brand and an alias.
+    /// does not separate.
     pub key_wire: MapKeyWire,
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     pub kind: AliasKind,
     #[cfg(feature = "jsonschema")]
     pub module_name: String,
-    /// What an untagged enum's members are spelled as where an object flattens the enum itself, one
-    /// per member in the order the union writes them — and empty both for every other item and
-    /// wherever spelling the members says nothing the enum's own name does not already say. Filled
-    /// by [`record_ts_union_members`] once that enum's own expansion has rendered them.
+    /// What an untagged enum's members are spelled as where an object flattens the enum, in the
+    /// order the union writes them; empty for every other item.
     #[cfg(all(feature = "serde", feature = "typescript"))]
     pub ts_union_members: Vec<String>,
-    /// What the value surface written under this name is, in the vocabulary a constrained brand's
-    /// refusal names shapes by — and `PublishedShape::Flat(None)` both when that surface is one
-    /// string checks land on and when nothing has been recorded at all. Filled by
-    /// [`record_value_shape`] as each item registers.
+    /// What the value surface written under this name is; `PublishedShape::Flat(None)` both where
+    /// string checks land on it and where nothing was recorded.
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     pub value_shape: PublishedShape,
     /// What the value surface written under this name puts on the wire, one entry per leaf of it,
-    /// and empty when nothing has been recorded at all. Filled by [`record_wire_leaves`] as each
-    /// item registers.
+    /// and empty when nothing has been recorded at all.
     #[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
     pub wire: Vec<WireLeaf>,
     /// What an untagged enum's members are spelled as on the Zod surface, and empty for every other
-    /// item. Filled by [`record_zod_union_members`] once the enum's own expansion has rendered
-    /// them.
+    /// item.
     #[cfg(feature = "zod")]
     pub zod_union_members: Vec<ZodUnionMember>,
 }
@@ -447,9 +435,8 @@ impl JsSpelling {
                     let FlagsItemKind::Flag(flag) = &item.kind else {
                         continue;
                     };
-                    // `i`, `m` and `s` are the three the modifiers proposal added, so they are
-                    // refused for post-dating the baseline; the rest were never in ECMA-262 and
-                    // are refused outright. Both refusals name the group the flag was written on.
+                    // `i`, `m` and `s` post-date the baseline; the rest were never in ECMA-262.
+                    // Both refusals name the group the flag was written on.
                     let (written, divergence, read_as) = match flag {
                         Flag::CaseInsensitive => (
                             "the case-insensitive flag on a `(?i:...)` group",
@@ -1197,11 +1184,8 @@ fn doc_lines_with_spans(attrs: &[Attribute]) -> Vec<DocLine> {
                 attrs: _attrs,
             }) = &meta_name_value.value
         {
-            // `resolved_at` keeps the doc line's location (what a diagnostic underlines) while
-            // giving the token the macro's own hygiene (what marks it as generated rather than
-            // user-written) — respanning bare would also make an ordinary lint pass (clippy's
-            // style lints, not just rustc's own type errors) treat the example as code the author
-            // typed at that doc line, rather than the illustrative snippet it is.
+            // `resolved_at` keeps the doc line's location while giving the token the macro's own
+            // hygiene, so a lint pass does not treat the example as code the author typed.
             let span = lit_str.span().resolved_at(proc_macro2::Span::call_site());
             for line in lit_str.value().lines() {
                 lines.push(DocLine {
@@ -1390,7 +1374,6 @@ pub fn strip_examples_from_docs(docs: &[String]) -> Vec<String> {
 
     for line in docs {
         let trimmed = line.trim();
-        // Strip leading asterisk from block-style comments
         let cleaned = trimmed.strip_prefix('*').unwrap_or(trimmed).trim();
 
         if cleaned == "```rust example" {
@@ -1403,7 +1386,6 @@ pub fn strip_examples_from_docs(docs: &[String]) -> Vec<String> {
             continue;
         }
 
-        // Skip lines inside example blocks
         if in_example_block {
             continue;
         }

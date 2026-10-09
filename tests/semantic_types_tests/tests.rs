@@ -1,3 +1,5 @@
+//! Tests of type aliases: a scalar, a collection and a tuple alias on every surface.
+
 #[cfg(all(test, feature = "typescript", feature = "serde"))]
 use std::collections::HashMap;
 
@@ -367,8 +369,6 @@ fn test_scalar_alias_zod_schema() {
     );
 }
 
-/// Tuple alias emits a valid `$Schema` whose Zod is the null-flavored tuple —
-/// the exact shape a struct field `Vec<CompactLinkRow>` references.
 #[test]
 #[cfg(all(feature = "zod", feature = "typescript"))]
 fn test_tuple_alias_zod_schema() {
@@ -392,8 +392,6 @@ fn test_tuple_alias_zod_schema() {
     );
 }
 
-/// A struct field `Vec<CompactLinkRow>` references the alias's now-defined
-/// `$Schema` via `z.array(...)` in Zod and `Array<...>` in TS.
 #[test]
 #[cfg(all(feature = "zod", feature = "typescript", feature = "serde"))]
 fn test_vec_of_alias_references_schema() {
@@ -421,9 +419,6 @@ fn test_struct_with_alias_zod_schema() {
     );
 }
 
-/// An alias publishes the schema of the type it names, so a slot filled by the alias validates
-/// exactly what the aliased type validates — the scalar mapping being the same one a field written
-/// as the target reads.
 #[test]
 #[cfg(all(feature = "jsonschema", feature = "typescript"))]
 fn test_scalar_alias_json_schema() {
@@ -453,8 +448,6 @@ fn test_scalar_alias_json_schema() {
     }
 }
 
-/// An alias cannot be dropped the way an optional object key can — a slot written as the alias is
-/// filled with the `null` serde writes for a `None`, so the schema has to admit it.
 #[test]
 #[cfg(all(feature = "jsonschema", feature = "typescript"))]
 fn test_optional_alias_json_schema() {
@@ -494,8 +487,6 @@ fn test_tuple_alias_json_schema() {
     );
 }
 
-/// An alias of an alias carries the target's reference, which resolves through the registry — so
-/// the chain lands on the type at the end of it rather than on a link.
 #[test]
 #[cfg(all(feature = "jsonschema", feature = "typescript"))]
 fn test_nested_alias_json_schema() {
@@ -509,9 +500,6 @@ fn test_nested_alias_json_schema() {
     );
 }
 
-/// A type parameter names no type until the alias is instantiated, and JSON Schema has no
-/// parameters for a document to carry — so the document a generic alias publishes on its own is
-/// written at the types it declared for them, while the shape around each is still described.
 #[test]
 #[cfg(all(feature = "jsonschema", feature = "typescript"))]
 fn test_generic_alias_json_schema() {

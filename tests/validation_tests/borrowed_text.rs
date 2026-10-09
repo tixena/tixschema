@@ -224,9 +224,6 @@ mod a_bound_on_a_borrowed_str {
         );
     }
 
-    /// A borrowed member is the one constrained member the read does not check: a payload that
-    /// breaks its bound reads as that variant, as it does with no bound written, and `validate()`
-    /// answers for the bound on the value read.
     #[test]
     fn an_untagged_borrowed_member_is_read_unchecked_and_then_held_by_validate() {
         const BREAKS_LONG: &str = r#"{"text":"al"}"#;

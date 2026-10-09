@@ -72,9 +72,6 @@ fn a_slot_reaching_a_type_declared_below_is_read_behind_a_lazy() {
     );
 }
 
-/// A tuple's slot types are read as the tuple is built, so the generic form cannot read its own
-/// factory's type there: it reaches itself through a function declared to answer what the
-/// factory's schema parses.
 #[test]
 fn a_generic_one_reaches_itself_through_a_function_stating_what_it_parses() {
     let zod = NestsUnderAParameter::<String>::zod_schema();

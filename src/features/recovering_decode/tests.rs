@@ -1,3 +1,6 @@
+//! Unit tests of what `#[model_schema(decode_with)]` emits, read off the expansion: the names it
+//! adds, the entry points, the walkers and the MongoDB operations.
+
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use super::aliases::entry_of_items;
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
@@ -500,8 +503,6 @@ fn query_methods(added: &syn::File) -> Vec<(String, &syn::ImplItemFn)> {
         .collect()
 }
 
-/// Every const and method the flag adds carries the flag's name, so none can meet one the type's
-/// author wrote. Each entry point is the one it is named for, and so is each operation.
 #[test]
 fn every_added_method_but_the_entry_point_carries_the_flags_name() {
     let item: syn::ItemStruct =
@@ -537,8 +538,6 @@ fn every_added_method_but_the_entry_point_carries_the_flags_name() {
     assert_eq!(methods, named);
 }
 
-/// The BSON entry points and walker are written as their JSON twins are: a named type parameter
-/// under a `where` clause, `core::result::Result` in full, and a report only the type calls.
 #[cfg(feature = "bson")]
 #[test]
 fn the_bson_methods_carry_the_signatures_of_their_json_twins() {
@@ -602,8 +601,6 @@ fn the_bson_methods_carry_the_signatures_of_their_json_twins() {
     );
 }
 
-/// A build without `bson` emits nothing of the BSON read: nothing names the library, and `Path`
-/// fixes a JSON value only.
 #[cfg(not(feature = "bson"))]
 #[test]
 fn without_bson_nothing_of_the_bson_read_is_emitted() {
@@ -614,9 +611,6 @@ fn without_bson_nothing_of_the_bson_read_is_emitted() {
     assert_eq!(path_methods(), ["set_in_value", "remove_from_value"]);
 }
 
-/// Both major versions of the `bson` library have `Deserializer::new` and `Serializer::new`, and
-/// each names the functions that read a whole document and write a whole value differently. The
-/// emission names four items of the library and no other, so it names none of those.
 #[cfg(feature = "bson")]
 #[test]
 fn the_bson_emission_names_only_what_both_major_versions_have() {
@@ -676,8 +670,6 @@ fn the_bson_emission_names_only_what_both_major_versions_have() {
     }
 }
 
-/// `from_value_with` reads the value with serde once per decode and tells its report what serde
-/// said, so the report reads nothing with serde on its own account, whatever the type's shape.
 #[test]
 fn from_value_with_reads_the_value_once_per_decode_and_its_report_reads_nothing() {
     for (source, type_impl) in impls_of_every_shape() {
@@ -715,9 +707,6 @@ fn from_value_with_reads_the_value_once_per_decode_and_its_report_reads_nothing(
     }
 }
 
-/// `bson::Deserializer::new` takes what it reads by value, so `from_bson_with` copies the document
-/// once per read of it by serde. Its report borrows the document and is told what serde said, so
-/// it copies nothing and reads nothing, whatever the type's shape.
 #[cfg(feature = "bson")]
 #[test]
 fn from_bson_with_copies_the_document_once_per_read_by_serde_and_its_report_copies_nothing() {
@@ -754,9 +743,6 @@ fn from_bson_with_copies_the_document_once_per_read_by_serde_and_its_report_copi
     }
 }
 
-/// A piped entry point opens with the read its callback twin opens with and closes with the read
-/// that twin makes after `Fixed`. Between the two it runs the pipe once, over the value the
-/// callback is handed, and refuses with what the pipe answers.
 #[test]
 fn a_piped_entry_point_makes_the_two_reads_of_its_callback_twin_around_the_pipe() {
     let mut sources = vec![("value", "& mut value")];
@@ -790,10 +776,7 @@ fn a_piped_entry_point_makes_the_two_reads_of_its_callback_twin_around_the_pipe(
     }
 }
 
-/// A resolver answers one issue with one of three states. The pipe takes its resolvers as trait
-/// objects, which a closure holding configuration is one of, and names the standard items it
-/// reads in full. A resolver is `Sync`: a read that waits for a row holds its resolvers while it
-/// waits, and can move to another thread only where they can be shared with one.
+/// A resolver answers one issue with one of three states.
 #[test]
 fn the_schema_module_declares_what_a_resolver_answers_and_the_pipe_that_runs_them() {
     let added: syn::File = syn::parse2(module_items()).unwrap();
@@ -862,9 +845,6 @@ fn the_schema_module_declares_what_a_resolver_answers_and_the_pipe_that_runs_the
     );
 }
 
-/// The BSON items sit where the JSON ones do: the helpers inside the one `impl Path`, and the
-/// function a value is read through in the module, once. Under `mongodb` the query types add one
-/// function after them, which a path with no hook writes its values through.
 #[cfg(feature = "bson")]
 #[test]
 fn the_bson_items_are_emitted_beside_the_json_ones() {
@@ -910,8 +890,6 @@ fn the_bson_items_are_emitted_beside_the_json_ones() {
     );
 }
 
-/// The query types are in the module in a build with `mongodb` and in no other, each one
-/// `#[non_exhaustive]`, beside the alias of the error a value that cannot be written fails with.
 #[test]
 fn the_query_types_are_declared_under_mongodb_alone_and_none_is_exhaustive() {
     let query_types = [
@@ -962,9 +940,6 @@ fn the_query_types_are_declared_under_mongodb_alone_and_none_is_exhaustive() {
     assert_eq!(aliased, cfg!(feature = "mongodb"));
 }
 
-/// Each query type has the operators of its kind and no other: a path every row holds compares
-/// and sets, one a row may leave out adds `$exists` and `$unset`, a list has the operators over
-/// its elements, and a nested model has the ones over its whole value.
 #[cfg(feature = "mongodb")]
 #[test]
 fn each_query_type_has_the_operators_of_its_kind() {
@@ -1038,9 +1013,6 @@ fn each_query_type_has_the_operators_of_its_kind() {
     }
 }
 
-/// An operator that writes a value takes it by value, as the type its path is declared with, and
-/// answers the error a value that cannot be written fails with. One that writes none answers the
-/// filter or the update itself.
 #[cfg(feature = "mongodb")]
 #[test]
 fn an_operator_that_writes_a_value_takes_it_by_value_and_answers_a_write_error() {
@@ -1063,8 +1035,6 @@ fn an_operator_that_writes_a_value_takes_it_by_value_and_answers_a_write_error()
     }
 }
 
-/// A consumer denying clippy's `restriction` set denies it over the query types too: no function
-/// takes `impl Trait`, and every bound sits in a `where` clause on a named type parameter.
 #[cfg(feature = "mongodb")]
 #[test]
 fn every_bound_of_a_query_function_is_written_in_a_where_clause() {
@@ -1090,9 +1060,6 @@ fn every_bound_of_a_query_function_is_written_in_a_where_clause() {
     }
 }
 
-/// A filter carries the rows it is over and an update the rows it changes, as two standard types,
-/// and every function that takes one asks for its marker: neither stands where the other is
-/// asked. A list of models asks a filter over its element's rows.
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_filter_and_an_update_each_carry_a_marker_of_their_own() {
@@ -1131,8 +1098,6 @@ fn a_filter_and_an_update_each_carry_a_marker_of_their_own() {
     assert_eq!(asked, expected);
 }
 
-/// Of the `bson` library the query types name only what both of its major versions have: the
-/// serializer, a value with five of its members, and a document. No `doc!` is written.
 #[cfg(feature = "mongodb")]
 #[test]
 fn the_query_types_name_only_what_both_majors_of_the_bson_library_have() {
@@ -1160,8 +1125,6 @@ fn the_query_types_name_only_what_both_majors_of_the_bson_library_have() {
     assert!(!written.contains("doc !"), "got: {written}");
 }
 
-/// `OperationError` is in the module in a build with `mongodb` and in no other: one of three
-/// failures, `#[non_exhaustive]`, an error through impls written out, with one conversion into it.
 #[test]
 fn the_operation_error_is_declared_under_mongodb_alone() {
     let added: syn::File = syn::parse2(module_items()).unwrap();
@@ -1237,11 +1200,6 @@ fn the_operation_error_is_declared_under_mongodb_alone() {
     }
 }
 
-/// Each failure is told in one sentence that ends with what failed, a row that does not read by
-/// its issues as a refused read lists them. The driver's error and the `bson` library's are each
-/// the source of the failure that holds it. The one conversion is from the error a typed filter
-/// or update fails with, named by a bound: an `impl` for the alias itself does not build beside
-/// the standard `From<T> for T`.
 #[cfg(feature = "mongodb")]
 #[test]
 fn the_operation_error_tells_each_failure_and_answers_its_source() {
@@ -1270,10 +1228,6 @@ fn the_operation_error_tells_each_failure_and_answers_its_source() {
     assert_eq!(emitted.matches("From <").count(), 1, "got: {emitted}");
 }
 
-/// A read and a count take the collection as one of documents, and as their filter any filter
-/// over the rows of the type, asked by the marker a filter carries in a `where` clause, so that
-/// an update does not stand there. None is `async`: each answers the read the module declares,
-/// over the type and what the read answers once awaited.
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_read_and_a_count_take_any_filter_over_the_types_rows_and_answer_a_read() {
@@ -1307,10 +1261,6 @@ fn a_read_and_a_count_take_any_filter_over_the_types_rows_and_answer_a_read() {
     );
 }
 
-/// A write answers what the driver's own method of its name answers, and fails with the type's
-/// own `OperationError`. An update is asked by the marker an update carries, under a second
-/// parameter, so the two arguments cannot change places. `insert_one` is no `async fn`: what it
-/// answers is a future that holds no borrow of the value, and says so in its type.
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_write_answers_what_the_drivers_own_method_answers() {
@@ -1356,10 +1306,6 @@ fn a_write_answers_what_the_drivers_own_method_answers() {
     );
 }
 
-/// Whatever the type's shape, a read with no resolvers is its twin with none, and each twin and
-/// the count build a `Read` over the filter as a document and the read of one stored row. That
-/// read takes the row's `_id` as text and goes through `from_bson_piped`: no operation reads a
-/// row with plain serde.
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_read_is_built_over_the_read_of_one_stored_row() {
@@ -1402,10 +1348,6 @@ fn a_read_is_built_over_the_read_of_one_stored_row() {
     }
 }
 
-/// Whatever the type's shape, `insert_one` writes the value before it answers, through
-/// `bson::Serializer::new`, and what it answers refuses with what the write refused before it
-/// asks the driver anything. A value not written as a document is refused with the serializer's
-/// own error. Each other write hands the driver its documents, and its failure is `Database`.
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_write_hands_the_driver_documents_and_an_insert_writes_its_row_first() {
@@ -1455,9 +1397,6 @@ fn a_write_hands_the_driver_documents_and_an_insert_writes_its_row_first() {
     }
 }
 
-/// `Read` is in the module in a build with `mongodb` and in no other: `#[non_exhaustive]`, to be
-/// used, every member private, over the type it reads and what it answers. It is told as a value
-/// through an impl written out, and awaited through one `IntoFuture` per answer.
 #[test]
 fn the_read_is_declared_under_mongodb_alone() {
     let added: syn::File = syn::parse2(module_items()).unwrap();
@@ -1530,9 +1469,6 @@ fn the_read_is_declared_under_mongodb_alone() {
     }
 }
 
-/// A read takes five options and no projection, each as the driver's own option takes it, and
-/// each handing the read back. It is built from what a type's operations hand it, the read of
-/// one stored row among them, so its module names no type of its author's.
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_read_takes_five_options_each_as_the_drivers_own_takes_it() {
@@ -1571,9 +1507,7 @@ fn a_read_takes_five_options_each_as_the_drivers_own_takes_it() {
     assert!(!written.contains("projection"), "got: {written}");
 }
 
-/// What awaits a read is a boxed future that is `Send`, written with standard names alone. Each
-/// answer asks the driver's own method and hands it the options that method has: a read of one
-/// row is sent no limit, and a count no order, and its limit unsigned and never `0`.
+/// What awaits a read is a boxed future that is `Send`, written with standard names alone.
 #[cfg(feature = "mongodb")]
 #[test]
 fn each_answer_awaits_the_drivers_own_method_under_the_options_it_has() {
@@ -1629,10 +1563,6 @@ fn each_answer_awaits_the_drivers_own_method_under_the_options_it_has() {
     );
 }
 
-/// The read of many rows asks the cursor for one row at a time with the driver's own methods,
-/// and reads each through the function it was built over. The first row that does not read ends
-/// the read with what that row was refused with, so no partial list is answered. The read of one
-/// row hands over the row the driver answers, and a count answers the driver's number.
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_read_of_many_rows_reads_the_cursor_row_by_row_and_ends_at_the_first_refused() {
@@ -1658,10 +1588,6 @@ fn a_read_of_many_rows_reads_the_cursor_row_by_row_and_ends_at_the_first_refused
     }
 }
 
-/// Of the driver the operations name the collection, its error, two options and three results,
-/// and of the `bson` library a document, a value and the serializer: each is one path under both
-/// of the library's major versions. Every bound is in a `where` clause, and nothing they add is
-/// hidden from a lint.
 #[cfg(feature = "mongodb")]
 #[test]
 fn the_operations_name_only_what_both_majors_of_the_bson_library_have() {
@@ -1719,9 +1645,6 @@ fn the_operations_name_only_what_both_majors_of_the_bson_library_have() {
     );
 }
 
-/// The BSON walk is the JSON one over the library's own types: a list, a map and `null` are
-/// matched as the members of `bson::Bson` that hold them, and another type is reached by its BSON
-/// walker.
 #[cfg(feature = "bson")]
 #[test]
 fn the_bson_walker_matches_the_librarys_own_types() {
@@ -1750,8 +1673,6 @@ fn the_bson_walker_matches_the_librarys_own_types() {
     assert!(!walk.contains("decode_with_value"), "got: {walk}");
 }
 
-/// Without `mongodb`, `ObjectId` is a type tixschema does not know, so the BSON walker reaches it
-/// as it reaches any model type: by that type's own BSON walker, never read whole.
 #[cfg(all(feature = "bson", not(feature = "mongodb")))]
 #[test]
 fn without_mongodb_the_bson_walker_reaches_an_id_as_a_model_type() {
@@ -1768,8 +1689,6 @@ fn without_mongodb_the_bson_walker_reaches_an_id_as_a_model_type() {
     );
 }
 
-/// A hook takes a deserializer and a serializer, not a value, so the BSON walker hands it the
-/// library's own: the reader is passed as it is, and the writer is called with the serializer.
 #[cfg(feature = "bson")]
 #[test]
 fn a_hook_is_handed_the_bson_deserializer_and_serializer() {
@@ -1783,8 +1702,6 @@ fn a_hook_is_handed_the_bson_deserializer_and_serializer() {
     }
 }
 
-/// The key a field is looked up under is the one serde reads: `rename` over `rename_all`, and a raw
-/// identifier without its `r#`.
 #[test]
 fn a_field_is_looked_up_under_the_key_serde_reads() {
     let walk = fields_walk_of(
@@ -1813,8 +1730,6 @@ fn a_structs_own_tag_is_a_declared_key() {
     );
 }
 
-/// A type with no field to walk takes the `Vec` every walker is handed and binds nothing of it:
-/// no statement is written to give the parameter a use.
 #[test]
 fn a_type_with_no_field_to_walk_leaves_the_issue_list_unbound() {
     for source in [
@@ -1865,8 +1780,6 @@ fn a_bson_walker_with_no_field_to_walk_leaves_the_issue_list_unbound() {
     );
 }
 
-/// The read hook tixschema hangs to name a field in its type's refusal changes a message and no
-/// verdict: the field is still walked by its type's own walker. The author's hook is read through.
 #[test]
 fn a_generated_named_hook_is_read_past_and_an_authors_hook_is_read_through() {
     let generated = fields_walk_of(
@@ -1888,8 +1801,6 @@ fn a_generated_named_hook_is_read_past_and_an_authors_hook_is_read_through() {
     );
 }
 
-/// Only a bare use of an added name is written through `super`: one already under a path names
-/// what its path says, and every other identifier is left alone.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn only_a_bare_added_name_is_read_from_the_authors_scope() {
@@ -1915,8 +1826,6 @@ fn only_a_bare_added_name_is_read_from_the_authors_scope() {
     );
 }
 
-/// The names read past are the types the flag adds, all of them: one left out would be taken for
-/// the author's type of that name by whatever the module already held.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn every_type_the_flag_adds_is_a_name_read_past() {
@@ -1946,9 +1855,6 @@ fn every_type_the_flag_adds_is_a_name_read_past() {
     assert_eq!(declared, ADDED_TYPE_NAMES);
 }
 
-/// Every struct shape gets the same methods, each named for the flag, in one `impl`: a type that
-/// holds it asks whether an object names it and calls both walker methods on it, whatever form
-/// serde writes it in.
 #[test]
 fn every_struct_shape_adds_the_same_methods() {
     for source in [
@@ -1968,9 +1874,6 @@ fn every_struct_shape_adds_the_same_methods() {
     }
 }
 
-/// The fields walker of a type serde refuses to flatten lists nothing and returns no key: a tuple
-/// struct, and a single-slot struct over text, a list or a tuple. It reads none of what it is
-/// handed, so it binds none of it.
 #[test]
 fn a_tuple_struct_and_a_slot_over_text_a_list_or_a_tuple_claim_no_key() {
     for source in [
@@ -2006,8 +1909,6 @@ fn a_tuple_struct_and_a_slot_over_text_a_list_or_a_tuple_claim_no_key() {
     }
 }
 
-/// A tuple struct is the array serde writes: each slot at its position, an absent one `Missing`,
-/// and every position past the last slot `Unknown`.
 #[test]
 fn a_tuple_struct_is_walked_by_position() {
     let walk = issues_walk_of("pub struct Pair(pub String, pub Inner);");
@@ -2033,8 +1934,6 @@ fn a_tuple_struct_is_walked_by_position() {
     }
 }
 
-/// The array holds no position for a slot serde does not read, and serde reads a `default` slot
-/// when its position is absent. With no slot at all, no position is skipped past.
 #[test]
 fn a_slot_is_a_position_only_where_serde_reads_one() {
     let walk = issues_walk_of(
@@ -2062,8 +1961,6 @@ fn a_slot_is_a_position_only_where_serde_reads_one() {
     assert!(!empty.contains("skip"), "got: {empty}");
 }
 
-/// A single-slot tuple struct is read with its own reader, which runs whatever hook its slot
-/// carries, and the issue names what the slot holds. The hook itself is never named.
 #[test]
 fn a_single_slot_struct_is_read_with_the_types_own_reader() {
     for source in [
@@ -2091,8 +1988,6 @@ fn a_single_slot_struct_is_read_with_the_types_own_reader() {
     );
 }
 
-/// Over a flagged model type, a single-slot tuple struct hands both walks to that type at the
-/// path it sits at, through any wrapper serde writes as the value it holds.
 #[test]
 fn a_single_slot_struct_over_a_model_type_hands_both_walks_to_it() {
     for source in [
@@ -2113,8 +2008,6 @@ fn a_single_slot_struct_over_a_model_type_hands_both_walks_to_it() {
     }
 }
 
-/// Over a list or an `Option`, what a single-slot tuple struct holds is walked as a field of that
-/// type is, at the path the struct itself sits at.
 #[test]
 fn a_single_slot_struct_over_a_list_or_an_option_walks_what_it_holds() {
     let listed = issues_walk_of("pub struct Tags(pub Vec<Inner>);");
@@ -2138,9 +2031,6 @@ fn a_single_slot_struct_over_a_list_or_an_option_walks_what_it_holds() {
     );
 }
 
-/// serde writes a `#[serde(transparent)]` struct with a named field as it writes a single-slot
-/// tuple struct: the value held. Both get the same methods running the same walk, from every
-/// source, whatever the field holds.
 #[test]
 fn a_transparent_struct_with_a_named_field_is_walked_as_a_single_slot_struct_is() {
     for (named, slot) in [
@@ -2171,10 +2061,6 @@ fn a_transparent_struct_with_a_named_field_is_walked_as_a_single_slot_struct_is(
     );
 }
 
-/// A `#[serde(transparent)]` struct with a named field gets a fields walker whatever its field
-/// holds: the walk the type that flattens that value itself would run. Over a model type it
-/// hands the walk to that type's own, and over an `Option` of one it walks it where the object
-/// names it. Over a value serde refuses to flatten it lists nothing and returns no key.
 #[test]
 fn a_transparent_struct_with_a_named_field_gets_a_fields_walker_whatever_it_holds() {
     for (field, walked) in [
@@ -2219,9 +2105,6 @@ fn a_transparent_struct_with_a_named_field_gets_a_fields_walker_whatever_it_hold
     }
 }
 
-/// The field walked is the one serde's derive reads the struct as the value of: a field it never
-/// reads, one with a `default` and a `PhantomData` are passed over, and `transparent` is read
-/// wherever it is written. A struct that derive refuses is left to the walk of its keys.
 #[test]
 fn a_transparent_struct_is_walked_as_the_one_field_serde_reads_it_as() {
     let alone = type_impl_of("#[serde(transparent)] pub struct Code { pub inner: Inner }");
@@ -2248,9 +2131,6 @@ fn a_transparent_struct_is_walked_as_the_one_field_serde_reads_it_as() {
     }
 }
 
-/// serde's derive picks the value of a `#[serde(transparent)]` tuple struct as it picks a named
-/// field's, so whatever other slots the struct declares, it gets the `impl` of the single-slot
-/// one. A struct that derive refuses, and one with no `transparent`, are walked by position.
 #[test]
 fn a_transparent_tuple_struct_is_walked_as_the_one_slot_serde_reads_it_as() {
     for (slot, wider) in [
@@ -2302,8 +2182,6 @@ fn a_transparent_tuple_struct_is_walked_as_the_one_slot_serde_reads_it_as() {
     }
 }
 
-/// A unit struct is the `{}` tixschema makes it write: every key is `Unknown`, and the fields
-/// walker reads none of what it is handed, so it binds none of it.
 #[test]
 fn a_unit_struct_lists_every_key_and_its_fields_walker_binds_nothing() {
     let emitted = type_impl_of("pub struct Ping;");
@@ -2328,8 +2206,6 @@ fn a_unit_struct_lists_every_key_and_its_fields_walker_binds_nothing() {
     }
 }
 
-/// A tuple is one more step of the walk, so it is walked by position under a list, a map and an
-/// `Option`, each level binding names of its own. `()` is no tuple to serde, which writes `null`.
 #[test]
 fn a_tuple_in_a_fields_type_is_walked_by_position_wherever_it_is_held() {
     let walk = fields_walk_of(
@@ -2373,11 +2249,6 @@ fn a_tuple_in_a_fields_type_is_walked_by_position_wherever_it_is_held() {
     }
 }
 
-/// A type with a type parameter gets one `impl` per source. Each joins what that source reads and
-/// writes a value with to the bounds the type declares, on every parameter and on the type itself.
-/// A parameter is bounded in one place: its `where` predicate where the type wrote one, taking
-/// along what the type wrote beside its name, and beside its name otherwise. Under `mongodb` its
-/// typed paths get an `impl` of their own, under what a path writes a value with.
 #[test]
 fn a_generic_type_gets_one_impl_per_source_under_that_sources_bounds() {
     let added = added_impls(
@@ -2419,8 +2290,6 @@ fn a_generic_type_gets_one_impl_per_source_under_that_sources_bounds() {
     assert_eq!(added, headers);
 }
 
-/// A method's own type parameter cannot be named as one the type declares, so each takes the next
-/// free name where the type declares `F` or `I`, and keeps its own everywhere else.
 #[test]
 fn a_methods_own_type_parameter_is_never_one_the_type_declares() {
     let clashing =
@@ -2450,9 +2319,6 @@ fn a_methods_own_type_parameter_is_never_one_the_type_declares() {
     }
 }
 
-/// An operation takes its filter under the name a callback is taken under and its update under
-/// `U`, each the next free name where the item writes it: a filter and an update stay two
-/// parameters whatever the item names.
 #[cfg(feature = "mongodb")]
 #[test]
 fn an_operations_filter_and_update_are_never_names_the_item_writes() {
@@ -2498,12 +2364,6 @@ fn an_operations_filter_and_update_are_never_names_the_item_writes() {
     );
 }
 
-/// A method's own type parameter hides a type of its name wherever the method's body writes one,
-/// so each takes the next free name where the item writes `F` or `I` anywhere: a field's type, a
-/// type held inside one, the item's own name, the path of a hook. Every other item keeps both.
-/// Under `mongodb` the function that builds the typed paths names the row type the same way:
-/// `Root`, and the next free name where the item writes that. An operation names its update `U`,
-/// which none of these items writes.
 #[test]
 fn a_methods_own_type_parameter_is_never_a_name_the_item_writes() {
     let expected = |named: [&str; 2], root: &str| {
@@ -2592,8 +2452,6 @@ fn a_methods_own_type_parameter_is_never_a_name_the_item_writes() {
     }
 }
 
-/// Only a type parameter asks for a bound: with none, one `impl` under the type's own generics
-/// holds every method, and its values are written back as any other type's are.
 #[test]
 fn a_type_with_no_type_parameter_keeps_one_impl_under_its_own_generics() {
     let source = "pub struct Grid<const N: usize> { pub cells: Vec<u8> }";
@@ -2609,9 +2467,6 @@ fn a_type_with_no_type_parameter_keeps_one_impl_under_its_own_generics() {
     );
 }
 
-/// The JSON walker of a generic type is bound to read a parameter's value and the type itself,
-/// never to write them: each is read whole and nothing is written back to compare. What holds a
-/// parameter's value is read whole with it, and every other value keeps its write-back.
 #[test]
 fn a_parameters_value_and_the_type_itself_are_never_written_back_from_json() {
     let source = "pub struct Parcel<T> { pub both: (T, u32), pub extra: HashMap<String, T>, \
@@ -2663,8 +2518,6 @@ fn a_parameters_value_and_the_type_itself_are_never_written_back_from_json() {
     );
 }
 
-/// The BSON walker of a generic type is bound `Serialize` throughout, so it writes a parameter's
-/// value and the type itself back as it writes any other.
 #[cfg(feature = "bson")]
 #[test]
 fn the_bson_walker_of_a_generic_type_writes_every_value_back() {
@@ -2723,8 +2576,6 @@ fn the_bson_walker_of_each_struct_shape_matches_the_librarys_own_types() {
     }
 }
 
-/// Every form serde writes an enum in gets the same methods, in one `impl`, a plain enum
-/// included, and an untagged one a method per variant it walks itself beside them.
 #[test]
 fn every_enum_form_adds_the_same_methods_and_an_untagged_one_a_method_per_variant() {
     let forms: [(&str, &[&str]); 5] = [
@@ -2755,8 +2606,7 @@ fn every_enum_form_adds_the_same_methods_and_an_untagged_one_a_method_per_varian
     }
 }
 
-/// A plain enum is the name serde writes: one value, read with the enum's own reader. An enum of
-/// unit variants under a tag is an object, walked by its tag.
+/// A plain enum is the name serde writes: one value, read with the enum's own reader.
 #[test]
 fn a_plain_enum_is_read_whole_and_one_under_a_tag_is_walked_by_its_tag() {
     let plain = enum_json_of("pub enum Status { Draft, Published }");
@@ -2779,9 +2629,6 @@ fn a_plain_enum_is_read_whole_and_one_under_a_tag_is_walked_by_its_tag() {
     }
 }
 
-/// An externally tagged enum is a unit variant's name as text, or an object whose one key names a
-/// variant over what it holds: nothing, one value, a model type, several values, or named fields.
-/// A value in any other form is read whole, naming the variants.
 #[test]
 fn an_externally_tagged_enum_is_walked_under_the_key_naming_the_variant() {
     let walk = enum_json_of(EXTERNAL);
@@ -2830,9 +2677,6 @@ fn an_externally_tagged_enum_is_walked_under_the_key_naming_the_variant() {
     }
 }
 
-/// An internally tagged enum reads its tag from a key of the object and walks the variant's fields
-/// in that same object. A variant holding a model type hands that type's fields walker the object
-/// without the tag's entry, as serde does, and adds the tag's key to the keys it returns.
 #[test]
 fn an_internally_tagged_enum_walks_the_variant_its_tag_names_in_the_same_object() {
     let walk = enum_json_of(INTERNAL);
@@ -2879,9 +2723,7 @@ fn an_internally_tagged_enum_walks_the_variant_its_tag_names_in_the_same_object(
     }
 }
 
-/// serde reads what an internally tagged variant holds from the whole object. Where that is no
-/// model type with a fields walker to hand the object to, nothing is walked and every key counts
-/// as the variant's, so serde's verdict is the read's.
+/// serde reads what an internally tagged variant holds from the whole object.
 #[test]
 fn an_internally_tagged_variant_over_no_model_type_walks_nothing() {
     let walk = enum_json_of("#[serde(tag = \"kind\")] pub enum Reply<T> { Lost, Sent(T) }");
@@ -2895,9 +2737,6 @@ fn an_internally_tagged_variant_over_no_model_type_walks_nothing() {
     );
 }
 
-/// An adjacently tagged enum reads its tag from one key and walks what the variant holds under
-/// another, both its own. A unit variant holds nothing, and serde reads a single optional value
-/// where the content key is missing.
 #[test]
 fn an_adjacently_tagged_enum_walks_what_the_variant_holds_under_the_content_key() {
     let walk = enum_json_of(ADJACENT);
@@ -2949,10 +2788,6 @@ fn an_adjacently_tagged_enum_walks_what_the_variant_holds_under_the_content_key(
     }
 }
 
-/// An untagged enum is walked as the variant serde reads the value as. Where serde reads it as
-/// none, every variant's walk runs into a list of its own, and the lists go into one `NoVariant`
-/// in the order declared. A variant holding a model type is that type's own walker, and a member
-/// carrying a read hook is read through it.
 #[test]
 fn an_untagged_enum_is_walked_as_the_variant_serde_reads() {
     let walk = enum_json_of(UNTAGGED);
@@ -3003,9 +2838,6 @@ fn an_untagged_enum_is_walked_as_the_variant_serde_reads() {
     );
 }
 
-/// A tag and a key are walked under the name serde writes: a variant by its own `rename` over the
-/// enum's `rename_all`, and a variant's field by the variant's `rename_all` over the enum's
-/// `rename_all_fields`. `Variants` lists those names in the order declared.
 #[test]
 fn a_variant_and_its_fields_are_walked_under_the_names_serde_writes() {
     let walk = enum_json_of(
@@ -3029,8 +2861,6 @@ fn a_variant_and_its_fields_are_walked_under_the_names_serde_writes() {
     }
 }
 
-/// serde writes a variant whose one slot is off the wire as a unit variant, and the array of a
-/// variant holding several slots has no position for a slot serde does not read.
 #[test]
 fn a_variants_slot_is_walked_only_where_serde_reads_one() {
     let walk = enum_json_of(
@@ -3051,9 +2881,7 @@ fn a_variants_slot_is_walked_only_where_serde_reads_one() {
     assert!(!walk.contains("u8"), "got: {walk}");
 }
 
-/// A generic enum gets one `impl` per source under the bounds a generic struct gets. From a JSON
-/// value, a parameter's value is read whole where it sits and nothing is written back, the enum
-/// itself included.
+/// A generic enum gets one `impl` per source under the bounds a generic struct gets.
 #[test]
 fn a_generic_enum_gets_its_methods_under_each_sources_bounds() {
     let source = "pub enum Answer<T> { Empty, Value(T) }";
@@ -3095,9 +2923,6 @@ fn a_generic_enum_gets_its_methods_under_each_sources_bounds() {
     assert!(!walk.contains("serde_json :: to_value"), "got: {walk}");
 }
 
-/// The BSON walk of each enum form is its JSON one over the library's own types: text, a document
-/// and a list are matched as the members of `bson::Bson` that hold them, and serde reads a whole
-/// value through the library's deserializer.
 #[cfg(feature = "bson")]
 #[test]
 fn the_bson_walker_of_each_enum_form_matches_the_librarys_own_types() {
@@ -3167,8 +2992,6 @@ fn the_bson_walker_of_each_enum_form_matches_the_librarys_own_types() {
     }
 }
 
-/// serde reads a tagged variant under its name and under each alias, so the arm of a variant with
-/// aliases matches them all, and the arm of one with none is the name alone.
 #[test]
 fn a_tag_stored_as_an_alias_is_matched_by_its_variants_arm() {
     let internal = enum_json_of(ALIASED_INTERNAL);
@@ -3198,9 +3021,6 @@ fn a_tag_stored_as_an_alias_is_matched_by_its_variants_arm() {
     }
 }
 
-/// An externally tagged variant with aliases is found under the first of its tags the object
-/// holds, bound as `tag` apart from the `stored` a field under an alias binds: the path segment of
-/// what the variant holds, and the key returned as the enum's own.
 #[test]
 fn an_externally_tagged_variant_is_looked_up_under_its_name_and_each_alias() {
     let walk = enum_json_of(ALIASED_EXTERNAL);
@@ -3257,9 +3077,6 @@ fn an_externally_tagged_variant_is_looked_up_under_its_name_and_each_alias() {
     );
 }
 
-/// `Variants` lists the tags serde reads: variant by variant in the order declared, a variant's
-/// name and then its aliases in the order written. Nothing emitted names a variant under
-/// `skip_deserializing` or `skip`, and one under `skip_serializing` alone is still read.
 #[test]
 fn variants_lists_every_tag_serde_reads_and_none_of_a_variant_it_never_reads() {
     for (source, variants, never_read) in [
@@ -3292,9 +3109,6 @@ fn variants_lists_every_tag_serde_reads_and_none_of_a_variant_it_never_reads() {
     }
 }
 
-/// An untagged variant serde never reads is no variant to the walker: it gets no walk, no method
-/// and no list inside `NoVariant`. The match on what serde read stays exhaustive through one arm
-/// that lists nothing, written only where the enum has such a variant.
 #[test]
 fn an_untagged_variant_serde_never_reads_is_matched_and_never_walked() {
     let walk = enum_json_of(UNREAD_UNTAGGED);
@@ -3398,12 +3212,6 @@ fn the_bson_walker_reads_a_variants_alias_and_skip_as_the_json_one_does() {
     }
 }
 
-/// A flattened type's keys sit among the object's own, so its fields walker runs in what the
-/// type's own fields and the flattened types declared before it left of that object, at that
-/// object's path, and the keys it returns are kept as declared beside the type's own. A
-/// flattened `Option` is walked where its type answers that what is left names it: into a list of
-/// its own, kept where serde reads the type from what is left and replaced by one `Mistyped` at
-/// the object where it does not.
 #[test]
 fn a_flattened_type_is_walked_in_the_outer_object_and_its_keys_are_declared() {
     let walk = json_fields_walk_of(FLATTENING);
@@ -3457,10 +3265,7 @@ fn a_flattened_type_is_walked_in_the_outer_object_and_its_keys_are_declared() {
     }
 }
 
-/// serde hands a flattened type the entries the outer type's own fields did not take. The walk
-/// binds a copy of them once, hands it to the first flattened type and to each later one what the
-/// earlier ones left of it, and finds each key that comes back among the object's own. A type
-/// with no key of its own hands over the object itself, and copies nothing.
+/// serde hands a flattened type the entries the outer type's own fields did not take.
 #[test]
 fn a_flattened_type_is_handed_what_the_types_own_fields_left_of_the_object() {
     let keyed = json_fields_walk_of(
@@ -3501,8 +3306,6 @@ fn a_flattened_type_is_handed_what_the_types_own_fields_left_of_the_object() {
     }
 }
 
-/// A flattened `Option` is walked only where its type answers that what it is handed names it,
-/// and the keys its walker returns are bound only where something reads them.
 #[test]
 fn a_flattened_option_is_walked_where_its_type_answers_that_the_object_names_it() {
     let alone = json_fields_walk_of(
@@ -3553,12 +3356,7 @@ fn value_named(answer: &str) -> String {
     )
 }
 
-/// Every flagged shape answers whether an object holds what names a value of it. A struct with
-/// named fields is named by a key one of them is read under, a name or an alias, and by what
-/// names a flagged type it flattens, and by any key where a flattened field takes the rest. A
-/// struct serde writes as the value it holds answers as that value flattened would: it asks the
-/// flagged type it holds, and any key names a map, a parameter's value, a JSON value or a slot a
-/// hook reads. A shape serde does not flatten is named by nothing, so it binds no object.
+/// Every flagged shape answers whether an object holds what names a value of it.
 #[test]
 fn every_struct_shape_answers_whether_an_object_names_a_value_of_it() {
     for (source, answered) in [
@@ -3639,10 +3437,6 @@ fn every_struct_shape_answers_whether_an_object_names_a_value_of_it() {
     }
 }
 
-/// An internally or adjacently tagged enum is named by its tag's key, an externally tagged one by
-/// a key naming a variant serde reads, under its name or an alias, and an untagged one by serde
-/// reading the object as one of its variants. A plain enum is flattened as an externally tagged
-/// one is, so it is named as one is. An enum with no variant serde reads is named by nothing.
 #[test]
 fn every_enum_form_answers_whether_an_object_names_a_value_of_it() {
     for (source, answered) in [
@@ -3695,8 +3489,6 @@ fn every_enum_form_answers_whether_an_object_names_a_value_of_it() {
     }
 }
 
-/// The BSON answer of each shape is its JSON one over the library's own types: the document a
-/// type's fields are looked up in, and serde reading it through the library's deserializer.
 #[cfg(feature = "bson")]
 #[test]
 fn the_bson_answer_of_each_shape_matches_the_librarys_own_types() {
@@ -3737,11 +3529,7 @@ fn the_bson_answer_of_each_shape_matches_the_librarys_own_types() {
     }
 }
 
-/// serde reads the flattened fields in the order declared, each from what the ones before it
-/// left. The walk asks the schema module what serde leaves once it has read each earlier one
-/// through that one's own reader, and hands the later type that, which is the same object where
-/// serde took nothing. Nothing is asked for one flattened type alone, after a flattened map,
-/// which takes nothing, or after a field serde never reads.
+/// serde reads the flattened fields in the order declared, each from what the ones before it left.
 #[test]
 fn a_later_flattened_type_is_handed_what_the_earlier_ones_left() {
     let unkeyed = json_fields_walk_of(
@@ -3794,9 +3582,6 @@ fn a_later_flattened_type_is_handed_what_the_earlier_ones_left() {
     }
 }
 
-/// The field that reads the keys nothing else declares reads none serde takes for a field no walk
-/// reaches that is declared before it: such a field declares no key, so what serde leaves once
-/// it has read it is asked for.
 #[test]
 fn the_rest_is_read_without_what_serde_takes_for_an_earlier_field_no_walk_reaches() {
     let walk = json_fields_walk_of(
@@ -3812,10 +3597,6 @@ fn the_rest_is_read_without_what_serde_takes_for_an_earlier_field_no_walk_reache
     );
 }
 
-/// The schema module answers what remains of an object once serde has read a type flattened
-/// there, and whether a reader reads an `Option`, through a deserializer that reads nothing and
-/// notes what the reader asks for in a value its caller owns, so a question allocates nothing.
-/// Where serde takes nothing the first answers `None`, and nothing is copied.
 #[test]
 fn the_schema_module_answers_what_serde_leaves_and_copies_nothing_where_it_takes_nothing() {
     let items = module_items().to_string();
@@ -3850,11 +3631,6 @@ fn the_schema_module_answers_what_serde_leaves_and_copies_nothing_where_it_takes
     }
 }
 
-/// A single-slot struct serde flattens gets the fields walker of the value it holds, the one the
-/// type that flattens that value itself would run: each entry of a map walked at its key, and a
-/// parameter's value, a JSON value and a slot a hook reads each read whole, with every key its
-/// own. An `Option` of a map, of a parameter's value, under a hook or of another `Option` is one
-/// serde reads as absent where it does not read it: every key is its own, and nothing is listed.
 #[test]
 fn a_single_slot_struct_serde_flattens_walks_what_it_holds_as_a_flattened_field_of_it_is_walked() {
     for (source, walked) in [
@@ -3932,8 +3708,7 @@ fn a_single_slot_struct_serde_flattens_walks_what_it_holds_as_a_flattened_field_
     }
 }
 
-/// An id is the object serde writes for it, so serde flattens a single-slot struct over one. No
-/// walk reads an id held as that object: every key is the struct's own, and nothing is listed.
+/// An id is the object serde writes for it, so serde flattens a single-slot struct over one.
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_single_slot_struct_over_an_id_takes_every_key_and_lists_nothing() {
@@ -3956,9 +3731,6 @@ fn a_single_slot_struct_over_an_id_takes_every_key_and_lists_nothing() {
     }
 }
 
-/// A plain enum is flattened as an externally tagged one is: its fields walker is that one's over
-/// variants that hold nothing, so the key naming a variant is its own, and `Missing` is listed
-/// where no key names one. With no variant serde reads, no key is its own.
 #[test]
 fn a_plain_enum_gets_the_fields_walker_of_an_externally_tagged_enum() {
     let walk = enum_json_of(
@@ -3987,10 +3759,6 @@ fn a_plain_enum_gets_the_fields_walker_of_an_externally_tagged_enum() {
     }
 }
 
-/// A flattened map takes every key nothing else declares and walks each value at its key, so the
-/// type then returns every key of the object. What else declares a key is read off the keys kept
-/// where a flattened type declares some, off the type's own where none does, and off nothing where
-/// the type has none.
 #[test]
 fn a_flattened_map_walks_the_value_of_every_key_nothing_else_declares() {
     let beside_a_type = json_fields_walk_of(
@@ -4037,9 +3805,6 @@ fn a_flattened_map_walks_the_value_of_every_key_nothing_else_declares() {
     );
 }
 
-/// A flattened type parameter is read whole, with its own reader, from an object of the keys
-/// nothing else declares, which is the whole object where the type declares none. A flattened
-/// field its author's hook reads is read the same way, through the hook.
 #[test]
 fn a_flattened_parameter_is_read_whole_from_the_keys_nothing_else_declares() {
     let walk = json_fields_walk_of(FLATTENING_A_PARAMETER);
@@ -4087,9 +3852,6 @@ fn a_flattened_parameter_is_read_whole_from_the_keys_nothing_else_declares() {
     );
 }
 
-/// serde hands the first flattened field that takes the rest every key the walker hands it, and
-/// what that one leaves for the next is nothing the walker can know. Only the first is walked, and
-/// serde's verdict stands for the others.
 #[test]
 fn only_the_first_flattened_field_that_takes_the_rest_is_walked() {
     let walk = json_fields_walk_of(
@@ -4126,11 +3888,6 @@ fn only_the_first_flattened_field_that_takes_the_rest_is_walked() {
     );
 }
 
-/// No walk reaches a flattened field serde reads as absent where its type's own reader would
-/// refuse, one it refuses outright, or one it never reads, written always or where a
-/// `skip_serializing_if` lets it be: every key of the object counts as the field's own and nothing
-/// is listed for it, so serde's verdict is the read's. A flattened type beside it is still
-/// walked, and its keys are kept nowhere, nothing being left to read them.
 #[test]
 fn a_flattened_field_no_walk_reaches_takes_every_key_and_lists_nothing() {
     for source in [
@@ -4175,9 +3932,6 @@ fn a_flattened_field_no_walk_reaches_takes_every_key_and_lists_nothing() {
     }
 }
 
-/// A flattened id is the object serde writes for one, which no walk reads: every key counts as
-/// the field's own and nothing is listed for it, from either source. Behind a hook it is read
-/// whole, through the hook.
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_flattened_id_is_read_by_no_walk() {
@@ -4210,11 +3964,6 @@ fn a_flattened_id_is_read_by_no_walk() {
     );
 }
 
-/// A value read whole from the entries a flattened field is read from is written back from
-/// neither source: flattened, it is held as those entries, whatever form it has under a key.
-/// Behind a hook or in what fills a parameter an `Option` is not seen here, so the reader is asked,
-/// and the issue is kept only where it reads none. A JSON value's type is seen, and nothing is
-/// asked.
 #[test]
 fn a_flattened_value_read_whole_is_not_written_back_and_an_option_not_seen_is_absent() {
     let hooked = type_impl_of(
@@ -4255,10 +4004,6 @@ fn a_flattened_value_read_whole_is_not_written_back_and_an_option_not_seen_is_ab
     }
 }
 
-/// A variant's flattened field is walked in what the variant's own fields, and the tag an
-/// internally tagged enum reads there, left of the object those fields sit in, at that object's
-/// path, wherever the enum's form puts it. The keys it returns are the variant's own beside the
-/// ones the variant declares, so a key outside both is `Unknown`.
 #[test]
 fn a_variants_flattened_field_is_walked_in_the_object_its_fields_sit_in() {
     let external = enum_json_of(
@@ -4362,10 +4107,6 @@ fn a_variants_flattened_field_is_walked_in_the_object_its_fields_sit_in() {
     );
 }
 
-/// An untagged enum's fields walker walks, in the object it is handed, the fields of the variant
-/// serde reads that object as, and returns that variant's keys. Where serde reads it as none, one
-/// `NoVariant` holds each variant's own list, without the keys that variant does not declare, and
-/// every key of the object is returned.
 #[test]
 fn an_untagged_enums_fields_walker_walks_the_variant_serde_reads_the_object_as() {
     let emitted = enum_json_of(UNTAGGED);
@@ -4417,9 +4158,6 @@ fn an_untagged_enums_fields_walker_walks_the_variant_serde_reads_the_object_as()
     }
 }
 
-/// The BSON walk of a flattened field is its JSON one over the library's own types: serde reads a
-/// whole document through the library's deserializer, and a document is the member of
-/// `bson::Bson` that holds one.
 #[cfg(feature = "bson")]
 #[test]
 fn the_bson_walker_of_a_flattened_field_matches_the_librarys_own_types() {
@@ -4481,9 +4219,6 @@ fn the_bson_walker_of_a_flattened_field_matches_the_librarys_own_types() {
     }
 }
 
-/// A type no `#[model_schema]` was written on above is asked with `ReadWhole` in scope, beside
-/// the call that keeps the trait in use, and the trait is added to the module only then. A model
-/// type seen above is called as it stands, so one with no flag still fails the build.
 #[test]
 fn a_field_of_a_type_not_seen_above_is_asked_with_the_whole_read_in_scope() {
     let item: syn::ItemStruct =
@@ -4519,9 +4254,6 @@ fn a_field_of_a_type_not_seen_above_is_asked_with_the_whole_read_in_scope() {
     assert!(!plain.contains("ReadWhole"), "got: {plain}");
 }
 
-/// An alias seen above is written out as the type it names: a standard type by its full path, and
-/// every other type under an alias that reaches it from the field's own type and keeps its name.
-/// A check beside the type holds the two to one type.
 #[test]
 fn a_field_typed_with_an_alias_seen_above_is_walked_as_the_type_the_alias_names() {
     record_declared(
@@ -4554,8 +4286,6 @@ fn a_field_typed_with_an_alias_seen_above_is_walked_as_the_type_the_alias_names(
     }
 }
 
-/// An alias of one model type is that type: the field is left as it is written, and the type's
-/// own walker is called under the alias.
 #[test]
 fn a_field_typed_with_an_alias_of_a_model_type_is_left_as_it_is_written() {
     record_declared("Featured", Declared::Alias("Entry".to_owned()));
@@ -4605,10 +4335,6 @@ fn typed_enum_paths_of(source: &str, seen: &[&str]) -> (String, String) {
     )
 }
 
-/// A field is a member of the kind serde writes its value as: a value every row holds, one a row
-/// may leave out, a list, and each of the three over a struct or an enum declared above, which
-/// then holds that type's own struct of paths. A wrapper serde writes as the value it holds
-/// changes the type an operator takes and nothing of the kind.
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_field_is_the_member_of_the_kind_serde_writes_it_as() {
@@ -4653,10 +4379,6 @@ fn a_field_is_the_member_of_the_kind_serde_writes_it_as() {
     );
 }
 
-/// A type tixschema has not seen as a flagged model where the field is expanded is one whole
-/// value: one declared below or in another crate, the type itself under either of its names, and
-/// one a path the module cannot read the last name of leads to. The module writes a name in scope
-/// beside the type through `super`, and a longer path as its author wrote it.
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_type_not_seen_above_is_one_whole_value_named_through_super() {
@@ -4701,9 +4423,6 @@ fn a_type_not_seen_above_is_one_whole_value_named_through_super() {
     }
 }
 
-/// A key serde never writes has no member, and neither has a map, whose keys are data: bare, in
-/// an `Option`, or flattened. A flattened value that is no flagged model has no key of its own to
-/// be one whole value under.
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_key_serde_never_writes_and_a_map_have_no_member() {
@@ -4730,9 +4449,7 @@ fn a_key_serde_never_writes_and_a_map_have_no_member() {
     }
 }
 
-/// A flagged type is asked for its own paths only where its walker is called as it stands. A
-/// value a hook writes is handed to that hook by a function added to the type, under an `Option`
-/// as `Some`, and is one whole value; so is a value serde never reads back, and one a hook reads.
+/// A flagged type is asked for its own paths only where its walker is called as it stands.
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_hooked_field_and_one_serde_never_reads_back_are_one_whole_value() {
@@ -4798,9 +4515,6 @@ fn a_hooked_field_and_one_serde_never_reads_back_are_one_whole_value() {
     );
 }
 
-/// A member is under its field's own name and writes the key serde does: the field's `rename`,
-/// or its name cased by the struct's `rename_all`. A flattened model has no key of its own, so
-/// its struct of paths is built under the keys that lead to the struct that flattens it.
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_member_is_named_after_its_field_and_writes_the_key_serde_does() {
@@ -4832,10 +4546,6 @@ fn a_member_is_named_after_its_field_and_writes_the_key_serde_does() {
     }
 }
 
-/// A struct serde writes as one value, or as nothing, is the path of that value: its struct of
-/// paths holds nothing else and dereferences to it. The path is the struct's last parameter, with
-/// no default, and the type's own `impl` writes it: the module names no type of its author's.
-/// Only a value serde writes as text is matched by a pattern, on an `impl` over any such path.
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_type_serde_writes_as_one_value_is_the_path_of_that_value() {
@@ -4941,10 +4651,6 @@ fn a_type_serde_writes_as_one_value_is_the_path_of_that_value() {
     );
 }
 
-/// A type declared above that serde writes as one value is held with its path written out, since
-/// its struct of paths names no type: bare and under an `Option` it keeps its own struct. A list
-/// of one is a list of plain values, whose elements an operator is written over with no key. A
-/// flattened one has no key to sit at the level of what holds it, and no member.
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_type_written_as_one_value_is_held_with_its_path_written_out() {
@@ -5020,9 +4726,7 @@ fn a_type_written_as_one_value_is_held_with_its_path_written_out() {
     assert!(!emitted.contains("wire:"), "got: {emitted}");
 }
 
-/// A path is under the name serde writes. A renaming written as a list counts by its `serialize`
-/// side whatever it names for reading, and one that writes no `serialize` leaves the name as it
-/// was: on a field, on a variant, and as the rule that cases either.
+/// A path is under the name serde writes.
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_renaming_written_as_a_list_counts_by_what_serde_writes() {
@@ -5090,9 +4794,6 @@ fn a_renaming_written_as_a_list_counts_by_what_serde_writes() {
     }
 }
 
-/// What serde writes as one value is what the registry records as one, at the seam every item's
-/// declaration is recorded at: a struct written as the value of one slot, a unit struct, and an
-/// enum no variant of which holds a value and no attribute tags.
 #[test]
 fn a_struct_or_an_enum_is_written_as_one_value_or_under_keys_of_its_own() {
     for (source, one_value) in [
@@ -5128,8 +4829,7 @@ fn a_struct_or_an_enum_is_written_as_one_value_or_under_keys_of_its_own() {
     }
 }
 
-/// A tuple struct's paths are a tuple struct, each slot's key the position serde writes it at. A
-/// slot serde never writes keeps its place as `()`, so a member's position is its slot's.
+/// A tuple struct's paths are a tuple struct, each slot's key the position serde writes it at.
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_tuple_structs_paths_are_by_position() {
@@ -5153,11 +4853,6 @@ fn a_tuple_structs_paths_are_by_position() {
     );
 }
 
-/// A generic type's struct of paths carries the type's own parameters after the row type, under
-/// the bounds the type declares. Members are public and what the struct keeps for itself is not,
-/// so a struct that keeps anything holds its members in a struct of their own and dereferences
-/// to it: here a marker of the parameter no member names. With no member at all the function
-/// that builds the struct reads no key.
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_struct_of_paths_carries_the_types_own_parameters_and_never_mixes_what_it_keeps() {
@@ -5215,10 +4910,6 @@ fn a_struct_of_paths_carries_the_types_own_parameters_and_never_mixes_what_it_ke
     );
 }
 
-/// An enum's struct of paths keeps the path that names its variant, and answers `is_{variant}`
-/// from it: the tag's key under a tag, and the enum's own under a variant's name. What a variant
-/// holds is a member under the variant's name: beside the tag, under the content key, under the
-/// name serde writes the variant as, or where the enum itself is.
 #[cfg(feature = "mongodb")]
 #[test]
 fn an_enums_paths_are_where_its_form_writes_what_each_variant_holds() {
@@ -5291,9 +4982,7 @@ fn an_enums_paths_are_where_its_form_writes_what_each_variant_holds() {
     }
 }
 
-/// A variant serde never writes has neither member nor `is_{variant}`. A struct `mongo_members`
-/// holds is never named as a prelude type or as a parameter, which every member beside it that
-/// names one would otherwise read in its place.
+/// A variant serde never writes has neither member nor `is_{variant}`.
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_variant_serde_never_writes_has_no_path_and_a_members_struct_takes_no_name_in_use() {
@@ -5319,8 +5008,6 @@ fn a_variant_serde_never_writes_has_no_path_and_a_members_struct_takes_no_name_i
     }
 }
 
-/// Of the `bson` library the typed paths name only what both of its major versions have, the
-/// serializer and two members of a value, and nothing they add is hidden from a lint or a reader.
 #[cfg(feature = "mongodb")]
 #[test]
 fn the_typed_paths_name_only_what_both_majors_of_the_bson_library_have() {

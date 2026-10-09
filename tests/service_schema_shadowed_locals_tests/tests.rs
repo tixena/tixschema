@@ -1,3 +1,5 @@
+//! Tests of a service whose arguments are named after locals the generated transports write.
+
 use crate::shadow_service_schema::ServiceFault;
 use crate::{http_rest_client, http_rest_dispatcher};
 use core::future::{Future, ready};
@@ -57,6 +59,7 @@ pub trait ShadowService<Ctx> {
     ) -> Result<ShadowHanded, ShadowFailure>;
 }
 
+/// The implementation of `ShadowService` these tests dispatch to.
 pub struct ShadowBackEnd;
 
 impl ShadowService<()> for ShadowBackEnd {

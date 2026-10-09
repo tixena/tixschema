@@ -1,3 +1,6 @@
+//! Tests of the generated `validate()`: every bound, through every wrapper and shape that carries
+//! one.
+
 /// What a message's own validator does about a bound declared not on one of its fields but on a
 /// field's *type* — a constrained brand, or a nested `#[model_schema()]` type of its own.
 ///
@@ -173,12 +176,6 @@ mod a_bound_the_fields_own_type_declares {
         Slug("a".to_owned())
     }
 
-    /// A bound declared on a brand is reached from the message that holds one, and reported under
-    /// the field that holds it.
-    ///
-    /// The brand's own report names nothing — it says `too short: …`, the brand being the
-    /// value rather than a field of anything — so the name is the holder's to supply, written where
-    /// a reader of these reports already looks for one: first, and in single quotes.
     #[test]
     fn test_a_message_holding_a_constrained_brand_is_refused_by_its_own_validator() {
         assert_eq!(
@@ -206,10 +203,6 @@ mod a_bound_the_fields_own_type_declares {
         assert!(readme.contains(shown), "the README no longer shows {shown}");
     }
 
-    /// The brand's bound is reached through the same wrappers a field's own bound is reached
-    /// through, and each shape is read both ways: a shape whose validator passed a bad value would
-    /// be one whose bound is decorative, and one that refused a good value would be one no caller
-    /// could satisfy.
     #[test]
     fn test_a_brands_bound_is_reached_through_every_wrapper_the_field_is_written_under() {
         assert_eq!(
@@ -245,15 +238,6 @@ mod a_bound_the_fields_own_type_declares {
         );
     }
 
-    /// The same reach, over a field whose type is an ordinary `#[model_schema()]` type rather than
-    /// a brand. That type's report already names its own member, and the holder's name is written
-    /// *into* that name rather than in front of it, so one quoted run carries the whole path.
-    ///
-    /// Which run it is decides what a caller is told. A reader of these reports takes the first,
-    /// so two runs would hand it `holds` — an object in the payload it sent, rather than the value
-    /// that was out of range. `holds.name` is the member that was actually wrong, and it is the
-    /// string the TypeScript schema published from this same declaration reports for this same
-    /// payload.
     #[test]
     fn test_a_nested_types_own_report_is_carried_up_under_the_field_that_held_it() {
         // The payload reads: a nested bound is enforced nowhere on the read, which is what leaves
@@ -278,8 +262,6 @@ mod a_bound_the_fields_own_type_declares {
         );
     }
 
-    /// A tagged variant's member reaches its type's validator exactly as a struct's field does, and
-    /// the arm that runs it is the one the value matched.
     #[test]
     fn test_a_tagged_variants_branded_member_is_reached_by_the_enums_validator() {
         assert_eq!(
@@ -294,13 +276,6 @@ mod a_bound_the_fields_own_type_declares {
         );
     }
 
-    /// The carve-out is untouched: an untagged member's *own* bound still runs on the read, where
-    /// it decides which variant the payload is rather than merely whether the value is admissible.
-    /// The brand's hook is what makes that work, and nothing here removed it.
-    ///
-    /// The validator reaching a member's *type* is a different question and does not disturb it:
-    /// the arm runs after the variant has been chosen, so it can report a violation but never move
-    /// a payload from one member to another.
     #[test]
     fn test_an_untagged_members_brand_still_chooses_the_variant_on_the_read() {
         let checked: CheckedThenLoose = serde_json::from_str(r#"{"slug":"abc"}"#).unwrap();
@@ -323,9 +298,6 @@ mod a_bound_the_fields_own_type_declares {
         );
     }
 
-    /// Parity, from the other side: a field whose value the crate renders itself has no validator
-    /// to reach, so a message made only of those still publishes none. The trait's method is
-    /// reached only because no inherent one shadows it.
     #[test]
     fn test_a_message_made_of_values_the_crate_renders_itself_publishes_no_validator() {
         assert_eq!(
@@ -340,13 +312,6 @@ mod a_bound_the_fields_own_type_declares {
         );
     }
 
-    /// A bound beneath a field is reached through every wrapper the field is written under.
-    ///
-    /// The brand matrix above proves the walk reaches a *brand* through each shape; this proves it
-    /// reaches an ordinary nested type through the same ones, which is the shape a message carries
-    /// an account context in. Both directions per row: a shape whose bad value passed would be one
-    /// whose bound is decorative, and one that refused a good value would be one no caller could
-    /// satisfy.
     #[test]
     fn test_a_nested_types_bound_is_reached_through_every_wrapper_the_field_is_written_under() {
         fn held(name: &str) -> Held {
@@ -416,11 +381,6 @@ mod a_bound_the_fields_own_type_declares {
         );
     }
 
-    /// A nested field keeps its walk beside a plain unconstrained sibling, and beside none.
-    ///
-    /// The pair is the point. A type whose nested field is its *only* field is the shape a probe
-    /// reaches for, and a walk that survived only there would look correct while every real
-    /// message — which carries plain fields beside its nested ones — lost its bound.
     #[test]
     fn test_a_nested_field_keeps_its_walk_beside_a_plain_sibling() {
         assert_eq!(
@@ -464,14 +424,6 @@ mod a_bound_the_fields_own_type_declares {
         );
     }
 
-    /// A `#[serde(flatten)]` hop keeps the walk and contributes no segment.
-    ///
-    /// Both halves matter and they fail in opposite directions. A flattened field's body is
-    /// discarded with the rest of what the surfaces do not read off it, and a walk dropped there
-    /// leaves the bound below the hop enforced by nothing — the value reaches the implementation.
-    /// A segment written for the hop would name a key no payload carries, since the hop writes
-    /// none: this is the shape an account context is declared in, and `account.jti` is what both
-    /// the wire and the TypeScript schema call the field that was wrong.
     #[test]
     fn test_a_flattened_hop_keeps_the_walk_and_contributes_no_segment() {
         assert_eq!(
@@ -489,9 +441,6 @@ mod a_bound_the_fields_own_type_declares {
         );
     }
 
-    /// The same, over an untagged member's flattened field — the third place a body is discarded,
-    /// and so the third place the walk has to be rebuilt. The member's *own* bound still runs on
-    /// the read, which is the carve-out; a bound its type declares is the validator's either way.
     #[test]
     fn test_an_untagged_members_flattened_field_keeps_its_walk() {
         assert_eq!(
@@ -509,8 +458,6 @@ mod a_bound_the_fields_own_type_declares {
         );
     }
 
-    /// The same, over a tagged variant's flattened member, which is a second place the body is
-    /// discarded and so a second place the walk has to be rebuilt.
     #[test]
     fn test_a_tagged_variants_flattened_member_keeps_its_walk() {
         assert_eq!(
@@ -531,19 +478,6 @@ mod a_bound_the_fields_own_type_declares {
 
 /// What a message's own validator does about a bound reached through an `#[serde(untagged)]` enum
 /// — one it holds as a field, and one the message itself is.
-///
-/// The union is the position the walk used to stop at, and it stopped for one reason wearing two
-/// faces: a newtype member has no field ident, and both the arm that would run it and the report
-/// that would name it were spelled from one. So a union of newtype members published no arm, and
-/// therefore no `validate()` at all, and therefore a field holding one walked into a blanket
-/// `Ok(())` that answered for every payload beneath it.
-///
-/// Which bound belongs where does not change here, and the line is the same one drawn for a member
-/// with a name. A bound that decides *which variant a payload is* stays on the read: an untagged
-/// union takes a member the constraint rejects out of the running, and `validate()` cannot answer
-/// that question because by the time it runs the variant is already chosen. A bound that decides
-/// only whether a value is *admissible* is the validator's, wherever it sits — the arm runs after
-/// the choice is settled, so nothing it reports can move a payload from one member to another.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -663,13 +597,6 @@ mod a_bound_inside_an_untagged_variant {
 
     impl UnpublishedValidate for Unbounded {}
 
-    /// A union of newtype members publishes a validator that dispatches to whichever variant it
-    /// holds, and reports what that variant reported.
-    ///
-    /// The member contributes no segment of its own, for the reason a `#[serde(flatten)]` hop
-    /// contributes none: what an untagged newtype member writes on the wire *is* the inner value,
-    /// so a violation beneath it is already one of the payload's own keys and a segment for the hop
-    /// would name a key nothing carries.
     #[test]
     fn test_an_untagged_union_dispatches_to_whichever_variant_it_holds() {
         assert_eq!(
@@ -696,10 +623,6 @@ mod a_bound_inside_an_untagged_variant {
         );
     }
 
-    /// Two unions stacked, which is the shape the account a real message declares actually has: a
-    /// union whose member is a union whose member reaches the bound through a flattened hop. Each
-    /// level contributes nothing to the path and the field named is still the one the payload
-    /// spells, because none of the three hops writes a key.
     #[test]
     fn test_a_union_inside_a_union_is_walked_to_the_bound_beneath_both() {
         assert_eq!(
@@ -717,8 +640,6 @@ mod a_bound_inside_an_untagged_variant {
         );
     }
 
-    /// A field holding such a union: the hop the payload spells contributes its name, the union
-    /// contributes none, and the path is the one a caller can look up in what it sent.
     #[test]
     fn test_a_field_holding_an_untagged_union_names_the_path_the_payload_spells() {
         assert_eq!(
@@ -736,11 +657,6 @@ mod a_bound_inside_an_untagged_variant {
         );
     }
 
-    /// The message that *is* a union answers exactly what the variant it holds answers — the union
-    /// has no report of its own to write.
-    ///
-    /// And the envelope whose account is a plain struct rather than a union keeps answering what it
-    /// always answered: that pair is the whole of the port's divergence, and it is now one string.
     #[test]
     fn test_a_message_that_is_itself_untagged_answers_what_its_variant_answers() {
         let refused = "'account.jti': too short: minimum length is 1, got 0".to_owned();
@@ -772,12 +688,6 @@ mod a_bound_inside_an_untagged_variant {
         );
     }
 
-    /// A brand behind a newtype member. Its own report names nothing — the brand *is* the value —
-    /// so the union has nothing to write a name into and the holder supplies one, which is what a
-    /// brand held directly by a field already does.
-    ///
-    /// The read still chooses the variant: a value the bound refuses is the other member, never a
-    /// violation to report.
     #[test]
     fn test_a_brand_behind_a_newtype_member_is_reached_and_named_by_its_holder() {
         assert_eq!(
@@ -808,9 +718,6 @@ mod a_bound_inside_an_untagged_variant {
         assert_eq!(admitted.validate(), Ok(()));
     }
 
-    /// Parity, from the other side: a union whose members hold nothing any bound describes still
-    /// publishes no validator, exactly as a constraint-free struct does. The trait's method is
-    /// reached only because no inherent one shadows it.
     #[test]
     fn test_a_union_with_nothing_to_check_publishes_no_validator() {
         assert_eq!(Unbounded::Count(0).validate(), "no inherent validate()");
@@ -820,10 +727,6 @@ mod a_bound_inside_an_untagged_variant {
         );
     }
 
-    /// The Zod schema published from the same declaration carries the same bound behind the same
-    /// union, which is why the TypeScript service refused these payloads all along. The two
-    /// surfaces disagreeing about a payload is the divergence this closes; agreeing about where the
-    /// bound sits is what makes the reports name the same field.
     #[cfg(feature = "zod")]
     #[test]
     fn test_the_zod_surface_carries_the_same_bound_behind_the_same_union() {
@@ -1029,9 +932,8 @@ fn test_max_length_rust_invalid() {
     }
 
     let invalid = r#"{"name": "too long value"}"#;
-    // A value out of range is still structurally a message: every key is present and
-    // every value is of the type its field declared. The read says so, and the validator
-    // is what answers for the range.
+    // A value out of range is still structurally a message: every key is present and every value is
+    // of the type its field declared.
     let read = serde_json::from_str::<MaxLengthInvalid>(invalid).unwrap();
     let errors = read.validate().unwrap_err();
     assert!(
@@ -1076,9 +978,8 @@ fn test_min_length_rust_invalid() {
     }
 
     let invalid = r#"{"name": "hi"}"#;
-    // A value out of range is still structurally a message: every key is present and
-    // every value is of the type its field declared. The read says so, and the validator
-    // is what answers for the range.
+    // A value out of range is still structurally a message: every key is present and every value is
+    // of the type its field declared.
     let read = serde_json::from_str::<MinLengthRustInvalid>(invalid).unwrap();
     let errors = read.validate().unwrap_err();
     assert!(
@@ -1229,7 +1130,6 @@ fn test_validate_method_multiple_errors() {
         pub name: String,
     }
 
-    // name is too short, code is too long
     let instance = ValidateMultiErr {
         name: "hi".to_owned(),
         code: "toolongcode".to_owned(),
@@ -1370,9 +1270,8 @@ fn test_minimum_rust_invalid() {
     }
 
     let invalid = r#"{"count": 3}"#;
-    // A value out of range is still structurally a message: every key is present and
-    // every value is of the type its field declared. The read says so, and the validator
-    // is what answers for the range.
+    // A value out of range is still structurally a message: every key is present and every value is
+    // of the type its field declared.
     let read = serde_json::from_str::<MinimumRustInvalid>(invalid).unwrap();
     let errors = read.validate().unwrap_err();
     assert!(
@@ -1417,9 +1316,8 @@ fn test_maximum_rust_invalid() {
     }
 
     let invalid = r#"{"count": 99}"#;
-    // A value out of range is still structurally a message: every key is present and
-    // every value is of the type its field declared. The read says so, and the validator
-    // is what answers for the range.
+    // A value out of range is still structurally a message: every key is present and every value is
+    // of the type its field declared.
     let read = serde_json::from_str::<MaximumRustInvalid>(invalid).unwrap();
     let errors = read.validate().unwrap_err();
     assert!(
@@ -1587,7 +1485,6 @@ fn test_validate_method_pattern_and_length() {
         pub tag: String,
     }
 
-    // Valid case
     let valid = ValidatePatternLength {
         tag: "hello".to_owned(),
     };
@@ -1596,7 +1493,6 @@ fn test_validate_method_pattern_and_length() {
         "Valid value should pass all constraints"
     );
 
-    // Too short — minLength check fires first
     let too_short = ValidatePatternLength {
         tag: "ab".to_owned(),
     };
@@ -1608,7 +1504,6 @@ fn test_validate_method_pattern_and_length() {
         "Should report 'too short' error: {too_short_errors:?}"
     );
 
-    // Pattern failure (uppercase)
     let bad_pattern = ValidatePatternLength {
         tag: "Hello".to_owned(),
     };
@@ -1694,7 +1589,6 @@ fn test_validate_method_mixed_string_numeric() {
         pub title: String,
     }
 
-    // Both fields invalid
     let instance = ValidateMixed {
         title: "hi".to_owned(),
         score: 2,
@@ -1756,9 +1650,8 @@ fn test_minimum_float_rust_invalid() {
     }
 
     let invalid = r#"{"ratio": -0.5}"#;
-    // A value out of range is still structurally a message: every key is present and
-    // every value is of the type its field declared. The read says so, and the validator
-    // is what answers for the range.
+    // A value out of range is still structurally a message: every key is present and every value is
+    // of the type its field declared.
     let read = serde_json::from_str::<MinFloatInvalid>(invalid).unwrap();
     let errors = read.validate().unwrap_err();
     assert!(
@@ -1803,9 +1696,8 @@ fn test_maximum_float_rust_invalid() {
     }
 
     let invalid = r#"{"value": 15.0}"#;
-    // A value out of range is still structurally a message: every key is present and
-    // every value is of the type its field declared. The read says so, and the validator
-    // is what answers for the range.
+    // A value out of range is still structurally a message: every key is present and every value is
+    // of the type its field declared.
     let read = serde_json::from_str::<MaxFloatInvalid>(invalid).unwrap();
     let errors = read.validate().unwrap_err();
     assert!(
@@ -1897,9 +1789,8 @@ fn test_constraints_dont_affect_typescript() {
     }
 
     let ts = ConstraintsTs::ts_definition();
-    // Extract just the type body (after "export type ... = {" and before the closing "};")
-    // The TypeScript type syntax itself should use plain `string` and `number` — no Zod
-    // or JSON Schema constraint methods like `.min()`, `.max()`, `.check()`, `.regex()`.
+    // The TypeScript type itself uses plain `string` and `number`: no Zod or JSON Schema constraint
+    // methods.
     assert!(
         ts.contains("export type"),
         "Should contain 'export type': {ts}"
@@ -2008,9 +1899,6 @@ fn test_pattern_empty_string_match() {
     );
 }
 
-/// A pattern simple enough that a regex engine is avoidable work — the shape a consumer denying
-/// `clippy::nursery` cannot compile if the validator reaches for `Regex::new` anyway, since the
-/// diagnostic lands on the attribute and there is no edit at that site to silence it.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -2047,9 +1935,6 @@ fn test_pattern_anchored_single_character_prefix() {
     );
 }
 
-/// `^$` is written out of the two anchors a pattern admitting every value is written out of, and
-/// is the one arrangement that still says something: both ends of the value at one position,
-/// which only the empty string has.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -2079,9 +1964,7 @@ fn test_pattern_pinning_both_ends_to_one_position() {
     );
 }
 
-/// The rewrite a lone `\b` is refused in favour of. It reaches the emitter as a regex, and this
-/// crate's own lints deny `clippy::nursery`, so compiling this fixture is what proves the emitted
-/// `Regex::new` draws no `trivial_regex` at the attribute that wrote it.
+/// The rewrite a lone `\b` is refused in favour of.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -2361,13 +2244,6 @@ fn test_validate_boxed_option_string() {
     );
 }
 
-/// What a bound means on a field: the read admits the value and the validator refuses it.
-///
-/// A constraint describes the value, not the shape. A payload carrying one the constraint rejects
-/// is still structurally the message it claims to be — every key present, every value of its
-/// field's declared type — so the read says so and the validator is what answers for the bound,
-/// naming the field. Enforcing it as the payload was read made the two indistinguishable to a
-/// receiver, which is a worse answer than either.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -2454,8 +2330,6 @@ fn test_deserialize_optional_string_keeps_a_written_default() {
     );
 }
 
-/// A transparent wrapper writes its inner value and nothing else, so the value the constraint
-/// describes is the one a bare field holds and the walk reaches it through the wrapper.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -2509,8 +2383,6 @@ fn test_a_cow_string_is_read_and_then_held_to_its_bound_by_validate() {
     );
 }
 
-/// A sequence holds an array of the constrained value, so the walk visits every element and one
-/// failing element fails the validator.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -2574,8 +2446,6 @@ fn test_an_optional_vec_is_read_and_then_held_to_its_bound_by_validate() {
     );
 }
 
-/// A range describes the number wherever the field holds it, exactly as a length describes the
-/// string, and the walk reaches it the same way.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -2613,13 +2483,6 @@ fn test_an_optional_number_is_read_and_then_held_to_its_range_by_validate() {
     accepted.validate().unwrap();
 }
 
-/// The whole matrix in one place: on every wrapped shape, a value that breaks the bound is read
-/// and then refused by `validate()`, naming its field.
-///
-/// The read admits it because it is structurally the message it claims to be. The validator
-/// refuses it because the bound describes the value, not the shape. A shape where the read
-/// refused instead would be one whose caller is told its serialization is broken when it is not —
-/// and a shape where neither refused would be one whose bound is decorative.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -2679,8 +2542,6 @@ fn test_every_wrapped_shape_is_read_and_then_refused_by_validate() {
     }
 }
 
-/// A field name is unique only within the variant that declares it, so the helpers a variant's
-/// field generates are named for that variant: two variants naming one field carry two constraints.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -2734,8 +2595,6 @@ fn test_two_variants_naming_one_field_keep_their_own_constraints() {
     );
 }
 
-/// The struct and its single-variant tagged twin carry the same constraint on the same member, so
-/// an author who changes the one declaration into the other reads the identical sentence back.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -2783,8 +2642,6 @@ fn test_tagged_enum_validate_answers_in_the_struct_twins_words() {
     .unwrap();
 }
 
-/// The tag decides how a value is written, not which of its members carry a bound — so every
-/// tagging serde offers publishes the accessor, and all three answer the same violation alike.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -2847,8 +2704,6 @@ fn test_every_tagged_flavor_publishes_validate_for_its_constrained_members() {
     );
 }
 
-/// A value holds one variant at a time, so the walk runs that variant's checks and no other's —
-/// two variants naming one member are two constraints, and only the held one answers.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -2887,8 +2742,6 @@ fn test_enum_validate_runs_only_the_held_variants_checks() {
     );
 }
 
-/// A variant that carries no bound contributes no check, and one that carries several answers with
-/// every violation at once — the struct accessor's own collecting shape, per arm.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -2931,8 +2784,6 @@ fn test_enum_validate_collects_every_violation_of_the_held_variant() {
     Mixed::Nothing.validate().unwrap();
 }
 
-/// A member written under wrappers is checked where the constraint lands, exactly as the same field
-/// written in a struct is: a `None` writes nothing to check, and a sequence answers per element.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -2975,9 +2826,6 @@ fn test_enum_validate_reaches_through_a_members_wrappers() {
     );
 }
 
-/// Parity with the struct convention: an enum whose members carry no bound publishes no accessor,
-/// which is what a constraint-free struct has always published. The trait's method is reached only
-/// because no inherent one shadows it.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -3026,9 +2874,8 @@ fn test_a_constraint_free_enum_publishes_no_validate_just_as_a_struct_does() {
         "no inherent validate()"
     );
     assert_eq!(FreeTagged::Two.validate(), "no inherent validate()");
-    // An enum whose member does carry a bound answers with the accessor's own type, which is what
-    // makes the assertions above a statement about publication rather than about the trait: a
-    // published `validate()` would shadow the trait's and none of them would even compile.
+    // An enum whose member carries a bound answers with the accessor's own type: a published
+    // `validate()` would shadow the trait's, and none of the above would compile.
     assert_eq!(
         BoundTagged::One {
             name: "A".to_owned()
@@ -3039,9 +2886,6 @@ fn test_a_constraint_free_enum_publishes_no_validate_just_as_a_struct_does() {
     );
 }
 
-/// The arm binds each constrained member under a name of its own, so a member spelled like
-/// something the body already reads is still checked rather than shadowing it: `errors` is the
-/// accumulator every check pushes into, `value_0` the head of a wrapped member's walk.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -3074,8 +2918,6 @@ fn test_a_member_named_like_the_walks_own_bindings_is_still_checked() {
     );
 }
 
-/// The match names every variant the enum declares, whatever shape each one was written in, so a
-/// value of any of them reaches the accessor and only the constrained one answers.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -3117,10 +2959,6 @@ fn test_every_variant_shape_reaches_the_accessor() {
     EveryShape::Nothing.validate().unwrap();
 }
 
-/// The README's `validate()` example prints the errors a caller reads back, and a reader who
-/// greps for one of those sentences is holding the crate to it. The example is expanded here as
-/// written and held to two things: the generator answers with those exact sentences, and the
-/// README still shows them.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -3128,8 +2966,7 @@ fn test_every_variant_shape_reaches_the_accessor() {
 #[test]
 fn test_readme_struct_validate_example_prints_what_the_generator_writes() {
     // The README declares `username` first; source here is ordered alphabetically, as this crate's
-    // lints require of Rust source. Only the order the two are collected in differs, and that order
-    // is pinned by `test_enum_validate_collects_every_violation_of_the_held_variant`.
+    // lints require of Rust source.
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug)]
     pub struct Registration {
@@ -3162,9 +2999,7 @@ fn test_readme_struct_validate_example_prints_what_the_generator_writes() {
     }
 }
 
-/// The same holding for the branded newtype's `validate()` example. A brand names the rejected
-/// value bare where a struct field is named and quoted, which is the difference most easily lost
-/// when the sentence is written from memory.
+/// The same holding for the branded newtype's `validate()` example.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -3193,9 +3028,6 @@ fn test_readme_branded_validate_example_prints_what_the_generator_writes() {
     }
 }
 
-/// The shipped rustdoc quotes the messages a failed `validate()` prints, so the block is checked
-/// against a run of the very type it declares rather than against memory. It sits in a `text` fence
-/// no doctest reaches, which is why the check lives out here.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")

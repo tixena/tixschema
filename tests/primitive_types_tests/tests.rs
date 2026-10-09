@@ -1,3 +1,5 @@
+//! Tests of the primitive types: integers, floats, `bool`, `char` and `String` on every surface.
+
 #[cfg(all(
     test,
     any(
@@ -213,8 +215,6 @@ fn test_char_struct_constructible() {
     assert_eq!(showcase.initial, 'x');
 }
 
-/// serde writes a `char` as the one-character string it renders through `Display`, and reads only
-/// that back — the wire every surface's rendering is fixed from.
 #[cfg(feature = "serde")]
 #[test]
 fn test_char_serde_roundtrip() {

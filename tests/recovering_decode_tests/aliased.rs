@@ -183,8 +183,6 @@ fn a_model_type_inside_an_alias_is_walked_by_its_own_walker() {
     );
 }
 
-/// serde reads a JSON map from any object, so nothing in one is an issue, and a value that is no
-/// object is the one issue, at the field.
 #[test]
 fn an_alias_tixschema_never_sees_is_read_whole() {
     let mut calls = 0_u32;
@@ -235,16 +233,12 @@ fn a_field_typed_with_an_alias_still_publishes_under_the_aliass_name() {
     assert!(page.contains("  properties: Properties;"), "got: {page}");
 }
 
-/// What is published under the alias's name is a type of its own: tixschema never sees the one
-/// the field is typed with.
 #[test]
 fn the_type_published_for_the_alias_is_not_the_one_the_field_holds() {
     assert_ne!(TypeId::of::<PropertiesData>(), TypeId::of::<Properties>());
 }
 
-/// A name tixschema has not seen above the type is asked for its walker. A flagged model type
-/// answers with its own, whatever the order. An alias declared below, an alias that takes a
-/// parameter and a model type with no flag declared below have none, and are read whole.
+/// A name tixschema has not seen above the type is asked for its walker.
 #[test]
 fn a_type_declared_below_is_walked_by_its_own_walker_or_read_whole() {
     let stored = json!({

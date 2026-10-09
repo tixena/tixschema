@@ -1,10 +1,6 @@
 //! A service whose operations, arguments and message fields are named after words TypeScript,
 //! Dart, Swift or Kotlin reserves, and after locals a client writes itself, called through each
 //! emitted client.
-//!
-//! Each client is handed a transport that records what it is sent. Every recorded request is then
-//! read by the Rust dispatcher, whose handler answers with what it was handed: the client reached
-//! the URL, the headers and the body the Rust side reads.
 
 use super::lookup_http_rest_transport;
 use super::runtime::ran;

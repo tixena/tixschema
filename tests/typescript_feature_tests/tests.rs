@@ -1,3 +1,5 @@
+//! Tests of the `typescript` feature: what a struct and an enum publish with it on.
+
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
@@ -225,7 +227,6 @@ fn test_typescript_disabled_discriminated_enum_zod_schema_javascript_style() {
     assert!(!zod_schema.contains("export type TypeScriptTestPayment"));
 }
 
-// Feature combination tests
 #[test]
 #[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_typescript_and_zod_both_enabled() {

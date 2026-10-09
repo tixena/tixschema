@@ -3,11 +3,6 @@
 //! fallback; `read_range`, a `header_in`/`header_out` pair, for the headers round trip.
 //! `SessionEvents`: the one-way, browser-implemented service a server pushes to over a
 //! `FrameWriter` rather than calls.
-//!
-//! `answer` is driven directly against text frames — no socket, no adapter — the same way
-//! `dispatch` is driven directly against an `IncomingMessage` elsewhere in this crate. The client
-//! tests at the foot of this file drive the generated `DocumentSessionClient` over a `FrameSession`
-//! polled by hand, and `SessionEventsClient` over a `FrameWriter`.
 
 #![cfg(feature = "serde")]
 
@@ -128,9 +123,8 @@ struct SessionEventsBrowser;
 #[derive(Clone, Default)]
 struct Sent(Arc<Mutex<Vec<String>>>);
 
-// Every method below is synchronous work wrapped in an already-ready `Future`: nothing here
-// waits on anything, so `ready` is the whole of what implementing the trait's async signature
-// takes, with no `async fn` sugar over a body that never awaits.
+// Every method below is synchronous work wrapped in an already-ready `Future`: nothing here waits
+// on anything.
 impl DocumentSession<()> for DocumentBackEnd {
     fn read_range(
         &self,
@@ -466,9 +460,6 @@ fn text_that_is_not_json_answers_nothing() {
     assert_eq!(answer(&service, "not json at all"), None);
 }
 
-/// A `request` frame naming a one-way operation is a mismatch: the arm never calls `send` or
-/// `fault`, so the reply falls back to the default success rather than leaving the caller with
-/// nothing.
 #[test]
 fn a_request_naming_a_one_way_operation_gets_the_default_success() {
     let service = DocumentBackEnd::new();
@@ -515,8 +506,6 @@ fn headers_round_trip_through_a_request_frame_and_its_reply() {
     );
 }
 
-/// A header nothing carried decodes as the argument's own absent value, exactly like `amqp_rpc`'s
-/// own `header_in` binding.
 #[test]
 fn a_header_in_binding_nothing_carried_decodes_as_the_arguments_own_absent_value() {
     let service = DocumentBackEnd::new();
@@ -539,9 +528,6 @@ fn a_header_in_binding_nothing_carried_decodes_as_the_arguments_own_absent_value
     assert_eq!(service.reached(), vec!["read_range doc-2 None".to_owned()]);
 }
 
-/// A request-and-reply call is `Pending` until its reply is delivered, and reads back the
-/// declared value once it is — the frame it sent along the way carries the id `FrameSession`
-/// drew from its own counter.
 #[test]
 fn a_request_is_pending_until_delivered_then_ready_with_the_declared_value() {
     let (session, sent) = frame_session();
@@ -573,8 +559,6 @@ fn a_request_is_pending_until_delivered_then_ready_with_the_declared_value() {
     );
 }
 
-/// A reply carrying the operation's own declared error reads back as `CallError::Operation`
-/// rather than a fault.
 #[test]
 fn a_declared_error_reply_reads_back_as_the_operations_own_error() {
     let (session, _sent) = frame_session();
@@ -596,8 +580,6 @@ fn a_declared_error_reply_reads_back_as_the_operations_own_error() {
     );
 }
 
-/// The request frame the client wrote is answered by the dispatcher, and that reply is delivered
-/// back to the client.
 #[test]
 fn a_declared_error_crosses_with_every_field_it_carries() {
     let service = DocumentBackEnd::new();
@@ -627,8 +609,6 @@ fn a_declared_error_crosses_with_every_field_it_carries() {
     );
 }
 
-/// `close` fails every request still waiting with the words it was given, which the generated
-/// client turns into a `transport-failure` fault.
 #[test]
 fn close_fails_a_waiting_request_with_a_transport_failure_fault() {
     let (session, _sent) = frame_session();
@@ -656,8 +636,6 @@ fn deliver_answers_a_ping_with_a_pong() {
     assert_eq!(sent.last(), serde_json::json!({ "kind": "pong" }));
 }
 
-/// A server pushing to a browser holds `SessionEventsClient` over a `FrameWriter`: the one-way
-/// call writes a notify frame and nothing else.
 #[test]
 fn a_frame_writer_push_writes_a_notify_frame() {
     let (writer, sent) = events_frame_writer();
@@ -681,8 +659,6 @@ fn a_frame_writer_push_writes_a_notify_frame() {
     );
 }
 
-/// A `FrameWriter` carries no correlation map, so `request` is refused outright, naming the
-/// operation that asked for an answer it cannot wait on.
 #[test]
 fn a_frame_writer_asked_for_request_answers_err_naming_the_operation() {
     let (writer, _sent) = frame_writer();
@@ -700,10 +676,6 @@ fn a_frame_writer_asked_for_request_answers_err_naming_the_operation() {
     );
 }
 
-/// The `events_client` module's own `FrameSession` completes a request-and-reply round trip
-/// exactly like `ws_client`'s, even though `SessionEvents` declares no reply operation of its own
-/// to exercise it through a generated method — the transport machinery does not read the
-/// operation's own shape.
 #[test]
 fn the_events_client_frame_session_completes_a_request_and_reply_round_trip() {
     let (session, sent) = events_frame_session();
@@ -742,9 +714,6 @@ fn the_events_client_frame_session_completes_a_request_and_reply_round_trip() {
     session.close("done");
 }
 
-/// `deliver` answers a ping with a pong on `events_client`'s own `FrameSession` too, and
-/// `ping_frame` itself — the client's own, a dispatcher never sends one — encodes the frame a
-/// session would send to probe liveness the other way.
 #[test]
 fn the_events_client_frame_session_answers_a_ping_and_publishes_ping_frame() {
     let (session, sent) = events_frame_session();
@@ -754,8 +723,6 @@ fn the_events_client_frame_session_answers_a_ping_and_publishes_ping_frame() {
     assert_eq!(events_client::ping_frame(), r#"{"kind":"ping"}"#);
 }
 
-/// `SessionEventsClient::transport` reaches the transport a client was bound to, the same as
-/// every other generated client.
 #[test]
 fn a_session_events_client_exposes_the_transport_it_was_bound_to() {
     let (writer, sent) = events_frame_writer();
@@ -831,8 +798,6 @@ fn unwatch_reads_the_unit_success_reply() {
     assert_eq!(poll_by_hand(call.as_mut()), Poll::Ready(Ok(())));
 }
 
-/// `read_range` round-trips a `header_in` value out and a `header_out` value back, rejoining it
-/// with the response into the tuple the trait declared.
 #[test]
 fn read_range_round_trips_header_in_and_header_out() {
     let (session, sent) = frame_session();
@@ -868,14 +833,11 @@ fn read_range_round_trips_header_in_and_header_out() {
     );
 }
 
-/// `ping_frame`, the client's alone to publish — `deliver_answers_a_ping_with_a_pong` exercises
-/// `pong_frame` already, this exercises the other.
 #[test]
 fn ws_client_ping_frame_encodes_the_kind_ping_frame() {
     assert_eq!(ws_client::ping_frame(), r#"{"kind":"ping"}"#);
 }
 
-/// `DocumentSessionClient::transport` reaches the transport a client was bound to.
 #[test]
 fn a_document_session_client_exposes_the_transport_it_was_bound_to() {
     let (session, sent) = frame_session();
@@ -901,9 +863,6 @@ fn a_document_session_client_exposes_the_transport_it_was_bound_to() {
     );
 }
 
-/// `SessionEventsBrowser` proves the trait a server's `SessionEventsClient` calls into is
-/// implementable the way the browser side actually would — nothing else in this crate places a
-/// dispatcher for it, so nothing else constructs one.
 #[test]
 fn the_session_events_trait_is_implementable_the_way_a_browser_would() {
     let browser = SessionEventsBrowser;

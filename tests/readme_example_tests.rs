@@ -1,3 +1,5 @@
+//! The test binary of `readme_example_tests/`.
+
 #[cfg(test)]
 #[cfg(all(feature = "serde", feature = "jsonschema"))]
 #[path = "readme_example_tests/record.rs"]

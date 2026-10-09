@@ -1,23 +1,4 @@
 //! The emitted bundle put through a real TypeScript compiler.
-//!
-//! Every other assertion about the published TypeScript in this repository reads strings. This
-//! group does not: it writes the bundle a consuming codebase would write, hands it to `tsc
-//! --strict`, and reads the verdict. What that settles is the one claim the construct rests on and
-//! no string test can reach — an implementation missing a single operation is refused where it
-//! reaches the dispatcher factory, and the same implementation with the operation present compiles
-//! clean.
-//!
-//! **Where the compiler comes from.** `tsc` is looked up on `PATH`, or at whatever
-//! `TIXSCHEMA_TSC` names. A repository cannot assume one is installed, so a build that finds none
-//! stands down rather than failing: the notice below goes to the process's own stderr, which
-//! `cargo test` does not capture, so a run that proved nothing here says so on the terminal.
-//! `just typecheck-ts` is the entry point that refuses to stand down.
-//!
-//! **What is checked and what is not.** The bundle names `z` and `ZodType` without importing
-//! them — by design, the crate emits no preamble — so this group supplies an ambient declaration
-//! of the surface the emitter actually uses. That declaration is a floor, not `zod`: it makes the
-//! schema *expressions* well-typed without claiming each one infers its own type. Everything else
-//! is checked for real, the interface and the factory included, and neither mentions `zod`.
 
 use super::the_bundle_one_registration_line_produces::{
     audit_seam, author_schemas, bundle, probe_seam,
@@ -40,9 +21,7 @@ use std::path::PathBuf;
 use std::process::{Command, id};
 use std::sync::Once;
 
-/// Names the compiler to run, for a machine that has one somewhere other than `PATH`. Set, and a
-/// compiler that cannot be started is a failure rather than a stand-down: somebody said where it
-/// was.
+/// Names the compiler to run, for a machine that has one somewhere other than `PATH`.
 const COMPILER_VAR: &str = "TIXSCHEMA_TSC";
 
 /// What every check compiles under. `--strict` is the bar a consuming codebase sets; `--pretty
@@ -67,14 +46,8 @@ static STOOD_DOWN: Once = Once::new();
 #[cfg(feature = "zod")]
 const OMITTED: &str = "sweep";
 
-/// The surface of `zod` the emitter actually names, declared globally because the bundle names
-/// `z` and `ZodType` without importing them.
-///
-/// `ZodBuilder` answers `never`, which is assignable into every `ZodType<T>` the bundle annotates
-/// a schema with — so a builder chain satisfies its annotation without this declaration having to
-/// reimplement zod's inference. `safeParse` is typed exactly as zod types it, which is what makes
-/// the dispatcher's `impl.getBalance(ctx, received.data)` a real check rather than one against
-/// `unknown`.
+/// The surface of `zod` the emitter names, declared globally because the bundle names `z` and
+/// `ZodType` without importing them.
 #[cfg(feature = "zod")]
 const ZOD_SURFACE: &str = "type ZodIssue = { path: ReadonlyArray<PropertyKey>; message: string };
 
@@ -106,9 +79,7 @@ declare const z: {
 };
 ";
 
-/// Everything above the implementation's members. The object literal reaches the factory
-/// unannotated and with the context named explicitly, so what refuses an incomplete one is the
-/// call rather than an annotation written here.
+/// Everything above the implementation's members.
 #[cfg(feature = "zod")]
 const IMPLEMENTATION_HEAD: &str = r#"import {
   createProbeServiceDispatcher,
@@ -127,9 +98,7 @@ export const dispatch = createProbeServiceDispatcher<ProbeContext>({
 #[cfg(feature = "zod")]
 const IMPLEMENTATION_TAIL: &str = "});\n";
 
-/// One member per operation the service declares. The incomplete fixture is this list with
-/// [`OMITTED`] dropped and nothing else changed, so the two files differ by exactly one member and
-/// a slip in either is a slip in both.
+/// One member per operation the service declares.
 #[cfg(feature = "zod")]
 const IMPLEMENTATION_MEMBERS: [(&str, &str); 6] = [
     (
@@ -182,9 +151,8 @@ const IMPLEMENTATION_MEMBERS: [(&str, &str); 6] = [
     ),
 ];
 
-/// A caller reading what the client answers with: the value, the operation's own declared error,
-/// or the fault behind the literal it narrows on. Nothing here asserts — it compiling at all is
-/// what says the published result types narrow the way the design claims.
+/// A caller reading what the client answers with: the value, the operation's own declared error, or
+/// the fault behind the literal it narrows on.
 #[cfg(feature = "zod")]
 const CALLER: &str = r#"import {
   createProbeServiceClient,
@@ -222,9 +190,8 @@ export async function read(): Promise<string> {
 }
 "#;
 
-/// A caller binding the socket transport to a bare `WebSocket`, with `--lib es2020,dom` naming
-/// the browser's own declaration for it. Nothing here asserts either — a browser socket satisfying
-/// the seam with no adapter is what compiling at all says.
+/// A caller binding the socket transport to a bare `WebSocket`, with `--lib es2020,dom` naming the
+/// browser's own declaration for it.
 #[cfg(feature = "zod")]
 const WS_CALLER: &str = r#"import { createProbeServiceClient, createProbeServiceWsTransport } from "./bundle";
 
@@ -240,9 +207,8 @@ export async function read(): Promise<string> {
 }
 "#;
 
-/// Everything above the attachment's members: the same [`IMPLEMENTATION_MEMBERS`] the bare factory
-/// is checked with, reaching `attachProbeServiceWsDispatcher` as its third argument instead of
-/// `createProbeServiceDispatcher`'s only one, with a required `onFault` after it.
+/// Everything above the attachment's members, reaching `attachProbeServiceWsDispatcher` as its
+/// third argument, with a required `onFault` after it.
 #[cfg(feature = "zod")]
 const ATTACHMENT_HEAD: &str = r#"import {
   attachProbeServiceWsDispatcher,
@@ -268,9 +234,7 @@ const ATTACHMENT_TAIL: &str = "}, (fault) => {
 });
 ";
 
-/// Everything above the HTTP implementation's members: the same [`IMPLEMENTATION_MEMBERS`] the
-/// bare factory and the `ws_rpc` attachment are checked with, reaching
-/// `createProbeServiceHttpDispatcher` instead.
+/// Everything above the HTTP implementation's members, reaching `createProbeServiceHttpDispatcher`.
 #[cfg(feature = "zod")]
 const HTTP_IMPLEMENTATION_HEAD: &str = r#"import {
   createProbeServiceHttpDispatcher,
@@ -297,10 +261,6 @@ export async function read(): Promise<number> {
   return answered.status;
 }
 "#;
-
-// ---------------------------------------------------------------------------------------------
-// `UnitPingService`: a standalone one-operation unit-success service, unrelated to `ProbeService`.
-// ---------------------------------------------------------------------------------------------
 
 /// A caller reading `result.value` as `undefined` once `result.ok` narrows the arm.
 #[cfg(feature = "zod")]
@@ -331,10 +291,6 @@ export async function read(): Promise<boolean> {
   return false;
 }
 "#;
-
-// ---------------------------------------------------------------------------------------------
-// `HeaderProbeService`: headers both ways, over the generic client and the `ws_rpc` pair.
-// ---------------------------------------------------------------------------------------------
 
 /// A caller destructuring a header tuple on both arms, each element typed as the operation
 /// declared it — an absent optional header being `null`, the value its tuple slot holds.
@@ -670,13 +626,6 @@ fn bundled(written: String) -> Vec<(&'static str, String)> {
     vec![("bundle.ts", written)]
 }
 
-/// The bundle a consuming codebase writes, compiled.
-///
-/// This is what the structural checks in the file beside this one cannot do: a bundle whose
-/// emitted text is well-formed to a reader and rejected by a parser reads identically to one that
-/// compiles. It runs in every build that writes TypeScript, and in a build with no schema surface
-/// the bundle is handed to the compiler entirely on its own — nothing declares a name for it, so
-/// a clean compile is also what says it carries no unresolved one.
 #[test]
 fn the_bundle_a_consuming_codebase_writes_compiles_under_strict() {
     let Some((accepted, said)) = compiled("bundle", &bundled(bundle())) else {
@@ -685,9 +634,7 @@ fn the_bundle_a_consuming_codebase_writes_compiles_under_strict() {
     assert!(accepted, "the emitted bundle does not compile:\n{said}");
 }
 
-/// Two services in one flat file, compiled. The check beside this one reads the declared names and
-/// compares them for duplicates; this one asks the compiler, which also sees a collision between a
-/// name one service declares and one the other's generated code refers to.
+/// Two services in one flat file, compiled.
 #[test]
 fn two_services_in_one_bundle_compile_together() {
     let mut both = vec![
@@ -711,12 +658,6 @@ fn two_services_in_one_bundle_compile_together() {
     );
 }
 
-/// The positive half of the seal, which no string test can give: an implementation that answers
-/// every operation is accepted where it reaches the dispatcher factory, and a caller narrows what
-/// the client answers with.
-///
-/// Compiled together, so the run that says the incomplete implementation below is refused is a run
-/// against a file set that is otherwise known to compile.
 #[cfg(feature = "zod")]
 #[test]
 fn a_complete_implementation_is_accepted_at_the_factory_call() {
@@ -771,9 +712,6 @@ fn an_implementation_missing_one_operation_is_refused_at_the_factory_call() {
     );
 }
 
-/// What no string test can give the socket seam: a browser's own `WebSocket`, typed by `--lib
-/// es2020,dom` rather than by anything this crate declares, satisfies it with no adapter written
-/// in between.
 #[cfg(feature = "zod")]
 #[test]
 fn the_socket_transport_binds_a_browser_websocket() {
@@ -789,9 +727,6 @@ fn the_socket_transport_binds_a_browser_websocket() {
     );
 }
 
-/// The positive half of the attachment's own seal: an implementation answering every operation is
-/// accepted where it reaches `attachProbeServiceWsDispatcher`, bound to a browser `WebSocket`, with
-/// a required `onFault` whose parameter narrows to the published fault kind.
 #[cfg(feature = "zod")]
 #[test]
 fn a_complete_implementation_is_accepted_at_the_dispatcher_attachment() {
@@ -807,8 +742,6 @@ fn a_complete_implementation_is_accepted_at_the_dispatcher_attachment() {
     );
 }
 
-/// The negative half: an implementation missing one operation, handed to the attachment exactly as
-/// it is handed to the bare dispatcher factory above, is refused the same way.
 #[cfg(feature = "zod")]
 #[test]
 fn an_implementation_missing_one_operation_is_refused_at_the_dispatcher_attachment() {
@@ -832,8 +765,6 @@ fn an_implementation_missing_one_operation_is_refused_at_the_dispatcher_attachme
     );
 }
 
-/// The positive half of `ts_http_service()`'s own seal: the same implementation is accepted where
-/// it reaches `createProbeServiceHttpDispatcher`, wrapping the same `ProbeServiceImpl<Ctx>`.
 #[cfg(feature = "zod")]
 #[test]
 fn a_complete_implementation_is_accepted_at_the_http_dispatcher_factory() {
@@ -849,8 +780,6 @@ fn a_complete_implementation_is_accepted_at_the_http_dispatcher_factory() {
     );
 }
 
-/// The negative half: an implementation missing one operation, handed to
-/// `createProbeServiceHttpDispatcher` exactly as above, is refused the same way.
 #[cfg(feature = "zod")]
 #[test]
 fn an_implementation_missing_one_operation_is_refused_at_the_http_dispatcher_factory() {
@@ -889,7 +818,6 @@ fn a_unit_success_callers_value_narrows_to_undefined() {
     );
 }
 
-/// `{ ok: true }` is accepted at the dispatcher factory.
 #[cfg(feature = "zod")]
 #[test]
 fn a_unit_success_implementation_answering_ok_true_is_accepted_at_the_dispatcher_factory() {
@@ -936,8 +864,6 @@ fn a_unit_success_implementation_answering_ok_true_with_value_is_refused_at_the_
     );
 }
 
-/// A caller reads a header tuple's elements as the operation declared them, over the generic
-/// seam and the `ws_rpc` transport alike.
 #[cfg(feature = "zod")]
 #[test]
 fn a_header_tuple_caller_reads_each_element_as_declared() {
@@ -952,8 +878,6 @@ fn a_header_tuple_caller_reads_each_element_as_declared() {
     );
 }
 
-/// The same read, over the `http_rest` client: an absent optional header reads as `null`, the
-/// value its tuple slot declares — the client's own read once disagreed with the slot type.
 #[cfg(feature = "zod")]
 #[test]
 fn a_header_tuple_http_caller_reads_each_element_as_declared() {
@@ -968,8 +892,6 @@ fn a_header_tuple_http_caller_reads_each_element_as_declared() {
     );
 }
 
-/// An implementation answering header tuples is accepted at the dispatcher factory and at the
-/// `ws_rpc` attachment, and the dispatcher answers the envelope beside its headers.
 #[cfg(feature = "zod")]
 #[test]
 fn a_header_tuple_implementation_is_accepted_at_the_dispatcher_and_the_attachment() {
@@ -984,9 +906,6 @@ fn a_header_tuple_implementation_is_accepted_at_the_dispatcher_and_the_attachmen
     );
 }
 
-/// A header argument named `default` and a placeholder named `in`, then ones named `headers`,
-/// `path` and `message`: each is a parameter or a local somewhere in the bundle, where TypeScript
-/// has no escape for a reserved word and refuses a second local of one name.
 #[cfg(feature = "zod")]
 #[test]
 fn a_service_named_after_reserved_words_type_checks_on_every_surface() {

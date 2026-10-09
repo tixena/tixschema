@@ -1,34 +1,12 @@
 //! The sentence one violated bound is reported in, built once and handed to both emitters.
-//!
-//! A field declares a bound once and `#[model_schema]` emits two checks for it — the Rust
-//! validator, and the Zod check the TypeScript side runs. A caller that sends the same bad value
-//! to either implementation of one service is owed the same sentence, so the words are built here
-//! and given to both rather than left to each: the Rust half would otherwise say what it wrote
-//! itself and the Zod half whatever the version of zod in the consumer's lockfile says, and the
-//! two would drift with no test in either language able to see it.
-//!
-//! The words name no field. Both sides already name it the same way and neither does it inside the
-//! sentence: the generated validator writes `'{field}': ` in front of what it gets from here, and
-//! the generated dispatcher writes `'${issue.path.join(".")}': ` in front of what Zod reports. A
-//! brand names none at all on either side, the brand being the value rather than a field of
-//! anything — the field it is held in supplies the name.
 
 #[cfg(feature = "zod")]
 use crate::utils::escape_js_double_quoted;
 #[cfg(feature = "serde")]
 use quote::quote;
 
-/// Every stem a violated bound's sentence can begin with, which is the whole vocabulary
-/// [`Bound::stated`] writes.
-///
-/// A refusal that reaches a reader as text — a serde hook hands the deserializer one sentence and
-/// not a list — is one of this crate's own only if it opens with one of these. That is what lets a
-/// generated read-time hook write its field's name into a broken bound while handing back
-/// untouched a refusal about the *shape* of the value, which names a field the hook does not hold.
-///
-/// Gated on the reading side alone. Both emitters *write* these sentences, through
-/// [`Bound::stem`], but only a reader has to recognise one, and only a build with the serde
-/// feature writes a reader.
+/// Every stem a violated bound's sentence can begin with. A refusal that reaches a reader as text
+/// is this crate's own only if it opens with one of these.
 #[cfg(feature = "serde")]
 pub const VIOLATION_STEMS: [&str; 5] = [
     "does not match pattern '",
@@ -53,9 +31,7 @@ pub enum Bound<'pattern> {
 #[cfg(any(feature = "serde", feature = "zod"))]
 #[derive(Clone, Copy)]
 enum Observed {
-    /// The value's length, which is what a length bound measured.
     Length,
-    /// The value itself, which is what a numeric bound compared.
     Value,
 }
 

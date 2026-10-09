@@ -18,6 +18,7 @@ const RENAME_RULES: [(&str, RenameRule); 8] = [
     ("SCREAMING-KEBAB-CASE", RenameRule::ScreamingKebabCase),
 ];
 
+/// A casing rule a serde `rename_all` names, or `None` for no rule.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RenameRule {
     CamelCase,

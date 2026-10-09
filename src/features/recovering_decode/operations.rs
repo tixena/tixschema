@@ -1,13 +1,4 @@
 //! The MongoDB operations `#[model_schema(decode_with)]` adds under `mongodb`.
-//!
-//! `OperationError` and `Read` go into the flagged type's own `{type}_schema` module, so two
-//! flagged types share none of them. The module names no type of its author's: a `Read` is handed
-//! the function that reads one stored row. The operations go on the type, beside its BSON entry
-//! points and under their bounds. The collection stays one of `bson::Document`: a row is read
-//! through `from_bson_piped` and written through `bson::Serializer::new`, never by the driver's
-//! own serde. Of the driver the emission names `mongodb::Collection`, `mongodb::error::Error`, two
-//! options and three results, each one path whichever major version of the `bson` library the
-//! driver is built for.
 
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
@@ -81,8 +72,7 @@ pub fn error_items() -> TokenStream {
         }
 
         // `E` is `WriteError`, named by a bound: an `impl` for the alias itself is refused beside
-        // the standard `From<T> for T`, and the first bound is what tells this one from it. No
-        // `impl` from the driver's error can stand beside this one, so `Database` is built by name.
+        // the standard `From<T> for T`, and the first bound is what tells this one from it.
         impl<E> ::core::convert::From<E> for OperationError
         where
             E: ::serde::ser::Error,

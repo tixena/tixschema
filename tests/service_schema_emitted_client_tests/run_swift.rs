@@ -3,9 +3,6 @@
 //! non-string map keys — round-tripped through the emitted `Codable` text, the `http_rest`
 //! client's own URLs (the same three `run_dart.rs` asserts), and the `ws_rpc` client's own
 //! scenarios against an in-memory socket.
-//!
-//! Every group runs `swift main.swift` in immediate mode — no package manifest, Foundation only —
-//! standing down exactly as [`super::run_dart`] does where no Swift toolchain is reachable.
 
 #![cfg(feature = "swift")]
 
@@ -46,9 +43,8 @@ use std::collections::HashMap;
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
 const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
 
-/// Group 2's own driver: a recording `ConversationClientServiceHttpTransport` answering 200 for
-/// every call but `DELETE`, which it answers 204 — then the three URL assertions `run_dart.rs`
-/// makes of the same three calls.
+/// A recording `ConversationClientServiceHttpTransport` answering 200 for every call but `DELETE`,
+/// which it answers 204.
 const REST_DRIVER: &str = r##"
 actor Recorder: ConversationClientServiceHttpTransport {
   private(set) var sent: [[String: String]] = []
@@ -197,8 +193,7 @@ print(String(data: try! JSONEncoder().encode(report), encoding: .utf8)!)
 "#;
 
 /// A stub `ThumbnailClientServiceHttpTransport` answering by path alone, driving the emitted
-/// client's own declared-error and `header_out` decode - the Swift twin of the Node and Dart
-/// client tests on the same fixture.
+/// client's declared-error and `header_out` decode.
 const THUMBNAIL_DRIVER: &str = r##"
 struct ThumbnailReport: Codable {
   let kind: String
@@ -273,9 +268,8 @@ let echoReport = EchoReport(sendCalled: await echoRecorder.sendCalled, faultKind
 print(String(data: try! JSONEncoder().encode(echoReport), encoding: .utf8)!)
 "##;
 
-/// A stub `StampClientServiceHttpTransport` answering with whatever response headers it is given,
-/// driving the emitted client's own numeric `header_out` decode: present, absent, and a value
-/// that will not parse as its declared `UInt32`.
+/// A stub `StampClientServiceHttpTransport` answering with the response headers it is given,
+/// driving the client's numeric `header_out` decode.
 const STAMP_HEADER_WIDTH_DRIVER: &str = r##"
 struct StampRecorder: StampClientServiceHttpTransport {
   let headers: [(String, String)]
@@ -389,8 +383,7 @@ print(String(data: try! JSONEncoder().encode(report), encoding: .utf8)!)
 "##;
 
 /// A stub `ContentClientServiceHttpTransport` answering the streamed operation whole at
-/// `/files/present` and as a range slice anywhere else, both naming their content type. A `nil`
-/// `contentRange` leaves its key out of the report.
+/// `/files/present` and as a range slice anywhere else, both naming their content type.
 const CONTENT_TYPE_DRIVER: &str = r#"
 struct ContentTyped: ContentClientServiceHttpTransport {
   func send(_ request: ContentClientServiceHttpRequest) async throws -> ContentClientServiceHttpResponse {
@@ -430,10 +423,6 @@ let typed = ContentTypeReport(full: full, partial: partial)
 print(String(data: try! JSONEncoder().encode(typed), encoding: .utf8)!)
 "#;
 
-// -------------------------------------------------------------------------------------------
-// The generated types and clients every group but the codec one drives.
-// -------------------------------------------------------------------------------------------
-
 /// The generated classes both clients call, both clients, and a driver.
 fn client_module(driver: &str) -> String {
     [
@@ -450,10 +439,6 @@ fn client_module(driver: &str) -> String {
     ]
     .join("\n\n")
 }
-
-// -------------------------------------------------------------------------------------------
-// Group 1: the codec rows the Swift spike proved, decoded from the JSON Rust wrote and re-encoded.
-// -------------------------------------------------------------------------------------------
 
 /// One row: the name it prints under, the Swift type it decodes into, and the JSON Rust wrote
 /// for it — the same value the printed, re-encoded JSON must equal.
@@ -639,10 +624,6 @@ fn every_codec_row_round_trips_through_codable() {
     }
 }
 
-// -------------------------------------------------------------------------------------------
-// Group 2: the REST client's own URLs — the same three `run_dart.rs` asserts.
-// -------------------------------------------------------------------------------------------
-
 /// What the recorder captured, or `None` where no runtime was reachable.
 fn driven_rest() -> Option<Vec<serde_json::Value>> {
     let written = ran(
@@ -704,10 +685,6 @@ fn a_scalar_message_is_still_the_whole_segment() {
         "and no key is left over for a query. Got: {sent:#?}"
     );
 }
-
-// -------------------------------------------------------------------------------------------
-// Group 3: the `ws_rpc` client against an in-memory socket fed captured frames.
-// -------------------------------------------------------------------------------------------
 
 /// What the driver's own `Report` printed, or `None` where no runtime was reachable.
 fn driven_ws() -> Option<serde_json::Value> {

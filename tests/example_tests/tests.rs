@@ -1,3 +1,5 @@
+//! Tests of the `rust example` fence in a doc comment, which becomes the type's `schema_example()`.
+
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
@@ -421,9 +423,6 @@ fn test_description_escapes_quotes() {
     assert!(zod.contains(r#"\"quoted\""#));
 }
 
-/// A doc example on a generic item is Rust the expansion has to compile, and a parameter names no
-/// type to compile it at — so every parameter is instantiated at the filling `default_types`
-/// declares, here `String`, the same fallback an undeclared parameter uses.
 #[cfg(feature = "zod")]
 #[test]
 fn a_generic_struct_renders_its_example_at_its_declared_filling() {
@@ -444,8 +443,6 @@ fn a_generic_struct_renders_its_example_at_its_declared_filling() {
     );
 }
 
-/// The arity is whatever the item declares, so a two-parameter item takes two arguments and not
-/// one, each read off the entry that names it.
 #[cfg(feature = "zod")]
 #[test]
 fn a_generic_enum_renders_its_example_at_its_declared_fillings() {
@@ -466,9 +463,6 @@ fn a_generic_enum_renders_its_example_at_its_declared_fillings() {
     );
 }
 
-/// `default_types` is the one argument that names a concrete type per parameter, so the example is
-/// annotated at what the author already declared — a parameter bounded by a trait `String` does
-/// not satisfy still compiles, since the example builds the value the filling admits.
 #[cfg(feature = "zod")]
 #[test]
 fn a_bounded_parameter_renders_its_example_at_its_declared_filling() {
@@ -489,9 +483,6 @@ fn a_bounded_parameter_renders_its_example_at_its_declared_filling() {
     );
 }
 
-/// Every enum shape reads the filling the same way, the seam that annotates the value being the one
-/// the struct path reaches too — so a parameter filled at something other than `String` renders the
-/// value that filling builds here as well.
 #[cfg(feature = "zod")]
 #[test]
 fn a_generic_enum_renders_its_example_at_a_filling_that_is_not_a_string() {
@@ -512,9 +503,6 @@ fn a_generic_enum_renders_its_example_at_a_filling_that_is_not_a_string() {
     );
 }
 
-/// A parameter no entry names keeps the `String` fallback: the convention holds wherever nothing was
-/// declared to replace it. Only a build without `jsonschema` reaches it — with that feature on, a
-/// filling is required for every parameter before an example is ever built.
 #[cfg(all(feature = "zod", not(feature = "jsonschema")))]
 #[test]
 fn an_unfilled_parameter_keeps_the_string_instantiation() {
@@ -535,9 +523,6 @@ fn an_unfilled_parameter_keeps_the_string_instantiation() {
     );
 }
 
-/// A filling written as `String` is exactly what an unfilled parameter falls back to, so the two
-/// items write the same schema down to the byte once their names are read as one. Names of equal
-/// length so nothing but the name itself differs.
 #[cfg(all(feature = "zod", not(feature = "jsonschema")))]
 #[test]
 fn a_string_filling_and_no_filling_write_the_same_schema() {
@@ -569,9 +554,6 @@ fn a_string_filling_and_no_filling_write_the_same_schema() {
     );
 }
 
-/// A generic item publishes a factory, whose last `;` closes its arrow function — so the example
-/// anchors on the statement binding the cached schema instead. Attaching at `return schema` would
-/// hand back an instance the cache never stored.
 #[cfg(feature = "zod")]
 #[test]
 fn a_factory_carries_its_example_on_the_schema_it_memoizes() {
@@ -601,8 +583,6 @@ fn a_factory_carries_its_example_on_the_schema_it_memoizes() {
     );
 }
 
-/// A type that declares no parameter publishes the annotated `const`, whose own `;` still closes
-/// the value the example belongs on.
 #[cfg(feature = "zod")]
 #[test]
 fn a_plain_const_still_carries_its_example_on_the_exported_binding() {
@@ -633,9 +613,6 @@ fn a_plain_const_still_carries_its_example_on_the_exported_binding() {
     );
 }
 
-/// A lifetime takes no filling and needs none: it elides in the value's annotation, so an item
-/// binding one is annotated exactly as an item binding nothing and its example is built as
-/// written.
 #[cfg(feature = "zod")]
 #[test]
 fn a_lifetime_item_renders_its_example_with_the_lifetime_elided() {
@@ -656,9 +633,6 @@ fn a_lifetime_item_renders_its_example_with_the_lifetime_elided() {
     );
 }
 
-/// An example on a const-declaring item is only unwritable where an example is written out at all,
-/// and `zod` is the only surface that writes one. Without it the block sits unread exactly as it
-/// does on every other item here, so the item expands and its own contract is untouched.
 #[cfg(not(feature = "zod"))]
 #[test]
 fn a_const_declaring_item_keeps_its_example_where_no_example_is_read() {

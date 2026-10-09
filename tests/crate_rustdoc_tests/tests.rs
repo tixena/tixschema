@@ -115,8 +115,6 @@ fn test_tagged_union_section_shows_what_the_tagged_enum_emits() {
     assert_rustdoc_shows(&Event::zod_schema());
 }
 
-/// The rustdoc block this pins stands in a dummy `ObjectId` rather than pulling `mongodb` in, the
-/// type being recognised by name, and so does this.
 #[cfg(all(
     feature = "jsonschema",
     feature = "mongodb",
@@ -126,6 +124,7 @@ fn test_tagged_union_section_shows_what_the_tagged_enum_emits() {
 ))]
 #[test]
 fn test_object_id_section_shows_what_the_object_id_struct_emits() {
+    /// A stand-in `ObjectId`: a newtype over the hex text.
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct ObjectId(pub String);
 

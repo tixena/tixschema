@@ -2,16 +2,6 @@
 //! that decodes a claimed header before calling the implementation and writes a declared one back
 //! into the reply, and a client that mirrors both directions — encoding what it sends, decoding
 //! what comes back.
-//!
-//! The service asks for `http_rest` beside `amqp_rpc`: `http_rest` emits nothing yet, so naming it
-//! proves a bound operation is legal on a dual-transport service without depending on anything
-//! that transport does not build.
-//!
-//! Gated on the `serde` feature, which `#[service_schema]` requires: a build without it is refused
-//! at the declaration, so a harness declaring a service would not compile at all.
-//!
-//! The `use` at the foot is what `$crate` reaches: the service's own module, which every message
-//! and fault is reached through, and the trait the dispatcher binds.
 
 #![cfg(feature = "serde")]
 

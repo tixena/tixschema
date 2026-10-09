@@ -1,57 +1,6 @@
 //! The two types an operation's outcome is carried in, emitted per service into the service's own
 //! module: the fault a caller can receive but no implementation can answer with, and the client's
 //! call-error enum.
-//!
-//! # Why they are generated rather than imported
-//!
-//! tixschema is a build-time macro crate and stays one. A service that had to depend on it at
-//! runtime to name `ServiceFault` is exactly what was rejected when a marker type was proposed for
-//! one-way operations, so each service gets its own copies in its own module. Two services in one
-//! crate therefore carry two unrelated `ServiceFault` types, and a transport serving both answers
-//! with both — that is the cost of the crate staying build-time only, and it is the cost the
-//! design accepted.
-//!
-//! # The seal on `ServiceFault`
-//!
-//! The fault reports a failure the operation never declared, so no implementation answers with one:
-//! an operation's signature admits only its own error type. The fields stay private, so a literal
-//! written by hand is refused with `E0451` and the constructors are the only way one comes into
-//! being.
-//!
-//! Those constructors are public. A fault is what a *dispatcher* answers a defect with, and a
-//! dispatcher is not always the one emitted here — a hand-written one works against the contract
-//! surface alone, and it can do nothing with a defect it has no way to report.
-//!
-//! `Deserialize` is deliberately not derived on the fault, so a fault never arrives simply by
-//! having been written on the wire. `Serialize` is derived, because the transport has to put one
-//! there. Reading one back off it is the generated client's business, and it happens through a
-//! mirror that derives what the fault does not and then mints the fault through the constructors
-//! published here.
-//!
-//! # What a dispatcher or a client expanded elsewhere reads from here
-//!
-//! The `Answered` envelope one writes and the other reads, the readers that turn a violation report
-//! into the field and the detail a fault carries, and — one of each per operation — the name its
-//! message is reached under and the validator that message runs. Both halves of a service are held
-//! as macro tokens and expanded in crates that are usually not this one, so everything either of
-//! them reaches is published for the same reason the fault's constructors are.
-//!
-//! An operation's message is republished here under `{Operation}Message` so that either half names
-//! one path for every spelling: an author's own type, a type the macro declared, a type written
-//! under a module of its own. It also gives two services in one crate room to receive same-named
-//! messages, each module being its own namespace where the crate root is not.
-//!
-//! The validators are here because the fallback they run behind is: `MessageValidation` is shut in
-//! a module of its own so that two blanket `validate()` methods are never in scope at once, and an
-//! import written inside a transport's `macro_rules!` body is reported unused wherever the message
-//! published an inherent `validate()` of its own. One per operation rather than one generic
-//! function, because an inherent method only wins at a concrete type.
-//!
-//! # What is not here
-//!
-//! The `Reply` handle. Its shape is one transport model's — one reply per message, answered with a
-//! value or a defect — so it travels inside a transport's own macro, and a service that asks for no
-//! transport is emitted none of it.
 
 use super::parse::{
     HttpBinding, OperationDef, OperationInputs, OperationOutcome, PathSegment, ServiceDef,
@@ -246,10 +195,6 @@ pub fn exhaustiveness(non_exhaustive: bool) -> TokenStream {
 /// deferred into a transport's own `macro_rules!` body: the author's own trait signature names it
 /// directly, and a deferred macro is not expanded until a transport is placed, possibly in another
 /// crate.
-///
-/// Names no runtime crate — `std::io` alone — so `dispatch` (a transport's own emitted item, which
-/// reaches this seam through `$crate`) answers a stream, or hands a file part through, without
-/// naming `tokio`, `bytes` or `futures` either.
 fn body_source_trait() -> TokenStream {
     quote! {
         /// A body source, pulled one chunk at a time rather than buffered whole: a streamed
@@ -691,13 +636,6 @@ fn answered_envelope() -> TokenStream {
 }
 
 /// What a message answers when it publishes no `validate()` of its own.
-///
-/// It is shut inside a module of its own and brought into scope by
-/// [`message_validation_in_scope`] only in the function bodies that ask a message to validate
-/// itself. A blanket `validate()` visible across the whole module would be a second candidate for
-/// every `validate()` call written there — an operation's generated message type is in scope here
-/// through `use super::*`, and each walks its own nested fields through a fallback of exactly this
-/// shape, so two in scope at once is `E0034` on a declaration that named neither.
 fn message_validation() -> TokenStream {
     quote! {
         pub mod message_validation {
@@ -836,12 +774,6 @@ fn violation_readers() -> TokenStream {
 }
 
 /// The module a service's generated types land in: `UsageService` becomes `usage_service_schema`.
-///
-/// The trait ident snake-cased under the same `_schema` suffix a `#[model_schema]` type's
-/// generated module carries. Derived through `RenameRule`, as the other two spellings of an
-/// operation's name are, rather than through the casing helper in `utils` — that one is gated on
-/// the surface features, and this module carries nothing a feature writes. Public because the
-/// TypeScript emitters name types inside it and must spell it the same way.
 pub fn module_ident(service: &ServiceDef) -> Ident {
     format_ident!(
         "{}_schema",
@@ -851,11 +783,6 @@ pub fn module_ident(service: &ServiceDef) -> Ident {
 
 /// What the fault's *fields* publish as in TypeScript: `UsageService` becomes
 /// `UsageServiceFaultFields`.
-///
-/// It is also the ident the struct is declared under, a type publishing under the ident it was
-/// declared with. `UsageServiceFault` belongs to the sealed type the TypeScript emitter writes over
-/// these fields, so the two halves — this declaration and that alias — read one spelling and cannot
-/// name different types.
 pub fn fault_fields_typescript_name(declared: &str) -> String {
     format!("{declared}FaultFields")
 }
@@ -1077,10 +1004,8 @@ fn fault_constructors() -> TokenStream {
             pub fn undeserializable_payload(operation: &str, detail: &str) -> Self {
                 Self {
                     detail: detail.to_owned(),
-                    // `refused_payload` is the only caller, and it sends here only the refusals
-                    // serde_json classified as the bytes not being a document: bytes that are not
-                    // JSON at all, a document that ends early. Nothing was read far enough for a
-                    // key to be what went wrong, so there is no field to name.
+                    // `refused_payload` sends here only the refusals serde_json classified as bytes
+                    // that are not a document, so there is no field to name.
                     field: ::core::option::Option::None,
                     kind: ServiceFaultKind::UndeserializablePayload,
                     operation: operation.to_owned(),
@@ -1104,36 +1029,6 @@ fn fault_constructors() -> TokenStream {
 /// `ServiceFault` and the kind it reports. Both derive `Serialize`, which is what the transport
 /// needs to put a fault on the wire, and neither derives `Deserialize`, so a fault never arrives
 /// simply by having been written there.
-///
-/// Both also carry `#[model_schema()]`, so the TypeScript a caller narrows on comes from this
-/// declaration rather than from a literal written beside it: one wire, one source. `model_schema`
-/// writes reading surfaces only — a TypeScript string, a schema — so it widens nothing: the fields
-/// stay private, no `Deserialize` appears, and the constructors below remain the only way a fault
-/// comes into being.
-///
-/// # Two names for one type, and why
-///
-/// The declaration carries `UsageServiceFaultFields`, and a type publishes under the ident it was
-/// declared with, so that is what its TypeScript is called. The prefix is there because TypeScript
-/// has no per-service scope — a bundle is one flat file, and a consuming codebase with ten services
-/// would otherwise declare one fault type ten times over and not compile. The `Fields` is there
-/// because the name a TypeScript *caller* reads, `UsageServiceFault`, belongs to the sealed type
-/// the TypeScript emitter writes over these fields: the same members plus a brand keyed on a symbol
-/// the bundle exports nowhere. That brand is what stops a TypeScript implementation writing a fault
-/// as an object literal, the way private fields stop a Rust one with `E0451`. In Rust there is
-/// nothing to draw that distinction against — the fields below are private whatever the
-/// constructors publish — so Rust has the one type and TypeScript has the two names.
-///
-/// The fields themselves come from this declaration and from nowhere else, in both languages, which
-/// is what keeps the type a caller narrows on and the value the wire carries from drifting apart.
-///
-/// Rust needs no prefix at all, this module being the scope TypeScript lacks, so `ServiceFault` is
-/// bound beside it as an alias — the unstuttering spelling everything generated here writes, and
-/// the one a transport implementing a reply handle names. An alias reaches Rust alone and publishes
-/// nothing, so the flat name stays claimed exactly once per service.
-///
-/// The kind is declared before the fault that carries it, so the field walk resolves its name off
-/// the registry rather than falling back to a spelling written before the type expanded.
 fn fault_declaration(declared: &Ident, non_exhaustive: bool) -> TokenStream {
     let fields = fault_fields_ident(declared);
     let sealed = exhaustiveness(non_exhaustive);
@@ -1187,9 +1082,8 @@ fn fault_declaration(declared: &Ident, non_exhaustive: bool) -> TokenStream {
         #[serde(rename_all = "camelCase")]
         pub struct #fields {
             detail: ::std::string::String,
-            // Omitted rather than written as `null` when there is no field to name, which is the
-            // same convention the reply envelope follows and what lets the generated TypeScript
-            // spell it `string | undefined` and be right about the wire.
+            // Omitted, never written as `null`, when there is no field to name: the reply
+            // envelope's convention, and what lets the TypeScript spell it `string | undefined`.
             #[serde(skip_serializing_if = "::core::option::Option::is_none")]
             field: ::core::option::Option<::std::string::String>,
             kind: #kind,

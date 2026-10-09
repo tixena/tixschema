@@ -1,64 +1,4 @@
 //! `#[service_schema]`: a service declared once as a trait, read once, and handed to the emitters.
-//!
-//! [`parse`] reads and validates the declared trait into a
-//! [`ServiceDef`](parse::ServiceDef) — the representation everything below consumes and nothing
-//! below re-derives. The trait itself is emitted here, as declared save for the `async fn`
-//! desugaring the compiler asks for; every other artifact belongs to one of the emitter modules,
-//! each of which is landed by its own task.
-//!
-//! # The construct exists only where the `serde` feature does
-//!
-//! Everything a service emits leans on serde the crate unconditionally — every declared message
-//! and both fault types derive `Serialize` and `Deserialize`, and the dispatcher reads its payload
-//! through `serde_json`. What tixschema's own `serde` feature decides is whether the *describing*
-//! surfaces read serde attributes, and the macro writes those attributes itself: `camelCase` onto
-//! every message it declares, `kebab-case` onto the fault kind. Without the feature a service puts
-//! those keys on the wire and publishes TypeScript naming the Rust idents instead — two halves of
-//! one service disagreeing about the wire between them, and nothing failing to compile.
-//!
-//! So the feature's absence is a build failure rather than a silent lie, and the emitters below
-//! are gated on it: in a build without it there is no dispatcher, no client and no supporting type
-//! to emit, and [`serde_feature_refusal`] `parse`
-//! is the whole of what a declaration produces. `parse` is gated with them: how a service is
-//! *written* only matters where one can exist, and nothing in that reading is feature-dependent
-//! anyway — the refusals it produces are read by its own unit tests, in every build that has the
-//! feature.
-//!
-//! # What a crate declaring a service names in its own manifest
-//!
-//! One runtime crate, because the generated code calls it: `serde`. Every declared message and
-//! both fault types derive what serde writes, and with both halves of a service held as tokens
-//! nothing else at the trait's own scope reaches a runtime crate at all. tixschema itself is
-//! build-time only and serde is not reached through it — a service names it the way it names any
-//! dependency of code it compiles.
-//!
-//! `serde_json` and `tracing` are named by the crate that *invokes* a transport's macro rather than
-//! by the one that declares the service, because that is where the code calling them is compiled —
-//! and that crate names `serde` again, for what a transport's own items derive and bind. A
-//! dispatcher reads its payload through `serde_json` and writes a caught panic down through
-//! `tracing`. A caught panic is written down for the same reason it is caught: a dispatcher catches
-//! a panicking handler in order to return so the transport can settle the delivery, and catching
-//! without recording would trade a stalled consumer for a silent one.
-//!
-//! It costs a consumer that wants no logging very little. With no subscriber installed the
-//! callsite registers against `NoSubscriber`, whose `register_callsite` answers `Interest::never()`
-//! and whose `enabled` answers `false`, so the event is never built. The crate itself pulls in
-//! `tracing-core` (and its `once_cell`), `pin-project-lite`, and the `tracing-attributes` proc
-//! macro, which brings the same `proc-macro2`/`quote`/`syn` tixschema already builds against —
-//! nothing more. The machinery that formats and writes records lives in `tracing-subscriber`,
-//! which is not named here and which only a service that wants output adds.
-//!
-//! A crate that invokes a dispatcher macro and forgets `tracing` earns one error naming the crate:
-//! `error[E0433]: cannot find `tracing` in the crate root`. Forgetting `serde_json` earns seven.
-//!
-//! A crate that only *places a client* — a transport's client macro, invoked where a caller wants
-//! one — names one of the two. The client serializes what it sends and reads what comes back
-//! through `serde` and `serde_json`; it catches no panic, so it has nothing to write down and
-//! reaches no `tracing`.
-//!
-//! **`#[model_schema]` requires none of this.** Only an invoked dispatcher macro reaches a logger,
-//! so a crate that describes types and declares no service names neither `serde_json` nor
-//! `tracing`.
 
 #[cfg(feature = "serde")]
 mod messages;
@@ -83,13 +23,6 @@ use syn::{Ident, ReturnType, TraitItem};
 const RESERVED_AMQP_HEADER_OUT_NAME: &str = "is_error";
 
 /// A build without the `serde` feature answers a declaration with refusals and nothing else.
-///
-/// Nothing further would be truthful. The emitters are gated out of this build, so there is no
-/// dispatcher, no client and no supporting type to write, and the trait on its own would resolve an
-/// `impl` block while every call site still failed on a module that was never emitted.
-///
-/// One sentence naming the feature is the whole of what this configuration has to say, and saying
-/// more would mean reading a declaration for a construct this build cannot have.
 #[cfg(not(feature = "serde"))]
 pub fn exec_service_schema(_args: TokenStream, input: TokenStream) -> TokenStream {
     match syn::parse2::<ItemTrait>(input) {
@@ -105,17 +38,15 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
         Ok(parsed) => parsed,
         Err(rejection) => return rejection.to_compile_error(),
     };
-    // The trait is emitted whether or not it validates, so a service with one bad operation
-    // reports that operation rather than burying it under an unresolved trait name at every
-    // implementation and every call site.
+    // The trait is emitted whether or not it validates, so a service with one bad operation reports
+    // that operation, not an unresolved trait name at every use.
     let contract = emitted_trait(&declared);
     // Both readings are answered together, so a service that asks for a transport nobody has and
     // declares a bad operation is told about each rather than about whichever was read first.
     match (asked, parse::parse_service(&declared)) {
         (Ok(wanted), Ok(service)) => {
-            // Both wire-carrier gaps are answered together, for the same reason as above: a
-            // service tripping both is told about each rather than about whichever was read
-            // first.
+            // Both wire-carrier gaps are answered together, for the same reason as above: a service
+            // tripping both is told about each rather than about whichever was read first.
             let combined_refusal = [
                 multipart_envelope_refusal(&service, &wanted.transports),
                 stream_envelope_refusal(&service, &wanted.transports),
@@ -131,14 +62,11 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
                 || {
                     let messages = messages::emit(&service, wanted.non_exhaustive);
                     // The module is handed the asked-for list as well: it anchors, at the
-                    // declaration, the root names a transport's macro reaches through `$crate`,
-                    // and a service that asked for no transport publishes no macro and so owes no
-                    // root anything.
+                    // declaration, the root names a transport's macro reaches through `$crate`.
                     let support =
                         support::emit(&service, &wanted.transports, wanted.non_exhaustive);
-                    // Both halves a transport contributes are `macro_rules!` bodies rather than
-                    // compiled items, so they stay at the trait's scope; `#[macro_export]` hoists
-                    // each name to the crate root from wherever the service was written.
+                    // Both halves a transport contributes are `macro_rules!` bodies, so they stay
+                    // at the trait's scope; `#[macro_export]` hoists each name to the crate root.
                     let transports = transport::emit(&service, &wanted.transports);
                     // Every language's generated clients are strings rather than callers of
                     // anything private, so they stay at the trait's scope.
@@ -152,8 +80,7 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
                     }
                 },
                 // Caught here, ahead of every transport's own macros, rather than left for
-                // `{service}_amqp_rpc_dispatcher!()`'s own expansion to fail on when it is
-                // invoked.
+                // `{service}_amqp_rpc_dispatcher!()`'s own expansion to fail on when it is invoked.
                 |refusal| {
                     let refused = refusal.to_compile_error();
                     quote! {
@@ -582,21 +509,6 @@ fn reserved_header_out_message(operation: &Ident) -> String {
 }
 
 /// What a build without the `serde` feature is told, and why it is told rather than worked around.
-///
-/// A service already cannot function without serde the crate: every message the macro declares
-/// derives `Serialize` and `Deserialize`, both fault types do, and the dispatcher reads its payload
-/// through `serde_json`. None of that is behind a `cfg`. What tixschema's own `serde` feature
-/// controls is whether the *describing* surfaces read serde attributes — and the macro writes those
-/// attributes itself, `rename_all = "camelCase"` onto every declared message and
-/// `rename_all = "kebab-case"` onto the fault kind. So a build without the feature puts camelCase
-/// and kebab-case on the wire and publishes TypeScript naming the Rust idents, and the two halves
-/// of one service disagree about the wire between them.
-///
-/// The refusal rides *beside* the whole expansion rather than replacing it. Everything the macro
-/// writes still compiles in this configuration — that is exactly why the disagreement went
-/// unnoticed — so emitting it keeps every name a caller wrote resolvable and leaves this the only
-/// error the build reports. Replacing the expansion would bury the sentence that explains the
-/// problem under an unresolved name at every implementation and every call site.
 #[cfg(not(feature = "serde"))]
 fn serde_feature_refusal(declared: &ItemTrait) -> TokenStream {
     syn::Error::new(

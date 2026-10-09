@@ -331,8 +331,6 @@ fn the_readme_decider_repairs_the_row_the_readme_stores() {
     );
 }
 
-/// The two answers the stored row does not reach: a date stored as epoch milliseconds, and an
-/// issue the callback repairs nothing for.
 #[test]
 fn the_readme_decider_reads_an_epoch_date_and_rejects_what_it_cannot_repair() {
     let written = doc! {

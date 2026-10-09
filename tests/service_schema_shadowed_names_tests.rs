@@ -3,9 +3,6 @@
 //! path, so none of the types declared here is taken for it. The halves a transport places are
 //! held to the same in `service_schema_dual_transport_proof_tests` and
 //! `service_schema_ws_rpc_proof_tests`, where they are also run.
-//!
-//! The assertion is that this binary compiles. Gated on the `serde` feature, which
-//! `#[service_schema]` requires.
 
 #![cfg(feature = "serde")]
 

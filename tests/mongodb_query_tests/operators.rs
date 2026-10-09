@@ -53,8 +53,6 @@ fn a_comparison_writes_its_operator_over_a_value_of_the_fields_own_type() {
     );
 }
 
-/// `$regex` is on a path of text alone: one every row holds, one a row may leave out, and one
-/// below a nested model.
 #[test]
 fn a_pattern_is_matched_on_a_path_of_text() {
     let invoice = Invoice::MONGO_FIELDS;
@@ -99,8 +97,6 @@ fn a_list_of_plain_values_is_matched_through_its_elements() {
     );
 }
 
-/// A path below a list of models matches where any element does, `$elemMatch` holds one element
-/// to a filter over the rows of the element's own type, and so does `$pull`.
 #[test]
 fn a_list_of_models_is_matched_by_a_filter_over_its_element() {
     let invoice = Invoice::MONGO_FIELDS;
@@ -175,8 +171,6 @@ fn a_model_a_row_may_leave_out_is_tested_for_removed_and_set_whole() {
     );
 }
 
-/// A nested model is one whole value as well as the paths below it: here a tuple struct, which
-/// serde writes as an array.
 #[test]
 fn a_nested_model_is_compared_whole_and_by_each_path_below_it() {
     let invoice = Invoice::MONGO_FIELDS;
@@ -194,8 +188,6 @@ fn a_nested_model_is_compared_whole_and_by_each_path_below_it() {
     );
 }
 
-/// Each update operator alone, then six of them as one update: the keys of each operator are
-/// merged, whichever module's `Update` wrote them.
 #[test]
 fn an_update_writes_its_operator_and_several_merge_into_one() {
     let invoice = Invoice::MONGO_FIELDS;
@@ -227,8 +219,6 @@ fn an_update_writes_its_operator_and_several_merge_into_one() {
     );
 }
 
-/// A path a row may leave out has every operator of one every row holds, and a filter is negated
-/// and handed over as the document the driver takes.
 #[test]
 fn a_path_a_row_may_leave_out_compares_and_sets_as_any_path_does() {
     let invoice = Invoice::MONGO_FIELDS;
@@ -357,8 +347,7 @@ fn a_nested_model_is_tested_and_set_as_one_whole_value() {
     );
 }
 
-/// BSON has no unsigned 64-bit integer. A value past the range of its signed one is answered as
-/// an error by every operator that writes one, and one inside the range is written.
+/// BSON has no unsigned 64-bit integer.
 #[test]
 fn a_value_bson_cannot_hold_is_answered_as_an_error() {
     use invoice_schema::{Field, ListField, MongoPath};

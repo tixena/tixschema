@@ -1,3 +1,6 @@
+//! The tixschema proc macros: `model_schema`, `model_schema_prop`, `service_schema` and
+//! `service_schema_op`. Each hands its input to the module that expands it.
+
 mod bound_message;
 #[cfg(test)]
 mod emitted_names_tests;
@@ -881,7 +884,6 @@ pub fn model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 ///   `Option<T>` field with no `nullable`.
 #[proc_macro_attribute]
 pub fn model_schema_prop(_args: TokenStream, input: TokenStream) -> TokenStream {
-    // For now, simply pass through the input
     input
 }
 

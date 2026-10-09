@@ -1,3 +1,5 @@
+//! Tests of the Zod schema each field type renders as.
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tixschema::model_schema;

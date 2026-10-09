@@ -1,36 +1,6 @@
 //! The TypeScript a service implements: an interface it satisfies in full or does not compile, the
 //! outcomes its operations answer with, and the factory that turns an implementation into a
 //! dispatcher.
-//!
-//! # Why an interface and not a table of handlers
-//!
-//! This is the piece the whole construct exists for. An operation declared and implemented by
-//! nobody is only prevented if the compiler refuses the incomplete implementation, so the emitted
-//! interface has one required member per operation — no optional members, no index signature,
-//! nothing a partial implementation slips through. Adding an operation breaks every implementation
-//! of the service, which is the point.
-//!
-//! # An implementation cannot fabricate a fault
-//!
-//! An operation publishes two types, not one. `<Service><Operation>Result` is what a *caller*
-//! reads: the value, the declared error, or a fault. `<Service><Operation>Outcome` is what an
-//! *implementation* returns, and its failure arm is the declared error alone. A fault reports a
-//! failure the operation never declared, and the two places entitled to build one are both
-//! generated — this dispatcher and the client.
-//!
-//! # The dispatcher exists only beside a schema
-//!
-//! An arm parses the payload before it calls, which is what entitles an implementation to assume
-//! its message is valid. The parse is against the `<Message>$Schema` const `#[model_schema()]`
-//! publishes, so this module is gated with the Zod surface that writes one: a build without it
-//! publishes no dispatcher rather than one that narrows an unread payload with `as` and hands it to
-//! an implementation written against a guarantee nothing checked.
-//!
-//! # The context is explicit and generic
-//!
-//! The interface carries a context type parameter and every method takes it, mirroring the Rust
-//! trait. The code owning the transport constructs one per message and hands it to the dispatcher.
-//! It appears in no message and no schema.
 
 use super::fault;
 use super::message;
@@ -377,17 +347,6 @@ fn request_header_fn(named: &str, prefix: &str) -> String {
 
 /// The fault a payload that will not become the operation's message produces, under the one kind
 /// this dispatcher can raise.
-///
-/// It runs on a payload somebody already parsed — the dispatcher takes the decoded value, not the
-/// bytes — so by the time it is reached the bytes *were* a document and the only thing left to be
-/// wrong is what the document said. That is what the Rust dispatcher calls a failed validation, and
-/// it is the same reading: there, `serde_json`'s own classification separates bytes that are not a
-/// document (`Syntax`, `Eof`) from a document that is not this message (`Data`), and only the second
-/// can happen here at all. `undeserializable-payload` is the answer to the first, which belongs to
-/// whatever turns bytes into the value handed in.
-///
-/// A failure at no key still names no field: a value that is not an object at all is not a message,
-/// and there is no key to send a caller to.
 fn inbound_fault(service: &ServiceDef) -> Vec<String> {
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);

@@ -1,3 +1,5 @@
+//! Tests of `#[model_schema]` on plain structs: the TypeScript, Zod and JSON Schema each publishes.
+
 #[cfg(all(
     test,
     any(feature = "typescript", feature = "jsonschema", feature = "zod")

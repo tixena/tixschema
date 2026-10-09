@@ -1,27 +1,4 @@
 //! The `<Operation>Result` type: the two arms an operation declared, joined into one return type.
-//!
-//! The envelope is all this adds. Whatever the operation named as its success type and as its
-//! error type crosses unchanged — no field is added to either, none removed, none renamed — so a
-//! message that happens to carry a key called `type` keeps it and one that does not never gains
-//! one.
-//!
-//! The failure arm holds the declared error *or* a fault, rather than the union growing a third
-//! member: two members sharing `ok: false` would stop `ok` being a discriminant at all, and
-//! narrowing on the envelope would then tell a caller only that the call failed. Two arms, with the
-//! fault behind the literal `isServiceFault: true`, leave the compiler something to narrow on at
-//! both levels.
-//!
-//! A one-way operation gets no result type. It declared no reply and therefore no error, and a
-//! type joining arms it does not have would be a type nothing can be assigned from.
-//!
-//! Both names carry the service: `UsageServiceGetBalanceResult`, and the fault it can hold is
-//! `UsageServiceFault`. Two services declaring a `get_balance` each would otherwise publish one
-//! `GetBalanceResult` twice into the one flat file a bundle is.
-//!
-//! A `body = "stream"` operation's own success is declared in Rust as `StreamedAnswer`, a type with
-//! no `#[model_schema()]` of its own — the ordinary `value` rendering would publish that bare name
-//! as a TypeScript reference nothing declares. [`stream_success_ts_type`] stands in for it instead,
-//! mirroring the Rust and Dart clients' own streamed record.
 
 #[cfg(feature = "typescript")]
 use crate::field_type::get_field_def;
@@ -34,10 +11,8 @@ use crate::service_schema::parse::{OperationDef, OperationOutcome, written};
 #[cfg(feature = "typescript")]
 use syn::Type;
 
-/// The TypeScript record a `body = "stream"` operation's own success answers with: a `contentRange`
-/// left `undefined` at the operation's own `ok_status`, set to the range text at `206`, and the
-/// `contentType`, paired with the body as the platform's own `ReadableStream<Uint8Array>` — mirrors
-/// the Rust client's own `StreamedAnswer::Full`/`Partial` and the Dart client's own streamed record.
+/// The TypeScript record a `body = "stream"` operation's success answers with: `contentRange` is
+/// `undefined` at the operation's own `ok_status` and the range text at `206`.
 #[cfg(feature = "typescript")]
 pub const STREAMED_ANSWER_TS_TYPE: &str =
     "{ contentRange: string | undefined; contentType: string; body: ReadableStream<Uint8Array> }";

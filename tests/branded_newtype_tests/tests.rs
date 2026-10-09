@@ -1,3 +1,6 @@
+//! Tests of branded newtypes: `#[serde(transparent)]` structs published as branded types, with and
+//! without type parameters and constraints.
+
 #[cfg(all(feature = "zod", feature = "typescript"))]
 mod zod_ts_tests {
     use super::*;
@@ -45,8 +48,7 @@ mod zod_ts_tests {
         );
     }
 
-    /// The brand lands on the caller's supplied schema, not a value that admits anything. The
-    /// builder's own bound stays `IdType extends ZodType`, and no Zod class is named anywhere.
+    /// The brand lands on the caller's supplied schema, not a value that admits anything.
     #[test]
     fn test_branded_newtype_zod_schema() {
         let zod = RoleId::<String>::zod_schema();
@@ -60,9 +62,6 @@ mod zod_ts_tests {
         assert!(!zod.contains("$ZodBranded"), "Got: {zod}");
     }
 
-    /// A generic brand's `$SchemaDefault` binds the factory call to a raw `const` and reads its
-    /// annotation back off it, rather than restating `ZodType<RoleId<string>>` — the factory's
-    /// chain ends in `.brand()`, which the restated type discards.
     #[test]
     fn an_unconstrained_generic_brands_default_is_annotated_by_value() {
         let zod = RoleId::<String>::zod_schema();
@@ -284,8 +283,6 @@ mod constrained_branded_tests {
         assert_eq!(result.unwrap(), SlugId("hello_world".to_owned()));
     }
 
-    /// The brand's simple pattern turns away the same values the regex would have, with the same
-    /// words, and still reaches every surface as written.
     #[test]
     fn test_anchored_single_character_prefix_branded() {
         let zod = MountPath::zod_schema();
@@ -355,8 +352,6 @@ mod constrained_objectid_branded_tests {
         assert!(result.is_ok(), "Should accept valid ObjectId via serde");
     }
 
-    /// The wire an `ObjectId` brand is described against: serde writes the extended-JSON `$oid`
-    /// object, never the bare hex, for the brand exactly as for the `ObjectId` it wraps.
     #[test]
     fn an_objectid_brand_writes_the_oid_object_its_inner_writes() {
         let oid = ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap();
@@ -446,9 +441,6 @@ mod objectid_branded_surface_tests {
         );
     }
 
-    /// A brand's string constraints measure the inner's `Display` — the bare hex, which on the
-    /// wire is the `$oid` member. The brand's own `pattern` is layered rather than written over
-    /// the hex's, since one JSON Schema string carries only one `pattern`.
     #[test]
     fn a_constrained_objectid_brand_carries_its_constraints_on_the_oid_member() {
         let zod = HexObjectId::zod_schema();
@@ -483,8 +475,6 @@ mod objectid_branded_surface_tests {
         );
     }
 
-    /// A transparent brand is nothing on the wire, so it describes exactly what its inner
-    /// describes where that inner is named directly.
     #[test]
     fn an_unconstrained_objectid_brand_describes_what_the_field_position_describes() {
         assert_eq!(
@@ -510,8 +500,6 @@ mod objectid_branded_surface_tests {
             .all(|pattern| regex::Regex::new(pattern).unwrap().is_match(hex))
     }
 
-    /// A brand pattern wider than the hex is where the two surfaces come apart: Zod runs the
-    /// type's own regex before the brand's check, while the JSON schema has only the brand's left.
     #[test]
     fn a_brand_pattern_wider_than_the_hex_still_narrows_to_the_hex_on_both_surfaces() {
         let zod = WideObjectId::zod_schema();
@@ -535,8 +523,6 @@ mod objectid_branded_surface_tests {
         }
     }
 
-    /// An arrayed `ObjectId` writes the array around the `$oid` object, described by the slot
-    /// dispatch — the same rendering the unbranded tuple struct over the same `Vec` publishes.
     #[test]
     fn an_arrayed_objectid_brand_describes_the_array_of_oid_objects() {
         let zod = ObjectIdList::zod_schema();
@@ -644,9 +630,6 @@ mod branded_in_struct_all_features_tests {
         );
     }
 
-    /// A brand whose inner is a bare parameter names no type of its own, so its document is
-    /// written at the type it declared for that parameter — as an uninstantiated parameter is
-    /// wherever else it is written.
     #[test]
     fn test_generic_branded_newtype_own_json_schema() {
         assert_eq!(
@@ -867,8 +850,7 @@ mod branded_constrained_json_schema_tests {
     #[test]
     fn test_constrained_branded_json_schema() {
         // The `\d` the brand is declared with reaches the schema as the members it stands for: a
-        // JSON Schema `pattern` is an ECMA-262 regex, which reads `\d` as ASCII, while the Rust
-        // validator beside it reads the Unicode class. Written out, both read the one set.
+        // JSON Schema `pattern` reads `\d` as ASCII, the Rust validator as the Unicode class.
         assert_eq!(
             ConstrainedId::json_schema(),
             serde_json::json!({
@@ -908,9 +890,8 @@ mod constrained_generic_branded_tests {
     #[serde(transparent)]
     pub struct StrictDocumentId<IdType>(pub IdType);
 
-    /// The generated `validate()` sits on `impl StrictDocumentId<String>` — the declared default,
-    /// not a blanket `impl<IdType>` — so a second inherent impl at a different instantiation is
-    /// not a duplicate-definition error.
+    /// The generated `validate()` sits on `impl StrictDocumentId<String>`, the declared default, so
+    /// a second inherent impl at another instantiation is no duplicate definition.
     impl StrictDocumentId<u32> {
         pub fn validate(&self) -> Result<(), Vec<String>> {
             if self.0 == 0 {
@@ -972,9 +953,6 @@ mod constrained_generic_branded_tests {
     #[serde(transparent)]
     pub struct LabelId<WrapType>(pub WrapType);
 
-    /// The builder every call to the factory runs through carries no string check at all: a caller
-    /// filling `IdType` with something other than the declared default — an `ObjectId` schema, say
-    /// — must not inherit bounds meant for the default.
     #[test]
     fn the_factorys_own_parameter_carries_no_check() {
         let zod = StrictDocumentId::<String>::zod_schema();
@@ -989,8 +967,6 @@ mod constrained_generic_branded_tests {
         assert!(builder.contains("idType.meta({"), "Got:\n{builder}");
     }
 
-    /// `$SchemaDefault` is the factory called at the declared default argument, with the checks
-    /// composed onto that argument.
     #[test]
     fn the_default_composes_the_factory_with_the_constrained_argument() {
         let zod = StrictDocumentId::<String>::zod_schema();
@@ -1003,8 +979,6 @@ mod constrained_generic_branded_tests {
         );
     }
 
-    /// A value at the declared default validates against the 24-hex bounds through Rust's own
-    /// `validate()`/serde path, which reads the same constraints the Zod surface enforces.
     #[test]
     fn the_default_instantiation_enforces_the_bounds_through_serde() {
         let valid: StrictDocumentId<String> =
@@ -1015,9 +989,6 @@ mod constrained_generic_branded_tests {
         assert!(too_short.is_err(), "Should reject a too-short id via serde");
     }
 
-    /// `$SchemaDefault` folds onto `StrictDocumentId$SchemaDefault` by reference, carrying the
-    /// 24-hex bounds in rather than reconstructing an unconstrained instantiation the memo would
-    /// not share with it.
     #[test]
     fn a_default_naming_the_constrained_brands_own_default_folds_onto_its_binding() {
         let zod = StrictDocumentIdHolder::<String>::zod_schema();
@@ -1030,9 +1001,6 @@ mod constrained_generic_branded_tests {
         );
     }
 
-    /// `OuterId`'s declared default folds onto `StrictDocumentId$SchemaDefault`, and its own
-    /// `minLength` composes inside the `z.lazy(...)` thunk over `.check(...)` — the deferred
-    /// target is not guaranteed to carry `ZodString`'s chain methods, only `.check(...)`.
     #[test]
     fn a_constrained_brands_default_naming_another_constrained_brands_default_composes_the_checks_inside_the_thunk()
      {
@@ -1053,8 +1021,6 @@ mod constrained_generic_branded_tests {
         );
     }
 
-    /// The composed default enforces both bounds: `StrictDocumentId`'s own 24-hex, inherited
-    /// through the fold, and `OuterId`'s own `minLength`.
     #[test]
     fn the_folded_default_instantiation_enforces_both_brands_bounds_through_serde() {
         let valid: OuterId<StrictDocumentId<String>> =
@@ -1069,9 +1035,6 @@ mod constrained_generic_branded_tests {
         );
     }
 
-    /// The hand-written `impl StrictDocumentId<u32>` above compiles beside the generated
-    /// `impl StrictDocumentId<String>` and it is the hand-written body that runs — the two are
-    /// written against different concrete types, so there is no ambiguity to resolve.
     #[test]
     fn a_hand_written_impl_for_another_instantiation_compiles_and_runs_beside_the_generated_one() {
         StrictDocumentId(1_u32).validate().unwrap();
@@ -1155,8 +1118,6 @@ mod constrained_default_names_a_sibling_tests {
     #[serde(transparent)]
     pub struct OuterBrand<T>(pub T);
 
-    /// The check composes inside the thunk, over `InnerString$Schema`'s own base `.check(...)` —
-    /// `.min` after the thunk closed would land on `ZodLazy`, which lacks it.
     #[test]
     fn a_constrained_brands_default_naming_a_non_generic_sibling_composes_the_check_inside_the_thunk()
      {
@@ -1177,9 +1138,6 @@ mod constrained_default_names_a_sibling_tests {
         );
     }
 
-    /// The factory's own bare parameter still carries no check — exactly the invariant
-    /// `constrained_generic_branded_tests::the_factorys_own_parameter_carries_no_check` pins for
-    /// the primitive-default case, unaffected by where the default happens to point.
     #[test]
     fn the_factorys_own_parameter_carries_no_check() {
         let zod = OuterBrand::<String>::zod_schema();
@@ -1233,9 +1191,8 @@ mod branded_display_tests {
         }
     }
 
-    // A non-generic brand over a sibling inner that implements `Display` itself: the impl's own
-    // `where` clause (built from the field's type) is satisfied by the sibling's hand-written
-    // impl, same as it would be by a bound the brand's own generics happened to carry.
+    // A non-generic brand over a sibling inner that implements `Display` itself, which satisfies
+    // the impl's own `where` clause.
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
@@ -1269,8 +1226,7 @@ mod branded_display_tests {
 }
 
 // A container inner type implements no Display, so `no_display` opts the brand out of the Display
-// impl and of the assertion that guards it. Compiling this module is the assertion: emitting
-// either one over a `Vec` inner is a hard error.
+// impl and of the assertion that guards it.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 mod branded_no_display_tests {
     use super::*;
@@ -1515,9 +1471,6 @@ mod branded_composite_inner_tests {
         );
     }
 
-    /// A sequence wrapper describes as the `Vec` of the same element does, and a fixed-size
-    /// `[T; N]` carries the arity serde reads back — both through the brand, as they do everywhere
-    /// else.
     #[test]
     fn a_set_and_a_fixed_array_brand_describe_their_arrays() {
         assert_eq!(
@@ -1545,8 +1498,6 @@ mod branded_composite_inner_tests {
         );
     }
 
-    /// An opaque inner carries no type name to narrow with, so the brand admits any value — the
-    /// permissive empty schema, matching the `unknown` type and the `z.unknown()` value.
     #[test]
     fn an_opaque_brand_admits_any_value() {
         assert_eq!(
@@ -1565,8 +1516,6 @@ mod branded_composite_inner_tests {
         assert_eq!(Payload::json_schema(), serde_json::json!({}));
     }
 
-    /// A `None` inside the array is an item rather than an omission, and the levels nest — the
-    /// brand carries both, because the array levels are the inner's own.
     #[test]
     fn a_nested_and_a_nullable_element_brand_keep_their_levels() {
         assert_eq!(
@@ -1585,8 +1534,6 @@ mod branded_composite_inner_tests {
         );
     }
 
-    /// An element that names another type is carried by that type's own schema, as it is in every
-    /// other position — so the brand defers rather than describing an open object.
     #[test]
     fn an_arrayed_sibling_brand_carries_the_siblings_own_schema() {
         assert_eq!(
@@ -1608,8 +1555,6 @@ mod branded_composite_inner_tests {
         );
     }
 
-    /// A transparent brand is nothing on the wire, so it describes exactly what its inner
-    /// describes where that inner is named directly.
     #[test]
     fn a_container_brand_describes_what_the_field_position_describes() {
         let holder = HoldsComposites::json_schema();
@@ -1730,9 +1675,6 @@ mod branded_generic_inner_tests {
         );
     }
 
-    /// A parameter on its own carries no shape of its own, so each surface writes for it what it
-    /// writes for a bare generic field — the alias asserted beside it. On JSON that's the type the
-    /// brand declared for the parameter.
     #[test]
     fn a_bare_parameter_brand_matches_the_generic_field_convention() {
         assert_eq!(
@@ -1752,9 +1694,6 @@ mod branded_generic_inner_tests {
         );
     }
 
-    /// The rendering each surface gives the brand is the one it gives the same shape written
-    /// without a brand: the JSON schemas are equal outright, and the TypeScript type and the Zod
-    /// value each carry the fragment the alias carries, under the brand's own wrapping.
     #[test]
     fn a_generic_brand_renders_what_the_same_generic_alias_renders() {
         assert_eq!(
@@ -1807,9 +1746,6 @@ mod branded_generic_inner_tests {
         }
     }
 
-    /// A parameter rendered as `Name$Schema` would reference a binding no emitted module declares
-    /// — a `ReferenceError` before any payload is read. Asserted over the brand and the alias
-    /// together.
     #[test]
     fn no_emitted_zod_value_references_a_binding_named_after_a_parameter() {
         for zod in [
@@ -1824,10 +1760,6 @@ mod branded_generic_inner_tests {
         }
     }
 
-    /// A generic alias publishes a factory exactly as the brand beside it does, so neither has an
-    /// annotation left to erase an argument out of — the `const` each used to publish claimed
-    /// `ZodType<Name<unknown>>` while the declaration kept the argument, a type error at any field
-    /// naming either.
     #[test]
     fn a_generic_alias_publishes_the_factory_the_brand_beside_it_publishes() {
         for (zod, factory) in [
@@ -2003,9 +1935,7 @@ mod branded_sibling_inner_tests {
     #[serde(transparent)]
     pub struct LateSlug(pub String);
 
-    // The same forward declaration with the inner's argument fixed where it is written. Written
-    // above `LateTag`, with `TrailingFixedTag` below it, so the one declaration stands in both the
-    // orders it can be written in.
+    // The same forward declaration with the inner's argument fixed where it is written.
     #[model_schema(minLength = 3)]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
@@ -2114,8 +2044,6 @@ mod branded_sibling_inner_tests {
         assert_eq!(WrappedPart::json_schema(), Part::json_schema());
     }
 
-    /// A transparent brand is nothing on the wire, so it describes exactly what its inner
-    /// describes where that inner is named directly.
     #[test]
     fn a_sibling_brand_describes_what_the_field_position_describes() {
         assert_eq!(
@@ -2124,8 +2052,6 @@ mod branded_sibling_inner_tests {
         );
     }
 
-    /// A reference resolves in either declaration order, so a brand standing before the type it
-    /// names carries that type's own schema all the same.
     #[test]
     fn a_forward_declared_sibling_brand_carries_the_named_types_schema() {
         assert_eq!(WrappedTail::json_schema(), Tail::json_schema());
@@ -2136,9 +2062,6 @@ mod branded_sibling_inner_tests {
         );
     }
 
-    /// A cycle closed through a brand defers exactly as one closed through a field does: the name
-    /// re-entered while still being written becomes a reference, and its body is hoisted to the
-    /// root that reference resolves against.
     #[test]
     fn a_recursive_sibling_brand_defers_rather_than_inlining() {
         assert_eq!(
@@ -2162,9 +2085,6 @@ mod branded_sibling_inner_tests {
         );
     }
 
-    /// A brand over a string-shaped sibling keeps its own constraints, layered around the named
-    /// type's schema rather than written in place of it — which is how the Zod value already
-    /// composes them, the named schema first and the brand's checks after it.
     #[test]
     fn a_constrained_sibling_brand_layers_its_constraints_over_the_named_schema() {
         assert_eq!(
@@ -2184,9 +2104,6 @@ mod branded_sibling_inner_tests {
         );
     }
 
-    /// A brand reaching a name before the named item has expanded asks a registry with nothing
-    /// recorded for it, and keeps its emission rather than being refused — that absence is the
-    /// same one an unresolved user type leaves.
     #[test]
     fn a_constrained_brand_over_a_forward_declared_sibling_keeps_its_emission() {
         assert_eq!(
@@ -2204,9 +2121,6 @@ mod branded_sibling_inner_tests {
         );
     }
 
-    /// A fixed argument is not a parameter, so the refusal beside it leaves this declaration
-    /// untouched — the checks append to the factory call, and every surface holds the string the
-    /// declaration fixed.
     #[test]
     fn a_constrained_brand_over_a_fixed_instantiation_carries_its_checks() {
         assert_eq!(
@@ -2229,9 +2143,6 @@ mod branded_sibling_inner_tests {
         );
     }
 
-    /// The same declaration written after the item it names carries the same checks to the same
-    /// three surfaces, byte for byte: what `LateTag` records is a position rather than a word, so
-    /// the registry answers with the argument this brand wrote.
     #[test]
     fn a_constrained_brand_over_a_fixed_instantiation_reads_the_same_in_either_order() {
         assert_eq!(TrailingFixedTag::json_schema(), FixedTag::json_schema());
@@ -2257,9 +2168,6 @@ mod branded_sibling_inner_tests {
         );
     }
 
-    /// Nothing the refusal added reaches a brand carrying no checks: it still publishes the
-    /// factory, still composes the inner's own factory inside it, and still binds the parameter it
-    /// was declared with.
     #[test]
     fn an_unconstrained_generic_brand_over_a_parameterised_inner_is_unchanged() {
         assert_eq!(
@@ -2281,11 +2189,6 @@ mod branded_sibling_inner_tests {
         );
     }
 
-    /// The annotation is read back off the raw `const`, so it does not vary with the inner: the
-    /// argument a family publisher is filled at, whether the named sibling had registered when the
-    /// brand reached it, and whether that sibling publishes an object or a union all reach the
-    /// same line. `PlainNumTag`'s runtime value carries two brand markers, `LateTag`'s and its
-    /// own, and `typeof` is the one spelling that keeps both.
     #[test]
     fn every_sibling_inner_brand_reads_its_annotation_off_its_own_raw_schema() {
         for (name, zod) in [
@@ -2304,8 +2207,6 @@ mod branded_sibling_inner_tests {
         }
     }
 
-    /// A generic brand's `$SchemaDefault` binds the factory call and reads its annotation off that
-    /// binding, whatever the inner names.
     #[test]
     fn a_generic_brands_default_over_a_generic_sibling_is_annotated_by_value() {
         let zod = OpenTag::<String>::zod_schema();
@@ -2399,8 +2300,6 @@ mod branded_chrono_inner_tests {
         );
     }
 
-    /// A transparent brand is nothing on the wire, so it describes exactly what its inner
-    /// describes where that inner is named directly.
     #[test]
     fn a_chrono_brand_describes_what_the_field_position_describes() {
         let holder = HoldsChrono::json_schema();
@@ -2410,9 +2309,6 @@ mod branded_chrono_inner_tests {
         assert_eq!(Instant::json_schema(), holder["properties"]["instant"]);
     }
 
-    /// The wire is a string, so the brand's own constraints stay legal — and sit beside `type` and
-    /// `format` the way they sit beside `type` alone. The `\d` the brand was declared with reaches
-    /// the schema as the members it stands for, per the pattern guard's cross-engine translation.
     #[test]
     fn a_constrained_chrono_brand_carries_its_constraints_beside_the_format() {
         assert_eq!(
@@ -2427,9 +2323,6 @@ mod branded_chrono_inner_tests {
         );
     }
 
-    /// The Zod value is the same `z.iso.*` schema a field position emits; only the JSON schema
-    /// moved. The annotation the binding carries is pinned in `branded_chrono_zod_tests`, which
-    /// needs no `jsonschema` to be on.
     #[cfg(all(feature = "typescript", feature = "zod"))]
     #[test]
     fn the_zod_value_of_a_chrono_brand_is_the_one_a_field_writes() {
@@ -2559,8 +2452,6 @@ mod branded_chrono_zod_tests {
         }
     }
 
-    /// The `NaiveTime` inner renders through an inline preprocessor whose body is long enough to
-    /// be worth matching at its two ends rather than verbatim.
     #[test]
     fn a_time_brand_reads_its_annotation_off_its_own_raw_schema() {
         let zod = ClockStamp::zod_schema();
@@ -2620,10 +2511,8 @@ mod branded_chrono_zod_tests {
     }
 }
 
-// A brand's constrained value is its inner field itself, so a path inner is measured the way a
-// path field is: by the string serde writes for it. `no_display` is what the brand's own `Display`
-// impl needs — a path has none to delegate to — and the constraints reach the value without one.
-// Compiling this module is the assertion that a path brand is emitted at all.
+// A brand's constrained value is its inner field itself, so a path inner is measured the way a path
+// field is: by the string serde writes for it.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -2692,10 +2581,8 @@ mod constrained_path_brand_tests {
     }
 }
 
-// A transparent wrapper writes nothing of its own and derefs to what it holds, so a path branded
-// under one is the same path on every surface a bare one is — and the constrained checks reach it
-// through that deref, not through a `Display` none of these spellings has. Compiling this module is
-// the assertion that each spelling is emitted at all.
+// A transparent wrapper derefs to what it holds, so a path branded under one is the same path on
+// every surface. Compiling this module is the assertion.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -2850,8 +2737,7 @@ mod wrapped_path_brand_tests {
 }
 
 // `no_display` drops the `Display` impl, not the `Display` requirement: a brand whose checks read
-// the inner's `to_string()` still needs it to render. Compiling this module is the assertion that
-// the combination is accepted and still wired to the constraints.
+// the inner's `to_string()` still needs it to render.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -3023,8 +2909,6 @@ mod branded_scalar_keyword_tests {
         );
     }
 
-    /// And the brands whose inner is not an integer describe exactly what they described before:
-    /// a float is the `number` it always was, and a `bool` and a `String` are untouched.
     #[test]
     fn the_brands_over_every_other_scalar_are_byte_identical() {
         assert_eq!(
@@ -3041,8 +2925,6 @@ mod branded_scalar_keyword_tests {
         );
     }
 
-    /// The value the schema describes is the value serde writes: an integer keyword over a payload
-    /// serde renders with no fractional part.
     #[test]
     fn the_keyword_names_what_serde_writes() {
         assert_eq!(serde_json::to_string(&TickBrand(7)).unwrap(), "7");
@@ -3118,8 +3000,6 @@ mod untouched_by_the_slot_refusal_tests {
         );
     }
 
-    /// serde writes a transparent struct with a named field as the value of that field, exactly
-    /// as it writes the tuple form, so it is the same brand: its checks are written on the type.
     #[test]
     fn a_named_field_under_transparent_is_a_brand_over_that_field() {
         let zod = NamedTransparent::zod_schema();

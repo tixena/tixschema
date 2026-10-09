@@ -25,10 +25,8 @@ use super::tests::{
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
 const RUNTIME_VAR: &str = "TIXSCHEMA_DART";
 
-/// The reserved-word group's own driver: builds a `CodecReserved` under the names Dart leaves a
-/// member whose own name it will not take -- a trailing underscore -- writes it to JSON, decodes
-/// it back, and re-encodes. `as`, `fun` and `type` are no reserved word of Dart's and keep their
-/// names.
+/// The reserved-word group's driver: builds a `CodecReserved` under the names Dart leaves a member
+/// whose own name it will not take, and round-trips it.
 const RESERVED_DRIVER: &str = "
 void main() {
   final value = CodecReserved(
@@ -111,8 +109,7 @@ void main() async {
 ";
 
 /// A stub `ThumbnailClientServiceHttpTransport` answering by path alone, driving the emitted
-/// client's own declared-error and `header_out` decode - the Dart twin of the Node client test
-/// on the same fixture.
+/// client's declared-error and `header_out` decode.
 const THUMBNAIL_DRIVER: &str = "
 class _ThumbnailRecorder implements ThumbnailClientServiceHttpTransport {
   @override
@@ -504,11 +501,6 @@ fn a_scalar_message_is_still_the_whole_segment() {
     );
 }
 
-// -------------------------------------------------------------------------------------------
-// A unit-struct field's own round trip: construct it, write it to JSON, decode it back, and
-// re-encode — `{}` both ways, through the pair's own generated `fromJson`/`toJson`.
-// -------------------------------------------------------------------------------------------
-
 fn reserved_module() -> String {
     [
         "import 'dart:convert';".to_owned(),
@@ -719,11 +711,6 @@ fn a_primitive_message_and_primitive_and_list_successes_cross_the_http_client() 
         })
     );
 }
-
-// -------------------------------------------------------------------------------------------
-// A path placeholder reading a newtype field of a named body message: the segment must carry
-// the newtype's own wire value, as the Rust client writes it.
-// -------------------------------------------------------------------------------------------
 
 fn media_module() -> String {
     [

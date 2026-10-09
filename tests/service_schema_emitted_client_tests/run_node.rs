@@ -10,8 +10,7 @@ use super::tests::{ConversationClientServiceSchema, StampClientServiceSchema};
 const RUNTIME_VAR: &str = "TIXSCHEMA_NODE";
 
 /// The schema surface the emitted client names, passing every value through untouched: the URL is
-/// what is under test, and the real `$Schema` consts are zod expressions no bare runtime can
-/// evaluate.
+/// what is under test.
 const SCHEMA_STUBS: &str = "const WindowRequest$Schema = {
   safeParse: (value) => ({ success: true, data: value }),
 };
@@ -45,9 +44,7 @@ await client.purgeConversation("652f1a3b4c5d6e7f8a9b0c1d");
 console.log(JSON.stringify(sent));
 "#;
 
-/// The schema stubs `StampClientServiceSchema::ts_http_client()` reads through: a bare
-/// `z.string()` for `stamp`'s message, `label` being the operation's own whole message, and the
-/// receipt and error the reply bodies parse as.
+/// The schema stubs `StampClientServiceSchema::ts_http_client()` reads through.
 const STAMP_SCHEMA_STUB: &str =
     "const z = { string: () => ({ safeParse: (value) => ({ success: true, data: value }) }) };
 const StampReceipt$Schema = { safeParse: (value) => ({ success: true, data: value }) };
@@ -55,8 +52,7 @@ const StampError$Schema = { safeParse: (value) => ({ success: true, data: value 
 ";
 
 /// Four calls: `x-age` present, absent, and not a number, then the declared error with no
-/// `x-reason` — what an absent optional `header_out`/`error_header_out` element reads `null` for,
-/// and a present one failing to decode as its declared type faults for.
+/// `x-reason`.
 const STAMP_DRIVER: &str = r#"
 const answers = [];
 

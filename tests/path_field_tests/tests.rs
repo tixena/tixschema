@@ -1,3 +1,5 @@
+//! Tests of `Path` and `PathBuf` fields, which every surface describes as strings.
+
 use alloc::borrow::Cow;
 use alloc::rc::Rc;
 use alloc::sync::Arc;
@@ -48,8 +50,6 @@ fn plain_path_fields() -> PlainPathFields {
     }
 }
 
-/// The criterion the mapping rests on: serde writes a borrowed path exactly as it writes the owned
-/// one, so the two spellings owe the same schema.
 #[test]
 fn test_every_path_spelling_writes_the_owned_form_wire_value() {
     assert_eq!(
@@ -133,8 +133,6 @@ fn test_path_fields_render_as_strings_in_json_schema() {
     );
 }
 
-/// A constrained path is measured by the string serde writes for it, so the bound the three
-/// surfaces render is the bound both the wire and `validate()` hold the field to.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -183,8 +181,6 @@ fn test_a_constrained_path_is_read_and_then_refused_by_validate() {
     );
 }
 
-/// Every spelling of a path field writes the same wire string, so each carries its constraint to
-/// the same place — the borrowed forms through the wrapper they are reachable behind.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -263,9 +259,6 @@ fn test_every_constrained_path_spelling_is_held_to_its_bound() {
     );
 }
 
-/// The bound rendered for a path field and the bound enforced for it are one bound — the
-/// disagreement this covers is a schema that constrains what nothing checks. The enforcing is the
-/// validator's; the read admits the value and says nothing about the bound.
 #[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn test_the_zod_bound_on_a_path_is_the_bound_validate_enforces() {
@@ -288,9 +281,6 @@ fn test_the_zod_bound_on_a_path_is_the_bound_validate_enforces() {
     );
 }
 
-/// The rendering the checks measure, where it and the raw path part ways: serde refuses to write a
-/// path that is not UTF-8 at all, so the lossy form is the wire value wherever there is one, and
-/// the paths it renders differently are the ones no payload carries.
 #[cfg(all(
     unix,
     feature = "serde",

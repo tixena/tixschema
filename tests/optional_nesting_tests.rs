@@ -1,3 +1,5 @@
+//! The test binary of `optional_nesting_tests/`.
+
 extern crate alloc;
 
 #[cfg(test)]

@@ -93,9 +93,6 @@ fn a_type_named_like_a_query_type_is_read_as_the_authors() {
     assert_eq!(Search::from_bson_piped(stored, &[]), Ok(search()));
 }
 
-/// The author's `Filter` is the value a path over it takes, and the `Filter` the flag added is
-/// what the operator answers with. The same holds of the author's `Update`, and the paths of the
-/// author's `Field` are reached below the path kind of that name.
 #[test]
 fn the_authors_type_and_the_added_one_of_its_name_are_two_types() {
     let paths = Search::MONGO_FIELDS;
@@ -115,8 +112,6 @@ fn the_authors_type_and_the_added_one_of_its_name_are_two_types() {
     );
 }
 
-/// A parameter named as a path kind, or as the filter an enum's own methods answer, is the
-/// parameter where the struct of paths names it, and the kind and the filter everywhere else.
 #[test]
 fn a_parameter_named_like_a_query_type_is_read_as_the_parameter() {
     let paged = Paged::<u32, String>::MONGO_FIELDS;

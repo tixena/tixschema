@@ -6,7 +6,6 @@ use proc_macro2::{Delimiter, Group, Ident, Literal, TokenStream, TokenTree};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// What the standard prelude puts in scope: the names generated code may not write bare.
 const PRELUDE: [&str; 40] = [
     "AsMut",
     "AsRef",
@@ -50,11 +49,8 @@ const PRELUDE: [&str; 40] = [
     "Vec",
 ];
 
-/// The crates a path may start at, which a module of the consumer's by that name takes over
-/// unless the path is written from the crate root.
 const ROOTS: [&str; 2] = ["core", "std"];
 
-/// The macros whose body is tokens to emit.
 const QUOTING: [&str; 4] = [
     "parse_quote",
     "parse_quote_spanned",

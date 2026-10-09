@@ -2,38 +2,6 @@
 //! replies, probes liveness on a heartbeat, checks every reply against the operation's own
 //! declared type, and settles every waiting call with a `transport-failure` fault when the socket
 //! closes — the TypeScript client's feature set, item for item, read at [`super::ws_client`].
-//!
-//! # One actor, not a transport plus a client
-//!
-//! The transport is an `actor` rather than a class guarded by a lock: a lock compiles but leaves a
-//! forgotten `lock()` to break silently, while an actor has the compiler enforce the isolation.
-//! There is also no seam left to cut between "the transport" and "the client": the reply's own
-//! success or error type is known only to the
-//! per-operation method, so the actor that owns the correlation map is the same actor that decodes
-//! the reply. [`transport_actor`] is that one actor, carrying one public method per operation with
-//! the REST client's own signatures; [`client_alias`] publishes `{Named}WsClient` as another name
-//! for it, so a caller constructs it the way it constructs `{Named}HttpClient`.
-//!
-//! # Ordering: one stream, not one task per frame
-//!
-//! A socket's `onMessage` callback fires once per inbound frame, synchronously, in the order
-//! frames arrived — but handing each one to the actor through its own freshly spawned `Task`
-//! gives Swift no reason to run those tasks in that same order. [`transport_actor`] instead feeds
-//! every inbound frame into one `AsyncStream`, fed by `onMessage` alone, and drains it with one
-//! `for await` loop bound to the actor: `AsyncStream` delivers what was `yield`ed in the order it
-//! was `yield`ed, and a single consuming loop processes one frame to completion before the next is
-//! read, so arrival order is preserved end to end without depending on how the runtime happens to
-//! schedule unstructured tasks.
-//!
-//! # The shared failure and refusal types
-//!
-//! `{Named}{Operation}Failure` and `{Named}Refusal` are declared once, by
-//! [`super::swift_http_client`], and named here rather than redeclared — the same operation
-//! answers the same failure whichever transport carried the call. What this module still owns is
-//! the fault *it* can report on its own: a reply that will not decode, or a call that never
-//! finished because the socket closed, built through [`transport_failure_helper`] and
-//! [`failed_validation_helper`] and named with a `Ws` infix so a bundle carrying both clients
-//! never declares two functions under one name.
 
 use crate::features::swift::swift_reference_type;
 use crate::field_type::get_field_def;
@@ -113,10 +81,6 @@ fn fault_name(named: &str) -> String {
     format!("{named}Fault")
 }
 
-// ---------------------------------------------------------------------------------------------
-// The socket seam and the heartbeat options.
-// ---------------------------------------------------------------------------------------------
-
 /// The socket seam: four members, none of them naming a networking type, so an app's own
 /// `URLSessionWebSocketTask` wrapper — or anything else that can hand text in and take text out —
 /// satisfies it without an adapter.
@@ -160,11 +124,6 @@ fn options_type(named: &str) -> String {
          }}"
     )
 }
-
-// ---------------------------------------------------------------------------------------------
-// The frame and envelope shapes the actor encodes and decodes through — declared once per
-// service, reused by every operation method.
-// ---------------------------------------------------------------------------------------------
 
 /// The outbound frame shapes and inbound decode envelopes every operation method shares, plus a
 /// bare probe that reads `kind`, `id` and `service` off a frame before its `value`/`error` shape
@@ -231,11 +190,6 @@ fn header_in_type(named: &str) -> String {
     )
 }
 
-// ---------------------------------------------------------------------------------------------
-// The two faults this transport can report on its own: a reply that would not become the
-// operation's own declared shape, and a call that never finished because the socket closed.
-// ---------------------------------------------------------------------------------------------
-
 fn transport_failure_helper(named: &str, prefix: &str) -> String {
     let fault = fault_name(named);
     format!(
@@ -260,10 +214,6 @@ fn failed_validation_helper(named: &str, prefix: &str) -> String {
          }}"
     )
 }
-
-// ---------------------------------------------------------------------------------------------
-// The transport actor.
-// ---------------------------------------------------------------------------------------------
 
 fn transport_actor(
     service: &ServiceDef,
@@ -475,10 +425,6 @@ fn actor_handle_close() -> String {
      }"
     .to_owned()
 }
-
-// ---------------------------------------------------------------------------------------------
-// One method per operation.
-// ---------------------------------------------------------------------------------------------
 
 fn operation_method(
     named: &str,
@@ -844,10 +790,6 @@ fn message_swift_type(operation: &OperationDef) -> (String, Vec<String>) {
         }
     }
 }
-
-// ---------------------------------------------------------------------------------------------
-// The client callers construct.
-// ---------------------------------------------------------------------------------------------
 
 fn client_alias(named: &str) -> String {
     format!(

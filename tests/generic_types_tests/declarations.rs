@@ -1,15 +1,5 @@
 //! Generic types that reach themselves, read from another package: through the declaration files
 //! a real TypeScript compiler emits for the bundle, which is all a second package ever sees.
-//!
-//! A declaration file can write a type that reaches itself only by name, so this is the one group
-//! that tells a schema type read back under a name from one the compiler has to spell out, and
-//! elides to `any` where it recurs. It needs a compiler and `zod` itself: `tsc` on `PATH` or named
-//! in `TIXSCHEMA_TSC`, and `zod` under `TIXSCHEMA_NODE_MODULES`'s `node_modules`. Without both it
-//! stands down, saying so on the process's own stderr. `just typecheck-ts` refuses to.
-//!
-//! The same bundle is then loaded under `node` (on `PATH`, or named in `TIXSCHEMA_NODE`): a tuple
-//! struct that reaches itself is the one shape whose module used to throw as it was imported, and
-//! a union written around a factory's call has to parse what the plain union parses.
 
 #![cfg(all(unix, feature = "serde", feature = "typescript", feature = "zod"))]
 
@@ -75,9 +65,7 @@ console.log(
 
 const MODULES_VAR: &str = "TIXSCHEMA_NODE_MODULES";
 
-/// Loads the compiled bundle and parses through the types that hold an optional one of
-/// themselves: an absent key and a `null` both answer `undefined` under a key that is there, a
-/// nested value is read all the way down, and a wrong one is refused at any depth.
+/// Loads the compiled bundle and parses through the types that hold an optional one of themselves.
 const OPTIONAL_DRIVER: &str = r#"import { z } from "zod";
 import {
   DeclaredAhead$SchemaFactory,
@@ -530,8 +518,6 @@ fn type_check_a_tuple_struct_that_reaches_itself_loads_and_parses() {
     );
 }
 
-/// A bound written on a field typed with a brand reaches the brand's schema as a check: the bundle
-/// compiles under the compiler, and zod refuses what breaks it in the bound's own words.
 #[test]
 fn type_check_a_bound_on_a_field_typed_with_a_brand_loads_and_parses() {
     let Some((printed, failed)) = loaded("bounded", BOUNDED_DRIVER) else {
@@ -543,8 +529,6 @@ fn type_check_a_bound_on_a_field_typed_with_a_brand_loads_and_parses() {
     );
 }
 
-/// The union is built over a type parameter, and the factory's call is the argument: the text
-/// the README shows for the member.
 #[test]
 fn a_union_around_a_factorys_call_is_built_over_a_type_parameter() {
     let zod = DeclaredChain::<String>::zod_schema();
@@ -563,8 +547,6 @@ fn a_union_around_a_factorys_call_is_built_over_a_type_parameter() {
     }
 }
 
-/// A map reads its own type off what it holds, which is the builder's own return type where it
-/// holds the type itself: the builder states that type through the self view instead.
 #[test]
 fn a_map_of_the_type_itself_is_read_through_the_self_view() {
     let zod = DeclaredMaps::<String>::zod_schema();

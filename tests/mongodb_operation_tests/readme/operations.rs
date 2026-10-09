@@ -1,11 +1,6 @@
 //! What the README shows of the operations: every operation bound to what it answers, a read
 //! under options, rows a resolver repairs, what each failure is told as, and a query run on the
 //! driver itself.
-//!
-//! The examples are compiled here under both major versions of the `bson` library. What they do
-//! against a collection is asked of a real one by the check at the end, which stands down where
-//! no server is named. What needs no server is run: the read of a row once the driver has handed
-//! it over, and a row refused before it is sent.
 
 use core::iter::once;
 use std::collections::HashMap;
@@ -490,8 +485,6 @@ fn the_readme_shows_what_a_row_with_an_undeclared_id_is_told_as() {
     }
 }
 
-/// The end of the line is the `bson` library's own wording: the README shows it under each major
-/// version, and this binary holds the run to its own.
 #[test]
 fn the_readme_shows_what_an_unreadable_row_is_told_as() {
     let mut older = stored(&invoice("INV-0042", "Acme", 1250.5));
@@ -523,8 +516,7 @@ fn the_readme_shows_the_id_a_refused_row_is_told_by() {
     assert_documented(&SHOWN_ROW_IDS.join("\n"));
 }
 
-/// A map whose keys are numbers is written and read as JSON, and is neither as BSON. What the
-/// `bson` library says of it is its own wording, shown under each major version.
+/// A map whose keys are numbers is written and read as JSON, and is neither as BSON.
 #[test]
 fn the_readme_shows_what_a_map_keyed_by_a_number_is_told_as() {
     let roster = Roster {
@@ -558,8 +550,6 @@ fn the_readme_shows_what_a_map_keyed_by_a_number_is_told_as() {
     }
 }
 
-/// Each failure is told as a sentence of its own, then what failed: the driver's error, the
-/// issues no resolver settled, or the `bson` library's error.
 #[tokio::test]
 async fn the_readme_shows_how_each_failure_opens() {
     let unreachable = ClientOptions::parse("not an address").await.unwrap_err();
@@ -575,8 +565,6 @@ async fn the_readme_shows_how_each_failure_opens() {
     }
 }
 
-/// The examples against a real collection: every operation once, a read under options with a
-/// resolver, a row whose `_id` its type does not declare, and an aggregation run on the driver.
 #[tokio::test]
 async fn live_the_readme_examples_run_against_a_collection() {
     let Some(invoices) = collection("readme_invoices").await else {

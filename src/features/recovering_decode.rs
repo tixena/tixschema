@@ -1,18 +1,4 @@
 //! The recovering decode `#[model_schema(decode_with)]` turns on.
-//!
-//! A flagged type gets `from_value_with`, which reads a `serde_json::Value` with plain serde,
-//! walks it in the form serde writes that type in, and hands every issue the walk finds to a
-//! callback once. A build with `bson` on adds `from_bson_with`, the same read of a
-//! `bson::Document`, written with what both major versions of the `bson` library have.
-//! `from_value_piped` and `from_bson_piped` are the same reads over resolvers run in order, each
-//! answering one issue at a time, and refuse with only the issues none settled. The callback's
-//! types and the resolvers' go into the type's own `{type}_schema` module. Two flagged types share
-//! no declaration: each module declares the same aliases of standard types, and a walker builds
-//! whatever issue type the constructor it is handed builds. A build with `mongodb` on adds the
-//! query types to that module: `Filter`, `Update`, and the typed paths that build them (`query`).
-//! It adds the type's own paths too, `MongoFields` there and `MONGO_FIELDS` on the type (`fields`),
-//! and the operations: `OperationError` and `Read` there, and on the type the reads, `count`,
-//! `insert_one`, the updates and the deletes (`operations`).
 
 mod aliases;
 pub mod enums;
@@ -56,23 +42,18 @@ use crate::utils::{
     written_type,
 };
 
-/// How many type names the flag adds to a schema module.
 #[cfg(all(
     any(feature = "typescript", feature = "zod", feature = "jsonschema"),
     not(feature = "mongodb")
 ))]
 const ADDED_TYPE_COUNT: usize = 15;
 
-/// How many type names the flag adds to a schema module, the query types, the type's own struct
-/// of paths, the error its operations fail with and the read they answer among them.
 #[cfg(all(
     any(feature = "typescript", feature = "zod", feature = "jsonschema"),
     feature = "mongodb"
 ))]
 const ADDED_TYPE_COUNT: usize = 29;
 
-/// The type names the flag adds to a schema module. The query types, the type's own struct of
-/// paths, the error its operations fail with and the read they answer are there under `mongodb`.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
     "Asked",
@@ -179,9 +160,7 @@ impl Claimed {
 
 /// A `#[serde(flatten)]` field, by how its keys are read out of the object that holds them.
 enum Flattened<'item> {
-    /// A map: every key nothing else declares, each value walked at its key.
     Entries(Walk<'item>),
-    /// Another flagged type: its own fields walker, run in what serde hands it of the object.
     Model(&'item Type),
     /// An `Option` of a flagged type, which serde reads as absent where it does not read the type:
     /// that type, then the field's own, which an issue names as expected.
@@ -189,7 +168,6 @@ enum Flattened<'item> {
     /// A field no walk reaches: every key counts as its own, and serde's verdict is the read's.
     /// It holds the field's type, and `None` for a field serde never reads.
     Unwalked(Option<&'item Type>),
-    /// A value read whole from the keys nothing else declares.
     Whole(Walk<'item>),
 }
 
@@ -258,8 +236,6 @@ impl<'item> Flattened<'item> {
 /// entries of the object that neither the fields read under a key of their own nor the flattened
 /// types declared before it took.
 struct Handed<'walk> {
-    /// What is handed over now: the object, a copy the walk bound of what is left of it, or what
-    /// an earlier flattened type left of either.
     held: Ident,
     object: &'walk Ident,
     /// `held` is a copy the walk owns, where every other is a reference.
@@ -325,10 +301,8 @@ impl<'walk> Handed<'walk> {
 
 /// The fields of an object as its walker reads them.
 struct Keyed<'item> {
-    /// Every key the fields are read under.
     declared: Vec<String>,
     fields: Vec<WalkedField<'item>>,
-    /// The `#[serde(flatten)]` fields, whose keys sit among the object's own.
     flattened: Vec<Flattened<'item>>,
 }
 
@@ -362,7 +336,6 @@ impl KeyedWalk {
 
 /// The key a value is looked up under in the object that holds it.
 struct Lookup<'key> {
-    /// serde reads the value when its key is missing.
     absence_is_read: bool,
     aliases: &'key [String],
     key: &'key str,
@@ -392,13 +365,9 @@ pub struct RecoveringDecode {
 
 /// What the walker of a struct, or of what a variant holds, walks: the form serde writes it in.
 enum Shape<'item> {
-    /// An object of the fields, under the keys they declare.
     Fields(Keyed<'item>),
-    /// A single slot, or the one field of a `#[serde(transparent)]` struct: the value it holds.
     Held(Walk<'item>),
-    /// No field: the `{}` tixschema makes a unit struct write, and nothing under a variant's name.
     Nothing,
-    /// Several slots: an array of them.
     Slots(Vec<Slot<'item>>),
 }
 
@@ -500,7 +469,6 @@ impl<'item> Shape<'item> {
 
 /// One position of a tuple as its walker reads it.
 struct Slot<'item> {
-    /// serde reads the tuple when the position is missing.
     absence_is_read: bool,
     ty: &'item Type,
     walk: Walk<'item>,
@@ -516,7 +484,6 @@ enum Source {
 }
 
 impl Source {
-    /// Every source this build generates an entry point and a walker for.
     const GENERATED: &'static [Self] = &[
         Self::Json,
         #[cfg(feature = "bson")]
@@ -731,29 +698,22 @@ impl Source {
 
 /// How the value at one position of a field's type is walked.
 enum Step<'ty> {
-    /// A map: each value at its key.
     Entries(Box<Walk<'ty>>),
-    /// A list: each item at its index.
     Items(Box<Walk<'ty>>),
-    /// A plain value, read whole.
     Leaf(Whole),
-    /// Another flagged type: its own walker.
     Model,
-    /// A tuple: each position at its index.
     Positions(Vec<Slot<'ty>>),
-    /// An optional value, walked when it is not `null`.
     Present(Box<Walk<'ty>>),
 }
 
 /// What `mongodb` adds for a type's typed paths. Empty in a build without it.
 #[derive(Default)]
 struct TypedPaths {
-    /// `MongoFields`, and the structs it holds, for the `{type}_schema` module.
     module_items: TokenStream,
-    /// `MONGO_FIELDS`, `mongo_fields_under` and what they call, for the type's own `impl`.
     type_items: TokenStream,
 }
 
+/// How one value is walked: the step taken at it, and the type it is read as.
 struct Walk<'ty> {
     step: Step<'ty>,
     ty: &'ty Type,
@@ -779,7 +739,6 @@ struct FieldValidator {
 
 /// One field of the struct as its walker reads it.
 struct WalkedField<'item> {
-    /// serde reads the field when its key is missing.
     absence_is_read: bool,
     aliases: Vec<String>,
     key: String,
@@ -791,7 +750,6 @@ struct WalkedField<'item> {
 
 /// The function serde reads a plain value with, and the one that writes it back.
 struct Whole {
-    /// A hook of the field's reads the value.
     hooked: bool,
     /// The value's type names one of the type's own parameters, which nothing shows to be
     /// `Serialize` where the JSON walker reads it.
@@ -804,19 +762,15 @@ struct Whole {
 
 /// What a type's item writes, as the walker's methods are written from it.
 struct Written<'reach> {
-    /// Every name the item writes.
     names: Vec<String>,
-    /// What the item's fields reach through the aliases they are typed with.
     reach: &'reach Reach,
 }
 
 /// What the generated code names of the type it is generated for, and the source it walks.
 struct Walker<'item> {
-    /// The type parameter each walker method builds its issues as.
     issue_parameter: &'item Ident,
     module: &'item Ident,
     own_name: &'item str,
-    /// The type's own type parameters.
     parameters: &'item [String],
     source: Source,
 }
@@ -1217,8 +1171,7 @@ impl Walker<'_> {
                 (any_key, true, quote! { #walked #every_key })
             }
             // A hook reads whatever it asks for, and a value of a parameter's type and a JSON value
-            // are whatever fills them, an object among it. An `Option` of one is left to the arm
-            // below: flattened, serde reads it as absent where its reader refuses.
+            // are whatever fills them, an object among it.
             Step::Leaf(whole)
                 if (whole.hooked || whole.parameterized || holds_any_value(walk.ty))
                     && !get_field_def("", walk.ty, "").is_optional() =>

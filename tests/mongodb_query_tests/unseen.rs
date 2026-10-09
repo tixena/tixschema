@@ -74,8 +74,6 @@ fn a_model_declared_below_and_one_behind_a_plain_alias_are_one_whole_value() {
     );
 }
 
-/// The paths below a whole-value member are the nested type's own, built under the keys the
-/// member's path holds.
 #[test]
 fn the_types_own_function_gives_the_paths_below_a_whole_value() {
     let post = Post::MONGO_FIELDS;
@@ -114,8 +112,6 @@ fn a_type_that_holds_itself_is_one_whole_value_there() {
     );
 }
 
-/// Of two types that hold each other, the one declared first holds the other as one whole value,
-/// and the one declared second reaches the first one's paths.
 #[test]
 fn two_types_that_hold_each_other_both_build() {
     let thread = Thread::MONGO_FIELDS;

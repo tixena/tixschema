@@ -221,8 +221,6 @@ fn a_field_renamed_for_reading_is_missing_under_any_other_key() {
     );
 }
 
-/// The key of the field serde never reads is the one serde writes it under, which the rule
-/// written for reading does not case.
 #[test]
 fn a_rule_written_for_reading_cases_the_keys_serde_reads() {
     let stored_row = doc! { "firstName": "Ada", "kept_note": "n", "lastName": "Lovelace" };

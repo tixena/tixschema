@@ -1,61 +1,6 @@
 //! The Dart `http_rest` client: one service-agnostic transport seam, and one method per operation
 //! that builds a plain-terms request from the operation's own message and decodes the answer by
 //! status.
-//!
-//! # The seam is structural, not just service-agnostic
-//!
-//! The request and response the seam carries are Dart 3 records — `({String method, ...})` in,
-//! `({int status, ...})` out — rather than named classes. A record is Dart's own structural type,
-//! so every service's `send` reads the exact same anonymous shape; the only per-service name is
-//! the abstract `{Service}HttpTransport` interface itself, kept apart only so two services in one
-//! library do not both declare it. Nothing here names an HTTP package; the hand-written
-//! implementation of this interface lives with the Flutter workspace.
-//!
-//! # A caller reads the outcome; one-way still throws
-//!
-//! The TypeScript half answers every reply with a `{ ok, value | error }` envelope; the Dart half
-//! answers with [`super::dart_result`]'s own sealed pair instead — a reply operation here answers
-//! `Future<{Service}{Operation}Result>` and never throws for a declared error or a fault. A
-//! one-way operation still answers `Future<void>` and throws the fault-only `{Service}HttpRefusal`,
-//! having no reply arm to carry a fault through.
-//!
-//! # The fault is the same generated type every other surface answers faults through
-//!
-//! `{Service}FaultFields`/`{Service}FaultKind` already carry `#[model_schema()]` (declared in
-//! [`crate::service_schema::support`]) and already publish their own Dart class and enum through
-//! the ordinary [`crate::features::dart`] dispatch, with a working `fromJson`/`toJson` this module
-//! never has to re-derive. Reusing them here is what keeps a fault's shape from drifting between
-//! languages; nothing is invented beside them.
-//!
-//! # No outbound validation
-//!
-//! The TypeScript and Rust clients each parse a message against its own schema before a byte goes
-//! out, because a JavaScript object or a hand-built `serde_json::Value` can be malformed even
-//! though it is typed. A Dart message is a real class with `required` constructor parameters, so
-//! the equivalent malformed value cannot be constructed in the first place — there is no separate
-//! check to run.
-//!
-//! # `BodyKind` decisions live in one place per surface
-//!
-//! `BodyKind` now carries `Json`, `Bytes`, `Stream` and `Multipart`
-//! ([`crate::service_schema::parse`] — `BodyKind`'s own doc comment). `return_type` and
-//! `body_build_stmt` match it exhaustively, so a fifth variant is a compiler error there rather
-//! than a silently wrong client. `reply_decode_stmt` peels `Stream` off first into its own status
-//! ladder (`200` and `206` both answer, everything else refuses), and what is left
-//! (`success_decode_block`) only ever sees `Bytes`, `Json` and `Multipart` — `Json` and `Multipart`
-//! answering identically, since a multipart operation's own response is ordinary JSON, `header_out`
-//! included.
-//!
-//! # A streamed answer and a multipart request ride fields every service's seam carries
-//!
-//! `body = "stream"` answers a Dart record pairing a nullable `contentRange` and the `contentType`
-//! with the body as a lazily-pulled `Stream<List<int>>` — `dart:async`'s own core type, not an
-//! HTTP package's, read back off the seam's *response* record's `bodyStream` field. `body = "multipart"` builds its
-//! request from the seam's *request* record's `parts` field — a list of name/value pairs, exactly
-//! mirroring the TypeScript client's own `parts` field. Both fields sit on every service's records,
-//! whatever it declares, so every service's `send` reads one shape and one implementation satisfies
-//! every service's interface: a service that never streams answers any stream, which nothing reads
-//! back, and one with no multipart operation sends an empty `parts`.
 
 use super::result::result_name;
 use crate::features::dart::{
@@ -73,9 +18,8 @@ use crate::service_schema::support::fault_fields_typescript_name;
 use core::fmt::Write as _;
 use syn::{Ident, Type};
 
-/// The locals and parameters an emitted method writes around an operation's own argument: the
-/// REST client's, the `ws_rpc` client's and the `ws_rpc` dispatcher's. Dart reads a name written
-/// after a local of that name as the local, without a word.
+/// The locals and parameters an emitted method writes around an operation's own argument. Dart
+/// reads a name written after a local of that name as the local, without a word.
 const TAKEN_BY_A_METHOD: [&str; 34] = [
     "answer",
     "answered",
@@ -113,11 +57,8 @@ const TAKEN_BY_A_METHOD: [&str; 34] = [
     "value",
 ];
 
-/// The Dart record a `body = "stream"` operation's own success answers with: a nullable
-/// `contentRange` and the `contentType`, paired with the body as a lazily-pulled
-/// `Stream<List<int>>` — `contentRange` is `null` at the operation's own `ok_status`, the range
-/// text at `206`. Folds the two into one nullable field rather than a tagged variant, the one shape
-/// a Dart record can carry, mirroring the Rust client's own `StreamedAnswer::Full`/`Partial`.
+/// The Dart record a `body = "stream"` operation's success answers with: `contentRange` is `null`
+/// at the operation's own `ok_status` and the range text at `206`.
 const STREAMED_ANSWER_DART_TYPE: &str =
     "({String? contentRange, String contentType, Stream<List<int>> body})";
 
@@ -131,7 +72,6 @@ const RESPONSE_RECORD_FIELDS: &str =
 const REQUEST_RECORD_FIELDS: &str = "{String method, String path, String query, \
      List<(String, String)> headers, List<int> body, List<(String, dynamic)> parts}";
 
-/// The response body read as a dynamically typed JSON value.
 const RESPONSE_JSON: &str = "jsonDecode(utf8.decode(response.body))";
 
 pub fn emit(service: &ServiceDef) -> Vec<String> {
@@ -153,10 +93,6 @@ fn has_one_way(service: &ServiceDef) -> bool {
         .any(|operation| matches!(operation.outcome, OperationOutcome::OneWay))
 }
 
-// ---------------------------------------------------------------------------------------------
-// The seam: an abstract, per-service interface over one structural request/response record pair.
-// ---------------------------------------------------------------------------------------------
-
 fn transport_seam(named: &str) -> String {
     let response = RESPONSE_RECORD_FIELDS;
     let request = REQUEST_RECORD_FIELDS;
@@ -174,11 +110,6 @@ fn transport_seam(named: &str) -> String {
     )
 }
 
-// ---------------------------------------------------------------------------------------------
-// The one exception a client still throws: a one-way method's own fault, having no reply arm to
-// carry it through instead.
-// ---------------------------------------------------------------------------------------------
-
 fn refusal_class(named: &str) -> String {
     let fields = fault_fields_typescript_name(named);
     format!(
@@ -193,10 +124,6 @@ fn refusal_class(named: &str) -> String {
          }}"
     )
 }
-
-// ---------------------------------------------------------------------------------------------
-// The client: one class, one constructor, one method per operation.
-// ---------------------------------------------------------------------------------------------
 
 fn client_class(service: &ServiceDef) -> String {
     let named = service.ident.to_string();
@@ -374,10 +301,6 @@ fn method(named: &str, fn_prefix: &str, operation: &OperationDef) -> String {
     )
 }
 
-// ---------------------------------------------------------------------------------------------
-// Building the request from the validated message.
-// ---------------------------------------------------------------------------------------------
-
 /// The value one path placeholder reads off `req`: the field the placeholder names, or the whole
 /// message where that message is itself a wire scalar.
 fn placeholder_value_dart_expr(
@@ -427,9 +350,7 @@ fn query_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
         return "    const query = '';\n".to_owned();
     }
     let fields = match &operation.inputs {
-        // `Empty` sends no field. A bodyless `Named` message is always the one scalar the path
-        // binds whole (refused at parse time otherwise), reading off the placeholder rather than
-        // the query.
+        // `Empty` sends no field.
         OperationInputs::Empty | OperationInputs::Named(_) => {
             return "    const query = '';\n".to_owned();
         }
@@ -564,10 +485,6 @@ fn multipart_parts_build_stmt(operation: &OperationDef, shape: &HttpShape) -> St
     }
     stmt
 }
-
-// ---------------------------------------------------------------------------------------------
-// Sending, and decoding the answer by status.
-// ---------------------------------------------------------------------------------------------
 
 fn send_expr(method_str: &str) -> String {
     format!(
@@ -988,10 +905,6 @@ fn bytes_success_decode_block(
     stmt
 }
 
-// ---------------------------------------------------------------------------------------------
-// The fault helpers every method reaches for.
-// ---------------------------------------------------------------------------------------------
-
 fn fault_helpers(service: &ServiceDef, named: &str, fn_prefix: &str) -> Vec<String> {
     let mut helpers = Vec::new();
     if reads_a_response_header(service) {
@@ -1166,11 +1079,6 @@ fn fault_from_body_fn(named: &str, fn_prefix: &str) -> String {
     )
 }
 
-// ---------------------------------------------------------------------------------------------
-// Small, Dart-flavored value rendering — kept apart from `features::dart` itself, which carries no
-// HTTP-shaped knowledge at all; every other surface's own rendering stays exactly as it was.
-// ---------------------------------------------------------------------------------------------
-
 /// The message's Dart type: the type the operation named, or the one the macro declared for an
 /// operation that named none — mirrors `message::typename` (the TypeScript half), through the
 /// same `FieldDef` walk every reference to a type goes through.
@@ -1213,9 +1121,6 @@ fn is_sibling_type(ty: &Type) -> bool {
 /// interpolation would otherwise call `Object`'s default `toString()` on the class instance rather
 /// than on the value it wraps. A `String`, a `bool` and a number all interpolate correctly as
 /// themselves, which is what lets everything else fall through to plain interpolation.
-///
-/// `promoted` says whether Dart narrows `expr` inside the `== null` test an `Option<T>` renders
-/// through — a parameter or a local, never a read through a published field's getter.
 fn dart_wire_text(ty: &Type, expr: &str, promoted: bool) -> String {
     if let Some(inner) = option_inner(ty) {
         let narrowed = if promoted {

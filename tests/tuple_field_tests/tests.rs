@@ -1,3 +1,5 @@
+//! Tests of tuple-typed fields on every surface.
+
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
@@ -35,8 +37,6 @@ pub struct EnumKeyedMapSlotRow {
     pub slot: (String, HashMap<SlotKind, u32>),
 }
 
-/// Test 1 + 2 + 3: A `(String, String)` struct field renders as a tuple in
-/// TypeScript, Zod, and JSON Schema.
 #[test]
 fn test_string_pair_tuple_field() {
     /// One row of an alphanumeric "map-value" lookup table.
@@ -62,7 +62,7 @@ fn test_string_pair_tuple_field() {
     );
 }
 
-/// Test 2: Zod renders `z.tuple([...])`.
+/// Zod renders `z.tuple([...])`.
 #[cfg(feature = "zod")]
 #[test]
 fn test_string_pair_tuple_field_zod() {
@@ -84,7 +84,7 @@ fn test_string_pair_tuple_field_zod() {
     );
 }
 
-/// Test 3: JSON Schema renders a fixed-arity array with prefixItems.
+/// JSON Schema renders a fixed-arity array with prefixItems.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_string_pair_tuple_field_json_schema() {
@@ -109,7 +109,7 @@ fn test_string_pair_tuple_field_json_schema() {
     }
 }
 
-/// Test 4: Mixed element types `(String, i64, bool)`.
+/// Mixed element types `(String, i64, bool)`.
 #[test]
 fn test_mixed_element_tuple_field() {
     #[model_schema()]
@@ -125,7 +125,7 @@ fn test_mixed_element_tuple_field() {
     );
 }
 
-/// Test 4b: Mixed element types in Zod.
+/// Mixed element types in Zod.
 #[cfg(feature = "zod")]
 #[test]
 fn test_mixed_element_tuple_field_zod() {
@@ -142,8 +142,6 @@ fn test_mixed_element_tuple_field_zod() {
     );
 }
 
-/// Test 5: A sibling/custom element type renders by reference — the type's own rendering on every
-/// surface, not the open object any value satisfies.
 #[test]
 fn test_sibling_element_tuple_field() {
     let ts = WithSibling::ts_definition();
@@ -168,7 +166,7 @@ fn test_sibling_element_tuple_field() {
     }
 }
 
-/// Test 6: serde round-trip — a tuple field serializes as a JSON array.
+/// Serde round-trip — a tuple field serializes as a JSON array.
 #[test]
 fn test_tuple_field_serde_roundtrip() {
     #[model_schema()]
@@ -214,16 +212,9 @@ fn test_optional_tuple_field_zod() {
     );
 }
 
-// The remargin compact-row shape is `Vec<(Option<String>, Vec<isize>, String, Option<String>)>`,
-// which trips `clippy::type_complexity` as a struct field, and factoring it into a `type` alias
-// would make the macro treat it as a sibling reference rather than a tuple — so the happy path is
-// proven in two composable halves: the exact inner tuple below, and the outer `Vec` wrap in
-// `test_tuple_element_option_array_wrap`. The wire round-trip exercises the full shape through a
-// `type` alias, which serde reads natively.
+// The full tuple trips `clippy::type_complexity` as a struct field, and a `type` alias would be
+// read as a sibling reference, so the shape is proven in two halves.
 
-/// Null-flavor happy path (TS): each `Option` element inside a tuple renders as `T | null` — a
-/// positional slot serializes `None` as JSON `null`, unlike an omittable object key. Also the
-/// negative guard: a required tuple field emits no `undefined` at all.
 #[test]
 fn test_tuple_element_option_null_flavor_ts() {
     #[model_schema()]
@@ -243,8 +234,6 @@ fn test_tuple_element_option_null_flavor_ts() {
     );
 }
 
-/// Null-flavor happy path (Zod): each tuple-element `Option<T>` renders as
-/// `z.nullable(T)`, and the required field emits no `z.undefined()`.
 #[cfg(feature = "zod")]
 #[test]
 fn test_tuple_element_option_null_flavor_zod() {
@@ -267,9 +256,6 @@ fn test_tuple_element_option_null_flavor_zod() {
     );
 }
 
-/// Null-flavor happy path (JSON Schema): each optional slot becomes
-/// `anyOf [<base>, null]`; arity (`minItems`/`maxItems`) stays 4 — nullability
-/// never changes item count.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_tuple_element_option_null_flavor_json_schema() {
@@ -310,9 +296,6 @@ fn test_tuple_element_option_null_flavor_json_schema() {
     assert_eq!(prefix[2], serde_json::json!({ "type": "string" }));
 }
 
-/// Array-wrap composition (TS): a `Vec<(Option<Vec<isize>>, String)>` field wraps the tuple in
-/// `Array<[...]>`, and the null flavor survives the wrap — the `Option<Vec<isize>>` slot proves
-/// the array wrap happens inside the base with `null` on top: `Array<number> | null`.
 #[test]
 fn test_tuple_element_option_array_wrap_ts() {
     #[model_schema()]
@@ -332,8 +315,6 @@ fn test_tuple_element_option_array_wrap_ts() {
     );
 }
 
-/// Array-wrap composition (Zod): `z.array(z.tuple([...]))` with the null flavor
-/// preserved under the array wrap.
 #[cfg(feature = "zod")]
 #[test]
 fn test_tuple_element_option_array_wrap_zod() {
@@ -354,9 +335,6 @@ fn test_tuple_element_option_array_wrap_zod() {
     );
 }
 
-/// Array-wrap composition (JSON Schema): the outer `Vec` becomes
-/// `{ type: array, items: <tuple schema> }`, and the optional slot keeps its
-/// `anyOf [<array>, null]` flavor.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_tuple_element_option_array_wrap_json_schema() {
@@ -385,11 +363,10 @@ fn test_tuple_element_option_array_wrap_json_schema() {
     );
 }
 
-/// Wire round-trip: serde emits `null` for a `None` tuple slot and reads it back
-/// as `None`. This is the behavior the null-flavored schemas describe, exercised
-/// on the exact remargin row shape (a `type` alias, so serde handles it natively).
+/// Wire round-trip: serde emits `null` for a `None` tuple slot and reads it back as `None`.
 #[test]
 fn test_tuple_element_option_serde_roundtrip() {
+    /// A row of four slots, two of them optional.
     type Row = (Option<String>, Vec<isize>, String, Option<String>);
 
     let row: Row = (None, vec![26_isize], "internal_report.md".to_owned(), None);
@@ -404,9 +381,6 @@ fn test_tuple_element_option_serde_roundtrip() {
     assert_eq!(back, row, "null must deserialize back to None");
 }
 
-/// A map in a tuple slot describes as the same map does in field position — the object whose
-/// members carry the value type's own rendering — and recurses to the depth the map path recurses
-/// to. A slot that fell back to the open object would admit members the field position rejects.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_map_element_tuple_field_json_schema() {
@@ -442,9 +416,6 @@ fn test_map_element_tuple_field_json_schema() {
     );
 }
 
-/// A key that enumerates its members enumerates them in a tuple slot too: the slot dispatch reaches
-/// the map's own rendering, so a slot cannot describe as an open object what the same type in field
-/// position describes as a fixed set of keys.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_enum_keyed_map_element_tuple_field_json_schema() {
@@ -485,8 +456,6 @@ fn test_enum_keyed_map_element_tuple_field_json_schema() {
     );
 }
 
-/// TypeScript and Zod already carry the key into a slot; pinned so the json-schema fix cannot be
-/// read as the only surface that owes the enum-keyed map its keys.
 #[test]
 fn test_enum_keyed_map_element_tuple_field_ts_and_zod() {
     let ts = EnumKeyedMapSlotRow::ts_definition();
@@ -509,8 +478,6 @@ fn test_enum_keyed_map_element_tuple_field_ts_and_zod() {
     }
 }
 
-/// The sibling reference survives the map wrap inside a slot: a map of siblings in a tuple element
-/// names the same schema module the sibling names in every other position.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_map_of_siblings_element_tuple_field_json_schema() {
@@ -526,8 +493,6 @@ fn test_map_of_siblings_element_tuple_field_json_schema() {
     );
 }
 
-/// TypeScript and Zod already recurse into a map slot; pinned so the json-schema fix cannot be
-/// read as the only surface that owes the map its rendering.
 #[test]
 fn test_map_element_tuple_field_ts_and_zod() {
     #[model_schema()]
@@ -552,8 +517,6 @@ fn test_map_element_tuple_field_ts_and_zod() {
     }
 }
 
-/// A tuple in a tuple slot is the fixed-arity array the same tuple is in field position: serde
-/// writes both as a JSON array of the same length, so the slot carries the arity bounds too.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_nested_tuple_element_tuple_field_json_schema() {
@@ -609,8 +572,7 @@ fn test_nested_tuple_element_tuple_field_ts_and_zod() {
     }
 }
 
-/// An opaque value in a tuple slot admits any value, as it does in field position. This is the
-/// sharp one: the slot serde fills with a string or a number must not fail its own schema.
+/// An opaque value in a tuple slot admits any value, as it does in field position.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_unknown_element_tuple_field_json_schema() {

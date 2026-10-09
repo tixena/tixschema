@@ -1,11 +1,5 @@
 //! A field typed with an alias `#[model_schema]` was written on above, walked as the type the
 //! alias names rather than read whole.
-//!
-//! The alias's tokens are written where the alias is declared, and a name among them may mean
-//! nothing where the field is. So the type the walker is given is written out again: a standard
-//! type by its full path, and every other type under an alias of its own, in the walked type's
-//! schema module, that reaches it from the field's type (`<Counts as IntoIterator>::Item`) and
-//! keeps the name the walker reads it by.
 
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{format_ident, quote};
@@ -30,7 +24,6 @@ pub struct Reach {
     /// One check per field written out again: that it still names the type the field declares.
     guards: Vec<TokenStream>,
     module: Ident,
-    /// One module per type reached from a field's own type, holding the alias that names it.
     modules: Vec<TokenStream>,
 }
 

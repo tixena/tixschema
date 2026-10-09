@@ -1,10 +1,4 @@
 //! The `ws_rpc` dispatcher attachment, read off the emitted text.
-//!
-//! What these prove and what they cannot: the attachment's own signature, that it drives the
-//! generated dispatcher rather than a service-specific switch, and that a refused `notify` and an
-//! answered `request` go where the design says. No TypeScript toolchain is reachable here, so none
-//! of them type-checks the bundle; `tests/service_schema_typescript_tests/type_check.rs` is what
-//! proves a complete implementation compiles at the attachment and an incomplete one is refused.
 
 use super::{MIXED_SERVICE, ws_service_of};
 
@@ -127,8 +121,6 @@ fn a_request_is_answered_with_a_reply_frame_and_a_one_way_answer_is_synthesized(
     );
 }
 
-/// Headers cross both ways under the frame's own `headers`: read into the dispatcher's pairs off
-/// the inbound frame, and written back from the dispatcher's own onto the reply.
 #[test]
 fn the_frame_headers_reach_the_dispatcher_and_its_headers_reach_the_reply() {
     let written = ws_service_of(MIXED_SERVICE);

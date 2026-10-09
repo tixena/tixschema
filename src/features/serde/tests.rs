@@ -1,3 +1,6 @@
+//! Unit tests of the serde attribute parser: renames, tags, `flatten`, the skip family and the
+//! attributes it refuses.
+
 use super::*;
 
 #[test]
@@ -222,8 +225,6 @@ fn test_untagged_default_is_false() {
     assert!(!meta.untagged);
 }
 
-/// An unread `key = value` this parser has no use for still has to be consumed: it ends the walk
-/// on the comma after it, and everything written past that point would go unseen.
 #[test]
 fn test_attributes_after_an_unread_value_are_still_read() {
     let item: syn::ItemStruct = syn::parse_quote! {
@@ -241,9 +242,6 @@ fn test_attributes_after_an_unread_value_are_still_read() {
     );
 }
 
-/// The type walk carries the same obligation as the field walk, and a heavier consequence: a tag
-/// left unread describes a discriminated union as something else on every surface at once, while
-/// serde goes on writing the tag.
 #[test]
 fn test_type_attributes_after_an_unread_value_are_still_read() {
     let item: syn::ItemEnum = syn::parse_quote! {
@@ -273,8 +271,6 @@ fn test_untagged_after_an_unread_value_is_still_read() {
     assert!(parse_serde_type_attributes(&item.attrs).untagged);
 }
 
-/// Every value-carrying key the type walk ignores has to be survivable, not only the one that was
-/// measured — otherwise which of them a type may be written with is a matter of luck.
 #[test]
 fn test_every_ignored_value_carrying_type_key_is_survived() {
     let expecting: syn::ItemEnum = syn::parse_quote! {
@@ -333,9 +329,6 @@ fn test_type_attributes_without_unread_values_are_unchanged() {
     assert!(meta.cfg_attr_rejection.is_none());
 }
 
-/// `bound(...)` has no dedicated branch, so it was always meant to fall through to
-/// `consume_unread_value` — but the helper only knew how to step over `key = value`, not a
-/// parenthesised list, so the tag written after it was lost.
 #[test]
 fn test_tag_after_a_list_form_bound_is_still_read() {
     let item: syn::ItemEnum = syn::parse_quote! {
@@ -352,9 +345,6 @@ fn test_tag_after_a_list_form_bound_is_still_read() {
     );
 }
 
-/// `rename_all` has a dedicated branch, and a list form only one direction is written in names no
-/// single rule — only the tag written after it must survive, the same as the `bound(...)` case
-/// above.
 #[test]
 fn test_tag_after_a_list_form_rename_all_is_still_read() {
     let item: syn::ItemEnum = syn::parse_quote! {
@@ -375,8 +365,6 @@ fn test_tag_after_a_list_form_rename_all_is_still_read() {
     );
 }
 
-/// `rename` has a dedicated branch too, and its list form must not swallow `flatten` written
-/// after it.
 #[test]
 fn test_flatten_after_a_list_form_rename_is_still_read() {
     let item: syn::ItemStruct = syn::parse_quote! {
@@ -476,8 +464,6 @@ fn test_list_form_rename_all_naming_two_rules_is_refused() {
     );
 }
 
-/// serde was measured to leave the unwritten direction at the name it would otherwise use, so one
-/// direction alone splits the two apart exactly as two different values do.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn test_list_form_rename_written_for_one_direction_only_is_refused() {
@@ -535,8 +521,6 @@ fn test_rename_all_fields_is_read_in_both_spellings() {
     );
 }
 
-/// `is_ident` matches the whole ident, so the `rename_all` arm cannot swallow `rename_all_fields`
-/// written beside it, and the two rules stay the independent pair serde treats them as.
 #[test]
 fn test_rename_all_and_rename_all_fields_are_recorded_apart() {
     let item: syn::ItemEnum = syn::parse_quote! {
@@ -592,8 +576,6 @@ fn test_list_form_rename_all_fields_written_for_one_direction_only_is_refused() 
     );
 }
 
-/// `bound(...)` writes the same two sub-keys and says nothing about the wire, so the walk that
-/// reads them out of a renaming must not read them out of it.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn test_list_form_bound_earns_no_rename_refusal() {
@@ -608,8 +590,6 @@ fn test_list_form_bound_earns_no_rename_refusal() {
     assert!(rename_direction_rejection(field_attrs(&item)).is_none());
 }
 
-/// What serde writes is named by the `serialize` side of a list, whatever the list names for
-/// reading. A list that names reading alone, and `bound(...)`, name nothing serde writes.
 #[test]
 fn test_written_renames_read_the_serialize_side_of_each_key() {
     let container: syn::ItemEnum = syn::parse_quote! {
@@ -660,8 +640,6 @@ fn test_written_renames_read_the_serialize_side_of_each_key() {
     );
 }
 
-/// What serde reads is named by the `deserialize` side of a list, whatever the list names for
-/// writing. A list that names writing alone, and `bound(...)`, name nothing serde reads.
 #[test]
 fn test_read_renames_read_the_deserialize_side_of_each_key() {
     let container: syn::ItemEnum = syn::parse_quote! {
@@ -712,8 +690,6 @@ fn test_read_renames_read_the_deserialize_side_of_each_key() {
     );
 }
 
-/// `transparent` is read wherever it is written among a container's serde attributes: a key with a
-/// value or a list written ahead of it does not end the walk.
 #[test]
 fn test_transparent_is_read_wherever_it_is_written() {
     let written: [(syn::ItemStruct, bool); 6] = [

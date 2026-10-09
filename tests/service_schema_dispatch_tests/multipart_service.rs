@@ -300,9 +300,6 @@ fn a_declared_error_still_answers_its_mapped_status() {
     assert_eq!(response.body(), br#"{"errorCode":"too-large"}"#);
 }
 
-/// `IncomingRequest` reads back everything it was built with, exercised here for a multipart
-/// operation's own dispatcher expansion - the same accessors every other body kind already
-/// reaches for.
 #[test]
 fn an_incoming_request_reads_back_its_body_headers_and_query() {
     let request = multipart_http_rest_transport::IncomingRequest::new(
@@ -321,8 +318,6 @@ fn an_incoming_request_reads_back_its_body_headers_and_query() {
     assert_eq!(request.header("x-trace"), Some("abc"));
 }
 
-/// The route table an adapter iterates to register a handler: one row for the one multipart
-/// operation, its statuses included.
 #[test]
 fn the_route_table_lists_the_one_multipart_route() {
     let routes = multipart_http_rest_transport::ROUTES;
@@ -342,8 +337,6 @@ fn the_route_table_lists_the_one_multipart_route() {
     assert_eq!(routes[0].error_statuses(), &[413]);
 }
 
-/// An owner-installed `FaultHandler` still reaches `OutgoingResponse::new` and its own `headers()`
-/// on a multipart service's dispatcher, unaffected by the extra `parts` argument `dispatch` takes.
 #[test]
 fn an_installed_fault_handler_still_builds_an_outgoing_response_by_hand() {
     let request = multipart_http_rest_transport::IncomingRequest::new(

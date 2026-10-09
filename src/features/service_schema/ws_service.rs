@@ -1,26 +1,6 @@
 //! The TypeScript `ws_rpc` dispatcher attachment: reads every `notify` and `request` frame naming
 //! a service off a socket, drives the generated dispatcher, and answers a request with a reply
 //! frame.
-//!
-//! # A required `onFault`
-//!
-//! A `notify` frame that fails inside the dispatcher — an unknown operation, a payload that will
-//! not become the operation's message — answers a framed fault with nobody waiting on a reply to
-//! carry it. `onFault` is where that fault goes: passed once, at the attachment, rather than
-//! reached for at every place a frame could be pushed.
-//!
-//! # A one-way operation reached as a request is still answered
-//!
-//! A caller that sent a `request` is left waiting until something replies, so a request naming a
-//! one-way operation still gets one: `{ ok: true, value: null }` once the dispatcher's own promise
-//! settles with `undefined`.
-//!
-//! # Gated with the dispatcher it drives
-//!
-//! `create{Service}Dispatcher` — and the `{Service}Impl` and `{Service}Fault` types this reaches
-//! for — exist only where [`super::service`] and [`super::fault`] are, so this module is emitted
-//! only there too. The socket type it attaches to is [`super::ws_client`]'s own, so a bundle names
-//! `ts_ws_client()` before `ts_ws_service()`.
 
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::ServiceDef;

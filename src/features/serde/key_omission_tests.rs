@@ -11,8 +11,6 @@ fn omission(item: &syn::ItemStruct) -> SerdeKeyOmission {
     parse_serde_key_omission(field_attrs(item))
 }
 
-/// The three spellings that leave the key out of the output, and what each one costs the read
-/// side: only a bare `skip` also stops serde looking for the key.
 #[test]
 fn test_key_omission_set_by_serialization_skips() {
     let skip: syn::ItemStruct = syn::parse_quote! {
@@ -75,8 +73,6 @@ fn test_has_serde_default_reads_either_spelling() {
     assert!(!has_serde_default(field_attrs(&neither)));
 }
 
-/// `skip_deserializing` stops serde reading the field but never suppresses the key on the way
-/// out, so it is the one member of the `skip` lump that omits nothing.
 #[test]
 fn test_key_omission_not_set_by_skip_deserializing() {
     let item: syn::ItemStruct = syn::parse_quote! {
@@ -89,10 +85,7 @@ fn test_key_omission_not_set_by_skip_deserializing() {
     assert!(omission(&item).skips_deserializing);
 }
 
-/// The walk reads every attribute in the list, wherever it sits. A `key = value` this parser has
-/// no use for still has to be consumed: an unread value ends the walk on the comma after it, and
-/// everything written past that point would go unseen — which is a key read or not read according
-/// to the order someone happened to write the attributes in.
+/// The walk reads every attribute in the list, wherever it sits.
 #[test]
 fn test_omission_keys_after_an_unread_value_are_still_read() {
     let item: syn::ItemStruct = syn::parse_quote! {
@@ -111,9 +104,6 @@ fn test_omission_keys_after_an_unread_value_are_still_read() {
     );
 }
 
-/// `rename(...)` is a documented serde list form this walk has no dedicated branch for, so it
-/// falls to the same unread-value path as `skip_serializing_if = "..."` above — but a
-/// parenthesised list was left uncounted for, so `skip` written after it was never seen.
 #[test]
 fn test_skip_after_a_list_form_rename_is_still_read() {
     let item: syn::ItemStruct = syn::parse_quote! {

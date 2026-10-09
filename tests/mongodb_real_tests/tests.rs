@@ -1,6 +1,4 @@
-// Real MongoDB ObjectId compatibility tests
-// These tests use the actual mongodb library to ensure our macro works
-// correctly with real MongoDB ObjectIds
+//! Tests of the `ObjectId` support against the real `mongodb` library's type.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -9,7 +7,6 @@ use tixschema::model_schema;
 // Import the real MongoDB ObjectId - only available in tests
 use mongodb::bson::oid::ObjectId;
 
-// Complex struct with various ObjectId usages
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct RealDocument {
@@ -280,8 +277,6 @@ fn test_enum_keyed_objectid_map_json_schema() {
     }
 }
 
-/// The member schema a nested map carries is the value type's own — for an `ObjectId` the one
-/// `$oid` object every position spells, at whatever depth the map nests.
 #[test]
 #[cfg(all(feature = "mongodb", feature = "jsonschema"))]
 fn test_nested_objectid_map_json_schema() {
@@ -330,9 +325,6 @@ fn unified_oid_object() -> serde_json::Value {
     })
 }
 
-/// An `ObjectId` describes the same wherever it is written — a field, an array item, a tuple
-/// element, a tuple struct's own slot, and a map member on either key path all read one builder, so
-/// no position can spell the `$oid` object its own way.
 #[test]
 #[cfg(all(feature = "mongodb", feature = "jsonschema"))]
 fn every_position_spells_the_same_oid_object() {
@@ -387,8 +379,6 @@ fn collect_oid_objects(value: &serde_json::Value, found: &mut Vec<serde_json::Va
     }
 }
 
-/// The closure and the pattern are only true information if serde never writes anything else: every
-/// `$oid` object it writes, in every position, holds that one member and a hex the pattern matches.
 #[test]
 #[cfg(all(feature = "mongodb", feature = "jsonschema"))]
 fn every_serde_written_oid_payload_satisfies_the_unified_spelling() {
@@ -457,10 +447,6 @@ fn test_real_objectid_serialization() {
 }
 
 /// The hex a real `ObjectId` round-trips through serde, held to both generated surfaces at once.
-/// The `pattern` keyword is a flagless ECMA-262 regex, so the Zod literal's flags are read here
-/// rather than dropped — a flag on one surface and not the other is two contracts for one member.
-/// Lower-case is the only case to pin, since `ObjectId::to_hex()` is the only thing that writes
-/// this member.
 #[test]
 #[cfg(all(feature = "mongodb", feature = "jsonschema", feature = "zod"))]
 fn a_real_object_id_hex_satisfies_the_zod_literal_and_the_json_schema_pattern_alike() {

@@ -27,15 +27,16 @@ use crate::utils::{ident_schema_module_name, to_snake_case, type_parameters_in_s
 
 /// The form serde writes an enum in, read off its attributes as the schema surfaces read them.
 pub enum Tagging {
-    /// `tag` and `content`: the variant's name under one key, what it holds under another.
-    Adjacent { content: String, tag: String },
-    /// No attribute: the variant's name as the one key of an object, over what it holds.
+    Adjacent {
+        content: String,
+        tag: String,
+    },
     External,
-    /// `tag` alone: the variant's name under a key of the object its fields are written in.
-    Internal { tag: String },
+    Internal {
+        tag: String,
+    },
     /// No attribute, and no variant holding a value: the variant's name, as text.
     Plain,
-    /// `untagged`: what the variant holds, and nothing naming it.
     Untagged,
 }
 
@@ -59,13 +60,10 @@ impl Tagging {
 
 /// One variant as its enum's walker reads it.
 struct WalkedVariant<'item> {
-    /// Every `alias`: a tag serde reads the variant under beside its name.
     aliases: Vec<String>,
-    /// What the variant holds, in the form serde writes it beside the variant's name.
     content: Shape<'item>,
     /// The name serde reads the variant under.
     name: String,
-    /// serde reads no value as the variant: it is under `skip_deserializing` or `skip`.
     never_read: bool,
     /// The variant as a pattern, whatever it holds: `Self::Email { .. }`.
     pattern: TokenStream,
@@ -84,9 +82,7 @@ impl WalkedVariant<'_> {
 /// The walker of one enum for one source: what the type's own walker names, and the enum's
 /// variants.
 struct EnumWalker<'walk> {
-    /// The variants serde reads no value as, which are no variant to the walker.
     never_read: &'walk [WalkedVariant<'walk>],
-    /// The variants serde reads, in the order declared.
     variants: &'walk [WalkedVariant<'walk>],
     walker: &'walk Walker<'walk>,
 }

@@ -3,26 +3,6 @@
 //! operation that builds a plain-terms request from the operation's own message and decodes the
 //! answer by status — mirroring [`super::dart_http_client`] statement for statement, since the URL,
 //! query and header rules it builds on were proven by execution on Dart.
-//!
-//! # A caller reads the outcome; one-way still throws
-//!
-//! A reply method answers `{Service}{Operation}Result` — a sealed interface of `Ok`/`Declared`/
-//! `Fault` nested inside it — and never throws for a declared error or a fault. A one-way operation
-//! still answers plainly (`Unit`) and throws the fault-only `{Service}Refusal`, having no reply arm
-//! to carry a fault through.
-//!
-//! # The fault is the same generated type every other surface answers faults through
-//!
-//! `{Service}FaultFields`/`{Service}FaultKind` already carry `#[model_schema()]`, so their Kotlin
-//! comes from the ordinary [`crate::features::kotlin`] dispatch — this module reuses them rather
-//! than inventing a fault shape of its own.
-//!
-//! # Naming
-//!
-//! Every private helper here is prefixed with the service's own lower-camel name, mirroring the
-//! Dart client's own `_{fn_prefix}Http...` convention — Kotlin has no per-file privacy narrower
-//! than a `private` modifier, but two services vendored into one bundle would still collide on an
-//! unprefixed top-level name.
 
 use super::result::result_name;
 use crate::features::kotlin::{kotlin_bare, kotlin_name, kotlin_property_name, kotlin_typename};
@@ -123,10 +103,6 @@ fn has_one_way(service: &ServiceDef) -> bool {
         .any(|operation| matches!(operation.outcome, OperationOutcome::OneWay))
 }
 
-// ---------------------------------------------------------------------------------------------
-// The seam: request, response, transport.
-// ---------------------------------------------------------------------------------------------
-
 fn request_class(named: &str, has_multipart: bool) -> String {
     let parts_field = if has_multipart {
         ",\n  val parts: List<Pair<String, Any?>> = emptyList()"
@@ -171,11 +147,6 @@ fn transport_interface(named: &str) -> String {
          }}"
     )
 }
-
-// ---------------------------------------------------------------------------------------------
-// One sealed result per reply operation: `Ok`/`Declared`/`Fault`, nested so a caller narrows on
-// `is {Result}.Ok` exactly as it narrows on any other sealed hierarchy.
-// ---------------------------------------------------------------------------------------------
 
 fn result_interfaces(service: &ServiceDef, named: &str) -> Vec<String> {
     service
@@ -385,10 +356,6 @@ fn result_interface(named: &str, operation: &OperationDef) -> Option<String> {
     ))
 }
 
-// ---------------------------------------------------------------------------------------------
-// The one exception a client still throws: a one-way method's own fault.
-// ---------------------------------------------------------------------------------------------
-
 fn refusal_class(named: &str) -> String {
     let fields = fault_fields_typescript_name(named);
     format!(
@@ -398,10 +365,6 @@ fn refusal_class(named: &str) -> String {
          class {named}Refusal(val fault: {fields}) : Exception(fault.detail)"
     )
 }
-
-// ---------------------------------------------------------------------------------------------
-// The client: one class, one constructor, one `suspend` method per operation.
-// ---------------------------------------------------------------------------------------------
 
 fn client_class(service: &ServiceDef, named: &str, fn_prefix: &str, has_multipart: bool) -> String {
     let methods = service
@@ -530,10 +493,6 @@ fn method(named: &str, fn_prefix: &str, operation: &OperationDef, has_multipart:
     )
 }
 
-// ---------------------------------------------------------------------------------------------
-// Building the request from the validated message.
-// ---------------------------------------------------------------------------------------------
-
 fn placeholder_value_kotlin_expr(
     fn_prefix: &str,
     operation: &OperationDef,
@@ -581,9 +540,7 @@ fn query_build_stmt(operation: &OperationDef, shape: &HttpShape, fn_prefix: &str
         return "    val query = \"\"\n".to_owned();
     }
     let fields = match &operation.inputs {
-        // `Empty` sends no field. A bodyless `Named` message is always the one scalar the path
-        // binds whole (refused at parse time otherwise), reading off the placeholder rather than
-        // the query.
+        // `Empty` sends no field.
         OperationInputs::Empty | OperationInputs::Named(_) => {
             return "    val query = \"\"\n".to_owned();
         }
@@ -737,10 +694,6 @@ fn multipart_parts_build_stmt(
     }
     stmt
 }
-
-// ---------------------------------------------------------------------------------------------
-// Sending, and decoding the answer by status.
-// ---------------------------------------------------------------------------------------------
 
 fn send_expr(named: &str, method_str: &str, has_multipart: bool) -> String {
     let parts_arg = if has_multipart { ", parts = parts" } else { "" };
@@ -957,10 +910,8 @@ fn header_out_read_stmts(
             "{fn_prefix}HttpUndeserializablePayload(\"{wire}\", \"a response header did not match its declared type\")"
         );
         let fallible = kotlin_header_out_decode_is_fallible(&field.ty);
-        // An `Option<T>` field reads a missing header as `null`; a present one that will not
-        // decode as its declared type faults the same way a missing required one does — an
-        // always-non-null decode (a string) gets no elvis to fault on, so kotlinc has nothing to
-        // warn is unconditionally true.
+        // An `Option<T>` field reads a missing header as `null`; a present one that will not decode
+        // faults. An always-non-null decode gets no elvis for kotlinc to warn of.
         if option_inner(&field.ty).is_some() {
             let bare_decode = kotlin_header_out_decode(&field.ty, "raw");
             let decode = if fallible {
@@ -1081,10 +1032,6 @@ fn bytes_success_decode_block(
     );
     stmt
 }
-
-// ---------------------------------------------------------------------------------------------
-// The fault helpers every method reaches for.
-// ---------------------------------------------------------------------------------------------
 
 fn fault_helpers(service: &ServiceDef, named: &str, fn_prefix: &str) -> Vec<String> {
     let mut helpers = vec![percent_encode_fn(fn_prefix)];
@@ -1261,11 +1208,6 @@ fn fault_from_body_fn(named: &str, fn_prefix: &str) -> String {
          }}"
     )
 }
-
-// ---------------------------------------------------------------------------------------------
-// Small, Kotlin-flavored value rendering — kept apart from `features::kotlin` itself, which
-// carries no HTTP-shaped knowledge at all.
-// ---------------------------------------------------------------------------------------------
 
 fn message_kotlin_typename(operation: &OperationDef) -> String {
     match &operation.inputs {

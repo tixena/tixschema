@@ -310,10 +310,6 @@ where
     }
 }
 
-/// A full `200` answer comes back as `StreamedAnswer::Full`, its source read incrementally through
-/// the same `BodySource` seam a dispatcher's own handler answers through, its `content-type` read
-/// back beside it - and the request the client sent is recorded exactly as `header_in`/the path
-/// template built it.
 #[test]
 fn a_full_answer_streams_back_through_the_seam_in_more_than_one_pull() {
     let transport = StreamingTransport::queued(vec![(
@@ -343,9 +339,6 @@ fn a_full_answer_streams_back_through_the_seam_in_more_than_one_pull() {
     );
 }
 
-/// A `206` answer comes back as `StreamedAnswer::Partial`, `content-range` and `content-type` read
-/// off the response headers before the body is taken, and the `Range` request header travelling
-/// out through `header_in` exactly like it does for any other operation.
 #[test]
 fn a_206_answer_carries_its_content_range_into_the_partial_variant() {
     let transport = StreamingTransport::queued(vec![(
@@ -394,8 +387,6 @@ fn a_header_out_entry_reads_back_off_the_full_streamed_answer() {
     assert_eq!(drained, CONTENT);
 }
 
-/// A declared `header_out` reads back off the `206` `Partial` arm, composed alongside the
-/// `content-range` that arm already carries.
 #[test]
 fn a_header_out_entry_reads_back_off_the_partial_streamed_answer() {
     let transport = StreamingTransport::queued(vec![(
@@ -420,8 +411,6 @@ fn a_header_out_entry_reads_back_off_the_partial_streamed_answer() {
     assert_eq!(drained, b"quick");
 }
 
-/// A response the seam already buffered still satisfies `BodySource` once wrapped in a `Cursor` -
-/// the client answers a body source either way, streamed or not.
 #[test]
 fn an_already_buffered_response_still_reads_back_as_a_body_source() {
     let transport =
@@ -459,8 +448,6 @@ fn a_streamed_operations_mapped_status_still_decodes_into_the_declared_error() {
     ));
 }
 
-/// A declared `416` reads its `content-range` back into the error tuple: the complete length the
-/// range was refused against.
 #[test]
 fn a_declared_416_carries_its_content_range_into_the_error_tuple() {
     let transport = StreamingTransport::queued(vec![(
@@ -493,8 +480,6 @@ fn the_backend_refuses_a_range_with_the_complete_length() {
     ));
 }
 
-/// The contract stands on its own: implementing it takes the trait and nothing else, and nothing
-/// in this binary placed a dispatcher for it.
 #[test]
 fn the_contract_is_implementable_where_no_dispatcher_was_placed() {
     let answered = poll_once(ContentClientBackEnd.get_content(&(), "present".to_owned(), None))

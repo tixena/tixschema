@@ -1,17 +1,4 @@
 //! The typed MongoDB paths `#[model_schema(decode_with)]` adds under `mongodb`.
-//!
-//! A flagged type gets `MongoFields<Root>` in its `{type}_schema` module: one path per key serde
-//! writes for the type, under the name of the field that writes it, in a row of `Root`. On the
-//! type, `mongo_fields_under` builds that struct under the keys leading to a value of the type,
-//! and `MONGO_FIELDS` is that struct for the type as the row itself. A field typed with a struct
-//! or an enum `#[model_schema]` was written on above holds that type's own struct, built by that
-//! type's own function under the field's key, so no type writes another's keys. A field of any
-//! other type is one whole value. The module reads the types its author wrote through `super`.
-//!
-//! A key is the name serde writes: a renaming written as a list counts by its `serialize` side,
-//! in every build. A type serde writes as one value is one path, `MongoFields<Root, Whole>`,
-//! whose type the type's own `impl` and whoever holds the struct write, so that its module names
-//! no type of its author's. A list of such a type is a list of plain values.
 
 use core::iter::{once, repeat_with};
 
@@ -111,17 +98,14 @@ struct Ask {
 /// read, and those methods.
 struct Asked {
     methods: TokenStream,
-    /// The path, as the type's own function builds it.
     path: TokenStream,
 }
 
 /// The paths of one type, as they are gathered: what `mongo_members` holds and what the type's
 /// `impl` gains beside the function that builds them.
 struct Emitter<'item> {
-    /// The structs `mongo_members` holds, each under its name.
     held: Vec<(String, TokenStream)>,
     own: Own<'item>,
-    /// The functions hooked paths write their values through, each under its name.
     writers: Vec<(String, TokenStream)>,
 }
 
@@ -521,11 +505,8 @@ impl<'item> Emitter<'item> {
 
 /// How serde writes a value of a type, as far as its path goes.
 enum Held<'ty> {
-    /// A list of what it holds.
     List(&'ty Type),
-    /// A map, whose keys are data.
     Map,
-    /// What it holds, or nothing.
     Optional(&'ty Type),
     Value,
 }
@@ -542,7 +523,6 @@ enum Named<'tagging> {
 /// One path, or one struct of paths, as a member of the struct that holds it.
 struct Member {
     shown: Shown,
-    /// What the type's own function builds it with.
     value: TokenStream,
 }
 
@@ -654,7 +634,6 @@ struct Own<'item> {
     parameters: Vec<String>,
     /// The parameter every path carries the row type as, under a name the item does not write.
     root: Ident,
-    /// The type's own type parameters, by name.
     type_parameters: Vec<String>,
     /// The parameter `regex` reads the value of a path of text as, named as `root` is.
     value: Ident,
@@ -1136,7 +1115,6 @@ impl Own<'_> {
 /// for a value written in place of what holds it.
 struct Place {
     key: Option<String>,
-    /// The keys, as the expression the type's own function reads them from.
     prefix: TokenStream,
 }
 

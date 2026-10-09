@@ -1,10 +1,6 @@
 //! One service asking for both `amqp_rpc` and `http_rest`, with one operation binding a claimed
 //! request header and a declared response header — the shape every other harness in this crate
 //! deliberately declares none of.
-//!
-//! `http_rest` is named beside `amqp_rpc` and builds nothing of its own; naming it is what proves
-//! a bound operation is legal on a dual-transport service without this crate depending on anything
-//! that transport does not yet emit.
 
 #![cfg(feature = "serde")]
 
@@ -409,12 +405,8 @@ fn the_client_encodes_a_claimed_header_outbound_and_decodes_a_declared_one_from_
 
 #[test]
 fn a_none_header_in_argument_round_trips_through_the_amqp_headers_table_as_json_null() {
-    // The client encodes `None` as the JSON text "null" - not this crate's own placeholder - and
-    // the dispatcher's own decoder reads that text back as `None` for an `Option<String>`
-    // argument, the same outcome an omitted header already decodes to. AMQP's headers channel
-    // carries full JSON (a string is quoted), so the four-character text "null" is never confused
-    // with a caller-chosen string the way a bare, unquoted HTTP header value could be - unlike
-    // `http_rest`, which omits the header instead rather than relying on that distinction.
+    // The client encodes `None` as the JSON text `null`, which the dispatcher reads back as `None`:
+    // AMQP's headers carry full JSON, so it is never taken for a caller's string.
     let transport = ProbeTransport::new();
     let client = amqp_client::DocumentServiceClient::new(transport);
     poll_once(client.get_version("doc-1".to_owned(), None))
@@ -458,9 +450,8 @@ fn a_one_way_operation_still_decodes_its_claimed_header_before_calling_the_imple
         &service,
         &(),
         &amqp_transport::IncomingMessage::new(
-            // `touch`'s one carried argument, `document_id`, already is the whole message: with
-            // `expected_etag` claimed by `header_in`, one argument is left, and `OperationInputs`
-            // uses that argument's own type as the message rather than declaring a struct for it.
+            // `touch`'s one carried argument, `document_id`, is the whole message: `expected_etag`
+            // is claimed by `header_in`, so `OperationInputs` uses that argument's type.
             "touch".to_owned(),
             br#""doc-9""#.to_vec(),
             vec![("if-match".to_owned(), if_match)],

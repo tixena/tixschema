@@ -1,17 +1,4 @@
 //! One service, one implementation, both transports.
-//!
-//! `DocumentService` declares the four operation shapes this crate's transport tasks closed
-//! around: `get_version` binds a claimed request header and a declared response header and maps
-//! every variant its error declares; `archive_document` answers no payload of its own and
-//! overrides the bodyless default status; `get_thumbnail` answers a `bytes`-kind body and reads an
-//! unclaimed field off the query string; and `sweep_documents` names no `http(...)` group at all,
-//! so both transports default it. `purge_document` is one-way, beside them, so both a client's
-//! notify path and a dispatcher's answer-nothing path are exercised too.
-//!
-//! `DocumentBackEnd` is the one implementation. [`AmqpLoop`] and [`HttpLoop`] are hand-written
-//! seams joining each transport's generated client straight back into its generated dispatcher —
-//! no server, no bus, no socket — so a call through either client is answered by the very
-//! `DocumentBackEnd` the other loop also answers through.
 
 #![cfg(feature = "serde")]
 
@@ -540,10 +527,6 @@ where
     }
 }
 
-// -------------------------------------------------------------------------------------------
-// The `http_rest` loop
-// -------------------------------------------------------------------------------------------
-
 #[test]
 fn the_http_loop_round_trips_the_header_bound_operation() {
     let service = DocumentBackEnd::new();
@@ -655,10 +638,6 @@ fn a_declared_error_with_no_header_value_carries_none_rather_than_an_empty_heade
     );
 }
 
-/// An illegal `error_header_out` value (here, one carrying an injected header line) never reaches
-/// the wire: the dispatcher answers a fault instead of a response whose headers were spliced by
-/// the value, and the fault kind is `handler-panic`, the kind this crate reuses for a runtime
-/// contract the implementation itself broke.
 #[test]
 fn an_illegal_declared_error_header_value_answers_a_fault_rather_than_an_injected_line() {
     let service = DocumentBackEnd::new();
@@ -688,9 +667,6 @@ fn an_illegal_declared_error_header_value_answers_a_fault_rather_than_an_injecte
     assert_eq!(fault["kind"], "handler-panic");
 }
 
-/// Every byte the legality check accepts - a space, a tab, a `Content-Range`-shaped value, and a
-/// value carrying literal quote characters - reaches the response header unchanged rather than
-/// being refused as if it were illegal.
 #[test]
 fn a_legal_declared_error_header_value_reaches_the_response_unchanged() {
     let service = DocumentBackEnd::new();
@@ -731,8 +707,6 @@ fn a_legal_declared_error_header_value_reaches_the_response_unchanged() {
     }
 }
 
-/// A `header_in` value that fails the safety check is refused before the client ever calls the
-/// transport: the implementation is never reached.
 #[test]
 fn an_illegal_header_in_value_refuses_before_the_transport_is_ever_reached() {
     let service = DocumentBackEnd::new();
@@ -759,9 +733,6 @@ fn an_illegal_header_in_value_refuses_before_the_transport_is_ever_reached() {
     );
 }
 
-/// Every byte the legality check accepts - a space, a tab, a `Content-Range`-shaped value, and a
-/// value carrying literal quote characters - reaches the implementation unchanged rather than
-/// being refused as if it were illegal.
 #[test]
 fn a_legal_header_in_value_reaches_the_implementation_unchanged() {
     for legal_value in ["a b", "a\tb", "bytes */2097152", "\"abc\""] {
@@ -810,8 +781,6 @@ fn the_http_loop_round_trips_the_no_payload_operation_at_its_overridden_ok_statu
     );
 }
 
-/// `seal_document`'s success is `SealAck`, a recorded unit struct, over `http_rest` rather than
-/// `amqp_rpc` — the dispatcher writes an empty body and the client answers `Ok(SealAck)`.
 #[test]
 fn the_http_loop_round_trips_a_unit_struct_success() {
     let service = DocumentBackEnd::new();
@@ -957,10 +926,6 @@ fn a_custom_fault_handler_installed_on_the_http_loop_answers_a_validation_failur
     );
 }
 
-// -------------------------------------------------------------------------------------------
-// The `amqp_rpc` loop
-// -------------------------------------------------------------------------------------------
-
 #[test]
 fn the_amqp_loop_round_trips_the_header_bound_operation_through_the_headers_channel() {
     let service = DocumentBackEnd::new();
@@ -1088,9 +1053,6 @@ fn an_amqp_declared_error_with_no_header_value_carries_none() {
     );
 }
 
-/// The mapped-error arm of the no-payload operation round-trips over `amqp_rpc` exactly like any
-/// other declared error: the failure arm never carries the envelope's `value` at all, so the unit
-/// success fix below (which is about the success arm alone) never touches it.
 #[test]
 fn the_amqp_loop_answers_the_no_payload_operations_mapped_error() {
     let service = DocumentBackEnd::new();
@@ -1108,17 +1070,6 @@ fn the_amqp_loop_answers_the_no_payload_operations_mapped_error() {
     );
 }
 
-/// A unit success round-trips over `amqp_rpc`: the implementation answers `Ok(())`, the dispatcher
-/// writes `{"ok":true,"value":null}` through `Answered::answering` unconditionally (`arm`,
-/// `src/service_schema/transport/amqp_rpc.rs`), and the client reads it back as `Ok(())`.
-///
-/// The wire bytes are exactly what any success answers — `Answered::value` stays `Option<T>` and
-/// `()` still serializes to `null`, indistinguishable there from an absent value for any `T`. What
-/// changed is the read: an operation whose declared success is the unit type reads through
-/// `read_unit_answer`, which asks the envelope's `ok` flag alone, `()` needing nothing carried to
-/// exist. Every other success type still reads through `read_answer`, which still demands a
-/// carried value — pinned by
-/// `a_non_unit_success_with_a_genuinely_absent_value_still_faults`, below.
 #[test]
 fn the_amqp_loop_round_trips_the_no_payload_operation_s_unit_success() {
     let service = DocumentBackEnd::new();
@@ -1151,9 +1102,7 @@ fn a_typescript_shaped_unit_success_envelope_with_no_value_key_reads_as_ok_unit(
     );
 }
 
-/// `seal_document`'s success is `SealAck`, a recorded unit struct, not `()`. A real dispatcher
-/// carries `Some(SealAck)` through `Answered::answering` unconditionally, writing
-/// `{"ok":true,"value":{}}` — read back here as `Ok(SealAck)`.
+/// `seal_document`'s success is `SealAck`, a recorded unit struct, not `()`.
 #[test]
 fn the_amqp_loop_round_trips_a_unit_struct_success() {
     let service = DocumentBackEnd::new();
@@ -1162,8 +1111,6 @@ fn the_amqp_loop_round_trips_a_unit_struct_success() {
     assert_eq!(answered, Ok(SealAck));
 }
 
-/// The TypeScript-shaped twin of the test above: a `{"ok":true}` envelope, no `value` key, still
-/// reads as `Ok(SealAck)` — the same reader `()` uses, answering the declared struct by name.
 #[test]
 fn a_typescript_shaped_unit_struct_success_envelope_with_no_value_key_reads_as_ok_seal_ack() {
     let client = amqp_client::DocumentServiceClient::new(StubTransport::answering(
@@ -1173,8 +1120,6 @@ fn a_typescript_shaped_unit_struct_success_envelope_with_no_value_key_reads_as_o
     assert_eq!(answered, Ok(SealAck));
 }
 
-/// A Rust-shaped envelope naming the struct's own wire form, `{}`, also reads as `Ok(SealAck)` —
-/// the shape a real dispatcher writes, pinned directly rather than through the loop above.
 #[test]
 fn a_rust_shaped_unit_struct_success_envelope_with_an_empty_object_value_reads_as_ok_seal_ack() {
     let client = amqp_client::DocumentServiceClient::new(StubTransport::answering(
@@ -1184,13 +1129,6 @@ fn a_rust_shaped_unit_struct_success_envelope_with_an_empty_object_value_reads_a
     assert_eq!(answered, Ok(SealAck));
 }
 
-/// The mirror of the fix above: a success type that is not the unit type still demands a carried
-/// value, so an envelope answering `ok` with no `value` at all is still the fault it always was.
-///
-/// A real dispatcher never writes that envelope for a non-unit success — `sweep_documents`
-/// answers `SweepReport`, and `Answered::answering` always carries `Some(value)` on the `Ok` arm
-/// — so [`StubTransport`] stands in for the wire, answering the bytes directly and proving the
-/// client's own read, not a dispatcher that could never produce them.
 #[test]
 fn a_non_unit_success_with_a_genuinely_absent_value_still_faults() {
     let client = amqp_client::DocumentServiceClient::new(StubTransport::answering(
@@ -1263,8 +1201,6 @@ fn the_http_loop_delivers_the_one_way_operation_and_answers_nothing() {
     assert_eq!(service.reached(), vec!["purge_document doc-1".to_owned()]);
 }
 
-/// `IncomingRequest` reads back every header and the query string it was built with, not only the
-/// ones this service's own operations happen to read.
 #[test]
 fn an_incoming_request_reads_back_every_header_and_the_query_string_it_was_built_with() {
     let request = http_rest_transport::IncomingRequest::new(
@@ -1281,10 +1217,6 @@ fn an_incoming_request_reads_back_every_header_and_the_query_string_it_was_built
     assert_eq!(request.query(), "download=true");
 }
 
-// -------------------------------------------------------------------------------------------
-// The `amqp_rpc` loop: the one-way operation
-// -------------------------------------------------------------------------------------------
-
 #[test]
 fn the_amqp_loop_delivers_the_one_way_operation_through_the_client_s_notify_path() {
     let service = DocumentBackEnd::new();
@@ -1294,10 +1226,6 @@ fn the_amqp_loop_delivers_the_one_way_operation_through_the_client_s_notify_path
         .unwrap();
     assert_eq!(service.reached(), vec!["purge_document doc-1".to_owned()]);
 }
-
-// -------------------------------------------------------------------------------------------
-// One implementation, both transports
-// -------------------------------------------------------------------------------------------
 
 #[test]
 fn the_same_back_end_instance_answers_the_same_operation_over_both_transports_unmodified() {
@@ -1334,8 +1262,6 @@ fn the_same_back_end_instance_answers_the_same_operation_over_both_transports_un
     );
 }
 
-/// Each half is placed beside types named `Ok`, `Err`, `Some`, `None`, `Box`, `Send` and the rest
-/// of what its module imports from `crate::shadowing`: that it compiles there is the assertion.
 #[test]
 fn every_half_is_placed_beside_types_named_after_what_it_expands_to() {
     assert_eq!(

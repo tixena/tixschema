@@ -1,3 +1,5 @@
+//! Tests of a service declared beside types named after standard ones.
+
 use core::future::{Future as _, ready};
 use core::pin::pin;
 use core::task::{Context as PollContext, Poll, Waker};

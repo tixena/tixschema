@@ -1,22 +1,4 @@
 //! One declaration, two validators, one sentence.
-//!
-//! Everything here compares the two things `#[model_schema()]` emits for the same bound against
-//! each other: the report the generated Rust validator answers with, and the report the generated
-//! Zod schema would answer with. Nothing asserts that the Rust text merely *changed* — a test that
-//! reads only one language cannot see the two drift apart, which is how they drifted in the first
-//! place.
-//!
-//! **How the Zod half is read.** No zod runs here, so what it would say is read off the schema the
-//! macro published: the `{ error: … }` argument written for each check, rendered the way zod
-//! renders one. That leaves exactly the two holes the emitter can write — the length of the value
-//! and the value itself — and filling them is [`zod_sentence`]. The strings the tests assert are
-//! the ones zod 4 actually produced for these schemas.
-//!
-//! **What the dispatcher adds.** Neither sentence names its field. The Rust validator writes
-//! `'{field}': ` in front of its own, and the generated TypeScript dispatcher writes
-//! `'${issue.path.join(".")}': ` in front of zod's, so the two lines agree once the same path is
-//! written in front of both. Each comparison below writes that path itself, from the key the
-//! payload spells.
 
 #[cfg(all(feature = "serde", feature = "zod"))]
 mod declarations {
@@ -84,17 +66,6 @@ mod declarations {
 }
 
 /// The refusal path: one declaration, two dispatchers, one answer.
-///
-/// Everything above compares the two *validators* a bound publishes. What a caller actually reads
-/// when it sends a bad value is a fault, and a fault is built by the dispatcher — so this compares
-/// those: the fault the generated Rust dispatcher answers a payload with, against what the
-/// generated TypeScript dispatcher would answer the same payload, read off the TypeScript that
-/// dispatcher published rather than written down here.
-///
-/// The `typescript` feature is part of the gate, unlike everything above it. What the comparison
-/// reads the TypeScript half from is `GateServiceSchema`, and only a build emitting TypeScript
-/// declares that type at all — a build without it has the Rust dispatcher and nothing to hold it
-/// against, which is a comparison that cannot be written rather than one that passes trivially.
 #[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 #[macro_use]
 pub mod refusals {
@@ -102,8 +73,6 @@ pub mod refusals {
     use crate::amqp_transport;
     // The schema module each held type publishes is named beside the type, and the emitted code
     // reaches it unqualified — so a type declared elsewhere is held by bringing its module along.
-    // Only the JSON-schema emission reaches for a sibling module that way; the Zod and TypeScript
-    // surfaces name the published type itself and need nothing brought along for it.
     #[cfg(feature = "jsonschema")]
     use super::declarations::{account_schema, organization_id_schema};
     use core::future::{Future, ready};
@@ -264,11 +233,6 @@ pub mod refusals {
 
 /// The sentence one emitted Zod check reports for a value, read off the `{ error: … }` argument the
 /// macro wrote for it.
-///
-/// zod hands a check's own error the value the check was given and takes back a string, so
-/// rendering one here is filling the holes: `rendered` is the value as `String(…)` writes it, and
-/// its `.length` is JavaScript's, counted in UTF-16 code units. An `error` that is a constant has
-/// no hole and is its own answer.
 #[cfg(all(feature = "serde", feature = "zod"))]
 fn zod_sentence(error_argument: &str, rendered: &str) -> String {
     if let Some(constant) = error_argument
@@ -386,8 +350,6 @@ fn typescript_report(schema: &str, path: &str, rendered: &str) -> Vec<String> {
         .collect()
 }
 
-/// A field's own bounds, both broken by one value: the Rust validator names both, in the order the
-/// Zod schema's checks would name them, in the same words.
 #[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_value_breaking_two_of_a_fields_bounds_reads_the_same_in_both_languages() {
@@ -431,8 +393,6 @@ fn a_value_over_a_length_and_off_a_pattern_reads_the_same_in_both_languages() {
     );
 }
 
-/// A brand's own report names no field on either side — the field it is held in supplies the
-/// name — so both are compared under that field.
 #[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_brands_two_bounds_read_the_same_in_both_languages() {
@@ -462,8 +422,6 @@ fn a_brands_two_bounds_read_the_same_in_both_languages() {
     );
 }
 
-/// The same brand reached as a field of a message: what the enclosing validator reports is the
-/// line the dispatcher builds on the other side, byte for byte.
 #[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_brand_held_in_a_field_reads_the_same_in_both_languages() {
@@ -486,9 +444,7 @@ fn a_brand_held_in_a_field_reads_the_same_in_both_languages() {
     );
 }
 
-/// A bound two hops down, one of them flattened, named by the path the payload spells. The Zod
-/// schema carrying the check is the one the inner type published, which is the schema the outer
-/// one composes.
+/// A bound two hops down, one of them flattened, named by the path the payload spells.
 #[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_bound_reached_through_a_flattened_hop_reads_the_same_in_both_languages() {
@@ -539,9 +495,6 @@ fn a_numeric_bound_reads_the_same_in_both_languages() {
     );
 }
 
-/// A bound emitted without a sentence would report zod's words on one side and the macro's on the
-/// other, and every comparison above would miss it — each reads the checks it is given. This one
-/// reads the schema instead: every check the emitter can write carries an `error`.
 #[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn no_emitted_check_is_left_to_report_in_zods_own_words() {
@@ -565,12 +518,6 @@ fn no_emitted_check_is_left_to_report_in_zods_own_words() {
     }
 }
 
-/// A brand's bound, broken twice by one value, refused as the payload is read.
-///
-/// The brand gates its own read, so this payload never reaches the message's validator — and the
-/// brand's report names no field, the brand being the value rather than a member of anything. What
-/// a caller is owed is still the key it got wrong, and it is owed the same one from either
-/// language: the field the value was held in, spelled the way the wire spells it.
 #[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_refused_on_the_read_answers_the_same_fault_in_both_languages() {
@@ -611,9 +558,6 @@ fn a_brand_refused_on_the_read_answers_the_same_fault_in_both_languages() {
     );
 }
 
-/// A bound two hops down, one of them flattened, reached by the message's own validator rather than
-/// on the read — the other half of the same comparison, so the two paths cannot be shown to agree
-/// with TypeScript one at a time while disagreeing with each other.
 #[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 #[test]
 fn a_bound_below_a_flattened_hop_answers_the_same_fault_in_both_languages() {
@@ -626,13 +570,6 @@ fn a_bound_below_a_flattened_hop_answers_the_same_fault_in_both_languages() {
     assert_eq!(answered["detail"], reported.join("; "));
 }
 
-/// A payload that parsed and is still not the message: not an object at all.
-///
-/// It is the one shape the two languages classified differently. TypeScript read "failed at no key"
-/// as bytes that were never the message, where the Rust side had already established that the bytes
-/// *were* a document and answered for what the document said. Only one of those can be true of a
-/// value that parsed, so both answer the one kind now — and neither names a field, there being no
-/// key to send a caller to.
 #[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 #[test]
 fn a_payload_that_parsed_and_is_not_the_message_answers_the_same_kind_in_both_languages() {

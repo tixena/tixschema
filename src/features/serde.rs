@@ -19,7 +19,6 @@ use syn::{Attribute, Field, Fields, ItemStruct, Token, Type};
 #[cfg(feature = "serde")]
 use syn::{Error, LitStr, Meta};
 
-/// Message of the rejection raised for a serde attribute hidden behind `cfg_attr`.
 #[cfg(feature = "serde")]
 const CFG_ATTR_SERDE_REJECTION: &str = "cfg_attr-wrapped serde attribute is invisible to \
      model_schema and will be silently ignored by the generator; write #[serde(...)] \
@@ -35,8 +34,6 @@ pub const NAMED_READ_HOOK_PREFIX: &str = "deserialize_named_";
 /// polices their combination needs them side by side.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SerdeKeyOmission {
-    /// A `default` in either spelling (`default` or `default = "path"`) — the field supplies a
-    /// value for itself when the key is missing.
     pub defaulted: bool,
     /// A `skip`, `skip_serializing` or `skip_serializing_if` leaves the key out of the output.
     pub omits_key: bool,
@@ -73,15 +70,14 @@ struct RenameDirections {
 #[cfg(feature = "serde")]
 #[derive(Clone, Debug, Default)]
 pub struct SerdeTypeMeta {
-    /// The rejection raised when the walk met a `cfg_attr`-wrapped serde attribute.
     pub cfg_attr_rejection: Option<Error>,
-    pub content: Option<String>, // e.g., "value" for adjacently tagged enums
-    pub rename_all: Option<String>, // e.g., "camelCase"
+    pub content: Option<String>,
+    pub rename_all: Option<String>,
     /// The casing rule the container applies to the members of every struct variant. serde keeps
     /// this apart from `rename_all`, which reaches variant names only.
     pub rename_all_fields: Option<String>,
-    pub tag: Option<String>, // e.g., "behaviorType"
-    pub untagged: bool,      // Whether the enum is `#[serde(untagged)]`
+    pub tag: Option<String>,
+    pub untagged: bool,
 }
 
 /// The paths a field's serde attributes read and write it through, each as its author wrote it.
@@ -99,13 +95,11 @@ pub struct SerdeFieldHooks {
 #[cfg(feature = "serde")]
 #[derive(Clone, Debug, Default)]
 pub struct SerdeFieldMeta {
-    /// Every `alias = "..."`: a key serde reads the field from beside its own name.
     pub aliases: Vec<String>,
-    /// The rejection raised when the walk met a `cfg_attr`-wrapped serde attribute.
     pub cfg_attr_rejection: Option<Error>,
-    pub flatten: bool,          // Whether the field is `#[serde(flatten)]`
-    pub rename: Option<String>, // e.g., "new_name"
-    pub skip: bool,             // Whether to skip the field
+    pub flatten: bool,
+    pub rename: Option<String>,
+    pub skip: bool,
 }
 
 /// What the renaming keys of a container, a variant or a field name in one of serde's two
@@ -178,11 +172,6 @@ pub fn has_serde_default(attrs: &[Attribute]) -> bool {
 
 /// Whether the item is written to be read back at all — whether `Deserialize` is among what it
 /// derives, in any spelling of the path.
-///
-/// A generated reader for one of the item's fields names that field's own type, so it compiles only
-/// where that type is read back too. A `cfg_attr`-wrapped derive is not reached: a predicate a proc
-/// macro cannot evaluate is not one this answer may guess at, and guessing wrong here is a
-/// generated function referring to an impl that does not exist.
 #[cfg(feature = "serde")]
 pub fn derives_deserialize(attrs: &[Attribute]) -> bool {
     attrs
@@ -382,9 +371,8 @@ fn parse_rename_directions(nested: &ParseNestedMeta<'_>) -> syn::Result<RenameDi
 }
 
 /// The one name both of serde's directions agree on, or the refusal a pair naming two earns. A
-/// direction the list leaves out keeps the name it would otherwise have had, which serde was
-/// measured to do, so writing one direction alone splits the two apart just as writing two
-/// different values does.
+/// direction the list leaves out keeps the name it would otherwise have had, so writing one
+/// direction alone splits the two apart as writing two different values does.
 #[cfg(feature = "serde")]
 fn agreed_rename(
     key: &str,
@@ -551,9 +539,8 @@ fn cfg_attr_serde_rejection(attr: &Attribute) -> Option<Error> {
     let Meta::List(list) = &attr.meta else {
         return None;
     };
-    // Only the top level of the payload is scanned: a `serde` naming the cfg predicate
-    // (`cfg_attr(feature = "serde", ..)`) is a string literal, and one naming a nested predicate
-    // sits inside a group, so neither can be mistaken for the `serde(...)` attribute itself.
+    // Only the top level of the payload is scanned: a `serde` naming the cfg predicate is a string
+    // literal, and one naming a nested predicate sits inside a group.
     let mut previous_is_serde = false;
     for token in list.tokens.clone() {
         if previous_is_serde
@@ -576,14 +563,11 @@ pub fn parse_serde_type_attributes(attrs: &[Attribute]) -> SerdeTypeMeta {
             meta.cfg_attr_rejection = cfg_attr_serde_rejection(attr);
         } else if attr.path().is_ident("serde") {
             attr.parse_nested_meta(|nested| {
-                // Handle `tag = "value"`
                 if nested.path.is_ident("tag") {
                     let value = nested.value()?;
                     let lit: LitStr = value.parse()?;
                     meta.tag = Some(lit.value());
-                }
-                // Handle `content = "value"` for adjacently tagged enums
-                else if nested.path.is_ident("content") {
+                } else if nested.path.is_ident("content") {
                     let value = nested.value()?;
                     let lit: LitStr = value.parse()?;
                     meta.content = Some(lit.value());
@@ -592,13 +576,9 @@ pub fn parse_serde_type_attributes(attrs: &[Attribute]) -> SerdeTypeMeta {
                 // deserialize = "...")`
                 else if nested.path.is_ident("rename_all") {
                     meta.rename_all = read_renaming(&nested, "rename_all")?;
-                }
-                // Handle `rename_all_fields = "value"` and its list form
-                else if nested.path.is_ident("rename_all_fields") {
+                } else if nested.path.is_ident("rename_all_fields") {
                     meta.rename_all_fields = read_renaming(&nested, "rename_all_fields")?;
-                }
-                // Handle `untagged`
-                else if nested.path.is_ident("untagged") {
+                } else if nested.path.is_ident("untagged") {
                     meta.untagged = true;
                 } else {
                     // Ignore other serde attributes.
@@ -630,17 +610,13 @@ pub fn parse_serde_field_attributes(attrs: &[Attribute]) -> SerdeFieldMeta {
                 // Handle `rename = "value"` and `rename(serialize = "...", deserialize = "...")`
                 if nested.path.is_ident("rename") {
                     meta.rename = read_renaming(&nested, "rename")?;
-                }
-                // Handle the whole `skip` lump
-                else if nested.path.is_ident("skip")
+                } else if nested.path.is_ident("skip")
                     || nested.path.is_ident("skip_serializing")
                     || nested.path.is_ident("skip_serializing_if")
                     || nested.path.is_ident("skip_deserializing")
                 {
                     meta.skip = true;
-                }
-                // Handle `flatten`
-                else if nested.path.is_ident("flatten") {
+                } else if nested.path.is_ident("flatten") {
                     meta.flatten = true;
                 }
                 // Handle `alias = "value"`, which a field may carry more than once
@@ -678,7 +654,6 @@ pub fn get_final_field_name(
     field_meta: &SerdeFieldMeta,
     type_meta: &SerdeTypeMeta,
 ) -> String {
-    // If field has explicit rename, use that
     if let Some(rename) = &field_meta.rename {
         return rename.clone();
     }

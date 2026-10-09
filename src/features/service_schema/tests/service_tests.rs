@@ -1,10 +1,5 @@
 //! The interface an implementation satisfies and the dispatcher factory that drives one, read off
 //! the emitted text.
-//!
-//! What these prove and what they cannot: that every member is required, that no index signature is
-//! written, that an implementation's return names no fault. That an implementation *missing* a
-//! member is refused at the factory call is a claim only a TypeScript compiler can settle, and none
-//! is reachable from this repository.
 
 use super::{
     MIXED_HTTP_SERVICE, MIXED_SERVICE, MULTIPART_HTTP_SERVICE, REQUIRED_HEADER_HTTP_SERVICE,
@@ -201,13 +196,6 @@ fn the_payload_is_parsed_before_the_implementation_is_called() {
     );
 }
 
-/// The dispatcher is handed a payload somebody already read out of the bytes, so every failure it
-/// can see is a failure of what the document *said* — which is the one kind it raises, and the kind
-/// the Rust dispatcher answers the same payload under.
-///
-/// `undeserializable-payload` is the answer to bytes that are no document at all. Nothing here
-/// sees those, so nothing here writes that kind: reporting it for a value that parsed would send a
-/// caller looking at its serialization when what was wrong was what it sent.
 #[test]
 fn a_payload_that_parsed_and_then_failed_is_answered_under_one_kind() {
     let written = service_of(MIXED_SERVICE);
@@ -227,13 +215,6 @@ fn a_payload_that_parsed_and_then_failed_is_answered_under_one_kind() {
     );
 }
 
-/// Every function in the dispatcher that answers a fault mints one the same way: build the fields
-/// the Rust declaration published, then assert them into the sealed type.
-///
-/// Read off the emitted text rather than from a list written here, so a constructor added later
-/// lands in the comparison without this test being edited. The assertion is the price of the seal
-/// — TypeScript has no way to write a branded property whose symbol has no runtime value — and
-/// keeping it to this one form is what makes minting a fault greppable.
 #[test]
 fn every_fault_the_dispatcher_builds_is_minted_from_the_fields_and_sealed() {
     let written = service_of(MIXED_SERVICE);
@@ -267,8 +248,6 @@ fn every_fault_the_dispatcher_builds_is_minted_from_the_fields_and_sealed() {
     );
 }
 
-/// The seal costs an implementation the fault and costs a caller nothing, so the two shapes a
-/// caller reads through are unchanged: the framing it narrows on, and the members it then reads.
 #[test]
 fn the_seal_leaves_the_framing_a_caller_narrows_on_untouched() {
     let written = service_of(MIXED_SERVICE);
@@ -409,8 +388,6 @@ fn a_missing_required_header_answers_the_same_framed_fault_a_bad_payload_gets() 
     );
 }
 
-/// A header tuple is split: the body answers under `value` or `error`, each header is written
-/// JSON-encoded under its name, and an optional one holding `null` is written nowhere.
 #[test]
 fn a_header_tuple_outcome_is_split_into_the_envelope_and_its_headers() {
     let written = service_of(TS_HEADER_TUPLE_SERVICE);

@@ -2,39 +2,6 @@
 //! fault handler with the Rust transport's own defaults, and one dispatcher that matches, assembles
 //! the message the way the Rust `dispatch` does, drives `create{Service}Dispatcher`, and maps the
 //! outcome to a status and a body.
-//!
-//! # Names no web framework
-//!
-//! The dispatcher takes a whole request and answers a whole response; nothing here names the
-//! library that finally carries the call. Binding it to a real listener is the hosting
-//! application's own adapter, exactly as [`super::http_client`]'s own transport seam names none
-//! either.
-//!
-//! # The route table is data, not a second entry point
-//!
-//! The dispatcher does its own path matching, in declaration order, over the same template the
-//! table publishes. An application that wants one framework handler per route reads the table; one
-//! that wants a single catch-all passes every request straight to the dispatcher. Either way the
-//! dispatcher matches again — there is no shortcut that skips it.
-//!
-//! # A declared error's status, read off the value
-//!
-//! An operation's `error_status` table maps a Rust variant name to a status, and the value on the
-//! wire carries no such name of its own except in the position each enum's own serde form puts it.
-//! [`error_status_closure`] reaches for the `{Enum}$Variant` reader that enum's own
-//! `#[model_schema]` expansion publishes — never a switch this module writes over the wire shape
-//! itself — and is called at all only where the table names more than one distinct status; one
-//! status (or none) needs no reader.
-//!
-//! # A bound header or multipart part reaches the dispatcher, not this module
-//!
-//! `create{Service}Dispatcher` — [`super::service`]'s own `dispatcher` — is where a `header_in`
-//! binding and a `part(...)` binding are read, decoded and refused, the same way it already reads
-//! and refuses the message. This module keeps no presence check of its own. What it does keep is
-//! the HTTP text form: the dispatcher reads and writes each header value JSON-encoded, as a
-//! `ws_rpc` frame and an AMQP message carry it, so each `header_in` value is coerced from its
-//! header text before it is handed on, and each header the dispatcher answers is rendered back to
-//! header text before it is written.
 
 use super::message;
 use super::result::STREAMED_ANSWER_TS_TYPE;
@@ -135,10 +102,6 @@ fn replied_header_fn(prefix: &str) -> String {
     )
 }
 
-// ---------------------------------------------------------------------------------------------
-// The route table
-// ---------------------------------------------------------------------------------------------
-
 fn route_type(named: &str) -> String {
     format!(
         "/** One operation's method, path template and status table, for an adapter that \
@@ -197,10 +160,6 @@ fn route_table(service: &ServiceDef, named: &str, prefix: &str) -> String {
          ];"
     )
 }
-
-// ---------------------------------------------------------------------------------------------
-// The request, response and fault-handler types
-// ---------------------------------------------------------------------------------------------
 
 fn request_type(named: &str, has_multipart: bool) -> String {
     let parts_field = if has_multipart {
@@ -278,10 +237,6 @@ fn fault_fn(named: &str, prefix: &str) -> String {
     )
 }
 
-// ---------------------------------------------------------------------------------------------
-// The three helpers: path matching, query parsing, numeric coercion
-// ---------------------------------------------------------------------------------------------
-
 fn match_path_fn(prefix: &str) -> String {
     format!(
         "/** Mirrors the Rust `match_path`: a literal token is stripped as a prefix, a \
@@ -337,10 +292,6 @@ fn coerce_number_fn(prefix: &str) -> String {
     )
 }
 
-// ---------------------------------------------------------------------------------------------
-// A declared error's status
-// ---------------------------------------------------------------------------------------------
-
 /// Turns a declared error into a status: the fixed default with no table, a constant where every
 /// mapped variant shares one status, or a switch over the error enum's own `{Enum}$Variant`.
 fn error_status_closure(shape: &HttpShape, error_type: &Type) -> String {
@@ -372,10 +323,6 @@ fn error_status_closure(shape: &HttpShape, error_type: &Type) -> String {
          }}"
     )
 }
-
-// ---------------------------------------------------------------------------------------------
-// Message assembly (H8): named, generated, or nothing declared to build from
-// ---------------------------------------------------------------------------------------------
 
 /// The statements (if any) and the final expression that build one operation's message, mirroring
 /// the Rust dispatcher's own `message_value`.
@@ -540,10 +487,6 @@ fn generated_message_build(
     }
     (setup, "message".to_owned())
 }
-
-// ---------------------------------------------------------------------------------------------
-// The dispatcher
-// ---------------------------------------------------------------------------------------------
 
 fn dispatcher_fn(service: &ServiceDef, named: &str, prefix: &str) -> String {
     let ctx = DispatcherContext {
@@ -736,10 +679,6 @@ fn arm_body(
     custom_reply_block(operation, shape, message_expr, error, success, ctx)
 }
 
-// ---------------------------------------------------------------------------------------------
-// The per-arm comment: which of H8's three assembly rules this operation's message follows
-// ---------------------------------------------------------------------------------------------
-
 fn arm_comment(operation: &OperationDef, shape: &HttpShape) -> String {
     let wire = &operation.wire_name;
     let method = shape.method.name();
@@ -834,10 +773,6 @@ fn generated_rule_lines(
             .to_owned(),
     ]
 }
-
-// ---------------------------------------------------------------------------------------------
-// Bytes, stream and header_out replies: shapes `answer` cannot express
-// ---------------------------------------------------------------------------------------------
 
 /// The statements shared by every custom reply: dispatch, catch a panic, and answer a declared
 /// error. Ends with `envelope.value` ready to read on the success path, which the caller writes on,

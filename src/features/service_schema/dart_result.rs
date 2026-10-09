@@ -1,17 +1,5 @@
 //! The `{Service}{Operation}Result` sealed class pair: Dart's own construct for the two-armed
 //! outcome every client in every language now returns from a request-and-reply call.
-//!
-//! Built the way [`crate::features::dart`] already builds a sealed hierarchy for a Rust enum whose
-//! variants carry payloads — a `sealed` base and one `final` subclass per arm — except this pair
-//! carries no `fromJson`/`toJson`: it is a value the client builds for its own caller, never a
-//! shape a codec reads off the wire.
-//!
-//! Named exactly as [`super::result`] names the TypeScript twin (`{Service}{Operation}Result`), and
-//! its three members exactly as [`crate::features::dart`] names every other sealed member: the base
-//! name plus the arm it stands for — `Ok` for the success, `Operation` and `Fault` for the two arms
-//! of the Rust client's own `CallError`.
-//!
-//! A one-way operation declared no reply and therefore no pair, mirroring [`super::result`].
 
 use super::dart_http_client::{carries_no_value, dart_success_type, dart_type_of};
 use super::result::result_name;

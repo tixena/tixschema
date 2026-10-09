@@ -1,3 +1,5 @@
+//! Tests of `#[serde(rename_all_fields)]` under each of serde's enum representations.
+
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
@@ -254,8 +256,6 @@ fn the_two_container_rules_reach_the_wire_independently() {
     );
 }
 
-/// The container's `rename_all` renames variant names only, which is what makes
-/// `rename_all_fields` a separate rule rather than an extension of it.
 #[test]
 fn variant_name_casing_leaves_members_at_their_idents_on_the_wire() {
     assert_eq!(

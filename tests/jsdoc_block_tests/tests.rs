@@ -46,8 +46,6 @@ enum External {
 #[derive(Serialize, Deserialize)]
 struct Empty;
 
-/// The one closer. `**/` closes nothing in JavaScript — it is a block comment already closed by the
-/// `*/` inside it, followed by a stray `/`.
 #[test]
 fn no_surface_closes_a_block_with_anything_but_the_javascript_closer() {
     for emission in [
@@ -62,8 +60,6 @@ fn no_surface_closes_a_block_with_anything_but_the_javascript_closer() {
     }
 }
 
-/// A member's block sits at the member's own indent, continuation lines included, so the block and
-/// the member it documents read as one thing.
 #[test]
 fn a_members_block_is_written_at_the_members_indent() {
     let ts = Member::ts_definition();
@@ -78,8 +74,6 @@ fn a_members_block_is_written_at_the_members_indent() {
     );
 }
 
-/// The item's own block is at column 0, and what it documents is the line straight beneath it — on
-/// every item kind, rather than two blank lines on one and none on the others.
 #[test]
 fn every_item_kind_puts_its_export_on_the_line_below_its_block() {
     for emission in [
@@ -93,8 +87,6 @@ fn every_item_kind_puts_its_export_on_the_line_below_its_block() {
     }
 }
 
-/// A tagged variant's first member is a member like any other, so its block opens on its own line
-/// rather than trailing the brace.
 #[test]
 #[cfg(feature = "serde")]
 fn a_tagged_variants_first_member_opens_its_block_on_its_own_line() {
@@ -110,8 +102,6 @@ fn a_tagged_variants_first_member_opens_its_block_on_its_own_line() {
     );
 }
 
-/// An externally tagged variant's key is a member too, whether the variant carries an object or is
-/// the bare key a unit writes.
 #[test]
 #[cfg(feature = "serde")]
 fn an_externally_tagged_variants_block_sits_at_its_keys_indent() {
@@ -137,8 +127,6 @@ fn no_surface_leaves_a_blank_line_before_the_brace_that_closes_an_object() {
     assert!(!tagged.contains(";\n\n}"), "Got: {tagged}");
 }
 
-/// The same holding on the Zod surface, where the struct emitter and the tagged-enum emitter
-/// disagreed.
 #[test]
 #[cfg(feature = "zod")]
 fn the_zod_object_closes_straight_after_its_last_member() {
@@ -147,8 +135,6 @@ fn the_zod_object_closes_straight_after_its_last_member() {
     assert!(!zod.contains(",\n\n})"), "Got: {zod}");
 }
 
-/// Layout is all that this normalizes: what a block says is what the author wrote, and an
-/// undocumented member still falls back to its own exported name.
 #[test]
 fn the_body_a_block_carries_is_the_one_the_author_wrote() {
     let ts = Member::ts_definition();

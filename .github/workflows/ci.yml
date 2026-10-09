@@ -41,9 +41,8 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-cargo-
 
-    # Every emitted-client run and the tsc type check stand down when their toolchain is missing,
-    # so CI installs each one; `just typecheck-ts` and `just test-emitted` then refuse to stand down.
-    # The runner image already carries Swift, Kotlin and a JRE; Dart and the Node packages are added.
+    # The emitted-client runs and the tsc type check stand down when their toolchain is missing, so CI
+    # installs each one; the runner image already carries Swift, Kotlin and a JRE.
     - name: Setup Node
       uses: actions/setup-node@v4
       with:
@@ -124,10 +123,8 @@ jobs:
 
     - name: Send Discord notification
       if: always()
-      # All GitHub context is passed via env (NOT interpolated into the script
-      # body) so attacker-controllable strings like commit messages cannot break
-      # the JSON or inject shell. The payload is assembled with jq, which escapes
-      # everything safely.
+      # All GitHub context is passed via env, never interpolated into the script body, so a commit
+      # message cannot break the JSON or inject shell. jq assembles the payload.
       env:
         EVENT_NAME: ${{ github.event_name }}
         REPO: ${{ github.repository }}

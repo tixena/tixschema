@@ -180,8 +180,6 @@ fn a_type_with_no_id_refuses_a_stored_row_until_a_resolver_settles_it() {
     );
 }
 
-/// A module declared inside a function reaches none of that function's items, so the read a
-/// type's operations answer is told the type it reads, and names none of its author's.
 #[tokio::test]
 async fn a_row_declared_inside_a_function_reads_and_writes_itself() {
     #[model_schema(decode_with)]
@@ -212,8 +210,6 @@ async fn a_row_declared_inside_a_function_reads_and_writes_itself() {
     );
 }
 
-/// The read `find_one_with` makes of the row the driver hands it: as the type where the row
-/// reads, as the type once a resolver has repaired it, and refused by its issue where none has.
 #[test]
 fn a_stored_row_reads_as_the_operations_read_it() {
     assert_eq!(
@@ -230,9 +226,7 @@ fn a_stored_row_reads_as_the_operations_read_it() {
     assert!(names_the_unreadable_row(&refused), "got: {refused:?}");
 }
 
-/// serde reads a name that breaks its bound. A read with no resolver refuses the row over the
-/// bound's issue, told in the bound's own words under both major versions of the library, and a
-/// resolver repairs it. A build with no schema surface publishes no validator, and reads the row.
+/// serde reads a name that breaks its bound.
 #[test]
 fn a_row_that_breaks_a_bound_is_unreadable_until_a_resolver_repairs_it() {
     let mut nameless = readable();
@@ -297,8 +291,6 @@ fn a_row_that_breaks_a_bound_is_unreadable_until_a_resolver_repairs_it() {
     assert_eq!(read.unwrap().customer.name, "");
 }
 
-/// The issues are told as a refused `from_bson_piped` tells them, whose last words are the `bson`
-/// library's own and differ between its major versions.
 #[test]
 fn an_unreadable_row_is_told_by_its_id_and_its_issues_and_has_no_source() {
     let refused = Invoice::mongo_read_row(unreadable(), &[]).unwrap_err();
@@ -318,8 +310,6 @@ fn an_unreadable_row_is_told_by_its_id_and_its_issues_and_has_no_source() {
     assert!(refused.source().is_none(), "got: {:?}", refused.source());
 }
 
-/// A read holds what it is given and asks nothing of MongoDB until it is awaited, and neither of
-/// these is.
 #[tokio::test]
 async fn a_read_holds_the_options_it_is_given() {
     let never = never_connected().await;
@@ -351,8 +341,6 @@ async fn a_read_holds_the_options_it_is_given() {
     );
 }
 
-/// A value serde writes as text is no row: it is refused by the serializer's own error before the
-/// client is asked for a connection.
 #[tokio::test]
 async fn a_value_not_written_as_a_document_is_refused_before_any_connection() {
     let never = never_connected().await;
@@ -372,8 +360,6 @@ async fn a_value_not_written_as_a_document_is_refused_before_any_connection() {
     );
 }
 
-/// The row is dropped before what `insert_one` answers is awaited, and the refusal is the
-/// write's own: the client is never asked for a connection, which nothing would answer.
 #[tokio::test]
 async fn an_unwritable_row_is_refused_before_any_connection() {
     let never = never_connected().await;

@@ -455,9 +455,6 @@ fn a_plain_enum_is_one_value_read_with_its_own_reader() {
     );
 }
 
-/// A brand over a plain enum is the name the enum writes: what serde wrote is read without the
-/// decider, and a name the enum does not declare is the enum's one issue, at the path the brand
-/// sits at.
 #[test]
 fn a_brand_over_a_plain_enum_is_read_as_the_name_the_enum_writes() {
     let mut calls = 0_u32;
@@ -494,8 +491,6 @@ fn a_brand_over_a_plain_enum_is_read_as_the_name_the_enum_writes() {
     );
 }
 
-/// serde reads a unit variant from an object with its name as the one key, which is not
-/// what the enum writes.
 #[test]
 fn a_plain_enum_held_as_an_object_serde_reads_is_mistyped() {
     let stored = json!({ "Draft": null });
@@ -506,8 +501,6 @@ fn a_plain_enum_held_as_an_object_serde_reads_is_mistyped() {
     );
 }
 
-/// A tag naming no variant. It sits at the tag's key and holds the tag where the enum has
-/// one, and at the enum's own path, holding the whole value, where the tag is the object's key.
 #[test]
 fn a_tag_naming_no_variant_is_invalid_with_the_variants_the_enum_accepts() {
     let stored = json!({
@@ -591,8 +584,6 @@ fn a_decider_repairs_what_a_variant_holds_by_the_path_it_is_handed() {
     assert_eq!(read, Ok(drawing()));
 }
 
-/// The content of a struct variant held as a number is the one place the walker lists
-/// nothing, so the read carries serde's refusal alone.
 #[test]
 fn a_struct_variants_content_held_as_no_object_is_undescribed() {
     let external = json!({ "Circle": 5_i32 });
@@ -609,8 +600,7 @@ fn a_struct_variants_content_held_as_no_object_is_undescribed() {
     );
 }
 
-/// The bare name of a unit variant is no issue. Its name as the one key of an object is a form
-/// serde reads and the enum does not write, and any other value is read whole.
+/// The bare name of a unit variant is no issue.
 #[test]
 fn an_externally_tagged_value_in_no_form_the_walker_walks_is_read_whole() {
     let keyed = json!({ "Empty": null });
@@ -643,8 +633,7 @@ fn an_externally_tagged_value_in_no_form_the_walker_walks_is_read_whole() {
     );
 }
 
-/// An absent tag is the one issue, at the tag's key. Every key of an internally tagged
-/// object then counts as declared, and so do the two keys an adjacently tagged one writes.
+/// An absent tag is the one issue, at the tag's key.
 #[test]
 fn an_absent_tag_is_missing_at_the_tags_key() {
     let internal = json!({ "color": "red" });
@@ -683,9 +672,6 @@ fn a_tag_naming_no_variant_that_serde_reads_is_mistyped() {
     );
 }
 
-/// A tagged enum held as no object is read whole, expecting the enum itself: serde refuses text,
-/// and reads a list of the tag and the fields in order, which is not what the enum writes. A key
-/// beside the tag that the variant does not declare is `Unknown`.
 #[test]
 fn a_tagged_enum_is_an_object_whose_other_keys_are_the_variants() {
     assert_eq!(
@@ -724,8 +710,6 @@ fn a_tagged_enum_is_an_object_whose_other_keys_are_the_variants() {
     );
 }
 
-/// What an adjacently tagged variant holds is walked under the content key by its kind, and is
-/// `Missing` there where serde needs it.
 #[test]
 fn an_adjacently_tagged_variants_content_is_walked_under_the_content_key() {
     assert_eq!(
@@ -771,8 +755,6 @@ fn an_adjacently_tagged_variants_content_is_walked_under_the_content_key() {
     );
 }
 
-/// A unit variant holds nothing, so nothing is walked under the content key: serde reads a `null`
-/// there, and its refusal of anything else is the read's one issue.
 #[test]
 fn an_adjacently_tagged_unit_variant_walks_nothing_under_the_content_key() {
     let mut calls = 0_u32;
@@ -820,8 +802,6 @@ fn an_adjacently_tagged_optional_value_reads_its_absence() {
     );
 }
 
-/// A variant holding two values is walked by position under its key, and one holding a
-/// list of model types by each item's own walker.
 #[test]
 fn what_a_variant_holds_is_walked_by_its_kind() {
     let mut stored = serde_json::to_value(route()).unwrap();
@@ -855,8 +835,6 @@ fn what_a_variant_holds_is_walked_by_its_kind() {
     );
 }
 
-/// An untagged value no variant reads is one `NoVariant` at the enum's path, holding each
-/// variant's own list in the order declared.
 #[test]
 fn an_untagged_value_no_variant_reads_is_one_no_variant_with_each_variants_list() {
     let stored = json!({ "country": "one", "digits": "555" });
@@ -942,8 +920,6 @@ fn a_no_variant_inside_another_type_sits_at_the_enums_path() {
     );
 }
 
-/// The hook tixschema hangs on a constrained member is the one serde reads it through, so
-/// a value the constraint refuses takes that variant out.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn an_untagged_enums_constrained_member_is_read_through_its_hook() {
@@ -1122,7 +1098,6 @@ fn variants_and_their_fields_are_walked_under_their_wire_names() {
     );
 }
 
-/// Each item of a list of tagged enums is walked at its own index.
 #[test]
 fn a_list_of_tagged_enums_is_walked_item_by_item() {
     let stored = json!({
@@ -1137,8 +1112,6 @@ fn a_list_of_tagged_enums_is_walked_item_by_item() {
     );
 }
 
-/// An internally tagged variant holding a model type hands the object to that type's fields
-/// walker, and the tag's key joins the keys it returns.
 #[test]
 fn a_tagged_enums_fields_walker_returns_the_keys_that_are_its_own() {
     let versioned = json!({ "draft": true, "kind": "Versioned", "number": "3" });
@@ -1206,8 +1179,6 @@ fn a_tagged_enums_fields_walker_returns_the_keys_that_are_its_own() {
     );
 }
 
-/// A generic enum gets its methods under the bounds a generic struct does, and a value of
-/// the parameter's type is read whole where it sits.
 #[test]
 fn a_generic_enum_reads_a_parameters_value_whole() {
     let refused = json!({ "Value": { "number": "x" } });
@@ -1282,8 +1253,6 @@ fn a_generic_enum_reads_a_parameters_value_whole() {
     );
 }
 
-/// serde reads a variant under each alias it carries, so a tag or a key stored as one names that
-/// variant: the read is serde's, and nothing is listed for the alias.
 #[test]
 fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
     let mut calls = 0_u32;
@@ -1350,9 +1319,6 @@ fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
     assert_eq!(calls, 0);
 }
 
-/// A variant stored under an alias is walked as that variant, and the key it is stored under is
-/// the one its issues are pathed under: an undeclared key, a bad value, a position, a field under
-/// an alias of its own, and a field that is not there.
 #[test]
 fn an_issue_inside_a_variant_stored_under_an_alias_is_listed_under_the_stored_key() {
     let undeclared = json!({ "Round": { "extra": 1_i32, "radius": 1.5_f64 } });
@@ -1399,8 +1365,6 @@ fn an_issue_inside_a_variant_stored_under_an_alias_is_listed_under_the_stored_ke
     );
 }
 
-/// The path a decider is handed names the alias the variant is stored under, so setting it fixes
-/// the record as it is stored.
 #[test]
 fn a_decider_repairs_what_an_aliased_variant_holds_by_the_path_it_is_handed() {
     let stored = json!({ "Round": { "radius": "1.5" } });
@@ -1424,8 +1388,6 @@ fn a_decider_repairs_what_an_aliased_variant_holds_by_the_path_it_is_handed() {
     assert_eq!(read, Ok(Contour::Circle { radius: 1.5_f64 }));
 }
 
-/// An adjacently tagged variant whose tag is stored as an alias is walked under the content key,
-/// which no alias renames.
 #[test]
 fn an_adjacent_tag_stored_as_an_alias_walks_its_content_under_the_content_key() {
     let refused = json!({ "data": { "gap": "wide", "legacy": true }, "kind": "Broken" });
@@ -1451,9 +1413,6 @@ fn an_adjacent_tag_stored_as_an_alias_walks_its_content_under_the_content_key() 
     );
 }
 
-/// serde reads no tag as a variant under `skip_deserializing` or `skip`, so a tag naming one names
-/// no variant: `Invalid` where the tag is, with serde's message. `Variants` lists what serde does
-/// read, each variant's name and then its aliases, and nothing for that variant.
 #[test]
 fn a_tag_naming_a_variant_serde_never_reads_names_no_variant() {
     let hidden = serde_json::to_value(Coating::Hidden).unwrap();
@@ -1502,8 +1461,6 @@ fn a_tag_naming_a_variant_serde_never_reads_names_no_variant() {
     );
 }
 
-/// serde reads no value as an untagged variant under `skip_deserializing`, so what it wrote for
-/// one is read by no variant, and the one `NoVariant` holds a list for every other variant alone.
 #[test]
 fn an_untagged_variant_serde_never_reads_gets_no_list_of_its_own() {
     let stored = serde_json::to_value(Reach::Pager { number: 7_i32 }).unwrap();

@@ -1,10 +1,4 @@
 //! Tests for the Swift type and `Codable`-codec backend (`swift` feature).
-//!
-//! Each `#[model_schema]` item earns `swift_definition()` inside a `{snake_case}_swift` module
-//! beside it — the twin of `tests/dart_tests/tests.rs`, over Swift text instead of Dart text.
-//! `u64`/`usize` are refused at expansion under this feature, so none of these fixtures use
-//! them; the refusal itself is asserted in `src/model_schema/tests.rs`, where a real compile
-//! error can be inspected without failing this file's own build.
 
 use std::collections::HashMap;
 
@@ -14,10 +8,6 @@ use serde::{Deserialize, Serialize};
 
 use tixschema::model_schema;
 
-// ---------------------------------------------------------------------------------------------
-// Struct: the literal sample the task's acceptance criteria gives.
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowRequest {
@@ -25,10 +15,6 @@ pub struct WindowRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
 }
-
-// ---------------------------------------------------------------------------------------------
-// Widths: every integer, the floats, strings, arrays, maps, optionals.
-// ---------------------------------------------------------------------------------------------
 
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,10 +38,6 @@ pub struct AllWidths {
     pub optional: Option<i32>,
 }
 
-// ---------------------------------------------------------------------------------------------
-// Plain enum.
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema()]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -63,10 +45,6 @@ pub enum Status {
     Active,
     InStock,
 }
-
-// ---------------------------------------------------------------------------------------------
-// Externally tagged enum (serde's default once a variant carries data).
-// ---------------------------------------------------------------------------------------------
 
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,10 +54,6 @@ pub enum ExternalTagged {
     Foo { a: String },
 }
 
-// ---------------------------------------------------------------------------------------------
-// Internally tagged enum (`tag = "..."`, no `content`).
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -87,10 +61,6 @@ pub enum InternalTagged {
     Foo { a: String },
     Reset,
 }
-
-// ---------------------------------------------------------------------------------------------
-// Adjacently tagged enum (`tag = "...", content = "..."`).
-// ---------------------------------------------------------------------------------------------
 
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -100,10 +70,6 @@ pub enum AdjacentTagged {
     Flag(bool),
 }
 
-// ---------------------------------------------------------------------------------------------
-// Untagged enum.
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -112,25 +78,13 @@ pub enum Untagged {
     Text { text: String },
 }
 
-// ---------------------------------------------------------------------------------------------
-// Branded newtype (`#[serde(transparent)]`).
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct CorrelationId(pub String);
 
-// ---------------------------------------------------------------------------------------------
-// Alias.
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema()]
 pub type UserId = String;
-
-// ---------------------------------------------------------------------------------------------
-// Tuple field.
-// ---------------------------------------------------------------------------------------------
 
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -138,10 +92,6 @@ pub struct TuplePoint {
     pub label: String,
     pub pair: (String, u32),
 }
-
-// ---------------------------------------------------------------------------------------------
-// Non-string map key.
-// ---------------------------------------------------------------------------------------------
 
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -168,10 +118,6 @@ pub struct ByEnum {
     pub by_enum: HashMap<Primary, String>,
 }
 
-// ---------------------------------------------------------------------------------------------
-// Generic struct.
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema(default_types(T = String))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Envelope<T> {
@@ -179,19 +125,11 @@ pub struct Envelope<T> {
     pub value: T,
 }
 
-// ---------------------------------------------------------------------------------------------
-// `name` override: the Swift name moves, the ident re-publishes as a `typealias`.
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema(name = "User")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserData {
     pub id: String,
 }
-
-// ---------------------------------------------------------------------------------------------
-// `nullable`: the key is always written, even for `nil` — needs a custom `encode(to:)`.
-// ---------------------------------------------------------------------------------------------
 
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -199,10 +137,6 @@ pub struct WithNullable {
     #[model_schema_prop(nullable)]
     pub note: Option<String>,
 }
-
-// ---------------------------------------------------------------------------------------------
-// `#[serde(flatten)]`.
-// ---------------------------------------------------------------------------------------------
 
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -218,20 +152,12 @@ pub struct WithFlatten {
     pub id: String,
 }
 
-// ---------------------------------------------------------------------------------------------
-// ObjectId (feature-gated).
-// ---------------------------------------------------------------------------------------------
-
 #[cfg(feature = "mongodb")]
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Document {
     pub id: ObjectId,
 }
-
-// ---------------------------------------------------------------------------------------------
-// Chrono (feature-gated).
-// ---------------------------------------------------------------------------------------------
 
 #[cfg(feature = "chrono")]
 #[model_schema()]
@@ -263,10 +189,6 @@ pub enum ReservedMember {
     Other,
 }
 
-// ---------------------------------------------------------------------------------------------
-// Struct.
-// ---------------------------------------------------------------------------------------------
-
 #[test]
 fn a_struct_earns_codable_with_coding_keys() {
     let swift = window_request_swift::swift_definition();
@@ -289,10 +211,6 @@ fn a_struct_earns_codable_with_coding_keys() {
     assert!(!swift.contains("func encode(to encoder:"), "got: {swift}");
 }
 
-// ---------------------------------------------------------------------------------------------
-// Widths.
-// ---------------------------------------------------------------------------------------------
-
 #[test]
 fn every_width_maps_to_its_own_swift_type() {
     let swift = all_widths_swift::swift_definition();
@@ -314,10 +232,6 @@ fn every_width_maps_to_its_own_swift_type() {
     assert!(swift.contains("optional: Int32?"), "got: {swift}");
 }
 
-// ---------------------------------------------------------------------------------------------
-// Plain enum.
-// ---------------------------------------------------------------------------------------------
-
 #[cfg(feature = "serde")]
 #[test]
 fn a_plain_enum_earns_a_string_raw_value_enum() {
@@ -329,10 +243,6 @@ fn a_plain_enum_earns_a_string_raw_value_enum() {
     assert!(swift.contains("case active = \"active\""), "got: {swift}");
     assert!(swift.contains("case inStock = \"instock\""), "got: {swift}");
 }
-
-// ---------------------------------------------------------------------------------------------
-// Externally tagged enum.
-// ---------------------------------------------------------------------------------------------
 
 #[test]
 fn an_externally_tagged_enum_writes_the_payload_under_its_own_tag_key() {
@@ -356,10 +266,6 @@ fn an_externally_tagged_enum_writes_the_payload_under_its_own_tag_key() {
         "got: {swift}"
     );
 }
-
-// ---------------------------------------------------------------------------------------------
-// Internally tagged enum.
-// ---------------------------------------------------------------------------------------------
 
 #[cfg(feature = "serde")]
 #[test]
@@ -386,10 +292,6 @@ fn an_internally_tagged_enum_merges_the_tag_into_the_payloads_own_object() {
     );
 }
 
-// ---------------------------------------------------------------------------------------------
-// Adjacently tagged enum.
-// ---------------------------------------------------------------------------------------------
-
 #[cfg(feature = "serde")]
 #[test]
 fn an_adjacently_tagged_enum_writes_the_payload_under_its_own_content_key() {
@@ -412,10 +314,6 @@ fn an_adjacently_tagged_enum_writes_the_payload_under_its_own_content_key() {
     );
 }
 
-// ---------------------------------------------------------------------------------------------
-// Untagged enum.
-// ---------------------------------------------------------------------------------------------
-
 #[cfg(feature = "serde")]
 #[test]
 fn an_untagged_enum_tries_each_member_in_turn() {
@@ -428,10 +326,6 @@ fn an_untagged_enum_tries_each_member_in_turn() {
     assert!(swift.contains("if let value = try? UntaggedTextPayload(from: decoder)"));
     assert!(swift.contains("no untagged member matched"), "got: {swift}");
 }
-
-// ---------------------------------------------------------------------------------------------
-// Branded newtype.
-// ---------------------------------------------------------------------------------------------
 
 #[test]
 fn a_branded_newtype_earns_a_single_value_container_codec() {
@@ -451,10 +345,6 @@ fn a_branded_newtype_earns_a_single_value_container_codec() {
     );
 }
 
-// ---------------------------------------------------------------------------------------------
-// Alias.
-// ---------------------------------------------------------------------------------------------
-
 #[test]
 fn an_alias_earns_a_typealias() {
     let swift = user_id_swift::swift_definition();
@@ -463,10 +353,6 @@ fn an_alias_earns_a_typealias() {
         "got: {swift}"
     );
 }
-
-// ---------------------------------------------------------------------------------------------
-// Tuple field.
-// ---------------------------------------------------------------------------------------------
 
 #[test]
 fn a_tuple_field_earns_an_unkeyed_container_struct() {
@@ -482,10 +368,6 @@ fn a_tuple_field_earns_an_unkeyed_container_struct() {
         "got: {swift}"
     );
 }
-
-// ---------------------------------------------------------------------------------------------
-// Non-string map key.
-// ---------------------------------------------------------------------------------------------
 
 #[test]
 fn a_numeric_map_key_earns_a_keyed_wrapper() {
@@ -527,10 +409,6 @@ fn a_plain_enum_map_key_earns_a_keyed_wrapper() {
     assert!(swift.contains("Primary(rawValue: wireKey)"), "got: {swift}");
 }
 
-// ---------------------------------------------------------------------------------------------
-// Generic.
-// ---------------------------------------------------------------------------------------------
-
 #[test]
 fn a_generic_struct_binds_its_parameter_to_codable_and_sendable() {
     let swift = envelope_swift::swift_definition();
@@ -540,10 +418,6 @@ fn a_generic_struct_binds_its_parameter_to_codable_and_sendable() {
     );
     assert!(swift.contains("public let value: T"), "got: {swift}");
 }
-
-// ---------------------------------------------------------------------------------------------
-// `name` override and the ident's own re-publish as a `typealias`.
-// ---------------------------------------------------------------------------------------------
 
 #[test]
 fn a_name_override_moves_the_swift_name_and_republishes_the_ident() {
@@ -557,10 +431,6 @@ fn a_name_override_moves_the_swift_name_and_republishes_the_ident() {
         "got: {swift}"
     );
 }
-
-// ---------------------------------------------------------------------------------------------
-// `nullable`.
-// ---------------------------------------------------------------------------------------------
 
 #[test]
 fn a_nullable_field_always_writes_its_key_even_when_nil() {
@@ -576,10 +446,6 @@ fn a_nullable_field_always_writes_its_key_even_when_nil() {
     );
 }
 
-// ---------------------------------------------------------------------------------------------
-// `#[serde(flatten)]`.
-// ---------------------------------------------------------------------------------------------
-
 #[cfg(feature = "serde")]
 #[test]
 fn a_flattened_field_decodes_and_encodes_through_the_same_top_level_decoder() {
@@ -594,20 +460,12 @@ fn a_flattened_field_decodes_and_encodes_through_the_same_top_level_decoder() {
     );
 }
 
-// ---------------------------------------------------------------------------------------------
-// ObjectId (feature-gated).
-// ---------------------------------------------------------------------------------------------
-
 #[cfg(feature = "mongodb")]
 #[test]
 fn object_id_maps_to_a_bare_reference() {
     let swift = document_swift::swift_definition();
     assert!(swift.contains("public let id: ObjectId"), "got: {swift}");
 }
-
-// ---------------------------------------------------------------------------------------------
-// Chrono (feature-gated).
-// ---------------------------------------------------------------------------------------------
 
 #[cfg(feature = "chrono")]
 #[test]
@@ -627,12 +485,6 @@ fn naive_dates_are_plain_strings_and_datetime_is_date_with_a_fractional_second_f
     assert!(swift.contains("ISO8601DateFormatter"), "got: {swift}");
     assert!(swift.contains("withFractionalSeconds"), "got: {swift}");
 }
-
-// ---------------------------------------------------------------------------------------------
-// Every fixture also round-trips through real `serde_json`, on top of the emitted Swift text
-// each test above reads — the same double duty `tests/dart_tests/tests.rs` puts its own
-// fixtures to by constructing one of each.
-// ---------------------------------------------------------------------------------------------
 
 #[test]
 fn every_fixture_constructs_and_round_trips_through_serde_json() {
@@ -740,8 +592,6 @@ fn every_fixture_constructs_and_round_trips_through_serde_json() {
     }
 }
 
-/// Swift takes a reserved word between backticks, as a property, a coding key and an enum case;
-/// the key is the word itself. `type` is reserved in no position a member stands in.
 #[test]
 fn a_member_named_after_a_reserved_word_is_written_between_backticks() {
     assert_eq!(

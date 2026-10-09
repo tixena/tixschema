@@ -9,13 +9,10 @@
 mod tests {
     use core::mem;
 
-    /// What the comment that introduces the advisory floors of a manifest opens with.
     const FLOORS: &str = "# Transitive dep floors";
 
-    /// This package's manifest.
     const OWN: &str = include_str!("../Cargo.toml");
 
-    /// The manifest of tixschema itself.
     const ROOT: &str = include_str!("../../Cargo.toml");
 
     /// What `manifest` writes under `[table]`: each entry less its comments and its spacing, one
@@ -178,8 +175,6 @@ mod tests {
         );
     }
 
-    /// A floor is every dependency under the comment that introduces them, so one added to
-    /// tixschema's manifest alone is one this package does not hold.
     #[test]
     fn a_floor_is_unheld_where_it_is_missing_pinned_lower_or_written_another_way() {
         let theirs = r#"

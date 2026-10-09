@@ -1,3 +1,6 @@
+//! Tests of a struct that references a type alias: by value, in a collection, and as a map key or
+//! value.
+
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
@@ -163,8 +166,6 @@ fn alias_module_backs_the_map_value_reference() {
     }
 }
 
-/// The alias key must enumerate the same members the enum itself would, at both link depths —
-/// nothing about the key going through an alias changes the object's properties.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn alias_keyed_map_enumerates_the_members_of_the_aliased_enum() {
@@ -184,8 +185,6 @@ fn alias_keyed_map_enumerates_the_members_of_the_aliased_enum() {
     }
 }
 
-/// An alias names a type, so the schema it publishes is that type's own — the same one the scalar
-/// mapping gives a field written as the target directly.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn an_aliased_scalar_publishes_the_targets_schema() {
@@ -195,8 +194,6 @@ fn an_aliased_scalar_publishes_the_targets_schema() {
     );
 }
 
-/// A sibling target is carried by the one reference every position that names it carries, so the
-/// alias and the type it names describe the same values.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn an_aliased_sibling_publishes_the_siblings_own_schema() {
@@ -206,8 +203,6 @@ fn an_aliased_sibling_publishes_the_siblings_own_schema() {
     );
 }
 
-/// The reference resolves through the registry, which answers with whatever the named alias
-/// registered — so a chain of aliases lands on the enum at the end of it rather than on a link.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn an_alias_of_an_alias_resolves_to_the_type_at_the_end_of_the_chain() {
@@ -229,8 +224,6 @@ fn an_aliased_sequence_publishes_the_array_of_its_element() {
     );
 }
 
-/// A map target describes as its own key and value do, at the alias exactly as in field position:
-/// a `String` key leaves the members open under one value schema, an enum key enumerates them.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn an_aliased_map_publishes_the_object_its_key_and_value_describe() {
@@ -253,8 +246,6 @@ fn an_aliased_map_publishes_the_object_its_key_and_value_describe() {
     assert_eq!(by_slot["additionalProperties"], false, "in: {by_slot}");
 }
 
-/// The stub this replaced answered every alias with an object carrying a lone `warning` key, which
-/// under JSON Schema constrains nothing and so accepts every payload a slot could hold.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn no_alias_publishes_a_schema_that_validates_nothing() {
@@ -330,9 +321,6 @@ fn aliases_declared_under_their_reference_expand_in_this_feature_combination() {
     assert_eq!(earlier.counts, vec![10_i64]);
 }
 
-/// A struct naming an alias declared under it used to refuse the whole crate: the reference
-/// assumed `later_declared_id_schema` while the alias published `later_declared_id_type_schema`,
-/// an `E0433` for a module never written. One spelling now answers on both sides.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn an_alias_reference_describes_the_same_on_either_side_of_the_alias() {
@@ -342,8 +330,6 @@ fn an_alias_reference_describes_the_same_on_either_side_of_the_alias() {
     );
 }
 
-/// And what it resolves to is the alias's own module rather than something that merely exists:
-/// each member carries exactly what the alias publishes, the renamed one included.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn a_forward_alias_reference_carries_what_the_alias_publishes() {
@@ -365,8 +351,6 @@ fn a_forward_alias_reference_carries_what_the_alias_publishes() {
     );
 }
 
-/// The override and the module name come apart: the alias is exported under the name the author
-/// wrote, from the module named after the Rust ident.
 #[cfg(feature = "typescript")]
 #[test]
 fn a_renamed_alias_exports_under_the_override_from_the_module_named_for_its_ident() {
@@ -374,9 +358,6 @@ fn a_renamed_alias_exports_under_the_override_from_the_module_named_for_its_iden
     assert!(ts.contains("RenamedLaterDeclaredCount"), "got: {ts}");
 }
 
-/// An alias is never exported under its Rust ident — it's given the `Type` suffix, or whatever an
-/// override moves it to — so a forward reference always writes a name the alias's own
-/// `export type` line does not. The alias answers at that name too.
 #[cfg(feature = "typescript")]
 #[test]
 fn every_name_a_forward_alias_reference_writes_is_defined_by_the_emission() {
@@ -438,8 +419,6 @@ fn every_schema_a_forward_alias_reference_names_is_defined_by_the_emission() {
     }
 }
 
-/// A backward reference keeps the export name it always resolved to; the re-export is a second
-/// name for the alias, never a rewrite of what names it.
 #[cfg(feature = "typescript")]
 #[test]
 fn a_backward_alias_reference_still_writes_the_export_name() {
@@ -464,9 +443,6 @@ fn a_renamed_alias_publishes_its_zod_schema_from_the_module_named_for_its_ident(
     );
 }
 
-/// A build emitting no TypeScript writes an alias's binding as a bare `const`: the annotation
-/// naming the type it validates is a type, and a JavaScript parser reading one stops at the `:`
-/// with no initializer to read.
 #[cfg(all(feature = "zod", not(feature = "typescript")))]
 #[test]
 fn a_javascript_build_writes_an_alias_binding_with_no_annotation() {

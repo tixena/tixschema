@@ -1,3 +1,6 @@
+//! Unit tests of the `#[model_schema_prop]` parser: each key it reads, and the keys and values it
+//! refuses.
+
 use super::*;
 use syn::parse_quote;
 
@@ -150,7 +153,6 @@ fn attr_rejection(attr: Attribute) -> Option<String> {
 }
 
 /// The reported repro: a misspelled `pattern` compiled clean and emitted an unconstrained string.
-/// The refusal names the key as written and the one that was meant.
 #[test]
 fn a_misspelled_string_constraint_key_is_refused_by_the_name_as_written() {
     let rejection =
@@ -166,8 +168,6 @@ fn a_misspelled_length_constraint_key_is_refused_by_the_name_as_written() {
     assert!(rejection.contains("minLength"), "got: {rejection}");
 }
 
-/// The refusal offers every key the parser reads, and the probes below prove each offered name is
-/// one it actually reads — the list and the arms cannot drift apart while both hold.
 #[test]
 fn no_key_the_parser_reads_is_rejected() {
     let attrs: [Attribute; 11] = [
@@ -195,8 +195,6 @@ fn no_key_the_parser_reads_is_rejected() {
     }
 }
 
-/// Every value the old parser dropped on the floor: a wrong literal kind, a length the target type
-/// cannot hold, and a `preprocess` element that names no function.
 #[test]
 fn a_value_the_parser_cannot_read_is_refused() {
     let attrs: [Attribute; 9] = [

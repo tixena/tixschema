@@ -1,10 +1,6 @@
 //! Whole generic types, read on every surface at once — TypeScript declaration, Zod factory, and
 //! JSON document together, plus the wire where serde compiles, since a suite that asks one
 //! question at a time can pass while the answers disagree with each other.
-//!
-//! The recursive pair at the end reaches itself while still being described: JSON writes one
-//! definition and points a `$ref` back at it, and Zod defers the read so the factory reaches its
-//! own memo first — pinned against the real output under `tsc` and `zod`.
 
 /// serde's `rename_all` is what turns the declared members into the keys every surface here spells,
 /// so these read the emitted declaration only where the attribute is parsed at all.
@@ -18,9 +14,6 @@ mod typescript {
     #[cfg(feature = "zod")]
     use super::{ArchiveId, ArchiveStamp};
 
-    /// Every parameter the item declares is bound by the declaration, in declaration order, and
-    /// each member is written at whatever the parameter was written under: bare, wrapped in a
-    /// collection, made optional by serde, or handed to a sibling.
     #[test]
     fn a_whole_type_binds_every_parameter_its_members_are_written_under() {
         let ts = ArchiveEntry::<String, f64, String, u32, String>::ts_definition();
@@ -43,10 +36,6 @@ mod typescript {
         );
     }
 
-    /// A brand is a type parameter's own spelling intersected with the marker, so a generic brand
-    /// binds its parameter and spends it in the intersection. Which marker is written
-    /// (`$brand<"Name">`) is Zod's business, so the intersection is read only where that surface
-    /// compiles.
     #[cfg(feature = "zod")]
     #[test]
     fn a_generic_brand_is_named_with_the_argument_forwarded_to_it() {
@@ -66,8 +55,6 @@ mod typescript {
         );
     }
 
-    /// A discriminated enum's members are its variants, each written as the object the tag joins,
-    /// and the parameter is bound by the union's own declaration rather than by any one member.
     #[test]
     fn a_discriminated_generic_enum_binds_its_parameter_across_every_variant() {
         let ts = ArchiveEvent::<String>::ts_definition();
@@ -81,8 +68,6 @@ mod typescript {
         assert!(ts.contains("reason: string"), "Got: {ts}");
     }
 
-    /// An untagged enum is the bare union of what its variants write, and the parameter reaches it
-    /// through the one variant that names it.
     #[test]
     fn an_untagged_generic_enum_is_a_union_of_what_its_variants_write() {
         let ts = ArchiveWire::<String>::ts_definition();
@@ -94,8 +79,6 @@ mod typescript {
         assert!(ts.contains("count: number"), "Got: {ts}");
     }
 
-    /// TypeScript names a recursive type by writing its own name inside itself, arguments and all —
-    /// the declaration binds the parameter and the member spends it again at the same filling.
     #[test]
     fn a_recursive_generic_names_itself_with_the_arguments_it_was_declared_under() {
         let node = ArchiveNode::<String>::ts_definition();
@@ -131,9 +114,6 @@ mod zod {
         ArchiveTrunk, ArchiveWire,
     };
 
-    /// A generic type publishes a factory, and every member is written from whatever fills its own
-    /// parameter: the argument the factory bound, a collection of one, the optional wrap serde's
-    /// attribute earns, and a sibling factory called with the argument forwarded to it.
     #[test]
     fn a_whole_type_writes_each_member_from_the_argument_that_fills_it() {
         let zod = ArchiveEntry::<String, f64, String, u32, String>::zod_schema();
@@ -161,8 +141,6 @@ mod zod {
         assert!(!zod.contains("ArchiveEntry$Schema:"), "Got: {zod}");
     }
 
-    /// Five parameters means five levels of memo, each keyed on one argument and holding the map
-    /// the next is looked up in, so the schema is reached only through all five in order.
     #[test]
     fn a_five_parameter_factory_memoizes_one_level_per_argument() {
         let zod = ArchiveEntry::<String, f64, String, u32, String>::zod_schema();
@@ -182,8 +160,6 @@ mod zod {
         }
     }
 
-    /// A generic brand is a factory too: the brand is appended to whatever schema the argument
-    /// carries, and the type holding one calls that factory rather than naming a schema.
     #[test]
     fn a_generic_brand_is_a_factory_the_holder_calls() {
         let brand = ArchiveId::<String>::zod_schema();
@@ -199,9 +175,6 @@ mod zod {
         );
     }
 
-    /// Both enum shapes are built inside the factory, so a variant naming a parameter reads the
-    /// argument the factory bound: a tagged one through `discriminatedUnion`, an untagged one
-    /// through the bare union its variants write.
     #[test]
     fn both_generic_enum_shapes_are_built_from_the_bound_argument() {
         let tagged = ArchiveEvent::<String>::zod_schema();
@@ -227,10 +200,6 @@ mod zod {
         );
     }
 
-    /// A value is a value: one Zod schema cannot stand for every filling, so a recursive generic
-    /// reaches itself by calling its own factory with the argument it was handed, never a
-    /// `$Schema` binding a generic type does not publish. Written as a getter so the call happens
-    /// after the factory reaches its own memo — what ends the recursion.
     #[test]
     fn a_self_recursive_generic_calls_its_own_factory_behind_a_deferred_read() {
         let zod = ArchiveNode::<String>::zod_schema();
@@ -243,9 +212,6 @@ mod zod {
         assert!(!zod.contains("ArchiveNode$Schema)"), "Got: {zod}");
     }
 
-    /// A declaration file writes a type that reaches itself only by name, and an interface is what
-    /// it writes by name: a builder that defers a reference reads its type back under one, and one
-    /// that defers none keeps the alias.
     #[test]
     fn a_generic_that_defers_a_reference_reads_its_schema_type_back_under_an_interface() {
         let node = ArchiveNode::<String>::zod_schema();
@@ -272,10 +238,6 @@ mod zod {
         );
     }
 
-    /// A cycle between two generic types is ended at the reference written *forward* — naming a
-    /// type declared below, which a cycle cannot be built without. That one is deferred; the
-    /// backward reference is read as it stands, since what's left after deferring forward
-    /// references cannot cycle.
     #[test]
     fn a_generic_cycle_is_deferred_at_the_reference_written_forward() {
         let branch = ArchiveBranch::<String>::zod_schema();
@@ -304,8 +266,6 @@ mod json_schema {
     };
 
     /// JSON Schema has no type parameters, so the document exists at one filling: the declared one.
-    /// Every member is described as whatever that filling describes as, through the same dispatch a
-    /// field written at that type would take, and serde's key rules reach the document unchanged.
     #[test]
     fn a_whole_type_describes_every_member_at_its_declared_filling() {
         assert_eq!(
@@ -321,8 +281,6 @@ mod json_schema {
         );
     }
 
-    /// A brand describes as what it wraps — the document has no marker to carry — so a generic
-    /// brand describes as its declared filling, and the type holding it embeds that.
     #[test]
     fn a_generic_brand_describes_as_the_filling_it_wraps() {
         assert_eq!(
@@ -337,8 +295,6 @@ mod json_schema {
         );
     }
 
-    /// A tagged enum is the `oneOf` of the objects its tag joins; an untagged one is the `anyOf` of
-    /// what its variants write. The parameter is described at its declared filling in each.
     #[test]
     fn both_generic_enum_shapes_describe_at_the_declared_filling() {
         assert_eq!(
@@ -359,10 +315,6 @@ mod json_schema {
         );
     }
 
-    /// A document cannot be written to the bottom of a recursion, so the type is hoisted into
-    /// `$defs` once and the recursive member points a `$ref` back at it. One definition per name
-    /// *and filling* — the key carries a readable label off the filling's own `"type"` keyword
-    /// plus a digest, since a bare name would let two fillings of the same generic collide.
     #[test]
     fn a_recursive_generic_is_hoisted_once_and_pointed_back_at() {
         assert_eq!(
@@ -375,9 +327,6 @@ mod json_schema {
         );
     }
 
-    /// A cycle spanning two types is hoisted at whichever of them the document is built from, the
-    /// other written out inline underneath it — so each of the pair is a document in its own right
-    /// and the `$ref` closes back on the one that was asked for.
     #[test]
     fn a_generic_cycle_is_hoisted_at_whichever_type_the_document_is_built_from() {
         assert_eq!(
@@ -403,11 +352,6 @@ mod json_schema {
         );
     }
 
-    /// Two sibling fields naming the same recursive generic at different fillings are the shape
-    /// neither the in-flight cycle check nor a bare `$defs` key can tell apart — the frames are
-    /// sequential, not nested. Each filling gets its own definition and `$ref`; a third field at
-    /// the first filling shares that definition; each recursive member resolves back to its own
-    /// filling.
     #[test]
     fn siblings_at_different_fillings_of_one_recursive_generic_each_get_their_own_definition() {
         let document = TwoLoopedFillings::json_schema();
@@ -737,9 +681,6 @@ pub struct TwoLoopedFillings {
     pub strings: Looped<String>,
 }
 
-/// The declaration itself is the assertion in a build that reads no surface: an item that does not
-/// expand is a compile error, whatever is switched on. Every fixture is built here, so each one is
-/// held to expanding under every combination rather than only under the ones that read it.
 #[test]
 fn every_fixture_expands_in_this_build() {
     let stamp = ArchiveStamp {

@@ -1,3 +1,6 @@
+//! Tests of `#[serde(flatten)]`: the intersection, the merged schema and the choices a flattened
+//! source multiplies into.
+
 use serde::{Deserialize, Serialize};
 #[cfg(any(feature = "jsonschema", feature = "zod"))]
 use std::collections::HashMap;
@@ -152,6 +155,7 @@ enum FlatHue {
     Red,
 }
 
+/// Flattens `FlatHue`, as a plain serde type.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverEnum {
     own: String,
@@ -1452,9 +1456,6 @@ fn test_no_flatten_zod_unchanged() {
     assert!(!zod.contains(".and("));
 }
 
-/// A base's schema is a `const` the emitted module reads, and nothing orders one type's module
-/// against another's — naming it straight into the intersection would fail for a base declared
-/// below, so the operand is deferred until something validates.
 #[test]
 #[cfg(feature = "zod")]
 fn test_a_flattened_base_is_never_read_while_the_const_initializes() {
@@ -1472,9 +1473,6 @@ fn test_a_flattened_base_is_never_read_while_the_const_initializes() {
     }
 }
 
-/// Two bases that flatten each other name each other's `const`, and no declaration order puts both
-/// above the other. Deferring each read is what makes the pair's modules load at all; the cycle is
-/// then reached only by asking the schema to validate, never by importing it.
 #[test]
 #[cfg(feature = "zod")]
 fn test_a_flatten_cycle_defers_both_sides_of_the_pair() {
@@ -1499,9 +1497,6 @@ fn test_a_flatten_cycle_defers_both_sides_of_the_pair() {
     );
 }
 
-/// An intersection operand is written in two places — a flattened base and an internally tagged
-/// variant's content — and a cycle can run through both, so both sides carry the same deferral
-/// regardless of module assembly order.
 #[test]
 #[cfg(feature = "zod")]
 fn test_a_flatten_cycle_through_a_variants_content_defers_both_sides() {
@@ -1625,8 +1620,6 @@ fn test_flatten_recursive_base_self_reference_resolves_from_the_container() {
     assert!(resolved_props.contains_key("val"));
 }
 
-/// A cycle closed through flatten edges has no body to merge at either end, so it is named rather
-/// than described as the closed object over whatever fields happened to be written first.
 #[test]
 #[cfg(feature = "jsonschema")]
 #[should_panic(
@@ -1636,8 +1629,6 @@ fn test_flatten_cycle_is_rejected_rather_than_described() {
     assert!(CycleFirst::json_schema().is_object());
 }
 
-/// The rejection is the cycle's, not the entry point's: asking either end names the edge that
-/// closes it.
 #[test]
 #[cfg(feature = "jsonschema")]
 #[should_panic(
@@ -1647,9 +1638,6 @@ fn test_flatten_cycle_is_rejected_from_either_end() {
     assert!(CycleSecond::json_schema().is_object());
 }
 
-/// A cycle that closes through one member of a union is the same cycle — there is no body to merge
-/// at the branch either — so the branch is named rather than merged as the reference it is, which
-/// contributes nothing and closes the document around the base alone.
 #[test]
 #[cfg(feature = "jsonschema")]
 #[should_panic(
@@ -1691,8 +1679,6 @@ fn test_non_recursive_flatten_documents_are_byte_identical() {
     );
 }
 
-/// And flattening a base that names itself with no union in the middle writes the document it wrote
-/// before, byte for byte: the whole-body path reads the deferred name as it always did.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_the_deferred_flatten_document_is_byte_identical() {
@@ -1746,9 +1732,6 @@ fn test_flatten_recursive_base_serializes_flat() {
     assert_eq!(back, holder);
 }
 
-/// What serde writes for a flattened plain enum: the enum's own variant name, as a key holding
-/// null. No schema closed around the struct's remaining fields names that key, which is why the
-/// declaration is refused rather than described.
 #[test]
 fn test_flattening_a_plain_enum_writes_a_key_the_struct_does_not_name() {
     assert_eq!(
@@ -1761,8 +1744,6 @@ fn test_flattening_a_plain_enum_writes_a_key_the_struct_does_not_name() {
     );
 }
 
-/// And what serde writes for a flattened newtype that reaches the wire as a string — nothing. The
-/// value never reaches the wire at all, wherever the name was declared.
 #[test]
 #[cfg(not(feature = "zod"))]
 fn test_flattening_a_string_newtype_is_unserializable() {
@@ -1793,7 +1774,6 @@ fn test_flattening_a_later_string_newtype_is_unserializable() {
     );
 }
 
-/// So the merge refuses it too, rather than closing the object around the fields that are left.
 #[test]
 #[cfg(all(feature = "jsonschema", not(feature = "zod")))]
 #[should_panic(
@@ -1803,8 +1783,6 @@ fn test_flattening_a_string_newtype_is_refused_by_the_merge() {
     assert!(FlatOverBrand::json_schema().is_object());
 }
 
-/// And in those same words wherever the newtype was declared, which is the one reading of the
-/// declaration that survives the Zod surface refusing it at expansion.
 #[test]
 #[cfg(feature = "jsonschema")]
 #[should_panic(
@@ -1822,9 +1800,6 @@ fn test_the_flatten_merge_refusal_names_the_remedy() {
     assert!(FlatOverLaterBrand::json_schema().is_object());
 }
 
-/// And a source the registry could answer for is refused where it was written instead, in those
-/// same words: the guard names the wire the newtype recorded rather than waiting for a document
-/// nothing on the Zod surface would ever build.
 #[test]
 #[cfg(feature = "zod")]
 fn test_the_later_string_newtype_keeps_the_declaration_order_fallback() {
@@ -1835,8 +1810,6 @@ fn test_the_later_string_newtype_keeps_the_declaration_order_fallback() {
     );
 }
 
-/// What serde writes for a flattened untagged enum: the struct's own fields, and beside them the
-/// members of whichever union member matched. One key set per member, and no key naming the field.
 #[test]
 fn test_flattening_an_untagged_enum_writes_the_matched_members_keys() {
     assert_eq!(
@@ -1857,9 +1830,6 @@ fn test_flattening_an_untagged_enum_writes_the_matched_members_keys() {
     );
 }
 
-/// So the merged schema is the union of the merges: the base multiplied over every member of the
-/// union, each branch closed around exactly the keys that member writes, under the spelling the
-/// untagged source used.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_flattening_an_untagged_enum_multiplies_the_base_over_its_members() {
@@ -1869,8 +1839,6 @@ fn test_flattening_an_untagged_enum_multiplies_the_base_over_its_members() {
     );
 }
 
-/// And every payload serde writes is accepted by it. Before the base multiplied out, the document
-/// closed around `own` alone and rejected both.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_the_untagged_flatten_schema_accepts_every_payload_serde_writes() {
@@ -1914,8 +1882,6 @@ fn test_flattening_an_untagged_enum_over_a_string_member_is_unserializable() {
     );
 }
 
-/// The same value written for the union declared below the object, which every table holds: what
-/// serde refuses is the declaration, not the spelling any one surface gave it.
 #[test]
 #[cfg(any(feature = "jsonschema", feature = "zod"))]
 fn test_flattening_a_later_untagged_enum_over_a_string_member_is_unserializable() {
@@ -1931,7 +1897,6 @@ fn test_flattening_a_later_untagged_enum_over_a_string_member_is_unserializable(
     );
 }
 
-/// So the merge refuses the whole union, naming the branch that cannot join the object.
 #[test]
 #[cfg(all(feature = "jsonschema", not(feature = "zod")))]
 #[should_panic(
@@ -1941,8 +1906,6 @@ fn test_a_string_member_of_a_flattened_untagged_enum_is_refused_by_the_merge() {
     assert!(FlatOverScalarUntagged::json_schema().is_object());
 }
 
-/// And it refuses it in those same words wherever the union was declared, which is the one reading
-/// of the declaration that survives the Zod surface refusing it at expansion.
 #[test]
 #[cfg(feature = "jsonschema")]
 #[should_panic(
@@ -1952,9 +1915,6 @@ fn test_a_string_member_of_a_later_flattened_untagged_enum_is_refused_by_the_mer
     assert!(FlatOverLaterScalarUntagged::json_schema().is_object());
 }
 
-/// An `Option` member is the one shape where serde's two directions describe different payload
-/// sets: it writes flattened `None` as the object's own keys alone with no error, then refuses to
-/// read those same keys back — no branch a multiplication could write covers both directions.
 #[test]
 #[cfg(any(feature = "jsonschema", feature = "zod"))]
 fn test_an_optional_flattened_union_member_is_written_and_then_not_read_back() {
@@ -1981,9 +1941,6 @@ fn test_an_optional_flattened_union_member_is_written_and_then_not_read_back() {
     serde_json::from_value::<FlatOverLaterNullableUntagged>(present).unwrap();
 }
 
-/// So the merge refuses the whole union, naming the null the absence is described as and the leaf
-/// it sits at: an `Option` is a choice of its own below the member, so the absence is `2.2` rather
-/// than `2`.
 #[test]
 #[cfg(all(feature = "jsonschema", not(feature = "zod")))]
 #[should_panic(
@@ -1993,8 +1950,6 @@ fn test_an_optional_member_of_a_flattened_untagged_enum_is_refused_by_the_merge(
     assert!(FlatOverNullableUntagged::json_schema().is_object());
 }
 
-/// And in those same words wherever the union was declared, which is the one reading of the
-/// declaration that survives the Zod surface refusing it at expansion.
 #[test]
 #[cfg(feature = "jsonschema")]
 #[should_panic(
@@ -2004,8 +1959,6 @@ fn test_an_optional_member_of_a_later_flattened_untagged_enum_is_refused_by_the_
     assert!(FlatOverLaterNullableUntagged::json_schema().is_object());
 }
 
-/// A member that names a brand over a string is one serde refuses to flatten for the reason it
-/// refuses a directly flattened brand: what it writes is the bare string the brand's inner writes.
 #[test]
 #[cfg(any(feature = "jsonschema", feature = "zod"))]
 fn test_flattening_an_untagged_enum_over_a_named_string_member_is_unserializable() {
@@ -2021,8 +1974,6 @@ fn test_flattening_an_untagged_enum_over_a_named_string_member_is_unserializable
     );
 }
 
-/// So the merge refuses it, naming the branch and the string the brand publishes as — the answer
-/// the registry holds for the name, which the spelling of the member does not carry.
 #[test]
 #[cfg(feature = "jsonschema")]
 #[should_panic(
@@ -2032,8 +1983,6 @@ fn test_a_named_string_member_of_a_flattened_untagged_enum_is_refused_by_the_mer
     assert!(FlatOverLaterMemberSlugUntagged::json_schema().is_object());
 }
 
-/// In the same words wherever the union was declared, which is the reading that survives the Zod
-/// surface refusing the declared-above one at expansion.
 #[test]
 #[cfg(all(feature = "jsonschema", not(feature = "zod")))]
 #[should_panic(
@@ -2043,8 +1992,6 @@ fn test_a_named_string_member_of_an_earlier_untagged_enum_is_refused_by_the_merg
     assert!(FlatOverMemberSlugUntagged::json_schema().is_object());
 }
 
-/// The same for a brand serde stringifies and for a plain unit enum, each named by the keyword its
-/// own published document carries.
 #[test]
 #[cfg(all(feature = "jsonschema", not(feature = "zod")))]
 #[should_panic(
@@ -2063,9 +2010,6 @@ fn test_a_named_enumerated_member_of_a_flattened_untagged_enum_is_refused_by_the
     assert!(FlatOverMemberHueUntagged::json_schema().is_object());
 }
 
-/// A plain enum is the one of the three serde does not refuse outright — the flatten serializer
-/// writes the variant name as a key of its own and reads it back. What refuses it is that both
-/// schema surfaces describe it as the string its member name is, and a string joins no object.
 #[test]
 #[cfg(not(feature = "zod"))]
 fn test_a_flattened_plain_enum_member_is_written_as_a_key_no_schema_describes() {
@@ -2094,8 +2038,6 @@ fn test_the_untagged_branch_refusal_names_the_remedy() {
     assert!(FlatOverLaterScalarUntagged::json_schema().is_object());
 }
 
-/// A union member that names itself writes its own keys beside the struct's, the same as any other
-/// member: what it describes as says nothing about what it writes.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_flattening_a_self_naming_union_member_writes_its_keys() {
@@ -2112,8 +2054,6 @@ fn test_flattening_a_self_naming_union_member_writes_its_keys() {
     );
 }
 
-/// So the member merges as the body it names, reference and all: before it was read back it carried
-/// no members, and the document closed around the base alone.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_a_deferred_union_member_merges_as_the_body_it_names() {
@@ -2123,7 +2063,6 @@ fn test_a_deferred_union_member_merges_as_the_body_it_names() {
     );
 }
 
-/// And the document accepts what serde writes, self-reference resolving from the container's root.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_the_deferred_union_member_schema_accepts_the_payload_serde_writes() {
@@ -2147,9 +2086,6 @@ fn test_the_deferred_union_member_schema_accepts_the_payload_serde_writes() {
     );
 }
 
-/// What serde writes for a flattened untagged enum whose members overlap: the narrower member's
-/// keys, which are a subset of the wider member's. serde takes the first member that matches, so
-/// this is the payload it both writes and reads back.
 #[test]
 fn test_flattening_an_overlapping_untagged_enum_writes_the_narrower_members_keys() {
     let narrow = FlatOverOverlap {
@@ -2162,8 +2098,6 @@ fn test_flattening_an_overlapping_untagged_enum_writes_the_narrower_members_keys
     assert_eq!(back, narrow);
 }
 
-/// And two branches of the merged document admit that payload: the narrow member's branch names
-/// exactly its keys, and the wide member's branch names one more that it does not require.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_the_overlapping_payload_is_admitted_by_two_branches() {
@@ -2178,9 +2112,6 @@ fn test_the_overlapping_payload_is_admitted_by_two_branches() {
     );
 }
 
-/// So the merge keeps the spelling its source used. An untagged enum is first-match-wins, and more
-/// than one branch admitting a payload is its normal state, which is what `anyOf` says and `oneOf`
-/// denies.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_an_overlapping_untagged_flatten_keeps_the_any_of_spelling() {
@@ -2190,8 +2121,6 @@ fn test_an_overlapping_untagged_flatten_keeps_the_any_of_spelling() {
     );
 }
 
-/// And the document accepts every payload serde writes for it. Wrapped in `oneOf`, the payload the
-/// narrower member writes matched two branches and was rejected.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_the_overlapping_untagged_flatten_schema_accepts_every_payload_serde_writes() {
@@ -2207,8 +2136,6 @@ fn test_the_overlapping_untagged_flatten_schema_accepts_every_payload_serde_writ
     }
 }
 
-/// What serde writes for an object that flattens both spellings of a union: the discriminated
-/// enum's tag and members, the untagged enum's matched member, and the object's own keys.
 #[test]
 fn test_flattening_both_spellings_of_a_union_writes_every_members_keys() {
     let mixed = FlatOverMixed {
@@ -2227,9 +2154,6 @@ fn test_flattening_both_spellings_of_a_union_writes_every_members_keys() {
     assert_eq!(back, mixed);
 }
 
-/// So each source keeps its own wrapper around its own branches, nested in the order the sources
-/// were merged: the untagged enum's overlapping members under `anyOf`, and inside each of them the
-/// discriminated enum's exclusive members under `oneOf`.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_a_mixed_merge_keeps_each_sources_wrapper() {
@@ -2245,8 +2169,6 @@ fn test_a_mixed_merge_keeps_each_sources_wrapper() {
     }
 }
 
-/// And the document accepts every payload serde writes for it, whichever member of either union
-/// matched.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_the_mixed_merge_schema_accepts_every_payload_serde_writes() {
@@ -2264,9 +2186,6 @@ fn test_the_mixed_merge_schema_accepts_every_payload_serde_writes() {
     }
 }
 
-/// What serde writes for a struct that flattens a union one member of which is itself a union: the
-/// struct's own keys, and beside them the keys of whichever leaf member matched. The inner union is
-/// a choice, not a value, so it writes no key of its own.
 #[test]
 fn test_flattening_a_nested_union_writes_the_leaf_members_keys() {
     let nested: [(NestEither, serde_json::Value); 3] = [
@@ -2299,9 +2218,6 @@ fn test_flattening_a_nested_union_writes_the_leaf_members_keys() {
     }
 }
 
-/// So the merged schema multiplies the base out over the leaves rather than over the inner union,
-/// which carries no members to merge: before the branches expanded, the document named none of the
-/// leaves' keys and closed around `own` alone.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_the_nested_union_schema_accepts_every_payload_serde_writes() {
@@ -2318,8 +2234,6 @@ fn test_the_nested_union_schema_accepts_every_payload_serde_writes() {
     }
 }
 
-/// And each union keeps the spelling its own source used, however deep it sits: the untagged outer
-/// one is first-match-wins under `anyOf`, and the discriminated inner one exclusive under `oneOf`.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_a_nested_union_branch_expands_under_its_own_spelling() {
@@ -2329,8 +2243,6 @@ fn test_a_nested_union_branch_expands_under_its_own_spelling() {
     );
 }
 
-/// What serde writes when every level of the nesting holds one member: the same one key set the
-/// single leaf writes.
 #[test]
 fn test_flattening_a_single_member_nested_union_writes_the_leafs_keys() {
     let holder = NestOnlyHolder {
@@ -2343,9 +2255,6 @@ fn test_flattening_a_single_member_nested_union_writes_the_leafs_keys() {
     assert_eq!(back, holder);
 }
 
-/// So the document is that one object, wrapped in nothing: a choice of one is no choice at any
-/// depth. Before the branches expanded, it closed around `own` and rejected the only payload the
-/// type has.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_a_single_member_nested_union_collapses_to_the_leafs_object() {
@@ -2359,9 +2268,6 @@ fn test_a_single_member_nested_union_collapses_to_the_leafs_object() {
     ));
 }
 
-/// A cycle closed through two unions that name each other has a body at every step — the deferred
-/// one is filled in before the merge reads it — so it is the expansion path that names it, and the
-/// merge names that path rather than descending it forever.
 #[test]
 #[cfg(feature = "jsonschema")]
 #[should_panic(
@@ -2381,9 +2287,6 @@ fn test_the_nested_union_cycle_refusal_names_the_remedy() {
     assert!(NestCycleHolder::json_schema().is_object());
 }
 
-/// What serde writes for a base reached through an `Option`: the base's members beside the object's
-/// own when the field is `Some`, and the object's own alone when it is `None`. Both read back as the
-/// value that wrote them, so both are payloads of the type rather than one form and one accident.
 #[test]
 fn test_an_optional_flattened_base_writes_its_members_or_nothing() {
     let forms: [(Option<OptBase>, serde_json::Value); 2] = [
@@ -2408,8 +2311,6 @@ fn test_an_optional_flattened_base_writes_its_members_or_nothing() {
     }
 }
 
-/// And when the optional base is a union, the same two forms with the matched member's keys in the
-/// present one: the `Option` and the enum are two choices, and only the innermost writes keys.
 #[test]
 fn test_an_optional_flattened_union_writes_the_matched_members_keys_or_nothing() {
     let forms: [(Option<NestTagged>, serde_json::Value); 3] = [
@@ -2437,9 +2338,6 @@ fn test_an_optional_flattened_union_writes_the_matched_members_keys_or_nothing()
     }
 }
 
-/// So the merged document accepts both: the base's members are what an object writes beside its own
-/// or does not write at all, and folding them into one key set required the object to write keys the
-/// `None` payload never carries.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_the_optional_flatten_schema_accepts_every_payload_serde_writes() {
@@ -2455,9 +2353,6 @@ fn test_the_optional_flatten_schema_accepts_every_payload_serde_writes() {
     }
 }
 
-/// And rejects a base written in part. serde writes the base whole or not at all, so a payload
-/// carrying some of its required members is one no value of the type produces — which is what the
-/// two branches say and dropping the members from `required` would not.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_the_optional_flatten_schema_rejects_a_partial_base() {
@@ -2473,9 +2368,6 @@ fn test_the_optional_flatten_schema_rejects_a_partial_base() {
     }
 }
 
-/// The document says both: base members joined to the object's under one `anyOf` branch, the
-/// object's own alone under another — the branches overlap on the payload the absent branch
-/// stands for.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_the_optional_flatten_document_offers_the_base_and_its_absence() {
@@ -2485,9 +2377,6 @@ fn test_the_optional_flatten_document_offers_the_base_and_its_absence() {
     );
 }
 
-/// And when the optional source is a union, the absence joins its branches from outside: each member
-/// keeps the spelling its own enum was written under, and the absent branch is a choice about the
-/// whole union rather than a member of it.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_an_optional_flattened_union_offers_every_member_and_their_absence() {
@@ -2508,9 +2397,6 @@ fn test_an_optional_flattened_union_offers_every_member_and_their_absence() {
     );
 }
 
-/// The same two key sets on TypeScript: `| undefined` said something else — that the whole value
-/// may be missing — and `&` binds tighter than `|`, so it admitted neither payload for an absent
-/// base.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_the_optional_flatten_type_offers_the_base_and_its_absence() {
@@ -2525,9 +2411,6 @@ fn test_the_optional_flatten_type_offers_the_base_and_its_absence() {
     );
 }
 
-/// And when the optional source is a union, the absence joins it from outside: the members keep the
-/// spelling their own enum was written under, and the branch that carries none of them is written
-/// over the keys every member shares.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_an_optional_flattened_union_type_offers_its_members_and_their_absence() {
@@ -2542,9 +2425,6 @@ fn test_an_optional_flattened_union_type_offers_its_members_and_their_absence() 
     );
 }
 
-/// Zod writes the choice outside the intersection because that's the only place it can read it —
-/// an intersection recognizes only the keys its operands name, so a choice operand would leave
-/// each branch missing the other's keys.
 #[test]
 #[cfg(feature = "zod")]
 fn test_the_optional_flatten_schema_offers_the_base_and_its_absence() {
@@ -2561,9 +2441,6 @@ fn test_the_optional_flatten_schema_offers_the_base_and_its_absence() {
     );
 }
 
-/// And no branch of it admits a base written in part. The base joins a branch whole, under the name
-/// its own schema is bound to, or the branch is the object's own keys alone — so a payload carrying
-/// some of the base's members belongs to neither, and neither does a bare `undefined`.
 #[test]
 #[cfg(feature = "zod")]
 fn test_the_optional_flatten_schema_admits_no_partial_base() {
@@ -2583,8 +2460,6 @@ fn test_the_optional_flatten_schema_admits_no_partial_base() {
     );
 }
 
-/// What the object's own keys are bound to, so each branch names them rather than repeating them:
-/// one strict object, read by both branches of the choice.
 #[test]
 #[cfg(feature = "zod")]
 fn test_the_optional_flatten_schema_binds_the_objects_own_keys_once() {
@@ -2600,8 +2475,6 @@ fn test_the_optional_flatten_schema_binds_the_objects_own_keys_once() {
     );
 }
 
-/// The same two payloads reached through a name rather than an `Option`: serde reads and writes
-/// both forms, so the merge owes it two key sets rather than a refusal.
 #[test]
 fn test_a_named_nullable_flattened_base_writes_its_members_or_nothing() {
     let forms: [(Option<OptBase>, serde_json::Value); 2] = [
@@ -2626,9 +2499,6 @@ fn test_a_named_nullable_flattened_base_writes_its_members_or_nothing() {
     }
 }
 
-/// So the merged document is the one the `Option`-typed field's own writes, key for key: the base's
-/// members joined to the object's under one branch and the object's own alone under another. The two
-/// spellings reach the same absence, so they describe as one document.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_the_named_nullable_flatten_document_is_the_optional_flattens_own() {
@@ -2642,8 +2512,6 @@ fn test_the_named_nullable_flatten_document_is_the_optional_flattens_own() {
     );
 }
 
-/// And it accepts every payload serde writes and no base written in part, which is what the two
-/// branches say and folding them into one key set could not.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_the_named_nullable_flatten_document_admits_the_captured_payloads() {
@@ -2668,8 +2536,6 @@ fn test_the_named_nullable_flatten_document_admits_the_captured_payloads() {
     }
 }
 
-/// Zod writes the same choice around the intersection, leaving the name spelled as the nullable
-/// binding it is — its null side carries no key an intersection could take.
 #[test]
 #[cfg(feature = "zod")]
 fn test_the_named_nullable_flatten_schema_offers_the_base_and_its_absence() {
@@ -2687,9 +2553,6 @@ fn test_the_named_nullable_flatten_schema_offers_the_base_and_its_absence() {
     );
 }
 
-/// TypeScript writes the same choice: the name carries the value branch since the intersection
-/// distributes over it and `null` takes no key, while the other branch reads the base's members
-/// off the value side by name.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_the_named_nullable_flatten_type_offers_the_base_and_its_absence() {
@@ -2704,9 +2567,6 @@ fn test_the_named_nullable_flatten_type_offers_the_base_and_its_absence() {
     );
 }
 
-/// The absence is a question about what the name published — a direct flatten naming a
-/// non-nullable item is spelled exactly as before there was a second branch: one intersection on
-/// Zod, one closed object on the document, the bare name on TypeScript.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_a_named_non_nullable_flatten_type_is_byte_identical() {
@@ -2738,9 +2598,6 @@ fn test_a_named_non_nullable_flatten_document_is_byte_identical() {
     );
 }
 
-/// A nullable scalar writes one of its two values and refuses the other, which is what makes the
-/// declaration one no spelling of the merge can describe: serde writes the object's own keys alone
-/// for the `None` and reads them back as it, and refuses the `Some` where it stands.
 #[test]
 #[cfg(not(feature = "zod"))]
 fn test_flattening_a_nullable_scalar_writes_the_absence_and_refuses_the_value() {
@@ -2764,8 +2621,6 @@ fn test_flattening_a_nullable_scalar_writes_the_absence_and_refuses_the_value() 
     );
 }
 
-/// So the JSON-schema merge refuses the whole declaration at the branch the value sits at, rather
-/// than writing the absence branch alone.
 #[test]
 #[cfg(all(feature = "jsonschema", not(feature = "zod")))]
 #[should_panic(
@@ -2775,8 +2630,6 @@ fn test_flattening_a_nullable_scalar_is_refused_by_the_merge() {
     assert!(MaybeCountHolder::json_schema().is_object());
 }
 
-/// And in those same words wherever the registration was declared, which is the one reading of the
-/// declaration that survives the Zod surface refusing it at expansion.
 #[test]
 #[cfg(feature = "jsonschema")]
 #[should_panic(
@@ -2786,9 +2639,6 @@ fn test_flattening_a_later_nullable_scalar_is_refused_by_the_merge() {
     assert!(LaterMaybeCountHolder::json_schema().is_object());
 }
 
-/// A registration written below the object has recorded nothing when the object expands, so it
-/// proves neither the absence it publishes nor the value that is no object, and the merge writes the
-/// one operand the name is — the same fallback a name this crate never expands takes.
 #[test]
 #[cfg(feature = "zod")]
 fn test_the_later_nullable_scalar_keeps_the_declaration_order_fallback() {
@@ -2803,9 +2653,6 @@ fn test_the_later_nullable_scalar_keeps_the_declaration_order_fallback() {
     );
 }
 
-/// The absence is a question about the `Option` and nothing else, so a base written without one is
-/// spelled exactly as it was before there was a second branch to spell — byte for byte, on both
-/// surfaces.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_a_non_optional_flatten_type_is_byte_identical() {
@@ -2828,9 +2675,6 @@ fn test_a_non_optional_flatten_schema_is_byte_identical() {
     assert_eq!(MultiFlatten::zod_schema(), EXPECTED);
 }
 
-/// What serde writes for a flattened untagged enum is one key set per member, and what Zod says
-/// about it is the object multiplied over those members: a union of intersections, not an
-/// intersection with a union.
 #[test]
 #[cfg(feature = "zod")]
 fn test_the_untagged_flatten_schema_multiplies_the_object_over_the_unions_members() {
@@ -2842,9 +2686,6 @@ fn test_the_untagged_flatten_schema_multiplies_the_object_over_the_unions_member
     assert_eq!(FlatOverUntagged::zod_schema(), EXPECTED);
 }
 
-/// And the union itself is never an operand. Its name carries no key set, so an intersection built
-/// on it is the shape that rejected everything; the members reach the merge through the registry
-/// instead, each deferred exactly as a single base already was.
 #[test]
 #[cfg(feature = "zod")]
 fn test_the_untagged_flatten_schema_names_no_union_as_an_operand() {
@@ -2864,9 +2705,7 @@ fn test_the_untagged_flatten_schema_names_no_union_as_an_operand() {
     );
 }
 
-/// The two choices multiply. An `Option` around the union offers the members or none of them, and
-/// the union offers one member or another, so the object writes one branch per member and one more
-/// for the absence — the same multiplication the JSON-schema document is written from.
+/// The two choices multiply.
 #[test]
 #[cfg(feature = "zod")]
 fn test_an_optional_untagged_flatten_multiplies_the_members_and_the_absence() {
@@ -2883,8 +2722,6 @@ fn test_an_optional_untagged_flatten_multiplies_the_members_and_the_absence() {
     );
 }
 
-/// What serde writes for it: the matched member's keys beside the object's own, or the object's own
-/// alone. Both read back as the value that wrote them, so both are payloads of the type.
 #[test]
 fn test_an_optional_flattened_untagged_enum_writes_a_members_keys_or_nothing() {
     let forms: [(Option<FlatEither>, serde_json::Value); 3] = [
@@ -2910,8 +2747,6 @@ fn test_an_optional_flattened_untagged_enum_writes_a_members_keys_or_nothing() {
     }
 }
 
-/// An alias is the type it names on every surface, so an object flattening the alias multiplies
-/// over exactly the members the enum's own name would have given it.
 #[test]
 #[cfg(feature = "zod")]
 fn test_an_aliased_untagged_flatten_multiplies_over_the_same_members() {
@@ -2924,8 +2759,6 @@ fn test_an_aliased_untagged_flatten_multiplies_over_the_same_members() {
     );
 }
 
-/// A union nested inside a union contributes its leaves, not its name — the nesting writes no key
-/// of its own, so the object's own keys stay where they were and the leaf joins them directly.
 #[test]
 #[cfg(feature = "zod")]
 fn test_a_nested_untagged_flatten_multiplies_over_the_leaf_members() {
@@ -2947,8 +2780,6 @@ fn test_a_nested_untagged_flatten_multiplies_over_the_leaf_members() {
     );
 }
 
-/// A union declared below the object that flattens it is named as one operand — the spelling that
-/// rejects every payload the object writes, kept deliberately.
 #[test]
 #[cfg(feature = "zod")]
 fn test_a_union_declared_below_the_object_is_named_as_one_operand() {
@@ -2963,9 +2794,7 @@ fn test_a_union_declared_below_the_object_is_named_as_one_operand() {
     );
 }
 
-/// A base Zod does read a key set off is untouched. `z.discriminatedUnion` propagates its members'
-/// keys to the intersection, so an internally tagged base was never the shape that failed and is
-/// spelled byte for byte as it was.
+/// A base Zod does read a key set off is untouched.
 #[test]
 #[cfg(feature = "zod")]
 fn test_an_internally_tagged_flatten_schema_is_byte_identical() {
@@ -2977,9 +2806,6 @@ fn test_an_internally_tagged_flatten_schema_is_byte_identical() {
     assert_eq!(DataElementSampleValueEntry::zod_schema(), EXPECTED);
 }
 
-/// A union holding a member serde writes as a scalar is a union like any other while nothing
-/// flattens it: the member is a branch of the choice, where a scalar is exactly what a payload may
-/// be, and the schema is spelled byte for byte as it was before the merge could tell the two apart.
 #[test]
 #[cfg(feature = "zod")]
 fn test_a_standalone_union_with_a_scalar_member_is_byte_identical() {
@@ -2992,9 +2818,6 @@ fn test_a_standalone_union_with_a_scalar_member_is_byte_identical() {
     assert_eq!(FlatScalarEither::zod_schema(), EXPECTED);
 }
 
-/// A union holding an `Option`-reached member, a brand, or a plain enum is a union like any other
-/// while nothing flattens it — each spelled byte for byte as before the merge could tell the
-/// shapes apart.
 #[test]
 #[cfg(feature = "zod")]
 fn test_standalone_unions_the_merge_now_refuses_are_byte_identical() {
@@ -3024,9 +2847,6 @@ fn test_standalone_unions_the_merge_now_refuses_are_byte_identical() {
     );
 }
 
-/// And the reach of both refusals is the recording's, exactly as the scalar one's is: a union
-/// declared below the object records nothing for the merge to read, so it is still named as the one
-/// operand it is and the fallback is unchanged.
 #[test]
 #[cfg(feature = "zod")]
 fn test_the_unions_declared_below_the_object_are_still_named_as_one_operand() {
@@ -3050,8 +2870,6 @@ fn test_the_unions_declared_below_the_object_are_still_named_as_one_operand() {
     );
 }
 
-/// Flattening one is refused at expansion rather than emitted — the branch that used to be written
-/// for the scalar member intersected with it, which no payload satisfies and nothing reported.
 #[test]
 #[cfg(feature = "zod")]
 fn test_a_union_with_a_scalar_member_declared_below_is_still_named_as_one_operand() {
@@ -3066,9 +2884,6 @@ fn test_a_union_with_a_scalar_member_declared_below_is_still_named_as_one_operan
     );
 }
 
-/// A member naming a registration whose wire is a JSON array is one serde refuses to flatten for
-/// the reason it refuses a directly written array: what it writes is the array its slot writes, and
-/// an array carries no keys to put into the object.
 #[test]
 #[cfg(any(feature = "jsonschema", feature = "zod"))]
 fn test_flattening_an_untagged_enum_over_a_named_array_member_is_unserializable() {
@@ -3084,9 +2899,6 @@ fn test_flattening_an_untagged_enum_over_a_named_array_member_is_unserializable(
     );
 }
 
-/// So the merge refuses the whole union, naming the array the member describes as — the keyword the
-/// registry now carries for the name, where before the one recorded word covered the array and the
-/// map alike and could rule neither out.
 #[test]
 #[cfg(all(feature = "jsonschema", not(feature = "zod")))]
 #[should_panic(
@@ -3096,8 +2908,6 @@ fn test_a_named_array_member_of_a_flattened_untagged_enum_is_refused_by_the_merg
     assert!(FlatOverMemberBagUntagged::json_schema().is_object());
 }
 
-/// And in those same words wherever the union was declared, which is the one reading of the
-/// declaration that survives the Zod surface refusing it at expansion.
 #[test]
 #[cfg(feature = "jsonschema")]
 #[should_panic(
@@ -3107,9 +2917,6 @@ fn test_a_named_array_member_of_a_later_flattened_untagged_enum_is_refused_by_th
     assert!(FlatOverLaterMemberBagUntagged::json_schema().is_object());
 }
 
-/// A member naming a nullable-surfaced registration carries the same null an `Option<T>` member
-/// carries, one name away — serde's two directions describe different payload sets exactly as
-/// there.
 #[test]
 #[cfg(any(feature = "jsonschema", feature = "zod"))]
 fn test_a_named_nullable_flattened_union_member_is_written_and_then_not_read_back() {
@@ -3136,8 +2943,6 @@ fn test_a_named_nullable_flattened_union_member_is_written_and_then_not_read_bac
     serde_json::from_value::<FlatOverLaterMemberMaybeUntagged>(present).unwrap();
 }
 
-/// So the merge refuses it at the leaf the null sits at — `2.2`, a position below the member, which
-/// is where the name's own choice puts it and not where the member stands.
 #[test]
 #[cfg(all(feature = "jsonschema", not(feature = "zod")))]
 #[should_panic(
@@ -3156,9 +2961,6 @@ fn test_a_named_nullable_member_of_a_later_flattened_untagged_enum_is_refused_by
     assert!(FlatOverLaterMemberMaybeUntagged::json_schema().is_object());
 }
 
-/// The map-shaped member is admitted on every surface, and serde agrees in both directions: it
-/// writes the map's keys into the object and reads those same keys back. That is what the array
-/// and the map being one recorded word could not tell apart.
 #[test]
 #[cfg(any(feature = "jsonschema", feature = "zod"))]
 fn test_a_named_map_member_of_a_flattened_untagged_enum_round_trips() {
@@ -3174,7 +2976,6 @@ fn test_a_named_map_member_of_a_flattened_untagged_enum_round_trips() {
     serde_json::from_value::<FlatOverMemberBucketUntagged>(written).unwrap();
 }
 
-/// And its Zod schema keeps the multiplication it always had, byte for byte.
 #[test]
 #[cfg(feature = "zod")]
 fn test_a_named_map_member_keeps_its_multiplication() {
@@ -3187,15 +2988,12 @@ fn test_a_named_map_member_keeps_its_multiplication() {
     );
 }
 
-/// And the JSON-schema merge writes its document rather than refusing it.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_a_named_map_member_keeps_its_merged_document() {
     assert!(FlatOverMemberBucketUntagged::json_schema().is_object());
 }
 
-/// Standing on their own the three unions are unions like any other, spelled byte for byte as they
-/// were before the merge could tell the shapes apart.
 #[test]
 #[cfg(feature = "zod")]
 fn test_the_named_wire_unions_are_byte_identical_standing_alone() {
@@ -3222,9 +3020,6 @@ fn test_the_named_wire_unions_are_byte_identical_standing_alone() {
     );
 }
 
-/// What serde writes for a member naming a tagged enum: the single-key object the variant's name
-/// tags for a data-carrying variant, and the variant's name as a key holding null for a unit one —
-/// the flattened form of the bare string that variant is written as.
 #[test]
 #[cfg(any(feature = "jsonschema", feature = "zod"))]
 fn test_a_tagged_enum_member_writes_the_unit_variant_as_a_bare_name() {
@@ -3248,8 +3043,6 @@ fn test_a_tagged_enum_member_writes_the_unit_variant_as_a_bare_name() {
     }
 }
 
-/// And the merge refuses the declaration at the leaf the bare string sits at — `2.1`, a position
-/// below the member, which is where the enum's own choice puts it and not where the member stands.
 #[test]
 #[cfg(all(feature = "jsonschema", not(feature = "zod")))]
 #[should_panic(
@@ -3259,8 +3052,6 @@ fn test_a_tagged_enum_member_of_a_flattened_untagged_enum_is_refused_by_the_merg
     assert!(FlatOverMemberExtBareUntagged::json_schema().is_object());
 }
 
-/// And in those same words wherever the union was declared, which is the one reading of the
-/// declaration that survives the Zod surface refusing it at expansion.
 #[test]
 #[cfg(feature = "jsonschema")]
 #[should_panic(
@@ -3270,9 +3061,6 @@ fn test_a_tagged_enum_member_of_a_later_flattened_untagged_enum_is_refused_by_th
     assert!(FlatOverLaterMemberExtBareUntagged::json_schema().is_object());
 }
 
-/// A tagged enum whose every variant carries data writes an object for each of them, so serde joins
-/// it to the object being written and reads it back — and every surface admits it exactly where it
-/// always did.
 #[test]
 #[cfg(any(feature = "jsonschema", feature = "zod"))]
 fn test_an_all_object_tagged_enum_member_round_trips() {
@@ -3288,9 +3076,6 @@ fn test_an_all_object_tagged_enum_member_round_trips() {
     serde_json::from_value::<FlatOverMemberExtObjUntagged>(written).unwrap();
 }
 
-/// And its Zod schema keeps the multiplication it always had, byte for byte: one branch per member
-/// of the union, with the tagged enum named as the one operand it is rather than written out once
-/// per variant.
 #[test]
 #[cfg(feature = "zod")]
 fn test_an_all_object_tagged_enum_member_keeps_its_multiplication() {
@@ -3303,15 +3088,12 @@ fn test_an_all_object_tagged_enum_member_keeps_its_multiplication() {
     );
 }
 
-/// And the JSON-schema merge writes its document rather than refusing it.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_an_all_object_tagged_enum_member_keeps_its_merged_document() {
     assert!(FlatOverMemberExtObjUntagged::json_schema().is_object());
 }
 
-/// Standing on their own the two tagged enums are written exactly as they were: the leaves are what
-/// a merge reads about them and say nothing about what either publishes.
 #[test]
 #[cfg(feature = "zod")]
 fn test_the_tagged_enums_are_byte_identical_standing_alone() {
@@ -3332,9 +3114,6 @@ fn test_the_tagged_enums_are_byte_identical_standing_alone() {
     );
 }
 
-/// The direct position asks the same round-trip question and gets the other answer: serde writes
-/// the unit variant as its name holding `null`, not the bare string it is standing alone, and
-/// reads that back as the variant.
 #[test]
 #[cfg(any(feature = "jsonschema", feature = "zod"))]
 fn test_a_directly_flattened_tagged_enum_round_trips_every_variant() {
@@ -3360,9 +3139,6 @@ fn test_a_directly_flattened_tagged_enum_round_trips_every_variant() {
     }
 }
 
-/// So the document distributes the object over the variants rather than refusing at the branch the
-/// bare string sits at: one branch per variant, the unit one carrying the single key serde writes
-/// for it.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_the_direct_tagged_flatten_document_writes_one_branch_per_variant() {
@@ -3372,8 +3148,6 @@ fn test_the_direct_tagged_flatten_document_writes_one_branch_per_variant() {
     );
 }
 
-/// And it admits exactly the payloads serde writes, and no payload carrying two variants at once or
-/// none.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_the_direct_tagged_flatten_document_admits_the_captured_payloads() {
@@ -3399,9 +3173,6 @@ fn test_the_direct_tagged_flatten_document_admits_the_captured_payloads() {
     }
 }
 
-/// And Zod multiplies the object over the same variants, each written in the spelling a merge joins
-/// rather than the one the union publishes: the unit variant is the key serde writes for it, not the
-/// literal the enum's own schema names.
 #[test]
 #[cfg(feature = "zod")]
 fn test_the_direct_tagged_flatten_schema_multiplies_the_object_over_the_variants() {
@@ -3418,9 +3189,6 @@ fn test_the_direct_tagged_flatten_schema_multiplies_the_object_over_the_variants
     );
 }
 
-/// And TypeScript spells the same two key sets, because it cannot reach them by distributing: the
-/// bare string a unit variant publishes standing alone intersects the object to `never`, and the
-/// payload serde writes for that variant belongs to no branch of the result.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_the_direct_tagged_flatten_type_spells_the_key_set_serde_writes() {
@@ -3437,8 +3205,6 @@ fn test_the_direct_tagged_flatten_type_spells_the_key_set_serde_writes() {
     );
 }
 
-/// The same enum every variant of which carries data. serde writes each as the object its name tags
-/// and reads both back, so the declaration is one all four surfaces admit.
 #[test]
 #[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
 fn test_a_directly_flattened_all_object_tagged_enum_round_trips_every_variant() {
@@ -3464,9 +3230,6 @@ fn test_a_directly_flattened_all_object_tagged_enum_round_trips_every_variant() 
     }
 }
 
-/// So Zod multiplies the object over those variants too. Nothing about them has to be proved: an
-/// intersection recognizes exactly the keys its operands name and a `z.union` names none, so the
-/// object joined to the union as one operand describes a payload set no value inhabits.
 #[test]
 #[cfg(feature = "zod")]
 fn test_the_all_object_tagged_direct_flatten_schema_multiplies_the_object_over_the_variants() {
@@ -3483,9 +3246,6 @@ fn test_the_all_object_tagged_direct_flatten_schema_multiplies_the_object_over_t
     );
 }
 
-/// TypeScript distributes the intersection over the union on its own, but the excess-property
-/// check reads the union of both key sets — a payload carrying both tags would satisfy either
-/// branch structurally, which no value produces. Spelling the variants is what rules that out.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_an_all_object_tagged_direct_flatten_type_closes_each_variant_against_the_other() {
@@ -3506,9 +3266,6 @@ fn test_an_all_object_tagged_direct_flatten_document_is_byte_identical() {
     );
 }
 
-/// The absence branch beside the same enum reads the closed variants' keys, where it had none to
-/// read: `keyof` a union is the keys its branches share, which before the exclusions was an empty
-/// mapped type `{}` that every object passes through.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_the_optional_all_object_tagged_flatten_type_names_the_keys_its_absence_leaves_out() {
@@ -3521,8 +3278,6 @@ fn test_the_optional_all_object_tagged_flatten_type_names_the_keys_its_absence_l
 }
 
 /// Standing on their own the two tagged enums are written exactly as they were on TypeScript too.
-/// The exclusions answer what an intersection with an open object does to the choice, and a name
-/// publishing the choice alone is joined to nothing: it describes one variant at a time already.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_the_tagged_enums_are_byte_identical_standing_alone_on_typescript() {
@@ -3548,9 +3303,7 @@ fn test_the_tagged_enums_are_byte_identical_standing_alone_on_typescript() {
     );
 }
 
-/// The untagged footing answers the same way, on the members whose keys the declaration spells. What
-/// serde writes is one member's keys at a time — it matches a member on its shape — and the merged
-/// type said otherwise for the reason the tagged one did.
+/// The untagged footing answers the same way, on the members whose keys the declaration spells.
 #[test]
 #[cfg(any(feature = "jsonschema", feature = "zod", feature = "typescript"))]
 fn test_a_directly_flattened_inline_untagged_union_round_trips_every_member() {
@@ -3578,8 +3331,6 @@ fn test_a_directly_flattened_inline_untagged_union_round_trips_every_member() {
     }
 }
 
-/// So the merged type spells the members in the union's name's place, each closed against the keys
-/// the other names.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_an_inline_untagged_direct_flatten_type_closes_each_member_against_the_other() {
@@ -3591,8 +3342,6 @@ fn test_an_inline_untagged_direct_flatten_type_closes_each_member_against_the_ot
     );
 }
 
-/// And the union standing alone is written exactly as it was, on every surface: the exclusions are
-/// what an intersection with an open object needs, and nothing joins the name here.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_the_inline_untagged_union_is_byte_identical_standing_alone() {
@@ -3630,9 +3379,6 @@ fn test_the_inline_untagged_direct_flatten_document_is_unchanged() {
     );
 }
 
-/// What serde writes for a `#[serde(flatten)]` field of an enum's own struct variant: the source's
-/// members sit in the variant's content object, under no key of their own — the same merge a
-/// struct's own flattened field gets, one level deeper.
 #[test]
 fn test_a_flattened_variant_field_writes_its_members_into_the_variants_content() {
     assert_eq!(
@@ -3678,8 +3424,6 @@ fn test_a_flattened_variant_field_writes_its_members_into_the_variants_content()
     );
 }
 
-/// And reads them back the same way, so the merged shape is what a payload must carry in both
-/// directions.
 #[test]
 fn test_a_flattened_variant_field_reads_back_from_the_merged_shape() {
     let external: ExternalFlatVariant =
@@ -3707,8 +3451,6 @@ fn test_a_flattened_variant_field_reads_back_from_the_merged_shape() {
     );
 }
 
-/// So the TypeScript the variant describes as is an intersection at the content's own position,
-/// never a key holding the source.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_a_flattened_variant_field_is_a_typescript_intersection_inside_the_variant() {
@@ -3734,8 +3476,6 @@ fn test_two_flattened_variant_fields_join_the_same_content_object() {
     assert!(!ts.contains("rank:"), "Got: {ts}");
 }
 
-/// And the Zod schema joins the source through the same deferred operand a struct's own flattened
-/// base joins through, so a source declared below the enum is still read when something validates.
 #[test]
 #[cfg(feature = "zod")]
 fn test_a_flattened_variant_field_is_a_zod_intersection_inside_the_variant() {
@@ -3768,8 +3508,6 @@ fn test_two_flattened_variant_fields_chain_their_zod_operands() {
     );
 }
 
-/// An internally tagged member that flattens is an intersection rather than an object, and Zod
-/// discriminates only between objects — so the union carrying it is a plain one.
 #[test]
 #[cfg(feature = "zod")]
 fn test_an_internally_tagged_flattened_variant_forces_a_plain_zod_union() {
@@ -3778,8 +3516,6 @@ fn test_an_internally_tagged_flattened_variant_forces_a_plain_zod_union() {
     assert!(!zod.contains("z.discriminatedUnion("), "Got: {zod}");
 }
 
-/// The JSON document names the source's members where the variant's own members are named, and
-/// requires them beside its own — no key stands for the flattened field itself.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_a_flattened_variant_field_merges_into_the_variants_json_content() {
@@ -3810,7 +3546,6 @@ fn test_two_flattened_variant_fields_merge_into_one_json_content() {
     }
 }
 
-/// And the document accepts exactly the payload serde writes.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_the_flattened_variant_document_accepts_what_serde_writes() {
@@ -3844,8 +3579,6 @@ fn test_the_flattened_variant_document_accepts_what_serde_writes() {
     }
 }
 
-/// A variant carrying no flattened field is untouched: its content stays the object it always was,
-/// with a key per declared field and no intersection anywhere.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_a_variant_without_a_flattened_field_keeps_its_typescript_object() {
@@ -3863,9 +3596,6 @@ fn test_a_variant_without_a_flattened_field_keeps_its_zod_object() {
     assert!(!plain.contains(".and("), "Got: {plain}");
 }
 
-/// What serde writes for a `#[serde(flatten)]` field of an *untagged* enum's own struct variant:
-/// the source's members sit beside the variant's own, under no key of their own and with no
-/// discriminator over them.
 #[test]
 fn test_a_flattened_untagged_variant_field_writes_its_members_beside_the_variants_own() {
     assert_eq!(
@@ -3891,7 +3621,6 @@ fn test_a_flattened_untagged_variant_field_writes_its_members_beside_the_variant
     );
 }
 
-/// And reads them back the same way, for the flattening member and for the sibling beside it.
 #[test]
 fn test_a_flattened_untagged_variant_field_round_trips_both_members() {
     for value in [
@@ -3909,8 +3638,6 @@ fn test_a_flattened_untagged_variant_field_round_trips_both_members() {
     }
 }
 
-/// So the TypeScript the member describes as is an intersection at the member's own position, never
-/// a key holding the source.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_a_flattened_untagged_variant_field_is_a_typescript_intersection_inside_the_member() {
@@ -3938,8 +3665,6 @@ fn test_two_flattened_untagged_variant_fields_join_the_same_member_object() {
     assert!(!ts.contains("rank:"), "Got: {ts}");
 }
 
-/// And the Zod schema joins the source through the same deferred operand the tagged forms join
-/// through, so a source declared below the enum is still read when something validates.
 #[test]
 #[cfg(feature = "zod")]
 fn test_a_flattened_untagged_variant_field_is_a_zod_intersection_inside_the_member() {
@@ -3981,9 +3706,6 @@ fn written_against_described(
     (written, named, required)
 }
 
-/// The JSON document names exactly the keys serde writes for the member, and requires every one of
-/// them: the source's members sit where the variant's own are named, and no key stands for the
-/// flattened field itself.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_a_flattened_untagged_variant_field_merges_into_the_members_json_object() {
@@ -4018,8 +3740,6 @@ fn test_two_flattened_untagged_variant_fields_merge_into_one_json_object() {
     assert_eq!(required, written, "Got: {branch}");
 }
 
-/// And exactly one branch of the union accepts each member's real payload: merging a source into
-/// one member leaves the others describing what they always described.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_the_flattened_untagged_variant_document_accepts_what_serde_writes() {
@@ -4042,8 +3762,6 @@ fn test_the_flattened_untagged_variant_document_accepts_what_serde_writes() {
     }
 }
 
-/// The nested shape the description named before the merge is one serde never writes, and the
-/// document turns it away.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_the_flattened_untagged_variant_document_rejects_the_stale_nested_shape() {
@@ -4057,8 +3775,6 @@ fn test_the_flattened_untagged_variant_document_rejects_the_stale_nested_shape()
     );
 }
 
-/// An object that flattens the enum writes the matched member's keys beside its own, in both
-/// directions.
 #[test]
 fn test_flattening_an_enum_whose_member_flattens_round_trips_every_member() {
     let forms = [
@@ -4088,9 +3804,6 @@ fn test_flattening_an_enum_whose_member_flattens_round_trips_every_member() {
     }
 }
 
-/// And no member of that union is closed against a key it cannot enumerate: the flattening member's
-/// own key list is not provable from one expansion, so its sibling is told to deny nothing and the
-/// merge falls back to the one operand the enum's name is.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_a_flattening_untagged_member_closes_no_sibling_against_unprovable_keys() {
@@ -4104,9 +3817,6 @@ fn test_a_flattening_untagged_member_closes_no_sibling_against_unprovable_keys()
     );
 }
 
-/// What serde writes for a variant flattening a registered choice: the matched member's keys sit in
-/// the variant's content object beside the variant's own, one key set per member, wherever the
-/// tagging puts that object.
 #[test]
 fn test_a_multi_branch_variant_source_writes_one_key_set_per_branch() {
     assert_eq!(
@@ -4157,8 +3867,6 @@ fn test_a_multi_branch_variant_source_writes_one_key_set_per_branch() {
     );
 }
 
-/// And reads every one of them back, so the multiplied shape is what a payload carries in both
-/// directions.
 #[test]
 fn test_a_multi_branch_variant_source_reads_back_every_key_set() {
     for (payload, expected) in [
@@ -4209,9 +3917,6 @@ fn test_a_multi_branch_variant_source_reads_back_every_key_set() {
     }
 }
 
-/// So the Zod schema writes the variant's object once per key set and offers the copies as a union,
-/// each copy closed with the branch it carries through the same deferred operand a single source
-/// joins through.
 #[test]
 #[cfg(feature = "zod")]
 fn test_a_multi_branch_variant_source_writes_one_zod_object_per_branch() {
@@ -4258,8 +3963,6 @@ fn test_a_multi_branch_variant_source_writes_one_zod_object_per_branch() {
     );
 }
 
-/// Every branch serde writes has a combination naming the schema of the member that wrote it, and
-/// no combination names a key for the flattened field itself.
 #[test]
 #[cfg(feature = "zod")]
 fn test_the_multiplied_variant_zod_names_the_branch_every_serde_payload_wrote() {
@@ -4323,8 +4026,6 @@ fn test_the_multiplied_variant_zod_names_the_branch_every_serde_payload_wrote() 
     }
 }
 
-/// A third member is a third key set serde writes, so the multiplication is counted rather than
-/// assumed to be a pair.
 #[test]
 fn test_a_three_branch_variant_source_writes_three_key_sets() {
     for (value, written) in [
@@ -4360,7 +4061,6 @@ fn test_a_three_branch_variant_source_writes_three_key_sets() {
     }
 }
 
-/// And a third copy of the object in the schema, in the order the choice records its members.
 #[test]
 #[cfg(feature = "zod")]
 fn test_a_three_branch_variant_source_writes_three_zod_objects() {
@@ -4376,8 +4076,6 @@ fn test_a_three_branch_variant_source_writes_three_zod_objects() {
     );
 }
 
-/// An internally tagged member that multiplies is a union rather than an object, and Zod
-/// discriminates only between objects — so the union carrying it is a plain one.
 #[test]
 #[cfg(feature = "zod")]
 fn test_an_internally_tagged_multiplying_variant_forces_a_plain_zod_union() {
@@ -4386,8 +4084,6 @@ fn test_an_internally_tagged_multiplying_variant_forces_a_plain_zod_union() {
     assert!(!zod.contains("z.discriminatedUnion("), "Got: {zod}");
 }
 
-/// An adjacently tagged member keeps its object: the multiplied union sits under the content key,
-/// where it leaves the tag the enclosing union discriminates on in place.
 #[test]
 #[cfg(feature = "zod")]
 fn test_an_adjacently_tagged_multiplying_variant_keeps_its_discriminated_union() {
@@ -4399,8 +4095,6 @@ fn test_an_adjacently_tagged_multiplying_variant_keeps_its_discriminated_union()
     assert!(zod.contains("kind: z.literal(\"Named\"),"), "Got: {zod}");
 }
 
-/// An `Option` over a plain source writes the source's members or leaves them out, which is the
-/// object with the source joined and the object as it stands, in that order.
 #[test]
 fn test_an_optional_variant_source_writes_the_object_with_the_source_and_without_it() {
     assert_eq!(
@@ -4437,8 +4131,6 @@ fn test_an_optional_variant_source_offers_the_source_and_its_absence_in_zod() {
     );
 }
 
-/// Two sources in one variant multiply: every key set the first writes stands beside every key set
-/// the second does, the first source varying slowest.
 #[test]
 fn test_two_variant_sources_write_their_cross_product() {
     for (value, written) in [
@@ -4488,8 +4180,6 @@ fn test_two_variant_sources_write_their_cross_product_in_zod() {
     );
 }
 
-/// An `Option` over a choice offers the choice's members and one absence beside them, not one
-/// absence per member.
 #[test]
 fn test_an_optional_multi_branch_variant_source_writes_a_members_keys_or_none() {
     for (value, written) in [
@@ -4533,9 +4223,6 @@ fn test_an_optional_multi_branch_variant_source_offers_its_branches_and_the_abse
     );
 }
 
-/// A member reaching the enum being defined is deferred in every copy of the object it stands in,
-/// the same getter one copy already carries, so no combination reads the binding while the `const`
-/// holding it initializes.
 #[test]
 #[cfg(feature = "zod")]
 fn test_a_multiplying_variant_defers_the_member_that_reaches_the_enum() {
@@ -4581,8 +4268,6 @@ fn test_a_multiplying_recursive_variant_round_trips_every_branch() {
     }
 }
 
-/// The JSON document admits every payload serde writes for a multiplied variant, whichever tagging
-/// wrote it.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_the_multiplied_variant_document_accepts_what_serde_writes() {
@@ -4643,8 +4328,6 @@ fn test_the_multiplied_variant_document_accepts_what_serde_writes() {
     }
 }
 
-/// And rejects the shapes no branch writes: a payload carrying two branches' keys at once, one
-/// carrying none of them, and the stale nesting the flattened field's own key would have made.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_the_multiplied_variant_document_rejects_what_no_branch_writes() {
@@ -4673,8 +4356,6 @@ fn test_the_multiplied_variant_document_rejects_what_no_branch_writes() {
     }
 }
 
-/// The document names one branch per key set, which is what the anyOf multiplication already wrote
-/// for a struct-level merge.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_the_multiplied_variant_document_writes_one_branch_per_key_set() {
@@ -4693,8 +4374,6 @@ fn test_the_multiplied_variant_document_writes_one_branch_per_key_set() {
     }
 }
 
-/// TypeScript distributes the intersection over the choice's own union, so the type is written the
-/// way a single-key-set source is written and the multiplication never reaches it.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_the_multiplied_variant_type_is_the_intersection_typescript_distributes() {
@@ -4732,10 +4411,6 @@ fn test_the_multiplied_variant_type_is_the_intersection_typescript_distributes()
     }
 }
 
-/// A variant flattening a source that writes exactly one key set is written as it always was: one
-/// `.and(...)`, no union introduced, on every tagging. Pinned as the merged expression rather than
-/// the whole method, so the same text is asserted whichever binding the `typescript` toggle
-/// publishes it under.
 #[test]
 #[cfg(feature = "zod")]
 fn test_a_single_key_set_variant_flatten_schema_is_byte_identical() {
@@ -4769,7 +4444,6 @@ fn test_a_single_key_set_variant_flatten_schema_is_byte_identical() {
     }
 }
 
-/// And two such sources still chain onto the one object, rather than multiplying it.
 #[test]
 #[cfg(feature = "zod")]
 fn test_two_single_key_set_variant_sources_are_byte_identical() {
@@ -4791,8 +4465,6 @@ fn test_two_single_key_set_variant_sources_are_byte_identical() {
     }
 }
 
-/// A variant flattening nothing is the object it always was, with no `.and(...)` and no union of
-/// its own.
 #[test]
 #[cfg(feature = "zod")]
 fn test_a_variant_flattening_nothing_is_byte_identical() {

@@ -39,6 +39,7 @@ pub trait ScalarPathBoundService<Ctx> {
     async fn get(&self, ctx: &Ctx, id: String) -> Result<DocumentSummary, GetDocumentError>;
 }
 
+/// The implementation of `ScalarPathBoundService` these tests dispatch to.
 pub struct ScalarBackEnd;
 
 impl ScalarPathBoundService<()> for ScalarBackEnd {
@@ -95,9 +96,6 @@ fn dispatched(path: &str) -> (u16, Vec<u8>) {
     (response.status(), response.body().to_vec())
 }
 
-/// The reproduction: a single scalar argument bound whole by the path's one placeholder of its
-/// own name compiles, and dispatches with its value read from the placeholder alone - never a
-/// body, never a query string.
 #[test]
 fn a_scalar_argument_bound_whole_by_its_own_placeholder_dispatches() {
     let (status, body) = dispatched("/documents/abc");
@@ -126,8 +124,6 @@ fn the_route_table_lists_the_one_route() {
     assert_eq!(route.error_statuses(), &[404]);
 }
 
-/// `IncomingRequest` reads back everything it was built with, exercised here for this
-/// dispatcher's own expansion.
 #[test]
 fn an_incoming_request_reads_back_its_body_headers_and_query() {
     let request = IncomingRequest::new(
@@ -146,8 +142,6 @@ fn an_incoming_request_reads_back_its_body_headers_and_query() {
     );
 }
 
-/// An owner-installed `FaultHandler` still builds an `OutgoingResponse` by hand on this
-/// dispatcher, exercising `OutgoingResponse::new` and its `headers()` accessor directly.
 #[test]
 fn an_installed_fault_handler_still_builds_an_outgoing_response_by_hand() {
     let request = IncomingRequest::new(

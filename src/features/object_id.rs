@@ -3,9 +3,8 @@
 //! This module handles `ObjectId` type detection and generates appropriate
 //! TypeScript and schema code when the "`mongodb`" feature is enabled.
 
-/// The 24-character hex an `ObjectId`'s `$oid` member holds, as the regex every surface constrains
-/// it by. Written once so no position can describe the same string a different way: the JSON
-/// Schema `pattern` keyword and the Zod literal both read it from here.
+/// The 24-character hex an `ObjectId`'s `$oid` holds, written once: the JSON Schema `pattern` and
+/// the Zod literal both read it from here.
 #[cfg(any(test, feature = "zod", feature = "jsonschema"))]
 pub const OBJECT_ID_HEX_PATTERN: &str = "^[a-f0-9]{24}$";
 

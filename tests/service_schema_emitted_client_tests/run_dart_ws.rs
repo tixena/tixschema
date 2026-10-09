@@ -16,9 +16,8 @@ use super::tests::{
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
 const RUNTIME_VAR: &str = "TIXSCHEMA_DART";
 
-/// Drives one `window` call per outcome over a hand-fed reply frame, and a fourth left waiting
-/// when the transport closes. `heartbeat` is turned off so no `Timer.periodic` is left scheduled
-/// once the driver is done with it.
+/// Drives one `window` call per outcome over a hand-fed reply frame, and a fourth left waiting when
+/// the transport closes.
 const DRIVER: &str = "
 void main() async {
   final sentRaw = <dynamic>[];

@@ -1,11 +1,12 @@
+//! Unit tests of the shared helpers: example extraction from doc comments, and the `pattern`
+//! guards.
+
 use super::*;
 
 #[cfg(feature = "mongodb")]
 use crate::features::object_id::OBJECT_ID_HEX_PATTERN;
 
 /// The pattern shapes the shipped tests write, none of which the two grammars spell differently.
-/// Every one of them has to come back byte for byte: the guard is there to stop a pattern only one
-/// grammar reads, not to touch the ones both already read the same way.
 const PORTABLE_PATTERNS: [&str; 9] = [
     "^[a-z]+$",
     "^[0-9a-fA-F]{24}$",
@@ -19,10 +20,7 @@ const PORTABLE_PATTERNS: [&str; 9] = [
     r"[a\]b]",
 ];
 
-/// Every construct the guard refuses, beside the words the refusal has to name it by — the
-/// inventory of what `regex::Regex::new` accepts and a JavaScript regex literal either fails to
-/// parse or reads as something else, so it doubles as the record of what was checked against both
-/// grammars.
+/// Every construct the guard refuses, beside the words the refusal has to name it by.
 const UNPORTABLE_PATTERNS: [(&str, &str); 34] = [
     ("(?i)abc", "inline flag directive"),
     ("abc(?i)def", "inline flag directive"),
@@ -68,12 +66,8 @@ const REWRITE_HAYSTACKS: [&str; 12] = [
     "", "a", "abc", "]", "]]", "a]", "-", "/", "a-b", "word-42", "AB", "[",
 ];
 
-/// The haystacks the two engines are compared over, chosen so every way `\d`, `\w`, `\s` and `.`
-/// were found to part ways is represented: an ASCII sample of each class, the ARABIC-INDIC digit
-/// and the accented and Greek letters the `regex` crate counts as word characters and a flagless
-/// literal does not, the two whitespace characters the engines disagree over in opposite
-/// directions (NEL, which only the `regex` crate spaces, and the byte-order mark, which only
-/// JavaScript does), and the astral characters a flagless literal sees as two code units.
+/// The haystacks the two engines are compared over: every way `\d`, `\w`, `\s` and `.` part ways
+/// between the `regex` crate and a flagless JavaScript literal.
 const CROSS_ENGINE_HAYSTACKS: [&str; 20] = [
     "",
     "5",
@@ -288,10 +282,7 @@ const TRIVIAL_PATTERNS: [&str; 10] = [
 ];
 
 #[cfg(feature = "serde")]
-/// Patterns that keep their regex. The first eight are the shapes the shipped tests and the
-/// reports write; the rest are the near misses — a literal with one non-literal part in it, and
-/// the constructs whose trivial reading the lint offers no call for and this crate therefore
-/// declines to make one up for.
+/// Patterns that keep their regex.
 const NON_TRIVIAL_PATTERNS: [&str; 16] = [
     "^[a-z]+$",
     "^/[a-z]+$",
@@ -311,10 +302,7 @@ const NON_TRIVIAL_PATTERNS: [&str; 16] = [
     "a|b",
 ];
 
-/// Every shape the guard proves admits every value, written the ways an author reaches one: the
-/// four the report names, then the same emptiness reached through a capture, a repetition that may
-/// run zero times, an alternative that may be skipped, and a single text anchor with nothing but
-/// those beside it.
+/// Every shape the guard proves admits every value, written the ways an author reaches one.
 const UNCONSTRAINING_PATTERNS: [&str; 12] = [
     "", "^", "$", "|", "()", "(^)", "a*", "a?", "a|", "^a*", "a*$", "(?:ab)*",
 ];
@@ -333,8 +321,6 @@ const BOUNDED_ASSERTION_PATTERNS: [&str; 4] = [r"\ba", r"\Ba", r"^\bfoo", r"\b[0
 
 /// The negated classes the verdict was decided over: a single member, the ranges an author reaches
 /// for to bound one to ASCII, an escape, and the `\d` the guard writes out to `0-9` on its way in.
-/// The last is the one that shows rewriting cannot help — its members come out ASCII and the
-/// complement is still taken two different ways.
 const NEGATED_CLASS_PATTERNS: [&str; 6] = [
     "^[^a]$",
     "^[^0-9]$",
@@ -345,9 +331,7 @@ const NEGATED_CLASS_PATTERNS: [&str; 6] = [
 ];
 
 /// Every regex this crate writes into a generated schema itself, rather than carrying over from an
-/// author's `pattern`. An author's pattern reaches the three surfaces through the guard, which
-/// equalises what it can and refuses the rest; one the crate writes reaches them directly, so
-/// without this list there are two contracts and only one of them is enforced.
+/// author's `pattern`.
 #[cfg(feature = "mongodb")]
 const CRATE_EMITTED_PATTERNS: [&str; 1] = [OBJECT_ID_HEX_PATTERN];
 
@@ -509,8 +493,6 @@ fn test_extract_example_regular_code_fence_ignored() {
     assert!(extract_example_tokens(&attrs).is_none());
 }
 
-/// The bug this seam exists to fix: each line's tokens point at that line, not at the whole
-/// example or the enclosing attribute.
 #[cfg(feature = "zod")]
 #[test]
 fn extract_example_tokens_respans_each_line_onto_itself() {
@@ -531,8 +513,6 @@ fn extract_example_tokens_respans_each_line_onto_itself() {
     );
 }
 
-/// A value split across lines has no single line of its own to point at, so the whole run is
-/// spanned on the line it starts on — an ambiguous run take the first line's span, per design.
 #[cfg(feature = "zod")]
 #[test]
 fn extract_example_tokens_spans_a_multiline_value_on_its_first_line() {
@@ -548,8 +528,6 @@ fn extract_example_tokens_spans_a_multiline_value_on_its_first_line() {
     );
 }
 
-/// The `println!`/`let _` unwrapping `transform_example_code` performs still applies — it is
-/// only the span that changed, not the emitted tokens.
 #[cfg(feature = "zod")]
 #[test]
 fn extract_example_tokens_still_unwraps_the_doctest_println_pattern() {
@@ -727,8 +705,6 @@ fn test_escape_js_regex_literal_rewrites_an_identity_escaped_line_terminator() {
     assert_eq!(escape_js_regex_literal("^a\\\\\nb$"), r"^a\\\nb$");
 }
 
-/// An item publishes under the ident it was declared with, whole. Nothing is read off the spelling
-/// — a `name = "…"` override is the only thing that moves a published name.
 #[test]
 fn a_declared_item_publishes_under_its_whole_ident() {
     for ident in ["PayloadData", "Data", "Payload", "PayloadJson", "Json"] {
@@ -740,9 +716,6 @@ fn a_declared_item_publishes_under_its_whole_ident() {
     );
 }
 
-/// The module name a reference assumes for a name it has not seen and the one an alias goes on to
-/// publish are the same call: the `Type` suffix an alias exports under and a `name = "…"` override
-/// both land on the export name only, never on the module.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn ident_schema_module_name_is_derived_from_the_ident_alone() {
@@ -765,8 +738,6 @@ fn ident_schema_module_name_is_derived_from_the_ident_alone() {
     );
 }
 
-/// An item's module and its published name come apart only where an override moves the name:
-/// without one the export name *is* the ident, and both spellings land on the same module.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn an_unrenamed_item_publishes_the_same_module_under_either_derivation() {
@@ -789,9 +760,6 @@ fn an_unrenamed_item_publishes_the_same_module_under_either_derivation() {
     );
 }
 
-/// The ident re-export answers at the same spelling the module seam answers at: whatever a
-/// reference falls back to when the registry cannot help it, the Rust ident. An item already
-/// exported under that spelling publishes nothing.
 #[cfg(feature = "typescript")]
 #[test]
 fn a_ts_reexport_is_written_only_where_the_export_moved_off_the_ident() {
@@ -828,8 +796,6 @@ fn a_zod_reexport_is_written_only_where_the_export_moved_off_the_ident() {
     }
 }
 
-/// A generic type publishes a factory, so both names it is reached by have to name that factory:
-/// a re-export written to `$Schema` would bind a name no emitted module declares.
 #[cfg(feature = "zod")]
 #[test]
 fn a_zod_reexport_carries_the_suffix_the_item_published_under() {
@@ -839,8 +805,6 @@ fn a_zod_reexport_carries_the_suffix_the_item_published_under() {
     );
 }
 
-/// The argument a factory binds for a parameter reads as the parameter it fills while staying a
-/// name of its own beside it.
 #[cfg(feature = "zod")]
 #[test]
 fn a_factory_argument_is_the_lower_camel_of_its_parameter() {
@@ -865,8 +829,6 @@ fn portable(pattern: &str) -> Result<String, String> {
     portable_pattern(&lit).map_err(|rejection| rejection.to_string())
 }
 
-/// `(?P<name>` is Rust's and Python's spelling of the group JavaScript spells `(?<name>`, and the
-/// `regex` crate reads both, so the one spelling that reaches every surface is the shared one.
 #[test]
 fn test_portable_pattern_translates_the_rust_named_group_spelling() {
     assert_eq!(portable("(?P<w>[a-z]+)").unwrap(), "(?<w>[a-z]+)");
@@ -883,9 +845,6 @@ fn test_portable_pattern_translates_the_rust_named_group_spelling() {
     assert_eq!(portable("\u{e9}(?P<w>a)").unwrap(), "\u{e9}(?<w>a)");
 }
 
-/// A class-opening `]` is refused rather than escaped because escaping it is not local: `[]-a]` is
-/// the three members `]`, `-` and `a`, and `[\]-a]` is the range `]` to `a`. Pinned here so a
-/// later attempt to "just escape it" fails instead of quietly widening the constraint.
 #[test]
 fn test_portable_pattern_does_not_escape_a_class_opening_bracket() {
     let escaped = regex::Regex::new(r"[\]-a]").unwrap();
@@ -903,8 +862,6 @@ fn test_portable_pattern_leaves_a_shared_pattern_byte_identical() {
     }
 }
 
-/// A word boundary is spelled and read alike by both grammars over every haystack the divergence
-/// hunt covered, so it stays byte-identical where the classes beside it do not.
 #[test]
 fn test_portable_pattern_admits_the_boundary_both_grammars_agree_on() {
     for pattern in [r"\ba", r"\Ba"] {
@@ -912,10 +869,6 @@ fn test_portable_pattern_admits_the_boundary_both_grammars_agree_on() {
     }
 }
 
-/// `\d`, `\w` and `\s` are in both grammars under one spelling and cover different characters by
-/// it — Unicode classes in the `regex` crate, narrower ASCII ones in a flagless JavaScript literal
-/// — so the guard writes the set out in the members both engines agree on and hands that one
-/// string to all three surfaces.
 #[test]
 fn test_portable_pattern_equalises_the_classes_the_engines_cover_differently() {
     for (written, equalised) in EQUALISED_PATTERNS {
@@ -923,9 +876,6 @@ fn test_portable_pattern_equalises_the_classes_the_engines_cover_differently() {
     }
 }
 
-/// The whole point, asserted end to end: the string the guard emits picks out the same haystacks
-/// in the `regex` crate — what the generated Rust validator runs it through — as in a flagless
-/// JavaScript regex literal — what the Zod schema and JSON Schema `pattern` keyword are.
 #[test]
 fn test_the_emitted_pattern_picks_out_the_same_haystacks_in_both_engines() {
     for (written, _) in EQUALISED_PATTERNS
@@ -952,8 +902,6 @@ fn test_the_emitted_pattern_picks_out_the_same_haystacks_in_both_engines() {
     }
 }
 
-/// Every regex this crate writes into a generated schema itself, rather than carrying over from an
-/// author's `pattern`.
 #[test]
 #[cfg(feature = "mongodb")]
 fn test_every_pattern_the_crate_emits_is_a_fixed_point_of_the_guard() {
@@ -966,10 +914,6 @@ fn test_every_pattern_the_crate_emits_is_a_fixed_point_of_the_guard() {
     }
 }
 
-/// The `$oid` hex, run over the haystacks that tell the engines apart: twenty-four ARABIC-INDIC
-/// digits are what a `\d` admits in the `regex` crate and a flagless literal refuses, the case the
-/// spelling turns on. The real `ObjectId` and the uppercase hex say the value set the constant is
-/// *for* did not move.
 #[test]
 #[cfg(feature = "mongodb")]
 fn test_the_emitted_object_id_hex_agrees_with_javascript_over_every_hex_shaped_haystack() {
@@ -987,9 +931,6 @@ fn test_the_emitted_object_id_hex_agrees_with_javascript_over_every_hex_shaped_h
     }
 }
 
-/// The constructs with no equalising spelling at all: a flagless JavaScript literal matches one
-/// UTF-16 code unit where the `regex` crate matches one character, so any construct that can match
-/// a character outside the Basic Multilingual Plane parts ways over every one of them.
 #[test]
 fn test_portable_pattern_refuses_what_no_spelling_equalises() {
     for pattern in ["^.$", r"^\D$", r"^\W$", r"^\S$", r"[a\D]", r"[\s\S]"] {
@@ -1001,9 +942,6 @@ fn test_portable_pattern_refuses_what_no_spelling_equalises() {
     }
 }
 
-/// A negated class is the last construct that was admitted while covering different characters in
-/// the two engines; it is refused the same way `\D`, `\W` and `\S` already are, since those are the
-/// same class negated under another spelling.
 #[test]
 fn test_portable_pattern_refuses_a_negated_class_whatever_its_members() {
     for pattern in NEGATED_CLASS_PATTERNS {
@@ -1017,9 +955,6 @@ fn test_portable_pattern_refuses_a_negated_class_whatever_its_members() {
     }
 }
 
-/// Held against the engines rather than restated, as the dot's verdict was: no spelling of a
-/// negated class agrees with JavaScript, so refusing every one of them is the verdict rather than
-/// an admission table of the ones that survive.
 #[test]
 fn test_no_spelling_of_a_negated_class_agrees_across_the_engines() {
     for candidate in NEGATED_CLASS_PATTERNS.into_iter().chain(["^[^\u{1f601}]$"]) {
@@ -1040,8 +975,6 @@ fn test_no_spelling_of_a_negated_class_agrees_across_the_engines() {
     );
 }
 
-/// Held against the engines rather than restated: for the dot, no candidate spelling agrees with
-/// JavaScript over the astral haystacks, which is what makes refusal the only honest verdict.
 #[test]
 fn test_no_spelling_of_the_dot_agrees_across_the_engines() {
     for candidate in ["^.$", r"^[^\n]$", r"^[\s\S]$", r"^[^\n\r\u{2028}\u{2029}]$"] {
@@ -1055,9 +988,6 @@ fn test_no_spelling_of_the_dot_agrees_across_the_engines() {
     }
 }
 
-/// The engine baseline is a recorded decision, not a reading of whichever runtime is installed:
-/// this machine's node parses the ES2025 modifier groups, and the guard refuses them anyway
-/// because the baseline the emitted schemas target is older.
 #[test]
 fn test_portable_pattern_refuses_a_modifier_group_the_baseline_predates() {
     for pattern in ["(?i:abc)", "(?m:^a)", "(?s:a)", "(?-i:abc)", "(?i-s:abc)"] {
@@ -1075,8 +1005,6 @@ fn test_portable_pattern_refuses_a_modifier_group_the_baseline_predates() {
     }
 }
 
-/// What the baseline admits stays admitted, so the refusal above is a floor rather than a ban on
-/// everything recent: named groups are ES2018 and are still translated and emitted.
 #[test]
 fn test_the_engine_baseline_still_admits_what_it_dates_from() {
     assert_eq!(JS_ENGINE_BASELINE, "ES2018");
@@ -1102,8 +1030,6 @@ fn test_portable_pattern_names_the_construct_javascript_cannot_carry() {
     }
 }
 
-/// Renaming a group is a change of spelling and not of meaning: what the pattern matched before
-/// it, it matches after — read off `regex::Regex` itself rather than restated here.
 #[test]
 fn test_portable_pattern_rewrite_keeps_what_the_pattern_matched() {
     for pattern in [
@@ -1125,8 +1051,6 @@ fn test_portable_pattern_rewrite_keeps_what_the_pattern_matched() {
     }
 }
 
-/// A pattern the `regex` crate cannot parse is still refused with the crate's own words, ahead of
-/// any question of what JavaScript would make of it.
 #[test]
 fn test_portable_pattern_quotes_the_regex_crate_on_a_pattern_it_refuses() {
     let rejection = portable(r"^ab\").unwrap_err();
@@ -1141,8 +1065,6 @@ fn test_portable_pattern_quotes_the_regex_crate_on_a_pattern_it_refuses() {
 }
 
 #[cfg(feature = "serde")]
-/// Every shape the lint proves a regex is avoidable work for is classified as the call the lint
-/// names for it, with the needle the pattern's own escapes resolve to.
 #[test]
 fn test_trivial_pattern_names_the_call_the_lint_names() {
     let expected = [
@@ -1175,9 +1097,6 @@ fn test_trivial_pattern_names_the_call_the_lint_names() {
 }
 
 #[cfg(feature = "serde")]
-/// A pattern of any real shape keeps its regex, and so do the two the lint calls trivial without
-/// naming a call: what a wrong reading would cost is a constraint that admits a different set of
-/// values than it was written to, and there is nothing to gain by guessing at one.
 #[test]
 fn test_trivial_pattern_leaves_every_other_pattern_its_regex() {
     for pattern in NON_TRIVIAL_PATTERNS {
@@ -1189,8 +1108,6 @@ fn test_trivial_pattern_leaves_every_other_pattern_its_regex() {
 }
 
 #[cfg(feature = "serde")]
-/// The classified call and the regex it replaces accept the same haystacks and reject the same
-/// haystacks — which is the whole of what a `pattern` constraint says.
 #[test]
 fn test_trivial_pattern_accepts_exactly_what_its_regex_accepts() {
     let haystacks = trivial_haystacks();
@@ -1217,9 +1134,6 @@ fn guarded(pattern: &str) -> Result<String, String> {
         .map_err(|rejection| rejection.to_string())
 }
 
-/// The verdict is proved against the regex the pattern would have been checked by, not asserted
-/// beside it: a pattern the guard calls unconstraining has to match every haystack in the corpus,
-/// and one it lets through has to turn at least one of them away.
 #[test]
 fn test_the_unconstraining_verdict_is_the_regex_crate_s_own() {
     let haystacks = classification_haystacks();
@@ -1244,8 +1158,6 @@ fn test_the_unconstraining_verdict_is_the_regex_crate_s_own() {
     }
 }
 
-/// A pattern that matches at some position of every string is refused where it is written, and the
-/// refusal says what is wrong with it rather than naming a construct.
 #[test]
 fn test_a_pattern_admitting_every_value_is_refused() {
     for pattern in UNCONSTRAINING_PATTERNS {
@@ -1271,10 +1183,6 @@ fn test_a_pattern_turning_some_value_away_clears_the_guard() {
     }
 }
 
-/// A lone look-around says something about the value and still cannot be emitted: the regex the
-/// validator builds from it draws `clippy::trivial_regex` at the attribute that wrote it, and the
-/// lint names no `str` call to put in the regex's place. The refusal names the rewrite that keeps
-/// the check.
 #[test]
 fn test_a_pattern_that_is_one_assertion_and_nothing_else_is_refused() {
     for pattern in LONE_ASSERTION_PATTERNS {
@@ -1293,8 +1201,6 @@ fn test_a_pattern_that_is_one_assertion_and_nothing_else_is_refused() {
     }
 }
 
-/// The rewrite the refusal names is accepted, and so is every other pattern with a boundary in it:
-/// one assertion beside anything at all is more than the lint calls trivial.
 #[test]
 fn test_a_boundary_beside_something_clears_the_guard() {
     for pattern in BOUNDED_ASSERTION_PATTERNS {
@@ -1306,8 +1212,6 @@ fn test_a_boundary_beside_something_clears_the_guard() {
     }
 }
 
-/// The patterns the shipped tests and the report write all say something, so none of them changes
-/// verdict under the new guard — the classified trivial shapes above all.
 #[cfg(feature = "serde")]
 #[test]
 fn test_the_shapes_already_classified_still_clear_the_guard() {

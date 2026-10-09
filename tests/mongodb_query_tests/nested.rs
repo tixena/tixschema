@@ -62,8 +62,6 @@ fn a_nested_path_writes_every_key_that_leads_to_it() {
     );
 }
 
-/// The same nested model under a second row type, and as the row itself: its paths start at
-/// whatever leads to it.
 #[test]
 fn a_models_paths_start_at_whatever_holds_it() {
     assert_eq!(
@@ -98,8 +96,6 @@ fn a_models_paths_start_at_whatever_holds_it() {
     );
 }
 
-/// `invoice_schema`'s filter takes `customer_schema`'s and `address_schema`'s, and the innermost
-/// module's filter takes the outermost's just as well.
 #[test]
 fn the_filters_of_three_modules_join_into_one() {
     let invoice = Invoice::MONGO_FIELDS;
@@ -154,8 +150,6 @@ fn the_filters_of_three_modules_join_into_one() {
     );
 }
 
-/// An operation of `Invoice` takes a filter and an update over its rows from whichever module
-/// wrote them.
 #[test]
 fn an_operation_takes_a_filter_and_an_update_of_any_module_over_its_rows() {
     let invoice = Invoice::MONGO_FIELDS;
@@ -189,8 +183,6 @@ fn an_operation_takes_a_filter_and_an_update_of_any_module_over_its_rows() {
     );
 }
 
-/// A document written by hand joins the typed paths through `Filter::raw`, which gives it the
-/// row type of the filter it joins.
 #[test]
 fn a_document_written_by_hand_joins_the_typed_paths_through_raw() {
     assert_eq!(
@@ -207,8 +199,6 @@ fn a_document_written_by_hand_joins_the_typed_paths_through_raw() {
     );
 }
 
-/// An update of one module merges an update of another under the operator both write, and a raw
-/// one beside the typed ones.
 #[test]
 fn the_updates_of_three_modules_merge_into_one() {
     let invoice = Invoice::MONGO_FIELDS;

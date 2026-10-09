@@ -27,9 +27,6 @@ fn written(args: &str) -> TokenStream {
     syn::parse_str(args).unwrap()
 }
 
-/// A service that says nothing about transports asks for none, and an attribute written with empty
-/// parentheses is the same declaration — the macro is handed no tokens either way. Nothing written
-/// is the default `ServiceArguments`: no transport, exhaustive.
 #[test]
 fn an_attribute_carrying_no_arguments_reads_the_default() {
     assert_eq!(
@@ -54,9 +51,7 @@ fn a_named_ws_rpc_transport_is_read_into_the_list() {
     assert_eq!(asked_for(r#"transports = ["ws_rpc"]"#), ["ws_rpc"]);
 }
 
-/// The list is the service's, in its order: nothing sorts it and nothing dedupes it. Written over
-/// every known transport and over that list reversed, so a second transport makes the two runs
-/// differ.
+/// The list is the service's, in its order: nothing sorts it and nothing dedupes it.
 #[test]
 fn the_written_order_of_the_list_is_the_order_it_is_read_into() {
     let known: Vec<&str> = Transport::KNOWN.iter().map(|each| each.name()).collect();
@@ -81,16 +76,12 @@ fn an_unknown_transport_names_itself_and_what_is_known() {
     );
 }
 
-/// The caret sits under the name that is wrong rather than under the whole attribute, so a list of
-/// several points at the one the service has to change.
 #[test]
 fn an_unknown_transport_refusal_is_spanned_on_the_name() {
     let refused = refusal(r#"transports = ["amqp_rpc", "grpc"]"#);
     assert_eq!(refused.span().source_text().as_deref(), Some("\"grpc\""));
 }
 
-/// A name is written as a string, so a bare ident is refused with the shape rather than read as
-/// one.
 #[test]
 fn a_list_of_anything_but_strings_says_what_shape_was_expected() {
     for args in ["transports = [amqp_rpc]", "transports = [1]"] {
@@ -118,8 +109,6 @@ fn a_list_written_without_brackets_says_what_shape_was_expected() {
     );
 }
 
-/// The singular spelling is not an argument the attribute takes, and the refusal names both of the
-/// arguments it does take rather than just the one this service happened to reach for.
 #[test]
 fn an_unknown_argument_names_both_arguments() {
     assert_eq!(
@@ -142,8 +131,6 @@ fn the_flag_alone_asks_for_no_transport_and_reads_non_exhaustive() {
     );
 }
 
-/// `#[service_schema(non_exhaustive)]` with no `transports` is accepted and asks for no transport —
-/// the two arguments are independent, and neither is required for the other to be written.
 #[test]
 fn the_flag_composes_with_a_transport_list() {
     assert_eq!(
@@ -164,8 +151,6 @@ fn argument_order_does_not_change_what_is_read() {
     assert_eq!(forward, reversed);
 }
 
-/// `non_exhaustive` is a bare flag: writing it as `= true` is refused rather than read as a second
-/// spelling of the same request.
 #[test]
 fn non_exhaustive_written_with_a_value_says_it_takes_none() {
     assert_eq!(
@@ -175,8 +160,6 @@ fn non_exhaustive_written_with_a_value_says_it_takes_none() {
     );
 }
 
-/// The refusal is spanned on the flag itself rather than on the whole argument list, so the caret
-/// points at the one word that has to lose its `= true`.
 #[test]
 fn non_exhaustive_written_with_a_value_is_spanned_on_the_flag() {
     let refused = refusal("non_exhaustive = true");

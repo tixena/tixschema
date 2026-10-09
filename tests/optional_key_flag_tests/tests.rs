@@ -1,12 +1,4 @@
 //! `ts_optional` is the whole of what decides between `field?: T` and `field: T | undefined`.
-//!
-//! Every shape below carries a flagged member beside an unflagged control of the same type and
-//! attributes, so the flag is the only difference. Held under both feature flavours, since only
-//! one reads an attribute at all.
-//!
-//! A member with no key for the flag to make optional — a positional slot, or one a serde
-//! attribute takes off the wire in both directions — is refused at expansion, so no shape here
-//! can carry that spelling.
 
 #[cfg(feature = "serde")]
 mod under_the_serde_feature {
@@ -75,8 +67,6 @@ mod without_the_serde_feature {
         nickname: Option<String>,
     }
 
-    /// The flagged member takes the optional key and the control keeps the always-written one, so
-    /// the flag is the whole of the difference between the two lines.
     #[test]
     fn the_flag_writes_the_optional_key_for_a_field_nothing_else_speaks_for() {
         let ts = Profile::ts_definition();
@@ -86,8 +76,7 @@ mod without_the_serde_feature {
         assert!(member(&ts, "name: string;"), "Got: {ts}");
     }
 
-    /// The README documents the flag against this build, and shows the split above. Drift on either
-    /// side fails here rather than in a reader's editor.
+    /// The README documents the flag against this build, and shows the split above.
     #[test]
     fn the_readme_declares_the_shape_the_flag_decides_and_shows_what_it_emits() {
         let readme = include_str!("../../README.md");
@@ -107,8 +96,7 @@ mod without_the_serde_feature {
         }
     }
 
-    /// Only TypeScript. Both members are already optional in the other two surfaces, and the flag
-    /// leaves both exactly as they stand.
+    /// Only TypeScript.
     #[test]
     #[cfg(feature = "zod")]
     fn the_flag_leaves_zod_as_it_stands() {
