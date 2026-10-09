@@ -892,6 +892,8 @@ export type DocumentRecord = {
 };
 ```
 
+An alias takes `name`, and `default_types` where it declares a type parameter. `pattern`, `minLength` and `maxLength` are refused on it at expansion: an alias is another name for the type it names, not a type of its own, so a check written on one has nothing to belong to and nothing to enforce it. A value that carries a rule is a branded newtype, which takes all three -- see [Branded Newtype Validation Constraints](#branded-newtype-validation-constraints) -- and a rule that holds a single field is written on that field, in `#[model_schema_prop(...)]`.
+
 ### Type Parameters
 
 A struct, a tuple struct, an enum, an alias and a branded newtype can each name their own type parameters, and every surface reads such a name under one rule.
