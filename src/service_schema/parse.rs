@@ -169,10 +169,8 @@ pub struct HttpBinding {
     /// How the body is carried: `Json` (the default), `Bytes` (`body = "bytes"`) or `Stream`
     /// (`body = "stream"`), each checked against the signature by [`build_http_binding`].
     pub body_kind: BodyKind,
-    /// One entry per bare `error_header_out("name")`, in declaration order - [`header_out`]'s own
-    /// twin on the error side.
-    ///
-    /// [`header_out`]: HttpBinding::header_out
+    /// One entry per bare `error_header_out("name")`, in declaration order: the twin of
+    /// [`HttpBinding::header_out`] on the error side.
     pub error_header_out: Vec<String>,
     /// One entry per declared `error_status(Variant = code)`, in declaration order.
     pub error_status: Vec<(Ident, u16)>,
