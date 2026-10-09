@@ -38,6 +38,7 @@ mod one_direction;
 mod piped;
 mod readme;
 mod readme_resolvers;
+mod shared_resolvers;
 
 use core::error::Error;
 use core::fmt::Display;
