@@ -1269,7 +1269,8 @@ fn process_item(item: Item, args: &ModelSchemaArgs) -> TokenStream {
         string_check_refusal_output(&item_struct, args)
             .unwrap_or_else(|| process_struct(item_struct, args))
     } else if let Item::Enum(item_enum) = item {
-        process_enum(item_enum, args)
+        enum_string_check_refusal_output(&item_enum, args)
+            .unwrap_or_else(|| process_enum(item_enum, args))
     } else if let Item::Type(item_type) = item {
         alias_string_check_refusal_output(&item_type, args)
             .unwrap_or_else(|| process_type_alias(item_type, args))
@@ -4240,10 +4241,7 @@ fn string_check_refusal_output(
              remove the check."
         )
     } else {
-        format!(
-            "`{check}` is supported only on a branded newtype: a `#[serde(transparent)]` struct \
-             with a single unnamed field. On a field, write it in `#[model_schema_prop(...)]`."
-        )
+        no_brand_string_check_refusal(check)
     };
     let error = syn::Error::new(
         written_at,
@@ -4251,6 +4249,30 @@ fn string_check_refusal_output(
     )
     .to_compile_error();
     guard_failure_output(item_struct, Some(&item_struct.ident), &[error])
+}
+
+/// What a type-level string check is told on a declared type that is no brand.
+fn no_brand_string_check_refusal(check: &str) -> String {
+    format!(
+        "`{check}` is supported only on a branded newtype: a `#[serde(transparent)]` struct \
+         with a single unnamed field. On a field, write it in `#[model_schema_prop(...)]`."
+    )
+}
+
+/// The refusal of a type-level string check written on an enum, which is no brand.
+fn enum_string_check_refusal_output(
+    item_enum: &syn::ItemEnum,
+    args: &ModelSchemaArgs,
+) -> Option<TokenStream> {
+    let (check, written_at) = args.string_check?;
+    let name = &item_enum.ident;
+    let refusal = no_brand_string_check_refusal(check);
+    let error = syn::Error::new(
+        written_at,
+        prefixed_guard_message(&format!("type `{name}`: {refusal}")),
+    )
+    .to_compile_error();
+    guard_failure_output(item_enum, Some(name), &[error])
 }
 
 /// The refusal of a type-level string check written on a type alias: the alias is another name
