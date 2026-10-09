@@ -5866,6 +5866,71 @@ fn a_string_check_on_a_struct_that_is_no_brand_is_refused() {
     }
 }
 
+#[test]
+fn a_string_check_on_a_type_alias_is_refused() {
+    for (args, check) in [
+        ("minLength = 1", "minLength"),
+        ("maxLength = 9", "maxLength"),
+        ("pattern = \"^[A-Z]{3}$\"", "pattern"),
+        ("name = \"UnlistedMimeType\", minLength = 1", "minLength"),
+    ] {
+        let expanded = expansion_under(args, "pub type UnlistedMimeType = String;");
+        assert!(expanded.contains("compile_error"), "got: {expanded}");
+        assert!(
+            expanded.contains(&format!(
+                "type `UnlistedMimeType`: `{check}` cannot be written on a type alias"
+            )),
+            "got: {expanded}"
+        );
+        assert!(
+            expanded.contains("is another name for `String`"),
+            "got: {expanded}"
+        );
+    }
+}
+
+#[test]
+fn a_string_check_on_an_alias_of_a_brand_is_refused_naming_the_brand() {
+    let brand = expansion_under("", "#[serde(transparent)] pub struct Sku(pub String);");
+    assert!(!brand.contains("compile_error"), "got: {brand}");
+
+    let expanded = expansion_under("minLength = 3", "pub type Short = Sku;");
+    assert!(expanded.contains("compile_error"), "got: {expanded}");
+    assert!(
+        expanded.contains(
+            "type `Short`: `minLength` cannot be written on a type alias: `Short` is another \
+             name for `Sku`"
+        ),
+        "got: {expanded}"
+    );
+}
+
+/// With no default declared for `T`, `jsonschema` refuses the alias over that ahead of its check.
+#[test]
+fn a_string_check_on_a_generic_type_alias_is_refused() {
+    let undeclared = expansion_under("maxLength = 9", "pub type Named<T> = Vec<T>;");
+    assert!(undeclared.contains("compile_error"), "got: {undeclared}");
+
+    let expanded = expansion_under(
+        "maxLength = 9, default_types(T = String)",
+        "pub type Named<T> = Vec<T>;",
+    );
+    assert!(expanded.contains("compile_error"), "got: {expanded}");
+    assert!(
+        expanded.contains(
+            "type `Named`: `maxLength` cannot be written on a type alias: `Named` is another \
+             name for `Vec<T>`"
+        ),
+        "got: {expanded}"
+    );
+}
+
+#[test]
+fn an_alias_with_no_string_check_is_not_refused() {
+    let expanded = expansion_under("name = \"DocumentId\"", "pub type DocumentId = String;");
+    assert!(!expanded.contains("compile_error"), "got: {expanded}");
+}
+
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 #[test]
 fn a_string_check_on_a_brand_is_refused_where_no_schema_surface_is_on() {

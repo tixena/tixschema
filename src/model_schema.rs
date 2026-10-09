@@ -1256,24 +1256,30 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     let swift_refusals = swift_width_refusals(&item);
     // Same independence as the Dart and Swift tokens above.
     let kotlin_tokens = kotlin_suffix_tokens(&item, parsed_args.name_override.as_deref());
-    let expanded = if let Item::Struct(item_struct) = item {
-        string_check_refusal_output(&item_struct, &parsed_args)
-            .unwrap_or_else(|| process_struct(item_struct, &parsed_args))
+    let expanded = process_item(item, &parsed_args);
+    let deferred = with_prefixed_tokens(expanded, &deferred_shape_refusals(registering.as_ref()));
+    let bound = with_prefixed_tokens(deferred, &filling_bound_checks);
+    let width_checked = with_prefixed_tokens(bound, &swift_refusals);
+    quote! { #width_checked #dart_tokens #swift_tokens #kotlin_tokens }
+}
+
+/// The expansion of `item` by its shape, or the refusal of a string check its shape cannot carry.
+fn process_item(item: Item, args: &ModelSchemaArgs) -> TokenStream {
+    if let Item::Struct(item_struct) = item {
+        string_check_refusal_output(&item_struct, args)
+            .unwrap_or_else(|| process_struct(item_struct, args))
     } else if let Item::Enum(item_enum) = item {
-        process_enum(item_enum, &parsed_args)
+        process_enum(item_enum, args)
     } else if let Item::Type(item_type) = item {
-        process_type_alias(item_type, &parsed_args)
+        alias_string_check_refusal_output(&item_type, args)
+            .unwrap_or_else(|| process_type_alias(item_type, args))
     } else {
         syn::Error::new_spanned(
             item,
             prefixed_guard_message("unsupported target for this attribute"),
         )
         .to_compile_error()
-    };
-    let deferred = with_prefixed_tokens(expanded, &deferred_shape_refusals(registering.as_ref()));
-    let bound = with_prefixed_tokens(deferred, &filling_bound_checks);
-    let width_checked = with_prefixed_tokens(bound, &swift_refusals);
-    quote! { #width_checked #dart_tokens #swift_tokens #kotlin_tokens }
+    }
 }
 
 /// The Dart tokens `item` earns, or nothing without the `dart` feature — always callable, so the
@@ -4245,6 +4251,29 @@ fn string_check_refusal_output(
     )
     .to_compile_error();
     guard_failure_output(item_struct, Some(&item_struct.ident), &[error])
+}
+
+/// The refusal of a type-level string check written on a type alias: the alias is another name
+/// for its target, so there is no type of its own for the check, or a reader of it, to belong to.
+fn alias_string_check_refusal_output(
+    item_type: &ItemType,
+    args: &ModelSchemaArgs,
+) -> Option<TokenStream> {
+    let (check, written_at) = args.string_check?;
+    let name = &item_type.ident;
+    let target = written_spelling(&item_type.ty);
+    let refusal = format!(
+        "`{check}` cannot be written on a type alias: `{name}` is another name for `{target}`, \
+         so there is no type of its own for the check to belong to. Declare a branded newtype \
+         instead — `#[model_schema({check} = …)] #[serde(transparent)] pub struct \
+         {name}({target});` — or, on a field, write the check in `#[model_schema_prop(...)]`."
+    );
+    let error = syn::Error::new(
+        written_at,
+        prefixed_guard_message(&format!("type `{name}`: {refusal}")),
+    )
+    .to_compile_error();
+    guard_failure_output(item_type, Some(name), &[error])
 }
 
 /// Records `item` where serde writes it as a bare wire scalar rather than an object: a
