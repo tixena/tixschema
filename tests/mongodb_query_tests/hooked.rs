@@ -1,11 +1,6 @@
 //! A value written through its field's own serde hook: a date a field stores as a BSON date is
 //! written as one under `$lt`, where chrono's own `Serialize` writes text that matches no stored
 //! date.
-//!
-//! The hook is the consumer's attribute, and each major version of the `bson` library names its
-//! own, so each binary supplies the two at its root: `date_hook` over a date, and
-//! `optional_date_hook` over an `Option` of one. The function that hands a value to the hook is
-//! generated on the type, beside the paths.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -56,8 +51,6 @@ fn now() -> DateTime<Utc> {
     "2026-10-07T17:40:00Z".parse().unwrap()
 }
 
-/// The consumer's own filter, `"publishTemplateTo.toDate": { "$lt": now }`: a path below a nested
-/// model, over a hook that reads an `Option`.
 #[test]
 fn a_hooked_date_in_an_option_is_written_as_a_bson_date() {
     assert_eq!(
@@ -86,8 +79,6 @@ fn a_hooked_date_is_written_as_a_bson_date() {
     );
 }
 
-/// Every operator of a hooked path writes through the hook, and the ones that write no value
-/// are as they are on any path.
 #[test]
 fn every_operator_of_a_hooked_path_writes_through_the_hook() {
     assert_eq!(
@@ -123,8 +114,6 @@ fn a_date_with_no_hook_is_written_as_text() {
     );
 }
 
-/// What a hooked path writes under an operator is what serde stores at that path's key, so the
-/// filter matches the stored row.
 #[test]
 fn a_hooked_path_writes_what_serde_stores_for_the_field() {
     let window = PublishWindow {
@@ -169,8 +158,6 @@ fn a_hooked_path_writes_what_serde_stores_for_the_field() {
     }
 }
 
-/// A field under `as_number` is stored as a number, through the hook the flag hangs on it, and
-/// so is what its path writes: over a date, and over an `Option` of one.
 #[test]
 fn a_date_under_as_number_is_written_as_a_number() {
     let stamped = Stamped::MONGO_FIELDS;

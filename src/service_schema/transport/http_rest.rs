@@ -1,57 +1,5 @@
 //! The HTTP/REST transport: two inert macros, `{service}_http_rest_dispatcher!` and
 //! `{service}_http_rest_client!`, and nothing compiled where the service is declared.
-//!
-//! This version covers JSON, bytes and streamed bodies (the last with 206/`content-range` range
-//! answers), declared statuses, header bindings, no-payload operations, a panic guard, and an
-//! owner-overridable [`FaultHandler`] seam whose provided default answers the fixed behavior this
-//! dispatcher always answered (400 validation, 404 unmatched route, 500 panic). Multipart and the
-//! TypeScript client's own streamed-body coverage are separate, later work — nothing here stands
-//! in their way.
-//!
-//! # Why the flat AMQP seam cannot carry this
-//!
-//! `amqp_rpc`'s dispatcher matches on an operation name a transport read beside the payload.
-//! `http_rest` matches on a method and a path template, decodes path segments, a query string and
-//! request headers into the operation's own arguments, and answers with a status, response headers
-//! and a bare JSON body — none of which the flat `(operation, payload)` seam can express. So
-//! `http_rest` is its own emitter, built the "Adding one" way the transport registry's own module
-//! documentation prescribes.
-//!
-//! # No envelope
-//!
-//! Unlike `amqp_rpc`'s `{ ok, value, error }`, a REST answer carries no envelope: a success is the
-//! declared `ok_status` with the success type serialized directly as the body; a declared error is
-//! its mapped `error_status` with the error type itself serialized as the body; a fault answers
-//! through the installed [`FaultHandler`], whose provided default is a small fixed JSON naming it.
-//!
-//! # An operation naming no `http(...)` group
-//!
-//! `OperationDef::http` is `None` for such an operation — "a transport defaults it on its own", per
-//! [`crate::service_schema::parse`]'s own module documentation — and [`HttpShape::of`] is where this
-//! module answers that: `POST /{wire-name}`, the declared (or default) `ok_status`, no header
-//! bindings, and every declared error answered at the fixed status [`DEFAULT_BINDING_ERROR_STATUS`]
-//! rather than a per-variant table, there being no annotation to read one from.
-//!
-//! # Path, query and header values
-//!
-//! A path placeholder and a query parameter both travel as text and both have to become the right
-//! shape of JSON before the operation's own message can be built from them: `true`/`false` become a
-//! JSON boolean, anything that parses as a number becomes a JSON number, anything else stays a JSON
-//! string, and a comma-separated value behind a `Vec<T>` becomes a JSON array of that same coercion
-//! applied to each piece. [`decode_expr`] is the one place that judgement is made, from the
-//! argument's own declared type, and it is used identically for a path placeholder, a query
-//! parameter and a `header_in` binding — the three read the same way here that the client writes
-//! them.
-//!
-//! A path placeholder on a *generated* message (declared from the operation's own argument list, or
-//! empty) binds a same-named field, exactly as a placeholder is checked against one. A path
-//! placeholder on a message the operation already names (`OperationInputs::Named`) has no field for
-//! this macro to see — the type is the author's own — so it is read back under its own written
-//! spelling instead: `{document_id}` becomes the JSON key `"document_id"`, or, where there is
-//! exactly one placeholder and the named type is one of the primitive shapes this macro recognises,
-//! the whole message *is* that one coerced value. Either way the author's type must expose the wire
-//! shape the placeholder implies — this macro cannot check that any more than it can check an error
-//! enum's variants against `error_status`.
 
 use super::Transport;
 use super::amqp_rpc::{
@@ -88,10 +36,6 @@ pub fn emit(service: &ServiceDef, transport: Transport) -> TokenStream {
         #client
     }
 }
-
-// ---------------------------------------------------------------------------------------------
-// Reading a Rust type as a wire scalar
-// ---------------------------------------------------------------------------------------------
 
 /// The runtime expression that turns `raw` — a `&str` expression — into the `serde_json::Value` a
 /// field of type `ty` deserializes from: `Option<...>` and `Vec<...>` are read through to the
@@ -151,10 +95,6 @@ fn encode_expr(value: &TokenStream) -> TokenStream {
         }
     }
 }
-
-// ---------------------------------------------------------------------------------------------
-// The route table
-// ---------------------------------------------------------------------------------------------
 
 /// One row an adapter iterates to register a handler: the method and path template an operation
 /// answers to, and the statuses it can answer with.
@@ -237,10 +177,6 @@ fn route_table(service: &ServiceDef) -> TokenStream {
     }
 }
 
-// ---------------------------------------------------------------------------------------------
-// The dispatcher
-// ---------------------------------------------------------------------------------------------
-
 fn dispatcher_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
     let contract = &service.ident;
     let macro_name = super::dispatcher_macro_ident(service, transport);
@@ -279,10 +215,8 @@ fn dispatcher_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
 
 fn dispatcher_items(service: &ServiceDef) -> TokenStream {
     let module = module_ident(service);
-    // Whether `OutgoingResponse` carries a plain `Vec<u8>` body (every service until this one, and
-    // every service with no streamed operation from here on — unchanged tokens either way) or the
-    // `OutgoingBody` enum a streamed operation's undrained body needs: `dispatch` is one function
-    // with one return type, so the choice is the whole service's rather than one operation's.
+    // Whether `OutgoingResponse` carries a plain `Vec<u8>` body or the `OutgoingBody` enum a
+    // streamed body needs: `dispatch` has one return type, so the choice is the whole service's.
     let has_stream = service_declares_a_stream(service);
     // Whether `dispatch` takes an extra `parts` argument at all: a whole-service decision exactly
     // like `has_stream`, so a service with no multipart operation reaches for none of this.
@@ -315,10 +249,8 @@ fn dispatcher_items(service: &ServiceDef) -> TokenStream {
         TokenStream::new()
     };
     let dispatch = dispatch_fn(service, has_stream, has_multipart, &module);
-    // Every type, trait and impl ahead of every function: `fault_handler` declares a trait and an
-    // impl, so it sits with `incoming`/`outgoing`/`route` rather than beside `path_token` and
-    // `query_helpers`, both of which are functions a strict consumer's lints would otherwise see
-    // declared ahead of a type.
+    // Every type, trait and impl ahead of every function: a strict consumer's lints would otherwise
+    // see a function declared ahead of a type.
     quote! {
         #routes
         #incoming
@@ -416,10 +348,8 @@ fn incoming_part_type(module: &Ident) -> TokenStream {
     }
 }
 
-/// `OutgoingResponse` and, only where a streamed operation needs it, the `OutgoingBody` its body
-/// is carried in. A service with no streamed operation keeps the plain `Vec<u8>` body — the exact
-/// tokens every service answered before this kind existed — since materializing every answer into
-/// bytes is exactly what a streamed body must not do.
+/// `OutgoingResponse` and, only where a streamed operation needs it, the `OutgoingBody` its body is
+/// carried in. A service with no streamed operation keeps the plain `Vec<u8>` body.
 fn outgoing_response_items(has_stream: bool, module: &Ident) -> TokenStream {
     if !has_stream {
         return quote! {
@@ -629,14 +559,9 @@ fn path_token_tokens(path: &[PathSegment]) -> Vec<TokenStream> {
         .collect()
 }
 
-/// The `body: <expr>` field initializer for an `OutgoingResponse` (or `OutgoingResponse`-shaped)
-/// literal: wrapped in `OutgoingBody::Bytes(...)` where the service carries the enum (a streamed
-/// operation is somewhere in it), or, where it does not, written as `body: <expr>` - except when
-/// `body_expr` is itself the bare identifier `body`, in which case it is written as the field-init
-/// shorthand `body` instead, exactly as every one of these call sites wrote it before the streamed
-/// kind existed. The one seam every JSON- and bytes-body-writing call site reads through, so the
-/// two shapes never drift apart by a forgotten call site, and the unwrapped path never regresses
-/// into a `clippy::redundant_field_names` a byte-for-byte-unchanged expansion cannot carry.
+/// The `body: <expr>` field initializer for an `OutgoingResponse` literal: wrapped in
+/// `OutgoingBody::Bytes(...)` where the service carries the enum, and written plain where it does
+/// not, as the shorthand `body` when `body_expr` is that bare identifier.
 fn body_field(has_stream: bool, body_expr: &TokenStream) -> TokenStream {
     if has_stream {
         quote! { body: OutgoingBody::Bytes(#body_expr) }
@@ -718,10 +643,6 @@ fn response_builders(has_stream: bool, writes_response_header: bool) -> TokenStr
 /// seam existed - 400 for a payload that failed to decode or to `validate()`, 404 for a request no
 /// route answers to, 500 for a handler that panicked - each as the fault itself under
 /// `json_response`.
-///
-/// An owner installs their own handler by implementing this trait on a type of their own and
-/// passing it to `dispatch`; overriding `on_fault` replaces the default for every kind at once,
-/// `fault.kind()` being how an override tells one kind from another.
 fn fault_handler_trait(module: &Ident) -> TokenStream {
     quote! {
         /// Decides what one fault answers with, for a `dispatch` it was installed on.
@@ -766,10 +687,8 @@ fn dispatch_fn(
             quote!(ctx),
         )
     };
-    // A `body = "multipart"` operation reads its parts out of this extra argument rather than off
-    // `IncomingRequest` - a file part's own handle has to be owned by whichever call argument it
-    // fills, where `request` is read by shared reference throughout the rest of dispatch, and
-    // `mut` is what lets the one matching arm remove entries from it as it claims them.
+    // A `body = "multipart"` operation reads its parts out of this extra argument: a file part's
+    // handle has to be owned by the argument it fills, and `mut` lets an arm claim entries.
     let parts_param = if has_multipart {
         quote! { mut parts: ::std::vec::Vec<(::std::string::String, IncomingPart)>, }
     } else {
@@ -995,9 +914,8 @@ fn message_value(
             if bodied && !matches!(shape.body_kind, BodyKind::Multipart) {
                 (TokenStream::new(), from_body_expr(wire))
             } else {
-                // A multipart request's body is not itself the message - every field, if there
-                // were any, would be read off a named part instead - and an operation with no
-                // carried field at all (every argument claimed by `part`) has nothing to read.
+                // A multipart request's body is not itself the message, and an operation with no
+                // carried field has nothing to read.
                 (
                     TokenStream::new(),
                     quote! { ::serde_json::Value::Object(::serde_json::Map::new()) },
@@ -1431,16 +1349,11 @@ fn bytes_answer_block(
     }
 }
 
-/// A `body = "stream"` operation's own arm: with no declared `header_out`, the status and the
-/// headers a streamed answer carries come from the variant itself - `Full` answers the declared
-/// `ok_status` with `content-type`, `Partial` answers `206` with `content-type` and `content-range`
-/// set to what the handler built. With one declared, `parse.rs`'s own `is_stream_success_shape`
-/// has already required `success` to wrap the answer in a tuple carrying one more element per
-/// entry, composed onto both arms exactly as the JSON path's own `header_out` composition does -
-/// the variant's own headers stand beside the declared ones rather than being replaced by them.
-/// Either way the body is handed on undrained, in `OutgoingBody::Stream`, for an adapter to pull
-/// onto the wire. Both headers are checked the same way every other runtime-computed header value
-/// is.
+/// A `body = "stream"` operation's own arm. With no declared `header_out`, the status and the
+/// headers come from the variant: `Full` answers the declared `ok_status` with `content-type`,
+/// `Partial` answers `206` with `content-type` and `content-range`. With one declared, the declared
+/// headers stand beside the variant's own. The body is handed on undrained, in
+/// `OutgoingBody::Stream`.
 fn stream_answer_block(arm: &AnswerArm<'_>, shape: &HttpShape, success: &Type) -> TokenStream {
     let &AnswerArm {
         called,
@@ -1531,10 +1444,6 @@ fn stream_answer_block(arm: &AnswerArm<'_>, shape: &HttpShape, success: &Type) -
     }
 }
 
-// ---------------------------------------------------------------------------------------------
-// The client
-// ---------------------------------------------------------------------------------------------
-
 fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
     let contract = &service.ident;
     let client = format_ident!("{contract}Client", span = contract.span());
@@ -1561,9 +1470,7 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
         transport.name()
     );
     // Whether `IncomingResponse` carries a plain `Vec<u8>` body or the `IncomingBody` enum a
-    // streamed operation's undrained body needs - the same whole-service choice
-    // `dispatcher_items` makes for `OutgoingResponse`, so a mixed service's dispatcher and client
-    // agree about the shape a streamed answer travels in.
+    // streamed body needs: the whole-service choice `dispatcher_items` makes.
     let has_stream = service_declares_a_stream(service);
     let has_multipart = service_declares_multipart(service);
     let seam = transport_trait(has_stream, has_multipart, &generated.module);
@@ -1974,10 +1881,8 @@ fn client_method(
     let named = &operation.ident;
     let validator = message_validator_ident(operation);
     let (mut taken, packed) = call_message(operation, module);
-    // `header_in` and `part` each claim their own argument out of the message `call_message`
-    // builds, so the signature it returns carries neither; the caller still has to supply them,
-    // one ordinary parameter per binding, in the same order the dispatcher reads them back out
-    // of - `header_in` first, then `part`.
+    // `header_in` and `part` each claim their argument out of the message, so the caller supplies
+    // one parameter per binding, `header_in` first, then `part`.
     taken.extend(shape.header_in.iter().map(|header| {
         let parameter = &header.parameter;
         let ty = &header.ty;
@@ -2468,9 +2373,8 @@ fn reply_decode(
                 ));
             }
         } else {
-            // `is_bytes_success_shape` (parse.rs) already requires `success` to carry one more
-            // element per declared `header_out` entry after the bytes and their content type, so
-            // the lookups below never miss.
+            // `is_bytes_success_shape` already requires `success` to carry one more element per
+            // declared `header_out` entry, so the lookups below never miss.
             let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
             let header_idents = header_out_idents(shape.header_out.len());
             let header_lets = header_value_read_lets(
@@ -2558,12 +2462,6 @@ fn reply_decode(
 /// every other kind answers through. A response the seam
 /// already buffered still satisfies `BodySource` once wrapped in a `Cursor` - the same blanket
 /// `Read` impl a real chunked reader relies on, so the client answers a body source either way.
-///
-/// With a declared `header_out`, `is_stream_success_shape` (parse.rs) has already required
-/// `success` to wrap the answer in a tuple carrying one more element per entry; each is read back
-/// off its own response header before the body is taken - `into_body` consumes `response`, so
-/// nothing can be read off it afterward - and composed onto both `Full` and `Partial` exactly as
-/// the JSON and bytes kinds compose theirs.
 fn stream_reply_decode(
     wire: &str,
     shape: &HttpShape,

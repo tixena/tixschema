@@ -101,8 +101,6 @@ fn listing() -> Listing {
     }
 }
 
-/// An issue inside what fills the parameter is one issue at the field, with serde's message and
-/// no path into the item.
 #[test]
 fn a_value_of_a_parameters_type_is_read_whole_at_its_field() {
     let stored = json!({ "items": [{ "number": 1_i32 }, { "number": "2" }], "total": "two" });
@@ -156,8 +154,7 @@ fn a_model_type_filling_a_parameter_needs_no_flag() {
     );
 }
 
-/// serde reads a struct from an array of its fields in order. Where the struct's own walker
-/// reaches it that is `Mistyped`; where it fills a parameter nothing writes it back to compare.
+/// serde reads a struct from an array of its fields in order.
 #[test]
 fn a_value_of_a_parameters_type_is_never_mistyped_in_a_json_value() {
     let mut calls = 0_u32;
@@ -176,8 +173,6 @@ fn a_value_of_a_parameters_type_is_never_mistyped_in_a_json_value() {
     assert_eq!(calls, 0);
 }
 
-/// The whole value of a generic type is not written back either: held as an array of its fields
-/// in order, serde reads it and nothing is listed.
 #[test]
 fn a_generic_type_held_in_another_shape_is_listed_only_where_serde_refuses_it() {
     let mut calls = 0_u32;
@@ -245,8 +240,6 @@ fn a_struct_with_two_parameters_reads_each_under_its_own_name() {
     );
 }
 
-/// What the derive asks of the parameter beyond `Deserialize` is carried by the bound on the type
-/// itself, so the methods are there wherever serde reads the type.
 #[test]
 fn a_generic_struct_with_a_defaulted_field_of_the_parameters_type_builds_and_reads() {
     let mut calls = 0_u32;
@@ -312,8 +305,6 @@ fn a_generic_transparent_struct_with_a_named_field_is_read_as_the_value_it_holds
     );
 }
 
-/// A list, a map, an `Option` or a tuple that holds a value of the parameter's type is read whole
-/// with it. A generic model type is walked by its own walker, and so is the type itself.
 #[test]
 fn what_holds_a_parameters_value_is_read_whole_and_a_generic_model_type_is_walked() {
     let stored = json!({
@@ -343,8 +334,6 @@ fn what_holds_a_parameters_value_is_read_whole_and_a_generic_model_type_is_walke
     );
 }
 
-/// A generic flagged type reached through a field is walked by its own walker at the field's
-/// path, whatever fills its parameter.
 #[test]
 fn a_generic_type_reached_through_a_field_is_walked_at_the_fields_path() {
     let mut calls = 0_u32;
@@ -403,8 +392,6 @@ fn a_generic_types_walker_builds_the_issues_of_whoever_calls_it() {
     );
 }
 
-/// The methods are generic over a decider and an issue type of their own, which take other names
-/// where the type's parameters are called what they would be.
 #[test]
 fn a_type_whose_parameters_are_named_as_the_methods_own_builds_and_reads() {
     let stored = json!({ "format": "csv", "id": 7_i32 });

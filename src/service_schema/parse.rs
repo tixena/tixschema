@@ -1,41 +1,4 @@
 //! The shape a `#[service_schema]` trait is read into, and the only place it is read.
-//!
-//! # The contract
-//!
-//! `parse_service` turns a declared trait into a [`ServiceDef`]. Every emitter downstream —
-//! messages, supporting types, the dispatcher, the Rust client, the TypeScript artifacts — reads
-//! that value and re-reads the trait for nothing. Two consequences follow and both are the point:
-//! a rule about what a service may say is written once, here, and the emitters can be built in
-//! parallel without touching each other's files.
-//!
-//! What the representation answers, per operation:
-//!
-//! - **What it is called.** Three spellings of one declaration, all derived: the Rust ident as
-//!   written, [`OperationDef::ts_name`] camelCased for TypeScript callers, and
-//!   [`OperationDef::wire_name`] kebab-cased for the wire. Only the wire name is overridable, with
-//!   `#[service_schema_op(message = "...")]`, because services already ship names nobody would
-//!   derive.
-//! - **What it receives.** One message, always. [`OperationInputs`] records which of the three
-//!   ways it was declared: the argument that already is the message, the argument list a message
-//!   is declared from, or nothing, which gets an empty message. Where the macro declares one,
-//!   [`OperationDef::generated_message_ident`] is what it is called, derived here rather than at
-//!   each emitter so the messages, the dispatcher and the client cannot disagree about the name.
-//! - **What it answers with.** [`OperationOutcome::Reply`] carries the two declared arms, or
-//!   [`OperationOutcome::OneWay`] says there is no reply to carry.
-//! - **What it answers as HTTP.** [`OperationDef::http`] carries what
-//!   `#[service_schema_op(http(...))]` declared — method, path, the status table, and the header
-//!   bindings — or `None` for an operation that named no group, which defaults to `POST
-//!   /{wire-name}`, status 200, the whole message as the body. A transport reads this one parsed
-//!   shape and never re-parses the attribute.
-//!
-//! The context is on [`ServiceDef`], not on any operation: every operation takes it, it is the
-//! same type for all of them, and it reaches no message and no schema.
-//!
-//! # What is deliberately not here
-//!
-//! **Nothing about how a message is annotated** is here. Every ident and every type below is the
-//! author's own, carried verbatim, so an emitter is free to write whatever derives and serde
-//! attributes a generated message needs onto them.
 
 use crate::rename_rule::RenameRule;
 use crate::utils::{is_recorded_unit_struct_type, is_recorded_untagged_enum, is_wire_scalar_type};
@@ -111,13 +74,8 @@ const UNMATCHED_CLOSING_BRACE_MESSAGE: &str = concat!(
     "       write `{field}`, or escape a literal brace some other way"
 );
 
-/// The status a declared error answers at when its operation named no `http(...)` group at all,
-/// and so declared no `error_status` table to read a code from. Distinct from every fixed fault
-/// status (400, 404, 500) so a caller can tell "the operation declared this failure" from "a
-/// defect answered instead" even on an operation that paid no annotation cost.
-///
-/// `pub`: read identically by the Rust `http_rest` transport and its TypeScript client, so a
-/// second copy of the number could only drift from this one.
+/// The status a declared error answers at when its operation named no `http(...)` group at all, and
+/// so declared no `error_status` table to read a code from.
 pub const DEFAULT_BINDING_ERROR_STATUS: u16 = 422;
 
 /// One service, read once.
@@ -125,9 +83,7 @@ pub struct ServiceDef {
     /// The trait's type parameter, which every operation takes and no message carries.
     pub context_param: Ident,
     /// Every message the macro declares for this service, in declaration order: one per operation
-    /// that named none. Recorded so the emitter that writes them and the emitter that registers
-    /// the service's published artifacts read one list rather than each deciding again what the
-    /// macro declared, and so nothing the macro wrote can be left out of that registration.
+    /// that named none.
     pub generated_messages: Vec<GeneratedMessage>,
     /// The trait as declared: `UsageService`.
     pub ident: Ident,
@@ -164,10 +120,6 @@ impl OperationDef {
     /// What the message declared for this operation is called: `expire_credit` becomes
     /// `ExpireCreditRequest`. Nothing for the operation whose one argument already is the
     /// message, since none is declared for it.
-    ///
-    /// Spanned on the method name, so every error about the declared type — this crate's own
-    /// refusals and the compiler's duplicate-definition report alike — points at the operation
-    /// that declared it rather than at a call site of the macro.
     pub fn generated_message_ident(&self) -> Option<Ident> {
         match self.inputs {
             OperationInputs::Named(_) => None,
@@ -189,9 +141,7 @@ pub enum OperationInputs {
     /// More than one argument after the context, in declaration order. The message is declared
     /// from the list and each argument's name becomes a field on it.
     Generated(Vec<(Ident, Type)>),
-    /// Exactly one argument after the context. That argument's type already is the message and
-    /// nothing is declared for it. Boxed only because a bare `syn::Type` is 688 bytes and would
-    /// make every `Empty` cost the same; `quote!` interpolates through the box unchanged.
+    /// Exactly one argument after the context.
     Named(Box<Type>),
 }
 
@@ -224,23 +174,17 @@ pub struct HttpBinding {
     ///
     /// [`header_out`]: HttpBinding::header_out
     pub error_header_out: Vec<String>,
-    /// One entry per declared `error_status(Variant = code)`, in declaration order. Each variant
-    /// keeps its own span from the attribute, so a misspelling is rustc's own "no variant" error
-    /// rather than one this crate wrote, and a variant the mapping left out is rustc's own
-    /// `E0004` naming it — see [`crate::service_schema::support`]'s completeness check.
+    /// One entry per declared `error_status(Variant = code)`, in declaration order.
     pub error_status: Vec<(Ident, u16)>,
     /// One entry per `header_in("name" = parameter)`, naming the request header and the
     /// operation's own argument it fills.
     pub header_in: Vec<HeaderIn>,
-    /// One entry per bare `header_out("name")`, in declaration order. The success type is a
-    /// tuple of exactly this many elements plus the response, and this is the response header
-    /// each element after the first is written out as.
+    /// One entry per bare `header_out("name")`, in declaration order.
     pub header_out: Vec<String>,
     /// The method the operation answers to.
     pub method: HttpMethod,
-    /// One entry per `part("name" = parameter)`, naming a `body = "multipart"` operation's own
-    /// file part and the operation's own argument it fills. Empty for every body kind but
-    /// `Multipart`.
+    /// One entry per `part("name" = parameter)`, naming a `body = "multipart"` operation's own file
+    /// part and the operation's own argument it fills.
     pub multipart_parts: Vec<MultipartPart>,
     /// The status a success answers with: the declared `ok_status`, or 204 for a no-payload
     /// operation and 200 for every other one where the author wrote neither.
@@ -310,9 +254,8 @@ pub struct HeaderIn {
     pub name: String,
     /// The operation's own argument it fills, keeping the argument's real span.
     pub parameter: Ident,
-    /// The argument's declared type, read off the same signature `parameter` names — a transport
-    /// carrying the header over its own channel types its extra parameter with this rather than
-    /// reading the signature a second time.
+    /// The argument's declared type, which a transport carrying the header over its own channel
+    /// types its extra parameter with.
     pub ty: Type,
 }
 
@@ -330,16 +273,9 @@ pub struct MultipartPart {
     pub ty: Type,
 }
 
-/// How `http(...)` carries the body. `Json` is the default a group that writes no `body` gets.
-/// `Bytes` answers raw bytes under a declared content type. `Stream` answers a pulled body source
-/// under the content type it names, full or (through `StreamedAnswer::Partial`) a `206` range slice
-/// with `content-range`, through the seam `#[service_schema]` publishes beside the trait.
-/// `Multipart` reads the *request* as named parts instead of one JSON object: a scalar field is
-/// read off the same-named part exactly as a bodyless method's field is read off the query string,
-/// and a `part("name" = parameter)` binding hands a file part through as a
-/// [`crate::service_schema::support`] `BodySource` handle, undecoded. `Multipart` says nothing
-/// about the *response* — its success and error types are ordinary JSON, `header_out` included,
-/// exactly like `Json`.
+/// How `http(...)` carries the body. `Json` is the default; `Bytes` answers raw bytes under a
+/// declared content type; `Stream` answers a pulled body source, full or a `206` range slice;
+/// `Multipart` reads the request as named parts, and says nothing about the response.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BodyKind {
     Bytes,
@@ -363,10 +299,6 @@ impl BodyKind {
 /// The three shapes a query, path or header value coerces to. Anything this crate does not
 /// recognise coerces as [`Text`](ScalarKind::Text) — a custom type, a `chrono` type, a plain
 /// `String` — since a JSON string is what every one of those already reads from serde.
-///
-/// `pub`: the Rust `http_rest` transport and its TypeScript client both coerce a raw wire
-/// string the same way, from the same declared type, so both read this judgement rather than a
-/// second copy of it.
 #[derive(Clone, Copy)]
 pub enum ScalarKind {
     Bool,
@@ -496,10 +428,6 @@ impl OperationDirective {
 /// Whether any operation in `service` declares `body = "stream"` — the body-source seam
 /// (`BodySource`, `StreamedAnswer`) is published beside the trait only where at least one
 /// operation needs it.
-///
-/// `pub`: read identically by `support` (which publishes the seam) and by the `http_rest`
-/// transport (which reaches for it through `$crate`), so the two cannot disagree about whether a
-/// service carries it.
 pub fn service_declares_a_stream(service: &ServiceDef) -> bool {
     service.operations.iter().any(|operation| {
         operation
@@ -2056,9 +1984,8 @@ fn build_http_binding(
             .map(|name| name.value())
             .collect(),
         error_status: raw.error_status,
-        // A parameter absent from `existing` was already refused above, and `refusals` returned
-        // `Err` before this point ran — `filter_map` drops it here rather than asserting an
-        // invariant this function has already checked once.
+        // A parameter absent from `existing` was refused above, and `refusals` returned `Err`
+        // before this point ran, so `filter_map` drops it here.
         header_in: raw
             .header_in
             .into_iter()
@@ -2156,11 +2083,6 @@ fn is_option_type(ty: &Type) -> bool {
 
 /// Whether a type is the unit type `()`, or a unit struct recorded by
 /// [`record_unit_struct`](crate::utils::record_unit_struct) — both write as an empty declared reply.
-///
-/// `pub`: the `http_rest` transport and its TypeScript client both answer a unit success with no
-/// payload the same way, so both read this judgement rather than a second copy of it. `pub` rather
-/// than `pub(crate)` for the same reason [`default_ok_status`] is: this module is private, so
-/// nothing wider than the crate can reach it regardless.
 pub fn is_unit_type(ty: &Type) -> bool {
     matches!(ty, Type::Tuple(tuple) if tuple.elems.is_empty()) || is_recorded_unit_struct_type(ty)
 }
@@ -2295,14 +2217,6 @@ fn body_kind_refusals(raw: &RawHttp, outcome: &OperationOutcome) -> Option<syn::
 
 /// The status a success answers with where the author wrote no `ok_status`: 204 for an operation
 /// with nothing to serialize, 200 for every other one.
-///
-/// `pub` rather than private: an operation naming no `http(...)` group carries no [`HttpBinding`]
-/// at all — "a transport defaults it on its own, and nothing here manufactures one to default" —
-/// and the `http_rest` transport reaches for the very same rule this file already applies to a
-/// group that named no `ok_status`, so the two cases cannot silently drift apart into two
-/// different defaults. `pub` rather than `pub(crate)`: this module is private, so nothing wider
-/// than the crate can reach it regardless, and `clippy::redundant_pub_crate` asks for the plainer
-/// spelling wherever that is already true.
 pub fn default_ok_status(outcome: &OperationOutcome) -> u16 {
     match outcome {
         OperationOutcome::OneWay => 204,
@@ -2436,9 +2350,8 @@ fn multipart_refusals(
                 .map(|(_, parameter)| written(parameter)),
         )
         .collect();
-    // A sorted, owned snapshot rather than iterating `existing` (a `HashMap`) directly: the
-    // arguments this walks are the operation's own signature, few enough that cloning them is
-    // free, and a refusal's own ordering must not depend on the hasher's arbitrary bucket order.
+    // A sorted, owned snapshot of `existing`: a refusal's ordering must not depend on the hasher's
+    // bucket order.
     let mut candidates: Vec<(&String, &Type)> = existing.iter().collect();
     candidates.sort_by_key(|(name, _)| (*name).clone());
     for (name, ty) in candidates {
@@ -2622,11 +2535,8 @@ fn header_out_refusals(
             success,
             error: _error,
         } => {
-            // `body = "bytes"` and `body = "stream"` each compose `header_out` onto their own
-            // fixed shape (the bytes pair, or the streamed answer) rather than an ordinary tuple
-            // with no further meaning of its own — `body_kind_refusals` checks the resulting arity
-            // itself, with a message naming that kind's own requirement, so this check stands down
-            // rather than reading the same success type as an unexplained `header_out` arity.
+            // `body = "bytes"` and `body = "stream"` each compose `header_out` onto their own fixed
+            // shape, whose arity `body_kind_refusals` checks itself, so this check stands down.
             if matches!(raw.body, Some((BodyKind::Bytes | BodyKind::Stream, _))) {
                 return None;
             }
@@ -2726,11 +2636,6 @@ fn error_header_out_refusals(
         }
     }
 }
-
-// -------------------------------------------------------------------------------------------
-// Header name legality: an illegal token, a name the transport writes itself, or one declared
-// twice on one operation.
-// -------------------------------------------------------------------------------------------
 
 /// Whether every byte of `name` is a legal HTTP token character (RFC 9110 `tchar`): a letter, a
 /// digit, or one of ``!#$%&'*+-.^_`|~``.
@@ -2947,15 +2852,6 @@ fn generated_message_collision_message(
 /// a declaration the author never wrote. What is visible from here is the service itself: a name
 /// another operation writes as its message or as a result arm is a type the author declared, and
 /// colliding with one is refused by name.
-///
-/// Two operations declaring the same message need no rule of their own — the `<Operation>Request`
-/// name and the TypeScript spelling are the same derivation but for the leading letter's case, so
-/// a pair that collides in one collides in the other, and the TypeScript rule above refuses it.
-///
-/// A type declared in the module but named nowhere in the service is out of reach of any rule
-/// written here; what covers that case is the span
-/// [`OperationDef::generated_message_ident`] writes, which puts the compiler's own
-/// duplicate-definition report on the operation the second declaration came from.
 fn generated_message_collisions(service: &ServiceDef) -> Option<syn::Error> {
     let mut refusals: Option<syn::Error> = None;
     for declared in &service.generated_messages {

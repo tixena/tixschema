@@ -1,3 +1,5 @@
+//! Tests of tuple structs: a newtype described as its inner value, a wider one as a fixed array.
+
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
@@ -91,8 +93,6 @@ fn test_serde_writes_a_wider_tuple_struct_as_a_fixed_array() {
     );
 }
 
-/// The wire criterion the nullable surfaces are read against: the slot is always written, so a
-/// `None` arrives as `null` rather than as an absent key.
 #[test]
 fn test_serde_writes_a_none_slot_as_null() {
     assert_eq!(
@@ -236,9 +236,6 @@ fn test_an_optional_slot_describes_the_null_it_writes_in_json_schema() {
     );
 }
 
-/// The wire criterion every dropped-slot surface below is read against, in both directions: the
-/// slot is absent from the array serde writes, and the full-arity array — the one the surfaces used
-/// to describe — is refused on the way in.
 #[test]
 fn test_serde_writes_and_reads_a_dropped_slot_in_neither_direction() {
     let written =
@@ -268,8 +265,6 @@ fn test_the_two_halves_written_together_are_the_same_slot_wire() {
     );
 }
 
-/// The wire criterion for the remaining positions: a trailing drop only shortens the array, a
-/// middle one moves the slot behind it up, and dropping every slot still writes an array.
 #[test]
 fn test_serde_writes_the_slots_it_still_carries_in_their_new_places() {
     assert_eq!(
@@ -291,8 +286,6 @@ fn test_serde_writes_the_slots_it_still_carries_in_their_new_places() {
     );
 }
 
-/// The wire criterion the lone slot's surfaces are read against: serde writes and reads a newtype
-/// struct's only slot whatever the attribute on it says, so nothing is dropped there.
 #[test]
 fn test_serde_writes_a_lone_slot_whatever_the_skip_says() {
     assert_eq!(
@@ -305,8 +298,6 @@ fn test_serde_writes_a_lone_slot_whatever_the_skip_says() {
     );
 }
 
-/// The described tuple is the slots the wire carries: the dropped one is not an element, and the
-/// arity is the one serde writes rather than the one the struct declares.
 #[cfg(feature = "typescript")]
 #[test]
 fn test_a_dropped_slot_is_no_element_of_the_typescript_tuple() {
@@ -346,11 +337,7 @@ fn test_typescript_describes_the_arity_each_drop_leaves() {
     }
 }
 
-/// The Zod tuple is the one the payload serde writes satisfies. Recorded against zod 4.1.8 under
-/// node v26.2.0: `z.tuple([z.string()])` accepts `["x"]` and rejects `["s","x"]` with `too_big`,
-/// which is the pair serde writes and refuses. The two-element tuple this used to emit,
-/// `z.tuple([z.nullable(z.string()), z.string()])`, rejects `["x"]` with `invalid_type` — the only
-/// payload serde writes.
+/// The Zod tuple is the one the payload serde writes satisfies.
 #[cfg(feature = "zod")]
 #[test]
 fn test_a_dropped_slot_is_no_element_of_the_zod_tuple() {
@@ -398,8 +385,6 @@ fn test_a_dropped_slot_leaves_the_json_schema_prefix_and_its_bounds() {
     );
 }
 
-/// [`test_typescript_describes_the_arity_each_drop_leaves`] for the JSON-schema surface, where the
-/// empty array is the one shape that keeps `prefixItems` and drops every element from it.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_the_json_schema_describes_the_arity_each_drop_leaves() {
@@ -457,8 +442,6 @@ fn test_zod_never_names_a_slot_by_its_absent_ident() {
     }
 }
 
-/// [`test_typescript_never_names_a_slot_by_its_absent_ident`] for the JSON-schema surface, where
-/// the empty ident used to arrive as a property literally named `""`.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_json_schema_never_names_a_slot_by_its_absent_ident() {

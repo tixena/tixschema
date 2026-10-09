@@ -1,14 +1,4 @@
 //! The query types `#[model_schema(decode_with)]` adds under `mongodb`.
-//!
-//! `Filter<Root>` and `Update<Root>` are the documents a MongoDB operation takes, and the path
-//! kinds build them: each holds the keys leading to a value in a row of `Root`, and the function
-//! that writes a value of the field's type as BSON. They go into the flagged type's own
-//! `{type}_schema` module, so two flagged types share none of them. A filter of one module joins
-//! a filter of another through `Into<bson::Document>` and `AsRef<PhantomData<Root>>`, which every
-//! copy's `Filter` implements. An update carries `AsRef<PhantomData<fn(Root) -> Root>>` in place
-//! of the second, so neither stands where the other is asked. The keys of a path cross from one
-//! type's code to another's as a plain array. Every value is written through
-//! `bson::Serializer::new`, which both major versions of the `bson` library have.
 
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;

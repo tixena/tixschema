@@ -81,8 +81,6 @@ fn the_readme_declares_the_hooked_field_that_compiles_here() {
     }
 }
 
-/// Each binary binds its own major version's hook as `date_hook`, by the name the README gives
-/// that version's.
 #[test]
 fn the_readme_names_the_hook_each_binary_binds() {
     let [under_2, under_3] = DECLARED_HOOKS;

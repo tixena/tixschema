@@ -1,3 +1,5 @@
+//! Tests of nested structs and aliases in deep and complex compositions.
+
 #[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 use serde::{Deserialize, Serialize};
 
@@ -455,8 +457,6 @@ fn test_nested_string_keyed_maps_json_schema() {
     }
 }
 
-/// TypeScript and Zod recurse through a map value on their own, so the nesting they render is the
-/// one the JSON schema now describes — pinned here so the three surfaces stay in step.
 #[test]
 #[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_nested_string_keyed_maps_typescript_and_zod() {

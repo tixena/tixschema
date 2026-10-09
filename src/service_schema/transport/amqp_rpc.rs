@@ -454,12 +454,6 @@ fn reply_settled_block(
 
 /// One arm: deserialize, validate, call behind the panic guard, record and answer. Every fault path
 /// names the wire name rather than what arrived, this arm being the one that answered to it.
-///
-/// A one-way arm answers nothing once the implementation has been entered, a panic included: the
-/// operation declared no reply and the delivery carries no queue for one to go to. What the guard
-/// buys there is the return itself — the transport acknowledges after `dispatch` returns, and a
-/// panic that unwound past it would leave the delivery outstanding. The record is what keeps that
-/// return from being silent, so a panic is written down on both outcomes.
 pub(super) fn arm(module: &Ident, operation: &OperationDef) -> TokenStream {
     let wire = &operation.wire_name;
     let message = message_alias_ident(operation);
@@ -504,15 +498,9 @@ pub(super) fn arm(module: &Ident, operation: &OperationDef) -> TokenStream {
 }
 
 /// What the implementation is handed after the context: the message itself where the operation
-/// named one, and otherwise the fields of the message declared for it, unpacked back into the
-/// arguments the operation was written with — followed by one more argument per `header_in`
-/// binding, decoded into a local of the same name ahead of the call: by [`header_in_reads`] here,
-/// and by `http_rest`'s own header decode where that dispatcher reuses this (`pub(super)` for it) —
-/// and, last, one more per `part` binding, `http_rest`'s own multipart decode building the local
-/// of the same name. AMQP carries no multipart channel of its own and creates no local binding for
-/// a `part`-claimed identifier here — a service declaring a multipart file part alongside
-/// `amqp_rpc` is refused at the declaration instead, by `multipart_envelope_refusal` in
-/// `service_schema.rs`, before this function's own call is ever reached.
+/// named one, and otherwise the fields of the message declared for it, unpacked into the arguments
+/// the operation was written with, followed by one argument per `header_in` binding and one per
+/// `part` binding.
 pub(super) fn call_arguments(operation: &OperationDef) -> Vec<TokenStream> {
     let mut arguments: Vec<TokenStream> = match &operation.inputs {
         OperationInputs::Empty => Vec::new(),
@@ -552,13 +540,6 @@ fn held_arguments(operation: &OperationDef) -> TokenStream {
 
 /// The arguments an operation's client method takes, and the message they are packed into before it
 /// is sent.
-///
-/// A message the macro declared is built through the alias its own module publishes, the same path
-/// the dispatcher deserializes into, so the client reaches nothing at the declaring crate's root
-/// beyond the module itself.
-///
-/// `pub(super)`: an operation's arguments pack into its message the same way for every client, so
-/// `http_rest`'s client builds `sending` through this one emitter rather than a second copy of it.
 pub(super) fn call_message(
     operation: &OperationDef,
     module: &Ident,
@@ -633,9 +614,8 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
          was handed fails its own validation or the transport could not put it out."
     );
     let seam = transport_trait(contract);
-    // A fault and an answer both arrive in a reply, so a service that declares none has nothing
-    // for either to read: the mirror, its readers and the answer reader are emitted only where an
-    // operation answers, rather than emitted dead into whatever module the consumer placed.
+    // A fault and an answer both arrive in a reply, so the mirror, its readers and the answer
+    // reader are emitted only where an operation answers.
     let (mirror, minting, reader) = if declares_a_reply(service) {
         (
             fault_mirror(),
@@ -646,8 +626,7 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
         (TokenStream::new(), TokenStream::new(), TokenStream::new())
     };
     // The decoder reads a `header_out` value off the reply's own headers, once the response has
-    // come back. Emitted only where an operation reaches it, `dead_code` being an error in plenty
-    // of consumers' builds.
+    // come back.
     let header_decode = declares_header_out(service)
         .then(header_decoder)
         .unwrap_or_default();
@@ -678,9 +657,8 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
                     }
                 }
 
-                // The operations sit apart, under the `Sync` a call's future needs: it borrows the
-                // client across an await, and a borrow is only `Send` where what it borrows is
-                // `Sync`. Binding a client asks for no such thing.
+                // The operations sit apart, under the `Sync` a call's future needs: a borrow held
+                // across an await is `Send` only where what it borrows is `Sync`.
                 impl<T: Transport + ::core::marker::Sync> #client<T> {
                     #(#methods)*
                 }
@@ -721,10 +699,6 @@ fn consumer_loop_type() -> TokenStream {
 /// hands [`consumer_loop_driver`]'s `serve_deliveries`. [`consumer_loop_helpers`] is the private
 /// helpers a delivery passes through on its way to [`dispatch`](dispatcher_items) and back — split
 /// out only so that no function runs long.
-///
-/// Every runtime crate below is reached through a leading `::` — `::lapin`, `::tokio`,
-/// `::futures`, `::tracing` — so each resolves in the crate that places this macro rather than in
-/// the crate that generated it.
 fn consumer_loop(contract: &Ident) -> TokenStream {
     quote! {
         /// Serves `service` on `queue` until `shutdown` completes or the broker closes the
@@ -1058,13 +1032,6 @@ pub(super) fn declares_header_out(service: &ServiceDef) -> bool {
 
 /// Everything a dispatcher emits between its macro's opening brace and its closing one:
 /// `IncomingMessage`, `Reply`, the readers an arm needs, and `dispatch` itself.
-///
-/// Called once by [`dispatcher_macro`], which wants the three kinds concatenated in this order.
-/// [`server_macro`] calls [`dispatcher_types`], [`dispatcher_impls`] and [`dispatcher_fns`]
-/// separately instead, interleaving its own types, impls and functions between them so the whole
-/// macro stays grouped types-then-impls-then-functions; either way the one `dispatch` a service
-/// answers through is built by the same emitter and cannot drift between the two macros'
-/// definitions.
 pub(super) fn dispatcher_items(service: &ServiceDef) -> TokenStream {
     let types = dispatcher_types(service);
     let impls = dispatcher_impls(service);
@@ -1121,9 +1088,7 @@ pub(super) fn dispatcher_fns(service: &ServiceDef) -> TokenStream {
          desugaring the trait itself is emitted in, so a consumer loop can spawn it."
     );
     // Both readers are an arm's: one classifies the refusal an arm's own deserialization earned,
-    // the other is what an arm calls its implementation behind. A service declaring no operation
-    // has no arm, so neither is emitted, and the implementation and the context it would hand one
-    // are not bound either - the fallback arm reads the operation name and nothing else.
+    // the other is what an arm calls its implementation behind.
     let (reader, guard, implementation, context) = if service.operations.is_empty() {
         (TokenStream::new(), TokenStream::new(), quote!(_), quote!(_))
     } else {
@@ -1135,8 +1100,7 @@ pub(super) fn dispatcher_fns(service: &ServiceDef) -> TokenStream {
         )
     };
     // The decoder reads a `header_in` value off the incoming headers; the encoder writes a
-    // `header_out` value into the reply's. Neither is emitted where no operation reaches it,
-    // `dead_code` being an error in plenty of consumers' builds.
+    // `header_out` value into the reply's.
     let header_decode = declares_header_in(service)
         .then(header_decoder)
         .unwrap_or_default();
@@ -1207,11 +1171,6 @@ fn dispatcher_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
 
 /// The private mirror of `ServiceFault`, the only thing here that deserializes one, and the tagged
 /// member the failure arm carries it in.
-///
-/// Emitted only for a service declaring at least one request-and-reply operation: a fault arrives
-/// in an answer, and a service that answers nothing has no answer to read one out of. The readers
-/// that mint from it are [`fault_mirror_readers`], emitted under the same condition and separately
-/// so that every type either macro writes is emitted above every `impl`.
 pub(super) fn fault_mirror() -> TokenStream {
     quote! {
         /// A fault as it arrives, which is the one shape that reads one back. `ServiceFault`
@@ -1385,10 +1344,7 @@ fn header_in_reads(module: &Ident, operation: &OperationDef) -> TokenStream {
             ty: _ty,
         } = header;
         // No `: #ty` here: the argument's own type is the author's, and this arm is never the
-        // module it is nameable from. Its type is instead inferred entirely from
-        // [`call_arguments`]'s later use of `#parameter` as the exact argument
-        // `svc.#method(...)` declares it to be — the same way `received.#field` never spells its
-        // own field's type either.
+        // module it is nameable from.
         let held = argument_local(parameter);
         quote! {
             let #held = match decoded_header(message.headers(), #name) {
@@ -1468,12 +1424,6 @@ fn error_header_out_names(operation: &OperationDef) -> &[String] {
 /// type carries beyond it — `None` for every operation that declared no `header_out`. Read by the
 /// client alone: the consumer that invokes the client macro already names the author's own types
 /// (the same requirement every message argument carries), where the dispatcher never does.
-///
-/// `parse_service` already refuses `header_out` on anything but a request-and-reply operation
-/// whose success type is a tuple with one element per declared name plus the response, so the two
-/// shapes this falls back to `None` on are unreachable for an operation that parsed at all —
-/// falling back rather than asserting it leaves a bug there reachable as "no `header_out`" instead
-/// of a panic reachable from a downstream crate's own build.
 fn header_out_shape(operation: &OperationDef) -> Option<(Vec<String>, Type, Vec<Type>)> {
     let binding = operation.http.as_ref()?;
     if binding.header_out.is_empty() {
@@ -1518,18 +1468,6 @@ fn error_header_out_shape(operation: &OperationDef) -> Option<(Vec<String>, Type
 
 /// `IncomingMessage`: everything the dispatcher reads off the wire — the operation and the
 /// payload, plus the headers table it arrived beside where a `header_in` binding reads one.
-///
-/// The fields are private, read through the accessors [`incoming_message_accessors`] emits. A
-/// struct whose every field is public is one a consumer publishing this module has their own lint
-/// refuse, and the only fix from where they stand would be an `#[allow]` over an attribute they
-/// did not write. `ServiceFault` is already shaped this way, so the constructor and the readers
-/// are what the rest of the generated surface already looks like.
-///
-/// `declares_header_in` is the service's, not this one operation's: every operation's `dispatch`
-/// arm reads the same `IncomingMessage`, so the type carries a `headers` field the moment any
-/// operation needs one. Carrying it and never reading it — the case a service with no `header_in`
-/// binding would be in — is `dead_code` in plenty of consumers' builds, so the field is left off
-/// entirely there instead.
 pub(super) fn incoming_message(declares_header_in: bool) -> TokenStream {
     if declares_header_in {
         quote! {
@@ -1572,16 +1510,9 @@ pub(super) fn incoming_message(declares_header_in: bool) -> TokenStream {
 
 /// How one delivery is built and read: the constructor a transport adapter calls per delivery, and
 /// the readers the arms go through.
-///
-/// `new` always takes `headers` — the transport adapter reads them off every delivery whether or
-/// not this service declares a `header_in` binding — but a service with none never reads the
-/// argument back: [`incoming_message`] left the field off, so it is dropped here instead of
-/// stored.
 pub(super) fn incoming_message_accessors(declares_header_in: bool) -> TokenStream {
     // `headers` is moved into `Self` where the field exists, so `new` never drops it and stays
-    // `const`. Where the field is absent, the argument goes unused and is dropped when `new`
-    // returns instead — and `Vec`'s destructor cannot run in a `const fn`, so `new` cannot be one
-    // there either. That is the language's own rule, not a choice made here.
+    // `const`.
     let (bound, stored, constness) = if declares_header_in {
         (quote! { headers }, quote! { headers, }, quote! { const })
     } else {
@@ -2006,23 +1937,6 @@ pub(super) fn outbound_refusal(operation: &OperationDef, generated: &Generated) 
 
 /// The guard a handler is called behind, the record a caught panic leaves, and the reader that
 /// turns one into a detail.
-///
-/// Two things make this the arm's business rather than the transport adapter's. The delivery is
-/// acknowledged after `dispatch` returns, so a panic that unwound past it is never acknowledged at
-/// all — and the consumer this was measured against asks for manual acknowledgement with no
-/// `nack`, no dead-letter exchange, no message TTL and no timeout, so that delivery stays
-/// outstanding against the prefetch until the channel closes. And a handler that panicked failed at
-/// something its operation never declared, which is exactly what a fault reports.
-///
-/// Catching a panic without writing it down would trade a stalled consumer for a silent one, so
-/// every caught panic is recorded through `tracing::error!`. `tracing` is one of the runtime crates
-/// the *invoking* crate names in its own manifest, beside `serde` and `serde_json`, and it is named
-/// for the same reason: the tokens below call it.
-///
-/// `pub(super)`: `http_rest`'s dispatcher answers a handler panic the same way, and calls this same
-/// emitter to say so — one runtime copy per macro invocation either way, since a `macro_rules!` body
-/// is tokens rather than a link, so the two transports still cannot answer one panic two different
-/// ways.
 pub(super) fn panic_guard() -> TokenStream {
     quote! {
         /// Runs a handler, answering `Err` with what it said where it panicked rather than letting
@@ -2103,11 +2017,6 @@ pub(super) fn panic_guard() -> TokenStream {
 
 /// The placement section both macros carry: where the invocation goes, and the one form the
 /// declaring crate can reach it by.
-///
-/// A `macro_rules!` body is linted under the levels of the crate that *invokes* it, and the three
-/// diagnostics a placement decides — an inline module, a `mod` below a `use`, a glob import — are
-/// the consumer's to avoid and nobody else's to fix. `placed` is what the module's own file holds,
-/// ending in the path the invocation is written under so the macro name follows it.
 pub(super) fn placement_doc(macro_name: &Ident, module: &str, placed: &str) -> String {
     format!(
         "# Where to put it\n\n\
@@ -2138,13 +2047,6 @@ pub(super) fn placement_doc(macro_name: &Ident, module: &str, placed: &str) -> S
 }
 
 /// Which fault a `serde_json` refusal is, and the reader of the field serde names in its own words.
-///
-/// Both travel with the dispatcher rather than sitting in the generated module, because the
-/// refusal they read is a `serde_json::Error` belonging to the crate that read the payload.
-///
-/// `pub(super)`: the classification is about `serde_json::Error` alone and names nothing AMQP-
-/// specific, so `http_rest`'s dispatcher reads a body's own refusal through this same emitter
-/// rather than reclassifying it in different words.
 pub(super) fn refusal_reader(module: &Ident) -> TokenStream {
     quote! {
         /// The field serde names in its own words. It writes one into exactly two sentences —
@@ -2212,13 +2114,6 @@ fn reply_handle_type() -> TokenStream {
 }
 
 /// What `ReplyHandle` does with an answer: implements the dispatcher's own `Reply`, and publishes.
-///
-/// A one-way publish carries no `replyTo` at all, and a handle built from such a delivery
-/// publishes nothing; a publish the channel refuses is logged and dropped rather than propagated,
-/// there being no failure a caller already waiting for a reply could be told about. A declared
-/// error and a fault both carry the boolean header `is_error` = `true` beside whatever
-/// `header_out` wrote; a success reply carries none. The AMQP `type` property names which of the
-/// three a reply is, and the body is the payload alone.
 fn reply_handle_impls(module: &Ident) -> TokenStream {
     quote! {
         impl Reply for ReplyHandle<'_> {
@@ -2306,12 +2201,6 @@ fn reply_handle_impls(module: &Ident) -> TokenStream {
 }
 
 /// The `Reply` trait, which a transport implements once per dispatcher it places.
-///
-/// It travels with the dispatcher because its shape is the dispatcher's: one reply per message,
-/// answered with a value or with a defect. `with_send` is false only where the dispatcher's own
-/// arms never call `send` — a service every one of whose operations is one-way — and there the
-/// trait carries `fault` alone: `amqp_rpc` passes `true` unconditionally, since its adapters
-/// implement this trait by hand and their shape must not move underneath them.
 pub(super) fn reply_trait(contract: &Ident, module: &Ident, with_send: bool) -> TokenStream {
     let reply_doc = if with_send {
         format!(
@@ -2376,12 +2265,6 @@ fn server_context() -> TokenStream {
 /// The server half: everything the dispatcher emits, plus the wire framing, the reply handle, the
 /// context and the consumer loop that turn a real `lapin::Channel` delivery into a call on an
 /// implementation.
-///
-/// Built from the same [`dispatcher_items`] call the dispatcher macro's own definition is, rather
-/// than by invoking that macro: a macro-expanded `#[macro_export]` macro cannot be reached by
-/// `$crate::` from the very crate that declared it, which is exactly the placement a service's own
-/// test harness needs. Reusing the emitter is what keeps the two definitions from drifting apart
-/// instead.
 fn server_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
     let contract = &service.ident;
     let module = module_ident(service);
@@ -2414,10 +2297,8 @@ fn server_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
          other crate reaches it by path, as above.",
         transport.name()
     );
-    // Grouped types, then impls, then functions, whole macro through: `dispatcher_types` and
-    // `dispatcher_fns` are what `dispatcher_items` calls too, so the one `dispatch` this and the
-    // dispatcher macro answer through is still the one emitter — just interleaved here with the
-    // server's own types, impls and functions instead of run back to back.
+    // Grouped types, then impls, then functions: `dispatcher_types` and `dispatcher_fns` are what
+    // `dispatcher_items` calls too, interleaved here with the server's own.
     let framing_consts = wire_framing_consts();
     let loop_consts = consumer_loop_consts();
     let context = server_context();

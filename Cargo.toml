@@ -18,19 +18,14 @@ quote = "1"
 proc-macro2 = "1"
 log = "0.4"
 regex = ">=1.10"
-# The parser `regex::Regex::new` itself is built on. The `pattern` guard reads its AST to tell a
-# construct only the `regex` crate can read from one a JavaScript regex literal carries too, which
-# no second grammar written here could do without drifting from the one that actually applies. The
-# requirement is capped below `0.9` on purpose: the AST is matched exhaustively, so a grammar that
-# grows a construct has to be classified rather than silently waved through.
+# The parser `regex::Regex::new` is built on: the `pattern` guard reads its AST. Capped below `0.9`
+# on purpose: the AST is matched exhaustively, so a new construct has to be classified.
 regex-syntax = "0.8"
 
 [dev-dependencies]
 mongodb = ">=3.7"
-# Test-only: what the recovering decode generates names the crate `bson`, and builds against
-# both of its major versions. The tests here bind that name to version 2, which the driver above
-# is built for. Version 3 is built in `bson3/`, a package of its own with a driver built for it.
-# `chrono-0_4` is the feature its hook storing a chrono date as a BSON date sits behind.
+# Test-only: the tests here bind the name `bson` to version 2, which the driver above is built for;
+# version 3 is built in `bson3/`. `chrono-0_4` is the feature its date hook sits behind.
 bson2 = { package = "bson", version = "2.15", features = ["chrono-0_4"] }
 # Test-only: `rc` supplies serde's `Rc`/`Arc` impls, without which the wire criterion the
 # transparent-wrapper coverage rests on cannot be read off an `Rc`/`Arc` field at all.
@@ -41,21 +36,16 @@ regex = ">=1.10"
 # Test-only: `span-locations` makes `Span::source_text()` work outside a real macro expansion,
 # which is how the unit tests assert that generated tokens are spanned on the user's source.
 proc-macro2 = { version = "1", features = ["span-locations"] }
-# A dispatcher records a handler that came apart through `tracing::error!`, so the crate that
-# invokes a transport's dispatcher macro names `tracing` in its own manifest, beside `serde` and
-# `serde_json`. Here it is a dev-dependency for the same reason those two are: the tests invoke it.
+# A crate that invokes a transport's dispatcher macro names `tracing` in its own manifest; a
+# dev-dependency here because the tests invoke it.
 tracing = "0.1"
-# A crate that invokes the `amqp_rpc` transport's server macro names these three in its own
-# manifest, beside `serde`, `serde_json` and `tracing`, because the emitted consumer loop calls all
-# six. Dev-only: the harness compiles that expansion, but tixschema itself stays a proc-macro crate
-# with no runtime dependency of its own.
+# A crate that invokes the `amqp_rpc` transport's server macro names these three in its own manifest.
+# Dev-only: tixschema stays a proc-macro crate with no runtime dependency.
 lapin = ">=4.10.0"
 tokio = { version = ">=1.53.1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
 futures = ">=0.3.33"
-# A crate that runs the `ws_rpc` transport's adapters over a real socket names these two beside
-# `tokio`, `serde`, `serde_json` and `tracing`, because the axum server loop and the
-# tokio-tungstenite client loop both call them. Dev-only, same as `lapin` above: tixschema stays a
-# proc-macro crate with no runtime dependency of its own.
+# A crate that runs the `ws_rpc` transport's adapters over a real socket names these two. Dev-only,
+# as `lapin` above.
 axum = { version = "0.8.9", features = ["ws"] }
 tokio-tungstenite = "0.30.0"
 

@@ -1,14 +1,4 @@
 //! The README's `Option` examples, expanded here as the README declares them.
-//!
-//! An `Option` field serde writes as `null` for `None` is refused where declared, so an example
-//! carrying one is not a declaration a reader can paste. Each example is held to two things: the
-//! README declares it exactly as here, and the emission shown beside it is what the generator
-//! answers with — drift on either side fails here rather than in someone's editor.
-//!
-//! Fields are declared alphabetically (this crate's lint requirement) while the README orders
-//! them for reading, so each member is held as a whole line rather than part of a block. The
-//! README's `ts_optional` example is not here — it cannot compile under this module's build — and
-//! is instead pinned in `optional_key_flag_tests`, gated the other way.
 
 #![cfg(all(feature = "serde", feature = "typescript"))]
 
@@ -200,9 +190,6 @@ fn test_the_predicate_bullet_shows_the_optional_key_it_claims() {
     );
 }
 
-/// The three `skip` spellings are three different answers, and the bullets separating them are held
-/// to each one: no member, an optional key, a required key. Each is read against the wire the
-/// bullet claims for it, so a bullet cannot drift from the payload it summarises either.
 #[test]
 fn test_the_skip_bullets_show_the_three_answers_they_separate() {
     assert_readme_bullet_shows(SKIP_BULLET, &FullySkipped::ts_definition(), &[]);
@@ -235,8 +222,6 @@ fn test_the_skip_bullets_show_the_three_answers_they_separate() {
     assert!(!read_half.contains("roles?"), "Got: {read_half}");
 }
 
-/// The slot spellings the "Optional Fields" section quotes for a dropped tuple-struct slot, read
-/// off the declaration it shows them for.
 #[test]
 fn test_the_optional_fields_section_shows_the_slot_tuple_it_claims() {
     #[model_schema()]
@@ -266,8 +251,7 @@ fn test_the_optional_fields_section_shows_the_slot_tuple_it_claims() {
     }
 }
 
-/// The "Collections and Maps" example. It shows no emission of its own — the section is about what
-/// each container describes as — so what is held here is that it is a declaration at all.
+/// The "Collections and Maps" example.
 #[test]
 fn test_the_collections_example_is_declarable() {
     #[model_schema()]
@@ -288,8 +272,6 @@ fn test_the_collections_example_is_declarable() {
     );
 }
 
-/// The `ObjectId` example. The block it stands in a dummy `ObjectId` for the reason the crate
-/// rustdoc's does: the type is recognised by name, so nothing here needs `mongodb` pulled in.
 #[test]
 #[cfg(feature = "mongodb")]
 fn test_the_object_id_example_is_declarable_and_shows_what_it_emits() {
@@ -335,8 +317,6 @@ fn test_the_object_id_example_is_declarable_and_shows_what_it_emits() {
     );
 }
 
-/// The chrono example, whose `DateTime<Tz>` renders as a native `Date` and whose `as_number` field
-/// renders as the epoch-milliseconds number beside it.
 #[test]
 #[cfg(feature = "chrono")]
 fn test_the_chrono_example_is_declarable_and_shows_what_it_emits() {
@@ -397,10 +377,6 @@ fn assert_readme_declares_and_shows_whole(declaration: &str, emission: &str) {
     );
 }
 
-/// The "Branded Newtypes" example: a generic brand beside a non-generic one, and the whole of what
-/// each publishes. A generic brand publishes a factory, so its emission runs well past the
-/// builder the block used to stop at — the alias, the cache interface, the cache itself and the
-/// exported factory, all of it what a reader pastes.
 #[test]
 #[cfg(feature = "zod")]
 fn test_the_branded_newtype_example_is_declarable_and_shows_what_it_emits() {
@@ -432,9 +408,6 @@ fn test_the_branded_newtype_example_is_declarable_and_shows_what_it_emits() {
     );
 }
 
-/// The same two declarations in a build with no `zod`, where the brand is a `unique symbol` the
-/// type is intersected with rather than a marker Zod's `.brand()` carries — the block the README
-/// shows under "without `zod` feature", and the one this build is the only one that can run.
 #[test]
 #[cfg(not(feature = "zod"))]
 fn test_the_branded_newtype_example_shows_what_a_build_without_zod_emits() {
@@ -458,9 +431,6 @@ fn test_the_branded_newtype_example_shows_what_a_build_without_zod_emits() {
     );
 }
 
-/// The "Doc Comments and Examples on Branded Newtypes" example, whose docs and `rust example` block
-/// reach the factory's builder as a description and an example — and whose factory below them is
-/// the same whole block the plain generic brand publishes.
 #[test]
 #[cfg(feature = "zod")]
 fn test_the_documented_branded_newtype_example_is_declarable_and_shows_what_it_emits() {
@@ -483,9 +453,7 @@ fn test_the_documented_branded_newtype_example_is_declarable_and_shows_what_it_e
     );
 }
 
-/// The rejected half of the constrained-brand rule for an inner written over a parameter. Only its
-/// spelling can be held here, since the declaration itself is a `compile_error!` by construction —
-/// this pins that the README still shows the two declarations the refusal is written about.
+/// The rejected half of the constrained-brand rule for an inner written over a parameter.
 #[test]
 fn test_the_constrained_brand_over_a_parameterised_inner_example_is_still_shown() {
     assert!(

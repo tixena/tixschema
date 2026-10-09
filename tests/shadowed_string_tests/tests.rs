@@ -1,3 +1,5 @@
+//! Tests of a model type declared beside a type named `String`.
+
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 

@@ -168,8 +168,6 @@ fn a_model_type_inside_an_alias_is_walked_by_its_own_walker() {
     );
 }
 
-/// serde reads a document from any document, so nothing in one is an issue, and a value that is
-/// no document is the one issue, at the field.
 #[test]
 fn an_alias_tixschema_never_sees_is_read_whole() {
     let mut calls = 0_u32;
@@ -202,8 +200,6 @@ fn a_flattened_alias_tixschema_never_sees_takes_every_other_key() {
     );
 }
 
-/// What is published under the alias's name is a type of its own: tixschema never sees the one
-/// the field is typed with.
 #[test]
 fn the_type_published_for_the_alias_is_not_the_one_the_field_holds() {
     assert_ne!(TypeId::of::<PropertiesData>(), TypeId::of::<Properties>());

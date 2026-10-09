@@ -178,9 +178,6 @@ fn a_settled_issue_is_not_among_the_ones_a_refused_read_holds() {
     assert_eq!(refused.issues, [legacy()]);
 }
 
-/// serde reads a name that breaks its bound, and the read hands the resolvers the bound's issue,
-/// in the bound's own words under both major versions of the library. A build with no schema
-/// surface publishes no validator, and lists nothing.
 #[test]
 fn a_broken_bound_is_handed_to_the_resolvers() {
     let stored = doc! {
@@ -220,9 +217,6 @@ fn a_broken_bound_is_handed_to_the_resolvers() {
     }
 }
 
-/// A number that breaks two bounds is two issues at one path, each holding the value as it was
-/// stored. The resolver is handed both and answers each, its repair already in the raw value when
-/// it is handed the second.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_resolver_answers_both_issues_of_a_value_that_breaks_two_bounds() {
@@ -255,8 +249,7 @@ fn a_resolver_answers_both_issues_of_a_value_that_breaks_two_bounds() {
     );
 }
 
-/// The pipe counts issues, never paths. A resolver that repairs only a number still held bare
-/// leaves the second issue `NotTouched`, and that issue refuses the read of the repaired value.
+/// The pipe counts issues, never paths.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn an_issue_left_not_touched_at_a_repaired_value_refuses_the_read() {
@@ -278,8 +271,6 @@ fn an_issue_left_not_touched_at_a_repaired_value_refuses_the_read() {
     );
 }
 
-/// The resolver that rejects every issue it is handed is handed none an earlier one settled, and
-/// rejects the same issue where it stands first.
 #[test]
 fn a_later_resolver_is_never_handed_an_issue_an_earlier_one_settled() {
     let stored = doc! {
@@ -301,8 +292,6 @@ fn a_later_resolver_is_never_handed_an_issue_an_earlier_one_settled() {
     assert_eq!(handed.load(Ordering::Relaxed), 1);
 }
 
-/// The pipe runs once: the issue a repair uncovers is listed by the second read, and the resolver
-/// that would settle it is never handed it.
 #[test]
 fn an_issue_a_repair_uncovers_refuses_the_read() {
     let stored = doc! {

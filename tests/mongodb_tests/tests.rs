@@ -1,3 +1,5 @@
+//! Tests of `ObjectId` fields on every surface, over a stand-in `ObjectId` type.
+
 use core::fmt;
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -30,9 +32,9 @@ struct Document {
     title: String,
 }
 
-// Mock ObjectId type for testing - compatible with mongodb::bson::oid::ObjectId
-// The real MongoDB ObjectId serializes to { "$oid": "hex_string" } in JSON
-// and to a plain string in other contexts
+// Mock ObjectId type for testing - compatible with mongodb::bson::oid::ObjectId The real MongoDB
+// ObjectId serializes to { "$oid": "hex_string" } in JSON and to a plain string in other contexts
+/// A stand-in for the driver's `ObjectId`, written as an object under `$oid`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ObjectId(String);
 
@@ -105,6 +107,7 @@ impl<'de> Deserialize<'de> for ObjectId {
     where
         D: Deserializer<'de>,
     {
+        /// Reads an `ObjectId` from an object holding `$oid`.
         struct ObjectIdVisitor;
 
         impl<'de> Visitor<'de> for ObjectIdVisitor {

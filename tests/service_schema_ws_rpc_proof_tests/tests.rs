@@ -4,12 +4,6 @@
 //! `DocumentSession` client to the generated `DocumentSession` dispatcher, and the generated
 //! `SessionEvents` client to the generated `SessionEvents` dispatcher, through one in-memory
 //! [`Wire`], so every frame either side sends is actually read by the other.
-//!
-//! `DocumentBackEnd` answers `DocumentSession` on the server side; `Screen` answers
-//! `SessionEvents` on the client side, receiving whatever `Session::events` — the server's own
-//! generated client, over a `FrameWriter` into the wire's own client-bound queue — pushes.
-//! [`Harness`] bundles one of each, and [`drive`] polls a call, pumping the wire between polls,
-//! until it settles.
 
 #![cfg(feature = "serde")]
 
@@ -762,13 +756,8 @@ fn close_settles_a_waiting_call_with_a_transport_failure_fault() {
     assert_eq!(fault.detail(), "the socket closed before the reply arrived");
 }
 
-// The scenarios above never reach every corner of the generated client machinery - the
-// `FrameWriter` refusal a call never exercises, `SessionEvents`'s unused browser-side
-// `FrameSession` half, the transport each client was bound to. What follows exercises what the
-// wire never happened to.
+// What follows exercises what the scenarios above never reach of the generated client machinery.
 
-/// `ping_frame` is the client's alone to publish - a dispatcher only ever answers one with a
-/// pong - so both clients' own copies are checked here rather than every module's.
 #[test]
 fn every_client_ping_frame_encodes_the_same_liveness_probe() {
     let ping = serde_json::json!({ "kind": "ping" });
@@ -780,8 +769,6 @@ fn every_client_ping_frame_encodes_the_same_liveness_probe() {
     }
 }
 
-/// `FrameWriter` keeps no correlation map, so a call expecting an answer is refused outright,
-/// naming the operation — proven directly since no scenario above asks a `FrameWriter` for one.
 #[test]
 fn a_frame_writer_asked_for_request_answers_err_naming_the_operation() {
     let writer = ws_client::FrameWriter::new(|_text| async { Ok(()) });
@@ -832,10 +819,6 @@ fn a_document_session_client_exposes_the_transport_it_was_bound_to() {
     );
 }
 
-/// `SessionEvents` never places a `FrameSession` in production — the browser only ever replies
-/// through the `FrameWriter` half `Session::events` already exercises — but the correlation half
-/// is still published, so it is proven directly here the way `ws_client`'s own is proven through
-/// the scenarios above.
 #[test]
 fn events_client_frame_session_completes_a_request_and_reply_round_trip_and_answers_a_ping() {
     let sent = Arc::new(Mutex::new(Vec::<String>::new()));
@@ -911,8 +894,6 @@ fn a_session_events_client_exposes_the_transport_it_was_bound_to() {
     assert!(refused.contains("probe"), "got: {refused}");
 }
 
-/// Each half is placed beside types named `Ok`, `Err`, `Some`, `None`, `Box`, `Send` and the rest
-/// of what its module imports from `crate::shadowing`: that it compiles there is the assertion.
 #[test]
 fn every_half_is_placed_beside_types_named_after_what_it_expands_to() {
     assert_eq!(

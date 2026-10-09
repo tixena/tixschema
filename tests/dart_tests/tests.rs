@@ -11,10 +11,6 @@ use serde::{Deserialize, Serialize};
 
 use tixschema::model_schema;
 
-// ---------------------------------------------------------------------------------------------
-// Structs: primitives, Option in its three flavors, Vec, HashMap<String, T>, nested references.
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,10 +45,6 @@ pub struct Warehouse {
     pub backup_address: Option<Address>,
 }
 
-// ---------------------------------------------------------------------------------------------
-// A struct whose whole field set serde drops, and a key serde drops over a non-Option type.
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema()]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StockAudit {
@@ -69,10 +61,6 @@ pub struct StockLabel {
     pub printed_by: String,
 }
 
-// ---------------------------------------------------------------------------------------------
-// Plain enum: an enhanced enum carrying serde's own wire string.
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema()]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -82,10 +70,6 @@ pub enum StockStatus {
     InStock,
 }
 
-// ---------------------------------------------------------------------------------------------
-// Internally tagged enum (`tag = "..."`, no `content`).
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -94,10 +78,6 @@ pub enum StockEvent {
     Reset,
     Shipped { quantity: u32 },
 }
-
-// ---------------------------------------------------------------------------------------------
-// Adjacently tagged enum (`tag = "...", content = "..."`).
-// ---------------------------------------------------------------------------------------------
 
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -112,10 +92,6 @@ pub enum DynamicValue {
     Number(i64),
 }
 
-// ---------------------------------------------------------------------------------------------
-// Externally tagged enum (serde's default once a variant carries data).
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PaymentMethod {
@@ -123,10 +99,6 @@ pub enum PaymentMethod {
     Cash,
     Voucher(String),
 }
-
-// ---------------------------------------------------------------------------------------------
-// Untagged enum.
-// ---------------------------------------------------------------------------------------------
 
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -136,18 +108,10 @@ pub enum ReceivedAt {
     Iso(String),
 }
 
-// ---------------------------------------------------------------------------------------------
-// Branded newtype.
-// ---------------------------------------------------------------------------------------------
-
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Sku(pub String);
-
-// ---------------------------------------------------------------------------------------------
-// Generics: real Dart generics on the class, converter functions on fromJson/toJson.
-// ---------------------------------------------------------------------------------------------
 
 #[model_schema(default_types(ItemType = String))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -164,20 +128,12 @@ pub enum Either<IdType> {
     Right,
 }
 
-// ---------------------------------------------------------------------------------------------
-// ObjectId (feature-gated).
-// ---------------------------------------------------------------------------------------------
-
 #[cfg(feature = "mongodb")]
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Document {
     pub id: ObjectId,
 }
-
-// ---------------------------------------------------------------------------------------------
-// Chrono (feature-gated).
-// ---------------------------------------------------------------------------------------------
 
 #[cfg(feature = "chrono")]
 #[model_schema()]
@@ -188,10 +144,6 @@ pub struct Sample {
     #[model_schema_prop(as_number)]
     pub logged_at: chrono::DateTime<chrono::Utc>,
 }
-
-// ---------------------------------------------------------------------------------------------
-// Publishing rules: the declared ident, a `name` override, and the alias it leaves behind.
-// ---------------------------------------------------------------------------------------------
 
 #[model_schema(name = "Customer")]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -204,10 +156,6 @@ pub struct CustomerData {
 pub struct OrderWithCustomer {
     pub customer: CustomerData,
 }
-
-// ---------------------------------------------------------------------------------------------
-// Type alias: a wrapper class (not a Dart typedef, which cannot carry fromJson/toJson).
-// ---------------------------------------------------------------------------------------------
 
 #[model_schema()]
 pub type Barcode = String;
@@ -243,11 +191,6 @@ pub enum ReservedMember {
     In,
     Other,
 }
-
-// ---------------------------------------------------------------------------------------------
-// Every declared type is constructible — keeps the compiler from calling any of the above dead
-// code, and doubles as a check that the ordinary Rust side of each declaration still behaves.
-// ---------------------------------------------------------------------------------------------
 
 #[test]
 fn test_every_declared_type_is_constructible() {
@@ -374,10 +317,6 @@ fn test_sample_is_constructible() {
     assert!(sample.created_at <= chrono::Utc::now());
 }
 
-// ---------------------------------------------------------------------------------------------
-// Structs: primitives, Option in its three flavors, Vec, HashMap<String, T>, nested references.
-// ---------------------------------------------------------------------------------------------
-
 #[test]
 fn test_primitive_and_string_fields() {
     let dart = stock_item_dart::dart_definition();
@@ -499,10 +438,6 @@ fn test_nested_type_reference_calls_its_own_fromjson_and_tojson() {
     );
 }
 
-// ---------------------------------------------------------------------------------------------
-// Plain enum.
-// ---------------------------------------------------------------------------------------------
-
 #[test]
 #[cfg(feature = "serde")]
 fn test_plain_enum_is_an_enhanced_enum_with_wire_values() {
@@ -523,10 +458,6 @@ fn test_plain_enum_wire_values_match_what_serde_writes() {
     let dart = stock_status_dart::dart_definition();
     assert!(dart.contains("'backordered'"));
 }
-
-// ---------------------------------------------------------------------------------------------
-// Internally tagged enum.
-// ---------------------------------------------------------------------------------------------
 
 #[test]
 fn test_internally_tagged_enum_is_a_sealed_hierarchy() {
@@ -579,10 +510,6 @@ fn test_internally_tagged_wire_shape_matches_serde() {
     assert_eq!(reset_value, serde_json::json!({ "kind": "reset" }));
 }
 
-// ---------------------------------------------------------------------------------------------
-// Adjacently tagged enum.
-// ---------------------------------------------------------------------------------------------
-
 #[test]
 #[cfg(feature = "serde")]
 fn test_adjacently_tagged_tuple_single_writes_tag_and_content() {
@@ -619,10 +546,6 @@ fn test_adjacently_tagged_wire_shape_matches_serde() {
     let nothing = serde_json::to_value(DynamicValue::Nothing).unwrap();
     assert_eq!(nothing, serde_json::json!({ "type": "Nothing" }));
 }
-
-// ---------------------------------------------------------------------------------------------
-// Externally tagged enum.
-// ---------------------------------------------------------------------------------------------
 
 #[test]
 fn test_externally_tagged_unit_variant_is_a_bare_string() {
@@ -674,10 +597,6 @@ fn test_externally_tagged_wire_shape_matches_serde() {
     );
 }
 
-// ---------------------------------------------------------------------------------------------
-// Untagged enum.
-// ---------------------------------------------------------------------------------------------
-
 #[test]
 #[cfg(feature = "serde")]
 fn test_untagged_enum_tries_each_variant_in_turn() {
@@ -701,10 +620,6 @@ fn test_untagged_wire_shape_matches_serde() {
     );
 }
 
-// ---------------------------------------------------------------------------------------------
-// Branded newtype.
-// ---------------------------------------------------------------------------------------------
-
 #[test]
 fn test_branded_newtype_wraps_the_inner_value() {
     let dart = sku_dart::dart_definition();
@@ -721,10 +636,6 @@ fn test_branded_newtype_wire_shape_is_the_bare_inner_value() {
     let value = serde_json::to_value(Sku("ABC-123".to_owned())).unwrap();
     assert_eq!(value, serde_json::json!("ABC-123"));
 }
-
-// ---------------------------------------------------------------------------------------------
-// Generics.
-// ---------------------------------------------------------------------------------------------
 
 #[test]
 fn test_generic_struct_stays_generic_in_dart() {
@@ -775,10 +686,6 @@ fn test_generic_tagged_enum_threads_converters_through_the_whole_hierarchy() {
     assert!(dart.contains("idTypeFromJson(json['value'])"));
 }
 
-// ---------------------------------------------------------------------------------------------
-// ObjectId (feature-gated).
-// ---------------------------------------------------------------------------------------------
-
 #[test]
 #[cfg(feature = "mongodb")]
 fn test_object_id_maps_to_a_bare_objectid_reference() {
@@ -790,10 +697,6 @@ fn test_object_id_maps_to_a_bare_objectid_reference() {
     assert!(dart.contains("id: ObjectId.fromJson(json['id']),"));
     assert!(dart.contains("'id': (id).toJson(),"));
 }
-
-// ---------------------------------------------------------------------------------------------
-// Chrono (feature-gated).
-// ---------------------------------------------------------------------------------------------
 
 #[test]
 #[cfg(feature = "chrono")]
@@ -827,10 +730,6 @@ fn test_naive_date_maps_to_string() {
     );
 }
 
-// ---------------------------------------------------------------------------------------------
-// Publishing rules.
-// ---------------------------------------------------------------------------------------------
-
 #[test]
 fn test_name_override_publishes_under_the_override_and_a_typedef_under_the_ident() {
     let dart = customer_data_dart::dart_definition();
@@ -857,10 +756,6 @@ fn test_a_reference_to_a_renamed_type_uses_its_published_name() {
     );
     assert!(dart.contains("customer: Customer.fromJson(json['customer']),"));
 }
-
-// ---------------------------------------------------------------------------------------------
-// Type alias and enum-keyed maps.
-// ---------------------------------------------------------------------------------------------
 
 #[test]
 fn test_alias_publishes_a_wrapper_class_with_its_own_codec() {
@@ -895,10 +790,6 @@ fn test_enum_keyed_map_decodes_and_encodes_through_the_enum_itself() {
         "encoding an enum key should go through the enum's own toJson. Got: {dart}"
     );
 }
-
-// ---------------------------------------------------------------------------------------------
-// Constructor parameter lists: the empty one, and requiredness over a dropped key.
-// ---------------------------------------------------------------------------------------------
 
 #[test]
 fn test_a_struct_with_no_fields_writes_no_parameter_group_at_all() {
@@ -984,8 +875,6 @@ fn test_an_optional_scalar_calls_nothing_and_so_spells_no_null_away() {
     );
 }
 
-/// Dart has no escape for a reserved word: the member takes a trailing underscore and the key
-/// stays the one serde writes. `type` is no reserved word of Dart's and keeps its name.
 #[test]
 fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
     assert_eq!(

@@ -44,6 +44,7 @@ pub trait SoloPathBoundService<Ctx> {
     ) -> Result<PathBoundDocument, PathBoundError>;
 }
 
+/// The implementation of `SoloPathBoundService` these tests dispatch to.
 pub struct SoloBackEnd;
 
 impl SoloPathBoundService<()> for SoloBackEnd {
@@ -101,8 +102,6 @@ fn dispatched(path: &str) -> (u16, Vec<u8>) {
     (response.status(), response.body().to_vec())
 }
 
-/// The reproduction: a service whose only operation binds every argument in the path compiles
-/// with no warning, and dispatches with each argument decoded from its placeholder.
 #[test]
 fn a_solo_path_bound_operation_dispatches_with_each_argument_from_its_placeholder() {
     let (status, body) = dispatched("/orgs/acme/documents/d1");
@@ -131,8 +130,6 @@ fn the_route_table_lists_the_one_route() {
     assert_eq!(route.error_statuses(), &[404]);
 }
 
-/// `IncomingRequest` reads back everything it was built with, exercised here for this
-/// dispatcher's own expansion.
 #[test]
 fn an_incoming_request_reads_back_its_body_headers_and_query() {
     let request = IncomingRequest::new(
@@ -151,8 +148,6 @@ fn an_incoming_request_reads_back_its_body_headers_and_query() {
     );
 }
 
-/// An owner-installed `FaultHandler` still builds an `OutgoingResponse` by hand on this
-/// dispatcher, exercising `OutgoingResponse::new` and its `headers()` accessor directly.
 #[test]
 fn an_installed_fault_handler_still_builds_an_outgoing_response_by_hand() {
     let request = IncomingRequest::new(

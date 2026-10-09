@@ -1,3 +1,6 @@
+//! `FieldDef` and `FieldDefType`: how a Rust type is read into the description every surface
+//! renders from, and the TypeScript and Zod spellings of each.
+
 #[cfg(feature = "serde")]
 use core::slice::from_ref;
 
@@ -45,10 +48,8 @@ const BOOLEAN_KEY_TYPESCRIPT: &str = "\"true\" | \"false\"";
 #[cfg(feature = "zod")]
 const BOOLEAN_KEY_ZOD: &str = "z.enum([\"true\", \"false\"])";
 
-/// What `z.array` and `z.union` take: the bound a schema handed in through a type parameter is
-/// held to. Written bare, as `ZodType` is, for the consumer's module to bring into scope: a
-/// consumer may bind `z` as a constant, which names no type, so nothing emitted writes `z.` where
-/// a type is read.
+/// What `z.array` and `z.union` take. Written bare, as `ZodType` is: a consumer may bind `z` as a
+/// constant, which names no type, so nothing emitted writes `z.` where a type is read.
 #[cfg(feature = "zod")]
 pub const ZOD_SCHEMA_BOUND: &str = "SomeType";
 
@@ -85,21 +86,15 @@ pub enum VariantKind {
 /// Enum representing the possible types a field can have in the schema generation system.
 #[derive(Clone, Debug, PartialEq)]
 pub enum FieldDefType {
-    /// Boolean primitive - maps to boolean.
     Boolean,
     /// Boolean literal type — added via `model_schema_prop(literal = true)`.
     /// Maps to `true`/`false` in TS, `z.literal(true)`/`z.literal(false)` in Zod.
     BooleanLiteral(bool),
-    /// `char` primitive - serde writes it as a one-character string and reads only that back, so
-    /// it is described as one: TypeScript `string`, Zod `z.string().length(1)`, JSON Schema
-    /// `{"type": "string", "minLength": 1, "maxLength": 1}`.
+    /// `char`: serde writes a one-character string and reads only that back, so it is described as
+    /// one.
     Char,
     #[cfg(feature = "chrono")]
     /// Chrono `DateTime<Tz>` type - requires "`chrono`" feature.
-    /// Maps to `string` in TS (ISO 8601 format: "2025-11-29T14:30:00Z").
-    /// Zod: `z.string().datetime()`.
-    /// JSON Schema: string with format "date-time".
-    /// Note: the timezone type parameter is ignored for schema generation.
     DateTime,
     F32,
     F64,
@@ -108,49 +103,28 @@ pub enum FieldDefType {
     I64,
     I8,
     Isize,
-    /// Map type (`HashMap`<K, V>) - only String keys supported per rules
-    /// Boxed for recursion. Generates Partial<Record<K, V>> in TS.
     Map(Box<FieldDef>, Box<FieldDef>),
     #[cfg(feature = "chrono")]
     /// Chrono `NaiveDate` type - requires "`chrono`" feature.
-    /// Maps to `string` in TS (ISO 8601 date format: "2025-11-29").
-    /// Zod: `z.string().date()`.
-    /// JSON Schema: string with format "date".
     NaiveDate,
     #[cfg(feature = "chrono")]
     /// Chrono `NaiveDateTime` type - requires "`chrono`" feature.
-    /// Maps to `string` in TS (ISO 8601 format: "2025-11-29T14:30:00").
-    /// Zod: `z.string().datetime({ local: true })`.
-    /// JSON Schema: string with format "date-time".
     NaiveDateTime,
     #[cfg(feature = "chrono")]
     /// Chrono `NaiveTime` type - requires "`chrono`" feature.
-    /// Maps to `string` in TS (format: "14:30:00").
-    /// Zod: `z.string().time()`.
-    /// JSON Schema: string with format "time".
     NaiveTime,
     /// Numeric literal type — added via `model_schema_prop(literal = 214)`.
-    /// Maps to `214` in TS, `z.literal(214)` in Zod. Stored as `f64` regardless of the field's own
-    /// integer or float type, so a whole value renders without the trailing `.0` `f64` carries.
     NumberLiteral(f64),
     #[cfg(feature = "mongodb")]
     /// `MongoDB` `ObjectId` type - requires "`mongodb`" feature.
-    /// Maps to `ObjectId` interface in TS with `$oid: string`.
-    /// Zod: `z.object({ $oid: z.string().regex(...) })`.
-    /// JSON Schema: object with `$oid` string property.
-    /// See `README.md` for serialization format and validation details.
     ObjectId,
-    /// Reference to another struct/enum type, potentially with generics
-    /// First String is the Rust ident written at the reference; what it publishes under is read
-    /// off the registry where each surface writes it.
-    /// `Vec<FieldDef>` holds generic parameters if any.
+    /// A reference to another struct or enum: the Rust ident written at the reference, and its
+    /// generic arguments if any.
     SiblingType(String, Vec<FieldDef>),
-    /// String primitive - maps to string.
     String,
-    /// String literal type - for fixed string values
-    /// Added via `model_schema_prop(literal` = "value")
-    /// Maps to "value" in TS, z.literal("value") in Zod.
-    StringLiteral(String), // For string literal types like "Tixena"
+    /// String literal type - for fixed string values Added via `model_schema_prop(literal` =
+    /// "value") Maps to "value" in TS, z.literal("value") in Zod.
+    StringLiteral(String),
     /// Tuple type - generates anonymous object in TS/Zod.
     Tuple(Vec<FieldDef>),
     /// One of the enclosing item's own type parameters — `IdType` in `struct Wrapper<IdType>`.
@@ -208,9 +182,7 @@ pub struct FieldDef {
 }
 
 /// Two field defs are equal when they describe the same value on every surface: the same type, the
-/// same array levels, the same fixed lengths and the same nullable levels. What the author wrote
-/// *around* the value — a name, a doc comment, a `model_schema_prop` — is left out, which is
-/// exactly the question `as = Type` asks of its target.
+/// same array levels, the same fixed lengths and the same nullable levels.
 impl PartialEq for FieldDef {
     fn eq(&self, other: &Self) -> bool {
         self.array_depth == other.array_depth
@@ -995,9 +967,7 @@ impl FieldDef {
                     && is_sequence_wrapper(name)
                 {
                     // The element re-enters the whole per-type rendering as the arrayed field it
-                    // stands for, so a set renders exactly as the `Vec` of that element does. It
-                    // carries this field's own array levels with it, so the wrap below is its to
-                    // apply and not this pass's.
+                    // stands for, so a set renders exactly as the `Vec` of that element does.
                     return self.collection_element_field(element).typescript_base();
                 } else if let Some(info) = lookup_alias_info(name) {
                     if lst.is_empty() {
@@ -1112,14 +1082,9 @@ impl FieldDef {
     }
 
     /// The slot spelling of a member of the type named by `self_type_name`, with a map whose values
-    /// name that type written so the alias declaring the union stays resolvable.
-    /// `Partial<Record<K, V>>` is `Partial` applied to `Record`, and TypeScript resolves both while
-    /// it resolves the alias, so a member spelled that way makes the alias circular (TS2456). A key
-    /// spelling as `string` or `number` is written as the index-signature object it is equal to; an
-    /// enumerated key is a literal type, which an index signature parameter cannot be (TS1337), so
-    /// it is written as the mapped type it is equal to instead. Both state the same object and
-    /// resolve their value lazily. A map under an array wrap keeps `Partial<Record<…>>`, the wrap
-    /// having deferred it already.
+    /// name that type written so the alias declaring the union stays resolvable: `Partial<Record<K,
+    /// V>>` would make the alias circular (TS2456). A `string` or `number` key is written as the
+    /// index-signature object it is equal to, and an enumerated key as the mapped type.
     #[cfg(all(feature = "serde", feature = "typescript"))]
     pub fn typescript_slot_typename_deferring_self(&self, self_type_name: &str) -> String {
         let FieldDefType::Map(key, value) = &self.field_type else {
@@ -1149,9 +1114,8 @@ impl FieldDef {
             if self.has_nullable() {
                 format!("{pre_result} | null")
             } else if self.key_may_be_absent() {
-                // An absent-able key renders as `field?: T`, so the `| undefined` is redundant —
-                // and under `exactOptionalPropertyTypes` it would claim an explicit `undefined`
-                // the key's omission is exactly what serde writes instead.
+                // An absent-able key renders as `field?: T`, so the `| undefined` is redundant, and
+                // under `exactOptionalPropertyTypes` it would claim an explicit `undefined`.
                 pre_result
             } else {
                 format!("{pre_result} | undefined")
@@ -1199,9 +1163,8 @@ impl FieldDef {
     fn zod_array_base(&self) -> String {
         let result = match &self.field_type {
             FieldDefType::Unknown => "z.unknown()".to_owned(),
-            // A `const` cannot be parameterised, so every generic publisher writes a factory and a
-            // parameter composes the argument that factory binds for it — see
-            // [`zod_factory_argument`].
+            // A `const` cannot be parameterised, so a parameter composes the argument the factory
+            // binds for it.
             FieldDefType::TypeParam(name) => zod_factory_argument(name),
             FieldDefType::Tuple(lst) => {
                 let elements = lst
@@ -1218,10 +1181,8 @@ impl FieldDef {
                     // The element carries this field's own array levels, so it applies the wrap.
                     return self.collection_element_field(element).zod_array_base();
                 } else if let Some(info) = lookup_alias_info(name) {
-                    // What the named type published is what this can name: a factory where the
-                    // type declares parameters, and the one schema it has where it declares none.
-                    // Read off the registry rather than off the arguments written here, because a
-                    // name carrying arguments says nothing about which of the two it published.
+                    // What the named type published is what this can name: a factory where the type
+                    // declares parameters, and the one schema it has where it declares none.
                     if publishes_zod_factory(name) {
                         zod_factory_call(&info.export_name, lst)
                     } else {
@@ -1238,8 +1199,7 @@ impl FieldDef {
             FieldDefType::Map(k, v) => k.zod_map_record_call(&v.zod_slot_type()),
             FieldDefType::Boolean => "z.boolean()".to_owned(),
             // serde writes a `char` as a one-character string and reads only that back, so the
-            // length is fixed rather than read from `model_schema_prop` — a `char` field carries
-            // none of those constraints.
+            // length is fixed, not read from `model_schema_prop`.
             FieldDefType::Char => "z.string().length(1)".to_owned(),
             FieldDefType::String => self.zod_string_type(),
             FieldDefType::StringLiteral(literal) => format!("z.literal(\"{literal}\")"),
@@ -1892,10 +1852,8 @@ pub fn get_field_def(name: &str, ty: &Type, field_docs: &str) -> FieldDef {
     if let Type::Path(type_path) = written {
         get_field_def_from_type_path(type_path, field_name, field_docs)
     } else if let Type::Reference(type_ref) = written {
-        // let lifetime = type_ref
-        //     .lifetime
-        //     .as_ref()
-        //     .map_or("".to_string(), |l| format!("'{}", l.ident));
+        // let lifetime = type_ref .lifetime .as_ref() .map_or("".to_string(), |l| format!("'{}",
+        // l.ident));
         get_field_def(name, type_ref.elem.as_ref(), field_docs)
     } else if let Type::Array(type_array) = written {
         let mut def = get_field_def(name, &type_array.elem, field_docs);
@@ -1932,7 +1890,6 @@ pub fn get_field_def(name: &str, ty: &Type, field_docs: &str) -> FieldDef {
             type_span: written.span(),
         }
     } else {
-        // Fallback for BareFn, ImplTrait, etc.
         FieldDef {
             name: field_name,
             field_type: FieldDefType::Unknown,
@@ -1958,10 +1915,7 @@ fn get_field_def_type_or_sibling(t_name: &str) -> FieldDefType {
         "bool" => FieldDefType::Boolean,
         "char" => FieldDefType::Char,
         // `str` and `Path` are the borrowed forms of `String` and `PathBuf`, and each writes the
-        // same JSON string its owned form does. Both are reachable only behind a wrapper or a
-        // reference, and the parser reads through either to land here. `OsString`/`OsStr` are
-        // deliberately absent: serde writes them as an externally tagged enum, not a string, so
-        // they fall through to `SiblingType` and are rejected by `os_string_name`.
+        // same JSON string its owned form does.
         "String" | "PathBuf" | "str" | "Path" => FieldDefType::String,
         "Value" => FieldDefType::Unknown,
         "u8" => FieldDefType::U8,

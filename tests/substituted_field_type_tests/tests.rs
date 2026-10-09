@@ -15,8 +15,6 @@ mod jsonschema {
         assert_eq!(Substituted::json_schema(), Written::json_schema());
     }
 
-    /// The empty schema admits every payload, which is what a field the reader could not classify
-    /// documents as. Every member here names a type, so none of them may.
     #[test]
     fn no_substituted_field_documents_as_the_empty_schema() {
         let schema = Substituted::json_schema();
@@ -51,8 +49,6 @@ mod typescript {
         );
     }
 
-    /// The failure this pins is a silent one: a type the reader has no arm for lands on the opaque
-    /// value, which is a declaration that describes nothing rather than one that refuses.
     #[test]
     fn no_substituted_field_lands_on_the_opaque_value() {
         let ts = Substituted::ts_definition();

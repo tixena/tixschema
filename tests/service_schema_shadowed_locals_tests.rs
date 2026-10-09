@@ -2,9 +2,6 @@
 //! write around them: `request`, `handler`, `path`, `query`, `headers`, `body`, `message`,
 //! `captured`, `sending`. Each transport holds such an argument in a local of its own, so the argument is
 //! never read as the transport's.
-//!
-//! The `http_rest` client is called against the `http_rest` dispatcher, and the handler answers
-//! with what it was handed. Gated on the `serde` feature, which `#[service_schema]` requires.
 
 #![cfg(feature = "serde")]
 

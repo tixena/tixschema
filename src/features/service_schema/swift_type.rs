@@ -4,14 +4,6 @@
 //! field's own type goes through, but kept apart from `crate::features::swift`'s own `Codable`
 //! codec generation: that module answers for a *declared item*'s fields, threading an `aux`
 //! vector of nested tuple and map-key wrapper structs through every leaf.
-//!
-//! [`super::swift_http_client`], and [`super::swift_ws_client`] for an operation declaring
-//! `header_out`/`error_header_out`, never ask `JSONDecoder` to decode a whole tuple: each decodes
-//! the body and reads its header elements separately and assembles the Swift tuple by hand, so
-//! the tuple named here is a bare `(A, B)`, and no wrapper struct is ever generated. A headerless
-//! `swift_ws_client` operation reaches for [`crate::features::swift::swift_reference_type`]
-//! instead, whose `aux` wrapper gives a bare tuple or non-string-keyed map the `Codable`
-//! conformance a whole-payload decode needs.
 
 use crate::features::swift::lookup_swift_name;
 use crate::field_type::{FieldDef, FieldDefType, get_field_def, is_sequence_wrapper};

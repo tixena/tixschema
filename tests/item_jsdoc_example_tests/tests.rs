@@ -1,3 +1,5 @@
+//! Tests that a documented item's Rust example stays out of the emitted TypeScript.
+
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
@@ -215,9 +217,7 @@ pub enum ExampleOnlySlot {
 #[serde(transparent)]
 pub struct ExampleOnlyBrand(pub String);
 
-// The undocumented twins of the shapes above. Dropping an example is the whole of what the strip
-// does, so a shape documented with nothing else is left exactly where a shape documented with
-// nothing at all already stands — which is what the twins below are held against.
+// The undocumented twins of the shapes above.
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct UndocumentedStruct {
@@ -301,8 +301,6 @@ fn documented_members() -> Vec<(String, &'static str)> {
     ]
 }
 
-/// The reported failure: a struct's `JSDoc` opened with the fence and the Rust body under it, so
-/// neither the fence nor anything written inside it may reach the emitted `TypeScript`.
 #[test]
 fn a_documented_item_never_carries_its_rust_example_into_the_emitted_typescript() {
     // The alias publishes `ts_definition` from its own module rather than from the alias, so naming
@@ -318,9 +316,6 @@ fn a_documented_item_never_carries_its_rust_example_into_the_emitted_typescript(
     }
 }
 
-/// The rule is the doc body's, not the type's: a field's and a variant's `JSDoc` are written from
-/// the same lines an item's is, so an example written on a member is dropped where an example
-/// written on the type is, and the description under it is what survives.
 #[test]
 fn a_documented_member_never_carries_its_rust_example_into_the_emitted_typescript() {
     for (ts, description) in documented_members() {
@@ -331,8 +326,7 @@ fn a_documented_member_never_carries_its_rust_example_into_the_emitted_typescrip
     }
 }
 
-/// Only the `JSDoc` side of an alias changed. What its example reaches on the Zod side is what it
-/// always reached: nothing — an alias publishes no `example` field to drop it into.
+/// Only the `JSDoc` side of an alias changed.
 #[cfg(feature = "zod")]
 #[test]
 fn a_documented_alias_publishes_the_same_zod_schema_it_always_did() {
@@ -373,9 +367,6 @@ fn example_only_twins() -> Vec<(String, String, &'static str, &'static str)> {
     ]
 }
 
-/// The reported failure: an item or member documented with nothing but an example emitted an
-/// empty `JSDoc` body, where an undocumented one names what it's documenting. What the strip
-/// leaves empty falls back to the name, so the shape becomes the undocumented one, byte for byte.
 #[test]
 fn an_example_only_shape_writes_what_its_undocumented_twin_writes() {
     // The aliases publish `ts_definition` from their own modules rather than from the alias, so
@@ -389,8 +380,6 @@ fn an_example_only_shape_writes_what_its_undocumented_twin_writes() {
     }
 }
 
-/// What the fallback writes, read off the emitted `TypeScript` rather than off the twin: the item
-/// names itself as it is exported, and each member names itself as it is serialized.
 #[test]
 fn an_example_only_item_and_member_name_themselves() {
     let ts = ExampleOnlyStruct::ts_definition();
@@ -416,9 +405,6 @@ fn an_example_only_item_and_member_name_themselves() {
     );
 }
 
-/// The `description` a shape publishes is spelled from the lines its `JSDoc` body is spelled from,
-/// so the fallback fires on the same reading at both. The two shapes that publish one are covered:
-/// a plain enum writes it beside a header of its own, and a brand writes it instead of one.
 #[cfg(feature = "zod")]
 #[test]
 fn an_example_only_shape_describes_itself_as_its_undocumented_twin_does() {
@@ -435,8 +421,6 @@ fn an_example_only_shape_describes_itself_as_its_undocumented_twin_does() {
     }
 }
 
-/// The example was the only thing separating the shapes, so with it gone every one of them opens
-/// its `JSDoc` the same way: the description, then the blank continuation line.
 #[test]
 fn every_documented_shape_opens_its_jsdoc_identically() {
     for (ts, description) in documented_shapes() {

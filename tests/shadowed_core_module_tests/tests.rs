@@ -1,3 +1,5 @@
+//! Tests of model types and a service declared beside modules named `core` and `std`.
+
 mod core;
 mod std;
 

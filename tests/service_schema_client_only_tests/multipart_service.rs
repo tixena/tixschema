@@ -260,8 +260,6 @@ fn an_absent_optional_field_omits_its_own_text_part() {
     );
 }
 
-/// `IncomingResponse` reads a header back case-insensitively - exercised directly since this
-/// operation declares no `header_out` of its own to reach the accessor through.
 #[test]
 fn incoming_response_reads_back_a_header_case_insensitively() {
     let response = multipart_http_rest_client::IncomingResponse::new(
@@ -272,8 +270,6 @@ fn incoming_response_reads_back_a_header_case_insensitively() {
     assert_eq!(response.header("etag"), Some("v1"));
 }
 
-/// The contract stands on its own: implementing it takes the trait and nothing else, and nothing
-/// in this binary placed a dispatcher for it.
 #[test]
 fn the_contract_is_implementable_where_no_dispatcher_was_placed() {
     let answered = poll_once(UploadClientBackEnd.upload_document(

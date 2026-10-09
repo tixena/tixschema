@@ -69,8 +69,6 @@ fn an_issue_inside_a_type_named_issue_is_listed_at_its_path() {
     );
 }
 
-/// The author's `Issue` reads through the entry point the flag gave it, whose callback works with
-/// the `Issue` the flag added beside it.
 #[test]
 fn the_authors_issue_and_the_added_issue_are_two_types() {
     let read = Issue::from_value_with(json!({}), |_raw, found| {

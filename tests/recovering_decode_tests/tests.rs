@@ -444,8 +444,6 @@ fn a_missing_key_is_listed_and_a_rejected_read_fails_with_the_list() {
     assert_eq!(calls, 1);
 }
 
-/// The decider fixes one of two problems and answers `Fixed`: the read fails with what the second
-/// walk finds, and the decider is not asked again.
 #[test]
 fn a_fixed_value_gets_one_more_read_and_fails_with_the_second_list() {
     let stored = json!({ "name": 7_i32, "versions": [{ "number": "two" }] });
@@ -512,8 +510,6 @@ fn a_record_serde_reads_with_an_undeclared_nested_key_reaches_the_decider() {
     assert_eq!(calls, 1);
 }
 
-/// serde reads a struct from an array of its fields in order, which is not how the struct writes
-/// itself, and refuses one held as text.
 #[test]
 fn a_model_held_in_another_shape_is_mistyped_and_one_serde_refuses_is_invalid() {
     let stored = json!({ "name": "Loan", "versions": [[3_i32], "three"] });
@@ -553,8 +549,6 @@ fn a_list_field_that_holds_no_list_is_one_issue_at_the_field() {
     );
 }
 
-/// Each read hook is the function serde's derive calls, so its refusal is the walker's: the
-/// author's function, the author's module, and a function generic over what it reads.
 #[test]
 fn a_hooked_field_is_read_through_its_hook() {
     let stored = json!({ "code": "ab", "count": 5_i32, "name": "Loan", "port": 80_i32 });
@@ -590,8 +584,6 @@ fn a_hooked_field_held_as_its_hook_writes_it_is_no_issue() {
     assert_eq!(calls, 0);
 }
 
-/// A read that calls no callback runs a field's reader twice: in serde's read of the whole value,
-/// and in the walk's own read of the field. The report reads nothing: it is told what serde said.
 #[test]
 fn a_read_that_calls_no_callback_runs_a_fields_reader_twice() {
     let mut calls = 0_u32;
@@ -604,8 +596,6 @@ fn a_read_that_calls_no_callback_runs_a_fields_reader_twice() {
     assert_eq!(NUMBER_READS.load(Ordering::Relaxed), 2);
 }
 
-/// A constraint on a struct's field hangs no read hook: serde reads the value, and the walker
-/// holds what it read to the bound, where a schema surface is on to publish its validator.
 #[test]
 fn a_constraint_on_a_struct_field_is_the_walkers_to_check() {
     let stored = json!({ "code": "AB", "count": "5", "name": "ab", "port": "80" });
@@ -732,8 +722,6 @@ fn a_list_and_a_model_type_stored_under_an_alias_are_walked_at_the_alias() {
     );
 }
 
-/// An `Option`, a `default` and a `skip_deserializing` field are read with their key missing, and
-/// only the required one is reported.
 #[test]
 fn a_key_serde_reads_the_absence_of_is_not_missing() {
     let mut calls = 0_u32;
@@ -760,8 +748,6 @@ fn a_key_serde_reads_the_absence_of_is_not_missing() {
     );
 }
 
-/// What the type writes for itself carries the key of a field it never reads back, which is a key
-/// it declares. A field serde neither writes nor reads declares none.
 #[test]
 fn a_key_the_type_writes_and_does_not_read_is_declared() {
     let written = serde_json::to_value(Sparse {
@@ -794,8 +780,6 @@ fn a_key_the_type_writes_and_does_not_read_is_declared() {
     );
 }
 
-/// A field serde writes wherever its predicate lets it be and never reads has its key in what the
-/// type wrote, which is a key the type declares. Where the predicate held it back, nothing changes.
 #[test]
 fn a_key_the_type_writes_under_a_predicate_and_does_not_read_is_declared() {
     let kept = Kept {
@@ -864,8 +848,6 @@ fn a_key_a_variant_writes_under_a_predicate_and_does_not_read_is_declared() {
     assert_eq!(calls, 0);
 }
 
-/// A field serde neither writes nor reads declares no key, under `skip` or under
-/// `skip_serializing` beside `skip_deserializing`: its key in a record is one serde reads past.
 #[test]
 fn a_key_of_a_field_the_type_neither_writes_nor_reads_is_unknown() {
     let stored = json!({ "cached": 1_i32, "id": "i", "local": 9_i32 });
@@ -887,8 +869,6 @@ fn a_key_of_a_field_the_type_neither_writes_nor_reads_is_unknown() {
     );
 }
 
-/// serde reads no array it wrote with such a slot in it: it writes the slot and reads an array
-/// without it. The walker refuses the array as serde does, and reads one written without the slot.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 #[test]
 fn a_slot_the_type_writes_under_a_predicate_and_does_not_read_is_refused_as_serde_refuses_it() {
@@ -923,8 +903,6 @@ fn a_container_default_reads_every_missing_key() {
     assert_eq!(calls, 0);
 }
 
-/// serde refuses the value and the walk has nothing to say why: one `Undescribed`, with serde's
-/// own message.
 #[test]
 fn a_refusal_the_walk_cannot_see_into_is_undescribed() {
     let stored = json!({ "sealed": { "label": "x" } });
@@ -1188,8 +1166,6 @@ fn unrecovered_is_an_error_a_caller_can_propagate() {
     );
 }
 
-/// `Expected` has these members and no other: the match names each one, so a member added or
-/// taken away stops this building.
 #[test]
 fn expected_has_exactly_the_members_a_field_category_can_take() {
     use ledger_schema::Expected;
@@ -1266,8 +1242,6 @@ fn expected_has_exactly_the_members_a_field_category_can_take() {
     assert_eq!(members.len(), 31);
 }
 
-/// The handoff builds each kind of issue from the standard parts, and a kind it does not know
-/// becomes `Undescribed`.
 #[test]
 fn issue_from_parts_builds_this_types_own_issue() {
     use ledger_schema::{Expected, Issue, Path, Segment, issue_from_parts};

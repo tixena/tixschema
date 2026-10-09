@@ -1,11 +1,6 @@
 //! `Ledger`: a read, a write and a one-way notice, covering the success, declared-error and
 //! push-on-write shapes. `LedgerEvents`: the one-way, browser-implemented service a server pushes
 //! to over a `FrameWriter` rather than calls.
-//!
-//! The axum server loop in [`ledger_socket`] and the tokio-tungstenite client loop in [`connect`]
-//! are the reference adapters a developer copies around the generated pieces — `answer`,
-//! `FrameWriter::new`, `FrameSession::new`, `deliver`, `close`, split, the outbound `mpsc`
-//! channel. Every test drives them over a real socket bound to `127.0.0.1:0`.
 
 #![cfg(feature = "serde")]
 
@@ -215,7 +210,7 @@ impl Ledger<Session> for LedgerBackEnd {
             .transaction_posted(TransactionPosted {
                 transaction: transaction.clone(),
             })
-            .await; // push to this connection
+            .await;
         Ok(transaction)
     }
 
@@ -363,8 +358,8 @@ async fn connect(
             let Message::Text(text) = message else {
                 continue;
             };
-            reader.deliver(&text).await; // replies to my requests, and pongs
-            screen_ws::answer(&text, &screen, &()).await; // pushes from the server
+            reader.deliver(&text).await;
+            screen_ws::answer(&text, &screen, &()).await;
         }
         reader.close("the socket closed");
     });
@@ -485,26 +480,12 @@ async fn dropping_the_server_settles_a_waiting_call_with_a_transport_failure_fau
 }
 
 // The six tests above drive every module through the one path a live socket actually takes.
-// `Frame` no longer means one shared codec: each macro now reads only the frame kinds its own
-// side receives, so a dispatcher's `Frame` cannot name a reply and a client's cannot name a
-// request or a notify — there is nothing to hand-decode on either side that the type system does
-// not already refuse to construct. A one-way-only service's `Reply` carries no `send` either, for
-// the same reason: `LedgerEvents` never answers, so its dispatcher never publishes a method to
-// answer with. What follows drives only what still cannot be reached through the live socket
-// above: a session's own `ping_frame`, a `FrameWriter`'s construction and its refusal of
-// `request`, the `.transport()` accessor every generated client publishes, and — since
-// `LedgerEvents`'s own client is only ever bound to a `FrameWriter` on the live path — a
-// `FrameSession` round trip and its own ping/pong handling for `ledger_events_ws`.
 
-/// `ledger_client_ws`'s own copy of `ping_frame`, published beside `FrameSession`'s liveness
-/// probe — a dispatcher never sends one.
 #[tokio::test]
 async fn ledger_client_ws_ping_frame_encodes_the_kind_ping_frame() {
     assert_eq!(ledger_client_ws::ping_frame(), r#"{"kind":"ping"}"#);
 }
 
-/// A `FrameWriter` carries no correlation map, so `request` is refused outright, naming the
-/// operation that asked for an answer it cannot wait on.
 #[tokio::test]
 async fn a_ledger_client_frame_writer_asked_for_a_request_answers_err_naming_the_operation() {
     let writer = ledger_client_ws::FrameWriter::new(|_text| async { Ok(()) });
@@ -519,8 +500,6 @@ async fn a_ledger_client_frame_writer_asked_for_a_request_answers_err_naming_the
     );
 }
 
-/// `LedgerClient::transport` reaches the transport a client was bound to, the same as every
-/// other generated client.
 #[tokio::test]
 async fn a_ledger_client_exposes_the_transport_it_was_bound_to() {
     let (sent_out, mut sent_in) = mpsc::channel::<String>(4);
@@ -549,15 +528,11 @@ async fn a_ledger_client_exposes_the_transport_it_was_bound_to() {
     );
 }
 
-/// `ledger_events_ws`'s own copy of `ping_frame` — a session sends one, a dispatcher only ever
-/// answers one.
 #[tokio::test]
 async fn ledger_events_ws_ping_frame_encodes_the_kind_ping_frame() {
     assert_eq!(ledger_events_ws::ping_frame(), r#"{"kind":"ping"}"#);
 }
 
-/// `deliver` answers a ping with a pong on `ledger_events_ws`'s own `FrameSession` too — nothing
-/// in the live test above ever sends one over this connection, since it carries only pushes.
 #[tokio::test]
 async fn the_ledger_events_frame_session_answers_a_ping_with_a_pong() {
     let (sent_out, mut sent_in) = mpsc::channel::<String>(4);
@@ -578,10 +553,6 @@ async fn the_ledger_events_frame_session_answers_a_ping_with_a_pong() {
     );
 }
 
-/// The `ledger_events_ws` module's own `FrameSession` completes a request-and-reply round trip
-/// exactly like `ledger_client_ws`'s, even though `LedgerEvents` declares no reply operation of
-/// its own to exercise it through a generated method — the transport machinery does not read the
-/// operation's own shape.
 #[tokio::test]
 async fn the_ledger_events_frame_session_completes_a_request_and_reply_round_trip() {
     let (sent_out, mut sent_in) = mpsc::channel::<String>(4);
@@ -621,8 +592,6 @@ async fn the_ledger_events_frame_session_completes_a_request_and_reply_round_tri
     session.close("done");
 }
 
-/// `LedgerEventsClient::transport` reaches the transport a client was bound to, the same as
-/// every other generated client.
 #[tokio::test]
 async fn a_ledger_events_client_exposes_the_transport_it_was_bound_to() {
     let (sent_out, mut sent_in) = mpsc::channel::<String>(4);

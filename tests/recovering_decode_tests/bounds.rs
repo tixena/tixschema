@@ -177,8 +177,7 @@ fn a_callback_that_removes_what_breaks_a_bound_recovers_the_read() {
     );
 }
 
-/// A tag that breaks two bounds is two issues at one path, alike but for the reason. One repair
-/// of the value answers both, and a removal run once for each takes the next tag with it.
+/// A tag that breaks two bounds is two issues at one path, alike but for the reason.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn two_bounds_broken_by_one_value_are_repaired_once_at_its_path() {

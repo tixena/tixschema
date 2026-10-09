@@ -1,10 +1,6 @@
 //! A service whose three operations cover the three input shapes, and the messages the macro
 //! declares for two of them: their TypeScript, their Zod schema, their JSON Schema, the keys they
 //! write on the wire, and the author's own message left exactly as they wrote it.
-//!
-//! The context type, the type bound to it and that type's own fields are read for too, negatively:
-//! an implementation receives the context in every operation and none of the three surfaces
-//! mentions any of it.
 
 #![cfg(feature = "serde")]
 
@@ -234,10 +230,7 @@ use core::pin::pin;
 use core::task::{Context as PollContext, Poll, Waker};
 use tixschema::{model_schema, service_schema};
 
-/// The key an argument becomes on the wire. Every declared message carries
-/// `#[serde(rename_all = "camelCase")]`, which is what serde writes; the `serde` feature is what
-/// makes the describing surfaces read that attribute, and a build without it describes the Rust
-/// spelling instead.
+/// The key an argument becomes on the wire.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 const CREDIT_ID_KEY: &str = if cfg!(feature = "serde") {
     "creditId"
@@ -271,6 +264,7 @@ pub struct ProbeContext {
     pub logger_name: String,
 }
 
+/// The implementation these tests call, answering the credits it was built with.
 pub struct ProbeBackEnd {
     pub granted_credits: u32,
 }
@@ -358,9 +352,6 @@ where
     }
 }
 
-/// The wire itself, read in every feature combination: the serde derives and the `rename_all` are
-/// written onto the declared message by the macro, so what serde puts on the wire does not depend
-/// on which describing feature is on.
 #[test]
 fn a_declared_message_writes_its_arguments_as_camel_case_keys() {
     let written = serde_json::to_string(&ExpireCreditRequest {

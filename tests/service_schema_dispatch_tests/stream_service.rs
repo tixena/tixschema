@@ -248,8 +248,6 @@ where
     }
 }
 
-/// The whole body, streamed through the seam in genuinely incremental chunks - more than one
-/// `pull()` call, not one buffered copy dressed up as a stream.
 #[test]
 fn a_full_body_streams_through_the_seam_in_more_than_one_pull() {
     let (status, headers, body, pulls) = dispatched("GET", "/documents/present/content", &[]);
@@ -271,8 +269,6 @@ fn a_full_body_streams_through_the_seam_in_more_than_one_pull() {
     );
 }
 
-/// A `Range` header answers `206` with `content-range` composed alongside the streamed slice -
-/// the response header and the undrained body travelling together on one `OutgoingResponse`.
 #[test]
 fn a_range_header_answers_206_with_content_range_and_the_sliced_body() {
     let (status, headers, body, pulls) = dispatched(
@@ -295,8 +291,6 @@ fn a_range_header_answers_206_with_content_range_and_the_sliced_body() {
     );
 }
 
-/// A content type carrying a line break is refused before it reaches the wire, on the whole body
-/// and on a range slice alike: the answer is a fault, not a response with an injected header.
 #[test]
 fn a_streamed_content_type_carrying_a_line_break_answers_a_fault() {
     for range in [None, Some("bytes=4-8")] {
@@ -314,8 +308,6 @@ fn a_streamed_content_type_carrying_a_line_break_answers_a_fault() {
     }
 }
 
-/// A range past the end of the body is answered through the declared error, mapped to its own
-/// status exactly like any other declared error - `416`, not a fault.
 #[test]
 fn a_range_past_the_end_answers_the_declared_416() {
     let (status, _headers, body, _pulls) = dispatched(
@@ -327,8 +319,6 @@ fn a_range_past_the_end_answers_the_declared_416() {
     assert_eq!(body, br#"{"errorCode":"range-not-satisfiable"}"#);
 }
 
-/// An unknown document still answers the declared `404`, exactly like any other declared error on
-/// a streamed operation.
 #[test]
 fn an_unknown_document_answers_the_declared_404() {
     let (status, _headers, body, _pulls) = dispatched("GET", "/documents/missing/content", &[]);
@@ -336,9 +326,6 @@ fn an_unknown_document_answers_the_declared_404() {
     assert_eq!(body, br#"{"errorCode":"not-found"}"#);
 }
 
-/// The route table an adapter iterates to register a handler: one row per streamed operation, its
-/// statuses included - mirrors the same claim `DocumentService`'s own harness makes, for a service
-/// whose operations stream instead of answering JSON.
 #[test]
 fn the_route_table_lists_both_streamed_routes() {
     let routes = stream_http_rest_transport::ROUTES;
@@ -354,9 +341,6 @@ fn the_route_table_lists_both_streamed_routes() {
     assert_eq!(routes[0].error_statuses(), &[404, 416]);
 }
 
-/// A declared `header_out` composed onto a streamed answer rides beside `content-range` on `206`
-/// and alone on the full `200` answer - the same composition the bytes kind now carries, reached
-/// through both `StreamedAnswer` arms rather than only one.
 #[test]
 fn a_header_out_entry_composes_onto_both_streamed_answer_arms() {
     let (full_status, full_headers, full_body, _full_pulls) =
@@ -398,9 +382,6 @@ fn a_header_out_entry_composes_onto_both_streamed_answer_arms() {
     );
 }
 
-/// `IncomingRequest` reads back everything it was built with - the same accessors every other
-/// operation's arm already reaches for, exercised here for the streamed operation's own dispatcher
-/// expansion.
 #[test]
 fn an_incoming_request_reads_back_its_body_headers_and_query() {
     let request = stream_http_rest_transport::IncomingRequest::new(
@@ -418,8 +399,6 @@ fn an_incoming_request_reads_back_its_body_headers_and_query() {
     );
 }
 
-/// An owner-installed `FaultHandler` still builds an `OutgoingResponse` by hand on a streamed
-/// service's dispatcher, exercising `OutgoingResponse::new` and `OutgoingBody::Bytes` directly.
 #[test]
 fn an_installed_fault_handler_still_builds_an_outgoing_response_by_hand() {
     let request = stream_http_rest_transport::IncomingRequest::new(

@@ -1,37 +1,5 @@
 //! The TypeScript `ws_rpc` transport: a socket seam a platform `WebSocket` satisfies as it is, a
 //! heartbeat, and a check of every reply against the operation's own declared schemas.
-//!
-//! # The seam is structural, not an adapter
-//!
-//! [`socket_type`] names four members every platform `WebSocket` already has (`send`, `close`,
-//! `addEventListener`/`removeEventListener` for `"message"` and `"close"`), so `new WebSocket(url)`
-//! plugs into [`transport_factory`] with nothing written in between. Nothing generated here names
-//! `WebSocket` itself.
-//!
-//! # One socket, one transport, one heartbeat
-//!
-//! The returned transport owns a per-socket request counter and a correlation map keyed by frame
-//! id, exactly as [`super::client`]'s own AMQP-shaped transport is bound to reach an
-//! application-supplied one; the difference here is that this transport also owns the liveness
-//! probe, since nothing upstream of a raw socket does it for it. A `ping` goes out every
-//! `heartbeat.intervalMs` (default 30 s), a `pong` re-arms the next one, and a socket that misses
-//! one within `heartbeat.timeoutMs` (default 10 s) is closed through the seam's own `close()` —
-//! which settles every request still waiting with a `transport-failure` fault, the same fault every
-//! other close reaches for.
-//!
-//! # Every reply is checked before a caller sees it
-//!
-//! A generated client already validates what it is about to send; this transport is what validates
-//! what comes back. [`schemas_table`] builds one lookup per direction from the service's
-//! request-and-reply operations, keyed by the operation's own wire name, and the transport's
-//! `checked` reader parses a success `value` or a declared `error` against it — a mismatch becomes
-//! a `failed-validation` fault naming the first offending key, through [`issues_fault_fn`].
-//!
-//! # Gated with the schemas it reads
-//!
-//! Every table entry and every check reaches for a message's own `$Schema` const, so this module is
-//! emitted only where [`crate::features::service_schema::seam`] is: a build with no Zod surface has
-//! nothing to check a reply against.
 
 use super::fault;
 use super::message;
@@ -87,10 +55,6 @@ fn error_type(operation: &OperationDef) -> Option<&Type> {
     }
 }
 
-// ---------------------------------------------------------------------------------------------
-// The socket seam and the heartbeat options
-// ---------------------------------------------------------------------------------------------
-
 /// The socket seam: four members every platform `WebSocket` already has, so a browser's
 /// `new WebSocket(url)` or the Node `ws` package's socket plugs in with no adapter. `close` is what
 /// the transport calls on a socket that stopped answering its heartbeat.
@@ -129,10 +93,6 @@ fn options_type(named: &str) -> String {
     )
 }
 
-// ---------------------------------------------------------------------------------------------
-// The schema tables the transport checks a reply against
-// ---------------------------------------------------------------------------------------------
-
 /// One table, keyed by wire name, naming the schema a reply for that operation must parse as. Built
 /// from the service's request-and-reply operations only — a one-way operation has no reply to
 /// check, so `pick` answers it `None` and it contributes no entry. Indexed by a plain `string` at
@@ -169,10 +129,6 @@ fn schemas_table(
          undefined }} = {{{body}}};"
     )
 }
-
-// ---------------------------------------------------------------------------------------------
-// The fault builders the transport reaches for
-// ---------------------------------------------------------------------------------------------
 
 /// Builds a `{named}Fault` of the given kind, sealed the way every other generated constructor
 /// mints one. The transport reaches for this directly where the kind is already known — a closed
@@ -237,10 +193,6 @@ fn issues_fault_fn(service: &ServiceDef) -> String {
     )
 }
 
-// ---------------------------------------------------------------------------------------------
-// The frame's `headers` object and the seam's header pairs
-// ---------------------------------------------------------------------------------------------
-
 /// The seam's JSON-encoded header pairs as the `headers` object a frame carries — each value
 /// decoded back to the JSON it encodes, a text that is no JSON crossing as a string. Spread into
 /// the frame, so an empty list leaves the key off entirely. Mirrors the Rust `headers_table`.
@@ -286,21 +238,12 @@ fn header_pairs_fn(named: &str) -> String {
     )
 }
 
-// ---------------------------------------------------------------------------------------------
-// The transport factory
-// ---------------------------------------------------------------------------------------------
-
 /// Binds a `{named}` transport to one socket for its life: writes a `request` frame and settles on
 /// the matching `reply`, after checking it against the operation's own schema; writes a `notify`
 /// frame and settles at once; answers an inbound `ping` with a `pong` and treats an inbound `pong`
 /// as re-arming the next one; probes the socket on `heartbeat.intervalMs` and closes it on a missed
 /// `heartbeat.timeoutMs`; settles every request still waiting with a `transport-failure` fault on
 /// close, whether the socket closed on its own or `close()` was called.
-///
-/// Composed from the pieces below in the order a reader meets them: the header opens the function
-/// and declares the correlation map and the heartbeat state, `settleAll` and `checked` are the two
-/// readers the wiring below reaches for, `onMessage` and `onClose` are that wiring, and the
-/// returned object is the transport itself.
 fn transport_factory(service: &ServiceDef) -> String {
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
@@ -392,8 +335,6 @@ fn settle_all_stmt(prefix: &str) -> String {
 /// already sealed by the far side (`isServiceFault`) passes through unchecked, since it is not a
 /// declared error to validate against. A mismatch on either side becomes a `failed-validation`
 /// fault through [`issues_fault_fn`].
-///
-/// A unit success (no entry in the success table) normalizes to `{ ok: true, value: undefined }`.
 fn checked_reader_stmt(prefix: &str) -> String {
     format!(
         "  const checked = (operation: string, envelope: Record<string, unknown>): unknown => {{\n    \

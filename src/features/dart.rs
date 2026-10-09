@@ -1,16 +1,4 @@
 //! Dart type and JSON-codec generation.
-//!
-//! Emits one `dart_definition()` method per `#[model_schema]` item — a Dart class (or `enum`) plus
-//! `fromJson`/`toJson`, generating the way the TypeScript backend generates. Fully independent of
-//! the `typescript`/`zod`/`jsonschema` module-and-delegate machinery those three surfaces share:
-//! Dart has real reified generics (a class stays literally generic, unlike Zod's runtime schema
-//! factories) and resolves a reference across the whole library regardless of declaration order
-//! (unlike a JavaScript module's top-to-bottom `const` evaluation), so none of the factory-cache or
-//! forward-reference deferral machinery those three surfaces carry applies here.
-//! `dart_schema_dispatch` is called directly from `exec_model_schema`, ahead of the
-//! `process_struct`/`process_enum`/`process_type_alias` dispatch that consumes the item, and reads
-//! its own borrow of it — the other three surfaces' emission is untouched by this module and this
-//! module is untouched by them.
 
 use core::cell::RefCell;
 use core::fmt::Write as _;
@@ -50,10 +38,8 @@ const DART_ENUM_NAMES_TAKEN: [&str; 9] = [
     "wireValue",
 ];
 
-/// What a field of an emitted class cannot be named beside the reserved words: the type its own
-/// `fromJson` and `toJson` are written with, which a field of that name hides inside the class,
-/// and a member the class already has. Only names that never compiled: a field named `int` hides
-/// that type too, but compiles wherever the class names no `int`, and is left as written.
+/// What a field of an emitted class cannot be named beside the reserved words: a type its codec is
+/// written with, or a member the class has. Only names that never compiled are listed.
 const DART_FIELD_NAMES_TAKEN: [&str; 5] = [
     "dynamic",
     "noSuchMethod",
@@ -62,9 +48,8 @@ const DART_FIELD_NAMES_TAKEN: [&str; 5] = [
     "toString",
 ];
 
-/// The words Dart reserves, which cannot be an identifier anywhere and have no escape:
-/// <https://dart.dev/language/keywords>. A built-in identifier such as `get` or `import` is not
-/// among them: Dart takes one as a member's name.
+/// The words Dart reserves, which have no escape. A built-in identifier such as `get` or `import`
+/// is not among them: Dart takes one as a member's name.
 const DART_RESERVED: [&str; 33] = [
     "assert", "break", "case", "catch", "class", "const", "continue", "default", "do", "else",
     "enum", "extends", "false", "final", "finally", "for", "if", "in", "is", "new", "null",
@@ -112,16 +97,14 @@ enum VariantPayload {
 /// at the same parameters, whether or not its own payload happens to use one, so it carries the
 /// same converters even when its own body never calls them.
 struct GenericCodec {
-    /// `, tFromJson` for each parameter — appended, at a *call site*, after another `fromJson`'s own
-    /// `json` argument, forwarding the same converters through.
+    /// `, tFromJson` for each parameter: appended at a call site, after another `fromJson`'s own
+    /// `json` argument.
     from_json_args: String,
-    /// `, T Function(dynamic) tFromJson` for each parameter — appended, in a *declaration*, after
-    /// `fromJson`'s own `json` parameter. Neither this nor [`Self::to_json_params`] ever repeats
-    /// the class's own `<T>` — a constructor or method never does, the class it belongs to having
-    /// already bound it.
+    /// `, T Function(dynamic) tFromJson` for each parameter: appended in a declaration, after
+    /// `fromJson`'s own `json` parameter.
     from_json_params: String,
-    /// `dynamic Function(T) tToJson` for each parameter, joined by `, ` — `toJson`'s whole parameter
-    /// list, in both a declaration and a call (`toJson` takes no other argument).
+    /// `dynamic Function(T) tToJson` for each parameter, joined by `, `: the whole parameter list
+    /// of `toJson`.
     to_json_params: String,
 }
 
@@ -141,8 +124,8 @@ struct ClassBodyParts {
     ctor_args: String,
     ctor_params: String,
     field_decls: String,
-    /// The `{ 'a': a, 'b': b }` map literal a plain `toJson()` returns outright — kept apart from
-    /// the method signature around it so a tagged variant can wrap it under a tag key instead.
+    /// The `{ 'a': a, 'b': b }` map literal a plain `toJson()` returns, apart from the signature so
+    /// a tagged variant can wrap it under a tag key.
     to_json_map: String,
 }
 
@@ -203,15 +186,9 @@ fn register_dart_name(rust_ident: &str, export_name: &str) {
     });
 }
 
-/// The module `{ident}_dart` publishes `dart_definition()` from — never a direct inherent
-/// `impl {ident}`. A Rust type alias is not a new type: `impl SlotAliasKey { .. }` for
-/// `type SlotAliasKey = MetricSlot;` is really `impl MetricSlot { .. }`, which either collides
-/// with `MetricSlot`'s own inherent `dart_definition()` (`E0592`, when the target is a declared
-/// item in this crate) or is refused outright by the orphan rules (`E0116`) or the primitive-impl
-/// restriction (`E0390`), when the target is a foreign or primitive type (`String`, `HashMap`,
-/// `bool`, …) — which an alias's target very often is. A module name is never collapsed through an
-/// alias the way an impl target is, so it is the one spelling every shape (struct, enum, branded
-/// newtype, or alias) can publish `dart_definition()` under safely and uniformly.
+/// The module `{ident}_dart` publishes `dart_definition()` from, never an inherent `impl {ident}`:
+/// an alias's `impl` is its target's, which collides with the target's own or is refused for a
+/// foreign or primitive type.
 fn dart_module_tokens(rust_ident: &str, span: proc_macro2::Span, dart_source: &str) -> TokenStream {
     let module_ident = dart_module_ident(rust_ident, span);
     quote! {
@@ -418,9 +395,8 @@ fn collect_dart_fields(
     collected
 }
 
-// Dart type and JSON-codec rendering, over `&FieldDef` — kept in this module rather than as
-// methods on `FieldDef` itself (unlike `typescript_base`/`zod_type`) so `field_type.rs` carries no
-// Dart-shaped knowledge at all; every other surface's own rendering stays exactly as it was.
+// Dart type and JSON-codec rendering over `&FieldDef`, kept in this module so `field_type.rs`
+// carries no Dart-shaped knowledge.
 
 /// Whether `field` carries `#[model_schema_prop(as_number)]` — the same question
 /// `FieldDef::has_as_number` answers privately for the other surfaces, read here directly off the
@@ -638,11 +614,6 @@ fn dart_map_key_encode(key: &FieldDef, expr: &str) -> String {
 /// carries — Dart has one nullable spelling for all three of a bare `Option<T>`,
 /// `#[model_schema_prop(ts_optional)]` and `#[model_schema_prop(nullable)]`, since a Dart
 /// `Map<String, dynamic>` answers a dropped key and an explicit `null` alike.
-///
-/// `pub`, like [`lookup_dart_name`]: the `http_rest` Dart client
-/// (`features::service_schema::dart_http_client`) reads the same type name for a message, a
-/// success, an error and a `header_in`/`header_out` binding, rather than a second copy of this
-/// dispatch.
 pub fn dart_typename(field: &FieldDef) -> String {
     let base = dart_base(field);
     if field.is_optional() {
@@ -970,13 +941,9 @@ fn class_body_parts(fields: &[DartField], extra_to_json: &[String]) -> ClassBody
     }
 }
 
-/// The Dart class *body* (constructor, fields, `fromJson`, `toJson` — everything a class's own
-/// braces hold, no `class X { … }` declaration of its own) for a set of [`DartField`]s — shared by
-/// a named-field struct and a struct-shaped (`Named`) enum variant under internal tagging (whose
-/// tag key merges into this very map, via `extra_to_json`) — see [`class_body_parts`]. A `Named`
-/// variant under adjacent or external tagging does not use this: its `toJson` wraps
-/// [`ClassBodyParts::to_json_map`] under a tag key instead of returning it outright, so
-/// [`tagged_variant_tokens`] builds that class from [`class_body_parts`] directly.
+/// The Dart class body, everything a class's own braces hold, for a set of [`DartField`]s: shared
+/// by a named-field struct and a `Named` enum variant under internal tagging, whose tag key merges
+/// into this map through `extra_to_json`.
 fn class_body_content(
     class_name: &str,
     fields: &[DartField],
@@ -1064,13 +1031,9 @@ fn brand_value_field(held: &Field, type_parameters: &[String]) -> FieldDef {
     field_def
 }
 
-/// The Dart tokens for a value that carries no shape of its own on the wire beyond one wrapped
-/// value: a branded newtype, a non-branded single-slot ("bare value") tuple struct, or a type
-/// alias. All three publish the same way — a class wrapping `value`, `fromJson`/`toJson` delegating
-/// to `value_field`'s own — which does give a type-alias reference slightly more nominal weight in
-/// Dart than the bare structural alias TypeScript publishes for it; the wire codec the two languages
-/// exchange is identical either way, only the Dart-side ergonomics differ from a perfect TypeScript
-/// mirror for this one shape.
+/// The Dart tokens for a value that carries one wrapped value on the wire: a branded newtype, a
+/// single-slot tuple struct, or a type alias. Each publishes a class wrapping `value`, whose
+/// `fromJson` and `toJson` delegate to `value_field`'s own.
 fn value_wrapper_tokens(
     ident: &Ident,
     generics: &syn::Generics,
@@ -1267,12 +1230,6 @@ fn tagged_wrap_encode(shape: &TagShape<'_>, wire_tag: &str, own_encode: Option<&
 
 /// The Dart tokens for one tagged-union variant: the subclass definition, and the `fromJson`
 /// dispatch's own arm (everything after `case '{wire_tag}':`).
-///
-/// [`TagShape::merge_tag_into_object`] is internal tagging's own shape (a `Named` payload's object
-/// carries the tag key beside its fields); every other combination (adjacent tagging, external
-/// tagging, and a non-`Named` payload under internal tagging, which real serde refuses and this
-/// module answers for only well enough not to panic) instead wraps the tag and the payload's own
-/// encoding together at the call site — see [`tagged_wrap_encode`]/[`tagged_payload_json_expr`].
 fn tagged_variant_tokens(
     export_name: &str,
     subclass_name: &str,
@@ -1304,10 +1261,8 @@ fn tagged_variant_tokens(
                 let content = class_body_content(subclass_name, fields, &extra, codec);
                 format!("class {subclass_name}{generic_params} {extends} {{ {content} }}")
             } else {
-                // Adjacent or external tagging: the variant's own field map carries no tag of its
-                // own, so `toJson` wraps it under the tag (and, for adjacent tagging, the content
-                // key) instead of returning it outright — the `Value` arm above wraps the same way,
-                // through the same `tagged_wrap_encode`.
+                // Adjacent or external tagging: the variant's field map carries no tag, so `toJson`
+                // wraps it under the tag (and the content key).
                 let parts = class_body_parts(fields, &[]);
                 let wrapped = tagged_wrap_encode(shape, wire_tag, Some(&parts.to_json_map));
                 format!(
@@ -1331,12 +1286,8 @@ fn tagged_variant_tokens(
             let decode = dart_decode_expr(field_def, &payload_expr);
             let own_encode = dart_encode_expr(field_def, "value", false);
             let wrapped_encode = if shape.merge_tag_into_object {
-                // Internal tagging with a non-`Named` payload: real serde refuses this unless the
-                // payload is itself object-shaped (`#[serde(tag = "...")]` cannot carry a scalar or
-                // an array beside a bare tag), so by the time this module sees one, the other
-                // surfaces have already required an object here — the same guarantee a `Named`
-                // payload's own fields carry for free. The tag merges into that object exactly as
-                // it does there.
+                // Internal tagging with a non-`Named` payload: serde admits only an object-shaped
+                // one, so the tag merges into that object.
                 format!(
                     "{{ '{}': '{wire_tag}', ...({own_encode} as Map<String, dynamic>) }}",
                     shape.tag_key
@@ -1381,11 +1332,8 @@ fn tagged_enum_dart_source(
     let mut subclasses = Vec::new();
     let mut is_string_dispatch_arms = Vec::new();
     let mut map_dispatch_arms = Vec::new();
-    // Internal and adjacent tagging both read the tag off a *named* key of the very object the
-    // payload itself lives in (or beside), so both dispatch the same way; only external tagging —
-    // no `tag`, no `content` — reads it off the object's one and only key instead, and answers a
-    // bare wire string separately for the one shape (a `Unit` variant) that is not an object at
-    // all.
+    // Internal and adjacent tagging read the tag off a named key of the object; external tagging
+    // reads it off the object's one key, and answers a bare string for a `Unit` variant.
     let is_external = shape.content_key.is_none() && !shape.merge_tag_into_object;
     for variant in &item_enum.variants {
         let variant_rust_name = variant.ident.to_string();
@@ -1484,9 +1432,8 @@ fn untagged_enum_dart_source(
                 )
             }
             VariantPayload::Unit => {
-                // Refused for every member of a real untagged enum (serde writes a unit variant as
-                // a bare `null` there), so this arm exists only so the match stays exhaustive and
-                // this module never panics on an input another guard has already refused.
+                // Refused for every member of a real untagged enum, so this arm exists only to keep
+                // the match exhaustive.
                 (
                     format!(
                         "class {subclass_name}{generic_params} {extends} {{ const {subclass_name}(); \

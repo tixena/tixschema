@@ -157,8 +157,6 @@ fn a_flattened_models_paths_are_written_at_the_level_of_the_row_that_holds_it() 
     );
 }
 
-/// The tag is its own key beside the variant's fields, and a variant that holds a model has that
-/// model's paths at the enum's own level.
 #[test]
 fn an_internally_tagged_enum_is_asked_by_its_tag_and_by_each_variants_fields() {
     let invoice = Invoice::MONGO_FIELDS;
@@ -195,8 +193,7 @@ fn an_internally_tagged_enum_is_asked_by_its_tag_and_by_each_variants_fields() {
     );
 }
 
-/// What a variant holds sits under the content key: its fields below it, and one plain value at
-/// it.
+/// What a variant holds sits under the content key: its fields below it, and one plain value at it.
 #[test]
 fn an_adjacently_tagged_enum_is_asked_by_its_tag_and_under_its_content_key() {
     let invoice = Invoice::MONGO_FIELDS;
@@ -221,8 +218,7 @@ fn an_adjacently_tagged_enum_is_asked_by_its_tag_and_under_its_content_key() {
     );
 }
 
-/// A variant with no data is the enum's own value, its name as text. Any other is a key of the
-/// object the enum is written as.
+/// A variant with no data is the enum's own value, its name as text.
 #[test]
 fn an_externally_tagged_enum_is_asked_by_the_key_that_names_its_variant() {
     let invoice = Invoice::MONGO_FIELDS;
@@ -244,8 +240,6 @@ fn an_externally_tagged_enum_is_asked_by_the_key_that_names_its_variant() {
     );
 }
 
-/// Nothing written names the variant: one plain value is the enum's own key, and a variant's
-/// fields are at the enum's own level.
 #[test]
 fn an_untagged_enums_paths_are_at_its_own_level() {
     let invoice = Invoice::MONGO_FIELDS;
@@ -266,8 +260,6 @@ fn an_untagged_enums_paths_are_at_its_own_level() {
     );
 }
 
-/// A member with a concrete type is a path like any other, and one typed by the parameter is one
-/// whole value of the type that fills it.
 #[test]
 fn a_generic_models_member_typed_by_the_parameter_is_one_whole_value() {
     let invoice = Invoice::MONGO_FIELDS;
@@ -299,8 +291,6 @@ fn a_generic_models_member_typed_by_the_parameter_is_one_whole_value() {
     );
 }
 
-/// Below a member that is one whole value, the paths of the type that fills it are built by that
-/// type's own function, called with the keys the member's path holds.
 #[test]
 fn the_paths_below_a_whole_value_are_built_by_the_types_own_function() {
     let wrapper = Wrapper::<Customer>::MONGO_FIELDS;
@@ -317,9 +307,6 @@ fn the_paths_below_a_whole_value_are_built_by_the_types_own_function() {
     );
 }
 
-/// A list a row may leave out is one whole list that may be absent, a list of lists is a list
-/// whose elements are lists, a tuple is one whole value, and a list behind a wrapper is the list.
-/// A map of models has no path.
 #[test]
 fn a_shape_no_path_kind_covers_is_one_whole_value() {
     let assorted = Assorted::MONGO_FIELDS;
@@ -362,9 +349,6 @@ fn a_shape_no_path_kind_covers_is_one_whole_value() {
     );
 }
 
-/// Several values in one variant are an array: each slot's path is its position under the key
-/// the variant is written at, which is the name serde writes the variant as. A model held under
-/// a key of its own has its paths below it.
 #[test]
 fn a_variant_of_several_values_and_one_of_a_model_are_typed_under_their_key() {
     let journey = Journey::MONGO_FIELDS;
@@ -402,8 +386,6 @@ fn a_variant_of_several_values_and_one_of_a_model_are_typed_under_their_key() {
     );
 }
 
-/// A flattened enum's paths, and those of a model flattened in an `Option`, are at the level of
-/// the row that flattens them, as serde writes their keys.
 #[test]
 fn a_flattened_enum_and_a_flattened_optional_model_are_at_the_rows_own_level() {
     let journey = Journey::MONGO_FIELDS;

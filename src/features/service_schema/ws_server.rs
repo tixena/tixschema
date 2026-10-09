@@ -2,13 +2,6 @@
 //! connections, a context per connection, an idle-armed heartbeat, a cancellation signal, and a
 //! hook that hands one socket to a second service. Wraps the single-socket attachment rather than
 //! re-emitting its frame rules.
-//!
-//! # Gated with the attachment it wraps
-//!
-//! `attach{Service}WsDispatcher` — [`super::ws_service`]'s own export — is what `accept` calls per
-//! connection, so this module is emitted only there too. The socket type it widens is
-//! [`super::ws_client`]'s own, so a bundle names `ts_ws_client()`, then `ts_ws_service()`, then
-//! this.
 
 use crate::service_schema::parse::ServiceDef;
 

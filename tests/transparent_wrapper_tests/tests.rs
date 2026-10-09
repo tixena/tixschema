@@ -1,3 +1,6 @@
+//! Tests of the transparent wrappers, `Box`, `Rc`, `Arc`, `Cow` and the cells, which describe as
+//! the value they hold.
+
 use alloc::borrow::Cow;
 use alloc::rc::Rc;
 use alloc::sync::Arc;
@@ -85,9 +88,8 @@ struct CowFields {
     text: Cow<'static, str>,
 }
 
-// `RefCell::new` takes a `Sized` value, so unlike `Box`/`Rc`/`Arc`/`Cow` above it cannot hold an
-// unsized `[String]`/`str` directly — the owned `Vec<String>`/`String` spellings stand in, and
-// still collapse onto the same field `PlainFields` does.
+// `RefCell::new` takes a `Sized` value, so the owned `Vec<String>` and `String` spellings stand in
+// for `[String]` and `str`.
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct RefCellFields {
@@ -196,7 +198,6 @@ struct TreeNode {
 
 // None of the four is `Deref`, so `skip_serializing_if = "Option::is_none"` -- which reaches an
 // `Option` field under `Box`/`Rc`/`Arc`/`Cow` by deref coercion -- has no field to coerce to here.
-// Each predicate reaches the guarded `Option` through the wrapper's own accessor instead.
 fn ref_cell_option_is_none<T>(value: &RefCell<Option<T>>) -> bool {
     value.borrow().is_none()
 }
@@ -460,9 +461,6 @@ fn test_transparent_wrapper_structs_constructible() {
     assert_eq!(node.next.unwrap().label, "leaf");
 }
 
-/// A wrapper is covered when serde writes it as its inner value — the whole criterion, and the
-/// reason the twins may be held against the bare spelling at all. Read off what serde actually
-/// produces, so the covered list answers to the wire rather than to a name.
 #[test]
 fn test_every_covered_wrapper_writes_its_inner_value() {
     let plain = serde_json::to_value(plain_fields()).unwrap();
@@ -471,8 +469,6 @@ fn test_every_covered_wrapper_writes_its_inner_value() {
     }
 }
 
-/// The criterion holds wherever the wrapper was written, not only in field position: inside an
-/// `Option`, inside a sequence, in a map's value slot, and beside fields wrapped in nothing.
 #[test]
 fn test_a_wrapper_written_inside_another_type_writes_the_inner_value() {
     let inside = WrappedInsideFields {
@@ -506,8 +502,6 @@ fn test_a_wrapper_written_inside_another_type_writes_the_inner_value() {
     );
 }
 
-/// Writing the same value as the bare spelling, every covered wrapper describes as it does — whole
-/// schema against whole schema, not one field at a time.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_every_covered_wrapper_describes_as_the_inner_spelling() {
@@ -524,9 +518,7 @@ fn test_every_covered_wrapper_describes_as_the_inner_spelling() {
     }
 }
 
-/// The same holding on TypeScript, fixture name set aside. Declarations rather than whole
-/// definitions, because the surrounding `JSDoc` differs: a field under `Option` or `Vec` has its
-/// doc comment dropped, so the twins' inner fields carry a doc comment the bare spelling has lost.
+/// The same holding on TypeScript, fixture name set aside.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_every_covered_wrapper_types_as_the_inner_spelling() {
@@ -540,7 +532,6 @@ fn test_every_covered_wrapper_types_as_the_inner_spelling() {
     }
 }
 
-/// And on the Zod surface.
 #[test]
 #[cfg(feature = "zod")]
 fn test_every_covered_wrapper_validates_as_the_inner_spelling() {
@@ -550,8 +541,6 @@ fn test_every_covered_wrapper_validates_as_the_inner_spelling() {
     }
 }
 
-/// Whatever a wrapped field renders as, it is not the Rust wrapper's name: neither surface has any
-/// meaning for it, so the name surviving anywhere into the output is a syntax error in the output.
 #[test]
 #[cfg(any(feature = "typescript", feature = "zod"))]
 fn test_no_transparent_wrapper_name_survives_into_generated_output() {
@@ -568,8 +557,6 @@ fn test_no_transparent_wrapper_name_survives_into_generated_output() {
     }
 }
 
-/// A wrapper holding an `Option` is optional on the field's behalf: the wrapper is not on the wire,
-/// so what a `None` costs is decided by the `Option` alone, at either side of the wrapper.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_wrapped_option_is_required_exactly_as_the_bare_option() {
@@ -580,8 +567,6 @@ fn test_wrapped_option_is_required_exactly_as_the_bare_option() {
     }
 }
 
-/// A wrapper written inside an `Option`, a sequence or a map's value slot describes as the bare
-/// element does in that same position.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_wrapper_inside_another_type_describes_as_the_inner_spelling() {
@@ -619,9 +604,6 @@ fn test_boxed_field_leaves_its_unboxed_siblings_alone() {
     assert_eq!(mixed["required"], plain["required"]);
 }
 
-/// Whole definitions here, `JSDoc` and all: no field is written under an `Option` or a `Vec`, so
-/// the boxed field's documentation is the unboxed field's, down to the comment above it. What a
-/// field documents as is decided by where it was written, not by what it was written under.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_boxed_field_types_beside_its_unboxed_siblings() {
@@ -631,9 +613,6 @@ fn test_boxed_field_types_beside_its_unboxed_siblings() {
     );
 }
 
-/// A `Box` is what makes a self-holding struct a type at all, and it is still not on the wire: the
-/// field is the self-reference it wraps, so the recursion is seen through it and gets the deferred
-/// spelling a self-reference needs.
 #[test]
 #[cfg(feature = "zod")]
 fn test_boxed_self_reference_validates_as_the_self_reference() {
@@ -645,8 +624,6 @@ fn test_boxed_self_reference_validates_as_the_self_reference() {
     }
 }
 
-/// `Cell` writes its inner value exactly as the other covered wrappers do, over its own reduced
-/// (`Copy`-only) field set.
 #[test]
 fn test_cell_field_writes_its_inner_value() {
     assert_eq!(

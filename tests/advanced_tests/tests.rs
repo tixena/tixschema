@@ -1,3 +1,6 @@
+//! Tests of `#[model_schema]` on nested structs, enums and collections: the TypeScript, Zod and
+//! JSON Schema each publishes, and the serde round trip.
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -127,7 +130,7 @@ struct Employee {
     contact: ContactInfo,
     id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    manager: Option<String>, // Manager ID
+    manager: Option<String>,
     name: String,
     position: String,
     salary: u32,
@@ -391,7 +394,7 @@ fn test_serialization_consistency() {
 
     assert_eq!(json_value["id"], "proj_123");
     assert_eq!(json_value["name"], "New Website");
-    assert_eq!(json_value["status"], "inProgress"); // Should be camelCase
+    assert_eq!(json_value["status"], "inProgress");
     assert_eq!(json_value["assigned_employees"][0], "emp_1");
     assert_eq!(json_value["deadline"], "2024-12-31");
     assert_eq!(json_value["budget"], 50000_i64);

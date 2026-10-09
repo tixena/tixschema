@@ -1,15 +1,4 @@
 //! What the service publishes to TypeScript, read off the strings themselves.
-//!
-//! The rendered TypeScript is asserted as text rather than as tokens, because text is what a bundle
-//! writes to a `.ts` file and what a TypeScript compiler then reads.
-//!
-//! **What text assertions do and do not prove.** Nothing here type-checks the bundle. These tests
-//! read structure: that a member is required rather than optional, that a name carries the
-//! service, that the transport is named only on the far side of the validation check. They cannot
-//! prove the emitted file compiles, and they cannot prove that an implementation missing a method
-//! is rejected where it reaches the factory — only a compiler can, and one does: the type-check
-//! group in `tests/service_schema_typescript_tests/type_check.rs` hands the bundle and two
-//! implementations to a real `tsc` wherever one is reachable.
 
 #[cfg(all(feature = "typescript", feature = "zod"))]
 mod client_tests;
@@ -103,11 +92,8 @@ const MIXED_SERVICE: &str = "
     }
 ";
 
-/// A service exercising every `http(...)` shape: a bodied `POST` naming its own message with a
-/// mapped error, a bodyless `GET` with a path carrying two placeholders on a `Named` message, a
-/// `header_in` binding, a `header_out` tuple success and two mapped errors (one of which shares a
-/// code with a fixed fault status), a one-way `DELETE` whose one argument is the message and the
-/// whole placeholder at once, and an operation naming no `http(...)` group at all.
+/// A service exercising every `http(...)` shape, beside an operation naming no `http(...)` group at
+/// all.
 #[cfg(all(feature = "typescript", feature = "zod"))]
 const MIXED_HTTP_SERVICE: &str = "
     pub trait DocumentClientService<Ctx> {
@@ -167,9 +153,8 @@ const REQUIRED_HEADER_HTTP_SERVICE: &str = "
     }
 ";
 
-/// A service whose `header_out` tuple carries a required and an optional element, to exercise the
-/// paths `MIXED_HTTP_SERVICE`'s single required `etag` element does not: an absent optional header
-/// reading `null`, and a present one failing to decode as its declared type faulting.
+/// A service whose `header_out` tuple carries a required and an optional element: an absent
+/// optional header reads `null`, and a present one that fails to decode faults.
 #[cfg(all(feature = "typescript", feature = "zod"))]
 const OPTIONAL_HEADER_OUT_HTTP_SERVICE: &str = "
     pub trait DocumentClientService<Ctx> {
@@ -187,13 +172,8 @@ const OPTIONAL_HEADER_OUT_HTTP_SERVICE: &str = "
     }
 ";
 
-/// A service exercising every `http(...)` shape the Dart client answers for: a bodied `POST`
-/// naming its own message with a mapped error, a bodyless `GET` with a path carrying two
-/// placeholders on a `Named` message plus a `header_in` binding and a `header_out` tuple success,
-/// a bodyless `GET` whose unbound optional fields (a scalar and a `Vec`) build a query string, a
-/// `body = \"bytes\"` `GET` whose one argument is the message and the whole placeholder at once, a
-/// one-way `DELETE` in that same single-placeholder shape, and an operation naming no `http(...)`
-/// group at all.
+/// A service exercising every `http(...)` shape the Dart client answers for, beside an operation
+/// naming no `http(...)` group at all.
 #[cfg(feature = "dart")]
 const DART_HTTP_SERVICE: &str = "
     pub trait DocumentClientService<Ctx> {
@@ -275,9 +255,8 @@ const BYTES_HTTP_SERVICE: &str = "
     }
 ";
 
-/// A service declaring two `body = \"stream\"` operations: one answering the bare streamed answer,
-/// one composing a declared `header_out` onto it. Zod-gated mirror of `DART_STREAM_HTTP_SERVICE`,
-/// since a build can carry `zod` without `dart`.
+/// A service declaring two `body = "stream"` operations: one answering the bare streamed answer,
+/// one composing a declared `header_out` onto it.
 #[cfg(all(feature = "typescript", feature = "zod"))]
 const STREAM_HTTP_SERVICE: &str = "
     pub trait ContentClientService<Ctx> {
@@ -354,9 +333,8 @@ const SINGLE_PLACEHOLDER_HTTP_SERVICE: &str = "
     }
 ";
 
-/// A service declaring one bodyless `GET` whose macro-generated message carries a placeholder
-/// field plus two unbound loose arguments (one numeric, one boolean), and whose operation
-/// declares no `error_status` table at all.
+/// A service declaring one bodyless `GET` whose generated message carries a placeholder field and
+/// two unbound loose arguments, with no `error_status` table.
 #[cfg(all(feature = "typescript", feature = "zod"))]
 const QUERY_HTTP_SERVICE: &str = "
     pub trait SearchClientService<Ctx> {
@@ -374,9 +352,8 @@ const QUERY_HTTP_SERVICE: &str = "
     }
 ";
 
-/// A bodyless `GET` whose macro-generated message's two fields are both bound by the path -
-/// nothing left to read off the query - beside a second operation whose `limit` the path leaves
-/// unbound.
+/// A bodyless `GET` whose generated message's two fields are both bound by the path, beside a
+/// second operation whose `limit` the path leaves unbound.
 #[cfg(all(feature = "typescript", feature = "zod"))]
 const PATH_BOUND_HTTP_SERVICE: &str = "
     pub trait LabelClientService<Ctx> {
@@ -405,9 +382,8 @@ const PATH_BOUND_HTTP_SERVICE: &str = "
     }
 ";
 
-/// The same declaration `tests/service_schema_emitted_client_tests/tests.rs` runs the emitted
-/// clients against — `ConversationId` a wire-scalar newtype, `purge_conversation` declared first,
-/// `window` second.
+/// The declaration `tests/service_schema_emitted_client_tests/tests.rs` runs the emitted clients
+/// against.
 #[cfg(all(feature = "typescript", feature = "zod"))]
 const EMITTED_CLIENT_TEST_SERVICE: &str = "
     pub trait ConversationClientService<Ctx> {
@@ -432,8 +408,7 @@ const EMITTED_CLIENT_TEST_SERVICE: &str = "
 ";
 
 /// A service declaring one `body = "bytes"` operation composing `header_out` onto its own tuple:
-/// the bytes, their content type, then the declared header. Dart-gated mirror of
-/// `BYTES_HTTP_SERVICE`, since a build can carry `dart` without `zod`.
+/// the bytes, their content type, then the declared header.
 #[cfg(feature = "dart")]
 const DART_BYTES_HEADER_OUT_SERVICE: &str = "
     pub trait ThumbnailClientService<Ctx> {
@@ -485,8 +460,7 @@ const DART_STREAM_HTTP_SERVICE: &str = "
 ";
 
 /// A service declaring one `body = "multipart"` operation: a path placeholder, two scalar
-/// `Generated` fields (one required, one optional) and a `part` binding for the file itself.
-/// Dart-gated mirror of `MULTIPART_HTTP_SERVICE`.
+/// `Generated` fields and a `part` binding for the file itself.
 #[cfg(feature = "dart")]
 const DART_MULTIPART_HTTP_SERVICE: &str = "
     pub trait UploadClientService<Ctx> {
@@ -626,8 +600,7 @@ const TS_UNIT_SUCCESS_SERVICE: &str = "
 ";
 
 /// A service binding headers both ways: a required and an optional `header_in`, a `header_out`
-/// tuple with a required and an optional element, an `error_header_out` tuple, and a one-way
-/// operation carrying a `header_in` of its own.
+/// tuple, an `error_header_out` tuple, and a one-way operation with a `header_in` of its own.
 #[cfg(all(feature = "typescript", feature = "zod"))]
 const TS_HEADER_TUPLE_SERVICE: &str = "
     pub trait VersionService<Ctx> {
@@ -657,9 +630,7 @@ const TS_HEADER_TUPLE_SERVICE: &str = "
     }
 ";
 
-/// A reply operation whose success is a unit struct, `PingAck` — reads as a `()` success just as
-/// `TS_UNIT_SUCCESS_SERVICE` does, once the struct is recorded the way a declared-above
-/// `#[model_schema()]` unit struct would be.
+/// A reply operation whose success is a unit struct, `PingAck`, which reads as a `()` success.
 #[cfg(all(feature = "typescript", feature = "zod"))]
 const TS_UNIT_STRUCT_SUCCESS_SERVICE: &str = "
     pub trait PingClientService<Ctx> {
@@ -825,9 +796,7 @@ const KOTLIN_MULTIPART_HTTP_SERVICE: &str = "
     }
 ";
 
-/// The same single-placeholder shape `SINGLE_PLACEHOLDER_HTTP_SERVICE`/
-/// `DART_SINGLE_PLACEHOLDER_HTTP_SERVICE` declare, gated on `kotlin` so a build can carry it
-/// without `zod` or `dart`.
+/// The single-placeholder shape `SINGLE_PLACEHOLDER_HTTP_SERVICE` declares, gated on `kotlin`.
 #[cfg(feature = "kotlin")]
 const KOTLIN_SINGLE_PLACEHOLDER_HTTP_SERVICE: &str = "
     pub trait ConversationClientService<Ctx> {
@@ -860,9 +829,8 @@ const KOTLIN_UNIT_SUCCESS_HTTP_SERVICE: &str = "
     }
 ";
 
-/// The design's own running example: a reply operation over a `Named` message answering a
-/// declared success or error, and a one-way operation over a branded newtype. Kotlin-gated mirror
-/// of `SWIFT_WS_SERVICE`, since it exercises `kotlin_ws_client()` independent of `zod`/`dart`.
+/// A reply operation over a `Named` message answering a declared success or error, and a one-way
+/// operation over a branded newtype.
 #[cfg(feature = "kotlin")]
 const KOTLIN_WS_SERVICE: &str = "
     pub trait ConversationClientService<Ctx> {
@@ -887,7 +855,7 @@ const KOTLIN_WS_SERVICE: &str = "
 ";
 
 /// A service exercising both operation shapes `ws_rpc` answers for: a reply operation over a
-/// `Named` message, and a one-way operation. Named for the design's own running example.
+/// `Named` message, and a one-way operation.
 #[cfg(feature = "dart")]
 const DART_WS_SERVICE: &str = "
     pub trait Ledger<Ctx> {
@@ -912,8 +880,7 @@ const DART_PRIMITIVE_SERVICE: &str = "
 ";
 
 /// A service binding headers both ways: a required and an optional `header_in`, a `header_out`
-/// tuple with a required and an optional element, an `error_header_out` tuple, and a one-way
-/// operation carrying a `header_in` of its own — Dart mirror of `TS_HEADER_TUPLE_SERVICE`.
+/// tuple, an `error_header_out` tuple, and a one-way operation with a `header_in` of its own.
 #[cfg(feature = "dart")]
 const DART_HEADER_TUPLE_SERVICE: &str = "
     pub trait VersionService<Ctx> {
@@ -1005,9 +972,8 @@ const SWIFT_HTTP_SERVICE: &str = "
     }
 ";
 
-/// A service declaring one `body = \"bytes\"` operation composing `header_out` onto its own tuple:
-/// the bytes, their content type, then the declared header. Swift-gated mirror of
-/// `DART_BYTES_HEADER_OUT_SERVICE`.
+/// A service declaring one `body = "bytes"` operation composing `header_out` onto its own tuple:
+/// the bytes, their content type, then the declared header.
 #[cfg(feature = "swift")]
 const SWIFT_BYTES_HEADER_OUT_SERVICE: &str = "
     pub trait ThumbnailClientService<Ctx> {
@@ -1077,9 +1043,8 @@ const SWIFT_STREAM_HTTP_SERVICE: &str = "
     }
 ";
 
-/// A service declaring one `body = \"multipart\"` operation: a path placeholder, two scalar
-/// `Generated` fields (one required, one optional) and a `part` binding for the file itself.
-/// Swift-gated mirror of `DART_MULTIPART_HTTP_SERVICE`.
+/// A service declaring one `body = "multipart"` operation: a path placeholder, two scalar
+/// `Generated` fields and a `part` binding for the file itself.
 #[cfg(feature = "swift")]
 const SWIFT_MULTIPART_HTTP_SERVICE: &str = "
     pub trait UploadClientService<Ctx> {
@@ -1135,9 +1100,8 @@ const SWIFT_UNIT_SUCCESS_HTTP_SERVICE: &str = "
     }
 ";
 
-/// The design's own running example: a reply operation over a `Named` message answering a
-/// declared success or error, and a one-way operation over a branded newtype. Swift-gated, since
-/// it exercises `swift_ws_client()` independent of `zod`/`dart`.
+/// A reply operation over a `Named` message answering a declared success or error, and a one-way
+/// operation over a branded newtype.
 #[cfg(feature = "swift")]
 const SWIFT_WS_SERVICE: &str = "
     pub trait ConversationClientService<Ctx> {
@@ -1170,10 +1134,8 @@ const SWIFT_UNIT_SUCCESS_SERVICE: &str = "
     }
 ";
 
-/// Headers both ways over `ws_rpc`: `stamp` binds a required and an optional `header_in`, answers
-/// a `header_out` tuple with a required and an optional element, and declares an
-/// `error_header_out` tuple; `mark` is one-way, with a `header_in` of its own. Swift-gated mirror
-/// of the shared `StampClientService` fixture the emitted-client run drives.
+/// Headers both ways over `ws_rpc`: `stamp` binds two `header_in`s and answers a `header_out` and
+/// an `error_header_out` tuple; `mark` is one-way, with a `header_in` of its own.
 #[cfg(feature = "swift")]
 const SWIFT_WS_HEADERS_SERVICE: &str = "
     pub trait StampClientService<Ctx> {
@@ -1203,9 +1165,8 @@ const SWIFT_WS_HEADERS_SERVICE: &str = "
     }
 ";
 
-/// A service declaring a `Vec<Option<String>>` `header_in` binding, to exercise a nested optional
-/// element inside an otherwise-required header. Swift-gated mirror of the Dart suite's own inline
-/// fixture.
+/// A service declaring a `Vec<Option<String>>` `header_in` binding: a nested optional element
+/// inside an otherwise-required header.
 #[cfg(feature = "swift")]
 const SWIFT_HEADER_VEC_OF_OPTIONS_SERVICE: &str = "
     pub trait TagClientService<Ctx> {
@@ -1378,12 +1339,6 @@ fn the_fault_s_fields_are_asked_for_rather_than_written_here() {
     }
 }
 
-/// The two declarations the seal is: a symbol the bundle exports nowhere, and the fault a caller
-/// names, declared as the asked-for fields plus one property keyed on that symbol.
-///
-/// This is what TypeScript is given in place of the private fields Rust has. The Rust fault refuses
-/// the literal an implementation would write with `E0451`, and a plain structural object type
-/// refuses nothing at all.
 #[cfg(feature = "typescript")]
 #[test]
 fn the_published_fault_is_the_asked_for_fields_under_a_brand_the_bundle_exports_nowhere() {
@@ -1453,8 +1408,6 @@ fn a_unit_success_result_type_says_the_value_is_undefined() {
     );
 }
 
-/// The registry's own limit: a name nothing recorded reads as the field-position type, not a unit
-/// success — the wire still agrees either way, since both sides write and read `{}` regardless.
 #[cfg(all(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_unrecorded_success_type_is_not_treated_as_a_unit_success() {
@@ -1469,9 +1422,6 @@ fn an_unrecorded_success_type_is_not_treated_as_a_unit_success() {
     );
 }
 
-/// A unit struct's success position reads exactly like `()`'s own, once the struct is recorded —
-/// this fixture is a parsed string rather than a real macro expansion, so the registry needs
-/// poking by hand, mirroring `record_wire_scalar`'s own test precedent.
 #[cfg(all(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_unit_struct_success_result_type_says_the_value_is_undefined() {
@@ -1487,9 +1437,6 @@ fn a_unit_struct_success_result_type_says_the_value_is_undefined() {
     );
 }
 
-/// `StreamedAnswer` carries no `#[model_schema()]` of its own, so a bare `value: StreamedAnswer`
-/// would publish a TypeScript reference nothing declares. The result type stands in the fixed
-/// streamed record instead.
 #[cfg(all(feature = "typescript", feature = "zod"))]
 #[test]
 fn the_result_answers_the_streamed_record_rather_than_the_undescribable_rust_type() {
@@ -1512,8 +1459,6 @@ fn the_result_answers_the_streamed_record_rather_than_the_undescribable_rust_typ
     );
 }
 
-/// A declared `header_out` wraps the streamed record in a tuple, exactly as the JSON and bytes
-/// paths compose theirs.
 #[cfg(all(feature = "typescript", feature = "zod"))]
 #[test]
 fn the_result_composes_header_out_onto_the_streamed_record_in_a_tuple() {
@@ -1575,8 +1520,6 @@ fn two_operations_naming_unrelated_errors_keep_them_apart() {
 }
 
 /// The pair that says a client and a dispatcher are published exactly where their check can be.
-/// This is the half that runs in a build with the Zod surface; the one below it is the same
-/// registration read in a build without it, and neither could pass alone.
 #[cfg(all(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_build_that_publishes_a_schema_publishes_the_client_and_the_dispatcher_that_parse_it() {
@@ -1598,15 +1541,6 @@ fn a_build_that_publishes_a_schema_publishes_the_client_and_the_dispatcher_that_
     }
 }
 
-/// A build with `typescript` on and `zod` off publishes the service's types and neither seam
-/// artifact.
-///
-/// Both of them parse a message against the `<Message>$Schema` const `#[model_schema()]` writes,
-/// and this build writes none. Emitting them without the parse is what this replaced: a client that
-/// forwarded whatever it was handed, and a dispatcher that narrowed an unread payload with `as` and
-/// gave it to an implementation entitled to assume it was valid. Both compiled, both read like the
-/// checked ones, and the Rust half of the same service went on validating — so the two halves
-/// disagreed about what they accept and nothing said so.
 #[cfg(all(feature = "typescript", not(feature = "zod")))]
 #[test]
 fn a_build_that_publishes_no_schema_publishes_no_client_and_no_dispatcher() {
@@ -1643,9 +1577,6 @@ fn a_build_that_publishes_no_schema_publishes_no_client_and_no_dispatcher() {
     );
 }
 
-/// The missing methods are the one thing a reader of this build's registry goes looking for, so
-/// the reason they are missing is written on the registry itself rather than left to an
-/// `E0599` naming the method and nothing else.
 #[cfg(all(feature = "typescript", not(feature = "zod")))]
 #[test]
 fn a_build_that_publishes_no_client_says_on_the_registry_why_not() {
@@ -1667,8 +1598,6 @@ fn a_build_that_publishes_no_client_says_on_the_registry_why_not() {
     }
 }
 
-/// `ts_http_service()` is withheld for the same reason as `ts_service()`: its dispatcher parses a
-/// message against a schema this build does not write.
 #[cfg(not(feature = "zod"))]
 #[test]
 fn a_build_that_publishes_no_schema_publishes_no_http_service_either() {
@@ -1690,9 +1619,6 @@ fn a_build_that_publishes_a_schema_publishes_ts_http_service() {
     );
 }
 
-/// What the Zod-less build still publishes, and therefore why it is not refused outright: the
-/// message types and the result envelopes describe what the *Rust* dispatcher and client put on the
-/// wire, and that half validates in this build exactly as it does in any other.
 #[cfg(all(feature = "typescript", not(feature = "zod")))]
 #[test]
 fn a_build_that_publishes_no_client_still_publishes_every_type_the_wire_carries() {

@@ -1,3 +1,5 @@
+//! Tests of tuple variants of enums on every surface.
+
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
@@ -325,8 +327,7 @@ const fn json_type_name(value: &serde_json::Value) -> &'static str {
     }
 }
 
-/// Test 1: Single-element tuple variants.
-/// Each variant has exactly one tuple element.
+/// Single-element tuple variants.
 #[test]
 fn test_single_tuple_variant_typescript() {
     #[model_schema()]
@@ -353,7 +354,7 @@ fn test_single_tuple_variant_typescript() {
     );
 }
 
-/// Test 1b: Single-element tuple variants Zod schema.
+/// Single-element tuple variants Zod schema.
 #[cfg(feature = "zod")]
 #[test]
 fn test_single_tuple_variant_zod() {
@@ -389,8 +390,7 @@ fn test_single_tuple_variant_zod() {
     );
 }
 
-/// Test 2: Multi-element tuple variants.
-/// Variants with more than one tuple element.
+/// Multi-element tuple variants.
 #[test]
 fn test_multi_tuple_variant_typescript() {
     #[model_schema()]
@@ -418,7 +418,7 @@ fn test_multi_tuple_variant_typescript() {
     );
 }
 
-/// Test 2b: Multi-element tuple variants Zod schema.
+/// Multi-element tuple variants Zod schema.
 #[cfg(feature = "zod")]
 #[test]
 fn test_multi_tuple_variant_zod() {
@@ -442,8 +442,7 @@ fn test_multi_tuple_variant_zod() {
     );
 }
 
-/// Test 3: Plain enum (all unit variants) -> string union.
-/// Should NOT generate discriminated union, just string union.
+/// Plain enum (all unit variants) -> string union.
 #[test]
 fn test_plain_enum_string_union() {
     #[model_schema()]
@@ -470,7 +469,7 @@ fn test_plain_enum_string_union() {
     );
 }
 
-/// Test 3b: Plain enum Zod schema uses z.enum.
+/// Plain enum Zod schema uses z.enum.
 #[cfg(feature = "zod")]
 #[test]
 fn test_plain_enum_zod() {
@@ -491,18 +490,14 @@ fn test_plain_enum_zod() {
     );
 }
 
-/// Test 4: Mixed variants (comprehensive).
-/// Mix of unit, tuple-single, tuple-multi, and named struct variants.
+/// Mixed variants (comprehensive).
 #[test]
 fn test_mixed_variants_typescript() {
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub enum Mixed {
-        // Unit variant
         Empty,
-        // Named struct
         Named { field_a: String, field_b: bool },
-        // Multi tuple
         Pair(String, i64),
         Text(String),
     }
@@ -535,7 +530,7 @@ fn test_mixed_variants_typescript() {
     );
 }
 
-/// Test 4b: Mixed variants Zod schema.
+/// Mixed variants Zod schema.
 #[cfg(feature = "zod")]
 #[test]
 fn test_mixed_variants_zod() {
@@ -582,7 +577,7 @@ fn test_mixed_variants_zod() {
     );
 }
 
-/// Test 5: JSON Schema generation for tuple variants.
+/// JSON Schema generation for tuple variants.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_tuple_json_schema() {
@@ -617,7 +612,7 @@ fn test_tuple_json_schema() {
     );
 }
 
-/// Test 6: Custom content field name via serde.
+/// Custom content field name via serde.
 #[test]
 fn test_custom_content_field() {
     #[model_schema()]
@@ -643,7 +638,7 @@ fn test_custom_content_field() {
     );
 }
 
-/// Test 6b: Custom content field Zod schema.
+/// Custom content field Zod schema.
 #[cfg(feature = "zod")]
 #[test]
 fn test_custom_content_field_zod() {
@@ -672,9 +667,6 @@ fn test_custom_content_field_zod() {
     );
 }
 
-/// Test 6c: a struct variant of an adjacently tagged enum nests its fields under the content key on
-/// the wire — the bug this fixture exists to catch. The zero-field case (`Empty {}`) is covered
-/// separately in `src/model_schema/tests.rs`; see this file's `AdjacentNamed` doc comment.
 #[test]
 fn test_adjacent_named_variant_matches_the_serde_wire() {
     let named = AdjacentNamed::Named {
@@ -697,7 +689,6 @@ fn test_adjacent_named_variant_matches_the_serde_wire() {
     );
 }
 
-/// Test 6d: and the `TypeScript` surface holds the same nesting.
 #[test]
 fn test_adjacent_named_variant_typescript_nests_under_content_key() {
     let ts = AdjacentNamed::ts_definition();
@@ -708,8 +699,6 @@ fn test_adjacent_named_variant_typescript_nests_under_content_key() {
     assert!(ts.contains("kind: \"Unit\""), "Got: {ts}");
 }
 
-/// Test 6e: and the Zod surface, the recursive-field precedent's own reasoning applying here too —
-/// see `test_recursive_named_struct_variant_adjacent` in `recursive_type_tests`.
 #[cfg(feature = "zod")]
 #[test]
 fn test_adjacent_named_variant_zod_nests_under_content_key() {
@@ -724,8 +713,6 @@ fn test_adjacent_named_variant_zod_nests_under_content_key() {
     );
 }
 
-/// Test 6f: and the JSON-schema surface — a closed object under `data`, `x` required and `y` not,
-/// `kind` and `data` both required on the branch itself.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_adjacent_named_variant_json_schema_nests_under_content_key() {
@@ -754,7 +741,7 @@ fn test_adjacent_named_variant_json_schema_nests_under_content_key() {
     );
 }
 
-/// Test 7: Tuple variant with Vec (array type in tuple).
+/// Tuple variant with Vec (array type in tuple).
 #[test]
 fn test_tuple_with_vec() {
     #[model_schema()]
@@ -777,7 +764,7 @@ fn test_tuple_with_vec() {
     );
 }
 
-/// Test 7b: Tuple with Vec Zod schema.
+/// Tuple with Vec Zod schema.
 #[cfg(feature = "zod")]
 #[test]
 fn test_tuple_with_vec_zod() {
@@ -801,7 +788,7 @@ fn test_tuple_with_vec_zod() {
     );
 }
 
-/// Test 8: a struct variant's fields sit in an object under the variant's key.
+/// A struct variant's fields sit in an object under the variant's key.
 #[test]
 fn test_named_struct_variant_content_is_an_object_under_the_key() {
     #[model_schema()]
@@ -843,7 +830,7 @@ fn test_named_struct_variant_content_is_an_object_under_the_key() {
     );
 }
 
-/// Test 9: Optional types in tuple variants.
+/// Optional types in tuple variants.
 #[test]
 fn test_optional_in_tuple() {
     #[model_schema()]
@@ -868,7 +855,7 @@ fn test_optional_in_tuple() {
     );
 }
 
-/// Test 10: Tuple variant with nested custom type.
+/// Tuple variant with nested custom type.
 #[test]
 fn test_tuple_with_custom_type() {
     let ts = Outer::ts_definition();
@@ -883,8 +870,6 @@ fn test_tuple_with_custom_type() {
     );
 }
 
-/// And the JSON schema of that variant's tuple slot carries the same reference: the sibling's own
-/// schema, in the position the TypeScript above names it.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_tuple_variant_sibling_element_carries_the_sibling_schema() {
@@ -896,8 +881,7 @@ fn test_tuple_variant_sibling_element_carries_the_sibling_schema() {
     );
 }
 
-/// Test 11: Serde serialization compatibility.
-/// Verify that the generated schema matches actual serde serialization.
+/// Serde serialization compatibility.
 #[test]
 fn test_serde_serialization_compatibility() {
     #[model_schema()]
@@ -927,8 +911,7 @@ fn test_serde_serialization_compatibility() {
     assert_eq!(pair_json["value"][1], 42_i64);
 }
 
-/// Test 12: Complex `FixedValue` enum from original issue.
-/// This is the exact enum from the user's original problem.
+/// Complex `FixedValue` enum from original issue.
 #[test]
 fn test_fixed_value_original_issue() {
     #[model_schema()]
@@ -976,7 +959,7 @@ fn test_fixed_value_original_issue() {
     );
 }
 
-/// Test 13: `FixedValueExt` with all variant types.
+/// `FixedValueExt` with all variant types.
 #[test]
 fn test_fixed_value_ext_comprehensive() {
     #[model_schema()]
@@ -1002,7 +985,6 @@ fn test_fixed_value_ext_comprehensive() {
         "Missing Alphanumeric. Got: {ts}"
     );
 
-    // Multi-element tuple
     assert!(
         ts.contains("\"Image\": [string, Array<number>]"),
         "Missing Image. Got: {ts}"
@@ -1022,14 +1004,12 @@ fn test_fixed_value_ext_comprehensive() {
         "A unit variant carries no key. Got: {ts}"
     );
 
-    // Named struct variant
     assert!(ts.contains("\"Complex\": {"), "Missing Complex. Got: {ts}");
     assert!(ts.contains("a: string"), "Missing field a. Got: {ts}");
     assert!(ts.contains("b: boolean"), "Missing field b. Got: {ts}");
 }
 
-/// Test 14: Empty tuple variant (edge case).
-/// An empty tuple `Foo()` should be treated like a unit variant.
+/// Empty tuple variant (edge case).
 #[test]
 fn test_empty_tuple_variant() {
     #[model_schema()]
@@ -1057,10 +1037,6 @@ fn test_empty_tuple_variant() {
     );
 }
 
-/// Test 16: an enum tuple variant with an `Option` element gets null flavor in the generated JSON
-/// Schema, via the same shared element builder struct tuple fields use — a positional tuple slot
-/// serializes `None` as `null`, so the optional element renders `anyOf [<base>, null]`, arity
-/// unchanged.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_optional_tuple_variant_element_json_schema_null_flavor() {
@@ -1094,7 +1070,7 @@ fn test_optional_tuple_variant_element_json_schema_null_flavor() {
     assert_eq!(prefix[2], serde_json::json!({ "type": "string" }));
 }
 
-/// Test 15: `JSDoc` comments in generated TypeScript.
+/// `JSDoc` comments in generated TypeScript.
 #[test]
 fn test_jsdoc_comments() {
     #[model_schema()]
@@ -1128,8 +1104,6 @@ fn test_jsdoc_comments() {
     );
 }
 
-/// Test 17: what serde writes for a single-element tuple variant whose content is an `Option` —
-/// the capture the three surfaces below are read against.
 #[test]
 fn test_single_tuple_variant_option_content_writes_null_under_the_key() {
     assert_eq!(
@@ -1144,7 +1118,7 @@ fn test_single_tuple_variant_option_content_writes_null_under_the_key() {
     );
 }
 
-/// Test 17a: TypeScript describes that content key as the slot it is.
+/// TypeScript describes that content key as the slot it is.
 #[test]
 fn test_single_tuple_variant_option_content_typescript_null_flavor() {
     let ts = SlotContent::ts_definition();
@@ -1163,7 +1137,7 @@ fn test_single_tuple_variant_option_content_typescript_null_flavor() {
     );
 }
 
-/// Test 17b: the Zod schema of that content key admits the `null` serde writes.
+/// The Zod schema of that content key admits the `null` serde writes.
 #[cfg(feature = "zod")]
 #[test]
 fn test_single_tuple_variant_option_content_zod_null_flavor() {
@@ -1183,7 +1157,7 @@ fn test_single_tuple_variant_option_content_zod_null_flavor() {
     );
 }
 
-/// Test 17c: the JSON schema already said so, and keeps saying it unchanged.
+/// The JSON schema already said so, and keeps saying it unchanged.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_single_tuple_variant_option_content_json_schema_null_flavor() {
@@ -1230,8 +1204,6 @@ fn test_single_tuple_variant_option_content_json_schema_null_flavor() {
     );
 }
 
-/// Test 18: what serde writes for a multi-element tuple variant whose second element is an
-/// `Option` — the capture the three surfaces below are read against.
 #[test]
 fn test_multi_tuple_variant_option_element_writes_null_in_place() {
     assert_eq!(
@@ -1241,7 +1213,7 @@ fn test_multi_tuple_variant_option_element_writes_null_in_place() {
     );
 }
 
-/// Test 18a: TypeScript describes those elements as the slots they are.
+/// TypeScript describes those elements as the slots they are.
 #[test]
 fn test_multi_tuple_variant_option_element_typescript_null_flavor() {
     let ts = SlotElements::ts_definition();
@@ -1252,8 +1224,7 @@ fn test_multi_tuple_variant_option_element_typescript_null_flavor() {
     );
 }
 
-/// Test 18b: the Zod schema of that tuple admits the `null` serde writes. A `z.tuple` element
-/// cannot be omitted, so an undefined-flavored union there would leave `["a", null]` unmatched.
+/// The Zod schema of that tuple admits the `null` serde writes.
 #[cfg(feature = "zod")]
 #[test]
 fn test_multi_tuple_variant_option_element_zod_null_flavor() {
@@ -1265,8 +1236,6 @@ fn test_multi_tuple_variant_option_element_zod_null_flavor() {
     );
 }
 
-/// Test 18c: the JSON schema already said so, and keeps saying it — now over the fixed-arity array
-/// every other tuple position writes, bounds included.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_multi_tuple_variant_option_element_json_schema_null_flavor() {
@@ -1293,8 +1262,6 @@ fn test_multi_tuple_variant_option_element_json_schema_null_flavor() {
     );
 }
 
-/// The two-element tuple a variant carries and the two-element tuple a field carries are the same
-/// JSON array, so they describe as the same schema — bounds included.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_multi_tuple_variant_json_schema_matches_tuple_field() {
@@ -1330,8 +1297,6 @@ fn test_multi_tuple_variant_json_schema_matches_tuple_field() {
     );
 }
 
-/// The bounds are read against real payloads: the array serde writes for the variant sits inside
-/// them, and the short and long arrays serde can neither write nor read back sit outside.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_multi_tuple_variant_arity_bounds_reject_wrong_length_arrays() {
@@ -1371,8 +1336,6 @@ fn test_multi_tuple_variant_arity_bounds_reject_wrong_length_arrays() {
     }
 }
 
-/// Test 19: what serde writes for an enum carrying no tagging attributes — the capture every
-/// surface assertion below is read against.
 #[test]
 fn test_attribute_less_enum_writes_the_externally_tagged_form() {
     assert_eq!(
@@ -1401,8 +1364,6 @@ fn test_attribute_less_enum_writes_the_externally_tagged_form() {
     );
 }
 
-/// Test 19a: TypeScript describes that form: a union of single-key objects, plus the bare name for
-/// the variant that writes no key.
 #[test]
 fn test_attribute_less_enum_typescript_is_the_externally_tagged_union() {
     let ts = External::ts_definition();
@@ -1433,7 +1394,7 @@ fn test_attribute_less_enum_typescript_is_the_externally_tagged_union() {
     );
 }
 
-/// Test 19a2: the externally tagged reader reads the sole key, or the bare string for a unit variant.
+/// The externally tagged reader reads the sole key, or the bare string for a unit variant.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_attribute_less_enum_variant_reader_reads_the_sole_key_or_the_bare_string() {
@@ -1450,8 +1411,7 @@ fn test_attribute_less_enum_variant_reader_reads_the_sole_key_or_the_bare_string
     );
 }
 
-/// Test 19b: the Zod schema admits the same union. The discriminator is the key itself, so the
-/// members are plain `z.strictObject`s in a `z.union` rather than a `z.discriminatedUnion`.
+/// The Zod schema admits the same union.
 #[cfg(feature = "zod")]
 #[test]
 fn test_attribute_less_enum_zod_is_the_externally_tagged_union() {
@@ -1482,8 +1442,6 @@ fn test_attribute_less_enum_zod_is_the_externally_tagged_union() {
     );
 }
 
-/// Test 19c: the JSON schema is a `oneOf` over closed single-key objects, plus the string constant
-/// the unit variant writes. Each key holds the content the wire capture writes under it.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_attribute_less_enum_json_schema_is_the_externally_tagged_union() {
@@ -1535,9 +1493,7 @@ fn test_attribute_less_enum_json_schema_is_the_externally_tagged_union() {
     );
 }
 
-/// Test 19d: the round trip both schemas owe. Every payload serde writes lands in the member the
-/// JSON schema names for it, with the content that member declares; and a payload built from what
-/// a member admits reads back into the value it describes.
+/// The round trip both schemas owe.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_attribute_less_enum_round_trips_against_its_schema() {
@@ -1601,8 +1557,7 @@ fn test_attribute_less_enum_round_trips_against_its_schema() {
     );
 }
 
-/// Test 19e: naming the tagging attributes keeps the adjacent form untouched. The variants are the
-/// same ones the external form renders above, so what differs is placement and nothing else.
+/// Naming the tagging attributes keeps the adjacent form untouched.
 #[test]
 fn test_explicitly_tagged_twin_keeps_the_adjacent_form() {
     assert_eq!(
@@ -1617,7 +1572,7 @@ fn test_explicitly_tagged_twin_keeps_the_adjacent_form() {
     assert!(ts.contains("a: string"), "Got: {ts}");
 }
 
-/// Test 19f: the adjacent reader reads the tag key only, whatever the content key beside it holds.
+/// The adjacent reader reads the tag key only, whatever the content key beside it holds.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_adjacent_variant_reader_reads_the_tag_key_and_ignores_the_content_key() {
@@ -1636,8 +1591,7 @@ fn test_adjacent_variant_reader_reads_the_tag_key_and_ignores_the_content_key() 
     assert!(ts.contains("case \"Bare\": return \"Bare\";"), "Got: {ts}");
 }
 
-/// Test 20: what serde writes for a renamed variant, and the keys the surfaces carry for it. The
-/// key is quoted because a rename can spell it as something no bare identifier can hold.
+/// What serde writes for a renamed variant, and the keys the surfaces carry for it.
 #[test]
 fn test_renamed_variant_key_is_the_wire_name() {
     assert_eq!(
@@ -1668,7 +1622,7 @@ fn test_renamed_variant_key_is_the_wire_name() {
     );
 }
 
-/// Test 20a: the Zod schema holds the same keys.
+/// The Zod schema holds the same keys.
 #[cfg(feature = "zod")]
 #[test]
 fn test_renamed_variant_key_is_the_wire_name_in_zod() {
@@ -1701,7 +1655,6 @@ fn test_renamed_variant_key_reader_inverts_the_rename_and_the_rename_all() {
     );
 }
 
-/// Test 20b: and the JSON schema names the same keys, required and closed.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_renamed_variant_key_is_the_wire_name_in_json_schema() {
@@ -1724,8 +1677,6 @@ fn test_renamed_variant_key_is_the_wire_name_in_json_schema() {
     );
 }
 
-/// Test 21: a member whose content references the enum defers it through a getter, as the adjacent
-/// form's content key does. The member beside it holds no reference and needs none.
 #[cfg(feature = "zod")]
 #[test]
 fn test_recursive_external_variant_defers_its_reference() {
@@ -1738,7 +1689,6 @@ fn test_recursive_external_variant_defers_its_reference() {
     assert!(zod.contains("\"Txt\": z.string()"), "Got: {zod}");
 }
 
-/// Test 19f: and the tagged twin's Zod schema still switches on the tag it names.
 #[cfg(feature = "zod")]
 #[test]
 fn test_explicitly_tagged_twin_keeps_the_adjacent_zod_form() {
@@ -1751,7 +1701,6 @@ fn test_explicitly_tagged_twin_keeps_the_adjacent_zod_form() {
     );
 }
 
-/// Test 19g: and its JSON schema still holds the tuple under the content key.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_explicitly_tagged_twin_keeps_the_adjacent_json_schema_form() {
@@ -1776,8 +1725,7 @@ fn test_explicitly_tagged_twin_keeps_the_adjacent_json_schema_form() {
     );
 }
 
-/// Test 22: what serde writes for a bare tag. There is no content key: a struct variant's fields
-/// and a newtype variant's inner members are both written beside the tag, in the same object.
+/// What serde writes for a bare tag.
 #[test]
 fn test_bare_tag_writes_the_variant_data_beside_the_tag() {
     assert_eq!(
@@ -1805,9 +1753,6 @@ fn test_bare_tag_writes_the_variant_data_beside_the_tag() {
     );
 }
 
-/// Test 22a: and the shape that has no members to write there. serde refuses it at run time, which
-/// is why the crate refuses the declaration: there is no schema to write for a value that cannot
-/// exist on the wire.
 #[test]
 fn test_bare_tag_newtype_over_a_scalar_is_unserializable() {
     let refusal = serde_json::to_value(InternalScalar::Single("a".to_owned()))
@@ -1820,8 +1765,7 @@ fn test_bare_tag_newtype_over_a_scalar_is_unserializable() {
     assert!(refusal.contains("containing a string"), "Got: {refusal}");
 }
 
-/// Test 22b: TypeScript spreads the inner type beside the tag rather than putting it under a key.
-/// `&` binds tighter than `|`, so the intersection is one member of the union.
+/// TypeScript spreads the inner type beside the tag rather than putting it under a key.
 #[test]
 fn test_bare_tag_typescript_spreads_the_inner_type_beside_the_tag() {
     let ts = Internal::ts_definition();
@@ -1842,9 +1786,7 @@ fn test_bare_tag_typescript_spreads_the_inner_type_beside_the_tag() {
     assert!(ts.contains("type: \"Bare\";"), "Got: {ts}");
 }
 
-/// Test 22c: the Zod member for a newtype variant is the tag's object intersected with the inner
-/// schema. An intersection has no shape of its own to read a discriminator out of, so the union
-/// that holds it is a plain `z.union`.
+/// The Zod member for a newtype variant is the tag's object intersected with the inner schema.
 #[cfg(feature = "zod")]
 #[test]
 fn test_bare_tag_zod_intersects_the_inner_schema() {
@@ -1864,10 +1806,6 @@ fn test_bare_tag_zod_intersects_the_inner_schema() {
     assert!(!zod.contains("value:"), "Got: {zod}");
 }
 
-/// Test 22c2: the inner type is a `const` of its own and nothing orders one type's emitted module
-/// against another's, so naming it straight into the member would read it while the enum's own
-/// `const` initializes — failing for any inner type declared below. The read is deferred to
-/// whenever something validates, the same way a `#[serde(flatten)]` base's is.
 #[cfg(feature = "zod")]
 #[test]
 fn test_a_newtype_variants_content_is_never_read_while_the_const_initializes() {
@@ -1887,8 +1825,6 @@ fn test_a_newtype_variants_content_is_never_read_while_the_const_initializes() {
     }
 }
 
-/// Test 22d: with no newtype variant every member is an object carrying the tag, so the union still
-/// switches on it.
 #[cfg(feature = "zod")]
 #[test]
 fn test_bare_tag_without_a_newtype_variant_still_discriminates() {
@@ -1900,8 +1836,6 @@ fn test_bare_tag_without_a_newtype_variant_still_discriminates() {
     );
 }
 
-/// Test 22e: the JSON schema holds the inner type's fields beside the tag, required where the inner
-/// requires them, and closed around exactly the members serde writes.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_bare_tag_json_schema_holds_the_inner_fields_beside_the_tag() {
@@ -1933,8 +1867,7 @@ fn test_bare_tag_json_schema_holds_the_inner_fields_beside_the_tag() {
     );
 }
 
-/// Test 22f: the round trip the schema owes. Every payload serde writes is admitted by the member
-/// the schema names for it, and reads back into the value it describes.
+/// The round trip the schema owes.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_bare_tag_round_trips_against_its_schema() {
@@ -1992,7 +1925,7 @@ fn test_bare_tag_round_trips_against_its_schema() {
     );
 }
 
-/// Test 22g: naming a content key beside the tag keeps the adjacent form, content key and all.
+/// Naming a content key beside the tag keeps the adjacent form, content key and all.
 #[test]
 fn test_adjacent_twin_keeps_its_content_key() {
     assert_eq!(
@@ -2004,9 +1937,7 @@ fn test_adjacent_twin_keeps_its_content_key() {
     assert!(ts.contains("value: string"), "Got: {ts}");
 }
 
-/// Test 22h: what serde writes for a bare tag over a plain enum. The enum writes its own variant
-/// name, so what lands beside the tag is a key holding null — a key no member closed around the tag
-/// names, which is why the declaration is refused rather than described.
+/// What serde writes for a bare tag over a plain enum.
 #[test]
 fn test_bare_tag_over_a_plain_enum_writes_a_key_the_tag_does_not_name() {
     assert_eq!(
@@ -2015,9 +1946,6 @@ fn test_bare_tag_over_a_plain_enum_writes_a_key_the_tag_does_not_name() {
     );
 }
 
-/// Test 22i: and what serde writes for a bare tag over a newtype that reaches the wire as a string
-/// — nothing. The run-time refusal is the same one every scalar content gets; the name in front of
-/// it is all that let this one past the declaration guard.
 #[test]
 fn test_bare_tag_over_a_string_newtype_is_unserializable() {
     let refusal = serde_json::to_value(InternalOverBrand::Branded(InternalSlug("s".to_owned())))
@@ -2030,9 +1958,6 @@ fn test_bare_tag_over_a_string_newtype_is_unserializable() {
     assert!(refusal.contains("containing a string"), "Got: {refusal}");
 }
 
-/// Test 22j: so the merge refuses it too, rather than closing the object around the tag alone. The
-/// schema the content resolves to is what says it, and it is read at the moment the wrong document
-/// would otherwise be written.
 #[cfg(feature = "jsonschema")]
 #[test]
 #[should_panic(
@@ -2042,7 +1967,7 @@ fn test_bare_tag_over_a_string_newtype_is_refused_by_the_merge() {
     assert!(InternalOverBrand::json_schema().is_object());
 }
 
-/// Test 22k: the remedy the refusal names is one the author can act on.
+/// The remedy the refusal names is one the author can act on.
 #[cfg(feature = "jsonschema")]
 #[test]
 #[should_panic(expected = "name a `content` key so the content gets an object of its own")]
@@ -2050,9 +1975,6 @@ fn test_the_merge_refusal_names_the_remedy() {
     assert!(InternalOverBrand::json_schema().is_object());
 }
 
-/// Test 22l: a struct inner is untouched by either refusal — the document a bare tag wrote before
-/// them, byte for byte. Only the flattened member goes through the merge, which is why only it
-/// carries the merge's own `"type": "object"`.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_bare_tag_over_a_struct_documents_byte_identically() {
@@ -2062,9 +1984,7 @@ fn test_bare_tag_over_a_struct_documents_byte_identically() {
     );
 }
 
-/// Test 22m: what serde writes for a bare tag over an untagged enum. The union names no type of its
-/// own, but every member of this one writes an object, so what lands beside the tag is that member's
-/// members — one key set per member.
+/// What serde writes for a bare tag over an untagged enum.
 #[test]
 fn test_bare_tag_over_an_untagged_enum_writes_the_matched_members_keys() {
     assert_eq!(
@@ -2083,9 +2003,6 @@ fn test_bare_tag_over_an_untagged_enum_writes_the_matched_members_keys() {
     );
 }
 
-/// Test 22n: so the tag multiplies over the union the way it already multiplies over a discriminated
-/// one — a branch per member, each closed around the tag plus that member's members — under the
-/// spelling the untagged content used, inside the enum's own choice of variant.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_bare_tag_over_an_untagged_enum_multiplies_over_its_members() {
@@ -2095,9 +2012,6 @@ fn test_bare_tag_over_an_untagged_enum_multiplies_over_its_members() {
     );
 }
 
-/// Test 22o: and the keys those branches require are exactly the keys the captures carry. Before the
-/// tag multiplied out, one branch required the tag alone and named nothing else, so neither capture
-/// was accepted.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_bare_tag_over_an_untagged_enum_requires_every_key_serde_writes() {
@@ -2118,8 +2032,6 @@ fn test_bare_tag_over_an_untagged_enum_requires_every_key_serde_writes() {
     );
 }
 
-/// Test 22p: a union member serde writes as a string is a member serde cannot put beside the tag at
-/// all, so the merge refuses the whole union and names the branch that cannot join it.
 #[cfg(feature = "jsonschema")]
 #[test]
 #[should_panic(
@@ -2129,9 +2041,6 @@ fn test_a_string_member_of_a_tagged_untagged_enum_is_refused_by_the_merge() {
     assert!(InternalOverScalarUntagged::json_schema().is_object());
 }
 
-/// The wire criterion every external surface below is read against, in both directions: the slot is
-/// absent from the array serde writes under the variant's key, and the full-arity array — the one
-/// the surfaces used to describe — is refused on the way in.
 #[test]
 fn test_serde_writes_and_reads_a_dropped_variant_slot_in_neither_direction() {
     let written = serde_json::to_value(ExternalDroppedSlots::Lead("s".to_owned(), 7_u32)).unwrap();
@@ -2147,8 +2056,6 @@ fn test_serde_writes_and_reads_a_dropped_variant_slot_in_neither_direction() {
     );
 }
 
-/// The wire criterion for the remaining positions: a trailing drop only shortens the array, a
-/// middle one moves the slot behind it up, and dropping every slot still writes an array.
 #[test]
 fn test_serde_writes_the_variant_slots_it_still_carries_in_their_new_places() {
     assert_eq!(
@@ -2170,9 +2077,6 @@ fn test_serde_writes_the_variant_slots_it_still_carries_in_their_new_places() {
     );
 }
 
-/// The wire criterion the lone slot's surfaces are read against, and the one place this seam parts
-/// from the tuple-struct one: a newtype struct ignores the attribute and keeps writing its value,
-/// while a variant has its own name to fall back on and serde writes that name alone.
 #[test]
 fn test_serde_writes_a_variant_whose_lone_slot_is_dropped_as_its_name_alone() {
     assert_eq!(
@@ -2189,9 +2093,6 @@ fn test_serde_writes_a_variant_whose_lone_slot_is_dropped_as_its_name_alone() {
     );
 }
 
-/// The same readings under a content key, and the scope the lone slot's refusal stops at: the array
-/// shrinks under `value` at every other declared arity and reads straight back, so each of them has
-/// one payload the surfaces can describe.
 #[test]
 fn test_serde_writes_a_dropped_variant_slot_the_same_way_under_a_content_key() {
     for (held, written) in [
@@ -2212,9 +2113,6 @@ fn test_serde_writes_a_dropped_variant_slot_the_same_way_under_a_content_key() {
     }
 }
 
-/// The wire the adjacent form's lone-slot collapse is refused for: serde writes `{"type":"Lone"}`
-/// and then refuses to read that same payload back, asking for the content key it never wrote. Only
-/// the `value: null` spelling reads, so the write set and the read set have no common member.
 #[test]
 fn test_serde_refuses_the_adjacent_payload_it_writes_for_a_dropped_lone_slot() {
     assert_eq!(
@@ -2236,8 +2134,6 @@ fn test_serde_refuses_the_adjacent_payload_it_writes_for_a_dropped_lone_slot() {
     );
 }
 
-/// The control the refusal's remedy names: the variant declared as a unit writes the identical
-/// payload, reads it back, and still accepts the `value: null` spelling the collapse reads.
 #[test]
 fn test_serde_reads_back_the_adjacent_payload_a_declared_unit_variant_writes() {
     let written = serde_json::to_value(AdjacentUnitWire::Lone).unwrap();
@@ -2252,8 +2148,6 @@ fn test_serde_reads_back_the_adjacent_payload_a_declared_unit_variant_writes() {
     );
 }
 
-/// The bare-tag form writes and reads the tag alone for a variant whose lone slot is dropped —
-/// whatever that slot held, including the values no bare tag can otherwise carry beside it.
 #[test]
 fn test_serde_writes_a_dropped_lone_slot_as_the_tag_alone_under_a_bare_tag() {
     let written = serde_json::to_value(InternalDroppedSlot::Lone("s".to_owned())).unwrap();
@@ -2264,8 +2158,6 @@ fn test_serde_writes_a_dropped_lone_slot_as_the_tag_alone_under_a_bare_tag() {
     );
 }
 
-/// The described tuple is the slots the wire still carries: the arity, the element types and the
-/// positions shrink together, and a lone slot gone leaves the variant's name as the whole member.
 #[cfg(feature = "typescript")]
 #[test]
 fn test_a_dropped_variant_slot_leaves_the_described_tuple_in_typescript() {
@@ -2280,8 +2172,6 @@ fn test_a_dropped_variant_slot_leaves_the_described_tuple_in_typescript() {
     assert!(!type_declaration.contains("\"Lone\":"), "Got: {ts}");
 }
 
-/// The lone slot gone leaves the variant describing as the bare name serde writes, which is the
-/// member a declared unit variant already renders as.
 #[cfg(feature = "typescript")]
 #[test]
 fn test_a_variant_whose_lone_slot_is_dropped_describes_as_its_name_in_typescript() {
@@ -2306,8 +2196,6 @@ fn test_a_dropped_variant_slot_leaves_the_described_tuple_in_zod() {
     assert!(zod.contains("z.literal(\"Lone\")"), "Got: {zod}");
 }
 
-/// The same shrink on the JSON surface, where the arity is written twice as its own bounds and the
-/// element types are the `prefixItems` beside them.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_a_dropped_variant_slot_shrinks_the_described_arity_in_json_schema() {
@@ -2336,8 +2224,6 @@ fn test_a_dropped_variant_slot_shrinks_the_described_arity_in_json_schema() {
     );
 }
 
-/// A variant whose lone slot is gone is the bare string serde writes, not an object keyed by the
-/// variant's name.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_a_variant_whose_lone_slot_is_dropped_describes_as_a_string_in_json_schema() {
@@ -2351,9 +2237,6 @@ fn test_a_variant_whose_lone_slot_is_dropped_describes_as_a_string_in_json_schem
     );
 }
 
-/// The adjacent form describes the same shrink under its content key, and drops the key entirely
-/// for the variant declared as a unit — the member the refused collapse would have been given, now
-/// reached through the declaration the refusal sends its author to.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_a_dropped_variant_slot_shrinks_the_content_key_in_json_schema() {
@@ -2382,8 +2265,6 @@ fn test_a_dropped_variant_slot_shrinks_the_content_key_in_json_schema() {
     assert!(lone["properties"]["value"].is_null(), "Got: {schema}");
 }
 
-/// The remedy is equivalent on the wire, which is what makes it the one the refusal names: the
-/// variant declared as a unit writes the very payload the refused collapse wrote, and reads it back.
 #[test]
 fn test_the_declared_unit_remedy_writes_the_payload_the_refused_collapse_wrote() {
     let written = serde_json::to_value(AdjacentDroppedSlots::Lone).unwrap();
@@ -2394,8 +2275,6 @@ fn test_the_declared_unit_remedy_writes_the_payload_the_refused_collapse_wrote()
     );
 }
 
-/// The bare tag carries nothing beside it for a variant whose lone slot is gone, so the value the
-/// slot held is never asked to be an object — which is the only content that form accepts.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn test_a_dropped_lone_slot_leaves_the_bare_tag_alone_in_json_schema() {
@@ -2413,8 +2292,6 @@ fn test_a_dropped_lone_slot_leaves_the_bare_tag_alone_in_json_schema() {
     );
 }
 
-/// A variant carrying no dropped slot renders character for character what it renders on its own,
-/// so nothing about the surfaces of an untouched declaration moves.
 #[cfg(feature = "typescript")]
 #[test]
 fn test_a_variant_carrying_no_dropped_slot_describes_unchanged_in_typescript() {

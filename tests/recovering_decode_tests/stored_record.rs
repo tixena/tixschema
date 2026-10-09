@@ -203,8 +203,7 @@ fn value_3_a_missing_key_is_rejected_with_the_list() {
     assert_eq!(calls, 1);
 }
 
-/// Value 4: one chance. The callback fixes the date but cannot fix the number, so the read fails
-/// with the second walk's list.
+/// Value 4: one chance.
 #[test]
 fn value_4_a_fix_that_leaves_one_problem_fails_the_read() {
     fn dates_only(
@@ -251,8 +250,6 @@ fn value_4_a_fix_that_leaves_one_problem_fails_the_read() {
     assert_eq!(calls, 1);
 }
 
-/// Value 5: an id stored as its bare hex string. serde reads it, and it is not the form the field
-/// writes.
 #[test]
 fn value_5_an_id_stored_as_text_is_mistyped() {
     let stored = json!({
@@ -325,8 +322,6 @@ fn value_6_an_undeclared_nested_key_reaches_the_decider() {
     assert_eq!(calls, 1);
 }
 
-/// Each id and number is read on its own: an issue sits at the item, with the item's own type, and
-/// a decider that sets each path repairs the record.
 #[test]
 fn a_plain_value_in_a_list_a_map_or_an_option_is_listed_and_fixed_at_its_own_path() {
     let stored = json!({
@@ -391,8 +386,6 @@ fn a_plain_value_in_a_list_a_map_or_an_option_is_listed_and_fixed_at_its_own_pat
     );
 }
 
-/// A field that holds something other than the list or the map it is written as is one issue, at
-/// the field.
 #[test]
 fn a_list_or_map_field_held_as_something_else_is_one_issue_at_the_field() {
     let stored = json!({ "counts": [], "owners": [], "tags": "none" });
@@ -408,9 +401,6 @@ fn a_list_or_map_field_held_as_something_else_is_one_issue_at_the_field() {
     );
 }
 
-/// A brand is read as the one value it holds, so an id held as text under one is `Mistyped` at
-/// the brand's own path, expecting the id. Under a generic brand the id fills a parameter, and
-/// nothing of a parameter's type is written back from a JSON value to compare.
 #[test]
 fn an_id_held_as_text_under_a_brand_is_mistyped_at_the_brand() {
     let stored = json!({

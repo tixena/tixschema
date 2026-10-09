@@ -2,11 +2,6 @@
 //! prove the emitted trait is the contract the design says it is: the context reaches every
 //! operation, `async fn` is gone in favour of a returned future, a one-way operation answers with
 //! nothing, and a wire-name override changes nothing about the Rust the author writes.
-//!
-//! The same declaration is then reached from the other two directions — dispatched under the wire
-//! name it answers to, and called through the generated client over a transport that loops back
-//! into that dispatcher — so the three spellings of one operation are read off one declaration
-//! rather than three fixtures.
 
 #![cfg(feature = "serde")]
 
@@ -18,16 +13,19 @@ use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tixschema::service_schema;
 
+/// The message of the balance operation.
 #[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct BalanceRequest {
     pub organization_id: String,
 }
 
+/// The reply to a `BalanceRequest`.
 #[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct BalanceResponse {
     pub credits: u32,
 }
 
+/// The error the probe service's operations declare.
 #[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case", tag = "errorCode")]
 pub enum ProbeError {
@@ -40,6 +38,7 @@ pub struct ProbeContext {
     pub logger_name: String,
 }
 
+/// The implementation these tests call, answering the credits it was built with.
 pub struct ProbeBackEnd {
     pub granted_credits: u32,
 }
@@ -416,9 +415,8 @@ fn a_client_call_answers_the_declared_success_type_or_a_call_error_over_the_decl
     let client = amqp_client::ProbeServiceClient::new(Loopback {
         service: ProbeBackEnd { granted_credits: 5 },
     });
-    // Annotated rather than inferred: the failure arm being `CallError<ProbeError>` rather than
-    // `ProbeError` is what makes room for a fault the operation never declared, and an inferred
-    // binding would not say so.
+    // Annotated, not inferred: the failure arm being `CallError<ProbeError>` is what makes room for
+    // a fault the operation never declared.
     let answering: Result<BalanceResponse, probe_service_schema::CallError<ProbeError>> =
         poll_once(client.get_balance(BalanceRequest {
             organization_id: "acme".to_owned(),
@@ -427,9 +425,6 @@ fn a_client_call_answers_the_declared_success_type_or_a_call_error_over_the_decl
     assert_eq!(answering, Ok(BalanceResponse { credits: 9 }));
 }
 
-/// Every operation, over the same loop back into the dispatcher: the client publishes one method
-/// per declared operation, each under the wire name its own arm answers to, and each carrying what
-/// the implementation returned.
 #[test]
 fn every_operation_the_service_declares_is_reachable_through_the_client_it_publishes() {
     let client = amqp_client::ProbeServiceClient::new(Loopback {

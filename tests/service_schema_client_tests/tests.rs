@@ -1,21 +1,4 @@
 //! The transports the generated client is driven over, and everything read off it.
-//!
-//! The service and its messages are declared here; the modules the client and the dispatcher were
-//! each expanded into sit beside this file, at the crate root the macros' `$crate` resolves to.
-//!
-//! `ProbeTransport` hands out prepared answers and writes down what it was asked to send, which is
-//! how a test reads the operation name travelling beside the payload rather than inside it. Built
-//! with no answers it panics the moment either method is reached, which is how the
-//! outbound-validation tests prove the transport was never touched.
-//!
-//! `Loopback` sends the message straight into the generated dispatcher and hands back what the
-//! reply handle captured. It is the only place both halves of the seam meet, and it is where the
-//! envelope one writes and the other reads is proven to be one envelope.
-//!
-//! `DeadlineTransport` is the bus this design has to live on when a reply does not come: it records
-//! the call, waits out a deadline it imposed itself, and reports that nothing landed. It is the
-//! only transport here that answers in the failure arm, and it is what the fault a caller reads
-//! for a call that never completed is measured against.
 
 #![cfg(feature = "serde")]
 
@@ -219,10 +202,6 @@ pub mod a_bound_the_fields_own_type_declares {
         )
     }
 
-    /// The outbound half of a brand's bound, and the half its serde hook cannot cover: a message
-    /// built in Rust was never deserialized, so the hook never ran on it. Until the message's own
-    /// validator reached the field, this call put a `Slug` violating its own declared pattern on
-    /// the wire and the caller learned nothing about it.
     #[test]
     fn a_message_whose_bound_its_fields_type_declares_is_refused_naming_the_field() {
         // Built with no answers: reaching the transport panics, so this test passing at all is the
@@ -262,9 +241,6 @@ pub mod a_bound_the_fields_own_type_declares {
         );
     }
 
-    /// The same message with a value the bound admits goes out, is read back on the other side and
-    /// is answered — which is what says the check refuses something rather than everything, on
-    /// both halves of the seam at once.
     #[test]
     fn a_message_whose_bound_its_fields_type_declares_is_satisfiable_end_to_end() {
         let client = enrol_amqp_client::EnrolServiceClient::new(EnrolLoopback);
@@ -279,8 +255,6 @@ pub mod a_bound_the_fields_own_type_declares {
         );
     }
 
-    /// The same bound, on the half of the seam that expects no reply: it is the outgoing message
-    /// that is measured, so a send is refused for exactly what a call is refused for.
     #[test]
     fn a_one_way_send_is_measured_against_the_same_bound_a_call_is() {
         let client = enrol_amqp_client::EnrolServiceClient::new(EnrolLoopback);
@@ -1068,9 +1042,6 @@ fn what_the_dispatcher_writes_is_what_the_client_reads() {
     );
 }
 
-/// The second placement is a client of its own: its own transport seam, its own type, and every
-/// operation the service declares. Two placements of one macro in one crate share nothing, which
-/// is what a `#[macro_export]` macro emitting bare items has to survive.
 #[test]
 fn a_second_placement_of_the_client_carries_the_whole_service_over_a_seam_of_its_own() {
     let transport = ProbeTransport::new(&[

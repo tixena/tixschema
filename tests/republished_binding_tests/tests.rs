@@ -1,3 +1,6 @@
+//! Tests of an alias or a wrapper that republishes another item's Zod binding, and the annotation
+//! it reads off it.
+
 #[cfg(feature = "chrono")]
 use chrono::{DateTime, TimeZone as _, Utc};
 use serde::{Deserialize, Serialize};
@@ -289,8 +292,6 @@ fn an_alias_of_a_datetime_brand_reads_its_annotation_off_the_binding_it_republis
     assert!(!zod.contains("ZodType<"), "got: {zod}");
 }
 
-/// Declaration order decides nothing here: the annotation names a `const` this module writes
-/// itself, so the target's own class never has to be looked up.
 #[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
 fn an_alias_declared_above_its_brand_reads_the_same_annotation() {
@@ -360,8 +361,6 @@ fn a_one_slot_tuple_struct_over_a_bound_generic_brand_reads_the_call_back() {
     assert!(!zod.contains("ZodType<"), "got: {zod}");
 }
 
-/// The example is appended to the value the raw `const` holds, so the annotation still reads back
-/// the type of what was published.
 #[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
 fn an_example_on_a_republished_binding_lands_on_the_value_the_annotation_reads() {
@@ -396,8 +395,6 @@ fn a_non_generic_alias_of_a_generic_brand_reads_the_bound_call_back() {
     assert!(!zod.contains("ZodType<"), "got: {zod}");
 }
 
-/// A generic item has no `const` to read back, so its declared default binds the factory call
-/// first and the export reads that binding's type — the same two lines one level up.
 #[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
 fn a_generic_item_republishing_a_factory_binds_its_default_before_annotating_it() {
@@ -422,8 +419,6 @@ fn a_generic_item_republishing_a_factory_binds_its_default_before_annotating_it(
     }
 }
 
-/// A wrapped brand is no republish: every one of these builds a new schema around the brand's
-/// binding, and the constructor it builds computes its output from what `.brand()` narrowed.
 #[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
 fn a_composite_over_a_brand_keeps_the_annotation_naming_its_own_type() {
@@ -449,8 +444,6 @@ fn a_composite_over_a_brand_keeps_the_annotation_naming_its_own_type() {
     }
 }
 
-/// A transparent struct with a named field over a brand is a brand over it, as the tuple form is,
-/// and reads its annotation back off the value it published.
 #[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
 fn a_named_transparent_struct_over_a_brand_is_a_brand_over_it() {
@@ -463,8 +456,6 @@ fn a_named_transparent_struct_over_a_brand_is_a_brand_over_it() {
     }
 }
 
-/// An alias that builds its own expression keeps stating the type it published beside — the one
-/// place the crate checks a rendered expression against its own TypeScript type.
 #[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
 fn an_alias_of_a_built_expression_keeps_the_annotation_naming_its_own_type() {
@@ -491,8 +482,6 @@ fn an_alias_of_a_built_expression_keeps_the_annotation_naming_its_own_type() {
     }
 }
 
-/// The slot names a parameter, not a sibling, so the default keeps restating the type it fills —
-/// the argument the factory is handed is the caller's business, brand or not.
 #[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
 fn a_generic_slot_over_a_bare_parameter_keeps_the_annotation_naming_its_own_type() {
@@ -507,8 +496,6 @@ fn a_generic_slot_over_a_bare_parameter_keeps_the_annotation_naming_its_own_type
     assert!(!zod.contains("$RawSchemaDefault"), "got: {zod}");
 }
 
-/// A brand republishes nothing, yet reads its annotation off the value for the same reason a
-/// republishing binding does: `.brand()` narrows where no restated type reaches.
 #[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
 fn a_brands_own_binding_reads_its_annotation_off_the_value_too() {
@@ -536,8 +523,6 @@ fn a_brands_own_binding_reads_its_annotation_off_the_value_too() {
     );
 }
 
-/// A build emitting no TypeScript writes every binding as a bare `const`: an annotation is a type,
-/// and a JavaScript parser reading one stops at the `:` with no initializer to read.
 #[cfg(all(feature = "zod", not(feature = "typescript")))]
 #[test]
 fn a_javascript_build_annotates_a_republished_binding_no_more_than_any_other() {
@@ -553,8 +538,6 @@ fn a_javascript_build_annotates_a_republished_binding_no_more_than_any_other() {
     }
 }
 
-/// The TypeScript side is untouched: an alias still publishes the target's own name, and the
-/// one-slot tuple struct still publishes the slot's.
 #[cfg(feature = "typescript")]
 #[test]
 fn the_typescript_surface_of_a_republished_binding_is_unchanged() {
@@ -571,9 +554,6 @@ fn the_typescript_surface_of_a_republished_binding_is_unchanged() {
     );
 }
 
-/// What serde actually writes for each of these, read off the wire rather than assumed: a brand
-/// and every name over it are invisible, so each republished binding validates the bare value its
-/// target validates.
 #[test]
 fn a_brand_and_the_names_over_it_write_the_bare_value_serde_writes() {
     let branded = CorrelationId("corr-1".to_owned());
@@ -619,8 +599,6 @@ fn a_brand_and_the_names_over_it_write_the_bare_value_serde_writes() {
     assert_eq!(serde_json::to_string(&forward).unwrap(), "\"late-1\"");
 }
 
-/// The brands over the other inners, on the wire, so the aliases above are grounded in what serde
-/// wrote for each rather than in a wire form read off the string brand alone.
 #[test]
 fn every_branded_inner_writes_the_value_its_target_writes() {
     let slotted: SlotBrandRef = SlotBrand(MetricSlot::Weekly);
@@ -657,8 +635,6 @@ fn every_branded_inner_writes_the_value_its_target_writes() {
     assert_eq!(serde_json::to_string(&parameterized).unwrap(), "\"g\"");
 }
 
-/// The aliases that build an expression of their own, on the wire: each resolves straight through
-/// to its target, which is why none of them republishes a binding to read an annotation back off.
 #[test]
 fn an_alias_of_a_built_expression_writes_its_targets_wire_form() {
     let key: SlotKey = "k".to_owned();
@@ -685,8 +661,6 @@ fn a_datetime_brand_writes_the_timestamp_its_target_writes() {
     );
 }
 
-/// The composites the annotation must not widen past, on the wire: a brand is spent as a bare
-/// value in every one of these positions, which is why each still builds a schema of its own.
 #[test]
 fn a_brand_in_a_composite_is_written_as_the_bare_value_in_every_position() {
     let held = HoldsBrands {

@@ -1,12 +1,6 @@
 //! The operations `#[model_schema(decode_with)]` adds under `mongodb`. Two binaries compile this
 //! module, each with the name `bson` bound to one major version of the library and a MongoDB
 //! driver built for it, so every check is compiled against both.
-//!
-//! `live` runs the operations against a real collection, and stands down where no server is
-//! named. `offline` holds what needs no server: the error, the read of a row once the driver has
-//! handed it over, a row refused before it is sent, and what a read holds before it is awaited.
-//! `readme` holds the README's examples of the typed paths and of the operations as one text
-//! with the code that compiles.
 
 mod live;
 mod offline;

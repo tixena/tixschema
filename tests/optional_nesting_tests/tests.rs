@@ -94,16 +94,12 @@ fn test_an_option_inside_a_wrapper_writes_a_null_among_the_items() {
     assert_eq!(payload["vec_items"], serde_json::json!([null]));
 }
 
-/// A `None` around the wrapper stands in place of the whole array — and in field position, where
-/// the key can be dropped, the omission is what the schema is written against.
 #[test]
 fn test_an_option_around_a_wrapper_stands_for_the_whole_array() {
     let payload = serde_json::to_value(slot_null_fields()).unwrap();
     assert_eq!(payload, serde_json::json!({}));
 }
 
-/// In a slot the key cannot be dropped, so each nesting writes exactly what its own `Option` says:
-/// the items for the inner one, the slot itself for the outer, both when both are written.
 #[test]
 fn test_each_slot_writes_the_null_its_own_option_puts_there() {
     let payload = serde_json::to_value(null_nesting_slots()).unwrap();
@@ -142,8 +138,6 @@ fn or_null(base: &serde_json::Value) -> serde_json::Value {
     serde_json::json!({ "anyOf": [base, { "type": "null" }] })
 }
 
-/// The array is always written, so the field describes as an array whose items admit `null` —
-/// required, and never `null` itself.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_an_element_null_field_describes_as_an_array_of_nullable_items() {
@@ -161,8 +155,6 @@ fn test_an_element_null_field_describes_as_an_array_of_nullable_items() {
     }
 }
 
-/// The key's own `Option` widens the plain array with `null`, the same as every other optional key,
-/// on top of the absence the schema already admits by leaving the key out of `required`.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_a_slot_null_field_describes_as_the_array_it_writes_when_present() {
@@ -181,8 +173,6 @@ fn test_a_slot_null_field_describes_as_the_array_it_writes_when_present() {
     }
 }
 
-/// Each slot describes the `null` its own `Option` writes, and no other: the items for the inner
-/// one, the member for the outer, both wraps when both were written.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_each_slot_describes_the_null_its_own_option_writes() {
@@ -234,8 +224,6 @@ fn test_each_slot_describes_the_null_its_own_option_writes() {
     );
 }
 
-/// The TypeScript surface says the same thing in its own spelling: the `| null` sits inside the
-/// `Array<…>` for an element `Option` and outside it for a slot `Option`.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_the_typescript_surface_puts_the_null_at_the_level_it_was_written() {
@@ -271,8 +259,6 @@ fn test_the_typescript_surface_puts_the_null_at_the_level_it_was_written() {
     }
 }
 
-/// And the Zod surface: `z.nullable` inside the `z.array` for an element `Option`, around it for a
-/// slot `Option`.
 #[test]
 #[cfg(feature = "zod")]
 fn test_the_zod_surface_puts_the_nullable_at_the_level_it_was_written() {
@@ -310,8 +296,6 @@ fn test_the_zod_surface_puts_the_nullable_at_the_level_it_was_written() {
     }
 }
 
-/// The set spelling and the `Vec` spelling of the same nesting write one value, so they describe as
-/// one — the parity the wrapper list exists to hold, now read at each level separately.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_a_set_nesting_describes_as_the_vec_nesting_it_writes() {

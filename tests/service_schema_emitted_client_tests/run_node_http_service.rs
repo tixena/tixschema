@@ -2,10 +2,6 @@
 //! forms, a macro-generated message read off the query and the body, a bound `header_in`
 //! echoed back and compared with the Rust twin, and the three body kinds compared against the
 //! Rust `{service}_http_rest_dispatcher!()` twin for the same request.
-//!
-//! Beside `node` itself, this leg reaches for the `zod` package through `TIXSCHEMA_NODE_MODULES`
-//! — the real schemas a bad payload has to fail against, not the stubs `run_node.rs` names for
-//! the URL-shaped client leg. `just test-emitted` resolves it up front and refuses to stand down.
 
 use super::content_http_rest_transport;
 use super::echo_http_rest_transport;
@@ -97,9 +93,7 @@ async function main() {
 main().catch((error) => { console.error(error); process.exit(1); });
 "#;
 
-/// One call per case, straight against the exported dispatcher — no listening server. `ArchiveError`
-/// carries a payload variant, which cannot be named in an `error_status` table, so
-/// `ArchiveError$Variant` is read directly instead, off two hand-built wire values.
+/// One call per case, straight against the exported dispatcher — no listening server.
 const READER_FORMS_DRIVER: &str = r#"
 function req(method, path, body = new Uint8Array()) {
   return { method, path, query: "", headers: [], body };
@@ -233,9 +227,8 @@ async function main() {
 main().catch((error) => { console.error(error); process.exit(1); });
 "#;
 
-/// `getFile`'s own signature carries no `byte_range`: it declares no `header_in` binding at all,
-/// so the answer is always the full body — the one shape both dispatchers can agree on. The
-/// `bad-type` file answers a content type carrying a line break, as its Rust twin does.
+/// `getFile`'s own signature carries no `byte_range`: it declares no `header_in` binding at all, so
+/// the answer is always the full body — the one shape both dispatchers can agree on.
 const STREAM_DRIVER: &str = r#"
 async function main() {
   const content = new TextEncoder().encode("the quick brown fox jumps over the lazy dog");
@@ -314,9 +307,8 @@ async function main() {
 main().catch((error) => { console.error(error); process.exit(1); });
 "#;
 
-/// `attachment`'s own bytes reach the implementation (as `unknown`) but the driver below never
-/// reads them, so the success value it answers with is built from `folder_id`, `title` and
-/// whether `description` carried a part — nothing the Rust side alone can see.
+/// The driver never reads `attachment`'s bytes: the success value is built from `folder_id`,
+/// `title` and whether `description` carried a part.
 const MULTIPART_DRIVER: &str = r#"
 async function main() {
   const impl = {
@@ -346,9 +338,8 @@ async function main() {
 main().catch((error) => { console.error(error); process.exit(1); });
 "#;
 
-/// A required `header_in` binding, echoed back by the implementation: present, the value it was
-/// bound reaches `impl.echoRange` as its own argument after the message; absent, the dispatcher
-/// refuses before the implementation is ever called.
+/// A required `header_in` binding, echoed back: present, it reaches `impl.echoRange` after the
+/// message; absent, the dispatcher refuses before the implementation runs.
 const ECHO_DRIVER: &str = r#"
 async function main() {
   const impl = {
@@ -423,9 +414,8 @@ async function main() {
 main().catch((error) => { console.error(error); process.exit(1); });
 "#;
 
-/// A stub `Transport` answering by path alone, driving the emitted client's own declared-error
-/// and `header_out` decode - the client-side twin of [`bytes_body_kind_agrees_with_rust`], which
-/// drives the same three cases through the server.
+/// A stub `Transport` answering by path alone, driving the emitted client's declared-error and
+/// `header_out` decode.
 const THUMBNAIL_CLIENT_DRIVER: &str = r#"
 const transport = {
   async send(request) {
@@ -524,10 +514,6 @@ const answered = await client.echoRange("doc-1", "a \"etag\" b");
 console.log(JSON.stringify({ answered, sentHeaders }));
 "#;
 
-// -------------------------------------------------------------------------------------------
-// Group 1: the design's own seven requests, against the design's own Node `http` adapter.
-// -------------------------------------------------------------------------------------------
-
 /// One answer in plain terms, normalized for comparison: headers sorted, so an incidental
 /// ordering difference between the two dispatchers is not mistaken for a disagreement.
 #[derive(Debug, PartialEq, Eq)]
@@ -537,6 +523,7 @@ struct Answered {
     status: u16,
 }
 
+/// The fault handler the dispatcher is given: it answers a fault with status 499.
 struct RecordingFaultHandler;
 
 impl thumbnail_http_rest_transport::FaultHandler for RecordingFaultHandler {
@@ -704,10 +691,6 @@ fn the_seven_requests_answer_as_the_design_recorded() {
     }
 }
 
-// -------------------------------------------------------------------------------------------
-// Group 2: the four reader forms, three status cases each.
-// -------------------------------------------------------------------------------------------
-
 fn reader_forms_emitted() -> String {
     [
         "import { z } from \"zod\";".to_owned(),
@@ -775,11 +758,6 @@ fn each_reader_form_picks_the_mapped_status() {
     );
 }
 
-// -------------------------------------------------------------------------------------------
-// Group 3: a macro-generated message read off the query on a bodyless `GET` and off the body on
-// a `POST`, plus the 400 `failed-validation` a bad payload earns against the real schema.
-// -------------------------------------------------------------------------------------------
-
 fn search_emitted() -> String {
     [
         "import { z } from \"zod\";".to_owned(),
@@ -825,11 +803,6 @@ fn a_generated_message_is_read_off_the_query_and_the_body() {
         "got: {results:#?}"
     );
 }
-
-// -------------------------------------------------------------------------------------------
-// Group 4: one `bytes`, one `stream` and one `multipart` operation, each answer compared
-// byte-for-byte with the Rust `{service}_http_rest_dispatcher!()` twin.
-// -------------------------------------------------------------------------------------------
 
 fn sorted(mut headers: Vec<(String, String)>) -> Vec<(String, String)> {
     headers.sort();
@@ -1312,11 +1285,6 @@ fn multipart_body_kind_agrees_with_rust() {
     );
 }
 
-// -------------------------------------------------------------------------------------------
-// Group 5: a required `header_in` binding, echoed back by the implementation — present or
-// absent, compared byte-for-byte with the Rust `{service}_http_rest_dispatcher!()` twin.
-// -------------------------------------------------------------------------------------------
-
 fn echo_emitted() -> String {
     [
         "import { z } from \"zod\";".to_owned(),
@@ -1398,11 +1366,6 @@ fn a_bound_header_reaches_the_implementation_and_agrees_with_the_rust_dispatcher
     );
 }
 
-// -------------------------------------------------------------------------------------------
-// Group 6: a bodyless operation with no field beside the context, compared whole with the Rust
-// `{service}_http_rest_dispatcher!()` twin for the same request.
-// -------------------------------------------------------------------------------------------
-
 fn pulse_emitted() -> String {
     [
         "import { z } from \"zod\";".to_owned(),
@@ -1456,11 +1419,6 @@ fn a_bodyless_operation_with_no_field_assembles_the_same_message_as_the_rust_dis
         "got: {rust:#?}"
     );
 }
-
-// -------------------------------------------------------------------------------------------
-// The Rust twins' own accessors, exercised once each — the same claims
-// `tests/service_schema_dispatch_tests/` makes for every other dispatcher macro placement.
-// -------------------------------------------------------------------------------------------
 
 /// One `IncomingRequest` reads back everything it was built with. Takes the accessors' own
 /// answers rather than the request itself: the three placement modules' `IncomingRequest` share
@@ -1735,11 +1693,6 @@ fn the_pulse_route_table_and_incoming_request_read_back_what_they_were_built_wit
     assert_eq!(response.body(), b"handled");
 }
 
-// -------------------------------------------------------------------------------------------
-// Group 7: a fully path-bound macro-generated message - two placeholders, no query field - and
-// the declared error it still answers.
-// -------------------------------------------------------------------------------------------
-
 fn label_emitted() -> String {
     [
         "import { z } from \"zod\";".to_owned(),
@@ -1807,8 +1760,6 @@ fn a_header_in_value_with_a_line_feed_is_refused_before_the_transport_is_ever_re
     );
 }
 
-/// A legal `header_in` value carrying a space and a quoted `ETag` reaches the transport unchanged
-/// rather than being refused as if it were illegal.
 #[test]
 fn a_legal_header_in_value_with_a_space_and_a_quoted_etag_reaches_the_transport_unchanged() {
     let module = format!("{}\n\n{ECHO_CLIENT_LEGAL_DRIVER}", echo_client_emitted());

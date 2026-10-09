@@ -3,9 +3,6 @@
 //! it does when a variant carries a field, so every describing surface has to keep it too rather
 //! than falling back to the string union such an enum publishes when no tagging key is named at
 //! all.
-//!
-//! Every expectation here is held against bytes serde actually writes, read in the same test, so a
-//! published type and the wire it describes cannot drift apart.
 
 #[cfg(test)]
 #[cfg(feature = "serde")]

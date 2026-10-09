@@ -51,6 +51,7 @@ pub trait PathBoundBesideQueryService<Ctx> {
     ) -> Result<PathBoundDocument, PathBoundError>;
 }
 
+/// The implementation of `PathBoundBesideQueryService` these tests dispatch to.
 pub struct BesideQueryBackEnd;
 
 impl PathBoundBesideQueryService<()> for BesideQueryBackEnd {
@@ -126,8 +127,6 @@ fn dispatched(path: &str, query: &str) -> (u16, Vec<u8>) {
     (response.status(), response.body().to_vec())
 }
 
-/// The same fully path-bound operation beside a query-reading one: both dispatch, with no
-/// `unused variable` warning from either arm.
 #[test]
 fn a_path_bound_operation_beside_a_query_reader_still_dispatches_from_the_path_alone() {
     let (status, body) = dispatched("/orgs/acme/documents/d1", "");
@@ -158,8 +157,6 @@ fn the_route_table_lists_both_routes() {
     assert_eq!(routes[1].operation(), "list-documents");
 }
 
-/// `IncomingRequest` reads back everything it was built with, exercised here for this
-/// dispatcher's own expansion.
 #[test]
 fn an_incoming_request_reads_back_its_body_headers_and_query() {
     let request = IncomingRequest::new(
@@ -178,8 +175,6 @@ fn an_incoming_request_reads_back_its_body_headers_and_query() {
     );
 }
 
-/// An owner-installed `FaultHandler` still builds an `OutgoingResponse` by hand on this
-/// dispatcher, exercising `OutgoingResponse::new` and its `headers()` accessor directly.
 #[test]
 fn an_installed_fault_handler_still_builds_an_outgoing_response_by_hand() {
     let request = IncomingRequest::new(

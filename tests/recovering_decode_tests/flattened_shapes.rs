@@ -1077,10 +1077,6 @@ where
     assert_eq!(walker_left::<S>(stored).0, serde_left::<S>(stored).0);
 }
 
-/// serde reads a struct with named fields flattened by taking the entries under its keys out of
-/// what is left, so a type flattened after it is handed none of them. One flattened before it is
-/// handed them all. A single-slot struct, a generic brand, an `Option` and a `Box` over the
-/// struct are read as it is.
 #[test]
 fn serde_takes_the_keys_of_a_flattened_struct_out_of_what_is_left() {
     let stored = json!({ "id": "i", "revision": "r", "x": 1_i32 });
@@ -1096,9 +1092,6 @@ fn serde_takes_the_keys_of_a_flattened_struct_out_of_what_is_left() {
     assert_eq!(serde_left::<Box<Rev>>(&stored), left);
 }
 
-/// serde reads a map, a struct that itself flattens a field, an internally tagged enum and an
-/// untagged enum from what is left and takes nothing out of it: a type flattened after one is
-/// handed the same entries, the keys the first one read among them.
 #[test]
 fn serde_takes_nothing_for_a_flattened_map_a_struct_that_flattens_and_an_untagged_or_internally_tagged_enum()
  {
@@ -1122,8 +1115,6 @@ fn serde_takes_nothing_for_a_flattened_map_a_struct_that_flattens_and_an_untagge
     );
 }
 
-/// serde reads a plain enum and an externally tagged one flattened by taking the one entry whose
-/// key names a variant, and an adjacently tagged one by taking its tag and its content.
 #[test]
 fn serde_takes_the_key_naming_a_variant_and_an_adjacent_tag_and_content() {
     let after = entries(&json!({ "x": 1_i32 }));
@@ -1155,7 +1146,6 @@ fn serde_takes_the_key_naming_a_variant_and_an_adjacent_tag_and_content() {
     );
 }
 
-/// An `Option` serde reads as absent takes nothing.
 #[test]
 fn serde_takes_nothing_for_an_absent_flattened_option() {
     let stored = json!({ "id": "i", "x": 1_i32 });
@@ -1169,8 +1159,6 @@ fn serde_takes_nothing_for_an_absent_flattened_option() {
     assert_eq!(serde_left::<NewestRev>(&stored), left);
 }
 
-/// serde refuses to flatten a tuple struct of two slots and a single-slot struct over text, over
-/// a list or over a tuple, wherever it is declared.
 #[test]
 fn serde_refuses_to_flatten_a_tuple_struct_and_a_slot_over_text_a_list_or_a_tuple() {
     let stored = json!({ "id": "i", "x": 1_i32 });
@@ -1192,6 +1180,7 @@ fn serde_refuses_to_flatten_a_tuple_struct_and_a_slot_over_text_a_list_or_a_tupl
 /// serde hands an internally tagged variant's value the object without the tag's entry.
 #[test]
 fn serde_hands_an_internally_tagged_variants_value_the_object_without_the_tag() {
+    /// An internally tagged enum whose one variant holds a `Rest`.
     #[derive(Debug, Deserialize, PartialEq, Serialize)]
     #[serde(tag = "kind")]
     enum Tagged {
@@ -1207,8 +1196,6 @@ fn serde_hands_an_internally_tagged_variants_value_the_object_without_the_tag() 
     );
 }
 
-/// What the walker is told serde leaves is what serde leaves, for every shape: each type's own
-/// reader says which entries serde takes for it.
 #[test]
 fn the_walker_is_told_what_serde_leaves_by_each_types_own_reader() {
     let keyed = json!({ "id": "i", "revision": "r", "x": 1_i32 });
@@ -1252,7 +1239,6 @@ fn no_copy_is_made_of_what_is_left_where_serde_takes_nothing() {
     assert!(walker_left::<Rev>(&json!({ "id": "i", "revision": "r", "x": 1_i32 })).1);
 }
 
-/// A flattened type declared after a flattened struct is handed none of that struct's keys.
 #[test]
 fn a_flattened_type_declared_after_a_flattened_struct_is_handed_none_of_its_keys() {
     let two = Two {
@@ -1287,8 +1273,6 @@ fn an_internally_tagged_variants_value_is_handed_the_object_without_the_tag() {
     assert_eq!(calls, 0);
 }
 
-/// A flattened single-slot struct over a map, over an `Option` of a struct and a flattened
-/// generic brand filled with a struct each claim the keys serde reads for them.
 #[test]
 fn a_flattened_single_slot_struct_claims_the_keys_serde_reads_for_it() {
     let mut calls = 0_u32;
@@ -1324,8 +1308,6 @@ fn a_flattened_single_slot_struct_claims_the_keys_serde_reads_for_it() {
     assert_eq!(calls, 0);
 }
 
-/// A flattened plain enum is the key naming its variant, holding `null`, and that key is its own:
-/// flattened in a struct, and held by an internally tagged variant.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 #[test]
 fn a_flattened_plain_enum_claims_the_key_naming_its_variant() {
@@ -1351,10 +1333,6 @@ fn a_flattened_plain_enum_claims_the_key_naming_its_variant() {
     assert_eq!(calls, 0);
 }
 
-/// A shape serde reads by taking its keys, flattened before a type that takes every key, leaves
-/// that type none of them: the walker reads what serde reads. Flattened after it, the keys are
-/// handed to that type first, which cannot hold them, so serde refuses the record and so does the
-/// walker.
 #[test]
 fn a_shape_that_takes_its_keys_reads_before_a_type_that_takes_every_key_and_not_after_it() {
     let keyed = json!({ "a": 1_i32, "id": "i", "revision": "r", "title": "t" });
@@ -1383,9 +1361,6 @@ fn a_shape_that_takes_its_keys_reads_before_a_type_that_takes_every_key_and_not_
     assert!(!agrees::<RimLast>(&dotted));
 }
 
-/// A shape serde reads without taking anything leaves its keys for a type that takes every key,
-/// in either order: serde reads the record where that type can hold them, refuses it where it
-/// cannot, and the walker does the same.
 #[test]
 fn a_shape_that_takes_nothing_shares_its_keys_with_a_type_that_takes_every_key() {
     // A variant's key held as a number is one the map of numbers reads as well.
@@ -1411,8 +1386,6 @@ fn a_shape_that_takes_nothing_shares_its_keys_with_a_type_that_takes_every_key()
     assert!(!agrees::<ExtrasLast>(&counted));
 }
 
-/// An `Option` serde reads as absent takes nothing and is handed nothing it reads: the record
-/// reads in either order.
 #[test]
 fn an_absent_optional_shape_reads_before_and_after_a_type_that_takes_every_key() {
     let absent = json!({ "a": 1_i32, "id": "i", "title": "t" });
@@ -1424,8 +1397,6 @@ fn an_absent_optional_shape_reads_before_and_after_a_type_that_takes_every_key()
     assert!(agrees::<NewestRevLast>(&absent));
 }
 
-/// A plain enum flattened before a type that takes every key gives up the key naming its
-/// variant, and flattened after it leaves that key, held as `null`, for the first to refuse.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 #[test]
 fn a_plain_enum_flattened_before_and_after_a_type_that_takes_every_key_reads_as_serde_reads_it() {
@@ -1434,8 +1405,6 @@ fn a_plain_enum_flattened_before_and_after_a_type_that_takes_every_key_reads_as_
     assert!(!agrees::<MoodLast>(&calm));
 }
 
-/// Every other place a type is handed an object its caller reads keys from hands it what serde
-/// hands it there: a type that takes every key reads what serde wrote, with no call.
 #[test]
 fn every_place_a_type_is_handed_an_object_hands_it_what_serde_hands_it() {
     let held = json!({ "a": 1_i32, "title": "t" });
@@ -1456,8 +1425,6 @@ fn every_place_a_type_is_handed_an_object_hands_it_what_serde_hands_it() {
     assert!(agrees::<Optioned>(&json!({ "id": "i", "revision": "r" })));
 }
 
-/// An untagged variant that holds a plain enum, flattened: the key naming the plain enum's
-/// variant is its own.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 #[test]
 fn a_flattened_untagged_variant_over_a_plain_enum_claims_the_key_naming_its_variant() {
@@ -1470,8 +1437,6 @@ fn a_flattened_untagged_variant_over_a_plain_enum_claims_the_key_naming_its_vari
     assert!(agrees::<Felt>(&written));
 }
 
-/// An issue in a type handed what serde hands it is listed once, where it sits: a count held as
-/// text at its key, and a key of the struct declared first held as the wrong type at that key.
 #[test]
 fn an_issue_in_a_type_handed_what_serde_hands_it_is_listed_once_where_it_sits() {
     let count_as_text = json!({ "a": "x", "id": "i", "revision": "r", "title": "t" });
@@ -1505,9 +1470,6 @@ fn an_issue_in_a_type_handed_what_serde_hands_it_is_listed_once_where_it_sits() 
     );
 }
 
-/// An issue in what a flattened single-slot struct holds is what the type that flattens that
-/// value itself lists for it. The issue of an `Option` serde reads as absent holds what the
-/// single-slot struct was handed, which is all it has.
 #[test]
 fn an_issue_in_a_flattened_single_slot_struct_is_what_a_flattened_field_of_its_value_lists() {
     let bag_count = json!({ "a": "x", "title": "t" });
@@ -1542,9 +1504,6 @@ fn an_issue_in_a_flattened_single_slot_struct_is_what_a_flattened_field_of_its_v
     );
 }
 
-/// A flattened plain enum lists what an externally tagged enum lists for a variant that holds
-/// nothing: nothing where a variant's key holds something other than `null`, which serde refuses,
-/// and `Missing` where no key names a variant.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 #[test]
 fn a_flattened_plain_enum_lists_what_an_externally_tagged_enum_lists_for_a_unit_variant() {
@@ -1562,8 +1521,6 @@ fn a_flattened_plain_enum_lists_what_an_externally_tagged_enum_lists_for_a_unit_
     );
 }
 
-/// A key nothing declares, beside two flattened structs neither of which takes every key, is
-/// `Unknown` once, at the outer object's path.
 #[test]
 fn a_key_no_flattened_struct_declares_is_unknown_once_beside_two_of_them() {
     let stored = json!({ "id": "i", "legacy": true, "number": 3_i32, "revision": "r" });
@@ -1574,9 +1531,6 @@ fn a_key_no_flattened_struct_declares_is_unknown_once_beside_two_of_them() {
     );
 }
 
-/// More single-slot structs serde flattens claim what serde reads for them: one over an `Option`
-/// of a map, one over a JSON value, a generic brand filled with a map, and one over an `Option`
-/// of an `Option` of a struct.
 #[test]
 fn a_flattened_single_slot_struct_over_an_optional_map_or_a_json_value_claims_what_serde_reads() {
     let counted = json!({ "a": 1_i32, "title": "t" });
@@ -1590,9 +1544,6 @@ fn a_flattened_single_slot_struct_over_an_optional_map_or_a_json_value_claims_wh
     assert!(agrees::<Deeper>(&json!({ "name": "n" })));
 }
 
-/// A type parameter, flattened as a field or inside a generic brand, gives up to the flattened
-/// type declared after it the keys serde takes for whatever fills it. A flattened map declared
-/// after an optional one is walked, and handed none of its keys.
 #[test]
 fn a_flattened_type_declared_after_a_flattened_type_parameter_is_handed_what_its_filling_left() {
     let texted = json!({ "a": 1_i32, "id": "i", "text": "x", "title": "t" });
@@ -1610,9 +1561,6 @@ fn a_flattened_type_declared_after_a_flattened_type_parameter_is_handed_what_its
     );
 }
 
-/// A single-slot struct whose slot a hook reads is handed to the hook as serde hands it: it is
-/// read whole, and every key is its own. Over an `Option`, serde reads it as absent where the hook
-/// does, and nothing is listed for it.
 #[test]
 fn a_flattened_single_slot_struct_with_a_hooked_slot_claims_what_its_hook_reads() {
     let numbered = json!({ "id": "i", "number": 3_i32 });
@@ -1635,8 +1583,6 @@ fn a_flattened_single_slot_struct_with_a_hooked_slot_claims_what_its_hook_reads(
     );
 }
 
-/// A flattened type parameter filled with an `Option` is absent to serde wherever the value does
-/// not read, so a record written with it absent is no issue. With it there, it is read.
 #[test]
 fn a_flattened_parameter_filled_with_an_absent_option_is_no_issue() {
     let letter = Letter::<Option<Plain>> {
@@ -1657,8 +1603,6 @@ fn a_flattened_parameter_filled_with_an_absent_option_is_no_issue() {
     assert!(agrees::<Pocket>(&json!({ "id": "i", "text": "t" })));
 }
 
-/// A flattened `Option` read through a hook is absent to serde wherever the hook's read of it is
-/// refused, so a record written with it absent is no issue. With it there, it is read.
 #[test]
 fn a_flattened_option_behind_a_hook_that_is_absent_is_no_issue() {
     assert!(agrees::<DirectMaybe>(&json!({ "id": "i" })));
@@ -1667,8 +1611,6 @@ fn a_flattened_option_behind_a_hook_that_is_absent_is_no_issue() {
     ));
 }
 
-/// serde reads an `Option` behind a hook or in what fills a parameter as absent where what it
-/// holds is refused, and reads the record. Nothing here sees that `Option`, so nothing is listed.
 #[test]
 fn a_value_refused_inside_a_flattened_option_not_seen_is_read_as_absent() {
     let mut calls = 0_u32;
@@ -1699,8 +1641,6 @@ fn a_value_refused_inside_a_flattened_option_not_seen_is_read_as_absent() {
     assert_eq!(calls, 0);
 }
 
-/// A value read whole that is no `Option` and that its reader refuses is listed at the object, as
-/// serde refuses the record.
 #[test]
 fn a_flattened_value_read_whole_that_its_reader_refuses_is_invalid_at_the_object() {
     let number_as_text = json!({ "id": "i", "number": "3" });
@@ -1721,9 +1661,6 @@ fn a_flattened_value_read_whole_that_its_reader_refuses_is_invalid_at_the_object
     );
 }
 
-/// Every kind of flattened field reads what serde wrote for it with no call: a map, a flagged
-/// type, a value read whole through a hook, of a parameter's type and of a JSON value's type, and
-/// an `Option` of each, there and absent.
 #[test]
 fn every_kind_of_flattened_field_reads_what_serde_wrote_with_no_call() {
     assert!(agrees::<Counts>(&json!({ "a": 1_i32, "title": "t" })));
@@ -1753,8 +1690,6 @@ fn every_kind_of_flattened_field_reads_what_serde_wrote_with_no_call() {
     assert!(agrees::<MaybeOpenEnded>(&json!({ "id": "i" })));
 }
 
-/// A flattened field serde writes and never reads leaves its keys in the object: serde reads past
-/// them, and no key is `Unknown`.
 #[test]
 fn a_flattened_field_serde_never_reads_is_read_past() {
     let written = serde_json::to_value(NeverRead {

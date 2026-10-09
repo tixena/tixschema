@@ -8,7 +8,6 @@
 #[path = "../../tests/mongodb_operation_tests/tests.rs"]
 mod tests;
 
-/// The major version of the `bson` library this binary is built against, as a stand-down names it.
 #[cfg(test)]
 #[cfg(feature = "mongodb")]
 const BSON_MAJOR: u8 = 3;

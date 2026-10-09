@@ -320,8 +320,6 @@ fn members_of(written: &str) -> String {
         .map_or_else(String::new, |(declared, _)| declared.to_owned())
 }
 
-/// The client's constructors mint the same way the dispatcher's two do — the fields the Rust
-/// declaration published, then the assertion into the sealed type.
 #[test]
 fn the_fault_the_client_builds_is_minted_from_the_fields_and_sealed() {
     let written = client_of(MIXED_SERVICE);
@@ -347,9 +345,6 @@ fn the_fault_the_client_builds_is_minted_from_the_fields_and_sealed() {
     );
 }
 
-/// A refusal carries a fault, so a hand-written refusal needs a hand-written fault — which is what
-/// the seal stops. The type is unchanged; what it now demands is a value only the generated code
-/// can produce.
 #[test]
 fn the_refusal_a_one_way_method_throws_carries_a_sealed_fault() {
     let written = client_of(MIXED_SERVICE);
@@ -364,8 +359,6 @@ fn the_refusal_a_one_way_method_throws_carries_a_sealed_fault() {
     );
 }
 
-/// Each `header_in` value goes out JSON-encoded, an optional one holding `undefined` as `null` —
-/// what the Rust client writes for a `None`.
 #[test]
 fn a_header_in_argument_is_sent_json_encoded_beside_the_message() {
     let written = client_of(TS_HEADER_TUPLE_SERVICE);
@@ -390,8 +383,6 @@ fn a_header_in_argument_is_sent_json_encoded_beside_the_message() {
     );
 }
 
-/// A header tuple is rejoined from the reply: the body off the envelope, each header off the
-/// reply's own headers through its slot schema, and a missing or malformed one a fault.
 #[test]
 fn a_header_tuple_reply_is_rejoined_from_the_envelope_and_the_reply_headers() {
     let written = client_of(TS_HEADER_TUPLE_SERVICE);

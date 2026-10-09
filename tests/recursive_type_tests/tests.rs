@@ -1,3 +1,5 @@
+//! Tests of types that hold themselves, directly or through another type.
+
 /// What a self-referential type describes as on the JSON-schema and TypeScript surfaces.
 ///
 /// Each description runs in a child copy of this test binary: a description that doesn't
@@ -96,8 +98,7 @@ mod describes {
         }
     }
 
-    /// Produces the one description a parent run asked for. Without [`DESCRIPTION_VAR`] this is
-    /// not a child run and there is nothing to produce.
+    /// Produces the one description a parent run asked for.
     #[test]
     fn production() {
         let Ok(description) = env::var(DESCRIPTION_VAR) else {
@@ -201,8 +202,6 @@ mod describes {
         );
     }
 
-    /// Neither expansion can see the cycle: each is written before the other exists, and a type
-    /// names the other by inlining it. Only the run knows it has come back around.
     #[test]
     fn two_types_naming_each_other_terminate_and_resolve() {
         for (description, def_name) in [("mutual_ping_json", "Ping"), ("mutual_pong_json", "Pong")]
@@ -221,8 +220,6 @@ mod describes {
         }
     }
 
-    /// A cycle longer than a pair closes just the same, and closes on the one name the run
-    /// re-entered rather than on every name it passed through.
     #[test]
     fn a_three_type_cycle_terminates_and_resolves() {
         let document: Value = serde_json::from_str(&produced("cycle_json")).unwrap();
@@ -240,8 +237,7 @@ mod describes {
         );
     }
 
-    /// A recursive type carries references that are pointers from a document root. Held by another
-    /// type, the root is the holder's, so that is where its definition has to be.
+    /// A recursive type carries references that are pointers from a document root.
     #[test]
     fn a_recursive_type_held_by_another_resolves_in_the_holders_document() {
         let document: Value = serde_json::from_str(&produced("held_json")).unwrap();
@@ -259,8 +255,6 @@ mod describes {
         assert!(every_reference_resolves(&document) >= 2);
     }
 
-    /// The definition is hoisted once however many positions name the type, and every position
-    /// points at that one entry — a field, an array element, a map value.
     #[test]
     fn a_recursive_type_named_from_several_positions_is_hoisted_once() {
         let document: Value = serde_json::from_str(&produced("registry_json")).unwrap();
@@ -285,8 +279,6 @@ mod describes {
         assert!(every_reference_resolves(&document) >= 4);
     }
 
-    /// A recursive type holding another one puts two definitions at the same root, and the
-    /// document is the reference into its own.
     #[test]
     fn a_recursive_type_holding_another_hoists_both_definitions() {
         let document: Value = serde_json::from_str(&produced("nested_json")).unwrap();
@@ -356,8 +348,7 @@ pub struct Address {
 }
 
 // The types below exist to be described as JSON schema and nothing else — the Zod and TypeScript
-// surfaces they also carry are read off the types above. So they are written only where something
-// asks them what they describe as.
+// surfaces they also carry are read off the types above.
 
 /// One half of a pair that names the other half, written before that half exists.
 #[cfg(feature = "jsonschema")]
@@ -542,7 +533,7 @@ pub struct TreeNode {
     pub val: String,
 }
 
-/// Test 1: Recursive enum with `Vec` of self.
+/// Recursive enum with `Vec` of self.
 #[test]
 fn test_recursive_enum_with_vec() {
     let zod = RecursiveVecEnum::zod_schema();
@@ -558,7 +549,7 @@ fn test_recursive_enum_with_vec() {
     );
 }
 
-/// Test 2: Recursive enum with `HashMap` of self.
+/// Recursive enum with `HashMap` of self.
 #[test]
 fn test_recursive_enum_with_hashmap() {
     let zod = RecursiveMapEnum::zod_schema();
@@ -574,7 +565,7 @@ fn test_recursive_enum_with_hashmap() {
     );
 }
 
-/// Test 3: Recursive struct with `Vec` of self.
+/// Recursive struct with `Vec` of self.
 #[test]
 fn test_recursive_struct() {
     let zod = TreeNode::zod_schema();
@@ -590,7 +581,7 @@ fn test_recursive_struct() {
     );
 }
 
-/// Test 4: Complex `DynamicValue`-like enum with multiple recursive variants.
+/// Complex `DynamicValue`-like enum with multiple recursive variants.
 #[test]
 fn test_complex_dynamic_value() {
     let zod = DynamicValueTest::zod_schema();
@@ -615,7 +606,7 @@ fn test_complex_dynamic_value() {
     );
 }
 
-/// Test 5: Non-recursive types should not use getter syntax.
+/// Non-recursive types should not use getter syntax.
 #[test]
 fn test_non_recursive_enum_no_getter() {
     let zod = SimpleEnum::zod_schema();
@@ -626,7 +617,7 @@ fn test_non_recursive_enum_no_getter() {
     );
 }
 
-/// Test 6: Non-recursive struct should not use getter syntax.
+/// Non-recursive struct should not use getter syntax.
 #[test]
 fn test_non_recursive_struct_no_getter() {
     let zod = SimpleStruct::zod_schema();
@@ -637,7 +628,7 @@ fn test_non_recursive_struct_no_getter() {
     );
 }
 
-/// Test 7: Struct referencing other types (not self) should not use getter.
+/// Struct referencing other types (not self) should not use getter.
 #[test]
 fn test_struct_with_sibling_type_no_getter() {
     let zod = Person::zod_schema();
@@ -648,7 +639,7 @@ fn test_struct_with_sibling_type_no_getter() {
     );
 }
 
-/// Test 8: Named struct variant with recursive field.
+/// Named struct variant with recursive field.
 #[test]
 fn test_recursive_named_struct_variant() {
     let zod = TreeEnum::zod_schema();
@@ -664,9 +655,7 @@ fn test_recursive_named_struct_variant() {
     );
 }
 
-/// Test 8b: the same recursive field, now nested under an adjacent form's content key. The field's
-/// own getter still defers the reference; the content key needs none — a second getter would be
-/// wrong precedent (see `render_external_variant`'s `defer_key`, never set for a `Named` variant).
+/// The same recursive field, now nested under an adjacent form's content key.
 #[test]
 fn test_recursive_named_struct_variant_adjacent() {
     let zod = TreeEnumAdjacent::zod_schema();
@@ -684,7 +673,7 @@ fn test_recursive_named_struct_variant_adjacent() {
     assert!(!zod.contains("get \"value\""), "Got: {zod}");
 }
 
-/// Test 9: Struct holding at most one of itself.
+/// Struct holding at most one of itself.
 #[test]
 fn test_recursive_boxed_option_struct() {
     let zod = ChainNode::zod_schema();
@@ -699,10 +688,6 @@ fn test_recursive_boxed_option_struct() {
     );
 }
 
-/// Test 10: a non-generic forward reference — a bare, zero-argument sibling declared BELOW the
-/// type naming it — has to defer exactly as a generic forward reference does, or the module
-/// throws at import in every concatenation order: whichever half lands first names a `const` the
-/// other has not published yet.
 #[test]
 fn test_non_generic_forward_reference_defers_through_a_getter() {
     let chapter_zod = Chapter::zod_schema();

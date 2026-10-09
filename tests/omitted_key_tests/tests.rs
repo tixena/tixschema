@@ -76,8 +76,6 @@ fn the_omitted_key_is_absent_from_the_payload_serde_writes() {
     );
 }
 
-/// The predicate drops the key for an empty `Vec` and writes it for a full one, and `default` is
-/// what reads the dropped key back — the pair the surfaces below have to admit.
 #[test]
 fn the_predicate_omitted_key_is_absent_from_the_payload_serde_writes() {
     assert_eq!(
@@ -111,8 +109,7 @@ fn typescript_writes_the_option_as_undefined_valued() {
     assert!(ts.contains("roles: Array<string>;"), "Got: {ts}");
 }
 
-/// The key is optional; the value under it never is. A `Vec` serde declined to write is still a
-/// `Vec` when it is written, so the type keeps its own spelling and only the key gains the `?`.
+/// The key is optional; the value under it never is.
 #[test]
 #[cfg(feature = "typescript")]
 fn typescript_writes_the_predicate_omitted_key_as_optional() {
@@ -123,9 +120,6 @@ fn typescript_writes_the_predicate_omitted_key_as_optional() {
     assert!(ts.contains("id: string;"), "Got: {ts}");
 }
 
-/// The Zod spelling already admits the payload without the key — a `z.strictObject` rejects an
-/// unrecognized key, never a missing one whose schema accepts `undefined` — so it is left as it
-/// stands, and this pins that it was not disturbed.
 #[test]
 #[cfg(feature = "zod")]
 fn zod_keeps_the_undefined_union_that_already_admits_the_absent_key() {
@@ -141,10 +135,6 @@ fn zod_keeps_the_undefined_union_that_already_admits_the_absent_key() {
     assert!(zod.contains("roles: z.array(z.string()),"), "Got: {zod}");
 }
 
-/// A plain `z.array(...)` member rejects the payload serde writes for an empty `Vec` — recorded
-/// against zod 4.4.3 under node v26.2.0, `safeParse({ id: "1" })` failing with `invalid_type` at
-/// `roles`. `.optional()` admits the absent key while still rejecting `null` and an unrecognized
-/// key under `z.strictObject`.
 #[test]
 #[cfg(feature = "zod")]
 fn zod_marks_the_predicate_omitted_key_optional() {
@@ -189,8 +179,6 @@ fn the_json_schema_describes_the_predicate_omitted_key_without_requiring_it() {
     );
 }
 
-/// Dart has no absent-key spelling: a `Map<String, dynamic>` answers a dropped key and an explicit
-/// `null` alike, so the key the other three surfaces mark optional is the value's own nullability.
 #[test]
 #[cfg(feature = "dart")]
 fn dart_reads_the_predicate_omitted_key_through_a_null_guard() {

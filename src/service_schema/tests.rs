@@ -82,10 +82,8 @@ const ONE_WAY_SERVICE: &str = "
     }
 ";
 
-/// A service exercising every arm of the `http(...)` grammar: a full group with a path
-/// placeholder, a claimed header, a written-out header and a complete status table; a group
-/// naming only `method` and `path`, to read the defaults the rest falls back to; a one-way
-/// operation whose group also falls back to a default; and an operation naming no group at all.
+/// A service exercising every arm of the `http(...)` grammar, beside an operation naming no group
+/// at all.
 const HTTP_SERVICE: &str = r#"
     pub trait DocumentService<Ctx> {
         #[service_schema_op(http(
@@ -136,9 +134,8 @@ const BYTES_SERVICE: &str = r#"
     }
 "#;
 
-/// A service declaring one `body = "stream"` operation, its reply the `StreamedAnswer` shape
-/// `body = "stream"` requires, reading a range header through `header_in` exactly like any other
-/// bound header.
+/// A service declaring one `body = "stream"` operation that reads a range header through
+/// `header_in`.
 const STREAM_SERVICE: &str = r#"
     pub trait ContentService<Ctx> {
         #[service_schema_op(http(
@@ -558,14 +555,6 @@ fn spelled(declared_type: &Type) -> String {
     declared_type.to_token_stream().to_string()
 }
 
-/// The one import that decides where a service may be declared.
-///
-/// The generated module reaches the trait and every message type the author declared beside it
-/// through `super`, so a declaration written inside a function body resolves none of them: a module
-/// nested in a function body has the enclosing module as its parent, not the function. The macro
-/// cannot refuse that placement — an attribute macro is handed the annotated item's tokens and
-/// nothing about the scope around them — so this reads back the mechanism instead, and the doctest
-/// pair on `support::emit` reads the four errors a function-scoped declaration earns.
 #[test]
 fn the_generated_module_reaches_the_author_s_declarations_through_super() {
     let emitted = expanded(MIXED_SERVICE);
@@ -1140,10 +1129,6 @@ fn dispatch_is_generic_over_the_implementing_type_and_answers_through_the_handle
     );
 }
 
-/// The dispatcher is a stored token sequence, not compiled items: nothing of it is built where the
-/// service is declared, and every `dispatch` in the expansion is inside a macro rather than at the
-/// trait's own scope. The server macro carries its own copy beside the dispatcher's, built by the
-/// same emitter, because a consumer may place either macro without the other.
 #[test]
 fn the_dispatcher_is_emitted_inside_the_macro_and_nowhere_at_the_trait_s_own_scope() {
     let emitted = expanded_over_amqp_rpc(MIXED_SERVICE);
@@ -1167,8 +1152,6 @@ fn the_dispatcher_is_emitted_inside_the_macro_and_nowhere_at_the_trait_s_own_sco
     );
 }
 
-/// The list is read as the service wrote it, duplicates and all, and the emission walks the
-/// registry instead — one `#[macro_export]` name cannot be defined twice in one crate.
 #[test]
 fn a_transport_named_twice_contributes_one_macro() {
     let emitted = exec_service_schema(
@@ -1185,11 +1168,6 @@ fn a_transport_named_twice_contributes_one_macro() {
     );
 }
 
-/// A service that asked for no transport is emitted its contract and nothing else.
-///
-/// Both halves are read here rather than the absences alone: a regression that stopped emitting the
-/// contract would pass a test that only asked what is missing, and the contract is what a
-/// hand-written dispatcher is written against.
 #[test]
 fn a_service_asking_for_no_transport_is_emitted_the_contract_and_nothing_else() {
     let emitted = expanded(MIXED_SERVICE);
@@ -1267,12 +1245,6 @@ fn a_service_asking_for_no_transport_is_emitted_the_contract_and_nothing_else() 
     );
 }
 
-/// `ws_rpc`'s own `emit` publishes a dispatcher carrying the shared dispatch items plus this
-/// transport's own frame codec, `FrameReply` and `answer`, and a client carrying the shared client
-/// items plus its own copy of the frame codec, `request_frame`, `notify_frame`, `FrameWriter` and
-/// `FrameSession` — and nothing either the `amqp_rpc`/`http_rest` transports or a server macro own,
-/// `ws_rpc` publishing no server macro at all. The dispatcher's own body carries none of the
-/// client's items, and the client's own body carries none of the dispatcher's.
 #[test]
 fn a_service_asking_for_only_ws_rpc_emits_its_dispatcher_and_its_client() {
     let expansion = expansion_over_ws_rpc(MIXED_SERVICE);
@@ -1353,10 +1325,6 @@ fn a_service_asking_for_only_ws_rpc_emits_its_dispatcher_and_its_client() {
     );
 }
 
-/// The dispatcher's own `Frame` reads a request, a notify or a ping — the reply frame and the
-/// liveness probe it originates are the client's alone, so the dispatcher body carries neither the
-/// `Reply` variant nor `ping_frame`. A one-way-only service's dispatch never calls `Reply::send`,
-/// so its `Reply` and `FrameReply` publish `fault` alone.
 #[test]
 fn the_ws_rpc_dispatcher_body_carries_no_reply_variant_and_no_ping_frame() {
     let body = macro_body_over_ws_rpc(MIXED_SERVICE, "usage_service_ws_rpc_dispatcher");
@@ -1379,9 +1347,6 @@ fn the_ws_rpc_dispatcher_body_carries_no_reply_variant_and_no_ping_frame() {
     );
 }
 
-/// The client's own `Frame` reads a reply, a ping or a pong - the request and notify frames, and
-/// the `IncomingMessage` they carry, are the dispatcher's alone to decode: a client sends
-/// operations and reads answers, never dispatches one.
 #[test]
 fn the_ws_rpc_client_body_carries_no_request_or_notify_variant_and_no_incoming_message() {
     let body = macro_body_over_ws_rpc(MIXED_SERVICE, "usage_service_ws_rpc_client");
@@ -1393,10 +1358,6 @@ fn the_ws_rpc_client_body_carries_no_request_or_notify_variant_and_no_incoming_m
     }
 }
 
-/// The client macro's own body: `SERVICE`, `Frame` and its `decode`, `request_frame`,
-/// `notify_frame`, `FrameWriter` and `FrameSession` (`Clone`, `new`, `deliver`, `close`), types
-/// preceding impls preceding functions, the way [`the_ws_rpc_dispatcher_macro_is_grouped_types_then_impls_then_functions`]
-/// holds for the dispatcher.
 #[test]
 fn the_ws_rpc_client_macro_carries_the_frame_codec_and_both_transports_grouped_types_then_impls_then_functions()
  {
@@ -1431,8 +1392,6 @@ fn the_ws_rpc_client_macro_carries_the_frame_codec_and_both_transports_grouped_t
     assert!(request_frame_fn < notify_frame_fn, "Got: {body}");
 }
 
-/// `FrameSession` publishes `new`, `deliver` and `close`, `FrameWriter` publishes `new`, and both
-/// implement `Transport`.
 #[test]
 fn frame_writer_and_frame_session_publish_the_constructors_the_design_specifies() {
     let published = published_macro_over_ws_rpc(MIXED_SERVICE, "usage_service_ws_rpc_client");
@@ -1451,10 +1410,6 @@ fn frame_writer_and_frame_session_publish_the_constructors_the_design_specifies(
     );
 }
 
-/// Every runtime crate the client body calls is written with a leading `::` — `serde`,
-/// `serde_json`, `core` and `std`, the last two for `FrameSession`'s correlation map — and
-/// `tracing` is not one of them: nothing here catches a panic, so nothing here has anything to
-/// write down.
 #[test]
 fn every_runtime_crate_the_ws_rpc_client_body_calls_is_written_with_a_leading_colon_pair_and_tracing_is_not_one()
  {
@@ -1473,9 +1428,6 @@ fn every_runtime_crate_the_ws_rpc_client_body_calls_is_written_with_a_leading_co
     );
 }
 
-/// Every name the client body reaches in the declaring crate's own module is written through
-/// `$crate`, the same as every other transport's client — the trait itself is never named here,
-/// the client calling through `Transport` rather than an implementation.
 #[test]
 fn every_generated_name_the_ws_rpc_client_body_reaches_is_written_through_crate() {
     let body = macro_body_over_ws_rpc(MIXED_SERVICE, "usage_service_ws_rpc_client");
@@ -1503,8 +1455,6 @@ fn the_ws_rpc_client_macros_placement_doc_names_ws_client() {
     );
 }
 
-/// The macro takes no arguments and opens no module: the caller supplies the module, exactly as
-/// the `amqp_rpc` dispatcher does.
 #[test]
 fn the_ws_rpc_dispatcher_macro_takes_no_arguments_and_opens_no_module_of_its_own() {
     let emitted = expanded_over_ws_rpc(MIXED_SERVICE);
@@ -1519,8 +1469,6 @@ fn the_ws_rpc_dispatcher_macro_takes_no_arguments_and_opens_no_module_of_its_own
     );
 }
 
-/// Every runtime crate the macro body calls is written with a leading `::`, exactly as
-/// `amqp_rpc`'s own dispatcher is — the same crates plus `std`, for `FrameReply`'s `Mutex`.
 #[test]
 fn every_runtime_crate_the_ws_rpc_dispatcher_body_calls_is_written_with_a_leading_colon_pair() {
     let body = macro_body_over_ws_rpc(MIXED_SERVICE, "usage_service_ws_rpc_dispatcher");
@@ -1533,8 +1481,6 @@ fn every_runtime_crate_the_ws_rpc_dispatcher_body_calls_is_written_with_a_leadin
     }
 }
 
-/// Every name the macro body reaches in the declaring crate is written through `$crate`, exactly
-/// as `amqp_rpc`'s own dispatcher is.
 #[test]
 fn every_generated_name_the_ws_rpc_dispatcher_body_reaches_is_written_through_crate() {
     let body = macro_body_over_ws_rpc(MIXED_SERVICE, "usage_service_ws_rpc_dispatcher");
@@ -1559,8 +1505,6 @@ fn every_generated_name_the_ws_rpc_dispatcher_body_reaches_is_written_through_cr
     }
 }
 
-/// Types, then impls, then functions, whole macro through — the grouping
-/// `clippy::arbitrary_source_item_ordering` asks for by default and every other macro here holds.
 #[test]
 fn the_ws_rpc_dispatcher_macro_is_grouped_types_then_impls_then_functions() {
     let body = macro_body_over_ws_rpc(MIXED_SERVICE, "usage_service_ws_rpc_dispatcher");
@@ -1586,8 +1530,6 @@ fn the_ws_rpc_dispatcher_macro_is_grouped_types_then_impls_then_functions() {
     );
 }
 
-/// The macro doc carries the same placement section `amqp_rpc`'s dispatcher does, naming this
-/// transport's own module.
 #[test]
 fn the_ws_rpc_dispatcher_macros_placement_doc_names_ws_transport() {
     let emitted = expanded_over_ws_rpc(MIXED_SERVICE);
@@ -1601,8 +1543,6 @@ fn the_ws_rpc_dispatcher_macros_placement_doc_names_ws_transport() {
     );
 }
 
-/// `SERVICE` publishes the trait's own ident, unrenamed — the name `Frame::decode` and `answer`
-/// match a frame's own `service` field against.
 #[test]
 fn service_const_publishes_the_traits_own_ident() {
     let published = published_macro_over_ws_rpc(MIXED_SERVICE, "usage_service_ws_rpc_dispatcher");
@@ -1612,8 +1552,6 @@ fn service_const_publishes_the_traits_own_ident() {
     );
 }
 
-/// A service declaring both envelope transports together earns one refusal that names both,
-/// rather than one refusal per transport that carries the envelope.
 #[test]
 fn a_streamed_body_beside_both_envelope_transports_is_refused_once_naming_both() {
     let refused = stream_envelope_refusal(
@@ -1631,8 +1569,6 @@ fn a_streamed_body_beside_both_envelope_transports_is_refused_once_naming_both()
     );
 }
 
-/// The multipart guard combines the same way: one refusal, naming every envelope transport the
-/// service declared.
 #[test]
 fn a_multipart_file_part_beside_both_envelope_transports_is_refused_once_naming_both() {
     let refused = multipart_envelope_refusal(
@@ -1676,8 +1612,6 @@ fn header_out_is_error_is_untouched_on_a_service_that_does_not_declare_amqp_rpc(
     );
 }
 
-/// [`header_out_is_error_is_refused_on_a_service_that_also_declares_amqp_rpc`]'s own twin on the
-/// error side.
 #[test]
 fn error_header_out_is_error_is_refused_on_a_service_that_also_declares_amqp_rpc() {
     let refused = reserved_header_out_refusal(
@@ -1694,8 +1628,6 @@ fn error_header_out_is_error_is_refused_on_a_service_that_also_declares_amqp_rpc
     );
 }
 
-/// The macro takes no arguments and opens no module: the caller supplies the module, which is what
-/// keeps two transports in one crate from colliding.
 #[test]
 fn the_dispatcher_macro_takes_no_arguments_and_opens_no_module_of_its_own() {
     let emitted = expanded_over_amqp_rpc(MIXED_SERVICE);
@@ -1710,9 +1642,6 @@ fn the_dispatcher_macro_takes_no_arguments_and_opens_no_module_of_its_own() {
     );
 }
 
-/// Every runtime crate the macro body calls is written with a leading `::`, so it resolves in the
-/// crate that invoked the macro — which is the crate that names it in its own manifest, and the
-/// whole reason the tokens travel rather than being compiled where the service is declared.
 #[test]
 fn every_runtime_crate_the_macro_body_calls_is_written_with_a_leading_colon_pair() {
     let body = macro_body(MIXED_SERVICE, "usage_service_amqp_rpc_dispatcher");
@@ -1725,9 +1654,6 @@ fn every_runtime_crate_the_macro_body_calls_is_written_with_a_leading_colon_pair
     }
 }
 
-/// Every name the macro body reaches in the declaring crate is written through `$crate`, because a
-/// path in a `macro_rules!` body resolves where the macro was *invoked*. An unqualified one
-/// compiles only while the caller happens to share the declaring crate's scope.
 #[test]
 fn every_generated_name_the_macro_body_reaches_is_written_through_crate() {
     let body = macro_body(MIXED_SERVICE, "usage_service_amqp_rpc_dispatcher");
@@ -1758,10 +1684,6 @@ fn every_generated_name_the_macro_body_reaches_is_written_through_crate() {
     }
 }
 
-/// A transport's macro reaches the trait and the service's own module through `$crate`, which is
-/// the declaring crate's *root* however far below it the service was written. The module carries
-/// one anchor per name, so the crate that owes the re-exports is the crate that stops compiling
-/// without them.
 #[test]
 fn the_module_anchors_both_root_names_a_transport_macro_reaches() {
     let held = module_body(
@@ -1784,8 +1706,6 @@ fn the_module_anchors_both_root_names_a_transport_macro_reaches() {
     );
 }
 
-/// A service that named no transport publishes no macro, reaches no root and owes none, so the
-/// bare-service surface does not grow.
 #[test]
 fn a_service_that_asked_for_no_transport_is_anchored_at_no_root() {
     let held = module_body(
@@ -1809,9 +1729,6 @@ fn a_service_that_asked_for_no_transport_is_anchored_at_no_root() {
     }
 }
 
-/// The anchor stands for the dispatcher's own `where` clause, so it is written the way that clause
-/// is: one type argument, whatever the trait declares. Both are read off one expansion, so a trait
-/// the dispatcher could never bind is refused at the declaration rather than at every consumer.
 #[test]
 fn the_trait_anchor_binds_what_the_dispatcher_s_where_clause_binds() {
     let expansion = expansion_over_amqp_rpc(MIXED_SERVICE);
@@ -1826,8 +1743,6 @@ fn the_trait_anchor_binds_what_the_dispatcher_s_where_clause_binds() {
     );
 }
 
-/// Both anchors are located on the trait's own ident, so the caret a missing re-export earns sits
-/// on the declaration rather than on tokens with no source of their own.
 #[test]
 fn both_root_anchors_are_spanned_on_the_trait_s_ident() {
     let held = module_body(
@@ -1901,8 +1816,7 @@ fn every_kind_the_fault_publishes_is_one_the_generated_code_has_a_caller_for() {
     // only the client half is in a position to say.
     let emitted = expanded_over_amqp_rpc(MIXED_SERVICE);
     // Both halves, so the comparison cannot be satisfied by a kind that was quietly dropped: every
-    // variant the enum declares, and a constructor call for each of them. A kind with no caller is
-    // a shape a TypeScript consumer narrows on and nothing ever produces.
+    // variant the enum declares, and a constructor call for each of them.
     for (variant, built) in [
         ("FailedValidation", "ServiceFault :: failed_validation"),
         ("HandlerPanic", "ServiceFault :: handler_panic"),
@@ -1926,8 +1840,6 @@ fn every_kind_the_fault_publishes_is_one_the_generated_code_has_a_caller_for() {
     }
 }
 
-/// A dispatcher is what turns a defect into a fault, and one written by hand — or expanded from a
-/// transport's own macro — sits outside the module the fault is declared in.
 #[test]
 fn every_constructor_the_fault_carries_is_published() {
     let emitted = expanded(MIXED_SERVICE);
@@ -2188,9 +2100,7 @@ fn the_transport_seam_gives_a_call_that_never_landed_somewhere_to_be_reported() 
         !client.contains("Output = :: std :: vec :: Vec < u8 > "),
         "the reply position is the failure arm's `Ok`, not the whole answer. Got: {client}"
     );
-    // Both directions, so a seam that grew the arm and a client that ignored it fails here. Each
-    // method names its own wire name, which is what tells the five apart from the mirror's own
-    // reading of a fault that arrived carrying the kind.
+    // Both directions, so a seam that grew the arm and a client that ignored it fails here.
     assert_eq!(
         client
             .matches("ServiceFault :: transport_failure (\"")
@@ -2268,12 +2178,6 @@ fn a_fault_is_read_back_through_a_private_mirror_rather_than_by_widening_the_fau
     );
 }
 
-/// The ident the fault is declared under, which is also the name it publishes to TypeScript.
-///
-/// It carries `Fields` because in TypeScript `UsageServiceFault` is taken by the sealed type
-/// written over these members — the same members plus a brand a hand-written object cannot spell.
-/// Rust needs no such pair, the fields here being private whatever the constructors publish, so
-/// the one declaration answers to both names.
 #[test]
 fn the_fault_is_declared_under_the_name_its_fields_publish_as() {
     let emitted = expanded(MIXED_SERVICE);
@@ -2292,9 +2196,8 @@ fn the_fault_is_declared_under_the_name_its_fields_publish_as() {
 #[test]
 fn the_emitted_trait_names_the_operation_a_missing_implementation_is_refused_for() {
     let emitted = rendered(MIXED_SERVICE);
-    // rustc's `E0046` names the trait item an implementation left out, so the name a reader is
-    // sent to look for is whatever ident the emitted trait declares the operation under. The
-    // desugaring rewrites the return type and nothing about the name.
+    // rustc's `E0046` names the trait item an implementation left out, so the name a reader is sent
+    // to look for is whatever ident the emitted trait declares the operation under.
     for declared in [
         "fn apply_bundle",
         "fn can_generate",
@@ -2339,8 +2242,6 @@ fn the_readme_shows_both_one_way_refusals_the_way_the_macro_writes_them() {
     }
 }
 
-/// The name is the service snake-cased, the transport, and `client`, so `UsageService` over
-/// `amqp_rpc` publishes `usage_service_amqp_rpc_client`.
 #[test]
 fn a_service_asking_for_a_transport_publishes_its_client_as_a_macro_and_not_as_a_type() {
     let emitted = expanded_over_amqp_rpc(MIXED_SERVICE);
@@ -2388,9 +2289,6 @@ fn the_client_macro_takes_no_arguments_and_wraps_its_items_in_no_module() {
     );
 }
 
-/// Every name the declaring crate generated is reached through `$crate`, because the body is
-/// expanded in whatever module of whatever crate wanted a client. A bare one would resolve there,
-/// and resolve to nothing.
 #[test]
 fn every_generated_name_the_client_writes_is_reached_through_the_declaring_crate() {
     let code = macro_body(MIXED_SERVICE, "usage_service_amqp_rpc_client");
@@ -2438,9 +2336,6 @@ fn every_generated_name_the_client_writes_is_reached_through_the_declaring_crate
     );
 }
 
-/// Every runtime crate carries a leading `::`, because it resolves in the invoking crate and has
-/// to be named in that crate's manifest. `tracing` is not among them: nothing here catches a
-/// panic, so nothing here has anything to write down.
 #[test]
 fn every_runtime_crate_the_client_reaches_is_written_from_the_root_and_tracing_is_not_one() {
     let code = macro_body(MIXED_SERVICE, "usage_service_amqp_rpc_client");
@@ -2467,9 +2362,6 @@ fn every_runtime_crate_the_client_reaches_is_written_from_the_root_and_tracing_i
     );
 }
 
-/// Which of the two answers a message's check gives depends on the message's *concrete* type — an
-/// inherent `validate()` beats the fallback trait's — so the check is a function in the module that
-/// declared the message, and both halves call that one function rather than a copy each.
 #[test]
 fn both_halves_ask_one_operation_s_check_rather_than_a_copy_each() {
     let emitted = expanded_over_amqp_rpc(MIXED_SERVICE);
@@ -2500,19 +2392,10 @@ fn both_halves_ask_one_operation_s_check_rather_than_a_copy_each() {
     }
 }
 
-/// The struct is generated, so a consumer publishing the module it lands in cannot answer for its
-/// shape: a struct whose every field is public earns them `clippy::exhaustive_structs`, and the
-/// only fix from where they stand is an `#[allow]` over an attribute they did not write. The
-/// constructor is what keeps a transport adapter in another crate able to build one, which
-/// `#[non_exhaustive]` would have taken away from exactly the crate that needs it.
 #[test]
 fn the_incoming_message_publishes_a_constructor_and_two_readers_rather_than_its_fields() {
-    // MIXED_SERVICE declares no `http(...)` group at all, so it claims no `header_in` binding:
-    // `IncomingMessage` carries no `headers` field and publishes no accessor for one, `dead_code`
-    // being an error in plenty of consumers' builds for a field nothing in this expansion reads.
-    // The constructor still takes `headers` — every delivery carries them regardless of whether
-    // this service reads any — and drops the argument instead of storing it, which is also why
-    // it is no longer `const`: a `Vec`'s destructor cannot run inside a `const fn`.
+    // `MIXED_SERVICE` declares no `http(...)` group, so `IncomingMessage` carries no `headers`
+    // field: the constructor takes `headers` and drops the argument.
     let body = published_macro(MIXED_SERVICE, "usage_service_amqp_rpc_dispatcher");
     assert!(
         body.contains(
@@ -2544,8 +2427,6 @@ fn the_incoming_message_publishes_a_constructor_and_two_readers_rather_than_its_
     }
 }
 
-/// The two readers are what the dispatcher itself goes through, which is what keeps the fields
-/// private rather than merely spelled private.
 #[test]
 fn the_dispatcher_reads_an_incoming_message_through_its_accessors() {
     let body = published_macro(MIXED_SERVICE, "usage_service_amqp_rpc_dispatcher");
@@ -2573,9 +2454,6 @@ fn the_dispatcher_reads_an_incoming_message_through_its_accessors() {
     }
 }
 
-/// `clippy::missing_errors_doc` reaches a `pub fn` - free or inherent - answering `Result<…>` or
-/// `impl Future<Output = Result<…>>`, and a consumer cannot write the section: the doc comment is
-/// generated. Walked rather than listed, so a method added later is covered without touching this.
 #[test]
 fn every_published_function_answering_a_result_says_under_errors_what_the_failure_arm_holds() {
     let mut reached = 0_usize;
@@ -2604,9 +2482,7 @@ fn every_published_function_answering_a_result_says_under_errors_what_the_failur
     );
 }
 
-/// A fault and an answer both arrive in a reply. A service that declares none has no reply to read
-/// either out of, so emitting the mirror and the reader anyway leaves seven items dead in whatever
-/// module the consumer placed - and `dead_code` is an error in plenty of consumers' builds.
+/// A fault and an answer both arrive in a reply.
 #[test]
 fn the_fault_mirror_and_the_answer_reader_are_emitted_only_where_an_operation_answers() {
     let reading = [
@@ -2647,9 +2523,6 @@ fn the_fault_mirror_and_the_answer_reader_are_emitted_only_where_an_operation_an
     }
 }
 
-/// A service with no operation has no arm, so the guard an arm calls its implementation behind and
-/// the reader that classifies an arm's own deserialization refusal are reached from nowhere - and
-/// neither is the implementation nor the context `dispatch` would hand one.
 #[test]
 fn a_service_declaring_no_operation_is_emitted_no_item_nothing_reaches() {
     let dispatcher = published_macro(BARE_SERVICE, "bare_service_amqp_rpc_dispatcher");
@@ -2704,9 +2577,6 @@ fn a_service_declaring_no_operation_is_emitted_no_item_nothing_reaches() {
     );
 }
 
-/// Clippy's default grouping puts every type ahead of every function, so a function emitted above a
-/// type is a diagnostic in every strict consumer's build at once. Within a group nothing is
-/// ordered, but the three-way grouping costs nothing to hold and is asserted whole.
 #[test]
 fn each_macro_body_emits_its_types_then_its_impls_then_its_functions() {
     for (source, half) in [
@@ -2744,10 +2614,6 @@ fn each_macro_body_emits_its_types_then_its_impls_then_its_functions() {
     }
 }
 
-/// An `#[allow]` written into a consumer's expansion silences a check they chose, in their build,
-/// with no line of their source to explain it. `#[doc(hidden)]` reached for to the same end mutes
-/// the one lint that exists to make a fallible method documented, while hiding it from every
-/// consumer who publishes it. Neither is emitted, and neither is anything else that quiets a lint.
 #[test]
 fn neither_macro_body_carries_an_attribute_that_quiets_a_lint() {
     for (source, half) in [
@@ -2770,8 +2636,6 @@ fn neither_macro_body_carries_an_attribute_that_quiets_a_lint() {
     }
 }
 
-/// The `http_rest` transport's own two macros, held to the same standard: neither writes an
-/// attribute into a consumer's build that quiets a lint the consumer never chose to quiet.
 #[test]
 fn neither_http_rest_macro_body_carries_an_attribute_that_quiets_a_lint() {
     for half in [
@@ -2789,9 +2653,6 @@ fn neither_http_rest_macro_body_carries_an_attribute_that_quiets_a_lint() {
     }
 }
 
-/// The placement a consumer chooses decides three of the lints they see, and nothing but the
-/// documentation tells them which one measures clean. Both macros carry it, and both quote the
-/// refusal a path earns verbatim so a consumer who hits it recognises what they are reading.
 #[test]
 fn both_macro_docs_prescribe_a_file_placement_and_quote_what_a_path_is_refused_with() {
     let emitted = expanded_over_amqp_rpc(MIXED_SERVICE);
@@ -2827,9 +2688,6 @@ fn both_macro_docs_prescribe_a_file_placement_and_quote_what_a_path_is_refused_w
     );
 }
 
-/// The module header is what a reader of this crate sees, and it prescribed a placement that
-/// measures dirty until this changed: an inline module and a glob import, one guaranteed
-/// `clippy::inline_modules` and one guaranteed `clippy::wildcard_imports`.
 #[test]
 fn the_transport_module_header_prescribes_the_same_placement_the_macros_do() {
     let header = include_str!("transport/amqp_rpc.rs");
@@ -2857,8 +2715,6 @@ fn the_transport_module_header_prescribes_the_same_placement_the_macros_do() {
     }
 }
 
-/// An operation naming no `http(...)` group is bound to no `HttpBinding` at all — a transport
-/// defaults it on its own, and nothing here manufactures one to default.
 #[test]
 fn an_operation_naming_no_http_group_is_bound_to_no_http_at_all() {
     let read = service(HTTP_SERVICE);
@@ -2868,8 +2724,6 @@ fn an_operation_naming_no_http_group_is_bound_to_no_http_at_all() {
     );
 }
 
-/// A full `http(...)` group records its method, its path split into literal and placeholder
-/// segments, and the declared status table, the variant idents included.
 #[test]
 fn a_full_http_group_records_the_method_the_path_and_the_status_table() {
     let read = service(HTTP_SERVICE);
@@ -2953,8 +2807,6 @@ fn an_untagged_error_type_mapped_to_two_statuses_is_refused() {
     );
 }
 
-/// The same untagged error type mapped to a *single* status earns no refusal: every variant
-/// answers the same status regardless of which one matched, so nothing needs reading.
 #[test]
 fn an_untagged_error_type_mapped_to_one_status_is_not_refused() {
     record_untagged_enum("WidgetErrorUntaggedSingleProbe");
@@ -2974,8 +2826,6 @@ fn an_untagged_error_type_mapped_to_one_status_is_not_refused() {
     );
 }
 
-/// A `body = "bytes"` group whose reply already answers the fixed `(Vec<u8>, String)` shape
-/// records `BodyKind::Bytes` and earns no refusal.
 #[test]
 fn a_bytes_body_kind_is_recorded_on_the_binding() {
     let read = service(BYTES_SERVICE);
@@ -2983,9 +2833,6 @@ fn a_bytes_body_kind_is_recorded_on_the_binding() {
     assert!(matches!(binding.body_kind, BodyKind::Bytes));
 }
 
-/// A `body = "stream"` group whose reply already names `StreamedAnswer` records `BodyKind::Stream`
-/// and earns no refusal, `header_in("range" = byte_range)` composing with it exactly like it does
-/// for any other body kind.
 #[test]
 fn a_stream_body_kind_is_recorded_on_the_binding() {
     let read = service(STREAM_SERVICE);
@@ -2995,8 +2842,6 @@ fn a_stream_body_kind_is_recorded_on_the_binding() {
     assert_eq!(binding.header_in[0].name, "range");
 }
 
-/// `header_in` claims one ordinary argument beside the message, by name, and the message it
-/// leaves behind carries only the fields the operation's own argument list still has.
 #[test]
 fn a_header_in_binding_claims_one_argument_beside_the_message() {
     let read = service(HTTP_SERVICE);
@@ -3017,8 +2862,6 @@ fn a_header_in_binding_claims_one_argument_beside_the_message() {
     );
 }
 
-/// A bare `header_out(\"name\")` is recorded in declaration order, matching the tuple the success
-/// type is checked against.
 #[test]
 fn a_header_out_binding_is_recorded_in_declaration_order() {
     let read = service(HTTP_SERVICE);
@@ -3026,8 +2869,6 @@ fn a_header_out_binding_is_recorded_in_declaration_order() {
     assert_eq!(binding.header_out, vec!["etag".to_owned()]);
 }
 
-/// A group naming only `method` and `path` gets 200 for a reply that is not empty, and claims no
-/// header in either direction.
 #[test]
 fn an_http_group_naming_no_ok_status_defaults_to_200_for_a_reply() {
     let read = service(HTTP_SERVICE);
@@ -3118,8 +2959,6 @@ fn an_http_group_naming_an_unknown_method_is_refused() {
     );
 }
 
-/// A path placeholder naming no field the message has is refused, naming the placeholder — read
-/// off a `Generated` message, whose field names this macro can see directly.
 #[test]
 fn a_path_placeholder_naming_no_field_is_refused() {
     assert_eq!(
@@ -3165,8 +3004,6 @@ fn a_required_field_unbound_by_the_path_of_a_bodyless_method_is_refused() {
     );
 }
 
-/// An optional field a bodyless method leaves unbound is not refused — `Option<T>` already reads
-/// as "may be absent" on every other surface, and a query-less `GET` is exactly that.
 #[test]
 fn an_optional_field_unbound_by_the_path_of_a_bodyless_method_is_not_refused() {
     assert_eq!(
@@ -3185,8 +3022,6 @@ fn an_optional_field_unbound_by_the_path_of_a_bodyless_method_is_not_refused() {
     );
 }
 
-/// A single-argument message the path does not bind on a bodyless method is refused, naming the
-/// argument and the method.
 #[test]
 fn a_single_argument_message_the_path_does_not_bind_on_a_bodyless_method_is_refused() {
     assert_eq!(
@@ -3228,8 +3063,6 @@ fn a_lone_scalar_argument_the_path_does_not_bind_is_refused() {
     );
 }
 
-/// The scalar exception: a single argument bound whole by the path's one placeholder of its own
-/// name is not refused.
 #[test]
 fn a_scalar_bound_whole_by_its_own_placeholder_is_not_refused() {
     assert_eq!(
@@ -3243,8 +3076,6 @@ fn a_scalar_bound_whole_by_its_own_placeholder_is_not_refused() {
     );
 }
 
-/// A single-argument message under `body = "multipart"` is refused, whole struct or lone scalar
-/// alike.
 #[test]
 fn a_single_argument_message_under_multipart_is_refused() {
     assert_eq!(
@@ -3264,9 +3095,6 @@ fn a_single_argument_message_under_multipart_is_refused() {
     );
 }
 
-/// A service whose every route is a literal path never constructs `PathToken::Placeholder`, so the
-/// `http_rest` expansion writes neither the variant nor its `match_path` arm — the same rule
-/// already applied to the query reader and the multipart part type.
 #[test]
 fn an_all_literal_route_table_writes_no_placeholder_variant() {
     let dispatcher = published_macro_over_http_rest(
@@ -3283,8 +3111,7 @@ fn an_all_literal_route_table_writes_no_placeholder_variant() {
     assert!(!dispatcher.contains("Placeholder"), "got: {dispatcher}");
 }
 
-/// A service declaring one placeholder path still writes both the variant and its `match_path`
-/// arm.
+/// A service declaring one placeholder path still writes both the variant and its `match_path` arm.
 #[test]
 fn a_route_table_with_a_placeholder_writes_the_placeholder_variant() {
     let dispatcher = published_macro_over_http_rest(
@@ -3304,8 +3131,6 @@ fn a_route_table_with_a_placeholder_writes_the_placeholder_variant() {
     );
 }
 
-/// `header_in` naming a parameter that answers to no argument in the signature is refused, naming
-/// the parameter.
 #[test]
 fn a_header_in_naming_no_real_argument_is_refused() {
     assert_eq!(
@@ -3329,7 +3154,6 @@ fn a_header_in_naming_no_real_argument_is_refused() {
     );
 }
 
-/// A tuple success type with no `header_out` to explain it is refused.
 #[test]
 fn a_tuple_success_type_with_no_header_out_is_refused() {
     assert_eq!(
@@ -3348,8 +3172,6 @@ fn a_tuple_success_type_with_no_header_out_is_refused() {
     );
 }
 
-/// `error_header_out`'s own twin: a tuple error type with no `error_header_out` to explain it is
-/// refused.
 #[test]
 fn a_tuple_error_type_with_no_error_header_out_is_refused() {
     assert_eq!(
@@ -3368,8 +3190,6 @@ fn a_tuple_error_type_with_no_error_header_out_is_refused() {
     );
 }
 
-/// A declared `error_header_out` count that does not match the error tuple's own arity is
-/// refused, naming both counts.
 #[test]
 fn an_error_header_out_arity_mismatch_is_refused() {
     assert_eq!(
@@ -3393,8 +3213,6 @@ fn an_error_header_out_arity_mismatch_is_refused() {
     );
 }
 
-/// `error_header_out` on a `one_way` operation is refused: a one-way operation has no declared
-/// error to carry a header in at all.
 #[test]
 fn error_header_out_on_a_one_way_operation_is_refused() {
     assert_eq!(
@@ -3441,8 +3259,7 @@ fn an_illegal_header_name_is_refused() {
     );
 }
 
-/// A declared name the `http_rest` transport already writes itself is refused, naming the
-/// conflict.
+/// A declared name the `http_rest` transport already writes itself is refused, naming the conflict.
 #[test]
 fn a_reserved_header_name_is_refused() {
     assert_eq!(
@@ -3466,8 +3283,6 @@ fn a_reserved_header_name_is_refused() {
     );
 }
 
-/// `content-range` is reserved only on a `body = "stream"` operation - every other body kind
-/// leaves the name free for `header_out`/`error_header_out` to claim.
 #[test]
 fn content_range_is_reserved_only_on_a_streamed_operation() {
     assert!(
@@ -3487,8 +3302,6 @@ fn content_range_is_reserved_only_on_a_streamed_operation() {
     );
 }
 
-/// A streamed operation's declared error is answered without the transport's own range header,
-/// so `error_header_out` may carry `content-range`: `bytes */<size>` on a `416`.
 #[test]
 fn a_streamed_operation_may_carry_content_range_on_its_declared_error() {
     assert_eq!(
@@ -3536,7 +3349,6 @@ fn a_streamed_operation_still_refuses_content_range_on_header_out() {
     );
 }
 
-/// The same header name declared twice within one `header_out` list is refused.
 #[test]
 fn a_header_name_declared_twice_within_one_list_is_refused() {
     assert_eq!(
@@ -3561,8 +3373,6 @@ fn a_header_name_declared_twice_within_one_list_is_refused() {
     );
 }
 
-/// The same name echoed across two different lists - a request header answered back on the
-/// reply - is legal.
 #[test]
 fn a_header_name_echoed_across_two_different_lists_is_legal() {
     assert_eq!(
@@ -3583,9 +3393,6 @@ fn a_header_name_echoed_across_two_different_lists_is_legal() {
     );
 }
 
-/// The completeness check `support::emit` builds for `error_status` is a plain-function-pointer
-/// const naming the operation's own error type, with exactly the declared arms — read off the
-/// service module's own tokens, the same way every other emitted item in this file is.
 #[test]
 fn the_service_module_carries_one_completeness_check_per_http_error_status() {
     let expanded =
@@ -3615,9 +3422,6 @@ fn only_a_reply_operation_naming_a_non_empty_table_carries_a_completeness_check(
     );
 }
 
-/// A table entry naming a struct variant or a tuple variant is written with the brace pattern,
-/// the one spelling rustc accepts for a unit, a tuple and a struct variant alike — the macro never
-/// reads the variant's own shape.
 #[test]
 fn a_table_entry_naming_a_payload_variant_is_matched_with_braces() {
     let struct_variant = expanded(
@@ -3658,15 +3462,6 @@ fn a_table_entry_naming_a_payload_variant_is_matched_with_braces() {
     );
 }
 
-/// Adding the bytes body kind changes nothing about a JSON operation's own answer arm, character
-/// for character: `answer_block` and `reply_decode` grow a new branch for `BodyKind::Bytes`
-/// alongside the one already here for `BodyKind::Json`, but the JSON branch itself is untouched.
-/// `HTTP_SERVICE` declares no bytes operation, so its whole expansion is this claim's witness.
-///
-/// The four fragments below were captured from the dispatcher and the client before the bytes kind
-/// existed - a non-unit, header-out-free success (`create_document`), a header-out tuple success
-/// (`get_version`'s dispatcher arm and its client-side decode) and the client's own non-tuple
-/// decode (`create_document`) - the shapes `answer_block` and `reply_decode` branch over.
 #[test]
 fn a_json_operations_expansion_is_unchanged_at_the_token_level() {
     let dispatcher =
@@ -3734,15 +3529,6 @@ fn a_json_operations_expansion_is_unchanged_at_the_token_level() {
     }
 }
 
-/// The streamed body kind's whole expansion — the seam `support` publishes beside the trait, the
-/// dispatcher and the client — names no runtime crate: `BodySource` composes over `std::io::Read`
-/// alone, and every plain-terms type around it reaches nothing but `std`, `core`, `serde` and
-/// `serde_json`, exactly as the JSON and bytes kinds already did.
-///
-/// A bare `contains("bytes")` would also catch this expansion's own `bytes` pattern binding
-/// (`IncomingBody::Bytes(bytes) => ...`, naming the variant's payload) as a false positive, so the
-/// check instead looks for `bytes` sitting beside a path separator - the shape an actual `::bytes`
-/// crate reference renders as, once `TokenStream::to_string()` has spaced every token out.
 #[test]
 fn a_streamed_operations_expansion_names_no_runtime_crate() {
     let expanded = expansion_over_http_rest(STREAM_SERVICE).to_string();
@@ -3754,10 +3540,6 @@ fn a_streamed_operations_expansion_names_no_runtime_crate() {
     );
 }
 
-/// The `non_exhaustive` argument seals exactly the four generated types the design names — the
-/// registry, the fault kind, `CallError`, and a generated message struct — and nothing else in the
-/// expansion. The registry (`UsageServiceSchema`) is `features::service_schema::emit`'s own type,
-/// which every `serde` build compiles regardless of which language feature, if any, is also on.
 #[test]
 fn the_non_exhaustive_flag_seals_exactly_the_four_generated_types() {
     let emitted = expansion_over_amqp_rpc_non_exhaustive(CREDIT_SERVICE).to_string();
@@ -3779,18 +3561,12 @@ fn the_non_exhaustive_flag_seals_exactly_the_four_generated_types() {
     );
 }
 
-/// Without the argument, the expansion carries no `#[non_exhaustive]` anywhere — the default this
-/// task preserves, so `#[service_schema(transports = ["amqp_rpc"])]` still expands to what it did
-/// before this argument existed.
 #[test]
 fn the_default_expansion_carries_no_non_exhaustive_anywhere() {
     let emitted = expansion_over_amqp_rpc(CREDIT_SERVICE).to_string();
     assert!(!emitted.contains("non_exhaustive"), "got: {emitted}");
 }
 
-/// `#[service_schema(non_exhaustive)]` with no `transports` is accepted and asks for no transport:
-/// the flag and the transport list are independent arguments, and neither is required for the
-/// other to be written.
 #[test]
 fn the_flag_alone_is_accepted_and_asks_for_no_transport() {
     let emitted = exec_service_schema(
@@ -3810,8 +3586,6 @@ fn the_flag_alone_is_accepted_and_asks_for_no_transport() {
     );
 }
 
-/// Argument order is free: the flag before the transport list reads the same as the list before
-/// the flag.
 #[test]
 fn argument_order_does_not_change_the_expansion() {
     let forward = exec_service_schema(
@@ -3827,8 +3601,6 @@ fn argument_order_does_not_change_the_expansion() {
     assert_eq!(forward, reversed);
 }
 
-/// A header argument is held in a local of its own on every transport, in the dispatcher and in
-/// the client: the argument's own name may be one of the locals the transport writes around it.
 #[test]
 fn a_header_argument_is_held_in_a_local_of_its_own_on_every_transport() {
     for expansion in [

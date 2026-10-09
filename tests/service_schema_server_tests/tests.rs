@@ -200,10 +200,6 @@ fn a_name_nothing_answers_to_becomes_a_fault_through_the_same_handle() {
     );
 }
 
-/// A real `lapin::Channel` cannot be built without a connection, so `serve_until` is named at a
-/// concrete service and shutdown future rather than run. Compiling this line is what proves every
-/// `::lapin`, `::tokio` and `::futures` path the consumer loop names resolves, and what keeps the
-/// loop and the framing it calls from being dead code in this binary.
 #[test]
 fn serve_until_is_reachable_at_a_concrete_service_and_shutdown_future() {
     let named = amqp_server::serve_until::<PingBackEnd, Ready<()>>;
@@ -241,8 +237,6 @@ fn recorded(events: &Mutex<Vec<String>>) -> Vec<String> {
     events.lock().unwrap().clone()
 }
 
-/// Ten deliveries under a limit of ten are all in progress at once: each handler waits at a
-/// barrier only all ten together can pass.
 #[tokio::test]
 async fn as_many_deliveries_as_the_limit_are_served_at_once() {
     let barrier = &Barrier::new(10);
@@ -273,8 +267,6 @@ async fn as_many_deliveries_as_the_limit_are_served_at_once() {
     );
 }
 
-/// Nine deliveries under a limit of three meet three at a time at a barrier of three, and no more
-/// than three are ever in progress.
 #[tokio::test]
 async fn never_more_deliveries_than_the_limit_are_served_at_once() {
     let barrier = &Barrier::new(3);
@@ -308,8 +300,6 @@ async fn never_more_deliveries_than_the_limit_are_served_at_once() {
     );
 }
 
-/// The first of two deliveries waits for the second to finish, so the second is finished, and
-/// acknowledged, first.
 #[tokio::test]
 async fn a_later_delivery_finishes_before_an_earlier_one() {
     let second_finished = &Notify::new();
@@ -344,9 +334,6 @@ async fn a_later_delivery_finishes_before_an_earlier_one() {
     );
 }
 
-/// Shutdown arrives while both slots are busy and a third delivery is waiting: the consumer is
-/// stopped at once, the third is never started, and the call returns only once both started
-/// deliveries have finished.
 #[tokio::test]
 async fn shutdown_cancels_at_once_starts_nothing_new_and_drains_what_started() {
     let events = &Mutex::new(Vec::new());
@@ -407,8 +394,6 @@ async fn shutdown_cancels_at_once_starts_nothing_new_and_drains_what_started() {
     );
 }
 
-/// The deliveries end while three are still in progress: all three finish before the call returns
-/// `ConsumerClosed`, and the consumer, which the broker already closed, is not stopped.
 #[tokio::test]
 async fn a_consumer_that_closes_drains_what_started_and_is_not_stopped() {
     let events = &Mutex::new(Vec::new());

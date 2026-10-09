@@ -1,3 +1,5 @@
+//! Tests of the serde attributes `#[model_schema]` reads: renames, tags and the skip family.
+
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
@@ -254,12 +256,12 @@ fn test_serde_rename_all_camel_case_json_schema() {
 
     let properties = schema["properties"].as_object().unwrap();
 
-    assert!(properties.contains_key("userId")); // user_id -> userId
-    assert!(properties.contains_key("firstName")); // first_name -> firstName
-    assert!(properties.contains_key("lastName")); // last_name -> lastName
-    assert!(properties.contains_key("emailAddress")); // email -> emailAddress (manual rename)
-    assert!(properties.contains_key("createdAt")); // created_at -> createdAt
-    assert!(properties.contains_key("isVerified")); // is_verified -> isVerified
+    assert!(properties.contains_key("userId"));
+    assert!(properties.contains_key("firstName"));
+    assert!(properties.contains_key("lastName"));
+    assert!(properties.contains_key("emailAddress"));
+    assert!(properties.contains_key("createdAt"));
+    assert!(properties.contains_key("isVerified"));
 
     assert!(!properties.contains_key("user_id"));
     assert!(!properties.contains_key("first_name"));
@@ -410,9 +412,8 @@ fn test_discriminated_union_with_serde_typescript() {
     assert!(ts.contains("type: \"userDeleted\""));
     assert!(ts.contains("type: \"userUpdated\""));
 
-    // The enum's own rename_all cases the discriminator alone; `user_id`/`user_name` carry no
-    // rename of their own and stay as declared, while `email`'s own field-level rename still
-    // applies regardless of the container.
+    // The enum's own `rename_all` cases the discriminator alone; `email`'s own field-level rename
+    // still applies.
     assert!(ts.contains("user_id: string;"));
     assert!(ts.contains("user_name: string;"));
     assert!(ts.contains("newEmail: string;"));
@@ -483,8 +484,6 @@ fn test_compliant_optionals_serialize_absent_and_parse_absent() {
     );
 }
 
-/// Each `Option` flavor writes exactly one shape for a `None`: the default drops the key, `nullable`
-/// writes `null` and keeps it. Both read every shape either flavor writes, plus the one it does not.
 #[test]
 fn test_each_option_flavor_writes_one_shape_and_reads_both() {
     let entry = IndexEntry {
@@ -523,8 +522,6 @@ fn test_each_option_flavor_writes_one_shape_and_reads_both() {
     assert_eq!(round_tripped, both_some);
 }
 
-/// The struct-field seam: a renamed key is the string serde writes, which is what the object needs
-/// to still close after it.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_a_hyphenated_field_key_is_written_as_a_string() {
@@ -541,8 +538,6 @@ fn test_a_hyphenated_field_key_is_written_as_a_string() {
     );
 }
 
-/// The same key on the Zod surface, which is object-literal syntax and refuses a bare hyphen for
-/// the same reason the type does.
 #[test]
 #[cfg(feature = "zod")]
 fn test_a_hyphenated_field_key_is_written_as_a_string_in_zod() {
@@ -558,8 +553,6 @@ fn test_a_hyphenated_field_key_is_written_as_a_string_in_zod() {
     );
 }
 
-/// The struct-variant seam: a variant's own fields are members of the variant's object and are
-/// written by their own seam, which needs the same rule.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_a_hyphenated_variant_field_key_is_written_as_a_string() {
@@ -575,9 +568,6 @@ fn test_a_hyphenated_variant_field_key_is_written_as_a_string() {
     );
 }
 
-/// The untagged-member seam: a renamed field inside a `Named` untagged variant is written as the key
-/// serde writes it as, not the Rust ident it never reaches the wire under. `Fresh`'s untouched field
-/// stays exactly as it was.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_a_renamed_untagged_member_field_is_written_as_a_string() {
@@ -605,8 +595,6 @@ fn test_a_renamed_untagged_member_field_is_written_as_a_string_in_zod() {
     );
 }
 
-/// The same key in the JSON schema, where quoting is moot — a property name is a plain string either
-/// way — but the key itself must still be the one serde writes.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_a_renamed_untagged_member_field_reaches_the_json_schema() {
@@ -631,9 +619,6 @@ fn test_a_renamed_untagged_member_field_reaches_the_json_schema() {
     );
 }
 
-/// serde's own wire, beside the schema above: the closed document — every leaf `additionalProperties:
-/// false` — accepts exactly the payload serde writes for the renamed member, and the value round-trips
-/// through it.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_a_renamed_untagged_member_round_trips_through_its_closed_schema() {
@@ -668,8 +653,6 @@ fn test_a_renamed_untagged_member_round_trips_through_its_closed_schema() {
     assert_eq!(back, value);
 }
 
-/// The flatten-operand seam and the sibling exclusion beside it: `Reply`'s renamed field reaches
-/// both as the key serde writes, quoted, while `Fresh`'s untouched field stays bare in both.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_a_flatten_operand_and_its_sibling_exclusions_carry_a_renamed_key() {
@@ -683,8 +666,6 @@ fn test_a_flatten_operand_and_its_sibling_exclusions_carry_a_renamed_key() {
     );
 }
 
-/// The rule reads the key, not the rename: `$` and a trailing digit are identifier-legal and are
-/// left exactly as they were written.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_identifier_legal_renamed_keys_stay_bare() {
@@ -741,8 +722,6 @@ fn test_a_list_form_rename_reaches_the_zod_schema() {
     );
 }
 
-/// The closed document, read against the payload serde actually writes: every key written is named,
-/// and every key required is written.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_a_list_form_rename_document_accepts_what_serde_writes() {
@@ -828,8 +807,6 @@ fn test_a_list_form_rename_all_document_accepts_what_serde_writes() {
     );
 }
 
-/// `bound(...)` names trait bounds, not keys, so the member carrying it is on the wire exactly as
-/// its plain sibling is.
 #[test]
 fn test_a_bound_carrying_member_is_on_the_wire_as_its_plain_sibling_is() {
     let value = BoundCarrying {

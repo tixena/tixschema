@@ -414,11 +414,6 @@ impl ConversationClientService<()> for ConversationBackEnd {
     }
 }
 
-// -------------------------------------------------------------------------------------------
-// Reader forms: one service per serde form a declared error enum can carry, each with a mapped
-// operation and an unmapped one — except the payload-variant form, see `ArchiveClientService`.
-// -------------------------------------------------------------------------------------------
-
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct GateStatus {
@@ -454,6 +449,7 @@ pub trait GateClientService<Ctx> {
     ) -> Result<GateStatus, GateError>;
 }
 
+/// The implementation of `GateClientService` these tests dispatch to.
 struct GateBackEnd;
 
 impl GateClientService<()> for GateBackEnd {
@@ -509,6 +505,7 @@ pub trait VaultClientService<Ctx> {
     ) -> Result<VaultStatus, VaultError>;
 }
 
+/// The implementation of `VaultClientService` these tests dispatch to.
 struct VaultBackEnd;
 
 impl VaultClientService<()> for VaultBackEnd {
@@ -561,6 +558,7 @@ pub trait ArchiveClientService<Ctx> {
     ) -> Result<ArchiveStatus, ArchiveError>;
 }
 
+/// The implementation of `ArchiveClientService` these tests dispatch to.
 struct ArchiveBackEnd;
 
 impl ArchiveClientService<()> for ArchiveBackEnd {
@@ -611,6 +609,7 @@ pub trait SealClientService<Ctx> {
     ) -> Result<SealStatus, SealError>;
 }
 
+/// The implementation of `SealClientService` these tests dispatch to.
 struct SealBackEnd;
 
 impl SealClientService<()> for SealBackEnd {
@@ -632,11 +631,6 @@ impl SealClientService<()> for SealBackEnd {
         Err(SealError::NotFound)
     }
 }
-
-// -------------------------------------------------------------------------------------------
-// A macro-generated message read off the query on a bodyless `GET`, and off the whole JSON
-// body on a `POST` at the same path — the coerced fields echoed back for a driver to read.
-// -------------------------------------------------------------------------------------------
 
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -673,6 +667,7 @@ pub trait SearchClientService<Ctx> {
     ) -> Result<SearchEcho, SearchError>;
 }
 
+/// The implementation of `SearchClientService` these tests dispatch to.
 struct SearchBackEnd;
 
 impl SearchClientService<()> for SearchBackEnd {
@@ -696,11 +691,6 @@ impl SearchClientService<()> for SearchBackEnd {
         Ok(SearchEcho { limit, verbose })
     }
 }
-
-// -------------------------------------------------------------------------------------------
-// A bodyless `GET` whose macro-generated message's two fields are both bound by the path,
-// leaving nothing to read off the query string.
-// -------------------------------------------------------------------------------------------
 
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -730,6 +720,7 @@ pub trait LabelClientService<Ctx> {
     ) -> Result<LabelStatus, LabelError>;
 }
 
+/// The implementation of `LabelClientService` these tests dispatch to.
 struct LabelBackEnd;
 
 impl LabelClientService<()> for LabelBackEnd {
@@ -748,11 +739,6 @@ impl LabelClientService<()> for LabelBackEnd {
         })
     }
 }
-
-// -------------------------------------------------------------------------------------------
-// The three body kinds: `bytes`, `stream` and `multipart`, dispatched through the Rust macro
-// and through the emitted TypeScript so the same request can be compared byte-for-byte.
-// -------------------------------------------------------------------------------------------
 
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -778,6 +764,7 @@ pub trait ThumbnailClientService<Ctx> {
     ) -> Result<(Vec<u8>, String, Option<String>), (ThumbnailError, Option<String>)>;
 }
 
+/// The implementation of `ThumbnailClientService` these tests dispatch to.
 pub struct ThumbnailBackEnd;
 
 impl ThumbnailClientService<()> for ThumbnailBackEnd {
@@ -874,6 +861,7 @@ impl Read for ChunkedSlice {
     }
 }
 
+/// The implementation of `ContentClientService` these tests dispatch to.
 pub struct ContentBackEnd;
 
 impl ContentClientService<()> for ContentBackEnd {
@@ -949,6 +937,7 @@ pub trait UploadDocumentClientService<Ctx> {
     ) -> Result<UploadDocumentResponse, UploadDocumentError>;
 }
 
+/// The implementation of `UploadDocumentClientService` these tests dispatch to.
 pub struct UploadDocumentBackEnd;
 
 impl UploadDocumentClientService<()> for UploadDocumentBackEnd {
@@ -1022,6 +1011,7 @@ pub trait EchoClientService<Ctx> {
     ) -> Result<EchoRangeResponse, EchoRangeError>;
 }
 
+/// The implementation of `EchoClientService` these tests dispatch to.
 pub struct EchoBackEnd;
 
 impl EchoClientService<()> for EchoBackEnd {
@@ -1149,6 +1139,7 @@ pub trait PulseClientService<Ctx> {
     async fn pulse(&self, ctx: &Ctx) -> Result<PulseResponse, PulseError>;
 }
 
+/// The implementation of `PulseClientService` these tests dispatch to.
 pub struct PulseBackEnd;
 
 impl PulseClientService<()> for PulseBackEnd {
@@ -1230,6 +1221,7 @@ pub trait LookupClientService<Ctx> {
     ) -> Result<LookupFound, LookupError>;
 }
 
+/// The implementation of `LookupClientService` these tests dispatch to.
 pub struct LookupBackEnd;
 
 impl LookupClientService<()> for LookupBackEnd {
@@ -1309,6 +1301,7 @@ pub trait WatchClientService<Ctx> {
     async fn watch(&self, ctx: &Ctx, req: WatchRequest) -> Result<(), WatchError>;
 }
 
+/// The implementation of `WatchClientService` these tests dispatch to.
 pub struct WatchBackEnd;
 
 impl WatchClientService<()> for WatchBackEnd {

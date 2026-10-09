@@ -1,3 +1,5 @@
+//! Tests of the `JSDoc` an item with no doc comment is published under.
+
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
@@ -114,8 +116,7 @@ pub struct PlainBrand(pub String);
 pub struct BrandUnderRustName(pub String);
 
 // The one shape with no surface name of its own: an alias is exported under the `Type` suffix, and
-// falls back to that exported name the way every declared item falls back to its own. Commented
-// with `//`, since a `///` line here would be the fixture's docs and the fallback would not fire.
+// falls back to that exported name the way every declared item falls back to its own.
 #[cfg(feature = "typescript")]
 #[model_schema()]
 pub type PlainAlias = u32;
@@ -177,9 +178,6 @@ fn an_undocumented_item_names_itself_in_jsdoc_as_it_is_exported() {
     }
 }
 
-/// The reported failure was a `JSDoc` header contradicting the `export type` one line under it, so
-/// the name the item is declared under must reach neither. The ident re-export is the one line
-/// that writes the ident deliberately, and is taken off before the surface is read.
 #[cfg(feature = "typescript")]
 #[test]
 fn an_undocumented_item_never_writes_its_rust_ident() {
@@ -223,8 +221,6 @@ fn an_undocumented_item_never_writes_its_rust_ident() {
     }
 }
 
-/// The overwhelming case: an item declared under the name it exports, whose header this must leave
-/// exactly where it was.
 #[cfg(feature = "typescript")]
 #[test]
 fn an_item_exported_under_its_rust_ident_keeps_the_header_it_had() {
@@ -240,9 +236,6 @@ fn an_item_exported_under_its_rust_ident_keeps_the_header_it_had() {
     }
 }
 
-/// The reported failure: an undocumented alias closed its `JSDoc` on a second blank ` * ` line,
-/// where every declared item closes on the first. Nothing about a shape decides how a name is
-/// written under `/**`, so the seven shapes that publish a header write the same two lines.
 #[cfg(feature = "typescript")]
 #[test]
 fn every_undocumented_shape_writes_the_same_two_jsdoc_lines() {
@@ -271,8 +264,6 @@ fn every_undocumented_shape_writes_the_same_two_jsdoc_lines() {
     }
 }
 
-/// The fallback fires only for an item with nothing to say, so a documented one keeps its docs
-/// whatever it is exported as.
 #[cfg(feature = "typescript")]
 #[test]
 fn a_documented_item_keeps_its_docs_over_either_name() {
@@ -284,8 +275,6 @@ fn a_documented_item_keeps_its_docs_over_either_name() {
     );
 }
 
-/// A plain enum is the one shape that writes the fallback twice — once as the `JSDoc` header and
-/// once as the Zod `description` — and the two are the same string.
 #[cfg(feature = "zod")]
 #[test]
 fn a_plain_enum_describes_itself_as_it_is_exported() {
@@ -306,8 +295,6 @@ fn a_plain_enum_describes_itself_as_it_is_exported() {
     );
 }
 
-/// The brand path already spelled its description from the export name; it is the spelling the
-/// other shapes were brought onto, so it must not move.
 #[cfg(feature = "zod")]
 #[test]
 fn a_brand_describes_itself_as_it_is_exported() {

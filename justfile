@@ -5,11 +5,8 @@ kotlinx_serialization_version := "1.11.0"
 kotlinx_coroutines_version := "1.11.0"
 kotlin_libs := env("TIXSCHEMA_KOTLIN_LIBS", home_directory() / ".local/share/tixschema/kotlin-libs")
 
-# `bson3/` is a package of its own, which builds the BSON suite against version 3 of the `bson`
-# library. Each recipe that tests, lints, checks, formats, audits or cleans this package runs the
-# same line over `bson3/Cargo.toml`. The exceptions: `typecheck-ts` and `test-emitted` name test
-# binaries only this package holds, and `docs`, `bench` and the two coverage recipes have nothing
-# to read in `bson3/`, whose library is empty.
+# `bson3/` is a package of its own, built against version 3 of the `bson` library: each recipe that
+# tests, lints, checks, formats, audits or cleans this package runs the same line over it.
 
 # Default recipe - runs comprehensive tests
 default: test
@@ -20,9 +17,8 @@ install-tools:
     cargo install cargo-hack || echo "cargo-hack already installed"
     cargo install just || echo "just already installed"
 
-# Test every combination of the plain features, plus the default set. The
-# feature sets are excluded as toggles: each is a name for features already in the powerset.
-# Slow and disk-hungry; `test-sets` is what CI runs.
+# Test every combination of the plain features, plus the default set. Slow and disk-hungry;
+# `test-sets` is what CI runs.
 test:
     @echo "Testing all feature combinations..."
     cargo hack test --feature-powerset --exclude-features web,mobile,mongo
@@ -36,9 +32,7 @@ test-verbose:
     cargo hack test --manifest-path bson3/Cargo.toml --feature-powerset --exclude-features web,mobile,mongo --verbose
     @echo "✅ All feature combinations passed!"
 
-# Test the powerset of the feature sets (`web`, `mobile`, `mongo`), plus the default set. Every
-# plain feature is reached through its set; the plain-feature powerset stays in `test` for a local
-# run before a release.
+# Test the powerset of the feature sets (`web`, `mobile`, `mongo`), plus the default set.
 test-sets:
     @echo "Testing every combination of the feature sets..."
     cargo hack test --feature-powerset --include-features web,mobile,mongo
@@ -131,16 +125,8 @@ lint-sets:
     cargo hack clippy --manifest-path bson3/Cargo.toml --feature-powerset --include-features web,mobile,mongo --all-targets -- -D warnings
     @echo "✅ All feature-set combinations lint passed!"
 
-# Type-check the emitted TypeScript bundle with a real compiler, in the build that publishes the
-# client and the dispatcher and in the one that publishes neither.
-#
-# Deliberately outside `all` and `ci`: a fresh clone has no TypeScript compiler, and the type-check
-# tests inside `cargo test` stand down when they find none, saying so on stderr. This recipe is the
-# one that refuses to stand down — it resolves the compiler up front and names it for the tests,
-# where a named compiler that cannot be started is a failure rather than a stand-down. Set
-# TIXSCHEMA_TSC to use a compiler that is not on PATH. Its last check compiles a second package
-# against the declarations the compiler emits for the bundle and loads the bundle under node, both
-# of which read `zod` itself: set TIXSCHEMA_NODE_MODULES to a directory whose node_modules holds it.
+# Type-check the emitted TypeScript with a real compiler; refuses to stand down. Set TIXSCHEMA_TSC
+# to a compiler off PATH, and TIXSCHEMA_NODE_MODULES to a directory whose node_modules holds `zod`.
 typecheck-ts:
     @command -v "${TIXSCHEMA_TSC:-tsc}" >/dev/null 2>&1 || { echo "No TypeScript compiler: put \`tsc\` on PATH, or set TIXSCHEMA_TSC to one." >&2; exit 1; }
     @echo "Type-checking the emitted bundle with $(command -v "${TIXSCHEMA_TSC:-tsc}")..."
@@ -152,9 +138,8 @@ typecheck-ts:
     TIXSCHEMA_TSC="$(command -v "${TIXSCHEMA_TSC:-tsc}")" TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" cargo test --test generic_types_tests type_check
     @echo "✅ The emitted bundle type-checks!"
 
-# Install the jars the emitted Kotlin compiles and runs against into ~/.local/share/tixschema/kotlin-libs: the
-# serialization compiler plugin from kotlinc's own lib/, and the pinned JVM library jars from
-# Maven Central, each checked against its published SHA-256. Rerunning downloads nothing new.
+# Install the jars the emitted Kotlin compiles and runs against into
+# ~/.local/share/tixschema/kotlin-libs, each checked against its published SHA-256.
 kotlin-libs:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -180,16 +165,8 @@ kotlin-libs:
     fetch kotlinx-coroutines-core-jvm {{kotlinx_coroutines_version}}
     echo "Kotlin jars in $libs"
 
-# Run the emitted clients through their own language's runtime, with a real message object.
-#
-# What a string test cannot reach: `String(sending)` is well-formed TypeScript that renders every
-# object as the constant `[object Object]`, so only running the client shows which URL comes out.
-# The groups inside `cargo test` stand down when they find no runtime, saying so on stderr. This
-# recipe refuses to stand down — it resolves each runtime up front and names it for the tests,
-# where a named runtime that cannot be started is a failure. Set TIXSCHEMA_NODE, TIXSCHEMA_DART,
-# TIXSCHEMA_SWIFT, TIXSCHEMA_KOTLINC or TIXSCHEMA_JAVA to use one that is not on PATH. The Kotlin
-# leg reads TIXSCHEMA_KOTLIN_LIBS, defaulting to ~/.local/share/tixschema/kotlin-libs, which
-# `just kotlin-libs` fills.
+# Run the emitted clients through their own language's runtime; refuses to stand down. Set
+# TIXSCHEMA_NODE, TIXSCHEMA_DART, TIXSCHEMA_SWIFT, TIXSCHEMA_KOTLINC or TIXSCHEMA_JAVA to one off PATH.
 test-emitted:
     @command -v "${TIXSCHEMA_NODE:-node}" >/dev/null 2>&1 || { echo "No node: put \`node\` on PATH, or set TIXSCHEMA_NODE to one." >&2; exit 1; }
     @echo "Running the emitted TypeScript client with $(command -v "${TIXSCHEMA_NODE:-node}")..."
@@ -218,10 +195,6 @@ test-emitted:
 
 # Run the generated MongoDB operations against the server TIXSCHEMA_MONGODB_URI names, under both
 # bson majors; refuses to stand down.
-#
-# Deliberately outside `all` and `ci`: no MongoDB server comes with a fresh clone or with the CI
-# runner, and the live checks inside `cargo test` stand down when the variable names none, saying
-# so on stderr. Set, a value that is no address or a server that does not answer fails the check.
 test-mongodb:
     @test -n "${TIXSCHEMA_MONGODB_URI:-}" || { echo "No MongoDB server: set TIXSCHEMA_MONGODB_URI to one's address, as in mongodb://127.0.0.1:27017." >&2; exit 1; }
     @echo "Running the operations against the server TIXSCHEMA_MONGODB_URI names, bson 2..."
@@ -245,11 +218,8 @@ check-all:
     cargo hack check --manifest-path bson3/Cargo.toml --feature-powerset
     @echo "✅ All feature combinations check passed!"
 
-# Audit the dependencies each package resolves, with cargo-audit; what CI runs.
-#
-# No Cargo.lock is committed (library crate), and this package and `bson3/` resolve into one each,
-# so each lock file is generated afresh, as a new clone resolves it, and scanned on its own. An
-# advisory in either fails the recipe. Outside `all` and `ci`: neither installs cargo-audit.
+# Audit the dependencies each package resolves, with cargo-audit; what CI runs. Each package's lock
+# file is generated afresh and scanned on its own.
 audit:
     @echo "Auditing the dependencies of this package and of bson3/..."
     cargo generate-lockfile

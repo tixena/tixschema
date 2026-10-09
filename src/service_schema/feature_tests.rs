@@ -10,9 +10,7 @@ use proc_macro2::TokenStream;
 use quote::ToTokens as _;
 use syn::ItemTrait;
 
-/// A service with one of every input shape, one of every outcome, and an overridden wire name —
-/// the same declaration the feature-gated unit tests read, so the pair below is about the feature
-/// and nothing else.
+/// A service with one of every input shape, one of every outcome, and an overridden wire name.
 const MIXED_SERVICE: &str = "
     pub trait UsageService<Ctx> {
         async fn get_available_balance(
@@ -78,9 +76,6 @@ fn a_build_without_the_serde_feature_refuses_a_service_and_says_what_to_add() {
     );
 }
 
-/// The other half of the pair: the same declaration, in a build that has the feature, earns no
-/// refusal at all. Without this, the assertion above would still pass if the macro refused every
-/// service in every combination.
 #[cfg(feature = "serde")]
 #[test]
 fn a_build_with_the_serde_feature_earns_no_refusal_for_the_same_declaration() {

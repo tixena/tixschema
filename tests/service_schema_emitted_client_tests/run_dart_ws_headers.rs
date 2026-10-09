@@ -424,8 +424,6 @@ fn the_dart_attachment_answers_the_rust_client_the_way_the_rust_dispatcher_does(
     );
 }
 
-/// The heartbeat probe the Dart transport writes is the Rust client's own — a lone regression
-/// check `run_dart_ws.rs` has no fixture for, since none of its own services declare headers.
 #[test]
 fn the_dart_transport_s_heartbeat_probe_is_the_rust_client_s_own() {
     let Some(written) = run(

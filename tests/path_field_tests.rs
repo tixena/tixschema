@@ -1,3 +1,5 @@
+//! The test binary of `path_field_tests/`.
+
 extern crate alloc;
 
 #[cfg(test)]

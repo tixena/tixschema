@@ -1,3 +1,5 @@
+//! Tests of `#[serde(rename_all)]`: every casing rule against the name serde writes.
+
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
@@ -46,10 +48,8 @@ enum SandboxKind {
     PlainAdd,
 }
 
-// One struct-variant enum per tagged representation, each carrying an enum-level `rename_all`
-// and two variants: `Unmarked` has no rename of its own, so its field stays as declared — the
-// container-level rule cases the discriminator alone, never a variant's fields. `Marked` carries
-// its own `rename_all`, which serde treats as the container for its own fields.
+// One struct-variant enum per tagged representation: `Unmarked` has no rename of its own, so its
+// fields stay as declared; `Marked` carries its own `rename_all`.
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -222,9 +222,8 @@ fn snake_case_json_schema_matches_serde_wire() {
     );
 }
 
-// Struct-variant field renaming under each of serde's three tagged representations: the
-// container-level `rename_all` must not reach a variant's fields, and a variant's own
-// `rename_all` must.
+// The container-level `rename_all` must not reach a variant's fields, and a variant's own
+// `rename_all` must, under each of serde's three tagged representations.
 
 #[test]
 fn internally_tagged_rename_all_reaches_the_wire_correctly() {
@@ -472,9 +471,8 @@ fn externally_tagged_rename_all_json_schema_matches_serde_wire() {
     );
 }
 
-// The adjacently-tagged branch below reads the field keys under `properties.data`, the object the
-// wire actually nests them in, the same depth `externally_tagged_rename_all_json_schema_matches_serde_wire`
-// reads its own content key at.
+// The adjacently-tagged branch reads the field keys under `properties.data`, the object the wire
+// nests them in.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn adjacently_tagged_rename_all_json_schema_matches_serde_wire() {

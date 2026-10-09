@@ -1,3 +1,5 @@
+//! The test binary of `branded_newtype_tests/`.
+
 extern crate alloc;
 
 #[cfg(test)]

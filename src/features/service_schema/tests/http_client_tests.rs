@@ -40,7 +40,6 @@ fn a_declared_error_crosses_with_every_field_it_carries() {
     );
 }
 
-/// A unit success reads no body and answers `value: undefined`.
 #[test]
 fn a_unit_success_reads_no_body_and_answers_value_undefined() {
     let written = http_client_of(TS_UNIT_SUCCESS_SERVICE);

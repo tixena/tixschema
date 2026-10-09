@@ -1,12 +1,6 @@
 //! The query types `#[model_schema(decode_with)]` adds under `mongodb`: `Filter`, `Update`, and
 //! the typed paths that build them. Two binaries compile this module, each with the name `bson`
 //! bound to one major version of the library, so every case runs against both.
-//!
-//! Every model's paths are the ones generated for it: `MONGO_FIELDS` on the type, a struct of
-//! paths named `MongoFields` in the type's own module. A model is declared above the model that
-//! holds it wherever a path below it is asked for. A document is asserted as [`shown`] prints it,
-//! with the BSON type of each number and date spelled out: that text is the same under both
-//! versions of the library.
 
 mod hooked;
 mod nested;
@@ -172,8 +166,6 @@ fn shown_value(value: &Bson) -> String {
     }
 }
 
-/// `$and`, `$or` and `$nor` in one filter, over a required value, a number, a list, a path below
-/// a nested model, and a value a row may leave out.
 #[test]
 fn filters_over_every_kind_of_path_nest_under_and_or_and_nor() {
     let invoice = Invoice::MONGO_FIELDS;
@@ -194,8 +186,6 @@ fn filters_over_every_kind_of_path_nest_under_and_or_and_nor() {
     );
 }
 
-/// A filter, an update, and a document written by hand for a path with no typed form, each from
-/// the paths generated for the row.
 #[test]
 fn generated_paths_write_a_filter_an_update_and_a_raw_document() {
     let invoice = Invoice::MONGO_FIELDS;
@@ -224,8 +214,6 @@ fn generated_paths_write_a_filter_an_update_and_a_raw_document() {
     assert_eq!(shown(by_cost_center), r#"{ "details.costCenter": "CC-7" }"#);
 }
 
-/// A path built through the constructors alone, as a consumer builds one below a member that is
-/// one whole value, writes what the path generated for the same key writes.
 #[test]
 fn a_path_built_through_the_constructors_writes_what_the_generated_one_does() {
     use invoice_schema::{Field, ListField, MongoPath, OptionalField};
@@ -250,8 +238,7 @@ fn a_path_built_through_the_constructors_writes_what_the_generated_one_does() {
     );
 }
 
-/// A map has no path: its keys are data. A document written by hand names one of them, and joins
-/// the typed filters through `Filter::raw`.
+/// A map has no path: its keys are data.
 #[test]
 fn a_key_of_a_map_is_named_by_a_document_written_by_hand() {
     let by_cost_center = Invoice::MONGO_FIELDS
@@ -267,8 +254,6 @@ fn a_key_of_a_map_is_named_by_a_document_written_by_hand() {
     );
 }
 
-/// A key under the row is the path of its one key, a path of the prefix itself has no key of its
-/// own, and the row itself has none.
 #[test]
 fn a_path_is_the_keys_leading_to_it_joined_by_dots() {
     use invoice_schema::MongoPath;

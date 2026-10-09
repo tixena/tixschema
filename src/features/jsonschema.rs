@@ -2,20 +2,14 @@
 //!
 //! This module handles JSON schema generation when the "jsonschema" feature is enabled.
 
-/// What every pointer the crate writes opens with; what follows it is the key a definition is
-/// hoisted under — a bare name, or a name discriminated by the filling that built it. The crate
-/// writes draft 2020-12, whose deferred schema is a `$ref` into the document's own `$defs`.
 const DEFS_PREFIX: &str = "#/$defs/";
 
 /// How a merge that cannot proceed names itself in the diagnostic it raises: `subject` is the
 /// frame that reads the merge, `edge` what the merged schema was reached through, and each remedy
 /// the way out in the spelling that applies where that edge was written.
 pub struct MergeDiagnostic<'msg> {
-    /// The way out of a cycle: what makes the edge defer rather than merge.
     pub cycle_remedy: &'msg str,
     pub edge: &'msg str,
-    /// The way out of a merged value that is not an object: what gives that value a place of its
-    /// own.
     pub non_object_remedy: &'msg str,
     pub subject: &'msg str,
 }
@@ -25,10 +19,6 @@ pub struct MergeDiagnostic<'msg> {
 /// from, so the label travels beside it — it is what a diagnostic points the author at.
 pub struct MergedSource {
     pub label: String,
-    /// Whether the value was reached through an `Option`. serde writes the members of a `Some` into
-    /// the object being written and writes nothing at all for a `None`, so an optional source is two
-    /// key sets rather than one — a choice the merge multiplies the base out over, the same way a
-    /// union is.
     pub optional: bool,
     pub value: proc_macro2::TokenStream,
 }
@@ -36,7 +26,7 @@ pub struct MergedSource {
 /// Check if we should generate JSON schema methods.
 #[cfg(test)]
 pub const fn should_generate_json_schema() -> bool {
-    true // Always true when this module is compiled (feature is enabled)
+    true
 }
 
 /// One type parameter of a generic item, as that item's own schema module reads it.
@@ -128,15 +118,10 @@ fn bound_filling(parameters: &[SchemaParameter]) -> proc_macro2::TokenStream {
 }
 
 /// The description guarded against re-entering a name still being written, as the tokens the
-/// `within` form's body is. `filling` is the documents this frame's parameters were filled with —
-/// what the re-entry guard compares against, and what the hoisted key is built from, since a
-/// generic name reached at more than one filling across a document must not let the second write
-/// clobber the first's definition. `discriminate_by_filling` is fixed by the caller at expansion
-/// time rather than read off `filling` at runtime, so a parameterless name's generated source
-/// stays byte-identical. A filling's key reads each argument's own recognizable name (a sibling
-/// reference's key, or a primitive's `"type"` keyword) into a readable label, with a digest of the
-/// filling's canonical JSON always appended so fillings a label cannot tell apart still cannot
-/// collide.
+/// `within` form's body is. `filling` is the documents this frame's parameters were filled with,
+/// which the guard compares against and the hoisted key is built from. `discriminate_by_filling` is
+/// fixed by the caller at expansion time, so a parameterless name's generated source stays
+/// byte-identical.
 fn guarded_description(
     def_name: &str,
     body: &proc_macro2::TokenStream,
@@ -148,9 +133,8 @@ fn guarded_description(
     let key_binding = if discriminate_by_filling {
         quote::quote! {
             let key = {
-                // The FNV-1a offset basis and prime, spelled out rather than reached for from
-                // `std::hash::Hasher`: its documented internals may change between compiler
-                // versions, which would make the key of an identical filling drift across builds.
+                // The FNV-1a offset basis and prime, spelled out: the internals of
+                // `std::hash::Hasher` may change between compilers.
                 fn digest(bytes: &[u8]) -> u64 {
                     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
                     for byte in bytes {
@@ -160,8 +144,7 @@ fn guarded_description(
                     hash
                 }
                 // An argument's own recognizable name: another hoisted key (off its `$ref`), or a
-                // primitive's `"type"` keyword. An inlined struct or bare type parameter's `{}`
-                // has neither and contributes nothing to the label — the digest tells those apart.
+                // primitive's `"type"` keyword.
                 fn argument_label(argument: &serde_json::Value) -> ::core::option::Option<::std::string::String> {
                     if let ::core::option::Option::Some(reference) =
                         argument.get("$ref").and_then(serde_json::Value::as_str)
@@ -245,8 +228,7 @@ fn rooted_document(described: &proc_macro2::TokenStream) -> proc_macro2::TokenSt
             return described;
         }
         // The pointers into them are from the root, so the definitions join it — ahead of the
-        // description, which is the rest of the document. Every description the crate writes
-        // is an object, which is what can take them as a member.
+        // description, which is the rest of the document.
         let mut rooted = serde_json::Map::new();
         rooted.insert("$defs".to_string(), serde_json::Value::Object(hoisted_defs));
         if let serde_json::Value::Object(members) = described {
@@ -357,25 +339,19 @@ fn merge_readers() -> proc_macro2::TokenStream {
             out
         }
 
-        // A merged schema that names itself describes as a reference into the definitions being
-        // hoisted — the body it points at is written by then, since the frame that deferred the
-        // name fills the entry in before it returns, so the merge reads it back.
+        // A merged schema that names itself is a reference into the definitions being hoisted: the
+        // frame that deferred the name fills the entry in before it returns.
         fn deferred_name(schema: &serde_json::Value) -> ::core::option::Option<&str> {
             schema.get("$ref")?.as_str()?.strip_prefix(#defs_prefix)
         }
 
-        // What a description commits its value to on the wire, when it commits to anything. A
-        // union of branches and a bare reference name no type of their own, and neither is
-        // provably not an object, so both are left to the merge.
+        // What a description commits its value to on the wire, when it commits to anything.
         fn described_type(schema: &serde_json::Value) -> ::core::option::Option<&str> {
             schema.get("type")?.as_str()
         }
 
-        // What serde picked one of, and how the source spelled the choice: a discriminated enum
-        // writes `oneOf`, an untagged one `anyOf` — each spelling says whether a payload two
-        // branches admit is an error or the ordinary case. `None` means the schema offers no
-        // choice, so the expansion has reached something the base can merge rather than descend
-        // into.
+        // What serde picked one of: `oneOf` for a discriminated enum, `anyOf` for an untagged one.
+        // `None` means the schema offers no choice.
         fn union_branches(schema: &serde_json::Value) -> ::core::option::Option<(&'static str, &[serde_json::Value])> {
             for keyword in ["oneOf", "anyOf"] {
                 if let ::core::option::Option::Some(union) = schema.get(keyword).and_then(serde_json::Value::as_array) {
@@ -386,10 +362,7 @@ fn merge_readers() -> proc_macro2::TokenStream {
         }
 
         // The variant name a branch of an externally tagged enum's `oneOf` pins, or `None` for
-        // every branch that pins none. `oneOf` is the exclusive choice a tagged enum publishes,
-        // where a bare-string branch is a unit variant pinning the name serde writes; `anyOf` is
-        // the first-match choice an untagged enum (or a nullable value) publishes, where a string
-        // branch is just a value and nothing tags.
+        // every branch that pins none.
         fn tagged_unit_variant(schema: &serde_json::Value) -> ::core::option::Option<&str> {
             (described_type(schema)? == "string").then_some(())?;
             schema.get("const")?.as_str()
@@ -401,14 +374,12 @@ fn merge_readers() -> proc_macro2::TokenStream {
 fn merged_tree() -> proc_macro2::TokenStream {
     quote::quote! {
         enum Branches<'defs> {
-            // What a source contributes when it is not there — reached through an `Option`, or
-            // naming an item whose own published surface offers a `null` beside its value: no
-            // members, so the branch names exactly the keys the object writes on its own.
+            // What a source contributes when it is not there, through an `Option` or an item whose
+            // surface offers a `null`: no members.
             Absent,
             Object(&'defs serde_json::Map<::std::string::String, serde_json::Value>),
             // An externally tagged enum's unit variant, which the description pins as the bare name
-            // serde writes for it standing alone. Merged, serde writes that name as a key holding
-            // `null` — one member, which the branch carries as the name it is.
+            // serde writes for it standing alone.
             Tagged(&'defs str),
             Union(&'static str, ::std::vec::Vec<Branches<'defs>>),
         }
@@ -419,14 +390,12 @@ fn merged_tree() -> proc_macro2::TokenStream {
         }
 
         impl Branches<'_> {
-            // What one base becomes once this source's choices are written into it: every leaf of
-            // the source contributes its members to a copy of the base, under the wrapper the level
-            // that offered it was written with.
+            // What one base becomes once this source's choices are written into it: every leaf
+            // contributes its members to a copy of the base.
             fn merged_into(&self, base: &serde_json::Map<::std::string::String, serde_json::Value>) -> Merged {
                 match *self {
-                    // Merged rather than copied: an absent source contributes no members, and the
-                    // branch is still a branch of a document whose others were written by the
-                    // merge — the same keys in the same order, holding what the base already held.
+                    // Merged, not copied: an absent source contributes no members, and the branch
+                    // keeps the base's keys in the base's order.
                     Self::Absent => {
                         Merged::Object(merge_object_schemas(base, &serde_json::Map::new()))
                     }
@@ -464,10 +433,8 @@ fn merged_tree() -> proc_macro2::TokenStream {
                 }
             }
 
-            // What an `Option` makes of whatever it wraps: one object cannot say that a group of
-            // keys is written together or not at all, so the choice is written as `anyOf` between
-            // two key sets — the ordinary case for a source whose own members are all optional,
-            // not the ambiguity `oneOf` would call it.
+            // What an `Option` makes of what it wraps: one object cannot say a group of keys is
+            // written together or not at all, so the choice is an `anyOf` between two key sets.
             fn or_absent(self) -> Self {
                 Self::Union("anyOf", vec![self, Self::Absent])
             }
@@ -530,8 +497,7 @@ fn expansion_refusals(diagnostic: &MergeDiagnostic<'_>) -> proc_macro2::TokenStr
         }
 
         // An entry still only reserved is this merge coming back around to a name whose body is
-        // still being written: there is nothing to merge, and the type it would describe has no
-        // finite value to inhabit it.
+        // still being written: there is nothing to merge.
         fn refuse_missing_body(label: &str, position: &[usize], name: &str) -> ! {
             if position.is_empty() {
                 panic!(
@@ -608,11 +574,8 @@ fn branch_expansion() -> proc_macro2::TokenStream {
             };
 
             if let ::core::option::Option::Some(named) = described_type(body) {
-                // A `null` among the choices the flatten edge itself offers is the absence rather
-                // than a refusal: the source is nullable and the payload carrying none of its
-                // members is the one serde reads back as that value — the same two key sets an
-                // `Option` writes. A `null` below that level is a member of a choice serde matched
-                // by shape, and the refusal stands.
+                // A `null` among the choices the flatten edge itself offers is the absence, not a
+                // refusal: the source is nullable. Below that level the refusal stands.
                 if named == "null" && position.len() == 1 {
                     return ::core::option::Option::Some(Branches::Absent);
                 }
@@ -633,10 +596,8 @@ fn branch_expansion() -> proc_macro2::TokenStream {
             let mut expanded: ::std::vec::Vec<Branches<'defs>> = ::std::vec::Vec::new();
             for (index, branch) in branches.iter().enumerate() {
                 position.push(index + 1);
-                // A unit variant of the choice the flatten edge itself offers is the one depth at
-                // which the enum being flattened *is* the source, so the branch is a key set like
-                // any other. One level down, the enum is a member of a choice matched by shape,
-                // where the same value joins nothing — the refusal that position already carries.
+                // A unit variant of the choice the flatten edge itself offers is a key set like any
+                // other; one level down it joins nothing, and the refusal stands.
                 let tagged = (position.len() == 1 && spelling == "oneOf")
                     .then(|| tagged_unit_variant(branch))
                     .flatten();
@@ -686,8 +647,7 @@ pub fn merged_object_value(
                     expanded_branches(fs, hoisted_defs, &mut expanding, &mut position, label)
                 {
                     // The absence is offered around whatever the source described as, so a union
-                    // reached through an `Option` keeps its own spelling and gains the choice
-                    // outside it rather than one more member inside it.
+                    // reached through an `Option` keeps its own spelling.
                     let offered = if *optional { source.or_absent() } else { source };
                     described = described.multiplied(&offered);
                 }

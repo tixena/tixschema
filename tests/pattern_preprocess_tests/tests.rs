@@ -1,9 +1,9 @@
+//! Tests of the `pattern` and `preprocess` keys of `#[model_schema_prop]`.
+
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use serde::{Deserialize, Serialize};
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use tixschema::model_schema;
-
-// Pattern tests
 
 #[cfg(feature = "zod")]
 #[test]
@@ -53,9 +53,8 @@ fn test_pattern_ts_type_unaffected() {
     let ts = PatternTsTest::ts_definition();
     assert!(ts.contains("data_element_id: string"), "TS: {ts}");
     assert!(!ts.contains("regex"), "TS should not contain regex: {ts}");
-    // The type body itself (after the JSDoc comment) should not have pattern syntax
-    // Note: the JSON schema section of the JSDoc may include "pattern" as schema metadata,
-    // but the actual TypeScript type definition should be plain `string`.
+    // The type body, after the JSDoc comment, is plain `string`; the JSDoc's JSON schema section
+    // may still say `pattern`.
     let type_body_start = ts.find("export type").unwrap_or(0);
     let type_body = &ts[type_body_start..];
     assert!(
@@ -131,8 +130,6 @@ fn test_pattern_rust_validation_invalid_reaches_validate() {
     );
 }
 
-// Preprocess tests
-
 #[cfg(feature = "zod")]
 #[test]
 fn test_preprocess_single_fn_zod() {
@@ -202,7 +199,6 @@ fn test_preprocess_json_schema_unaffected() {
     assert!(date_schema.get("preprocess").is_none());
 }
 
-// Combined test
 #[cfg(feature = "zod")]
 #[test]
 fn test_pattern_and_preprocess_same_field() {
@@ -345,9 +341,7 @@ fn test_pattern_special_regex_chars() {
     }
 
     let schema = PatternSpecialRegex::zod_schema();
-    // The escaped dots are special regex characters and reach the literal untouched. The `\d`s
-    // are not: a flagless Zod literal reads that as ASCII where the Rust validator reads the
-    // Unicode class, so the members it stands for are written out and both read the one set.
+    // The escaped dots are special regex characters and reach the literal untouched.
     assert!(
         schema.contains(r#".check(z.regex(/^[0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2}$/, { error: "does not match pattern '^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2}$'" }))"#),
         "Expected special regex chars passed through in Zod schema: {schema}"
@@ -437,9 +431,7 @@ fn test_pattern_enum_variant_serde_validation() {
 }
 
 // The Zod surface splices a pattern into a JS regex literal, where `/` is the delimiter: an
-// unescaped one closes the literal early and the emitted TypeScript stops parsing. That escaping
-// belongs to the splice alone — JSON Schema and the Rust-side validator carry the pattern as a
-// plain string, byte for byte.
+// unescaped one closes the literal early and the emitted TypeScript stops parsing.
 
 #[cfg(feature = "zod")]
 #[test]
@@ -565,10 +557,8 @@ fn test_the_escaped_zod_pattern_matches_the_value_set_the_validator_enforces() {
     }
 }
 
-// A JS regex literal cannot carry a raw line terminator: the literal ends at the line break and
-// the emitted TypeScript stops parsing, exactly as an unescaped delimiter did. The escape form
-// denotes the same character, so surfaces carrying the pattern as a plain string still see it
-// byte for byte.
+// A JS regex literal cannot carry a raw line terminator: the literal ends at the line break and the
+// emitted TypeScript stops parsing, exactly as an unescaped delimiter did.
 
 #[cfg(feature = "zod")]
 #[test]

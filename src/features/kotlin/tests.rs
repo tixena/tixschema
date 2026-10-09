@@ -1,3 +1,6 @@
+//! Unit tests of the Kotlin emitter: a unit struct renders as an `object`, a braced empty struct as
+//! a class.
+
 use super::*;
 
 /// A unit struct is Kotlin's own no-data type: `@Serializable object`, never a `class`.
@@ -11,8 +14,6 @@ fn a_unit_struct_renders_as_an_object() {
     assert!(!rendered.contains("class Ping"), "got: {rendered}");
 }
 
-/// A braced struct with no named fields is a different shape from a unit struct — still a `class`,
-/// unchanged by the unit-struct rule above.
 #[test]
 fn a_braced_empty_struct_still_renders_as_a_class() {
     let item: ItemStruct = syn::parse_quote! {

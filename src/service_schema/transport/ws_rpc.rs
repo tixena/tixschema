@@ -1,23 +1,5 @@
 //! The `ws_rpc` transport: the `amqp_rpc` request, notify and reply terms over one WebSocket as
 //! JSON text frames.
-//!
-//! `{service}_ws_rpc_dispatcher!()` emits every item every transport built on the shared
-//! dispatcher seam publishes — `IncomingMessage`, `Reply`, `dispatch` and the arm readers — plus
-//! this transport's own frame codec (`Frame`, its `decode`, `pong_frame`), `FrameReply` and
-//! `answer`: the one call an adapter makes per inbound text frame, decoding it, dispatching a
-//! request or a notify, answering a ping with a pong, and returning the reply frame to send, or
-//! nothing. Its `Frame` reads request, notify and ping frames alone — a reply or a pong, read by
-//! the client macro instead, decodes to `Frame::Ignored` rather than a refusal.
-//!
-//! `{service}_ws_rpc_client!()` emits everything the shared client seam publishes for every
-//! transport — `Transport`, `{Service}Client`, the fault mirror and the envelope readers — plus
-//! its own copy of the frame codec, `ping_frame`, `request_frame`, `notify_frame`, `FrameWriter`
-//! and `FrameSession`. Its `Frame` reads reply, ping and pong frames alone — a request or a
-//! notify, read by the dispatcher macro instead, decodes to `Frame::Ignored` rather than a
-//! refusal. Both transports are generated in `core` and `std` alone: `FrameWriter` wraps a boxed
-//! send function into a one-way `Transport`, and `FrameSession` adds the request-and-reply half —
-//! a correlation map keyed on an id from an atomic counter, settled by `deliver` — so a caller's
-//! own adapter shrinks to that one send function plus one call to `deliver` per inbound frame.
 
 use super::Transport;
 use super::amqp_rpc::{
@@ -51,15 +33,6 @@ pub fn emit(service: &ServiceDef, transport: Transport) -> TokenStream {
 
 /// The dispatcher half: everything that turns one inbound text frame into a call on an
 /// implementation and a reply frame to send, held as tokens for whoever answers the service.
-///
-/// Grouped types, then impls, then functions, whole macro through, the way
-/// [`super::amqp_rpc::server_macro`] interleaves its own pieces with the shared dispatcher
-/// items rather than running them back to back — `incoming_message`, `reply_trait` and
-/// `incoming_message_accessors` are what `dispatcher_items` calls too, so the one `dispatch`
-/// this macro and the `amqp_rpc` dispatcher answer through is still the one emitter. Within each
-/// impl or trait, members fall in the alphabetical order
-/// `clippy::arbitrary_source_item_ordering` asks for — `FrameReply`'s own inherent impl is
-/// `into_text`, `new`, `write`; its `Reply` impl is `fault`, `send`.
 fn dispatcher_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
     let contract = &service.ident;
     let module = module_ident(service);
@@ -478,10 +451,6 @@ fn client_macro_docs(
 /// fault mirror, the client type and one `method` per operation) plus this transport's own copy of
 /// the frame codec, `request_frame`, `notify_frame`, `FrameWriter` and `FrameSession`, held as
 /// tokens for whoever wants to make calls or push events.
-///
-/// Grouped types, then impls, then functions, whole macro through, the same way
-/// [`dispatcher_macro`] interleaves its own pieces with the shared client items rather than
-/// running them back to back.
 fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
     let contract = &service.ident;
     let client = format_ident!("{contract}Client", span = contract.span());
@@ -559,9 +528,8 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
                     }
                 }
 
-                // The operations sit apart, under the `Sync` a call's future needs: it borrows
-                // the client across an await, and a borrow is only `Send` where what it borrows
-                // is `Sync`. Binding a client asks for no such thing.
+                // The operations sit apart, under the `Sync` a call's future needs: a borrow held
+                // across an await is `Send` only where what it borrows is `Sync`.
                 impl<T: Transport + ::core::marker::Sync> #client<T> {
                     #(#methods)*
                 }

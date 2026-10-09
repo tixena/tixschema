@@ -1,12 +1,4 @@
 //! The operations against a real collection.
-//!
-//! These need a MongoDB server, named in `TIXSCHEMA_MONGODB_URI`. Without the variable every check
-//! stands down, saying so on the process's own stderr; `just test-mongodb` refuses to. With the
-//! variable set, a value that is no address or a server that does not answer is a failure. The
-//! address is never printed: it may hold a password.
-//!
-//! Each check works in a collection of its own in the database `tixschema_live`, named after the
-//! check, the `bson` major and the process, so the two majors can run at once against one server.
 
 use core::time::Duration;
 use std::env;
@@ -97,9 +89,6 @@ fn stand_down() {
     });
 }
 
-/// A read is run under the options it is given: the order, how many rows and how many passed
-/// over, on every kind of read. A collation changes what a filter matches, and a hint reaches
-/// MongoDB, which refuses one that names no index.
 #[tokio::test]
 async fn live_a_read_is_run_under_the_options_it_is_given() {
     let rows = (1_u32..=4_u32).map(|at| stored(&numbered(at))).collect();
@@ -176,8 +165,6 @@ async fn live_a_read_is_run_under_the_options_it_is_given() {
     held.drop().await.unwrap();
 }
 
-/// A row an older writer left is refused by `find_one`, by its `_id` and its one issue, and read
-/// by `find_one_with` once a resolver has repaired it.
 #[tokio::test]
 async fn live_a_row_a_resolver_repairs_reads_and_is_refused_without_one() {
     let Some(held) = seeded("find_one_with", vec![unreadable()]).await else {
@@ -209,8 +196,6 @@ async fn live_a_row_a_resolver_repairs_reads_and_is_refused_without_one() {
     held.drop().await.unwrap();
 }
 
-/// A stored row reads as the type, by a filter over a path of its own and by one that starts from
-/// a nested model's path, and a filter that matches no row answers `None`.
 #[tokio::test]
 async fn live_a_seeded_row_reads_and_no_row_is_none() {
     let Some(held) = seeded("find_one", vec![readable()]).await else {
@@ -260,8 +245,6 @@ async fn live_an_inserted_row_reads_back_as_the_value_it_was() {
     held.drop().await.unwrap();
 }
 
-/// Nothing listens on port 1 of this machine, and the driver is given a fifth of a second to find
-/// that out, once per operation. No row is asked of the server `TIXSCHEMA_MONGODB_URI` names.
 #[tokio::test]
 async fn live_an_unreachable_server_is_a_database_error_for_every_operation() {
     if named_server().is_none() {
@@ -327,8 +310,6 @@ async fn live_an_unreachable_server_is_a_database_error_for_every_operation() {
     }
 }
 
-/// A count answers how many rows its filter matches, with no row read: two past due, three
-/// unpaid, none under a number no row has.
 #[tokio::test]
 async fn live_count_answers_how_many_rows_a_filter_matches() {
     let draft = Invoice {
@@ -395,8 +376,6 @@ async fn live_find_reads_every_row_the_cursor_holds() {
     held.drop().await.unwrap();
 }
 
-/// One row an older writer left, between two that read: `find` answers no row at all, and names
-/// the one that does not read. With a resolver that repairs it, `find_with` answers all three.
 #[tokio::test]
 async fn live_one_unreadable_row_refuses_every_row_until_a_resolver_repairs_it() {
     let rows = vec![
@@ -433,8 +412,6 @@ async fn live_one_unreadable_row_refuses_every_row_until_a_resolver_repairs_it()
     held.drop().await.unwrap();
 }
 
-/// `update_many` changes every row its filter matches, `delete_one` takes out one, and
-/// `delete_many` every one: two drafts and two past due leave one row.
 #[tokio::test]
 async fn live_update_many_and_the_deletes_act_on_the_rows_their_filters_match() {
     let draft = |at: u32| Invoice {
@@ -488,8 +465,6 @@ async fn live_update_many_and_the_deletes_act_on_the_rows_their_filters_match() 
     held.drop().await.unwrap();
 }
 
-/// `update_one` changes the one row its filter matches, by an update built from the type's own
-/// paths, and the row then reads with what the update set.
 #[tokio::test]
 async fn live_update_one_changes_the_row_its_filter_matches() {
     let rows = vec![stored(&invoice()), stored(&numbered(1_u32))];

@@ -2,31 +2,10 @@
 //! every path through an arm: the answer, the operation's own error, an undeserializable payload,
 //! a name nothing answers to, a handler that panicked, and a one-way operation that settles
 //! without publishing.
-//!
-//! The probe reply handle records which of `send` and `fault` was called, so a test can assert not
-//! only what was answered but that a request-and-reply arm answered exactly once and that a
-//! one-way arm that reached its implementation answered nothing at all.
 
 #![cfg(feature = "serde")]
 
 /// A message annotated with `#[model_schema_prop]`, and where a violation of it is caught.
-///
-/// Gated because the annotation is: the constraint is read, and the validator that enforces it
-/// written, only when `serde` is on beside a surface that reads the constraint.
-///
-/// **The two answers a payload can earn here are different answers, and the arm gives whichever
-/// one is true.** Bytes that are not a document at all never become anything, and the fault says
-/// the sender's serialization is broken. Everything that *does* read as a document and is then
-/// turned away — a field carrying the wrong type of value, a key that is missing, a value a
-/// constraint refuses — is a value someone supplied that the message does not admit, and the fault
-/// says that instead and names the field wherever the refusal named one.
-///
-/// A receiver acts differently on each, and the line between them is `serde_json`'s own
-/// classification of its refusal rather than the shape of the sentence it wrote. It is also where
-/// the TypeScript service serving the same operation draws it: its reader parses the payload and
-/// its schema then judges what was read, so a type mismatch and a broken bound are one kind there
-/// and are one kind here. Constraints stay enforced by the validator alone and never as the
-/// payload is read, which is what lets a broken bound name its field at all.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -455,10 +434,8 @@ pub mod a_message_annotated_with_a_constraint {
 
     #[test]
     fn a_payload_that_is_not_a_message_is_refused_under_the_class_of_failure_it_is() {
-        // Wrong about the type its field declared, missing the key entirely, and not a document
-        // in the first place. None of the three is a message, and moving the constraint checks to
-        // the validator moved none of them with it — a required key in particular must not have
-        // become defaultable on the way.
+        // Wrong about the type its field declared, missing the key entirely, and not a document in
+        // the first place.
         for (payload, kind, field) in [
             (
                 br#"{"organization_id":42}"#.to_vec(),
@@ -519,10 +496,7 @@ pub mod a_message_annotated_with_a_constraint {
         }
     }
 
-    /// A message whose bound is declared on a field's *type* rather than on the field. Until the
-    /// message's own validator reached it, nothing did: the nested type's bound is enforced nowhere
-    /// on the read, so this payload reached the implementation carrying a `Held` violating the
-    /// pattern `Held` itself declares.
+    /// A message whose bound is declared on a field's *type* rather than on the field.
     #[test]
     fn a_bound_a_fields_own_type_declares_fails_validation_and_names_the_field_that_held_it() {
         let service = GateBackEnd::new();
@@ -567,8 +541,6 @@ pub mod a_message_annotated_with_a_constraint {
         );
     }
 
-    /// The same payload with a value the bound admits reaches the implementation, which is what
-    /// says the validator refuses something rather than everything.
     #[test]
     fn a_message_whose_nested_bound_is_satisfied_reaches_the_implementation() {
         let service = GateBackEnd::new();
@@ -588,22 +560,6 @@ pub mod a_message_annotated_with_a_constraint {
         assert!(reply.faults().is_empty(), "got: {:?}", reply.settled());
     }
 
-    /// The brand's hook was not removed, and this is what says so: the refusal still carries the
-    /// brand's own message, which only the read produces.
-    ///
-    /// Where it is *reported* is a separate question from where it is caught. The bytes read as a
-    /// document and the value inside broke a bound, so the fault says the value someone supplied
-    /// was not admitted — which is the kind the TypeScript service answers the same payload under.
-    ///
-    /// The brand's own message still names no field, the brand being the value rather than a member
-    /// of anything. The name comes from the field holding it, which writes its own wire key into
-    /// the refusal as the payload is read — the same name the enclosing validator would have
-    /// written had the read not caught it first, and the name the schema published from this
-    /// declaration reports for this payload.
-    ///
-    /// Moving the check itself is a further ruling again, and the order matters: taking the hook
-    /// off before the validator could reach the field would have left the bound enforced by
-    /// nothing at all.
     #[test]
     fn a_brands_bound_still_refuses_the_payload_on_the_read() {
         let service = GateBackEnd::new();
@@ -673,13 +629,6 @@ pub mod a_message_annotated_with_a_constraint {
         (service.reached(), reply.faults())
     }
 
-    /// The account a request carries is an `#[serde(untagged)]` enum, and the bound broken is one
-    /// its variant's type declares — the first of the two shapes the walk stopped at, and the one
-    /// three of the port's five operations carry.
-    ///
-    /// The payload is a message: every key present, every value of its declared type. What it is
-    /// not is one satisfying the bound `jti` declares, and until the walk reached through the union
-    /// nothing said so — the request executed, and one of the three that executed was a write.
     #[test]
     fn a_bound_inside_an_untagged_variant_fails_validation_and_names_the_whole_path() {
         let (reached, reported) = dispatched(
@@ -708,12 +657,6 @@ pub mod a_message_annotated_with_a_constraint {
         );
     }
 
-    /// The message itself is an `#[serde(untagged)]` enum — the second shape, where the union
-    /// published no `validate()` at all and the dispatcher's blanket fallback answered for every
-    /// payload, so not one field of the message was checked.
-    ///
-    /// It must now answer exactly what the variant it holds answers on its own, which is the whole
-    /// content of "the walk dispatches to whichever variant deserialized".
     #[test]
     fn a_message_that_is_itself_untagged_answers_what_the_variant_it_holds_answers() {
         let payload = br#"{"account":{"aud":"app-user","jti":""},"organizationId":"gate-org"}"#;
@@ -738,9 +681,6 @@ pub mod a_message_annotated_with_a_constraint {
         );
     }
 
-    /// The operations that already refused have to keep refusing, in the same words and naming the
-    /// same field. Their account is a plain struct rather than a union, which is exactly why they
-    /// refused while the other three executed, and nothing here was allowed to disturb them.
     #[test]
     fn a_request_whose_account_is_no_union_keeps_refusing_what_it_already_refused() {
         let (reached, reported) = dispatched(
@@ -755,15 +695,7 @@ pub mod a_message_annotated_with_a_constraint {
         );
     }
 
-    /// The carve-out, from both sides. A member's own bound still runs on the read, where it takes
-    /// its variant out of the running — so `name` too short is not a violation to report but a
-    /// payload that is the *other* variant. A bound a member's type declares is the validator's
-    /// either way, and the arm that runs it is the one the read chose.
-    ///
-    /// The two valid payloads are what says the selection is real: the same key, two lengths, two
-    /// different variants reaching the implementation. Were that check moved to the validator,
-    /// both would arrive as `Named` and one of them would then be refused — a value changing, not
-    /// a message.
+    /// The carve-out, from both sides.
     #[test]
     fn a_bound_that_selects_the_variant_stays_on_the_read() {
         assert_eq!(
@@ -813,8 +745,6 @@ pub mod a_message_annotated_with_a_constraint {
         );
     }
 
-    /// The other direction, so that what the walk refuses is something rather than everything: the
-    /// same three shapes with a value the bound admits reach their implementations.
     #[test]
     fn a_message_whose_bound_beneath_a_union_is_satisfied_reaches_the_implementation() {
         for (operation, payload) in [
@@ -1222,10 +1152,6 @@ impl ReadFields {
         }
     }
 }
-
-// -------------------------------------------------------------------------------------------
-// The `http_rest` transport
-// -------------------------------------------------------------------------------------------
 
 /// A document service exercising every arm of the `http_rest` dispatcher's JSON path: two path
 /// placeholders each bound to their own generated field, with a header claimed beside them and a
@@ -1650,12 +1576,6 @@ impl http_rest_transport::FaultHandler for RecordingFaultHandler {
 
 /// Comes apart the way a handler does when something the compiler was expected to prevent gets
 /// through.
-///
-/// The two conditions are exact negations, so one of them always fires. Which one decides the shape
-/// of the panic payload: `assert!` panics with exactly the message it was given and nothing around
-/// it, so a formatted message reaches the panic hook as a `String` and a literal one as a `&str`.
-/// A fault's detail has to read back off either, and a reader that knew only one shape would report
-/// nothing for half the panics a service can raise.
 fn come_apart(formatted: bool, organization_id: &str) {
     assert!(
         !formatted,
@@ -2055,11 +1975,8 @@ fn nothing_but_a_panic_is_written_down() {
 
 #[test]
 fn every_arm_answers_exactly_the_number_of_times_its_outcome_allows() {
-    // Every arm the service has, on every path through it: the answer, the operation's own error,
-    // a message its validator refuses, bytes that were never the message at all, a name nothing
-    // answers to, and an implementation that came apart. The last field is how many times the
-    // handle may be reached — once for a request-and-reply arm however it goes, and for a one-way
-    // arm only where the message was refused before the implementation ever ran.
+    // Every arm the service has, on every path through it. The last field is how many times the
+    // handle may be reached.
     for (operation, payload, answers) in [
         ("admit", r#"{"organization_id":"acme"}"#, 1),
         ("admit", r#"{"organization_id":"ab"}"#, 1),
@@ -2113,9 +2030,6 @@ fn a_one_way_message_refused_before_it_ran_is_the_one_thing_that_arm_answers() {
     assert_eq!(reported.operation(), "apply-bundle");
 }
 
-/// The macro invoked twice in one crate, in two differently-named modules, both compiling and both
-/// dispatching. Nothing in the macro names a module, so the caller's two names are the only ones
-/// there are and neither expansion can collide with the other.
 #[test]
 fn the_same_macro_invoked_in_a_second_module_dispatches_the_same_way() {
     let payload = r#"{"organization_id":"acme"}"#;
@@ -2394,9 +2308,6 @@ fn an_operation_naming_no_http_group_defaults_to_a_plain_post() {
     assert_eq!(response.body(), br#"{"swept":3}"#);
 }
 
-/// A `body = "bytes"` operation answers the bytes bare, under `content-type`, rather than the
-/// JSON envelope every other declared status writes - and its declared `header_out` entry rides
-/// beside them as an ordinary response header, exactly as the JSON path composes one.
 #[test]
 fn a_bytes_operation_answers_raw_bytes_under_its_own_content_type_and_header_out() {
     let (reached, response) = http_dispatched("GET", "/documents/present/thumbnail", "", &[], b"");
@@ -2464,8 +2375,6 @@ fn a_struct_variant_and_a_tuple_variant_each_answer_their_own_declared_status() 
     assert_eq!(missing.body(), br#""NotFound""#);
 }
 
-/// The route table an adapter iterates to register a handler per operation: one row each, method
-/// and path template as declared (or defaulted), and every status a caller can be answered with.
 #[test]
 fn the_route_table_lists_one_row_per_operation_with_its_own_statuses() {
     let routes = http_rest_transport::ROUTES;
@@ -2514,8 +2423,6 @@ fn the_route_table_lists_one_row_per_operation_with_its_own_statuses() {
     );
 }
 
-/// `IncomingRequest` reads back every header it was built with, not only the one `dispatch` reads
-/// through `header()`.
 #[test]
 fn an_incoming_request_reads_back_every_header_it_was_built_with() {
     let request = http_rest_transport::IncomingRequest::new(

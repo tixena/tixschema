@@ -1,3 +1,5 @@
+//! Tests of the JSON Schema each field type describes as.
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -381,7 +383,6 @@ fn test_complex_nested_collections() {
     assert_eq!(map_of_arrays_additional["type"], "array");
     assert_eq!(map_of_arrays_additional["items"]["type"], "string");
 
-    // Option<HashMap<String, i32>>
     assert_eq!(properties["optional_map"]["anyOf"][0]["type"], "object");
     assert_eq!(
         properties["optional_map"]["anyOf"][0]["additionalProperties"]["type"],
@@ -426,7 +427,6 @@ fn test_objectid_generates_proper_schema() {
     );
     assert_eq!(author_prop["anyOf"][1]["type"], "null");
 
-    // Vec<ObjectId>
     let tags_prop = &properties["tag_ids"];
     assert_eq!(tags_prop["type"], "array");
     let items = &tags_prop["items"];

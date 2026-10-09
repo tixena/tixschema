@@ -1071,8 +1071,6 @@ fn bson_1_what_serde_wrote_is_read_and_the_decider_never_runs() {
     assert_eq!(calls, 0);
 }
 
-/// Bson 2: an id stored as its hex string where an `ObjectId` belongs. serde reads it, and a
-/// MongoDB query for the id does not match it.
 #[test]
 fn bson_2_an_id_stored_as_text_is_mistyped_and_fixed() {
     let mut stored_row = plain_row();
@@ -1091,7 +1089,6 @@ fn bson_2_an_id_stored_as_text_is_mistyped_and_fixed() {
     assert_eq!(calls, 1);
 }
 
-/// Bson 3: a date stored as a BSON date, and one stored as epoch milliseconds.
 #[test]
 fn bson_3_a_date_stored_as_a_bson_date_or_as_an_epoch_is_invalid_and_fixed() {
     for date in [
@@ -1120,8 +1117,6 @@ fn bson_4_a_malformed_id_is_rejected_with_the_list() {
     assert_eq!(calls, 1);
 }
 
-/// The `reason` of bson 4's issue is the library's own wording of serde's refusal, which version 3
-/// writes inside a sentence of its own.
 #[test]
 fn a_reason_is_the_wording_of_the_bson_version_built_against() {
     let mut stored_row = plain_row();
@@ -1136,8 +1131,7 @@ fn a_reason_is_the_wording_of_the_bson_version_built_against() {
     assert_eq!(reasons!(record_schema, read.unwrap_err().issues), [wording]);
 }
 
-/// Bson 5: a number stored as a 64-bit integer where the field writes a 32-bit one. Numbers are
-/// one bracket, so a query for the number matches it.
+/// Bson 5: a number stored as a 64-bit integer where the field writes a 32-bit one.
 #[test]
 fn bson_5_a_number_stored_as_another_number_type_is_no_issue() {
     let mut stored_row = plain_row();
@@ -1148,8 +1142,6 @@ fn bson_5_a_number_stored_as_another_number_type_is_no_issue() {
     assert_eq!(calls, 0);
 }
 
-/// A field serde writes wherever its predicate lets it be and never reads has its key in what the
-/// type wrote, which is a key the type declares.
 #[test]
 fn a_key_the_type_writes_under_a_predicate_and_does_not_read_is_declared() {
     let kept_row = written(&Kept {
@@ -1189,8 +1181,6 @@ fn a_key_the_type_writes_under_a_predicate_and_does_not_read_is_declared() {
     assert_eq!(calls, 0);
 }
 
-/// A field serde neither writes nor reads declares no key, under `skip` or under
-/// `skip_serializing` beside `skip_deserializing`: its key in a row is one serde reads past.
 #[test]
 fn a_key_of_a_field_the_type_neither_writes_nor_reads_is_unknown() {
     let stored_row = doc! { "cached": 1_i32, "id": "i", "local": 9_i32 };
@@ -1205,8 +1195,6 @@ fn a_key_of_a_field_the_type_neither_writes_nor_reads_is_unknown() {
     );
 }
 
-/// Bson 6: a MongoDB row with the `_id` every row carries, read into a type that does not declare
-/// `_id`.
 #[test]
 fn bson_6_a_rows_own_id_is_a_key_like_any_other() {
     let mut stored_row = plain_row();
@@ -1232,8 +1220,6 @@ fn bson_6_a_rows_own_id_is_a_key_like_any_other() {
     assert_eq!(calls, 1);
 }
 
-/// Bson 7: the decider, on a row with problems in the record, in one of its versions, and in the
-/// row's own `_id`, which the decider can read from the row it is handed.
 #[test]
 fn bson_7_the_decider_repairs_a_row_with_problems_at_three_levels() {
     let stored_row = doc! {
@@ -1272,8 +1258,6 @@ fn bson_7_the_decider_repairs_a_row_with_problems_at_three_levels() {
     assert_eq!(calls, 1);
 }
 
-/// One chance: the decider fixes the id and not the number, so the read fails with what the second
-/// walk finds, and the decider is not asked again.
 #[test]
 fn a_fixed_row_gets_one_more_read_and_fails_with_the_second_list() {
     fn ids_only(
@@ -1305,8 +1289,6 @@ fn a_fixed_row_gets_one_more_read_and_fails_with_the_second_list() {
     assert_eq!(calls, 1);
 }
 
-/// A row serde reads is not read while the walk still lists an issue in it: `Fixed` over a row
-/// left as it was fails the read with the same list.
 #[test]
 fn a_row_serde_reads_still_fails_after_fixed_while_an_issue_is_left() {
     fn untouched(
@@ -1332,8 +1314,6 @@ fn a_row_serde_reads_still_fails_after_fixed_while_an_issue_is_left() {
     assert_eq!(calls, 1);
 }
 
-/// MongoDB's comparison rule: numbers are one bracket, strings and symbols one, and every other
-/// type a bracket of its own.
 #[test]
 fn a_stored_type_is_matched_by_the_types_in_its_own_bracket() {
     use version_schema::same_bracket;
@@ -1377,8 +1357,6 @@ fn a_stored_type_is_matched_by_the_types_in_its_own_bracket() {
     }
 }
 
-/// serde reads a struct from a list of its fields in order, which is not the document the struct
-/// writes, and refuses one stored as text.
 #[test]
 fn a_model_stored_as_another_type_is_mistyped_and_one_serde_refuses_is_invalid() {
     let mut stored_row = plain_row();
@@ -1401,8 +1379,6 @@ fn a_model_stored_as_another_type_is_mistyped_and_one_serde_refuses_is_invalid()
     assert_eq!(calls, 1);
 }
 
-/// A key serde needs is `Missing`, and a field stored as something other than the list or the map
-/// it is written as is one issue at the field, in this walker's own words.
 #[test]
 fn a_missing_key_and_a_field_stored_as_neither_its_list_nor_its_map_are_listed_at_the_field() {
     let mut stored_row = plain_row();
@@ -1443,8 +1419,6 @@ fn a_missing_key_and_a_field_stored_as_neither_its_list_nor_its_map_are_listed_a
     );
 }
 
-/// Each id and number is read on its own: an issue sits at the item, with the item's own type, and
-/// a decider that sets each path repairs the row.
 #[test]
 fn a_plain_value_in_a_list_a_map_or_an_option_is_listed_and_fixed_at_its_own_path() {
     let stored_row = doc! {
@@ -1514,9 +1488,6 @@ fn a_plain_value_in_a_list_a_map_or_an_option_is_listed_and_fixed_at_its_own_pat
     );
 }
 
-/// Each read hook is the function serde's derive calls, handed the library's deserializer, so its
-/// refusal is the walker's: the author's function, the author's module, a function generic over
-/// what it reads, and the module `as_number` hangs.
 #[test]
 fn a_hooked_field_is_read_through_its_hook() {
     let date = Bson::DateTime(bson::DateTime::from_millis(1_759_600_000_000));
@@ -1551,8 +1522,6 @@ fn a_hooked_field_is_read_through_its_hook() {
     }
 }
 
-/// A field written back through its own hook is compared in the type that hook writes: text for
-/// the two numbers, and a number for the date.
 #[test]
 fn a_hooked_field_stored_as_its_hook_writes_it_is_no_issue() {
     let stored_row = doc! {
@@ -1572,8 +1541,6 @@ fn a_hooked_field_stored_as_its_hook_writes_it_is_no_issue() {
     assert_eq!(calls, 0);
 }
 
-/// A constraint on a struct's field hangs no read hook: serde reads the value, and the walker
-/// holds what it read to the bound, where a schema surface is on to publish its validator.
 #[test]
 fn a_constraint_on_a_struct_field_is_the_walkers_to_check() {
     let mut stored_row = written(&hooked());
@@ -1719,8 +1686,6 @@ fn a_variants_field_a_hook_named_like_a_binding_refuses_is_invalid_at_the_field(
     );
 }
 
-/// A key stored under an alias is its field, and an issue under it is listed at the alias, so a
-/// decider that sets the path fixes the key the row holds.
 #[test]
 fn a_key_stored_under_an_alias_is_its_field_and_an_issue_is_listed_at_the_alias() {
     for key in ["name", "fullName", "label"] {
@@ -1821,8 +1786,6 @@ fn an_optional_model_type_that_is_absent_or_null_is_no_issue() {
     }
 }
 
-/// A plain value inside a list of lists, an optional list or a map is read on its own, at its own
-/// path, and an optional list stored as neither a list nor `null` names the `Option`.
 #[test]
 fn a_plain_value_in_a_nested_or_optional_list_or_a_map_is_listed_at_its_own_path() {
     let stored_row = doc! {
@@ -1884,8 +1847,6 @@ fn a_struct_with_no_field_to_read_still_lists_an_undeclared_key() {
     );
 }
 
-/// serde refuses the row and the walk has nothing to say why: one `Undescribed`, carrying serde's
-/// message as the library words it.
 #[test]
 fn a_refusal_the_walk_cannot_see_into_is_undescribed() {
     let read = Envelope::from_bson_with(doc! { "sealed": { "label": "x" } }, |_raw, _found| {
@@ -2027,8 +1988,6 @@ fn a_position_that_is_absent_is_missing() {
     );
 }
 
-/// serde reads past a position the type does not declare in a BSON list, so the position is the
-/// only issue, and a decider that removes it repairs the row.
 #[test]
 fn a_position_the_type_does_not_declare_is_unknown_and_serde_reads_past_it() {
     let stored_row = doc! { "pair": ["a", 1_i32, true], "spot": ["b", 2_i32], "spots": [] };
@@ -2058,8 +2017,6 @@ fn a_position_the_type_does_not_declare_is_unknown_and_serde_reads_past_it() {
     );
 }
 
-/// A tuple stored as no list is one issue at the field in this walker's own words, and a tuple
-/// struct stored as one is read whole with its own reader.
 #[test]
 fn a_tuple_and_a_tuple_struct_stored_as_no_list_are_listed_at_the_value() {
     let stored_row = doc! { "pair": { "0": "a" }, "spot": "none", "spots": [7_i32] };
@@ -2080,8 +2037,6 @@ fn a_tuple_and_a_tuple_struct_stored_as_no_list_are_listed_at_the_value() {
     );
 }
 
-/// A brand and a single-slot tuple struct are each read as the one value they hold, a brand over
-/// a model type walks as that type, and a unit struct is a document in which no key is its own.
 #[test]
 fn a_brand_a_single_slot_struct_and_a_unit_struct_are_walked_as_serde_writes_them() {
     let labelled = Labelled {
@@ -2156,8 +2111,6 @@ fn a_brand_a_single_slot_struct_and_a_unit_struct_are_walked_as_serde_writes_the
     assert_eq!(read, Ok(labelled));
 }
 
-/// A unit struct and a brand over a model type read a document of their own, and a unit struct
-/// stored as text is read whole with its own reader.
 #[test]
 fn a_unit_struct_and_a_brand_over_a_model_type_are_read_from_a_document() {
     let mut calls = 0_u32;
@@ -2197,8 +2150,6 @@ fn a_unit_struct_and_a_brand_over_a_model_type_are_read_from_a_document() {
     );
 }
 
-/// What a brand over a model type lists inside a document the caller holds is what that type
-/// lists there, under that type's keys, and a unit struct lists nothing and has no key.
 #[test]
 fn a_brand_over_a_model_type_hands_its_fields_walk_to_that_type() {
     let held = doc! { "legacy": true, "number": "3" };
@@ -2218,9 +2169,6 @@ fn a_brand_over_a_model_type_hands_its_fields_walk_to_that_type() {
     assert_eq!(unlisted, Vec::new());
 }
 
-/// A brand over another brand, over a tuple struct and over a plain enum is the value the type it
-/// holds writes: what serde wrote is read without the decider, and an issue inside the held type
-/// sits at the path the brand sits at.
 #[test]
 fn a_brand_over_a_brand_a_tuple_struct_and_a_plain_enum_walks_as_the_type_it_holds() {
     let referenced = Referenced {
@@ -2256,9 +2204,6 @@ fn a_brand_over_a_brand_a_tuple_struct_and_a_plain_enum_walks_as_the_type_it_hol
     );
 }
 
-/// A brand over text, a single-slot struct over text and a tuple struct each list nothing inside
-/// a document the caller holds, and no key there is theirs. A brand over one of them answers as
-/// it does.
 #[test]
 fn a_brand_over_text_and_a_tuple_struct_list_nothing_in_a_document_and_return_no_key() {
     let held = doc! { "0": "a", "legacy": true };
@@ -2276,9 +2221,6 @@ fn a_brand_over_text_and_a_tuple_struct_list_nothing_in_a_document_and_return_no
     }
 }
 
-/// serde flattens a struct or a map and nothing else, so it refuses every read of a struct that
-/// flattens a brand over text. The brand's fields walker lists nothing for it, and the read
-/// carries serde's refusal.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 #[test]
 fn a_struct_flattening_a_type_serde_cannot_flatten_lists_nothing_for_it_beside_serdes_refusal() {
@@ -2291,9 +2233,6 @@ fn a_struct_flattening_a_type_serde_cannot_flatten_lists_nothing_for_it_beside_s
     );
 }
 
-/// A `transparent` struct with a named field is the value its field holds, at the path the struct
-/// sits at: an id stored as text is `Mistyped` there, and over a model type the struct walks as
-/// that type. No key is looked up under the field's name.
 #[test]
 fn a_transparent_struct_with_a_named_field_is_walked_as_the_value_its_field_holds() {
     let assigned = Assigned {
@@ -2383,8 +2322,6 @@ fn a_transparent_struct_with_a_named_field_is_walked_as_the_value_its_field_hold
     );
 }
 
-/// Read from a document of its own, a `transparent` struct over a model type lists that type's
-/// issues at paths inside that type, and hands its fields walk to that type.
 #[test]
 fn a_transparent_struct_over_a_model_type_is_read_from_a_document_as_that_type() {
     let mut calls = 0_u32;
@@ -2419,10 +2356,6 @@ fn a_transparent_struct_over_a_model_type_is_read_from_a_document_as_that_type()
     );
 }
 
-/// A `transparent` tuple struct is the value of the one slot serde reads, whatever other slots it
-/// declares, at the path the struct sits at: a list is walked item by item, an id stored as text
-/// is `Mistyped` there, and over a model type the struct walks as that type. No position is looked
-/// up.
 #[test]
 fn a_transparent_tuple_struct_is_walked_as_the_value_of_the_slot_serde_reads() {
     let filing = Filing {
@@ -2528,8 +2461,6 @@ fn a_transparent_tuple_struct_is_walked_as_the_value_of_the_slot_serde_reads() {
     );
 }
 
-/// Read from a document of its own, a `transparent` tuple struct over a model type lists that
-/// type's issues at paths inside that type, and hands its fields walk to that type.
 #[test]
 fn a_transparent_tuple_struct_over_a_model_type_is_read_from_a_document_as_that_type() {
     let mut calls = 0_u32;
@@ -2559,8 +2490,6 @@ fn a_transparent_tuple_struct_over_a_model_type_is_read_from_a_document_as_that_
     );
 }
 
-/// The brand is read with its own reader, so the check written on it runs and its message is the
-/// issue's.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_constrained_brand_is_refused_with_its_own_message() {
@@ -2589,8 +2518,6 @@ fn a_constrained_brand_is_refused_with_its_own_message() {
     );
 }
 
-/// An issue inside what fills the parameter is one issue at the field, with no path into the
-/// item, and a model type filling the parameter needs no flag.
 #[test]
 fn a_value_of_a_parameters_type_is_read_whole_at_its_field() {
     let items = vec![
@@ -2623,8 +2550,6 @@ fn a_value_of_a_parameters_type_is_read_whole_at_its_field() {
     assert_eq!(calls, 0);
 }
 
-/// A BSON walker is bound to write a parameter's value back, so an id filling one and stored as
-/// text is `Mistyped`, as it is under a brand that names the id outright.
 #[test]
 fn a_value_of_a_parameters_type_stored_as_another_type_is_mistyped() {
     let stored_row = doc! { "left": "6a7cc592ca0574e6efdfe217", "right": 2_i64 };
@@ -2661,8 +2586,6 @@ fn a_value_of_a_parameters_type_stored_as_another_type_is_mistyped() {
     );
 }
 
-/// What the derive asks of the parameter beyond `Deserialize` is carried by the bound on the type
-/// itself, so the methods are there wherever serde reads and writes the type.
 #[test]
 fn a_generic_struct_with_a_defaulted_field_of_the_parameters_type_builds_and_reads() {
     let mut calls = 0_u32;
@@ -2689,8 +2612,6 @@ fn a_generic_struct_with_a_defaulted_field_of_the_parameters_type_builds_and_rea
     );
 }
 
-/// A generic flagged type reached through a field is walked by its own walker at the field's
-/// path, and a generic brand is read as the value it holds.
 #[test]
 fn a_generic_type_reached_through_a_field_is_walked_at_the_fields_path() {
     let listing = Listing {
@@ -2755,8 +2676,6 @@ fn a_field_typed_with_an_alias_of_a_model_type_is_walked_through_the_alias() {
     );
 }
 
-/// The methods are generic over a decider and an issue type of their own, which take other names
-/// where the type's parameters are called what they would be.
 #[test]
 fn a_type_whose_parameters_are_named_as_the_methods_own_builds_and_reads() {
     let stored_row = doc! { "format": "csv", "id": "6a7cc592ca0574e6efdfe217" };
@@ -2862,9 +2781,6 @@ fn what_serde_wrote_for_each_enum_form_is_read_and_the_decider_never_runs() {
     assert_eq!(calls, 0);
 }
 
-/// A plain enum is one value, read with its own reader. A name it does not declare
-/// is serde's refusal, and its name as the one key of a document is a form serde reads and the
-/// enum does not write.
 #[test]
 fn a_plain_enum_is_one_value_read_with_its_own_reader() {
     let mut stored_row = written(&route());
@@ -2887,8 +2803,6 @@ fn a_plain_enum_is_one_value_read_with_its_own_reader() {
     );
 }
 
-/// A document is never the bare name a plain enum writes, so every call reports:
-/// `Invalid` where serde refuses the document, and `Mistyped` where it reads it.
 #[test]
 fn from_bson_with_on_a_plain_enum_reports_on_every_call() {
     let mut calls = 0_u32;
@@ -2924,8 +2838,6 @@ fn from_bson_with_on_a_plain_enum_reports_on_every_call() {
     assert_eq!(calls, 2);
 }
 
-/// A tag naming no variant. It sits at the tag's key and holds the tag where the enum has
-/// one, and at the enum's own path, holding the whole value, where the tag is the document's key.
 #[test]
 fn a_tag_naming_no_variant_is_invalid_with_the_variants_the_enum_accepts() {
     let stored_row = doc! {
@@ -2965,9 +2877,6 @@ fn a_tag_naming_no_variant_is_invalid_with_the_variants_the_enum_accepts() {
     }
 }
 
-/// A problem inside the variant the tag names reaches the callback at its full path, and a
-/// decider that works on each path repairs the row. An id stored as text inside a variant is
-/// `Mistyped` there.
 #[test]
 fn an_issue_inside_a_variant_is_listed_and_fixed_at_its_full_path() {
     let stored_row = doc! {
@@ -3049,8 +2958,6 @@ fn an_issue_inside_a_variant_is_listed_and_fixed_at_its_full_path() {
     );
 }
 
-/// The content of a struct variant stored as a number is the one place the walker lists
-/// nothing, so the read carries serde's refusal alone.
 #[test]
 fn a_struct_variants_content_stored_as_no_document_is_undescribed() {
     let external = doc! { "Circle": 5_i32 };
@@ -3075,8 +2982,7 @@ fn a_struct_variants_content_stored_as_no_document_is_undescribed() {
     );
 }
 
-/// An absent tag is the one issue, at the tag's key. Every key of an internally tagged
-/// document then counts as declared, and so do the two keys an adjacently tagged one writes.
+/// An absent tag is the one issue, at the tag's key.
 #[test]
 fn an_absent_tag_is_missing_at_the_tags_key() {
     let internal = doc! { "color": "red" };
@@ -3117,8 +3023,6 @@ fn a_tag_naming_no_variant_that_serde_reads_is_mistyped() {
     );
 }
 
-/// A key beside the tag that the variant does not declare is `Unknown`, and what an adjacently
-/// tagged variant holds is walked under the content key by its kind.
 #[test]
 fn a_tagged_enum_is_a_document_whose_other_keys_are_the_variants() {
     let internal = doc! { "extra": 1_i32, "kind": "Clear" };
@@ -3203,8 +3107,6 @@ fn a_variant_holding_two_values_is_walked_by_position() {
     );
 }
 
-/// An untagged value no variant reads is one `NoVariant` at the enum's path, holding each
-/// variant's own list in the order declared.
 #[test]
 fn an_untagged_value_no_variant_reads_is_one_no_variant_with_each_variants_list() {
     let stored_row = doc! { "country": "one", "digits": "555" };
@@ -3259,8 +3161,6 @@ fn an_untagged_value_no_variant_reads_is_one_no_variant_with_each_variants_list(
     );
 }
 
-/// The hook tixschema hangs on a constrained member is the one serde reads it through, so
-/// a value the constraint refuses takes that variant out.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn an_untagged_enums_constrained_member_is_read_through_its_hook() {
@@ -3379,8 +3279,6 @@ fn variants_and_their_fields_are_walked_under_their_wire_names() {
     }
 }
 
-/// An internally tagged variant holding a model type hands the document to that type's fields
-/// walker, and the tag's key joins the keys it returns.
 #[test]
 fn a_tagged_enums_fields_walker_returns_the_keys_that_are_its_own() {
     let versioned = doc! { "draft": true, "kind": "Versioned", "number": "3" };
@@ -3428,9 +3326,7 @@ fn a_tagged_enums_fields_walker_returns_the_keys_that_are_its_own() {
     assert_eq!(none, Vec::new());
 }
 
-/// A generic enum gets its methods under the bounds a generic struct does. A value of
-/// the parameter's type is read whole where it sits, and written back to compare what it is
-/// stored as.
+/// A generic enum gets its methods under the bounds a generic struct does.
 #[test]
 fn a_generic_enum_reads_a_parameters_value_whole() {
     let held = doc! { "number": "x" };
@@ -3466,8 +3362,6 @@ fn a_generic_enum_reads_a_parameters_value_whole() {
     );
 }
 
-/// serde reads a variant under each alias it carries, so a tag or a key stored as one names that
-/// variant: the read is serde's, and nothing is listed for the alias.
 #[test]
 fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
     let mut calls = 0_u32;
@@ -3518,8 +3412,6 @@ fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
     assert_eq!(calls, 0);
 }
 
-/// A variant stored under an alias is walked as that variant, and the key it is stored under is
-/// the one its issues are pathed under, so a decider that works on each path repairs the row.
 #[test]
 fn an_issue_inside_a_variant_stored_under_an_alias_is_listed_and_fixed_under_the_stored_key() {
     let undeclared = doc! { "Round": { "extra": 1_i32, "radius": 1.5_f64 } };
@@ -3566,8 +3458,6 @@ fn an_issue_inside_a_variant_stored_under_an_alias_is_listed_and_fixed_under_the
     );
 }
 
-/// An adjacently tagged variant whose tag is stored as an alias is walked under the content key,
-/// which no alias renames.
 #[test]
 fn an_adjacent_tag_stored_as_an_alias_walks_its_content_under_the_content_key() {
     for (stored_row, reads, told) in [
@@ -3602,9 +3492,6 @@ fn an_adjacent_tag_stored_as_an_alias_walks_its_content_under_the_content_key() 
     }
 }
 
-/// serde reads no tag as a variant under `skip_deserializing`, so a tag naming one names no
-/// variant: `Invalid` where the tag is. `Variants` lists what serde does read, each variant's
-/// name and then its aliases, and nothing for that variant.
 #[test]
 fn a_tag_naming_a_variant_serde_never_reads_names_no_variant() {
     let stored_row = written(&Coating::Hidden);
@@ -3645,8 +3532,6 @@ fn a_tag_naming_a_variant_serde_never_reads_names_no_variant() {
     );
 }
 
-/// serde reads no document as an untagged variant under `skip_deserializing`, so what it wrote for
-/// one is read by no variant, and the one `NoVariant` holds a list for every other variant alone.
 #[test]
 fn an_untagged_variant_serde_never_reads_gets_no_list_of_its_own() {
     let stored_row = written(&Reach::Pager { number: 7_i32 });

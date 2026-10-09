@@ -1,3 +1,5 @@
+//! The test binary of `transparent_wrapper_tests/`.
+
 extern crate alloc;
 
 #[cfg(test)]

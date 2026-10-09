@@ -1,3 +1,6 @@
+//! Unit tests of the chrono support: the TypeScript type and the Zod schema each chrono type
+//! renders as.
+
 use super::*;
 
 #[test]

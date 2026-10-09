@@ -1,3 +1,6 @@
+//! Tests of collections: `Vec`, the sequence wrappers, and maps under every key type serde
+//! stringifies.
+
 use alloc::collections::{BTreeSet, BinaryHeap, VecDeque};
 #[cfg(feature = "chrono")]
 use chrono::NaiveDate;
@@ -79,8 +82,7 @@ struct EnumKeyedSiblingValueMaps {
 }
 
 // A key that enumerates its members says nothing about what each member holds, so a value that is
-// itself a map is described at every level here exactly as it is under the String key of the twin
-// below — the key path decides which keys exist, never which values are renderable.
+// itself a map is described as under the `String` key of the twin below.
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct EnumKeyedNestedMapValues {
@@ -115,9 +117,8 @@ struct BucketKeyedMap {
     samples: HashMap<MetricBucket, MetricSample>,
 }
 
-// Which keys a map has is its key type's answer wherever the map is written, so an enum-keyed map
-// enumerates its members nested under either outer key flavor and behind either slot wrap — the
-// depth a map sits at cannot decide whether its keys are known.
+// Which keys a map has is its key type's answer wherever the map is written: the depth a map sits
+// at cannot decide whether its keys are known.
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct NestedEnumKeyedMapValues {
@@ -142,8 +143,7 @@ struct CorrelationId(String);
 struct TraceId(CorrelationId);
 
 // A brand key is the open case wearing a name: serde writes the brand as the bare string its inner
-// is, so the map is an object keyed by arbitrary strings — held below against the `String`-keyed
-// twin, which is what the map describes as once the brand's name is spent.
+// is, so the map is an object keyed by arbitrary strings.
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct BrandKeyedMaps {
@@ -355,9 +355,8 @@ type TickBrandKey = Tick;
 #[model_schema()]
 type EnabledKey = bool;
 
-// An alias of a stringifying scalar keys the open object its bare target keys, under the alias's own
-// exported name — held below against the bare-keyed twin, which is what the map describes as once
-// the alias's name is spent.
+// An alias of a stringifying scalar keys the open object its bare target keys, under the alias's
+// own exported name.
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ScalarAliasKeyedMaps {
@@ -549,8 +548,7 @@ struct OptionalMapValues {
 }
 
 // A sequence wrapper around a map is the field's array, not the map's — each wrapped field
-// describes as the array of its unwrapped twin. An `Option` is not such a wrapper: field
-// position spells optionality by leaving the name out of `required`.
+// describes as the array of its unwrapped twin.
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct WrappedMapFields {
@@ -674,8 +672,7 @@ impl BuildHasher for NamedHasher {
 }
 
 // The twin pair the hasher is read through: the same containers at the same element and key types,
-// one spelling naming the hasher parameter and one leaving it implied. Every surface holds the two
-// against each other, the way the sequence wrappers are held against their `Vec` spelling.
+// one spelling naming the hasher parameter and one leaving it implied.
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct HasherNamedFields {
@@ -696,9 +693,8 @@ struct HasherImpliedFields {
     tags: HashSet<MetricTag>,
 }
 
-// A slot — a map member, a tuple element — cannot be dropped the way an object key can, so it
-// holds whatever the value writes. The twin below carries the `Vec` spelling of the same slots,
-// held against each set slot with the same key path, element type, and nesting.
+// A slot — a map member, a tuple element — cannot be dropped the way an object key can, so it holds
+// whatever the value writes.
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct SetSlotValues {
@@ -732,8 +728,7 @@ struct VecSlotValues {
 }
 
 // A sibling is carried by reference wherever it sits, so a tuple element names the schema module a
-// field and a map member name — under a sequence wrapper, the array of that reference, the wrapper
-// having normalized onto the element like any other.
+// field and a map member name.
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct SiblingSlotValues {
@@ -749,8 +744,7 @@ struct SiblingSlotValues {
 type MetricGrid = Vec<Vec<u32>>;
 
 // A sequence holding a sequence writes an array of arrays, so it describes as one at every level,
-// whichever covered wrapper spells each level. A constraint still has only the innermost element
-// to land on — the levels above hold arrays, not values a `minLength` could reach.
+// whichever covered wrapper spells each level.
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct NestedSequenceFields {
@@ -782,8 +776,7 @@ struct NestedSequenceSlots {
 }
 
 // A doc comment is written on the field, not on the shape its type spells, so the wrappers the
-// parser collapses onto their element describe with the same comment the spellings it leaves alone
-// describe with.
+// parser collapses describe with the same comment.
 #[cfg(feature = "typescript")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -1327,8 +1320,6 @@ fn test_enum_keyed_sibling_value_maps_json_schema() {
     );
 }
 
-/// A `Vec` map value is an array of siblings on the wire, so the member schema has to admit that
-/// form and turn away the single sibling object a dropped array wrap would have accepted.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_enum_keyed_sibling_array_member_matches_the_serialized_form() {
@@ -1356,10 +1347,6 @@ fn test_enum_keyed_sibling_array_member_matches_the_serialized_form() {
     );
 }
 
-/// What serde writes for a map whose key is wrapped in a sequence: nothing at all — `serde_json`
-/// refuses the whole value rather than falling back to an array of pairs, since a JSON object key
-/// must be a string. The refusal is the wrapper's, not the element's, so the expansion refuses the
-/// spelling instead of enumerating its element.
 #[test]
 fn test_a_sequence_wrapped_map_key_has_no_wire_form() {
     let vec_keyed = HashMap::from([(vec![MetricSlot::Daily], 1_u32)]);
@@ -1449,9 +1436,6 @@ fn test_enum_keyed_nested_map_values_json_schema() {
     );
 }
 
-/// Both key paths render a map value through the same member dispatcher, so the member an enum key
-/// spells out per key and the one a `String` key states once are the same schema — the twin types
-/// hold that to the value types, field by field.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_enum_keyed_nested_map_values_match_their_string_keyed_members() {
@@ -1466,9 +1450,6 @@ fn test_enum_keyed_nested_map_values_match_their_string_keyed_members() {
     }
 }
 
-/// TypeScript and Zod recurse through a map value whatever the key is, so the nesting they render
-/// under an enum key is the one the JSON schema now describes — pinned so the three surfaces stay
-/// in step.
 #[test]
 #[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_enum_keyed_nested_map_values_typescript_generation() {
@@ -1535,9 +1516,6 @@ fn test_nested_enum_keyed_map_values_constructible() {
     assert_eq!(field_position.counts[&MetricBucket::High], 7);
 }
 
-/// An enum-keyed map is the same object wherever it is written: nested under a `String` key, under
-/// an enum key, and behind either slot wrap, it carries the members its own key enumerates rather
-/// than the open object a position that could not reach the key would leave.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_nested_enum_keyed_map_values_enumerate_their_inner_key() {
@@ -1583,8 +1561,6 @@ fn test_nested_enum_keyed_map_values_enumerate_their_inner_key() {
     }
 }
 
-/// The enumerated members are the keys serde actually writes, so a payload's inner keys are named
-/// by the schema rather than admitted by an open member set.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_nested_enum_keyed_map_members_match_the_serialized_keys() {
@@ -1611,9 +1587,6 @@ fn test_nested_enum_keyed_map_members_match_the_serialized_keys() {
     }
 }
 
-/// TypeScript and Zod recurse through a map value whatever the key is, at whatever depth, so the
-/// members the JSON schema now spells out under a nested enum key are the ones those two surfaces
-/// have always named — pinned so the three stay in step.
 #[test]
 #[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_nested_enum_keyed_map_values_typescript_generation() {
@@ -1690,9 +1663,6 @@ fn test_string_keyed_sibling_value_maps_constructible() {
     assert_eq!(maps.optional_sample["m"], None);
 }
 
-/// A `String` key never widens the value: the member is the sibling's own schema, arrayed when the
-/// value is a `Vec` and nullable when it is an `Option` — the same schema the enum-key path writes
-/// under each key, never the open object that admits every payload alike.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_string_keyed_sibling_value_maps_json_schema() {
@@ -1717,8 +1687,6 @@ fn test_string_keyed_sibling_value_maps_json_schema() {
     }
 }
 
-/// The member schema is held against what serde writes: an array of siblings for the `Vec` field,
-/// a single sibling object for the plain one. An open member would have accepted either.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_string_keyed_sibling_members_match_the_serialized_form() {
@@ -1795,9 +1763,6 @@ fn test_string_keyed_sibling_value_maps_typescript_generation() {
     );
 }
 
-/// A brand key clears the derive under every feature set that reads one, none of them excepted:
-/// the key is read off the field all three surfaces render from, so the same source cannot be a
-/// schema under one toggle and a refusal under another.
 #[test]
 fn test_brand_keyed_maps_constructible() {
     let key = CorrelationId("abc".to_owned());
@@ -1824,9 +1789,7 @@ fn test_brand_keyed_maps_constructible() {
     assert_eq!(twin.counts["abc"], maps.counts[&key]);
 }
 
-/// A brand key builds the same object a `String` key builds. The JSON schema is the structural
-/// surface and has no brand to say, so it describes the open object outright — field for field the
-/// `String`-keyed twin's.
+/// A brand key builds the same object a `String` key builds.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_brand_keyed_maps_describe_as_their_string_keyed_twin() {
@@ -1836,8 +1799,6 @@ fn test_brand_keyed_maps_describe_as_their_string_keyed_twin() {
     );
 }
 
-/// The nominal surfaces keep the brand's own spelling as the key type, the way the enum-key path
-/// keeps the enum's — a `Record` and a `z.record` keyed by the brand, not by bare `string`.
 #[test]
 #[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_brand_keyed_maps_name_the_brand_as_the_key_type() {
@@ -1868,8 +1829,6 @@ fn test_brand_keyed_maps_name_the_brand_as_the_key_type() {
     }
 }
 
-/// The whole reason the brand keys a map: serde writes it as the bare string, so what the schema
-/// describes as an open object is the object the value actually writes — and reads back.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_brand_keyed_maps_match_the_serialized_form() {
@@ -1908,9 +1867,6 @@ fn test_brand_keyed_maps_match_the_serialized_form() {
     assert_eq!(read_back, maps);
 }
 
-/// An alias key clears the derive under every feature set that reads one: the key is read off the
-/// field all three surfaces render from, so the same source cannot be a schema under one toggle and
-/// a refusal under another.
 #[test]
 fn test_alias_keyed_maps_constructible() {
     let key: SlotKey = "abc".to_owned();
@@ -1941,9 +1897,6 @@ fn test_alias_keyed_maps_constructible() {
     assert_eq!(twin.counts["abc"], maps.counts[&key]);
 }
 
-/// An alias is the type it names, so a map keyed by an alias of a string builds the object a
-/// `String` key builds — field for field the `String`-keyed twin's, the alias's name being spent on
-/// the nominal surfaces and having nothing to say on the structural one.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_alias_keyed_maps_describe_as_their_string_keyed_twin() {
@@ -1953,8 +1906,6 @@ fn test_alias_keyed_maps_describe_as_their_string_keyed_twin() {
     );
 }
 
-/// The nominal surfaces keep the alias's own exported name as the key type, the way they keep an
-/// enum's and a brand's — a `Record` and a `z.record` keyed by the alias, not by bare `string`.
 #[test]
 #[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_alias_keyed_maps_name_the_alias_as_the_key_type() {
@@ -1989,9 +1940,6 @@ fn test_alias_keyed_maps_name_the_alias_as_the_key_type() {
     }
 }
 
-/// The whole reason an alias of a string keys a map: serde writes the bare string the target is, so
-/// what the schema describes as an open object is the object the value actually writes — and reads
-/// back.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_alias_keyed_maps_match_the_serialized_form() {
@@ -2087,9 +2035,6 @@ fn test_chrono_brand_keyed_maps_constructible() {
     assert_eq!(twin.by_day[&day], maps.by_day[&Day(day)]);
 }
 
-/// A brand adds a name to its inner's wire and nothing else, so a brand over a value serde
-/// stringifies describes exactly as that bare inner describes — the open object with nothing said
-/// about its members, which is what the bare-keyed twin has always produced.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_scalar_brand_keyed_maps_describe_as_their_bare_inner_twin() {
@@ -2103,10 +2048,6 @@ fn test_scalar_brand_keyed_maps_describe_as_their_bare_inner_twin() {
     );
 }
 
-/// The name is the one thing the brand adds, and the nominal surfaces are where it lands: a
-/// `Record` and a `z.record` keyed by the brand, where the bare-inner twin writes `number`. A brand
-/// over `bool` is the exception — `boolean` spells no property key, so the name has nowhere to land
-/// and the key renders as the pair of strings serde writes.
 #[test]
 #[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_scalar_brand_keyed_maps_name_the_brand_as_the_key_type() {
@@ -2140,8 +2081,6 @@ fn test_scalar_brand_keyed_maps_name_the_brand_as_the_key_type() {
     }
 }
 
-/// The premise the whole classification rests on: serde stringifies these keys, so the map it
-/// writes is a real object, and it reads back.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_scalar_brand_keyed_maps_match_the_serialized_form() {
@@ -2176,9 +2115,6 @@ fn test_scalar_brand_keyed_maps_match_the_serialized_form() {
     assert_eq!(read_back, maps);
 }
 
-/// A brand over a plain enum writes the variant name, a bare string — so it describes as the
-/// `String`-keyed twin does. The enum-keyed spelling closes the object over `enum_members()`; the
-/// brand has no such method, so its object stays open.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_enum_brand_keyed_maps_describe_as_their_string_keyed_twin() {
@@ -2227,8 +2163,6 @@ fn test_enum_brand_keyed_maps_match_the_serialized_form() {
     assert_eq!(read_back, maps);
 }
 
-/// A chrono value is stringified into a key by its own rendering, and a brand over one carries that
-/// rendering unchanged — the same twin equality the numeric brands keep.
 #[test]
 #[cfg(all(feature = "chrono", feature = "jsonschema"))]
 fn test_chrono_brand_keyed_maps_describe_as_their_bare_inner_twin() {
@@ -2266,9 +2200,6 @@ fn test_chrono_brand_keyed_maps_name_the_brand_as_the_key_type() {
     );
 }
 
-/// An alias key clears the derive under every feature set that reads one, as the brand key does:
-/// the key is read off the field all three surfaces render from, so the same source cannot be a
-/// schema under one toggle and a refusal under another.
 #[test]
 fn test_scalar_alias_keyed_maps_constructible() {
     let tick: TickKey = 7;
@@ -2299,9 +2230,6 @@ fn test_scalar_alias_keyed_maps_constructible() {
     assert_eq!(twin.by_tick[&7], maps.by_tick[&tick]);
 }
 
-/// An alias is the type it names, so a map keyed by an alias of a stringified value builds the
-/// same object the bare target builds — the alias's name is spent on the nominal surfaces and has
-/// nothing to say on the structural one.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_scalar_alias_keyed_maps_describe_as_their_bare_target_twin() {
@@ -2315,10 +2243,6 @@ fn test_scalar_alias_keyed_maps_describe_as_their_bare_target_twin() {
     );
 }
 
-/// The nominal surfaces keep the alias's own exported name as the key type, the way they keep a
-/// brand's — a `Record` and a `z.record` keyed by the alias, not by bare `number`. An alias of
-/// `bool` is the exception, for the reason a brand over one is: the name has no property key to
-/// stand in.
 #[test]
 #[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_scalar_alias_keyed_maps_name_the_alias_as_the_key_type() {
@@ -2354,9 +2278,6 @@ fn test_scalar_alias_keyed_maps_name_the_alias_as_the_key_type() {
     }
 }
 
-/// The premise the classification rests on, read off the alias spelling: serde stringifies the
-/// target into the key, so the object the schema describes is the object the value writes, and it
-/// reads back.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_scalar_alias_keyed_maps_match_the_serialized_form() {
@@ -2401,8 +2322,6 @@ fn test_scalar_alias_keyed_maps_match_the_serialized_form() {
     assert_eq!(read_back, maps);
 }
 
-/// A chrono value is stringified into a key by its own rendering, and an alias of one carries that
-/// rendering unchanged — the same twin equality the numeric aliases keep.
 #[test]
 #[cfg(all(feature = "chrono", feature = "jsonschema"))]
 fn test_chrono_alias_keyed_maps_describe_as_their_bare_target_twin() {
@@ -2475,8 +2394,6 @@ fn bool_keyed_maps() -> BoolKeyedMaps {
     }
 }
 
-/// The premise: serde writes `"true"` and `"false"` for every one of these keys, whichever name the
-/// key was written under, and reads them back.
 #[test]
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn test_bool_keyed_maps_write_the_two_string_keys() {
@@ -2515,13 +2432,6 @@ fn test_bool_keyed_maps_write_the_two_string_keys() {
     assert_eq!(read_back, maps);
 }
 
-/// `boolean` is not a TypeScript property key, so the key renders as the pair of strings serde
-/// writes — bare, branded or aliased alike, the name being spent where it spells no property key.
-///
-/// Recorded against tsc 6.0.3 under `--strict`: `Partial<Record<boolean, Leaf>>` and every branded
-/// and aliased spelling of it fail with `error TS2344: Type 'boolean' does not satisfy the
-/// constraint 'string | number | symbol'`, while `Partial<Record<"true" | "false", Leaf>>`
-/// compiles.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_bool_keyed_maps_render_the_two_string_keys_on_typescript() {
@@ -2555,13 +2465,6 @@ fn test_bool_keyed_maps_render_the_two_string_keys_on_typescript() {
     }
 }
 
-/// `z.record` over an enumerated key demands every member, so the constructor moves with the key:
-/// `z.partialRecord` admits a one-entry map and an empty one alike.
-///
-/// Recorded against zod 4.4.3 under node v26.2.0: `z.record(z.boolean(), Leaf)` rejects the payload
-/// serde writes with `invalid_key` at path `["true"]` (`Invalid input: expected boolean, received
-/// string`), while `z.partialRecord(z.enum(["true", "false"]), Leaf)` accepts `{"true": …}`,
-/// `{"true": …, "false": …}` and `{}`, rejects `{"True": …}`, and preserves every key.
 #[test]
 #[cfg(feature = "zod")]
 fn test_bool_keyed_maps_render_the_two_string_keys_on_zod() {
@@ -2597,8 +2500,6 @@ fn test_bool_keyed_maps_render_the_two_string_keys_on_zod() {
     }
 }
 
-/// The structural surface says nothing about a key, so it stays exactly what it was: the open
-/// object every stringified key already described as.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_bool_keyed_maps_describe_as_the_open_object() {
@@ -2654,8 +2555,6 @@ fn enumerated_keyed_maps() -> EnumeratedKeyedMaps {
     }
 }
 
-/// The premise: serde writes the members the map holds and no others, whichever name the key was
-/// written under, and reads them back.
 #[test]
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn test_enumerated_keyed_maps_write_only_the_members_they_hold() {
@@ -2692,8 +2591,6 @@ fn test_enumerated_keyed_maps_write_only_the_members_they_hold() {
     assert_eq!(read_back, maps);
 }
 
-/// An enum member name is a property key already, so every key here keeps the name it was written
-/// under and every member of it stays optional.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_enumerated_keyed_maps_keep_the_written_key_on_typescript() {
@@ -2718,29 +2615,6 @@ fn test_enumerated_keyed_maps_keep_the_written_key_on_typescript() {
     }
 }
 
-/// `z.record` over an enumerated key demands every member, and every key here publishes a Zod
-/// binding that enumerates: a plain enum, a brand over one, a brand over that brand, an alias over
-/// either, and a name whose enum is declared below the map. A `HashMap` holds any subset and serde
-/// writes the subset, so the constructor moves with the key.
-///
-/// Recorded against zod 4.4.3 under node v26.2.0, on this fixture's own emission before the
-/// constructor moved. The partial payload serde writes for it is rejected with `invalid_type:
-/// Invalid input: expected number, received undefined` at `["alias_of_brand","Weekly"]`,
-/// `["aliased","Weekly"]`, `["aliased_chain","Daily"]`, `["bare","Weekly"]`, `["branded","Daily"]`,
-/// `["branded_chain","Weekly"]`, `["forward","Second"]`, `["listed",0,"Weekly"]` and
-/// `["nested","Daily","Daily"]`, with `invalid_type: Invalid input: expected record, received
-/// undefined` at `["nested","Weekly"]`, `invalid_type: Invalid input: expected object, received
-/// undefined` at `["samples","Daily"]`, and `invalid_union: Invalid input` at `["optional"]`. The
-/// empty payload is rejected at both members of every one of those maps. Only the full payload
-/// parses. ajv 8 with `strict` off and `allErrors` on accepts the partial, the full and the empty
-/// payload alike against the same fixture's JSON Schema document, and rejects a key outside the
-/// enumeration with `{"keyword":"additionalProperties","params":{"additionalProperty":"Hourly"},
-/// "message":"must NOT have additional properties"}` at `/bare` — so of the three surfaces only
-/// Zod was wrong.
-///
-/// After the move, zod 4.4.3 parses the partial, the full and the empty payload with every key
-/// preserved byte for byte, and still rejects `"Hourly"` under `bare` with `invalid_key: Invalid
-/// key in record @ ["bare","Hourly"]`.
 #[test]
 #[cfg(feature = "zod")]
 fn test_enumerated_keyed_maps_admit_the_members_they_hold_on_zod() {
@@ -2781,9 +2655,6 @@ fn test_enumerated_keyed_maps_admit_the_members_they_hold_on_zod() {
     }
 }
 
-/// The structural surface already admits the subset serde wrote: one property per member and no
-/// `required`, whether the key enumerates its members on this surface too or describes as the open
-/// object a brand over one describes as.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_enumerated_keyed_maps_keep_the_document_that_admits_a_subset() {
@@ -2856,8 +2727,6 @@ fn date_time_keyed_maps() -> DateTimeKeyedMaps {
     }
 }
 
-/// The premise: serde renders the timestamp into an RFC 3339 string with an offset, whichever name
-/// the key was written under, and reads it back.
 #[test]
 #[cfg(all(
     feature = "chrono",
@@ -2898,11 +2767,6 @@ fn test_date_time_keyed_maps_write_the_rfc_3339_key() {
     assert_eq!(read_back, maps);
 }
 
-/// `Date` is not a TypeScript property key, so the key renders as the string serde wrote it as.
-///
-/// Recorded against tsc 6.0.3 under `--strict`: `Partial<Record<Date, Leaf>>` and every branded and
-/// aliased spelling of it fail with `error TS2344: Type 'Date' does not satisfy the constraint
-/// 'string | number | symbol'`, while `Partial<Record<string, Leaf>>` compiles.
 #[test]
 #[cfg(all(feature = "chrono", feature = "typescript"))]
 fn test_date_time_keyed_maps_render_a_string_key_on_typescript() {
@@ -2932,14 +2796,6 @@ fn test_date_time_keyed_maps_render_a_string_key_on_typescript() {
     }
 }
 
-/// `z.coerce.date()` in key position accepts the payload and rewrites every key into a
-/// locale-dependent rendering, so the key validates as the string it is.
-///
-/// Recorded against zod 4.4.3 under node v26.2.0: `z.record(z.coerce.date(), Leaf).safeParse({
-/// "2023-11-14T22:13:20Z": {…} })` succeeds with the key rewritten to `"Tue Nov 14 2023 18:13:20
-/// GMT-0400 (Atlantic Standard Time)"`, while `z.record(z.iso.datetime({ offset: true }), Leaf)`
-/// accepts `2023-11-14T22:13:20Z`, `…+05:00` and `…-04:00`, rejects an offsetless string, and
-/// preserves every key it accepts.
 #[test]
 #[cfg(all(feature = "chrono", feature = "zod"))]
 fn test_date_time_keyed_maps_render_an_iso_string_key_on_zod() {
@@ -3091,8 +2947,6 @@ fn test_property_keyed_maps_write_the_keys_they_describe() {
     assert_eq!(read_back, maps);
 }
 
-/// The brands and aliases themselves are untouched: only the key position spends their names, and
-/// the value surface each publishes is the one it always published.
 #[test]
 #[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_bool_brand_and_alias_keep_their_value_surface() {
@@ -3127,9 +2981,6 @@ fn test_string_keyed_alias_value_maps_constructible() {
     assert_eq!(maps.sample_value["s"].label, "s");
 }
 
-/// An alias's schema module is named after its registered export name, so the member reference is
-/// only resolvable through the registry — deriving it from the alias ident names a module that was
-/// never emitted, and the expansion no longer compiles.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_string_keyed_alias_value_maps_resolve_the_registered_module() {
@@ -3175,9 +3026,6 @@ fn test_string_keyed_alias_value_maps_typescript_generation() {
     );
 }
 
-/// A map entry carries its `None` as JSON `null`: unlike an object key, an entry cannot be dropped,
-/// so the schema has to admit the null serde writes. Both key paths render the same nullable form,
-/// the one a tuple slot already uses for the same reason.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_optional_map_values_admit_the_null_serde_writes() {
@@ -3204,9 +3052,6 @@ fn test_optional_map_values_admit_the_null_serde_writes() {
     );
 }
 
-/// A map value is null-flavored rather than undefined-flavored, on both key paths: `Partial<Record>`
-/// already lets a key be missing, but a key that *is* present carries the `null` serde writes for a
-/// `None`, so the value type has to admit it.
 #[test]
 #[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_optional_map_values_are_null_flavored_on_both_key_paths() {
@@ -3262,9 +3107,6 @@ fn test_wrapped_map_fields_constructible() {
     assert_eq!(fields.optional_labels, None);
 }
 
-/// A field spelled with a sequence wrapper around a map writes a JSON array of the objects the map
-/// writes, on every key path — so a schema that describes the bare object rejects the payload the
-/// type serializes to.
 #[test]
 fn test_wrapped_map_fields_write_arrays_of_their_map() {
     let payload = serde_json::to_value(wrapped_map_fields()).unwrap();
@@ -3283,9 +3125,6 @@ fn test_wrapped_map_fields_write_arrays_of_their_map() {
     }
 }
 
-/// The array wrap is the field's, and what it wraps is the map's own rendering: each wrapped field
-/// describes as `array` of exactly what its unwrapped twin describes as. Every key path is held
-/// against its twin, so no path can lose the wrap or widen the map while applying it.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_wrapped_map_fields_describe_as_arrays_of_their_map() {
@@ -3317,9 +3156,6 @@ fn test_wrapped_map_fields_describe_as_arrays_of_their_map() {
     );
 }
 
-/// A map named without a sequence wrapper keeps the object it has always described as, on every key
-/// path — including behind an `Option`, which field position now widens with `anyOf [<base>, null]`
-/// just as every other optional key does, on top of the name staying out of `required`.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_unwrapped_map_fields_keep_the_object_they_describe_as() {
@@ -3350,9 +3186,6 @@ fn test_unwrapped_map_fields_keep_the_object_they_describe_as() {
     }
 }
 
-/// TypeScript and Zod have always rendered the array a wrapped map writes, so the JSON schema's wrap
-/// is pinned against theirs — the three surfaces describe the field one way or the divergence is
-/// back.
 #[test]
 #[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_wrapped_map_fields_typescript_generation() {
@@ -3467,8 +3300,6 @@ fn test_element_fields_constructible_under_both_spellings() {
     assert_eq!(vecs.big_ids, [9]);
 }
 
-/// A set writes a JSON array of its element, so the element decides what the array holds — the
-/// hardcoded `string` items every set once carried described only the sets of strings.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_set_element_json_schema() {
@@ -3550,9 +3381,6 @@ fn hasher_implied_fields() -> HasherImpliedFields {
     }
 }
 
-/// The whole reason a named hasher may be held against the implied one: serde writes the same bytes
-/// either way, the hasher deciding only the order of a bucket the wire form never exposes. Read off
-/// what serde actually produces, so the claim answers to the wire rather than to a name.
 #[test]
 fn test_a_named_hasher_writes_what_the_implied_hasher_writes() {
     assert_eq!(
@@ -3561,9 +3389,6 @@ fn test_a_named_hasher_writes_what_the_implied_hasher_writes() {
     );
 }
 
-/// The reported failure: naming the hasher carried an argument more than the container arms
-/// claimed, so the type fell through to the sibling rendering and each surface published a name
-/// nothing emits.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_hasher_named_fields_describe_as_the_implied_spelling() {
@@ -3574,8 +3399,6 @@ fn test_hasher_named_fields_describe_as_the_implied_spelling() {
     assert_eq!(named["required"], implied["required"]);
 }
 
-/// The same holding on the TypeScript surface, with the fixture's own name set aside: no container
-/// name and no hasher name reached the output.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_hasher_named_fields_type_as_the_implied_spelling() {
@@ -3589,8 +3412,6 @@ fn test_hasher_named_fields_type_as_the_implied_spelling() {
     );
 }
 
-/// And on the Zod surface, where the sibling rendering published a bare type name that is not a
-/// schema expression at all.
 #[test]
 #[cfg(feature = "zod")]
 fn test_hasher_named_fields_validate_as_the_implied_spelling() {
@@ -3604,9 +3425,6 @@ fn test_hasher_named_fields_validate_as_the_implied_spelling() {
     );
 }
 
-/// A `HashSet<T>` and a `Vec<T>` serialize alike, so they describe alike — element by element, at
-/// every element type. An alias element is the case the naming cannot be guessed for: its schema
-/// module is the registered one, which is why the twin below compiles at all.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_set_elements_render_as_vec_elements() {
@@ -3617,9 +3435,6 @@ fn test_set_elements_render_as_vec_elements() {
     assert_eq!(set_schema["required"], vec_schema["required"]);
 }
 
-/// A set writes a JSON array of its element, so the TypeScript type is the array of whatever the
-/// element renders as — the Rust container name is not a TypeScript type at all. The aliased
-/// element is the case the naming cannot be guessed for: it resolves through the registry.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_set_element_typescript_generation() {
@@ -3637,8 +3452,6 @@ fn test_set_element_typescript_generation() {
     }
 }
 
-/// The Zod schema of a set is the array schema of its element, constraints and all — the container
-/// name is not a Zod expression, and an element schema is what `z.array` has to be handed.
 #[test]
 #[cfg(feature = "zod")]
 fn test_set_element_zod_generation() {
@@ -3657,8 +3470,6 @@ fn test_set_element_zod_generation() {
     }
 }
 
-/// Whatever a set field renders as, it is not the Rust wrapper's name — neither surface has any
-/// meaning for it, so the name surviving into the output would be a syntax error there.
 #[test]
 #[cfg(any(feature = "typescript", feature = "zod"))]
 fn test_no_sequence_wrapper_name_survives_into_generated_output() {
@@ -3673,8 +3484,6 @@ fn test_no_sequence_wrapper_name_survives_into_generated_output() {
     }
 }
 
-/// A `HashSet<T>` and a `Vec<T>` serialize alike, so their Zod schemas validate alike — field for
-/// field, at every element type, once the type's own name is set aside.
 #[test]
 #[cfg(feature = "zod")]
 fn test_set_fields_validate_as_vec_fields() {
@@ -3684,9 +3493,6 @@ fn test_set_fields_validate_as_vec_fields() {
     );
 }
 
-/// A wrapper is covered when serde writes it as a JSON array of its element — the whole criterion,
-/// and the reason the twins below may be held against the `Vec` spelling at all. Read off what
-/// serde actually produces, so the covered list answers to the wire rather than to a name.
 #[test]
 fn test_every_covered_wrapper_writes_a_json_array() {
     for (wrapper, payload) in covered_wrapper_payloads() {
@@ -3696,8 +3502,6 @@ fn test_every_covered_wrapper_writes_a_json_array() {
     }
 }
 
-/// Writing the same array as the `Vec` spelling, every covered wrapper describes as it does —
-/// whole schema against whole schema, not one field at a time.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_every_covered_wrapper_describes_as_the_vec_spelling() {
@@ -3726,8 +3530,6 @@ fn test_every_covered_wrapper_describes_as_the_vec_spelling() {
 }
 
 /// The same holding on TypeScript: a covered wrapper's field declarations are the `Vec` spelling's.
-/// Declarations rather than whole definitions, because the surrounding `JSDoc` differs — a `Vec`
-/// field's doc comment is dropped where every other spelling keeps it.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_every_covered_wrapper_types_as_the_vec_spelling() {
@@ -3755,7 +3557,6 @@ fn test_every_covered_wrapper_types_as_the_vec_spelling() {
     }
 }
 
-/// And on the Zod surface, constraints and preprocess wraps included.
 #[test]
 #[cfg(feature = "zod")]
 fn test_every_covered_wrapper_validates_as_the_vec_spelling() {
@@ -3777,9 +3578,6 @@ fn test_every_covered_wrapper_validates_as_the_vec_spelling() {
     }
 }
 
-/// A set in a slot writes the JSON array its element decides, exactly as the `Vec` spelling of the
-/// same slot writes it — the whole reason a set slot may be held against that twin below. Read off
-/// what serde produces: the two payloads are one value, arrays and all.
 #[test]
 fn test_a_set_slot_writes_what_the_vec_slot_writes() {
     let payload = serde_json::to_value(set_slot_values()).unwrap();
@@ -3808,8 +3606,6 @@ fn test_a_set_slot_writes_what_the_vec_slot_writes() {
     }
 }
 
-/// A slot holding a value that is no sequence writes what that value writes — an object here — and
-/// a wrapped one writes the array of those objects, which is what the schemas below describe.
 #[test]
 fn test_a_sibling_slot_writes_the_object_its_value_writes() {
     let payload = serde_json::to_value(sibling_slot_values()).unwrap();
@@ -3823,8 +3619,6 @@ fn test_a_sibling_slot_writes_the_object_its_value_writes() {
     }
 }
 
-/// Writing the same array as the `Vec` spelling of the same slot, a set describes as one — on both
-/// map key paths and in a tuple element, at every element type the twin carries.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_set_slots_describe_as_the_vec_slot_twin() {
@@ -3834,8 +3628,6 @@ fn test_set_slots_describe_as_the_vec_slot_twin() {
     assert_eq!(set_schema["required"], vec_schema["required"]);
 }
 
-/// What that description is, spelled out: the array of the element, in the member schema a
-/// `String`-keyed map carries and in the tuple element the same fixture opens.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_set_slots_describe_as_arrays_of_their_element() {
@@ -3856,8 +3648,7 @@ fn test_set_slots_describe_as_arrays_of_their_element() {
         serde_json::json!({ "anyOf": [integer_array, { "type": "null" }] })
     );
     // A `None` the wrapper itself holds is a different `null`: the array is written either way, so
-    // it lands among the items rather than in place of the slot. The `Vec` spelling writes exactly
-    // that, and so describes as exactly this.
+    // it lands among the items rather than in place of the slot.
     let nullable_integer_array = serde_json::json!({
         "type": "array",
         "items": { "anyOf": [{ "type": "integer" }, { "type": "null" }] }
@@ -3872,8 +3663,6 @@ fn test_set_slots_describe_as_arrays_of_their_element() {
     );
 }
 
-/// A sibling in a tuple element describes as the sibling does — its own schema, the one a field and
-/// a map member reach for — rather than as the open object any value at all satisfies.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_a_sibling_tuple_slot_describes_as_the_sibling_it_holds() {
@@ -3888,8 +3677,6 @@ fn test_a_sibling_tuple_slot_describes_as_the_sibling_it_holds() {
     );
 }
 
-/// And under a wrapper, the array of that schema — the same array the wrapper writes, so a slot
-/// holding a sequence of siblings admits a sequence rather than any object at all.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_a_wrapped_sibling_tuple_slot_describes_as_the_array_of_that_sibling() {
@@ -3903,8 +3690,6 @@ fn test_a_wrapped_sibling_tuple_slot_describes_as_the_array_of_that_sibling() {
     }
 }
 
-/// The TypeScript surface, which names the sibling in every one of those slots already: pinned so
-/// the JSON schema above is held against a rendering that does not move under it.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_sibling_tuple_slots_type_as_the_sibling_they_hold() {
@@ -3918,7 +3703,6 @@ fn test_sibling_tuple_slots_type_as_the_sibling_they_hold() {
     }
 }
 
-/// And the Zod surface, which validates each of them against the sibling's schema already.
 #[test]
 #[cfg(feature = "zod")]
 fn test_sibling_tuple_slots_validate_against_the_sibling_they_hold() {
@@ -3932,8 +3716,6 @@ fn test_sibling_tuple_slots_validate_against_the_sibling_they_hold() {
     }
 }
 
-/// The TypeScript surface, which types a set slot as the array of its element already: pinned here
-/// so the JSON schema above is held against a rendering that does not move under it.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_set_slots_type_as_the_vec_slot_twin() {
@@ -3956,7 +3738,6 @@ fn test_set_slots_type_as_the_vec_slot_twin() {
     );
 }
 
-/// And the Zod surface, which validates a set slot as that array already.
 #[test]
 #[cfg(feature = "zod")]
 fn test_set_slots_validate_as_the_vec_slot_twin() {
@@ -3978,8 +3759,6 @@ fn test_set_slots_validate_as_the_vec_slot_twin() {
     );
 }
 
-/// The wire the nested fixtures write, read for its nesting: a sequence of sequences is an array
-/// whose members are arrays, which is what every description below is held against.
 #[test]
 fn test_a_nested_sequence_writes_an_array_of_arrays() {
     let payload = serde_json::to_value(nested_sequence_fields()).unwrap();
@@ -4008,8 +3787,6 @@ fn test_a_nested_sequence_writes_an_array_of_arrays() {
     assert!(slots["tuple_rows"][1][0].is_array(), "Got: {slots}");
 }
 
-/// Each of those levels is a level of the JSON schema: the array wrap goes on once per level the
-/// field is written at, whichever wrapper spells each one.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_nested_sequences_describe_at_the_depth_they_are_written() {
@@ -4079,8 +3856,6 @@ fn test_nested_sequences_describe_at_the_depth_they_are_written() {
     }
 }
 
-/// A slot carries the nesting its value was written at too — the wrapper chain normalizes onto the
-/// element before the member and element wraps go on, so no level is dropped on the way.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_nested_sequence_slots_describe_at_the_depth_they_are_written() {
@@ -4148,8 +3923,6 @@ fn test_nested_sequences_type_at_the_depth_they_are_written() {
     }
 }
 
-/// And the Zod surface: one `z.array(…)` per level, the preprocess and constraint wraps landing
-/// where the single-level spelling puts them.
 #[test]
 #[cfg(feature = "zod")]
 fn test_nested_sequences_validate_at_the_depth_they_are_written() {
@@ -4181,8 +3954,6 @@ fn test_nested_sequences_validate_at_the_depth_they_are_written() {
     }
 }
 
-/// An alias of a nested sequence publishes the nesting its target was written at: an alias names a
-/// type, and the type it names is an array of arrays on every surface.
 #[test]
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn test_an_alias_of_a_nested_sequence_publishes_its_depth() {
@@ -4214,9 +3985,6 @@ fn test_an_alias_of_a_nested_sequence_publishes_its_depth() {
     );
 }
 
-/// A field's doc comment reaches the generated TypeScript from every spelling: the wrappers the
-/// parser collapses onto their element carry the docs across the collapse, so a `Vec` and an
-/// `Option` describe with the comment the set spelling they share a wire form with already carried.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_a_doc_comment_reaches_ts_from_a_collapsed_wrapper_field() {

@@ -4,13 +4,6 @@
 //! answers every call on both loops, which is the whole of what this harness proves — the
 //! published surface of every transport task this crate closed is enough to build a working pair
 //! of loops, with no name reached that those tasks did not publish.
-//!
-//! Gated on the `serde` feature, which `#[service_schema]` requires: a build without it is
-//! refused at the declaration, so a harness declaring a service would not compile at all.
-//!
-//! The `use` at the foot is what `$crate` reaches inside every macro this crate expands: the
-//! service's own module, which every message and fault is reached through, and the trait the
-//! dispatchers bind.
 
 #![cfg(feature = "serde")]
 

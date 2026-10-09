@@ -1,17 +1,5 @@
 //! The messages an operation did not name: `<Operation>Request` for the argument-list and
 //! zero-argument shapes, emitted like any other type with its TypeScript, Zod and JSON Schema.
-//!
-//! Reads the [`GeneratedMessage`] list [`parse`](super::parse) recorded off
-//! [`OperationInputs`](super::parse::OperationInputs), and never re-reads the trait — so what gets
-//! written here and what gets registered downstream are one list, and neither can name a type the
-//! other does not.
-//!
-//! Each message is annotated exactly as a hand-written one is, and for the same reasons. It
-//! carries `#[model_schema()]`, so a client on the far side gets its TypeScript type, its Zod
-//! schema and its JSON Schema rather than a Rust-only type it cannot construct. It carries the
-//! serde derives and `rename_all = "camelCase"` itself, because the author never wrote the type
-//! and has nowhere to put either: an argument is `snake_case` in Rust and camelCase on the wire,
-//! exactly as a hand-written field is.
 
 use super::parse::{GeneratedMessage, ServiceDef};
 use super::support::exhaustiveness;
@@ -149,10 +137,8 @@ fn message(declared: &GeneratedMessage, non_exhaustive: bool) -> TokenStream {
     let sealed = exhaustiveness(non_exhaustive);
     let members = declared.fields.iter().map(|(field, carried)| {
         if is_option_type(carried) {
-            // `#[model_schema()]` requires an `Option<T>` field to say what an absent value does
-            // on the wire, the same declaration a hand-written `Option<T>` field would carry — so
-            // a query parameter or an unclaimed header the caller left out defaults to `None`
-            // rather than being written as a `null` nothing here declared.
+            // `#[model_schema()]` requires an `Option<T>` field to say what an absent value does on
+            // the wire, so a parameter the caller left out defaults to `None`.
             quote! {
                 #[serde(default, skip_serializing_if = "::core::option::Option::is_none")]
                 pub #field: #carried

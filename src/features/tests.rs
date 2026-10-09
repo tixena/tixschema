@@ -1,3 +1,5 @@
+//! Unit test of the feature detection.
+
 use super::*;
 
 #[test]

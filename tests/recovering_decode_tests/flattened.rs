@@ -617,8 +617,6 @@ fn what_serde_wrote_for_a_type_that_flattens_is_read_and_the_decider_never_runs(
     assert_eq!(calls, 0);
 }
 
-/// With none of the optional type's keys in the object, serde reads the field as absent and so
-/// does the walker.
 #[test]
 fn a_flattened_optional_type_that_is_absent_is_no_issue() {
     let mut calls = 0_u32;
@@ -634,8 +632,6 @@ fn a_flattened_optional_type_that_is_absent_is_no_issue() {
     assert_eq!(calls, 0);
 }
 
-/// A key neither the type nor any type it flattens declares is listed once, by the type that
-/// holds the object.
 #[test]
 fn a_key_no_flattened_type_declares_is_unknown_once() {
     let mut calls = 0_u32;
@@ -655,8 +651,6 @@ fn a_key_no_flattened_type_declares_is_unknown_once() {
     assert_eq!(calls, 1);
 }
 
-/// An issue inside a flattened type sits at the object's own path plus the type's own key, and
-/// never under the name of the field that flattens it.
 #[test]
 fn an_issue_inside_each_flattened_type_is_listed_at_the_outer_objects_path() {
     let stored = json!({ "createdBy": 7_i32, "kind": "Solid", "title": "t" });
@@ -671,8 +665,6 @@ fn an_issue_inside_each_flattened_type_is_listed_at_the_outer_objects_path() {
     );
 }
 
-/// The decider is handed a flattened type's issue at the key it sits under in the record, and
-/// fixes the record through that path.
 #[test]
 fn a_decider_repairs_a_flattened_types_value_by_the_path_it_is_handed() {
     let stored = json!({ "createdBy": 7_i32, "pinned": true, "revision": 1_i32, "text": "hello" });
@@ -722,8 +714,6 @@ fn a_decider_repairs_a_flattened_types_value_by_the_path_it_is_handed() {
     );
 }
 
-/// With some of the optional type's keys in the object and not all it needs, serde reads the
-/// field as absent: nothing is `Invalid`, and the object holds what the field would not write.
 #[test]
 fn a_flattened_optional_type_half_there_is_mistyped_at_the_object() {
     let stored = json!({
@@ -782,8 +772,6 @@ fn a_decider_takes_out_the_half_of_an_optional_type_the_object_holds() {
     assert_eq!(read, Ok(sheet(None, Paint::Clear)));
 }
 
-/// With its keys in the object and serde reading it, an optional flattened type lists what its
-/// own walk finds, at the object's path.
 #[test]
 fn a_flattened_optional_type_that_is_there_lists_its_own_issues() {
     let stored = json!({ "title": "t", "version": { "draft": true, "number": 3_i32 } });
@@ -808,8 +796,6 @@ fn a_flattened_optional_type_that_is_there_lists_its_own_issues() {
     );
 }
 
-/// A flattened tagged enum reads its tag in the object that flattens it: a tag naming no variant
-/// and an absent one are each the one issue, at the tag's key.
 #[test]
 fn a_flattened_tagged_enum_reads_its_tag_in_the_outer_object() {
     let unknown = json!({
@@ -833,8 +819,6 @@ fn a_flattened_tagged_enum_reads_its_tag_in_the_outer_object() {
     );
 }
 
-/// A flattened externally tagged enum is the key naming its variant in the outer object, and a
-/// flattened adjacently tagged one its tag and content keys there: each is walked under those.
 #[test]
 fn a_flattened_externally_or_adjacently_tagged_enum_is_walked_under_its_own_keys() {
     let mut calls = 0_u32;
@@ -897,8 +881,6 @@ fn a_flattened_externally_or_adjacently_tagged_enum_is_walked_under_its_own_keys
     );
 }
 
-/// A flattened untagged enum is walked as the variant serde reads from the object, whose keys are
-/// then declared, so a key that variant does not declare is `Unknown`.
 #[test]
 fn a_flattened_untagged_enum_is_walked_as_the_variant_serde_reads() {
     let stored = json!({ "address": "a@b", "legacy": true, "subject": "s" });
@@ -915,8 +897,6 @@ fn a_flattened_untagged_enum_is_walked_as_the_variant_serde_reads() {
     );
 }
 
-/// Where serde reads the object as no variant, the one issue is `NoVariant` at the object's own
-/// path. Each variant's list holds what its own fields earn, and no key of the object is `Unknown`.
 #[test]
 fn a_flattened_untagged_enum_no_variant_reads_is_one_no_variant() {
     let stored = json!({ "digits": 5_i32, "subject": "s" });
@@ -945,8 +925,6 @@ fn a_flattened_untagged_enum_no_variant_reads_is_one_no_variant() {
     );
 }
 
-/// An untagged enum's fields walker returns the keys of the variant serde reads, and every key of
-/// the object where serde reads none.
 #[test]
 fn an_untagged_enums_fields_walker_returns_the_keys_of_the_variant_serde_reads() {
     let mut out: Vec<channel_schema::Issue<Value>> = Vec::new();
@@ -989,8 +967,6 @@ fn an_untagged_enums_fields_walker_returns_the_keys_of_the_variant_serde_reads()
     );
 }
 
-/// Every key nothing else declares belongs to a flattened map: none is `Unknown`, and each such
-/// value is read as the map's own, at its key.
 #[test]
 fn a_flattened_map_takes_every_key_nothing_else_declares() {
     let stored = json!({ "a": "x", "b": 2_i32, "title": "t" });
@@ -1001,8 +977,6 @@ fn a_flattened_map_takes_every_key_nothing_else_declares() {
     );
 }
 
-/// A flattened map of model types walks each value at its key, past the keys a flattened struct
-/// beside it declares.
 #[test]
 fn a_flattened_map_of_model_types_walks_each_value_at_its_key() {
     let mut calls = 0_u32;
@@ -1039,8 +1013,6 @@ fn a_flattened_map_of_model_types_walks_each_value_at_its_key() {
     );
 }
 
-/// A flattened type parameter is read whole, with its own reader, from the keys nothing else
-/// declares. What fills it is invisible to the walker, so none of those keys is `Unknown`.
 #[test]
 fn a_flattened_type_parameter_is_read_whole_from_the_keys_nothing_else_declares() {
     let stored = json!({ "id": "i", "more": 1_i32, "text": 5_i32 });
@@ -1076,9 +1048,6 @@ fn a_flattened_type_parameter_is_read_whole_from_the_keys_nothing_else_declares(
     assert_eq!(calls, 0);
 }
 
-/// What the first field that takes the rest leaves for the next is nothing the walker can see: the
-/// struct filling the parameter reads its own key, and serde hands the map only what is left. The
-/// second field is walked by nothing, so a value serde refuses in it is serde's refusal alone.
 #[test]
 fn a_second_flattened_field_that_takes_the_rest_is_walked_by_nothing() {
     let mut calls = 0_u32;
@@ -1130,8 +1099,6 @@ fn two_flattened_types_each_declare_their_keys() {
     );
 }
 
-/// A type that flattens one that flattens others declares every key down the chain, and a type
-/// that flattens fields is walked at the path of the key it is held under.
 #[test]
 fn a_flattened_type_that_flattens_others_is_walked_in_the_same_object() {
     let stored = json!({
@@ -1214,8 +1181,6 @@ fn what_serde_wrote_for_a_variant_that_flattens_is_read_and_the_decider_never_ru
     assert_eq!(calls, 0);
 }
 
-/// A variant's flattened field is walked in the object the variant's fields sit in, wherever the
-/// tagging puts that object, and its keys count as the variant's own.
 #[test]
 fn a_variants_flattened_field_is_walked_in_the_variants_object_under_every_tagging() {
     let internal = json!({ "createdBy": 7_i32, "kind": "Made", "legacy": 1_i32, "title": "t" });
@@ -1259,8 +1224,6 @@ fn a_variants_flattened_field_is_walked_in_the_variants_object_under_every_taggi
     );
 }
 
-/// An untagged enum no variant of which reads the value lists, for the variant that flattens a
-/// field, what that field's type finds beside the variant's own.
 #[test]
 fn an_untagged_variant_that_flattens_lists_the_flattened_types_issues_as_its_own() {
     let stored = json!({ "createdBy": 7_i32, "title": "t" });
@@ -1290,8 +1253,6 @@ fn an_untagged_variant_that_flattens_lists_the_flattened_types_issues_as_its_own
     );
 }
 
-/// No walk reaches an optional flattened map: serde reads it as absent where a value in it is not
-/// the map's own, so nothing is listed and no key is `Unknown`.
 #[test]
 fn an_optional_flattened_map_is_walked_by_nothing_and_takes_every_key() {
     let mut calls = 0_u32;
@@ -1306,9 +1267,6 @@ fn an_optional_flattened_map_is_walked_by_nothing_and_takes_every_key() {
     assert_eq!(calls, 0);
 }
 
-/// serde hands a flattened map the keys of a tagged enum flattened beside it, which the walker
-/// counts as the enum's alone. serde refuses the text tag as a number and the walk finds nothing,
-/// so the read carries serde's refusal alone.
 #[test]
 fn a_flattened_map_that_cannot_hold_the_tag_of_an_enum_beside_it_is_undescribed() {
     let stored = json!({ "kind": "Clear" });
@@ -1319,8 +1277,6 @@ fn a_flattened_map_that_cannot_hold_the_tag_of_an_enum_beside_it_is_undescribed(
     );
 }
 
-/// A hook named `declared` goes on naming its author's function where the walker keeps the keys
-/// of a flattened type under that name. The flattened field it reads is read whole through it.
 #[test]
 fn a_hook_named_like_the_keys_a_flattening_walker_keeps_is_the_authors_function() {
     let mut calls = 0_u32;
@@ -1346,8 +1302,6 @@ fn a_hook_named_like_the_keys_a_flattening_walker_keeps_is_the_authors_function(
     );
 }
 
-/// A variant with no field serde reads declares no key, so every key the object holds beside the
-/// outer type's own is `Unknown`.
 #[test]
 fn a_flattened_untagged_variant_with_no_field_declares_no_key() {
     let stored = json!({ "legacy": true, "title": "t" });
@@ -1364,8 +1318,7 @@ fn a_flattened_untagged_variant_with_no_field_declares_no_key() {
     );
 }
 
-/// serde hands a flattened type the keys the outer type's own fields did not take. A flattened
-/// type that flattens a map is handed no key of the outer type's, so the map reads none.
+/// serde hands a flattened type the keys the outer type's own fields did not take.
 #[test]
 fn a_flattened_type_that_flattens_a_map_is_handed_no_key_of_the_outer_type() {
     let report = Report {
@@ -1385,8 +1338,6 @@ fn a_flattened_type_that_flattens_a_map_is_handed_no_key_of_the_outer_type() {
     assert_eq!(calls, 0);
 }
 
-/// A flattened untagged enum is read from what the outer type's own fields left, so a map among
-/// its variants holds none of the outer type's keys.
 #[test]
 fn a_flattened_untagged_enum_with_a_map_variant_is_handed_no_key_of_the_outer_type() {
     let scoreboard = Scoreboard {
@@ -1403,8 +1354,6 @@ fn a_flattened_untagged_enum_with_a_map_variant_is_handed_no_key_of_the_outer_ty
     assert_eq!(calls, 0);
 }
 
-/// A key both the outer type and a type it flattens declare is the outer type's alone: serde
-/// hands the flattened type an object without it, and so does the walker.
 #[test]
 fn a_key_the_outer_type_and_a_flattened_type_both_declare_is_the_outer_types_alone() {
     let stored = json!({ "title": "t" });
@@ -1441,8 +1390,6 @@ fn a_key_the_outer_type_and_a_flattened_type_both_declare_is_the_outer_types_alo
     );
 }
 
-/// An issue inside a flattened type that takes every key it is handed is listed where it sits: a
-/// value the map refuses at its key, and none at a key of the outer type's.
 #[test]
 fn an_issue_in_a_flattened_type_that_flattens_a_map_is_listed_at_its_key() {
     let stored = json!({ "a": "x", "id": "i", "title": "t" });
@@ -1462,8 +1409,6 @@ fn an_issue_in_a_flattened_type_that_flattens_a_map_is_listed_at_its_key() {
     );
 }
 
-/// Where no variant of a flattened untagged enum reads what it is handed, the one issue is
-/// `NoVariant` at the outer object's path, holding what the enum was handed.
 #[test]
 fn a_flattened_untagged_enum_no_variant_reads_holds_what_the_enum_was_handed() {
     let stored = json!({ "a": "x", "id": "i" });
@@ -1495,8 +1440,6 @@ fn a_flattened_untagged_enum_no_variant_reads_holds_what_the_enum_was_handed() {
     );
 }
 
-/// A variant's flattened type is handed what the variant's own fields left of the object they sit
-/// in, and none of the tag an internally tagged enum reads there.
 #[test]
 fn a_variants_flattened_type_that_flattens_a_map_is_handed_no_key_of_the_variant() {
     let made = Tabled::Made {
@@ -1525,8 +1468,6 @@ fn a_variants_flattened_type_that_flattens_a_map_is_handed_no_key_of_the_variant
     );
 }
 
-/// A flattened optional enum is absent when what names its variant is absent: the tag of a tagged
-/// one, and any variant serde reads of an untagged one. serde wrote each record, and reads it.
 #[test]
 fn a_flattened_optional_enum_that_is_absent_is_no_issue() {
     let mut calls = 0_u32;
@@ -1553,8 +1494,6 @@ fn a_flattened_optional_enum_that_is_absent_is_no_issue() {
     assert_eq!(calls, 0);
 }
 
-/// With the keys of a struct flattened beside it in the object, an absent optional enum is still
-/// absent: none of those keys names a variant of it.
 #[test]
 fn an_absent_flattened_optional_enum_beside_another_flattened_type_is_no_issue() {
     let layered = Layered {
@@ -1579,8 +1518,6 @@ fn an_absent_flattened_optional_enum_beside_another_flattened_type_is_no_issue()
     assert_eq!(calls, 0);
 }
 
-/// With the optional enum absent, the object's keys are the outer type's to judge: one nothing
-/// declares is `Unknown`, a variant's key that serde reads no variant from among them.
 #[test]
 fn an_absent_flattened_optional_enum_leaves_the_objects_keys_to_the_outer_type() {
     let tagged = json!({ "legacy": true, "own": "x" });
@@ -1609,8 +1546,6 @@ fn an_absent_flattened_optional_enum_leaves_the_objects_keys_to_the_outer_type()
     );
 }
 
-/// With what names its variant in the object and serde reading it, an optional flattened enum is
-/// walked as that variant, and lists what the walk finds at the object's path.
 #[test]
 fn a_flattened_optional_enum_that_is_there_is_walked_as_the_variant_it_names() {
     let mut calls = 0_u32;
@@ -1661,8 +1596,6 @@ fn a_flattened_optional_enum_that_is_there_is_walked_as_the_variant_it_names() {
     );
 }
 
-/// With its tag in the object and serde not reading the enum, the object holds what the field
-/// would not write: the one issue is `Mistyped` at the object's own path.
 #[test]
 fn a_flattened_optional_enum_named_and_not_read_is_mistyped_at_the_object() {
     for stored in [
@@ -1730,8 +1663,6 @@ fn an_absent_flattened_optional_externally_tagged_enum_lists_nothing() {
     );
 }
 
-/// An optional adjacently tagged enum is absent when its tag's key is: its content key alone
-/// names no variant, and is the outer type's to judge.
 #[test]
 fn an_absent_flattened_optional_adjacently_tagged_enum_lists_nothing() {
     let mut calls = 0_u32;
@@ -1767,9 +1698,6 @@ fn an_absent_flattened_optional_adjacently_tagged_enum_lists_nothing() {
     );
 }
 
-/// Each flagged type answers whether an object holds what names a value of it: a key of its own
-/// or of a type it flattens for a struct, any key for one that flattens a map, the tag's key or a
-/// variant's for a tagged enum, and a variant serde reads for an untagged one.
 #[test]
 fn each_flagged_type_answers_whether_an_object_names_a_value_of_it() {
     let named = |stored: Value, asked: fn(&serde_json::Map<String, Value>) -> bool| {

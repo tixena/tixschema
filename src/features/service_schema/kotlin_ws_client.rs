@@ -2,47 +2,6 @@
 //! calls out over it, and a dispatcher attachment for a service the app implements — one module
 //! holding both halves, mirroring [`super::dart_ws_client`] over Kotlin's own coroutine and
 //! `kotlinx.serialization` idioms rather than Dart's `Future`/`Stream` pair.
-//!
-//! # The transport owns the socket
-//!
-//! `{Service}WsSocket` exposes exactly one `onMessage` and one `onClose` slot, and the transport's
-//! constructor is the only place either is set. A second service sharing the connection cannot
-//! set them a second time, so it reaches every frame the transport does not itself correlate to a
-//! pending `request` through `{Service}WsFrames` instead — a structural record of the raw text to
-//! answer over (`send`), the uncorrelated frames (`inbound`), and the transport's own
-//! `CoroutineScope`. Handing out that scope, rather than a fresh one per attachment, is what lets
-//! closing the transport tear every dispatcher reading `frames` down with it, shared ones
-//! included: cancelling a `CoroutineScope` cancels every coroutine launched on it.
-//!
-//! # A caller reads the outcome, exactly as the `http_rest` Kotlin client does
-//!
-//! A reply operation answers `{Service}{Operation}Result` — the same sealed type
-//! [`super::kotlin_http_client`] already publishes for it — and never throws for a declared error
-//! or a fault; a one-way operation still answers plainly and throws the fault-only
-//! `{Service}WsRefusal`, named apart from `kotlin_http_client()`'s own bare `{Service}Refusal` so
-//! the two coexist in one file.
-//!
-//! # A handler answers the sealed result; it does not throw the declared error
-//!
-//! `{Service}Handlers` answers a reply operation with the same `{Service}{Operation}Result` the
-//! client reads, narrowed on `Ok`/`Declared`/`Fault` in the dispatch arm rather than caught off a
-//! thrown type — Kotlin has no throwable a plain `@Serializable` declared error could be without
-//! this crate inventing a wrapper type nothing else needs. Anything a handler throws regardless is
-//! unexpected and reaches `onFault` as a `handler-panic` fault instead. Whenever the inbound frame
-//! carried an id — a caller waiting on a reply, whether the operation is one-way or not — the
-//! attachment answers it, so a pending caller is never left hanging.
-//!
-//! # A decode failure is a failed-validation fault, not an undeserializable-payload one
-//!
-//! `ws_rpc` has no status to distinguish an unreadable reply from a rejected one, mirroring
-//! `dart_ws_client`'s own reasoning: a reply that will not decode is answered as `failedValidation`
-//! under this crate's own vocabulary.
-//!
-//! # The wire's own fault shape
-//!
-//! A reply's `error` key carries the operation's declared error verbatim, or
-//! `{ "isServiceFault": true, "fault": <fault fields> }` in its place — the convention every other
-//! surface in this crate already writes for an outbound or a dispatcher-detected fault.
 
 use super::kotlin_http_client::{held_copies, kotlin_held};
 use super::result::result_name;
@@ -112,11 +71,6 @@ fn declares_header_out_or_error(service: &ServiceDef) -> bool {
     })
 }
 
-// ---------------------------------------------------------------------------------------------
-// The socket seam, the heartbeat options, and the structural record an attachment dispatches
-// over.
-// ---------------------------------------------------------------------------------------------
-
 fn socket_interface(named: &str) -> String {
     format!(
         "/// The seam a `{named}` `ws_rpc` transport owns: the only place `onMessage` and\n\
@@ -159,12 +113,6 @@ fn frames_class(named: &str) -> String {
     )
 }
 
-// ---------------------------------------------------------------------------------------------
-// The one exception a client still throws: a one-way method's own fault, having no reply arm to
-// carry it through instead. Named apart from `kotlin_http_client`'s own bare `{named}Refusal` so
-// both coexist in one bundle.
-// ---------------------------------------------------------------------------------------------
-
 fn refusal_class(named: &str) -> String {
     let fields = fault_fields_typescript_name(named);
     format!(
@@ -173,11 +121,6 @@ fn refusal_class(named: &str) -> String {
          class {named}WsRefusal(val fault: {fields}) : Exception(fault.detail)"
     )
 }
-
-// ---------------------------------------------------------------------------------------------
-// The transport: correlates a `request` to its reply, answers an inbound ping, runs the
-// heartbeat, and hands every other frame to `frames`.
-// ---------------------------------------------------------------------------------------------
 
 fn transport_class(named: &str, has_headers: bool) -> String {
     format!(
@@ -400,11 +343,6 @@ fn transport_close_stmt(named: &str) -> String {
          }}"
     )
 }
-
-// ---------------------------------------------------------------------------------------------
-// The client: one class, one constructor, one method per operation, calling out over the
-// transport's own `request`/`notify`.
-// ---------------------------------------------------------------------------------------------
 
 fn client_class(service: &ServiceDef, named: &str, fn_prefix: &str, has_headers: bool) -> String {
     let methods = service
@@ -685,11 +623,6 @@ fn header_out_decode_stmts(
     }
     (stmt, idents)
 }
-
-// ---------------------------------------------------------------------------------------------
-// Handlers: what an app implementing this service answers inbound frames with, and the
-// attachment that dispatches them.
-// ---------------------------------------------------------------------------------------------
 
 /// `req` plus one parameter per `header_in` binding, mirroring [`client_method_params`].
 fn handler_params(operation: &OperationDef, shape: &HttpShape) -> String {
@@ -1105,10 +1038,6 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
     arm
 }
 
-// ---------------------------------------------------------------------------------------------
-// The faults every method and every dispatch arm reaches for.
-// ---------------------------------------------------------------------------------------------
-
 fn fault_helpers(named: &str, fn_prefix: &str, needs_field: bool) -> Vec<String> {
     vec![
         fault_helper(
@@ -1188,11 +1117,6 @@ fn fault_helper_validation(named: &str, fn_prefix: &str, needs_field: bool) -> S
          )"
     )
 }
-
-// ---------------------------------------------------------------------------------------------
-// Small, Kotlin-flavored value rendering, duplicated from `kotlin_http_client` rather than shared
-// with it: this module needs none of its HTTP-shaped machinery.
-// ---------------------------------------------------------------------------------------------
 
 /// The message's Kotlin type: the type the operation named, or the one the macro declared for an
 /// operation that named none.

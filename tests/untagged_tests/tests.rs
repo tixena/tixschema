@@ -1,3 +1,5 @@
+//! Tests of `#[serde(untagged)]` enums: the union each surface publishes.
+
 use alloc::collections::{BTreeSet, VecDeque};
 #[cfg(all(feature = "chrono", feature = "typescript"))]
 use chrono::{DateTime, Utc};
@@ -52,7 +54,6 @@ enum DateValue {
     S(DateString),
 }
 
-// Untagged enum with named-struct variants.
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -61,9 +62,8 @@ enum NamedUnion {
     B { y: i64 },
 }
 
-// A struct variant's own `rename_all` cases its fields — distinct from the enum's own
-// `rename_all`, which cases variant names, never fields. Both variants carry one so the flatten
-// holder below closes two renamed keys against each other.
+// A struct variant's own `rename_all` cases its fields — distinct from the enum's own `rename_all`,
+// which cases variant names, never fields.
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -110,9 +110,8 @@ enum CompliantUnion {
     },
 }
 
-// The plain-JSON value shape: an untagged union naming itself from newtype variants, which carry
-// no key for a getter to defer the name behind. Its two recursive members read the union's own
-// binding, so each has to be read after the `const` declaring it finishes rather than while it runs.
+// The plain-JSON value shape: an untagged union naming itself from newtype variants, which carry no
+// key for a getter to defer the name behind.
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -161,9 +160,7 @@ enum LabelBagUnion {
     Name(String),
 }
 
-// A self-naming map member keyed by a type that enumerates its members. An index signature
-// parameter cannot be a literal type (TS1337), so the spelling `JsonValueUnion` is deferred with
-// is unavailable here and the equal mapped type carries the deferral instead.
+// A self-naming map member keyed by a type that enumerates its members.
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -225,9 +222,8 @@ enum ShapedUnion {
     Pair { pair: (i64, String) },
 }
 
-// The std wrappers serde writes as a JSON array of their element, written in untagged members:
-// each describes as the `Vec` of the same element does, not as a schema module named after the
-// wrapper.
+// The std wrappers serde writes as a JSON array of their element, written in untagged members: each
+// describes as the `Vec` of the same element does, not as a schema module named after the wrapper.
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -237,9 +233,7 @@ enum WrappedUnion {
     Queued { queued: VecDeque<String> },
 }
 
-// A `String` under array levels, written in untagged members: bare, bounded, and nested. The value
-// a member holds is written straight into the array wrap, so the one value built from statements
-// has to reach that wrap the way every other member value does.
+// A `String` under array levels, written in untagged members: bare, bounded, and nested.
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -424,8 +418,6 @@ fn test_named_union_typescript() {
     );
 }
 
-/// A variant's own `rename_all` reaches its fields on the untagged path, the same as it does on the
-/// struct-field path — quoted here since kebab-case is not identifier-legal.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_rename_all_union_typescript() {
@@ -449,8 +441,6 @@ fn test_renamed_identifier_union_typescript() {
     );
 }
 
-/// The flatten-operand seam and its sibling exclusions, both members renamed: neither key is the
-/// Rust ident, on either side of the union.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_rename_all_union_flatten_sibling_exclusions() {
@@ -505,8 +495,6 @@ fn test_tuple_single_union_zod() {
     );
 }
 
-/// A newtype member naming the union itself is read through a thunk, not written straight into the
-/// `const` that declares the name — the eager spelling is a cycle the bundle throws on at import.
 #[test]
 #[cfg(feature = "zod")]
 fn test_recursive_tuple_single_union_zod_defers_self_reference() {
@@ -521,8 +509,6 @@ fn test_recursive_tuple_single_union_zod_defers_self_reference() {
     );
 }
 
-/// The deferral is paid only where the cycle is: a member naming nothing recursive keeps the eager
-/// spelling every other tuple-single member is written in.
 #[test]
 #[cfg(feature = "zod")]
 fn test_recursive_tuple_single_union_zod_keeps_scalar_members_eager() {
@@ -537,11 +523,6 @@ fn test_recursive_tuple_single_union_zod_keeps_scalar_members_eager() {
     }
 }
 
-/// A TypeScript type names itself from an array member wherever it likes, so the union is written
-/// out flat — the thunk the Zod schema needs has no counterpart there. The map member is the one
-/// exception: `Partial<Record<…>>` is a mapped type, resolved while the alias resolves, so a member
-/// spelled that way makes the alias circular (TS2456). It is written as the index-signature object
-/// it is equal to, which is resolved lazily.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_recursive_tuple_single_union_typescript_defers_only_the_map_member() {
@@ -561,8 +542,6 @@ fn test_recursive_tuple_single_union_typescript_defers_only_the_map_member() {
     assert!(!ts.contains("=>"), "Got:\n{ts}");
 }
 
-/// The lazy spelling is paid only where the cycle is: a map member naming nothing recursive keeps
-/// the `Partial<Record<…>>` every other map is written in.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_non_recursive_tuple_single_map_member_keeps_mapped_type() {
@@ -584,9 +563,6 @@ fn test_serde_round_trip_non_recursive_map_member() {
     assert_eq!(back, value);
 }
 
-/// An enumerated key is a literal type, which an index signature parameter cannot be (TS1337), so
-/// the spelling that carries the open-keyed deferral is unavailable. The mapped type the key can be
-/// written in states the same object and resolves its value lazily.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_recursive_enum_keyed_map_member_typescript_uses_mapped_type() {
@@ -604,8 +580,6 @@ fn test_recursive_enum_keyed_map_member_typescript_uses_mapped_type() {
     assert!(!ts.contains("[key: Bucket]"), "Got:\n{ts}");
 }
 
-/// A `bool` key is the two strings serde writes, a literal type — so the self-naming member takes
-/// the mapped-type branch, the one an enumerated key takes.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_recursive_bool_keyed_map_member_typescript_uses_mapped_type() {
@@ -620,8 +594,6 @@ fn test_recursive_bool_keyed_map_member_typescript_uses_mapped_type() {
     assert!(!ts.contains("[key: "), "Got:\n{ts}");
 }
 
-/// A `DateTime<Tz>` key is the RFC 3339 string serde writes, which the index signature does have a
-/// parameter type for — so the self-naming member takes the other branch.
 #[test]
 #[cfg(all(feature = "chrono", feature = "typescript"))]
 fn test_recursive_date_time_keyed_map_member_typescript_keeps_index_signature() {
@@ -635,10 +607,6 @@ fn test_recursive_date_time_keyed_map_member_typescript_keeps_index_signature() 
     assert!(!ts.contains("key in"), "Got:\n{ts}");
 }
 
-/// The wire the self-naming `bool`-keyed member is held against: serde writes the two string keys
-/// at every level of the tree. An untagged variant is read back through serde's buffered content,
-/// which hands a key on as the string it buffered and so has no reading for `bool` — the read-back
-/// of a `bool`-keyed map is pinned on a struct field instead, where no buffering stands between.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_recursive_bool_keyed_map_member_writes_the_two_string_keys() {
@@ -671,8 +639,6 @@ fn test_recursive_date_time_keyed_map_member_round_trips() {
     );
 }
 
-/// A key the index signature does have a parameter type for keeps that spelling: the mapped type is
-/// paid only where the literal key rules the index signature out.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_recursive_number_keyed_map_member_typescript_keeps_index_signature() {
@@ -686,8 +652,6 @@ fn test_recursive_number_keyed_map_member_typescript_keeps_index_signature() {
     assert!(!ts.contains("key in"), "Got:\n{ts}");
 }
 
-/// The rewrite is a break of a cycle, never a restyling of the key: an enumerated key with nothing
-/// recursive under it keeps `Partial<Record<…>>`.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_non_recursive_enum_keyed_map_member_keeps_mapped_record() {
@@ -864,8 +828,6 @@ fn test_rename_all_union_json_schema() {
     assert_eq!(branch["required"], serde_json::json!(["reply-to"]));
 }
 
-/// A closed document — every leaf `additionalProperties: false` — accepts exactly the payload serde
-/// writes for a variant-`rename_all` member, and the value round-trips through it.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_rename_all_union_round_trips_through_its_closed_schema() {
@@ -968,8 +930,6 @@ fn test_serde_round_trip_rename_all_union_member() {
     assert_eq!(back, value);
 }
 
-/// The guard exists so the wire form matches the schema: `None` must leave the key out, and the
-/// absent form must parse back through the untagged union.
 #[test]
 fn test_serde_round_trip_compliant_union_omits_none() {
     let value = CompliantUnion::Note {
@@ -991,8 +951,6 @@ fn test_serde_round_trip_number_member() {
     assert_eq!(back, value);
 }
 
-/// What serde writes for an untagged newtype variant whose content is `None` — the capture the
-/// three surface assertions below are read against.
 #[test]
 fn test_untagged_newtype_option_content_writes_bare_null() {
     assert_eq!(
@@ -1015,8 +973,7 @@ fn test_untagged_newtype_option_content_typescript_null_flavor() {
     );
 }
 
-/// The Zod schema admits the `null` serde writes. An untagged member cannot be omitted, so an
-/// undefined-flavored union there would leave the captured `null` unmatched.
+/// The Zod schema admits the `null` serde writes.
 #[test]
 #[cfg(feature = "zod")]
 fn test_untagged_newtype_option_content_zod_null_flavor() {
@@ -1028,8 +985,6 @@ fn test_untagged_newtype_option_content_zod_null_flavor() {
     );
 }
 
-/// The JSON schema admits it too: `field_json_schema_value` adds no null wrap on its own, so the
-/// member goes through the shared nullable-slot wrap.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_untagged_newtype_option_content_json_schema_null_flavor() {
@@ -1046,9 +1001,6 @@ fn test_untagged_newtype_option_content_json_schema_null_flavor() {
     assert_eq!(any_of[1], serde_json::json!({ "type": "string" }));
 }
 
-/// A key that enumerates its members, and an open one, both render the map their written type
-/// earns: the guard is a filter over keys the registry rules out, never a rewrite of the ones it
-/// admits.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_untagged_map_member_keys_typescript() {
@@ -1078,9 +1030,6 @@ fn test_untagged_map_member_keys_zod() {
     );
 }
 
-/// What serde writes for an untagged member holding a map — the capture the three surfaces are
-/// held against. The enumerated key reaches the wire as the member name it spells; the open key
-/// reaches it as itself.
 #[test]
 fn test_untagged_map_member_wire() {
     let counts = KeyedUnion::Counts {
@@ -1120,9 +1069,6 @@ fn test_untagged_tuple_member_wire() {
     assert_eq!(serde_json::from_value::<ShapedUnion>(wire).unwrap(), pair);
 }
 
-/// A member holding a map describes as the wire it was captured from: the enumerated key spells its
-/// properties, the open key its `additionalProperties`. Held against the struct field written from
-/// the same type, which is the rendering a member must not diverge from.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_untagged_map_member_keys_json_schema() {
@@ -1158,9 +1104,6 @@ fn test_untagged_map_member_keys_json_schema() {
     }
 }
 
-/// The schema admits the wire the capture recorded: every key serde writes for the enumerated map
-/// is one the branch names, and the branch names no key serde cannot write. The object is closed,
-/// so a property set that drifted either way would reject the payload the type produces.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_untagged_map_member_schema_admits_the_captured_wire() {
@@ -1179,8 +1122,6 @@ fn test_untagged_map_member_schema_admits_the_captured_wire() {
     assert_eq!(member["additionalProperties"], serde_json::json!(false));
 }
 
-/// The same for the tuple member: the array serde writes has the arity the bounds pin and the
-/// element types `prefixItems` names, in order.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_untagged_tuple_member_schema_admits_the_captured_wire() {
@@ -1206,8 +1147,6 @@ fn test_untagged_tuple_member_schema_admits_the_captured_wire() {
     assert!(written[1].is_string(), "Got:\n{wire}");
 }
 
-/// A member holding a tuple describes as the array serde writes, arity bounds and all — the same
-/// rendering the struct field written from the same type carries.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_untagged_tuple_member_json_schema() {
@@ -1251,9 +1190,6 @@ fn test_untagged_tuple_member_zod() {
     );
 }
 
-/// What serde writes for an untagged member holding a covered sequence wrapper — the capture the
-/// three surfaces are held against. Every one of them writes the JSON array a `Vec` of the same
-/// element writes, which is the whole reason the wrapper is covered.
 #[test]
 fn test_untagged_wrapper_member_wire() {
     for value in [
@@ -1278,9 +1214,6 @@ fn test_untagged_wrapper_member_wire() {
     }
 }
 
-/// A member holding a covered sequence wrapper describes as the array serde writes — the element's
-/// own schema under array wrapping. Held against the struct field written from the same type, the
-/// rendering a member must not diverge from.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_untagged_wrapper_member_json_schema() {
@@ -1303,9 +1236,6 @@ fn test_untagged_wrapper_member_json_schema() {
     }
 }
 
-/// The schema admits the wire the capture recorded: serde writes an array, and each item is what
-/// the member's `items` schema names. A member still carrying the wrapper's own name could not have
-/// described this payload at all — it named a schema module no expansion declares.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_untagged_wrapper_member_schema_admits_the_captured_wire() {
@@ -1351,9 +1281,6 @@ fn test_untagged_wrapper_member_zod() {
     }
 }
 
-/// What serde writes for an untagged member holding a `String` under array levels — the capture the
-/// schema is held against. Bare, bounded and nested all write the array of strings the field of the
-/// same written type writes.
 #[test]
 fn test_untagged_string_array_member_wire() {
     for (value, written) in [
@@ -1386,10 +1313,6 @@ fn test_untagged_string_array_member_wire() {
     }
 }
 
-/// A member holding a `String` under array levels describes as the array of strings serde writes,
-/// matching the struct field written from the same type. This used to be the one value the array
-/// wrap could not carry — a Rust block landing where the wrap's `serde_json::json!` reads a JSON
-/// object, an expansion that never reached a compiler.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_untagged_string_array_member_json_schema() {
@@ -1421,9 +1344,6 @@ fn test_untagged_string_array_member_json_schema() {
     );
 }
 
-/// A bounded `String` under array levels keeps its bounds on the items, where the value they
-/// constrain sits — the array itself carries none. Held against the field twin, which is where the
-/// same bounds are written today.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_untagged_string_array_member_keeps_its_bounds_on_the_items() {
@@ -1445,9 +1365,6 @@ fn test_untagged_string_array_member_keeps_its_bounds_on_the_items() {
     );
 }
 
-/// The wrapper spellings of the same element reach the array wrap too, so a `HashSet<String>` in a
-/// member describes as the `Vec<String>` beside it does — the headline spelling, held against both
-/// the wrapper union and the bare-array one.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_untagged_wrapper_of_string_describes_as_the_bare_string_array() {
@@ -1489,9 +1406,7 @@ fn test_untagged_string_array_member_zod() {
     }
 }
 
-/// The member's constraint reaches Zod in the spelling the tagged twin's does. Before this, the
-/// attribute never reached the macro at all: the untagged walk left it on the emitted item and
-/// rustc refused it as an attribute that does not exist.
+/// The member's constraint reaches Zod in the spelling the tagged twin's does.
 #[test]
 #[cfg(feature = "zod")]
 fn test_untagged_member_constraint_zod() {
@@ -1522,8 +1437,6 @@ fn test_untagged_member_constraint_json_schema() {
     );
 }
 
-/// The member's bound reaches the Rust side too, so a payload both schema surfaces reject stops
-/// being one serde reads back without a word.
 #[test]
 fn test_untagged_member_constraint_is_enforced_on_deserialize() {
     serde_json::from_str::<SoleConstrainedUnion>(r#"{"slug":"a"}"#).unwrap_err();
@@ -1536,10 +1449,6 @@ fn test_untagged_member_constraint_is_enforced_on_deserialize() {
     );
 }
 
-/// What a bound means in this position: serde tries the variants in order, and a member the bound
-/// rejects takes its variant out of the running rather than ending the read — the same thing the
-/// union's own schema does under `anyOf` and `z.union`. A violating value lands on the next branch
-/// that accepts it, erroring only when none does.
 #[test]
 fn test_untagged_member_constraint_decides_which_variant_is_read() {
     assert_eq!(
@@ -1556,8 +1465,6 @@ fn test_untagged_member_constraint_decides_which_variant_is_read() {
     );
 }
 
-/// Serialization is untouched: the hook is a deserializer, and the value it refuses on the way in
-/// is one the type can still be built with and written out.
 #[test]
 fn test_untagged_member_constraint_leaves_serialization_alone() {
     let violating = SoleConstrainedUnion::Slug {
@@ -1569,8 +1476,6 @@ fn test_untagged_member_constraint_leaves_serialization_alone() {
     );
 }
 
-/// An untagged member spells the `$oid` object the way every other position spells it — a member is
-/// written by its own dispatch, which is one more place the object could have drifted.
 #[test]
 #[cfg(all(feature = "jsonschema", feature = "mongodb"))]
 fn test_untagged_objectid_member_spells_the_one_oid_object() {
@@ -1587,16 +1492,6 @@ fn test_untagged_objectid_member_spells_the_one_oid_object() {
     );
 }
 
-/// The two readings of one bound, side by side.
-///
-/// Untagged, the bound is part of choosing the variant, so it runs on the read — and serde's
-/// derived `Deserialize` drops each candidate's own error as it moves to the next, so when no
-/// variant accepts, the bound's words are gone and one generic sentence stands in their place.
-///
-/// The tagged twin's tag names the variant before its members are read, so nothing about the value
-/// is in doubt and the bound has no variant to choose. It is therefore not on the read at all: the
-/// payload is admitted and the bound is the validator's, answered in its own words and naming the
-/// field. That difference is the whole of why the two are not the same reading.
 #[test]
 fn test_the_bound_runs_on_an_untagged_read_and_in_a_tagged_twins_validator() {
     assert_eq!(
@@ -1620,9 +1515,6 @@ fn test_the_bound_runs_on_an_untagged_read_and_in_a_tagged_twins_validator() {
     );
 }
 
-/// The accessor is the one Rust surface that names the bound a union's value violates: the read
-/// path hands the bound to serde, which discards the sentence with the candidate it removes, so a
-/// value built or read back in Rust has nothing else to ask. It answers in the tagged twin's words.
 #[test]
 fn test_untagged_union_publishes_validate_for_its_constrained_members() {
     let expected = vec![
@@ -1652,8 +1544,6 @@ fn test_untagged_union_publishes_validate_for_its_constrained_members() {
     .unwrap();
 }
 
-/// A union whose variants differ in what they bind: the value's own variant decides which checks
-/// run, and a variant carrying no bound has nothing to answer for.
 #[test]
 fn test_untagged_validate_runs_only_the_held_variants_checks() {
     assert_eq!(
@@ -1674,8 +1564,6 @@ fn test_untagged_validate_runs_only_the_held_variants_checks() {
     );
 }
 
-/// The wire the untagged collapse writes and reads: the slot is off the wire in both directions, so
-/// serde writes `null` and reads `null` back, and neither the slot's own value nor an array matches.
 #[test]
 fn test_serde_writes_and_reads_null_for_an_untagged_variant_whose_lone_slot_is_dropped() {
     let written = serde_json::to_value(UntaggedLoneSlotWire::Lone("s".to_owned())).unwrap();
@@ -1694,8 +1582,6 @@ fn test_serde_writes_and_reads_null_for_an_untagged_variant_whose_lone_slot_is_d
     );
 }
 
-/// The control: a variant declared as a unit writes and reads the same `null`, so the two
-/// declarations share one wire in both directions.
 #[test]
 fn test_serde_writes_and_reads_the_same_null_for_a_declared_untagged_unit_variant() {
     let written = serde_json::to_value(UntaggedUnitWire::Lone).unwrap();

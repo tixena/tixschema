@@ -2,9 +2,6 @@
 //! `StampClientService`: the emitted Swift client writes the frames the Rust client writes and
 //! reads the replies the Rust dispatcher writes. Swift has no `ws_rpc` server or attachment, so
 //! there is no dispatcher side to run here — see [`super::run_node_ws_headers`] for that half.
-//!
-//! Every scenario runs `swift main.swift` in immediate mode, standing down exactly as
-//! [`super::run_swift`] does where no Swift toolchain is reachable.
 
 #![cfg(feature = "swift")]
 

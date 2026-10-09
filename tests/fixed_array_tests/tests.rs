@@ -1,3 +1,5 @@
+//! Tests of fixed-length arrays: the length each level carries on the validating surfaces.
+
 use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
@@ -60,8 +62,6 @@ fn fixed_array_slots() -> FixedArraySlots {
     }
 }
 
-/// The wire criterion every surface below is read against: the array is written at one length and
-/// read back at that length alone, so a payload of any other length is one serde rejects.
 #[test]
 fn test_serde_reads_a_fixed_array_back_only_at_the_length_it_writes() {
     let three = serde_json::json!([1_u32, 2_u32, 3_u32]);
@@ -89,8 +89,6 @@ fn test_serde_reads_a_fixed_array_back_only_at_the_length_it_writes() {
     }
 }
 
-/// The JSON schema pins that length at the level that carries it, and leaves every other level as
-/// open as the spelling that wrote it — a `Vec`, a slice, or a count the expansion cannot read.
 #[test]
 #[cfg(feature = "jsonschema")]
 fn test_a_fixed_array_describes_its_length_at_the_level_it_bounds() {
@@ -169,8 +167,6 @@ fn test_a_fixed_array_in_a_slot_describes_its_length() {
     assert_eq!(properties["entry"]["prefixItems"][1], three_integers);
 }
 
-/// Zod is the other validator, so it says what the JSON schema says: `.length(N)` on the level the
-/// `[T; N]` was written at, and nothing on the levels no count was written for.
 #[test]
 #[cfg(feature = "zod")]
 fn test_a_fixed_array_validates_its_length_in_zod() {
@@ -205,10 +201,6 @@ fn test_a_fixed_array_validates_its_length_in_zod() {
     }
 }
 
-/// TypeScript takes the other answer and stays `Array<T>` at every level — its fixed-length form,
-/// the N-element tuple, has to be written out element by element and stops being readable long
-/// before `N` stops being legal. The two validating surfaces are where a wrong-length payload is
-/// caught.
 #[test]
 #[cfg(feature = "typescript")]
 fn test_a_fixed_array_types_as_an_unbounded_array_in_typescript() {

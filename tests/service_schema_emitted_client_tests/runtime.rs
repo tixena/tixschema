@@ -22,9 +22,8 @@ static STOOD_DOWN: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
 /// workspace by [`ran_with_modules`], since Node's ESM resolver does not consult `NODE_PATH`.
 pub const NODE_MODULES_VAR: &str = "TIXSCHEMA_NODE_MODULES";
 
-/// Names the compiler, the runtime, and the directory holding the serialization compiler plugin
-/// jar and the `kotlinx-serialization-json`, `kotlinx-serialization-core` and
-/// `kotlinx-coroutines-core` jars a Kotlin toolchain needs.
+/// Names the compiler, the runtime, and the directory holding the serialization compiler plugin jar
+/// and the jars a Kotlin toolchain needs.
 #[cfg(feature = "kotlin")]
 pub const KOTLINC_VAR: &str = "TIXSCHEMA_KOTLINC";
 #[cfg(feature = "kotlin")]

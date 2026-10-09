@@ -464,8 +464,6 @@ fn a_one_way_send_answers_the_transport_s_own_refusal_as_a_fault() {
     assert_eq!(reported.operation(), "note");
 }
 
-/// The contract stands on its own: implementing it takes a trait and nothing else, and nothing in
-/// this binary placed a dispatcher for it.
 #[test]
 fn the_contract_is_implementable_where_no_dispatcher_was_placed() {
     let answered = poll_once(CallBackEnd.read_balance(
@@ -683,9 +681,6 @@ fn a_lone_placeholder_leaves_the_rest_of_the_message_in_the_query() {
     );
 }
 
-/// A `body = "bytes"` operation reads the response body bare, the `content-type` header back into
-/// the tuple's second element, and its declared `header_out` entry back into the third - no
-/// `serde_json` decode anywhere on the success path.
 #[test]
 fn a_bytes_operation_reads_the_body_content_type_and_header_out_back() {
     let transport = RecordingTransport::queued(vec![(
@@ -713,8 +708,6 @@ fn a_bytes_operation_reads_the_body_content_type_and_header_out_back() {
     );
 }
 
-/// A `header_out` entry a bytes response never carries is a defect, not a silently absent value -
-/// exactly like the JSON path's own missing-header refusal.
 #[test]
 fn a_bytes_operation_missing_its_declared_header_out_answers_a_fault() {
     let transport = RecordingTransport::queued(vec![(
@@ -735,8 +728,6 @@ fn a_bytes_operation_missing_its_declared_header_out_answers_a_fault() {
     );
 }
 
-/// A bytes operation's mapped error status still decodes into the declared error, exactly like any
-/// other operation's.
 #[test]
 fn a_bytes_operations_mapped_status_still_decodes_into_the_declared_error() {
     let transport = RecordingTransport::queued(vec![(
@@ -754,8 +745,6 @@ fn a_bytes_operations_mapped_status_still_decodes_into_the_declared_error() {
     );
 }
 
-/// The contract stands on its own: implementing it takes a trait and nothing else, and nothing in
-/// this binary placed a dispatcher for it.
 #[test]
 fn the_document_contract_is_implementable_where_no_dispatcher_was_placed() {
     let answered =

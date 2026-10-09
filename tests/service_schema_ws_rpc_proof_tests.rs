@@ -3,12 +3,6 @@
 //! proving the two halves answer each other in both directions: a client's call answered by a
 //! dispatcher, a header round trip, and a server's own client pushing an event a dispatcher on the
 //! other side delivers.
-//!
-//! Gated on the `serde` feature, which `#[service_schema]` requires: a build without it is
-//! refused at the declaration, so a harness declaring a service would not compile at all.
-//!
-//! The `use` at the foot is what `$crate` reaches inside every macro this crate expands: each
-//! service's own module, and the trait its dispatcher and client bind.
 
 #![cfg(feature = "serde")]
 

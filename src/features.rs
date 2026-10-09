@@ -4,8 +4,7 @@
 //! different feature combinations in the macro expansion process.
 
 // Not gated on the `serde` feature: the attributes that decide whether a key reaches the wire are
-// written on the item under every toggle, and the surfaces describe that wire in every build. What
-// the feature gates is everything else the module reads — renaming, tagging, and the guards.
+// written on the item under every toggle, and the surfaces describe that wire in every build.
 pub mod serde;
 
 #[cfg(feature = "serde")]
@@ -36,8 +35,7 @@ pub mod kotlin;
 pub mod model_schema_prop;
 
 // Gated on `serde`, because `#[service_schema]` is: the emitters this module names live in
-// `crate::service_schema`. Not gated on `typescript`: the module holds every language's
-// accessors, each gated individually.
+// `crate::service_schema`.
 #[cfg(feature = "serde")]
 pub mod service_schema;
 

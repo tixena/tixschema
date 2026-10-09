@@ -404,8 +404,6 @@ fn a_position_that_is_absent_is_missing() {
     );
 }
 
-/// serde refuses a JSON array longer than the tuple, so the read carries its message beside the
-/// position.
 #[test]
 fn a_position_the_type_does_not_declare_is_unknown_beside_serdes_message() {
     assert_eq!(
@@ -444,8 +442,6 @@ fn a_decider_repairs_a_tuple_struct_by_the_position_it_is_handed() {
     assert_eq!(read, Ok(Pair("a".to_owned(), 7)));
 }
 
-/// A value that is no array is read whole with the type's own reader: serde's verdict, at the
-/// value, expecting the type.
 #[test]
 fn a_tuple_struct_held_as_an_object_is_listed_at_the_value_itself() {
     assert_eq!(
@@ -569,8 +565,6 @@ fn a_decider_repairs_a_tuple_by_the_position_it_is_handed() {
     assert_eq!(read, Ok(placement()));
 }
 
-/// The array holds no position for a slot serde never reads, serde reads a `default` slot when
-/// its position is absent, and a slot that holds a model type is walked by that type's walker.
 #[test]
 fn a_slot_is_a_position_only_where_serde_reads_one() {
     let written =
@@ -601,8 +595,6 @@ fn a_slot_is_a_position_only_where_serde_reads_one() {
     );
 }
 
-/// A brand and a single-slot tuple struct are each read as the one value they hold, at the path
-/// they sit at, and the issue names what they hold.
 #[test]
 fn a_brand_and_a_single_slot_struct_are_read_as_the_value_they_hold() {
     let mut stored = serde_json::to_value(labelled()).unwrap();
@@ -632,8 +624,6 @@ fn a_brand_and_a_single_slot_struct_are_read_as_the_value_they_hold() {
     );
 }
 
-/// A brand over another brand is the value the inner one holds: what serde wrote is read without
-/// the decider, and a value the inner one refuses is its one issue, at the path the outer sits at.
 #[test]
 fn a_brand_over_another_brand_is_read_as_the_value_the_inner_one_holds() {
     let mut calls = 0_u32;
@@ -655,8 +645,6 @@ fn a_brand_over_another_brand_is_read_as_the_value_the_inner_one_holds() {
     );
 }
 
-/// A brand over a tuple struct is that tuple struct at the path the brand sits at, so an issue
-/// inside it sits at its position there: at the value itself, and under the brand's key.
 #[test]
 fn a_brand_over_a_tuple_struct_walks_as_that_tuple_struct() {
     let mut calls = 0_u32;
@@ -696,9 +684,6 @@ fn a_brand_over_a_tuple_struct_walks_as_that_tuple_struct() {
     );
 }
 
-/// A brand over text, a single-slot struct over text or a list, and a tuple struct each list
-/// nothing inside an object the caller holds, and no key there is theirs, whatever the object
-/// holds. A brand over one of them answers as it does.
 #[test]
 fn a_brand_over_text_a_slot_over_a_list_and_a_tuple_struct_list_nothing_and_return_no_key() {
     let held = json!({ "0": "a", "legacy": true, "number": "3" });
@@ -718,9 +703,6 @@ fn a_brand_over_text_a_slot_over_a_list_and_a_tuple_struct_list_nothing_and_retu
     }
 }
 
-/// serde flattens a struct or a map and nothing else, so it refuses every read of a struct that
-/// flattens a brand over text or a tuple struct. The flattened type's fields walker lists nothing
-/// for it, and the read carries the refusal plain serde gives the same value.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 #[test]
 fn a_struct_flattening_a_type_serde_cannot_flatten_lists_nothing_for_it_beside_serdes_refusal() {
@@ -746,8 +728,6 @@ fn a_struct_flattening_a_type_serde_cannot_flatten_lists_nothing_for_it_beside_s
     );
 }
 
-/// The brand is read with its own reader, so the check written on it runs and its message is the
-/// issue's.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_constrained_brand_is_refused_with_its_own_message() {
@@ -764,8 +744,6 @@ fn a_constrained_brand_is_refused_with_its_own_message() {
     );
 }
 
-/// A single-slot struct over a model type is that type at the path it sits at, with or without
-/// `transparent`, and over a list or an `Option` of one it is walked as a field of that type is.
 #[test]
 fn a_single_slot_struct_over_a_model_type_walks_as_that_type() {
     let mut stored = serde_json::to_value(labelled()).unwrap();
@@ -794,8 +772,6 @@ fn a_single_slot_struct_over_a_model_type_walks_as_that_type() {
     );
 }
 
-/// What a single-slot struct over a model type lists inside an object the caller holds is what
-/// that type lists there, and the keys are that type's.
 #[test]
 fn a_single_slot_struct_over_a_model_type_hands_its_fields_walk_to_that_type() {
     let held = json!({ "legacy": true, "number": "3" });
@@ -816,8 +792,6 @@ fn a_single_slot_struct_over_a_model_type_hands_its_fields_walk_to_that_type() {
     }
 }
 
-/// serde writes a `transparent` struct with a named field as the value of that field, with no key
-/// for it, and what it wrote is read back without the decider.
 #[test]
 fn what_serde_wrote_for_a_transparent_struct_is_read_and_the_decider_never_runs() {
     let mut calls = 0_u32;
@@ -851,17 +825,13 @@ fn what_serde_wrote_for_a_transparent_struct_is_read_and_the_decider_never_runs(
     assert_eq!(calls, 0);
 }
 
-/// The values the decode reads for a transparent struct are the ones its own JSON Schema admits:
-/// the value of its field, with no key.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn a_transparent_structs_json_schema_admits_what_the_decode_reads() {
     assert_eq!(Slug::json_schema(), json!({ "type": "string" }));
 }
 
-/// A value serde refuses is one issue at the path the struct sits at, naming the type of its
-/// field. No key is looked up under the field's name: held as an object keyed by it, the value is
-/// one serde refuses whole.
+/// A value serde refuses is one issue at the path the struct sits at, naming the type of its field.
 #[test]
 fn a_value_a_transparent_struct_refuses_is_one_issue_at_the_path_the_struct_sits_at() {
     let read = Slug::from_value_with(json!(5_i32), |_raw, _found| slug_schema::Verdict::Reject);
@@ -884,8 +854,6 @@ fn a_value_a_transparent_struct_refuses_is_one_issue_at_the_path_the_struct_sits
     );
 }
 
-/// The struct is read with its own reader, which runs the hook its field carries: the hook's
-/// refusal is the issue's, at the path the struct sits at.
 #[test]
 fn a_transparent_struct_whose_field_carries_a_hook_is_read_through_it() {
     let read = Counted::from_value_with(json!("five"), |_raw, _found| {
@@ -907,9 +875,6 @@ fn a_transparent_struct_whose_field_carries_a_hook_is_read_through_it() {
     );
 }
 
-/// Over a model type the struct is that type at the path it sits at, so an issue sits at a path
-/// inside that type and never under the field's name. Over a list of them it is walked as a field
-/// of that type is.
 #[test]
 fn a_transparent_struct_over_a_model_type_walks_as_that_type() {
     let read = Current::from_value_with(json!({ "draft": true, "number": "3" }), |_raw, _found| {
@@ -945,8 +910,6 @@ fn a_transparent_struct_over_a_model_type_walks_as_that_type() {
     );
 }
 
-/// What a `transparent` struct over a model type lists inside an object the caller holds is what
-/// that type lists there, and the keys are that type's.
 #[test]
 fn a_transparent_struct_over_a_model_type_hands_its_fields_walk_to_that_type() {
     let held = json!({ "legacy": true, "number": "3" });
@@ -997,8 +960,6 @@ fn a_decider_repairs_a_transparent_struct_at_the_path_it_is_handed() {
     assert_eq!(read, Ok(titled()));
 }
 
-/// The field a `transparent` struct is walked as is the one serde's derive reads it as: neither
-/// the one with a `default` nor the `PhantomData`.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 #[test]
 fn a_transparent_struct_is_walked_as_the_field_serde_reads_past_a_default_and_a_marker() {
@@ -1033,8 +994,6 @@ fn a_transparent_struct_is_walked_as_the_field_serde_reads_past_a_default_and_a_
     );
 }
 
-/// serde writes a `transparent` tuple struct as the value of the one slot it reads, whatever other
-/// slots it declares, and what it wrote is read back without the decider.
 #[test]
 fn what_serde_wrote_for_a_transparent_tuple_struct_is_read_and_the_decider_never_runs() {
     let tags = vec!["a".to_owned(), "b".to_owned(), "c".to_owned()];
@@ -1066,8 +1025,6 @@ fn what_serde_wrote_for_a_transparent_tuple_struct_is_read_and_the_decider_never
     assert_eq!(calls, 0);
 }
 
-/// A value serde refuses is one issue at the path the struct sits at, naming the type of the slot
-/// the struct is read as, and an item of the list that slot holds is listed at its own index.
 #[test]
 fn a_value_a_transparent_tuple_struct_refuses_is_one_issue_at_the_path_the_struct_sits_at() {
     serde_json::from_value::<Tags>(json!(5_i32)).unwrap_err();
@@ -1095,8 +1052,6 @@ fn a_value_a_transparent_tuple_struct_refuses_is_one_issue_at_the_path_the_struc
     );
 }
 
-/// The slot the struct is read as is the one serde reads, wherever it is written: the value that
-/// slot holds is read, and the array of the struct's slots is a value serde refuses.
 #[test]
 fn a_transparent_tuple_struct_is_read_as_its_value_wherever_the_slot_is_written() {
     let written = serde_json::to_value(Measured(9, "m".to_owned())).unwrap();
@@ -1123,8 +1078,6 @@ fn a_transparent_tuple_struct_is_read_as_its_value_wherever_the_slot_is_written(
     );
 }
 
-/// Over a model type the struct is that type at the path it sits at: that type's walker lists the
-/// issues, at paths inside that type, and its fields walker is the struct's.
 #[test]
 fn a_transparent_tuple_struct_over_a_model_type_walks_as_that_type() {
     let read = Stamped::from_value_with(json!({ "draft": true, "number": "3" }), |_raw, _found| {
@@ -1172,8 +1125,6 @@ fn a_transparent_tuple_struct_over_a_model_type_walks_as_that_type() {
     );
 }
 
-/// The slot a `transparent` tuple struct is walked as is the one serde's derive reads it as:
-/// neither the one with a `default` nor the `PhantomData`.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 #[test]
 fn a_transparent_tuple_struct_is_walked_as_the_slot_serde_reads_past_a_default_and_a_marker() {

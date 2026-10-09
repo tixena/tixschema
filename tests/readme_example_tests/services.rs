@@ -1,10 +1,5 @@
 //! The README's `Services` section: the service it declares, expanded here exactly as the README
 //! declares it, and every emission shown beside it read back off the generator.
-//!
-//! Nothing in the section is written by hand. A sample that stops matching what the generator
-//! writes fails here rather than in the editor of whoever pasted it.
-//!
-//! Zod is read in its own tests, a build without it publishing no schema to compare against.
 
 use super::readme;
 use core::future::{Future, ready};

@@ -1,3 +1,5 @@
+//! Tests of `#[model_schema_prop]`: literals, `as`, `ts_optional` and `nullable` on every surface.
+
 #[cfg(all(
     test,
     any(
@@ -640,7 +642,7 @@ fn test_combined_literal_minlength_json_schema() {
     let fixed_prop = &properties["fixed_field"];
     assert_eq!(fixed_prop["type"], "string");
     assert_eq!(fixed_prop["const"], "fixed");
-    assert!(fixed_prop.get("minLength").is_none()); // Should not have minLength when literal
+    assert!(fixed_prop.get("minLength").is_none());
 
     let normal_prop = &properties["normal_field"];
     assert_eq!(normal_prop["type"], "string");
@@ -706,7 +708,6 @@ fn test_ts_optional_struct_json_schema_unchanged() {
 fn test_ts_optional_variant_typescript() {
     let ts = TsOptionalVariant::ts_definition();
 
-    // Covers the named-variant render path (write_named_variant_fields).
     assert!(
         ts.contains("filter?: Inner;"),
         "expected `filter?: Inner;` in variant TS:\n{ts}"

@@ -1,50 +1,6 @@
 //! The TypeScript `http_rest` client: one service-agnostic transport seam, and one method per
 //! operation that builds a plain-terms request from the operation's own message and decodes the
 //! answer by status.
-//!
-//! # Mirrors the Rust client's own shapes
-//!
-//! The seam here is the same seam `{service}_http_rest_client!` emits in Rust: a request record
-//! in (method, path, query, headers, body), a response record out (status, headers, body), and
-//! one method that sends the one and answers with the other. Nothing in either language names the
-//! library that finally carries the call — that adapter is hand-written where it is used, against
-//! this plain-terms surface, exactly as the Rust seam's own doc comments describe.
-//!
-//! # One seam type, not one per service
-//!
-//! Every service's alias of the seam carries the exact same two members, request in and response
-//! out, with nothing service-specific in either shape. A hand-written implementation built once
-//! therefore satisfies every service's own `{Service}HttpTransport` alias — TypeScript's structural
-//! typing does the sharing, so the type itself still carries the service prefix every other
-//! published name here does, since a bundle is one flat file with no scope of its own.
-//!
-//! # No envelope on the wire, an envelope at the call site
-//!
-//! A REST answer carries no `{ ok, value, error }` envelope on the wire (see
-//! [`crate::service_schema::transport::http_rest`]'s own module doc). The method here still
-//! answers the same `{Service}{Operation}Result` shape [`super::result`] already publishes for
-//! every operation, caller-shaped rather than wire-shaped: `{ ok: true, value }` on the declared
-//! `ok_status`, `{ ok: false, error: declared }` on a mapped status, and `{ ok: false, error: {
-//! isServiceFault: true, fault } }` everywhere else. A one-way operation has no failure arm to
-//! answer through — `Promise<void>` — so a refusal is thrown instead, exactly as the AMQP client's
-//! one-way methods throw.
-//!
-//! # Outbound validation, transport failure, and the wire's own fixed faults
-//!
-//! Every method validates its message before it builds anything, the same as the AMQP client. A
-//! transport that cannot carry the call, a status this client did not expect, and the wire's own
-//! fixed fault statuses (400 validation, 404 unmatched route, 500 panic) all become the same
-//! [`crate::service_schema::support`]-published fault type every other surface answers faults
-//! through.
-//!
-//! # `body = "stream"` reads two success statuses, not one
-//!
-//! `reply_decode_stmt` peels `BodyKind::Stream` off first into its own status ladder (`206` reads
-//! `content-range` back before the body is ever named; the declared `ok_status` leaves it
-//! `undefined`; either way the answer carries `response.bodyStream` — the seam's own
-//! `ReadableStream<Uint8Array>`, present only where the service declares a streamed operation) —
-//! mirroring the Rust and Dart clients' own split. What is left (`success_decode_block`) only ever
-//! sees `Bytes`, `Json` and `Multipart`.
 
 use super::fault;
 use super::message;
@@ -72,18 +28,10 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
     published
 }
 
-// ---------------------------------------------------------------------------------------------
-// The transport seam and the client type
-// ---------------------------------------------------------------------------------------------
-
 /// The one seam type a `{service}` client sends through: a request record in, a response record
-/// out, nothing service-specific in either and nothing here naming the library that finally
-/// carries the call. The request record carries `parts` only where the service declares a
-/// multipart operation - every other body kind still carries its content as `body`. The response
-/// record carries `bodyStream` only where the service declares a streamed operation - a real
-/// implementation can fill it a chunk at a time rather than buffering the whole answer first, while
-/// `body` keeps answering eagerly for every other operation. `ReadableStream` is the platform's own
-/// type, not a naming of `fetch`: the seam stays library-agnostic either way.
+/// out, nothing service-specific in either. The request record carries `parts` only where the
+/// service declares a multipart operation, and the response record `bodyStream` only where it
+/// declares a streamed one.
 fn transport_type(service: &str, has_stream: bool, has_multipart: bool) -> String {
     let parts_field = if has_multipart {
         "\n    parts: ReadonlyArray<readonly [string, unknown]>;"
@@ -209,10 +157,6 @@ fn method_doc(operation: &OperationDef, shape: &HttpShape) -> String {
     )
 }
 
-// ---------------------------------------------------------------------------------------------
-// One operation's method
-// ---------------------------------------------------------------------------------------------
-
 /// One method on the factory's returned object: validate, build the request from the validated
 /// message, send it, decode the answer by status.
 fn method(service: &ServiceDef, operation: &OperationDef, has_multipart: bool) -> String {
@@ -329,9 +273,7 @@ fn query_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
         return "      const query = \"\";\n".to_owned();
     }
     let fields = match &operation.inputs {
-        // `Empty` sends no field. A bodyless `Named` message is always the one scalar the path
-        // binds whole (refused at parse time otherwise), reading off the placeholder rather than
-        // the query.
+        // `Empty` sends no field.
         OperationInputs::Empty | OperationInputs::Named(_) => {
             return "      const query = \"\";\n".to_owned();
         }
@@ -880,9 +822,8 @@ fn header_value_read_stmts(
         let value_expr = header_out_value_expr(element_ty, &raw_text);
         let invalid_expr = header_out_invalid_expr(element_ty, &raw_text);
         let mismatch = "a response header did not match its declared type";
-        // An `Option<T>` element reads a missing header as `null`, its slot's own spelling; a
-        // present one that fails to decode as its declared type faults the same way a required
-        // element does.
+        // An `Option<T>` element reads a missing header as `null`; a present one that fails to
+        // decode as its declared type faults as a required element does.
         if option_inner(element_ty).is_some() {
             let _ = writeln!(stmt, "        let {ident}: {slot_typename};");
             let _ = writeln!(stmt, "        if ({raw_ident} === undefined) {{");
@@ -980,10 +921,6 @@ fn is_integer_scalar(ty: &Type) -> bool {
         )
     })
 }
-
-// ---------------------------------------------------------------------------------------------
-// The fault helpers every method reaches for
-// ---------------------------------------------------------------------------------------------
 
 /// The four fault-building readers every method reaches for, plus the one-way throw pair where the
 /// service declares at least one one-way operation, plus the header-value checker where the

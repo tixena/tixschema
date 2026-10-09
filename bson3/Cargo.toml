@@ -30,9 +30,8 @@ kotlin = ["tixschema/kotlin"]
 
 [dev-dependencies]
 tixschema = { path = "..", default-features = false }
-# `bson-3` in place of the driver's default `compat-3-0-0`, which turns `bson-2` on: the driver's
-# `Document` is then the one this `bson` declares. `chrono-0_4` is the feature its hook storing a
-# chrono date as a BSON date sits behind.
+# `bson-3` in place of the driver's default `compat-3-0-0`, which turns `bson-2` on. `chrono-0_4` is
+# the feature its date hook sits behind.
 bson = { version = "3.1", features = ["serde", "chrono-0_4"] }
 mongodb = { version = "3.9", default-features = false, features = ["bson-3", "compat-3-3-0", "rustls-tls", "dns-resolver"] }
 # As tixschema's own manifest lists them.
@@ -42,11 +41,8 @@ chrono = { version = ">=0.4.40", features = ["serde"] }
 regex = ">=1.10"
 tokio = { version = ">=1.53.1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
 
-# Transitive dep floors — pinned to fix known vulnerabilities:
-# - bytes >=1.11.1: RUSTSEC-2026-0007 (integer overflow in BytesMut::reserve)
-# - time >=0.3.47: RUSTSEC-2026-0009 (DoS via stack exhaustion)
-# As tixschema's own manifest pins them: this package resolves into a lock file of its own, which
-# a floor written there does not reach. `tests/mirrored_manifest_tests.rs` holds the two together.
+# Transitive dep floors, as tixschema's own manifest pins them: this package resolves into a lock
+# file of its own. `tests/mirrored_manifest_tests.rs` holds the two together.
 bytes = ">=1.11.1"
 time = ">=0.3.47"
 

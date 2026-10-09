@@ -3,10 +3,6 @@
 //! Rust dispatcher writes, the emitted attachment answers the Rust client's own frames the way the
 //! Rust dispatcher does, and the generic client reads a stub AMQP transport's headers as the Rust
 //! transport encodes them.
-//!
-//! Beside `node` itself, this leg reaches for the `zod` package through `TIXSCHEMA_NODE_MODULES`,
-//! standing down and naming that variable when it is missing. `just test-emitted` resolves it up
-//! front and refuses to stand down.
 
 use super::runtime::{node_modules, ran_with_modules, stand_down_modules};
 use super::stamp_client_service_schema::CallError;

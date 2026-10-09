@@ -1,3 +1,6 @@
+//! Unit tests of the JSON Schema emitter: the `json_schema()` method it generates, and the merge a
+//! flattened field earns.
+
 use super::*;
 
 #[test]
@@ -38,9 +41,6 @@ fn test_json_schema_method_flatten_emits_merge() {
     assert!(with_flatten.contains("oneOf"));
 }
 
-/// The wrapper the merge writes is the one its source used, which is only knowable once the source
-/// has described itself. So the spelling is read off the source beside its branches and carried
-/// into the wrapping, rather than fixed where the document is written.
 #[test]
 fn test_the_merge_wraps_branches_in_the_spelling_its_source_used() {
     let merge = generate_struct_json_schema_method(
@@ -73,10 +73,6 @@ fn test_the_merge_wraps_branches_in_the_spelling_its_source_used() {
     assert!(merge.contains("\"anyOf\""), "{merge}");
 }
 
-/// Whether a source was reached through an `Option` is knowable only where the field was read, and
-/// the merge that answers for it runs where the document is written. So the answer is carried into
-/// the merge beside the label and the schema, as the constant it is, and the merge offers the
-/// source's absence beside the source wherever it is set.
 #[test]
 fn test_an_optional_merged_source_carries_its_absence_into_the_merge() {
     let merge_of = |optional| {
@@ -108,9 +104,6 @@ fn test_an_optional_merged_source_carries_its_absence_into_the_merge() {
     assert!(required.contains("(\"Base\" , false ,"), "{required}");
 }
 
-/// A branch that is itself a union carries no members either, so the questions the whole merged body
-/// was asked are asked of it too rather than once. The descent is bounded by the names it resolved
-/// on the way down: a name reached twice on one path names a type no finite value inhabits.
 #[test]
 fn test_the_merge_expands_branches_to_a_fixed_point_under_a_path_terminator() {
     let merge = generate_struct_json_schema_method(
@@ -141,9 +134,6 @@ fn test_the_merge_expands_branches_to_a_fixed_point_under_a_path_terminator() {
     );
 }
 
-/// One branch of the choice the edge itself offers is read before the descent rather than by it: a
-/// unit variant of an exclusive union is the one key set the description does not spell out, serde
-/// writing the variant's name as a key where the document pins it as a bare string.
 #[test]
 fn test_the_merge_reads_a_tagged_unit_variant_at_the_edges_own_depth() {
     let merge = generate_struct_json_schema_method(
@@ -175,8 +165,6 @@ fn test_the_merge_reads_a_tagged_unit_variant_at_the_edges_own_depth() {
     );
 }
 
-/// The two methods are one mechanism: the guarded one is what siblings call, and the entry point
-/// is what turns the definitions it collected into a document root.
 #[test]
 fn test_json_schema_methods_pair_an_entry_point_with_a_guarded_body() {
     let methods = json_schema_methods("Node", &quote::quote! { body }, &[]).to_string();
@@ -187,12 +175,6 @@ fn test_json_schema_methods_pair_an_entry_point_with_a_guarded_body() {
     assert!(methods.contains("\"$defs\""), "no $defs: {methods}");
 }
 
-/// The pointer and the `$defs` key are two spellings of one name; a document whose reference
-/// pointed anywhere but at the entry it hoists would resolve to nothing. A name declaring no
-/// parameter always fills at an empty list, so the key it resolves to at runtime is the bare
-/// name — but the pointer is built from that runtime `key`, not from a literal embedding the name
-/// carries at macro-expansion time, since a generic name's key also carries the filling that
-/// built it (see the filling-keyed tests in the whole-type generic fixtures).
 #[test]
 fn test_the_deferred_reference_points_at_the_hoisted_defs_entry() {
     let methods = json_schema_methods("Node", &quote::quote! { body }, &[]).to_string();
@@ -208,8 +190,6 @@ fn test_the_deferred_reference_points_at_the_hoisted_defs_entry() {
     );
 }
 
-/// A plain enum names nothing, but a type that names it reaches it through the guarded method
-/// like any other sibling.
 #[test]
 fn test_plain_enum_publishes_the_guarded_method_too() {
     let method = generate_plain_enum_json_schema_method(&[quote::quote! { "a" }], "Flag", &[]);
@@ -220,9 +200,6 @@ fn test_plain_enum_publishes_the_guarded_method_too() {
     );
 }
 
-/// A pointer resolves to one body, so the name a frame puts in flight travels with the filling
-/// that body is being written at — which is what a re-entry has to read to tell the cycle a
-/// reference describes from the one it cannot.
 #[test]
 fn test_the_in_flight_recording_carries_the_filling_beside_the_name() {
     let parameters = vec![SchemaParameter {
@@ -251,8 +228,6 @@ fn test_the_in_flight_recording_carries_the_filling_beside_the_name() {
     );
 }
 
-/// The two ends a re-entered name can take: the same filling is the cycle the pointer describes,
-/// and any other is a body the document has no second place to hold.
 #[test]
 fn test_a_re_entered_name_is_read_against_the_filling_in_flight() {
     let methods = json_schema_methods("Node", &quote::quote! { body }, &[]).to_string();

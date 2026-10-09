@@ -10,8 +10,6 @@ mod typescript {
         keyed_alias_schema,
     };
 
-    /// `Record<K, V>` requires `K extends keyof any`, so the key states the string keys serde
-    /// actually writes rather than naming the parameter — the value beside it keeps that.
     #[test]
     fn a_parameter_keyed_map_states_the_string_keys_serde_writes_on_the_type_surface() {
         let ts = KeyedByParameter::<String, u32>::ts_definition();
@@ -38,9 +36,6 @@ mod typescript {
         assert!(!ts.contains("Record<KeyType"), "Got: {ts}");
     }
 
-    /// An alias reaches the same rule, its own target being classified the way a struct's fields
-    /// are. Both members of the declaration are held: the target and the re-export written from it,
-    /// the second binding the parameters the first spends.
     #[test]
     fn a_parameter_keyed_map_alias_states_the_string_key_and_keeps_the_value_parameter() {
         let ts = keyed_alias_schema::Schema::ts_definition();
@@ -74,8 +69,6 @@ mod typescript {
         );
     }
 
-    /// The declaration binds what the fields under it are written with, so a field typed with a
-    /// parameter is that parameter and not a reference to a generated type of the same name.
     #[test]
     fn a_struct_declaration_binds_its_parameters() {
         let ts = Wrapper::<String>::ts_definition();
@@ -86,8 +79,6 @@ mod typescript {
         assert!(!ts.contains("IdType$Schema"), "Got: {ts}");
     }
 
-    /// Every parameter is bound, in declaration order, and each is reached through whatever shape
-    /// the field was written around it.
     #[test]
     fn a_parameter_is_reached_through_the_shape_it_was_written_under() {
         let ts = Pair::<String, u32>::ts_definition();
@@ -113,9 +104,6 @@ mod typescript {
         );
     }
 
-    /// Which shape an enum's members are written in is what the tagging attributes decide, and
-    /// only `serde` reads those; what the declaration binds is decided by the declaration, so it
-    /// is asked of every flavour in every build.
     #[test]
     fn every_enum_flavour_declaration_binds_its_parameters() {
         for (flavour, ts) in [
@@ -183,8 +171,6 @@ mod typescript {
         );
     }
 
-    /// A const parameter names no type, so there is nothing for the declaration to bind — the
-    /// `impl` still has to repeat it, which is what makes the fixture compile at all.
     #[test]
     fn a_const_parameter_reaches_no_declaration() {
         let ts = PlainConst::<4>::ts_definition();
@@ -200,8 +186,6 @@ mod typescript {
         assert!(ts.contains("  label: string;"), "Got: {ts}");
     }
 
-    /// A reference is a type name on this surface whatever it carries, because a TypeScript
-    /// generic is written and not called. Only the validating surface has a factory to reach.
     #[test]
     fn a_reference_carrying_arguments_is_still_written_as_a_type_name() {
         let concrete = WireFolder::ts_definition();
@@ -226,9 +210,6 @@ mod typescript {
         assert!(!forwarded.contains("$SchemaFactory"), "Got: {forwarded}");
     }
 
-    /// The line an item publishes under its own Rust ident is written after the declaration it
-    /// refers to, and repeats the parameter list on both sides — a generic type named bare on
-    /// either would be a TypeScript error of its own.
     #[test]
     fn the_reexport_lands_after_the_parameterised_declaration() {
         let ts = Holder::<String>::ts_definition();
@@ -254,9 +235,7 @@ mod zod {
     #[cfg(all(feature = "typescript", feature = "serde"))]
     use super::{ConstrainedEchoedDefault, ConstrainedId, DeepEchoedDefault};
 
-    /// Two generic items whose declared defaults name each other. Neither has registered the
-    /// other's arguments when it expands, so neither folds; both calls are deferred, and which of
-    /// the two names is written first in the generated module is never asked.
+    /// Two generic items whose declared defaults name each other.
     #[test]
     fn a_cycle_between_two_defaults_is_deferred_on_both_sides() {
         let leader = CycleLeader::<u32>::zod_schema();
@@ -278,8 +257,6 @@ mod zod {
         );
     }
 
-    /// serde writes every map key as a string or refuses the map at serialization, so the key
-    /// states that guarantee — coming out byte-identical to the concrete `String`-keyed member.
     #[test]
     fn a_parameter_keyed_map_states_the_string_keys_serde_writes() {
         let zod = KeyedByParameter::<String, u32>::zod_schema();
@@ -300,8 +277,6 @@ mod zod {
         assert!(!zod.contains("KeyType$Schema"), "Got: {zod}");
     }
 
-    /// The alias composes both answers in its factory: the VALUE parameter is the bound argument,
-    /// while the KEY parameter states the string guarantee and leaves its own argument unspent.
     #[test]
     fn a_parameter_keyed_map_alias_composes_the_factory_argument_with_the_string_key() {
         let zod = keyed_alias_schema::Schema::zod_schema();
@@ -327,8 +302,6 @@ mod zod {
         assert!(!zod.contains("z.record(keyType"), "Got: {zod}");
     }
 
-    /// A concrete key keeps its own answer: a bare string opens the object, and a key serde
-    /// stringifies for the author keeps the narrowing it has always described as.
     #[test]
     fn a_concrete_key_beside_a_parameter_one_renders_as_it_always_did() {
         let zod = KeyedByParameter::<String, u32>::zod_schema();
@@ -350,8 +323,6 @@ mod zod {
             || zod.contains(&format!("export const {name}$Schema ="))
     }
 
-    /// A Zod schema is a runtime value and a `const` cannot be parameterised, so a generic type has
-    /// no one schema to publish — what it publishes is the function that builds one per filling.
     #[test]
     fn a_generic_type_publishes_a_factory_where_a_plain_type_publishes_a_schema() {
         let generic = Wrapper::<String>::zod_schema();
@@ -369,8 +340,6 @@ mod zod {
         assert!(!plain.contains("$SchemaFactory"), "Got: {plain}");
     }
 
-    /// The argument the factory binds is what a field written with a parameter composes, so the
-    /// caller's filling is what validates rather than a value that admits anything.
     #[test]
     fn a_parameter_composes_into_the_value_as_the_argument_bound_for_it() {
         let zod = Wrapper::<String>::zod_schema();
@@ -403,9 +372,6 @@ mod zod {
         assert!(zod.contains("z.tuple([idType, z.string()])"), "Got: {zod}");
     }
 
-    /// Which shape an enum's members are written in is what the tagging attributes decide, and only
-    /// `serde` reads those; that the parameter is bound by a factory is decided by the declaration,
-    /// so it is asked of every flavour in every build.
     #[test]
     fn every_enum_flavour_publishes_a_factory() {
         for (flavour, zod) in [
@@ -423,9 +389,6 @@ mod zod {
         }
     }
 
-    /// A const parameter and a lifetime name no type, so neither reaches a schema and there is
-    /// nothing for a factory to bind — the item publishes the one schema it has, and no default
-    /// beside it: a `$SchemaDefault` calls a factory, and there is none to call.
     #[test]
     fn an_item_binding_no_type_parameter_still_publishes_a_schema() {
         for (name, zod) in [
@@ -438,8 +401,6 @@ mod zod {
         }
     }
 
-    /// Both names an item is published under carry the one binding it has, so a generic type's
-    /// re-export names the factory rather than a schema no module declares.
     #[test]
     fn the_ident_reexport_names_the_factory() {
         let zod = Holder::<String>::zod_schema();
@@ -450,9 +411,6 @@ mod zod {
         assert!(!publishes_a_schema_const(&zod, "Holder"), "Got: {zod}");
     }
 
-    /// The re-export covers both bindings a generic item publishes, not only the factory it always
-    /// had — a renamed item's alias answers to `$SchemaDefault` exactly as it answers to
-    /// `$SchemaFactory`.
     #[test]
     fn the_default_is_reexported_alongside_the_factory() {
         let zod = Holder::<String>::zod_schema();
@@ -462,8 +420,6 @@ mod zod {
         );
     }
 
-    /// A generic item's `$SchemaDefault` is the factory called with each parameter's declared
-    /// default — the ordinary case a consumer no longer has to construct by hand.
     #[test]
     fn a_generic_type_publishes_a_default_through_its_own_factory() {
         let zod = Wrapper::<String>::zod_schema();
@@ -477,9 +433,6 @@ mod zod {
         );
     }
 
-    /// Under `typescript`, the default carries an annotation naming the instantiation it validates
-    /// — the one place a `TypeScript` type is spelled for a binding a factory otherwise reads its
-    /// return type back off.
     #[cfg(feature = "typescript")]
     #[test]
     fn the_default_is_annotated_with_the_instantiation_it_validates() {
@@ -493,8 +446,6 @@ mod zod {
         );
     }
 
-    /// Two parameters fill two arguments, each read off its own `default_types` entry and written
-    /// in declaration order.
     #[test]
     fn a_two_parameter_default_fills_each_argument_in_declaration_order() {
         let zod = EcmDocument::<String, f64>::zod_schema();
@@ -508,9 +459,6 @@ mod zod {
         );
     }
 
-    /// A default naming another item at exactly that item's own default folds onto its
-    /// `$SchemaDefault`, carrying the checks and brand by reference instead of rebuilding them
-    /// under a `z.string()` the memo would not share.
     #[test]
     fn a_default_naming_a_siblings_own_default_folds_onto_its_binding() {
         let zod = EchoedDefault::<String>::zod_schema();
@@ -520,9 +468,6 @@ mod zod {
         );
     }
 
-    /// At an argument other than the sibling's own default, the fold does not fire — the call is
-    /// deferred exactly as an ordinary field reference is, since neither `const` can know whether
-    /// the other is declared above or below it in the generated module.
     #[test]
     fn a_default_naming_a_sibling_at_another_filling_still_calls_its_factory() {
         let zod = OverriddenDefault::<String>::zod_schema();
@@ -535,8 +480,6 @@ mod zod {
         );
     }
 
-    /// A sibling reference wrapped in `Vec` defers exactly like a bare one — `z.lazy` wraps the
-    /// whole expression, not merely the factory call inside `z.array(...)`.
     #[test]
     fn a_default_wrapping_a_sibling_in_vec_defers_the_whole_expression() {
         let zod = BatchedDefault::<Vec<Tagged<String>>>::zod_schema();
@@ -549,9 +492,6 @@ mod zod {
         );
     }
 
-    /// The same hazard one level deeper through `Option` rather than `Vec`: the fold gate requires
-    /// `!is_optional()`, so this also falls through to the ordinary rendering, and that rendering
-    /// is deferred whole for the same reason the `Vec`-wrapped case above is.
     #[test]
     fn a_default_wrapping_a_sibling_in_option_defers_the_whole_expression() {
         let zod = SlottedDefault::<Option<Tagged<String>>>::zod_schema();
@@ -566,9 +506,6 @@ mod zod {
         );
     }
 
-    /// A `Vec`-wrapped default with nothing but a primitive inside names no sibling `const` at any
-    /// depth, so it stays eager exactly as a bare primitive default does — the deferral is keyed
-    /// on what the tree names, not on whether it is wrapped.
     #[test]
     fn a_default_wrapping_only_a_primitive_in_vec_stays_eager() {
         let zod = ListedDefault::<Vec<String>>::zod_schema();
@@ -579,8 +516,6 @@ mod zod {
         assert!(!zod.contains("z.lazy"), "Got: {zod}");
     }
 
-    /// Pins the bounds-through-serde behavior for `ConstrainedId` directly, mirroring what
-    /// `constrained_generic_branded_tests::StrictDocumentId` covers in `branded_newtype_tests`.
     #[cfg(all(feature = "typescript", feature = "serde"))]
     #[test]
     fn a_constrained_ids_declared_default_enforces_the_bounds_through_serde() {
@@ -592,8 +527,6 @@ mod zod {
         assert!(too_short.is_err(), "Should reject a too-short id via serde");
     }
 
-    /// `validate()` itself, not just the `deserialize_with` hook, at the declared default —
-    /// running the same `minLength`/`maxLength`/`pattern` checks `$SchemaDefault` enforces.
     #[cfg(all(feature = "typescript", feature = "serde"))]
     #[test]
     fn the_declared_defaults_validate_method_runs_the_same_checks_the_default_schema_enforces() {
@@ -610,9 +543,6 @@ mod zod {
         );
     }
 
-    /// The point of pinning `validate()` to the declared default: a hand-written impl for a
-    /// *different* instantiation compiles alongside the generated one with no duplicate-definition
-    /// error, and it is the hand-written body that runs.
     #[cfg(all(feature = "typescript", feature = "serde"))]
     #[test]
     fn a_hand_written_impl_for_another_instantiation_compiles_and_runs_beside_the_generated_one() {
@@ -623,9 +553,6 @@ mod zod {
         );
     }
 
-    /// The fold fires for a constrained brand exactly as for `Tagged`: the comparison key is the
-    /// plain rendering, not the `.min`/`.max`/`.check` chain `$SchemaDefault` emits — so the bounds
-    /// carry in by reference instead of being silently dropped.
     #[cfg(all(feature = "typescript", feature = "serde"))]
     #[test]
     fn a_default_naming_a_constrained_brands_own_default_folds_onto_its_binding() {
@@ -639,8 +566,6 @@ mod zod {
         );
     }
 
-    /// The fold chains two levels deep here, reading `ConstrainedEchoedDefault`'s comparison key
-    /// back rather than the deferred, checks-carrying text its own `$SchemaDefault` emits.
     #[cfg(all(feature = "typescript", feature = "serde"))]
     #[test]
     fn a_default_naming_a_siblings_default_that_itself_folds_chains_two_levels_deep() {
@@ -654,9 +579,6 @@ mod zod {
         );
     }
 
-    /// A base is read when the intersection is used rather than while the value holding it is
-    /// built, which is what leaves declaration order irrelevant. The arguments are in scope for the
-    /// whole of the builder, so the deferral composes inside the factory unchanged.
     #[cfg(feature = "serde")]
     #[test]
     fn a_generic_type_that_flattens_still_defers_its_base() {
@@ -672,8 +594,6 @@ mod zod {
         );
     }
 
-    /// Two calls with the same arguments reach the one schema: the miss path returns the very
-    /// value it stored, and the hit path returns what was stored.
     #[test]
     fn a_factory_returns_what_it_stored_rather_than_building_again() {
         let zod = Wrapper::<String>::zod_schema();
@@ -687,9 +607,6 @@ mod zod {
         );
     }
 
-    /// Every argument keys a level of its own, so no two argument lists meet in one slot: a change
-    /// in the first re-keys the outermost map, and a change in the last re-keys the one the schema
-    /// is stored in.
     #[test]
     fn every_argument_keys_a_level_of_its_own() {
         let zod = Quintet::<u32, u32, u32, u32, u32>::zod_schema();
@@ -706,8 +623,6 @@ mod zod {
         }
     }
 
-    /// The builder holds the expression the arguments compose into and the factory's return type is
-    /// read back off it, so the two cannot come to claim different shapes.
     #[cfg(feature = "typescript")]
     #[test]
     fn the_factory_return_type_is_read_back_off_the_builder() {
@@ -734,9 +649,7 @@ mod zod {
         );
     }
 
-    /// Each parameter is a parameter of the function for real. A bare `ZodType` annotation compiles
-    /// and infers nothing — `ZodType` defaults its own parameters — so a field validated through
-    /// one would come back as the opaque value whatever the caller supplied.
+    /// Each parameter is a parameter of the function for real.
     #[cfg(feature = "typescript")]
     #[test]
     fn every_parameter_is_a_type_parameter_rather_than_a_bare_annotation() {
@@ -755,8 +668,6 @@ mod zod {
         assert_eq!(zod.matches("valueType: ZodType,").count(), 1, "Got: {zod}");
     }
 
-    /// The precise signature is declared as an overload and the store is keyed at the widened one
-    /// the implementation takes, so the read is already the implementation's return type.
     #[cfg(feature = "typescript")]
     #[test]
     fn one_parameter_writes_one_overload_over_one_weak_map() {
@@ -779,8 +690,6 @@ mod zod {
         assert!(!zod.contains("interface "), "Got: {zod}");
     }
 
-    /// One `WeakMap` level per parameter, nested to the exact depth the type declares, and each
-    /// level below the first built where it is first needed.
     #[cfg(feature = "typescript")]
     #[test]
     fn each_parameter_keys_a_weak_map_level_of_its_own() {
@@ -797,8 +706,6 @@ mod zod {
         assert!(!zod.contains("interface "), "Got: {zod}");
     }
 
-    /// Nothing a generic type publishes is asserted: every memo is reached through a parameter the
-    /// factory's own signature binds, so there is no read to narrow and nothing to widen through.
     #[test]
     fn a_generic_type_publishes_no_assertion_and_no_opaque_value() {
         for zod in [
@@ -815,8 +722,6 @@ mod zod {
         }
     }
 
-    /// A build with no `typescript` writes plain JavaScript: the same function and the same cache,
-    /// with nothing to declare either to.
     #[cfg(not(feature = "typescript"))]
     #[test]
     fn a_javascript_build_writes_the_factory_untyped() {
@@ -837,9 +742,6 @@ mod zod {
         assert!(!zod.contains("ZodType"), "Got: {zod}");
     }
 
-    /// The alias and the brand write the same untyped factory, and the brand's marker drops the
-    /// type argument only TypeScript reads — the two spellings that made this build's output stop
-    /// at load rather than at a payload.
     #[cfg(not(feature = "typescript"))]
     #[test]
     fn a_javascript_build_writes_the_alias_and_the_brand_untyped() {
@@ -857,9 +759,6 @@ mod zod {
         assert!(!brand.contains("ZodType"), "Got: {brand}");
     }
 
-    /// An alias and a branded newtype are generic publishers like any other, so each binds an
-    /// argument per parameter and composes it — the alias into the shape it names, the brand into
-    /// the value it marks.
     #[test]
     fn every_generic_publisher_binds_its_parameter_as_a_factory_argument() {
         let alias = super::boxed_schema::Schema::zod_schema();
@@ -879,9 +778,6 @@ mod zod {
         assert!(!brand.contains("z.unknown()"), "Got: {brand}");
     }
 
-    /// A field naming a generic type has no schema to name — the type publishes a factory — so it
-    /// calls that factory with what fills each parameter, and the plain sibling beside it still
-    /// names the one schema its own type publishes.
     #[test]
     fn a_reference_carrying_arguments_calls_the_factory() {
         let zod = WireFolder::zod_schema();
@@ -892,8 +788,6 @@ mod zod {
         assert!(zod.contains("plain: Envelope$Schema,"), "Got: {zod}");
     }
 
-    /// A forwarded parameter and a concrete type reach the call the same way: the parameter is the
-    /// argument the enclosing factory binds, so there is no forwarding rule of its own.
     #[test]
     fn a_forwarded_parameter_is_an_argument_like_any_other() {
         let zod = FolderTree::<String>::zod_schema();
@@ -903,8 +797,6 @@ mod zod {
         );
     }
 
-    /// An argument is rendered by the renderer that renders the reference, so an argument that is
-    /// itself a reference composes at whatever depth it is written at.
     #[test]
     fn an_argument_that_is_itself_generic_nests() {
         let zod = FolderTree::<String>::zod_schema();
@@ -914,9 +806,6 @@ mod zod {
         );
     }
 
-    /// A set is a name carrying one argument, which is the shape a reference to a generic type is
-    /// written in too — so the collection reading has to keep coming first, and the array it
-    /// writes has to keep carrying whatever its element renders as.
     #[test]
     fn a_set_is_still_read_as_the_collection_it_is() {
         let zod = FolderTree::<String>::zod_schema();
@@ -928,9 +817,6 @@ mod zod {
         assert!(!zod.contains("HashSet$SchemaFactory"), "Got: {zod}");
     }
 
-    /// Every argument reaches the call through whatever already answers for its type, so a date,
-    /// a database identifier and a number are each written exactly as they are written anywhere
-    /// else and none of the three is reached by a rule of its own.
     #[cfg(all(feature = "chrono", feature = "mongodb"))]
     #[test]
     fn an_argument_renders_through_the_renderer_that_already_answers_for_it() {
@@ -945,9 +831,6 @@ mod zod {
         }
     }
 
-    /// A reference names what the type it names publishes, and the seam saying which of the two it
-    /// was is the item's own registry entry — so an alias and a branded newtype joining the
-    /// factories moved every field naming either with them, no reference-site rule of its own.
     #[test]
     fn a_reference_to_an_alias_or_a_brand_calls_the_factory_it_publishes() {
         let zod = Referrer::zod_schema();
@@ -961,9 +844,6 @@ mod zod {
         );
     }
 
-    /// The argument a containing factory was handed is what reaches the alias and the brand it
-    /// holds, so a caller filling the container fills what validates inside it — where before the
-    /// container took the filling and threw it away.
     #[test]
     fn a_forwarded_parameter_reaches_an_alias_and_a_brand_alike() {
         let zod = Summarised::<String>::zod_schema();
@@ -977,8 +857,6 @@ mod zod {
         );
     }
 
-    /// Nothing a generated module carries is shared between the types in it, so a consumer's
-    /// generator has no preamble to emit ahead of them.
     #[test]
     fn a_generic_type_carries_its_whole_cache_itself() {
         let zod = Wrapper::<String>::zod_schema();
@@ -998,9 +876,6 @@ mod jsonschema {
     mod flattened_parameter {
         use super::super::{Carried, FlatCarrier, FlatReferrer};
 
-        /// A flattened parameter is a flattened value like any other: the object its filling
-        /// describes contributes its members to the one being written. The merge never sees which
-        /// end filled the parameter.
         #[test]
         fn a_flattened_parameter_merges_the_members_the_reference_site_filled_it_with() {
             assert_eq!(
@@ -1017,9 +892,7 @@ mod jsonschema {
             );
         }
 
-        /// A non-object filling has no members to merge. The declaration cannot refuse this itself
-        /// — only the reference site names the filling — so the refusal fires where it's finally
-        /// known.
+        /// A non-object filling has no members to merge.
         #[test]
         #[should_panic(
             expected = "`FlatCarrier`: `#[serde(flatten)]` of `held` is not written as \
@@ -1030,8 +903,6 @@ mod jsonschema {
             let _: serde_json::Value = FlatCarrier::<String>::json_schema();
         }
 
-        /// A declared filling reaches the merge exactly as a reference-site one does — built at
-        /// the default the declaration names, with no reference site involved.
         #[test]
         fn a_flattened_parameter_merges_the_members_its_declared_default_names() {
             assert_eq!(
@@ -1064,9 +935,6 @@ mod jsonschema {
         Sealed, Tagged, WireFolder, Wrapper, ecm_document_schema,
     };
 
-    /// A key every instantiation writes as a string leaves the value side describable, so the
-    /// object says what it holds instead of opening entirely — the answer the concrete
-    /// `String`-keyed member beside it already gave.
     #[test]
     fn a_parameter_keyed_map_still_describes_its_values() {
         let schema = KeyedByParameter::<String, u32>::json_schema();
@@ -1088,8 +956,6 @@ mod jsonschema {
         );
     }
 
-    /// A key serde stringifies for the author is not the same question, and keeps the open object
-    /// it has always described as.
     #[test]
     fn a_stringified_concrete_key_keeps_its_open_object() {
         let schema = KeyedByParameter::<String, u32>::json_schema();
@@ -1099,8 +965,6 @@ mod jsonschema {
         );
     }
 
-    /// JSON Schema has no type parameters, so a document standing on its own is written at the one
-    /// filling the item stated for itself.
     #[test]
     fn a_parameter_describes_as_the_type_declared_for_it() {
         let schema = Wrapper::<String>::json_schema();
@@ -1113,9 +977,6 @@ mod jsonschema {
         assert_eq!(properties["name"], serde_json::json!({ "type": "string" }));
     }
 
-    /// A `char` default renders the one-character string serde writes for it — the document
-    /// `is_undescribable_primitive` refused before `char` gained a `FieldDefType` arm, naming a
-    /// `char_schema` module nothing publishes instead.
     #[test]
     fn a_char_default_describes_the_one_character_string() {
         use super::Initialed;
@@ -1150,8 +1011,6 @@ mod jsonschema {
         );
     }
 
-    /// The `anyOf` an untagged enum describes as is what `#[serde(untagged)]` earns it, and only
-    /// `serde` reads that attribute.
     #[cfg(feature = "serde")]
     #[test]
     fn an_untagged_member_describes_its_parameter_the_same_way() {
@@ -1162,8 +1021,6 @@ mod jsonschema {
         );
     }
 
-    /// The whole of what the declared filling is for: the document a generic type publishes on its
-    /// own is the one its own declaration named, member by member.
     #[test]
     fn a_standalone_document_is_written_at_the_declared_filling() {
         let properties = EcmDocument::<String, f64>::json_schema()["properties"].clone();
@@ -1177,8 +1034,6 @@ mod jsonschema {
         );
     }
 
-    /// A field embeds the document its own arguments name, not the one the named type declared for
-    /// itself — a field carrying one filling described by another rejects every payload it holds.
     #[test]
     fn a_reference_embeds_the_document_its_own_arguments_name() {
         let wire = WireFolder::json_schema()["properties"]["doc"]["properties"].clone();
@@ -1196,8 +1051,6 @@ mod jsonschema {
         );
     }
 
-    /// An alias and a branded newtype are generic publishers like any other, so each is written at
-    /// its own declared filling standing alone and at the reference site's where a field names it.
     #[test]
     fn a_generic_alias_and_brand_are_written_at_the_filling_that_reached_them() {
         assert_eq!(
@@ -1220,9 +1073,6 @@ mod jsonschema {
         );
     }
 
-    /// The arguments are positional, in the order the item declares its parameters — which is not
-    /// the order its fields are written in, so a document read off the wrong end would pass every
-    /// assertion that only counted them.
     #[test]
     fn the_arguments_fill_the_parameters_in_declaration_order() {
         let properties = ecm_document_schema::Schema::json_schema_with(&[
@@ -1240,8 +1090,6 @@ mod jsonschema {
         );
     }
 
-    /// Every argument reaches the document through whatever already describes its type, so a date
-    /// and a database identifier are each written exactly as they are written anywhere else.
     #[cfg(all(feature = "chrono", feature = "mongodb"))]
     #[test]
     fn an_argument_is_described_by_whatever_already_answers_for_it() {
@@ -1261,8 +1109,6 @@ mod jsonschema {
         );
     }
 
-    /// A parameter forwarded into a reference is filled by whatever filled the item forwarding it,
-    /// so a document reached two levels down still names the type at the top of the chain.
     #[test]
     fn a_forwarded_parameter_carries_the_filling_it_was_handed() {
         let properties = super::FolderTree::<String>::json_schema()["properties"].clone();
@@ -1280,8 +1126,6 @@ mod jsonschema {
         );
     }
 
-    /// A filling naming another item is a request made of that item, not a literal document — the
-    /// standalone document holds at the parameter position exactly what the named item publishes.
     #[test]
     fn a_filling_naming_another_item_embeds_the_document_that_item_publishes() {
         let schema = Sealed::<Envelope>::json_schema();
@@ -1292,9 +1136,7 @@ mod jsonschema {
         );
     }
 
-    /// A name is one name however it was reached. Reached once as a declared filling and once as a
-    /// plain field, it is still the single definition the root carries, and both arrivals are
-    /// pointers into it rather than two copies of a body.
+    /// A name is one name however it was reached.
     #[test]
     fn a_name_reached_as_a_filling_and_as_a_field_is_defined_once() {
         let schema = Grove::<Branch>::json_schema();
@@ -1310,8 +1152,6 @@ mod jsonschema {
         );
     }
 
-    /// A cycle closing through a declared filling defers the same way every other edge does: the
-    /// name is recognized mid-description, so the filling describes as a pointer.
     #[test]
     fn a_cycle_closing_through_a_declared_filling_defers_the_same_way() {
         let schema = Roost::<Perch>::json_schema();
@@ -1329,9 +1169,6 @@ mod jsonschema {
         );
     }
 
-    /// The key now carries the filling — a readable label off the argument's own `"type"`
-    /// keyword, plus a digest keeping alike labels from colliding — so the pinned string below
-    /// gained that text, with no character a URI-reference forbids.
     #[test]
     fn a_cycle_that_keeps_its_filling_defers_through_the_one_definition() {
         let document = super::Recurring::<String>::json_schema();
@@ -1351,8 +1188,6 @@ mod jsonschema {
         }
     }
 
-    /// A reference at a filling the document is not being written at has nowhere to put its own
-    /// definition. Both fillings are named in the refusal — which one is wrong is the author's call.
     #[test]
     #[should_panic(
         expected = "`Refilled`: a reference closes a cycle at a filling the document is \
@@ -1363,8 +1198,6 @@ mod jsonschema {
         let _: serde_json::Value = super::Refilled::<String>::json_schema();
     }
 
-    /// The refusal states what stands in the way and what would move it, so an author meeting it
-    /// reads why one definition cannot hold two fillings and what would let it.
     #[test]
     #[should_panic(
         expected = "a document holds one definition per name, so a cycle cannot change \
@@ -1850,9 +1683,8 @@ pub struct ListedDefault<Items> {
 #[serde(transparent)]
 pub struct ConstrainedId<IdType>(pub IdType);
 
-/// The declared default (`ConstrainedId<String>`) gets the generated `validate()`, so this
-/// second inherent impl at a different instantiation is not a duplicate-definition error — it
-/// would be if the generated one were a blanket `impl<IdType> ConstrainedId<IdType>`.
+/// The declared default, `ConstrainedId<String>`, gets the generated `validate()`, so this second
+/// inherent impl at another instantiation is no duplicate definition.
 #[cfg(all(feature = "zod", feature = "typescript", feature = "serde"))]
 impl ConstrainedId<u32> {
     pub fn validate(&self) -> Result<(), Vec<String>> {
@@ -1968,9 +1800,6 @@ fn a_parameter_with_no_default_still_expands_where_no_json_document_is_built() {
     assert_eq!(Undefaulted { id: 1_u32 }.id, 1);
 }
 
-/// Every shape a bound can reach — satisfied at the filling alone, jointly with a neighbour,
-/// both at once, and beside a const that takes no filling — still expands and holds what the
-/// author wrote.
 #[test]
 fn a_bounded_parameter_filled_at_a_type_its_bound_admits_still_expands() {
     assert_eq!(
@@ -2002,8 +1831,6 @@ fn a_bounded_parameter_filled_at_a_type_its_bound_admits_still_expands() {
     assert_eq!(padded.wide, "y");
 }
 
-/// Each alias named by a value, the way every other declaration shape here is: an alias that binds
-/// parameters is still the type it names, and a filling of it is a map serde writes as an object.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_generic_alias_expands_to_rust_that_compiles() {
@@ -2014,9 +1841,6 @@ fn a_generic_alias_expands_to_rust_that_compiles() {
     assert_eq!(concrete["k"], 2);
 }
 
-/// The pair of compile errors the attribute used to produce on any generic item: `E0107` on the
-/// `impl` (dropped parameters) and `E0433` on a module named after a parameter (names no type).
-/// The suite compiling is the assertion.
 #[test]
 fn a_generic_item_expands_to_rust_that_compiles() {
     let wrapper = Wrapper {
@@ -2073,8 +1897,6 @@ fn a_generic_item_expands_to_rust_that_compiles() {
     assert_eq!(quintet.echo, 5);
 }
 
-/// The reference-site shapes, each named by a value: a concrete filling, a forwarded parameter, an
-/// argument that is itself generic, and an argument supplied to a type that publishes a `const`.
 #[test]
 fn a_reference_carrying_arguments_expands_to_rust_that_compiles() {
     let document = |id: &str| EcmDocument {
@@ -2155,8 +1977,6 @@ fn a_dated_and_an_identified_argument_expand_to_rust_that_compiles() {
     assert_ne!(stored.doc.document_id.to_hex(), String::new());
 }
 
-/// The enum half of the same question, in every shape the tagging attributes reach — plus the one
-/// a plain enum can bind, which is a const rather than a type.
 #[test]
 fn a_generic_enum_expands_to_rust_that_compiles() {
     assert!(matches!(Adjacent::<String>::Nothing, Adjacent::Nothing));
@@ -2169,9 +1989,6 @@ fn a_generic_enum_expands_to_rust_that_compiles() {
     assert!(matches!(PlainConst::<4>::Wide, PlainConst::Wide));
 }
 
-/// The evidence the string-keyed rendering rests on: serde writes a JSON object key as a string
-/// for every instantiation it accepts at all, and refuses the whole map at serialization for the
-/// ones it does not — there is no instantiation whose keys reach the wire as anything else.
 #[cfg(feature = "serde")]
 #[test]
 fn every_instantiation_the_wire_accepts_writes_string_keys() {
@@ -2232,9 +2049,6 @@ fn every_instantiation_the_wire_accepts_writes_string_keys() {
     assert_eq!(read_back.parameter_keyed[&7], "seven");
 }
 
-/// A lifetime is the half of the `impl` fix no schema surface can show: nothing renders it, and
-/// the only evidence it was carried through is that the constrained field is still read into the
-/// borrowed form and still held to its bound by the validator.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -2266,9 +2080,6 @@ fn a_lifetime_struct_still_holds_its_field_to_its_bound() {
     );
 }
 
-/// The declared-default `validate()` for a type combining a lifetime with a type parameter still
-/// enforces the constrained field's bound, and the hand-written impl at a different
-/// instantiation compiles and runs without colliding with the generated one.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")

@@ -1,7 +1,8 @@
+//! Unit tests of the rename rules: each `rename_all` mode cases a variant and a field as serde
+//! does.
+
 use super::{RenameRule, resolve_rename_rule, unsupported_mode_message};
 
-/// The expectation table from `serde_derive` 1.0.229 `src/internals/case.rs::rename_variants`,
-/// extended with the multi-word, acronym-run and digit cases this crate has to get right.
 #[test]
 fn variant_rules_match_serde() {
     for &(original, lower, upper, camel, snake, screaming, kebab, screaming_kebab) in &[

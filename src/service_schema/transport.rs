@@ -1,37 +1,4 @@
 //! The transports a service can ask for, and the one place a name is bound to one.
-//!
-//! `#[service_schema(transports = ["amqp_rpc"])]` is where a service says which of them it wants.
-//! [`parse_arguments`] reads that list, and [`Transport`] is the vocabulary it reads against —
-//! written with an underscore rather than a hyphen, because a transport's name reaches a generated
-//! macro name and a hyphen cannot. The same call also reads `non_exhaustive`, the attribute's other
-//! argument, into [`ServiceArguments`] beside the list.
-//!
-//! # Adding one
-//!
-//! A module beside [`amqp_rpc`], and one variant here. The variant makes the match in [`emit`]
-//! incomplete until the new one is answered for, so the emitter each transport contributes is bound
-//! in this file and nowhere else, and no existing transport's module is touched to add another.
-//!
-//! # What a named transport contributes
-//!
-//! `#[macro_export] macro_rules!` at the trait's own scope, named `{service}_{transport}_dispatcher`
-//! and `{service}_{transport}_client` for every transport the service asked for, plus a third,
-//! `{service}_{transport}_server`, for `amqp_rpc` alone — three macros there, two for `http_rest`
-//! and two for `ws_rpc`. Nothing inside any of them is compiled where the service is declared, and a
-//! service that named no transport is emitted nothing here at all.
-//!
-//! Two macros rather than one, because the halves of a service usually live in different crates — a
-//! crate that calls the service can see the contract but has no business seeing the server's
-//! backend. `amqp_rpc` earns a third: AMQP's own request-and-reply shape is fixed enough that one
-//! consumer loop over `lapin` serves every service that places it, so that loop is generated rather
-//! than left to a hand-written adapter. `http_rest` and `ws_rpc` have no such fixed loop — what a
-//! server looks like is the hosting application's own router or socket handler — so both stop at the
-//! dispatcher and the client, and a crate that only wants `dispatch` itself (a hand-rolled adapter,
-//! or a test with no broker in reach) has no business seeing the server macro's `lapin`, `tokio` and
-//! `futures` either. Each is invoked and placed by the half that wants it, and none drags in another.
-//!
-//! [`emit`] walks [`Transport::KNOWN`] rather than the list as written, so a transport named twice
-//! contributes one pair rather than two definitions of one exported name.
 
 mod amqp_rpc;
 mod http_rest;
@@ -66,9 +33,7 @@ const NON_EXHAUSTIVE_SHAPE_MESSAGE: &str = concat!(
 /// Everything `#[service_schema(...)]`'s own arguments say, read once by [`parse_arguments`].
 #[derive(Debug, Default, Eq, PartialEq)]
 pub struct ServiceArguments {
-    /// Whether the generated types carry `#[non_exhaustive]`. Absent by default: a service that
-    /// says nothing keeps every generated type exhaustive, so a variant or field added later
-    /// fails a consumer's `match` or destructuring rather than passing unnoticed.
+    /// Whether the generated types carry `#[non_exhaustive]`.
     pub non_exhaustive: bool,
     /// The transports asked for, in the order written. Nothing sorts or dedupes it.
     pub transports: Vec<Transport>,

@@ -10,11 +10,13 @@ pub struct BalanceRequest {
     pub organization_id: String,
 }
 
+/// The reply to a `BalanceRequest`.
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BalanceResponse {
     pub credits: u32,
 }
 
+/// The error the probe service's operations declare.
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case", tag = "errorCode")]
 pub enum ProbeError {

@@ -1,3 +1,5 @@
+//! Tests of `#[model_schema(name = "...")]`: every shape is published under the override.
+
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
@@ -137,8 +139,6 @@ fn every_renamed_shape_is_written_under_the_override() {
     }
 }
 
-/// The brand is the one shape whose name reaches the surface twice: once as the exported type and
-/// once as the brand tag the values carry, which is what makes two brands distinct in TypeScript.
 #[cfg(all(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_renamed_brand_is_tagged_by_the_override() {
@@ -209,9 +209,6 @@ fn a_zod_reference_to_a_renamed_item_resolves_the_override() {
     }
 }
 
-/// The reported failure was a rename that reached no surface, leaving every reference spelled from
-/// the Rust ident. A referencing type carries nothing but references, so the Rust names of the
-/// types it names must not appear in what it publishes.
 #[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_reference_to_a_renamed_item_never_carries_its_rust_name() {
@@ -255,8 +252,6 @@ fn a_renamed_item_names_its_json_definition_by_the_override() {
     );
 }
 
-/// The JSON reference is a Rust path to the renamed item's schema module, and that module is named
-/// after the Rust ident the reference had to go on — the override never reaches it.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn the_module_a_json_reference_resolves_to_is_the_one_named_for_the_rust_ident() {
@@ -293,10 +288,6 @@ fn renamed_items_declared_under_their_reference_expand_in_this_feature_combinati
     assert_eq!(earlier.grades, vec![LaterRenamedGrade::Low]);
 }
 
-/// A struct naming a renamed struct or enum declared under it used to refuse the whole crate: the
-/// reference assumed `later_renamed_gauge_schema` while the item published
-/// `renamed_later_gauge_schema`, an `E0433` for a module never written. One spelling now answers
-/// on both sides.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn an_item_reference_describes_the_same_on_either_side_of_the_item() {
@@ -306,8 +297,6 @@ fn an_item_reference_describes_the_same_on_either_side_of_the_item() {
     );
 }
 
-/// And what it resolves to is the renamed item's own module rather than something that merely
-/// exists: each member carries exactly what the item publishes.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn a_forward_item_reference_carries_what_the_item_publishes() {
@@ -325,8 +314,6 @@ fn a_forward_item_reference_carries_what_the_item_publishes() {
     );
 }
 
-/// The override and the module name come apart: a forward-referenced item is exported under the
-/// name the author wrote, from the module named after its Rust ident.
 #[cfg(feature = "typescript")]
 #[test]
 fn a_forward_referenced_renamed_item_exports_under_the_override() {
@@ -344,10 +331,6 @@ fn a_forward_referenced_renamed_item_exports_under_the_override() {
     }
 }
 
-/// The two declaration orders write the reference differently and always will: a reference
-/// standing before the item has nothing but the Rust ident to spell it by, and an override is not
-/// recoverable from that ident. What has to hold is name parity — each nominal surface answers at
-/// the ident as well as at the override.
 #[cfg(feature = "typescript")]
 #[test]
 fn every_name_a_forward_item_reference_writes_is_defined_by_the_emission() {
@@ -406,8 +389,6 @@ fn every_schema_a_forward_item_reference_names_is_defined_by_the_emission() {
     }
 }
 
-/// An item exported under its own Rust ident already answers at the spelling a forward reference
-/// has, so it publishes nothing extra — one exported name per surface, as before.
 #[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_item_exported_under_its_ident_publishes_no_reexport() {

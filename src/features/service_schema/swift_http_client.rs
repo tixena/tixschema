@@ -1,33 +1,5 @@
 //! The Swift `http_rest` client: one transport seam the app implements, one `async` method per
 //! operation, mirroring the Dart client's request grammar statement for statement.
-//!
-//! # A caller reads the outcome; one-way still throws
-//!
-//! A reply operation answers `Result<Success, Failure>` and never throws; a one-way operation
-//! answers `Void` and throws only the fault-only `{Service}Refusal`, having no reply arm to carry
-//! a fault through otherwise — the same outcome shape the TypeScript clients report through.
-//!
-//! # Swift needs two helpers Dart gets for free
-//!
-//! Dart's `Uri.encodeComponent` and `List<String>.join('&')` have no Foundation equivalent that
-//! matches them exactly, so this module writes `{fnPrefix}PercentEncode`/`{fnPrefix}QueryText`
-//! once per service — the RFC 3986 unreserved set plus `-_.!~*'()`, the same characters
-//! `Uri.encodeComponent` leaves unescaped.
-//!
-//! # A message property is reached in Swift's own spelling
-//!
-//! A generated message's Swift property is always `swift_field_member` of the Rust field name —
-//! the name an `http(...)` path placeholder or a bodyless method's own field is written in,
-//! camel-cased, and between backticks where Swift reserves the word — regardless of any serde
-//! rename on the field, since Swift's own `Codable` synthesis carries the wire spelling through
-//! a separate `CodingKeys` enum instead.
-//!
-//! # A branded newtype is a value wrapper, not a bare scalar
-//!
-//! Swift's own `Codable` synthesis has no union type, so a branded newtype (`ConversationId`)
-//! publishes a struct with one `value` property rather than TypeScript's intersection brand. A
-//! placeholder or header reading a sibling type's value therefore reads `.value`, never the
-//! sibling type itself.
 
 use crate::features::swift::{swift_field_member, swift_member};
 use crate::field_type::{FieldDefType, get_field_def};
@@ -72,9 +44,8 @@ const TAKEN_BY_A_METHOD: [&str; 23] = [
     "value",
 ];
 
-/// The Swift type a `body = "stream"` operation's own success answers with: a nullable
-/// `contentRange` and the `contentType`, paired with the body as an
-/// `AsyncThrowingStream<Data, Error>` — mirrors the Dart client's own `STREAMED_ANSWER_DART_TYPE`.
+/// The Swift type a `body = "stream"` operation's success answers with: a nullable `contentRange`
+/// and the `contentType`, paired with the body as an `AsyncThrowingStream<Data, Error>`.
 const STREAMED_ANSWER_SWIFT_TYPE: &str =
     "(contentRange: String?, contentType: String, body: AsyncThrowingStream<Data, Error>)";
 
@@ -108,10 +79,6 @@ fn has_one_way(service: &ServiceDef) -> bool {
         .iter()
         .any(|operation| matches!(operation.outcome, OperationOutcome::OneWay))
 }
-
-// -------------------------------------------------------------------------------------------
-// The seam: request in, response out, one transport protocol a hosting app implements.
-// -------------------------------------------------------------------------------------------
 
 fn request_struct(named: &str, has_multipart: bool) -> String {
     let (parts_field, parts_param, parts_assign) = if has_multipart {
@@ -173,10 +140,6 @@ fn transport_protocol(named: &str) -> String {
     )
 }
 
-// -------------------------------------------------------------------------------------------
-// The failure a reply operation answers with, and the refusal a one-way operation throws.
-// -------------------------------------------------------------------------------------------
-
 /// What one reply operation's `Result<Success, Failure>` names as `Failure`: the declared error,
 /// or a fault. `None` for a one-way operation, which has no reply arm to carry either in.
 fn failure_name(named: &str, operation: &OperationDef) -> Option<String> {
@@ -193,8 +156,8 @@ fn failure_name(named: &str, operation: &OperationDef) -> Option<String> {
 }
 
 /// `Result`'s own `Failure` parameter requires `Error`, so every failure conforms to it beside
-/// `Sendable` — the compiled spike's own shape, minus `Equatable`, which the generated message
-/// and fault types this enum carries do not themselves conform to.
+/// `Sendable`. Not `Equatable`: the generated message and fault types this enum carries do not
+/// conform to it.
 fn failure_enum(named: &str, operation: &OperationDef) -> Option<String> {
     let OperationOutcome::Reply {
         error,
@@ -232,10 +195,6 @@ fn refusal_struct(named: &str) -> String {
          }}"
     )
 }
-
-// -------------------------------------------------------------------------------------------
-// The client: one struct, one initializer, one method per operation.
-// -------------------------------------------------------------------------------------------
 
 fn client_struct(
     service: &ServiceDef,
@@ -414,10 +373,6 @@ fn method(named: &str, fn_prefix: &str, operation: &OperationDef, has_multipart:
     )
 }
 
-// -------------------------------------------------------------------------------------------
-// Building the request from the validated message.
-// -------------------------------------------------------------------------------------------
-
 /// The Swift expression that renders one path placeholder's value: the field it names (a message
 /// the macro declared, or an author's own struct), or the whole message where that message
 /// already is a wire scalar — mirrors the Dart client's own `placeholder_value_dart_expr`.
@@ -468,9 +423,7 @@ fn query_build_stmt(operation: &OperationDef, shape: &HttpShape) -> String {
         return "    let query: [(String, String)] = []\n".to_owned();
     }
     let fields = match &operation.inputs {
-        // `Empty` sends no field. A bodyless `Named` message is always the one scalar the path
-        // binds whole (refused at parse time otherwise), reading off the placeholder rather than
-        // the query.
+        // `Empty` sends no field.
         OperationInputs::Empty | OperationInputs::Named(_) => {
             return "    let query: [(String, String)] = []\n".to_owned();
         }
@@ -659,10 +612,6 @@ fn multipart_parts_build_stmt(
     }
     stmt
 }
-
-// -------------------------------------------------------------------------------------------
-// Sending, and decoding the answer by status.
-// -------------------------------------------------------------------------------------------
 
 fn send_expr(named: &str, fn_prefix: &str, method_str: &str, has_multipart: bool) -> String {
     let parts_arg = if has_multipart { ", parts: parts" } else { "" };
@@ -1150,10 +1099,6 @@ fn bytes_success_decode_block(
     stmt
 }
 
-// -------------------------------------------------------------------------------------------
-// The fault helpers every method reaches for.
-// -------------------------------------------------------------------------------------------
-
 fn fault_helpers(service: &ServiceDef, named: &str, fn_prefix: &str) -> Vec<String> {
     let mut helpers = vec![percent_encode_fn(fn_prefix), query_text_fn(fn_prefix)];
     if reads_a_response_header(service) {
@@ -1321,10 +1266,6 @@ fn fault_from_body_fn(named: &str, fn_prefix: &str) -> String {
          }}"
     )
 }
-
-// -------------------------------------------------------------------------------------------
-// Small, Swift-flavored value rendering.
-// -------------------------------------------------------------------------------------------
 
 /// The message's Swift type: the type the operation named, or the one the macro declared for an
 /// operation that named none — mirrors the Dart client's own `message_dart_typename`.

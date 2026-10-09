@@ -1,12 +1,4 @@
 //! Model schema property feature module
-//!
-//! This module handles parsing of model_schema_prop attributes for field-level customization
-//! of TypeScript type and Zod schema generation.
-//!
-//! The attribute sits on a named field or a tuple slot, of a struct or of an enum variant. The one
-//! position it may not sit on is the slot of a `#[serde(transparent)]` single-field tuple struct: a
-//! brand publishes its inner's own schema, so no key written there reaches a surface, and one
-//! written there is refused at expansion.
 
 use syn::meta::ParseNestedMeta;
 use syn::{Attribute, Lit, LitStr, Type};
@@ -154,28 +146,22 @@ pub enum LiteralValue {
 /// ```
 #[derive(Clone, Debug, Default)]
 pub struct ModelSchemaPropMeta {
-    pub as_number: bool, // DateTime<Tz>: epoch-number + codegen coercer instead of the native Date default
-    /// The type named by `as`, kept as written so the guard that answers for it can build the field
-    /// the target would render and compare that against the field's own.
-    pub as_type: Option<Type>, // e.g., `String` from as = String
-    /// The parser's refusal of the attribute — a key it does not read, or a value it cannot read —
-    /// spanned on the tokens that earned it.
+    pub as_number: bool,
+    pub as_type: Option<Type>,
     pub attr_rejection: Option<syn::Error>,
-    pub literal: Option<LiteralValue>, // e.g., Str("Tixena") from literal = "Tixena"
-    pub max_length: Option<usize>,     // e.g., 50 from maxLength = 50
-    pub maximum: Option<f64>,          // e.g., 100.0 from maximum = 100
-    pub min_length: Option<usize>,     // e.g., 1 from minLength = 1
-    pub minimum: Option<f64>,          // e.g., 0.0 from minimum = 0
-    pub nullable: bool, // Option<T> at object-key position renders `T | null` with the key required
+    pub literal: Option<LiteralValue>,
+    pub max_length: Option<usize>,
+    pub maximum: Option<f64>,
+    pub min_length: Option<usize>,
+    pub minimum: Option<f64>,
+    pub nullable: bool,
     /// `pattern` in the spelling every surface reads the same way, or as it was written when it
     /// earned a [`Self::pattern_rejection`].
-    pub pattern: Option<String>, // e.g., "^[0-9a-fA-F]{24}$" from pattern = "^[0-9a-fA-F]{24}$"
-    /// What keeps `pattern` off the surfaces it was written for -- a regex the `regex` crate
-    /// cannot parse, a construct a JavaScript regex literal cannot carry, a shape that admits
-    /// every value and so says nothing on any of them, or a lone look-around the emitted regex
-    /// cannot carry lint-free -- spanned on the literal it was written as.
+    pub pattern: Option<String>,
+    /// What keeps `pattern` off the surfaces it was written for, spanned on the literal it was
+    /// written as.
     pub pattern_rejection: Option<syn::Error>,
-    pub preprocess: Vec<String>, // e.g., ["epoch_to_date", "trim"] from preprocess = ["epoch_to_date", "trim"]
+    pub preprocess: Vec<String>,
     pub ts_optional: bool,
 }
 

@@ -1,3 +1,5 @@
+//! Tests of an enum whose variants all hold nothing, under each of serde's tagged representations.
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tixschema::model_schema;

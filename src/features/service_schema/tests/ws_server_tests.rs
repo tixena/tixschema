@@ -1,15 +1,7 @@
 //! The connection-accepting `ws_rpc` server, read off the emitted text.
-//!
-//! The first test reproduces the design's own section-3 text byte for byte; the rest of these
-//! prove the pieces that text is checked against: `contextFor` runs before the attachment, a write
-//! after close is dropped, the heartbeat only arms when idle and every ping is answered, the
-//! accepted socket carries the required `error` listener, `share` throws once closed, and
-//! `closeAll` closes through the seam's own `close()`.
 
 use super::{SINGLE_PLACEHOLDER_HTTP_SERVICE, ws_server_of};
 
-/// The exact text the design's section 3 executed against the real emitted client, transport and
-/// dispatcher — reproduced here from `ConversationClientService`, the service that text names.
 const EXPECTED: &str = r#"/** The seam a server accepts: the client seam plus an `error` listener, which both a platform WebSocket and the `ws` package expose. */
 export type ConversationClientServiceWsServerSocket = ConversationClientServiceWsSocket & {
   addEventListener(type: "error", listener: (event: { error?: unknown }) => void): void;

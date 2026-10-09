@@ -1,11 +1,4 @@
 //! `ts_http_service()`, read off the emitted text.
-//!
-//! What these prove and what they cannot: the structure of the emitted TypeScript -- the route
-//! table, the request and response shapes, the fault handler and its default, the three helpers,
-//! and the dispatcher's own message assembly and status mapping. No TypeScript toolchain is
-//! reachable here, so none of them type-checks the bundle;
-//! `tests/service_schema_typescript_tests/type_check.rs` is what proves a complete implementation
-//! compiles against the emitted dispatcher.
 
 use super::{
     BYTES_HTTP_SERVICE, EMITTED_CLIENT_TEST_SERVICE, MIXED_HTTP_SERVICE, MIXED_SERVICE,
@@ -294,8 +287,6 @@ fn a_generated_bodyless_message_reads_its_unbound_fields_off_the_query_with_thei
     );
 }
 
-/// A macro-generated message with two or more fields, all bound by the path, carries no
-/// `queryMap` at all - beside an operation that does read the query, which still carries one.
 #[test]
 fn a_fully_path_bound_generated_message_reads_no_query_beside_one_that_does() {
     let written = http_service_of(PATH_BOUND_HTTP_SERVICE);
@@ -325,8 +316,6 @@ fn an_operation_with_no_error_status_table_answers_422_and_calls_no_reader() {
     );
 }
 
-/// Coerced from its header text and JSON-encoded here, then read and refused by the dispatcher
-/// itself — see `service_tests`.
 #[test]
 fn a_header_in_binding_is_coerced_here_and_refused_by_the_dispatcher() {
     for source in [MIXED_HTTP_SERVICE, REQUIRED_HEADER_HTTP_SERVICE] {
