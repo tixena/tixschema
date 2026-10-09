@@ -189,12 +189,10 @@ pub fn exhaustiveness(non_exhaustive: bool) -> TokenStream {
 }
 
 /// The body-source trait a `body = "stream"` response and a `body = "multipart"` request's own
-/// file part both name: pulled rather than pushed so it composes for free with any
-/// `std::io::Read` a handler already has. Emitted wherever either kind reaches for it
-/// ([`crate::service_schema::parse::service_needs_body_source_seam`]), eagerly, rather than
-/// deferred into a transport's own `macro_rules!` body: the author's own trait signature names it
-/// directly, and a deferred macro is not expanded until a transport is placed, possibly in another
-/// crate.
+/// file part both name, pulled so it composes with any `std::io::Read` a handler already has.
+/// Emitted eagerly wherever either kind reaches for it
+/// ([`crate::service_schema::parse::service_needs_body_source_seam`]): the author's own trait
+/// signature names it, and a deferred macro is not expanded until a transport is placed.
 fn body_source_trait() -> TokenStream {
     quote! {
         /// A body source, pulled one chunk at a time rather than buffered whole: a streamed

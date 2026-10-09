@@ -63,8 +63,7 @@ use crate::utils::{is_recorded_untagged_enum, record_untagged_enum};
 const DECLARED_VARIANTS: [&str; 6] = ["Upload", "Generate", "Delete", "Rename", "Move", "Archive"];
 
 /// The doc attributes carrying a ` ```rust example ` block that the const-parameter probes are
-/// written under. Held apart from them so every probe writes the same block and only the
-/// declaration beneath it varies.
+/// written under, held apart so every probe writes the same block.
 #[cfg(feature = "zod")]
 const EXAMPLE_DOC_BLOCK: &str = "/// An item carrying an example block.\n\
                                  ///\n\

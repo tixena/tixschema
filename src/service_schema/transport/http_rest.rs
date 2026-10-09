@@ -2456,12 +2456,10 @@ fn reply_decode(
 }
 
 /// A `body = "stream"` operation's own decode: `206` answers `StreamedAnswer::Partial` with
-/// `content-range` read back before the body is taken; the declared `ok_status` (`200` by default)
-/// answers `StreamedAnswer::Full`; both read `content-type` back the way a bytes reply does;
-/// everything else falls through the same declared-error, fixed-fault and unexpected-status ladder
-/// every other kind answers through. A response the seam
-/// already buffered still satisfies `BodySource` once wrapped in a `Cursor` - the same blanket
-/// `Read` impl a real chunked reader relies on, so the client answers a body source either way.
+/// `content-range` read back before the body is taken, and the declared `ok_status` answers
+/// `StreamedAnswer::Full`. Both read `content-type` back as a bytes reply does, and everything
+/// else falls through the ladder every other kind answers through. A response the seam already
+/// buffered satisfies `BodySource` once wrapped in a `Cursor`.
 fn stream_reply_decode(
     wire: &str,
     shape: &HttpShape,
