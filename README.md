@@ -1289,6 +1289,8 @@ A generic brand carries the requirement as a `Display` bound on each type parame
 
 You can add `pattern`, `minLength`, and `maxLength` constraints directly on the `#[model_schema()]` attribute for branded newtypes. Constraints are enforced in three places: the generated Zod schema, serde deserialization, and a `validate()` method on the type. A brand is the one Rust position where the check still runs on the read, and it has to: a message holding a branded field publishes no `validate()` that reaches into it, so the read is the only thing there is.
 
+The three checks are written on a branded newtype only: on any other item -- a struct that is no brand, an enum or a type alias -- they are refused at expansion, and a check on a field is written in `#[model_schema_prop(...)]`.
+
 A bound written here holds every value of the brand. One that should hold a single field is written on that field instead, and the brand keeps none: see [A field typed with a branded string](#a-field-typed-with-a-branded-string).
 
 **The inner type has to be one whose schema is a string** — `String`, `PathBuf`, `ObjectId`, a chrono date/time type, or a named type whose own schema is one of those. A numeric, boolean, container (`Vec`, array, `HashMap`, tuple), or opaque inner is rejected at expansion time, because the three constraints are string checks and each surface would read them differently: Zod's `.min`/`.max` become bounds on the value itself, JSON Schema ignores `minLength`/`maxLength`/`pattern` outside `"type": "string"`, and `validate()` measures the inner's `Display` rendering.

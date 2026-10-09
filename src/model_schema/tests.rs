@@ -5867,6 +5867,40 @@ fn a_string_check_on_a_struct_that_is_no_brand_is_refused() {
 }
 
 #[test]
+fn a_string_check_on_an_enum_is_refused() {
+    for (args, check) in [
+        ("minLength = 1", "minLength"),
+        ("maxLength = 2", "maxLength"),
+        ("pattern = \"^[A-Z]{3}$\"", "pattern"),
+        ("pattern = \"(\"", "pattern"),
+        ("name = \"Level\", minLength = 1", "minLength"),
+    ] {
+        for source in [
+            "pub enum Tier { Gold, Silver }",
+            "pub enum Tier { Named { label: String }, Bare }",
+            "#[serde(tag = \"kind\")] pub enum Tier { Named { label: String }, Bare }",
+            "#[serde(tag = \"kind\", content = \"data\")] pub enum Tier { Named { label: String }, Bare }",
+            "#[serde(untagged)] pub enum Tier { Text(String), Count(u32) }",
+        ] {
+            let expanded = expansion_under(args, source);
+            assert!(expanded.contains("compile_error"), "got: {expanded}");
+            assert!(
+                expanded.contains(&format!(
+                    "type `Tier`: `{check}` is supported only on a branded newtype"
+                )),
+                "got: {expanded}"
+            );
+        }
+    }
+}
+
+#[test]
+fn an_enum_with_no_string_check_is_not_refused() {
+    let expanded = expansion_under("", "pub enum Tier { Gold, Silver }");
+    assert!(!expanded.contains("compile_error"), "got: {expanded}");
+}
+
+#[test]
 fn a_string_check_on_a_type_alias_is_refused() {
     for (args, check) in [
         ("minLength = 1", "minLength"),
