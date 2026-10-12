@@ -26,7 +26,7 @@ use tixschema::model_schema;
 
 /// The compiler errors the README quotes, each beside the file whose doc comments record it under
 /// the run that earned it.
-const QUOTED_ERRORS: [(&str, &str); 13] = [
+const QUOTED_ERRORS: [(&str, &str); 15] = [
     (
         QUERY_EMITTER,
         "error[E0599]: no method named `unset` found for struct `invoice_schema::Field<Root, V, N>` in the current scope",
@@ -34,6 +34,14 @@ const QUOTED_ERRORS: [(&str, &str); 13] = [
     (
         QUERY_EMITTER,
         "error[E0277]: the trait bound `wagon_schema::Filter<Wagon>: AsRef<PhantomData<Courier>>` is not satisfied",
+    ),
+    (
+        QUERY_EMITTER,
+        "error[E0277]: the trait bound `courier_schema::Filter<Courier>: AsRef<PhantomData<fn(Courier) -> Courier>>` is not satisfied",
+    ),
+    (
+        QUERY_EMITTER,
+        "error[E0277]: the trait bound `wagon_schema::Update<Wagon>: AsRef<PhantomData<fn(Courier) -> Courier>>` is not satisfied",
     ),
     (
         QUERY_EMITTER,

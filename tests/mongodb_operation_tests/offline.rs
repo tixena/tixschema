@@ -408,6 +408,36 @@ async fn an_operation_takes_an_arm_filter_over_the_types_rows() {
     compiles(&a_delete_takes_an_arm_filter);
 }
 
+/// An arm update is an update over the rows of its enum: the two updates take one beside the arm
+/// filter that selects the rows, and the module's own `Update` converts from it. Neither update
+/// is awaited, so no connection is asked for.
+#[tokio::test]
+async fn an_operation_takes_an_arm_update_over_the_types_rows() {
+    let never = never_connected().await;
+    let renamed = || {
+        Courier::MONGO_FIELDS
+            .name()
+            .set("Renamed".to_owned())
+            .unwrap()
+    };
+    sendable(&Shipping::update_one(
+        &never,
+        BY_COURIER,
+        BY_COURIER.update(renamed()),
+    ));
+    sendable(&Shipping::update_many(
+        &never,
+        BY_COURIER,
+        BY_COURIER.update(renamed()).tag_on_insert(),
+    ));
+    let own: shipping_schema::Update<Shipping> =
+        shipping_schema::Update::from(BY_COURIER.tag_on_insert());
+    assert_eq!(
+        own.into_document(),
+        doc! { "$setOnInsert": { "type": "by-courier" } }
+    );
+}
+
 #[tokio::test]
 async fn a_value_not_written_as_a_document_is_refused_before_any_connection() {
     let never = never_connected().await;
