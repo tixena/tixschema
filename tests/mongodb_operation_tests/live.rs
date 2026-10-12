@@ -13,8 +13,8 @@ use mongodb::{Client, Collection};
 
 use super::invoice_schema::OperationError;
 use super::{
-    Invoice, InvoiceStatus, every_row, invoice, names_the_unreadable_row, numbered, readable,
-    seeded_id, stored, unreadable, whole_number_as_text,
+    Customer, Invoice, InvoiceStatus, every_row, invoice, names_the_unreadable_row, numbered,
+    readable, seeded_id, stored, unreadable, whole_number_as_text,
 };
 use crate::BSON_MAJOR;
 
@@ -131,7 +131,7 @@ async fn live_a_read_is_run_under_the_options_it_is_given() {
 
     let lowercase = || {
         Invoice::MONGO_FIELDS
-            .number
+            .number()
             .eq("inv-0001".to_owned())
             .unwrap()
     };
@@ -171,7 +171,7 @@ async fn live_a_row_a_resolver_repairs_reads_and_is_refused_without_one() {
         return;
     };
     let paths = Invoice::MONGO_FIELDS;
-    let numbered_42 = || paths.number.eq("INV-0042".to_owned()).unwrap();
+    let numbered_42 = || paths.number().eq("INV-0042".to_owned()).unwrap();
 
     let repaired = Invoice::find_one_with(&held, numbered_42(), &[&whole_number_as_text])
         .await
@@ -203,13 +203,14 @@ async fn live_a_seeded_row_reads_and_no_row_is_none() {
     };
     let paths = Invoice::MONGO_FIELDS;
 
-    let read = Invoice::find_one(&held, paths.number.eq("INV-0042".to_owned()).unwrap())
+    let read = Invoice::find_one(&held, paths.number().eq("INV-0042".to_owned()).unwrap())
         .await
         .unwrap();
     say(&format!("find_one answers {read:?}"));
     assert_eq!(read, Some(invoice()), "the seeded row reads as the type");
 
-    let by_customer = Invoice::find_one(&held, paths.customer.name.eq("Acme".to_owned()).unwrap())
+    let named_acme = Customer::MONGO_FIELDS.name().eq("Acme".to_owned()).unwrap();
+    let by_customer = Invoice::find_one(&held, paths.customer().nest(named_acme))
         .await
         .unwrap();
     assert_eq!(
@@ -218,7 +219,7 @@ async fn live_a_seeded_row_reads_and_no_row_is_none() {
         "a filter from a nested model's path finds the row"
     );
 
-    let absent = Invoice::find_one(&held, paths.number.eq("INV-9999".to_owned()).unwrap())
+    let absent = Invoice::find_one(&held, paths.number().eq("INV-9999".to_owned()).unwrap())
         .await
         .unwrap();
     assert_eq!(absent, None, "a filter matching no row answers `None`");
@@ -238,7 +239,7 @@ async fn live_an_inserted_row_reads_back_as_the_value_it_was() {
         Bson::ObjectId(seeded_id()),
         "the answer names the row's own `_id`"
     );
-    let read = Invoice::find_one(&held, Invoice::MONGO_FIELDS.id.eq(seeded_id()).unwrap())
+    let read = Invoice::find_one(&held, Invoice::MONGO_FIELDS.id().eq(seeded_id()).unwrap())
         .await
         .unwrap();
     assert_eq!(read, Some(invoice()), "the row read back is the row stored");
@@ -257,8 +258,8 @@ async fn live_an_unreachable_server_is_a_database_error_for_every_operation() {
         .database(DATABASE)
         .collection::<Document>("unreachable");
     let paths = Invoice::MONGO_FIELDS;
-    let matching = || paths.number.eq("INV-0042".to_owned()).unwrap();
-    let paid = || paths.status.set(InvoiceStatus::Paid).unwrap();
+    let matching = || paths.number().eq("INV-0042".to_owned()).unwrap();
+    let paid = || paths.status().set(InvoiceStatus::Paid).unwrap();
 
     let refusals = [
         (
@@ -330,16 +331,16 @@ async fn live_count_answers_how_many_rows_a_filter_matches() {
     };
     let paths = Invoice::MONGO_FIELDS;
 
-    let past_due = Invoice::count(&held, paths.status.eq(InvoiceStatus::PastDue).unwrap())
+    let past_due = Invoice::count(&held, paths.status().eq(InvoiceStatus::PastDue).unwrap())
         .await
         .unwrap();
     say(&format!("count answers {past_due:?}"));
     assert_eq!(past_due, 2_u64, "the two past due");
-    let unpaid = Invoice::count(&held, paths.paid_at.exists(false))
+    let unpaid = Invoice::count(&held, paths.paid_at().exists(false))
         .await
         .unwrap();
     assert_eq!(unpaid, 3_u64, "every row but the paid one");
-    let none = Invoice::count(&held, paths.number.eq("INV-9999".to_owned()).unwrap())
+    let none = Invoice::count(&held, paths.number().eq("INV-9999".to_owned()).unwrap())
         .await
         .unwrap();
     assert_eq!(none, 0_u64, "a filter matching no row counts none");
@@ -366,7 +367,7 @@ async fn live_find_reads_every_row_the_cursor_holds() {
     let none = Invoice::find(
         &held,
         Invoice::MONGO_FIELDS
-            .number
+            .number()
             .eq("INV-9999".to_owned())
             .unwrap(),
     )
@@ -426,12 +427,12 @@ async fn live_update_many_and_the_deletes_act_on_the_rows_their_filters_match() 
         return;
     };
     let paths = Invoice::MONGO_FIELDS;
-    let of = |status: InvoiceStatus| paths.status.eq(status).unwrap();
+    let of = |status: InvoiceStatus| paths.status().eq(status).unwrap();
 
     let voided = Invoice::update_many(
         &held,
         of(InvoiceStatus::Draft),
-        paths.total.set(0_u32).unwrap(),
+        paths.total().set(0_u32).unwrap(),
     )
     .await
     .unwrap();
@@ -445,7 +446,7 @@ async fn live_update_many_and_the_deletes_act_on_the_rows_their_filters_match() 
         (2_u64, 2_u64, None),
         "both drafts matched and changed"
     );
-    let voided_rows = Invoice::count(&held, paths.total.eq(0_u32).unwrap())
+    let voided_rows = Invoice::count(&held, paths.total().eq(0_u32).unwrap())
         .await
         .unwrap();
     assert_eq!(voided_rows, 2_u64, "no other row was changed");
@@ -472,13 +473,13 @@ async fn live_update_one_changes_the_row_its_filter_matches() {
         return;
     };
     let paths = Invoice::MONGO_FIELDS;
-    let numbered_42 = || paths.number.eq("INV-0042".to_owned()).unwrap();
+    let numbered_42 = || paths.number().eq("INV-0042".to_owned()).unwrap();
 
     let paid = paths
-        .status
+        .status()
         .set(InvoiceStatus::Paid)
         .unwrap()
-        .and(paths.paid_at.set(PAID_AT.to_owned()).unwrap());
+        .and(paths.paid_at().set(PAID_AT.to_owned()).unwrap());
     let result = Invoice::update_one(&held, numbered_42(), paid)
         .await
         .unwrap();
@@ -502,7 +503,7 @@ async fn live_update_one_changes_the_row_its_filter_matches() {
         }),
         "the row reads as the update left it"
     );
-    let past_due = Invoice::count(&held, paths.status.eq(InvoiceStatus::PastDue).unwrap())
+    let past_due = Invoice::count(&held, paths.status().eq(InvoiceStatus::PastDue).unwrap())
         .await
         .unwrap();
     assert_eq!(past_due, 1_u64, "the other row is as it was");

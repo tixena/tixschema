@@ -75,7 +75,7 @@ fn every_operation_is_sendable(held: &Collection<Document>) {
     let resolvers: [Resolver<'_, Document, Bson>; 1] = [&whole_number_as_text];
     let paid = || {
         Invoice::MONGO_FIELDS
-            .status
+            .status()
             .set(InvoiceStatus::Paid)
             .unwrap()
     };
@@ -110,14 +110,14 @@ async fn never_connected() -> Collection<Document> {
 
 fn numbered() -> Filter<Invoice> {
     Invoice::MONGO_FIELDS
-        .number
+        .number()
         .eq("INV-0042".to_owned())
         .unwrap()
 }
 
 /// A filter over a `u64` at its largest, which BSON has no type for, refused through `?`.
 fn over_the_limit() -> Result<Filter<Invoice>, OperationError> {
-    let limit: Field<Invoice, u64> = Field::plain(MongoPath::under(MongoPath::ROOT, "limit"));
+    let limit: Field<Invoice, u64> = Field::plain(MongoPath::at("limit"));
     Ok(limit.eq(u64::MAX)?)
 }
 
@@ -198,7 +198,7 @@ async fn a_row_declared_inside_a_function_reads_and_writes_itself() {
     );
 
     let never = never_connected().await;
-    let filter = || Note::MONGO_FIELDS.text.eq("kept".to_owned()).unwrap();
+    let filter = || Note::MONGO_FIELDS.text().eq("kept".to_owned()).unwrap();
     let read: note_schema::Read<'_, Note, Vec<Note>> = Note::find(&never, filter()).limit(1_i64);
     assert_eq!(
         format!("{read:?}"),

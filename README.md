@@ -4404,12 +4404,12 @@ What the pipe holds every read to:
 
 With tixschema's `mongodb` feature on, a type declared with [`#[model_schema(decode_with)]`](#recovering-decode-decode_with) reads and writes its own rows in a MongoDB collection, and names its own fields in the filters and updates it does so with:
 
-- **Typed paths.** `MONGO_FIELDS`, a const on the type, holds one path per key serde writes for it. A path builds a filter or an update from a value of its field's own type, so a field that does not exist and a value of another type are compile errors.
+- **Typed paths.** `MONGO_FIELDS`, a const on the type, answers one path per key serde writes for it, each from a function named after the field. A path builds a filter or an update from a value of its field's own type, so a field that does not exist and a value of another type are compile errors. `nest` writes what is asked of a nested model's own paths under the key that holds the model.
 - **Operations.** `find_one`, `find`, `count`, `insert_one`, `update_one`, `update_many`, `delete_one` and `delete_many`, over a `mongodb::Collection<bson::Document>`. Every row a read is handed goes through the recovering decode, so a row that does not read as the type is reported by its `_id` and its issues, and `find_one_with` and `find_with` take the [resolvers](#resolvers) that repair one.
 
 The flag is what turns both on. A type without `decode_with` gains nothing in any build, and a flagged type in a build without `mongodb` has the recovering decode alone.
 
-Everything is generated into the flagged type's own `<type>_schema` module, beside the issue types: `invoice_schema::Filter`, `invoice_schema::OperationError` and `invoice_schema::Read` are `Invoice`'s own, and `customer_schema` holds a copy of each for `Customer`. Two flagged types share no declaration. So a filter, an update, a resolver and an `OperationError` each belong to one type. Two modules meet in one place: a filter or an update built from a nested model's path is over the outer type's rows, and joins the outer type's own ([Filters and updates](#filters-and-updates)).
+Everything is generated into the flagged type's own `<type>_schema` module, beside the issue types: `invoice_schema::Filter`, `invoice_schema::OperationError` and `invoice_schema::Read` are `Invoice`'s own, and `customer_schema` holds a copy of each for `Customer`. Two flagged types share no declaration. So a filter, an update, a resolver and an `OperationError` each belong to one type. Two modules meet in one place: `nest` takes a filter or an update built from a nested model's own paths, and answers one over the outer type's rows ([Filters and updates](#filters-and-updates)).
 
 No line of this section is the answer of a MongoDB server. A document shown is the one a call writes, as `bson::Document` displays it, and an answer is the driver's own result type.
 
@@ -4526,23 +4526,25 @@ pub struct Invoice {
 
 ### The paths of a type
 
-`Invoice::MONGO_FIELDS` is an `invoice_schema::MongoFields<Invoice>`: one member per field of `Invoice`, under the field's Rust name, each the path of the key serde writes that field under. The type of the field decides the kind of the member:
+`Invoice::MONGO_FIELDS` is an `invoice_schema::MongoFields<Invoice>`. It holds no path: it has one function per field of `Invoice`, under the field's Rust name, and each answers the path of the key serde writes that field under. The type of the field decides the kind of the path:
 
-| Member | Its kind |
-|--------|----------|
-| `id` | `Field<Invoice, ObjectId>` |
-| `billing` | `OptionalModel<Invoice, Address, _>` |
-| `customer` | `Model<Invoice, Customer, _>` |
+| Function | The kind it answers |
+|----------|---------------------|
+| `id()` | `Field<Invoice, ObjectId>` |
+| `billing()` | `OptionalModel<Invoice, Address>` |
+| `customer()` | `Model<Invoice, Customer>` |
 | `details` | none: a map's keys are data |
-| `items` | `ModelList<Invoice, LineItem, _>` |
-| `number` | `Field<Invoice, String>` |
-| `paid_at` | `OptionalField<Invoice, String>` |
-| `payment` | `Model<Invoice, Payment, _>` |
-| `status` | `Model<Invoice, InvoiceStatus, _>` |
-| `tags` | `ListField<Invoice, String>` |
-| `total` | `Field<Invoice, f64>` |
+| `items()` | `ModelList<Invoice, LineItem>` |
+| `number()` | `Field<Invoice, String>` |
+| `paid_at()` | `OptionalField<Invoice, String>` |
+| `payment()` | `Model<Invoice, Payment>` |
+| `status()` | `Field<Invoice, InvoiceStatus>` |
+| `tags()` | `ListField<Invoice, String>` |
+| `total()` | `Field<Invoice, f64>` |
 
-Each kind is a type of `invoice_schema`. The first parameter is the row a filter is over, the second the value an operator takes, and `_` stands for the nested type's own struct of paths: `customer_schema::MongoFields<Invoice>` for `customer`, built by `Customer` under the key `customer`. A `Model`, an `OptionalModel` and a `ModelList` dereference to that struct, so `Invoice::MONGO_FIELDS.customer.address.city` is the path of a city three types down, and the key it writes is `customer.address.city`.
+Each kind is a type of `invoice_schema`. The first parameter is the row a filter is over, and the second the value an operator takes. A path is one key, the one its own type writes: the paths of `Invoice` hold no key of `Customer`, and those of `Customer` none of `Address`.
+
+**`nest` reaches a nested model.** `Customer` has paths of its own, `Customer::MONGO_FIELDS`. `nest`, on the path that holds a customer, takes a filter or an update built from those and answers the same filter or update over the rows of `Invoice`, each key written under the path's own. `paths.customer().nest(customer.address().nest(address.city().eq("Moca".to_owned())?))` asks for a city three types down, and the key it writes is `customer.address.city`.
 
 A path builds a `Filter<Invoice>` or an `Update<Invoice>`, the two documents an operation takes. Building one asks nothing of MongoDB:
 
@@ -4553,24 +4555,25 @@ use invoice_schema::{Filter, Update, WriteError};
 
 /// Unpaid invoices of one city that are past due or above an amount.
 fn to_chase(city: &str, above: f64) -> Result<Filter<Invoice>, WriteError> {
-    let paths = Invoice::MONGO_FIELDS;
+    let (paths, customer) = (Invoice::MONGO_FIELDS, Customer::MONGO_FIELDS);
+    let in_city = Address::MONGO_FIELDS.city().eq(city.to_owned())?;
     Ok(paths
-        .status
+        .status()
         .eq(InvoiceStatus::PastDue)?
-        .or(paths.total.gt(above)?)
-        .and(paths.customer.address.city.eq(city.to_owned())?)
-        .and(paths.paid_at.exists(false)))
+        .or(paths.total().gt(above)?)
+        .and(paths.customer().nest(customer.address().nest(in_city)))
+        .and(paths.paid_at().exists(false)))
 }
 
 /// What paying an invoice changes.
 fn paid(at: &str) -> Result<Update<Invoice>, WriteError> {
-    let paths = Invoice::MONGO_FIELDS;
+    let (paths, customer) = (Invoice::MONGO_FIELDS, Customer::MONGO_FIELDS);
     Ok(paths
-        .status
+        .status()
         .set(InvoiceStatus::Paid)?
-        .and(paths.paid_at.set(at.to_owned())?)
-        .and(paths.customer.open_invoices.set(0)?)
-        .and(paths.tags.push("settled".to_owned())?))
+        .and(paths.paid_at().set(at.to_owned())?)
+        .and(paths.customer().nest(customer.open_invoices().set(0)?))
+        .and(paths.tags().push("settled".to_owned())?))
 }
 ```
 
@@ -4579,67 +4582,68 @@ fn paid(at: &str) -> Result<Update<Invoice>, WriteError> {
 | `to_chase("Moca", 1000.5)?` | `{ "$and": [{ "$or": [{ "status": { "$eq": "past-due" } }, { "total": { "$gt": 1000.5 } }] }, { "customer.address.city": { "$eq": "Moca" } }, { "paidAt": { "$exists": false } }] }` |
 | `paid("2026-10-07T17:40:00Z")?` | `{ "$set": { "status": "paid", "paidAt": "2026-10-07T17:40:00Z", "customer.openInvoices": 0 }, "$push": { "tags": "settled" } }` |
 
-- **A value is of the field's own type, taken by value.** `paths.status.eq` takes an `InvoiceStatus`, and the text serde writes for one is refused: `paths.status.eq("past-due")` is ``error[E0308]: mismatched types``, ``expected `InvoiceStatus`, found `&str` ``. `paths.total.gt` takes an `f64`.
+- **A value is of the field's own type, taken by value.** `paths.status().eq` takes an `InvoiceStatus`, and the text serde writes for one is refused: `paths.status().eq("past-due")` is ``error[E0308]: mismatched types``, ``expected `InvoiceStatus`, found `&str` ``. `paths.total().gt` takes an `f64`.
+- **A field the type does not declare is a function that does not exist.** `paths.amount()` is ``error[E0599]: no method named `amount` found for struct `invoice_schema::MongoFields<Root>` in the current scope``.
 - **A value is written the way its field is stored**, by the type's own `Serialize` through `bson::Serializer::new()`: `InvoiceStatus::PastDue` as the text `past-due`, a `u32` as a 64-bit integer, an `ObjectId` as one.
-- **A key is the name serde writes**: `paid_at` is the key `paidAt`, and `open_invoices` under `customer` is `customer.openInvoices`.
-- **An operator that writes a value answers a `Result`**, since a value may be one BSON cannot hold; the error is `WriteError`, the `bson` library's own serialization error, `bson::ser::Error` in version 2 and `bson::error::Error` in version 3. An operator that writes none, such as `exists`, `unset`, `size`, `regex` and `is_<variant>`, answers the filter or the update itself.
-- **A path is a value, and `MONGO_FIELDS` a const.** `const TOTAL: invoice_schema::Field<Invoice, f64> = Invoice::MONGO_FIELDS.total;` holds one member of the row. A path below a nested model is reached by dereferencing, which a `const` item cannot do: held in one, `Invoice::MONGO_FIELDS.customer.address.city` is ``error[E0015]: cannot perform non-const deref coercion on `invoice_schema::Model<Invoice, Customer, customer_schema::MongoFields<Invoice>>` in constants``. In a function body it compiles.
+- **A key is the name serde writes**: `paid_at()` is the key `paidAt`, and `open_invoices()` nested under `customer()` is `customer.openInvoices`.
+- **An operator that writes a value answers a `Result`**, since a value may be one BSON cannot hold; the error is `WriteError`, the `bson` library's own serialization error, `bson::ser::Error` in version 2 and `bson::error::Error` in version 3. An operator that writes none, such as `exists`, `unset`, `size`, `regex` and `is_<variant>`, answers the filter or the update itself. `nest` answers what it is handed, a filter or an update.
+- **A path is a value, and `MONGO_FIELDS` a const.** Each function is a `const fn`, so a `const` item holds a path: `const TOTAL: invoice_schema::Field<Invoice, f64> = Invoice::MONGO_FIELDS.total();`. `MongoFields` holds no path and a path holds one key, so neither grows with what the type holds.
 
 ### Operators
 
-Every operator, once, with the document it writes. `paths` is `Invoice::MONGO_FIELDS`, and `item` is `LineItem::MONGO_FIELDS`.
+Every operator, once, with the document it writes. `paths` is `Invoice::MONGO_FIELDS`, and `customer`, `address`, `item` and `payment` are `Customer::MONGO_FIELDS`, `Address::MONGO_FIELDS`, `LineItem::MONGO_FIELDS` and `Payment::MONGO_FIELDS`.
 
 **A value every row holds, a `Field`.** The comparisons, membership in a list of values, and the two operators that set it. `regex` is there where the value is a `String`, and takes MongoDB's options as text:
 
 | Written | The document it builds |
 |---------|------------------------|
-| `paths.number.eq("INV-0042".to_owned())?` | `{ "number": { "$eq": "INV-0042" } }` |
-| `paths.number.ne("INV-0042".to_owned())?` | `{ "number": { "$ne": "INV-0042" } }` |
-| `paths.total.gt(1000.5)?` | `{ "total": { "$gt": 1000.5 } }` |
-| `paths.total.gte(1000.5)?` | `{ "total": { "$gte": 1000.5 } }` |
-| `paths.total.lt(1000.5)?` | `{ "total": { "$lt": 1000.5 } }` |
-| `paths.total.lte(1000.5)?` | `{ "total": { "$lte": 1000.5 } }` |
-| `paths.number.is_in(["INV-0042".to_owned(), "INV-0043".to_owned()])?` | `{ "number": { "$in": ["INV-0042", "INV-0043"] } }` |
-| `paths.number.not_in(["INV-0042".to_owned()])?` | `{ "number": { "$nin": ["INV-0042"] } }` |
-| `paths.number.regex("^INV-", "i")` | `{ "number": { "$regex": "^INV-", "$options": "i" } }` |
-| `paths.total.set(99.5)?` | `{ "$set": { "total": 99.5 } }` |
-| `paths.number.set_on_insert("INV-0099".to_owned())?` | `{ "$setOnInsert": { "number": "INV-0099" } }` |
+| `paths.number().eq("INV-0042".to_owned())?` | `{ "number": { "$eq": "INV-0042" } }` |
+| `paths.number().ne("INV-0042".to_owned())?` | `{ "number": { "$ne": "INV-0042" } }` |
+| `paths.total().gt(1000.5)?` | `{ "total": { "$gt": 1000.5 } }` |
+| `paths.total().gte(1000.5)?` | `{ "total": { "$gte": 1000.5 } }` |
+| `paths.total().lt(1000.5)?` | `{ "total": { "$lt": 1000.5 } }` |
+| `paths.total().lte(1000.5)?` | `{ "total": { "$lte": 1000.5 } }` |
+| `paths.number().is_in(["INV-0042".to_owned(), "INV-0043".to_owned()])?` | `{ "number": { "$in": ["INV-0042", "INV-0043"] } }` |
+| `paths.number().not_in(["INV-0042".to_owned()])?` | `{ "number": { "$nin": ["INV-0042"] } }` |
+| `paths.number().regex("^INV-", "i")` | `{ "number": { "$regex": "^INV-", "$options": "i" } }` |
+| `paths.total().set(99.5)?` | `{ "$set": { "total": 99.5 } }` |
+| `paths.number().set_on_insert("INV-0099".to_owned())?` | `{ "$setOnInsert": { "number": "INV-0099" } }` |
 
 **A value a row may leave out, an `OptionalField`.** Every operator of a `Field`, and two of its own: `exists`, which takes whether the key is to be there, and `unset`:
 
 | Written | The document it builds |
 |---------|------------------------|
-| `paths.paid_at.exists(false)` | `{ "paidAt": { "$exists": false } }` |
-| `paths.paid_at.unset()` | `{ "$unset": { "paidAt": "" } }` |
-| `paths.paid_at.lt("2026-10-01".to_owned())?` | `{ "paidAt": { "$lt": "2026-10-01" } }` |
+| `paths.paid_at().exists(false)` | `{ "paidAt": { "$exists": false } }` |
+| `paths.paid_at().unset()` | `{ "$unset": { "paidAt": "" } }` |
+| `paths.paid_at().lt("2026-10-01".to_owned())?` | `{ "paidAt": { "$lt": "2026-10-01" } }` |
 
-`unset` is on a path a row may leave out and on no other: `paths.number.unset()` is ``error[E0599]: no method named `unset` found for struct `invoice_schema::Field<Root, V>` in the current scope``.
+`unset` is on a path a row may leave out and on no other: `paths.number().unset()` is ``error[E0599]: no method named `unset` found for struct `invoice_schema::Field<Root, V, N>` in the current scope``.
 
-**A type serde writes as one value**, here the plain enum `InvoiceStatus`. It is one path with the operators of a `Field`:
+**A type serde writes as one value**, here the plain enum `InvoiceStatus`. Held by another type it is a `Field`, with every operator of one:
 
 | Written | The document it builds |
 |---------|------------------------|
-| `paths.status.eq(InvoiceStatus::PastDue)?` | `{ "status": { "$eq": "past-due" } }` |
-| `paths.status.is_in([InvoiceStatus::Draft, InvoiceStatus::PastDue])?` | `{ "status": { "$in": ["draft", "past-due"] } }` |
-| `paths.status.set(InvoiceStatus::Paid)?` | `{ "$set": { "status": "paid" } }` |
+| `paths.status().eq(InvoiceStatus::PastDue)?` | `{ "status": { "$eq": "past-due" } }` |
+| `paths.status().is_in([InvoiceStatus::Draft, InvoiceStatus::PastDue])?` | `{ "status": { "$in": ["draft", "past-due"] } }` |
+| `paths.status().set(InvoiceStatus::Paid)?` | `{ "$set": { "status": "paid" } }` |
 
 **A list of plain values, a `ListField`.** A list is matched through its elements: `contains` asks for one value, `contains_any` and `contains_none` for several, and `elem_match` holds one element to every condition of an `Element`, which `element()` starts and `eq`, `ne`, `gt`, `gte`, `lt` and `lte` add to. `size` takes how many elements the list holds. `push` and `pull` change one element, and `set` and `set_on_insert` take the whole list:
 
 | Written | The document it builds |
 |---------|------------------------|
-| `paths.tags.contains("export".to_owned())?` | `{ "tags": { "$eq": "export" } }` |
-| `paths.tags.contains_any(["export".to_owned(), "priority".to_owned()])?` | `{ "tags": { "$in": ["export", "priority"] } }` |
-| `paths.tags.contains_none(["void".to_owned()])?` | `{ "tags": { "$nin": ["void"] } }` |
-| `paths.tags.size(0)` | `{ "tags": { "$size": 0 } }` |
-| `paths.tags.elem_match(paths.tags.element().gte("a".to_owned())?.lt("n".to_owned())?)` | `{ "tags": { "$elemMatch": { "$gte": "a", "$lt": "n" } } }` |
-| `paths.tags.push("reviewed".to_owned())?` | `{ "$push": { "tags": "reviewed" } }` |
-| `paths.tags.pull("draft".to_owned())?` | `{ "$pull": { "tags": "draft" } }` |
-| `paths.tags.set(["new".to_owned()])?` | `{ "$set": { "tags": ["new"] } }` |
-| `paths.tags.set_on_insert(["new".to_owned()])?` | `{ "$setOnInsert": { "tags": ["new"] } }` |
+| `paths.tags().contains("export".to_owned())?` | `{ "tags": { "$eq": "export" } }` |
+| `paths.tags().contains_any(["export".to_owned(), "priority".to_owned()])?` | `{ "tags": { "$in": ["export", "priority"] } }` |
+| `paths.tags().contains_none(["void".to_owned()])?` | `{ "tags": { "$nin": ["void"] } }` |
+| `paths.tags().size(0)` | `{ "tags": { "$size": 0 } }` |
+| `paths.tags().elem_match(paths.tags().element().gte("a".to_owned())?.lt("n".to_owned())?)` | `{ "tags": { "$elemMatch": { "$gte": "a", "$lt": "n" } } }` |
+| `paths.tags().push("reviewed".to_owned())?` | `{ "$push": { "tags": "reviewed" } }` |
+| `paths.tags().pull("draft".to_owned())?` | `{ "$pull": { "tags": "draft" } }` |
+| `paths.tags().set(["new".to_owned()])?` | `{ "$set": { "tags": ["new"] } }` |
+| `paths.tags().set_on_insert(["new".to_owned()])?` | `{ "$setOnInsert": { "tags": ["new"] } }` |
 
-A comparison of the list itself is no operator: `paths.tags.gt("export".to_owned())` does not compile (`E0599`).
+A comparison of the list itself is no operator: `paths.tags().gt("export".to_owned())` does not compile (`E0599`).
 
-**A nested model, a `Model`.** Its own paths are below it, and it is one whole value as well: `eq`, `ne`, `is_in`, `not_in`, `set` and `set_on_insert` take the model itself. `moca()` is an `Address`:
+**A nested model, a `Model`.** `nest` writes what is asked of the model's own paths under its key, a filter and an update alike. The model is one whole value as well: `eq`, `ne`, `is_in`, `not_in`, `set` and `set_on_insert` take the model itself. `moca()` is an `Address`:
 
 ```rust
 /// The address the examples write.
@@ -4653,25 +4657,26 @@ fn moca() -> Address {
 
 | Written | The document it builds |
 |---------|------------------------|
-| `paths.customer.name.eq("Acme".to_owned())?` | `{ "customer.name": { "$eq": "Acme" } }` |
-| `paths.customer.address.city.eq("Moca".to_owned())?` | `{ "customer.address.city": { "$eq": "Moca" } }` |
-| `paths.customer.address.eq(moca())?` | `{ "customer.address": { "$eq": { "city": "Moca", "postalCode": "56000" } } }` |
-| `paths.customer.address.ne(moca())?` | `{ "customer.address": { "$ne": { "city": "Moca", "postalCode": "56000" } } }` |
-| `paths.customer.address.is_in([moca()])?` | `{ "customer.address": { "$in": [{ "city": "Moca", "postalCode": "56000" }] } }` |
-| `paths.customer.address.not_in([moca()])?` | `{ "customer.address": { "$nin": [{ "city": "Moca", "postalCode": "56000" }] } }` |
-| `paths.customer.address.set(moca())?` | `{ "$set": { "customer.address": { "city": "Moca", "postalCode": "56000" } } }` |
-| `paths.customer.address.set_on_insert(moca())?` | `{ "$setOnInsert": { "customer.address": { "city": "Moca", "postalCode": "56000" } } }` |
+| `paths.customer().nest(customer.name().eq("Acme".to_owned())?)` | `{ "customer.name": { "$eq": "Acme" } }` |
+| `paths.customer().nest(customer.address().nest(address.city().eq("Moca".to_owned())?))` | `{ "customer.address.city": { "$eq": "Moca" } }` |
+| `paths.customer().nest(customer.name().set("John".to_owned())?)` | `{ "$set": { "customer.name": "John" } }` |
+| `paths.customer().nest(customer.address().eq(moca())?)` | `{ "customer.address": { "$eq": { "city": "Moca", "postalCode": "56000" } } }` |
+| `paths.customer().nest(customer.address().ne(moca())?)` | `{ "customer.address": { "$ne": { "city": "Moca", "postalCode": "56000" } } }` |
+| `paths.customer().nest(customer.address().is_in([moca()])?)` | `{ "customer.address": { "$in": [{ "city": "Moca", "postalCode": "56000" }] } }` |
+| `paths.customer().nest(customer.address().not_in([moca()])?)` | `{ "customer.address": { "$nin": [{ "city": "Moca", "postalCode": "56000" }] } }` |
+| `paths.customer().nest(customer.address().set(moca())?)` | `{ "$set": { "customer.address": { "city": "Moca", "postalCode": "56000" } } }` |
+| `paths.customer().nest(customer.address().set_on_insert(moca())?)` | `{ "$setOnInsert": { "customer.address": { "city": "Moca", "postalCode": "56000" } } }` |
 
-**A nested model a row may leave out, an `OptionalModel`.** Its paths, and `exists`, `unset` and `set` over the whole value:
+**A nested model a row may leave out, an `OptionalModel`.** Every operator of a `Model`, `nest` among them, and `exists` and `unset`:
 
 | Written | The document it builds |
 |---------|------------------------|
-| `paths.billing.city.eq("Moca".to_owned())?` | `{ "billing.city": { "$eq": "Moca" } }` |
-| `paths.billing.exists(true)` | `{ "billing": { "$exists": true } }` |
-| `paths.billing.unset()` | `{ "$unset": { "billing": "" } }` |
-| `paths.billing.set(moca())?` | `{ "$set": { "billing": { "city": "Moca", "postalCode": "56000" } } }` |
+| `paths.billing().nest(address.city().eq("Moca".to_owned())?)` | `{ "billing.city": { "$eq": "Moca" } }` |
+| `paths.billing().exists(true)` | `{ "billing": { "$exists": true } }` |
+| `paths.billing().unset()` | `{ "$unset": { "billing": "" } }` |
+| `paths.billing().set(moca())?` | `{ "$set": { "billing": { "city": "Moca", "postalCode": "56000" } } }` |
 
-**A list of nested models, a `ModelList`.** A path below it matches where any element does. `elem_match` holds one element to a filter over the rows of the element's own type, and `pull` takes out every element such a filter matches. `size`, `push` and `set` are those of a list. `bolts()` is a `LineItem`:
+**A list of nested models, a `ModelList`.** What `nest` writes under it matches where any element does. `elem_match` holds one element to a filter over the rows of the element's own type, and `pull` takes out every element such a filter matches. `size`, `push` and `set` are those of a list. `bolts()` is a `LineItem`:
 
 ```rust
 /// The line item the examples write.
@@ -4686,21 +4691,21 @@ fn bolts() -> LineItem {
 
 | Written | The document it builds |
 |---------|------------------------|
-| `paths.items.price.gt(100.5)?` | `{ "items.price": { "$gt": 100.5 } }` |
-| `paths.items.elem_match(item.quantity.gte(2)?.and(item.sku.eq("B-7".to_owned())?))` | `{ "items": { "$elemMatch": { "$and": [{ "quantity": { "$gte": 2 } }, { "sku": { "$eq": "B-7" } }] } } }` |
-| `paths.items.size(2)` | `{ "items": { "$size": 2 } }` |
-| `paths.items.push(bolts())?` | `{ "$push": { "items": { "price": 4.5, "quantity": 9, "sku": "C-3" } } }` |
-| `paths.items.pull(item.quantity.lt(1)?)` | `{ "$pull": { "items": { "quantity": { "$lt": 1 } } } }` |
-| `paths.items.set([bolts()])?` | `{ "$set": { "items": [{ "price": 4.5, "quantity": 9, "sku": "C-3" }] } }` |
+| `paths.items().nest(item.price().gt(100.5)?)` | `{ "items.price": { "$gt": 100.5 } }` |
+| `paths.items().elem_match(item.quantity().gte(2)?.and(item.sku().eq("B-7".to_owned())?))` | `{ "items": { "$elemMatch": { "$and": [{ "quantity": { "$gte": 2 } }, { "sku": { "$eq": "B-7" } }] } } }` |
+| `paths.items().size(2)` | `{ "items": { "$size": 2 } }` |
+| `paths.items().push(bolts())?` | `{ "$push": { "items": { "price": 4.5, "quantity": 9, "sku": "C-3" } } }` |
+| `paths.items().pull(item.quantity().lt(1)?)` | `{ "$pull": { "items": { "quantity": { "$lt": 1 } } } }` |
+| `paths.items().set([bolts()])?` | `{ "$set": { "items": [{ "price": 4.5, "quantity": 9, "sku": "C-3" }] } }` |
 
-**An enum under a tag**, here `Payment`. `is_<variant>()` asks which variant a row holds, a variant's fields are reached through a member named after the variant in snake case, and the enum is one whole value as any nested model is:
+**An enum under a tag**, here `Payment`. `is_<variant>()` asks which variant a row holds, and what a variant holds is reached through a function named after the variant in snake case. Both are functions of the enum's own paths, which `nest` writes under the key that holds the enum. The enum is one whole value as any nested model is:
 
 | Written | The document it builds |
 |---------|------------------------|
-| `paths.payment.is_card()` | `{ "payment.kind": { "$eq": "card" } }` |
-| `paths.payment.is_cash()` | `{ "payment.kind": { "$eq": "cash" } }` |
-| `paths.payment.card.last4.eq("4242".to_owned())?` | `{ "payment.last4": { "$eq": "4242" } }` |
-| `paths.payment.set(Payment::Cash)?` | `{ "$set": { "payment": { "kind": "cash" } } }` |
+| `paths.payment().nest(payment.is_card())` | `{ "payment.kind": { "$eq": "card" } }` |
+| `paths.payment().nest(payment.is_cash())` | `{ "payment.kind": { "$eq": "cash" } }` |
+| `paths.payment().nest(payment.card().last4().eq("4242".to_owned())?)` | `{ "payment.last4": { "$eq": "4242" } }` |
+| `paths.payment().set(Payment::Cash)?` | `{ "$set": { "payment": { "kind": "cash" } } }` |
 
 ### Filters and updates
 
@@ -4708,16 +4713,19 @@ fn bolts() -> LineItem {
 
 | Written | The document it builds |
 |---------|------------------------|
-| `paths.total.gt(1000.5)?.and(paths.paid_at.exists(false))` | `{ "$and": [{ "total": { "$gt": 1000.5 } }, { "paidAt": { "$exists": false } }] }` |
-| `paths.total.gt(1000.5)?.or(paths.paid_at.exists(false))` | `{ "$or": [{ "total": { "$gt": 1000.5 } }, { "paidAt": { "$exists": false } }] }` |
-| `paths.paid_at.exists(true).negated()` | `{ "$nor": [{ "paidAt": { "$exists": true } }] }` |
+| `paths.total().gt(1000.5)?.and(paths.paid_at().exists(false))` | `{ "$and": [{ "total": { "$gt": 1000.5 } }, { "paidAt": { "$exists": false } }] }` |
+| `paths.total().gt(1000.5)?.or(paths.paid_at().exists(false))` | `{ "$or": [{ "total": { "$gt": 1000.5 } }, { "paidAt": { "$exists": false } }] }` |
+| `paths.paid_at().exists(true).negated()` | `{ "$nor": [{ "paidAt": { "$exists": true } }] }` |
 | `Filter::<Invoice>::raw(doc! { "details.costCenter": "CC-7" })` | `{ "details.costCenter": "CC-7" }` |
-| `paths.total.set(99.5)?.and(paths.paid_at.unset())` | `{ "$set": { "total": 99.5 }, "$unset": { "paidAt": "" } }` |
+| `paths.total().set(99.5)?.and(paths.paid_at().unset())` | `{ "$set": { "total": 99.5 }, "$unset": { "paidAt": "" } }` |
 | `Update::<Invoice>::raw(doc! { "$inc": { "total": 12.5 } })` | `{ "$inc": { "total": 12.5 } }` |
 
-- **A filter joins a filter over the same rows, whichever module it comes from.** `paths.customer.address.city.eq(..)` is an `address_schema::Filter<Invoice>`, and `to_chase` above hands it to `and` on an `invoice_schema::Filter<Invoice>`. What `and` and `or` ask of their argument is that it turn into a `bson::Document` and carry the row type, which every module's `Filter` does through two standard traits, `Into<bson::Document>` and `AsRef<PhantomData<Root>>`. The answer is of the type `and` was called on.
-- **A filter over another type's rows is refused.** Handed `Order::MONGO_FIELDS.placed.eq(true)?`, `and` on a filter over `Invoice` is ``error[E0277]: the trait bound `order_schema::Filter<Order>: AsRef<PhantomData<Invoice>>` is not satisfied``.
-- **An update is refused where a filter is asked, and a filter where an update is.** An update carries `AsRef<PhantomData<fn(Root) -> Root>>` in place of a filter's marker. `paths.total.gt(1000.0)?.and(paths.total.set(0.0)?)` is ``error[E0277]: the trait bound `Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied``, and `paths.total.set(0.0)?.and(paths.total.gt(1000.0)?)` is ``error[E0277]: the trait bound `invoice_schema::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied``.
+- **`nest` takes a filter or an update over the nested model, whichever module it comes from, and answers one of the module it was called in.** `address.city().eq(..)` is an `address_schema::Filter<Address>`. `customer.address().nest(..)` makes it a `customer_schema::Filter<Customer>`, and `paths.customer().nest(..)` an `invoice_schema::Filter<Invoice>`, which `to_chase` above joins with `and`. An update goes the same way, and `nest` tells the two apart by what it is handed: nothing is imported for it.
+- **`nest` joins two keys with a dot, and leaves an empty one out with its dot.** `customer` and `address.city` are `customer.address.city`. A model serde flattens into the type that holds it has no key there, so its keys are written as they are. The one path of a type serde writes as one value is the empty key, so under `status` it is `status`.
+- **A filter is nested whole.** Each of its keys is written under the path's, inside `$and`, `$or` and `$nor` too. Any other key that starts with `$`, which a `Filter::raw` document may write at its top, is kept as it is written. In an update, each key of each operator is written under the path's, and its value is kept.
+- **A filter joins a filter over the same rows, whichever module it comes from.** What `and` and `or` ask of their argument is that it turn into a `bson::Document` and carry the row type, which every module's `Filter` does through two standard traits, `Into<bson::Document>` and `AsRef<PhantomData<Root>>`. `nest` asks the same of what it is handed, over the nested model. The answer is of the type `and` was called on.
+- **A filter over another type's rows is refused.** Handed `Order::MONGO_FIELDS.placed().eq(true)?`, `and` on a filter over `Invoice` is ``error[E0277]: the trait bound `order_schema::Filter<Order>: AsRef<PhantomData<Invoice>>` is not satisfied``, and `nest` on `paths.customer()`, which holds a `Customer`, is ``error[E0277]: the trait bound `order_schema::Filter<Order>: invoice_schema::Nests<Invoice, Customer, _>` is not satisfied``.
+- **An update is refused where a filter is asked, and a filter where an update is.** An update carries `AsRef<PhantomData<fn(Root) -> Root>>` in place of a filter's marker. `paths.total().gt(1000.0)?.and(paths.total().set(0.0)?)` is ``error[E0277]: the trait bound `invoice_schema::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied``, and `paths.total().set(0.0)?.and(paths.total().gt(1000.0)?)` is ``error[E0277]: the trait bound `invoice_schema::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied``.
 - **A document is not a filter until `Filter::raw` makes it one.** `and` handed a `doc! { .. }` as it stands is ``error[E0277]: the trait bound `bson::Document: AsRef<PhantomData<Invoice>>` is not satisfied``. `raw` gives the document the row type of what it joins, and nothing checks what it holds: its keys and its values are the caller's.
 - **`into_document()` hands over the document** of a filter or an update, and so does `bson::Document::from`, for a call made on the driver itself.
 
@@ -4728,7 +4736,7 @@ A map has no path, its keys being data, and an operator the typed paths do not w
 fn of_cost_center(code: &str) -> Result<Filter<Invoice>, WriteError> {
     let paths = Invoice::MONGO_FIELDS;
     Ok(paths
-        .status
+        .status()
         .ne(InvoiceStatus::Draft)?
         .and(Filter::raw(doc! { "details.costCenter": code })))
 }
@@ -4737,7 +4745,7 @@ fn of_cost_center(code: &str) -> Result<Filter<Invoice>, WriteError> {
 fn surcharged(by: f64) -> Result<Update<Invoice>, WriteError> {
     let paths = Invoice::MONGO_FIELDS;
     Ok(paths
-        .tags
+        .tags()
         .push("surcharged".to_owned())?
         .and(Update::raw(doc! { "$inc": { "total": by } })))
 }
@@ -4750,45 +4758,47 @@ fn surcharged(by: f64) -> Result<Update<Invoice>, WriteError> {
 
 ### What each field becomes
 
-A member is there for every key serde writes, and its kind follows from how serde writes the field:
+A function is there for every key serde writes, and the kind it answers follows from how serde writes the field:
 
-| The field | Its member |
-|-----------|------------|
+| The field | What its function answers |
+|-----------|---------------------------|
 | A plain value `T` | `Field<Root, T>` |
 | `Option<T>` | `OptionalField<Root, T>` |
 | `Vec<T>`, `VecDeque<T>`, `HashSet<T>`, `BTreeSet<T>`, `BinaryHeap<T>`, `LinkedList<T>`, `[T; N]`, `[T]` | `ListField<Root, T>` |
-| A struct or an enum `M` declared with `#[model_schema(decode_with)]` above the type | `Model<Root, M, _>`, with `M`'s own paths below it |
-| `Option<M>` | `OptionalModel<Root, M, _>` |
-| A list of `M` | `ModelList<Root, M, _>` |
-| `Box`, `Rc`, `Arc`, `Cow`, `Cell`, `Mutex`, `RefCell` or `RwLock` around any of these | The kind of what it holds. An operator over one wrapped value takes the type as written, `Box<Customer>` |
-| `#[serde(flatten)]` of `M`, or of `Option<M>` | `M`'s own paths, built under the keys of the type that flattens it |
-| A flattened field of any other type | No member: it has no key of its own |
-| A map: bare, in an `Option`, behind one of those wrappers, flattened | No member |
-| A type tixschema has not seen as a flagged model: another crate's, one declared below, a `type` alias, the type itself | One whole value: `Field`, `OptionalField` or `ListField` over it |
+| A struct or an enum `M` declared with `#[model_schema(decode_with)]` above the type, which serde writes under keys | `Model<Root, M>`, whose `nest` reaches `M`'s own paths |
+| `Option<M>` | `OptionalModel<Root, M>` |
+| A list of `M` | `ModelList<Root, M>` |
+| A flagged type serde writes as one value: a brand, a plain enum, a unit struct | `Field<Root, M>`, and `OptionalField<Root, M>` in an `Option`. A list of one is a `ListField<Root, M>` |
+| `Box`, `Rc`, `Arc`, `Cow`, `Cell`, `Mutex`, `RefCell` or `RwLock` around any of these | The kind of what it holds, with a third parameter: `Model<Root, Box<Customer>, Customer>`. An operator over the whole value takes the type as written, `Box<Customer>`, and `nest` a filter over what it holds, `Customer` |
+| `#[serde(flatten)]` of `M`, or of `Option<M>` | `Nested<Root, M>` at the empty key: `nest` writes `M`'s keys as they are, among those of the type that flattens it |
+| A flattened field of any other type | No function: it has no key of its own |
+| A map: bare, in an `Option`, behind one of those wrappers, flattened | No function |
+| A type tixschema has not seen as a flagged model: another crate's, one declared below, a `type` alias, the type itself | One whole value: `Field`, `OptionalField` or `ListField` over it, whose `nest` reaches its paths |
 | A member typed with one of the type's own parameters | One whole value of what fills it |
 | `Option<Vec<T>>` | `OptionalField<Root, Vec<T>>`: one whole list a row may leave out |
 | A list of lists | `ListField<Root, Vec<T>>`: each element is one whole list |
 | A tuple | `Field<Root, (A, B)>`: one whole value |
-| A field serde never writes, under `skip` or `skip_serializing` | No member |
+| A field serde never writes, under `skip` or `skip_serializing` | No function |
 | A field with a hook that writes it: `with`, `serialize_with`, the one `as_number` adds | `Field`, or `OptionalField` for an `Option`, whose values are written through the hook |
 | A field serde writes and never reads back, under `skip_deserializing`, or reads through `deserialize_with` alone | One whole value, of the kind its `Option` or its list is |
 
-What a flagged type's own struct of paths holds follows from the shape serde writes the type in:
+What a flagged type's own paths are follows from the shape serde writes the type in:
 
 | The flagged type | Its paths |
 |------------------|-----------|
-| A struct with named fields | One member per field, under the field's Rust name |
-| A tuple struct with several slots | A tuple of paths, each slot's key its position: with `origin` a `struct Point(f64, f64)`, `paths.origin.0` writes the key `origin.0`. A slot serde never writes keeps its place as `()` |
-| An internally tagged enum | `is_<variant>()` is `$eq` on the tag's key. A variant's fields sit beside the tag, under a member named after the variant; a variant that holds one flagged model has that model's paths there |
+| A struct with named fields | One function per field, under the field's Rust name |
+| A tuple struct with several slots | A tuple of paths, each slot's key its position: with `Point` a `struct Point(f64, f64)`, `Point::MONGO_FIELDS.0` writes the key `0`, and nested under a field `origin`, `origin.0`. A slot serde never writes keeps its place as `()` |
+| An internally tagged enum | `is_<variant>()` is `$eq` on the tag's key. A variant's fields sit beside the tag: a function named after the variant answers a struct with one function per field. A variant that holds one flagged model answers a `Nested` at the empty key |
 | An adjacently tagged enum | The same `is_<variant>()`. What a variant holds is under the content key: its fields, one value, or a tuple of positions |
 | An externally tagged enum | What a variant holds is under the name serde writes the variant as. `is_<variant>()` is `$exists` on that key, and `$eq` with the name for a variant that holds nothing |
-| An untagged enum | One member per variant that holds a value, its paths at the enum's own key. No `is_<variant>()`: nothing stored names the variant |
-| A brand, a single-slot tuple struct, a `#[serde(transparent)]` struct, a plain enum, a unit struct | One path at the type's own key, with the operators of a `Field`, and `regex` where the one value is a `String` |
+| An untagged enum | One function per variant that holds a value, its paths at the enum's own level. No `is_<variant>()`: nothing stored names the variant |
+| A brand, a single-slot tuple struct, a `#[serde(transparent)]` struct, a plain enum, a unit struct | One path at the empty key, which `MONGO_FIELDS` dereferences to, with the operators of a `Field`, and `regex` where the one value is a `String` |
 
-- **A type serde writes as one value is one path.** Held by another type it is still a `Model` or an `OptionalModel`, which dereference to that one path: `paths.status.eq(InvoiceStatus::PastDue)`. A list of one is a `ListField`, a list of plain values matched through `contains` and `element()`. A filter over the rows of such a type has no key to write its operator under, so `elem_match` on that list takes an `Element` and refuses one (``error[E0308]: `?` operator has incompatible types``).
+- **A type serde writes as one value is one path.** `InvoiceStatus::MONGO_FIELDS.eq(InvoiceStatus::Paid)?` is a filter over an `InvoiceStatus`, at the empty key, which `nest` writes at the key that holds one. Held by another type the value is a plain one, a `Field` or an `OptionalField`, so every comparison is a plain call: `paths.status().eq(InvoiceStatus::PastDue)`. `regex` on one written as text is asked of the type's own path: with `callsign` a field typed with `Callsign`, a brand over a `String`, `paths.callsign().nest(Callsign::MONGO_FIELDS.regex("^mav", "i"))`. A list of one is a `ListField`, a list of plain values matched through `contains` and `element()`. A filter over the rows of such a type has no key to write its operator under, so `elem_match` on that list takes an `Element` and refuses one (``error[E0308]: `?` operator has incompatible types``).
 - **A path is under the name serde writes.** `rename` on a field, `rename_all` on the type, `rename` and `rename_all` on a variant and `rename_all_fields` on an enum all count. A renaming written as a list counts by its `serialize` side, `rename(serialize = "ref", deserialize = "ref")` being the key `ref`. A list whose two sides name two keys is refused by every schema surface, as before; a build with none takes it, and the path is the key that is written.
-- **A member of an enum is named after its variant, in snake case**: a variant `OverLand` is the member `over_land` and the method `is_over_land()`. A variant serde never writes has neither.
-- **A generic type has its paths at each filling**: with `Wrapper<T>` declaring `inner: T` and `label: String`, `Wrapper::<u32>::MONGO_FIELDS.inner` is a `Field<Wrapper<u32>, u32>`.
+- **A function of an enum is named after its variant, in snake case**: a variant `OverLand` is the function `over_land()` and the method `is_over_land()`. A variant serde never writes has neither.
+- **`is_<variant>()` keeps its name.** With variants `Card` and `IsCard`, `is_card()` asks for `Card` and `is_is_card()` for `IsCard`, and what `IsCard` holds is reached through `is_card2()`: the function of a variant that meets a taken name is numbered, as those of two variants with one snake-case name are.
+- **A generic type has its paths at each filling**: with `Wrapper<T>` declaring `inner: T` and `label: String`, `Wrapper::<u32>::MONGO_FIELDS.inner()` is a `Field<Wrapper<u32>, u32>`.
 
 **A field with a serde hook is compared the way it is stored.** A `chrono` date writes text, so a date kept as a BSON date carries the `bson` library's hook, and a filter on it has to write a BSON date too. The path writes its values through the field's own hook, here bound as `date_hook`:
 
@@ -4814,7 +4824,10 @@ pub struct Window {
 /// Windows that close before an instant, and windows that open before it.
 fn closing_before(instant: DateTime<Utc>) -> Result<[Filter<Window>; 2], WriteError> {
     let paths = Window::MONGO_FIELDS;
-    Ok([paths.closes_at.lt(instant)?, paths.opens_at.lt(instant)?])
+    Ok([
+        paths.closes_at().lt(instant)?,
+        paths.opens_at().lt(instant)?,
+    ])
 }
 ```
 
@@ -4829,9 +4842,9 @@ Each hook lives behind the `bson` library's `chrono-0_4` feature. The path of th
 
 ### A type tixschema has not seen
 
-A field typed with a flagged model reaches that model's paths only where tixschema has already expanded the model: a struct or an enum `#[model_schema]` is written on **above** the type that holds it, in the same crate. A type of another crate, one declared below, a plain `type` alias and the type itself are held as one whole value, a `Field`, an `OptionalField` or a `ListField` over the type, with the operators of that kind over the whole value. This is the reason every model of the section's examples is declared above `Invoice`.
+A field typed with a flagged model is a `Model`, an `OptionalModel` or a `ModelList` only where tixschema has already expanded the model: a struct or an enum `#[model_schema]` is written on **above** the type that holds it, in the same crate. A type of another crate, one declared below, a plain `type` alias and the type itself are held as one whole value, a `Field`, an `OptionalField` or a `ListField` over the type, with the operators of that kind over the whole value. This is the reason every model of the section's examples is declared above `Invoice`.
 
-The paths below such a member are the nested type's own, and its own function builds them: `mongo_fields_under` takes the keys leading to the value, and the row type the paths are asked as. `segments()` gives the keys of a `Field` or an `OptionalField`:
+`nest` reaches the paths below such a member as it does below a model: a `Field` and a `ListField` have it too.
 
 ```rust
 #[model_schema(decode_with)]
@@ -4847,15 +4860,15 @@ pub struct Carrier {
     pub name: String,
 }
 
-/// Shipments of one carrier. `Carrier` is declared below `Shipment`, so the paths below it are
-/// built by `Carrier`'s own function, under the keys the member's path holds.
+/// Shipments of one carrier. `Carrier` is declared below `Shipment`, so `carrier` is one whole
+/// value there, and `nest` reaches the paths below it as it does below any model.
 fn carried_by(name: &str) -> Result<shipment_schema::Filter<Shipment>, WriteError> {
     let shipment = Shipment::MONGO_FIELDS;
-    let carrier = Carrier::mongo_fields_under::<Shipment>(shipment.carrier.segments());
+    let named = Carrier::MONGO_FIELDS.name().eq(name.to_owned())?;
     Ok(shipment
-        .code
+        .code()
         .regex("^S-", "")
-        .and(carrier.name.eq(name.to_owned())?))
+        .and(shipment.carrier().nest(named)))
 }
 ```
 
@@ -4863,12 +4876,11 @@ fn carried_by(name: &str) -> Result<shipment_schema::Filter<Shipment>, WriteErro
 |---------|------------------------|
 | `carried_by("Acme Freight")?` | `{ "$and": [{ "code": { "$regex": "^S-", "$options": "" } }, { "carrier.name": { "$eq": "Acme Freight" } }] }` |
 
-`Shipment::MONGO_FIELDS.carrier` is a `Field<Shipment, Carrier>` there, and `carrier.name` a path over the rows of `Shipment` under the key `carrier.name`. Its filter is a `carrier_schema::Filter<Shipment>`, which joins a `shipment_schema::Filter<Shipment>` as any filter over those rows does.
+`Shipment::MONGO_FIELDS.carrier()` is a `Field<Shipment, Carrier>` there. `named` is a `carrier_schema::Filter<Carrier>`, and what `nest` answers is a `shipment_schema::Filter<Shipment>` under the key `carrier`.
 
-- **`mongo_fields_under` is on every flagged type**: `pub const fn mongo_fields_under<Root>(prefix: [Option<&'static str>; 8])`, which answers the type's `<type>_schema::MongoFields` over the rows of `Root`. `MONGO_FIELDS` is that function called with no key, `<type>_schema::MongoPath::ROOT`, and the type itself as `Root`.
-- **A path holds at most eight keys.** The keys of a path are held in that array of eight, which is what lets a path be built in a `const`. A ninth key stops the build where the path is built in one: ``error[E0080]: evaluation panicked: a typed MongoDB path holds at most 8 keys``. Built in a function, the same path panics with that sentence when it runs.
-- **`MongoPath` is the keys of one path.** `MongoPath::under(prefix, "name")` adds a key, its `segments` are the array `mongo_fields_under` takes, and `key()` is the dotted key MongoDB reads. The module's `Path` is another type: where an issue of the recovering decode sits.
-- **A path can be built by hand** through the constructors the generated ones are built with, `Field::plain(MongoPath::under(MongoPath::ROOT, "total"))` and its twins on `OptionalField` and `ListField`. Such a path writes whatever key it is given: nothing checks it against the type.
+- **A kind that wraps a model names the model as a third parameter.** `parent: Option<Box<Category>>` on `Category` is an `OptionalField<Category, Box<Category>, Category>`: `set` takes a `Box<Category>`, and `nest` a filter over the rows of `Category`. Where the field wraps nothing the third parameter is the second, so `Field<Invoice, f64>` names the kind whole.
+- **`MongoPath` is one key**, as the type that declares the path writes it: `MongoPath::at("total")`, and `MongoPath::ROOT` for the empty key. `key()` reads it. A key holds a dot where the type's own shape puts two keys, `list.0` being the first slot of a tuple variant under the content key `list`. The module's `Path` is another type: where an issue of the recovering decode sits.
+- **A path can be built by hand** through the constructors the generated ones are built with, `Field::plain(MongoPath::at("total"))` and its twins on `OptionalField` and `ListField`. Such a path writes whatever key it is given: nothing checks it against the type.
 
 ### The operations
 
@@ -4904,8 +4916,8 @@ async fn every_operation(
     invoice: &Invoice,
 ) -> Result<(), OperationError> {
     let paths = Invoice::MONGO_FIELDS;
-    let drafts = || paths.status.eq(InvoiceStatus::Draft);
-    let voided = || paths.total.set(0.0_f64);
+    let drafts = || paths.status().eq(InvoiceStatus::Draft);
+    let voided = || paths.total().set(0.0_f64);
     let resolvers: [Resolver<'_, Document, Bson>; 1] = [&whole_number_as_text];
 
     let _stored: InsertOneResult = invoice.insert_one(invoices).await?;
@@ -4925,8 +4937,8 @@ async fn every_operation(
 
 `whole_number_as_text` is the resolver of [Resolvers](#resolvers), written there against another `Invoice` and here against this one: the same text, over `invoice_schema::Issue`.
 
-- **A filter is any filter over the type's rows**, whichever module's `Filter` it is. One that starts from a nested model's path, a `customer_schema::Filter<Invoice>`, is taken as it stands. A filter over another type's rows and an update are refused, by the bound a filter joins another under.
-- **A filter and an update cannot change places.** `Invoice::update_one(invoices, paths.status.set(InvoiceStatus::Paid)?, paths.number.eq("INV-0042".to_owned())?)` does not compile: ``error[E0277]: the trait bound `invoice_schema::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied`` for the update handed as the filter, and ``error[E0277]: the trait bound `invoice_schema::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied`` for the filter handed as the update.
+- **A filter is any filter over the type's rows**, whichever module's `Filter` it is. A filter over another type's rows and an update are refused, by the bound a filter joins another under.
+- **A filter and an update cannot change places.** `Invoice::update_one(invoices, paths.status().set(InvoiceStatus::Paid)?, paths.number().eq("INV-0042".to_owned())?)` does not compile: ``error[E0277]: the trait bound `invoice_schema::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied`` for the update handed as the filter, and ``error[E0277]: the trait bound `invoice_schema::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied`` for the filter handed as the update.
 - **A read of many rows fails as a whole.** The rows are read one at a time as the driver hands them over, and the first that does not read ends the read with that row's `_id` and its issues. No row is answered.
 - **`insert_one` writes the row when it is called**, before anything is awaited. A value BSON cannot hold, and a type serde writes as anything but a document, a plain enum or a brand, answer `OperationError::Unwritable` without MongoDB being asked anything. What is awaited holds no borrow of the value.
 - **The updates and the deletes answer what the driver answers**: `UpdateResult` with its `matched_count`, `modified_count` and `upserted_id`, `DeleteResult` with its `deleted_count`, and `InsertOneResult` with the `inserted_id` of the row.
@@ -4945,11 +4957,11 @@ async fn largest_unpaid(
 ) -> Result<(Vec<Invoice>, u64), OperationError> {
     let paths = Invoice::MONGO_FIELDS;
     let unpaid = || {
-        paths
-            .customer
-            .name
+        Customer::MONGO_FIELDS
+            .name()
             .eq(customer.to_owned())
-            .map(|named| named.and(paths.paid_at.exists(false)))
+            .map(|named| paths.customer().nest(named))
+            .map(|of_customer| of_customer.and(paths.paid_at().exists(false)))
     };
     let largest = Invoice::find_with(invoices, unpaid()?, &[&whole_number_as_text])
         .sort(doc! { "total": -1_i32 })
@@ -4981,7 +4993,7 @@ fn page(invoices: &Collection<Document>, at: u64) -> Read<'_, Invoice, Vec<Invoi
 
 - **An option the driver's own method does not have is not sent**: `limit` on a read of one row, which answers the first row whatever the limit, and `sort` on a count, which is the same in any order.
 - **A sort is a document written by hand**, its keys the ones serde writes. There is no projection: a read answers the whole type.
-- **What `unpaid` builds in `largest_unpaid` is a `customer_schema::Filter<Invoice>`**, since it starts from a path below `customer`. `find_with` and `count` take it as it stands.
+- **What `unpaid` hands `nest` in `largest_unpaid` is a `customer_schema::Filter<Customer>`**, a filter over a customer. What `nest` answers is an `invoice_schema::Filter<Invoice>`, which `find_with` and `count` take.
 - **An option is handed to the driver as it is given.** What a collation folds, and which hint MongoDB takes or refuses, are MongoDB's own to answer.
 - **A read is `#[must_use]`.** One that is never awaited asks nothing, and the compiler says so: ``unused `invoice_schema::Read` that must be used``, with the note `a read asks nothing of MongoDB until it is awaited`.
 - **A read is turned into a future by `.await`**, and is not one before. It implements `IntoFuture`, not `Future`, so something that takes a future is handed `.into_future()`, and a read handed over as it stands is ``error[E0277]: `invoice_schema::Read<'_, Invoice, Vec<Invoice>>` is not a future``:
@@ -5049,7 +5061,7 @@ async fn customer_named(
     customers: &Collection<Document>,
     name: &str,
 ) -> Result<Option<Customer>, customer_schema::OperationError> {
-    let named = Customer::MONGO_FIELDS.name.eq(name.to_owned())?;
+    let named = Customer::MONGO_FIELDS.name().eq(name.to_owned())?;
     Customer::find_one_with(customers, named, &[&id_dropped]).await
 }
 ```
@@ -5201,11 +5213,9 @@ The function fails with `Billed`'s own `OperationError`, built as the generated 
 
 ### Limits
 
-- **A flagged model declared in another module needs its `<type>_schema` module in scope** beside the type that holds it, in every build with `mongodb`: the struct of paths names the nested model's own through the module above it. The JSON Schema surface already asks for that import ([A Model Type Declared in Another Module](#a-model-type-declared-in-another-module)). With `Address` declared in a module `address` and imported alone, the build fails at the field typed with it: ``error[E0433]: cannot find `address_schema` in `super` ``, with the compiler's own help, `consider importing this module: crate::address::address_schema`. `use crate::address::{Address, address_schema};` resolves it.
-- **Two flagged types declared in one function body, one holding the other, do not build under `mongodb`.** A module written inside a function reaches none of that function's items, and the outer type's struct of paths names the inner type and its module: ``error[E0433]: cannot find `inner_schema` in `super` `` and ``error[E0425]: cannot find type `Inner` in module `super` ``. A flagged type alone in a function body builds, a struct of standard types and a type serde writes as one value alike. Declare the inner type at module level, as [Function-Local Types](#function-local-types) says for the schema surfaces.
+- **Two flagged types declared in one function body, one holding the other, do not build under `mongodb`.** A module written inside a function reaches none of that function's items, and the outer type's struct of paths names the inner type: ``error[E0425]: cannot find type `Inner` in module `super` ``. A flagged type alone in a function body builds, a struct of standard types and a type serde writes as one value alike. Declare the inner type at module level, as [Function-Local Types](#function-local-types) says for the schema surfaces.
 - **An operation is a function of the type itself, under its own name.** A flagged type that already has a function of its own called `find_one`, `find_one_with`, `find`, `find_with`, `count`, `insert_one`, `update_one`, `update_many`, `delete_one` or `delete_many` builds without `mongodb` and stops building with it. For a type with a `count` of its own: ``error[E0592]: duplicate definitions with name `count` ``.
-- **A variant named `In` has an `is_in()` that a `Model` hides.** `Model` has an `is_in` of its own, over the whole value, so `paths.movement.is_in()` is ``error[E0061]: this method takes 1 argument but 0 arguments were supplied``. The variant's own is reached by dereferencing first, `(*paths.movement).is_in()`, and the variant's fields under the raw name, `paths.movement.r#in`.
-- **A slot of a tuple struct under `skip_serializing_if` moves the positions after it.** The paths are written for a value that holds every slot. With `pair` a tuple struct of an `Option<u32>` under `skip_serializing_if` and then a `String`, `paths.pair.1` writes the key `pair.1`, and a value whose first slot is `None` is stored as `{ "pair": ["x"] }`, its text at position `0`.
+- **A slot of a tuple struct under `skip_serializing_if` moves the positions after it.** The paths are written for a value that holds every slot. With `pair` a field typed with `Pair`, a tuple struct of an `Option<u32>` under `skip_serializing_if` and then a `String`, `Pair::MONGO_FIELDS.1` nested under `paths.pair()` writes the key `pair.1`, and a value whose first slot is `None` is stored as `{ "pair": ["x"] }`, its text at position `0`.
 
 ### This repository's checks against a server
 

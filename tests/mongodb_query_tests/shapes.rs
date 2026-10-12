@@ -1,6 +1,7 @@
 //! The paths of each shape serde writes a nested value in: an enum in each of its four forms, a
 //! flattened model, a generic model, and the ones the first cases leave out. The models an
 //! [`Invoice`] holds are declared here, above it, and each one's module is imported beside it.
+//! `nest` writes what is asked of one under the key the row holds it at.
 
 use std::collections::HashMap;
 
@@ -137,6 +138,25 @@ struct Journey {
     payment: Payment,
 }
 
+/// A variant named as an operator of the path that holds the enum, and two whose `is_{variant}`
+/// and whose own function would take one name.
+#[model_schema(decode_with)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum Movement {
+    Card { last4: String },
+    In { dock: u32 },
+    IsCard { issuer: String },
+    Out,
+}
+
+/// Holds [`Movement`] under a key of its own.
+#[model_schema(decode_with)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct Transit {
+    movement: Movement,
+}
+
 fn moca() -> Stop {
     Stop {
         city: "Moca".to_owned(),
@@ -146,40 +166,56 @@ fn moca() -> Stop {
 
 #[test]
 fn a_flattened_models_paths_are_written_at_the_level_of_the_row_that_holds_it() {
-    let invoice = Invoice::MONGO_FIELDS;
+    let (invoice, audit) = (Invoice::MONGO_FIELDS, Audit::MONGO_FIELDS);
     assert_eq!(
-        shown(invoice.audit.created_by.eq("eduardo".to_owned()).unwrap()),
+        shown(
+            invoice
+                .audit()
+                .nest(audit.created_by().eq("eduardo".to_owned()).unwrap())
+        ),
         r#"{ "createdBy": { "$eq": "eduardo" } }"#
     );
     assert_eq!(
-        shown(invoice.audit.revision.gte(4_u32).unwrap()),
+        shown(invoice.audit().nest(audit.revision().gte(4_u32).unwrap())),
         r#"{ "revision": { "$gte": Int64(4) } }"#
     );
 }
 
 #[test]
 fn an_internally_tagged_enum_is_asked_by_its_tag_and_by_each_variants_fields() {
-    let invoice = Invoice::MONGO_FIELDS;
+    let (invoice, payment) = (Invoice::MONGO_FIELDS, Payment::MONGO_FIELDS);
     assert_eq!(
-        shown(invoice.payment.is_card()),
+        shown(invoice.payment().nest(payment.is_card())),
         r#"{ "payment.kind": { "$eq": "card" } }"#
     );
     assert_eq!(
-        shown(invoice.payment.card.last4.eq("4242".to_owned()).unwrap()),
+        shown(
+            invoice
+                .payment()
+                .nest(payment.card().last4().eq("4242".to_owned()).unwrap())
+        ),
         r#"{ "payment.last4": { "$eq": "4242" } }"#
     );
     assert_eq!(
-        shown(invoice.payment.card.exp_month.lte(6_u32).unwrap()),
+        shown(
+            invoice
+                .payment()
+                .nest(payment.card().exp_month().lte(6_u32).unwrap())
+        ),
         r#"{ "payment.expMonth": { "$lte": Int64(6) } }"#
     );
+    let by_iban = WireDetails::MONGO_FIELDS
+        .iban()
+        .eq("DO28".to_owned())
+        .unwrap();
     assert_eq!(
-        shown(invoice.payment.wire.iban.eq("DO28".to_owned()).unwrap()),
+        shown(invoice.payment().nest(payment.wire().nest(by_iban))),
         r#"{ "payment.iban": { "$eq": "DO28" } }"#
     );
     assert_eq!(
         shown(
             invoice
-                .payment
+                .payment()
                 .eq(Payment::Wire(WireDetails {
                     iban: "DO28".to_owned(),
                 }))
@@ -188,7 +224,7 @@ fn an_internally_tagged_enum_is_asked_by_its_tag_and_by_each_variants_fields() {
         r#"{ "payment": { "$eq": { "kind": "wire", "iban": "DO28" } } }"#
     );
     assert_eq!(
-        shown(invoice.payment.set(Payment::Cash).unwrap()),
+        shown(invoice.payment().set(Payment::Cash).unwrap()),
         r#"{ "$set": { "payment": { "kind": "cash" } } }"#
     );
 }
@@ -196,24 +232,25 @@ fn an_internally_tagged_enum_is_asked_by_its_tag_and_by_each_variants_fields() {
 /// What a variant holds sits under the content key: its fields below it, and one plain value at it.
 #[test]
 fn an_adjacently_tagged_enum_is_asked_by_its_tag_and_under_its_content_key() {
-    let invoice = Invoice::MONGO_FIELDS;
+    let (invoice, delivery) = (Invoice::MONGO_FIELDS, Delivery::MONGO_FIELDS);
     assert_eq!(
-        shown(invoice.delivery.is_courier()),
+        shown(invoice.delivery().nest(delivery.is_courier())),
         r#"{ "delivery.t": { "$eq": "courier" } }"#
     );
     assert_eq!(
         shown(
             invoice
-                .delivery
-                .courier
-                .carrier
-                .eq("dhl".to_owned())
-                .unwrap()
+                .delivery()
+                .nest(delivery.courier().carrier().eq("dhl".to_owned()).unwrap())
         ),
         r#"{ "delivery.c.carrier": { "$eq": "dhl" } }"#
     );
     assert_eq!(
-        shown(invoice.delivery.locker.gt(10_u32).unwrap()),
+        shown(
+            invoice
+                .delivery()
+                .nest(delivery.locker().gt(10_u32).unwrap())
+        ),
         r#"{ "delivery.c": { "$gt": Int64(10) } }"#
     );
 }
@@ -221,40 +258,49 @@ fn an_adjacently_tagged_enum_is_asked_by_its_tag_and_under_its_content_key() {
 /// A variant with no data is the enum's own value, its name as text.
 #[test]
 fn an_externally_tagged_enum_is_asked_by_the_key_that_names_its_variant() {
-    let invoice = Invoice::MONGO_FIELDS;
+    let (invoice, rebate) = (Invoice::MONGO_FIELDS, Rebate::MONGO_FIELDS);
     assert_eq!(
-        shown(invoice.discount.is_no_discount()),
+        shown(invoice.discount().nest(rebate.is_no_discount())),
         r#"{ "discount": { "$eq": "noDiscount" } }"#
     );
     assert_eq!(
-        shown(invoice.discount.is_coupon()),
+        shown(invoice.discount().nest(rebate.is_coupon())),
         r#"{ "discount.coupon": { "$exists": true } }"#
     );
     assert_eq!(
-        shown(invoice.discount.coupon.code.eq("FALL".to_owned()).unwrap()),
+        shown(
+            invoice
+                .discount()
+                .nest(rebate.coupon().code().eq("FALL".to_owned()).unwrap())
+        ),
         r#"{ "discount.coupon.code": { "$eq": "FALL" } }"#
     );
     assert_eq!(
-        shown(invoice.discount.percent.gte(10.0_f64).unwrap()),
+        shown(
+            invoice
+                .discount()
+                .nest(rebate.percent().gte(10.0_f64).unwrap())
+        ),
         r#"{ "discount.percent": { "$gte": Double(10.0) } }"#
     );
 }
 
 #[test]
 fn an_untagged_enums_paths_are_at_its_own_level() {
-    let invoice = Invoice::MONGO_FIELDS;
+    let (invoice, reference) = (Invoice::MONGO_FIELDS, Reference::MONGO_FIELDS);
     assert_eq!(
-        shown(invoice.reference.number.eq(7_u32).unwrap()),
+        shown(
+            invoice
+                .reference()
+                .nest(reference.number().eq(7_u32).unwrap())
+        ),
         r#"{ "reference": { "$eq": Int64(7) } }"#
     );
     assert_eq!(
         shown(
             invoice
-                .reference
-                .detailed
-                .issuer
-                .eq("bank".to_owned())
-                .unwrap()
+                .reference()
+                .nest(reference.detailed().issuer().eq("bank".to_owned()).unwrap())
         ),
         r#"{ "reference.issuer": { "$eq": "bank" } }"#
     );
@@ -262,46 +308,51 @@ fn an_untagged_enums_paths_are_at_its_own_level() {
 
 #[test]
 fn a_generic_models_member_typed_by_the_parameter_is_one_whole_value() {
-    let invoice = Invoice::MONGO_FIELDS;
-    assert_eq!(
-        shown(invoice.shipping.label.eq("warehouse".to_owned()).unwrap()),
-        r#"{ "shipping.label": { "$eq": "warehouse" } }"#
-    );
+    let (invoice, shipped) = (Invoice::MONGO_FIELDS, Wrapper::<Address>::MONGO_FIELDS);
     assert_eq!(
         shown(
             invoice
-                .shipping
-                .inner
-                .eq(Address {
-                    city: "Moca".to_owned(),
-                    postal_code: "56000".to_owned(),
-                })
-                .unwrap()
+                .shipping()
+                .nest(shipped.label().eq("warehouse".to_owned()).unwrap())
         ),
+        r#"{ "shipping.label": { "$eq": "warehouse" } }"#
+    );
+    let at_moca = shipped
+        .inner()
+        .eq(Address {
+            city: "Moca".to_owned(),
+            postal_code: "56000".to_owned(),
+        })
+        .unwrap();
+    assert_eq!(
+        shown(invoice.shipping().nest(at_moca)),
         r#"{ "shipping.inner": { "$eq": { "city": "Moca", "postalCode": "56000" } } }"#
     );
     let numbered = Wrapper::<u32>::MONGO_FIELDS;
     assert_eq!(
-        shown(numbered.inner.gt(5_u32).unwrap()),
+        shown(numbered.inner().gt(5_u32).unwrap()),
         r#"{ "inner": { "$gt": Int64(5) } }"#
     );
     assert_eq!(
-        shown(numbered.history.contains(5_u32).unwrap()),
+        shown(numbered.history().contains(5_u32).unwrap()),
         r#"{ "history": { "$eq": Int64(5) } }"#
     );
 }
 
 #[test]
-fn the_paths_below_a_whole_value_are_built_by_the_types_own_function() {
+fn the_paths_below_a_whole_value_are_reached_with_nest() {
     let wrapper = Wrapper::<Customer>::MONGO_FIELDS;
-    let inner = Customer::mongo_fields_under::<Wrapper<Customer>>(wrapper.inner.segments());
+    let at_moca = Address::MONGO_FIELDS.city().eq("Moca".to_owned()).unwrap();
+    let inner = wrapper
+        .inner()
+        .nest(Customer::MONGO_FIELDS.address().nest(at_moca));
     assert_eq!(
         shown(
             wrapper
-                .label
+                .label()
                 .eq("warehouse".to_owned())
                 .unwrap()
-                .and(inner.address.city.eq("Moca".to_owned()).unwrap())
+                .and(inner)
         ),
         r#"{ "$and": [{ "label": { "$eq": "warehouse" } }, { "inner.address.city": { "$eq": "Moca" } }] }"#
     );
@@ -311,27 +362,31 @@ fn the_paths_below_a_whole_value_are_built_by_the_types_own_function() {
 fn a_shape_no_path_kind_covers_is_one_whole_value() {
     let assorted = Assorted::MONGO_FIELDS;
     assert_eq!(
-        shown(assorted.labels.exists(false)),
+        shown(assorted.labels().exists(false)),
         r#"{ "labels": { "$exists": false } }"#
     );
     assert_eq!(
-        shown(assorted.labels.set(vec!["a".to_owned()]).unwrap()),
+        shown(assorted.labels().set(vec!["a".to_owned()]).unwrap()),
         r#"{ "$set": { "labels": ["a"] } }"#
     );
     assert_eq!(
-        shown(assorted.grid.contains(vec![1_u32, 2_u32]).unwrap()),
+        shown(assorted.grid().contains(vec![1_u32, 2_u32]).unwrap()),
         r#"{ "grid": { "$eq": [Int64(1), Int64(2)] } }"#
     );
     assert_eq!(
-        shown(assorted.pair.eq(("a".to_owned(), 1_u32)).unwrap()),
+        shown(assorted.pair().eq(("a".to_owned(), 1_u32)).unwrap()),
         r#"{ "pair": { "$eq": ["a", Int64(1)] } }"#
     );
     assert_eq!(
-        shown(assorted.stops.city.eq("Moca".to_owned()).unwrap()),
+        shown(
+            assorted
+                .stops()
+                .nest(Stop::MONGO_FIELDS.city().eq("Moca".to_owned()).unwrap())
+        ),
         r#"{ "stops.city": { "$eq": "Moca" } }"#
     );
     assert_eq!(
-        shown(assorted.stops.push(moca()).unwrap()),
+        shown(assorted.stops().push(moca()).unwrap()),
         r#"{ "$push": { "stops": { "city": "Moca", "postalCode": "56000" } } }"#
     );
     let stored = Assorted {
@@ -351,54 +406,67 @@ fn a_shape_no_path_kind_covers_is_one_whole_value() {
 
 #[test]
 fn a_variant_of_several_values_and_one_of_a_model_are_typed_under_their_key() {
-    let journey = Journey::MONGO_FIELDS;
+    let (journey, leg, dropped) = (Journey::MONGO_FIELDS, Leg::MONGO_FIELDS, Drop::MONGO_FIELDS);
     assert_eq!(
-        shown(journey.leg.flight.0.eq("IB-1".to_owned()).unwrap()),
+        shown(
+            journey
+                .leg()
+                .nest(leg.flight().0.eq("IB-1".to_owned()).unwrap())
+        ),
         r#"{ "leg.byAir.0": { "$eq": "IB-1" } }"#
     );
     assert_eq!(
-        shown(journey.leg.flight.1.gt(3_u32).unwrap()),
+        shown(journey.leg().nest(leg.flight().1.gt(3_u32).unwrap())),
         r#"{ "leg.byAir.1": { "$gt": Int64(3) } }"#
     );
     assert_eq!(
-        shown(journey.leg.is_flight()),
+        shown(journey.leg().nest(leg.is_flight())),
         r#"{ "leg.byAir": { "$exists": true } }"#
     );
     assert_eq!(
-        shown(journey.leg.is_walk()),
+        shown(journey.leg().nest(leg.is_walk())),
         r#"{ "leg": { "$eq": "walk" } }"#
     );
+    let at_moca = Stop::MONGO_FIELDS.city().eq("Moca".to_owned()).unwrap();
     assert_eq!(
-        shown(journey.drop.door.city.eq("Moca".to_owned()).unwrap()),
+        shown(journey.drop().nest(dropped.door().nest(at_moca))),
         r#"{ "drop.at.city": { "$eq": "Moca" } }"#
     );
     assert_eq!(
-        shown(journey.drop.door.set(moca()).unwrap()),
+        shown(journey.drop().nest(dropped.door().set(moca()).unwrap())),
         r#"{ "$set": { "drop.at": { "city": "Moca", "postalCode": "56000" } } }"#
     );
     assert_eq!(
-        shown(journey.drop.span.1.lt(9_u32).unwrap()),
+        shown(journey.drop().nest(dropped.span().1.lt(9_u32).unwrap())),
         r#"{ "drop.at.1": { "$lt": Int64(9) } }"#
     );
     assert_eq!(
-        shown(journey.drop.is_span()),
+        shown(journey.drop().nest(dropped.is_span())),
         r#"{ "drop.via": { "$eq": "span" } }"#
     );
 }
 
 #[test]
 fn a_flattened_enum_and_a_flattened_optional_model_are_at_the_rows_own_level() {
-    let journey = Journey::MONGO_FIELDS;
+    let (journey, payment) = (Journey::MONGO_FIELDS, Payment::MONGO_FIELDS);
     assert_eq!(
-        shown(journey.payment.is_wire()),
+        shown(journey.payment().nest(payment.is_wire())),
         r#"{ "kind": { "$eq": "wire" } }"#
     );
     assert_eq!(
-        shown(journey.payment.card.last4.eq("4242".to_owned()).unwrap()),
+        shown(
+            journey
+                .payment()
+                .nest(payment.card().last4().eq("4242".to_owned()).unwrap())
+        ),
         r#"{ "last4": { "$eq": "4242" } }"#
     );
     assert_eq!(
-        shown(journey.audit.revision.gte(2_u32).unwrap()),
+        shown(
+            journey
+                .audit()
+                .nest(Audit::MONGO_FIELDS.revision().gte(2_u32).unwrap())
+        ),
         r#"{ "revision": { "$gte": Int64(2) } }"#
     );
     let stored = Journey {
@@ -418,5 +486,50 @@ fn a_flattened_enum_and_a_flattened_optional_model_are_at_the_rows_own_level() {
     assert_eq!(
         shown(stored.as_document().unwrap().clone()),
         r#"{ "createdBy": "eduardo", "revision": Int64(2), "code": "J-1", "drop": { "via": "door", "at": { "city": "Moca", "postalCode": "56000" } }, "leg": { "byAir": ["IB-1", Int64(4)] }, "kind": "wire", "iban": "DO28" }"#
+    );
+}
+
+/// A nested type's functions and its holder's operators are on two values, so neither hides the
+/// other.
+#[test]
+fn a_variant_named_as_an_operator_is_asked_through_nest() {
+    let (transit, movement) = (Transit::MONGO_FIELDS, Movement::MONGO_FIELDS);
+    assert_eq!(
+        shown(transit.movement().nest(movement.is_in())),
+        r#"{ "movement.kind": { "$eq": "in" } }"#
+    );
+    assert_eq!(
+        shown(
+            transit
+                .movement()
+                .nest(movement.r#in().dock().eq(4_u32).unwrap())
+        ),
+        r#"{ "movement.dock": { "$eq": Int64(4) } }"#
+    );
+    assert_eq!(
+        shown(transit.movement().is_in([Movement::Out]).unwrap()),
+        r#"{ "movement": { "$in": [{ "kind": "out" }] } }"#
+    );
+}
+
+/// `is_{variant}` keeps its name, and the function of the variant that meets it is numbered.
+#[test]
+fn the_function_of_a_variant_named_as_an_ask_is_numbered() {
+    let movement = Movement::MONGO_FIELDS;
+    assert_eq!(
+        shown(movement.is_card()),
+        r#"{ "kind": { "$eq": "card" } }"#
+    );
+    assert_eq!(
+        shown(movement.is_is_card()),
+        r#"{ "kind": { "$eq": "isCard" } }"#
+    );
+    assert_eq!(
+        shown(movement.card().last4().eq("4242".to_owned()).unwrap()),
+        r#"{ "last4": { "$eq": "4242" } }"#
+    );
+    assert_eq!(
+        shown(movement.is_card2().issuer().eq("bank".to_owned()).unwrap()),
+        r#"{ "issuer": { "$eq": "bank" } }"#
     );
 }

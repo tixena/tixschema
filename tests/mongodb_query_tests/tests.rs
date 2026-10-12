@@ -24,9 +24,11 @@ use bson::{Bson, Document, doc};
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
+use self::shapes::{Audit, Delivery, Payment, Rebate, Reference, Wrapper};
+// The JSON schema of `Invoice` names the module of each model it holds, from beside the type.
+#[cfg(feature = "jsonschema")]
 use self::shapes::{
-    Audit, Delivery, Payment, Rebate, Reference, Wrapper, audit_schema, delivery_schema,
-    payment_schema, rebate_schema, reference_schema, wrapper_schema,
+    audit_schema, delivery_schema, payment_schema, rebate_schema, reference_schema, wrapper_schema,
 };
 
 /// Third level of the nested chain: `Invoice` -> `Customer` -> `Address`.
@@ -125,7 +127,7 @@ struct Order {
 
 /// A filter or an update as text: the BSON type of each number and date spelled out, in one form
 /// under both versions of the library.
-fn shown<D>(written: D) -> String
+pub fn shown<D>(written: D) -> String
 where
     D: Into<Document>,
 {
@@ -170,16 +172,17 @@ fn shown_value(value: &Bson) -> String {
 fn filters_over_every_kind_of_path_nest_under_and_or_and_nor() {
     let invoice = Invoice::MONGO_FIELDS;
     let overdue_or_large = invoice
-        .status
+        .status()
         .eq(InvoiceStatus::PastDue)
         .unwrap()
-        .or(invoice.total.gt(1000.0_f64).unwrap());
+        .or(invoice.total().gt(1000.0_f64).unwrap());
+    let few_open = Customer::MONGO_FIELDS.open_invoices().lte(3_u32).unwrap();
     let export_or_few_open = invoice
-        .tags
+        .tags()
         .contains("export".to_owned())
         .unwrap()
-        .or(invoice.customer.open_invoices.lte(3_u32).unwrap());
-    let unpaid = invoice.paid_at.exists(true).negated();
+        .or(invoice.customer().nest(few_open));
+    let unpaid = invoice.paid_at().exists(true).negated();
     assert_eq!(
         shown(overdue_or_large.and(export_or_few_open).or(unpaid)),
         r#"{ "$or": [{ "$and": [{ "$or": [{ "status": { "$eq": "past-due" } }, { "total": { "$gt": Double(1000.0) } }] }, { "$or": [{ "tags": { "$eq": "export" } }, { "customer.openInvoices": { "$lte": Int64(3) } }] }] }, { "$nor": [{ "paidAt": { "$exists": true } }] }] }"#
@@ -190,21 +193,21 @@ fn filters_over_every_kind_of_path_nest_under_and_or_and_nor() {
 fn generated_paths_write_a_filter_an_update_and_a_raw_document() {
     let invoice = Invoice::MONGO_FIELDS;
     let overdue = invoice
-        .status
+        .status()
         .eq(InvoiceStatus::PastDue)
         .unwrap()
-        .or(invoice.total.gt(1000.0_f64).unwrap())
-        .and(invoice.tags.contains("export".to_owned()).unwrap())
-        .or(invoice.paid_at.exists(true).negated());
+        .or(invoice.total().gt(1000.0_f64).unwrap())
+        .and(invoice.tags().contains("export".to_owned()).unwrap())
+        .or(invoice.paid_at().exists(true).negated());
     assert_eq!(
         shown(overdue),
         r#"{ "$or": [{ "$and": [{ "$or": [{ "status": { "$eq": "past-due" } }, { "total": { "$gt": Double(1000.0) } }] }, { "tags": { "$eq": "export" } }] }, { "$nor": [{ "paidAt": { "$exists": true } }] }] }"#
     );
     let settled = invoice
-        .status
+        .status()
         .set(InvoiceStatus::Paid)
         .unwrap()
-        .and(invoice.paid_at.unset());
+        .and(invoice.paid_at().unset());
     assert_eq!(
         shown(settled),
         r#"{ "$set": { "status": "paid" }, "$unset": { "paidAt": "" } }"#
@@ -219,22 +222,20 @@ fn a_path_built_through_the_constructors_writes_what_the_generated_one_does() {
     use invoice_schema::{Field, ListField, MongoPath, OptionalField};
 
     let invoice = Invoice::MONGO_FIELDS;
-    let total: Field<Invoice, f64> = Field::plain(MongoPath::under(MongoPath::ROOT, "total"));
-    let tags: ListField<Invoice, String> =
-        ListField::plain(MongoPath::under(MongoPath::ROOT, "tags"));
-    let paid_at: OptionalField<Invoice, String> =
-        OptionalField::plain(MongoPath::under(MongoPath::ROOT, "paidAt"));
+    let total: Field<Invoice, f64> = Field::plain(MongoPath::at("total"));
+    let tags: ListField<Invoice, String> = ListField::plain(MongoPath::at("tags"));
+    let paid_at: OptionalField<Invoice, String> = OptionalField::plain(MongoPath::at("paidAt"));
     assert_eq!(
         shown(total.gt(1000.0_f64).unwrap()),
-        shown(invoice.total.gt(1000.0_f64).unwrap())
+        shown(invoice.total().gt(1000.0_f64).unwrap())
     );
     assert_eq!(
         shown(tags.contains("export".to_owned()).unwrap()),
-        shown(invoice.tags.contains("export".to_owned()).unwrap())
+        shown(invoice.tags().contains("export".to_owned()).unwrap())
     );
     assert_eq!(
         shown(paid_at.exists(true)),
-        shown(invoice.paid_at.exists(true))
+        shown(invoice.paid_at().exists(true))
     );
 }
 
@@ -242,7 +243,7 @@ fn a_path_built_through_the_constructors_writes_what_the_generated_one_does() {
 #[test]
 fn a_key_of_a_map_is_named_by_a_document_written_by_hand() {
     let by_cost_center = Invoice::MONGO_FIELDS
-        .number
+        .number()
         .eq("INV-0042".to_owned())
         .unwrap()
         .and(invoice_schema::Filter::<Invoice>::raw(
@@ -255,20 +256,38 @@ fn a_key_of_a_map_is_named_by_a_document_written_by_hand() {
 }
 
 #[test]
-fn a_path_is_the_keys_leading_to_it_joined_by_dots() {
+fn a_path_is_one_key_of_the_type_that_declares_it() {
     use invoice_schema::MongoPath;
 
-    assert_eq!(MongoPath::at(MongoPath::ROOT).key(), "");
-    let customer = MongoPath::under(MongoPath::ROOT, "customer");
-    assert_eq!(customer.key(), "customer");
-    assert_eq!(MongoPath::at(customer.segments).key(), "customer");
-    let city = MongoPath::under(
-        MongoPath::under(customer.segments, "address").segments,
-        "city",
-    );
-    assert_eq!(city.key(), "customer.address.city");
+    assert_eq!(MongoPath::ROOT.key(), "");
+    assert_eq!(MongoPath::at("customer").key(), "customer");
+    assert_eq!(MongoPath::at("list.0").key(), "list.0");
+}
+
+/// A path is a value a `const` item holds, whatever the type holds below it.
+#[test]
+fn a_path_of_a_type_is_held_in_a_const_item() {
+    const CUSTOMER: invoice_schema::Model<Invoice, Customer> = Invoice::MONGO_FIELDS.customer();
+    const ITEMS: invoice_schema::ModelList<Invoice, LineItem> = Invoice::MONGO_FIELDS.items();
+    const TOTAL: invoice_schema::Field<Invoice, f64> = Invoice::MONGO_FIELDS.total();
+
     assert_eq!(
-        Invoice::MONGO_FIELDS.total.segments(),
-        MongoPath::under(MongoPath::ROOT, "total").segments
+        shown(TOTAL.gt(1000.0_f64).unwrap()),
+        r#"{ "total": { "$gt": Double(1000.0) } }"#
+    );
+    assert_eq!(
+        shown(
+            CUSTOMER.nest(
+                Customer::MONGO_FIELDS
+                    .name()
+                    .eq("Acme Ltd".to_owned())
+                    .unwrap()
+            )
+        ),
+        r#"{ "customer.name": { "$eq": "Acme Ltd" } }"#
+    );
+    assert_eq!(
+        shown(ITEMS.size(2)),
+        r#"{ "items": { "$size": Int64(2) } }"#
     );
 }

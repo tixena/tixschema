@@ -254,11 +254,31 @@ fn own_type_parameters(type_impl: proc_macro2::TokenStream) -> Vec<String> {
     named
 }
 
-/// What the typed paths add to every type, in the order written: under `mongodb`, the const that
-/// holds them and the function that builds them, and nothing in a build without it.
+/// The parameter the struct of paths in `module_items` carries the row type as: its first.
+#[cfg(feature = "mongodb")]
+fn row_parameter(module_items: proc_macro2::TokenStream) -> String {
+    let declared: syn::File = syn::parse2(module_items).unwrap();
+    declared
+        .items
+        .iter()
+        .find_map(|item| {
+            if let syn::Item::Struct(paths) = item
+                && paths.ident == "MongoFields"
+            {
+                paths.generics.type_params().next()
+            } else {
+                None
+            }
+        })
+        .map(|row| row.ident.to_string())
+        .unwrap_or_default()
+}
+
+/// What the typed paths add to every type: under `mongodb`, the const that holds them, and
+/// nothing in a build without it.
 fn paths_members() -> Vec<String> {
     if cfg!(feature = "mongodb") {
-        vec!["MONGO_FIELDS".to_owned(), "mongo_fields_under".to_owned()]
+        vec!["MONGO_FIELDS".to_owned()]
     } else {
         Vec::new()
     }
@@ -533,7 +553,7 @@ fn every_added_method_but_the_entry_point_carries_the_flags_name() {
     }
     // The typed paths carry the name of the feature that adds them.
     if cfg!(feature = "mongodb") {
-        named.extend(["MONGO_FIELDS", "mongo_fields_under"]);
+        named.push("MONGO_FIELDS");
     }
     assert_eq!(methods, named);
 }
@@ -886,6 +906,12 @@ fn the_bson_items_are_emitted_beside_the_json_ones() {
             "bson_bound",
             #[cfg(feature = "mongodb")]
             "write_plain",
+            #[cfg(feature = "mongodb")]
+            "nested_key",
+            #[cfg(feature = "mongodb")]
+            "nested_filter",
+            #[cfg(feature = "mongodb")]
+            "nested_update",
         ]
     );
 }
@@ -896,6 +922,8 @@ fn the_query_types_are_declared_under_mongodb_alone_and_none_is_exhaustive() {
         "MongoPath",
         "Filter",
         "Update",
+        "AsFilter",
+        "AsUpdate",
         "Field",
         "OptionalField",
         "Element",
@@ -903,6 +931,7 @@ fn the_query_types_are_declared_under_mongodb_alone_and_none_is_exhaustive() {
         "Model",
         "OptionalModel",
         "ModelList",
+        "Nested",
     ];
     let added: syn::File = syn::parse2(module_items()).unwrap();
     let declared: Vec<(String, bool)> = added
@@ -945,7 +974,7 @@ fn the_query_types_are_declared_under_mongodb_alone_and_none_is_exhaustive() {
 fn each_query_type_has_the_operators_of_its_kind() {
     let added: syn::File = syn::parse2(module_items()).unwrap();
     for (named, operators) in [
-        ("MongoPath", &["under", "at", "key"][..]),
+        ("MongoPath", &["at", "key"][..]),
         ("Filter", &["raw", "and", "or", "negated", "into_document"]),
         ("Update", &["raw", "and", "into_document"]),
         (
@@ -953,7 +982,6 @@ fn each_query_type_has_the_operators_of_its_kind() {
             &[
                 "plain",
                 "hooked",
-                "segments",
                 "eq",
                 "ne",
                 "gt",
@@ -964,6 +992,7 @@ fn each_query_type_has_the_operators_of_its_kind() {
                 "not_in",
                 "set",
                 "set_on_insert",
+                "nest",
                 "regex",
             ],
         ),
@@ -984,6 +1013,7 @@ fn each_query_type_has_the_operators_of_its_kind() {
                 "pull",
                 "set",
                 "set_on_insert",
+                "nest",
             ],
         ),
         (
@@ -996,13 +1026,15 @@ fn each_query_type_has_the_operators_of_its_kind() {
                 "not_in",
                 "set",
                 "set_on_insert",
+                "nest",
             ],
         ),
-        ("OptionalModel", &["plain", "exists", "unset", "set"]),
+        ("OptionalModel", &["plain", "exists", "unset"]),
         (
             "ModelList",
-            &["plain", "elem_match", "size", "push", "pull", "set"],
+            &["plain", "elem_match", "size", "push", "pull", "set", "nest"],
         ),
+        ("Nested", &["at", "nest"]),
     ] {
         let public: Vec<String> = query_methods(&added)
             .into_iter()
@@ -1071,7 +1103,16 @@ fn a_filter_and_an_update_each_carry_a_marker_of_their_own() {
     ] {
         assert!(packed.contains(carried), "missing `{carried}`");
     }
-    assert_eq!(packed.matches("AsRef<").count(), 8);
+    // `nest` takes a filter and an update by the same two markers, over the nested model.
+    for taken in [
+        "impl<Root,N,E>Nests<Root,N,AsFilter>forEwhereN:?::core::marker::Sized,\
+         E:::core::convert::Into<bson::Document>+::core::convert::AsRef<::core::marker::PhantomData<N>>,",
+        "impl<Root,N,E>Nests<Root,N,AsUpdate>forEwhere\
+         E:::core::convert::Into<bson::Document>+::core::convert::AsRef<::core::marker::PhantomData<fn(N)->N>>,",
+    ] {
+        assert!(packed.contains(taken), "missing `{taken}`");
+    }
+    assert_eq!(packed.matches("AsRef<").count(), 10);
     let added: syn::File = syn::parse2(emitted).unwrap();
     let asked: Vec<(String, String)> = query_methods(&added)
         .into_iter()
@@ -1091,11 +1132,24 @@ fn a_filter_and_an_update_each_carry_a_marker_of_their_own() {
         ("Filter::and", "Root"),
         ("Filter::or", "Root"),
         ("Update::and", "fn (Root) -> Root"),
-        ("ModelList::elem_match", "M"),
-        ("ModelList::pull", "M"),
+        ("ModelList::elem_match", "N"),
+        ("ModelList::pull", "N"),
     ]
     .map(|(function, marker)| (function.to_owned(), marker.to_owned()));
     assert_eq!(asked, expected);
+    let nesting: Vec<String> = query_methods(&added)
+        .into_iter()
+        .filter(|(_on, method)| method.sig.ident == "nest")
+        .map(|(on, method)| {
+            let bounds = method.sig.generics.where_clause.to_token_stream();
+            format!("{on}: {bounds}")
+        })
+        .collect();
+    assert_eq!(
+        nesting,
+        ["Field", "ListField", "Model", "ModelList", "Nested"]
+            .map(|on| format!("{on}: where E : Nests < Root , N , Kind > ,"))
+    );
 }
 
 #[cfg(feature = "mongodb")]
@@ -2323,17 +2377,11 @@ fn a_methods_own_type_parameter_is_never_one_the_type_declares() {
 #[test]
 fn an_operations_filter_and_update_are_never_names_the_item_writes() {
     for (source, named) in [
-        (
-            "pub struct Holder { pub unit: U }",
-            ["F", "I", "Root", "U2"],
-        ),
-        (
-            "pub struct U { pub name: String }",
-            ["F", "I", "Root", "U2"],
-        ),
+        ("pub struct Holder { pub unit: U }", ["F", "I", "U2"]),
+        ("pub struct U { pub name: String }", ["F", "I", "U2"]),
         (
             "pub struct Holder { pub frame: F, pub unit: U, pub other: U2 }",
-            ["F2", "I", "Root", "U3"],
+            ["F2", "I", "U3"],
         ),
     ] {
         let item: syn::ItemStruct = syn::parse_str(source).unwrap();
@@ -2343,7 +2391,7 @@ fn an_operations_filter_and_update_are_never_names_the_item_writes() {
             named,
             "for {source}"
         );
-        let [filter, _issue, _root, update] = named;
+        let [filter, _issue, update] = named;
         let emitted = type_impl.to_string();
         for written in [
             format!("pub async fn update_one < {filter} , {update} > ("),
@@ -2360,16 +2408,16 @@ fn an_operations_filter_and_update_are_never_names_the_item_writes() {
     let carried: syn::ItemEnum = syn::parse_str("pub enum Carried { Held(U), Unit }").unwrap();
     assert_eq!(
         own_type_parameters(enum_recovering_decode(&carried).type_impl),
-        ["F", "I", "Root", "U2"]
+        ["F", "I", "U2"]
     );
 }
 
 #[test]
 fn a_methods_own_type_parameter_is_never_a_name_the_item_writes() {
-    let expected = |named: [&str; 2], root: &str| {
+    let expected = |named: [&str; 2]| {
         let mut every: Vec<String> = named.map(str::to_owned).to_vec();
         if cfg!(feature = "mongodb") {
-            every.extend([root.to_owned(), "U".to_owned()]);
+            every.push("U".to_owned());
         }
         every
     };
@@ -2410,9 +2458,17 @@ fn a_methods_own_type_parameter_is_never_a_name_the_item_writes() {
         let item: syn::ItemStruct = syn::parse_str(source).unwrap();
         assert_eq!(
             own_type_parameters(struct_recovering_decode(&item).type_impl),
-            expected(named, root),
+            expected(named),
             "for {source}"
         );
+        #[cfg(feature = "mongodb")]
+        {
+            let names = written_names(item.to_token_stream());
+            let paths = super::fields::struct_paths(&item, &names).module_items;
+            assert_eq!(row_parameter(paths), root, "for {source}");
+        }
+        #[cfg(not(feature = "mongodb"))]
+        assert!(root.starts_with("Root"), "for {source}");
     }
     for (source, named, root) in [
         (EXTERNAL, ["F", "I"], "Root"),
@@ -2436,9 +2492,17 @@ fn a_methods_own_type_parameter_is_never_a_name_the_item_writes() {
         let item: syn::ItemEnum = syn::parse_str(source).unwrap();
         assert_eq!(
             own_type_parameters(enum_recovering_decode(&item).type_impl),
-            expected(named, root),
+            expected(named),
             "for {source}"
         );
+        #[cfg(feature = "mongodb")]
+        {
+            let names = written_names(item.to_token_stream());
+            let paths = super::fields::enum_paths(&item, &names).module_items;
+            assert_eq!(row_parameter(paths), root, "for {source}");
+        }
+        #[cfg(not(feature = "mongodb"))]
+        assert!(root.starts_with("Root"), "for {source}");
     }
     let walk = issues_walk_of("pub struct Holder(pub String, pub I);");
     for written in [
@@ -4304,8 +4368,9 @@ fn a_field_typed_with_an_alias_of_a_model_type_is_left_as_it_is_written() {
 }
 
 /// What the typed paths add for the struct `source` declares, with every space taken out: what
-/// goes into its module, then what goes into its `impl`. Each name of `seen` is a struct or an
-/// enum `#[model_schema]` was written on above it, as the struct's own name is by then.
+/// goes into its module, then what goes into its `impl` and beside it. Each name of `seen` is a
+/// struct or an enum `#[model_schema]` was written on above it, as the struct's own name is by
+/// then.
 #[cfg(feature = "mongodb")]
 fn typed_paths_of(source: &str, seen: &[&str]) -> (String, String) {
     let item: syn::ItemStruct = syn::parse_str(source).unwrap();
@@ -4314,9 +4379,13 @@ fn typed_paths_of(source: &str, seen: &[&str]) -> (String, String) {
         record_declared(name, Declared::Model);
     }
     let paths = super::fields::struct_paths(&item, &written_names(item.to_token_stream()));
+    let (in_the_impl, beside) = (paths.type_items, paths.beside);
     (
         paths.module_items.to_string().split_whitespace().collect(),
-        paths.type_items.to_string().split_whitespace().collect(),
+        quote::quote!(#in_the_impl #beside)
+            .to_string()
+            .split_whitespace()
+            .collect(),
     )
 }
 
@@ -4329,67 +4398,122 @@ fn typed_enum_paths_of(source: &str, seen: &[&str]) -> (String, String) {
         record_declared(name, Declared::Model);
     }
     let paths = super::fields::enum_paths(&item, &written_names(item.to_token_stream()));
+    let (in_the_impl, beside) = (paths.type_items, paths.beside);
     (
         paths.module_items.to_string().split_whitespace().collect(),
-        paths.type_items.to_string().split_whitespace().collect(),
+        quote::quote!(#in_the_impl #beside)
+            .to_string()
+            .split_whitespace()
+            .collect(),
+    )
+}
+
+/// The function `named` of a struct of paths in the schema module, answering `kind` at `key`.
+#[cfg(feature = "mongodb")]
+fn path_function(named: &str, kind: &str, of: &str, key: &str) -> String {
+    format!(
+        "pubconstfn{named}(&self)->self::{kind}<Root,{of}>{{self::{kind}::plain(self::MongoPath::at(\"{key}\"))}}"
     )
 }
 
 #[cfg(feature = "mongodb")]
 #[test]
-fn a_field_is_the_member_of_the_kind_serde_writes_it_as() {
-    let nested = "super::inner_schema::MongoFields<Root>";
-    for (field, member) in [
-        ("String", "self::Field<Root,String>".to_owned()),
-        ("Option<u8>", "self::OptionalField<Root,u8>".to_owned()),
-        ("Vec<u8>", "self::ListField<Root,u8>".to_owned()),
-        ("[u8; 4]", "self::ListField<Root,u8>".to_owned()),
-        ("HashSet<u8>", "self::ListField<Root,u8>".to_owned()),
-        ("Inner", format!("self::Model<Root,super::Inner,{nested}>")),
-        ("Option<Inner>", format!("self::OptionalModel<Root,super::Inner,{nested}>")),
-        ("Vec<Inner>", format!("self::ModelList<Root,super::Inner,{nested}>")),
-        ("Box<Inner>", format!("self::Model<Root,Box<super::Inner>,{nested}>")),
-        (
-            "Option<Box<Inner>>",
-            format!("self::OptionalModel<Root,Box<super::Inner>,{nested}>"),
-        ),
+fn a_field_is_the_function_that_answers_the_kind_serde_writes_it_as() {
+    for (field, answered) in [
+        ("String", "self::Field<Root,String>"),
+        ("Option<u8>", "self::OptionalField<Root,u8>"),
+        ("Vec<u8>", "self::ListField<Root,u8>"),
+        ("[u8; 4]", "self::ListField<Root,u8>"),
+        ("HashSet<u8>", "self::ListField<Root,u8>"),
+        ("Inner", "self::Model<Root,super::Inner>"),
+        ("Option<Inner>", "self::OptionalModel<Root,super::Inner>"),
+        ("Vec<Inner>", "self::ModelList<Root,super::Inner>"),
         (
             "Wrapper<Inner>",
-            "self::Model<Root,super::Wrapper<super::Inner>,super::wrapper_schema::MongoFields<Root,super::Inner>>"
-                .to_owned(),
+            "self::Model<Root,super::Wrapper<super::Inner>>",
         ),
-        ("Option<Vec<u8>>", "self::OptionalField<Root,Vec<u8>>".to_owned()),
-        ("Vec<Vec<Inner>>", "self::ListField<Root,Vec<super::Inner>>".to_owned()),
-        ("(u8, Inner)", "self::Field<Root,(u8,super::Inner)>".to_owned()),
+        ("Option<Vec<u8>>", "self::OptionalField<Root,Vec<u8>>"),
+        ("Vec<Vec<Inner>>", "self::ListField<Root,Vec<super::Inner>>"),
+        ("(u8, Inner)", "self::Field<Root,(u8,super::Inner)>"),
     ] {
         let source = format!("pub struct Row {{ pub a: {field} }}");
         let (module, _on_the_type) = typed_paths_of(&source, &["Inner", "Wrapper"]);
         assert!(
-            module.contains(&format!("{{puba:{member}}}")),
+            module.contains(&format!("pubconstfna(&self)->{answered}{{")),
             "for {field}, got: {module}"
         );
     }
-    let (_module, on_the_type) = typed_paths_of("pub struct Row { pub a: Inner }", &["Inner"]);
+    let (module, on_the_type) = typed_paths_of("pub struct Row { pub a: Inner }", &["Inner"]);
+    assert!(
+        module.contains(&path_function("a", "Model", "super::Inner", "a")),
+        "got: {module}"
+    );
+    // The struct holds a marker and no path, so the type's const builds it from nothing, and
+    // neither names anything another type's expansion wrote.
+    assert!(
+        module.contains("pubrow:::core::marker::PhantomData<fn()->(Root,)>,}"),
+        "got: {module}"
+    );
     assert!(
         on_the_type.contains(
-            "row_schema::MongoFields{a:row_schema::Model::plain(row_schema::MongoPath::under(prefix,\"a\"),\
-             <Inner>::mongo_fields_under(row_schema::MongoPath::under(prefix,\"a\").segments))}"
+            "pubconstMONGO_FIELDS:row_schema::MongoFields<Self>=row_schema::MongoFields{row:::core::marker::PhantomData};"
         ),
         "got: {on_the_type}"
     );
+    let emitted = format!("{module}{on_the_type}");
+    for absent in ["inner_schema", "prefix"] {
+        assert!(!emitted.contains(absent), "found `{absent}` in: {emitted}");
+    }
+}
+
+/// A wrapper serde writes as the value it holds is the value an operator takes, and what it
+/// holds is the model `nest` reaches.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_wrapped_value_names_the_model_nest_reaches_after_the_value_it_takes() {
+    for (field, answered) in [
+        (
+            "Box<Inner>",
+            "self::Model<Root,Box<super::Inner>,super::Inner>",
+        ),
+        (
+            "Option<Box<Inner>>",
+            "self::OptionalModel<Root,Box<super::Inner>,super::Inner>",
+        ),
+        (
+            "Vec<Arc<Inner>>",
+            "self::ModelList<Root,super::Arc<super::Inner>,super::Inner>",
+        ),
+        (
+            "Option<Box<Row>>",
+            "self::OptionalField<Root,Box<super::Row>,super::Row>",
+        ),
+        (
+            "Box<Unseen>",
+            "self::Field<Root,Box<super::Unseen>,super::Unseen>",
+        ),
+        ("Box<str>", "self::Field<Root,Box<str>,str>"),
+        (
+            "Cow<'static, str>",
+            "self::Field<Root,super::Cow<'static,str>,str>",
+        ),
+    ] {
+        let source = format!("pub struct Row {{ pub a: {field} }}");
+        let (module, _on_the_type) = typed_paths_of(&source, &["Inner"]);
+        assert!(
+            module.contains(&format!("pubconstfna(&self)->{answered}{{")),
+            "for {field}, got: {module}"
+        );
+    }
 }
 
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_type_not_seen_above_is_one_whole_value_named_through_super() {
-    for (field, member) in [
+    for (field, answered) in [
         ("Unseen", "self::Field<Root,super::Unseen>"),
         ("Option<Unseen>", "self::OptionalField<Root,super::Unseen>"),
         ("Vec<Self>", "self::ListField<Root,super::Row>"),
-        (
-            "Option<Box<Row>>",
-            "self::OptionalField<Root,Box<super::Row>>",
-        ),
         ("other::Thing", "self::Field<Root,other::Thing>"),
         (
             "self::other::Thing",
@@ -4405,27 +4529,20 @@ fn a_type_not_seen_above_is_one_whole_value_named_through_super() {
             "DateTime<Utc>",
             "self::Field<Root,super::DateTime<super::Utc>>",
         ),
-        (
-            "Cow<'static, str>",
-            "self::Field<Root,super::Cow<'static,str>>",
-        ),
     ] {
         let source = format!("pub struct Row {{ pub a: {field} }}");
-        let (module, on_the_type) = typed_paths_of(&source, &[]);
+        let (module, _on_the_type) = typed_paths_of(&source, &[]);
         assert!(
-            module.contains(&format!("{{puba:{member}}}")),
+            module.contains(&format!("pubconstfna(&self)->{answered}{{")),
             "for {field}, got: {module}"
         );
-        assert!(
-            !on_the_type.contains(">::mongo_fields_under("),
-            "for {field}, got: {on_the_type}"
-        );
+        assert!(!module.contains("Model"), "for {field}, got: {module}");
     }
 }
 
 #[cfg(feature = "mongodb")]
 #[test]
-fn a_key_serde_never_writes_and_a_map_have_no_member() {
+fn a_key_serde_never_writes_and_a_map_have_no_function() {
     for field in [
         "#[serde(skip)] pub a: u8",
         "#[serde(skip_serializing)] pub a: u8",
@@ -4437,58 +4554,80 @@ fn a_key_serde_never_writes_and_a_map_have_no_member() {
         "#[serde(flatten, with = \"hook\")] pub a: Inner",
     ] {
         let source = format!("pub struct Row {{ {field}, pub b: u8 }}");
-        let (module, on_the_type) = typed_paths_of(&source, &["Inner"]);
+        let (module, _on_the_type) = typed_paths_of(&source, &["Inner"]);
         assert!(
-            module.contains("pubstructMongoFields<Root>{pubb:self::Field<Root,u8>}"),
+            module.contains(&path_function("b", "Field", "u8", "b")),
             "for {field}, got: {module}"
         );
-        assert!(
-            on_the_type.contains("row_schema::MongoFields{b:row_schema::Field::plain("),
-            "for {field}, got: {on_the_type}"
+        assert_eq!(
+            module.matches("pubconstfn").count(),
+            1,
+            "for {field}, got: {module}"
         );
     }
 }
 
-/// A flagged type is asked for its own paths only where its walker is called as it stands.
+/// A flagged type is a model only where its walker is called as it stands.
 #[cfg(feature = "mongodb")]
 #[test]
-fn a_hooked_field_and_one_serde_never_reads_back_are_one_whole_value() {
-    for (field, member, built) in [
+fn a_field_serde_never_reads_back_as_it_stands_is_one_whole_value() {
+    for (field, answered, built) in [
         (
             "#[serde(skip_deserializing)] pub a: Inner",
             "self::Field<Root,super::Inner>",
-            "row_schema::Field::plain(",
+            "self::Field::plain(self::MongoPath::at(\"a\"))",
         ),
         (
             "#[serde(deserialize_with = \"read\")] pub a: Option<Inner>",
             "self::OptionalField<Root,super::Inner>",
-            "row_schema::OptionalField::plain(",
-        ),
-        (
-            "#[serde(with = \"hook\")] pub a: Inner",
-            "self::Field<Root,super::Inner>",
-            "row_schema::Field::hooked(row_schema::MongoPath::under(prefix,\"a\"),Self::mongo_write_a)",
-        ),
-        (
-            "#[serde(serialize_with = \"shown\")] pub a: Vec<u8>",
-            "self::Field<Root,Vec<u8>>",
-            "row_schema::Field::hooked(row_schema::MongoPath::under(prefix,\"a\"),Self::mongo_write_a)",
-        ),
-        (
-            "#[serde(with = \"hook\")] pub a: Option<u8>",
-            "self::OptionalField<Root,u8>",
-            "row_schema::OptionalField::hooked(row_schema::MongoPath::under(prefix,\"a\"),Self::mongo_write_a)",
+            "self::OptionalField::plain(self::MongoPath::at(\"a\"))",
         ),
     ] {
         let source = format!("pub struct Row {{ {field} }}");
-        let (module, on_the_type) = typed_paths_of(&source, &["Inner"]);
+        let (module, _on_the_type) = typed_paths_of(&source, &["Inner"]);
         assert!(
-            module.contains(&format!("{{puba:{member}}}")),
+            module.contains(&format!("pubconstfna(&self)->{answered}{{{built}}}")),
             "for {field}, got: {module}"
         );
+    }
+}
+
+/// A hook is called by a function of the type's own. The function of a path that writes through
+/// one is in an `impl` beside the type, which names the type where its schema module could not.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_hooked_path_is_a_function_written_beside_the_type() {
+    for (field, answered, kind) in [
+        (
+            "#[serde(with = \"hook\")] pub a: Inner",
+            "row_schema::Field<Root,Inner>",
+            "Field",
+        ),
+        (
+            "#[serde(serialize_with = \"shown\")] pub a: Vec<u8>",
+            "row_schema::Field<Root,Vec<u8>>",
+            "Field",
+        ),
+        (
+            "#[serde(with = \"hook\")] pub a: Option<u8>",
+            "row_schema::OptionalField<Root,u8>",
+            "OptionalField",
+        ),
+    ] {
+        let source = format!("pub struct Row {{ {field}, pub b: u8 }}");
+        let (module, on_the_type) = typed_paths_of(&source, &["Inner"]);
+        let written = format!(
+            "pubconstfna(&self)->{answered}\
+             {{row_schema::{kind}::hooked(row_schema::MongoPath::at(\"a\"),<Row>::mongo_write_a)}}"
+        );
         assert!(
-            on_the_type.contains(built),
-            "for {field}, got: {on_the_type}"
+            on_the_type.contains("impl<Root>row_schema::MongoFields<Root>{")
+                && on_the_type.contains(&written),
+            "for {field}, missing `{written}` in: {on_the_type}"
+        );
+        assert!(
+            module.contains(&path_function("b", "Field", "u8", "b")) && !module.contains("fna("),
+            "for {field}, got: {module}"
         );
     }
     let (_module, bare) = typed_paths_of(
@@ -4513,36 +4652,69 @@ fn a_hooked_field_and_one_serde_never_reads_back_are_one_whole_value() {
         ),
         "got: {optional}"
     );
+    // The slot of a tuple is built in the type's own `impl`, and what a variant holds beside it.
+    let (tuple, on_the_tuple) = typed_paths_of(
+        "pub struct Row<T>(#[serde(with = \"hook\")] pub u8, pub T);",
+        &[],
+    );
+    assert!(!tuple.contains("mongo_write_0"), "got: {tuple}");
+    assert!(
+        on_the_tuple.contains(
+            "row_schema::Field::hooked(row_schema::MongoPath::at(\"0\"),<Row<T>>::mongo_write_0)"
+        ),
+        "got: {on_the_tuple}"
+    );
+    let (generic, on_the_generic) = typed_enum_paths_of(
+        "pub enum Row<T> { Kept { #[serde(with = \"hook\")] at: u8, by: T }, \
+         Pair(#[serde(with = \"hook\")] u8, T) }",
+        &[],
+    );
+    for written in [
+        "impl<Root,T:::serde::Serialize>row_schema::mongo_members::Kept<Root,T>whereRow<T>:::serde::Serialize{",
+        "pubconstfnat(&self)->row_schema::Field<Root,u8>{row_schema::Field::hooked(\
+         row_schema::MongoPath::at(\"Kept.at\"),<Row<T>>::mongo_write_kept_at)}",
+        "impl<Root,T:::serde::Serialize>row_schema::MongoFields<Root,T>whereRow<T>:::serde::Serialize{",
+        "pubconstfnpair(&self)->row_schema::mongo_members::Pair<Root,T>{row_schema::mongo_members::Pair(\
+         row_schema::Field::hooked(row_schema::MongoPath::at(\"Pair.0\"),<Row<T>>::mongo_write_pair_0),\
+         row_schema::Field::plain(row_schema::MongoPath::at(\"Pair.1\")))}",
+    ] {
+        assert!(
+            on_the_generic.contains(written),
+            "missing `{written}` in: {on_the_generic}"
+        );
+    }
+    // What calls no hook stays in the schema module.
+    for written in [
+        "pubconstfnkept(&self)->self::mongo_members::Kept<Root,T>{",
+        "pubconstfnby(&self)->super::Field<Root,T>{",
+    ] {
+        assert!(
+            generic.contains(written),
+            "missing `{written}` in: {generic}"
+        );
+    }
+    assert!(!generic.contains("mongo_write"), "got: {generic}");
 }
 
 #[cfg(feature = "mongodb")]
 #[test]
-fn a_member_is_named_after_its_field_and_writes_the_key_serde_does() {
-    let (module, on_the_type) = typed_paths_of(
+fn a_function_is_named_after_its_field_and_writes_the_key_serde_does() {
+    let (module, _on_the_type) = typed_paths_of(
         "#[serde(rename_all = \"camelCase\")] pub struct Row { #[serde(rename = \"_id\")] pub id: u8, \
          pub paid_at: u8, pub r#type: u8, #[serde(flatten)] pub audit: Inner, \
-         #[serde(flatten)] pub extra: Option<Inner> }",
+         #[serde(flatten)] pub extra: Option<Box<Inner>> }",
         &["Inner"],
     );
-    assert!(
-        module.contains(
-            "{pubid:self::Field<Root,u8>,pubpaid_at:self::Field<Root,u8>,pubr#type:self::Field<Root,u8>,\
-             pubaudit:super::inner_schema::MongoFields<Root>,\
-             pubextra:super::inner_schema::MongoFields<Root>}"
-        ),
-        "got: {module}"
-    );
-    for built in [
-        "id:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"_id\"))",
-        "paid_at:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"paidAt\"))",
-        "r#type:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"type\"))",
-        "audit:<Inner>::mongo_fields_under(prefix)",
-        "extra:<Inner>::mongo_fields_under(prefix)",
+    for written in [
+        path_function("id", "Field", "u8", "_id"),
+        path_function("paid_at", "Field", "u8", "paidAt"),
+        path_function("r#type", "Field", "u8", "type"),
+        "pubconstfnaudit(&self)->self::Nested<Root,super::Inner>{self::Nested::at(self::MongoPath::ROOT)}"
+            .to_owned(),
+        "pubconstfnextra(&self)->self::Nested<Root,super::Inner>{self::Nested::at(self::MongoPath::ROOT)}"
+            .to_owned(),
     ] {
-        assert!(
-            on_the_type.contains(built),
-            "missing `{built}` in: {on_the_type}"
-        );
+        assert!(module.contains(&written), "missing `{written}` in: {module}");
     }
 }
 
@@ -4609,20 +4781,14 @@ fn a_type_serde_writes_as_one_value_is_the_path_of_that_value() {
             text,
             "for {source}, got: {module}"
         );
-        for written in [
-            format!(
-                "pubconstMONGO_FIELDS:row_schema::MongoFields<Self{arguments},row_schema::Field<Self,Self>>="
-            ),
-            format!(
-                "->row_schema::MongoFields<Root{arguments},row_schema::Field<Root,Self>>\
-                 {{row_schema::MongoFields::built(row_schema::Field::plain(row_schema::MongoPath::at(prefix)))}}"
-            ),
-        ] {
-            assert!(
-                on_the_type.contains(&written),
-                "for {source}, missing `{written}` in: {on_the_type}"
-            );
-        }
+        let written = format!(
+            "pubconstMONGO_FIELDS:row_schema::MongoFields<Self{arguments},row_schema::Field<Self,Self>>=\
+             row_schema::MongoFields::built(row_schema::Field::plain(row_schema::MongoPath::ROOT));"
+        );
+        assert!(
+            on_the_type.contains(&written),
+            "for {source}, missing `{written}` in: {on_the_type}"
+        );
     }
     let (brand, _brand) = typed_paths_of("#[serde(transparent)] pub struct Row(pub String);", &[]);
     assert!(
@@ -4653,68 +4819,55 @@ fn a_type_serde_writes_as_one_value_is_the_path_of_that_value() {
 
 #[cfg(feature = "mongodb")]
 #[test]
-fn a_type_written_as_one_value_is_held_with_its_path_written_out() {
+fn a_type_written_as_one_value_is_a_plain_value_where_another_type_holds_it() {
     record_declared("Brand", Declared::OneValue);
     record_declared("Sleeve", Declared::OneValue);
-    let own =
-        "super::brand_schema::MongoFields<Root,super::brand_schema::Field<Root,super::Brand>>";
-    for (field, member) in [
-        ("Brand", format!("self::Model<Root,super::Brand,{own}>")),
-        (
-            "Option<Brand>",
-            format!("self::OptionalModel<Root,super::Brand,{own}>"),
-        ),
+    for (field, answered) in [
+        ("Brand", "self::Field<Root,super::Brand>"),
+        ("Option<Brand>", "self::OptionalField<Root,super::Brand>"),
         (
             "Box<Brand>",
-            format!("self::Model<Root,Box<super::Brand>,{own}>"),
+            "self::Field<Root,Box<super::Brand>,super::Brand>",
         ),
-        ("Vec<Brand>", "self::ListField<Root,super::Brand>".to_owned()),
-        ("[Brand; 2]", "self::ListField<Root,super::Brand>".to_owned()),
+        ("Vec<Brand>", "self::ListField<Root,super::Brand>"),
+        ("[Brand; 2]", "self::ListField<Root,super::Brand>"),
         (
             "Vec<Box<Brand>>",
-            "self::ListField<Root,Box<super::Brand>>".to_owned(),
+            "self::ListField<Root,Box<super::Brand>,super::Brand>",
         ),
         (
             "Option<Vec<Brand>>",
-            "self::OptionalField<Root,Vec<super::Brand>>".to_owned(),
+            "self::OptionalField<Root,Vec<super::Brand>>",
         ),
         (
             "Sleeve<Inner>",
-            "self::Model<Root,super::Sleeve<super::Inner>,super::sleeve_schema::MongoFields<Root,super::Inner,\
-             super::sleeve_schema::Field<Root,super::Sleeve<super::Inner>>>>"
-                .to_owned(),
+            "self::Field<Root,super::Sleeve<super::Inner>>",
         ),
-        ("Vec<Inner>", "self::ModelList<Root,super::Inner,super::inner_schema::MongoFields<Root>>".to_owned()),
+        ("Vec<Inner>", "self::ModelList<Root,super::Inner>"),
     ] {
         let source = format!("pub struct Row {{ pub a: {field} }}");
         let (module, _on_the_type) = typed_paths_of(&source, &["Inner"]);
         assert!(
-            module.contains(&format!("{{puba:{member}}}")),
+            module.contains(&format!("pubconstfna(&self)->{answered}{{")),
             "for {field}, got: {module}"
         );
     }
-    let (_module, listed) = typed_paths_of("pub struct Row { pub a: Vec<Brand> }", &[]);
-    assert!(
-        listed.contains(
-            "row_schema::MongoFields{a:row_schema::ListField::plain(row_schema::MongoPath::under(prefix,\"a\"))}"
-        ),
-        "got: {listed}"
-    );
     let (flattened, _flattened) = typed_paths_of(
         "pub struct Row { #[serde(flatten)] pub a: Brand, pub b: u8 }",
         &[],
     );
     assert!(
-        flattened.contains("pubstructMongoFields<Root>{pubb:self::Field<Root,u8>}"),
+        flattened.contains(&path_function("b", "Field", "u8", "b")) && !flattened.contains("fna("),
         "got: {flattened}"
     );
-    let (_untagged, in_place) = typed_enum_paths_of(
+    let (in_place, _untagged) = typed_enum_paths_of(
         "#[serde(untagged)] pub enum Row { Held(Brand), Listed(Vec<Brand>) }",
         &[],
     );
     for built in [
-        "held:row_schema::Model::plain(row_schema::MongoPath::at(prefix),<Brand>::mongo_fields_under(prefix))",
-        "listed:row_schema::ListField::plain(row_schema::MongoPath::at(prefix))",
+        "pubconstfnheld(&self)->self::Field<Root,super::Brand>{self::Field::plain(self::MongoPath::ROOT)}",
+        "pubconstfnlisted(&self)->self::ListField<Root,super::Brand>\
+         {self::ListField::plain(self::MongoPath::ROOT)}",
     ] {
         assert!(in_place.contains(built), "missing `{built}` in: {in_place}");
     }
@@ -4723,14 +4876,14 @@ fn a_type_written_as_one_value_is_held_with_its_path_written_out() {
         &[],
     );
     let emitted = format!("{tagged}{beside}");
-    assert!(!emitted.contains("wire:"), "got: {emitted}");
+    assert!(!emitted.contains("fnwire("), "got: {emitted}");
 }
 
 /// A path is under the name serde writes.
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_renaming_written_as_a_list_counts_by_what_serde_writes() {
-    let (_module, on_the_struct) = typed_paths_of(
+    let (on_the_struct, _on_the_type) = typed_paths_of(
         "#[serde(rename_all(serialize = \"camelCase\"))] pub struct Row { \
          #[serde(rename(serialize = \"written\", deserialize = \"read\"))] pub both_ways: u8, \
          #[serde(rename(serialize = \"only_written\"))] pub write_way: u8, \
@@ -4739,27 +4892,28 @@ fn a_renaming_written_as_a_list_counts_by_what_serde_writes() {
          pub cased_by_rule: u8 }",
         &[],
     );
-    for built in [
-        "both_ways:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"written\"))",
-        "write_way:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"only_written\"))",
-        "read_way:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"readWay\"))",
-        "two_lists:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"apart\"))",
-        "cased_by_rule:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"casedByRule\"))",
+    for (named, key) in [
+        ("both_ways", "written"),
+        ("write_way", "only_written"),
+        ("read_way", "readWay"),
+        ("two_lists", "apart"),
+        ("cased_by_rule", "casedByRule"),
     ] {
+        let built = path_function(named, "Field", "u8", key);
         assert!(
-            on_the_struct.contains(built),
+            on_the_struct.contains(&built),
             "missing `{built}` in: {on_the_struct}"
         );
     }
-    let (read_rule, on_the_read_rule) = typed_paths_of(
+    let (read_rule, _on_the_read_rule) = typed_paths_of(
         "#[serde(rename_all(deserialize = \"camelCase\"))] pub struct Row { pub paid_at: u8 }",
         &[],
     );
     assert!(
-        on_the_read_rule.contains("row_schema::MongoPath::under(prefix,\"paid_at\")"),
-        "got: {read_rule}{on_the_read_rule}"
+        read_rule.contains("self::MongoPath::at(\"paid_at\")"),
+        "got: {read_rule}"
     );
-    let (tagged, on_the_tagged) = typed_enum_paths_of(
+    let (by_tag, _on_the_tagged) = typed_enum_paths_of(
         "#[serde(tag = \"kind\", rename_all(serialize = \"kebab-case\"), \
          rename_all_fields(serialize = \"camelCase\"))] pub enum Row { \
          #[serde(rename(serialize = \"byAir\", deserialize = \"air\"))] Air { flight_code: u8 }, \
@@ -4767,28 +4921,34 @@ fn a_renaming_written_as_a_list_counts_by_what_serde_writes() {
          #[serde(rename_all(serialize = \"SCREAMING_SNAKE_CASE\"))] Sea { ship_name: u8 } }",
         &[],
     );
-    let by_tag = format!("{tagged}{on_the_tagged}");
     for written in [
-        "pubfnis_air(&self)->self::Filter<Root>{self.tagged(\"byAir\")}",
-        "pubfnis_over_land(&self)->self::Filter<Root>{self.tagged(\"over-land\")}",
-        "pubfnis_sea(&self)->self::Filter<Root>{self.tagged(\"sea\")}",
-        "flight_code:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"flightCode\"))",
-        "road_name:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"roadName\"))",
-        "ship_name:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"SHIP_NAME\"))",
+        "pubfnis_air(&self)->self::Filter<Root>\
+         {self::Filter::held(\"kind\",\"$eq\",bson::Bson::String(\"byAir\".to_owned()))}",
+        "pubfnis_over_land(&self)->self::Filter<Root>\
+         {self::Filter::held(\"kind\",\"$eq\",bson::Bson::String(\"over-land\".to_owned()))}",
+        "pubfnis_sea(&self)->self::Filter<Root>\
+         {self::Filter::held(\"kind\",\"$eq\",bson::Bson::String(\"sea\".to_owned()))}",
+        "pubconstfnflight_code(&self)->super::Field<Root,u8>\
+         {super::Field::plain(super::MongoPath::at(\"flightCode\"))}",
+        "pubconstfnroad_name(&self)->super::Field<Root,u8>\
+         {super::Field::plain(super::MongoPath::at(\"roadName\"))}",
+        "pubconstfnship_name(&self)->super::Field<Root,u8>\
+         {super::Field::plain(super::MongoPath::at(\"SHIP_NAME\"))}",
     ] {
         assert!(by_tag.contains(written), "missing `{written}` in: {by_tag}");
     }
-    let (keyed, on_the_keyed) = typed_enum_paths_of(
+    let (by_key, _on_the_keyed) = typed_enum_paths_of(
         "#[serde(rename_all(serialize = \"kebab-case\"))] pub enum Row { \
          #[serde(rename(serialize = \"byHand\"))] Courier { badge: u8 }, DropBox(u8), NotSent }",
         &[],
     );
-    let by_key = format!("{keyed}{on_the_keyed}");
     for written in [
-        "pubfnis_courier(&self)->self::Filter<Root>{self.keyed(\"byHand\")}",
-        "row_schema::MongoPath::under(row_schema::MongoPath::under(prefix,\"byHand\").segments,\"badge\")",
-        "drop_box:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"drop-box\"))",
-        "bson::Bson::String(\"not-sent\".to_owned())",
+        "pubfnis_courier(&self)->self::Filter<Root>\
+         {self::Filter::held(\"byHand\",\"$exists\",bson::Bson::Boolean(true))}",
+        "super::Field::plain(super::MongoPath::at(\"byHand.badge\"))",
+        path_function("drop_box", "Field", "u8", "drop-box").as_str(),
+        "pubfnis_not_sent(&self)->self::Filter<Root>\
+         {self::Filter::held(\"\",\"$eq\",bson::Bson::String(\"not-sent\".to_owned()))}",
     ] {
         assert!(by_key.contains(written), "missing `{written}` in: {by_key}");
     }
@@ -4839,15 +4999,15 @@ fn a_tuple_structs_paths_are_by_position() {
     );
     assert!(
         module.contains(
-            "pubstructMongoFields<Root>(pubself::Field<Root,f64>,pub(),\
-             pubself::Model<Root,super::Inner,super::inner_schema::MongoFields<Root>>);"
+            "pubstructMongoFields<Root>(pubself::Field<Root,f64>,pub(),pubself::Model<Root,super::Inner>);"
         ),
         "got: {module}"
     );
     assert!(
         on_the_type.contains(
-            "row_schema::MongoFields(row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"0\")),(),\
-             row_schema::Model::plain(row_schema::MongoPath::under(prefix,\"1\"),"
+            "pubconstMONGO_FIELDS:row_schema::MongoFields<Self>=row_schema::MongoFields(\
+             row_schema::Field::plain(row_schema::MongoPath::at(\"0\")),(),\
+             row_schema::Model::plain(row_schema::MongoPath::at(\"1\")));"
         ),
         "got: {on_the_type}"
     );
@@ -4856,20 +5016,47 @@ fn a_tuple_structs_paths_are_by_position() {
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_struct_of_paths_carries_the_types_own_parameters_and_never_mixes_what_it_keeps() {
-    let (bounded, _on_the_type) = typed_paths_of(
+    let (bounded, on_the_bounded) = typed_paths_of(
         "pub struct Row<T: Clone + Shown, const N: usize, U = String> where T: Send \
          { pub a: T, pub b: [u8; N], pub c: Option<U> }",
         &[],
     );
+    for written in [
+        "pubstructMongoFields<Root,T:Clone+super::Shown,constN:usize,U=String>whereT:Send{",
+        "pubrow:::core::marker::PhantomData<fn()->(Root,T,U,)>,}",
+        // The functions are under what the type's own `impl` of its paths is under.
+        "impl<Root,T,constN:usize,U:::serde::Serialize>MongoFields<Root,T,N,U>\
+         whereT:Send+Clone+super::Shown+::serde::Serialize,super::Row<T,N,U>:::serde::Serialize{",
+        "pubconstfna(&self)->self::Field<Root,T>{",
+        "pubconstfnb(&self)->self::ListField<Root,u8>{",
+        "pubconstfnc(&self)->self::OptionalField<Root,U>{",
+    ] {
+        assert!(
+            bounded.contains(written),
+            "missing `{written}` in: {bounded}"
+        );
+    }
     assert!(
-        bounded.contains(
-            "pubstructMongoFields<Root,T:Clone+super::Shown,constN:usize,U=String>whereT:Send\
-             {puba:self::Field<Root,T>,pubb:self::ListField<Root,u8>,pubc:self::OptionalField<Root,U>}"
+        on_the_bounded.contains(
+            "pubconstMONGO_FIELDS:row_schema::MongoFields<Self,T,N,U>=\
+             row_schema::MongoFields{row:::core::marker::PhantomData};"
         ),
-        "got: {bounded}"
+        "got: {on_the_bounded}"
     );
-    let (marked, on_the_type) = typed_paths_of(
+    // A struct of functions marks every parameter, so one no member names needs nothing more.
+    let (marked, _on_the_marked) = typed_paths_of(
         "pub struct Row<T> { pub a: u8, pub b: HashMap<String, T> }",
+        &[],
+    );
+    assert!(
+        marked.contains("pubrow:::core::marker::PhantomData<fn()->(Root,T,)>,}")
+            && !marked.contains("mongo_members")
+            && !marked.contains("Deref"),
+        "got: {marked}"
+    );
+    // A tuple's slots are public, so a parameter no slot names is marked beside them.
+    let (kept, on_the_kept) = typed_paths_of(
+        "pub struct Row<T>(pub u8, #[serde(skip)] pub PhantomData<T>, pub u16);",
         &[],
     );
     for written in [
@@ -4878,33 +5065,27 @@ fn a_struct_of_paths_carries_the_types_own_parameters_and_never_mixes_what_it_ke
         "pubconstfnbuilt(members:self::mongo_members::Members<Root>,)->Self",
         "impl<Root,T>::core::ops::DerefforMongoFields<Root,T>{typeTarget=self::mongo_members::Members<Root>;",
         "pubmodmongo_members{usesuper::*;",
-        "pubstructMembers<Root>{puba:super::Field<Root,u8>}",
+        "pubstructMembers<Root>(pubsuper::Field<Root,u8>,pub(),pubsuper::Field<Root,u16>);",
     ] {
-        assert!(marked.contains(written), "missing `{written}` in: {marked}");
+        assert!(kept.contains(written), "missing `{written}` in: {kept}");
     }
     assert!(
-        on_the_type.contains(
-            "pubconstMONGO_FIELDS:row_schema::MongoFields<Self,T>=Self::mongo_fields_under(row_schema::MongoPath::ROOT);"
+        on_the_kept.contains(
+            "pubconstMONGO_FIELDS:row_schema::MongoFields<Self,T>=row_schema::MongoFields::built(\
+             row_schema::mongo_members::Members(row_schema::Field::plain(row_schema::MongoPath::at(\"0\")),(),\
+             row_schema::Field::plain(row_schema::MongoPath::at(\"1\"))));"
         ),
-        "got: {on_the_type}"
-    );
-    assert!(
-        on_the_type.contains(
-            "->row_schema::MongoFields<Root,T>{row_schema::MongoFields::built(row_schema::mongo_members::Members{a:"
-        ),
-        "got: {on_the_type}"
+        "got: {on_the_kept}"
     );
     let (empty, unread) = typed_paths_of("pub struct Row { pub b: HashMap<String, u8> }", &[]);
     assert!(
-        empty.contains(
-            "pubstructMongoFields<Root>{unused:::core::marker::PhantomData<fn()->(Root,)>,}"
-        ),
+        empty.contains("pubrow:::core::marker::PhantomData<fn()->(Root,)>,}")
+            && !empty.contains("pubconstfn"),
         "got: {empty}"
     );
     assert!(
         unread.contains(
-            "pubconstfnmongo_fields_under<Root>(_:[::core::option::Option<&'staticstr>;8],)\
-             ->row_schema::MongoFields<Root>{row_schema::MongoFields::built()}"
+            "pubconstMONGO_FIELDS:row_schema::MongoFields<Self>=row_schema::MongoFields{row:::core::marker::PhantomData};"
         ),
         "got: {unread}"
     );
@@ -4913,65 +5094,74 @@ fn a_struct_of_paths_carries_the_types_own_parameters_and_never_mixes_what_it_ke
 #[cfg(feature = "mongodb")]
 #[test]
 fn an_enums_paths_are_where_its_form_writes_what_each_variant_holds() {
-    for (source, asked, written) in [
+    for (source, written) in [
         (
             "#[serde(tag = \"kind\", rename_all = \"camelCase\")] pub enum Row { Cash, \
              #[serde(rename_all = \"camelCase\")] Card { exp_month: u32 }, Wire(Inner), Odd(u8) }",
-            "row_schema::MongoFields::built(row_schema::MongoPath::under(prefix,\"kind\"),",
             &[
-                "card:row_schema::mongo_members::Card{exp_month:row_schema::Field::plain(\
-                 row_schema::MongoPath::under(prefix,\"expMonth\"))}",
-                "wire:<Inner>::mongo_fields_under(prefix)",
-                "pubfnis_cash(&self)->self::Filter<Root>{self.tagged(\"cash\")}",
-                "pubfnis_odd(&self)->self::Filter<Root>{self.tagged(\"odd\")}",
+                "pubconstfncard(&self)->self::mongo_members::Card<Root>\
+                 {self::mongo_members::Card{row:::core::marker::PhantomData}}",
+                "pubconstfnexp_month(&self)->super::Field<Root,u32>\
+                 {super::Field::plain(super::MongoPath::at(\"expMonth\"))}",
+                "pubconstfnwire(&self)->self::Nested<Root,super::Inner>{self::Nested::at(self::MongoPath::ROOT)}",
+                "pubfnis_cash(&self)->self::Filter<Root>\
+                 {self::Filter::held(\"kind\",\"$eq\",bson::Bson::String(\"cash\".to_owned()))}",
+                "pubfnis_odd(&self)->self::Filter<Root>\
+                 {self::Filter::held(\"kind\",\"$eq\",bson::Bson::String(\"odd\".to_owned()))}",
             ][..],
         ),
         (
             "#[serde(tag = \"t\", content = \"c\")] pub enum Row { Pickup, Locker(u32), \
              Door(Inner), Span(u32, u32) }",
-            "row_schema::MongoFields::built(row_schema::MongoPath::under(prefix,\"t\"),",
             &[
-                "locker:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"c\"))",
-                "door:row_schema::Model::plain(row_schema::MongoPath::under(prefix,\"c\"),\
-                 <Inner>::mongo_fields_under(row_schema::MongoPath::under(prefix,\"c\").segments))",
-                "span:row_schema::mongo_members::Span(row_schema::Field::plain(row_schema::MongoPath::under(\
-                 row_schema::MongoPath::under(prefix,\"c\").segments,\"0\")),",
-                "pubfnis_pickup(&self)->self::Filter<Root>{self.tagged(\"Pickup\")}",
+                "pubconstfnlocker(&self)->self::Field<Root,u32>{self::Field::plain(self::MongoPath::at(\"c\"))}",
+                "pubconstfndoor(&self)->self::Model<Root,super::Inner>{self::Model::plain(self::MongoPath::at(\"c\"))}",
+                "pubconstfnspan(&self)->self::mongo_members::Span<Root>{self::mongo_members::Span(\
+                 self::Field::plain(self::MongoPath::at(\"c.0\")),self::Field::plain(self::MongoPath::at(\"c.1\")))}",
+                "pubstructSpan<Root>(pubsuper::Field<Root,u32>,pubsuper::Field<Root,u32>);",
+                "pubfnis_pickup(&self)->self::Filter<Root>\
+                 {self::Filter::held(\"t\",\"$eq\",bson::Bson::String(\"Pickup\".to_owned()))}",
             ],
         ),
         (
             "#[serde(rename_all = \"camelCase\")] pub enum Row { NoDiscount, Percent(f64), \
              Coupon { code: String } }",
-            "row_schema::MongoFields::built(row_schema::MongoPath::at(prefix),",
             &[
-                "percent:row_schema::Field::plain(row_schema::MongoPath::under(prefix,\"percent\"))",
-                "coupon:row_schema::mongo_members::Coupon{code:row_schema::Field::plain(row_schema::MongoPath::under(\
-                 row_schema::MongoPath::under(prefix,\"coupon\").segments,\"code\"))}",
-                "pubfnis_no_discount(&self)->self::Filter<Root>{self::Filter::held(self.asked.key(),\"$eq\",\
-                 bson::Bson::String(\"noDiscount\".to_owned()))}",
-                "pubfnis_coupon(&self)->self::Filter<Root>{self.keyed(\"coupon\")}",
+                "pubconstfnpercent(&self)->self::Field<Root,f64>\
+                 {self::Field::plain(self::MongoPath::at(\"percent\"))}",
+                "pubconstfncoupon(&self)->self::mongo_members::Coupon<Root>\
+                 {self::mongo_members::Coupon{row:::core::marker::PhantomData}}",
+                "pubconstfncode(&self)->super::Field<Root,String>\
+                 {super::Field::plain(super::MongoPath::at(\"coupon.code\"))}",
+                "pubfnis_no_discount(&self)->self::Filter<Root>\
+                 {self::Filter::held(\"\",\"$eq\",bson::Bson::String(\"noDiscount\".to_owned()))}",
+                "pubfnis_coupon(&self)->self::Filter<Root>\
+                 {self::Filter::held(\"coupon\",\"$exists\",bson::Bson::Boolean(true))}",
             ],
         ),
         (
             "#[serde(untagged)] pub enum Row { Number(u32), Detailed { code: String }, Held(Inner) }",
-            "row_schema::MongoFields{number:row_schema::Field::plain(row_schema::MongoPath::at(prefix)),",
             &[
-                "detailed:row_schema::mongo_members::Detailed{code:row_schema::Field::plain(\
-                 row_schema::MongoPath::under(prefix,\"code\"))}",
-                "held:<Inner>::mongo_fields_under(prefix)",
+                "pubconstfnnumber(&self)->self::Field<Root,u32>{self::Field::plain(self::MongoPath::ROOT)}",
+                "pubconstfndetailed(&self)->self::mongo_members::Detailed<Root>\
+                 {self::mongo_members::Detailed{row:::core::marker::PhantomData}}",
+                "pubconstfncode(&self)->super::Field<Root,String>{super::Field::plain(super::MongoPath::at(\"code\"))}",
+                "pubconstfnheld(&self)->self::Nested<Root,super::Inner>{self::Nested::at(self::MongoPath::ROOT)}",
             ],
         ),
     ] {
         let (module, on_the_type) = typed_enum_paths_of(source, &["Inner"]);
         assert!(
-            on_the_type.contains(asked),
+            on_the_type.contains(
+                "pubconstMONGO_FIELDS:row_schema::MongoFields<Self>=\
+                 row_schema::MongoFields{row:::core::marker::PhantomData};"
+            ),
             "for {source}, got: {on_the_type}"
         );
-        let emitted = format!("{module}{on_the_type}");
         for found in written {
             assert!(
-                emitted.contains(found),
-                "for {source}, missing `{found}` in: {emitted}"
+                module.contains(found),
+                "for {source}, missing `{found}` in: {module}"
             );
         }
         assert_eq!(
@@ -4979,10 +5169,44 @@ fn an_enums_paths_are_where_its_form_writes_what_each_variant_holds() {
             !source.contains("untagged"),
             "for {source}, got: {module}"
         );
+        // serde refuses a plain value beside a tag, so it has no path.
+        assert!(!module.contains("fnodd("), "for {source}, got: {module}");
     }
 }
 
-/// A variant serde never writes has neither member nor `is_{variant}`.
+/// An `is_{variant}` keeps its name, and the function of a variant named `Is{Variant}` is the one
+/// that is numbered.
+#[cfg(feature = "mongodb")]
+#[test]
+fn the_function_of_a_variant_that_meets_an_ask_is_numbered() {
+    let (module, _on_the_type) = typed_enum_paths_of(
+        "#[serde(tag = \"kind\")] pub enum Row { Card { last4: String }, IsCard { code: u8 }, \
+         IsCard2 { code: u8 } }",
+        &[],
+    );
+    for written in [
+        "pubfnis_card(&self)->self::Filter<Root>\
+         {self::Filter::held(\"kind\",\"$eq\",bson::Bson::String(\"Card\".to_owned()))}",
+        "pubfnis_is_card(&self)->self::Filter<Root>{",
+        "pubfnis_is_card2(&self)->self::Filter<Root>{",
+        "pubconstfncard(&self)->self::mongo_members::Card<Root>{",
+        "pubconstfnis_card2(&self)->self::mongo_members::IsCard<Root>{",
+        "pubconstfnis_card22(&self)->self::mongo_members::IsCard2<Root>{",
+    ] {
+        assert!(module.contains(written), "missing `{written}` in: {module}");
+    }
+    // Nothing names a variant of an untagged enum, so no ask takes a name from its functions.
+    let (untagged, _untagged) = typed_enum_paths_of(
+        "#[serde(untagged)] pub enum Row { IsCard { code: u8 }, Card { last4: String } }",
+        &[],
+    );
+    assert!(
+        untagged.contains("pubconstfnis_card(&self)->self::mongo_members::IsCard<Root>{"),
+        "got: {untagged}"
+    );
+}
+
+/// A variant serde never writes has neither function nor `is_{variant}`.
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_variant_serde_never_writes_has_no_path_and_a_members_struct_takes_no_name_in_use() {
@@ -4992,14 +5216,19 @@ fn a_variant_serde_never_writes_has_no_path_and_a_members_struct_takes_no_name_i
         &[],
     );
     let emitted = format!("{module}{on_the_type}");
-    for absent in ["lost:", "old:", "is_lost", "is_old", "Lost", "Old"] {
+    for absent in ["fnlost(", "fnold(", "is_lost", "is_old", "Lost", "Old"] {
         assert!(!emitted.contains(absent), "found `{absent}` in: {emitted}");
     }
     for written in [
-        "pubstructString2<Root>{pubtext:super::Field<Root,String>}",
-        "pubstructT2<Root,T>{pubheld:super::Field<Root,T>}",
-        "pubstructMembers<Root>{pubcount:super::Field<Root,u8>}",
-        "pubstructMembers2<Root,T>{pubstring:self::String2<Root>,pubt:self::T2<Root,T>,pubmembers:self::Members<Root>}",
+        "pubstructString2<Root,T>{",
+        "pubstructT2<Root,T>{",
+        "pubstructMembers<Root,T>{",
+        "pubconstfnstring(&self)->self::mongo_members::String2<Root,T>{",
+        "pubconstfnt(&self)->self::mongo_members::T2<Root,T>{",
+        "pubconstfnmembers(&self)->self::mongo_members::Members<Root,T>{",
+        "pubconstfntext(&self)->super::Field<Root,String>{",
+        "pubconstfnheld(&self)->super::Field<Root,T>{",
+        "pubconstfncount(&self)->super::Field<Root,u8>{",
     ] {
         assert!(
             emitted.contains(written),

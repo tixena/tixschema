@@ -180,11 +180,11 @@ fn read_futures() -> TokenStream {
 ///     invoices: &Collection<Document>,
 /// ) -> Result<(Vec<Invoice>, u64), OperationError> {
 ///     let paths = Invoice::MONGO_FIELDS;
-///     let largest = Invoice::find(invoices, paths.paid.eq(false)?)
+///     let largest = Invoice::find(invoices, paths.paid().eq(false)?)
 ///         .sort(doc! { "total": -1 })
 ///         .limit(2)
 ///         .await?;
-///     let unpaid = Invoice::count(invoices, paths.paid.eq(false)?).await?;
+///     let unpaid = Invoice::count(invoices, paths.paid().eq(false)?).await?;
 ///     Ok((largest, unpaid))
 /// }
 ///
@@ -258,8 +258,7 @@ pub fn read_items() -> TokenStream {
 
 /// `find_one`, `find`, `count` and the twins that take resolvers, each answering a `Read`.
 /// `filter` names the type parameter each takes its filter as: any filter over the rows of the
-/// type, whichever module's `Filter` it is, so one that starts from a nested model's path is
-/// taken as it stands. This builds:
+/// type, whichever module's `Filter` it is. This builds:
 ///
 /// ```rust
 /// # extern crate bson2 as bson;
@@ -286,8 +285,8 @@ pub fn read_items() -> TokenStream {
 /// pub async fn of_acme(
 ///     invoices: &Collection<Document>,
 /// ) -> Result<Option<Invoice>, OperationError> {
-///     let paths = Invoice::MONGO_FIELDS;
-///     Invoice::find_one(invoices, paths.customer.name.eq("Acme".to_owned())?).await
+///     let named = Customer::MONGO_FIELDS.name().eq("Acme".to_owned())?;
+///     Invoice::find_one(invoices, Invoice::MONGO_FIELDS.customer().nest(named)).await
 /// }
 ///
 /// fn main() {}
@@ -467,8 +466,8 @@ fn sent(option: &str) -> TokenStream {
 ///     let paths = Invoice::MONGO_FIELDS;
 ///     Invoice::update_one(
 ///         invoices,
-///         paths.number.eq("INV-0042".to_owned())?,
-///         paths.paid.set(true)?,
+///         paths.number().eq("INV-0042".to_owned())?,
+///         paths.paid().set(true)?,
 ///     )
 ///     .await
 /// }
@@ -503,8 +502,8 @@ fn sent(option: &str) -> TokenStream {
 ///     let paths = Invoice::MONGO_FIELDS;
 ///     Invoice::update_one(
 ///         invoices,
-///         paths.paid.set(true)?,
-///         paths.number.eq("INV-0042".to_owned())?,
+///         paths.paid().set(true)?,
+///         paths.number().eq("INV-0042".to_owned())?,
 ///     )
 ///     .await
 /// }
@@ -519,8 +518,8 @@ fn sent(option: &str) -> TokenStream {
 /// 19 |     Invoice::update_one(
 ///    |     ------------------- required by a bound introduced by this call
 /// 20 |         invoices,
-/// 21 |         paths.paid.set(true)?,
-///    |         ^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+/// 21 |         paths.paid().set(true)?,
+///    |         ^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
 ///    |
 /// help: the trait `AsRef<PhantomData<Invoice>>` is not implemented for `invoice_schema::Update<Invoice>`
 ///       but trait `AsRef<PhantomData<fn(Invoice) -> Invoice>>` is implemented for it
@@ -542,8 +541,8 @@ fn sent(option: &str) -> TokenStream {
 /// 19 |     Invoice::update_one(
 ///    |     ------------------- required by a bound introduced by this call
 /// ...
-/// 22 |         paths.number.eq("INV-0042".to_owned())?,
-///    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+/// 22 |         paths.number().eq("INV-0042".to_owned())?,
+///    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
 ///    |
 /// help: the trait `AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not implemented for `invoice_schema::Filter<Invoice>`
 ///       but trait `AsRef<PhantomData<Invoice>>` is implemented for it

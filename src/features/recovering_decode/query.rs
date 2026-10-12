@@ -18,6 +18,7 @@ pub fn query_items() -> TokenStream {
     let path = path_items();
     let filter = filter_items();
     let update = update_items();
+    let nests = nests_items();
     let field = field_items();
     let optional_field = optional_field_items();
     let element = element_items();
@@ -25,10 +26,12 @@ pub fn query_items() -> TokenStream {
     let model = model_items();
     let optional_model = optional_model_items();
     let model_list = model_list_items();
+    let nested = nested_items();
     quote! {
         #path
         #filter
         #update
+        #nests
         #field
         #optional_field
         #element
@@ -36,6 +39,7 @@ pub fn query_items() -> TokenStream {
         #model
         #optional_model
         #model_list
+        #nested
     }
 }
 
@@ -102,13 +106,10 @@ fn element_items() -> TokenStream {
 ///     pub total: f64,
 /// }
 ///
-/// const OPEN_INVOICES: Field<Invoice, u32> =
-///     Field::plain(MongoPath::under(MongoPath::ROOT, "openInvoices"));
-/// const PAID_AT: OptionalField<Invoice, String> =
-///     OptionalField::plain(MongoPath::under(MongoPath::ROOT, "paidAt"));
-/// const STATUS: Field<Invoice, InvoiceStatus> =
-///     Field::plain(MongoPath::under(MongoPath::ROOT, "status"));
-/// const TOTAL: Field<Invoice, f64> = Field::plain(MongoPath::under(MongoPath::ROOT, "total"));
+/// const OPEN_INVOICES: Field<Invoice, u32> = Field::plain(MongoPath::at("openInvoices"));
+/// const PAID_AT: OptionalField<Invoice, String> = OptionalField::plain(MongoPath::at("paidAt"));
+/// const STATUS: Field<Invoice, InvoiceStatus> = Field::plain(MongoPath::at("status"));
+/// const TOTAL: Field<Invoice, f64> = Field::plain(MongoPath::at("total"));
 ///
 /// fn main() -> Result<(), WriteError> {
 ///     let _ = STATUS.eq(InvoiceStatus::PastDue)?;
@@ -139,8 +140,7 @@ fn element_items() -> TokenStream {
 ///     pub number: String,
 /// }
 ///
-/// const NUMBER: Field<Invoice, String> =
-///     Field::plain(MongoPath::under(MongoPath::ROOT, "number"));
+/// const NUMBER: Field<Invoice, String> = Field::plain(MongoPath::at("number"));
 ///
 /// fn main() {
 ///     let _ = NUMBER.unset();
@@ -148,13 +148,13 @@ fn element_items() -> TokenStream {
 /// ```
 ///
 /// ```text
-/// error[E0599]: no method named `unset` found for struct `invoice_schema::Field<Root, V>` in the current scope
-///   --> tests/zz_probe.rs:17:20
+/// error[E0599]: no method named `unset` found for struct `invoice_schema::Field<Root, V, N>` in the current scope
+///   --> tests/zz_probe.rs:16:20
 ///    |
 ///  7 | #[model_schema(decode_with)]
 ///    | ---------------------------- method `unset` not found for this struct
 /// ...
-/// 17 |     let _ = NUMBER.unset();
+/// 16 |     let _ = NUMBER.unset();
 ///    |                    ^^^^^
 ///    |
 /// help: there is a method `set` with a similar name, but with different arguments
@@ -190,8 +190,7 @@ fn element_items() -> TokenStream {
 ///     pub status: InvoiceStatus,
 /// }
 ///
-/// const STATUS: Field<Invoice, InvoiceStatus> =
-///     Field::plain(MongoPath::under(MongoPath::ROOT, "status"));
+/// const STATUS: Field<Invoice, InvoiceStatus> = Field::plain(MongoPath::at("status"));
 ///
 /// fn main() {
 ///     let _ = STATUS.eq("past-due");
@@ -200,9 +199,9 @@ fn element_items() -> TokenStream {
 ///
 /// ```text
 /// error[E0308]: mismatched types
-///   --> tests/zz_probe.rs:25:23
+///   --> tests/zz_probe.rs:24:23
 ///    |
-/// 25 |     let _ = STATUS.eq("past-due");
+/// 24 |     let _ = STATUS.eq("past-due");
 ///    |                    -- ^^^^^^^^^^ expected `InvoiceStatus`, found `&str`
 ///    |                    |
 ///    |                    arguments to this method are incorrect
@@ -233,8 +232,7 @@ fn element_items() -> TokenStream {
 ///     pub open_invoices: u32,
 /// }
 ///
-/// const OPEN_INVOICES: Field<Invoice, u32> =
-///     Field::plain(MongoPath::under(MongoPath::ROOT, "openInvoices"));
+/// const OPEN_INVOICES: Field<Invoice, u32> = Field::plain(MongoPath::at("openInvoices"));
 ///
 /// fn main() {
 ///     let _ = OPEN_INVOICES.lte("3");
@@ -243,9 +241,9 @@ fn element_items() -> TokenStream {
 ///
 /// ```text
 /// error[E0308]: mismatched types
-///   --> tests/zz_probe.rs:18:31
+///   --> tests/zz_probe.rs:17:31
 ///    |
-/// 18 |     let _ = OPEN_INVOICES.lte("3");
+/// 17 |     let _ = OPEN_INVOICES.lte("3");
 ///    |                           --- ^^^ expected `u32`, found `&str`
 ///    |                           |
 ///    |                           arguments to this method are incorrect
@@ -275,7 +273,7 @@ fn element_items() -> TokenStream {
 ///     pub total: f64,
 /// }
 ///
-/// const TOTAL: Field<Invoice, f64> = Field::plain(MongoPath::under(MongoPath::ROOT, "total"));
+/// const TOTAL: Field<Invoice, f64> = Field::plain(MongoPath::at("total"));
 ///
 /// fn main() {
 ///     let _ = TOTAL.gt("1000");
@@ -302,36 +300,35 @@ fn element_items() -> TokenStream {
 /// ```
 fn field_items() -> TokenStream {
     let operators = field_operators();
+    let nest = nest_method(&quote! { self.path.key() });
     quote! {
-        /// The path of a value of type `V` every row of `Root` holds.
+        /// The path of a value of type `V` every row of `Root` holds. `N` is the model `nest`
+        /// reaches under it: `V`, or what a `Box` or its like written as `V` holds.
         #[derive(Debug)]
         #[non_exhaustive]
-        pub struct Field<Root, V> {
+        pub struct Field<Root, V, N: ?::core::marker::Sized = V> {
             path: MongoPath,
             write: fn(V) -> ::core::result::Result<bson::Bson, WriteError>,
-            root: ::core::marker::PhantomData<fn() -> Root>,
+            of: ::core::marker::PhantomData<fn(&N) -> Root>,
         }
 
-        impl<Root, V> Field<Root, V> {
+        impl<Root, V, N> Field<Root, V, N>
+        where
+            N: ?::core::marker::Sized,
+        {
             /// A path whose values the type's own `Serialize` writes.
             #[must_use]
             pub const fn plain(path: MongoPath) -> Self
             where
                 V: ::serde::Serialize,
             {
-                Self { path, write: write_plain::<V>, root: ::core::marker::PhantomData }
+                Self { path, write: write_plain::<V>, of: ::core::marker::PhantomData }
             }
 
             /// A path whose values `write` writes: the field's own serde hook.
             #[must_use]
             pub const fn hooked(path: MongoPath, write: fn(V) -> ::core::result::Result<bson::Bson, WriteError>) -> Self {
-                Self { path, write, root: ::core::marker::PhantomData }
-            }
-
-            /// The keys leading to this path, in the form a nested model's paths are built from.
-            #[must_use]
-            pub const fn segments(&self) -> [::core::option::Option<&'static str>; 8] {
-                self.path.segments
+                Self { path, write, of: ::core::marker::PhantomData }
             }
 
             fn compared(&self, operator: &str, value: V) -> ::core::result::Result<Filter<Root>, WriteError> {
@@ -350,9 +347,14 @@ fn field_items() -> TokenStream {
             }
 
             #operators
+
+            #nest
         }
 
-        impl<Root> Field<Root, ::std::string::String> {
+        impl<Root, N> Field<Root, ::std::string::String, N>
+        where
+            N: ?::core::marker::Sized,
+        {
             /// `$regex` with `$options`: rows whose text at this path matches `pattern`.
             #[must_use]
             pub fn regex(&self, pattern: &str, options: &str) -> Filter<Root> {
@@ -432,12 +434,10 @@ fn field_operators() -> TokenStream {
 ///     pub placed: bool,
 /// }
 ///
-/// const PLACED: order_schema::Field<Invoice, bool> = order_schema::Field::plain(
-///     order_schema::MongoPath::under(order_schema::MongoPath::ROOT, "placed"),
-/// );
-/// const TOTAL: invoice_schema::Field<Invoice, f64> = invoice_schema::Field::plain(
-///     invoice_schema::MongoPath::under(invoice_schema::MongoPath::ROOT, "total"),
-/// );
+/// const PLACED: order_schema::Field<Invoice, bool> =
+///     order_schema::Field::plain(order_schema::MongoPath::at("placed"));
+/// const TOTAL: invoice_schema::Field<Invoice, f64> =
+///     invoice_schema::Field::plain(invoice_schema::MongoPath::at("total"));
 ///
 /// fn main() -> Result<(), invoice_schema::WriteError> {
 ///     let _ = TOTAL
@@ -472,12 +472,10 @@ fn field_operators() -> TokenStream {
 ///     pub placed: bool,
 /// }
 ///
-/// const PLACED: order_schema::Field<Order, bool> = order_schema::Field::plain(
-///     order_schema::MongoPath::under(order_schema::MongoPath::ROOT, "placed"),
-/// );
-/// const TOTAL: invoice_schema::Field<Invoice, f64> = invoice_schema::Field::plain(
-///     invoice_schema::MongoPath::under(invoice_schema::MongoPath::ROOT, "total"),
-/// );
+/// const PLACED: order_schema::Field<Order, bool> =
+///     order_schema::Field::plain(order_schema::MongoPath::at("placed"));
+/// const TOTAL: invoice_schema::Field<Invoice, f64> =
+///     invoice_schema::Field::plain(invoice_schema::MongoPath::at("total"));
 ///
 /// fn main() -> Result<(), invoice_schema::WriteError> {
 ///     let _ = TOTAL.gt(1000.0)?.and(PLACED.eq(true)?);
@@ -487,9 +485,9 @@ fn field_operators() -> TokenStream {
 ///
 /// ```text
 /// error[E0277]: the trait bound `order_schema::Filter<Order>: AsRef<PhantomData<Invoice>>` is not satisfied
-///   --> tests/zz_probe.rs:25:35
+///   --> tests/zz_probe.rs:23:35
 ///    |
-/// 25 |     let _ = TOTAL.gt(1000.0)?.and(PLACED.eq(true)?);
+/// 23 |     let _ = TOTAL.gt(1000.0)?.and(PLACED.eq(true)?);
 ///    |                               --- ^^^^^^^^^^^^^^^^ unsatisfied trait bound
 ///    |                               |
 ///    |                               required by a bound introduced by this call
@@ -525,9 +523,8 @@ fn field_operators() -> TokenStream {
 ///     pub total: f64,
 /// }
 ///
-/// const TOTAL: invoice_schema::Field<Invoice, f64> = invoice_schema::Field::plain(
-///     invoice_schema::MongoPath::under(invoice_schema::MongoPath::ROOT, "total"),
-/// );
+/// const TOTAL: invoice_schema::Field<Invoice, f64> =
+///     invoice_schema::Field::plain(invoice_schema::MongoPath::at("total"));
 ///
 /// fn main() -> Result<(), invoice_schema::WriteError> {
 ///     let _ = TOTAL.gt(1000.0)?.and(doc! { "details.po": "7781" });
@@ -537,9 +534,9 @@ fn field_operators() -> TokenStream {
 ///
 /// ```text
 /// error[E0277]: the trait bound `bson::Document: AsRef<PhantomData<Invoice>>` is not satisfied
-///   --> tests/zz_probe.rs:17:35
+///   --> tests/zz_probe.rs:16:35
 ///    |
-/// 17 |     let _ = TOTAL.gt(1000.0)?.and(doc! { "details.po": "7781" });
+/// 16 |     let _ = TOTAL.gt(1000.0)?.and(doc! { "details.po": "7781" });
 ///    |                               --- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `AsRef<PhantomData<Invoice>>` is not implemented for `bson::Document`
 ///    |                               |
 ///    |                               required by a bound introduced by this call
@@ -567,9 +564,8 @@ fn field_operators() -> TokenStream {
 ///     pub total: f64,
 /// }
 ///
-/// const TOTAL: invoice_schema::Field<Invoice, f64> = invoice_schema::Field::plain(
-///     invoice_schema::MongoPath::under(invoice_schema::MongoPath::ROOT, "total"),
-/// );
+/// const TOTAL: invoice_schema::Field<Invoice, f64> =
+///     invoice_schema::Field::plain(invoice_schema::MongoPath::at("total"));
 ///
 /// fn main() -> Result<(), invoice_schema::WriteError> {
 ///     let _ = TOTAL.gt(1000.0)?.and(TOTAL.set(0.0)?);
@@ -578,15 +574,15 @@ fn field_operators() -> TokenStream {
 /// ```
 ///
 /// ```text
-/// error[E0277]: the trait bound `Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied
-///   --> tests/zz_probe.rs:16:35
+/// error[E0277]: the trait bound `invoice_schema::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied
+///   --> tests/zz_probe.rs:15:35
 ///    |
-/// 16 |     let _ = TOTAL.gt(1000.0)?.and(TOTAL.set(0.0)?);
+/// 15 |     let _ = TOTAL.gt(1000.0)?.and(TOTAL.set(0.0)?);
 ///    |                               --- ^^^^^^^^^^^^^^^ unsatisfied trait bound
 ///    |                               |
 ///    |                               required by a bound introduced by this call
 ///    |
-/// help: the trait `AsRef<PhantomData<Invoice>>` is not implemented for `Update<Invoice>`
+/// help: the trait `AsRef<PhantomData<Invoice>>` is not implemented for `invoice_schema::Update<Invoice>`
 ///       but trait `AsRef<PhantomData<fn(Invoice) -> Invoice>>` is implemented for it
 ///   --> tests/zz_probe.rs:5:1
 ///    |
@@ -619,7 +615,7 @@ fn filter_items() -> TokenStream {
                 Self { document, root: ::core::marker::PhantomData }
             }
 
-            fn held(key: ::std::string::String, operator: &str, value: bson::Bson) -> Self {
+            fn held(key: &str, operator: &str, value: bson::Bson) -> Self {
                 let mut condition = bson::Document::new();
                 condition.insert(operator, value);
                 let mut document = bson::Document::new();
@@ -708,8 +704,7 @@ fn filter_items() -> TokenStream {
 ///     pub tags: Vec<String>,
 /// }
 ///
-/// const TAGS: ListField<Invoice, String> =
-///     ListField::plain(MongoPath::under(MongoPath::ROOT, "tags"));
+/// const TAGS: ListField<Invoice, String> = ListField::plain(MongoPath::at("tags"));
 ///
 /// fn main() -> Result<(), WriteError> {
 ///     let _ = TAGS.contains("export".to_owned())?;
@@ -736,8 +731,7 @@ fn filter_items() -> TokenStream {
 ///     pub tags: Vec<String>,
 /// }
 ///
-/// const TAGS: ListField<Invoice, String> =
-///     ListField::plain(MongoPath::under(MongoPath::ROOT, "tags"));
+/// const TAGS: ListField<Invoice, String> = ListField::plain(MongoPath::at("tags"));
 ///
 /// fn main() -> Result<(), WriteError> {
 ///     let _ = TAGS.gt("export".to_owned())?;
@@ -747,12 +741,12 @@ fn filter_items() -> TokenStream {
 ///
 /// ```text
 /// error[E0599]: `ListField<Invoice, std::string::String>` is not an iterator
-///   --> tests/zz_probe.rs:17:18
+///   --> tests/zz_probe.rs:16:18
 ///    |
 ///  7 | #[model_schema(decode_with)]
 ///    | ---------------------------- method `gt` not found for this struct because it doesn't satisfy `ListField<Invoice, std::string::String>: Iterator`
 /// ...
-/// 17 |     let _ = TAGS.gt("export".to_owned())?;
+/// 16 |     let _ = TAGS.gt("export".to_owned())?;
 ///    |                  ^^ `ListField<Invoice, std::string::String>` is not an iterator
 ///    |
 ///    = note: the following trait bounds were not satisfied:
@@ -768,30 +762,35 @@ fn filter_items() -> TokenStream {
 /// ```
 fn list_field_items() -> TokenStream {
     let operators = list_field_operators();
+    let nest = nest_method(&quote! { self.path.key() });
     quote! {
-        /// The path of a list of plain values of type `V`.
+        /// The path of a list of plain values of type `V`. `N` is the model `nest` reaches under
+        /// it: `V`, or what `V` wraps.
         #[derive(Debug)]
         #[non_exhaustive]
-        pub struct ListField<Root, V> {
+        pub struct ListField<Root, V, N: ?::core::marker::Sized = V> {
             path: MongoPath,
             write: fn(V) -> ::core::result::Result<bson::Bson, WriteError>,
-            root: ::core::marker::PhantomData<fn() -> Root>,
+            of: ::core::marker::PhantomData<fn(&N) -> Root>,
         }
 
-        impl<Root, V> ListField<Root, V> {
+        impl<Root, V, N> ListField<Root, V, N>
+        where
+            N: ?::core::marker::Sized,
+        {
             /// A list whose elements the type's own `Serialize` writes.
             #[must_use]
             pub const fn plain(path: MongoPath) -> Self
             where
                 V: ::serde::Serialize,
             {
-                Self { path, write: write_plain::<V>, root: ::core::marker::PhantomData }
+                Self { path, write: write_plain::<V>, of: ::core::marker::PhantomData }
             }
 
             /// A list whose elements `write` writes: the field's own serde hook.
             #[must_use]
             pub const fn hooked(path: MongoPath, write: fn(V) -> ::core::result::Result<bson::Bson, WriteError>) -> Self {
-                Self { path, write, root: ::core::marker::PhantomData }
+                Self { path, write, of: ::core::marker::PhantomData }
             }
 
             fn written<I>(&self, values: I) -> ::core::result::Result<bson::Bson, WriteError>
@@ -807,6 +806,8 @@ fn list_field_items() -> TokenStream {
             }
 
             #operators
+
+            #nest
         }
     }
 }
@@ -883,26 +884,29 @@ fn list_field_operators() -> TokenStream {
 }
 
 /// `Model`: the path of a nested model every row holds. It carries the operators over the whole
-/// value, and reaches the nested model's own paths by dereferencing.
+/// value, and `nest` writes what is asked of the model's own paths under its key.
 fn model_items() -> TokenStream {
+    let nest = nest_method(&quote! { self.whole.path.key() });
     quote! {
-        /// The path of a nested model `M` every row of `Root` holds. `F` is `M`'s own struct of
-        /// paths, built under this path and reached by dereferencing.
+        /// The path of a nested model `M` every row of `Root` holds, with the operators over the
+        /// whole value. `N` is the model `nest` reaches under it: `M`, or what `M` wraps.
         #[derive(Debug)]
         #[non_exhaustive]
-        pub struct Model<Root, M, F> {
-            whole: Field<Root, M>,
-            fields: F,
+        pub struct Model<Root, M, N: ?::core::marker::Sized = M> {
+            whole: Field<Root, M, N>,
         }
 
-        impl<Root, M, F> Model<Root, M, F> {
-            /// A nested model whose own `Serialize` writes it, with its paths.
+        impl<Root, M, N> Model<Root, M, N>
+        where
+            N: ?::core::marker::Sized,
+        {
+            /// A nested model whose own `Serialize` writes it.
             #[must_use]
-            pub const fn plain(path: MongoPath, fields: F) -> Self
+            pub const fn plain(path: MongoPath) -> Self
             where
                 M: ::serde::Serialize,
             {
-                Self { whole: Field::plain(path), fields }
+                Self { whole: Field::plain(path) }
             }
 
             /// `$eq`: rows whose whole value at this path equals `value`.
@@ -940,20 +944,14 @@ fn model_items() -> TokenStream {
             pub fn set_on_insert(&self, value: M) -> ::core::result::Result<Update<Root>, WriteError> {
                 self.whole.set_on_insert(value)
             }
-        }
 
-        impl<Root, M, F> ::core::ops::Deref for Model<Root, M, F> {
-            type Target = F;
-
-            fn deref(&self) -> &Self::Target {
-                &self.fields
-            }
+            #nest
         }
     }
 }
 
 /// `ModelList`: the path of a list of nested models. Its own operators are over the list and its
-/// elements, and the paths it dereferences to match where any element does.
+/// elements, and what `nest` writes under its key matches where any element does.
 ///
 /// One element is held to a filter over the rows of the element's own type. This builds:
 ///
@@ -976,12 +974,9 @@ fn model_items() -> TokenStream {
 ///     pub items: Vec<LineItem>,
 /// }
 ///
-/// // `()` stands where the element's own struct of paths goes.
-/// const ITEMS: ModelList<Invoice, LineItem, ()> =
-///     ModelList::plain(MongoPath::under(MongoPath::ROOT, "items"), ());
-/// const QUANTITY: line_item_schema::Field<LineItem, u32> = line_item_schema::Field::plain(
-///     line_item_schema::MongoPath::under(line_item_schema::MongoPath::ROOT, "quantity"),
-/// );
+/// const ITEMS: ModelList<Invoice, LineItem> = ModelList::plain(MongoPath::at("items"));
+/// const QUANTITY: line_item_schema::Field<LineItem, u32> =
+///     line_item_schema::Field::plain(line_item_schema::MongoPath::at("quantity"));
 ///
 /// fn main() -> Result<(), WriteError> {
 ///     let _ = ITEMS.elem_match(QUANTITY.gte(2)?);
@@ -1013,12 +1008,9 @@ fn model_items() -> TokenStream {
 ///     pub items: Vec<LineItem>,
 /// }
 ///
-/// // `()` stands where the element's own struct of paths goes.
-/// const ITEMS: ModelList<Invoice, LineItem, ()> =
-///     ModelList::plain(MongoPath::under(MongoPath::ROOT, "items"), ());
-/// const QUANTITY: line_item_schema::Field<LineItem, u32> = line_item_schema::Field::plain(
-///     line_item_schema::MongoPath::under(line_item_schema::MongoPath::ROOT, "quantity"),
-/// );
+/// const ITEMS: ModelList<Invoice, LineItem> = ModelList::plain(MongoPath::at("items"));
+/// const QUANTITY: line_item_schema::Field<LineItem, u32> =
+///     line_item_schema::Field::plain(line_item_schema::MongoPath::at("quantity"));
 ///
 /// fn main() -> Result<(), WriteError> {
 ///     let _ = ITEMS.elem_match(QUANTITY.set(2)?);
@@ -1028,9 +1020,9 @@ fn model_items() -> TokenStream {
 ///
 /// ```text
 /// error[E0277]: the trait bound `line_item_schema::Update<LineItem>: AsRef<PhantomData<LineItem>>` is not satisfied
-///   --> tests/zz_probe.rs:27:30
+///   --> tests/zz_probe.rs:24:30
 ///    |
-/// 27 |     let _ = ITEMS.elem_match(QUANTITY.set(2)?);
+/// 24 |     let _ = ITEMS.elem_match(QUANTITY.set(2)?);
 ///    |                   ---------- ^^^^^^^^^^^^^^^^ unsatisfied trait bound
 ///    |                   |
 ///    |                   required by a bound introduced by this call
@@ -1042,42 +1034,46 @@ fn model_items() -> TokenStream {
 ///  7 | #[model_schema(decode_with)]
 ///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ///    = help: for that trait implementation, expected `fn(LineItem) -> LineItem`, found `LineItem`
-/// note: required by a bound in `invoice_schema::ModelList::<Root, M, F>::elem_match`
+/// note: required by a bound in `invoice_schema::ModelList::<Root, M, N>::elem_match`
 ///   --> tests/zz_probe.rs:13:1
 ///    |
 /// 13 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `ModelList::<Root, M, F>::elem_match`
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `ModelList::<Root, M, N>::elem_match`
 ///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
 fn model_list_items() -> TokenStream {
+    let nest = nest_method(&quote! { self.whole.path.key() });
     quote! {
-        /// The path of a list of nested models `M`. `F` is `M`'s own struct of paths, built under
-        /// this path: each matches where any element does.
+        /// The path of a list of nested models `M`. `N` is the model `nest` reaches under it,
+        /// where any element matches, and the one `elem_match` and `pull` take a filter over:
+        /// `M`, or what `M` wraps.
         #[derive(Debug)]
         #[non_exhaustive]
-        pub struct ModelList<Root, M, F> {
-            whole: ListField<Root, M>,
-            fields: F,
+        pub struct ModelList<Root, M, N: ?::core::marker::Sized = M> {
+            whole: ListField<Root, M, N>,
         }
 
-        impl<Root, M, F> ModelList<Root, M, F> {
-            /// A list of nested models whose own `Serialize` writes each, with their paths.
+        impl<Root, M, N> ModelList<Root, M, N>
+        where
+            N: ?::core::marker::Sized,
+        {
+            /// A list of nested models whose own `Serialize` writes each.
             #[must_use]
-            pub const fn plain(path: MongoPath, fields: F) -> Self
+            pub const fn plain(path: MongoPath) -> Self
             where
                 M: ::serde::Serialize,
             {
-                Self { whole: ListField::plain(path), fields }
+                Self { whole: ListField::plain(path) }
             }
 
             /// `$elemMatch`: rows where one element matches `matching`, a filter over the rows
-            /// of `M`.
+            /// of `N`.
             #[must_use]
             pub fn elem_match<E>(&self, matching: E) -> Filter<Root>
             where
-                E: ::core::convert::Into<bson::Document> + ::core::convert::AsRef<::core::marker::PhantomData<M>>,
+                E: ::core::convert::Into<bson::Document> + ::core::convert::AsRef<::core::marker::PhantomData<N>>,
             {
                 Filter::held(self.whole.path.key(), "$elemMatch", bson::Bson::Document(matching.into()))
             }
@@ -1094,11 +1090,11 @@ fn model_list_items() -> TokenStream {
             }
 
             /// `$pull`: takes every element `matching` matches out of the list at this path.
-            /// `matching` is a filter over the rows of `M`.
+            /// `matching` is a filter over the rows of `N`.
             #[must_use]
             pub fn pull<E>(&self, matching: E) -> Update<Root>
             where
-                E: ::core::convert::Into<bson::Document> + ::core::convert::AsRef<::core::marker::PhantomData<M>>,
+                E: ::core::convert::Into<bson::Document> + ::core::convert::AsRef<::core::marker::PhantomData<N>>,
             {
                 Update::held("$pull", self.whole.path.key(), bson::Bson::Document(matching.into()))
             }
@@ -1110,14 +1106,266 @@ fn model_list_items() -> TokenStream {
             {
                 self.whole.set(values)
             }
+
+            #nest
+        }
+    }
+}
+
+/// `nest`, as each path kind that reaches a nested model declares it over the key `key` reads.
+fn nest_method(key: &TokenStream) -> TokenStream {
+    quote! {
+        /// What `inner` asks of an `N`, asked of the `N` this path holds: `inner` is a filter
+        /// over the rows of `N` or an update of them, from any module, and each of its keys is
+        /// written under this path's.
+        #[must_use]
+        pub fn nest<Kind, E>(&self, inner: E) -> E::Nested
+        where
+            E: Nests<Root, N, Kind>,
+        {
+            inner.nested_under(#key)
+        }
+    }
+}
+
+/// `Nested`: where a row writes a nested model under no path of a kind of its own, the key
+/// `nest` writes that model's under.
+fn nested_items() -> TokenStream {
+    let nest = nest_method(&quote! { self.path.key() });
+    quote! {
+        /// Where a row of `Root` writes what a nested model `N` holds: `nest` reaches it, and
+        /// nothing is asked of the whole value. The key is empty where the model's keys are
+        /// written among those of the type that holds it.
+        #[derive(Debug)]
+        #[non_exhaustive]
+        pub struct Nested<Root, N: ?::core::marker::Sized> {
+            path: MongoPath,
+            of: ::core::marker::PhantomData<fn(&N) -> Root>,
         }
 
-        impl<Root, M, F> ::core::ops::Deref for ModelList<Root, M, F> {
-            type Target = F;
-
-            fn deref(&self) -> &Self::Target {
-                &self.fields
+        impl<Root, N> Nested<Root, N>
+        where
+            N: ?::core::marker::Sized,
+        {
+            /// What a nested model holds, written under `path`.
+            #[must_use]
+            pub const fn at(path: MongoPath) -> Self {
+                Self { path, of: ::core::marker::PhantomData }
             }
+
+            #nest
+        }
+    }
+}
+
+/// `Nests`, the bound `nest` takes a filter or an update by, with the two markers that tell
+/// them apart and the functions that write each under a key.
+///
+/// `nest` takes a filter over the rows of the model its path holds, or an update of them, built
+/// from that model's own paths. This builds:
+///
+/// ```rust
+/// # extern crate bson2 as bson;
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// use invoice_schema::{Filter, Update, WriteError};
+///
+/// #[model_schema(decode_with)]
+/// #[derive(Debug, Deserialize, Serialize)]
+/// pub struct Customer {
+///     pub name: String,
+/// }
+///
+/// #[model_schema(decode_with)]
+/// #[derive(Debug, Deserialize, Serialize)]
+/// pub struct Invoice {
+///     pub customer: Customer,
+/// }
+///
+/// fn main() -> Result<(), WriteError> {
+///     let (invoice, customer) = (Invoice::MONGO_FIELDS, Customer::MONGO_FIELDS);
+///     let named: Filter<Invoice> = invoice
+///         .customer()
+///         .nest(customer.name().eq("Acme".to_owned())?);
+///     let renamed: Update<Invoice> = invoice
+///         .customer()
+///         .nest(customer.name().set("John".to_owned())?);
+///     assert_eq!(
+///         named.into_document().to_string(),
+///         r#"{ "customer.name": { "$eq": "Acme" } }"#
+///     );
+///     assert_eq!(
+///         renamed.into_document().to_string(),
+///         r#"{ "$set": { "customer.name": "John" } }"#
+///     );
+///     Ok(())
+/// }
+/// ```
+///
+/// The run below hands `nest` a filter over the rows of `Order`, a type the path does not hold,
+/// and nothing else changed. A `compile_fail` doctest asserts only that some error was raised,
+/// so it was compiled standalone as an ordinary test file, and the text under it is the only
+/// error it earned, verbatim:
+///
+/// ```rust,compile_fail
+/// # extern crate bson2 as bson;
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// use invoice_schema::WriteError;
+///
+/// #[model_schema(decode_with)]
+/// #[derive(Debug, Deserialize, Serialize)]
+/// pub struct Customer {
+///     pub name: String,
+/// }
+///
+/// #[model_schema(decode_with)]
+/// #[derive(Debug, Deserialize, Serialize)]
+/// pub struct Invoice {
+///     pub customer: Customer,
+/// }
+///
+/// #[model_schema(decode_with)]
+/// #[derive(Debug, Deserialize, Serialize)]
+/// pub struct Order {
+///     pub placed: bool,
+/// }
+///
+/// fn main() -> Result<(), WriteError> {
+///     let _ = Invoice::MONGO_FIELDS
+///         .customer()
+///         .nest(Order::MONGO_FIELDS.placed().eq(true)?);
+///     Ok(())
+/// }
+/// ```
+///
+/// ```text
+/// error[E0277]: the trait bound `order_schema::Filter<Order>: invoice_schema::Nests<Invoice, Customer, _>` is not satisfied
+///   --> tests/zz_probe.rs:28:15
+///    |
+/// 28 |         .nest(Order::MONGO_FIELDS.placed().eq(true)?);
+///    |          ---- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+///    |          |
+///    |          required by a bound introduced by this call
+///    |
+/// help: the trait `invoice_schema::Nests<Invoice, Customer, _>` is not implemented for `order_schema::Filter<Order>`
+///   --> tests/zz_probe.rs:19:1
+///    |
+/// 19 | #[model_schema(decode_with)]
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/// note: required by a bound in `invoice_schema::Model::<Root, M, N>::nest`
+///   --> tests/zz_probe.rs:13:1
+///    |
+/// 13 | #[model_schema(decode_with)]
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Model::<Root, M, N>::nest`
+///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
+fn nests_items() -> TokenStream {
+    quote! {
+        /// Marks what `nest` is handed as a filter.
+        #[derive(Debug)]
+        #[non_exhaustive]
+        pub struct AsFilter;
+
+        /// Marks what `nest` is handed as an update.
+        #[derive(Debug)]
+        #[non_exhaustive]
+        pub struct AsUpdate;
+
+        /// What `nest` takes on a path of a row of `Root` that holds an `N`: a filter over the
+        /// rows of `N`, or an update of them, from any module. `Kind` is `AsFilter` or
+        /// `AsUpdate`, and is read off what is handed over.
+        pub trait Nests<Root, N: ?::core::marker::Sized, Kind> {
+            /// The same filter or update, over the rows of `Root`.
+            type Nested;
+
+            /// This filter or update with each of its keys under `key`.
+            fn nested_under(self, key: &str) -> Self::Nested;
+        }
+
+        impl<Root, N, E> Nests<Root, N, AsFilter> for E
+        where
+            N: ?::core::marker::Sized,
+            E: ::core::convert::Into<bson::Document> + ::core::convert::AsRef<::core::marker::PhantomData<N>>,
+        {
+            type Nested = Filter<Root>;
+
+            fn nested_under(self, key: &str) -> Filter<Root> {
+                Filter::raw(nested_filter(key, self.into()))
+            }
+        }
+
+        impl<Root, N, E> Nests<Root, N, AsUpdate> for E
+        where
+            E: ::core::convert::Into<bson::Document> + ::core::convert::AsRef<::core::marker::PhantomData<fn(N) -> N>>,
+        {
+            type Nested = Update<Root>;
+
+            fn nested_under(self, key: &str) -> Update<Root> {
+                Update::raw(nested_update(key, self.into()))
+            }
+        }
+
+        /// `key` under `holder`, joined by a dot: an empty side is left out with its dot.
+        fn nested_key(holder: &str, key: &str) -> ::std::string::String {
+            if holder.is_empty() {
+                key.to_owned()
+            } else if key.is_empty() {
+                holder.to_owned()
+            } else {
+                ::std::format!("{holder}.{key}")
+            }
+        }
+
+        /// The filter `document` with each key under `holder`: those inside `$and`, `$or` and
+        /// `$nor` too, and any other operator kept as it is written.
+        fn nested_filter(holder: &str, document: bson::Document) -> bson::Document {
+            let mut nested = bson::Document::new();
+            for (key, value) in document {
+                let joins = ::core::matches!(key.as_str(), "$and" | "$or" | "$nor");
+                match value {
+                    held if !key.starts_with('$') => {
+                        nested.insert(nested_key(holder, &key), held);
+                    }
+                    bson::Bson::Array(members) if joins => {
+                        let under = members
+                            .into_iter()
+                            .map(|member| match member {
+                                bson::Bson::Document(inner) => bson::Bson::Document(nested_filter(holder, inner)),
+                                other => other,
+                            })
+                            .collect::<::std::vec::Vec<bson::Bson>>();
+                        nested.insert(key, bson::Bson::Array(under));
+                    }
+                    kept => {
+                        nested.insert(key, kept);
+                    }
+                }
+            }
+            nested
+        }
+
+        /// The update `document` with each key of each operator under `holder`, its value kept.
+        fn nested_update(holder: &str, document: bson::Document) -> bson::Document {
+            let mut nested = bson::Document::new();
+            for (operator, changed) in document {
+                let under = match changed {
+                    bson::Bson::Document(keys) => {
+                        let mut joined = bson::Document::new();
+                        for (key, value) in keys {
+                            joined.insert(nested_key(holder, &key), value);
+                        }
+                        bson::Bson::Document(joined)
+                    }
+                    other => other,
+                };
+                nested.insert(operator, under);
+            }
+            nested
         }
     }
 }
@@ -1125,14 +1373,18 @@ fn model_list_items() -> TokenStream {
 /// `OptionalField`: a `Field` a row may leave out, which adds `$exists` and `$unset` to it.
 fn optional_field_items() -> TokenStream {
     quote! {
-        /// The path of a value of type `V` a row of `Root` may leave out.
+        /// The path of a value of type `V` a row of `Root` may leave out. It dereferences to the
+        /// `Field` of the value where it is there.
         #[derive(Debug)]
         #[non_exhaustive]
-        pub struct OptionalField<Root, V> {
-            present: Field<Root, V>,
+        pub struct OptionalField<Root, V, N: ?::core::marker::Sized = V> {
+            present: Field<Root, V, N>,
         }
 
-        impl<Root, V> OptionalField<Root, V> {
+        impl<Root, V, N> OptionalField<Root, V, N>
+        where
+            N: ?::core::marker::Sized,
+        {
             /// A path whose values the type's own `Serialize` writes.
             #[must_use]
             pub const fn plain(path: MongoPath) -> Self
@@ -1161,8 +1413,11 @@ fn optional_field_items() -> TokenStream {
             }
         }
 
-        impl<Root, V> ::core::ops::Deref for OptionalField<Root, V> {
-            type Target = Field<Root, V>;
+        impl<Root, V, N> ::core::ops::Deref for OptionalField<Root, V, N>
+        where
+            N: ?::core::marker::Sized,
+        {
+            type Target = Field<Root, V, N>;
 
             fn deref(&self) -> &Self::Target {
                 &self.present
@@ -1175,21 +1430,25 @@ fn optional_field_items() -> TokenStream {
 /// whole value.
 fn optional_model_items() -> TokenStream {
     quote! {
-        /// The path of a nested model `M` a row of `Root` may leave out.
+        /// The path of a nested model `M` a row of `Root` may leave out. It dereferences to the
+        /// `Model` of the value where it is there.
         #[derive(Debug)]
         #[non_exhaustive]
-        pub struct OptionalModel<Root, M, F> {
-            present: Model<Root, M, F>,
+        pub struct OptionalModel<Root, M, N: ?::core::marker::Sized = M> {
+            present: Model<Root, M, N>,
         }
 
-        impl<Root, M, F> OptionalModel<Root, M, F> {
-            /// A nested model whose own `Serialize` writes it, with its paths.
+        impl<Root, M, N> OptionalModel<Root, M, N>
+        where
+            N: ?::core::marker::Sized,
+        {
+            /// A nested model whose own `Serialize` writes it.
             #[must_use]
-            pub const fn plain(path: MongoPath, fields: F) -> Self
+            pub const fn plain(path: MongoPath) -> Self
             where
                 M: ::serde::Serialize,
             {
-                Self { present: Model::plain(path, fields) }
+                Self { present: Model::plain(path) }
             }
 
             /// `$exists`: rows that hold this path, or with `false` rows that leave it out.
@@ -1203,18 +1462,16 @@ fn optional_model_items() -> TokenStream {
             pub fn unset(&self) -> Update<Root> {
                 Update::held("$unset", self.present.whole.path.key(), bson::Bson::String(::std::string::String::new()))
             }
-
-            /// `$set`: puts `value` at this path, whole.
-            pub fn set(&self, value: M) -> ::core::result::Result<Update<Root>, WriteError> {
-                self.present.set(value)
-            }
         }
 
-        impl<Root, M, F> ::core::ops::Deref for OptionalModel<Root, M, F> {
-            type Target = F;
+        impl<Root, M, N> ::core::ops::Deref for OptionalModel<Root, M, N>
+        where
+            N: ?::core::marker::Sized,
+        {
+            type Target = Model<Root, M, N>;
 
             fn deref(&self) -> &Self::Target {
-                &self.present.fields
+                &self.present
             }
         }
     }
@@ -1222,7 +1479,7 @@ fn optional_model_items() -> TokenStream {
 
 /// `MongoPath`, `WriteError`, and the function a path with no hook writes its values through.
 ///
-/// A path holds at most eight keys. This builds:
+/// A path is one key, as the type that declares it writes it. This builds:
 ///
 /// ```rust
 /// # extern crate bson2 as bson;
@@ -1237,67 +1494,12 @@ fn optional_model_items() -> TokenStream {
 ///     pub total: f64,
 /// }
 ///
-/// const DEEPEST: MongoPath = MongoPath::under(
-///     [Some("a"), Some("b"), Some("c"), Some("d"), Some("e"), Some("f"), Some("g"), None],
-///     "total",
-/// );
+/// const TOTAL: MongoPath = MongoPath::at("total");
 ///
 /// fn main() {
-///     assert_eq!(DEEPEST.key(), "a.b.c.d.e.f.g.total");
+///     assert_eq!(TOTAL.key(), "total");
+///     assert_eq!(MongoPath::ROOT.key(), "");
 /// }
-/// ```
-///
-/// The run below is that one with an eighth key in the prefix, and nothing else changed. A
-/// `compile_fail` doctest asserts only that some error was raised, so it was compiled standalone
-/// as an ordinary test file, and the text under it is the only error it earned, verbatim:
-///
-/// ```rust,compile_fail
-/// # extern crate bson2 as bson;
-/// use serde::{Deserialize, Serialize};
-/// use tixschema::model_schema;
-///
-/// use invoice_schema::MongoPath;
-///
-/// #[model_schema(decode_with)]
-/// #[derive(Debug, Deserialize, Serialize)]
-/// pub struct Invoice {
-///     pub total: f64,
-/// }
-///
-/// const DEEPEST: MongoPath = MongoPath::under(
-///     [Some("a"), Some("b"), Some("c"), Some("d"), Some("e"), Some("f"), Some("g"), Some("h")],
-///     "total",
-/// );
-///
-/// fn main() {
-///     assert_eq!(DEEPEST.key(), "a.b.c.d.e.f.g.total");
-/// }
-/// ```
-///
-/// ```text
-/// error[E0080]: evaluation panicked: a typed MongoDB path holds at most 8 keys
-///   --> tests/zz_probe.rs:13:28
-///    |
-/// 13 |   const DEEPEST: MongoPath = MongoPath::under(
-///    |  ____________________________^
-/// 14 | |     [Some("a"), Some("b"), Some("c"), Some("d"), Some("e"), Some("f"), Some("g"), Some("h")],
-/// 15 | |     "total",
-/// 16 | | );
-///    | |_^ evaluation of `DEEPEST` failed inside this call
-///    |
-/// note: inside `MongoPath::under`
-///   --> tests/zz_probe.rs:7:1
-///    |
-///  7 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
-///
-/// note: erroneous constant encountered
-///   --> tests/zz_probe.rs:19:16
-///    |
-/// 19 |     assert_eq!(DEEPEST.key(), "a.b.c.d.e.f.g.total");
-///    |                ^^^^^^^
-///
-/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
 fn path_items() -> TokenStream {
     quote! {
@@ -1305,49 +1507,28 @@ fn path_items() -> TokenStream {
         /// 2 of the library, `bson::error::Error` in version 3.
         pub type WriteError = <bson::Serializer as ::serde::Serializer>::Error;
 
-        /// The keys leading from a row to a value a filter or an update names, outermost first.
+        /// The key of a value a filter or an update names, as the type that declares the path
+        /// writes it: under no key of whatever holds that type, and empty for the value itself.
         #[derive(Clone, Copy, Debug)]
         #[non_exhaustive]
         pub struct MongoPath {
-            pub segments: [::core::option::Option<&'static str>; 8],
+            key: &'static str,
         }
 
         impl MongoPath {
-            /// The row itself: no key yet.
-            pub const ROOT: [::core::option::Option<&'static str>; 8] = [::core::option::Option::None; 8];
+            /// The value itself: the empty key.
+            pub const ROOT: Self = Self { key: "" };
 
-            /// The path of `segment` under `prefix`.
+            /// The path of `key`.
             #[must_use]
-            pub const fn under(prefix: [::core::option::Option<&'static str>; 8], segment: &'static str) -> Self {
-                let mut segments = prefix;
-                let mut at = 0_usize;
-                while at < segments.len() {
-                    if segments[at].is_none() {
-                        segments[at] = ::core::option::Option::Some(segment);
-                        return Self { segments };
-                    }
-                    at += 1;
-                }
-                ::core::panic!("a typed MongoDB path holds at most 8 keys")
-            }
-
-            /// The path of the value `prefix` itself leads to.
-            #[must_use]
-            pub const fn at(prefix: [::core::option::Option<&'static str>; 8]) -> Self {
-                Self { segments: prefix }
+            pub const fn at(key: &'static str) -> Self {
+                Self { key }
             }
 
             /// The dotted key MongoDB reads.
             #[must_use]
-            pub fn key(&self) -> ::std::string::String {
-                let mut key = ::std::string::String::new();
-                for segment in self.segments.iter().flatten() {
-                    if !key.is_empty() {
-                        key.push('.');
-                    }
-                    key.push_str(segment);
-                }
-                key
+            pub const fn key(&self) -> &'static str {
+                self.key
             }
         }
 
@@ -1378,7 +1559,7 @@ fn path_items() -> TokenStream {
 ///     pub total: f64,
 /// }
 ///
-/// const TOTAL: Field<Invoice, f64> = Field::plain(MongoPath::under(MongoPath::ROOT, "total"));
+/// const TOTAL: Field<Invoice, f64> = Field::plain(MongoPath::at("total"));
 ///
 /// fn main() -> Result<(), WriteError> {
 ///     let _ = TOTAL.set(0.0)?.and(TOTAL.set_on_insert(1000.0)?);
@@ -1404,7 +1585,7 @@ fn path_items() -> TokenStream {
 ///     pub total: f64,
 /// }
 ///
-/// const TOTAL: Field<Invoice, f64> = Field::plain(MongoPath::under(MongoPath::ROOT, "total"));
+/// const TOTAL: Field<Invoice, f64> = Field::plain(MongoPath::at("total"));
 ///
 /// fn main() -> Result<(), WriteError> {
 ///     let _ = TOTAL.set(0.0)?.and(TOTAL.gt(1000.0)?);
@@ -1428,7 +1609,7 @@ fn path_items() -> TokenStream {
 ///  7 | #[model_schema(decode_with)]
 ///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ///    = help: for that trait implementation, expected `Invoice`, found `fn(Invoice) -> Invoice`
-/// note: required by a bound in `Update::<Root>::and`
+/// note: required by a bound in `invoice_schema::Update::<Root>::and`
 ///   --> tests/zz_probe.rs:7:1
 ///    |
 ///  7 | #[model_schema(decode_with)]
@@ -1454,7 +1635,7 @@ fn update_items() -> TokenStream {
                 Self { document, root: ::core::marker::PhantomData }
             }
 
-            fn held(operator: &str, key: ::std::string::String, value: bson::Bson) -> Self {
+            fn held(operator: &str, key: &str, value: bson::Bson) -> Self {
                 let mut changed = bson::Document::new();
                 changed.insert(key, value);
                 let mut document = bson::Document::new();

@@ -181,13 +181,9 @@ const DECODE_WITH_STRUCT_SHAPES: [(&str, &str); 11] = [
 ];
 
 /// What `mongodb` adds for a flagged type's typed paths: the struct of them in its module, and on
-/// the type the const that holds them and the function that builds them.
+/// the type the const that holds them.
 #[cfg(feature = "serde")]
-const TYPED_PATHS: [&str; 3] = [
-    "pub struct MongoFields <",
-    "pub const MONGO_FIELDS :",
-    "pub const fn mongo_fields_under <",
-];
+const TYPED_PATHS: [&str; 2] = ["pub struct MongoFields <", "pub const MONGO_FIELDS :"];
 
 /// What `mongodb` adds for a flagged type's operations: in its module the error and the read they
 /// answer, and on the type the reads, the count and the writes.
@@ -6819,7 +6815,7 @@ fn a_type_without_decode_with_gets_no_typed_path_and_no_operation() {
         for added in [
             "MongoFields",
             "MONGO_FIELDS",
-            "mongo_fields_under",
+            "pub trait Nests <",
             "OperationError",
             "pub struct Read <",
             "find_one",
@@ -6890,11 +6886,10 @@ fn a_type_declared_above_is_held_by_how_serde_writes_it() {
          pub keyed: HeldKeyed, pub keyeds: Vec<HeldKeyed> }",
     );
     for emitted in [
-        "pub brand : self :: Model < Root , super :: HeldBrand , super :: held_brand_schema :: MongoFields \
-         < Root , super :: held_brand_schema :: Field < Root , super :: HeldBrand > > >",
-        "pub brands : self :: ListField < Root , super :: HeldBrand >",
-        "pub keyed : self :: Model < Root , super :: HeldKeyed , super :: held_keyed_schema :: MongoFields < Root > >",
-        "pub keyeds : self :: ModelList < Root , super :: HeldKeyed , super :: held_keyed_schema :: MongoFields < Root > >",
+        "pub const fn brand (& self) -> self :: Field < Root , super :: HeldBrand > {",
+        "pub const fn brands (& self) -> self :: ListField < Root , super :: HeldBrand > {",
+        "pub const fn keyed (& self) -> self :: Model < Root , super :: HeldKeyed > {",
+        "pub const fn keyeds (& self) -> self :: ModelList < Root , super :: HeldKeyed > {",
     ] {
         assert!(
             expanded.contains(emitted),
@@ -7199,13 +7194,17 @@ fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
         "pub struct MongoPath {",
         "pub struct Filter < Root > {",
         "pub struct Update < Root > {",
-        "pub struct Field < Root , V > {",
-        "pub struct OptionalField < Root , V > {",
+        "pub struct AsFilter ;",
+        "pub struct AsUpdate ;",
+        "pub trait Nests < Root , N : ? :: core :: marker :: Sized , Kind > {",
+        "pub struct Field < Root , V , N : ? :: core :: marker :: Sized = V > {",
+        "pub struct OptionalField < Root , V , N : ? :: core :: marker :: Sized = V > {",
         "pub struct Element < V > {",
-        "pub struct ListField < Root , V > {",
-        "pub struct Model < Root , M , F > {",
-        "pub struct OptionalModel < Root , M , F > {",
-        "pub struct ModelList < Root , M , F > {",
+        "pub struct ListField < Root , V , N : ? :: core :: marker :: Sized = V > {",
+        "pub struct Model < Root , M , N : ? :: core :: marker :: Sized = M > {",
+        "pub struct OptionalModel < Root , M , N : ? :: core :: marker :: Sized = M > {",
+        "pub struct ModelList < Root , M , N : ? :: core :: marker :: Sized = M > {",
+        "pub struct Nested < Root , N : ? :: core :: marker :: Sized > {",
     ] {
         assert_eq!(
             flagged.contains(under_mongodb),
@@ -7274,19 +7273,25 @@ fn what_decode_with_emits_is_written_for_the_lints_a_consumer_denies() {
             #[cfg(feature = "mongodb")]
             "pub struct Update < Root > {",
             #[cfg(feature = "mongodb")]
-            "pub struct Field < Root , V > {",
+            "pub struct AsFilter ;",
             #[cfg(feature = "mongodb")]
-            "pub struct OptionalField < Root , V > {",
+            "pub struct AsUpdate ;",
+            #[cfg(feature = "mongodb")]
+            "pub struct Field < Root , V , N : ? :: core :: marker :: Sized = V > {",
+            #[cfg(feature = "mongodb")]
+            "pub struct OptionalField < Root , V , N : ? :: core :: marker :: Sized = V > {",
             #[cfg(feature = "mongodb")]
             "pub struct Element < V > {",
             #[cfg(feature = "mongodb")]
-            "pub struct ListField < Root , V > {",
+            "pub struct ListField < Root , V , N : ? :: core :: marker :: Sized = V > {",
             #[cfg(feature = "mongodb")]
-            "pub struct Model < Root , M , F > {",
+            "pub struct Model < Root , M , N : ? :: core :: marker :: Sized = M > {",
             #[cfg(feature = "mongodb")]
-            "pub struct OptionalModel < Root , M , F > {",
+            "pub struct OptionalModel < Root , M , N : ? :: core :: marker :: Sized = M > {",
             #[cfg(feature = "mongodb")]
-            "pub struct ModelList < Root , M , F > {",
+            "pub struct ModelList < Root , M , N : ? :: core :: marker :: Sized = M > {",
+            #[cfg(feature = "mongodb")]
+            "pub struct Nested < Root , N : ? :: core :: marker :: Sized > {",
         ] {
             assert!(
                 flagged.contains(&format!("# [non_exhaustive] {declared}")),
