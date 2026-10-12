@@ -110,6 +110,42 @@ enum BoundedByEnum {
     Tags { tags: Vec<String> },
 }
 
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct BoundedPair(
+    #[model_schema_prop(minLength = 2)] String,
+    #[model_schema_prop(minimum = 1)] u32,
+);
+
+/// A struct of one slot, which serde writes as the slot's value.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct BoundedLone(#[model_schema_prop(minLength = 2)] String);
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct BoundedHolder {
+    lone: BoundedLone,
+    pair: BoundedPair,
+}
+
+/// A struct of one slot read through a hook, which trims what it reads.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct BoundedTrimmed(
+    #[model_schema_prop(minLength = 1)]
+    #[serde(deserialize_with = "trimmed")]
+    String,
+);
+
+/// The read hook of [`BoundedTrimmed`].
+fn trimmed<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(String::deserialize(deserializer)?.trim().to_owned())
+}
+
 /// A stored group that breaks every bound `BoundedGroup` writes.
 fn broken() -> Value {
     json!({
@@ -433,6 +469,121 @@ fn a_callback_that_sets_a_slot_at_its_path_recovers_the_read() {
         Verdict::Fixed
     });
     assert_eq!(read, Ok(BoundedSlots::Pair("ab".to_owned(), 1)));
+}
+
+#[test]
+fn a_broken_bound_in_a_tuple_structs_slot_is_listed_at_the_slot() {
+    use bounded_holder_schema::Verdict as HolderVerdict;
+    use bounded_lone_schema::Verdict as LoneVerdict;
+    use bounded_pair_schema::Verdict;
+
+    let held = BoundedPair::from_value_with(json!(["ab", 1_u32]), |_, _| Verdict::Reject);
+    assert_eq!(held, Ok(BoundedPair("ab".to_owned(), 1)));
+
+    let pair = BoundedPair::from_value_with(json!(["a", 0_u32]), |_, _| Verdict::Reject);
+    let lone = BoundedLone::from_value_with(json!("a"), |_, _| LoneVerdict::Reject);
+    let holder =
+        BoundedHolder::from_value_with(json!({ "lone": "a", "pair": ["a", 0_u32] }), |_, _| {
+            HolderVerdict::Reject
+        });
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    {
+        assert_eq!(
+            lines(&pair.unwrap_err()),
+            [
+                "[0]: invalid: expected String, found String(\"a\"): too short: minimum length \
+                 is 2, got 1",
+                "[1]: invalid: expected U32, found Number(0): too small: minimum is 1, got 0",
+            ]
+        );
+        assert_eq!(
+            lines(&lone.unwrap_err()),
+            [
+                "the value itself: invalid: expected String, found String(\"a\"): too short: \
+                 minimum length is 2, got 1"
+            ]
+        );
+        assert_eq!(
+            lines(&holder.unwrap_err()),
+            [
+                "lone: invalid: expected String, found String(\"a\"): too short: minimum length \
+                 is 2, got 1",
+                "pair[0]: invalid: expected String, found String(\"a\"): too short: minimum \
+                 length is 2, got 1",
+                "pair[1]: invalid: expected U32, found Number(0): too small: minimum is 1, got 0",
+            ]
+        );
+    }
+    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    {
+        assert_eq!(pair, Ok(BoundedPair("a".to_owned(), 0)));
+        assert_eq!(lone, Ok(BoundedLone("a".to_owned())));
+        assert_eq!(
+            holder,
+            Ok(BoundedHolder {
+                lone: BoundedLone("a".to_owned()),
+                pair: BoundedPair("a".to_owned(), 0),
+            })
+        );
+    }
+}
+
+/// The bound is checked on what the struct's own reader reads, the slot's hook having run.
+#[test]
+fn the_one_slot_of_a_struct_is_held_to_its_bound_as_its_hook_reads_it() {
+    use bounded_trimmed_schema::Verdict;
+
+    let held = BoundedTrimmed::from_value_with(json!(" a "), |_, _| Verdict::Reject);
+    assert_eq!(held, Ok(BoundedTrimmed("a".to_owned())));
+    let blank = BoundedTrimmed::from_value_with(json!("  "), |_, _| Verdict::Reject);
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    assert_eq!(
+        lines(&blank.unwrap_err()),
+        [
+            "the value itself: invalid: expected String, found String(\"  \"): too short: \
+             minimum length is 1, got 0"
+        ]
+    );
+    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    assert_eq!(blank, Ok(BoundedTrimmed(String::new())));
+}
+
+/// A callback sets each slot at its issue's path, and the read answers the repaired struct.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn a_callback_that_sets_a_tuple_structs_slots_at_their_paths_recovers_the_read() {
+    use bounded_holder_schema::{Issue, Verdict};
+
+    let stored = json!({ "lone": "a", "pair": ["ab", 0_u32] });
+    let read = BoundedHolder::from_value_with(stored, |raw, found| {
+        let [
+            Issue::Invalid {
+                path: lone,
+                expected: _lone_expected,
+                found: _lone_found,
+                reason: _lone_reason,
+            },
+            Issue::Invalid {
+                path: second,
+                expected: _second_expected,
+                found: _second_found,
+                reason: _second_reason,
+            },
+        ] = found
+        else {
+            return Verdict::Reject;
+        };
+        lone.set_in_value(raw, json!("ok"));
+        second.set_in_value(raw, json!(1_u32));
+        Verdict::Fixed
+    });
+    assert_eq!(
+        read,
+        Ok(BoundedHolder {
+            lone: BoundedLone("ok".to_owned()),
+            pair: BoundedPair("ab".to_owned(), 1),
+        })
+    );
 }
 
 /// The callback drops each value a bound refuses, and the read answers what is left.

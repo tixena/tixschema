@@ -92,6 +92,25 @@ enum BoundedByEnum {
     Tags { tags: Vec<String> },
 }
 
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct BoundedPair(
+    #[model_schema_prop(minLength = 2)] String,
+    #[model_schema_prop(minimum = 1)] i32,
+);
+
+/// A struct of one slot, which serde writes as the slot's value.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct BoundedLone(#[model_schema_prop(minLength = 2)] String);
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct BoundedHolder {
+    lone: BoundedLone,
+    pair: BoundedPair,
+}
+
 /// A stored group that breaks every bound `BoundedGroup` writes.
 fn broken() -> Document {
     doc! {
@@ -350,6 +369,89 @@ fn a_bound_written_on_the_enum_is_listed_at_each_string_it_reaches() {
         );
         assert_eq!(slot, Ok(BoundedByEnum::Slot("abcdef".to_owned())));
     }
+}
+
+#[test]
+fn a_broken_bound_in_a_tuple_structs_slot_is_listed_at_the_slot() {
+    use bounded_holder_schema::Verdict;
+
+    let held =
+        BoundedHolder::from_bson_with(doc! { "lone": "ok", "pair": ["ab", 1_i32] }, |_, _| {
+            Verdict::Reject
+        });
+    assert_eq!(
+        held,
+        Ok(BoundedHolder {
+            lone: BoundedLone("ok".to_owned()),
+            pair: BoundedPair("ab".to_owned(), 1),
+        })
+    );
+
+    let broken =
+        BoundedHolder::from_bson_with(doc! { "lone": "a", "pair": ["a", 0_i32] }, |_, _| {
+            Verdict::Reject
+        });
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    assert_eq!(
+        broken
+            .unwrap_err()
+            .to_string()
+            .lines()
+            .collect::<Vec<&str>>(),
+        [
+            "lone: invalid: expected String, found String(\"a\"): too short: minimum length is \
+             2, got 1",
+            "pair[0]: invalid: expected String, found String(\"a\"): too short: minimum length \
+             is 2, got 1",
+            "pair[1]: invalid: expected I32, found Int32(0): too small: minimum is 1, got 0",
+        ]
+    );
+    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    assert_eq!(
+        broken,
+        Ok(BoundedHolder {
+            lone: BoundedLone("a".to_owned()),
+            pair: BoundedPair("a".to_owned(), 0),
+        })
+    );
+}
+
+/// A callback sets each slot at its issue's path, and the read answers the repaired struct.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn a_callback_that_sets_a_tuple_structs_slots_at_their_paths_recovers_the_read() {
+    use bounded_holder_schema::{Issue, Verdict};
+
+    let stored = doc! { "lone": "a", "pair": ["ab", 0_i32] };
+    let read = BoundedHolder::from_bson_with(stored, |raw, found| {
+        let [
+            Issue::Invalid {
+                path: lone,
+                expected: _lone_expected,
+                found: _lone_found,
+                reason: _lone_reason,
+            },
+            Issue::Invalid {
+                path: second,
+                expected: _second_expected,
+                found: _second_found,
+                reason: _second_reason,
+            },
+        ] = found
+        else {
+            return Verdict::Reject;
+        };
+        lone.set_in_document(raw, Bson::String("ok".to_owned()));
+        second.set_in_document(raw, Bson::Int32(1));
+        Verdict::Fixed
+    });
+    assert_eq!(
+        read,
+        Ok(BoundedHolder {
+            lone: BoundedLone("ok".to_owned()),
+            pair: BoundedPair("ab".to_owned(), 1),
+        })
+    );
 }
 
 /// The callback drops each value a bound refuses, and the read answers what is left.

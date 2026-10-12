@@ -411,8 +411,10 @@ impl<'item> Shape<'item> {
                     slots
                         .unnamed
                         .iter()
-                        .filter_map(|slot| {
-                            walked_slot(slot, defaulted, module_name, parameters, None)
+                        .enumerate()
+                        .filter_map(|(index, slot)| {
+                            let validator = slot_validator(module_name, None, index);
+                            walked_slot(slot, defaulted, module_name, parameters, validator)
                         })
                         .collect(),
                 )
@@ -464,7 +466,7 @@ impl<'item> Shape<'item> {
                         .iter()
                         .enumerate()
                         .filter_map(|(index, slot)| {
-                            let validator = slot_validator(module_name, &named, index);
+                            let validator = slot_validator(module_name, Some(&named), index);
                             walked_slot(slot, false, module_name, parameters, validator)
                         })
                         .collect(),
@@ -478,7 +480,7 @@ impl<'item> Shape<'item> {
 struct Slot<'item> {
     absence_is_read: bool,
     ty: &'item Type,
-    /// `None` for a position of a tuple struct or of a tuple-typed field, which declares no bound.
+    /// `None` for a position of a tuple-typed field, which declares no bound.
     validator: Option<FieldValidator>,
     walk: Walk<'item>,
 }
@@ -910,6 +912,14 @@ impl Walker<'_> {
         }
     }
 
+    /// The closure answering what `validator`'s bound refuses of a value of type `ty`, or `None`
+    /// where the member has no validator, or its bound reaches nothing of `ty`.
+    fn bound_check(&self, validator: Option<&FieldValidator>, ty: &Type) -> Option<TokenStream> {
+        let member = validator?;
+        let (module, checked_by) = (self.module, &member.validator);
+        recovering_bound_check(&quote! { #module::#checked_by }, &member.named, ty)
+    }
+
     /// `listed` followed by what holds the value under `held`, read through `read` as `ty`, to the
     /// bound `validator` checks: one `Invalid` per violation, at the value. `listed` alone where
     /// the field has no validator, or its bound reaches nothing of `ty`.
@@ -923,10 +933,7 @@ impl Walker<'_> {
         path: &TokenStream,
     ) -> TokenStream {
         let (module, bound) = (self.module, self.source.bound());
-        let Some(check) = validator.and_then(|field| {
-            let checked_by = &field.validator;
-            recovering_bound_check(&quote! { #module::#checked_by }, &field.named, ty)
-        }) else {
+        let Some(check) = self.bound_check(validator, ty) else {
             return listed.clone();
         };
         let expected = self.expected(ty);
@@ -1254,24 +1261,24 @@ impl Walker<'_> {
     }
 
     /// The walker of a struct serde writes as the value one field of it holds: a single-slot tuple
-    /// struct, and a `#[serde(transparent)]` struct of either kind.
-    fn held_methods(&self, walk: &Walk<'_>) -> TokenStream {
+    /// struct, and a `#[serde(transparent)]` struct of either kind. `validator` checks the bound
+    /// written on a tuple struct's one slot.
+    fn held_methods(&self, walk: &Walk<'_>, validator: Option<&FieldValidator>) -> TokenStream {
         let found = Ident::new("found", Span::call_site());
         let walked = match &walk.step {
-            Step::Entries(_) | Step::Items(_) | Step::Positions(_) | Step::Present(_) => self
-                .issues_method(&Self::listed(
-                    &found,
-                    &self.arms(walk, &found, &[], 0, walk.ty, None),
-                )),
+            Step::Entries(_)
+            | Step::Items(_)
+            | Step::Model
+            | Step::Positions(_)
+            | Step::Present(_) => self.issues_method(&Self::listed(
+                &found,
+                &self.arms(walk, &found, &[], 0, walk.ty, validator),
+            )),
             // The type's own reader runs whatever hook its slot carries.
             Step::Leaf(_) => {
                 let whole = self.read_whole(&self.expected(walk.ty));
-                self.issues_method(&quote! { #whole; })
-            }
-            Step::Model => {
-                let (ty, issues) = (walk.ty, self.source.method("issues"));
-                let walked = self.asked(ty, &quote! { <#ty>::#issues(found, path, issue, out) });
-                self.issues_method(&quote! { #walked; })
+                let bound = self.lone_slot_bound(validator, walk.ty);
+                self.issues_method(&quote! { #whole; #bound })
             }
         };
         self.held_keyed(walk).map_or_else(
@@ -1447,6 +1454,30 @@ impl Walker<'_> {
         quote! { match #held { #(#listed)* } }
     }
 
+    /// What holds `found`, read whole with the type's own reader, to the bound `validator` checks
+    /// on its one slot, typed `ty`: one `Invalid` per violation, at the value. Nothing where the
+    /// slot has no validator, or its bound reaches nothing of `ty`.
+    fn lone_slot_bound(&self, validator: Option<&FieldValidator>, ty: &Type) -> TokenStream {
+        let (module, bound) = (self.module, self.source.bound());
+        let Some(check) = self.bound_check(validator, ty) else {
+            return TokenStream::new();
+        };
+        let expected = self.expected(ty);
+        quote! {
+            out.extend(#module::#bound(
+                found,
+                <Self as serde::Deserialize>::deserialize,
+                |held: &Self| {
+                    let check = #check;
+                    check(&held.0)
+                },
+                path.to_vec(),
+                #expected,
+                issue,
+            ));
+        }
+    }
+
     /// What lists the issues of the value `object` holds under a key: `arms` when it is there, and
     /// `Missing` naming `expected` when serde needs it.
     fn looked_up(
@@ -1512,11 +1543,12 @@ impl Walker<'_> {
         }
     }
 
-    /// The methods one type's walker is called through by another's.
-    fn methods(&self, shape: &Shape<'_>) -> TokenStream {
+    /// The methods one type's walker is called through by another's. `lone_bound` is the validator
+    /// of the bound written on the one slot of a tuple struct.
+    fn methods(&self, shape: &Shape<'_>, lone_bound: Option<&FieldValidator>) -> TokenStream {
         match shape {
             Shape::Fields(keyed) => self.object_methods(keyed),
-            Shape::Held(walk) => self.held_methods(walk),
+            Shape::Held(walk) => self.held_methods(walk, lone_bound),
             Shape::Nothing => self.unit_methods(),
             Shape::Slots(slots) => self.positional_methods(slots),
         }
@@ -1957,6 +1989,9 @@ pub fn struct_recovering_decode(item_struct: &ItemStruct) -> RecoveringDecode {
     let mut walked = item_struct.clone();
     reach.fields(&mut walked.fields);
     let shape = Shape::of(&walked, &module_name, &parameters);
+    let lone_bound = value_slot(&walked)
+        .filter(|only| !parse_serde_key_omission(&only.attrs).skips_deserializing)
+        .and_then(|_| slot_validator(&module_name, None, 0));
     let names = written_names(item_struct.to_token_stream());
     let paths = struct_paths(item_struct, &names);
     added_to(
@@ -1969,7 +2004,7 @@ pub fn struct_recovering_decode(item_struct: &ItemStruct) -> RecoveringDecode {
             reach: &reach,
         },
         &paths,
-        |walker| walker.methods(&shape),
+        |walker| walker.methods(&shape, lone_bound.as_ref()),
     )
 }
 
@@ -3873,9 +3908,14 @@ fn recorded_validator(
     })
 }
 
-/// [`recorded_validator`] for slot `index` of the tuple variant `variant`, named by its position.
-fn slot_validator(module_name: &str, variant: &str, index: usize) -> Option<FieldValidator> {
-    recorded_validator(module_name, index.to_string(), Some(variant))
+/// [`recorded_validator`] for slot `index` of a tuple struct, or of the tuple variant `variant`,
+/// named by its position.
+fn slot_validator(
+    module_name: &str,
+    variant: Option<&str>,
+    index: usize,
+) -> Option<FieldValidator> {
+    recorded_validator(module_name, index.to_string(), variant)
 }
 
 /// Whether the walker of `ty` is called as it stands: `ty` is the type being walked, or a struct

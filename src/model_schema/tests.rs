@@ -1033,26 +1033,44 @@ fn untagged_member_constraint_generates_nothing_without_a_schema_module() {
     assert!(attrs.is_empty(), "got: {}", quote::quote!(#(#attrs)*));
 }
 
-#[cfg(feature = "serde")]
 #[test]
-fn a_tuple_structs_slot_constraint_is_refused() {
-    let mut item: syn::ItemStruct = syn::parse_quote! {
-        struct Pair(#[model_schema_prop(minLength = 1)] String, u32);
-    };
-    let errors = tuple_struct_guard_errors(&mut item);
-    assert_eq!(errors.len(), 1, "got: {errors:?}");
-    for expected in [
-        "tuple field",
-        "unsupported on a tuple struct's slot",
-        "Write a struct with named fields",
+fn a_tuple_structs_slot_takes_a_check() {
+    let expanded =
+        expansion_over("pub struct Pair(#[model_schema_prop(minLength = 1)] pub String, pub u32);")
+            .to_string();
+    assert!(!expanded.contains("compile_error"), "got: {expanded}");
+}
+
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn a_tuple_structs_slot_is_named_by_its_position_and_read_off_self() {
+    let expanded = expansion_over(
+        "pub struct Pair(#[model_schema_prop(minLength = 1)] pub String, \
+         #[model_schema_prop(minimum = 1)] pub u32);",
+    )
+    .to_string();
+    for written in [
+        "pub fn validate_0_value",
+        "pub fn deserialize_0",
+        "pub fn validate_1_value",
+        "pub fn deserialize_1",
+        "validate_0_value (& self . 0)",
+        "validate_1_value (& self . 1)",
+        r#"format ! ("'{}': {}, got {}" , "0""#,
+        r#"format ! ("'{}': {}, got {}" , "1""#,
     ] {
-        assert!(
-            errors[0].contains(expected),
-            "{expected} missing: {}",
-            errors[0]
-        );
+        assert!(expanded.contains(written), "{written} missing: {expanded}");
     }
-    assert!(!errors[0].contains("variant"), "got: {}", errors[0]);
+    assert!(
+        !expanded.contains("deserialize_with"),
+        "a slot was given a serde hook: {expanded}"
+    );
+
+    let unchecked = expansion_over("pub struct Pair(pub String, pub u32);").to_string();
+    assert!(!unchecked.contains("fn validate"), "got: {unchecked}");
 }
 
 #[cfg(feature = "serde")]
@@ -2612,35 +2630,30 @@ fn a_refused_pattern_leaves_no_hook_naming_the_dropped_module() {
     assert_eq!(rendered, "", "got: {rendered}");
 }
 
-/// The guard failures of a tuple struct's slots, read off the walk a build with no schema surface
-/// runs over them.
-#[cfg(feature = "serde")]
-fn tuple_struct_guard_errors(item: &mut syn::ItemStruct) -> Vec<String> {
-    super::collect_struct_fields(
-        &mut item.fields,
-        None,
-        Some("pair_schema"),
-        "Pair",
-        &syn::Generics::default(),
-        false,
-        false,
-    )
-    .4
-    .iter()
-    .map(ToString::to_string)
-    .collect()
-}
-
 #[cfg(feature = "serde")]
 #[test]
 fn a_constraint_refused_its_placement_leaves_no_hook_naming_the_dropped_module() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
-        struct Pair(#[model_schema_prop(minLength = 2)] String, u32);
+        struct Guarded {
+            #[model_schema_prop(minLength = 2)]
+            note: RefCell<String>,
+        }
     };
-    let errors = tuple_struct_guard_errors(&mut item);
+    let errors = super::collect_struct_fields(
+        &mut item.fields,
+        None,
+        Some("guarded_schema"),
+        "Guarded",
+        &syn::Generics::default(),
+        false,
+        false,
+    )
+    .4;
     assert_eq!(errors.len(), 1, "got: {errors:?}");
     assert!(
-        errors[0].contains("unsupported on a tuple struct's slot"),
+        errors[0]
+            .to_string()
+            .contains("unsupported on a field reached through `RefCell`"),
         "got: {}",
         errors[0]
     );
@@ -10633,7 +10646,7 @@ fn mixed_wrappers_compose_in_written_order() {
 fn checked_struct_field() -> CheckedMember {
     let item: syn::ItemStruct = syn::parse_quote! { struct Probe { field: String } };
     let field = item.fields.iter().next().unwrap();
-    checked_member(field, 0, None, ConstraintGate::Validator).unwrap()
+    checked_member(field, 0, None, ConstraintGate::Validator)
 }
 
 /// The schema-module items emitted for a `minLength` field spelled `spelling`, as tokens.
@@ -10879,9 +10892,7 @@ fn generated_validation_under(
 
 #[cfg(feature = "serde")]
 #[test]
-fn a_constraint_on_a_tuple_structs_slot_is_refused_before_a_name_is_spelled() {
-    let positional: syn::ItemStruct = syn::parse_quote! { struct Probe(String); };
-    let named: syn::ItemStruct = syn::parse_quote! { struct Probe { note: String } };
+fn a_tuple_structs_slot_is_checked_where_a_named_field_of_the_struct_is() {
     let min_length = ModelSchemaPropMeta {
         min_length: Some(3),
         ..ModelSchemaPropMeta::default()
@@ -10890,24 +10901,27 @@ fn a_constraint_on_a_tuple_structs_slot_is_refused_before_a_name_is_spelled() {
         maximum: Some(5.0_f64),
         ..ModelSchemaPropMeta::default()
     };
+    let text: (syn::ItemStruct, syn::ItemStruct) = (
+        syn::parse_quote! { struct Probe(String); },
+        syn::parse_quote! { struct Probe { note: String } },
+    );
+    let number: (syn::ItemStruct, syn::ItemStruct) = (
+        syn::parse_quote! { struct Probe(u32); },
+        syn::parse_quote! { struct Probe { count: u32 } },
+    );
 
-    for constraint in [&min_length, &maximum] {
-        let (module_items, validate_body, guard_error, injected_attrs) =
-            generated_validation_under(&positional, constraint, ConstraintGate::Validator, None);
-        let error = guard_error.unwrap();
-        assert!(error.contains("compile_error"), "got: {error}");
-        assert!(error.contains("tuple field"), "got: {error}");
-        assert!(!module_items, "a refused slot generated helpers: {error}");
-        assert!(!validate_body, "a refused slot reached validate(): {error}");
-        assert_eq!(injected_attrs, 0, "a refused slot was given a serde hook");
+    for ((positional, named), constraint) in [(&text, &min_length), (&number, &maximum)] {
+        let slot =
+            generated_validation_under(positional, constraint, ConstraintGate::Validator, None);
+        assert_eq!(slot, (true, true, None, 0), "a validator and no serde hook");
+        assert_eq!(
+            slot,
+            generated_validation_under(named, constraint, ConstraintGate::Validator, None)
+        );
     }
 
-    let named_string =
-        generated_field_validation(&named, &min_length, ConstraintGate::Deserializer);
-    assert_eq!(named_string, (true, true, None, 1));
-
     let unconstrained = generated_validation_under(
-        &positional,
+        &text.0,
         &ModelSchemaPropMeta::default(),
         ConstraintGate::Validator,
         None,
