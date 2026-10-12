@@ -453,6 +453,86 @@ fn test_the_documented_branded_newtype_example_is_declarable_and_shows_what_it_e
     );
 }
 
+/// The "Compiler-Validated Examples" section: one block, one block per variant, and none.
+#[test]
+#[cfg(feature = "zod")]
+fn test_the_compiler_validated_examples_are_declarable_and_show_what_they_emit() {
+    /// A shape
+    /// ```rust example
+    /// Shape::Circle { radius: 2 }
+    /// ```
+    /// ```rust example
+    /// Shape::Square { side: 3 }
+    /// ```
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    #[serde(tag = "kind")]
+    pub enum Shape {
+        Circle { radius: u32 },
+        Square { side: u32 },
+    }
+
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Plain {
+        pub value: u32,
+    }
+
+    /// User profile
+    /// ```rust example
+    /// User {
+    ///     name: "John Doe".to_string(),
+    ///     email: "john@example.com".to_string(),
+    ///     age: 25,
+    /// }
+    /// ```
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct User {
+        pub age: u32,
+        pub email: String,
+        pub name: String,
+    }
+
+    // Declared in sorted order, so the keys read the same with `preserve_order` on or off.
+    assert_readme_declares_and_shows(
+        "/// User profile\n/// ```rust example\n/// User {\n///     name: \"John \
+         Doe\".to_string(),\n///     email: \"john@example.com\".to_string(),\n///     age: \
+         25,\n/// }\n/// ```\n#[model_schema()]\n#[derive(Serialize, Deserialize, Debug, \
+         Clone)]\npub struct User {",
+        &User::zod_schema(),
+        &[
+            "  name: z.string(),",
+            "  email: z.string(),",
+            "  age: z.number().int(),",
+            "  examples: [{\"age\":25,\"email\":\"john@example.com\",\"name\":\"John Doe\"}]",
+        ],
+    );
+    assert_readme_declares_and_shows_whole(
+        "/// A shape\n/// ```rust example\n/// Shape::Circle { radius: 2 }\n/// ```\n/// ```rust \
+         example\n/// Shape::Square { side: 3 }\n/// ```\n#[model_schema()]\n#[derive(Serialize, \
+         Deserialize, Debug, Clone)]\n#[serde(tag = \"kind\")]\npub enum Shape {\n    Circle { \
+         radius: u32 },\n    Square { side: u32 },\n}",
+        &Shape::zod_schema(),
+    );
+    assert_readme_declares_and_shows_whole(
+        "#[model_schema()]\n#[derive(Serialize, Deserialize, Debug, Clone)]\npub struct Plain \
+         {\n    pub value: u32,\n}",
+        &Plain::zod_schema(),
+    );
+    assert_eq!(
+        Shape::schema_examples(),
+        vec![
+            serde_json::json!({ "kind": "Circle", "radius": 2_u32 }),
+            serde_json::json!({ "kind": "Square", "side": 3_u32 })
+        ]
+    );
+    assert_eq!(
+        Shape::schema_example(),
+        serde_json::json!({ "kind": "Circle", "radius": 2_u32 })
+    );
+}
+
 /// The rejected half of the constrained-brand rule for an inner written over a parameter.
 #[test]
 fn test_the_constrained_brand_over_a_parameterised_inner_example_is_still_shown() {

@@ -1097,8 +1097,8 @@ pub fn get_struct_docs(item_struct: &ItemStruct) -> Option<Vec<String>> {
 }
 
 /// An enum's doc lines, read for the prose two surfaces publish (a plain enum's `JSDoc`, every
-/// shape's item description) — not for its ` ```rust example ` block, which
-/// [`extract_example_tokens`] reads off the attributes directly so the tokens it builds keep their
+/// shape's item description) — not for its ` ```rust example ` blocks, which
+/// [`extract_examples_tokens`] reads off the attributes directly so the tokens it builds keep their
 /// spans.
 #[cfg(any(
     feature = "typescript",
@@ -1204,39 +1204,28 @@ fn doc_lines_with_spans(attrs: &[Attribute]) -> Vec<DocLine> {
     lines
 }
 
-/// The [`DocLine`]s inside the first ` ```rust example ` fence, or `None` where there is no such
-/// fence. Later fences are ignored.
+/// The [`DocLine`]s inside each ` ```rust example ` fence, in the order they are written.
 #[cfg(feature = "zod")]
-fn example_doc_lines(lines: &[DocLine]) -> Option<Vec<DocLine>> {
-    let mut in_example_block = false;
-    let mut example_lines: Vec<DocLine> = Vec::new();
+fn example_blocks(lines: &[DocLine]) -> Vec<Vec<DocLine>> {
+    let mut blocks: Vec<Vec<DocLine>> = Vec::new();
+    let mut current: Option<Vec<DocLine>> = None;
 
     for line in lines {
         let trimmed = line.text.trim();
         let cleaned = trimmed.strip_prefix('*').unwrap_or(trimmed).trim();
 
-        if cleaned == "```rust example" {
-            if !example_lines.is_empty() {
-                break;
+        match (&mut current, cleaned) {
+            (None, "```rust example") => current = Some(Vec::new()),
+            (Some(_), "```") => {
+                if let Some(block) = current.take().filter(|block| !block.is_empty()) {
+                    blocks.push(block);
+                }
             }
-            in_example_block = true;
-            continue;
-        }
-
-        if in_example_block && cleaned == "```" {
-            break;
-        }
-
-        if in_example_block {
-            example_lines.push(line.clone());
+            (Some(block), _) => block.push(line.clone()),
+            (None, _) => {}
         }
     }
-
-    if example_lines.is_empty() {
-        None
-    } else {
-        Some(example_lines)
-    }
+    blocks
 }
 
 /// Whether `line` (already trimmed) is a bare `use` statement — the one pattern
@@ -1329,15 +1318,15 @@ fn respan_example_tokens(lines: &[DocLine]) -> proc_macro2::TokenStream {
     out
 }
 
-/// The example's tokens, respanned line-by-line onto the `///` lines that wrote them, or `None`
-/// where there is no ` ```rust example ` fence. `str::parse::<TokenStream>()` alone stamps every
-/// token with `Span::call_site()` — the whole `#[model_schema(...)]` invocation — so a typo or type
-/// mismatch inside the example used to be reported there instead of on the line the author wrote.
+/// Each example's tokens, respanned line-by-line onto the `///` lines that wrote them.
+/// `str::parse::<TokenStream>()` alone stamps every token with `Span::call_site()`, the whole
+/// `#[model_schema(...)]` invocation, where a typo inside an example would be reported.
 #[cfg(feature = "zod")]
-pub fn extract_example_tokens(attrs: &[Attribute]) -> Option<proc_macro2::TokenStream> {
-    let lines = doc_lines_with_spans(attrs);
-    let example_lines = example_doc_lines(&lines)?;
-    Some(respan_example_tokens(&example_lines))
+pub fn extract_examples_tokens(attrs: &[Attribute]) -> Vec<proc_macro2::TokenStream> {
+    example_blocks(&doc_lines_with_spans(attrs))
+        .iter()
+        .map(|block| respan_example_tokens(block))
+        .collect()
 }
 
 /// Transforms doctest-compatible example code to be suitable for `schema_example()`.

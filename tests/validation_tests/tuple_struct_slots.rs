@@ -219,12 +219,18 @@ mod a_check_on_a_slot {
             ),
             "Got:\n{pair}"
         );
+        // The statement closes on the bound: the raw `const` beside TypeScript, and the exported
+        // one, after the examples it holds, without it.
         let lone = Lone::zod_schema();
+        #[cfg(feature = "typescript")]
+        let closed = ";";
+        #[cfg(not(feature = "typescript"))]
+        let closed = ".meta({\n  examples: []\n});";
         assert!(
-            lone.contains(
-                " = z.string().min(1, { error: (issue) => `too short: minimum length is 1, got \
-                 ${String(issue.input).length}` });"
-            ),
+            lone.contains(&format!(
+                " = z.string().min(1, {{ error: (issue) => `too short: minimum length is 1, got \
+                 ${{String(issue.input).length}}` }}){closed}"
+            )),
             "Got:\n{lone}"
         );
         let wrapped = Wrapped::zod_schema();

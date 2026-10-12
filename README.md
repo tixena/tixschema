@@ -65,6 +65,8 @@ export const User$Schema: ZodType<User> = z.strictObject({
   email: z.string(),
   age: z.number().int(),
   is_active: z.boolean(),
+}).meta({
+  examples: []
 });
 ```
 
@@ -497,7 +499,9 @@ export const FixedValue$Schema: ZodType<FixedValue> = z.discriminatedUnion("type
     field_a: z.string(),
     field_b: z.boolean(),
   }),
-]);
+]).meta({
+  examples: []
+});
 ```
 
 You can customize the tag and content field names using Serde's `tag` and `content` attributes:
@@ -567,7 +571,9 @@ export const External$Schema: ZodType<External> = z.union([
   z.strictObject({
     "Single": z.string(),
   }),
-]);
+]).meta({
+  examples: []
+});
 ```
 
 Add `#[serde(tag = "...", content = "...")]` to get the adjacently tagged `{ type, value }` form documented above instead.
@@ -625,7 +631,9 @@ export const Internal$Schema: ZodType<Internal> = z.union([
   z.strictObject({ type: z.literal("Bare") }),
   z.strictObject({ type: z.literal("Fields"), a: z.string(), b: z.boolean() }),
   z.strictObject({ type: z.literal("Wrapped") }).and(z.lazy(() => TagPayload$Schema)),
-]);
+]).meta({
+  examples: []
+});
 ```
 
 The content joins the member under `z.lazy` for the reason a flattened base does: the inner type is a `const` of its own and nothing orders one type's schema against another's, so reading the name while the union's `const` initializes would fail for any inner type declared below -- and a cycle running through a variant's content and a `#[serde(flatten)]` base has no order that puts each above the other. Deferred, every module loads whatever order it is assembled in.
@@ -761,7 +769,9 @@ Generated Zod:
 export const DataElementSampleValueEntry$Schema: ZodType<DataElementSampleValueEntry> =
   z.strictObject({
     dataElementId: z.string(),
-  }).and(z.lazy(() => DataElementSampleValueVariant$Schema));
+  }).and(z.lazy(() => DataElementSampleValueVariant$Schema)).meta({
+    examples: []
+  });
 ```
 
 Notes:
@@ -808,7 +818,9 @@ Generated Zod:
 
 ```typescript
 const DateValue$RawSchema = z.union([z.number().int(), DateString$Schema]);
-export const DateValue$Schema: ZodType<DateValue> = DateValue$RawSchema;
+export const DateValue$Schema: ZodType<DateValue> = DateValue$RawSchema.meta({
+  examples: []
+});
 ```
 
 Generated JSON Schema:
@@ -947,7 +959,9 @@ const TreeNode$RawSchema = z.strictObject({
   get children() { return z.array(TreeNode$Schema); },
 });
 
-export const TreeNode$Schema: ZodType<TreeNode> = TreeNode$RawSchema;
+export const TreeNode$Schema: ZodType<TreeNode> = TreeNode$RawSchema.meta({
+  examples: []
+});
 ```
 
 Recursive enums are also supported. Only the variants that contain a self-reference use getter syntax; non-recursive variants use normal property syntax:
@@ -988,7 +1002,9 @@ export const DynamicValue$Schema: ZodType<DynamicValue> = z.discriminatedUnion("
     type: z.literal("object"),
     get value() { return z.record(z.string(), DynamicValue$Schema); },
   }),
-]);
+]).meta({
+  examples: []
+});
 ```
 
 A tuple struct has no key to write a getter on, so a slot that reaches the struct itself, or a type declared below it, is read behind `z.lazy` instead:
@@ -1104,7 +1120,9 @@ export function Wrapper$SchemaFactory(
   const hit = Wrapper$SchemaFactoryCache.get(idType);
   if (hit) return hit;
 
-  const schema = buildWrapper$Schema(idType);
+  const schema = buildWrapper$Schema(idType).meta({
+    examples: []
+  });
   Wrapper$SchemaFactoryCache.set(idType, schema);
   return schema;
 }
@@ -1332,6 +1350,7 @@ const buildUserId$Schema = <IdType extends ZodType>(
 ) =>
   idType.meta({
   description: "UserId",
+  examples: [],
 }).brand<"UserId">();
 
 type UserId$SchemaOf<IdType extends ZodType> = ReturnType<
@@ -1361,6 +1380,7 @@ export const UserId$SchemaDefault: typeof UserId$RawSchemaDefault = UserId$RawSc
 export type CorrelationId = string & $brand<"CorrelationId">;
 const CorrelationId$RawSchema = z.string().brand<"CorrelationId">().meta({
   description: "CorrelationId",
+  examples: [],
 });
 
 export const CorrelationId$Schema: typeof CorrelationId$RawSchema = CorrelationId$RawSchema;
@@ -1550,6 +1570,7 @@ Generated Zod:
 ```typescript
 const SlugId$RawSchema = z.string().min(3, { error: (issue) => `too short: minimum length is 3, got ${String(issue.input).length}` }).max(50, { error: (issue) => `too long: maximum length is 50, got ${String(issue.input).length}` }).check(z.regex(/^[a-z0-9_]+$/, { error: "does not match pattern '^[a-z0-9_]+$'" })).brand<"SlugId">().meta({
   description: "SlugId",
+  examples: [],
 });
 
 export const SlugId$Schema: typeof SlugId$RawSchema = SlugId$RawSchema;
@@ -1672,7 +1693,7 @@ const buildDocumentId$Schema = <IdType extends ZodType>(
 ) =>
   idType.meta({
   description: "Generic document identifier.\n- `DocumentId<String>` for API/HTTP layer\n- `DocumentId<ObjectId>` for `MongoDB` layer",
-  example: "64de3d95ff45b119e5b53a7e",
+  examples: ["64de3d95ff45b119e5b53a7e"],
 }).brand<"DocumentId">();
 
 type DocumentId$SchemaOf<IdType extends ZodType> = ReturnType<
@@ -1884,7 +1905,9 @@ const ExpireCreditRequest$RawSchema = z.strictObject({
   creditId: z.string(),
 });
 
-export const ExpireCreditRequest$Schema: ZodType<ExpireCreditRequest> = ExpireCreditRequest$RawSchema;
+export const ExpireCreditRequest$Schema: ZodType<ExpireCreditRequest> = ExpireCreditRequest$RawSchema.meta({
+  examples: []
+});
 ```
 
 `sweep` takes none, so its message is empty rather than absent. An operation that later needs a field gains one here, instead of changing from carrying no payload to carrying one and breaking every caller:
@@ -1895,7 +1918,9 @@ export type SweepRequest = Record<string, never>;
 const SweepRequest$RawSchema = z.strictObject({
 });
 
-export const SweepRequest$Schema: ZodType<SweepRequest> = SweepRequest$RawSchema;
+export const SweepRequest$Schema: ZodType<SweepRequest> = SweepRequest$RawSchema.meta({
+  examples: []
+});
 ```
 
 `get_available_balance` takes one argument, so nothing is declared for it at all -- `AvailableBalanceRequest` is the message, exactly as you wrote it.
@@ -3483,7 +3508,9 @@ export const Action$Schema = z.discriminatedUnion("type", [
     type: z.literal("generate"),
     value: z.literal("document"),
   }),
-]);
+]).meta({
+  examples: []
+});
 ```
 
 `literal` also accepts a boolean or a numeric value, provided the field's own Rust type can carry it: `literal = true`/`literal = false` on a `bool` field, `literal = 214` on any numeric field. Every surface renders the literal in the field's own kind, so the kind written must match the field's declared type — `literal = true` on a `String` field, or `literal = "x"` on a `bool` field, is a compile error naming both sides.
@@ -3513,6 +3540,8 @@ export const AdminUser$Schema = z.strictObject({
   id: z.string(),
   isSystemAdmin: z.literal(true),
   email: z.string(),
+}).meta({
+  examples: []
 });
 ```
 
@@ -3663,7 +3692,7 @@ With the `serde` feature on, `nullable` is also refused together with any key-dr
 
 ## Compiler-Validated Examples
 
-You can provide compiler-validated example values for your types that will be embedded in the generated Zod schemas' `.meta()` field. Examples are written in doc comment code blocks and fully type-checked at compile time.
+You can provide compiler-validated example values for your types. Every generated Zod schema holds them in its `.meta()` under `examples`: a list with one item per example block, in the order written, and an empty list where the type writes none. Examples are written in doc comment code blocks and fully type-checked at compile time.
 
 ```rust
 /// User profile
@@ -3691,7 +3720,7 @@ export const User$Schema: ZodType<User> = z.strictObject({
   email: z.string(),
   age: z.number().int(),
 }).meta({
-  example: { name: "John Doe", email: "john@example.com", age: 25 }
+  examples: [{"age":25,"email":"john@example.com","name":"John Doe"}]
 });
 ```
 
@@ -3733,14 +3762,73 @@ pub enum DataType {
 }
 ```
 
+A type can write several blocks, one value each, for example one per variant of an enum. Every block is built and type-checked on its own, so a name one block binds is not in scope in the next:
+
+```rust
+/// A shape
+/// ```rust example
+/// Shape::Circle { radius: 2 }
+/// ```
+/// ```rust example
+/// Shape::Square { side: 3 }
+/// ```
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(tag = "kind")]
+pub enum Shape {
+    Circle { radius: u32 },
+    Square { side: u32 },
+}
+```
+
+Generated Zod:
+
+```typescript
+const Shape$RawSchema = z.discriminatedUnion("kind", [z.strictObject({
+  kind: z.literal("Circle"),
+  radius: z.number().int(),
+}), z.strictObject({
+  kind: z.literal("Square"),
+  side: z.number().int(),
+})]);
+
+export const Shape$Schema: ZodType<Shape> = Shape$RawSchema.meta({
+  examples: [{"kind":"Circle","radius":2},{"kind":"Square","side":3}]
+});
+```
+
+A type that writes no block publishes the empty list:
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Plain {
+    pub value: u32,
+}
+```
+
+```typescript
+const Plain$RawSchema = z.strictObject({
+  value: z.number().int(),
+});
+
+export const Plain$Schema: ZodType<Plain> = Plain$RawSchema.meta({
+  examples: []
+});
+```
+
+The same values are read in Rust. `Shape::schema_examples()` answers every block's value, a `Vec<serde_json::Value>` in the order written, and `Shape::schema_example()` answers the first. A type that writes no block has neither function.
+
 Key points:
 
-- Examples are **optional** -- if not provided, no example is generated.
+- Examples are **optional** -- a type that writes none publishes `examples: []`, and has no `schema_examples()` and no `schema_example()`.
 - Use the exact syntax: ` ```rust example` (note the space and `example` keyword).
-- If multiple examples are present, only the **first one** is used.
+- Every block is published, in the order written. An empty block is skipped.
+- An example is written as `serde_json` holds it. An object's keys are in the order serde wrote them where the crate's `serde_json` has `preserve_order` on, which the `bson` library turns on, and sorted where it is off.
 - Examples respect Serde attributes (field renaming, etc.).
-- Being Rust source, the example block is dropped from the JSDoc comment above the generated `export type`, whatever the type is declared as. On a struct or an enum it reaches the Zod `example` field; on a type alias, which publishes no `example` field, it reaches no generated surface at all.
-- A generic struct or enum has its example built at one instantiation, with every type parameter filled at `String`. A lifetime elides there and needs no filling, but a **const parameter takes none** -- `String` names a type, a const is a value, and no value is the one every example would be written at. So a struct or an enum that declares a const parameter and writes an example is refused, naming the const; drop the example or the const parameter. Nothing is owed where no example is written, on a type alias, or with the `zod` feature off, `zod` being the only surface that reads one.
+- Being Rust source, an example block is dropped from the JSDoc comment above the generated `export type`, whatever the type is declared as. On a struct or an enum it reaches the Zod `examples` list. A type alias builds no example: its block reaches no generated surface, and the alias publishes `examples: []`.
+- A brand and a plain enum hold `examples` inside the `.meta()` that holds their `description`. A generic type holds it on the schema its factory memoizes, so `$SchemaDefault` and every other call of the factory carry it.
+- A generic struct or enum has each example built at one instantiation, with every type parameter filled at `String`. A lifetime elides there and needs no filling, but a **const parameter takes none** -- `String` names a type, a const is a value, and no value is the one every example would be written at. So a struct or an enum that declares a const parameter and writes an example is refused, naming the const; drop the example or the const parameter. Nothing is owed where no example is written, on a type alias, or with the `zod` feature off, `zod` being the only surface that reads one.
 - The example code is executed at compile time and serialized to JSON.
 - Wrong types produce compile errors, ensuring examples stay in sync with your types.
 
@@ -3788,6 +3876,8 @@ export const Document$Schema = z.strictObject({
   metadata: z.record(z.string(), z.object({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) })),
   parent_id: z.union([z.null().transform(() => undefined), z.object({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) }), z.undefined()]).prefault(undefined),
   related_docs: z.record(z.string(), z.array(z.object({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) }))),
+}).meta({
+  examples: []
 });
 ```
 
@@ -3908,6 +3998,8 @@ export const Event$Schema: ZodType<Event> = z.strictObject({
   created_at: z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date()),
   epoch_ms: z.preprocess((arg) => { if (arg instanceof Date) return arg.getTime(); if (typeof arg === "string") return Date.parse(arg); return arg; }, z.number()),
   updated_at: z.union([z.null().transform(() => undefined), z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date()), z.undefined()]).prefault(undefined),
+}).meta({
+  examples: []
 });
 ```
 
@@ -6041,6 +6133,8 @@ export const User$Schema = z.strictObject({
   name: z.string(),
   email: z.union([z.null().transform(() => undefined), z.string(), z.undefined()]).prefault(undefined),
   age: z.union([z.null().transform(() => undefined), z.number().int(), z.undefined()]).prefault(undefined),
+}).meta({
+  examples: []
 });
 ```
 

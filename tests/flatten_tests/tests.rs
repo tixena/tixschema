@@ -1429,13 +1429,27 @@ fn test_flatten_variant_keeps_pascal_discriminator_and_camel_fields() {
     assert!(!ts.contains("sample_values"));
 }
 
+/// Whether `zod` closes the statement `expression` is bound in right after it: the raw `const`'s
+/// own `;` beside TypeScript, and the exported one's, after the examples it holds, without it.
+#[cfg(feature = "zod")]
+fn closes_on(zod: &str, expression: &str) -> bool {
+    #[cfg(feature = "typescript")]
+    let closed = format!("{expression};");
+    #[cfg(not(feature = "typescript"))]
+    let closed = format!("{expression}.meta({{\n  examples: []\n}});");
+    zod.contains(&closed)
+}
+
 #[test]
 #[cfg(feature = "zod")]
 fn test_flatten_zod_intersection() {
     let zod = DataElementSampleValueEntry::zod_schema();
     assert!(zod.contains("z.strictObject({"));
     assert!(zod.contains("dataElementId:"));
-    assert!(zod.contains("}).and(z.lazy(() => DataElementSampleValueVariant$Schema));"));
+    assert!(closes_on(
+        &zod,
+        "}).and(z.lazy(() => DataElementSampleValueVariant$Schema))"
+    ));
     assert!(!zod.contains("variant:"));
 }
 
@@ -1443,9 +1457,10 @@ fn test_flatten_zod_intersection() {
 #[cfg(feature = "zod")]
 fn test_flatten_zod_multiple_chained() {
     let zod = MultiFlatten::zod_schema();
-    assert!(
-        zod.contains("}).and(z.lazy(() => BasePart$Schema)).and(z.lazy(() => ExtraPart$Schema));")
-    );
+    assert!(closes_on(
+        &zod,
+        "}).and(z.lazy(() => BasePart$Schema)).and(z.lazy(() => ExtraPart$Schema))"
+    ));
 }
 
 #[test]
@@ -1480,11 +1495,11 @@ fn test_a_flatten_cycle_defers_both_sides_of_the_pair() {
     let second = CycleSecond::zod_schema();
 
     assert!(
-        first.contains("}).and(z.lazy(() => CycleSecond$Schema));"),
+        closes_on(&first, "}).and(z.lazy(() => CycleSecond$Schema))"),
         "expected a deferred base, got: {first}"
     );
     assert!(
-        second.contains("}).and(z.lazy(() => CycleFirst$Schema));"),
+        closes_on(&second, "}).and(z.lazy(() => CycleFirst$Schema))"),
         "expected a deferred base, got: {second}"
     );
     assert!(
@@ -1504,7 +1519,7 @@ fn test_a_flatten_cycle_through_a_variants_content_defers_both_sides() {
     let host = CycleVariantHost::zod_schema();
 
     assert!(
-        content.contains("}).and(z.lazy(() => CycleVariantHost$Schema));"),
+        closes_on(&content, "}).and(z.lazy(() => CycleVariantHost$Schema))"),
         "expected a deferred base, got: {content}"
     );
     assert!(
@@ -2582,9 +2597,9 @@ fn test_a_named_non_nullable_flatten_type_is_byte_identical() {
 #[cfg(feature = "zod")]
 fn test_a_named_non_nullable_flatten_schema_is_byte_identical() {
     #[cfg(feature = "typescript")]
-    const EXPECTED: &str = "const NamedPlainHolder$RawSchema = z.strictObject({\n  own: z.string(),\n}).and(z.lazy(() => PlainOptBase$Schema));\n\nexport const NamedPlainHolder$Schema: ZodType<NamedPlainHolder> = NamedPlainHolder$RawSchema;";
+    const EXPECTED: &str = "const NamedPlainHolder$RawSchema = z.strictObject({\n  own: z.string(),\n}).and(z.lazy(() => PlainOptBase$Schema));\n\nexport const NamedPlainHolder$Schema: ZodType<NamedPlainHolder> = NamedPlainHolder$RawSchema.meta({\n  examples: []\n});";
     #[cfg(not(feature = "typescript"))]
-    const EXPECTED: &str = "export const NamedPlainHolder$Schema = z.strictObject({\n  own: z.string(),\n}).and(z.lazy(() => PlainOptBase$Schema));";
+    const EXPECTED: &str = "export const NamedPlainHolder$Schema = z.strictObject({\n  own: z.string(),\n}).and(z.lazy(() => PlainOptBase$Schema)).meta({\n  examples: []\n});";
 
     assert_eq!(NamedPlainHolder::zod_schema(), EXPECTED);
 }
@@ -2668,9 +2683,9 @@ fn test_a_non_optional_flatten_type_is_byte_identical() {
 #[cfg(feature = "zod")]
 fn test_a_non_optional_flatten_schema_is_byte_identical() {
     #[cfg(feature = "typescript")]
-    const EXPECTED: &str = "const MultiFlatten$RawSchema = z.strictObject({\n  id: z.string(),\n}).and(z.lazy(() => BasePart$Schema)).and(z.lazy(() => ExtraPart$Schema));\n\nexport const MultiFlatten$Schema: ZodType<MultiFlatten> = MultiFlatten$RawSchema;";
+    const EXPECTED: &str = "const MultiFlatten$RawSchema = z.strictObject({\n  id: z.string(),\n}).and(z.lazy(() => BasePart$Schema)).and(z.lazy(() => ExtraPart$Schema));\n\nexport const MultiFlatten$Schema: ZodType<MultiFlatten> = MultiFlatten$RawSchema.meta({\n  examples: []\n});";
     #[cfg(not(feature = "typescript"))]
-    const EXPECTED: &str = "export const MultiFlatten$Schema = z.strictObject({\n  id: z.string(),\n}).and(z.lazy(() => BasePart$Schema)).and(z.lazy(() => ExtraPart$Schema));";
+    const EXPECTED: &str = "export const MultiFlatten$Schema = z.strictObject({\n  id: z.string(),\n}).and(z.lazy(() => BasePart$Schema)).and(z.lazy(() => ExtraPart$Schema)).meta({\n  examples: []\n});";
 
     assert_eq!(MultiFlatten::zod_schema(), EXPECTED);
 }
@@ -2679,9 +2694,9 @@ fn test_a_non_optional_flatten_schema_is_byte_identical() {
 #[cfg(feature = "zod")]
 fn test_the_untagged_flatten_schema_multiplies_the_object_over_the_unions_members() {
     #[cfg(feature = "typescript")]
-    const EXPECTED: &str = "const FlatOverUntagged$OwnSchema = z.strictObject({\n  own: z.string(),\n});\n\nconst FlatOverUntagged$RawSchema = z.union([\n  FlatOverUntagged$OwnSchema.and(z.lazy(() => FlatFirst$Schema)),\n  FlatOverUntagged$OwnSchema.and(z.lazy(() => FlatSecond$Schema)),\n]);\n\nexport const FlatOverUntagged$Schema: ZodType<FlatOverUntagged> = FlatOverUntagged$RawSchema;";
+    const EXPECTED: &str = "const FlatOverUntagged$OwnSchema = z.strictObject({\n  own: z.string(),\n});\n\nconst FlatOverUntagged$RawSchema = z.union([\n  FlatOverUntagged$OwnSchema.and(z.lazy(() => FlatFirst$Schema)),\n  FlatOverUntagged$OwnSchema.and(z.lazy(() => FlatSecond$Schema)),\n]);\n\nexport const FlatOverUntagged$Schema: ZodType<FlatOverUntagged> = FlatOverUntagged$RawSchema.meta({\n  examples: []\n});";
     #[cfg(not(feature = "typescript"))]
-    const EXPECTED: &str = "const FlatOverUntagged$OwnSchema = z.strictObject({\n  own: z.string(),\n});\n\nexport const FlatOverUntagged$Schema = z.union([\n  FlatOverUntagged$OwnSchema.and(z.lazy(() => FlatFirst$Schema)),\n  FlatOverUntagged$OwnSchema.and(z.lazy(() => FlatSecond$Schema)),\n]);";
+    const EXPECTED: &str = "const FlatOverUntagged$OwnSchema = z.strictObject({\n  own: z.string(),\n});\n\nexport const FlatOverUntagged$Schema = z.union([\n  FlatOverUntagged$OwnSchema.and(z.lazy(() => FlatFirst$Schema)),\n  FlatOverUntagged$OwnSchema.and(z.lazy(() => FlatSecond$Schema)),\n]).meta({\n  examples: []\n});";
 
     assert_eq!(FlatOverUntagged::zod_schema(), EXPECTED);
 }
@@ -2771,7 +2786,7 @@ fn test_a_nested_untagged_flatten_multiplies_over_the_leaf_members() {
     );
     let only = NestOnlyHolder::zod_schema();
     assert!(
-        only.contains("}).and(z.lazy(() => NestOnly$Schema));"),
+        closes_on(&only, "}).and(z.lazy(() => NestOnly$Schema))"),
         "expected the one leaf joined directly, got: {only}"
     );
     assert!(
@@ -2785,7 +2800,7 @@ fn test_a_nested_untagged_flatten_multiplies_over_the_leaf_members() {
 fn test_a_union_declared_below_the_object_is_named_as_one_operand() {
     let zod = FlatOverLaterUntagged::zod_schema();
     assert!(
-        zod.contains("}).and(z.lazy(() => LaterEither$Schema));"),
+        closes_on(&zod, "}).and(z.lazy(() => LaterEither$Schema))"),
         "expected the union named as one operand, got: {zod}"
     );
     assert!(
@@ -2799,9 +2814,9 @@ fn test_a_union_declared_below_the_object_is_named_as_one_operand() {
 #[cfg(feature = "zod")]
 fn test_an_internally_tagged_flatten_schema_is_byte_identical() {
     #[cfg(feature = "typescript")]
-    const EXPECTED: &str = "const DataElementSampleValueEntry$RawSchema = z.strictObject({\n  dataElementId: z.string(),\n}).and(z.lazy(() => DataElementSampleValueVariant$Schema));\n\nexport const DataElementSampleValueEntry$Schema: ZodType<DataElementSampleValueEntry> = DataElementSampleValueEntry$RawSchema;";
+    const EXPECTED: &str = "const DataElementSampleValueEntry$RawSchema = z.strictObject({\n  dataElementId: z.string(),\n}).and(z.lazy(() => DataElementSampleValueVariant$Schema));\n\nexport const DataElementSampleValueEntry$Schema: ZodType<DataElementSampleValueEntry> = DataElementSampleValueEntry$RawSchema.meta({\n  examples: []\n});";
     #[cfg(not(feature = "typescript"))]
-    const EXPECTED: &str = "export const DataElementSampleValueEntry$Schema = z.strictObject({\n  dataElementId: z.string(),\n}).and(z.lazy(() => DataElementSampleValueVariant$Schema));";
+    const EXPECTED: &str = "export const DataElementSampleValueEntry$Schema = z.strictObject({\n  dataElementId: z.string(),\n}).and(z.lazy(() => DataElementSampleValueVariant$Schema)).meta({\n  examples: []\n});";
 
     assert_eq!(DataElementSampleValueEntry::zod_schema(), EXPECTED);
 }
@@ -2810,10 +2825,9 @@ fn test_an_internally_tagged_flatten_schema_is_byte_identical() {
 #[cfg(feature = "zod")]
 fn test_a_standalone_union_with_a_scalar_member_is_byte_identical() {
     #[cfg(feature = "typescript")]
-    const EXPECTED: &str = "const FlatScalarEither$RawSchema = z.union([FlatFirst$Schema, z.string()]);\n\nexport const FlatScalarEither$Schema: ZodType<FlatScalarEither> = FlatScalarEither$RawSchema;";
+    const EXPECTED: &str = "const FlatScalarEither$RawSchema = z.union([FlatFirst$Schema, z.string()]);\n\nexport const FlatScalarEither$Schema: ZodType<FlatScalarEither> = FlatScalarEither$RawSchema.meta({\n  examples: []\n});";
     #[cfg(not(feature = "typescript"))]
-    const EXPECTED: &str =
-        "export const FlatScalarEither$Schema = z.union([FlatFirst$Schema, z.string()]);";
+    const EXPECTED: &str = "export const FlatScalarEither$Schema = z.union([FlatFirst$Schema, z.string()]).meta({\n  examples: []\n});";
 
     assert_eq!(FlatScalarEither::zod_schema(), EXPECTED);
 }
@@ -2823,17 +2837,17 @@ fn test_a_standalone_union_with_a_scalar_member_is_byte_identical() {
 fn test_standalone_unions_the_merge_now_refuses_are_byte_identical() {
     #[cfg(feature = "typescript")]
     const EXPECTED: [&str; 4] = [
-        "const FlatNullableEither$RawSchema = z.union([FlatFirst$Schema, z.nullable(FlatSecond$Schema)]);\n\nexport const FlatNullableEither$Schema: ZodType<FlatNullableEither> = FlatNullableEither$RawSchema;",
-        "const MemberSlugEither$RawSchema = z.union([FlatFirst$Schema, MemberSlug$Schema]);\n\nexport const MemberSlugEither$Schema: ZodType<MemberSlugEither> = MemberSlugEither$RawSchema;",
-        "const MemberSwitchEither$RawSchema = z.union([FlatFirst$Schema, MemberSwitch$Schema]);\n\nexport const MemberSwitchEither$Schema: ZodType<MemberSwitchEither> = MemberSwitchEither$RawSchema;",
-        "const MemberHueEither$RawSchema = z.union([FlatFirst$Schema, MemberHue$Schema]);\n\nexport const MemberHueEither$Schema: ZodType<MemberHueEither> = MemberHueEither$RawSchema;",
+        "const FlatNullableEither$RawSchema = z.union([FlatFirst$Schema, z.nullable(FlatSecond$Schema)]);\n\nexport const FlatNullableEither$Schema: ZodType<FlatNullableEither> = FlatNullableEither$RawSchema.meta({\n  examples: []\n});",
+        "const MemberSlugEither$RawSchema = z.union([FlatFirst$Schema, MemberSlug$Schema]);\n\nexport const MemberSlugEither$Schema: ZodType<MemberSlugEither> = MemberSlugEither$RawSchema.meta({\n  examples: []\n});",
+        "const MemberSwitchEither$RawSchema = z.union([FlatFirst$Schema, MemberSwitch$Schema]);\n\nexport const MemberSwitchEither$Schema: ZodType<MemberSwitchEither> = MemberSwitchEither$RawSchema.meta({\n  examples: []\n});",
+        "const MemberHueEither$RawSchema = z.union([FlatFirst$Schema, MemberHue$Schema]);\n\nexport const MemberHueEither$Schema: ZodType<MemberHueEither> = MemberHueEither$RawSchema.meta({\n  examples: []\n});",
     ];
     #[cfg(not(feature = "typescript"))]
     const EXPECTED: [&str; 4] = [
-        "export const FlatNullableEither$Schema = z.union([FlatFirst$Schema, z.nullable(FlatSecond$Schema)]);",
-        "export const MemberSlugEither$Schema = z.union([FlatFirst$Schema, MemberSlug$Schema]);",
-        "export const MemberSwitchEither$Schema = z.union([FlatFirst$Schema, MemberSwitch$Schema]);",
-        "export const MemberHueEither$Schema = z.union([FlatFirst$Schema, MemberHue$Schema]);",
+        "export const FlatNullableEither$Schema = z.union([FlatFirst$Schema, z.nullable(FlatSecond$Schema)]).meta({\n  examples: []\n});",
+        "export const MemberSlugEither$Schema = z.union([FlatFirst$Schema, MemberSlug$Schema]).meta({\n  examples: []\n});",
+        "export const MemberSwitchEither$Schema = z.union([FlatFirst$Schema, MemberSwitch$Schema]).meta({\n  examples: []\n});",
+        "export const MemberHueEither$Schema = z.union([FlatFirst$Schema, MemberHue$Schema]).meta({\n  examples: []\n});",
     ];
 
     assert_eq!(
@@ -2852,7 +2866,10 @@ fn test_standalone_unions_the_merge_now_refuses_are_byte_identical() {
 fn test_the_unions_declared_below_the_object_are_still_named_as_one_operand() {
     let nullable = FlatOverLaterNullableUntagged::zod_schema();
     assert!(
-        nullable.contains("}).and(z.lazy(() => LaterNullableEither$Schema));"),
+        closes_on(
+            &nullable,
+            "}).and(z.lazy(() => LaterNullableEither$Schema))"
+        ),
         "expected the union named as one operand, got: {nullable}"
     );
     assert!(
@@ -2861,7 +2878,7 @@ fn test_the_unions_declared_below_the_object_are_still_named_as_one_operand() {
     );
     let slug = FlatOverLaterMemberSlugUntagged::zod_schema();
     assert!(
-        slug.contains("}).and(z.lazy(() => LaterMemberSlugEither$Schema));"),
+        closes_on(&slug, "}).and(z.lazy(() => LaterMemberSlugEither$Schema))"),
         "expected the union named as one operand, got: {slug}"
     );
     assert!(
@@ -2875,7 +2892,7 @@ fn test_the_unions_declared_below_the_object_are_still_named_as_one_operand() {
 fn test_a_union_with_a_scalar_member_declared_below_is_still_named_as_one_operand() {
     let zod = FlatOverLaterScalarUntagged::zod_schema();
     assert!(
-        zod.contains("}).and(z.lazy(() => LaterScalarEither$Schema));"),
+        closes_on(&zod, "}).and(z.lazy(() => LaterScalarEither$Schema))"),
         "expected the union named as one operand, got: {zod}"
     );
     assert!(
@@ -2999,15 +3016,15 @@ fn test_a_named_map_member_keeps_its_merged_document() {
 fn test_the_named_wire_unions_are_byte_identical_standing_alone() {
     #[cfg(feature = "typescript")]
     const EXPECTED: [&str; 3] = [
-        "const MemberBagEither$RawSchema = z.union([FlatFirst$Schema, MemberBag$Schema]);\n\nexport const MemberBagEither$Schema: ZodType<MemberBagEither> = MemberBagEither$RawSchema;",
-        "const MemberBucketEither$RawSchema = z.union([FlatFirst$Schema, MemberBucket$Schema]);\n\nexport const MemberBucketEither$Schema: ZodType<MemberBucketEither> = MemberBucketEither$RawSchema;",
-        "const MemberMaybeEither$RawSchema = z.union([FlatFirst$Schema, MemberMaybeSecond$Schema]);\n\nexport const MemberMaybeEither$Schema: ZodType<MemberMaybeEither> = MemberMaybeEither$RawSchema;",
+        "const MemberBagEither$RawSchema = z.union([FlatFirst$Schema, MemberBag$Schema]);\n\nexport const MemberBagEither$Schema: ZodType<MemberBagEither> = MemberBagEither$RawSchema.meta({\n  examples: []\n});",
+        "const MemberBucketEither$RawSchema = z.union([FlatFirst$Schema, MemberBucket$Schema]);\n\nexport const MemberBucketEither$Schema: ZodType<MemberBucketEither> = MemberBucketEither$RawSchema.meta({\n  examples: []\n});",
+        "const MemberMaybeEither$RawSchema = z.union([FlatFirst$Schema, MemberMaybeSecond$Schema]);\n\nexport const MemberMaybeEither$Schema: ZodType<MemberMaybeEither> = MemberMaybeEither$RawSchema.meta({\n  examples: []\n});",
     ];
     #[cfg(not(feature = "typescript"))]
     const EXPECTED: [&str; 3] = [
-        "export const MemberBagEither$Schema = z.union([FlatFirst$Schema, MemberBag$Schema]);",
-        "export const MemberBucketEither$Schema = z.union([FlatFirst$Schema, MemberBucket$Schema]);",
-        "export const MemberMaybeEither$Schema = z.union([FlatFirst$Schema, MemberMaybeSecond$Schema]);",
+        "export const MemberBagEither$Schema = z.union([FlatFirst$Schema, MemberBag$Schema]).meta({\n  examples: []\n});",
+        "export const MemberBucketEither$Schema = z.union([FlatFirst$Schema, MemberBucket$Schema]).meta({\n  examples: []\n});",
+        "export const MemberMaybeEither$Schema = z.union([FlatFirst$Schema, MemberMaybeSecond$Schema]).meta({\n  examples: []\n});",
     ];
 
     assert_eq!(
@@ -3099,13 +3116,13 @@ fn test_an_all_object_tagged_enum_member_keeps_its_merged_document() {
 fn test_the_tagged_enums_are_byte_identical_standing_alone() {
     #[cfg(feature = "typescript")]
     const EXPECTED: [&str; 2] = [
-        "const MemberExtBare$RawSchema = z.union([z.literal(\"Bare\"), z.strictObject({\n  \"Wrapped\": FlatSecond$Schema,\n})]);\n\nexport const MemberExtBare$Schema: ZodType<MemberExtBare> = MemberExtBare$RawSchema;",
-        "const MemberExtObjects$RawSchema = z.union([z.strictObject({\n  \"One\": FlatFirst$Schema,\n}), z.strictObject({\n  \"Two\": FlatSecond$Schema,\n})]);\n\nexport const MemberExtObjects$Schema: ZodType<MemberExtObjects> = MemberExtObjects$RawSchema;",
+        "const MemberExtBare$RawSchema = z.union([z.literal(\"Bare\"), z.strictObject({\n  \"Wrapped\": FlatSecond$Schema,\n})]);\n\nexport const MemberExtBare$Schema: ZodType<MemberExtBare> = MemberExtBare$RawSchema.meta({\n  examples: []\n});",
+        "const MemberExtObjects$RawSchema = z.union([z.strictObject({\n  \"One\": FlatFirst$Schema,\n}), z.strictObject({\n  \"Two\": FlatSecond$Schema,\n})]);\n\nexport const MemberExtObjects$Schema: ZodType<MemberExtObjects> = MemberExtObjects$RawSchema.meta({\n  examples: []\n});",
     ];
     #[cfg(not(feature = "typescript"))]
     const EXPECTED: [&str; 2] = [
-        "export const MemberExtBare$Schema = z.union([z.literal(\"Bare\"), z.strictObject({\n  \"Wrapped\": FlatSecond$Schema,\n})]);",
-        "export const MemberExtObjects$Schema = z.union([z.strictObject({\n  \"One\": FlatFirst$Schema,\n}), z.strictObject({\n  \"Two\": FlatSecond$Schema,\n})]);",
+        "export const MemberExtBare$Schema = z.union([z.literal(\"Bare\"), z.strictObject({\n  \"Wrapped\": FlatSecond$Schema,\n})]).meta({\n  examples: []\n});",
+        "export const MemberExtObjects$Schema = z.union([z.strictObject({\n  \"One\": FlatFirst$Schema,\n}), z.strictObject({\n  \"Two\": FlatSecond$Schema,\n})]).meta({\n  examples: []\n});",
     ];
 
     assert_eq!(
@@ -4419,28 +4436,28 @@ fn test_a_single_key_set_variant_flatten_schema_is_byte_identical() {
             ExternalFlatVariant::zod_schema(),
             "z.union([z.strictObject({\n  \"Named\": z.strictObject({\n  x: z.string(),\n})\
              .and(z.lazy(() => VariantExtra$Schema)),\n}), z.strictObject({\n  \
-             \"Plain\": z.strictObject({\n  y: z.string(),\n}),\n})]);",
+             \"Plain\": z.strictObject({\n  y: z.string(),\n}),\n})])",
         ),
         (
             InternalFlatVariant::zod_schema(),
             "z.union([z.strictObject({\n  kind: z.literal(\"Named\"),\n  x: z.string(),\n})\
              .and(z.lazy(() => VariantExtra$Schema)), z.strictObject({\n  \
-             kind: z.literal(\"Plain\"),\n  y: z.string(),\n})]);",
+             kind: z.literal(\"Plain\"),\n  y: z.string(),\n})])",
         ),
         (
             AdjacentFlatVariant::zod_schema(),
             "z.discriminatedUnion(\"kind\", [z.strictObject({\n  kind: z.literal(\"Named\"),\n  \
              data: z.strictObject({\n  x: z.string(),\n})\
              .and(z.lazy(() => VariantExtra$Schema)),\n}), z.strictObject({\n  \
-             kind: z.literal(\"Plain\"),\n  data: z.strictObject({\n  y: z.string(),\n}),\n})]);",
+             kind: z.literal(\"Plain\"),\n  data: z.strictObject({\n  y: z.string(),\n}),\n})])",
         ),
         (
             UntaggedFlatVariant::zod_schema(),
             "z.union([z.strictObject({ x: z.string(), })\
-             .and(z.lazy(() => VariantExtra$Schema)), z.strictObject({ y: z.string(), })]);",
+             .and(z.lazy(() => VariantExtra$Schema)), z.strictObject({ y: z.string(), })])",
         ),
     ] {
-        assert!(schema.contains(expression), "Got: {schema}");
+        assert!(closes_on(&schema, expression), "Got: {schema}");
     }
 }
 
@@ -4452,16 +4469,16 @@ fn test_two_single_key_set_variant_sources_are_byte_identical() {
             TwiceFlatVariant::zod_schema(),
             "z.union([z.strictObject({\n  \"Named\": z.strictObject({\n  x: z.string(),\n})\
              .and(z.lazy(() => VariantExtra$Schema))\
-             .and(z.lazy(() => VariantRank$Schema)),\n})]);",
+             .and(z.lazy(() => VariantRank$Schema)),\n})])",
         ),
         (
             TwiceUntaggedFlatVariant::zod_schema(),
             "z.union([z.strictObject({ x: z.string(), })\
              .and(z.lazy(() => VariantExtra$Schema))\
-             .and(z.lazy(() => VariantRank$Schema))]);",
+             .and(z.lazy(() => VariantRank$Schema))])",
         ),
     ] {
-        assert!(schema.contains(expression), "Got: {schema}");
+        assert!(closes_on(&schema, expression), "Got: {schema}");
     }
 }
 
@@ -4471,7 +4488,11 @@ fn test_a_variant_flattening_nothing_is_byte_identical() {
     let zod = ExternalChoiceVariant::zod_schema();
     let plain = &zod[zod.find("\"Plain\"").unwrap()..];
     assert!(
-        plain.starts_with("\"Plain\": z.strictObject({\n  y: z.string(),\n}),\n})]);"),
+        plain.starts_with("\"Plain\": z.strictObject({\n  y: z.string(),\n}),\n})])")
+            && closes_on(
+                plain,
+                "\"Plain\": z.strictObject({\n  y: z.string(),\n}),\n})])"
+            ),
         "Got: {plain}"
     );
 }

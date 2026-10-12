@@ -76,6 +76,17 @@ pub struct NullableSlot(#[model_schema_prop(nullable)] pub Option<String>);
 pub struct SubstitutedSlot(#[model_schema_prop(as = String)] pub String);
 
 /// The wire criterion the newtype surfaces are read against.
+/// Whether `zod` binds `expression` whole: to the raw `const` beside TypeScript, and to the
+/// exported one, which holds the examples, without it.
+#[cfg(feature = "zod")]
+fn binds(zod: &str, expression: &str) -> bool {
+    #[cfg(feature = "typescript")]
+    let statement = format!("= {expression};");
+    #[cfg(not(feature = "typescript"))]
+    let statement = format!("= {expression}.meta({{\n  examples: []\n}});");
+    zod.contains(&statement)
+}
+
 #[test]
 fn test_serde_writes_a_newtype_struct_as_the_inner_value_alone() {
     assert_eq!(
@@ -124,7 +135,7 @@ fn test_a_newtype_struct_describes_the_bare_inner_type_in_zod() {
 
     let zod = Plain::zod_schema();
     assert!(zod.contains("Plain$Schema"), "Got: {zod}");
-    assert!(zod.contains("= z.string();"), "Got: {zod}");
+    assert!(binds(&zod, "z.string()"), "Got: {zod}");
     assert!(!zod.contains("{ : "), "Got: {zod}");
     assert!(!zod.contains("strictObject"), "Got: {zod}");
 }
@@ -164,7 +175,7 @@ fn test_a_wider_tuple_struct_describes_a_fixed_tuple_in_zod() {
     let zod = Pair::zod_schema();
     assert!(zod.contains("Pair$Schema"), "Got: {zod}");
     assert!(
-        zod.contains("= z.tuple([z.string(), z.number().int()]);"),
+        binds(&zod, "z.tuple([z.string(), z.number().int()])"),
         "Got: {zod}"
     );
     assert!(!zod.contains("{ : "), "Got: {zod}");
@@ -177,7 +188,9 @@ fn test_a_wider_tuple_struct_describes_a_fixed_tuple_in_zod() {
 fn test_a_tuple_struct_zod_schema_is_annotated_with_its_typescript_type() {
     let zod = Pair::zod_schema();
     assert!(
-        zod.contains("export const Pair$Schema: ZodType<Pair> = Pair$RawSchema;"),
+        zod.contains(
+            "export const Pair$Schema: ZodType<Pair> = Pair$RawSchema.meta({\n  examples: []\n});"
+        ),
         "Got: {zod}"
     );
 }
@@ -221,7 +234,7 @@ fn test_an_optional_slot_describes_the_null_it_writes_in_zod() {
 
     let zod = MaybeName::zod_schema();
     assert!(zod.contains("MaybeName$Schema"), "Got: {zod}");
-    assert!(zod.contains("= z.nullable(z.string());"), "Got: {zod}");
+    assert!(binds(&zod, "z.nullable(z.string())"), "Got: {zod}");
 }
 
 #[cfg(feature = "jsonschema")]
@@ -345,7 +358,7 @@ fn test_a_dropped_slot_is_no_element_of_the_zod_tuple() {
     assert_eq!(wire, serde_json::json!(["x"]));
 
     let zod = SkippedLeadSlot::zod_schema();
-    assert!(zod.contains("= z.tuple([z.string()]);"), "Got: {zod}");
+    assert!(binds(&zod, "z.tuple([z.string()])"), "Got: {zod}");
     assert!(!zod.contains("nullable"), "Got: {zod}");
 }
 
@@ -362,7 +375,7 @@ fn test_zod_describes_the_arity_each_drop_leaves() {
         (EverySlotSkipped::zod_schema(), "z.tuple([])"),
         (SkippedLoneSlot::zod_schema(), "z.string()"),
     ] {
-        assert!(zod.contains(&format!("= {expected};")), "Got: {zod}");
+        assert!(binds(&zod, expected), "Got: {zod}");
     }
 }
 

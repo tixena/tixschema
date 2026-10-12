@@ -114,6 +114,43 @@ console.log(
 
 const COMPILER_VAR: &str = "TIXSCHEMA_TSC";
 
+/// What the examples driver prints: the list each schema's `.meta` holds, empty where the type
+/// writes no block and one value per block where it writes some.
+const EXAMPLES: &str = "{\"plain\":[],\"exampled\":[{\"value\":1},{\"value\":2}],\"brand\":[],\
+                        \"exampledBrand\":[\"a\",\"b\"],\"generic\":[],\"exampledGeneric\":[{\"id\":\
+                        \"x\"},{\"id\":\"y\"}],\"exampledDefault\":[{\"id\":\"x\"},{\"id\":\"y\"}],\
+                        \"slot\":[],\"alias\":[],\"keys\":[\"examples\"]}";
+
+/// Loads the compiled bundle and reads the examples each schema's `.meta` holds.
+const EXAMPLES_DRIVER: &str = r#"import { z } from "zod";
+import {
+  DeclaredExampled$Schema,
+  DeclaredExampledLabel$Schema,
+  DeclaredExampledPair$SchemaDefault,
+  DeclaredExampledPair$SchemaFactory,
+  DeclaredLabel$Schema,
+  DeclaredLabelRefType$Schema,
+  DeclaredLabelSlot$Schema,
+  DeclaredNode$SchemaFactory,
+  DeclaredPlain$Schema,
+} from "./lib/index.js";
+
+console.log(
+  JSON.stringify({
+    plain: DeclaredPlain$Schema.meta()?.examples,
+    exampled: DeclaredExampled$Schema.meta()?.examples,
+    brand: DeclaredLabel$Schema.meta()?.examples,
+    exampledBrand: DeclaredExampledLabel$Schema.meta()?.examples,
+    generic: DeclaredNode$SchemaFactory(z.string()).meta()?.examples,
+    exampledGeneric: DeclaredExampledPair$SchemaFactory(z.number()).meta()?.examples,
+    exampledDefault: DeclaredExampledPair$SchemaDefault.meta()?.examples,
+    slot: DeclaredLabelSlot$Schema.meta()?.examples,
+    alias: DeclaredLabelRefType$Schema.meta()?.examples,
+    keys: Object.keys(DeclaredExampled$Schema.meta() ?? {}),
+  }),
+);
+"#;
+
 /// What the driver prints: each tuple struct takes a nested value and refuses one that is wrong
 /// two levels down.
 const LOADED: &str = "[true,false,true,false]";
@@ -360,6 +397,60 @@ pub struct DeclaredStamped {
     pub seen: Vec<Option<DateTime<Utc>>>,
 }
 
+/// A struct that writes no example.
+#[model_schema()]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeclaredPlain {
+    pub value: u32,
+}
+
+/// A struct that writes two.
+/// ```rust example
+/// DeclaredExampled { value: 1 }
+/// ```
+/// ```rust example
+/// DeclaredExampled { value: 2 }
+/// ```
+#[model_schema()]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeclaredExampled {
+    pub value: u32,
+}
+
+/// A brand that writes two.
+/// ```rust example
+/// DeclaredExampledLabel("a".to_owned())
+/// ```
+/// ```rust example
+/// DeclaredExampledLabel("b".to_owned())
+/// ```
+#[model_schema()]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct DeclaredExampledLabel(pub String);
+
+/// A generic struct that writes two.
+/// ```rust example
+/// DeclaredExampledPair { id: "x".to_owned() }
+/// ```
+/// ```rust example
+/// DeclaredExampledPair { id: "y".to_owned() }
+/// ```
+#[model_schema(default_types(IdType = String))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeclaredExampledPair<IdType> {
+    pub id: IdType,
+}
+
+/// A one-slot tuple struct over a brand, which publishes the brand's own binding.
+#[model_schema()]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeclaredLabelSlot(pub DeclaredLabel);
+
+/// An alias of a brand, which publishes it too.
+#[model_schema()]
+pub type DeclaredLabelRef = DeclaredLabel;
+
 /// One of a cycle of two, declared above the type its list holds.
 #[model_schema(default_types(IdType = String))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -469,6 +560,18 @@ fn bundle() -> String {
         DeclaredAhead::<String>::zod_schema(),
         DeclaredBehind::<String>::ts_definition(),
         DeclaredBehind::<String>::zod_schema(),
+        DeclaredPlain::ts_definition(),
+        DeclaredPlain::zod_schema(),
+        DeclaredExampled::ts_definition(),
+        DeclaredExampled::zod_schema(),
+        DeclaredExampledLabel::ts_definition(),
+        DeclaredExampledLabel::zod_schema(),
+        DeclaredExampledPair::<String>::ts_definition(),
+        DeclaredExampledPair::<String>::zod_schema(),
+        DeclaredLabelSlot::ts_definition(),
+        DeclaredLabelSlot::zod_schema(),
+        declared_label_ref_schema::Schema::ts_definition(),
+        declared_label_ref_schema::Schema::zod_schema(),
     ]
     .into_iter()
     .chain(dated())
@@ -641,6 +744,20 @@ fn type_check_a_bound_on_a_field_typed_with_a_brand_loads_and_parses() {
     assert_eq!(
         printed, BOUNDED,
         "the bundle does not load and parse under node:\n{failed}"
+    );
+}
+
+#[test]
+fn type_check_every_schema_holds_its_examples_once_loaded() {
+    let aliased: DeclaredLabelRef = DeclaredLabel("a".to_owned());
+    assert_eq!(aliased.0, "a");
+
+    let Some((printed, failed)) = loaded("examples", EXAMPLES_DRIVER) else {
+        return;
+    };
+    assert_eq!(
+        printed, EXAMPLES,
+        "the bundle does not load and hold its examples under node:\n{failed}"
     );
 }
 

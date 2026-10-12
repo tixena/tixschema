@@ -658,7 +658,7 @@ fn test_tuple_single_union_zod() {
     // The `ZodType<...> = ...$RawSchema` framing only appears when typescript is also enabled.
     #[cfg(feature = "typescript")]
     assert!(
-        zod.contains("export const DateValue$Schema: ZodType<DateValue> = DateValue$RawSchema;"),
+        zod.contains("export const DateValue$Schema: ZodType<DateValue> = DateValue$RawSchema.meta({\n  examples: []\n});"),
         "Got:\n{zod}"
     );
 }

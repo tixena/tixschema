@@ -142,7 +142,9 @@ const User$RawSchema = z.strictObject({
   roles: z.array(z.string()),
 });
 
-export const User$Schema: ZodType<User> = User$RawSchema;
+export const User$Schema: ZodType<User> = User$RawSchema.meta({
+  examples: []
+});
 ```"]
 ///
 /// ## Enum Support
@@ -199,6 +201,7 @@ export function Status$Variant(value: unknown): string {
 #[doc = r#"```typescript
 const Status$RawSchema = z.enum(["active", "inactive", "pending"]).meta({
   description: "Status",
+  examples: [],
 });
 
 export const Status$Schema: ZodType<Status> = Status$RawSchema;
@@ -344,7 +347,9 @@ const Event$RawSchema = z.discriminatedUnion("type", [z.strictObject({
   user_id: z.string(),
 })]);
 
-export const Event$Schema: ZodType<Event> = Event$RawSchema;
+export const Event$Schema: ZodType<Event> = Event$RawSchema.meta({
+  examples: []
+});
 ```"#]
 ///
 /// ## `MongoDB` `ObjectId` Support
@@ -524,7 +529,9 @@ const Document$RawSchema = z.strictObject({
   title: z.string(),
 });
 
-export const Document$Schema: ZodType<Document> = Document$RawSchema;
+export const Document$Schema: ZodType<Document> = Document$RawSchema.meta({
+  examples: []
+});
 ```
 "#
 )]

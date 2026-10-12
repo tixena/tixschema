@@ -326,14 +326,16 @@ fn a_documented_member_never_carries_its_rust_example_into_the_emitted_typescrip
     }
 }
 
-/// Only the `JSDoc` side of an alias changed.
+/// An alias builds no example, so nothing of its block reaches its schema.
 #[cfg(feature = "zod")]
 #[test]
-fn a_documented_alias_publishes_the_same_zod_schema_it_always_did() {
+fn a_documented_alias_carries_none_of_its_rust_example_into_its_zod_schema() {
     let zod = documented_alias_schema::Schema::zod_schema();
-    for leaked in ["```", "let item", "println!", "example"] {
+    for leaked in ["```", "let item", "println!", "example:"] {
         assert!(!zod.contains(leaked), "{leaked} reached: {zod}");
     }
+    assert_eq!(zod.matches("example").count(), 1, "Got: {zod}");
+    assert!(zod.contains(".meta({\n  examples: []\n});"), "Got: {zod}");
 }
 
 /// Every shape documented with nothing but an example, paired with the undocumented twin it is

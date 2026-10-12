@@ -164,11 +164,13 @@ mod zod_ts_tests {
             "Should contain doc comment text. Got:\n{zod}"
         );
         assert!(
-            zod.contains("example:"),
+            zod.contains("examples: [\"64de3d95ff45b119e5b53a7e\"]"),
             "Should contain example from doc comment. Got:\n{zod}"
         );
         assert!(
-            zod.contains("  example: \"64de3d95ff45b119e5b53a7e\",\n}).brand<\"DocumentId\">();"),
+            zod.contains(
+                "  examples: [\"64de3d95ff45b119e5b53a7e\"],\n}).brand<\"DocumentId\">();"
+            ),
             "Should have the example inside the described block. Got:\n{zod}"
         );
         assert!(

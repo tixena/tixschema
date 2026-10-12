@@ -124,7 +124,7 @@ fn test_typescript_enabled_discriminated_enum_zod_schema() {
 
     assert!(zod_schema.contains("const TypeScriptTestPayment$RawSchema = "));
     assert!(zod_schema.contains("z.discriminatedUnion"));
-    assert!(zod_schema.contains("export const TypeScriptTestPayment$Schema: ZodType<TypeScriptTestPayment> = TypeScriptTestPayment$RawSchema;"));
+    assert!(zod_schema.contains("export const TypeScriptTestPayment$Schema: ZodType<TypeScriptTestPayment> = TypeScriptTestPayment$RawSchema.meta({\n  examples: []\n});"));
 
     assert!(!zod_schema.contains("export type TypeScriptTestPayment"));
 }

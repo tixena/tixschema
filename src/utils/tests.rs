@@ -412,6 +412,32 @@ fn top_level_source_texts(tokens: &proc_macro2::TokenStream) -> Vec<Option<Strin
         .collect()
 }
 
+/// Each example `attrs` writes, as text, in the order [`extract_examples_tokens`] answers them.
+#[cfg(feature = "zod")]
+fn rendered_examples(attrs: &[syn::Attribute]) -> Vec<String> {
+    extract_examples_tokens(attrs)
+        .iter()
+        .map(ToString::to_string)
+        .collect()
+}
+
+/// `source` as the text its tokens render to.
+#[cfg(feature = "zod")]
+fn rendered(source: &str) -> String {
+    source
+        .parse::<proc_macro2::TokenStream>()
+        .unwrap()
+        .to_string()
+}
+
+/// The one example `attrs` writes, as [`extract_examples_tokens`] reads it.
+#[cfg(feature = "zod")]
+fn only_example_tokens(attrs: &[syn::Attribute]) -> proc_macro2::TokenStream {
+    let mut examples = extract_examples_tokens(attrs);
+    assert_eq!(examples.len(), 1, "{examples:?}");
+    examples.remove(0)
+}
+
 #[cfg(feature = "zod")]
 #[test]
 fn test_extract_example_simple() {
@@ -421,12 +447,11 @@ fn test_extract_example_simple() {
         "User { name: \"John\".to_string(), age: 25 }",
         "```",
     ]);
-    let tokens = extract_example_tokens(&attrs);
-    assert!(tokens.is_some());
+    let tokens = only_example_tokens(&attrs);
     let expected: proc_macro2::TokenStream = "User { name: \"John\".to_string(), age: 25 }"
         .parse()
         .unwrap();
-    assert_eq!(tokens.unwrap().to_string(), expected.to_string());
+    assert_eq!(tokens.to_string(), expected.to_string());
 }
 
 #[cfg(feature = "zod")]
@@ -440,17 +465,16 @@ fn test_extract_example_multiline() {
         "User { age: x + y }",
         "```",
     ]);
-    let tokens = extract_example_tokens(&attrs);
-    assert!(tokens.is_some());
+    let tokens = only_example_tokens(&attrs);
     let expected: proc_macro2::TokenStream = "let x = 5; let y = 10; User { age: x + y }"
         .parse()
         .unwrap();
-    assert_eq!(tokens.unwrap().to_string(), expected.to_string());
+    assert_eq!(tokens.to_string(), expected.to_string());
 }
 
 #[cfg(feature = "zod")]
 #[test]
-fn test_extract_example_first_only() {
+fn extract_examples_tokens_answers_every_block_in_order() {
     let attrs = struct_attrs_with_docs(&[
         "Multiple examples",
         "```rust example",
@@ -461,24 +485,77 @@ fn test_extract_example_first_only() {
         "User { age: 30 }",
         "```",
     ]);
-    let tokens = extract_example_tokens(&attrs);
-    assert!(tokens.is_some());
-    let expected: proc_macro2::TokenStream = "User { age: 25 }".parse().unwrap();
-    assert_eq!(tokens.unwrap().to_string(), expected.to_string());
+    assert_eq!(
+        rendered_examples(&attrs),
+        [rendered("User { age: 25 }"), rendered("User { age: 30 }")]
+    );
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn extract_examples_tokens_skips_an_empty_block() {
+    let attrs = struct_attrs_with_docs(&[
+        "```rust example",
+        "User { age: 25 }",
+        "```",
+        "```rust example",
+        "```",
+        "```rust example",
+        "User { age: 30 }",
+        "```",
+    ]);
+    assert_eq!(
+        rendered_examples(&attrs),
+        [rendered("User { age: 25 }"), rendered("User { age: 30 }")]
+    );
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn extract_examples_tokens_respans_a_later_block_onto_its_own_lines() {
+    let attrs = struct_attrs_with_docs(&[
+        "```rust example",
+        "Counted { count: 1 }",
+        "```",
+        "```rust example",
+        "let later = 2;",
+        "Counted { count: later }",
+        "```",
+    ]);
+    let mut examples = extract_examples_tokens(&attrs).into_iter();
+    let first = examples.next().unwrap();
+    let second = examples.next().unwrap();
+    assert!(examples.next().is_none());
+
+    assert!(
+        top_level_source_texts(&first)
+            .iter()
+            .all(|text| text.as_deref() == Some("/// Counted { count: 1 }")),
+        "{first:?}"
+    );
+    let texts = top_level_source_texts(&second);
+    assert_eq!(
+        texts.first().unwrap().as_deref(),
+        Some("/// let later = 2;")
+    );
+    assert_eq!(
+        texts.last().unwrap().as_deref(),
+        Some("/// Counted { count: later }")
+    );
 }
 
 #[cfg(feature = "zod")]
 #[test]
 fn test_extract_example_none() {
     let attrs = struct_attrs_with_docs(&["User profile", "No examples here"]);
-    assert!(extract_example_tokens(&attrs).is_none());
+    assert!(extract_examples_tokens(&attrs).is_empty());
 }
 
 #[cfg(feature = "zod")]
 #[test]
 fn test_extract_example_empty_docs() {
     let attrs = struct_attrs_with_docs(&[]);
-    assert!(extract_example_tokens(&attrs).is_none());
+    assert!(extract_examples_tokens(&attrs).is_empty());
 }
 
 #[cfg(feature = "zod")]
@@ -490,19 +567,19 @@ fn test_extract_example_regular_code_fence_ignored() {
         "User { age: 25 }",
         "```",
     ]);
-    assert!(extract_example_tokens(&attrs).is_none());
+    assert!(extract_examples_tokens(&attrs).is_empty());
 }
 
 #[cfg(feature = "zod")]
 #[test]
-fn extract_example_tokens_respans_each_line_onto_itself() {
+fn extract_examples_tokens_respans_each_line_onto_itself() {
     let attrs = struct_attrs_with_docs(&[
         "```rust example",
         "let ok = 1;",
         "Counted { count: ok }",
         "```",
     ]);
-    let tokens = extract_example_tokens(&attrs).unwrap();
+    let tokens = only_example_tokens(&attrs);
     let texts = top_level_source_texts(&tokens);
 
     // `source_text()` reports the whole physical line the doc literal spans, `///` included.
@@ -515,9 +592,9 @@ fn extract_example_tokens_respans_each_line_onto_itself() {
 
 #[cfg(feature = "zod")]
 #[test]
-fn extract_example_tokens_spans_a_multiline_value_on_its_first_line() {
+fn extract_examples_tokens_spans_a_multiline_value_on_its_first_line() {
     let attrs = struct_attrs_with_docs(&["```rust example", "Counted {", "count: 1,", "}", "```"]);
-    let tokens = extract_example_tokens(&attrs).unwrap();
+    let tokens = only_example_tokens(&attrs);
     let texts = top_level_source_texts(&tokens);
 
     assert!(
@@ -530,14 +607,14 @@ fn extract_example_tokens_spans_a_multiline_value_on_its_first_line() {
 
 #[cfg(feature = "zod")]
 #[test]
-fn extract_example_tokens_still_unwraps_the_doctest_println_pattern() {
+fn extract_examples_tokens_still_unwraps_the_doctest_println_pattern() {
     let attrs = struct_attrs_with_docs(&[
         "```rust example",
         "let data_type = 1;",
         concat!("println!(\"{", ":?}\", data_type);"),
         "```",
     ]);
-    let tokens = extract_example_tokens(&attrs).unwrap();
+    let tokens = only_example_tokens(&attrs);
     assert_eq!(tokens.to_string(), "let data_type = 1 ; data_type");
 }
 

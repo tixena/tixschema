@@ -118,7 +118,7 @@ struct SlotWrapper(CorrelationId);
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct BoundBrandSlot(GenericBrand<String>);
 
-/// A republished binding carrying an example: the `.meta({ example })` lands on the raw `const`'s
+/// A republished binding carrying an example: the `.meta({ examples })` lands on the raw `const`'s
 /// value, which `.meta()` returns unchanged.
 /// ```rust example
 /// ExampledSlot(CorrelationId("corr-1".to_string()))
@@ -240,37 +240,37 @@ fn an_alias_of_a_brand_reads_its_annotation_off_the_binding_it_republishes() {
         (
             correlation_ref_schema::Schema::zod_schema(),
             "export const CorrelationRefType$Schema: typeof CorrelationRefType$RawSchema = \
-             CorrelationRefType$RawSchema;",
+             CorrelationRefType$RawSchema.meta({\n  examples: []\n});",
         ),
         (
             slot_brand_ref_schema::Schema::zod_schema(),
             "export const SlotBrandRefType$Schema: typeof SlotBrandRefType$RawSchema = \
-             SlotBrandRefType$RawSchema;",
+             SlotBrandRefType$RawSchema.meta({\n  examples: []\n});",
         ),
         (
             bool_brand_ref_schema::Schema::zod_schema(),
             "export const BoolBrandRefType$Schema: typeof BoolBrandRefType$RawSchema = \
-             BoolBrandRefType$RawSchema;",
+             BoolBrandRefType$RawSchema.meta({\n  examples: []\n});",
         ),
         (
             num_brand_ref_schema::Schema::zod_schema(),
             "export const NumBrandRefType$Schema: typeof NumBrandRefType$RawSchema = \
-             NumBrandRefType$RawSchema;",
+             NumBrandRefType$RawSchema.meta({\n  examples: []\n});",
         ),
         (
             num_brand_over_brand_ref_schema::Schema::zod_schema(),
             "export const NumBrandOverBrandRefType$Schema: typeof \
-             NumBrandOverBrandRefType$RawSchema = NumBrandOverBrandRefType$RawSchema;",
+             NumBrandOverBrandRefType$RawSchema = NumBrandOverBrandRefType$RawSchema.meta({\n  examples: []\n});",
         ),
         (
             struct_brand_ref_schema::Schema::zod_schema(),
             "export const StructBrandRefType$Schema: typeof StructBrandRefType$RawSchema = \
-             StructBrandRefType$RawSchema;",
+             StructBrandRefType$RawSchema.meta({\n  examples: []\n});",
         ),
         (
             plain_struct_ref_schema::Schema::zod_schema(),
             "export const PlainStructRefType$Schema: typeof PlainStructRefType$RawSchema = \
-             PlainStructRefType$RawSchema;",
+             PlainStructRefType$RawSchema.meta({\n  examples: []\n});",
         ),
     ] {
         assert!(zod.contains(line), "want: {line}\ngot: {zod}");
@@ -285,7 +285,7 @@ fn an_alias_of_a_datetime_brand_reads_its_annotation_off_the_binding_it_republis
     assert!(
         zod.contains(
             "export const StampBrandRefType$Schema: typeof StampBrandRefType$RawSchema = \
-             StampBrandRefType$RawSchema;"
+             StampBrandRefType$RawSchema.meta({\n  examples: []\n});"
         ),
         "got: {zod}"
     );
@@ -299,7 +299,7 @@ fn an_alias_declared_above_its_brand_reads_the_same_annotation() {
     assert!(
         zod.contains(
             "export const ForwardBrandRefType$Schema: typeof ForwardBrandRefType$RawSchema = \
-             ForwardBrandRefType$RawSchema;"
+             ForwardBrandRefType$RawSchema.meta({\n  examples: []\n});"
         ),
         "got: {zod}"
     );
@@ -318,7 +318,7 @@ fn an_alias_of_an_alias_of_a_brand_forwards_the_annotation() {
     assert!(
         zod.contains(
             "export const ChainedBrandRefType$Schema: typeof ChainedBrandRefType$RawSchema = \
-             ChainedBrandRefType$RawSchema;"
+             ChainedBrandRefType$RawSchema.meta({\n  examples: []\n});"
         ),
         "got: {zod}"
     );
@@ -336,7 +336,7 @@ fn a_one_slot_tuple_struct_reads_its_annotation_off_the_binding_it_republishes()
     assert!(
         zod.contains(
             "export const SlotWrapper$Schema: typeof SlotWrapper$RawSchema = \
-             SlotWrapper$RawSchema;"
+             SlotWrapper$RawSchema.meta({\n  examples: []\n});"
         ),
         "got: {zod}"
     );
@@ -354,7 +354,7 @@ fn a_one_slot_tuple_struct_over_a_bound_generic_brand_reads_the_call_back() {
     assert!(
         zod.contains(
             "export const BoundBrandSlot$Schema: typeof BoundBrandSlot$RawSchema = \
-             BoundBrandSlot$RawSchema;"
+             BoundBrandSlot$RawSchema.meta({\n  examples: []\n});"
         ),
         "got: {zod}"
     );
@@ -368,7 +368,7 @@ fn an_example_on_a_republished_binding_lands_on_the_value_the_annotation_reads()
     assert!(
         zod.contains(
             "export const ExampledSlot$Schema: typeof ExampledSlot$RawSchema = \
-             ExampledSlot$RawSchema.meta({\n  example: \"corr-1\"\n});"
+             ExampledSlot$RawSchema.meta({\n  examples: [\"corr-1\"]\n});"
         ),
         "got: {zod}"
     );
@@ -388,7 +388,7 @@ fn a_non_generic_alias_of_a_generic_brand_reads_the_bound_call_back() {
     assert!(
         zod.contains(
             "export const GenericBrandBoundAliasType$Schema: typeof \
-             GenericBrandBoundAliasType$RawSchema = GenericBrandBoundAliasType$RawSchema;"
+             GenericBrandBoundAliasType$RawSchema = GenericBrandBoundAliasType$RawSchema.meta({\n  examples: []\n});"
         ),
         "got: {zod}"
     );
@@ -425,19 +425,19 @@ fn a_composite_over_a_brand_keeps_the_annotation_naming_its_own_type() {
     for (zod, line) in [
         (
             HoldsBrands::zod_schema(),
-            "export const HoldsBrands$Schema: ZodType<HoldsBrands> = HoldsBrands$RawSchema;",
+            "export const HoldsBrands$Schema: ZodType<HoldsBrands> = HoldsBrands$RawSchema.meta({\n  examples: []\n});",
         ),
         (
             BrandOrNumber::zod_schema(),
-            "export const BrandOrNumber$Schema: ZodType<BrandOrNumber> = BrandOrNumber$RawSchema;",
+            "export const BrandOrNumber$Schema: ZodType<BrandOrNumber> = BrandOrNumber$RawSchema.meta({\n  examples: []\n});",
         ),
         (
             SoleBrand::zod_schema(),
-            "export const SoleBrand$Schema: ZodType<SoleBrand> = SoleBrand$RawSchema;",
+            "export const SoleBrand$Schema: ZodType<SoleBrand> = SoleBrand$RawSchema.meta({\n  examples: []\n});",
         ),
         (
             FlattenOnly::zod_schema(),
-            "export const FlattenOnly$Schema: ZodType<FlattenOnly> = FlattenOnly$RawSchema;",
+            "export const FlattenOnly$Schema: ZodType<FlattenOnly> = FlattenOnly$RawSchema.meta({\n  examples: []\n});",
         ),
     ] {
         assert!(zod.contains(line), "want: {line}\ngot: {zod}");
@@ -462,20 +462,20 @@ fn an_alias_of_a_built_expression_keeps_the_annotation_naming_its_own_type() {
     for (zod, line) in [
         (
             slot_key_schema::Schema::zod_schema(),
-            "export const SlotKeyType$Schema: ZodType<SlotKeyType> = SlotKeyType$RawSchema;",
+            "export const SlotKeyType$Schema: ZodType<SlotKeyType> = SlotKeyType$RawSchema.meta({\n  examples: []\n});",
         ),
         (
             brand_list_schema::Schema::zod_schema(),
-            "export const BrandListType$Schema: ZodType<BrandListType> = BrandListType$RawSchema;",
+            "export const BrandListType$Schema: ZodType<BrandListType> = BrandListType$RawSchema.meta({\n  examples: []\n});",
         ),
         (
             brands_by_name_schema::Schema::zod_schema(),
             "export const BrandsByNameType$Schema: ZodType<BrandsByNameType> = \
-             BrandsByNameType$RawSchema;",
+             BrandsByNameType$RawSchema.meta({\n  examples: []\n});",
         ),
         (
             brand_pair_schema::Schema::zod_schema(),
-            "export const BrandPairType$Schema: ZodType<BrandPairType> = BrandPairType$RawSchema;",
+            "export const BrandPairType$Schema: ZodType<BrandPairType> = BrandPairType$RawSchema.meta({\n  examples: []\n});",
         ),
     ] {
         assert!(zod.contains(line), "want: {line}\ngot: {zod}");
