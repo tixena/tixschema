@@ -3,6 +3,8 @@
 
 #![cfg(all(unix, feature = "serde", feature = "typescript", feature = "zod"))]
 
+#[cfg(feature = "chrono")]
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
@@ -40,6 +42,73 @@ console.log(
     said({ later: "abc", many: ["ab", "c"], sort: "a.b" }),
     said({ later: "abc", many: ["a", "b"] }),
   ]),
+);
+"#;
+
+/// What the dated driver prints: what each position that holds a date reads each input as.
+#[cfg(feature = "chrono")]
+const DATED: &str = "{\"required\":{\"null\":\"refused\",\"true\":\"refused\",\"false\":\
+                     \"refused\",\"text\":\"refused\",\"object\":\"refused\",\"date\":\
+                     \"2026-10-12T12:00:00.000Z\",\"iso\":\"2026-10-12T12:00:00.000Z\",\
+                     \"millis\":\"1970-01-01T00:00:00.000Z\"},\"option\":{\"null\":\
+                     \"undefined\",\"absent\":\"undefined\",\"false\":\"refused\",\"iso\":\
+                     \"2026-10-12T12:00:00.000Z\"},\"nullable\":{\"null\":null,\"absent\":\
+                     \"refused\",\"false\":\"refused\",\"iso\":\"2026-10-12T12:00:00.000Z\"},\
+                     \"list\":{\"nulls\":[null,\"2026-10-12T12:00:00.000Z\"],\"true\":\
+                     \"refused\"},\"untagged\":{\"true\":true,\"iso\":\
+                     \"2026-10-12T12:00:00.000Z\",\"null\":\"refused\"}}";
+
+/// Loads the compiled bundle and parses through the struct that holds a date in each position:
+/// required, in an `Option`, under `nullable`, among a list's items, and in an untagged enum.
+#[cfg(feature = "chrono")]
+const DATED_DRIVER: &str = r#"import { DeclaredStamped$Schema } from "./lib/index.js";
+
+const whole = { at: "2026-10-12T12:00:00Z", mark: true, paused: null, seen: [] };
+const shown = (value) => {
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map(shown);
+  return value === undefined ? "undefined" : value;
+};
+const read = (row, key) => {
+  const parsed = DeclaredStamped$Schema.safeParse(row);
+  return parsed.success ? shown(parsed.data[key]) : "refused";
+};
+const given = (key, value) => read({ ...whole, [key]: value }, key);
+const { paused: _held, ...unpaused } = whole;
+console.log(
+  JSON.stringify({
+    required: {
+      null: given("at", null),
+      true: given("at", true),
+      false: given("at", false),
+      text: given("at", "not a date"),
+      object: given("at", { valueOf: () => 0 }),
+      date: given("at", new Date("2026-10-12T12:00:00Z")),
+      iso: given("at", "2026-10-12T12:00:00Z"),
+      millis: given("at", 0),
+    },
+    option: {
+      null: given("ended", null),
+      absent: read(whole, "ended"),
+      false: given("ended", false),
+      iso: given("ended", "2026-10-12T12:00:00Z"),
+    },
+    nullable: {
+      null: given("paused", null),
+      absent: read(unpaused, "paused"),
+      false: given("paused", false),
+      iso: given("paused", "2026-10-12T12:00:00Z"),
+    },
+    list: {
+      nulls: given("seen", [null, "2026-10-12T12:00:00Z"]),
+      true: given("seen", [true]),
+    },
+    untagged: {
+      true: given("mark", true),
+      iso: given("mark", "2026-10-12T12:00:00Z"),
+      null: given("mark", null),
+    },
+  }),
 );
 "#;
 
@@ -265,6 +334,32 @@ pub struct DeclaredLabel(pub String);
 #[serde(transparent)]
 pub struct DeclaredPath(pub String);
 
+/// A date beside a boolean in an untagged enum, the date first: an input that is no date has to
+/// reach the member after it.
+#[cfg(feature = "chrono")]
+#[model_schema()]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum DeclaredMark {
+    At(DateTime<Utc>),
+    Set(bool),
+}
+
+/// A date in each position a schema writes one: required, in an `Option`, in that untagged enum,
+/// under `nullable`, and among the items of a list that may hold `null`.
+#[cfg(feature = "chrono")]
+#[model_schema()]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeclaredStamped {
+    pub at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ended: Option<DateTime<Utc>>,
+    pub mark: DeclaredMark,
+    #[model_schema_prop(nullable)]
+    pub paused: Option<DateTime<Utc>>,
+    pub seen: Vec<Option<DateTime<Utc>>>,
+}
+
 /// One of a cycle of two, declared above the type its list holds.
 #[model_schema(default_types(IdType = String))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -375,7 +470,26 @@ fn bundle() -> String {
         DeclaredBehind::<String>::ts_definition(),
         DeclaredBehind::<String>::zod_schema(),
     ]
+    .into_iter()
+    .chain(dated())
+    .collect::<Vec<_>>()
     .join("\n\n")
+}
+
+/// The types that hold a date, which the bundle declares where `chrono` is on.
+#[cfg(feature = "chrono")]
+fn dated() -> Vec<String> {
+    vec![
+        DeclaredMark::ts_definition(),
+        DeclaredMark::zod_schema(),
+        DeclaredStamped::ts_definition(),
+        DeclaredStamped::zod_schema(),
+    ]
+}
+
+#[cfg(not(feature = "chrono"))]
+const fn dated() -> Vec<String> {
+    Vec::new()
 }
 
 /// Runs the compiler over the project file `project` names in `at`, and answers whether it
@@ -526,6 +640,20 @@ fn type_check_a_bound_on_a_field_typed_with_a_brand_loads_and_parses() {
     };
     assert_eq!(
         printed, BOUNDED,
+        "the bundle does not load and parse under node:\n{failed}"
+    );
+}
+
+/// `z.coerce.date()` alone reads `null` and `false` as the first instant of 1970, ahead of the
+/// `null` and the boolean a union lists after it.
+#[cfg(feature = "chrono")]
+#[test]
+fn type_check_a_date_refuses_what_is_no_date_in_every_position_that_holds_one() {
+    let Some((printed, failed)) = loaded("dated", DATED_DRIVER) else {
+        return;
+    };
+    assert_eq!(
+        printed, DATED,
         "the bundle does not load and parse under node:\n{failed}"
     );
 }
