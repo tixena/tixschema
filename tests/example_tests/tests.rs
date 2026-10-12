@@ -780,6 +780,70 @@ fn an_empty_block_is_skipped_between_two_filled_ones() {
 
 #[cfg(feature = "zod")]
 #[test]
+fn a_block_that_is_never_closed_is_published() {
+    /// A reading.
+    /// ```rust example
+    /// Reading { value: 7 }
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Reading {
+        pub value: u32,
+    }
+
+    assert_eq!(
+        Reading::schema_examples(),
+        vec![serde_json::json!({ "value": 7_u32 })]
+    );
+    let zod = Reading::zod_schema();
+    assert!(ends_in_examples(&zod, "[{\"value\":7}]"), "Got: {zod}");
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn an_unclosed_block_is_published_after_a_closed_one() {
+    /// Two blocks, the second one never closed
+    /// ```rust example
+    /// Paired { value: 1 }
+    /// ```
+    /// ```rust example
+    /// Paired { value: 2 }
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Paired {
+        pub value: u32,
+    }
+
+    assert_eq!(
+        Paired::schema_examples(),
+        vec![
+            serde_json::json!({ "value": 1_u32 }),
+            serde_json::json!({ "value": 2_u32 })
+        ]
+    );
+    let zod = Paired::zod_schema();
+    assert!(
+        ends_in_examples(&zod, "[{\"value\":1},{\"value\":2}]"),
+        "Got: {zod}"
+    );
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn an_opening_fence_with_nothing_after_it_publishes_no_example() {
+    /// An opening fence and no block
+    /// ```rust example
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Fenced {
+        pub value: u32,
+    }
+
+    let zod = Fenced::zod_schema();
+    assert!(ends_in_examples(&zod, "[]"), "Got: {zod}");
+}
+
+#[cfg(feature = "zod")]
+#[test]
 fn each_block_is_built_in_a_scope_of_its_own() {
     /// Two blocks binding the same name
     /// ```rust example

@@ -1204,7 +1204,8 @@ fn doc_lines_with_spans(attrs: &[Attribute]) -> Vec<DocLine> {
     lines
 }
 
-/// The [`DocLine`]s inside each ` ```rust example ` fence, in the order they are written.
+/// The [`DocLine`]s inside each ` ```rust example ` fence, in the order they are written. A fence
+/// never closed holds every line after it.
 #[cfg(feature = "zod")]
 fn example_blocks(lines: &[DocLine]) -> Vec<Vec<DocLine>> {
     let mut blocks: Vec<Vec<DocLine>> = Vec::new();
@@ -1225,6 +1226,7 @@ fn example_blocks(lines: &[DocLine]) -> Vec<Vec<DocLine>> {
             (None, _) => {}
         }
     }
+    blocks.extend(current.filter(|block| !block.is_empty()));
     blocks
 }
 
