@@ -4350,6 +4350,67 @@ fn a_field_typed_with_an_alias_seen_above_is_walked_as_the_type_the_alias_names(
     }
 }
 
+/// A map of another crate is written out again under the name its crate is listed by.
+#[test]
+fn an_alias_of_a_json_object_is_walked_as_the_map_serde_json_declares() {
+    record_declared(
+        "RawObject",
+        Declared::Alias("serde_json :: Map < String , serde_json :: Value >".to_owned()),
+    );
+    let item: syn::ItemStruct =
+        syn::parse_str("pub struct Dossier { pub raw: RawObject }").unwrap();
+    let added = super::struct_recovering_decode(&item);
+    let (walker, module) = (added.type_impl.to_string(), added.schema_module.to_string());
+    let written = "const _ : fn (RawObject) -> serde_json :: Map < :: std :: string :: String , \
+                   dossier_schema :: decode_with_at0 :: Value > = | held | held ;";
+    assert!(walker.contains(written), "missing `{written}` in: {walker}");
+    let reached = "pub mod decode_with_at0 { pub type Value = << super :: super :: RawObject as \
+                   :: core :: iter :: IntoIterator > :: Item as super :: EntryOf > :: Value ; }";
+    assert!(module.contains(reached), "missing `{reached}` in: {module}");
+}
+
+#[cfg(feature = "indexmap")]
+#[test]
+fn an_alias_of_an_index_map_or_an_index_set_is_walked_as_the_type_indexmap_declares() {
+    record_declared(
+        "Ranked",
+        Declared::Alias("IndexMap < String , IndexSet < Mark > >".to_owned()),
+    );
+    record_declared("Mark", Declared::Model);
+    let item: syn::ItemStruct = syn::parse_str("pub struct Tally { pub ranked: Ranked }").unwrap();
+    let added = super::struct_recovering_decode(&item);
+    let (walker, module) = (added.type_impl.to_string(), added.schema_module.to_string());
+    for written in [
+        "const _ : fn (Ranked) -> indexmap :: IndexMap < :: std :: string :: String , indexmap :: \
+         IndexSet < tally_schema :: decode_with_at0 :: Mark > > = | held | held ;",
+        "< tally_schema :: decode_with_at0 :: Mark > :: decode_with_value_issues (",
+    ] {
+        assert!(walker.contains(written), "missing `{written}` in: {walker}");
+    }
+    let reached = "pub mod decode_with_at0 { pub type Mark = < << super :: super :: Ranked as :: \
+                   core :: iter :: IntoIterator > :: Item as super :: EntryOf > :: Value as :: core \
+                   :: iter :: IntoIterator > :: Item ; }";
+    assert!(module.contains(reached), "missing `{reached}` in: {module}");
+}
+
+/// With the feature off the two names are types of the author's, which no walk goes into.
+#[cfg(not(feature = "indexmap"))]
+#[test]
+fn an_alias_of_a_name_the_indexmap_feature_reads_is_left_as_it_is_written_without_it() {
+    for (alias, stands_for) in [
+        ("Ranked", "IndexMap < String , i32 >"),
+        ("Listed", "IndexSet < i32 >"),
+    ] {
+        record_declared(alias, Declared::Alias(stands_for.to_owned()));
+        let item: syn::ItemStruct =
+            syn::parse_str(&format!("pub struct Tally {{ pub held: {alias} }}")).unwrap();
+        let added = super::struct_recovering_decode(&item);
+        let walker = added.type_impl.to_string();
+        assert!(!walker.contains("const _"), "for {alias}, got: {walker}");
+        assert!(!walker.contains("indexmap"), "for {alias}, got: {walker}");
+    }
+}
+
 #[test]
 fn a_field_typed_with_an_alias_of_a_model_type_is_left_as_it_is_written() {
     record_declared("Featured", Declared::Alias("Entry".to_owned()));
@@ -4425,6 +4486,10 @@ fn a_field_is_the_function_that_answers_the_kind_serde_writes_it_as() {
         ("Vec<u8>", "self::ListField<Root,u8>"),
         ("[u8; 4]", "self::ListField<Root,u8>"),
         ("HashSet<u8>", "self::ListField<Root,u8>"),
+        #[cfg(feature = "indexmap")]
+        ("IndexSet<u8>", "self::ListField<Root,u8>"),
+        #[cfg(feature = "indexmap")]
+        ("IndexSet<u8, RandomState>", "self::ListField<Root,u8>"),
         ("Inner", "self::Model<Root,super::Inner>"),
         ("Option<Inner>", "self::OptionalModel<Root,super::Inner>"),
         ("Vec<Inner>", "self::ModelList<Root,super::Inner>"),
@@ -4548,6 +4613,13 @@ fn a_key_serde_never_writes_and_a_map_have_no_function() {
         "#[serde(skip_serializing)] pub a: u8",
         "pub a: HashMap<String, Inner>",
         "pub a: BTreeMap<String, u8>",
+        "pub a: serde_json::Map<String, serde_json::Value>",
+        #[cfg(feature = "indexmap")]
+        "pub a: IndexMap<String, Inner>",
+        #[cfg(feature = "indexmap")]
+        "pub a: IndexMap<String, u8, RandomState>",
+        #[cfg(feature = "indexmap")]
+        "pub a: Option<IndexMap<String, u8>>",
         "pub a: Option<HashMap<String, u8>>",
         "#[serde(flatten)] pub a: HashMap<String, u8>",
         "#[serde(flatten)] pub a: Unseen",

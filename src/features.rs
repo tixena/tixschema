@@ -70,6 +70,9 @@ impl Features {
         if Self::has_chrono() {
             features.push("chrono");
         }
+        if Self::has_indexmap() {
+            features.push("indexmap");
+        }
         if Self::has_dart() {
             features.push("dart");
         }
@@ -99,6 +102,11 @@ impl Features {
     /// Check if `dart` feature is enabled.
     pub const fn has_dart() -> bool {
         cfg!(feature = "dart")
+    }
+
+    /// Check if `indexmap` feature is enabled.
+    pub const fn has_indexmap() -> bool {
+        cfg!(feature = "indexmap")
     }
 
     /// Check if jsonschema feature is enabled.

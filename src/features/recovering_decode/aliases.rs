@@ -6,6 +6,7 @@ use quote::{format_ident, quote};
 use syn::ext::IdentExt as _;
 use syn::{Expr, Fields, GenericArgument, PathArguments, Type, TypePath, parse_quote};
 
+use crate::field_type::is_map_wrapper;
 use crate::utils::{Declared, declared, written_type};
 
 /// How deep an alias of an alias is followed.
@@ -127,16 +128,12 @@ impl Reach {
             let (item, _) = self.named(inside, &reaches, depth);
             return (parse_quote! { #holder<#item> }, false);
         }
-        if let ([key, value], "BTreeMap" | "HashMap") = (arguments.as_slice(), name.as_str()) {
+        if let ([key, value], Some(map)) = (arguments.as_slice(), map_of_two(&name)) {
             let (key_half, value_half) =
                 (self.entry_half(held, "Key"), self.entry_half(held, "Value"));
             let (keyed, _) = self.named(key, &key_half, depth);
             let (valued, _) = self.named(value, &value_half, depth);
-            let map = &last.ident;
-            return (
-                parse_quote! { ::std::collections::#map<#keyed, #valued> },
-                false,
-            );
+            return (parse_quote! { #map<#keyed, #valued> }, false);
         }
         (self.reached(held, &last.ident), true)
     }
@@ -224,7 +221,8 @@ fn from_two_modules_down(path: &TypePath) -> TokenStream {
     }
 }
 
-/// The full path of the standard type `name` that holds one type, written with one argument.
+/// The full path of the type `name` that holds one type, written with one argument: a standard
+/// one, or `indexmap`'s set under the name the consumer lists that crate by.
 fn holder_of_one(name: &str) -> Option<TokenStream> {
     let ident = Ident::new(name, Span::call_site());
     match name {
@@ -233,6 +231,8 @@ fn holder_of_one(name: &str) -> Option<TokenStream> {
             Some(quote! { ::std::collections::#ident })
         }
         "Box" => Some(quote! { ::std::boxed::Box }),
+        #[cfg(feature = "indexmap")]
+        "IndexSet" => Some(quote! { indexmap::IndexSet }),
         "Option" => Some(quote! { ::core::option::Option }),
         "Rc" => Some(quote! { ::std::rc::Rc }),
         "Vec" => Some(quote! { ::std::vec::Vec }),
@@ -240,12 +240,27 @@ fn holder_of_one(name: &str) -> Option<TokenStream> {
     }
 }
 
+/// The full path of the map `name`, written with a key and a value. A map of another crate is
+/// under the name the consumer lists that crate by, as the generated code names `serde_json`.
+fn map_of_two(name: &str) -> Option<TokenStream> {
+    if !is_map_wrapper(name) {
+        return None;
+    }
+    let ident = Ident::new(name, Span::call_site());
+    Some(match name {
+        "IndexMap" => quote! { indexmap::IndexMap },
+        "Map" => quote! { serde_json::Map },
+        _ => quote! { ::std::collections::#ident },
+    })
+}
+
 /// The type of one item of the list, or of what the `Option`, `held` names.
 fn item_of(held: &TokenStream) -> TokenStream {
     quote! { <#held as ::core::iter::IntoIterator>::Item }
 }
 
-/// Whether `ty` is written with standard names alone, which mean the same anywhere.
+/// Whether `ty` is written with names alone that [`Reach::named`] writes by their full path,
+/// which mean the same anywhere.
 fn stands_anywhere(ty: &Type) -> bool {
     let written = written_type(ty);
     if let Type::Paren(inside) = written {
@@ -263,11 +278,7 @@ fn stands_anywhere(ty: &Type) -> bool {
         match arguments.as_slice() {
             [] => name == "String" || PRIMITIVES.contains(&name.as_str()),
             [inside] => holder_of_one(&name).is_some() && stands_anywhere(inside),
-            [key, value] => {
-                matches!(name.as_str(), "BTreeMap" | "HashMap")
-                    && stands_anywhere(key)
-                    && stands_anywhere(value)
-            }
+            [key, value] => is_map_wrapper(&name) && stands_anywhere(key) && stands_anywhere(value),
             _ => false,
         }
     } else {

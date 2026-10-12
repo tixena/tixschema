@@ -188,13 +188,14 @@ The crate uses optional features for minimal dependencies:
 - `bson`: BSON support, turned on by `mongodb`; turns on `serde`. Generates `from_bson_with` and `from_bson_piped` on types that opt in with `decode_with`
 - `typescript`: Enables TypeScript type generation
 - `chrono`: Enables chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`)
+- `indexmap`: Enables indexmap type support: `IndexMap` as a map, `IndexSet` as a list. It adds no dependency: the generated code names the types of the crate that declares them. With the feature off a type written `IndexMap<_, _>` or `IndexSet<_>` is refused at `exec_model_schema` with the feature named (`indexmap_feature_errors`), unless the crate declared a type of its own under the name above
 - `dart`: Enables Dart type generation with a JSON codec, and the Dart HTTP client
 - `swift`: Enables Swift type generation with a `Codable` codec
 - `kotlin`: Enables Kotlin type generation with `kotlinx.serialization` annotations. A consuming Kotlin build declares two dependencies: the runtime library `org.jetbrains.kotlinx:kotlinx-serialization-json` and the Kotlin Gradle plugin `kotlin("plugin.serialization")`
 
-**Feature sets**: `web` (the default: `serde`, `zod`, `jsonschema`, `typescript`), `mobile` (`serde`, `dart`, `swift`, `kotlin`) and `mongo` (`mongodb`, `chrono`). CI tests the powerset of the sets (`just test-sets`); `just test` runs the powerset of the plain features locally
+**Feature sets**: `web` (the default: `serde`, `zod`, `jsonschema`, `typescript`), `mobile` (`serde`, `dart`, `swift`, `kotlin`) and `mongo` (`mongodb`, `chrono`, `indexmap`). CI tests the powerset of the sets (`just test-sets`); `just test` runs the powerset of the plain features locally
 
-**Default configuration**: `serde`, `zod`, `jsonschema`, `typescript` (the `mongodb`, `bson`, `chrono`, `dart`, `swift` and `kotlin` features are opt-in)
+**Default configuration**: `serde`, `zod`, `jsonschema`, `typescript` (the `mongodb`, `bson`, `chrono`, `indexmap`, `dart`, `swift` and `kotlin` features are opt-in)
 
 ## Critical Development Rules
 
@@ -261,6 +262,14 @@ pub struct BadMapKey {
 // error: field `m`: a map key must be a plain `#[model_schema()]` enum, whose members
 // become the object's keys — `KeyStruct` resolves to a type with no `enum_members()`
 ```
+
+`is_map_wrapper` in `src/field_type.rs` is the one seam that says which names are a map: `HashMap`,
+`BTreeMap`, `IndexMap` under the `indexmap` feature, and `Map`, which is `serde_json`'s, read by its
+last name as `Value` is, unless the crate declared a type of its own under it (`is_declared_ident`,
+read off the published names, the one registry every build writes). The field definition, the
+constraint walk, the recovering decode's walker and its rewriting of an alias, and the MongoDB paths
+all ask it, as they ask `is_sequence_wrapper` for a list, which takes `IndexSet` under the same
+feature. A key is held to the rules of this section whichever of those maps it is written in.
 
 On the two nominal surfaces a key renders in the form serde **writes** it wherever the key's own
 value form is not a TypeScript property key, and under the name it was written with wherever it is.

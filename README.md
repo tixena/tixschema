@@ -199,7 +199,7 @@ export type UserWithOptionals = {
 
 ### Collections and Maps
 
-`Vec<T>` becomes `Array<T>`, and so does every other std wrapper serde writes as a JSON array of its element: `VecDeque<T>`, `BinaryHeap<T>`, `HashSet<T>`, and `BTreeSet<T>`. Each is that array on the wire, so each is typed and validated as that array — the element decides what the array holds. Nesting is kept at whatever depth it is written: a `Vec<Vec<T>>` (or `HashSet<Vec<T>>`, or any other mix of those wrappers) writes an array of arrays, so it becomes `Array<Array<T>>`, `z.array(z.array(...))`, and a JSON schema whose `items` is itself an array.
+`Vec<T>` becomes `Array<T>`, and so does every other std wrapper serde writes as a JSON array of its element: `VecDeque<T>`, `BinaryHeap<T>`, `HashSet<T>`, and `BTreeSet<T>`. Under the [`indexmap` feature](#feature-flags), `indexmap::IndexSet<T>` is one more. Each is that array on the wire, so each is typed and validated as that array — the element decides what the array holds. Nesting is kept at whatever depth it is written: a `Vec<Vec<T>>` (or `HashSet<Vec<T>>`, or any other mix of those wrappers) writes an array of arrays, so it becomes `Array<Array<T>>`, `z.array(z.array(...))`, and a JSON schema whose `items` is itself an array.
 
 `LinkedList<T>` is the one std sequence left out. It writes that same array, so the covered spellings already describe every wire form it has, and a type written with one is refused at compile time with the rewrite named: use `Vec<T>`, or `VecDeque<T>` where values are pushed at both ends.
 
@@ -220,7 +220,7 @@ pub struct UserWithCollections {
 }
 ```
 
-`HashMap<K, V>` and `BTreeMap<K, V>` are both read as maps, and the key decides what the map describes as. A `String` key is the open case: any string is a key, so the JSON schema puts the value's schema under `"additionalProperties"`, TypeScript writes `Partial<Record<string, V>>`, and Zod writes `z.record(z.string(), V)`.
+`HashMap<K, V>` and `BTreeMap<K, V>` are both read as maps, and so are `serde_json::Map<String, Value>` and, under the [`indexmap` feature](#feature-flags), `indexmap::IndexMap<K, V>`: [The order of a map's keys](#the-order-of-a-maps-keys) says what sets the four apart. The key decides what the map describes as. A `String` key is the open case: any string is a key, so the JSON schema puts the value's schema under `"additionalProperties"`, TypeScript writes `Partial<Record<string, V>>`, and Zod writes `z.record(z.string(), V)`.
 
 A key written as a plain `#[model_schema()]` enum is the narrowed case: the enum's members become the object's properties and nothing else is allowed, so the JSON schema lists each member with the value's schema and closes the object with `"additionalProperties": false`, while TypeScript and Zod name the enum itself as the key type — `Partial<Record<Slot, V>>` and `z.partialRecord(Slot$Schema, V)`. Zod's constructor is `z.partialRecord` because `z.record` over a key whose schema enumerates its members demands every one of them, while a `HashMap` holds any subset and serde writes the subset; a key outside the enumeration is refused either way. The members are named as serde writes them, so a `#[serde(rename_all = "...")]` on the enum renames the properties too. This holds wherever the enum is declared relative to the type that writes the map, and through a `#[model_schema()]` alias of one.
 
@@ -315,6 +315,59 @@ So a `HashMap<u32, String>` is `Partial<Record<number, string>>` and `z.record(z
 A key written as one of the enclosing item's own type parameters is the open case, read off that same rule. The expansion cannot see which type the instantiation will supply, but serde has already settled what any of them may write: an instantiation whose key writes as a string keys the map, and one whose key does not fails the whole map at serialization with `key must be a string` — so string keys hold for every instantiation that serializes at all. All three surfaces say exactly that and nothing more: `{"type": "object", "additionalProperties": V}`, `z.record(z.string(), V)`, and `Partial<Record<string, V>>` — the trio a `String` key earns. The value side stays described, being no parameter's business, so `HashMap<KeyType, ValueType>` on `Holder<KeyType, ValueType>` is `Partial<Record<string, ValueType>>`.
 
 The key position is the one place TypeScript stops rendering a parameter as itself — see [Type Parameters](#type-parameters) for what it does everywhere else — and the declaration is what forces it. `Record<K, T>` is declared `K extends keyof any`, so a declaration handing it a parameter it binds without bounding does not type-check at all, and the consumer pasting the emitted `.ts` gets the error before writing a value. Bounding the parameter would move the failure rather than fix it: the bound propagates to every name written over the item, including the erased fillings a binding annotated for the opaque value supplies. What the member gives up is naming the parameter in its key; what it gains is the guarantee serde already makes about every filling that reaches the wire.
+
+#### The order of a map's keys
+
+A JSON object is written with its keys in an order. The four maps describe as the same object on every surface, and each does its own thing with that order in Rust:
+
+| The map | The order of its keys |
+|---|---|
+| `HashMap<K, V>` | none |
+| `BTreeMap<K, V>` | sorted |
+| `IndexMap<K, V>` | as read |
+| `serde_json::Map<String, Value>` | as read where the crate's `serde_json` has `preserve_order` on, sorted where it is off |
+
+`indexmap::IndexMap<K, V>` and the list beside it, `indexmap::IndexSet<T>`, are read under the `indexmap` feature. The feature adds no dependency to tixschema: the generated code names the types of the crate that declares them, so that crate lists `indexmap` itself, with its `serde` feature. `serde_json::Map` is read under no feature.
+
+```toml
+tixschema = { version = "0.1.0", features = ["indexmap"] }
+indexmap = { version = "2", features = ["serde"] }
+```
+
+```rust
+use indexmap::{IndexMap, IndexSet};
+
+#[model_schema()]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Document {
+    pub data: IndexMap<String, String>,
+    pub labels: IndexSet<String>,
+    pub raw: serde_json::Map<String, serde_json::Value>,
+}
+
+let read: Document =
+    serde_json::from_str(r#"{"data":{"zeta":"1","alpha":"2"},"labels":["b","a"],"raw":{}}"#)?;
+assert_eq!(
+    serde_json::to_string(&read)?,
+    r#"{"data":{"zeta":"1","alpha":"2"},"labels":["b","a"],"raw":{}}"#
+);
+```
+
+```typescript
+export type Document = {
+  data: Partial<Record<string, string>>;
+  labels: Array<string>;
+  raw: Partial<Record<string, unknown>>;
+};
+```
+
+Every surface writes for each of the three what it writes for its std twin: for `IndexMap<K, V>` what a `HashMap<K, V>` gives, for `IndexSet<T>` what a `HashSet<T>` gives, and for `serde_json::Map<String, Value>` what a `HashMap<String, serde_json::Value>` gives. That holds for TypeScript, Zod, the JSON Schema, Dart, Swift and Kotlin, and under whatever holds the field: an `Option`, a `Vec`, another map. A key is held to the rules above, so `IndexMap<Slot, V>` over a plain enum is `Partial<Record<Slot, V>>` and `z.partialRecord(Slot$Schema, V)`. A hasher written as a further argument, `IndexMap<K, V, S>` or `IndexSet<T, S>`, says nothing about the wire. A `minLength` or a `maxLength` written on an `IndexSet` field counts its items, as on any list ([List Length](#list-length-minlength-maxlength)).
+
+The order is the Rust type's. A schema describes an object and states no order, and each generated client holds the map in its language's own: a Dart `Map` and a Kotlin `Map` keep the order of the document, and a Swift dictionary has none.
+
+The [recovering decode](#recovering-decode-decode_with) walks each of these maps entry by entry, each issue at its key's path, and an `IndexSet` item by item. Its second read is plain serde, so an `IndexMap` field is filled in the order of the source: a `bson` document keeps the order the row stored, and a `serde_json::Value` holds its keys as the table says of `serde_json::Map`. Under `mongodb` a map has no typed path, whichever of the four it is, and an `IndexSet` field is a `ListField`.
+
+`Map` is read by its last name, as `Value` is. A field written `Map<K, V>` is `serde_json`'s map, unless the crate declared a `#[model_schema()]` type of its own named `Map` above the field: that type keeps its name. With the `indexmap` feature off, a type written `IndexMap<K, V>` or `IndexSet<T>` is refused with the feature named, unless the crate declared a type of its own under that name above. See [`IndexMap` or `IndexSet` Without the Feature](#indexmap-or-indexset-without-the-feature).
 
 ### Pointers and Borrowed Values
 
@@ -5239,6 +5292,7 @@ The crate uses optional features to control code generation and dependencies. Ea
 | `mongodb` | No | MongoDB support: the ObjectId type, with validation, and on types that opt in with [`decode_with`](#recovering-decode-decode_with) the [typed field paths, filters, updates and operations](#mongodb-operations-and-typed-filters) over a collection of their rows; turns on `bson` |
 | `bson` | No | BSON support: `from_bson_with` and `from_bson_piped` on types that opt in with [`decode_with`](#recovering-decode-decode_with); turns on `serde` |
 | `chrono` | No | Chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`) |
+| `indexmap` | No | `indexmap` type support: `IndexMap` as a map and `IndexSet` as a list. See [The order of a map's keys](#the-order-of-a-maps-keys) |
 | `dart` | No | Dart type generation via `dart_definition()`, with a JSON `fromJson`/`toJson` codec |
 | `swift` | No | Swift type generation with a `Codable` codec |
 | `kotlin` | No | Kotlin type generation via `kotlin_definition()`, with `kotlinx.serialization` annotations. A consuming Kotlin build declares two runtime dependencies the emitted code names -- `org.jetbrains.kotlinx:kotlinx-serialization-json` for the JSON codec and `org.jetbrains.kotlinx:kotlinx-coroutines-core` for the transport's own reply correlation and heartbeat -- plus the Kotlin Gradle plugin `kotlin("plugin.serialization")` |
@@ -5250,7 +5304,7 @@ Common configurations:
 tixschema = "0.1.0"
 
 # All features including optional ones
-tixschema = { features = ["serde", "zod", "jsonschema", "typescript", "mongodb", "bson", "chrono", "dart", "swift", "kotlin"] }
+tixschema = { features = ["serde", "zod", "jsonschema", "typescript", "mongodb", "bson", "chrono", "indexmap", "dart", "swift", "kotlin"] }
 
 # Minimal (TypeScript only, no Zod or JSON Schema)
 tixschema = { default-features = false, features = ["typescript"] }
@@ -5485,7 +5539,7 @@ The JSON Schema lists `kind` in `required` as `{"type": "string", "const": "Tagg
 
 2. **Type References**: Nested types reference each other by the name the referenced type publishes -- its Rust ident, or its `name` override.
 
-3. **Map Keys**: `HashMap` and `BTreeMap` are both supported, and the key decides what the map describes as: a `String` key gives an object open to any string key, and a plain `#[model_schema()]` enum key gives one closed to the enum's members. A brand and a `#[model_schema()]` alias answer by their inner and their target, keeping their own name on the TypeScript and Zod surfaces. A key path proved to be one serde writes as no key at all, and any sequence-wrapped key, is refused at expansion; every other key describes as an open object. See [Collections and Maps](#collections-and-maps).
+3. **Map Keys**: `HashMap`, `BTreeMap`, `serde_json::Map` and, under the `indexmap` feature, `IndexMap` are the maps that are supported, and the key decides what the map describes as: a `String` key gives an object open to any string key, and a plain `#[model_schema()]` enum key gives one closed to the enum's members. A brand and a `#[model_schema()]` alias answer by their inner and their target, keeping their own name on the TypeScript and Zod surfaces. A key path proved to be one serde writes as no key at all, and any sequence-wrapped key, is refused at expansion; every other key describes as an open object. See [Collections and Maps](#collections-and-maps).
 
 4. **Array Types**: `Vec<T>` becomes `Array<T>` in TypeScript, one `Array<...>` per level written — `Vec<Vec<T>>` is `Array<Array<T>>`.
 
@@ -5515,6 +5569,27 @@ tixschema = { features = ["mongodb"] }
 # Option 2: Use full path in your code
 # use mongodb::bson::oid::ObjectId;
 ```
+
+#### `IndexMap` or `IndexSet` Without the Feature
+
+**Error:**
+
+```
+error: `IndexMap` is read as a map under tixschema's `indexmap` feature: add `features = ["indexmap"]` to the `tixschema` dependency
+ --> src/main.rs:8:15
+  |
+8 |     pub data: IndexMap<String, String>,
+  |               ^^^^^^^^
+```
+
+**Cause:** A type written `IndexMap<K, V>` with the `indexmap` feature off. `IndexSet<T>` gets the same sentence, with `as a list`. It is refused wherever the item writes it: as a field's type, under an `Option` or a `Vec`, as a map's value, in an enum's variant, as the target of an alias.
+
+**Solution:**
+```toml
+tixschema = { features = ["indexmap"] }
+```
+
+A crate that declares a `#[model_schema()]` type of its own named `IndexMap` or `IndexSet`, above the type that holds it, is not refused: the name is that type.
 
 #### JSON Schema Method Missing
 

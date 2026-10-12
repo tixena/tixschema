@@ -697,6 +697,12 @@ pub fn claim_published_name(published: &str, rust_ident: &str) -> Option<String>
     })
 }
 
+/// Whether `#[model_schema]` was written above on an item named `rust_ident`. Read off the names
+/// claimed, the one registry every build writes.
+pub fn is_declared_ident(rust_ident: &str) -> bool {
+    PUBLISHED_NAMES.with(|names| names.borrow().values().any(|holder| holder == rust_ident))
+}
+
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 thread_local! {
     static SHAPE_QUESTIONS: RefCell<Vec<ShapeQuestion>> = const { RefCell::new(Vec::new()) };

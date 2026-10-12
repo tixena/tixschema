@@ -3,5 +3,9 @@
 extern crate alloc;
 
 #[cfg(test)]
+#[path = "collection_tests/json_object.rs"]
+mod json_object;
+
+#[cfg(test)]
 #[path = "collection_tests/tests.rs"]
 mod tests;

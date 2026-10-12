@@ -15,7 +15,7 @@ use syn::spanned::Spanned as _;
 use syn::Attribute;
 
 use crate::features::model_schema_prop::ModelSchemaPropMeta;
-use crate::utils::{MapKeyWire, lookup_alias_info, written_type};
+use crate::utils::{MapKeyWire, is_declared_ident, lookup_alias_info, written_type};
 
 #[cfg(feature = "zod")]
 use crate::bound_message::{Bound, zod_error_arg};
@@ -1602,12 +1602,27 @@ fn zod_factory_call(name: &str, arguments: &[FieldDef]) -> String {
     )
 }
 
-/// The one list of std wrappers the crate renders as arrays, shared by every surface.
+/// The one list of wrappers the crate renders as arrays, shared by every surface.
 pub fn is_sequence_wrapper(name: &str) -> bool {
-    matches!(
-        name,
-        "BTreeSet" | "BinaryHeap" | "HashSet" | "Vec" | "VecDeque"
-    )
+    match name {
+        "BTreeSet" | "BinaryHeap" | "HashSet" | "Vec" | "VecDeque" => true,
+        #[cfg(feature = "indexmap")]
+        "IndexSet" => true,
+        _ => false,
+    }
+}
+
+/// The one list of maps the crate reads as a map: each is an object on the wire, written from
+/// its two leading type arguments.
+pub fn is_map_wrapper(name: &str) -> bool {
+    match name {
+        "BTreeMap" | "HashMap" => true,
+        #[cfg(feature = "indexmap")]
+        "IndexMap" => true,
+        // `serde_json::Map`, unless the crate declared a type of its own under the name.
+        "Map" => !is_declared_ident(name),
+        _ => false,
+    }
 }
 
 /// The std sequence the crate refuses rather than renders. serde writes it as the array a `Vec`
@@ -1616,10 +1631,10 @@ pub fn is_refused_sequence_wrapper(name: &str) -> bool {
     name == "LinkedList"
 }
 
-/// The number of leading type arguments a std container's wire form is written from, or `None` for
-/// a name that is not one of them.
+/// The number of leading type arguments a container's wire form is written from, or `None` for a
+/// name that is not one of them.
 fn container_wire_arity(name: &str) -> Option<usize> {
-    if name == "HashMap" || name == "BTreeMap" {
+    if is_map_wrapper(name) {
         Some(2)
     } else if is_sequence_wrapper(name) {
         Some(1)
@@ -1790,7 +1805,7 @@ fn get_field_def_from_generic_type(
         && let Some(collapsed) = collapsed_wrapper_def(ident, element, &field_name, field_docs)
     {
         collapsed
-    } else if arg_types.len() == 2 && (ident == "HashMap" || ident == "BTreeMap") {
+    } else if arg_types.len() == 2 && is_map_wrapper(ident) {
         log::trace!(
             "Creating HashMap Map type - key: {:?}, value: {:?}",
             arg_types[0],

@@ -5,6 +5,8 @@
 
 use std::collections::HashMap;
 
+#[cfg(feature = "indexmap")]
+use indexmap::{IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
@@ -101,6 +103,19 @@ struct Assorted {
     labels: Option<Vec<String>>,
     pair: (String, u32),
     stops: Box<[Stop]>,
+}
+
+/// The order-keeping types, held to their std twins: a set is a list, and a map has no path.
+#[cfg(feature = "indexmap")]
+#[model_schema(decode_with)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Catalogued {
+    by_city: IndexMap<String, Stop>,
+    labels: IndexSet<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    more: Option<IndexSet<u32>>,
+    raw: serde_json::Map<String, serde_json::Value>,
 }
 
 /// A variant holding several values, written as an array under the variant's name: here a name
@@ -401,6 +416,51 @@ fn a_shape_no_path_kind_covers_is_one_whole_value() {
     assert_eq!(
         shown(stored.as_document().unwrap().clone()),
         r#"{ "byCity": { "Moca": { "city": "Moca", "postalCode": "56000" } }, "grid": [[Int64(1), Int64(2)]], "pair": ["a", Int64(1)], "stops": [{ "city": "Moca", "postalCode": "56000" }] }"#
+    );
+}
+
+/// `byCity` and `raw` are maps: the struct of paths has no function for either.
+#[cfg(feature = "indexmap")]
+#[test]
+fn an_index_set_is_a_list_and_an_order_keeping_map_is_written_with_its_row() {
+    let catalogued = Catalogued::MONGO_FIELDS;
+    let labels: catalogued_schema::ListField<Catalogued, String> = catalogued.labels();
+    assert_eq!(
+        shown(labels.contains("a".to_owned()).unwrap()),
+        r#"{ "labels": { "$eq": "a" } }"#
+    );
+    assert_eq!(
+        shown(labels.size(2)),
+        r#"{ "labels": { "$size": Int64(2) } }"#
+    );
+    assert_eq!(
+        shown(labels.push("c".to_owned()).unwrap()),
+        r#"{ "$push": { "labels": "c" } }"#
+    );
+    assert_eq!(
+        shown(labels.set(["b".to_owned(), "a".to_owned()]).unwrap()),
+        r#"{ "$set": { "labels": ["b", "a"] } }"#
+    );
+    let more: catalogued_schema::OptionalField<Catalogued, IndexSet<u32>> = catalogued.more();
+    assert_eq!(
+        shown(more.exists(false)),
+        r#"{ "more": { "$exists": false } }"#
+    );
+    assert_eq!(
+        shown(more.set(IndexSet::from([3_u32, 1_u32])).unwrap()),
+        r#"{ "$set": { "more": [Int64(3), Int64(1)] } }"#
+    );
+    let stored = Catalogued {
+        by_city: IndexMap::from([("Moca".to_owned(), moca()), ("Azua".to_owned(), moca())]),
+        labels: IndexSet::from(["b".to_owned(), "a".to_owned()]),
+        more: None,
+        raw: serde_json::Map::from_iter([("seen".to_owned(), serde_json::Value::Bool(true))]),
+    }
+    .serialize(bson::Serializer::new())
+    .unwrap();
+    assert_eq!(
+        shown(stored.as_document().unwrap().clone()),
+        r#"{ "byCity": { "Moca": { "city": "Moca", "postalCode": "56000" }, "Azua": { "city": "Moca", "postalCode": "56000" } }, "labels": ["b", "a"], "raw": { "seen": true } }"#
     );
 }
 
