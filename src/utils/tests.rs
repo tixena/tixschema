@@ -512,6 +512,42 @@ fn extract_examples_tokens_skips_an_empty_block() {
 
 #[cfg(feature = "zod")]
 #[test]
+fn extract_examples_tokens_answers_a_block_that_is_never_closed() {
+    let attrs = struct_attrs_with_docs(&["A reading.", "```rust example", "Reading { value: 7 }"]);
+    assert_eq!(
+        rendered_examples(&attrs),
+        [rendered("Reading { value: 7 }")]
+    );
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn extract_examples_tokens_answers_an_unclosed_block_after_a_closed_one() {
+    let attrs = struct_attrs_with_docs(&[
+        "```rust example",
+        "Reading { value: 1 }",
+        "```",
+        "```rust example",
+        "Reading { value: 2 }",
+    ]);
+    assert_eq!(
+        rendered_examples(&attrs),
+        [
+            rendered("Reading { value: 1 }"),
+            rendered("Reading { value: 2 }")
+        ]
+    );
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn extract_examples_tokens_answers_nothing_for_an_opening_fence_alone() {
+    let attrs = struct_attrs_with_docs(&["A reading.", "```rust example"]);
+    assert!(extract_examples_tokens(&attrs).is_empty());
+}
+
+#[cfg(feature = "zod")]
+#[test]
 fn extract_examples_tokens_respans_a_later_block_onto_its_own_lines() {
     let attrs = struct_attrs_with_docs(&[
         "```rust example",
