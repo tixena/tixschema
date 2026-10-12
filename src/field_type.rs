@@ -1607,7 +1607,7 @@ pub fn is_sequence_wrapper(name: &str) -> bool {
     match name {
         "BTreeSet" | "BinaryHeap" | "HashSet" | "Vec" | "VecDeque" => true,
         #[cfg(feature = "indexmap")]
-        "IndexSet" => true,
+        "IndexSet" => !is_declared_ident(name),
         _ => false,
     }
 }
@@ -1617,9 +1617,9 @@ pub fn is_sequence_wrapper(name: &str) -> bool {
 pub fn is_map_wrapper(name: &str) -> bool {
     match name {
         "BTreeMap" | "HashMap" => true,
+        // A name of another crate's, unless this crate declared a type of its own under it.
         #[cfg(feature = "indexmap")]
-        "IndexMap" => true,
-        // `serde_json::Map`, unless the crate declared a type of its own under the name.
+        "IndexMap" => !is_declared_ident(name),
         "Map" => !is_declared_ident(name),
         _ => false,
     }
