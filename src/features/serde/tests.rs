@@ -419,7 +419,14 @@ fn test_list_form_rename_all_reads_the_rule_both_directions_share() {
     assert_eq!(meta.rename_all.as_deref(), Some("camelCase"));
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
+))]
 #[test]
 fn test_list_form_rename_naming_two_keys_is_refused() {
     let item: syn::ItemStruct = syn::parse_quote! {
@@ -439,7 +446,14 @@ fn test_list_form_rename_naming_two_keys_is_refused() {
     assert!(field_meta(&item).rename.is_none());
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
+))]
 #[test]
 fn test_list_form_rename_all_naming_two_rules_is_refused() {
     let item: syn::ItemStruct = syn::parse_quote! {
@@ -464,7 +478,14 @@ fn test_list_form_rename_all_naming_two_rules_is_refused() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
+))]
 #[test]
 fn test_list_form_rename_written_for_one_direction_only_is_refused() {
     let serializing: syn::ItemStruct = syn::parse_quote! {
@@ -532,7 +553,14 @@ fn test_rename_all_and_rename_all_fields_are_recorded_apart() {
     assert_eq!(meta.rename_all_fields.as_deref(), Some("camelCase"));
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
+))]
 #[test]
 fn test_list_form_rename_all_fields_naming_two_rules_is_refused() {
     let item: syn::ItemEnum = syn::parse_quote! {
@@ -556,7 +584,14 @@ fn test_list_form_rename_all_fields_naming_two_rules_is_refused() {
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
+))]
 #[test]
 fn test_list_form_rename_all_fields_written_for_one_direction_only_is_refused() {
     let item: syn::ItemEnum = syn::parse_quote! {
@@ -576,7 +611,14 @@ fn test_list_form_rename_all_fields_written_for_one_direction_only_is_refused() 
     );
 }
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
+))]
 #[test]
 fn test_list_form_bound_earns_no_rename_refusal() {
     let item: syn::ItemStruct = syn::parse_quote! {

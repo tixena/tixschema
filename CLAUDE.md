@@ -1029,8 +1029,12 @@ sections are the consumer's view; this is what a change to the emitter has to ke
   - A name that is no identifier, under a tag key whose snake case starts with a digit, is
     written as no function and no arm (`function_ident`).
 - **A path is under the name serde writes.** `parse_written_renames` reads `rename`, `rename_all`
-  and `rename_all_fields` for their `serialize` side in every build, where the schema surfaces
-  refuse a list whose two sides differ.
+  and `rename_all_fields` for their `serialize` side in every build. A list whose two sides differ
+  is refused by every build that describes the type, a mobile client included:
+  `rename_direction_guard_errors` runs under `serde` with any of `typescript`, `zod`,
+  `jsonschema`, `dart`, `swift` and `kotlin`, and a build with none of the six takes the list.
+  `the_rename_guard_is_compiled_in_every_build_that_describes_a_type` reads those gates off the
+  sources, no local build being of the clients alone.
 - **Two standard traits join filters and updates across modules.** A `Filter<Root>` is
   `Into<bson::Document>` and `AsRef<PhantomData<Root>>`, and an `Update<Root>` is
   `Into<bson::Document>` and `AsRef<PhantomData<fn(Root) -> Root>>`. `Filter::and`, `Filter::or`,

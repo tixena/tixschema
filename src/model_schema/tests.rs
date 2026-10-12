@@ -1698,7 +1698,14 @@ fn cfg_attr_wrapped_serde_on_a_variant_is_rejected() {
 /// Collects an item's rename-direction guard failures as rendered `compile_error!` token strings.
 #[cfg(all(
     feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
 ))]
 fn rename_direction_errors(item: &syn::Item) -> Vec<String> {
     super::rename_direction_guard_errors(item)
@@ -1709,7 +1716,14 @@ fn rename_direction_errors(item: &syn::Item) -> Vec<String> {
 
 #[cfg(all(
     feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
 ))]
 #[test]
 fn a_container_renaming_naming_two_keys_is_rejected() {
@@ -1728,7 +1742,14 @@ fn a_container_renaming_naming_two_keys_is_rejected() {
 
 #[cfg(all(
     feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
 ))]
 #[test]
 fn a_field_renaming_naming_two_keys_is_rejected() {
@@ -1746,7 +1767,14 @@ fn a_field_renaming_naming_two_keys_is_rejected() {
 
 #[cfg(all(
     feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
 ))]
 #[test]
 fn a_variant_and_its_member_are_both_reached() {
@@ -1772,7 +1800,14 @@ fn a_variant_and_its_member_are_both_reached() {
 
 #[cfg(all(
     feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
 ))]
 #[test]
 fn renamings_naming_one_key_are_left_alone() {
@@ -1785,6 +1820,250 @@ fn renamings_naming_one_key_are_left_alone() {
         }
     });
     assert!(errors.is_empty(), "got: {errors:?}");
+}
+
+#[cfg(all(
+    feature = "serde",
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
+))]
+#[test]
+fn each_casing_rule_of_an_enum_naming_two_keys_is_rejected() {
+    for (rule, written, read) in [
+        ("rename_all", "kebab-case", "snake_case"),
+        ("rename_all_fields", "camelCase", "snake_case"),
+    ] {
+        let source = format!(
+            "#[serde({rule}(serialize = \"{written}\", deserialize = \"{read}\"))] \
+             pub enum Carriage {{ OverLand {{ road_name: u32 }} }}"
+        );
+        let errors = rename_direction_errors(&syn::parse_str(&source).unwrap());
+        assert_eq!(errors.len(), 1, "for {rule}, got: {errors:?}");
+        assert!(
+            errors[0].contains(&format!(
+                "type `Carriage`: serde `{rule}` names `{written}` when serializing and `{read}` \
+                 when deserializing"
+            )),
+            "got: {}",
+            errors[0]
+        );
+    }
+}
+
+/// The README quotes each refusal as it is printed.
+#[cfg(all(
+    feature = "serde",
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
+))]
+#[test]
+fn a_rename_refusal_says_that_neither_a_schema_nor_a_client_can_be_written() {
+    for (renaming, refusal) in [
+        (
+            "rename(serialize = \"written\", deserialize = \"read_too\")",
+            "model_schema: field `both_ways`: serde `rename` names `written` when serializing \
+             and `read_too` when deserializing, so the payload serde writes is not one serde \
+             reads. A schema and an emitted client describe one key per member, so neither can \
+             be written for the pair. Write both directions at one value, or use the \
+             single-value spelling `rename = \"...\"`.",
+        ),
+        (
+            "rename(serialize = \"written\")",
+            "model_schema: field `both_ways`: serde `rename` names `written` when serializing \
+             only, and leaves the other direction at the name it would otherwise use, so the \
+             payload serde writes is not one serde reads. A schema and an emitted client \
+             describe one key per member, so neither can be written for the pair. Write both \
+             directions at one value, or use the single-value spelling `rename = \"...\"`.",
+        ),
+    ] {
+        let source = format!(
+            "pub struct SplitNames {{ #[serde({renaming})] pub both_ways: u32, pub plain: u32 }}"
+        );
+        let errors = rename_direction_errors(&syn::parse_str(&source).unwrap());
+        assert_eq!(errors.len(), 1, "for {renaming}, got: {errors:?}");
+        assert!(
+            errors[0].contains(&proc_macro2::Literal::string(refusal).to_string()),
+            "got: {}",
+            errors[0]
+        );
+        assert!(
+            include_str!("../../README.md").contains(refusal),
+            "the README no longer quotes this refusal:\n{refusal}"
+        );
+    }
+}
+
+/// The source text each rename-direction refusal of the item `source` declares is spanned on.
+#[cfg(all(
+    feature = "serde",
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
+))]
+fn rename_refusal_spans(source: &str) -> Vec<String> {
+    super::rename_direction_guard_errors(&syn::parse_str(source).unwrap())
+        .iter()
+        .flat_map(located_source_texts)
+        .collect()
+}
+
+#[cfg(all(
+    feature = "serde",
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
+))]
+#[test]
+fn a_rename_refusal_is_spanned_on_the_key_that_names_the_two() {
+    for (source, key) in [
+        (
+            "pub struct SplitNames { \
+             #[serde(rename(serialize = \"written\", deserialize = \"read_too\"))] \
+             pub both_ways: u32 }",
+            "rename",
+        ),
+        (
+            "#[serde(rename_all(serialize = \"camelCase\"))] \
+             pub struct SplitNames { pub both_ways: u32 }",
+            "rename_all",
+        ),
+        (
+            "#[serde(rename_all_fields(deserialize = \"camelCase\"))] \
+             pub enum Carriage { OverLand { road_name: u32 } }",
+            "rename_all_fields",
+        ),
+    ] {
+        let located = rename_refusal_spans(source);
+        assert!(
+            !located.is_empty() && located.iter().all(|text| text == key),
+            "for {source}, got: {located:?}"
+        );
+    }
+}
+
+/// Each `cfg` written above the function `named` of `source`, or above its import of it.
+fn gates_above(source: &str, named: &str) -> Vec<String> {
+    let mut gates = Vec::new();
+    for item in &syn::parse_file(source).unwrap().items {
+        let attrs = if let syn::Item::Fn(function) = item
+            && function.sig.ident == named
+        {
+            &function.attrs
+        } else if let syn::Item::Use(import) = item
+            && quote::ToTokens::to_token_stream(&import.tree)
+                .to_string()
+                .ends_with(named)
+        {
+            &import.attrs
+        } else {
+            continue;
+        };
+        gates.extend(
+            attrs
+                .iter()
+                .filter(|attr| attr.path().is_ident("cfg"))
+                .map(|attr| quote::ToTokens::to_token_stream(&attr.meta).to_string()),
+        );
+    }
+    gates
+}
+
+/// No local build is of the clients alone, so the gates are read off the sources.
+#[test]
+fn the_rename_guard_is_compiled_in_every_build_that_describes_a_type() {
+    let describing = quote::quote! {
+        all(
+            feature = "serde",
+            any(
+                feature = "typescript",
+                feature = "zod",
+                feature = "jsonschema",
+                feature = "dart",
+                feature = "swift",
+                feature = "kotlin"
+            )
+        )
+    };
+    let compiled = quote::quote!(cfg(#describing)).to_string();
+    let left_out = quote::quote!(cfg(not(#describing))).to_string();
+    let expansion = include_str!("../model_schema.rs");
+    assert_eq!(
+        gates_above(expansion, "rename_direction_guard_errors"),
+        [compiled.as_str(), left_out.as_str()]
+    );
+    for (source, named) in [
+        (
+            include_str!("../features/serde.rs"),
+            "rename_direction_rejection",
+        ),
+        (expansion, "rename_direction_rejection"),
+        (expansion, "renamable_attribute_lists"),
+        (expansion, "field_attribute_lists"),
+        (expansion, "item_attrs"),
+    ] {
+        assert_eq!(
+            gates_above(source, named),
+            [compiled.as_str()],
+            "for `{named}`"
+        );
+    }
+}
+
+/// The struct a build of the clients alone took, each client naming `both_ways`, a key serde
+/// neither writes nor reads.
+#[cfg(all(
+    feature = "serde",
+    feature = "dart",
+    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
+))]
+#[test]
+fn a_rename_naming_two_keys_is_refused_where_only_a_client_is_emitted() {
+    let source = "pub struct SplitNames { \
+                  #[serde(rename(serialize = \"written\", deserialize = \"read_too\"))] \
+                  pub both_ways: u32, pub plain: u32 }";
+    let expanded = expansion_over(source).to_string();
+    assert_eq!(
+        expanded.matches("compile_error").count(),
+        1,
+        "got: {expanded}"
+    );
+    assert!(
+        expanded.contains(
+            "model_schema: field `both_ways`: serde `rename` names `written` when serializing \
+             and `read_too` when deserializing, so the payload serde writes is not one serde \
+             reads. A schema and an emitted client describe one key per member, so neither can \
+             be written for the pair."
+        ),
+        "got: {expanded}"
+    );
+    assert!(!expanded.contains("dart_definition"), "got: {expanded}");
+    let located = rename_refusal_spans(source);
+    assert!(
+        !located.is_empty() && located.iter().all(|text| text == "rename"),
+        "got: {located:?}"
+    );
 }
 
 #[cfg(feature = "serde")]
@@ -6370,10 +6649,18 @@ fn each_name_serde_writes_or_reads_for_a_unit_variant_is_measured() {
     }
 }
 
-/// A schema surface refuses a rename whose two directions differ, ahead of the check.
+/// A build that describes the type refuses a rename whose two directions differ, ahead of the
+/// check.
 #[cfg(all(
     feature = "serde",
-    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
+    not(any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    ))
 ))]
 #[test]
 fn a_unit_variants_read_name_is_measured_where_it_is_not_the_written_one() {
