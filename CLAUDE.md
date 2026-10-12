@@ -409,6 +409,23 @@ hook (`ends_on_a_borrow`), and `generate_field_validation` hangs nothing on one.
 member of an untagged enum is therefore the one constrained member the read does not check: it is
 read as it is with no bound written, and `validate()` answers for the bound.
 
+A slot of a tuple variant takes the five keys, and is checked exactly where a named member in the
+same position is. `checked_member` is the one seam that names a member for its helpers: a slot goes
+by its declaration index (`validate_{variant}_{index}_value`, `deserialize_{variant}_{index}`) and
+is read off the binding its arm makes (`positional_member_binding`, `bound_member`).
+
+- The lone slot of an untagged newtype variant is hung with the hook, and `validate()` reports it
+  under no name, as it reports what the slot's own type declares. A slot with a check of its own
+  and a type that declares one runs both (`slot_validate_body`).
+- A slot of a tagged variant is checked by `validate()` alone and reported under its position
+  (`'0': …`, `'1': …`). Its validator is recorded under the `Validator` gate, and the recovering
+  decode reads it back through `slot_validator`: `Slot::validator` for a variant of several slots,
+  `WalkedVariant::lone_bound` for a variant of one, each an `Invalid` at the slot's own path.
+- The JSON Schema writes a variant slot's bounds through `variant_slot_json_schema` and
+  `variant_slots_json_schema`; Zod reads them off the slot's `FieldDef` as it does for any member.
+- A tuple struct's slot is still refused, by `positional_constraint_guard_error`: `validate()`
+  reads a struct's member off `self` by its ident.
+
 Multiple constraints on one field are combined. Multiple `preprocess` functions nest:
 `z.preprocess(fn1, z.preprocess(fn2, innerSchema))`.
 
@@ -455,6 +472,7 @@ match result {
 The macro also generates into the type's schema module:
 - `validate_{field}_value(&FieldType) -> Result<(), String>` — pure static validator per field
 - `deserialize_{variant}_{field}(D) -> Result<FieldType, E>` — serde hook that calls the static validator, generated only for a member of an untagged enum, the one position where the check runs on the read
+- A tuple variant's slot writes its declaration index where a named member writes `{field}`: `validate_other_0_value` and `deserialize_other_0` for the lone slot of `Other`
 
 For a generic type (one with type parameters), `validate()` is emitted only at the declared default
 instantiation — `impl DocumentId<String> { pub fn validate(&self) -> Result<(), Vec<String>> { … } }`,

@@ -31,6 +31,27 @@ struct BoundedGroup {
 #[serde(transparent)]
 struct BoundedPath(String);
 
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+enum BoundedSlots {
+    Code(#[model_schema_prop(pattern = "^[A-Z]{3}$")] String),
+    Pair(
+        #[model_schema_prop(minLength = 2)] String,
+        #[model_schema_prop(minimum = 1)] i32,
+    ),
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "data")]
+enum BoundedSlotsAdjacent {
+    Code(#[model_schema_prop(pattern = "^[A-Z]{3}$")] String),
+    Pair(
+        #[model_schema_prop(minLength = 2)] String,
+        #[model_schema_prop(minimum = 1)] i32,
+    ),
+}
+
 /// A stored group that breaks every bound `BoundedGroup` writes.
 fn broken() -> Document {
     doc! {
@@ -68,6 +89,80 @@ fn a_broken_bound_is_listed_at_its_value_once_per_violation() {
         ]
     );
     assert_eq!(calls, 1);
+}
+
+#[test]
+fn a_broken_bound_in_a_tagged_slot_is_listed_at_the_slot() {
+    use bounded_slots_adjacent_schema::Verdict as AdjacentVerdict;
+    use bounded_slots_schema::Verdict;
+
+    let held = BoundedSlots::from_bson_with(doc! { "Code": "ABC" }, |_, _| Verdict::Reject);
+    assert_eq!(held, Ok(BoundedSlots::Code("ABC".to_owned())));
+
+    let code = BoundedSlots::from_bson_with(doc! { "Code": "abc" }, |_, _| Verdict::Reject);
+    let pair = BoundedSlots::from_bson_with(doc! { "Pair": ["a", 0_i32] }, |_, _| Verdict::Reject);
+    let adjacent_code =
+        BoundedSlotsAdjacent::from_bson_with(doc! { "data": "abc", "kind": "Code" }, |_, _| {
+            AdjacentVerdict::Reject
+        });
+    let adjacent_pair = BoundedSlotsAdjacent::from_bson_with(
+        doc! { "data": ["a", 0_i32], "kind": "Pair" },
+        |_, _| AdjacentVerdict::Reject,
+    );
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    {
+        assert_eq!(
+            code.unwrap_err().to_string().lines().collect::<Vec<&str>>(),
+            [
+                "Code: invalid: expected String, found String(\"abc\"): does not match pattern \
+                 '^[A-Z]{3}$'"
+            ]
+        );
+        assert_eq!(
+            pair.unwrap_err().to_string().lines().collect::<Vec<&str>>(),
+            [
+                "Pair[0]: invalid: expected String, found String(\"a\"): too short: minimum \
+                 length is 2, got 1",
+                "Pair[1]: invalid: expected I32, found Int32(0): too small: minimum is 1, got 0",
+            ]
+        );
+        assert_eq!(
+            adjacent_code
+                .unwrap_err()
+                .to_string()
+                .lines()
+                .collect::<Vec<&str>>(),
+            [
+                "data: invalid: expected String, found String(\"abc\"): does not match pattern \
+                 '^[A-Z]{3}$'"
+            ]
+        );
+        assert_eq!(
+            adjacent_pair
+                .unwrap_err()
+                .to_string()
+                .lines()
+                .collect::<Vec<&str>>(),
+            [
+                "data[0]: invalid: expected String, found String(\"a\"): too short: minimum \
+                 length is 2, got 1",
+                "data[1]: invalid: expected I32, found Int32(0): too small: minimum is 1, got 0",
+            ]
+        );
+    }
+    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    {
+        assert_eq!(code, Ok(BoundedSlots::Code("abc".to_owned())));
+        assert_eq!(pair, Ok(BoundedSlots::Pair("a".to_owned(), 0)));
+        assert_eq!(
+            adjacent_code,
+            Ok(BoundedSlotsAdjacent::Code("abc".to_owned()))
+        );
+        assert_eq!(
+            adjacent_pair,
+            Ok(BoundedSlotsAdjacent::Pair("a".to_owned(), 0))
+        );
+    }
 }
 
 /// The callback drops each value a bound refuses, and the read answers what is left.

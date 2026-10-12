@@ -310,6 +310,29 @@ enum ConstrainedTagged {
     },
 }
 
+// The same pair over a number, whose range is the bound.
+#[cfg(feature = "jsonschema")]
+#[model_schema()]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+enum RangedUnion {
+    Size {
+        #[model_schema_prop(minimum = 1, maximum = 10)]
+        size: u32,
+    },
+}
+
+#[cfg(feature = "jsonschema")]
+#[model_schema()]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+enum RangedTagged {
+    Size {
+        #[model_schema_prop(minimum = 1, maximum = 10)]
+        size: u32,
+    },
+}
+
 // An untagged union whose only member carries a bound: with no other branch to fall to, a value the
 // bound rejects is a value the whole union rejects.
 #[model_schema()]
@@ -347,6 +370,80 @@ enum CheckedThenLooseUnion {
     Loose {
         name: String,
     },
+}
+
+// A newtype member's slot carries the checks a named member carries: all three on a text arm, each
+// one alone, a range on a number, and a length under an `Option`.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+enum KnownMimeType {
+    #[serde(rename = "application/pdf")]
+    Pdf,
+}
+
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+enum MimeType {
+    Known(KnownMimeType),
+    Other(
+        #[model_schema_prop(minLength = 1, maxLength = 127, pattern = "^[a-z]+/[a-z0-9.+-]+$")]
+        String,
+    ),
+}
+
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+enum MinLengthArm {
+    Known(KnownMimeType),
+    Other(#[model_schema_prop(minLength = 1)] String),
+}
+
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+enum MaxLengthArm {
+    Known(KnownMimeType),
+    Other(#[model_schema_prop(maxLength = 3)] String),
+}
+
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+enum PatternArm {
+    Known(KnownMimeType),
+    Other(#[model_schema_prop(pattern = "^[a-z]+$")] String),
+}
+
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+enum CountArm {
+    Count(#[model_schema_prop(minimum = 1, maximum = 10)] u32),
+    Known(KnownMimeType),
+}
+
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+enum OptionalArm {
+    Count(u32),
+    Name(#[model_schema_prop(minLength = 2)] Option<String>),
+}
+
+// A brand that declares a bound of its own, held in a slot that writes a second one.
+#[model_schema(minLength = 3)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+struct ArmSlug(String);
+
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+enum BrandedArm {
+    Known(KnownMimeType),
+    Slugged(#[model_schema_prop(pattern = "^[a-z]+$")] ArmSlug),
 }
 
 // An untagged member is written by a dispatch of its own, so it is a position an `ObjectId` can be
@@ -1437,6 +1534,24 @@ fn test_untagged_member_constraint_json_schema() {
     );
 }
 
+/// A range in the JSON schema, keyword for keyword with the tagged twin's.
+#[test]
+#[cfg(feature = "jsonschema")]
+fn test_untagged_member_range_json_schema() {
+    let untagged = RangedUnion::json_schema();
+    let member = &untagged["anyOf"][0]["properties"]["size"];
+    assert_eq!(
+        *member,
+        serde_json::json!({ "type": "integer", "minimum": 1.0_f64, "maximum": 10.0_f64 }),
+        "Got:\n{untagged}"
+    );
+    let tagged = RangedTagged::json_schema();
+    assert_eq!(
+        tagged["oneOf"][0]["properties"]["size"], *member,
+        "the tagged twin must render the same member"
+    );
+}
+
 #[test]
 fn test_untagged_member_constraint_is_enforced_on_deserialize() {
     serde_json::from_str::<SoleConstrainedUnion>(r#"{"slug":"a"}"#).unwrap_err();
@@ -1561,6 +1676,324 @@ fn test_untagged_validate_runs_only_the_held_variants_checks() {
         .validate()
         .is_ok(),
         "the bare member is held to no bound"
+    );
+}
+
+/// What serde answers for `text` sent to `MimeType` as a JSON string.
+fn read_mime_type(text: &str) -> Result<MimeType, String> {
+    serde_json::from_value(serde_json::Value::String(text.to_owned()))
+        .map_err(|refused: serde_json::Error| refused.to_string())
+}
+
+#[test]
+fn test_untagged_slot_constraint_decides_which_variant_is_read() {
+    let no_variant = "data did not match any variant of untagged enum MimeType".to_owned();
+    assert_eq!(
+        read_mime_type("text/csv"),
+        Ok(MimeType::Other("text/csv".to_owned()))
+    );
+    assert_eq!(
+        read_mime_type("application/pdf"),
+        Ok(MimeType::Known(KnownMimeType::Pdf))
+    );
+    for refused in [
+        String::new(),
+        format!("a/{}", "b".repeat(126)),
+        "Text/CSV".to_owned(),
+    ] {
+        assert_eq!(read_mime_type(&refused), Err(no_variant.clone()));
+    }
+}
+
+#[test]
+fn test_untagged_slot_constraint_leaves_the_wire_a_bare_value() {
+    assert_eq!(
+        serde_json::to_value(MimeType::Other("text/csv".to_owned())).unwrap(),
+        serde_json::json!("text/csv")
+    );
+    assert_eq!(
+        serde_json::to_value(MimeType::Other(String::new())).unwrap(),
+        serde_json::json!("")
+    );
+}
+
+#[test]
+fn test_untagged_slot_constraint_is_reported_under_no_name() {
+    assert_eq!(
+        MimeType::Other(String::new()).validate().unwrap_err(),
+        vec![
+            "too short: minimum length is 1, got 0",
+            "does not match pattern '^[a-z]+/[a-z0-9.+-]+$'",
+        ]
+    );
+    assert_eq!(
+        MimeType::Other(format!("a/{}", "b".repeat(126)))
+            .validate()
+            .unwrap_err(),
+        vec!["too long: maximum length is 127, got 128"]
+    );
+    MimeType::Other("text/csv".to_owned()).validate().unwrap();
+    MimeType::Known(KnownMimeType::Pdf).validate().unwrap();
+
+    let shown = format!("// {:?}", MimeType::Other(String::new()).validate());
+    assert!(
+        include_str!("../../README.md").contains(&shown),
+        "the README no longer shows {shown}"
+    );
+}
+
+#[test]
+fn test_untagged_slot_helpers_are_named_by_the_slots_position() {
+    assert_eq!(
+        mime_type_schema::validate_other_0_value("").unwrap_err(),
+        vec![
+            "too short: minimum length is 1, got 0",
+            "does not match pattern '^[a-z]+/[a-z0-9.+-]+$'",
+        ]
+    );
+    assert_eq!(
+        mime_type_schema::deserialize_other_0(serde_json::json!(""))
+            .unwrap_err()
+            .to_string(),
+        "too short: minimum length is 1, got 0; does not match pattern '^[a-z]+/[a-z0-9.+-]+$'"
+    );
+    assert_eq!(
+        mime_type_schema::deserialize_other_0(serde_json::json!("text/csv")).unwrap(),
+        "text/csv"
+    );
+}
+
+#[test]
+#[cfg(feature = "zod")]
+fn test_untagged_slot_constraint_zod() {
+    let zod = MimeType::zod_schema();
+    let member = "z.union([KnownMimeType$Schema, z.string().min(1, { error: (issue) => `too \
+                  short: minimum length is 1, got ${String(issue.input).length}` }).max(127, { \
+                  error: (issue) => `too long: maximum length is 127, got \
+                  ${String(issue.input).length}` }).check(z.regex(/^[a-z]+\\/[a-z0-9.+-]+$/, { \
+                  error: \"does not match pattern '^[a-z]+/[a-z0-9.+-]+$'\" }))])";
+    assert!(zod.contains(member), "Got:\n{zod}");
+}
+
+#[test]
+#[cfg(feature = "jsonschema")]
+fn test_untagged_slot_constraint_json_schema() {
+    let schema = MimeType::json_schema();
+    assert_eq!(
+        schema["anyOf"][1],
+        serde_json::json!({
+            "type": "string",
+            "minLength": 1_u32,
+            "maxLength": 127_u32,
+            "pattern": "^[a-z]+/[a-z0-9.+-]+$"
+        }),
+        "Got:\n{schema}"
+    );
+}
+
+#[test]
+#[cfg(feature = "typescript")]
+fn test_untagged_slot_constraint_leaves_the_typescript_type_alone() {
+    let ts = MimeType::ts_definition();
+    assert!(
+        ts.contains("export type MimeType = KnownMimeType | string;"),
+        "Got:\n{ts}"
+    );
+}
+
+#[test]
+fn test_each_untagged_slot_check_is_enforced_alone() {
+    serde_json::from_value::<MinLengthArm>(serde_json::json!("")).unwrap_err();
+    assert_eq!(
+        MinLengthArm::Other(String::new()).validate().unwrap_err(),
+        vec!["too short: minimum length is 1, got 0"]
+    );
+    assert_eq!(
+        serde_json::from_value::<MinLengthArm>(serde_json::json!("A")).unwrap(),
+        MinLengthArm::Other("A".to_owned())
+    );
+
+    serde_json::from_value::<MaxLengthArm>(serde_json::json!("abcd")).unwrap_err();
+    assert_eq!(
+        MaxLengthArm::Other("abcd".to_owned())
+            .validate()
+            .unwrap_err(),
+        vec!["too long: maximum length is 3, got 4"]
+    );
+    assert_eq!(
+        serde_json::from_value::<MaxLengthArm>(serde_json::json!("")).unwrap(),
+        MaxLengthArm::Other(String::new())
+    );
+
+    serde_json::from_value::<PatternArm>(serde_json::json!("A")).unwrap_err();
+    assert_eq!(
+        PatternArm::Other("A".to_owned()).validate().unwrap_err(),
+        vec!["does not match pattern '^[a-z]+$'"]
+    );
+    assert_eq!(
+        serde_json::from_value::<PatternArm>(serde_json::json!("abcd")).unwrap(),
+        PatternArm::Other("abcd".to_owned())
+    );
+}
+
+#[test]
+#[cfg(feature = "jsonschema")]
+fn test_each_untagged_slot_check_reaches_the_json_schema_alone() {
+    assert_eq!(
+        MinLengthArm::json_schema()["anyOf"][1],
+        serde_json::json!({ "type": "string", "minLength": 1_u32 })
+    );
+    assert_eq!(
+        MaxLengthArm::json_schema()["anyOf"][1],
+        serde_json::json!({ "type": "string", "maxLength": 3_u32 })
+    );
+    assert_eq!(
+        PatternArm::json_schema()["anyOf"][1],
+        serde_json::json!({ "type": "string", "pattern": "^[a-z]+$" })
+    );
+}
+
+#[test]
+#[cfg(feature = "zod")]
+fn test_each_untagged_slot_check_reaches_zod_alone() {
+    for (zod, member) in [
+        (
+            MinLengthArm::zod_schema(),
+            "z.string().min(1, { error: (issue) => `too short: minimum length is 1, got \
+             ${String(issue.input).length}` })])",
+        ),
+        (
+            MaxLengthArm::zod_schema(),
+            "z.string().max(3, { error: (issue) => `too long: maximum length is 3, got \
+             ${String(issue.input).length}` })])",
+        ),
+        (
+            PatternArm::zod_schema(),
+            "z.string().check(z.regex(/^[a-z]+$/, { error: \"does not match pattern \
+             '^[a-z]+$'\" }))])",
+        ),
+    ] {
+        assert!(zod.contains(member), "Got:\n{zod}");
+    }
+}
+
+#[test]
+fn test_untagged_numeric_slot_is_held_to_its_range() {
+    for refused in ["0", "11"] {
+        assert_eq!(
+            serde_json::from_str::<CountArm>(refused)
+                .unwrap_err()
+                .to_string(),
+            "data did not match any variant of untagged enum CountArm"
+        );
+    }
+    assert_eq!(
+        serde_json::from_str::<CountArm>("10").unwrap(),
+        CountArm::Count(10)
+    );
+    assert_eq!(serde_json::to_string(&CountArm::Count(0)).unwrap(), "0");
+    assert_eq!(
+        CountArm::Count(0).validate().unwrap_err(),
+        vec!["too small: minimum is 1, got 0"]
+    );
+    assert_eq!(
+        CountArm::Count(11).validate().unwrap_err(),
+        vec!["too large: maximum is 10, got 11"]
+    );
+    CountArm::Count(1).validate().unwrap();
+}
+
+#[test]
+#[cfg(feature = "jsonschema")]
+fn test_untagged_numeric_slot_json_schema() {
+    let schema = CountArm::json_schema();
+    assert_eq!(
+        schema["anyOf"][0],
+        serde_json::json!({ "type": "integer", "minimum": 1.0_f64, "maximum": 10.0_f64 }),
+        "Got:\n{schema}"
+    );
+}
+
+#[test]
+#[cfg(feature = "zod")]
+fn test_untagged_numeric_slot_zod() {
+    let zod = CountArm::zod_schema();
+    let member = "z.union([z.number().int().min(1, { error: (issue) => `too small: minimum is 1, \
+                  got ${String(issue.input)}` }).max(10, { error: (issue) => `too large: maximum \
+                  is 10, got ${String(issue.input)}` }), KnownMimeType$Schema])";
+    assert!(zod.contains(member), "Got:\n{zod}");
+}
+
+#[test]
+fn test_untagged_optional_slot_is_checked_inside_its_some() {
+    assert_eq!(
+        serde_json::from_value::<OptionalArm>(serde_json::json!("ab")).unwrap(),
+        OptionalArm::Name(Some("ab".to_owned()))
+    );
+    assert_eq!(
+        serde_json::from_str::<OptionalArm>("null").unwrap(),
+        OptionalArm::Name(None)
+    );
+    assert_eq!(
+        serde_json::from_str::<OptionalArm>("7").unwrap(),
+        OptionalArm::Count(7)
+    );
+    serde_json::from_value::<OptionalArm>(serde_json::json!("a")).unwrap_err();
+    assert_eq!(
+        serde_json::to_string(&OptionalArm::Name(None)).unwrap(),
+        "null"
+    );
+    assert_eq!(
+        OptionalArm::Name(Some("a".to_owned()))
+            .validate()
+            .unwrap_err(),
+        vec!["too short: minimum length is 2, got 1"]
+    );
+    OptionalArm::Name(None).validate().unwrap();
+}
+
+#[test]
+#[cfg(feature = "jsonschema")]
+fn test_untagged_optional_slot_json_schema() {
+    let schema = OptionalArm::json_schema();
+    assert_eq!(
+        schema["anyOf"][1],
+        serde_json::json!({
+            "anyOf": [{ "type": "string", "minLength": 2_u32 }, { "type": "null" }]
+        }),
+        "Got:\n{schema}"
+    );
+}
+
+#[test]
+fn test_untagged_slot_runs_its_own_check_and_the_one_its_type_declares() {
+    assert_eq!(
+        BrandedArm::Slugged(ArmSlug("A".to_owned()))
+            .validate()
+            .unwrap_err(),
+        vec![
+            "does not match pattern '^[a-z]+$'",
+            "too short: minimum length is 3, got 1",
+        ]
+    );
+    assert_eq!(
+        BrandedArm::Slugged(ArmSlug("ABC".to_owned()))
+            .validate()
+            .unwrap_err(),
+        vec!["does not match pattern '^[a-z]+$'"]
+    );
+    assert_eq!(
+        BrandedArm::Slugged(ArmSlug("ab".to_owned()))
+            .validate()
+            .unwrap_err(),
+        vec!["too short: minimum length is 3, got 2"]
+    );
+    for refused in ["ab", "ABC"] {
+        serde_json::from_value::<BrandedArm>(serde_json::json!(refused)).unwrap_err();
+    }
+    assert_eq!(
+        serde_json::from_value::<BrandedArm>(serde_json::json!("abc")).unwrap(),
+        BrandedArm::Slugged(ArmSlug("abc".to_owned()))
     );
 }
 

@@ -411,7 +411,9 @@ impl<'item> Shape<'item> {
                     slots
                         .unnamed
                         .iter()
-                        .filter_map(|slot| walked_slot(slot, defaulted, module_name, parameters))
+                        .filter_map(|slot| {
+                            walked_slot(slot, defaulted, module_name, parameters, None)
+                        })
                         .collect(),
                 )
             }
@@ -455,11 +457,16 @@ impl<'item> Shape<'item> {
                     }
                     return Self::Held(member_walk(only, module_name, parameters));
                 }
+                let named = variant.ident.to_string();
                 Self::Slots(
                     slots
                         .unnamed
                         .iter()
-                        .filter_map(|slot| walked_slot(slot, false, module_name, parameters))
+                        .enumerate()
+                        .filter_map(|(index, slot)| {
+                            let validator = slot_validator(module_name, &named, index);
+                            walked_slot(slot, false, module_name, parameters, validator)
+                        })
                         .collect(),
                 )
             }
@@ -471,6 +478,8 @@ impl<'item> Shape<'item> {
 struct Slot<'item> {
     absence_is_read: bool,
     ty: &'item Type,
+    /// `None` for a position of a tuple struct or of a tuple-typed field, which declares no bound.
+    validator: Option<FieldValidator>,
     walk: Walk<'item>,
 }
 
@@ -1631,7 +1640,7 @@ impl Walker<'_> {
             &here,
             depth.saturating_add(1),
             slot.walk.ty,
-            None,
+            slot.validator.as_ref(),
         );
         if slot.absence_is_read
             && let [only] = arms.as_slice()
@@ -3707,6 +3716,7 @@ fn walk_of<'ty>(ty: &'ty Type, parameters: &[String]) -> Walk<'ty> {
             .map(|position| Slot {
                 absence_is_read: false,
                 ty: position,
+                validator: None,
                 walk: walk_of(position, parameters),
             })
             .collect();
@@ -3752,8 +3762,6 @@ fn walked_field<'item>(
     let key = renamed
         .unwrap_or_else(|| resolve_rename_rule(rule).apply_to_field(&ident.unraw().to_string()));
     let walk = (!omission.skips_deserializing).then(|| member_walk(field, module_name, parameters));
-    let named = ident.unraw().to_string();
-    let stem = helper_name_stem(&named, variant);
     // With a read hook on the field, serde's derive no longer reads a missing key as `None`.
     let optional =
         !has_serde_read_hook(&field.attrs) && get_field_def("", &field.ty, "").is_optional();
@@ -3762,10 +3770,7 @@ fn walked_field<'item>(
         aliases: meta.aliases,
         key,
         ty: &field.ty,
-        validator: has_field_validator(module_name, &stem).then(|| FieldValidator {
-            named,
-            validator: format_ident!("validate_{stem}_value"),
-        }),
+        validator: recorded_validator(module_name, ident.unraw().to_string(), variant),
         walk,
     })
 }
@@ -3810,20 +3815,40 @@ fn walked_fields<'item>(
     }
 }
 
-/// One slot of a tuple as the walker reads it, or `None` for a slot serde does not read:
-/// the array holds no position for it.
+/// One slot of a tuple as the walker reads it, held to the bound `validator` checks, or `None`
+/// for a slot serde does not read: the array holds no position for it.
 fn walked_slot<'item>(
     slot: &'item Field,
     container_defaulted: bool,
     module_name: &str,
     parameters: &[String],
+    validator: Option<FieldValidator>,
 ) -> Option<Slot<'item>> {
     let omission = parse_serde_key_omission(&slot.attrs);
     (!omission.skips_deserializing).then(|| Slot {
         absence_is_read: omission.defaulted || container_defaulted,
         ty: &slot.ty,
+        validator,
         walk: member_walk(slot, module_name, parameters),
     })
+}
+
+/// The validator recorded for the bound the member `named` declares, where it declares one.
+fn recorded_validator(
+    module_name: &str,
+    named: String,
+    variant: Option<&str>,
+) -> Option<FieldValidator> {
+    let stem = helper_name_stem(&named, variant);
+    has_field_validator(module_name, &stem).then(|| FieldValidator {
+        named,
+        validator: format_ident!("validate_{stem}_value"),
+    })
+}
+
+/// [`recorded_validator`] for slot `index` of the tuple variant `variant`, named by its position.
+fn slot_validator(module_name: &str, variant: &str, index: usize) -> Option<FieldValidator> {
+    recorded_validator(module_name, index.to_string(), Some(variant))
 }
 
 /// Whether the walker of `ty` is called as it stands: `ty` is the type being walked, or a struct
