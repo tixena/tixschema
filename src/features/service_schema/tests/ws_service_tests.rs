@@ -63,6 +63,20 @@ fn it_registers_one_message_listener_and_returns_the_function_that_removes_it() 
 }
 
 #[test]
+fn the_listener_is_registered_when_the_attachment_returns() {
+    let written = ws_service_of(MIXED_SERVICE);
+    assert!(
+        written.contains(
+            "  socket.addEventListener(\"message\", onMessage);\n  \
+             return () => socket.removeEventListener(\"message\", onMessage);\n\
+             }"
+        ),
+        "the listener is registered in the attachment's own body, on the line ahead of its \
+         `return`, so a frame that arrives right after is dispatched. Got: {written}"
+    );
+}
+
+#[test]
 fn a_frame_naming_another_service_and_non_json_text_are_both_dropped_before_the_kind_is_read() {
     let written = ws_service_of(MIXED_SERVICE);
     assert!(

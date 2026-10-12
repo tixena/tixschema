@@ -275,9 +275,9 @@ fun main() = runBlocking {
 }
 "#;
 
-/// The mini server against a connected fake-socket pair: every frame with an id answered, a
-/// declared error, a bad-payload notify, a shared socket, `share()` after detach.
-const MINI_SERVER_DRIVER: &str = r#"
+/// What both mini-server drivers stand on: a connected socket pair, the handlers of the two
+/// services, and `until`, which polls a predicate and answers whether it held in time.
+const MINI_SERVER_FIXTURE: &str = r#"
 fun connectedPair(scope: CoroutineScope): Pair<FakeSocket, FakeSocket> {
     val a = FakeSocket(scope)
     val b = FakeSocket(scope)
@@ -306,7 +306,45 @@ suspend fun until(timeoutMs: Long = 2000, predicate: () -> Boolean): Boolean {
     while (!predicate() && System.currentTimeMillis() < deadline) delay(5)
     return predicate()
 }
+"#;
 
+/// A frame handed to the socket on the line after `attach`, and one on the line after `share`,
+/// with the dispatchers on `main`'s own thread: nothing they launch runs before `main` suspends.
+const ATTACH_THEN_SEND_DRIVER: &str = r#"
+fun main() = runBlocking {
+    val socket = FakeSocket(this)
+    val transport = ConversationClientServiceWsTransport(socket, ConversationClientServiceWsOptions(heartbeat = null))
+    val frames = transport.frames.copy(scope = this)
+
+    val attachment = attachConversationClientServiceWsDispatcher(frames, Handlers, onFault = {})
+    socket.deliver("""{"kind":"request","id":"afterAttach","service":"ConversationClientService","operation":"window","payload":{"conversationId":"abc"}}""")
+
+    attachment.share { send, scope ->
+        val pulse = attachPulseClientServiceWsDispatcher(
+            PulseClientServiceWsFrames(frames.inbound, send, scope),
+            PulseHandlers,
+            onFault = {},
+        )
+        ({ pulse.detach() })
+    }
+    socket.deliver("""{"kind":"request","id":"afterShare","service":"PulseClientService","operation":"pulse","payload":{}}""")
+
+    fun answered(id: String) = socket.sent.any { requestId(it) == id }
+    val afterAttachAnswered = until { answered("afterAttach") }
+    val afterShareAnswered = until { answered("afterShare") }
+    attachment.detach()
+
+    val report = buildJsonObject {
+        put("afterAttachAnswered", afterAttachAnswered)
+        put("afterShareAnswered", afterShareAnswered)
+    }
+    println(report.toString())
+}
+"#;
+
+/// The mini server against a connected fake-socket pair: every frame with an id answered, a
+/// declared error, a bad-payload notify, a shared socket, `share()` after detach.
+const MINI_SERVER_DRIVER: &str = r#"
 fun main() = runBlocking {
     val (clientSocket, serverSocket) = connectedPair(this)
     val clientTransport = ConversationClientServiceWsTransport(clientSocket, ConversationClientServiceWsOptions(heartbeat = null))
@@ -349,14 +387,14 @@ fun main() = runBlocking {
     val collectJob = launch { clientTransport.frames.inbound.collect { observed.add(it) } }
     clientSocket.send("""{"kind":"request","id":"cA","service":"ConversationClientService","operation":"window","payload":{"conversationId":"abc"}}""")
     clientSocket.send("""{"kind":"request","id":"pA","service":"PulseClientService","operation":"pulse","payload":{}}""")
-    until { serviceOf("cA") != null && serviceOf("pA") != null }
+    val bothRepliesArrived = until { serviceOf("cA") != null && serviceOf("pA") != null }
     val conversationAnsweredOwn = serviceOf("cA") == "ConversationClientService"
     val pulseAnsweredOwn = serviceOf("pA") == "PulseClientService"
     collectJob.cancel()
 
     val pongsBefore = serverSocket.sent.count { it == """{"kind":"pong"}""" }
     clientSocket.send("""{"kind":"ping"}""")
-    until { serverSocket.sent.count { it == """{"kind":"pong"}""" } > pongsBefore }
+    val pongArrived = until { serverSocket.sent.count { it == """{"kind":"pong"}""" } > pongsBefore }
     // A second pong would arrive after the first; the settle is what lets "exactly one" fail.
     delay(50)
     val onePongPerPing = serverSocket.sent.count { it == """{"kind":"pong"}""" } == pongsBefore + 1
@@ -375,8 +413,10 @@ fun main() = runBlocking {
         put("oneWayOk", oneWayOk)
         put("declaredOk", declaredOk)
         put("notifyFaultReached", notifyFaultReached)
+        put("bothRepliesArrived", bothRepliesArrived)
         put("conversationAnsweredOwn", conversationAnsweredOwn)
         put("pulseAnsweredOwn", pulseAnsweredOwn)
+        put("pongArrived", pongArrived)
         put("onePongPerPing", onePongPerPing)
         put("sharedDetached", sharedDetached)
         put("shareThrew", shareThrew)
@@ -832,9 +872,26 @@ fn the_ws_client_probes_answers_checks_and_settles() {
 }
 
 #[test]
+fn a_frame_that_arrives_right_after_attach_or_share_is_dispatched() {
+    let Some(written) = ran_kotlin(&mini_server_module(&format!(
+        "{FAKE_SOCKET}\n\n{MINI_SERVER_FIXTURE}\n\n{ATTACH_THEN_SEND_DRIVER}"
+    ))) else {
+        return;
+    };
+    let report: serde_json::Value = serde_json::from_str(written.trim()).unwrap();
+    for key in ["afterAttachAnswered", "afterShareAnswered"] {
+        assert_eq!(
+            report[key], true,
+            "`{key}` was false: the dispatcher was not subscribed when it was handed the frame. \
+             Got: {report:#?}"
+        );
+    }
+}
+
+#[test]
 fn the_mini_server_answers_every_frame_with_an_id_and_shares_the_socket() {
     let Some(written) = ran_kotlin(&mini_server_module(&format!(
-        "{FAKE_SOCKET}\n\n{MINI_SERVER_DRIVER}"
+        "{FAKE_SOCKET}\n\n{MINI_SERVER_FIXTURE}\n\n{MINI_SERVER_DRIVER}"
     ))) else {
         return;
     };
@@ -844,8 +901,10 @@ fn the_mini_server_answers_every_frame_with_an_id_and_shares_the_socket() {
         "oneWayOk",
         "declaredOk",
         "notifyFaultReached",
+        "bothRepliesArrived",
         "conversationAnsweredOwn",
         "pulseAnsweredOwn",
+        "pongArrived",
         "onePongPerPing",
         "sharedDetached",
         "shareThrew",

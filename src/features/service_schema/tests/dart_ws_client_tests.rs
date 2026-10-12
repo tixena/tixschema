@@ -376,6 +376,29 @@ fn the_attachment_takes_the_structural_frames_record_and_requires_on_fault() {
 }
 
 #[test]
+fn the_transport_and_the_attachment_are_listening_when_they_return() {
+    let written = dart_ws_client_of(DART_WS_SERVICE);
+    assert!(
+        written.contains(
+            "_heartbeat = heartbeat ?? const LedgerWsHeartbeat() {\n    \
+             _subscription = stream.listen(_onFrame, onDone: _onClose, onError: (_) => _onClose());"
+        ),
+        "the constructor's own body listens, so no frame the stream delivers once it has returned \
+         is missed. Got: {written}"
+    );
+    assert!(
+        written.contains(
+            "required void Function(LedgerFaultFields) onFault,\n\
+             }) {\n  \
+             final subscription = frames.inbound.listen((frame) async {"
+        ),
+        "the attachment is no `async` function and listens in its first statement: a broadcast \
+         stream keeps nothing for a late listener, so a frame that arrives right after the \
+         attachment returned needs it listening already. Got: {written}"
+    );
+}
+
+#[test]
 fn an_unknown_operation_on_a_request_frame_reports_and_replies_with_the_fault() {
     let written = dart_ws_client_of(DART_WS_SERVICE);
     assert!(

@@ -382,7 +382,7 @@ fn the_attachment_launches_on_frames_own_scope_and_exposes_detach_and_share() {
         "got: {written}"
     );
     assert!(
-        written.contains("val job = frames.scope.launch {"),
+        written.contains("val job = frames.scope.launch(start = CoroutineStart.UNDISPATCHED) {"),
         "the attachment launches on the transport's own scope rather than a fresh one, so \
          closing the transport ends this attachment too. Got: {written}"
     );
@@ -402,6 +402,45 @@ fn the_attachment_launches_on_frames_own_scope_and_exposes_detach_and_share() {
             && written.contains("check(job.isActive) { \"the socket is closed\" }"),
         "`share` throws once this attachment has detached, and `detach` cancels its own job. \
          Got: {written}"
+    );
+}
+
+#[test]
+fn the_dispatcher_has_subscribed_when_attach_and_share_return() {
+    let written = kotlin_ws_client_of(KOTLIN_WS_SERVICE);
+    let attach_body = body_from(&written, "fun attachConversationClientServiceWsDispatcher(");
+    assert!(
+        attach_body.contains(
+            "val job = frames.scope.launch(start = CoroutineStart.UNDISPATCHED) {\n    \
+             frames.inbound.collect { text ->"
+        ),
+        "the collector runs to its first suspension, the subscription, before `launch` returns: \
+         `frames.inbound` replays nothing, so a frame that arrived ahead of a scheduled start \
+         would never be dispatched. Got: {attach_body}"
+    );
+    let share_body = body_from(&written, "fun share(");
+    assert!(
+        share_body.contains("val detachShared = attach(send, scope)\n")
+            && !share_body.contains("launch"),
+        "`share` calls the other service's attach in its own body, so that dispatcher has \
+         subscribed when `share` returns. Got: {share_body}"
+    );
+}
+
+#[test]
+fn the_transport_takes_the_sockets_frames_from_its_constructor_on() {
+    let written = kotlin_ws_client_of(KOTLIN_WS_SERVICE);
+    let init = body_from(&written, "init {");
+    assert!(
+        init.contains("socket.onMessage = { text -> onFrame(text) }") && !init.contains("launch"),
+        "`init` hands the socket its reader with nothing scheduled ahead of it, so no frame the \
+         socket delivers once the constructor has returned is missed. Got: {init}"
+    );
+    assert_eq!(
+        written.matches("collect {").count(),
+        1,
+        "the dispatcher's collector is the one subscription made from a coroutine: what the \
+         transport launches is its heartbeat's timer. Got: {written}"
     );
 }
 
