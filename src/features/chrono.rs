@@ -54,11 +54,12 @@ pub fn get_naive_datetime_zod_schema() -> String {
 }
 
 /// Generates Zod schema for `DateTime<Tz>` rendered as a native TS `Date` (default).
-/// `z.coerce.date()` accepts `Date` instances, ISO strings, and epoch numbers,
-/// matching Rust's serialized forms while producing a BSON `Date` (`MongoDB` TTL).
+/// A `Date` instance, an ISO string or epoch milliseconds is coerced to a `Date`, which a BSON
+/// `Date` is written from (`MongoDB` TTL). Anything else is refused before the coercion, because
+/// `z.coerce.date()` alone reads `null`, `true` and `false` as instants of 1970.
 #[cfg(any(test, feature = "zod"))]
 pub fn get_datetime_native_zod_schema() -> String {
-    "z.coerce.date()".to_owned()
+    "z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date())".to_owned()
 }
 
 /// Generates Zod schema for a `DateTime<Tz>` rendered with the

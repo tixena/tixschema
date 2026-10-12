@@ -425,8 +425,10 @@ fn test_naive_datetime_zod() {
 fn test_datetime_utc_zod() {
     let zod = TimestampedRecord::zod_schema();
     assert!(
-        zod.contains("created_at: z.coerce.date(),"),
-        "DateTime<Utc> should use z.coerce.date(). Got: {zod}"
+        zod.contains(
+            "created_at: z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date()),"
+        ),
+        "DateTime<Utc> should use the date schema. Got: {zod}"
     );
 }
 
@@ -435,8 +437,10 @@ fn test_datetime_utc_zod() {
 fn test_datetime_local_zod() {
     let zod = LocalTimestamp::zod_schema();
     assert!(
-        zod.contains("local_time: z.coerce.date(),"),
-        "DateTime<Local> should use z.coerce.date(). Got: {zod}"
+        zod.contains(
+            "local_time: z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date()),"
+        ),
+        "DateTime<Local> should use the date schema. Got: {zod}"
     );
 }
 
@@ -446,7 +450,7 @@ fn test_optional_datetime_zod() {
     let zod = OptionalTimestamp::zod_schema();
     assert!(
         zod.contains(
-            "updated_at: z.union([z.null().transform(() => undefined), z.coerce.date(), z.undefined()]).prefault(undefined),"
+            "updated_at: z.union([z.null().transform(() => undefined), z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date()), z.undefined()]).prefault(undefined),"
         ),
         "Option<DateTime<Utc>> should use z.union([z.null().transform(() => undefined), \
          z.coerce.date(), z.undefined()]). Got: {zod}"
@@ -468,8 +472,8 @@ fn test_vec_date_zod() {
 fn test_hashmap_datetime_zod() {
     let zod = DateMap::zod_schema();
     assert!(
-        zod.contains("events: z.record(z.string(), z.coerce.date()),"),
-        "HashMap<String, DateTime<Utc>> should use z.record(z.string(), z.coerce.date()). Got: {zod}"
+        zod.contains("events: z.record(z.string(), z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date())),"),
+        "HashMap<String, DateTime<Utc>> should use z.record(z.string(), <the date schema>). Got: {zod}"
     );
 }
 
@@ -662,7 +666,7 @@ fn test_nested_string_keyed_chrono_map_typescript_and_zod() {
     let zod_schema = NestedChronoMaps::zod_schema();
     for expected in [
         "dates_by_group: z.record(z.string(), z.record(z.string(), z.iso.date())),",
-        "timestamps_by_run: z.record(z.string(), z.record(z.string(), z.coerce.date())),",
+        "timestamps_by_run: z.record(z.string(), z.record(z.string(), z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date()))),",
     ] {
         assert!(
             zod_schema.contains(expected),
@@ -740,8 +744,8 @@ fn test_sample_typescript_mixes_date_and_number() {
 fn test_sample_zod_mixes_coerce_date_and_inline_number() {
     let zod = Sample::zod_schema();
     assert!(
-        zod.contains("due_at: z.coerce.date(),"),
-        "default DateTime<Utc> should use z.coerce.date(). Got: {zod}"
+        zod.contains("due_at: z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date()),"),
+        "default DateTime<Utc> should use the date schema. Got: {zod}"
     );
     assert!(
         zod.contains("created_at: z.preprocess((arg) =>"),
@@ -780,8 +784,8 @@ fn test_tuple_variant_datetime_honors_as_number() {
 fn test_tuple_variant_datetime_zod_honors_as_number() {
     let zod = DynamicValue::zod_schema();
     assert!(
-        zod.contains("z.coerce.date()"),
-        "Native variant payload should use z.coerce.date(). Got: {zod}"
+        zod.contains("z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date())"),
+        "Native variant payload should use the date schema. Got: {zod}"
     );
     assert!(
         zod.contains("}, z.number())"),

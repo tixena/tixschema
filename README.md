@@ -310,7 +310,7 @@ On the two nominal surfaces such a key keeps its own type wherever that type spe
 | `bool` | `"true" \| "false"` | `z.partialRecord(z.enum(["true", "false"]), V)` |
 | `DateTime<Tz>` | `string` | `z.record(z.iso.datetime({ offset: true }), V)` |
 
-So a `HashMap<u32, String>` is `Partial<Record<number, string>>` and `z.record(z.number().int(), z.string())`, and a `HashMap<bool, String>` is `Partial<Record<"true" | "false", string>>` and `z.partialRecord(z.enum(["true", "false"]), z.string())`. `Record<K, V>` is declared `K extends keyof any`, which `boolean` and `Date` do not satisfy, and in key position `z.boolean()` rejects the `"true"` serde wrote while `z.coerce.date()` accepts the timestamp only to rewrite every key into a locale-dependent `Date.prototype.toString()` rendering — neither surface can carry the value form, so both carry the wire form instead. The constructor moves with the key because `z.record` over an enumerated key demands every one of its members; `z.partialRecord` (zod ≥ 4.0.0) admits a map holding one of them, or none. A brand or alias over one of those keys renders exactly as the bare key does, its name having nothing to stand in.
+So a `HashMap<u32, String>` is `Partial<Record<number, string>>` and `z.record(z.number().int(), z.string())`, and a `HashMap<bool, String>` is `Partial<Record<"true" | "false", string>>` and `z.partialRecord(z.enum(["true", "false"]), z.string())`. `Record<K, V>` is declared `K extends keyof any`, which `boolean` and `Date` do not satisfy, and in key position `z.boolean()` rejects the `"true"` serde wrote while the date schema accepts the timestamp only to rewrite every key into a locale-dependent `Date.prototype.toString()` rendering — neither surface can carry the value form, so both carry the wire form instead. The constructor moves with the key because `z.record` over an enumerated key demands every one of its members; `z.partialRecord` (zod ≥ 4.0.0) admits a map holding one of them, or none. A brand or alias over one of those keys renders exactly as the bare key does, its name having nothing to stand in.
 
 A key written as one of the enclosing item's own type parameters is the open case, read off that same rule. The expansion cannot see which type the instantiation will supply, but serde has already settled what any of them may write: an instantiation whose key writes as a string keys the map, and one whose key does not fails the whole map at serialization with `key must be a string` — so string keys hold for every instantiation that serializes at all. All three surfaces say exactly that and nothing more: `{"type": "object", "additionalProperties": V}`, `z.record(z.string(), V)`, and `Partial<Record<string, V>>` — the trio a `String` key earns. The value side stays described, being no parameter's business, so `HashMap<KeyType, ValueType>` on `Holder<KeyType, ValueType>` is `Partial<Record<string, ValueType>>`.
 
@@ -3852,10 +3852,10 @@ Supported types and mappings:
 | `NaiveDate` | `string` | `z.iso.date()` | `"date"` |
 | `NaiveTime` | `string` | `z.preprocess(<millis arrow>, z.iso.time())` | `"time"` |
 | `NaiveDateTime` | `string` | `z.iso.datetime({ local: true })` | `"date-time"` |
-| `DateTime<Tz>` (default) | `Date` | `z.coerce.date()` | `"date-time"` |
+| `DateTime<Tz>` (default) | `Date` | `z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date())` | `"date-time"` |
 | `DateTime<Tz>` + `#[model_schema_prop(as_number)]` | `number` | `z.preprocess(<epoch arrow>, z.number())` | `"date-time"` |
 
-`DateTime<Tz>` renders as a native TypeScript `Date` (`z.coerce.date()`) by default, which is what MongoDB needs to expire a BSON `Date` via TTL. The bare `as_number` flag opts a single `DateTime<Tz>` field into an epoch-milliseconds `number` instead, validated by a self-contained inline coercer (no imported helper). `as_number` is only valid on a `DateTime<Tz>` field — using it elsewhere is a compile error.
+`DateTime<Tz>` renders as a native TypeScript `Date` by default, which is what MongoDB needs to expire a BSON `Date` via TTL. A `Date`, an ISO string and epoch milliseconds are coerced to one; anything else is refused before the coercion, since `z.coerce.date()` alone reads `null` as `1970-01-01T00:00:00.000Z` and `true` as one millisecond later. An `Option<DateTime<Tz>>` still reads `null` as `undefined`, through the `z.null()` arm every `Option` has. A `nullable` one reads `null` as `null`, a `null` among the items of a `Vec<Option<DateTime<Tz>>>` stays `null`, and in an untagged enum an input that is no date reaches the member written after the date. An object that is no `Date` is refused even where `new Date` would convert it, as it would a dayjs or a moment value: hand the schema the `Date` itself. The bare `as_number` flag opts a single `DateTime<Tz>` field into an epoch-milliseconds `number` instead, validated by a self-contained inline coercer (no imported helper). `as_number` is only valid on a `DateTime<Tz>` field — using it elsewhere is a compile error.
 
 On the Rust side, `as_number` also injects `#[serde(with = "chrono::serde::ts_milliseconds")]` (or `ts_milliseconds_option` for an `Option<DateTime<Tz>>`), so the field serializes to, and deserializes from, the same epoch-milliseconds number every surface describes — no hand-written serde attribute needed. Where the field already carries its own `with` or `deserialize_with`, the injection is held back and the author's hook runs instead.
 
@@ -3905,9 +3905,9 @@ export const Event$Schema: ZodType<Event> = z.strictObject({
   date: z.iso.date(),
   time: z.preprocess((arg) => { if (typeof arg === "number") { const s = Math.floor(arg / 1000); const hh = String(Math.floor(s / 3600)).padStart(2, "0"); const mm = String(Math.floor((s % 3600) / 60)).padStart(2, "0"); const ss = String(s % 60).padStart(2, "0"); return `${hh}:${mm}:${ss}`; } return arg; }, z.iso.time()),
   local_datetime: z.iso.datetime({ local: true }),
-  created_at: z.coerce.date(),
+  created_at: z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date()),
   epoch_ms: z.preprocess((arg) => { if (arg instanceof Date) return arg.getTime(); if (typeof arg === "string") return Date.parse(arg); return arg; }, z.number()),
-  updated_at: z.union([z.null().transform(() => undefined), z.coerce.date(), z.undefined()]).prefault(undefined),
+  updated_at: z.union([z.null().transform(() => undefined), z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date()), z.undefined()]).prefault(undefined),
 });
 ```
 

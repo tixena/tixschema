@@ -19,7 +19,10 @@ fn test_zod_schemas() {
         get_naive_datetime_zod_schema(),
         "z.iso.datetime({ local: true })"
     );
-    assert_eq!(get_datetime_native_zod_schema(), "z.coerce.date()");
+    assert_eq!(
+        get_datetime_native_zod_schema(),
+        "z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date())"
+    );
 }
 
 #[test]

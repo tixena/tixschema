@@ -2822,7 +2822,7 @@ fn test_date_time_keyed_maps_render_an_iso_string_key_on_zod() {
         );
     }
     for spent in [
-        "z.record(z.coerce.date()",
+        "z.record(z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date())",
         "z.record(Stamp$Schema",
         "z.record(StampKeyType$Schema",
     ] {
