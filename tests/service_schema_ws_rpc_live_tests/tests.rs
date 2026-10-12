@@ -16,7 +16,8 @@ use axum::response::IntoResponse;
 use axum::routing::any;
 use core::future::{Future, ready};
 use core::net::SocketAddr;
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use core::time::Duration;
 use futures::{SinkExt as _, StreamExt as _};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -26,6 +27,7 @@ use tokio::net::TcpListener;
 use tokio::runtime::{Builder, Runtime};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
+use tokio::time::timeout;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::{Bytes, Message};
 
@@ -451,6 +453,53 @@ async fn a_client_ping_is_answered_with_a_pong() {
     let answered = socket.next().await.unwrap().unwrap();
     assert_eq!(answered, Message::Pong(Bytes::from_static(b"ping")));
 
+    server.abort();
+}
+
+#[tokio::test]
+async fn a_burst_of_request_frames_is_answered_whole() {
+    const BURST: usize = 2_000;
+
+    let (addr, server) = serve(Arc::new(LedgerBackEnd::seeded())).await;
+    let (socket, _response) = connect_async(format!("ws://{addr}/ledger")).await.unwrap();
+    let (mut sink, mut stream) = socket.split();
+    let answered = Arc::new(AtomicUsize::new(0));
+    let counting = Arc::clone(&answered);
+    let reading = tokio::spawn(async move {
+        while counting.load(Ordering::Relaxed) < BURST {
+            let Some(Ok(message)) = stream.next().await else {
+                break;
+            };
+            let Message::Text(text) = message else {
+                continue;
+            };
+            let frame: serde_json::Value = serde_json::from_str(&text).unwrap();
+            if frame["kind"] == "reply" && frame["ok"] == true {
+                counting.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+    });
+
+    for id in 0..BURST {
+        let request = serde_json::json!({
+            "kind": "request",
+            "id": format!("b{id}"),
+            "service": "Ledger",
+            "operation": "list-transactions",
+            "payload": { "account_id": "acc-1" },
+        });
+        sink.feed(Message::Text(request.to_string().into()))
+            .await
+            .unwrap();
+    }
+    sink.flush().await.unwrap();
+
+    let all_in_time = timeout(Duration::from_secs(2), reading).await.is_ok();
+    assert_eq!(
+        (all_in_time, answered.load(Ordering::Relaxed)),
+        (true, BURST),
+        "a request frame sent while others waited for the server loop was never answered"
+    );
     server.abort();
 }
 

@@ -314,6 +314,42 @@ function main() {
 main();
 "#;
 
+/// 2,000 `window` requests handed to the listener the dispatcher registered on a stand-in socket,
+/// in one loop with no `await`, and the `ok` replies written to the socket counted.
+const BURST_DRIVER: &str = r#"
+async function main() {
+  let replies = 0;
+  let listeners = [];
+  const socket = {
+    send(text) {
+      const frame = JSON.parse(text);
+      if (frame.kind === "reply" && frame.ok === true) replies += 1;
+    },
+    close() {},
+    addEventListener(type, listener) {
+      if (type === "message") listeners.push(listener);
+    },
+    removeEventListener(type, listener) {
+      listeners = listeners.filter((registered) => registered !== listener);
+    },
+  };
+  const detach = attachConversationClientServiceWsDispatcher(socket, { n: 1 }, impl, () => {});
+  for (let id = 1; id <= 2000; id += 1) {
+    const data = JSON.stringify({
+      kind: "request", id: `b${id}`, service: "ConversationClientService", operation: "window",
+      payload: { conversationId: "abc" },
+    });
+    for (const listener of listeners) listener({ data });
+  }
+  const allInTime = await until(() => replies >= 2000);
+  const answered = replies;
+  detach();
+  console.log(JSON.stringify({ allInTime, answered }));
+  process.exit(0);
+}
+main().catch((error) => { console.error(error); process.exit(1); });
+"#;
+
 /// A second service reached through `connection.share()` answers only its own frames, and closing
 /// the connection detaches it.
 const SHARE_DRIVER: &str = r#"
@@ -611,6 +647,18 @@ fn ten_thousand_connections_cost_what_the_design_measured() {
         "tixschema: 10,000 stand-in connections accepted in {} ms, closed in {} ms, heap grew by \
          {} bytes",
         result["acceptMs"], result["closeMs"], result["heapGrowthBytes"]
+    );
+}
+
+#[test]
+fn a_burst_of_request_frames_is_answered_whole() {
+    let Some(result) = run_scenario("ws-server-burst", BURST_DRIVER) else {
+        return;
+    };
+    assert_eq!(
+        result,
+        serde_json::json!({"allInTime": true, "answered": 2_000_i32}),
+        "a frame handed to the dispatcher's listener while others were in flight was never answered"
     );
 }
 
