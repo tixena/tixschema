@@ -242,7 +242,7 @@ enum StringArrayUnion {
         rows: Vec<Vec<String>>,
     },
     Slugs {
-        #[model_schema_prop(minLength = 2, pattern = "^[a-z]+$")]
+        #[model_schema_prop(minLength = 2)]
         slugs: Vec<String>,
     },
     Tags {
@@ -281,7 +281,7 @@ struct WrappedFields {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct StringArrayFields {
     rows: Vec<Vec<String>>,
-    #[model_schema_prop(minLength = 2, pattern = "^[a-z]+$")]
+    #[model_schema_prop(minLength = 2)]
     slugs: Vec<String>,
     tags: Vec<String>,
 }
@@ -515,6 +515,31 @@ pub enum UntaggedLoneSlotWire {
 #[serde(untagged)]
 pub enum UntaggedUnitWire {
     Lone,
+}
+
+// A list an untagged member holds, under a bound that counts it: a newtype variant's slot, a named
+// member under an `Option`, and the list read with no bound, which takes what the others refuse.
+// The variants are tried in this order.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+enum CountedUnion {
+    Exact(#[model_schema_prop(minLength = 2, maxLength = 2)] Vec<u32>),
+    Listed {
+        #[model_schema_prop(minLength = 1)]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        items: Option<Vec<String>>,
+    },
+    Loose(Vec<u32>),
+}
+
+// The same count on a list of the enum's own type parameter.
+#[model_schema(default_types(T = String))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+enum OneOrMany<T> {
+    Many(#[model_schema_prop(minLength = 2)] Vec<T>),
+    One(T),
 }
 
 #[test]
@@ -1435,9 +1460,9 @@ fn test_untagged_string_array_member_wire() {
         ),
         (
             StringArrayUnion::Slugs {
-                slugs: vec!["north".to_owned()],
+                slugs: vec!["n".to_owned(), "s".to_owned()],
             },
-            serde_json::json!({ "slugs": ["north"] }),
+            serde_json::json!({ "slugs": ["n", "s"] }),
         ),
         (
             StringArrayUnion::Tags {
@@ -1489,7 +1514,7 @@ fn test_untagged_string_array_member_json_schema() {
 
 #[test]
 #[cfg(feature = "jsonschema")]
-fn test_untagged_string_array_member_keeps_its_bounds_on_the_items() {
+fn test_untagged_string_array_member_keeps_its_bound_on_the_array() {
     let schema = StringArrayUnion::json_schema();
     let slugs = &schema["anyOf"][1]["properties"]["slugs"];
 
@@ -1497,14 +1522,15 @@ fn test_untagged_string_array_member_keeps_its_bounds_on_the_items() {
         *slugs,
         serde_json::json!({
             "type": "array",
-            "items": { "type": "string", "minLength": 2_u32, "pattern": "^[a-z]+$" }
+            "items": { "type": "string" },
+            "minItems": 2_u32
         }),
         "Got:\n{schema}"
     );
     assert_eq!(
         *slugs,
         StringArrayFields::json_schema()["properties"]["slugs"],
-        "the field-position twin must render the same bounded items"
+        "the field-position twin must render the same bounded array"
     );
 }
 
@@ -1543,7 +1569,7 @@ fn test_untagged_string_array_member_zod() {
     for member in [
         "z.strictObject({ tags: z.array(z.string()), })",
         "z.strictObject({ rows: z.array(z.array(z.string())), })",
-        "z.strictObject({ slugs: z.array(z.string().min(2, { error: (issue) => `too short: minimum length is 2, got ${String(issue.input).length}` }).check(z.regex(/^[a-z]+$/, { error: \"does not match pattern '^[a-z]+$'\" }))), })",
+        "z.strictObject({ slugs: z.array(z.string()).min(2, { error: (issue) => `too short: minimum length is 2, got ${Array.isArray(issue.input) ? issue.input.length : 0}` }), })",
     ] {
         assert!(zod.contains(member), "Got:\n{zod}");
     }
@@ -2332,4 +2358,119 @@ fn test_serde_writes_and_reads_the_same_null_for_a_declared_untagged_unit_varian
         serde_json::from_value::<UntaggedUnitWire>(written).unwrap(),
         UntaggedUnitWire::Lone
     );
+}
+
+#[test]
+fn test_the_read_of_an_untagged_list_member_counts_it_to_choose_the_variant() {
+    for (stored, read) in [
+        ("[1,2]", CountedUnion::Exact(vec![1, 2])),
+        ("[1,2,3]", CountedUnion::Loose(vec![1, 2, 3])),
+        ("[]", CountedUnion::Loose(Vec::new())),
+        (
+            r#"{"items":["long enough"]}"#,
+            CountedUnion::Listed {
+                items: Some(vec!["long enough".to_owned()]),
+            },
+        ),
+        ("{}", CountedUnion::Listed { items: None }),
+    ] {
+        assert_eq!(
+            serde_json::from_str::<CountedUnion>(stored).unwrap(),
+            read,
+            "for {stored}"
+        );
+    }
+    assert!(
+        serde_json::from_str::<CountedUnion>(r#"{"items":[]}"#).is_err(),
+        "an empty list breaks the one member an object could be"
+    );
+
+    assert_eq!(
+        serde_json::from_str::<OneOrMany<u32>>("[1,2]").unwrap(),
+        OneOrMany::Many(vec![1, 2])
+    );
+    assert_eq!(
+        serde_json::from_str::<OneOrMany<u32>>("7").unwrap(),
+        OneOrMany::One(7)
+    );
+    assert!(
+        serde_json::from_str::<OneOrMany<u32>>("[1]").is_err(),
+        "one item is too few to be many, and a list is no number"
+    );
+    assert_eq!(
+        serde_json::from_str::<OneOrMany<Vec<u32>>>("[1]").unwrap(),
+        OneOrMany::One(vec![1]),
+        "the count sends a short list on to the next member"
+    );
+}
+
+#[test]
+fn test_validate_counts_an_untagged_list_member_built_in_rust() {
+    assert_eq!(
+        CountedUnion::Exact(vec![1]).validate().unwrap_err(),
+        vec!["too short: minimum length is 2, got 1"]
+    );
+    assert_eq!(
+        CountedUnion::Listed {
+            items: Some(Vec::new())
+        }
+        .validate()
+        .unwrap_err(),
+        vec!["'items': too short: minimum length is 1, got 0"]
+    );
+    assert_eq!(CountedUnion::Loose(Vec::new()).validate(), Ok(()));
+    assert_eq!(
+        OneOrMany::Many(vec!["only".to_owned()])
+            .validate()
+            .unwrap_err(),
+        vec!["too short: minimum length is 2, got 1"]
+    );
+}
+
+#[test]
+#[cfg(feature = "jsonschema")]
+fn test_an_untagged_list_member_writes_its_count_in_the_json_schema() {
+    let schema = CountedUnion::json_schema();
+    assert_eq!(
+        schema["anyOf"][0],
+        serde_json::json!({
+            "type": "array", "items": { "type": "integer" }, "minItems": 2_u32, "maxItems": 2_u32
+        }),
+        "Got:\n{schema}"
+    );
+    assert_eq!(
+        schema["anyOf"][1]["properties"]["items"],
+        serde_json::json!({
+            "anyOf": [
+                { "type": "array", "items": { "type": "string" }, "minItems": 1_u32 },
+                { "type": "null" },
+            ]
+        }),
+        "Got:\n{schema}"
+    );
+    assert_eq!(
+        schema["anyOf"][2],
+        serde_json::json!({ "type": "array", "items": { "type": "integer" } }),
+        "Got:\n{schema}"
+    );
+}
+
+#[test]
+#[cfg(feature = "zod")]
+fn test_an_untagged_list_member_writes_its_count_in_zod() {
+    let zod = CountedUnion::zod_schema();
+    let count = "${Array.isArray(issue.input) ? issue.input.length : 0}";
+    for member in [
+        format!(
+            "z.array(z.number().int()).min(2, {{ error: (issue) => `too short: minimum length is \
+             2, got {count}` }}).max(2, {{ error: (issue) => `too long: maximum length is 2, got \
+             {count}` }})"
+        ),
+        format!(
+            "z.array(z.string()).min(1, {{ error: (issue) => `too short: minimum length is 1, got \
+             {count}` }})"
+        ),
+    ] {
+        assert!(zod.contains(&member), "{member} is not in:\n{zod}");
+    }
 }

@@ -3335,13 +3335,14 @@ fn test_set_element_json_schema() {
         serde_json::json!({ "type": "array", "items": { "type": "string" } })
     );
 
-    // A constraint written on the field constrains what the array holds, there being nothing else
-    // for it to reach — the element is where it lands, as it does on the `Vec` spelling.
+    // A length written on the field counts the array's items and reaches none of them, as it does
+    // on the `Vec` spelling.
     assert_eq!(
         properties["constrained_labels"],
         serde_json::json!({
             "type": "array",
-            "items": { "type": "string", "minLength": 3_u32 }
+            "items": { "type": "string" },
+            "minItems": 3_u32
         })
     );
 
@@ -3459,7 +3460,7 @@ fn test_set_element_zod_generation() {
     for spelling in [
         "aliased_tags: z.array(MetricTagRefType$Schema),",
         "big_ids: z.array(z.number().int()),",
-        "constrained_labels: z.array(z.string().min(3, { error: (issue) => `too short: minimum length is 3, got ${String(issue.input).length}` })),",
+        "constrained_labels: z.array(z.string()).min(3, { error: (issue) => `too short: minimum length is 3, got ${Array.isArray(issue.input) ? issue.input.length : 0}` }),",
         "labels: z.array(z.string()),",
         // The preprocess wrap belongs once, outside the array — where the `Vec` spelling puts it.
         "preprocessed_labels: z.preprocess(trim, z.array(z.string())),",
@@ -3833,15 +3834,13 @@ fn test_nested_sequences_describe_at_the_depth_they_are_written() {
             "items": { "type": "array", "items": { "type": "string" } }
         })
     );
-    // A constraint has only the innermost element to land on: the levels above it hold arrays.
+    // A length counts the outermost array, and says nothing of the arrays it holds.
     assert_eq!(
         properties["constrained_rows"],
         serde_json::json!({
             "type": "array",
-            "items": {
-                "type": "array",
-                "items": { "type": "string", "minLength": 3_u32 }
-            }
+            "items": { "type": "array", "items": { "type": "string" } },
+            "minItems": 3_u32
         })
     );
     for field in ["aliased_rows", "sibling_rows"] {
@@ -3929,7 +3928,7 @@ fn test_nested_sequences_validate_at_the_depth_they_are_written() {
     let zod_schema = NestedSequenceFields::zod_schema();
     for spelling in [
         "aliased_rows: z.array(z.array(MetricTagRefType$Schema)),",
-        "constrained_rows: z.array(z.array(z.string().min(3, { error: (issue) => `too short: minimum length is 3, got ${String(issue.input).length}` }))),",
+        "constrained_rows: z.array(z.array(z.string())).min(3, { error: (issue) => `too short: minimum length is 3, got ${Array.isArray(issue.input) ? issue.input.length : 0}` }),",
         "deep_ids: z.array(z.array(z.array(z.number().int()))),",
         "fixed_grid: z.array(z.array(z.number().int()).length(2)).length(2),",
         "labels: z.array(z.array(z.string())),",

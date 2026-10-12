@@ -374,6 +374,8 @@ All validation constraints generate checks in **Zod (frontend), JSON Schema, and
 | `pattern = "regex"` | `String` | `.check(z.regex(/regex/))` | `"pattern"` | `validate()`; the read too on an untagged enum's member |
 | `minLength = N` | `String` | `.min(N)` | `"minLength"` | `validate()`; the read too on an untagged enum's member |
 | `maxLength = N` | `String` | `.max(N)` | `"maxLength"` | `validate()`; the read too on an untagged enum's member |
+| `minLength = N` | a list | `.min(N)` on the array | `"minItems"` | `validate()`; the read too on an untagged enum's member |
+| `maxLength = N` | a list | `.max(N)` on the array | `"maxItems"` | `validate()`; the read too on an untagged enum's member |
 | `minimum = N` | numeric | `.min(N)` | `"minimum"` | `validate()`; the read too on an untagged enum's member |
 | `maximum = N` | numeric | `.max(N)` | `"maximum"` | `validate()`; the read too on an untagged enum's member |
 | `literal = "val"` | `String` | `z.literal("val")` | `{"type": "string", "const": "val"}` | — |
@@ -383,6 +385,40 @@ All validation constraints generate checks in **Zod (frontend), JSON Schema, and
 | `ts_optional` | `Option<T>` | — | — | — (TypeScript-only) |
 | `as_number` | `DateTime<Tz>` | inline `z.preprocess(..., z.number())` | — | serde `with = chrono::serde::ts_milliseconds` injected |
 | `nullable` | `Option<T>` | `z.union([T, z.null()])`, key required | `anyOf: [T, {"type":"null"}]`, key required | guard: refuses a key-dropping serde attr |
+
+**A key written on a field measures the field's own value.** `Option` and the transparent wrappers
+(`Box`, `Rc`, `Arc`, `Cow`, the borrow of a `str` or of a list) hold one value and are read through;
+a list is a value of its own and is not. So on a list `minLength` and `maxLength` count its items,
+whatever they are, and `pattern`, `minimum` and `maximum` are refused. `README.md`'s "List Length"
+section is the consumer's view; this is what a change has to keep.
+
+- `constrained_shape` ends on `ConstraintLeaf::List` at an array, a slice or a std sequence
+  (`names_a_list`), under whatever wrappers it walked, and reads nothing the list holds.
+  `FieldDef::is_list` is the same question asked of the def every surface renders.
+- `apply_model_schema_prop_meta` moves a list's two lengths out of `min_length`/`max_length` into
+  `ModelSchemaPropMeta::min_items`/`max_items`, so no reader of a string's length finds them. Zod
+  writes them on the outermost array (`zod_item_count_checks`), the JSON Schema as `minItems` and
+  `maxItems` beside a fixed array's own (`array_length_json_schema_bounds`, the longer minimum and
+  the shorter maximum), and `apply_constraint_docs` in the words a string's length is stated in.
+- `list_validator` and `list_deserializer` write `validate_{stem}_value` and `deserialize_{stem}`
+  over any list: the list is the type parameter `L`, held to `for<'held> &'held L: IntoIterator`
+  and counted by iterating it, and each transparent wrapper is a parameter named by what it derefs
+  to. No type a list holds is written into the schema module, where one of the item's own
+  parameters, `Self` and a borrowed lifetime name nothing. A bound on the iterator itself
+  (`ExactSizeIterator`) is one the compiler cannot infer `L` under.
+- `BoundKind::Scalar` is what a list is not measured by, and `check_bound_kind` refuses it in the
+  list's own words, with `item_rule_advice` saying where a rule for each item goes: a brand carries
+  a `pattern`, and a range for each number of a list has no place. `check_fixed_shape_constraints`
+  asks nothing more of a list, whose items may be of any type.
+- A list's own count does not stand in for what its items' type declares: `named_member_validate_body`
+  runs both, where every other member's own check is run in place of its type's.
+- The count is reported in a string's sentence (`Bound::MinItems`, `Bound::MaxItems`), and Zod reads
+  the items off the issue behind `Array.isArray`.
+- A brand over a list (`held_as_a_list`: the list itself, or behind `Box`/`Rc`/`Arc`/`Cow`) takes the
+  two lengths on the type. `branded_value_inner` hands them to the inner's def as its count, so Zod
+  and the JSON Schema write them where a field's list carries them, and `branded_list_validation`
+  emits the list's validator and hook under the brand's names, with no `Display` bound. `pattern`
+  on such a brand is refused by `branded_constraint_inner_error`.
 
 A length or a pattern on a field typed with a type declared elsewhere reaches a brand over a
 string. `constrained_shape` ends on `ConstraintLeaf::Named`, the field's validator takes the leaf
@@ -396,15 +432,16 @@ gets, at the field. Zod writes the checks as one `.check(…)` on the named sche
 type and a length on one written with arguments, in every build.
 
 A bound of the wrong kind is refused there as well, by `check_bound_kind`, in every build: a length
-or a pattern on a numeric field, and a range on a string field, under any wrapper, naming the field
-and only the keys of the wrong kind. `FieldDef::unmeasured_bound` is the one question the refusal
+or a pattern on a numeric field, a range on a string field, and a pattern or a range on a list,
+under `Option` and any transparent wrapper, naming the field and only the keys of the wrong kind. `FieldDef::unmeasured_bound` is the one question the refusal
 and `apply_constraint_docs` are both written from, so the TypeScript comment states no bound the
 refusal turned away.
 
-A borrowed `str` is held to its bound by `validate()`, as a `String` is. It is the one reference
-`constrained_shape` reads through (`ConstraintWrap::Borrowed`, which `names_str` decides):
-`validate()` reaches the `str` through `&'a str` at any depth, and a reference to anything else has
-no shape and no validator. A borrowed field publishes its validator and no `deserialize_{field}`
+A borrowed `str` is held to its bound by `validate()`, as a `String` is, and a borrowed list is
+counted as an owned one is. They are the two references `constrained_shape` reads through
+(`ConstraintWrap::Borrowed`, which `names_str` and `names_a_list` decide): `validate()` reaches the
+`str` through `&'a str` at any depth, and a reference to anything else has no shape and no
+validator. A borrowed field publishes its validator and no `deserialize_{field}`
 hook (`ends_on_a_borrow`), and `generate_field_validation` hangs nothing on one. A borrowed `str`
 member of an untagged enum is therefore the one constrained member the read does not check: it is
 read as it is with no bound written, and `validate()` answers for the bound.
@@ -435,10 +472,10 @@ reads the merged meta as it reads a member's own. `process_field` asks it throug
 `collect_untagged_variant_members` asks it directly.
 
 - `written_as_text` says what is reached: a field written as a string or a path itself, under
-  `Option`, an ownership wrapper or the borrow of a `str`. A list's items, a field typed with a
-  named type (a brand included), a number, a map, a tuple and a type parameter are not. It is
-  `constrained_shape`'s walk held to `ConstraintLeaf::Str` and `ConstraintLeaf::Path` and stopped
-  by a list, written apart because it is asked in a build without `serde`;
+  `Option`, an ownership wrapper or the borrow of a `str`. A list and its items, a field typed with
+  a named type (a brand included), a number, a map, a tuple and a type parameter are not. It is
+  `constrained_shape`'s walk held to `ConstraintLeaf::Str` and `ConstraintLeaf::Path`, written
+  apart because it is asked in a build without `serde`;
   `the_reach_of_an_enums_check_is_the_constraint_walks` holds the two together.
 - A field with a check of its own is held to both: the longer `minLength`, the shorter `maxLength`,
   and the enum's `pattern` in `ModelSchemaPropMeta::enum_pattern` beside the field's own, which
@@ -605,7 +642,8 @@ Rules:
   `.brand()` written onto it, so no key written there reaches any surface, and one written there is
   refused at `exec_model_schema` — the ungated seam, so the verdict is the same in every feature
   combination — with the item re-emitted stripped of it. The three checks a brand does carry are
-  written on the type: `#[model_schema(pattern = "...", minLength = N, maxLength = N)]`. The
+  written on the type: `#[model_schema(pattern = "...", minLength = N, maxLength = N)]`. Over a
+  list the two lengths count its items and `pattern` is refused (section 7). The
   field a `#[serde(transparent)]` struct with *named* fields is the value of is that slot, and is
   held to the same
 - The three checks are type-level arguments on a brand and on an enum, which hands them to the
@@ -866,8 +904,9 @@ sections are the consumer's view; this is what a change to the emitter has to ke
   stem), `walked_field` reads it back, and `Walker::bounded` writes one `{source}_bound` call
   beside the read of each value the bound reaches: the validator run on what serde read, one
   `Invalid` per violation, the field's name taken off the sentence. `recovering_bound_check`
-  builds the closure from the walk's own type at that position, so a list is checked item by item
-  at its index. The registry is cleared per item at `exec_model_schema`, and holds nothing in a
+  builds the closure from the walk's own type at that position. A list is that position: the arm
+  that walks its items hands them no validator, and holds the list read whole (`read_as_a_list`)
+  to its count, one `Invalid` at the list. The registry is cleared per item at `exec_model_schema`, and holds nothing in a
   build with no schema surface, where no validator is published.
 - **Every name the flag adds is its own.** Each walker method carries the flag's name
   (`decode_with_value_issues`, `decode_with_bson_fields`, `decode_with_value_named`), and a

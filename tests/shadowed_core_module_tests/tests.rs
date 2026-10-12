@@ -29,6 +29,7 @@ pub struct BalanceRequest {
     #[model_schema_prop(minLength = 1)]
     pub note: String,
     pub organization_id: u32,
+    #[model_schema_prop(maxLength = 4)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
 }

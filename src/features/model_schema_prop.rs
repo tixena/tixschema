@@ -38,9 +38,9 @@ pub enum LiteralValue {
 /// ## String constraints
 ///
 /// Each applies to a field that renders a plain string — `String`, `str`, `PathBuf`, `Path`, and
-/// those under any number of `Option`, sequence and transparent wrappers. A type whose schema this
-/// crate writes whole (`ObjectId`, the chrono types) renders no bound and reading one is a compile
-/// error rather than a silent drop.
+/// those under any number of `Option` and transparent wrappers. A type whose schema this crate
+/// writes whole (`ObjectId`, the chrono types) renders no bound and reading one is a compile error
+/// rather than a silent drop.
 ///
 /// - `pattern = "regex"` — validates the string matches the regex pattern. Must be a regex all
 ///   three engines read the same way; see [`crate::utils::portable_pattern`] for what that rules
@@ -59,6 +59,17 @@ pub enum LiteralValue {
 /// - `maxLength = N` — maximum string length (inclusive).
 ///   - Zod: `.max(N)`
 ///   - JSON Schema: `"maxLength"`
+///   - Rust: `validate()`
+///
+/// ## List length
+///
+/// A key measures the field's own value, and a list is a value of its own: on one, `minLength`
+/// and `maxLength` count its items and reach none of them, and `pattern`, `minimum` and `maximum`
+/// are compile errors.
+///
+/// - `minLength = N` / `maxLength = N` on a list — the fewest and the most items it holds.
+///   - Zod: `.min(N)` / `.max(N)` on the array
+///   - JSON Schema: `"minItems"` / `"maxItems"`
 ///   - Rust: `validate()`
 ///
 /// ## Numeric constraints
@@ -154,8 +165,13 @@ pub struct ModelSchemaPropMeta {
     #[cfg(any(feature = "serde", feature = "zod", feature = "jsonschema"))]
     pub enum_pattern: Option<String>,
     pub literal: Option<LiteralValue>,
+    /// `maxLength` written on a list, whose items it counts: moved here from [`Self::max_length`]
+    /// as the field takes its metadata, so no reader of a string's length finds it.
+    pub max_items: Option<usize>,
     pub max_length: Option<usize>,
     pub maximum: Option<f64>,
+    /// `minLength` written on a list, as [`Self::max_items`] is `maxLength`.
+    pub min_items: Option<usize>,
     pub min_length: Option<usize>,
     pub minimum: Option<f64>,
     pub nullable: bool,

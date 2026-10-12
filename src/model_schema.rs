@@ -326,6 +326,8 @@ struct BrandedNewtypeOutput<'parts> {
 struct BrandedValidation {
     checked_inner: proc_macro2::TokenStream,
     deserialize_fn: proc_macro2::TokenStream,
+    /// Whether the checks read the inner through `Display`, which a list's count does not.
+    displayed: bool,
     validate_fn: proc_macro2::TokenStream,
 }
 
@@ -369,6 +371,9 @@ struct ConstrainedShape {
 /// The value a constrained field ultimately writes, and how it is spelled.
 #[cfg(feature = "serde")]
 enum ConstraintLeaf {
+    /// A list, a value of its own: `minLength` and `maxLength` count its items, and the walk goes
+    /// no further into it.
+    List,
     /// A type declared elsewhere, as the field writes it: a brand measured on the text its own
     /// expansion publishes, or an alias of a string.
     Named(Box<syn::Type>),
@@ -426,9 +431,10 @@ struct CheckedMember {
     stem: String,
 }
 
-/// A wrapper a constrained field can be written under, outermost first: `Option` yields its `Some`,
-/// a sequence yields each element, a transparent wrapper yields what it derefs to, and a reference
-/// yields the `str` it borrows, which only the validator reaches.
+/// A wrapper a value is reached through, outermost first: `Option` yields its `Some`, a transparent
+/// wrapper yields what it derefs to, and a reference yields the `str` or the list it borrows, which
+/// only the validator reaches. A sequence yields each element, on the walk to what a field's own
+/// type declares alone: a field's own bound stops at a list.
 #[cfg(feature = "serde")]
 #[derive(Clone, Copy)]
 enum ConstraintWrap {
@@ -3293,7 +3299,7 @@ fn branded_option_inner_error(
 
 /// The `compile_error!` tokens for a branded newtype that applies `pattern`, `minLength`, or
 /// `maxLength` to an inner type whose schema is not a string, or `None` when the inner can carry
-/// them.
+/// them. A list carries the two lengths, which count its items, and no `pattern`.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn branded_constraint_inner_error(
     generics: &syn::Generics,
@@ -3303,6 +3309,18 @@ fn branded_constraint_inner_error(
 ) -> Option<proc_macro2::TokenStream> {
     if !args.has_string_constraints() {
         return None;
+    }
+    if held_as_a_list(&inner_field.ty) {
+        return args.pattern.as_ref().map(|_| {
+            let message = format!(
+                "model_schema: branded newtype `{name}` writes `pattern` on a list, which has no \
+                 text for it to match. `minLength` and `maxLength` count the list's items, and \
+                 nothing written on the brand reaches them. A rule for each item goes on the \
+                 item's own type: declare the item as a `#[serde(transparent)]` brand that \
+                 carries the `pattern`."
+            );
+            syn::Error::new_spanned(inner_field, message).to_compile_error()
+        });
     }
     let inner = branded_inner_value_surface(generics, inner_field);
     if let FieldDefType::SiblingType(inner_name, _) = &inner.field_type
@@ -5599,6 +5617,9 @@ fn build_branded_validation(
     let inner_ty = &inner_field.ty;
     let held = brand_member(inner_field);
     let is_generic = !generic_params.is_empty();
+    if held_as_a_list(inner_ty) {
+        return branded_list_validation(args, inner_field);
+    }
     args.has_string_constraints().then(|| {
         let measures_path = branded_inner_measures_path(inner_ty);
         let (checked_param, rendering) = checked_value_parts(measures_path);
@@ -5683,8 +5704,35 @@ fn build_branded_validation(
                 &quote! { self.#held },
             ),
             deserialize_fn,
+            displayed: true,
             validate_fn,
         }
+    })
+}
+
+/// [`build_branded_validation`] for a brand over a list, whose two lengths count its items: the
+/// validator and the hook a list field gets, under the brand's own names.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn branded_list_validation(
+    args: &ModelSchemaArgs,
+    inner_field: &Field,
+) -> Option<BrandedValidation> {
+    if args.min_length.is_none() && args.max_length.is_none() {
+        return None;
+    }
+    let wraps = constrained_shape(&inner_field.ty)?.wraps;
+    let validator = proc_macro2::Ident::new("validate_value", proc_macro2::Span::call_site());
+    let deserializer = proc_macro2::Ident::new("deserialize_value", proc_macro2::Span::call_site());
+    let held = brand_member(inner_field);
+    let through = wraps.iter().map(|_| quote! { * });
+    Some(BrandedValidation {
+        checked_inner: quote! { &#(#through)* self.#held },
+        deserialize_fn: list_deserializer(&deserializer, &validator, &wraps),
+        displayed: false,
+        validate_fn: list_validator(&validator, args.min_length, args.max_length, None),
     })
 }
 
@@ -5932,6 +5980,8 @@ fn branded_slot_json_schema(
     def_name: &str,
 ) -> proc_macro2::TokenStream {
     match build_tuple_element_json_schema(inner) {
+        // A list's count is written on its own array.
+        Ok(value) if inner.is_list() => value,
         Ok(value) => branded_layered_over(args, &value),
         Err(rejection) => {
             let message = prefixed_guard_message(&map_member_rejection_message(
@@ -6001,10 +6051,23 @@ fn surface_field_def(generics: &syn::Generics, written: &FieldDef) -> FieldDef {
 }
 
 /// The one def both validating surfaces read a branded newtype's inner off, so neither can render
-/// a type parameter the other has erased — see [`surface_field_def`].
+/// a type parameter the other has erased — see [`surface_field_def`]. A list takes the brand's
+/// two lengths as the count of its items, which is where a field's own list carries them.
 #[cfg(any(feature = "zod", feature = "jsonschema"))]
-fn branded_value_inner(generics: &syn::Generics, inner_ty: &syn::Type) -> FieldDef {
-    surface_field_def(generics, &get_field_def("_inner", inner_ty, ""))
+fn branded_value_inner(
+    generics: &syn::Generics,
+    inner_ty: &syn::Type,
+    args: &ModelSchemaArgs,
+) -> FieldDef {
+    let mut inner = surface_field_def(generics, &get_field_def("_inner", inner_ty, ""));
+    if held_as_a_list(inner_ty) && (args.min_length.is_some() || args.max_length.is_some()) {
+        inner.model_schema_prop_meta = Some(ModelSchemaPropMeta {
+            max_items: args.max_length,
+            min_items: args.min_length,
+            ..ModelSchemaPropMeta::default()
+        });
+    }
+    inner
 }
 
 /// Resolves the TypeScript inner type name and generic parameter list for a branded newtype.
@@ -6156,7 +6219,8 @@ fn branded_inner_is_composite(inner: &FieldDef) -> bool {
 /// Resolves the Zod base schema for a branded newtype's inner type, applying string constraints.
 #[cfg(feature = "zod")]
 fn branded_zod_inner(args: &ModelSchemaArgs, inner: &FieldDef) -> String {
-    if !inner.is_array() && matches!(inner.field_type, FieldDefType::TypeParam(_)) {
+    // A list's count is written on its own array, and a bare parameter's on its default.
+    if inner.is_list() || matches!(inner.field_type, FieldDefType::TypeParam(_)) {
         return inner.zod_type();
     }
     let checks = branded_zod_string_checks(args);
@@ -6404,8 +6468,9 @@ fn build_branded_display_tokens(
 ) -> proc_macro2::TokenStream {
     // Only the serde build emits the validation functions that call `to_string()`.
     #[cfg(feature = "serde")]
-    let validation_needs_display =
-        args.has_string_constraints() && !branded_inner_measures_path(&inner_field.ty);
+    let validation_needs_display = args.has_string_constraints()
+        && !branded_inner_measures_path(&inner_field.ty)
+        && !held_as_a_list(&inner_field.ty);
     #[cfg(not(feature = "serde"))]
     let validation_needs_display = false;
 
@@ -6521,14 +6586,21 @@ fn inject_branded_serde_attrs(
 
     // Add Display bound + serde bound to generic params so serde deserialize_with works.
     if is_generic {
+        let displayed = if validation.displayed {
+            " + std::fmt::Display"
+        } else {
+            ""
+        };
         for param in &mut owned_struct.generics.params {
-            if let syn::GenericParam::Type(tp) = param {
+            if let syn::GenericParam::Type(tp) = param
+                && validation.displayed
+            {
                 tp.bounds.push(syn::parse_quote!(::std::fmt::Display));
             }
         }
         let bounds: Vec<String> = generic_params
             .iter()
-            .map(|p| format!("{p}: serde::de::DeserializeOwned + std::fmt::Display"))
+            .map(|p| format!("{p}: serde::de::DeserializeOwned{displayed}"))
             .collect();
         let bound_str = bounds.join(", ");
         let bound_lit = syn::LitStr::new(&bound_str, proc_macro2::Span::call_site());
@@ -6739,7 +6811,7 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
     let _: &_ = &inner_ty;
 
     #[cfg(any(feature = "zod", feature = "jsonschema"))]
-    let value_inner = branded_value_inner(&item_struct.generics, inner_ty);
+    let value_inner = branded_value_inner(&item_struct.generics, inner_ty, args);
 
     #[cfg(feature = "jsonschema")]
     let json_inner = branded_json_inner(&value_inner);
@@ -6923,7 +6995,9 @@ fn branded_bound_text_method(item_struct: &syn::ItemStruct) -> proc_macro2::Toke
     let text = match shape.leaf {
         ConstraintLeaf::Path => quote! { self.#held.to_string_lossy() },
         ConstraintLeaf::Str => quote! { ::std::borrow::Cow::Borrowed(&*self.#held) },
-        ConstraintLeaf::Named(_) | ConstraintLeaf::Number(_) => return quote! {},
+        ConstraintLeaf::List | ConstraintLeaf::Named(_) | ConstraintLeaf::Number(_) => {
+            return quote! {};
+        }
     };
     quote! {
         pub fn model_schema_bound_text(&self) -> ::std::borrow::Cow<'_, str> {
@@ -6957,7 +7031,10 @@ fn branded_impl_generics(
     #[cfg(not(feature = "serde"))]
     let _: &_ = &(is_generic, args);
     #[cfg(feature = "serde")]
-    if is_generic && args.has_string_constraints() {
+    if is_generic
+        && args.has_string_constraints()
+        && !brand_field(item_struct).is_some_and(|inner| held_as_a_list(&inner.ty))
+    {
         for param in &mut generics.params {
             if let syn::GenericParam::Type(tp) = param {
                 tp.bounds.push(syn::parse_quote!(::std::fmt::Display));
@@ -9633,9 +9710,7 @@ fn collect_untagged_variant_members(
         let bound = bound_member(field, index);
         let member_body = match (is_flatten, field.ident.is_some()) {
             (true, _) => nested_validate_body(field, &member_def, true, true),
-            (false, true) => {
-                validate_body.or_else(|| nested_validate_body(field, &member_def, true, false))
-            }
+            (false, true) => named_member_validate_body(validate_body, field, &member_def, true),
             (false, false) => {
                 let nested = positional_member_validate_body(field, &member_def, &bound.binding);
                 slot_validate_body(validate_body, nested)
@@ -10521,7 +10596,7 @@ fn arrayed_json_schema_value(
         } else {
             level_schema
         };
-        let bounds = fixed_length_json_schema_bounds(fld, level);
+        let bounds = array_length_json_schema_bounds(fld, level);
         quote! { serde_json::json!({ "type": "array", "items": #items #bounds }) }
     })
 }
@@ -10539,20 +10614,30 @@ fn arrayed_json_schema_fragment(
         } else {
             level_schema
         };
-        let bounds = fixed_length_json_schema_bounds(fld, level);
+        let bounds = array_length_json_schema_bounds(fld, level);
         quote! { { "type": "array", "items": #items #bounds } }
     })
 }
 
-/// The arity a fixed-size `[T; N]` level pins, as the `minItems`/`maxItems` pair a tuple pins its
-/// own arity with. Empty for every other level, leaving an unbounded array unbounded; the pair
-/// carries its own leading comma so emptiness costs the caller nothing.
+/// The `minItems` and `maxItems` of one array level: the arity a fixed-size `[T; N]` pins, as a
+/// tuple pins its own, held at the outermost level to the count the field's own `minLength` and
+/// `maxLength` wrote. Empty where nothing bounds the level; each keyword carries its own leading
+/// comma so emptiness costs the caller nothing.
 #[cfg(feature = "jsonschema")]
-fn fixed_length_json_schema_bounds(fld: &FieldDef, level: u8) -> proc_macro2::TokenStream {
-    fld.fixed_length_at(level).map_or_else(
-        proc_macro2::TokenStream::new,
-        |length| quote! { , "minItems": #length, "maxItems": #length },
-    )
+fn array_length_json_schema_bounds(fld: &FieldDef, level: u8) -> proc_macro2::TokenStream {
+    let fixed = fld.fixed_length_at(level);
+    let counted = fld
+        .model_schema_prop_meta
+        .as_ref()
+        .filter(|_| level.saturating_add(1) == fld.array_depth);
+    let least = fixed.max(counted.and_then(|meta| meta.min_items));
+    let most = match (fixed, counted.and_then(|meta| meta.max_items)) {
+        (Some(pinned), Some(written)) => Some(pinned.min(written)),
+        (pinned, written) => pinned.or(written),
+    };
+    let min_items = least.map(|count| quote! { , "minItems": #count });
+    let max_items = most.map(|count| quote! { , "maxItems": #count });
+    quote! { #min_items #max_items }
 }
 
 /// Which instant a chrono type's string spells, as the JSON-schema `"format"` keyword that names
@@ -12318,7 +12403,7 @@ fn string_leaf_parts(
             let (param, rendering) = checked_value_parts(true);
             (param, rendering, quote! { ::std::path::PathBuf })
         }
-        ConstraintLeaf::Number(_) | ConstraintLeaf::Str => {
+        ConstraintLeaf::List | ConstraintLeaf::Number(_) | ConstraintLeaf::Str => {
             let (param, rendering) = checked_value_parts(false);
             (param, rendering, quote! { ::std::string::String })
         }
@@ -12579,8 +12664,148 @@ fn generate_numeric_validation_code(
     }
 }
 
+/// What holds `L` to being a list whose items are counted: every std sequence, an array and a
+/// slice are iterated by reference. `unsized_list` is a list reached through a transparent wrapper.
+/// A bound on the iterator itself is one the compiler cannot infer `L` under.
+#[cfg(feature = "serde")]
+fn counted_list_bounds(unsized_list: bool) -> proc_macro2::TokenStream {
+    let relaxed = unsized_list.then(|| quote! { L: ?::core::marker::Sized, });
+    quote! {
+        #relaxed
+        for<'held> &'held L: ::core::iter::IntoIterator,
+    }
+}
+
+/// The validator of a list's item count, under the bounds `minLength` and `maxLength` wrote on it.
+/// It takes the list as any type that is one: no type a list holds is written into the schema
+/// module, where a type parameter of the item's, `Self` and a borrowed lifetime name nothing.
+#[cfg(feature = "serde")]
+fn list_validator(
+    validator: &proc_macro2::Ident,
+    least: Option<usize>,
+    most: Option<usize>,
+    named: Option<&str>,
+) -> proc_macro2::TokenStream {
+    let measured = quote! { held };
+    let too_few = least.map(|count| {
+        let reported = rust_violation(Bound::MinItems(count), named, &measured);
+        quote! {
+            if held < #count {
+                errors.push(#reported);
+            }
+        }
+    });
+    let too_many = most.map(|count| {
+        let reported = rust_violation(Bound::MaxItems(count), named, &measured);
+        quote! {
+            if held > #count {
+                errors.push(#reported);
+            }
+        }
+    });
+    let counted = counted_list_bounds(true);
+    quote! {
+        pub fn #validator<L>(list: &L) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>>
+        where
+            #counted
+        {
+            let held = list.into_iter().count();
+            let mut errors: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
+            #too_few
+            #too_many
+            if errors.is_empty() { ::core::result::Result::Ok(()) } else { ::core::result::Result::Err(errors) }
+        }
+    }
+}
+
+/// The serde hook of a list written under `wraps`, or nothing for one a reference borrows. It
+/// names the list `L` and each transparent wrapper by what it derefs to, so it reads whatever type
+/// the member declares.
+#[cfg(feature = "serde")]
+fn list_deserializer(
+    deserializer: &proc_macro2::Ident,
+    validator: &proc_macro2::Ident,
+    wraps: &[ConstraintWrap],
+) -> proc_macro2::TokenStream {
+    let mut read = quote! { L };
+    let mut holders: Vec<proc_macro2::Ident> = Vec::new();
+    let mut held_to: Vec<proc_macro2::TokenStream> = Vec::new();
+    for (depth, wrap) in wraps.iter().enumerate().rev() {
+        match *wrap {
+            ConstraintWrap::Borrowed | ConstraintWrap::Sequence => return quote! {},
+            ConstraintWrap::Optional => read = quote! { ::core::option::Option<#read> },
+            ConstraintWrap::Transparent => {
+                let holder =
+                    proc_macro2::Ident::new(&format!("H{depth}"), proc_macro2::Span::call_site());
+                let relaxed = matches!(
+                    depth.checked_sub(1).and_then(|outer| wraps.get(outer)),
+                    Some(ConstraintWrap::Transparent)
+                )
+                .then(|| quote! { ?::core::marker::Sized + });
+                held_to.push(quote! { #holder: #relaxed ::core::ops::Deref<Target = #read>, });
+                read = quote! { #holder };
+                holders.push(holder);
+            }
+        }
+    }
+    let counted = counted_list_bounds(matches!(wraps.last(), Some(ConstraintWrap::Transparent)));
+    let head = wrap_binding(0);
+    let leaf = constraint_leaf(CheckSink::Fail, &walked_value(wraps), validator);
+    let walk = walk_wraps(wraps, &head, 1, &leaf);
+    let refusal = refusal_from_violations();
+    quote! {
+        pub fn #deserializer<'de, D, #(#holders,)* L>(deserializer: D) -> ::core::result::Result<#read, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+            #read: serde::Deserialize<'de>,
+            #(#held_to)*
+            #counted
+        {
+            let read = <#read as serde::Deserialize>::deserialize(deserializer)?;
+            let check = |#head: &#read| -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
+                #walk
+                ::core::result::Result::Ok(())
+            };
+            check(&read).map_err(#refusal)?;
+            ::core::result::Result::Ok(read)
+        }
+    }
+}
+
+/// Generates the static validator of a list field's item count, plus the serde deserializer.
+#[cfg(feature = "serde")]
+fn generate_list_validation_code(
+    member: &CheckedMember,
+    meta: &ModelSchemaPropMeta,
+    wraps: &[ConstraintWrap],
+) -> FieldValidationCode {
+    let validator = proc_macro2::Ident::new(
+        &format!("validate_{}_value", member.stem),
+        proc_macro2::Span::call_site(),
+    );
+    let deserializer = proc_macro2::Ident::new(
+        &format!("deserialize_{}", member.stem),
+        proc_macro2::Span::call_site(),
+    );
+    let validate_fn = list_validator(
+        &validator,
+        meta.min_length,
+        meta.max_length,
+        member.reported.as_deref(),
+    );
+    let deserialize_fn = list_deserializer(&deserializer, &validator, wraps);
+    FieldValidationCode {
+        module_items: quote! {
+            #validate_fn
+
+            #deserialize_fn
+        },
+        validate_body: build_field_validation(wraps, &member.checked, &validator),
+    }
+}
+
 /// Reads a field's type down to the value a constraint can land on, collecting the wrappers on the
-/// way.
+/// way. A list is that value itself, whatever it holds.
 #[cfg(feature = "serde")]
 fn constrained_shape(ty: &syn::Type) -> Option<ConstrainedShape> {
     let mut wraps = Vec::new();
@@ -12588,14 +12813,15 @@ fn constrained_shape(ty: &syn::Type) -> Option<ConstrainedShape> {
     let mut current = ty;
     loop {
         current = written_type(current);
-        if let syn::Type::Array(array) = current {
-            wraps.push(ConstraintWrap::Sequence);
-            current = &array.elem;
-        } else if let syn::Type::Slice(slice) = current {
-            wraps.push(ConstraintWrap::Sequence);
-            current = &slice.elem;
-        } else if let syn::Type::Reference(reference) = current {
-            if !names_str(&reference.elem) {
+        if names_a_list(current) {
+            return Some(ConstrainedShape {
+                leaf: ConstraintLeaf::List,
+                lifetimes,
+                wraps,
+            });
+        }
+        if let syn::Type::Reference(reference) = current {
+            if !names_str(&reference.elem) && !names_a_list(&reference.elem) {
                 return None;
             }
             wraps.push(ConstraintWrap::Borrowed);
@@ -12624,7 +12850,7 @@ fn constrained_shape(ty: &syn::Type) -> Option<ConstrainedShape> {
 }
 
 /// Reads a field's type down to the value whose own type would publish the validator, collecting
-/// the same wrappers a constraint is reached through.
+/// the wrappers it is reached through, each level of a list among them.
 #[cfg(feature = "serde")]
 fn nested_shape(ty: &syn::Type) -> Option<Vec<ConstraintWrap>> {
     let mut wraps = Vec::new();
@@ -12699,12 +12925,62 @@ fn blocking_interior_mutability_wrapper(ty: &syn::Type) -> Option<String> {
     }
 }
 
-/// Whether a reference borrows `str`, the one borrow a bound is read through.
+/// Whether a reference borrows `str`, which with a list is every borrow a bound is read through.
 fn names_str(borrowed: &syn::Type) -> bool {
     let syn::Type::Path(named) = written_type(borrowed) else {
         return false;
     };
     named.qself.is_none() && named.path.is_ident("str")
+}
+
+/// Whether a type is written as a list: an array, a slice, or one of the std sequences.
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    feature = "serde"
+))]
+fn names_a_list(ty: &syn::Type) -> bool {
+    let written = written_type(ty);
+    if matches!(written, syn::Type::Array(_) | syn::Type::Slice(_)) {
+        return true;
+    }
+    let syn::Type::Path(named) = written else {
+        return false;
+    };
+    named.path.segments.last().is_some_and(|segment| {
+        matches!(segment.arguments, syn::PathArguments::AngleBracketed(_))
+            && is_sequence_wrapper(&segment.ident.to_string())
+    })
+}
+
+/// Whether a brand's inner is written as a list itself, or as one behind `Box`, `Rc`, `Arc` or
+/// `Cow`: the reach `constrained_shape` has through transparent wrappers alone, asked in a build
+/// without `serde`.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+fn held_as_a_list(ty: &syn::Type) -> bool {
+    let mut current = ty;
+    loop {
+        if names_a_list(current) {
+            return true;
+        }
+        let syn::Type::Path(named) = written_type(current) else {
+            return false;
+        };
+        let Some(segment) = named.path.segments.last() else {
+            return false;
+        };
+        let syn::PathArguments::AngleBracketed(held) = &segment.arguments else {
+            return false;
+        };
+        if !is_ownership_wrapper(&segment.ident.to_string()) {
+            return false;
+        }
+        let Some(inner) = sole_type_argument(held) else {
+            return false;
+        };
+        current = inner;
+    }
 }
 
 /// Adds the lifetimes a wrapper spells to the ones already collected, skipping `'static` — which
@@ -13157,6 +13433,11 @@ fn written_keys_of(prop_meta: &ModelSchemaPropMeta, kind: BoundKind) -> Vec<&'st
             ("minimum", prop_meta.minimum.is_some()),
             ("maximum", prop_meta.maximum.is_some()),
         ],
+        BoundKind::Scalar => vec![
+            ("pattern", prop_meta.pattern.is_some()),
+            ("minimum", prop_meta.minimum.is_some()),
+            ("maximum", prop_meta.maximum.is_some()),
+        ],
         BoundKind::Text => vec![
             ("minLength", prop_meta.min_length.is_some()),
             ("maxLength", prop_meta.max_length.is_some()),
@@ -13168,8 +13449,23 @@ fn written_keys_of(prop_meta: &ModelSchemaPropMeta, kind: BoundKind) -> Vec<&'st
         .collect()
 }
 
+/// Where a rule for each item of a list is written, said for the keys a list was refused: a
+/// brand carries a `pattern` and no range.
+fn item_rule_advice(prop_meta: &ModelSchemaPropMeta) -> String {
+    let brand = "A rule for each item goes on the item's own type: declare the item as a \
+                 `#[serde(transparent)]` brand that carries the `pattern`.";
+    let none = "A brand carries `pattern`, `minLength` and `maxLength` and no range, so a range \
+                for each number of a list has no place to be written.";
+    let ranged = !written_keys_of(prop_meta, BoundKind::Range).is_empty();
+    match (prop_meta.pattern.is_some(), ranged) {
+        (true, true) => format!("{brand} {none}"),
+        (true, false) => brand.to_owned(),
+        (false, _) => none.to_owned(),
+    }
+}
+
 /// Rejects a bound of the kind the field's own value is not measured by: a length or a pattern on
-/// a number, a range on a string.
+/// a number, a range on a string, a pattern or a range on a list.
 fn check_bound_kind(
     field: &Field,
     field_def: &FieldDef,
@@ -13191,6 +13487,18 @@ fn check_bound_kind(
             "a string",
             "`minLength`, `maxLength` or `pattern`",
         ),
+        BoundKind::Scalar => {
+            let advice = item_rule_advice(prop_meta);
+            return Err(syn::Error::new_spanned(
+                field,
+                format!(
+                    "model_schema: {label}: `{keys}` cannot apply to a `{declared}` field — a key \
+                     measures the field's own value, and this field writes a list, which has no \
+                     text for a pattern and no number for a range. `minLength` and `maxLength` \
+                     count the list's items, and no key written here reaches them. {advice}"
+                ),
+            ));
+        }
         BoundKind::Text => (
             "a length or a pattern is measured on a string",
             "a number",
@@ -13219,6 +13527,10 @@ fn check_fixed_shape_constraints(
         return Ok(());
     }
     check_bound_kind(field, field_def, prop_meta, label)?;
+    // What is left on a list counts its items, whatever they are.
+    if field_def.is_list() {
+        return Ok(());
+    }
     let keys = written.join("`, `");
     if let Some(name) = field_def.fixed_shape_name() {
         return Err(syn::Error::new_spanned(
@@ -13469,7 +13781,7 @@ fn check_undescribable_std_field(
 
 /// Whether a field is written as a string or a path itself, under `Option`, an ownership wrapper or
 /// the borrow of a `str`, which is what an enum's own string check reaches. It is the walk
-/// `constrained_shape` makes, held to its two text leaves and stopped by a list.
+/// `constrained_shape` makes, held to its two text leaves.
 fn written_as_text(ty: &syn::Type) -> bool {
     let mut current = ty;
     loop {
@@ -13633,10 +13945,13 @@ fn process_field(
 
     apply_model_schema_prop_meta(&mut field_def, model_schema_prop_meta, &final_name);
 
-    // A field the enclosing type declares no bound on may still hold a type that declares one.
     #[cfg(feature = "serde")]
-    let body = validate_body
-        .or_else(|| nested_validate_body(field, &field_def, ctx.variant_ident.is_some(), false));
+    let body = named_member_validate_body(
+        validate_body,
+        field,
+        &field_def,
+        ctx.variant_ident.is_some(),
+    );
     #[cfg(not(feature = "serde"))]
     let body = validate_body;
 
@@ -13838,6 +14153,24 @@ fn positional_member_validate_body(
     Some(build_nested_validation(&wraps, &quote! { #binding }, None))
 }
 
+/// What a member contributes to `validate()`: its own check, or the one its type declares where
+/// it writes none. A list runs both: its own check counts it, and its items' type holds each item.
+#[cfg(feature = "serde")]
+fn named_member_validate_body(
+    own: Option<proc_macro2::TokenStream>,
+    field: &Field,
+    field_def: &FieldDef,
+    in_variant: bool,
+) -> Option<proc_macro2::TokenStream> {
+    if own.is_some() && !field_def.is_list() {
+        return own;
+    }
+    slot_validate_body(
+        own,
+        nested_validate_body(field, field_def, in_variant, false),
+    )
+}
+
 /// What an untagged slot's arm runs: the slot's own check, then the one its type declares.
 #[cfg(feature = "serde")]
 fn slot_validate_body(
@@ -13893,7 +14226,8 @@ fn bound_member(field: &Field, index: usize) -> BoundMember {
     )
 }
 
-/// Whether the walk ends on a borrowed `str`, the one constrained value no hook is emitted for.
+/// Whether the walk ends on a borrow, of a `str` or of a list: the constrained values no hook is
+/// emitted for.
 #[cfg(feature = "serde")]
 const fn ends_on_a_borrow(wraps: &[ConstraintWrap]) -> bool {
     matches!(wraps.last(), Some(ConstraintWrap::Borrowed))
@@ -14034,7 +14368,11 @@ fn generate_field_validation(
         return (None, None, None);
     };
 
+    let counts_items =
+        model_schema_prop_meta.min_length.is_some() || model_schema_prop_meta.max_length.is_some();
     let generated = match &shape.leaf {
+        ConstraintLeaf::List => counts_items
+            .then(|| generate_list_validation_code(&member, model_schema_prop_meta, &shape.wraps)),
         ConstraintLeaf::Named(_) | ConstraintLeaf::Path | ConstraintLeaf::Str => {
             has_string_constraints.then(|| {
                 generate_string_validation_code(&member, model_schema_prop_meta, &shape, &field.ty)
@@ -14058,8 +14396,8 @@ fn generate_field_validation(
     if gate == ConstraintGate::Validator {
         record_field_validator(module_name, helper_stem);
     }
-    // A borrowed `str` publishes no hook, so nothing is hung on one: its bound is the validator's
-    // alone, an untagged member included.
+    // A borrow publishes no hook, so nothing is hung on one: its bound is the validator's alone,
+    // an untagged member included.
     if gate == ConstraintGate::Deserializer && !ends_on_a_borrow(&shape.wraps) {
         let deserialize_with_path = format!("{module_name}::deserialize_{helper_stem}");
         let path_lit = syn::LitStr::new(&deserialize_with_path, proc_macro2::Span::call_site());
@@ -14082,14 +14420,21 @@ fn generate_field_validation(
 }
 
 /// Hands the field the `model_schema_prop` metadata the surfaces read it back off, and applies the
-/// one key that names the type rather than constrains it.
+/// one key that names the type rather than constrains it. On a list, `minLength` and `maxLength`
+/// become the count of its items, which is where every surface writes them.
 fn apply_model_schema_prop_meta(
     field_def: &mut FieldDef,
-    prop_meta: ModelSchemaPropMeta,
+    mut prop_meta: ModelSchemaPropMeta,
     final_name: &str,
 ) {
+    if field_def.is_list() {
+        prop_meta.min_items = prop_meta.min_length.take();
+        prop_meta.max_items = prop_meta.max_length.take();
+    }
     field_def.model_schema_prop_meta = (prop_meta.as_type.is_some()
         || prop_meta.literal.is_some()
+        || prop_meta.min_items.is_some()
+        || prop_meta.max_items.is_some()
         || prop_meta.min_length.is_some()
         || prop_meta.max_length.is_some()
         || prop_meta.pattern.is_some()
@@ -14124,14 +14469,14 @@ fn apply_constraint_docs(field_def: &mut FieldDef, final_name: &str) {
     let unmeasured = field_def.unmeasured_bound();
     let mut constraint_docs: Vec<String> = Vec::new();
     if unmeasured != Some(BoundKind::Text) {
-        if let Some(min_len) = meta.min_length {
+        if let Some(min_len) = meta.min_length.or(meta.min_items) {
             constraint_docs.push(format!(" * Minimum length: {min_len}"));
         }
-        if let Some(max_len) = meta.max_length {
+        if let Some(max_len) = meta.max_length.or(meta.max_items) {
             constraint_docs.push(format!(" * Maximum length: {max_len}"));
         }
     }
-    if unmeasured != Some(BoundKind::Range) {
+    if !matches!(unmeasured, Some(BoundKind::Range | BoundKind::Scalar)) {
         if let Some(minimum) = meta.minimum {
             constraint_docs.push(format!(" * Minimum value: {minimum}"));
         }

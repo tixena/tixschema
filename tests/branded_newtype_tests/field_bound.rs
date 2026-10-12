@@ -18,8 +18,9 @@ mod bounded_at_the_field {
     #[model_schema()]
     pub type BoundTitle = String;
 
-    /// One field per placement: bare, under an `Option` over a brand declared below, in a list,
-    /// over a path declared below, over an alias of a string, and one that writes no bound.
+    /// One field per placement: bare, under an `Option` over a brand declared below, over a path
+    /// declared below, over an alias of a string, one that writes no bound, and a list of the
+    /// brand, whose bound counts the list and reaches no item.
     #[model_schema()]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct BoundHolder {
@@ -70,7 +71,7 @@ mod bounded_at_the_field {
     #[test]
     fn validate_reports_each_bound_under_the_field_it_was_written_on() {
         assert_eq!(
-            held("a", Some("TOOLONG"), &["abc", "abcd"], "d", "t").validate(),
+            held("a", Some("TOOLONG"), &["abcd", "b", "c", "d"], "d", "t").validate(),
             Err(vec![
                 "'bare': too short: minimum length is 2, got 1".to_owned(),
                 "'dir': too short: minimum length is 2, got 1".to_owned(),
@@ -81,7 +82,7 @@ mod bounded_at_the_field {
             ])
         );
         assert_eq!(
-            held("ab", Some("abcd"), &["abc"], "dir", "title").validate(),
+            held("ab", Some("abcd"), &["abcd", "abcde", ""], "dir", "title").validate(),
             Ok(())
         );
         assert_eq!(held("ab", None, &[], "dir", "title").validate(), Ok(()));
@@ -120,8 +121,8 @@ mod bounded_at_the_field {
             format!("  bare: BoundAbove$Schema.check(z.minLength(2, {short})),\n"),
             format!("  get dir() {{ return BoundDir$Schema.check(z.minLength(2, {short})); }},\n"),
             "  free: BoundAbove$Schema,\n".to_owned(),
-            "  many: z.array(BoundAbove$Schema.check(z.maxLength(3, { error: (issue) => `too long: \
-             maximum length is 3, got ${String(issue.input).length}` }))),\n"
+            "  many: z.array(BoundAbove$Schema).max(3, { error: (issue) => `too long: maximum \
+             length is 3, got ${Array.isArray(issue.input) ? issue.input.length : 0}` }),\n"
                 .to_owned(),
             format!(
                 "BoundBelow$Schema.check(z.minLength(2, {short}), z.maxLength(4, {{ error: (issue) \
@@ -146,10 +147,7 @@ mod bounded_at_the_field {
                 "bare": narrowed(serde_json::json!({ "minLength": 2_u32 })),
                 "dir": narrowed(serde_json::json!({ "minLength": 2_u32 })),
                 "free": { "type": "string" },
-                "many": {
-                    "type": "array",
-                    "items": narrowed(serde_json::json!({ "maxLength": 3_u32 })),
-                },
+                "many": { "type": "array", "items": { "type": "string" }, "maxItems": 3_u32 },
                 "maybe": {
                     "anyOf": [
                         narrowed(serde_json::json!({

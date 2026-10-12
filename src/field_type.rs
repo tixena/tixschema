@@ -57,11 +57,13 @@ pub const ZOD_SCHEMA_BOUND: &str = "SomeType";
 #[cfg(all(feature = "chrono", feature = "zod"))]
 const TIMESTAMP_KEY_ZOD: &str = "z.iso.datetime({ offset: true })";
 
-/// The two kinds of bound `model_schema_prop` carries, named by what each is measured on: a length
-/// or a pattern on a string, a range on a number.
+/// The kinds of bound `model_schema_prop` carries, named by what each is measured on: a length or
+/// a pattern on a string, a range on a number, and a pattern or a range on one value of either,
+/// which a list is not.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BoundKind {
     Range,
+    Scalar,
     Text,
 }
 
@@ -296,11 +298,12 @@ impl FieldDef {
 
     /// Whether a length, a pattern or a range written on this field reaches no surface at all —
     /// the one question both the refusal and the docs are written from, so neither can come to
-    /// answer it differently from the other.
+    /// answer it differently from the other. A list is measured itself, whatever it holds.
     pub fn constraints_reach_nothing(&self) -> bool {
-        self.fixed_shape_name().is_some()
-            || self.composite_shape_name().is_some()
-            || self.parameter_shape_name().is_some()
+        !self.is_list()
+            && (self.fixed_shape_name().is_some()
+                || self.composite_shape_name().is_some()
+                || self.parameter_shape_name().is_some())
     }
 
     #[cfg(any(feature = "zod", all(feature = "serde", feature = "typescript")))]
@@ -524,6 +527,17 @@ impl FieldDef {
         self.array_depth > 0
     }
 
+    /// Whether the field's own value is a list, under any `Option` and transparent wrapper: a key
+    /// written on it measures the list and never its items.
+    pub fn is_list(&self) -> bool {
+        self.array_depth > 0
+            || matches!(
+                &self.field_type,
+                FieldDefType::SiblingType(name, arguments)
+                    if arguments.len() == 1 && is_sequence_wrapper(name)
+            )
+    }
+
     /// Whether the value sitting at array level `level` was written as an `Option`. Levels count
     /// from the innermost value outward: level 0 is what `field_type` names, level `array_depth`
     /// is the field as a whole. Below the outermost, a `None` reaches the wire as a `null` among
@@ -606,16 +620,11 @@ impl FieldDef {
     }
 
     /// The type declared elsewhere a bound written on this field lands on, and whether it is
-    /// written with arguments. A sequence is asked through its element.
+    /// written with arguments. A list is not asked: a bound written on one measures the list.
     pub fn named_shape(&self) -> Option<(&str, bool)> {
         let FieldDefType::SiblingType(name, arguments) = &self.field_type else {
             return None;
         };
-        if let [element] = arguments.as_slice()
-            && is_sequence_wrapper(name)
-        {
-            return element.named_shape();
-        }
         Some((name, !arguments.is_empty()))
     }
 
@@ -1126,10 +1135,13 @@ impl FieldDef {
     }
 
     /// The kind of bound no surface reads beside this field, its own value being what the other
-    /// kind is measured on: a number has no length or pattern, a string no range. The refusal and
-    /// the docs are both written from it, as from [`Self::constraints_reach_nothing`].
-    pub const fn unmeasured_bound(&self) -> Option<BoundKind> {
-        if self.field_type.is_numeric() {
+    /// kind is measured on: a number has no length or pattern, a string no range, and a list
+    /// neither a pattern nor a range. The refusal and the docs are both written from it, as from
+    /// [`Self::constraints_reach_nothing`].
+    pub fn unmeasured_bound(&self) -> Option<BoundKind> {
+        if self.is_list() {
+            Some(BoundKind::Scalar)
+        } else if self.field_type.is_numeric() {
             Some(BoundKind::Text)
         } else if matches!(self.field_type, FieldDefType::String) {
             Some(BoundKind::Range)
@@ -1158,7 +1170,7 @@ impl FieldDef {
 
     /// The type match plus one `z.array(…)` per array level, each carrying the `z.nullable(…)` of
     /// the level it wraps and the `.length(N)` of a level written as a fixed-size `[T; N]`, before
-    /// the preprocess wrap.
+    /// the preprocess wrap. The outermost level carries the count the field's own keys hold it to.
     #[cfg(feature = "zod")]
     fn zod_array_base(&self) -> String {
         let result = match &self.field_type {
@@ -1244,7 +1256,12 @@ impl FieldDef {
             let bound = self
                 .fixed_length_at(level)
                 .map_or_else(String::new, |length| format!(".length({length})"));
-            format!("z.array({item}){bound}")
+            let counted = if level.saturating_add(1) == self.array_depth {
+                self.zod_item_count_checks()
+            } else {
+                String::new()
+            };
+            format!("z.array({item}){bound}{counted}")
         })
     }
 
@@ -1285,6 +1302,23 @@ impl FieldDef {
         } else {
             // Every other type is a leaf, which names no item.
         }
+    }
+
+    /// The `.min(…)` and `.max(…)` a list's own `minLength` and `maxLength` write on its array.
+    #[cfg(feature = "zod")]
+    fn zod_item_count_checks(&self) -> String {
+        let Some(meta) = &self.model_schema_prop_meta else {
+            return String::new();
+        };
+        let least = meta.min_items.map(|count| {
+            let reported = zod_error_arg(Bound::MinItems(count));
+            format!(".min({count}, {reported})")
+        });
+        let most = meta.max_items.map(|count| {
+            let reported = zod_error_arg(Bound::MaxItems(count));
+            format!(".max({count}, {reported})")
+        });
+        least.into_iter().chain(most).collect()
     }
 
     /// The whole record call a map is written as, read off its key: the constructor moves with the
