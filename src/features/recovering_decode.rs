@@ -32,7 +32,7 @@ use crate::features::serde::{
     parse_serde_type_attributes, parse_written_renames, transparent_field,
 };
 use crate::field_type::{
-    FieldDefType, get_field_def, is_refused_sequence_wrapper, is_sequence_wrapper,
+    FieldDefType, get_field_def, is_map_wrapper, is_refused_sequence_wrapper, is_sequence_wrapper,
     is_transparent_wrapper,
 };
 use crate::model_schema::{helper_name_stem, recovering_bound_check};
@@ -3451,7 +3451,7 @@ fn path_step<'ty>(type_path: &'ty TypePath, ty: &'ty Type, parameters: &[String]
     {
         return held_in(Step::Items, walk_of(inner, parameters), ty, parameters);
     }
-    if matches!(name.as_str(), "BTreeMap" | "HashMap")
+    if is_map_wrapper(&name)
         && let Some(inner) = second
     {
         return held_in(Step::Entries, walk_of(inner, parameters), ty, parameters);

@@ -125,7 +125,8 @@ use crate::field_type::is_sequence_wrapper;
 use crate::field_type::is_ownership_wrapper;
 #[cfg(feature = "serde")]
 use crate::field_type::{
-    is_interior_mutability_wrapper, is_refused_sequence_wrapper, is_transparent_wrapper,
+    is_interior_mutability_wrapper, is_map_wrapper, is_refused_sequence_wrapper,
+    is_transparent_wrapper,
 };
 
 use crate::features::model_schema_prop::{
@@ -163,6 +164,8 @@ use crate::utils::get_struct_docs;
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use crate::utils::ident_schema_module_name;
 
+#[cfg(not(feature = "indexmap"))]
+use crate::utils::is_declared_ident;
 use crate::utils::{claim_published_name, compute_alias_export_name, compute_item_export_name};
 
 #[cfg(feature = "typescript")]
@@ -231,6 +234,12 @@ const BRANDED_SLOT_PROP_MESSAGE: &str = "`#[model_schema_prop]` is unread on the
      written onto it, so no key written here reaches any surface. The checks a brand does carry \
      are written on the type itself: #[model_schema(pattern = \"...\", minLength = N, maxLength = \
      N)]. Move the check there, or drop the attribute.";
+
+/// The names the `indexmap` feature reads: each with what it is read as, and the fewest type
+/// arguments it is read with.
+#[cfg(not(feature = "indexmap"))]
+const INDEXMAP_NAMES: [(&str, &str, usize); 2] =
+    [("IndexMap", "a map", 2), ("IndexSet", "a list", 1)];
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 const WRITTEN_AS_ARRAY: &str = "a JSON array";
@@ -1230,6 +1239,15 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
         &item,
         item_schema_ident(&item),
         &const_parameter_argument_errors(&item),
+    ) {
+        return output;
+    }
+    // A name the `indexmap` feature reads is no type this build describes, so it is refused here,
+    // ahead of every shape, with the feature named.
+    if let Some(output) = guard_failure_output(
+        &item,
+        item_schema_ident(&item),
+        &indexmap_feature_errors(&item),
     ) {
         return output;
     }
@@ -3102,7 +3120,11 @@ fn const_parameter_argument_errors(item: &Item) -> Vec<proc_macro2::TokenStream>
 
 /// Every type an item writes out: a struct's field types, an enum's variant field types, an alias's
 /// target. The types whose spelling reaches a surface, which is where an argument is written.
-#[cfg(any(feature = "typescript", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "jsonschema",
+    not(feature = "indexmap")
+))]
 fn item_written_types(item: &Item) -> Vec<&syn::Type> {
     if let Item::Struct(item_struct) = item {
         item_struct.fields.iter().map(|field| &field.ty).collect()
@@ -3226,6 +3248,96 @@ fn const_parameter_argument_message(name: &str) -> String {
 #[cfg(not(any(feature = "typescript", feature = "jsonschema")))]
 const fn const_parameter_argument_errors(_item: &Item) -> Vec<proc_macro2::TokenStream> {
     Vec::new()
+}
+
+/// The `compile_error!` tokens an item earns for each type it writes under a name the `indexmap`
+/// feature reads, in a build without the feature. A name the crate declared a type of its own
+/// under, the item's among them, is that type.
+#[cfg(not(feature = "indexmap"))]
+fn indexmap_feature_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
+    let mut found = Vec::new();
+    for written in item_written_types(item) {
+        collect_indexmap_names(written, &mut found);
+    }
+    let own = item_schema_ident(item);
+    found
+        .into_iter()
+        .filter(|(named, _)| {
+            own.is_none_or(|ident| ident != *named) && !is_declared_ident(&named.to_string())
+        })
+        .map(|(named, read_as)| {
+            syn::Error::new_spanned(named, indexmap_feature_message(&named.to_string(), read_as))
+                .to_compile_error()
+        })
+        .collect()
+}
+
+/// Nothing, in a build that reads the names.
+#[cfg(feature = "indexmap")]
+const fn indexmap_feature_errors(_item: &Item) -> Vec<proc_macro2::TokenStream> {
+    Vec::new()
+}
+
+/// Every name of [`INDEXMAP_NAMES`] `written` holds at any depth, written with the type arguments
+/// the feature reads it with, beside what the feature reads it as.
+#[cfg(not(feature = "indexmap"))]
+fn collect_indexmap_names<'ty>(
+    written: &'ty syn::Type,
+    found: &mut Vec<(&'ty syn::Ident, &'static str)>,
+) {
+    let current = written_type(written);
+    if let syn::Type::Path(type_path) = current {
+        let last = type_path.path.segments.len().saturating_sub(1);
+        for (position, segment) in type_path.path.segments.iter().enumerate() {
+            let syn::PathArguments::AngleBracketed(angled) = &segment.arguments else {
+                continue;
+            };
+            let held: Vec<&syn::Type> = angled
+                .args
+                .iter()
+                .filter_map(|argument| {
+                    if let syn::GenericArgument::Type(inner) = argument {
+                        Some(inner)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            if position == last
+                && let Some((_, read_as, _)) = INDEXMAP_NAMES
+                    .iter()
+                    .find(|(name, _, least)| segment.ident == name && held.len() >= *least)
+            {
+                found.push((&segment.ident, read_as));
+            }
+            for inner in held {
+                collect_indexmap_names(inner, found);
+            }
+        }
+    } else if let syn::Type::Array(array) = current {
+        collect_indexmap_names(&array.elem, found);
+    } else if let syn::Type::Slice(slice) = current {
+        collect_indexmap_names(&slice.elem, found);
+    } else if let syn::Type::Reference(reference) = current {
+        collect_indexmap_names(&reference.elem, found);
+    } else if let syn::Type::Paren(paren) = current {
+        collect_indexmap_names(&paren.elem, found);
+    } else if let syn::Type::Tuple(tuple) = current {
+        for element in &tuple.elems {
+            collect_indexmap_names(element, found);
+        }
+    } else {
+        // No other type is written with a name a feature reads.
+    }
+}
+
+/// The refusal of a name the `indexmap` feature reads, written where the feature is off.
+#[cfg(not(feature = "indexmap"))]
+fn indexmap_feature_message(name: &str, read_as: &str) -> String {
+    format!(
+        "`{name}` is read as {read_as} under tixschema's `indexmap` feature: add `features = \
+         [\"indexmap\"]` to the `tixschema` dependency"
+    )
 }
 
 /// The `compile_error!` tokens an item earns for each `#[model_schema_prop]` written on the slot of
@@ -12931,7 +13043,8 @@ fn reads_through(ident: &str) -> bool {
     is_transparent_wrapper(ident)
         || is_sequence_wrapper(ident)
         || is_refused_sequence_wrapper(ident)
-        || matches!(ident, "BTreeMap" | "HashMap" | "Option")
+        || is_map_wrapper(ident)
+        || ident == "Option"
 }
 
 /// The interior-mutability wrapper on a field's constrained path, when there is one.

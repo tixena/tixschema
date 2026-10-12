@@ -15,7 +15,7 @@ default = ["web"]
 
 web = ["tixschema/web", "serde", "zod", "jsonschema", "typescript"]
 mobile = ["tixschema/mobile", "serde", "dart", "swift", "kotlin"]
-mongo = ["tixschema/mongo", "mongodb", "chrono"]
+mongo = ["tixschema/mongo", "mongodb", "chrono", "indexmap"]
 
 serde = ["tixschema/serde"]
 zod = ["tixschema/zod"]
@@ -24,6 +24,7 @@ mongodb = ["tixschema/mongodb", "bson"]
 bson = ["tixschema/bson", "serde"]
 typescript = ["tixschema/typescript"]
 chrono = ["tixschema/chrono"]
+indexmap = ["tixschema/indexmap"]
 dart = ["tixschema/dart"]
 swift = ["tixschema/swift"]
 kotlin = ["tixschema/kotlin"]
@@ -38,6 +39,7 @@ mongodb = { version = "3.9", default-features = false, features = ["bson-3", "co
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 chrono = { version = ">=0.4.40", features = ["serde"] }
+indexmap = { version = "2", features = ["serde"] }
 regex = ">=1.10"
 tokio = { version = ">=1.53.1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
 

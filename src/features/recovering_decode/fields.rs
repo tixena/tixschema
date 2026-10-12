@@ -21,7 +21,7 @@ use crate::features::serde::{
     parse_serde_key_omission, parse_written_renames,
 };
 use crate::field_type::{
-    FieldDefType, get_field_def, is_refused_sequence_wrapper, is_sequence_wrapper,
+    FieldDefType, get_field_def, is_map_wrapper, is_refused_sequence_wrapper, is_sequence_wrapper,
     is_transparent_wrapper,
 };
 use crate::model_schema::helper_name_stem;
@@ -1811,7 +1811,7 @@ fn held(ty: &Type) -> Held<'_> {
         {
             Held::List(inner)
         }
-        ("BTreeMap" | "HashMap", _, Some(_)) => Held::Map,
+        (map, _, Some(_)) if is_map_wrapper(map) => Held::Map,
         (wrapper, Some(inner), _) if is_transparent_wrapper(wrapper) => held(inner),
         _ => Held::Value,
     }

@@ -51,6 +51,9 @@ use super::{check_slot_wire_is_readable, tuple_struct_shape};
 #[cfg(feature = "swift")]
 use super::swift_width_refusals;
 
+#[cfg(not(feature = "indexmap"))]
+use super::claim_published_name;
+
 use super::{
     VariantKind, check_variant_slot_wire_is_readable, parse_serde_key_omission, variant_wire_kind,
 };
@@ -2161,6 +2164,32 @@ fn a_map_key_proved_to_lack_enum_members_is_refused_wherever_it_is_written() {
         );
         assert!(error.contains("Doc"), "for {field_type}: {error}");
     }
+}
+
+#[cfg(all(
+    feature = "indexmap",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn an_index_map_keyed_by_a_struct_is_refused_in_the_sentence_a_hash_map_gets() {
+    register_alias_info("Doc", "Doc", "doc_schema", AliasKind::NoEnumMembers);
+    let hashed = field_map_key_error(&quote::quote! { HashMap<Doc, u32> });
+    assert!(
+        hashed.contains("model_schema: field `counts`: a map key must be a plain"),
+        "got: {hashed}"
+    );
+    for field_type in [
+        quote::quote! { IndexMap<Doc, u32> },
+        quote::quote! { IndexMap<Doc, u32, RandomState> },
+        quote::quote! { indexmap::IndexMap<Doc, u32> },
+    ] {
+        assert_eq!(field_map_key_error(&field_type), hashed, "for {field_type}");
+    }
+    register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
+    assert_eq!(
+        field_map_key_error(&quote::quote! { IndexMap<Slot, u32> }),
+        ""
+    );
 }
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
@@ -8422,6 +8451,186 @@ fn a_const_that_reaches_no_argument_list_earns_no_refusal() {
         let messages = const_argument_messages(source);
         assert!(messages.is_empty(), "for {source}: {messages:?}");
     }
+}
+
+/// The name is claimed as the item is expanded, in every build: no surface has to be on for a
+/// field written after it to hold the type.
+#[test]
+fn a_type_the_crate_declares_as_map_is_what_a_field_written_after_it_holds() {
+    let written: syn::Type = syn::parse_str("Map<String, u32>").unwrap();
+    assert!(matches!(
+        get_field_def("held", &written, "").field_type,
+        FieldDefType::Map(..)
+    ));
+    let expansion = expansion_under(
+        "default_types(K = String, V = u32)",
+        "pub struct Map<K, V> { pub key: K, pub value: V }",
+    );
+    assert!(!expansion.contains("compile_error"), "got: {expansion}");
+    let held = get_field_def("held", &written, "").field_type;
+    assert!(
+        matches!(
+            &held,
+            FieldDefType::SiblingType(name, arguments) if name == "Map" && arguments.len() == 2
+        ),
+        "got: {held:?}"
+    );
+}
+
+/// The `compile_error!` tokens `source` earns for the names the `indexmap` feature reads. Parsed
+/// from text so each refusal's span can be read back as the source it points at.
+#[cfg(not(feature = "indexmap"))]
+fn indexmap_refusals(source: &str) -> Vec<proc_macro2::TokenStream> {
+    super::indexmap_feature_errors(&syn::parse_str(source).unwrap())
+}
+
+/// `sentence` as the `compile_error!` it is told through.
+#[cfg(not(feature = "indexmap"))]
+fn told_as_a_compile_error(sentence: &str) -> String {
+    syn::Error::new(proc_macro2::Span::call_site(), sentence)
+        .to_compile_error()
+        .to_string()
+}
+
+#[cfg(not(feature = "indexmap"))]
+#[test]
+fn an_index_map_written_with_the_feature_off_is_refused_with_the_feature_named() {
+    let refusals = indexmap_refusals("pub struct Document { pub data: IndexMap<String, String> }");
+    assert_eq!(refusals.len(), 1, "got: {refusals:?}");
+    assert_eq!(
+        refusals[0].to_string(),
+        told_as_a_compile_error(
+            "`IndexMap` is read as a map under tixschema's `indexmap` feature: add `features = \
+             [\"indexmap\"]` to the `tixschema` dependency"
+        )
+    );
+    assert_eq!(
+        refusals[0].span().source_text().as_deref(),
+        Some("IndexMap")
+    );
+}
+
+/// The README prints the refusal as the compiler does, held here to what the guard says.
+#[cfg(not(feature = "indexmap"))]
+#[test]
+fn the_readme_shows_the_refusal_of_an_index_map_written_with_the_feature_off() {
+    let shown = format!(
+        "error: {}\n --> src/main.rs:8:15",
+        super::indexmap_feature_message("IndexMap", "a map")
+    );
+    assert!(
+        include_str!("../../README.md").contains(&shown),
+        "the README no longer shows: {shown}"
+    );
+}
+
+#[cfg(not(feature = "indexmap"))]
+#[test]
+fn an_index_set_written_with_the_feature_off_is_refused_with_the_feature_named() {
+    let refusals = indexmap_refusals("pub struct Document { pub labels: IndexSet<String> }");
+    assert_eq!(refusals.len(), 1, "got: {refusals:?}");
+    assert_eq!(
+        refusals[0].to_string(),
+        told_as_a_compile_error(
+            "`IndexSet` is read as a list under tixschema's `indexmap` feature: add `features = \
+             [\"indexmap\"]` to the `tixschema` dependency"
+        )
+    );
+    assert_eq!(
+        refusals[0].span().source_text().as_deref(),
+        Some("IndexSet")
+    );
+}
+
+#[cfg(not(feature = "indexmap"))]
+#[test]
+fn a_name_the_indexmap_feature_reads_is_found_wherever_an_item_writes_it() {
+    for (source, found) in [
+        (
+            "pub struct Probe { pub held: Option<IndexMap<String, u32>> }",
+            1,
+        ),
+        ("pub struct Probe { pub held: Vec<IndexSet<u32>> }", 1),
+        (
+            "pub struct Probe { pub held: HashMap<String, IndexSet<u32>> }",
+            1,
+        ),
+        ("pub struct Probe { pub held: (String, IndexSet<u32>) }", 1),
+        ("pub struct Probe { pub held: [IndexSet<u32>; 2] }", 1),
+        (
+            "pub struct Probe { pub held: indexmap::IndexMap<String, u32> }",
+            1,
+        ),
+        (
+            "pub struct Probe { pub held: IndexMap<String, u32, RandomState> }",
+            1,
+        ),
+        (
+            "pub struct Probe { pub held: IndexSet<u32, RandomState> }",
+            1,
+        ),
+        ("pub struct Probe(pub IndexSet<u32>);", 1),
+        (
+            "pub enum Probe { Held { held: IndexMap<String, u32> }, Listed(IndexSet<u32>) }",
+            2,
+        ),
+        ("pub type Probe = IndexMap<String, IndexSet<u32>>;", 2),
+    ] {
+        let refusals = indexmap_refusals(source);
+        assert_eq!(refusals.len(), found, "for {source}: {refusals:?}");
+    }
+}
+
+/// With the type arguments the feature reads it with, the name is the feature's; written any
+/// other way it is a type of the author's, as it is with the feature on.
+#[cfg(not(feature = "indexmap"))]
+#[test]
+fn a_name_the_indexmap_feature_would_not_read_earns_no_refusal() {
+    for source in [
+        "pub struct Probe { pub held: IndexMap }",
+        "pub struct Probe { pub held: IndexMap<String> }",
+        "pub struct Probe { pub held: IndexSet }",
+        "pub struct Probe { pub held: HashMap<String, HashSet<u32>> }",
+        "pub struct IndexMap<K, V> { pub next: Option<Box<IndexMap<K, V>>>, pub held: (K, V) }",
+        "pub struct IndexSet<T> { pub next: Option<Box<IndexSet<T>>>, pub held: T }",
+    ] {
+        let refusals = indexmap_refusals(source);
+        assert!(refusals.is_empty(), "for {source}: {refusals:?}");
+    }
+}
+
+#[cfg(not(feature = "indexmap"))]
+#[test]
+fn a_type_of_the_crates_own_keeps_a_name_the_indexmap_feature_reads() {
+    let source = "pub struct Probe { pub held: IndexMap<String, u32>, pub listed: IndexSet<u32> }";
+    assert_eq!(indexmap_refusals(source).len(), 2);
+    assert!(claim_published_name("Ordered", "IndexMap").is_none());
+    assert_eq!(indexmap_refusals(source).len(), 1);
+    assert!(claim_published_name("IndexSet", "IndexSet").is_none());
+    assert!(indexmap_refusals(source).is_empty());
+}
+
+/// The refused item is emitted as it was written, and nothing beside it names a module a map
+/// would have been looked up in.
+#[cfg(not(feature = "indexmap"))]
+#[test]
+fn an_item_refused_for_an_indexmap_name_is_emitted_with_the_refusal_alone() {
+    let expansion =
+        expansion_over("pub struct Document { pub data: IndexMap<String, String> }").to_string();
+    assert!(
+        expansion.contains("`IndexMap` is read as a map under tixschema's `indexmap` feature"),
+        "got: {expansion}"
+    );
+    assert!(
+        expansion.contains("pub struct Document { pub data : IndexMap < String , String > }"),
+        "got: {expansion}"
+    );
+    assert!(!expansion.contains("index_map_schema"), "got: {expansion}");
+    assert_eq!(
+        expansion.matches("compile_error").count(),
+        1,
+        "got: {expansion}"
+    );
 }
 
 /// Builds the `Display` assertion for the sole field of `source`, parsed from text so its spans

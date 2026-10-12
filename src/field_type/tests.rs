@@ -3,6 +3,8 @@
 
 use super::{FieldDef, FieldDefType};
 
+use crate::utils::claim_published_name;
+
 #[cfg(feature = "zod")]
 use crate::features::model_schema_prop::ModelSchemaPropMeta;
 #[cfg(feature = "zod")]
@@ -286,8 +288,46 @@ fn test_the_covered_sequence_wrappers_are_exactly_the_recorded_list() {
     for name in ["BTreeSet", "BinaryHeap", "HashSet", "Vec", "VecDeque"] {
         assert!(super::is_sequence_wrapper(name), "for: {name}");
     }
-    for name in ["LinkedList", "BTreeMap", "HashMap", "Option", "Box"] {
+    for name in [
+        "LinkedList",
+        "BTreeMap",
+        "HashMap",
+        "IndexMap",
+        "Map",
+        "Option",
+        "Box",
+    ] {
         assert!(!super::is_sequence_wrapper(name), "for: {name}");
+    }
+    assert_eq!(
+        super::is_sequence_wrapper("IndexSet"),
+        cfg!(feature = "indexmap")
+    );
+}
+
+#[test]
+fn test_the_covered_maps_are_exactly_the_recorded_list() {
+    for name in ["BTreeMap", "HashMap", "Map"] {
+        assert!(super::is_map_wrapper(name), "for: {name}");
+    }
+    for name in ["BTreeSet", "HashSet", "IndexSet", "Option", "Vec", "Value"] {
+        assert!(!super::is_map_wrapper(name), "for: {name}");
+    }
+    assert_eq!(
+        super::is_map_wrapper("IndexMap"),
+        cfg!(feature = "indexmap")
+    );
+}
+
+/// `Map` is `serde_json`'s until the crate declares a type of its own under the name.
+#[test]
+fn test_a_declared_type_named_map_is_no_map() {
+    assert!(super::is_map_wrapper("Map"));
+    assert!(claim_published_name("Dictionary", "Map").is_none());
+    assert!(!super::is_map_wrapper("Map"));
+    for name in ["BTreeMap", "HashMap"] {
+        assert!(claim_published_name(name, name).is_none());
+        assert!(super::is_map_wrapper(name), "for: {name}");
     }
 }
 
