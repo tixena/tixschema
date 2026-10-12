@@ -86,7 +86,14 @@ use crate::utils::{
 
 #[cfg(all(
     feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
 ))]
 use crate::features::serde::rename_direction_rejection;
 // `has_serde_read_hook` asks whether a field already reads itself through a function of the
@@ -2547,7 +2554,14 @@ const fn item_generics(item: &Item) -> Option<&syn::Generics> {
 /// message calls it by.
 #[cfg(all(
     feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
 ))]
 fn renamable_attribute_lists(item: &Item) -> Vec<(String, &[syn::Attribute])> {
     let mut lists: Vec<(String, &[syn::Attribute])> = vec![(item_label(item), item_attrs(item))];
@@ -2567,7 +2581,14 @@ fn renamable_attribute_lists(item: &Item) -> Vec<(String, &[syn::Attribute])> {
 /// The attributes each of `fields` carries, beside the name a guard message calls the field by.
 #[cfg(all(
     feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
 ))]
 fn field_attribute_lists(fields: &syn::Fields) -> Vec<(String, &[syn::Attribute])> {
     fields
@@ -2586,7 +2607,14 @@ fn field_attribute_lists(fields: &syn::Fields) -> Vec<(String, &[syn::Attribute]
 /// reads.
 #[cfg(all(
     feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
 ))]
 fn item_attrs(item: &Item) -> &[syn::Attribute] {
     if let Item::Struct(item_struct) = item {
@@ -2632,7 +2660,14 @@ fn empty_tuple_variant_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
 /// earns whose two directions do not name one key.
 #[cfg(all(
     feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
 ))]
 fn rename_direction_guard_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
     renamable_attribute_lists(item)
@@ -2645,10 +2680,17 @@ fn rename_direction_guard_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
 }
 
 /// Nothing, where no rename is read at all: without the `serde` feature every surface writes the
-/// Rust ident, and without a schema feature there is no surface to write.
+/// Rust ident, and with no schema feature and no client feature nothing describes the type.
 #[cfg(not(all(
     feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
 )))]
 const fn rename_direction_guard_errors(_item: &Item) -> Vec<proc_macro2::TokenStream> {
     Vec::new()

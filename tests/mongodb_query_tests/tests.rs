@@ -6,7 +6,14 @@ mod arms;
 mod hooked;
 mod nested;
 // A build that describes a type refuses a renaming whose two directions name two keys.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[cfg(not(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
+)))]
 mod one_direction;
 mod one_value;
 mod operators;

@@ -33,7 +33,14 @@ mod aliased;
 mod bounds;
 mod flattened;
 // A build that describes a type refuses a renaming whose two directions name two keys.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[cfg(not(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
+)))]
 mod one_direction;
 mod ordered_maps;
 mod piped;

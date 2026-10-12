@@ -4026,7 +4026,7 @@ Each of these types is `#[non_exhaustive]`: inside the crate that declares the f
 
 The walker reads each type in the form serde writes it. A type held in another form than the one its walker walks, a struct as something other than an object or a tuple struct as something other than an array, is read whole with the type's own reader, and what is listed for it is serde's verdict: `Invalid` where serde refuses it, and `Mistyped` where serde reads it in a form the type does not write. A struct held as text is `Invalid`; one held as an array of its fields in order, which serde reads, is `Mistyped`.
 
-**A struct with named fields** is an object, each field looked up under the name serde reads it under, after every `rename` and `rename_all`. A renaming written as a list counts by its `deserialize` side: every schema surface refuses a list whose two sides name two keys, and a build with none takes it.
+**A struct with named fields** is an object, each field looked up under the name serde reads it under, after every `rename` and `rename_all`. A renaming written as a list counts by its `deserialize` side: every build that describes the type, a mobile client included, refuses a list whose two sides name two keys, and a build with no schema surface and no client takes it.
 
 - A key that is there is read with the function serde's derive calls for the field: the field type's own `Deserialize`, or the field's `deserialize_with` function or `with` module. A refusal is `Invalid`.
 - A key that is absent is `Missing`, unless serde reads its absence: an `Option` field, a `#[serde(default)]` field or container, or a `#[serde(skip_deserializing)]` field.
@@ -4932,7 +4932,7 @@ What a flagged type's own paths are follows from the shape serde writes the type
 | A brand, a single-slot tuple struct, a `#[serde(transparent)]` struct, a plain enum, a unit struct | One path at the empty key, which `MONGO_FIELDS` dereferences to, with the operators of a `Field`, and `regex` where the one value is a `String` |
 
 - **A type serde writes as one value is one path.** `InvoiceStatus::MONGO_FIELDS.eq(InvoiceStatus::Paid)?` is a filter over an `InvoiceStatus`, at the empty key, which `nest` writes at the key that holds one. Held by another type the value is a plain one, a `Field` or an `OptionalField`, so every comparison is a plain call: `paths.status().eq(InvoiceStatus::PastDue)`. `regex` on one written as text is asked of the type's own path: with `callsign` a field typed with `Callsign`, a brand over a `String`, `paths.callsign().nest(Callsign::MONGO_FIELDS.regex("^mav", "i"))`. A list of one is a `ListField`, a list of plain values matched through `contains` and `element()`. A filter over the rows of such a type has no key to write its operator under, so `elem_match` on that list takes an `Element` and refuses one (``error[E0308]: `?` operator has incompatible types``).
-- **A path is under the name serde writes.** `rename` on a field, `rename_all` on the type, `rename` and `rename_all` on a variant and `rename_all_fields` on an enum all count. A renaming written as a list counts by its `serialize` side, `rename(serialize = "ref", deserialize = "ref")` being the key `ref`. A list whose two sides name two keys is refused by every schema surface, as before; a build with none takes it, and the path is the key that is written.
+- **A path is under the name serde writes.** `rename` on a field, `rename_all` on the type, `rename` and `rename_all` on a variant and `rename_all_fields` on an enum all count. A renaming written as a list counts by its `serialize` side, `rename(serialize = "ref", deserialize = "ref")` being the key `ref`. A list whose two sides name two keys is refused by every build that describes the type, a mobile client included; a build with no schema surface and no client takes it, and the path is the key that is written.
 - **A function of an enum is named after its variant, in snake case**: a variant `OverLand` is the function `over_land()` and the method `is_over_land()`. A variant serde never writes has neither.
 - **`is_<variant>()` keeps its name.** With variants `Card` and `IsCard`, `is_card()` asks for `Card` and `is_is_card()` for `IsCard`, and what `IsCard` holds is reached through `is_card2()`: the function of a variant that meets a taken name is numbered, as those of two variants with one snake-case name are.
 - **An arm function is named `<tag>__<value>()`**: the tag key and the value serde writes for the variant, each in snake case, with `__` between them. An enum serde writes under a tag key has one per variant serde writes, whatever the variant holds. An externally tagged, an untagged and a plain enum have none, since they store no tag key. Beside the functions, the schema module of the enum declares `Arm`, an enum with one unit arm per variant that has a function: `transport_schema::Arm::ByCourier`.
@@ -5917,6 +5917,45 @@ pub mod record {
 rustc's help line suggests `cargo add version_schema`; there is no such crate. The module is generated next to `Version`, in the module that declares it.
 
 With the `mongodb` feature on, a `#[model_schema(decode_with)]` type asks for the same import in every build, `jsonschema` or not, for each flagged type one of its fields is typed with: its typed MongoDB paths name that type's own. The error is then ``cannot find `version_schema` in `super` `` (`E0433`), reported at the field's type, and the same import resolves it. [Limits](#limits) has it beside the other limits of the paths.
+
+#### A Renaming That Names Two Keys
+
+**Error**, reported at the `rename`:
+
+```text
+error: model_schema: field `both_ways`: serde `rename` names `written` when serializing and `read_too` when deserializing, so the payload serde writes is not one serde reads. A schema and an emitted client describe one key per member, so neither can be written for the pair. Write both directions at one value, or use the single-value spelling `rename = "..."`.
+```
+
+A renaming written as a list gives serde one name to write and another to read. A schema and a client each hold one key for the member, so a party built from either cannot both read what Rust writes and write what Rust reads:
+
+```rust
+// Wrong: serde writes `both_ways` under `written`, and reads it only under `read_too`
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+pub struct SplitNames {
+    #[serde(rename(serialize = "written", deserialize = "read_too"))]
+    pub both_ways: u32,
+    pub plain: u32,
+}
+
+// Correct: one name for the two directions, in either spelling
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+pub struct OneName {
+    #[serde(rename = "written")]
+    pub both_ways: u32,
+    #[serde(rename(serialize = "shown", deserialize = "shown"))]
+    pub plain: u32,
+}
+```
+
+A list that writes one direction alone, `rename(serialize = "written")`, leaves the other at the name it had, which is two keys as well:
+
+```text
+error: model_schema: field `both_ways`: serde `rename` names `written` when serializing only, and leaves the other direction at the name it would otherwise use, so the payload serde writes is not one serde reads. A schema and an emitted client describe one key per member, so neither can be written for the pair. Write both directions at one value, or use the single-value spelling `rename = "..."`.
+```
+
+The same refusal answers `rename_all` and `rename_all_fields`, and a list written on a variant or on the type. It is raised in every build that describes the type, a mobile client included: the `serde` feature with any of `typescript`, `zod`, `jsonschema`, `dart`, `swift` and `kotlin`. A build with none of the six takes the list: the [recovering decode](#recovering-decode-decode_with) looks a value up under the `deserialize` side, and a [MongoDB path](#mongodb-operations-and-typed-filters) is under the `serialize` side.
 
 ### Runtime Issues
 

@@ -387,9 +387,10 @@ fn agreed_rename(
             path,
             format!(
                 "serde `{key}` names `{serialize}` when serializing and `{deserialize}` when \
-                 deserializing, so the payload serde writes is not one serde reads. A schema \
-                 describes one key per member, so no schema can be written for the pair. Write \
-                 both directions at one value, or use the single-value spelling `{key} = \"...\"`."
+                 deserializing, so the payload serde writes is not one serde reads. A schema and \
+                 an emitted client describe one key per member, so neither can be written for \
+                 the pair. Write both directions at one value, or use the single-value spelling \
+                 `{key} = \"...\"`."
             ),
         )),
         (Some(serialize), None) => Err(one_direction_only(key, path, serialize, "serializing")),
@@ -408,9 +409,9 @@ fn one_direction_only(key: &str, path: &syn::Path, written: &str, direction: &st
         format!(
             "serde `{key}` names `{written}` when {direction} only, and leaves the other \
              direction at the name it would otherwise use, so the payload serde writes is not one \
-             serde reads. A schema describes one key per member, so no schema can be written for \
-             the pair. Write both directions at one value, or use the single-value spelling \
-             `{key} = \"...\"`."
+             serde reads. A schema and an emitted client describe one key per member, so neither \
+             can be written for the pair. Write both directions at one value, or use the \
+             single-value spelling `{key} = \"...\"`."
         ),
     )
 }
@@ -491,7 +492,14 @@ pub fn parse_written_renames(attrs: &[Attribute]) -> DirectedRenames {
 /// or `None` when every renaming written here names exactly one.
 #[cfg(all(
     feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
 ))]
 pub fn rename_direction_rejection(attrs: &[Attribute]) -> Option<Error> {
     let mut rejection: Option<Error> = None;
