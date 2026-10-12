@@ -49,6 +49,27 @@ enum BoundedShape {
     },
 }
 
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+enum BoundedSlots {
+    Code(#[model_schema_prop(pattern = "^[A-Z]{3}$")] String),
+    Pair(
+        #[model_schema_prop(minLength = 2)] String,
+        #[model_schema_prop(minimum = 1)] u32,
+    ),
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "data")]
+enum BoundedSlotsAdjacent {
+    Code(#[model_schema_prop(pattern = "^[A-Z]{3}$")] String),
+    Pair(
+        #[model_schema_prop(minLength = 2)] String,
+        #[model_schema_prop(minimum = 1)] u32,
+    ),
+}
+
 /// A stored group that breaks every bound `BoundedGroup` writes.
 fn broken() -> Value {
     json!({
@@ -141,6 +162,97 @@ fn a_broken_bound_in_a_tagged_variant_is_listed() {
             })
         );
     }
+}
+
+#[test]
+fn a_broken_bound_in_a_tagged_slot_is_listed_at_the_slot() {
+    use bounded_slots_adjacent_schema::Verdict as AdjacentVerdict;
+    use bounded_slots_schema::Verdict;
+
+    let held = BoundedSlots::from_value_with(json!({ "Code": "ABC" }), |_, _| Verdict::Reject);
+    assert_eq!(held, Ok(BoundedSlots::Code("ABC".to_owned())));
+
+    let code = BoundedSlots::from_value_with(json!({ "Code": "abc" }), |_, _| Verdict::Reject);
+    let pair =
+        BoundedSlots::from_value_with(json!({ "Pair": ["a", 0_u32] }), |_, _| Verdict::Reject);
+    let adjacent_code =
+        BoundedSlotsAdjacent::from_value_with(json!({ "data": "abc", "kind": "Code" }), |_, _| {
+            AdjacentVerdict::Reject
+        });
+    let adjacent_pair = BoundedSlotsAdjacent::from_value_with(
+        json!({ "data": ["a", 0_u32], "kind": "Pair" }),
+        |_, _| AdjacentVerdict::Reject,
+    );
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    {
+        assert_eq!(
+            lines(&code.unwrap_err()),
+            [
+                "Code: invalid: expected String, found String(\"abc\"): does not match pattern \
+                 '^[A-Z]{3}$'"
+            ]
+        );
+        assert_eq!(
+            lines(&pair.unwrap_err()),
+            [
+                "Pair[0]: invalid: expected String, found String(\"a\"): too short: minimum \
+                 length is 2, got 1",
+                "Pair[1]: invalid: expected U32, found Number(0): too small: minimum is 1, got 0",
+            ]
+        );
+        assert_eq!(
+            lines(&adjacent_code.unwrap_err()),
+            [
+                "data: invalid: expected String, found String(\"abc\"): does not match pattern \
+                 '^[A-Z]{3}$'"
+            ]
+        );
+        assert_eq!(
+            lines(&adjacent_pair.unwrap_err()),
+            [
+                "data[0]: invalid: expected String, found String(\"a\"): too short: minimum \
+                 length is 2, got 1",
+                "data[1]: invalid: expected U32, found Number(0): too small: minimum is 1, got 0",
+            ]
+        );
+    }
+    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    {
+        assert_eq!(code, Ok(BoundedSlots::Code("abc".to_owned())));
+        assert_eq!(pair, Ok(BoundedSlots::Pair("a".to_owned(), 0)));
+        assert_eq!(
+            adjacent_code,
+            Ok(BoundedSlotsAdjacent::Code("abc".to_owned()))
+        );
+        assert_eq!(
+            adjacent_pair,
+            Ok(BoundedSlotsAdjacent::Pair("a".to_owned(), 0))
+        );
+    }
+}
+
+/// A callback sets the slot at the issue's path, and the read answers the repaired value.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn a_callback_that_sets_a_slot_at_its_path_recovers_the_read() {
+    use bounded_slots_schema::{Issue, Verdict};
+
+    let read = BoundedSlots::from_value_with(json!({ "Pair": ["ab", 0_u32] }), |raw, found| {
+        let [
+            Issue::Invalid {
+                path,
+                expected: _expected,
+                found: _found,
+                reason: _reason,
+            },
+        ] = found
+        else {
+            return Verdict::Reject;
+        };
+        path.set_in_value(raw, json!(1_u32));
+        Verdict::Fixed
+    });
+    assert_eq!(read, Ok(BoundedSlots::Pair("ab".to_owned(), 1)));
 }
 
 /// The callback drops each value a bound refuses, and the read answers what is left.

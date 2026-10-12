@@ -2964,6 +2964,314 @@ fn test_every_variant_shape_reaches_the_accessor() {
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
 ))]
 #[test]
+fn test_a_tagged_tuple_variants_slot_is_checked_under_its_position() {
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug)]
+    pub enum SlotExternal {
+        Code(#[model_schema_prop(pattern = "^[A-Z]{3}$")] String),
+        Pair(
+            #[model_schema_prop(minLength = 2)] String,
+            #[model_schema_prop(minimum = 1)] u32,
+        ),
+    }
+
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug)]
+    #[serde(tag = "kind", content = "data")]
+    pub enum SlotAdjacent {
+        Code(#[model_schema_prop(pattern = "^[A-Z]{3}$")] String),
+        Pair(
+            #[model_schema_prop(minLength = 2)] String,
+            #[model_schema_prop(minimum = 1)] u32,
+        ),
+    }
+
+    let code = vec!["'0': does not match pattern '^[A-Z]{3}$'".to_owned()];
+    assert_eq!(
+        SlotExternal::Code("abc".to_owned()).validate().unwrap_err(),
+        code
+    );
+    assert_eq!(
+        SlotAdjacent::Code("abc".to_owned()).validate().unwrap_err(),
+        code
+    );
+    SlotExternal::Code("ABC".to_owned()).validate().unwrap();
+    SlotAdjacent::Code("ABC".to_owned()).validate().unwrap();
+
+    let pair = vec![
+        "'0': too short: minimum length is 2, got 1".to_owned(),
+        "'1': too small: minimum is 1, got 0".to_owned(),
+    ];
+    assert_eq!(
+        SlotExternal::Pair("a".to_owned(), 0)
+            .validate()
+            .unwrap_err(),
+        pair
+    );
+    assert_eq!(
+        SlotAdjacent::Pair("a".to_owned(), 0)
+            .validate()
+            .unwrap_err(),
+        pair
+    );
+    assert_eq!(
+        SlotExternal::Pair("ab".to_owned(), 0)
+            .validate()
+            .unwrap_err(),
+        pair[1..]
+    );
+    assert_eq!(
+        SlotAdjacent::Pair("a".to_owned(), 1)
+            .validate()
+            .unwrap_err(),
+        pair[..1]
+    );
+    SlotExternal::Pair("ab".to_owned(), 1).validate().unwrap();
+
+    assert_eq!(
+        slot_external_schema::validate_code_0_value("abc").unwrap_err(),
+        code
+    );
+    assert_eq!(
+        slot_adjacent_schema::validate_pair_1_value(&0).unwrap_err(),
+        pair[1..]
+    );
+}
+
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn test_a_tagged_tuple_variants_checked_slot_is_read_and_written_as_before() {
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+    pub enum WireExternal {
+        Code(#[model_schema_prop(pattern = "^[A-Z]{3}$")] String),
+        Pair(
+            #[model_schema_prop(minLength = 2)] String,
+            #[model_schema_prop(minimum = 1)] u32,
+        ),
+    }
+
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+    #[serde(tag = "kind", content = "data")]
+    pub enum WireAdjacent {
+        Code(#[model_schema_prop(pattern = "^[A-Z]{3}$")] String),
+        Pair(
+            #[model_schema_prop(minLength = 2)] String,
+            #[model_schema_prop(minimum = 1)] u32,
+        ),
+    }
+
+    assert_eq!(
+        serde_json::from_str::<WireExternal>(r#"{"Code":"abc"}"#).unwrap(),
+        WireExternal::Code("abc".to_owned())
+    );
+    assert_eq!(
+        serde_json::from_str::<WireExternal>(r#"{"Pair":["a",0]}"#).unwrap(),
+        WireExternal::Pair("a".to_owned(), 0)
+    );
+    assert_eq!(
+        serde_json::from_str::<WireAdjacent>(r#"{"kind":"Code","data":"abc"}"#).unwrap(),
+        WireAdjacent::Code("abc".to_owned())
+    );
+    assert_eq!(
+        serde_json::from_str::<WireAdjacent>(r#"{"kind":"Pair","data":["a",0]}"#).unwrap(),
+        WireAdjacent::Pair("a".to_owned(), 0)
+    );
+
+    assert_eq!(
+        serde_json::to_string(&WireExternal::Code("ABC".to_owned())).unwrap(),
+        r#"{"Code":"ABC"}"#
+    );
+    assert_eq!(
+        serde_json::to_string(&WireExternal::Pair("ab".to_owned(), 1)).unwrap(),
+        r#"{"Pair":["ab",1]}"#
+    );
+    assert_eq!(
+        serde_json::to_string(&WireAdjacent::Code("ABC".to_owned())).unwrap(),
+        r#"{"kind":"Code","data":"ABC"}"#
+    );
+    assert_eq!(
+        serde_json::to_string(&WireAdjacent::Pair("ab".to_owned(), 1)).unwrap(),
+        r#"{"kind":"Pair","data":["ab",1]}"#
+    );
+}
+
+#[cfg(all(feature = "serde", feature = "zod"))]
+#[test]
+fn test_a_tagged_tuple_variants_slot_check_reaches_zod() {
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug)]
+    pub enum ZodExternal {
+        Code(#[model_schema_prop(pattern = "^[A-Z]{3}$")] String),
+        Pair(
+            #[model_schema_prop(minLength = 2)] String,
+            #[model_schema_prop(minimum = 1)] u32,
+        ),
+    }
+
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug)]
+    #[serde(tag = "kind", content = "data")]
+    pub enum ZodAdjacent {
+        Code(#[model_schema_prop(pattern = "^[A-Z]{3}$")] String),
+        Pair(
+            #[model_schema_prop(minLength = 2)] String,
+            #[model_schema_prop(minimum = 1)] u32,
+        ),
+    }
+
+    let code = "z.string().check(z.regex(/^[A-Z]{3}$/, { error: \"does not match pattern \
+                '^[A-Z]{3}$'\" })),";
+    let pair = "z.tuple([z.string().min(2, { error: (issue) => `too short: minimum length is 2, \
+                got ${String(issue.input).length}` }), z.number().int().min(1, { error: (issue) \
+                => `too small: minimum is 1, got ${String(issue.input)}` })]),";
+    let external = ZodExternal::zod_schema();
+    let adjacent = ZodAdjacent::zod_schema();
+    for (key, member) in [("\"Code\"", code), ("\"Pair\"", pair)] {
+        let written = format!("{key}: {member}");
+        assert!(external.contains(&written), "Got:\n{external}");
+    }
+    for member in [code, pair] {
+        let written = format!("data: {member}");
+        assert!(adjacent.contains(&written), "Got:\n{adjacent}");
+    }
+}
+
+#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[test]
+fn test_a_tagged_tuple_variants_slot_check_reaches_the_json_schema() {
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug)]
+    pub enum JsonExternal {
+        Code(#[model_schema_prop(minLength = 3, maxLength = 3, pattern = "^[A-Z]{3}$")] String),
+        Pair(
+            #[model_schema_prop(minLength = 2)] String,
+            #[model_schema_prop(minimum = 1, maximum = 10)] u32,
+        ),
+        Tags(#[model_schema_prop(minLength = 2)] Vec<String>),
+    }
+
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug)]
+    #[serde(tag = "kind", content = "data")]
+    pub enum JsonAdjacent {
+        Code(#[model_schema_prop(minLength = 3, maxLength = 3, pattern = "^[A-Z]{3}$")] String),
+        Pair(
+            #[model_schema_prop(minLength = 2)] String,
+            #[model_schema_prop(minimum = 1, maximum = 10)] u32,
+        ),
+        Tags(#[model_schema_prop(minLength = 2)] Vec<String>),
+    }
+
+    let code = serde_json::json!({
+        "type": "string", "minLength": 3_u32, "maxLength": 3_u32, "pattern": "^[A-Z]{3}$"
+    });
+    let pair = serde_json::json!([
+        { "type": "string", "minLength": 2_u32 },
+        { "type": "integer", "minimum": 1.0_f64, "maximum": 10.0_f64 }
+    ]);
+    let tags = serde_json::json!({
+        "type": "array", "items": { "type": "string", "minLength": 2_u32 }
+    });
+
+    let external = JsonExternal::json_schema();
+    assert_eq!(external["oneOf"][0]["properties"]["Code"], code);
+    assert_eq!(
+        external["oneOf"][1]["properties"]["Pair"]["prefixItems"],
+        pair
+    );
+    assert_eq!(external["oneOf"][2]["properties"]["Tags"], tags);
+
+    let adjacent = JsonAdjacent::json_schema();
+    assert_eq!(adjacent["oneOf"][0]["properties"]["data"], code);
+    assert_eq!(
+        adjacent["oneOf"][1]["properties"]["data"]["prefixItems"],
+        pair
+    );
+    assert_eq!(adjacent["oneOf"][2]["properties"]["data"], tags);
+}
+
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn test_a_tagged_slot_is_reached_through_its_wrappers() {
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug)]
+    pub enum SlotWrapped {
+        Note(#[model_schema_prop(minLength = 2)] Option<String>),
+        Tags(#[model_schema_prop(minLength = 2)] Vec<String>),
+    }
+
+    assert_eq!(
+        SlotWrapped::Tags(vec!["ab".to_owned(), "c".to_owned(), "d".to_owned()])
+            .validate()
+            .unwrap_err(),
+        vec![
+            "'0': too short: minimum length is 2, got 1".to_owned(),
+            "'0': too short: minimum length is 2, got 1".to_owned(),
+        ]
+    );
+    assert_eq!(
+        SlotWrapped::Note(Some("e".to_owned()))
+            .validate()
+            .unwrap_err(),
+        vec!["'0': too short: minimum length is 2, got 1".to_owned()]
+    );
+    SlotWrapped::Note(None).validate().unwrap();
+}
+
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn test_readme_slot_validate_example_prints_what_the_generator_writes() {
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+    pub enum Entry {
+        Code(#[model_schema_prop(pattern = "^[A-Z]{3}$")] String),
+        Pair(
+            #[model_schema_prop(minLength = 2)] String,
+            #[model_schema_prop(minimum = 1)] u32,
+        ),
+    }
+
+    let readme = include_str!("../../README.md");
+    for reported in [
+        Entry::Code("abc".to_owned()).validate(),
+        Entry::Pair("a".to_owned(), 0).validate(),
+    ] {
+        reported.as_ref().unwrap_err();
+        let shown = format!("// {reported:?}");
+        assert!(
+            readme.contains(&shown),
+            "the README no longer shows {shown}"
+        );
+    }
+
+    for (wire, read) in [
+        (r#"{"Code":"abc"}"#, Entry::Code("abc".to_owned())),
+        (r#"{"Pair":["a",0]}"#, Entry::Pair("a".to_owned(), 0)),
+    ] {
+        assert_eq!(serde_json::from_str::<Entry>(wire).unwrap(), read);
+        assert_eq!(serde_json::to_string(&read).unwrap(), wire);
+        assert!(readme.contains(wire), "the README no longer shows {wire}");
+    }
+    entry_schema::validate_code_0_value("ABC").unwrap();
+    entry_schema::validate_pair_1_value(&1).unwrap();
+}
+
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
 fn test_readme_struct_validate_example_prints_what_the_generator_writes() {
     // The README declares `username` first; source here is ordered alphabetically, as this crate's
     // lints require of Rust source.

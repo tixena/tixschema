@@ -9,12 +9,13 @@ use super::{
 
 #[cfg(feature = "serde")]
 use super::{
-    ConstraintGate, ConstraintLeaf, MemberAccess, adjacent_collapsed_slot_guard_errors,
-    build_field_validation, cfg_attr_guard_error, check_nullable_field_serialization,
-    check_omitted_key_is_readable, check_optional_field_serialization, collect_untagged_members,
+    CheckedMember, ConstraintGate, ConstraintLeaf, MemberAccess,
+    adjacent_collapsed_slot_guard_errors, build_field_validation, cfg_attr_guard_error,
+    check_nullable_field_serialization, check_omitted_key_is_readable,
+    check_optional_field_serialization, checked_member, collect_untagged_members,
     constrained_shape, enum_cfg_attr_guard_errors, generate_field_validation,
     generate_numeric_validation_code, generate_string_validation_code, has_serde_default,
-    helper_name_stem, internally_tagged_guard_errors, needs_injected_default,
+    helper_name_stem, internally_tagged_guard_errors, member_access_expr, needs_injected_default,
     parse_serde_field_attributes, parse_serde_type_attributes, render_untagged_variant,
 };
 
@@ -976,18 +977,70 @@ fn untagged_member_constraint_generates_nothing_without_a_schema_module() {
 
 #[cfg(feature = "serde")]
 #[test]
-fn untagged_newtype_member_constraint_is_refused() {
-    let errors = untagged_guard_errors(syn::parse_quote! {
-        enum Choice {
-            Slug(#[model_schema_prop(minLength = 2)] String),
-        }
-    });
+fn a_tuple_structs_slot_constraint_is_refused() {
+    let mut item: syn::ItemStruct = syn::parse_quote! {
+        struct Pair(#[model_schema_prop(minLength = 1)] String, u32);
+    };
+    let errors = tuple_struct_guard_errors(&mut item);
     assert_eq!(errors.len(), 1, "got: {errors:?}");
-    assert!(errors[0].contains("tuple field"), "got: {}", errors[0]);
+    for expected in [
+        "tuple field",
+        "unsupported on a tuple struct's slot",
+        "Write a struct with named fields",
+    ] {
+        assert!(
+            errors[0].contains(expected),
+            "{expected} missing: {}",
+            errors[0]
+        );
+    }
+    assert!(!errors[0].contains("variant"), "got: {}", errors[0]);
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn untagged_newtype_member_constraint_is_named_by_its_position_and_hung_on_the_slot() {
+    let mut item: syn::ItemEnum = syn::parse_quote! {
+        enum MimeType {
+            Known(KnownMimeType),
+            Other(
+                #[model_schema_prop(
+                    minLength = 1,
+                    maxLength = 127,
+                    pattern = "^[a-z]+/[a-z0-9.+-]+$"
+                )]
+                String,
+            ),
+        }
+    };
+    let (_, _, _, _, _, errors, validation_fns, arms) =
+        collect_untagged_members(&mut item, UNTAGGED_MODULE);
+    assert!(errors.is_empty(), "got: {errors:?}");
+    assert_eq!(validation_fns.len(), 1, "got: {validation_fns:?}");
+    let rendered = validation_fns[0].to_string();
     assert!(
-        errors[0].contains("unsupported on a positional field"),
-        "got: {}",
-        errors[0]
+        rendered.contains("fn validate_other_0_value"),
+        "got: {rendered}"
+    );
+    assert!(
+        rendered.contains("fn deserialize_other_0"),
+        "got: {rendered}"
+    );
+
+    let rendered_attrs = walked_field_attrs(item.variants[1].fields.iter());
+    assert!(
+        rendered_attrs.contains(r#"deserialize_with = "choice_schema::deserialize_other_0""#),
+        "got: {rendered_attrs}"
+    );
+
+    let rendered_arms = quote::quote!(#(#arms),*).to_string();
+    assert!(
+        rendered_arms.contains("Self :: Other (member_slot_0) =>"),
+        "got: {rendered_arms}"
+    );
+    assert!(
+        rendered_arms.contains("validate_other_0_value (member_slot_0)"),
+        "got: {rendered_arms}"
     );
 }
 
@@ -2490,28 +2543,39 @@ fn a_refused_pattern_leaves_no_hook_naming_the_dropped_module() {
     assert_eq!(rendered, "", "got: {rendered}");
 }
 
+/// The guard failures of a tuple struct's slots, read off the walk a build with no schema surface
+/// runs over them.
+#[cfg(feature = "serde")]
+fn tuple_struct_guard_errors(item: &mut syn::ItemStruct) -> Vec<String> {
+    super::collect_struct_fields(
+        &mut item.fields,
+        None,
+        Some("pair_schema"),
+        "Pair",
+        &syn::Generics::default(),
+        false,
+        false,
+    )
+    .4
+    .iter()
+    .map(ToString::to_string)
+    .collect()
+}
+
 #[cfg(feature = "serde")]
 #[test]
 fn a_constraint_refused_its_placement_leaves_no_hook_naming_the_dropped_module() {
-    let mut item: syn::ItemEnum = syn::parse_quote! {
-        enum Action {
-            Slug(#[model_schema_prop(minLength = 2)] String),
-            Named {
-                #[model_schema_prop(minLength = 2)]
-                name: String,
-            },
-        }
+    let mut item: syn::ItemStruct = syn::parse_quote! {
+        struct Pair(#[model_schema_prop(minLength = 2)] String, u32);
     };
-    let errors = collect_discriminated_variants(&mut item, UNCASED, Some("action_schema")).2;
+    let errors = tuple_struct_guard_errors(&mut item);
     assert_eq!(errors.len(), 1, "got: {errors:?}");
     assert!(
-        errors[0]
-            .to_string()
-            .contains("unsupported on a positional field"),
+        errors[0].contains("unsupported on a tuple struct's slot"),
         "got: {}",
         errors[0]
     );
-    let rendered = walked_field_attrs(enum_fields(&item));
+    let rendered = walked_field_attrs(item.fields.iter());
     assert_eq!(rendered, "", "got: {rendered}");
 }
 
@@ -9814,7 +9878,7 @@ fn emitted_validation_from(spelling: &str, access: MemberAccess) -> String {
     let shape = constrained_shape(&ty).unwrap();
     let field = proc_macro2::Ident::new("field", proc_macro2::Span::call_site());
     let checker = proc_macro2::Ident::new("check", proc_macro2::Span::call_site());
-    build_field_validation(&shape.wraps, access, &field, &checker).to_string()
+    build_field_validation(&shape.wraps, &member_access_expr(access, &field), &checker).to_string()
 }
 
 /// The `validate()` contribution for a struct's field spelled `spelling`, as tokens.
@@ -9938,6 +10002,14 @@ fn mixed_wrappers_compose_in_written_order() {
     );
 }
 
+/// A struct's field named `field`, as its helpers name and reach it.
+#[cfg(feature = "serde")]
+fn checked_struct_field() -> CheckedMember {
+    let item: syn::ItemStruct = syn::parse_quote! { struct Probe { field: String } };
+    let field = item.fields.iter().next().unwrap();
+    checked_member(field, 0, None, ConstraintGate::Validator).unwrap()
+}
+
 /// The schema-module items emitted for a `minLength` field spelled `spelling`, as tokens.
 #[cfg(feature = "serde")]
 fn emitted_string_module(spelling: &str) -> String {
@@ -9947,16 +10019,9 @@ fn emitted_string_module(spelling: &str) -> String {
         min_length: Some(3),
         ..ModelSchemaPropMeta::default()
     };
-    generate_string_validation_code(
-        &proc_macro2::Ident::new("field", proc_macro2::Span::call_site()),
-        &helper_name_stem("field", None),
-        &meta,
-        &shape,
-        &ty,
-        MemberAccess::SelfField,
-    )
-    .module_items
-    .to_string()
+    generate_string_validation_code(&checked_struct_field(), &meta, &shape, &ty)
+        .module_items
+        .to_string()
 }
 
 /// The validator emitted for a `String` field constrained by `pattern`, as tokens — everything the
@@ -9969,12 +10034,10 @@ fn emitted_pattern_validator(pattern: &str) -> String {
         ..ModelSchemaPropMeta::default()
     };
     let module = generate_string_validation_code(
-        &proc_macro2::Ident::new("field", proc_macro2::Span::call_site()),
-        &helper_name_stem("field", None),
+        &checked_struct_field(),
         &meta,
         &constrained_shape(&ty).unwrap(),
         &ty,
-        MemberAccess::SelfField,
     )
     .module_items
     .to_string();
@@ -10011,13 +10074,11 @@ fn a_bare_field_deserializes_the_constrained_value_itself() {
         ..ModelSchemaPropMeta::default()
     };
     let numeric = generate_numeric_validation_code(
-        &proc_macro2::Ident::new("field", proc_macro2::Span::call_site()),
-        &helper_name_stem("field", None),
+        &checked_struct_field(),
         "u32",
         &numeric_meta,
         &constrained_shape(&numeric_ty).unwrap(),
         &numeric_ty,
-        MemberAccess::SelfField,
     )
     .module_items
     .to_string();
@@ -10054,18 +10115,24 @@ fn generated_field_validation(
     constraint: &ModelSchemaPropMeta,
     gate: ConstraintGate,
 ) -> (bool, bool, Option<String>, usize) {
+    generated_validation_under(item, constraint, gate, Some("One"))
+}
+
+/// [`generated_field_validation`] for the field of `variant`, or of a struct where there is none.
+#[cfg(feature = "serde")]
+fn generated_validation_under(
+    item: &syn::ItemStruct,
+    constraint: &ModelSchemaPropMeta,
+    gate: ConstraintGate,
+    variant: Option<&str>,
+) -> (bool, bool, Option<String>, usize) {
     let field = item.fields.iter().next().unwrap();
-    let raw_field_ident = field
-        .ident
-        .as_ref()
-        .map(ToString::to_string)
-        .unwrap_or_default();
     let mut new_attrs = Vec::new();
     let (module_items, validate_body, guard_error) = generate_field_validation(
         field,
         Some("probe_schema"),
-        &raw_field_ident,
-        Some("One"),
+        0,
+        variant,
         constraint,
         gate,
         &mut new_attrs,
@@ -10080,22 +10147,21 @@ fn generated_field_validation(
 
 #[cfg(feature = "serde")]
 #[test]
-fn a_constraint_on_a_positional_field_is_refused_before_a_name_is_spelled() {
+fn a_constraint_on_a_tuple_structs_slot_is_refused_before_a_name_is_spelled() {
     let positional: syn::ItemStruct = syn::parse_quote! { struct Probe(String); };
     let named: syn::ItemStruct = syn::parse_quote! { struct Probe { note: String } };
+    let min_length = ModelSchemaPropMeta {
+        min_length: Some(3),
+        ..ModelSchemaPropMeta::default()
+    };
+    let maximum = ModelSchemaPropMeta {
+        maximum: Some(5.0_f64),
+        ..ModelSchemaPropMeta::default()
+    };
 
-    for constraint in [
-        ModelSchemaPropMeta {
-            min_length: Some(3),
-            ..ModelSchemaPropMeta::default()
-        },
-        ModelSchemaPropMeta {
-            maximum: Some(5.0_f64),
-            ..ModelSchemaPropMeta::default()
-        },
-    ] {
+    for constraint in [&min_length, &maximum] {
         let (module_items, validate_body, guard_error, injected_attrs) =
-            generated_field_validation(&positional, &constraint, ConstraintGate::Deserializer);
+            generated_validation_under(&positional, constraint, ConstraintGate::Validator, None);
         let error = guard_error.unwrap();
         assert!(error.contains("compile_error"), "got: {error}");
         assert!(error.contains("tuple field"), "got: {error}");
@@ -10104,22 +10170,50 @@ fn a_constraint_on_a_positional_field_is_refused_before_a_name_is_spelled() {
         assert_eq!(injected_attrs, 0, "a refused slot was given a serde hook");
     }
 
-    let named_string = generated_field_validation(
-        &named,
-        &ModelSchemaPropMeta {
-            min_length: Some(3),
-            ..ModelSchemaPropMeta::default()
-        },
-        ConstraintGate::Deserializer,
-    );
+    let named_string =
+        generated_field_validation(&named, &min_length, ConstraintGate::Deserializer);
     assert_eq!(named_string, (true, true, None, 1));
 
-    let unconstrained = generated_field_validation(
+    let unconstrained = generated_validation_under(
         &positional,
         &ModelSchemaPropMeta::default(),
-        ConstraintGate::Deserializer,
+        ConstraintGate::Validator,
+        None,
     );
     assert_eq!(unconstrained, (false, false, None, 0));
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_variants_slot_is_checked_where_a_named_member_of_the_variant_is() {
+    let positional: syn::ItemStruct = syn::parse_quote! { struct Probe(String); };
+    let named: syn::ItemStruct = syn::parse_quote! { struct Probe { note: String } };
+    let borrowed: syn::ItemStruct = syn::parse_quote! { struct Probe<'text>(&'text str); };
+    let min_length = ModelSchemaPropMeta {
+        min_length: Some(3),
+        ..ModelSchemaPropMeta::default()
+    };
+
+    for gate in [ConstraintGate::Deserializer, ConstraintGate::Validator] {
+        assert_eq!(
+            generated_field_validation(&positional, &min_length, gate),
+            generated_field_validation(&named, &min_length, gate),
+            "gate {gate:?}"
+        );
+    }
+    assert_eq!(
+        generated_field_validation(&borrowed, &min_length, ConstraintGate::Deserializer),
+        (true, true, None, 0),
+        "a borrowed slot publishes its validator and no hook"
+    );
+    assert_eq!(
+        generated_field_validation(
+            &positional,
+            &ModelSchemaPropMeta::default(),
+            ConstraintGate::Deserializer
+        ),
+        (false, false, None, 0)
+    );
 }
 
 #[cfg(feature = "serde")]
@@ -10166,25 +10260,51 @@ fn a_constraint_under_an_interior_mutability_wrapper_names_the_wrapper() {
 
 #[cfg(feature = "serde")]
 #[test]
-fn a_constrained_tuple_variant_yields_diagnostics_rather_than_helpers() {
+fn a_constrained_tuple_variant_names_its_helpers_by_the_slots_position() {
     let mut item: syn::ItemEnum = syn::parse_quote! {
         enum Probe {
             One(#[model_schema_prop(minLength = 3)] String),
-            Two(#[model_schema_prop(minLength = 5)] String),
+            Two(String, #[model_schema_prop(minimum = 5)] u32),
             Three(String),
         }
     };
     let variants = collect_discriminated_variants(&mut item, UNCASED, Some("probe_schema"));
 
-    let validation_fns: Vec<String> = variants.1.iter().map(ToString::to_string).collect();
-    assert!(validation_fns.is_empty(), "got: {validation_fns:?}");
-
     let errors: Vec<String> = variants.2.iter().map(ToString::to_string).collect();
-    assert_eq!(errors.len(), 2, "got: {errors:?}");
-    for error in &errors {
-        assert!(error.contains("compile_error"), "got: {error}");
-        assert!(error.contains("tuple field"), "got: {error}");
+    assert!(errors.is_empty(), "got: {errors:?}");
+
+    let validation_fns: Vec<String> = variants.1.iter().map(ToString::to_string).collect();
+    assert_eq!(validation_fns.len(), 2, "got: {validation_fns:?}");
+    for (rendered, validator, reported) in [
+        (
+            &validation_fns[0],
+            "fn validate_one_0_value",
+            r#"format ! ("'{}': {}, got {}" , "0""#,
+        ),
+        (
+            &validation_fns[1],
+            "fn validate_two_1_value",
+            r#"format ! ("'{}': {}, got {}" , "1""#,
+        ),
+    ] {
+        assert!(rendered.contains(validator), "got: {rendered}");
+        assert!(rendered.contains(reported), "got: {rendered}");
     }
+
+    let arms = &variants.3;
+    let rendered_arms = quote::quote!(#(#arms),*).to_string();
+    for arm in [
+        "Self :: One (member_slot_0) => { if let :: core :: result :: Result :: Err (reported) = \
+         validate_one_0_value (member_slot_0)",
+        "Self :: Two (_ , member_slot_1) => { if let :: core :: result :: Result :: Err (reported) \
+         = validate_two_1_value (member_slot_1)",
+        "Self :: Three (..) => { }",
+    ] {
+        assert!(rendered_arms.contains(arm), "got: {rendered_arms}");
+    }
+
+    let rendered_attrs = walked_field_attrs(enum_fields(&item));
+    assert_eq!(rendered_attrs, "", "a tagged slot was given a serde hook");
 }
 
 #[cfg(feature = "serde")]
@@ -10215,16 +10335,20 @@ fn wire_walk_of(spelling: &str) -> String {
     let shape = constrained_shape(&ty).unwrap();
     let field = proc_macro2::Ident::new("field", proc_macro2::Span::call_site());
     let checker = proc_macro2::Ident::new("validate_field_value", proc_macro2::Span::call_site());
-    build_field_validation(&shape.wraps, MemberAccess::SelfField, &field, &checker)
-        .to_string()
-        .replace(
-            "if let :: core :: result :: Result :: Err (reported) = validate_field_value (",
-            "validate_field_value (",
-        )
-        .replace(") { errors . extend (reported) ; }", ") ? ;")
-        .trim_start_matches("{ let value_0 = & self . field ; ")
-        .trim_end_matches(" }")
-        .to_owned()
+    build_field_validation(
+        &shape.wraps,
+        &member_access_expr(MemberAccess::SelfField, &field),
+        &checker,
+    )
+    .to_string()
+    .replace(
+        "if let :: core :: result :: Result :: Err (reported) = validate_field_value (",
+        "validate_field_value (",
+    )
+    .replace(") { errors . extend (reported) ; }", ") ? ;")
+    .trim_start_matches("{ let value_0 = & self . field ; ")
+    .trim_end_matches(" }")
+    .to_owned()
 }
 
 #[cfg(feature = "serde")]

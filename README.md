@@ -728,6 +728,27 @@ assert_eq!(refused.to_string(), "data did not match any variant of untagged enum
 
 The tagged twin of that declaration reads back `'slug': too short: minimum length is 2, got 1`, because its tag names the variant before its members are read. To learn which bound refused an untagged value, ask a surface that answers per member rather than per variant: validate the payload against the generated Zod schema or JSON Schema for a diagnosable verdict, or -- once the value is in hand -- call the enum's `validate()`, or the schema module's `validate_{variant}_{member}_value` directly.
 
+The slot of a newtype variant carries the same attribute, which is how a free-text arm refuses some text with no brand declared for it:
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+pub enum KnownMimeType {
+    #[serde(rename = "application/pdf")]
+    Pdf,
+}
+
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum MimeType {
+    Known(KnownMimeType),
+    Other(#[model_schema_prop(minLength = 1, maxLength = 127, pattern = "^[a-z]+/[a-z0-9.+-]+$")] String),
+}
+```
+
+The arm still writes and reads a bare string, and its TypeScript type is still `KnownMimeType | string`. `"text/csv"` reads as `Other` and `"application/pdf"` as `Known`; `""`, a value of 128 characters and `"Text/CSV"` match no variant, because the hook hung on the slot takes `Other` out as it does for a named member. The Zod schema writes the three checks on the arm's member of the union, `z.union([KnownMimeType$Schema, z.string().min(1, ...).max(127, ...).check(z.regex(...))])`, and the JSON Schema on its member of the `anyOf`: `{ "type": "string", "minLength": 1, "maxLength": 127, "pattern": "^[a-z]+/[a-z0-9.+-]+$" }`. A numeric arm takes `minimum` and `maximum` the same way. [A slot of a tuple variant](#a-slot-of-a-tuple-variant) says how `validate()` reports the slot.
+
 A member holding a map or a tuple describes as the struct field written from the same type does, on every surface. A map is dispatched on the classification its key earns -- enumerated properties for a key whose members the expansion knows, `additionalProperties` for an open one -- and a key no surface can write is refused at the member, at whatever depth the map sits at. A tuple is the fixed-arity array Serde writes, `prefixItems` and the arity bounds included. A member the parser could not classify at all is the one shape that stays permissive: it carries no type name to narrow with, so it admits any value, exactly as the same field does.
 
 **Unsupported variants:** unit variants and multi-field tuple variants in an untagged enum produce a compile-time error.
@@ -3107,6 +3128,38 @@ assert!(Action::Upload { note: "abc".to_string() }.validate().is_ok());
 
 Parity with structs runs both ways: an enum no member of which carries a constraint publishes no `validate()`, exactly as a constraint-free struct publishes none.
 
+#### A slot of a tuple variant
+
+A slot of a tuple variant takes the five constraints as a named member of the variant does, with one slot or several, and the variant's wire and TypeScript type do not change. The Zod schema and the JSON Schema write the checks on the slot's own member, and the Rust side enforces them where it enforces a named member's in the same position:
+
+| The slot of | The read | `validate()` reports a violation |
+|---|---|---|
+| a newtype variant of an `#[serde(untagged)]` enum, such as the `Other(String)` arm of [`MimeType`](#untagged-enums-serdeuntagged) | checks it, which is what chooses the variant | under no name: `too short: minimum length is 1, got 0` |
+| a tuple variant of a tagged enum | admits the value | under the slot's position: `'0': ...`, and `'1': ...` for a second slot |
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+pub enum Entry {
+    Code(#[model_schema_prop(pattern = "^[A-Z]{3}$")] String),
+    Pair(
+        #[model_schema_prop(minLength = 2)] String,
+        #[model_schema_prop(minimum = 1)] u32,
+    ),
+}
+
+Entry::Code("abc".to_string()).validate();
+// Err(["'0': does not match pattern '^[A-Z]{3}$'"])
+Entry::Pair("a".to_string(), 0).validate();
+// Err(["'0': too short: minimum length is 2, got 1", "'1': too small: minimum is 1, got 0"])
+MimeType::Other(String::new()).validate();
+// Err(["too short: minimum length is 1, got 0", "does not match pattern '^[a-z]+/[a-z0-9.+-]+$'"])
+```
+
+serde reads `{"Code":"abc"}` and `{"Pair":["a",0]}` as it did, and `Entry::Code("ABC".to_string())` still writes `{"Code":"ABC"}`. The helpers are named by the slot's position in its variant, `validate_{variant}_{index}_value` and `deserialize_{variant}_{index}`: `validate_code_0_value` and `validate_pair_1_value` here, `validate_other_0_value` and `deserialize_other_0` for `MimeType`. An untagged slot whose type is a brand that declares a bound of its own runs both, the slot's check first.
+
+A tuple *struct*'s slot takes none of the five. `validate()` reads a struct's member off `self` by its field ident, which a slot has none of, so `struct Pair(#[model_schema_prop(minLength = 1)] String, u32);` is a compile error that asks for a struct with named fields.
+
 #### Constraints under `Option`, wrappers, and sequences
 
 A constraint describes the value the field puts on the wire, wherever it was written. `validate()` therefore reaches through everything the parser reads through -- an `Option`, a transparent wrapper (`Box`, `Rc`, `Arc`, `Cow`), the reference of a borrowed `&str`, and every sequence level (`Vec`, `VecDeque`, `HashSet`, `BTreeSet`, `BinaryHeap`, arrays and slices) -- and checks the innermost value, which is the same place the Zod, TypeScript and JSON Schema surfaces put it.
@@ -3132,10 +3185,10 @@ A constraint describes the value, not the shape. A payload carrying a value it r
 
 A field still generates both helpers into its schema module: `validate_{field}_value()`, which `validate()` calls, and `deserialize_{field}`, a serde hook an author may hang on a field of their own accord. A borrowed `&str` field generates the validator alone. Two positions carry a check on the read without being asked to, and both have to:
 
-- **A member of an `#[serde(untagged)]` enum**, where whether the member is admissible is what chooses which variant the payload is. The check is part of reading the value rather than part of judging it -- exactly as it is under `anyOf` and `z.union` on the two schema surfaces the same type publishes -- and `validate()` cannot stand in for it, since by the time it runs the variant has already been chosen. A wrapped member's hook deserializes the member's own declared type and then runs the same walk `validate()` runs over it; the two differ in that `validate()` answers with every violation in the instance while a `Deserializer` answers with one line, so the read stops at the first value that broke a bound and hands serde that value's violations joined by `; `. A borrowed `&str` member is the one constrained member the read does not check: it is read as it is with no bound written, the first variant whose shape fits taking the payload, and `validate()` holds the value to the bound afterwards.
+- **A member of an `#[serde(untagged)]` enum**, a struct variant's named member and a newtype variant's slot alike, where whether the member is admissible is what chooses which variant the payload is. The check is part of reading the value rather than part of judging it -- exactly as it is under `anyOf` and `z.union` on the two schema surfaces the same type publishes -- and `validate()` cannot stand in for it, since by the time it runs the variant has already been chosen. A wrapped member's hook deserializes the member's own declared type and then runs the same walk `validate()` runs over it; the two differ in that `validate()` answers with every violation in the instance while a `Deserializer` answers with one line, so the read stops at the first value that broke a bound and hands serde that value's violations joined by `; `. A borrowed `&str` member is the one constrained member the read does not check: it is read as it is with no bound written, the first variant whose shape fits taking the payload, and `validate()` holds the value to the bound afterwards.
 - **A constrained brand**, where the same reasoning applies wherever the brand is used as an untagged member. The hook is on the brand's type rather than on the field, so it is one hook covering every position the brand appears in.
 
-The [recovering decode](#recovering-decode-decode_with) is where a field's bound is checked on a read that is asked for it: `from_value_with` and `from_value_piped`, `from_bson_with` and `from_bson_piped` all run each field's validator on the value serde read and list every violation as an issue of its own, which is what lets a callback or a resolver repair a stored value. The [MongoDB reads](#rows-that-do-not-read-as-the-type) of a flagged type read each row the same way, so a row that breaks a bound is refused until a resolver repairs it. See [What each shape reports](#what-each-shape-reports).
+The [recovering decode](#recovering-decode-decode_with) is where a field's bound is checked on a read that is asked for it: `from_value_with` and `from_value_piped`, `from_bson_with` and `from_bson_piped` all run each field's validator on the value serde read, and the validator of each slot of a tagged tuple variant, and list every violation as an issue of its own, which is what lets a callback or a resolver repair a stored value. The [MongoDB reads](#rows-that-do-not-read-as-the-type) of a flagged type read each row the same way, so a row that breaks a bound is refused until a resolver repairs it. See [What each shape reports](#what-each-shape-reports).
 
 A field whose key may be left out keeps that reading. Where a member is hung with the hook -- an untagged variant's, which is the one position that is -- an `Option` written outermost (under any number of transparent wrappers) is given `#[serde(default)]` alongside it, since a `deserialize_with` otherwise turns a missing key into an error; a field that writes its own `default` keeps the one it wrote. Off the hook there is nothing to put back and no `default` is written, so a required key that goes missing is still the error it always was.
 
@@ -3167,7 +3220,7 @@ A `#[serde(flatten)]` hop writes no key, so it contributes no segment: a bound u
 
 This reaches through the same wrappers a constraint is reached through -- `Option`, sequences, `Box`/`Cow`/`Rc`/`Arc`, fixed arrays -- and applies to a struct's field, to a named member of an enum variant under any tagging, and to the lone slot of an `#[serde(untagged)]` newtype variant. That last one contributes no segment either, for the same reason a flattened hop contributes none: what an untagged newtype member writes on the wire *is* the inner value, so a violation beneath it is already one of the enclosing object's own keys. So a union of newtype members publishes a `validate()` that dispatches to whichever variant the value holds, and a field holding such a union reports the path the payload spells -- `'account.jti': too short: ...` whether the account is a union or a plain struct.
 
-It reaches nothing through a map or a tuple. It also reaches nothing through a *tagged* variant's positional slot or a tuple struct's slots, which have no name to report under and no arm named for them; those are the same limits a constraint's own walk has.
+It reaches nothing through a map or a tuple, and nothing through a tuple struct's slots, which no `model_schema_prop` constraint reaches either. Through a *tagged* variant's slot it reaches nothing below the slot: the arm binds the slot by its position and runs the check [written on the slot itself](#a-slot-of-a-tuple-variant), reported under that position, and a bound the slot's own type declares is not run from there.
 
 The brand's read-time hook stands unchanged beside this, so a brand's bound is now enforced in both places. They answer different questions: a payload arriving over the wire is refused on the read, and a message built in Rust -- where no read ever ran, which is every outbound message a generated client sends -- is refused by `validate()`. A nested type's bound has no hook at all, so its enclosing `validate()` is the only thing that enforces it.
 
@@ -3751,7 +3804,7 @@ The walker reads each type in the form serde writes it. A type held in another f
 - A key the type does not declare is `Unknown`. A key the type writes and never reads back, under `skip_deserializing`, is one it declares, under the name serde writes it under.
 - A field whose type is another flagged type is walked by that type's walker at the extended path, through a list, a map, an `Option` or a `Box`: `versions[1].number`, `byName.first.number`, `latest.draft`. An optional one is walked when its key is there and does not hold `null`.
 - A value that reads is written back the way its field writes it, through the field's `serialize_with` function or `with` module when it has one, and compared with what is held. A mismatch is `Mistyped`.
-- A `#[model_schema_prop]` bound on a field hangs no read hook, so serde reads a value that breaks it. The walker runs the field's validator on what serde read, and lists each violation as an `Invalid` of its own at the value, with the bound's sentence as its `reason`: `humanName` holding `""` under `minLength = 1` lists `Invalid` at `humanName`, reason `too short: minimum length is 1, got 0`. A value that breaks two bounds lists two issues at its one path, an item of a list is listed at its index (`tags[1]`), and a field of a tagged enum's variant is listed the same way. A callback or a resolver repairs the value at the issue's path, [once where two issues name it](#reading-from-mongodb). A validator is published only where a schema surface is on (`typescript`, `zod` or `jsonschema`), so a build with none lists nothing.
+- A `#[model_schema_prop]` bound on a field hangs no read hook, so serde reads a value that breaks it. The walker runs the field's validator on what serde read, and lists each violation as an `Invalid` of its own at the value, with the bound's sentence as its `reason`: `humanName` holding `""` under `minLength = 1` lists `Invalid` at `humanName`, reason `too short: minimum length is 1, got 0`. A value that breaks two bounds lists two issues at its one path, an item of a list is listed at its index (`tags[1]`), and a field of a tagged enum's variant is listed the same way. So is a slot of a tagged tuple variant, at the slot's own path: `Pair[1]` for the second slot of an externally tagged `Pair`, and the key the variant's value sits under for a lone slot. A callback or a resolver repairs the value at the issue's path, [once where two issues name it](#reading-from-mongodb). A validator is published only where a schema surface is on (`typescript`, `zod` or `jsonschema`), so a build with none lists nothing.
 
 Read as a struct holding `name: String` and `versions: Vec<Version>`, `{ "name": "Loan", "versions": [{ "number": 1 }, { "number": "2" }], "legacyField": true }` lists `Invalid` at `versions[1].number`, expected `I32`, and `Unknown` at `legacyField`.
 

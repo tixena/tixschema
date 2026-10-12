@@ -13,9 +13,9 @@ use syn::{Fields, ItemEnum, Type, parse_quote};
 
 use super::aliases::Reach;
 use super::{
-    Arm, Casing, Handed, Keyed, Lookup, RecoveringDecode, Shape, Step, TypedPaths, Walk, Walker,
-    Written, added_to, binding, flattened_walker_call, not_the_shape, path_expression,
-    written_names,
+    Arm, Casing, FieldValidator, Handed, Keyed, Lookup, RecoveringDecode, Shape, Step, TypedPaths,
+    Walk, Walker, Written, added_to, binding, flattened_walker_call, not_the_shape,
+    path_expression, slot_validator, written_names,
 };
 use crate::features::serde::{
     parse_read_renames, parse_serde_field_attributes, parse_serde_key_omission,
@@ -62,6 +62,8 @@ impl Tagging {
 struct WalkedVariant<'item> {
     aliases: Vec<String>,
     content: Shape<'item>,
+    /// The validator of the bound a variant's one slot declares.
+    lone_bound: Option<FieldValidator>,
     /// The name serde reads the variant under.
     name: String,
     never_read: bool,
@@ -95,7 +97,7 @@ impl EnumWalker<'_> {
         let expected = self.variants_expected();
         let arms = self.variants.iter().map(|variant| {
             let tags = variant.tags();
-            let walked = self.keyed_content(&variant.content, content);
+            let walked = self.keyed_content(variant, content);
             quote! { ::core::option::Option::Some(#(#tags)|*) => #walked, }
         });
         let missing = missing_tag(tag, &expected);
@@ -113,20 +115,25 @@ impl EnumWalker<'_> {
         }
     }
 
-    /// The arms what a variant holds is matched by, held under `held` at `segments`.
+    /// The arms what `variant` holds is matched by, held under `held` at `segments`.
     fn content_arms(
         &self,
-        content: &Shape<'_>,
+        variant: &WalkedVariant<'_>,
         held: &Ident,
         segments: &[TokenStream],
     ) -> Vec<Arm> {
+        let content = &variant.content;
         match content {
             Shape::Fields(keyed) => vec![Arm {
                 body: self.held_fields(keyed, held, segments),
                 nothing: false,
                 pattern: quote! { #held },
             }],
-            Shape::Held(walk) => self.walker.arms(walk, held, segments, 0, walk.ty, None),
+            Shape::Held(walk) => {
+                let validator = variant.lone_bound.as_ref();
+                self.walker
+                    .arms(walk, held, segments, 0, walk.ty, validator)
+            }
             Shape::Nothing => Vec::new(),
             Shape::Slots(slots) => {
                 let items = binding("items", 0);
@@ -278,8 +285,8 @@ impl EnumWalker<'_> {
                     }
                 };
             }
-            held @ (Shape::Held(_) | Shape::Slots(_)) => {
-                Walker::listed(&content, &self.content_arms(held, &content, &segments))
+            Shape::Held(_) | Shape::Slots(_) => {
+                Walker::listed(&content, &self.content_arms(variant, &content, &segments))
             }
         };
         let (there, found) = if aliased {
@@ -382,8 +389,9 @@ impl EnumWalker<'_> {
         }
     }
 
-    /// What lists the issues of what a variant holds under `key` of the object the tag is read in.
-    fn keyed_content(&self, content: &Shape<'_>, key: &str) -> TokenStream {
+    /// What lists the issues of what `variant` holds under `key` of the object the tag is read in.
+    fn keyed_content(&self, variant: &WalkedVariant<'_>, key: &str) -> TokenStream {
+        let content = &variant.content;
         if matches!(content, Shape::Nothing) {
             return quote! { {} };
         }
@@ -401,7 +409,7 @@ impl EnumWalker<'_> {
             &lookup,
             &Ident::new("object", Span::call_site()),
             &[],
-            &self.content_arms(content, &held, &[lookup.segment()]),
+            &self.content_arms(variant, &held, &[lookup.segment()]),
             &self.content_expected(content),
         )
     }
@@ -660,8 +668,8 @@ impl EnumWalker<'_> {
                 let whole = self.walker.read_whole(&self.walker.own_model());
                 quote! { #whole; }
             }
-            held @ (Shape::Held(_) | Shape::Slots(_)) => {
-                Walker::listed(&found, &self.content_arms(held, &found, &[]))
+            Shape::Held(_) | Shape::Slots(_) => {
+                Walker::listed(&found, &self.content_arms(variant, &found, &[]))
             }
         };
         let method = self
@@ -775,9 +783,14 @@ fn walked_variants<'item>(
                 Fields::Unnamed(_) => quote! { Self::#ident(..) },
             };
             let stem = to_snake_case(&rust_name);
+            let content = Shape::of_variant(variant, rename_all_fields, module_name, parameters);
+            let lone_bound = matches!(content, Shape::Held(_))
+                .then(|| slot_validator(module_name, &ident.to_string(), 0))
+                .flatten();
             WalkedVariant {
                 aliases: meta.aliases,
-                content: Shape::of_variant(variant, rename_all_fields, module_name, parameters),
+                content,
+                lone_bound,
                 name,
                 never_read: parse_serde_key_omission(&variant.attrs).skips_deserializing,
                 pattern,

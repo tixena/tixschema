@@ -413,6 +413,19 @@ enum MemberAccess {
     VariantBinding,
 }
 
+/// A constrained member as its helpers are written.
+#[cfg(feature = "serde")]
+struct CheckedMember {
+    /// The expression `validate()` reads the member from.
+    checked: proc_macro2::TokenStream,
+    /// The member's ident as a guard message names it, empty for a slot.
+    label: String,
+    /// The name each violation is reported under, or `None` for a member reported under none.
+    reported: Option<String>,
+    /// What `validate_{stem}_value` and `deserialize_{stem}` are named from.
+    stem: String,
+}
+
 /// A wrapper a constrained field can be written under, outermost first: `Option` yields its `Some`,
 /// a sequence yields each element, a transparent wrapper yields what it derefs to, and a reference
 /// yields the `str` it borrows, which only the validator reaches.
@@ -4153,7 +4166,7 @@ fn collect_struct_fields(
     let mut guard_errors: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut deferred_attrs: Vec<Vec<syn::Attribute>> = Vec::new();
 
-    for field in fields.iter_mut() {
+    for (index, field) in fields.iter_mut().enumerate() {
         // Read before the field is processed, which strips the attributes the declaration carried.
         let is_flatten = is_flattened_field(field);
 
@@ -4181,6 +4194,7 @@ fn collect_struct_fields(
                 variant_ident: None,
             },
             field,
+            index,
             &mut deferred_attrs,
         );
 
@@ -4954,6 +4968,7 @@ fn collect_tuple_slots(
                 variant_ident: None,
             },
             field,
+            index,
             &mut deferred_attrs,
         );
         guard_errors.extend(slot_guard_errors);
@@ -7641,6 +7656,15 @@ fn collect_discriminated_variants(
         // container its own fields' omissions are read against.
         let variant_defaulted = has_serde_default(&item.attrs);
 
+        let member_ctx = FieldContext {
+            container_defaulted: variant_defaulted,
+            container_read_back: enum_read_back,
+            rename_all: variant_rename_all.as_deref(),
+            schema_module_name: enum_module_name_opt,
+            type_name: &enum_type_name,
+            type_parameters: &type_parameters,
+            variant_ident: Some(&variant_ident),
+        };
         let mut field_defs: Vec<FieldDef> = Vec::new();
         let mut flattened_fields: Vec<FieldDef> = Vec::new();
         let mut bound: Vec<BoundMember> = Vec::new();
@@ -7666,19 +7690,8 @@ fn collect_discriminated_variants(
                 guard_errors.extend(variant_flatten_guard_errors(field, &enum_type_name));
             }
 
-            let (f_def, validation_fn, validate_body, field_guard_errors) = process_field(
-                &FieldContext {
-                    container_defaulted: variant_defaulted,
-                    container_read_back: enum_read_back,
-                    rename_all: variant_rename_all.as_deref(),
-                    schema_module_name: enum_module_name_opt,
-                    type_name: &enum_type_name,
-                    type_parameters: &type_parameters,
-                    variant_ident: Some(&variant_ident),
-                },
-                field,
-                &mut deferred_attrs,
-            );
+            let (f_def, validation_fn, validate_body, field_guard_errors) =
+                process_field(&member_ctx, field, index, &mut deferred_attrs);
             guard_errors.extend(field_guard_errors);
 
             if is_flatten {
@@ -7693,10 +7706,8 @@ fn collect_discriminated_variants(
             if let Some(vfn) = validation_fn {
                 enum_validation_fns.push(vfn);
             }
-            // A constrained positional slot is refused by its own guard, so a member with a body to
-            // run is always one the arm can name.
-            if let (Some(body), Some(ident)) = (validate_body, field.ident.as_ref()) {
-                bound.push(named_bound_member(ident, index));
+            if let Some(body) = validate_body {
+                bound.push(bound_member(field, index));
                 checks.push(body);
             }
             if positional && omission.absent_from_wire() {
@@ -8050,7 +8061,7 @@ fn render_external_content(
             let zod = String::new();
 
             #[cfg(feature = "jsonschema")]
-            let json = build_tuple_element_json_schema(fld).unwrap_or_else(|rejection| {
+            let json = variant_slot_json_schema(fld).unwrap_or_else(|rejection| {
                 external_content_rejection_value(discriminator_value, &rejection)
             });
             #[cfg(not(feature = "jsonschema"))]
@@ -8081,7 +8092,7 @@ fn render_external_content(
             let zod = String::new();
 
             #[cfg(feature = "jsonschema")]
-            let json = tuple_json_schema_value(field_defs).unwrap_or_else(|rejection| {
+            let json = variant_slots_json_schema(field_defs).unwrap_or_else(|rejection| {
                 external_content_rejection_value(discriminator_value, &rejection)
             });
             #[cfg(not(feature = "jsonschema"))]
@@ -9150,7 +9161,7 @@ fn untagged_named_json_value(
 
 /// Builds the `{ "type": "string", ... }` JSON-schema value token for a `String` field, including
 /// any `pattern` / `minLength` / `maxLength` constraints from its `model_schema_prop` metadata.
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
+#[cfg(feature = "jsonschema")]
 fn string_field_json_schema_value(fld: &FieldDef) -> proc_macro2::TokenStream {
     let meta = fld.model_schema_prop_meta.as_ref();
     let pattern_insert = meta.and_then(|m| m.pattern.clone()).map(|p| {
@@ -9238,7 +9249,8 @@ fn field_json_schema_value(fld: &FieldDef) -> proc_macro2::TokenStream {
         | FieldDefType::Boolean => {
             // The arm has matched exactly the types the mapping answers a keyword for.
             let keyword = scalar_json_type_keyword(&fld.field_type).unwrap();
-            quote! { serde_json::json!({ "type": #keyword }) }
+            let bounds = numeric_bound_keywords(fld);
+            quote! { serde_json::json!({ "type": #keyword #bounds }) }
         }
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => object_id_json_schema_value(&object_id_hex_json_schema()),
@@ -9422,7 +9434,7 @@ fn collect_untagged_variant_members(
             generate_field_validation(
                 field,
                 schema_module_name,
-                &field_name,
+                index,
                 Some(&variant_name),
                 &prop_meta,
                 // The one position where the read is also the gate: an untagged union picks the
@@ -9457,25 +9469,19 @@ fn collect_untagged_variant_members(
         walked.guard_errors.extend(member_guard_errors);
         // Read once the member's def exists, since that is what says whether the member names a
         // type that could publish a validator.
-        let bound_member = field.ident.as_ref().map_or_else(
-            || BoundMember {
-                binding: positional_member_binding(index),
-                index,
-                named: None,
-            },
-            |ident| named_bound_member(ident, index),
-        );
+        let bound = bound_member(field, index);
         let member_body = match (is_flatten, field.ident.is_some()) {
             (true, _) => nested_validate_body(field, &member_def, true, true),
             (false, true) => {
                 validate_body.or_else(|| nested_validate_body(field, &member_def, true, false))
             }
             (false, false) => {
-                positional_member_validate_body(field, &member_def, &bound_member.binding)
+                let nested = positional_member_validate_body(field, &member_def, &bound.binding);
+                slot_validate_body(validate_body, nested)
             }
         };
         if let Some(body) = member_body {
-            walked.bound.push(bound_member);
+            walked.bound.push(bound);
             walked.checks.push(body);
         }
         if is_flatten {
@@ -10195,7 +10201,7 @@ fn push_single_tuple_json_field(
     fld: &FieldDef,
 ) {
     let content_name_str = content_name.to_owned();
-    let field_schema = match build_tuple_element_json_schema(fld) {
+    let field_schema = match variant_slot_json_schema(fld) {
         Ok(field_schema) => field_schema,
         Err(rejection) => {
             json_schema_variant_fields.push(map_member_rejection_error(content_name, &rejection));
@@ -10324,7 +10330,7 @@ fn write_tuple_multiple_variant_fields(
     #[cfg(feature = "jsonschema")]
     {
         let content_name_str = content_name.to_owned();
-        match tuple_json_schema_value(field_defs) {
+        match variant_slots_json_schema(field_defs) {
             Ok(tuple_schema) => json_schema_variant_fields.push(quote! {
                 properties.insert(#content_name_str.to_string(), #tuple_schema);
                 required.push(serde_json::Value::String(#content_name_str.to_string()));
@@ -10683,16 +10689,87 @@ fn build_tuple_element_json_schema(
     ))
 }
 
+/// The `"minimum"` and `"maximum"` a number's own `model_schema_prop` writes, each behind the comma
+/// that joins it to the keyword before it, and nothing for any other type.
+#[cfg(feature = "jsonschema")]
+fn numeric_bound_keywords(fld: &FieldDef) -> proc_macro2::TokenStream {
+    let meta = fld
+        .model_schema_prop_meta
+        .as_ref()
+        .filter(|_| fld.field_type.is_numeric());
+    let minimum = meta
+        .and_then(|bounds| bounds.minimum)
+        .map(|bound| quote! { , "minimum": #bound });
+    let maximum = meta
+        .and_then(|bounds| bounds.maximum)
+        .map(|bound| quote! { , "maximum": #bound });
+    quote! { #minimum #maximum }
+}
+
+/// The value a variant's slot holds under its wrappers, carrying the bounds written on the slot as
+/// a named member's schema carries them, or `None` for a slot that writes none.
+#[cfg(feature = "jsonschema")]
+fn bounded_slot_item(value: &FieldDef) -> Option<proc_macro2::TokenStream> {
+    let meta = value.model_schema_prop_meta.as_ref()?;
+    let measured = meta.min_length.is_some() || meta.max_length.is_some() || meta.pattern.is_some();
+    if let FieldDefType::SiblingType(name, arguments) = &value.field_type {
+        let described = sibling_json_schema_value(name, arguments, value.type_span);
+        return measured.then(|| named_field_json_schema_value(value, &described));
+    }
+    if matches!(value.field_type, FieldDefType::String) {
+        return measured.then(|| string_field_json_schema_value(value));
+    }
+    let ranged = meta.minimum.is_some() || meta.maximum.is_some();
+    if !(ranged && value.field_type.is_numeric()) {
+        return None;
+    }
+    let keyword = scalar_json_type_keyword(&value.field_type)?;
+    let bounds = numeric_bound_keywords(value);
+    Some(quote! { serde_json::json!({ "type": #keyword #bounds }) })
+}
+
+/// [`build_tuple_element_json_schema`] for a variant's slot, whose own bounds reach its value.
+#[cfg(feature = "jsonschema")]
+fn variant_slot_json_schema(
+    fld: &FieldDef,
+) -> Result<proc_macro2::TokenStream, MapMemberRejection> {
+    let value = normalized_slot_value(fld);
+    let Some(item) = bounded_slot_item(&value) else {
+        return build_tuple_element_json_schema(fld);
+    };
+    Ok(nullable_slot_json_schema_value(
+        fld,
+        arrayed_json_schema_value(&value, item),
+    ))
+}
+
 /// The fixed-arity array a tuple describes as — the form serde writes it in — or the rejection when
 /// any element holds a value the dispatch cannot render.
 #[cfg(feature = "jsonschema")]
 fn tuple_json_schema_value(
     elements: &[FieldDef],
 ) -> Result<proc_macro2::TokenStream, MapMemberRejection> {
+    tuple_json_schema_of(elements, build_tuple_element_json_schema)
+}
+
+/// [`tuple_json_schema_value`] for the slots of a tuple variant, each carrying its own bounds.
+#[cfg(feature = "jsonschema")]
+fn variant_slots_json_schema(
+    slots: &[FieldDef],
+) -> Result<proc_macro2::TokenStream, MapMemberRejection> {
+    tuple_json_schema_of(slots, variant_slot_json_schema)
+}
+
+/// The fixed-arity array of `elements`, each described by `described`.
+#[cfg(feature = "jsonschema")]
+fn tuple_json_schema_of(
+    elements: &[FieldDef],
+    described: fn(&FieldDef) -> Result<proc_macro2::TokenStream, MapMemberRejection>,
+) -> Result<proc_macro2::TokenStream, MapMemberRejection> {
     let arity = elements.len();
     let element_schemas = elements
         .iter()
-        .map(build_tuple_element_json_schema)
+        .map(described)
         .collect::<Result<Vec<_>, _>>()?;
     Ok(quote! {
         serde_json::json!({
@@ -11660,7 +11737,6 @@ fn member_binding(field_ident: &proc_macro2::Ident) -> proc_macro2::Ident {
 
 /// The same, for a positional slot, numbered by declaration position — the spelling a tuple slot
 /// has in place of the field ident a named member is bound under.
-#[cfg(feature = "serde")]
 fn positional_member_binding(index: usize) -> proc_macro2::Ident {
     proc_macro2::Ident::new(
         &format!("member_slot_{index}"),
@@ -11688,11 +11764,9 @@ fn member_access_expr(
 #[cfg(feature = "serde")]
 fn build_field_validation(
     wraps: &[ConstraintWrap],
-    access: MemberAccess,
-    field_ident_tok: &proc_macro2::Ident,
+    checked: &proc_macro2::TokenStream,
     validate_value_fn_ident: &proc_macro2::Ident,
 ) -> proc_macro2::TokenStream {
-    let checked = member_access_expr(access, field_ident_tok);
     if wraps.is_empty() {
         return quote! {
             if let ::core::result::Result::Err(reported) = #validate_value_fn_ident(#checked) {
@@ -12164,29 +12238,27 @@ fn named_leaf_rendering(
 /// the field's declared type when it is wrapped. A borrowed `str` gets the validator alone.
 #[cfg(feature = "serde")]
 fn generate_string_validation_code(
-    member: &proc_macro2::Ident,
-    helper_stem: &str,
+    member: &CheckedMember,
     meta: &ModelSchemaPropMeta,
     shape: &ConstrainedShape,
     field_ty: &syn::Type,
-    access: MemberAccess,
 ) -> FieldValidationCode {
     let wraps: &[ConstraintWrap] = &shape.wraps;
-    let validate_value_fn_name = format!("validate_{helper_stem}_value");
+    let validate_value_fn_name = format!("validate_{}_value", member.stem);
     let validate_value_fn_ident =
         proc_macro2::Ident::new(&validate_value_fn_name, proc_macro2::Span::call_site());
-    let deserialize_fn_name = format!("deserialize_{helper_stem}");
+    let deserialize_fn_name = format!("deserialize_{}", member.stem);
     let deserialize_fn_ident =
         proc_macro2::Ident::new(&deserialize_fn_name, proc_macro2::Span::call_site());
 
-    let field_name_lit = member.unraw().to_string();
-    let (checked_param, rendering, owned) = string_leaf_parts(&shape.leaf, &field_name_lit, meta);
+    let named = member.reported.as_deref();
+    let (checked_param, rendering, owned) = string_leaf_parts(&shape.leaf, &member.label, meta);
 
     let measured = quote! { value.len() };
     let mut checks: Vec<proc_macro2::TokenStream> = Vec::new();
 
     if let Some(min_len) = meta.min_length {
-        let reported = rust_violation(Bound::MinLength(min_len), Some(&field_name_lit), &measured);
+        let reported = rust_violation(Bound::MinLength(min_len), named, &measured);
         checks.push(quote! {
             if value.len() < #min_len {
                 errors.push(#reported);
@@ -12195,7 +12267,7 @@ fn generate_string_validation_code(
     }
 
     if let Some(max_len) = meta.max_length {
-        let reported = rust_violation(Bound::MaxLength(max_len), Some(&field_name_lit), &measured);
+        let reported = rust_violation(Bound::MaxLength(max_len), named, &measured);
         checks.push(quote! {
             if value.len() > #max_len {
                 errors.push(#reported);
@@ -12204,7 +12276,7 @@ fn generate_string_validation_code(
     }
 
     if let Some(pattern) = &meta.pattern {
-        let reported = rust_violation(Bound::Pattern(pattern), Some(&field_name_lit), &measured);
+        let reported = rust_violation(Bound::Pattern(pattern), named, &measured);
         checks.push(pattern_check(pattern, &quote! { errors.push(#reported); }));
     }
 
@@ -12244,7 +12316,7 @@ fn generate_string_validation_code(
         #deserializer
     };
 
-    let validate_body = build_field_validation(wraps, access, member, &validate_value_fn_ident);
+    let validate_body = build_field_validation(wraps, &member.checked, &validate_value_fn_ident);
 
     FieldValidationCode {
         module_items,
@@ -12256,24 +12328,22 @@ fn generate_string_validation_code(
 /// — see `generate_string_validation_code` for how the two spellings differ.
 #[cfg(feature = "serde")]
 fn generate_numeric_validation_code(
-    member: &proc_macro2::Ident,
-    helper_stem: &str,
+    member: &CheckedMember,
     rust_type_str: &str,
     meta: &ModelSchemaPropMeta,
     shape: &ConstrainedShape,
     field_ty: &syn::Type,
-    access: MemberAccess,
 ) -> FieldValidationCode {
     let wraps: &[ConstraintWrap] = &shape.wraps;
-    let validate_value_fn_name = format!("validate_{helper_stem}_value");
+    let validate_value_fn_name = format!("validate_{}_value", member.stem);
     let validate_value_fn_ident =
         proc_macro2::Ident::new(&validate_value_fn_name, proc_macro2::Span::call_site());
-    let deserialize_fn_name = format!("deserialize_{helper_stem}");
+    let deserialize_fn_name = format!("deserialize_{}", member.stem);
     let deserialize_fn_ident =
         proc_macro2::Ident::new(&deserialize_fn_name, proc_macro2::Span::call_site());
 
     let rust_type_ident: proc_macro2::TokenStream = rust_type_str.parse().unwrap();
-    let field_name_lit = member.unraw().to_string();
+    let named = member.reported.as_deref();
 
     let measured = quote! { value };
     let mut checks: Vec<proc_macro2::TokenStream> = Vec::new();
@@ -12281,7 +12351,7 @@ fn generate_numeric_validation_code(
     if let Some(minimum) = meta.minimum {
         let min_cast: proc_macro2::TokenStream =
             format!("{minimum} as {rust_type_str}").parse().unwrap();
-        let reported = rust_violation(Bound::Minimum(minimum), Some(&field_name_lit), &measured);
+        let reported = rust_violation(Bound::Minimum(minimum), named, &measured);
         checks.push(quote! {
             if *value < #min_cast {
                 errors.push(#reported);
@@ -12292,7 +12362,7 @@ fn generate_numeric_validation_code(
     if let Some(maximum) = meta.maximum {
         let max_cast: proc_macro2::TokenStream =
             format!("{maximum} as {rust_type_str}").parse().unwrap();
-        let reported = rust_violation(Bound::Maximum(maximum), Some(&field_name_lit), &measured);
+        let reported = rust_violation(Bound::Maximum(maximum), named, &measured);
         checks.push(quote! {
             if *value > #max_cast {
                 errors.push(#reported);
@@ -12333,7 +12403,7 @@ fn generate_numeric_validation_code(
         #deserializer
     };
 
-    let validate_body = build_field_validation(wraps, access, member, &validate_value_fn_ident);
+    let validate_body = build_field_validation(wraps, &member.checked, &validate_value_fn_ident);
 
     FieldValidationCode {
         module_items,
@@ -13233,10 +13303,12 @@ fn check_undescribable_std_field(
 
 /// Processes a field and returns its definition, optional module items (validators/deserializers),
 /// optional `validate_body` (contribution to the type-level `validate()` method), and the
-/// `compile_error!` tokens for every guard the field violates.
+/// `compile_error!` tokens for every guard the field violates. `index` is the field's place in
+/// its declaration, which is what names a variant's slot.
 fn process_field(
     ctx: &FieldContext<'_>,
     field: &mut Field,
+    index: usize,
     deferred_attrs: &mut Vec<Vec<syn::Attribute>>,
 ) -> (
     FieldDef,
@@ -13269,7 +13341,7 @@ fn process_field(
         generate_field_validation(
             field,
             ctx.schema_module_name,
-            &raw_field_ident,
+            index,
             ctx.variant_ident,
             &model_schema_prop_meta,
             // A struct's field, or a tagged variant's: the shape of the payload says which type it
@@ -13284,7 +13356,7 @@ fn process_field(
         Option<proc_macro2::TokenStream>,
     ) = (None, None);
     #[cfg(not(feature = "serde"))]
-    let _: &_ = &(ctx.schema_module_name, ctx.variant_ident);
+    let _: &_ = &(ctx.schema_module_name, ctx.variant_ident, index);
 
     field.attrs = new_attrs;
 
@@ -13533,8 +13605,8 @@ fn names_what_the_module_cannot_repeat(ty: &syn::Type, type_parameters: &[String
         .any(|word| word == "Self" || type_parameters.iter().any(|named| named == word))
 }
 
-/// The `validate()` contribution for an untagged newtype variant's lone slot, read off the binding
-/// the arm that matched it introduced.
+/// What the type of an untagged newtype variant's lone slot contributes to `validate()`, read off
+/// the binding the arm that matched it introduced.
 #[cfg(feature = "serde")]
 fn positional_member_validate_body(
     field: &Field,
@@ -13543,6 +13615,18 @@ fn positional_member_validate_body(
 ) -> Option<proc_macro2::TokenStream> {
     let wraps = reachable_nested_shape(field, field_def)?;
     Some(build_nested_validation(&wraps, &quote! { #binding }, None))
+}
+
+/// What an untagged slot's arm runs: the slot's own check, then the one its type declares.
+#[cfg(feature = "serde")]
+fn slot_validate_body(
+    own: Option<proc_macro2::TokenStream>,
+    nested: Option<proc_macro2::TokenStream>,
+) -> Option<proc_macro2::TokenStream> {
+    match (own, nested) {
+        (Some(declared), Some(below)) => Some(quote! { #declared #below }),
+        (declared, below) => declared.or(below),
+    }
 }
 
 /// The walk a flattened variant member keeps, bound under the name the arm will match it by.
@@ -13576,6 +13660,18 @@ fn named_bound_member(field_ident: &proc_macro2::Ident, index: usize) -> BoundMe
     }
 }
 
+/// A member's entry in the arm's bindings: a named member under its ident, a slot by its position.
+fn bound_member(field: &Field, index: usize) -> BoundMember {
+    field.ident.as_ref().map_or_else(
+        || BoundMember {
+            binding: positional_member_binding(index),
+            index,
+            named: None,
+        },
+        |ident| named_bound_member(ident, index),
+    )
+}
+
 /// Whether the walk ends on a borrowed `str`, the one constrained value no hook is emitted for.
 #[cfg(feature = "serde")]
 const fn ends_on_a_borrow(wraps: &[ConstraintWrap]) -> bool {
@@ -13591,26 +13687,60 @@ fn needs_injected_default(wraps: &[ConstraintWrap], has_default: bool) -> bool {
     matches!(first_opaque, Some(ConstraintWrap::Optional)) && !has_default
 }
 
-/// The `compile_error!` tokens for a length or range constraint written on a positional field. Both
-/// helpers such a constraint generates are named from the field ident — a spelling a tuple slot
-/// has none of.
+/// The `compile_error!` tokens for a length or range constraint written on a tuple struct's slot,
+/// the one positional slot no match arm binds for `validate()` to read.
 #[cfg(feature = "serde")]
-fn positional_constraint_guard_error(
-    field: &Field,
-    raw_field_ident: &str,
-) -> proc_macro2::TokenStream {
+fn positional_constraint_guard_error(field: &Field) -> proc_macro2::TokenStream {
     syn::Error::new_spanned(
         field,
         format!(
             "model_schema: {}: pattern, minLength, maxLength, minimum and maximum are unsupported \
-             on a positional field — the generated validator, the generated deserializer and the \
-             `validate()` accessor are all named from the field ident, which a tuple slot has \
-             none of. Move the element into a struct variant with a named field, or drop the \
+             on a tuple struct's slot — `validate()` reads a struct's member off `self` by its \
+             field ident, which a slot has none of. Write a struct with named fields, or drop the \
              constraint.",
-            field_label(raw_field_ident)
+            field_label(&field_ident_string(field))
         ),
     )
     .to_compile_error()
+}
+
+/// How a constrained member's helpers name and reach it, or `None` for a tuple struct's slot. A
+/// variant's slot goes by its position, and the lone slot of an untagged member is reported under
+/// no name, as what its own type reports is.
+#[cfg(feature = "serde")]
+fn checked_member(
+    field: &Field,
+    index: usize,
+    variant_ident: Option<&str>,
+    gate: ConstraintGate,
+) -> Option<CheckedMember> {
+    let Some(member) = field.ident.as_ref() else {
+        variant_ident?;
+        let position = index.to_string();
+        let binding = positional_member_binding(index);
+        let stem = helper_name_stem(&position, variant_ident);
+        return Some(CheckedMember {
+            checked: quote! { #binding },
+            label: String::new(),
+            reported: (gate == ConstraintGate::Validator).then_some(position),
+            stem,
+        });
+    };
+    // The variant that scopes the helper names also says where the value is reached from: a
+    // variant's member is bound by its arm, a struct's field is read off `self`.
+    let access = if variant_ident.is_some() {
+        MemberAccess::VariantBinding
+    } else {
+        MemberAccess::SelfField
+    };
+    let named = member.unraw().to_string();
+    let stem = helper_name_stem(&named, variant_ident);
+    Some(CheckedMember {
+        checked: member_access_expr(access, member),
+        label: named.clone(),
+        reported: Some(named),
+        stem,
+    })
 }
 
 /// The `compile_error!` tokens for a length or range constraint written on a field reached through
@@ -13643,7 +13773,7 @@ fn interior_mutability_constraint_guard_error(
 fn generate_field_validation(
     field: &Field,
     schema_module_name: Option<&str>,
-    raw_field_ident: &str,
+    index: usize,
     variant_ident: Option<&str>,
     model_schema_prop_meta: &ModelSchemaPropMeta,
     gate: ConstraintGate,
@@ -13659,13 +13789,11 @@ fn generate_field_validation(
     let has_numeric_constraints =
         model_schema_prop_meta.minimum.is_some() || model_schema_prop_meta.maximum.is_some();
 
-    if raw_field_ident.is_empty() && (has_string_constraints || has_numeric_constraints) {
-        return (
-            None,
-            None,
-            Some(positional_constraint_guard_error(field, raw_field_ident)),
-        );
-    }
+    let Some(member) = checked_member(field, index, variant_ident, gate) else {
+        let refused = (has_string_constraints || has_numeric_constraints)
+            .then(|| positional_constraint_guard_error(field));
+        return (None, None, refused);
+    };
 
     let (Some(module_name), Some(shape)) = (schema_module_name, constrained_shape(&field.ty))
     else {
@@ -13677,7 +13805,7 @@ fn generate_field_validation(
                 None,
                 Some(interior_mutability_constraint_guard_error(
                     field,
-                    raw_field_ident,
+                    &member.label,
                     &wrapper,
                 )),
             );
@@ -13685,39 +13813,19 @@ fn generate_field_validation(
         return (None, None, None);
     };
 
-    let Some(member) = field.ident.as_ref() else {
-        return (None, None, None);
-    };
-    let helper_stem = helper_name_stem(raw_field_ident, variant_ident);
-    // The variant that scopes the helper names also says where the value is reached from: a
-    // variant's member is bound by its arm, a struct's field is read off `self`.
-    let access = if variant_ident.is_some() {
-        MemberAccess::VariantBinding
-    } else {
-        MemberAccess::SelfField
-    };
     let generated = match &shape.leaf {
         ConstraintLeaf::Named(_) | ConstraintLeaf::Path | ConstraintLeaf::Str => {
             has_string_constraints.then(|| {
-                generate_string_validation_code(
-                    member,
-                    &helper_stem,
-                    model_schema_prop_meta,
-                    &shape,
-                    &field.ty,
-                    access,
-                )
+                generate_string_validation_code(&member, model_schema_prop_meta, &shape, &field.ty)
             })
         }
         ConstraintLeaf::Number(rust_type) => has_numeric_constraints.then(|| {
             generate_numeric_validation_code(
-                member,
-                &helper_stem,
+                &member,
                 rust_type,
                 model_schema_prop_meta,
                 &shape,
                 &field.ty,
-                access,
             )
         }),
     };
@@ -13725,8 +13833,9 @@ fn generate_field_validation(
         return (None, None, None);
     };
 
+    let helper_stem = &member.stem;
     if gate == ConstraintGate::Validator {
-        record_field_validator(module_name, &helper_stem);
+        record_field_validator(module_name, helper_stem);
     }
     // A borrowed `str` publishes no hook, so nothing is hung on one: its bound is the validator's
     // alone, an untagged member included.
