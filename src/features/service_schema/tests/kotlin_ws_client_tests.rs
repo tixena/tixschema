@@ -233,6 +233,26 @@ fn an_uncorrelated_reply_and_a_frame_for_another_service_reach_the_uncorrelated_
 }
 
 #[test]
+fn the_one_flow_between_the_socket_and_the_dispatchers_has_no_bound() {
+    let written = kotlin_ws_client_of(KOTLIN_WS_SERVICE);
+    assert!(
+        written.contains(
+            "private val uncorrelated = \
+             MutableSharedFlow<String>(extraBufferCapacity = Int.MAX_VALUE)"
+        ),
+        "`tryEmit` refuses a frame a full buffer cannot take, and the request it carries is never \
+         answered, so the buffer has no bound. Got: {written}"
+    );
+    for declared in ["MutableSharedFlow<", "extraBufferCapacity"] {
+        assert_eq!(
+            written.matches(declared).count(),
+            1,
+            "no second buffer stands between the socket and a dispatcher. Got: {written}"
+        );
+    }
+}
+
+#[test]
 fn a_reply_operation_answers_the_sealed_result_and_decodes_through_the_generated_codec() {
     let written = kotlin_ws_client_of(KOTLIN_WS_SERVICE);
     assert!(

@@ -192,6 +192,88 @@ let report = Report(
 print(String(data: try! JSONEncoder().encode(report), encoding: .utf8)!)
 "#;
 
+/// Swift emits no dispatcher, so the burst is the replies: 2,000 `window` calls left waiting,
+/// their replies handed to the socket in one loop with no suspension, and the answered calls
+/// counted.
+const BURST_DRIVER: &str = r#"
+final class RecordingSocket: ConversationClientServiceWsSocket, @unchecked Sendable {
+  private let lock = NSLock()
+  private var _sent: [String] = []
+
+  var onMessage: (@Sendable (String) -> Void)?
+  var onClose: (@Sendable () -> Void)?
+
+  var sent: [String] {
+    lock.lock()
+    defer { lock.unlock() }
+    return _sent
+  }
+
+  func send(_ text: String) {
+    lock.lock()
+    _sent.append(text)
+    lock.unlock()
+  }
+
+  func close() {}
+}
+
+final class Tally: @unchecked Sendable {
+  private let lock = NSLock()
+  private var _count = 0
+
+  var count: Int {
+    lock.lock()
+    defer { lock.unlock() }
+    return _count
+  }
+
+  func add() {
+    lock.lock()
+    _count += 1
+    lock.unlock()
+  }
+}
+
+func until(timeoutMs: Int = 2000, _ predicate: () -> Bool) async -> Bool {
+  let deadline = Date().addingTimeInterval(Double(timeoutMs) / 1000)
+  while !predicate() && Date() < deadline {
+    try? await Task.sleep(nanoseconds: 5_000_000)
+  }
+  return predicate()
+}
+
+let socket = RecordingSocket()
+let transport = ConversationClientServiceWsTransport(socket: socket, options: .init(heartbeat: nil))
+let tally = Tally()
+let calls = (0..<2000).map { _ in
+  Task {
+    if case .success = await transport.window(WindowRequest(conversationId: "abc", limit: nil)) {
+      tally.add()
+    }
+  }
+}
+let allSent = await until { socket.sent.count >= 2000 }
+let ids = socket.sent.compactMap { sent in
+  try? JSONDecoder().decode(ConversationClientServiceWsFrameProbe.self, from: Data(sent.utf8)).id
+}
+for id in ids {
+  socket.onMessage?("{\"kind\":\"reply\",\"id\":\"\(id)\",\"service\":\"ConversationClientService\",\"ok\":true,\"value\":{\"items\":[]}}")
+}
+let allInTime = await until { tally.count >= 2000 }
+let answered = tally.count
+await transport.close()
+for call in calls { await call.value }
+
+struct BurstReport: Encodable {
+  let allSent: Bool
+  let allInTime: Bool
+  let answered: Int
+}
+let report = BurstReport(allSent: allSent, allInTime: allInTime, answered: answered)
+print(String(data: try! JSONEncoder().encode(report), encoding: .utf8)!)
+"#;
+
 /// A stub `ThumbnailClientServiceHttpTransport` answering by path alone, driving the emitted
 /// client's declared-error and `header_out` decode.
 const THUMBNAIL_DRIVER: &str = r##"
@@ -747,6 +829,25 @@ fn a_frame_for_another_service_is_dropped_and_the_genuine_reply_still_resolves()
         return;
     };
     assert_eq!(written["foreignResolvedOk"], true, "got: {written:#?}");
+}
+
+#[test]
+fn a_burst_of_reply_frames_answers_every_waiting_call() {
+    let Some(wrote) = ran(
+        "swift",
+        RUNTIME_VAR,
+        "swift",
+        "main.swift",
+        &client_module(BURST_DRIVER),
+    ) else {
+        return;
+    };
+    let written: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
+    assert_eq!(
+        written,
+        serde_json::json!({"allSent": true, "allInTime": true, "answered": 2_000_i32}),
+        "a reply handed to the socket while others waited for the transport never reached its call"
+    );
 }
 
 fn thumbnail_module() -> String {

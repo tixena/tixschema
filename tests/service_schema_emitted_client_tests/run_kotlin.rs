@@ -342,6 +342,46 @@ fun main() = runBlocking {
 }
 "#;
 
+/// 2,000 `window` requests handed to a socket that counts what is written to it, in one loop with
+/// no suspension: once with the dispatcher on `main`'s own thread, once on the transport's scope.
+const BURST_DRIVER: &str = r#"
+class CountingSocket : ConversationClientServiceWsSocket {
+    val replies = java.util.concurrent.atomic.AtomicInteger(0)
+    override var onMessage: ((String) -> Unit)? = null
+    override var onClose: (() -> Unit)? = null
+    override fun send(text: String) { replies.incrementAndGet() }
+    override fun close() {}
+}
+
+fun main() = runBlocking {
+    fun request(id: Int) = """{"kind":"request","id":"b$id","service":"ConversationClientService","operation":"window","payload":{"conversationId":"abc"}}"""
+
+    val confinedSocket = CountingSocket()
+    val confinedTransport = ConversationClientServiceWsTransport(confinedSocket, ConversationClientServiceWsOptions(heartbeat = null))
+    val confined = attachConversationClientServiceWsDispatcher(confinedTransport.frames.copy(scope = this), Handlers, onFault = {})
+    for (id in 1..2000) confinedSocket.onMessage?.invoke(request(id))
+    val confinedAllInTime = until { confinedSocket.replies.get() >= 2000 }
+    val confinedAnswered = confinedSocket.replies.get()
+    confined.detach()
+
+    val ownSocket = CountingSocket()
+    val ownTransport = ConversationClientServiceWsTransport(ownSocket, ConversationClientServiceWsOptions(heartbeat = null))
+    attachConversationClientServiceWsDispatcher(ownTransport.frames, Handlers, onFault = {})
+    for (id in 1..2000) ownSocket.onMessage?.invoke(request(id))
+    val ownAllInTime = until { ownSocket.replies.get() >= 2000 }
+    val ownAnswered = ownSocket.replies.get()
+    ownTransport.close()
+
+    val report = buildJsonObject {
+        put("confinedAllInTime", confinedAllInTime)
+        put("confinedAnswered", confinedAnswered)
+        put("ownAllInTime", ownAllInTime)
+        put("ownAnswered", ownAnswered)
+    }
+    println(report.toString())
+}
+"#;
+
 /// The mini server against a connected fake-socket pair: every frame with an id answered, a
 /// declared error, a bad-payload notify, a shared socket, `share()` after detach.
 const MINI_SERVER_DRIVER: &str = r#"
@@ -886,6 +926,26 @@ fn a_frame_that_arrives_right_after_attach_or_share_is_dispatched() {
              Got: {report:#?}"
         );
     }
+}
+
+#[test]
+fn a_burst_of_request_frames_is_answered_whole_on_the_callers_thread_and_on_the_transports_scope() {
+    let Some(written) = ran_kotlin(&mini_server_module(&format!(
+        "{FAKE_SOCKET}\n\n{MINI_SERVER_FIXTURE}\n\n{BURST_DRIVER}"
+    ))) else {
+        return;
+    };
+    let report: serde_json::Value = serde_json::from_str(written.trim()).unwrap();
+    assert_eq!(
+        report,
+        serde_json::json!({
+            "confinedAllInTime": true,
+            "confinedAnswered": 2_000_i32,
+            "ownAllInTime": true,
+            "ownAnswered": 2_000_i32,
+        }),
+        "a frame handed to the socket while others waited for the dispatcher was never answered"
+    );
 }
 
 #[test]
