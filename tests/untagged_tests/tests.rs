@@ -446,6 +446,52 @@ enum BrandedArm {
     Slugged(#[model_schema_prop(pattern = "^[a-z]+$")] ArmSlug),
 }
 
+// A check written on the enum is the check of every string the enum carries: a free-text arm beside
+// a named one.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+enum KnownKind {
+    #[serde(rename = "application/pdf")]
+    Pdf,
+}
+
+#[model_schema(minLength = 1, maxLength = 20)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+enum ContentKind {
+    Known(KnownKind),
+    Other(String),
+}
+
+#[model_schema(maxLength = 20)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+enum MaxLengthKind {
+    Known(KnownKind),
+    Other(String),
+}
+
+#[model_schema(pattern = "^[a-z]+/[a-z0-9.+-]+$")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+enum PatternKind {
+    Known(KnownKind),
+    Other(String),
+}
+
+// The arm writes a pattern of its own under the enum's, and a named member a length of its own.
+#[model_schema(maxLength = 12, pattern = "^[a-z]+/[a-z0-9.+-]+$")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+enum TextKind {
+    Known(KnownKind),
+    Named {
+        #[model_schema_prop(minLength = 9)]
+        kind: String,
+    },
+    Other(#[model_schema_prop(pattern = "^text/")] String),
+}
+
 // An untagged member is written by a dispatch of its own, so it is a position an `ObjectId` can be
 // spelled in.
 #[cfg(all(feature = "jsonschema", feature = "mongodb"))]
@@ -1995,6 +2041,269 @@ fn test_untagged_slot_runs_its_own_check_and_the_one_its_type_declares() {
         serde_json::from_value::<BrandedArm>(serde_json::json!("abc")).unwrap(),
         BrandedArm::Slugged(ArmSlug("abc".to_owned()))
     );
+}
+
+/// What serde answers for `text` sent to `ContentKind` as a JSON string.
+fn read_content_kind(text: &str) -> Result<ContentKind, String> {
+    serde_json::from_value(serde_json::Value::String(text.to_owned()))
+        .map_err(|refused: serde_json::Error| refused.to_string())
+}
+
+#[test]
+fn test_an_untagged_enums_own_check_decides_which_variant_is_read() {
+    let no_variant = "data did not match any variant of untagged enum ContentKind".to_owned();
+    assert_eq!(
+        read_content_kind("text/csv"),
+        Ok(ContentKind::Other("text/csv".to_owned()))
+    );
+    assert_eq!(
+        read_content_kind("application/pdf"),
+        Ok(ContentKind::Known(KnownKind::Pdf))
+    );
+    for refused in [String::new(), "a".repeat(21)] {
+        assert_eq!(read_content_kind(&refused), Err(no_variant.clone()));
+    }
+}
+
+#[test]
+fn test_an_untagged_enums_own_check_leaves_the_wire_a_bare_value() {
+    assert_eq!(
+        serde_json::to_value(ContentKind::Other("text/csv".to_owned())).unwrap(),
+        serde_json::json!("text/csv")
+    );
+    assert_eq!(
+        serde_json::to_value(ContentKind::Other(String::new())).unwrap(),
+        serde_json::json!("")
+    );
+    assert_eq!(
+        serde_json::to_value(ContentKind::Known(KnownKind::Pdf)).unwrap(),
+        serde_json::json!("application/pdf")
+    );
+}
+
+#[test]
+fn test_an_untagged_enums_own_check_is_reported_under_no_name() {
+    assert_eq!(
+        ContentKind::Other(String::new()).validate().unwrap_err(),
+        vec!["too short: minimum length is 1, got 0"]
+    );
+    assert_eq!(
+        ContentKind::Other("a".repeat(21)).validate().unwrap_err(),
+        vec!["too long: maximum length is 20, got 21"]
+    );
+    ContentKind::Other("text/csv".to_owned())
+        .validate()
+        .unwrap();
+    ContentKind::Known(KnownKind::Pdf).validate().unwrap();
+    assert_eq!(
+        content_kind_schema::validate_other_0_value("").unwrap_err(),
+        vec!["too short: minimum length is 1, got 0"]
+    );
+
+    let readme = include_str!("../../README.md");
+    for reported in [
+        ContentKind::Other(String::new()).validate(),
+        ContentKind::Other("a".repeat(21)).validate(),
+    ] {
+        let shown = format!("// {reported:?}");
+        assert!(
+            readme.contains(&shown),
+            "the README no longer shows {shown}"
+        );
+    }
+}
+
+#[test]
+#[cfg(feature = "zod")]
+fn test_an_untagged_enums_own_check_zod() {
+    let zod = ContentKind::zod_schema();
+    let member = "z.union([KnownKind$Schema, z.string().min(1, { error: (issue) => `too short: \
+                  minimum length is 1, got ${String(issue.input).length}` }).max(20, { error: \
+                  (issue) => `too long: maximum length is 20, got ${String(issue.input).length}` \
+                  })])";
+    assert!(zod.contains(member), "Got:\n{zod}");
+}
+
+#[test]
+#[cfg(feature = "jsonschema")]
+fn test_an_untagged_enums_own_check_json_schema() {
+    let schema = ContentKind::json_schema();
+    assert_eq!(
+        schema["anyOf"][1],
+        serde_json::json!({ "type": "string", "minLength": 1_u32, "maxLength": 20_u32 }),
+        "Got:\n{schema}"
+    );
+    assert_eq!(
+        schema["anyOf"][0],
+        KnownKind::json_schema(),
+        "Got:\n{schema}"
+    );
+}
+
+#[test]
+#[cfg(feature = "typescript")]
+fn test_an_untagged_enums_own_check_leaves_the_typescript_type_alone() {
+    let ts = ContentKind::ts_definition();
+    assert!(
+        ts.contains("export type ContentKind = KnownKind | string;"),
+        "Got:\n{ts}"
+    );
+}
+
+#[test]
+fn test_each_check_of_an_untagged_enum_is_enforced_alone() {
+    serde_json::from_value::<MaxLengthKind>(serde_json::json!("a".repeat(21))).unwrap_err();
+    assert_eq!(
+        MaxLengthKind::Other("a".repeat(21)).validate().unwrap_err(),
+        vec!["too long: maximum length is 20, got 21"]
+    );
+    assert_eq!(
+        serde_json::from_value::<MaxLengthKind>(serde_json::json!("")).unwrap(),
+        MaxLengthKind::Other(String::new())
+    );
+    MaxLengthKind::Other(String::new()).validate().unwrap();
+
+    serde_json::from_value::<PatternKind>(serde_json::json!("Text/CSV")).unwrap_err();
+    assert_eq!(
+        PatternKind::Other("Text/CSV".to_owned())
+            .validate()
+            .unwrap_err(),
+        vec!["does not match pattern '^[a-z]+/[a-z0-9.+-]+$'"]
+    );
+    assert_eq!(
+        serde_json::from_value::<PatternKind>(serde_json::json!("text/csv")).unwrap(),
+        PatternKind::Other("text/csv".to_owned())
+    );
+    assert_eq!(
+        serde_json::from_value::<PatternKind>(serde_json::json!("application/pdf")).unwrap(),
+        PatternKind::Known(KnownKind::Pdf)
+    );
+}
+
+#[test]
+#[cfg(feature = "jsonschema")]
+fn test_each_check_of_an_untagged_enum_reaches_the_json_schema_alone() {
+    assert_eq!(
+        MaxLengthKind::json_schema()["anyOf"][1],
+        serde_json::json!({ "type": "string", "maxLength": 20_u32 })
+    );
+    assert_eq!(
+        PatternKind::json_schema()["anyOf"][1],
+        serde_json::json!({ "type": "string", "pattern": "^[a-z]+/[a-z0-9.+-]+$" })
+    );
+}
+
+#[test]
+#[cfg(feature = "zod")]
+fn test_each_check_of_an_untagged_enum_reaches_zod_alone() {
+    for (zod, member) in [
+        (
+            MaxLengthKind::zod_schema(),
+            "z.union([KnownKind$Schema, z.string().max(20, { error: (issue) => `too long: \
+             maximum length is 20, got ${String(issue.input).length}` })])",
+        ),
+        (
+            PatternKind::zod_schema(),
+            "z.union([KnownKind$Schema, z.string().check(z.regex(/^[a-z]+\\/[a-z0-9.+-]+$/, { \
+             error: \"does not match pattern '^[a-z]+/[a-z0-9.+-]+$'\" }))])",
+        ),
+    ] {
+        assert!(zod.contains(member), "Got:\n{zod}");
+    }
+}
+
+#[test]
+fn test_an_untagged_member_is_held_to_its_own_check_and_its_enums() {
+    assert_eq!(
+        serde_json::from_value::<TextKind>(serde_json::json!("text/csv")).unwrap(),
+        TextKind::Other("text/csv".to_owned())
+    );
+    for refused in ["image/png", "text/CSV", "Image/PNG", "text/a-long-name"] {
+        serde_json::from_value::<TextKind>(serde_json::json!(refused)).unwrap_err();
+    }
+    assert_eq!(
+        TextKind::Other("Image/PNG".to_owned())
+            .validate()
+            .unwrap_err(),
+        vec![
+            "does not match pattern '^text/'",
+            "does not match pattern '^[a-z]+/[a-z0-9.+-]+$'",
+        ]
+    );
+    assert_eq!(
+        TextKind::Other("image/png".to_owned())
+            .validate()
+            .unwrap_err(),
+        vec!["does not match pattern '^text/'"]
+    );
+    assert_eq!(
+        TextKind::Other("text/CSV".to_owned())
+            .validate()
+            .unwrap_err(),
+        vec!["does not match pattern '^[a-z]+/[a-z0-9.+-]+$'"]
+    );
+
+    assert_eq!(
+        serde_json::from_value::<TextKind>(serde_json::json!({ "kind": "image/png" })).unwrap(),
+        TextKind::Named {
+            kind: "image/png".to_owned()
+        }
+    );
+    for refused in ["text/csv", "image/svg+xml"] {
+        serde_json::from_value::<TextKind>(serde_json::json!({ "kind": refused })).unwrap_err();
+    }
+    assert_eq!(
+        TextKind::Named {
+            kind: "text/csv".to_owned()
+        }
+        .validate()
+        .unwrap_err(),
+        vec!["'kind': too short: minimum length is 9, got 8"]
+    );
+    assert_eq!(
+        TextKind::Named {
+            kind: "image/svg+xml".to_owned()
+        }
+        .validate()
+        .unwrap_err(),
+        vec!["'kind': too long: maximum length is 12, got 13"]
+    );
+}
+
+#[test]
+#[cfg(feature = "jsonschema")]
+fn test_two_patterns_on_an_untagged_member_json_schema() {
+    let schema = TextKind::json_schema();
+    assert_eq!(
+        schema["anyOf"][1]["properties"]["kind"],
+        serde_json::json!({
+            "type": "string",
+            "minLength": 9_u32,
+            "maxLength": 12_u32,
+            "pattern": "^[a-z]+/[a-z0-9.+-]+$"
+        }),
+        "Got:\n{schema}"
+    );
+    assert_eq!(
+        schema["anyOf"][2],
+        serde_json::json!({
+            "type": "string",
+            "maxLength": 12_u32,
+            "allOf": [{ "pattern": "^text/" }, { "pattern": "^[a-z]+/[a-z0-9.+-]+$" }]
+        }),
+        "Got:\n{schema}"
+    );
+}
+
+#[test]
+#[cfg(feature = "zod")]
+fn test_two_patterns_on_an_untagged_member_zod() {
+    let zod = TextKind::zod_schema();
+    let member = "z.string().max(12, { error: (issue) => `too long: maximum length is 12, got \
+                  ${String(issue.input).length}` }).check(z.regex(/^text\\//, { error: \"does \
+                  not match pattern '^text/'\" })).check(z.regex(/^[a-z]+\\/[a-z0-9.+-]+$/, { \
+                  error: \"does not match pattern '^[a-z]+/[a-z0-9.+-]+$'\" }))])";
+    assert!(zod.contains(member), "Got:\n{zod}");
 }
 
 #[test]

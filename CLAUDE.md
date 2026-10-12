@@ -426,6 +426,37 @@ is read off the binding its arm makes (`positional_member_binding`, `bound_membe
 - A tuple struct's slot is still refused, by `positional_constraint_guard_error`: `validate()`
   reads a struct's member off `self` by its ident.
 
+A string check written on an enum, `#[model_schema(minLength = N, maxLength = N, pattern = "...")]`,
+is the same check written on each field the enum reaches, enforced exactly where that field's own
+is in that position, under every tagging. `member_prop_meta` is the one seam: it reads a member's
+own `#[model_schema_prop]` and holds it to the enum's arguments as well, so every surface and gate
+reads the merged meta as it reads a member's own. `process_field` asks it through
+`FieldContext::enum_args`, which a struct's field leaves `None`, and
+`collect_untagged_variant_members` asks it directly.
+
+- `written_as_text` says what is reached: a field written as a string or a path itself, under
+  `Option`, an ownership wrapper or the borrow of a `str`. A list's items, a field typed with a
+  named type (a brand included), a number, a map, a tuple and a type parameter are not. It is
+  `constrained_shape`'s walk held to `ConstraintLeaf::Str` and `ConstraintLeaf::Path` and stopped
+  by a list, written apart because it is asked in a build without `serde`;
+  `the_reach_of_an_enums_check_is_the_constraint_walks` holds the two together.
+- A field with a check of its own is held to both: the longer `minLength`, the shorter `maxLength`,
+  and the enum's `pattern` in `ModelSchemaPropMeta::enum_pattern` beside the field's own, which
+  `patterns()` yields in that order. Zod writes one `.check(z.regex(…))` each, `both_patterns_json`
+  states the two in an `allOf`, and the validator runs one check each. A named leaf is never
+  reached, so its three readers (`zod_named_checks`, `named_field_json_schema_value`,
+  `named_leaf_rendering`) read `pattern` alone.
+- `enum_string_check_refusal_output` answers at `process_item`, ahead of every enum shape and in
+  every build, so an enum's `pattern` is judged in every build as a field's is. It refuses a
+  `pattern` no surface reads, a check that reaches nothing (`enum_check_reaches_nothing`: no
+  variant written with no data and no reached field), and each name of a unit variant that breaks
+  the check (`unit_variant_name_errors`).
+- A unit variant is one `variant_wire_kind` publishes as a unit. `variant_wire_names` lists the name
+  serde writes for it, then the name it reads and each `alias` where they differ, and
+  `checks_broken_by` measures each as the validator measures a value. An untagged enum writes such
+  a variant as `null`, under no name, and refuses it on its own. The name of a variant that carries
+  data is not measured.
+
 Multiple constraints on one field are combined. Multiple `preprocess` functions nest:
 `z.preprocess(fn1, z.preprocess(fn2, innerSchema))`.
 
@@ -577,6 +608,10 @@ Rules:
   written on the type: `#[model_schema(pattern = "...", minLength = N, maxLength = N)]`. The
   field a `#[serde(transparent)]` struct with *named* fields is the value of is that slot, and is
   held to the same
+- The three checks are type-level arguments on a brand and on an enum, which hands them to the
+  fields it reaches (section 7) and publishes no check of its own. A struct that is no brand and a
+  type alias are refused them at `process_item`, in every build (`string_check_refusal_output`,
+  `alias_string_check_refusal_output`)
 - An item whose published expression *is* another item's binding — an alias of a brand, a one-slot
   tuple struct over one, and the `$SchemaDefault` of either where it declares a parameter — is
   annotated `typeof {Name}$RawSchema` rather than `ZodType<{Name}>`, so the brand's narrowing
@@ -774,8 +809,8 @@ something other than the default (an `ObjectId` schema, say) must not inherit bo
 They land once, on `$SchemaDefault`'s argument for that one parameter: `zod_default_block` and
 `zod_factory_block` both take a `ZodDefaultInputs` bundling `default_types` with the optional
 `(parameter, checks)` pair a branded newtype's own expansion supplies — `None` for every ordinary
-generic struct, tuple struct, enum and alias, which carry no type-level string constraint of their
-own. The JSON surface needs no separate change: a bare parameter's document is already the runtime
+generic struct, tuple struct, enum and alias: an enum's own string check reaches its fields and
+never a type parameter, and the others carry none. The JSON surface needs no separate change: a bare parameter's document is already the runtime
 argument bound to the parameter's declared filling (`json_argument_value`, defaulting through
 `declared_filling_json_schema_value`), which `branded_layered_over` narrows with the brand's own
 bounds through the same `allOf` a named inner is narrowed through — never the inert `{}` a

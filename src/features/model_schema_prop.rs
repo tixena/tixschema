@@ -149,6 +149,10 @@ pub struct ModelSchemaPropMeta {
     pub as_number: bool,
     pub as_type: Option<Type>,
     pub attr_rejection: Option<syn::Error>,
+    /// The `pattern` of the enum the field's variant belongs to, where the field writes one of its
+    /// own in [`Self::pattern`]: the value is held to both.
+    #[cfg(any(feature = "serde", feature = "zod", feature = "jsonschema"))]
+    pub enum_pattern: Option<String>,
     pub literal: Option<LiteralValue>,
     pub max_length: Option<usize>,
     pub maximum: Option<f64>,
@@ -163,6 +167,17 @@ pub struct ModelSchemaPropMeta {
     pub pattern_rejection: Option<syn::Error>,
     pub preprocess: Vec<String>,
     pub ts_optional: bool,
+}
+
+#[cfg(any(feature = "serde", feature = "zod"))]
+impl ModelSchemaPropMeta {
+    /// Every pattern the value is held to: the field's own, then its enum's where both are written.
+    pub fn patterns(&self) -> impl Iterator<Item = &str> {
+        self.pattern
+            .iter()
+            .chain(&self.enum_pattern)
+            .map(String::as_str)
+    }
 }
 
 /// What the parser cannot read is recorded as [`ModelSchemaPropMeta::attr_rejection`] rather than

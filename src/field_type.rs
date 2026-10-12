@@ -1411,12 +1411,12 @@ impl FieldDef {
             let reported = zod_error_arg(Bound::MaxLength(max_len));
             result = format!("{result}.max({max_len}, {reported})");
         }
-        if let Some(meta) = &self.model_schema_prop_meta
-            && let Some(pattern) = &meta.pattern
-        {
-            let literal_body = escape_js_regex_literal(pattern);
-            let reported = zod_error_arg(Bound::Pattern(pattern));
-            result = format!("{result}.check(z.regex(/{literal_body}/, {reported}))");
+        if let Some(meta) = &self.model_schema_prop_meta {
+            for pattern in meta.patterns() {
+                let literal_body = escape_js_regex_literal(pattern);
+                let reported = zod_error_arg(Bound::Pattern(pattern));
+                result = format!("{result}.check(z.regex(/{literal_body}/, {reported}))");
+            }
         }
         result
     }
