@@ -1,6 +1,6 @@
-//! What the README shows of the typed paths: the kind each member of `Invoice::MONGO_FIELDS` is,
-//! the document each operator writes, the filters and updates its examples build, and the paths
-//! below a member tixschema holds as one whole value.
+//! What the README shows of the typed paths: the kind each function of `Invoice::MONGO_FIELDS`
+//! answers, the document each operator writes, the filters and updates its examples build, and
+//! the paths `nest` reaches below a nested model.
 //!
 //! A table row is read off the code: a call is turned into the row's first cell by `stringify!`,
 //! and the document it writes into the second.
@@ -18,12 +18,12 @@ use super::{
 
 use invoice_schema::{Filter, Update, WriteError};
 
-/// One row of the README's table of kinds: a member of `Invoice`'s paths, held by the compiler
-/// to being of the kind the row names.
+/// One row of the README's table of kinds: a function of `Invoice`'s paths, held by the compiler
+/// to answering the kind the row names.
 macro_rules! kind {
-    ($paths:ident . $member:ident : $($kind:tt)+) => {{
-        held::<$($kind)+>(&$paths.$member);
-        [stringify!($member), stringify!($($kind)+)]
+    ($paths:ident . $member:ident () : $($kind:tt)+) => {{
+        held::<$($kind)+>(&$paths.$member());
+        [stringify!($member()), stringify!($($kind)+)]
     }};
 }
 
@@ -53,29 +53,30 @@ fn bolts() -> LineItem {
 }"#,
     "/// Unpaid invoices of one city that are past due or above an amount.
 fn to_chase(city: &str, above: f64) -> Result<Filter<Invoice>, WriteError> {
-    let paths = Invoice::MONGO_FIELDS;
+    let (paths, customer) = (Invoice::MONGO_FIELDS, Customer::MONGO_FIELDS);
+    let in_city = Address::MONGO_FIELDS.city().eq(city.to_owned())?;
     Ok(paths
-        .status
+        .status()
         .eq(InvoiceStatus::PastDue)?
-        .or(paths.total.gt(above)?)
-        .and(paths.customer.address.city.eq(city.to_owned())?)
-        .and(paths.paid_at.exists(false)))
+        .or(paths.total().gt(above)?)
+        .and(paths.customer().nest(customer.address().nest(in_city)))
+        .and(paths.paid_at().exists(false)))
 }",
     r#"/// What paying an invoice changes.
 fn paid(at: &str) -> Result<Update<Invoice>, WriteError> {
-    let paths = Invoice::MONGO_FIELDS;
+    let (paths, customer) = (Invoice::MONGO_FIELDS, Customer::MONGO_FIELDS);
     Ok(paths
-        .status
+        .status()
         .set(InvoiceStatus::Paid)?
-        .and(paths.paid_at.set(at.to_owned())?)
-        .and(paths.customer.open_invoices.set(0)?)
-        .and(paths.tags.push("settled".to_owned())?))
+        .and(paths.paid_at().set(at.to_owned())?)
+        .and(paths.customer().nest(customer.open_invoices().set(0)?))
+        .and(paths.tags().push("settled".to_owned())?))
 }"#,
     r#"/// Invoices of one cost center that are no draft. `details` is a map: its keys are data.
 fn of_cost_center(code: &str) -> Result<Filter<Invoice>, WriteError> {
     let paths = Invoice::MONGO_FIELDS;
     Ok(paths
-        .status
+        .status()
         .ne(InvoiceStatus::Draft)?
         .and(Filter::raw(doc! { "details.costCenter": code })))
 }"#,
@@ -83,17 +84,21 @@ fn of_cost_center(code: &str) -> Result<Filter<Invoice>, WriteError> {
 fn surcharged(by: f64) -> Result<Update<Invoice>, WriteError> {
     let paths = Invoice::MONGO_FIELDS;
     Ok(paths
-        .tags
+        .tags()
         .push("surcharged".to_owned())?
         .and(Update::raw(doc! { "$inc": { "total": by } })))
 }"#,
 ];
 
+/// The `const` item the README holds one path in, character for character.
+const DECLARED_CONST: &str =
+    "const TOTAL: invoice_schema::Field<Invoice, f64> = Invoice::MONGO_FIELDS.total();";
+
 /// The line the README brings the query types into scope with.
 const DECLARED_IMPORT: &str = "use invoice_schema::{Filter, Update, WriteError};";
 
-/// The two types the README declares one below the other, and the function that reaches the
-/// paths below the one tixschema has not seen, character for character.
+/// The two types the README declares one below the other, and the function that nests a filter
+/// under the one tixschema has not seen, character for character.
 const DECLARED_UNSEEN: [&str; 3] = [
     "#[model_schema(decode_with)]
 #[derive(Debug, Deserialize, Serialize)]
@@ -106,17 +111,19 @@ pub struct Shipment {
 pub struct Carrier {
     pub name: String,
 }",
-    r#"/// Shipments of one carrier. `Carrier` is declared below `Shipment`, so the paths below it are
-/// built by `Carrier`'s own function, under the keys the member's path holds.
+    r#"/// Shipments of one carrier. `Carrier` is declared below `Shipment`, so `carrier` is one whole
+/// value there, and `nest` reaches the paths below it as it does below any model.
 fn carried_by(name: &str) -> Result<shipment_schema::Filter<Shipment>, WriteError> {
     let shipment = Shipment::MONGO_FIELDS;
-    let carrier = Carrier::mongo_fields_under::<Shipment>(shipment.carrier.segments());
+    let named = Carrier::MONGO_FIELDS.name().eq(name.to_owned())?;
     Ok(shipment
-        .code
+        .code()
         .regex("^S-", "")
-        .and(carrier.name.eq(name.to_owned())?))
+        .and(shipment.carrier().nest(named)))
 }"#,
 ];
+
+const TOTAL: invoice_schema::Field<Invoice, f64> = Invoice::MONGO_FIELDS.total();
 
 #[model_schema(decode_with)]
 #[derive(Debug, Deserialize, Serialize)]
@@ -151,15 +158,15 @@ fn built() -> Result<Vec<(&'static str, String)>, WriteError> {
     ])
 }
 
-/// Shipments of one carrier. `Carrier` is declared below `Shipment`, so the paths below it are
-/// built by `Carrier`'s own function, under the keys the member's path holds.
+/// Shipments of one carrier. `Carrier` is declared below `Shipment`, so `carrier` is one whole
+/// value there, and `nest` reaches the paths below it as it does below any model.
 fn carried_by(name: &str) -> Result<shipment_schema::Filter<Shipment>, WriteError> {
     let shipment = Shipment::MONGO_FIELDS;
-    let carrier = Carrier::mongo_fields_under::<Shipment>(shipment.carrier.segments());
+    let named = Carrier::MONGO_FIELDS.name().eq(name.to_owned())?;
     Ok(shipment
-        .code
+        .code()
         .regex("^S-", "")
-        .and(carrier.name.eq(name.to_owned())?))
+        .and(shipment.carrier().nest(named)))
 }
 
 /// The cells of one row of a README table whose every cell is code.
@@ -183,20 +190,20 @@ fn moca() -> Address {
 fn of_cost_center(code: &str) -> Result<Filter<Invoice>, WriteError> {
     let paths = Invoice::MONGO_FIELDS;
     Ok(paths
-        .status
+        .status()
         .ne(InvoiceStatus::Draft)?
         .and(Filter::raw(doc! { "details.costCenter": code })))
 }
 
 /// What paying an invoice changes.
 fn paid(at: &str) -> Result<Update<Invoice>, WriteError> {
-    let paths = Invoice::MONGO_FIELDS;
+    let (paths, customer) = (Invoice::MONGO_FIELDS, Customer::MONGO_FIELDS);
     Ok(paths
-        .status
+        .status()
         .set(InvoiceStatus::Paid)?
-        .and(paths.paid_at.set(at.to_owned())?)
-        .and(paths.customer.open_invoices.set(0)?)
-        .and(paths.tags.push("settled".to_owned())?))
+        .and(paths.paid_at().set(at.to_owned())?)
+        .and(paths.customer().nest(customer.open_invoices().set(0)?))
+        .and(paths.tags().push("settled".to_owned())?))
 }
 
 /// Whether the README holds the table row `code` and then `document`: the code cells with no
@@ -226,20 +233,21 @@ fn squeezed(code: &str) -> String {
 fn surcharged(by: f64) -> Result<Update<Invoice>, WriteError> {
     let paths = Invoice::MONGO_FIELDS;
     Ok(paths
-        .tags
+        .tags()
         .push("surcharged".to_owned())?
         .and(Update::raw(doc! { "$inc": { "total": by } })))
 }
 
 /// Unpaid invoices of one city that are past due or above an amount.
 fn to_chase(city: &str, above: f64) -> Result<Filter<Invoice>, WriteError> {
-    let paths = Invoice::MONGO_FIELDS;
+    let (paths, customer) = (Invoice::MONGO_FIELDS, Customer::MONGO_FIELDS);
+    let in_city = Address::MONGO_FIELDS.city().eq(city.to_owned())?;
     Ok(paths
-        .status
+        .status()
         .eq(InvoiceStatus::PastDue)?
-        .or(paths.total.gt(above)?)
-        .and(paths.customer.address.city.eq(city.to_owned())?)
-        .and(paths.paid_at.exists(false)))
+        .or(paths.total().gt(above)?)
+        .and(paths.customer().nest(customer.address().nest(in_city)))
+        .and(paths.paid_at().exists(false)))
 }
 
 /// The rows of the README's table for a path of one value every row holds, and for one a row
@@ -247,31 +255,31 @@ fn to_chase(city: &str, above: f64) -> Result<Filter<Invoice>, WriteError> {
 fn written_by_a_value() -> Result<Vec<(&'static str, String)>, WriteError> {
     let paths = Invoice::MONGO_FIELDS;
     Ok(vec![
-        written!(paths.number.eq("INV-0042".to_owned())?),
-        written!(paths.number.ne("INV-0042".to_owned())?),
-        written!(paths.total.gt(1000.5)?),
-        written!(paths.total.gte(1000.5)?),
-        written!(paths.total.lt(1000.5)?),
-        written!(paths.total.lte(1000.5)?),
+        written!(paths.number().eq("INV-0042".to_owned())?),
+        written!(paths.number().ne("INV-0042".to_owned())?),
+        written!(paths.total().gt(1000.5)?),
+        written!(paths.total().gte(1000.5)?),
+        written!(paths.total().lt(1000.5)?),
+        written!(paths.total().lte(1000.5)?),
         written!(
             paths
-                .number
+                .number()
                 .is_in(["INV-0042".to_owned(), "INV-0043".to_owned()])?
         ),
-        written!(paths.number.not_in(["INV-0042".to_owned()])?),
-        written!(paths.number.regex("^INV-", "i")),
-        written!(paths.total.set(99.5)?),
-        written!(paths.number.set_on_insert("INV-0099".to_owned())?),
-        written!(paths.paid_at.exists(false)),
-        written!(paths.paid_at.unset()),
-        written!(paths.paid_at.lt("2026-10-01".to_owned())?),
-        written!(paths.status.eq(InvoiceStatus::PastDue)?),
+        written!(paths.number().not_in(["INV-0042".to_owned()])?),
+        written!(paths.number().regex("^INV-", "i")),
+        written!(paths.total().set(99.5)?),
+        written!(paths.number().set_on_insert("INV-0099".to_owned())?),
+        written!(paths.paid_at().exists(false)),
+        written!(paths.paid_at().unset()),
+        written!(paths.paid_at().lt("2026-10-01".to_owned())?),
+        written!(paths.status().eq(InvoiceStatus::PastDue)?),
         written!(
             paths
-                .status
+                .status()
                 .is_in([InvoiceStatus::Draft, InvoiceStatus::PastDue])?
         ),
-        written!(paths.status.set(InvoiceStatus::Paid)?),
+        written!(paths.status().set(InvoiceStatus::Paid)?),
     ])
 }
 
@@ -279,62 +287,91 @@ fn written_by_a_value() -> Result<Vec<(&'static str, String)>, WriteError> {
 fn written_by_a_list() -> Result<Vec<(&'static str, String)>, WriteError> {
     let paths = Invoice::MONGO_FIELDS;
     Ok(vec![
-        written!(paths.tags.contains("export".to_owned())?),
+        written!(paths.tags().contains("export".to_owned())?),
         written!(
             paths
-                .tags
+                .tags()
                 .contains_any(["export".to_owned(), "priority".to_owned()])?
         ),
-        written!(paths.tags.contains_none(["void".to_owned()])?),
-        written!(paths.tags.size(0)),
+        written!(paths.tags().contains_none(["void".to_owned()])?),
+        written!(paths.tags().size(0)),
         written!(
-            paths.tags.elem_match(
+            paths.tags().elem_match(
                 paths
-                    .tags
+                    .tags()
                     .element()
                     .gte("a".to_owned())?
                     .lt("n".to_owned())?
             )
         ),
-        written!(paths.tags.push("reviewed".to_owned())?),
-        written!(paths.tags.pull("draft".to_owned())?),
-        written!(paths.tags.set(["new".to_owned()])?),
-        written!(paths.tags.set_on_insert(["new".to_owned()])?),
+        written!(paths.tags().push("reviewed".to_owned())?),
+        written!(paths.tags().pull("draft".to_owned())?),
+        written!(paths.tags().set(["new".to_owned()])?),
+        written!(paths.tags().set_on_insert(["new".to_owned()])?),
     ])
 }
 
 /// The rows of the README's table for a nested model: held bare, in an `Option`, in a list, and
 /// as an enum under a tag.
 fn written_by_a_model() -> Result<Vec<(&'static str, String)>, WriteError> {
-    let paths = Invoice::MONGO_FIELDS;
-    let item = LineItem::MONGO_FIELDS;
+    let (paths, customer) = (Invoice::MONGO_FIELDS, Customer::MONGO_FIELDS);
+    let (address, item, payment) = (
+        Address::MONGO_FIELDS,
+        LineItem::MONGO_FIELDS,
+        Payment::MONGO_FIELDS,
+    );
     Ok(vec![
-        written!(paths.customer.name.eq("Acme".to_owned())?),
-        written!(paths.customer.address.city.eq("Moca".to_owned())?),
-        written!(paths.customer.address.eq(moca())?),
-        written!(paths.customer.address.ne(moca())?),
-        written!(paths.customer.address.is_in([moca()])?),
-        written!(paths.customer.address.not_in([moca()])?),
-        written!(paths.customer.address.set(moca())?),
-        written!(paths.customer.address.set_on_insert(moca())?),
-        written!(paths.billing.city.eq("Moca".to_owned())?),
-        written!(paths.billing.exists(true)),
-        written!(paths.billing.unset()),
-        written!(paths.billing.set(moca())?),
-        written!(paths.items.price.gt(100.5)?),
         written!(
             paths
-                .items
-                .elem_match(item.quantity.gte(2)?.and(item.sku.eq("B-7".to_owned())?))
+                .customer()
+                .nest(customer.name().eq("Acme".to_owned())?)
         ),
-        written!(paths.items.size(2)),
-        written!(paths.items.push(bolts())?),
-        written!(paths.items.pull(item.quantity.lt(1)?)),
-        written!(paths.items.set([bolts()])?),
-        written!(paths.payment.is_card()),
-        written!(paths.payment.is_cash()),
-        written!(paths.payment.card.last4.eq("4242".to_owned())?),
-        written!(paths.payment.set(Payment::Cash)?),
+        written!(
+            paths.customer().nest(
+                customer
+                    .address()
+                    .nest(address.city().eq("Moca".to_owned())?)
+            )
+        ),
+        written!(
+            paths
+                .customer()
+                .nest(customer.name().set("John".to_owned())?)
+        ),
+        written!(paths.customer().nest(customer.address().eq(moca())?)),
+        written!(paths.customer().nest(customer.address().ne(moca())?)),
+        written!(paths.customer().nest(customer.address().is_in([moca()])?)),
+        written!(paths.customer().nest(customer.address().not_in([moca()])?)),
+        written!(paths.customer().nest(customer.address().set(moca())?)),
+        written!(
+            paths
+                .customer()
+                .nest(customer.address().set_on_insert(moca())?)
+        ),
+        written!(paths.billing().nest(address.city().eq("Moca".to_owned())?)),
+        written!(paths.billing().exists(true)),
+        written!(paths.billing().unset()),
+        written!(paths.billing().set(moca())?),
+        written!(paths.items().nest(item.price().gt(100.5)?)),
+        written!(
+            paths.items().elem_match(
+                item.quantity()
+                    .gte(2)?
+                    .and(item.sku().eq("B-7".to_owned())?)
+            )
+        ),
+        written!(paths.items().size(2)),
+        written!(paths.items().push(bolts())?),
+        written!(paths.items().pull(item.quantity().lt(1)?)),
+        written!(paths.items().set([bolts()])?),
+        written!(paths.payment().nest(payment.is_card())),
+        written!(paths.payment().nest(payment.is_cash())),
+        written!(
+            paths
+                .payment()
+                .nest(payment.card().last4().eq("4242".to_owned())?)
+        ),
+        written!(paths.payment().set(Payment::Cash)?),
     ])
 }
 
@@ -343,13 +380,13 @@ fn written_by_a_model() -> Result<Vec<(&'static str, String)>, WriteError> {
 fn written_by_joining() -> Result<Vec<(&'static str, String)>, WriteError> {
     let paths = Invoice::MONGO_FIELDS;
     Ok(vec![
-        written!(paths.total.gt(1000.5)?.and(paths.paid_at.exists(false))),
-        written!(paths.total.gt(1000.5)?.or(paths.paid_at.exists(false))),
-        written!(paths.paid_at.exists(true).negated()),
+        written!(paths.total().gt(1000.5)?.and(paths.paid_at().exists(false))),
+        written!(paths.total().gt(1000.5)?.or(paths.paid_at().exists(false))),
+        written!(paths.paid_at().exists(true).negated()),
         written!(Filter::<Invoice>::raw(
             doc! { "details.costCenter": "CC-7" }
         )),
-        written!(paths.total.set(99.5)?.and(paths.paid_at.unset())),
+        written!(paths.total().set(99.5)?.and(paths.paid_at().unset())),
         written!(Update::<Invoice>::raw(doc! { "$inc": { "total": 12.5 } })),
     ])
 }
@@ -394,16 +431,16 @@ fn the_readme_names_the_kind_each_path_of_an_invoice_is() {
 
     let paths = Invoice::MONGO_FIELDS;
     let rows = [
-        kind!(paths.id: Field<Invoice, ObjectId>),
-        kind!(paths.billing: OptionalModel<Invoice, Address, _>),
-        kind!(paths.customer: Model<Invoice, Customer, _>),
-        kind!(paths.items: ModelList<Invoice, LineItem, _>),
-        kind!(paths.number: Field<Invoice, String>),
-        kind!(paths.paid_at: OptionalField<Invoice, String>),
-        kind!(paths.payment: Model<Invoice, Payment, _>),
-        kind!(paths.status: Model<Invoice, InvoiceStatus, _>),
-        kind!(paths.tags: ListField<Invoice, String>),
-        kind!(paths.total: Field<Invoice, f64>),
+        kind!(paths.id(): Field<Invoice, ObjectId>),
+        kind!(paths.billing(): OptionalModel<Invoice, Address>),
+        kind!(paths.customer(): Model<Invoice, Customer>),
+        kind!(paths.items(): ModelList<Invoice, LineItem>),
+        kind!(paths.number(): Field<Invoice, String>),
+        kind!(paths.paid_at(): OptionalField<Invoice, String>),
+        kind!(paths.payment(): Model<Invoice, Payment>),
+        kind!(paths.status(): Field<Invoice, InvoiceStatus>),
+        kind!(paths.tags(): ListField<Invoice, String>),
+        kind!(paths.total(): Field<Invoice, f64>),
     ];
     let missing: Vec<String> = rows
         .into_iter()
@@ -417,5 +454,7 @@ fn the_readme_names_the_kind_each_path_of_an_invoice_is() {
     );
     assert_documented("| `details` | none: a map's keys are data |");
     // Declared below the type that holds it, so held whole: the README names this kind in prose.
-    held::<shipment_schema::Field<Shipment, Carrier>>(&Shipment::MONGO_FIELDS.carrier);
+    held::<shipment_schema::Field<Shipment, Carrier>>(&Shipment::MONGO_FIELDS.carrier());
+    held::<Field<Invoice, f64>>(&TOTAL);
+    assert_declared_and_documented(include_str!("paths.rs"), DECLARED_CONST);
 }

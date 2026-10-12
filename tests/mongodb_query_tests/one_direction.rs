@@ -84,10 +84,10 @@ fn a_field_is_under_the_serialize_side_of_its_rename() {
     );
     assert_eq!(
         [
-            looked_up(&row, paths.both_ways.eq(0_u32).unwrap()),
-            looked_up(&row, paths.cased_by_rule.eq(0_u32).unwrap()),
-            looked_up(&row, paths.read_way.eq(0_u32).unwrap()),
-            looked_up(&row, paths.write_way.eq(0_u32).unwrap()),
+            looked_up(&row, paths.both_ways().eq(0_u32).unwrap()),
+            looked_up(&row, paths.cased_by_rule().eq(0_u32).unwrap()),
+            looked_up(&row, paths.read_way().eq(0_u32).unwrap()),
+            looked_up(&row, paths.write_way().eq(0_u32).unwrap()),
         ],
         pairs([
             ("written", "Int64(1)"),
@@ -108,7 +108,7 @@ fn a_tag_asks_for_the_name_a_variant_is_written_under() {
     assert_eq!(
         [
             looked_up(&air, haulage.is_air()),
-            looked_up(&air, haulage.air.flight_code.eq(String::new()).unwrap()),
+            looked_up(&air, haulage.air().flight_code().eq(String::new()).unwrap()),
         ],
         pairs([("mode", r#""byAir""#), ("flightCode", r#""IB6500""#)])
     );
@@ -124,7 +124,7 @@ fn a_tag_asks_for_the_name_a_variant_is_written_under() {
             looked_up(&land, haulage.is_over_land()),
             looked_up(
                 &land,
-                haulage.over_land.road_name.eq(String::new()).unwrap()
+                haulage.over_land().road_name().eq(String::new()).unwrap()
             ),
         ],
         pairs([("mode", r#""over-land""#), ("roadName", r#""DR-1""#)])
@@ -135,7 +135,7 @@ fn a_tag_asks_for_the_name_a_variant_is_written_under() {
     assert_eq!(
         [
             looked_up(&sea, haulage.is_sea()),
-            looked_up(&sea, haulage.sea.ship_name.eq(String::new()).unwrap()),
+            looked_up(&sea, haulage.sea().ship_name().eq(String::new()).unwrap()),
         ],
         pairs([("mode", r#""sea""#), ("SHIP_NAME", r#""Caribe""#)])
     );
@@ -143,7 +143,7 @@ fn a_tag_asks_for_the_name_a_variant_is_written_under() {
 
 #[test]
 fn a_variant_is_under_the_key_it_is_written_as() {
-    let relay = &Dispatch::MONGO_FIELDS.relay;
+    let (dispatch, relay) = (Dispatch::MONGO_FIELDS, Relay::MONGO_FIELDS);
     let courier = stored(&Dispatch {
         relay: Relay::Courier {
             badge_number: 7_u32,
@@ -151,8 +151,13 @@ fn a_variant_is_under_the_key_it_is_written_as() {
     });
     assert_eq!(
         [
-            looked_up(&courier, relay.is_courier()),
-            looked_up(&courier, relay.courier.badge_number.eq(0_u32).unwrap()),
+            looked_up(&courier, dispatch.relay().nest(relay.is_courier())),
+            looked_up(
+                &courier,
+                dispatch
+                    .relay()
+                    .nest(relay.courier().badge_number().eq(0_u32).unwrap())
+            ),
         ],
         pairs([
             ("relay.byHand", r#"{ "badge_number": Int64(7) }"#),
@@ -164,8 +169,11 @@ fn a_variant_is_under_the_key_it_is_written_as() {
     });
     assert_eq!(
         [
-            looked_up(&drop_box, relay.is_drop_box()),
-            looked_up(&drop_box, relay.drop_box.eq(0_u32).unwrap()),
+            looked_up(&drop_box, dispatch.relay().nest(relay.is_drop_box())),
+            looked_up(
+                &drop_box,
+                dispatch.relay().nest(relay.drop_box().eq(0_u32).unwrap())
+            ),
         ],
         pairs([
             ("relay.drop-box", "Int64(12)"),
@@ -176,11 +184,11 @@ fn a_variant_is_under_the_key_it_is_written_as() {
         relay: Relay::NotSent,
     });
     assert_eq!(
-        shown(relay.is_not_sent()),
+        shown(dispatch.relay().nest(relay.is_not_sent())),
         r#"{ "relay": { "$eq": "not-sent" } }"#
     );
     assert_eq!(
-        looked_up(&not_sent, relay.is_not_sent()),
+        looked_up(&not_sent, dispatch.relay().nest(relay.is_not_sent())),
         pairs([("relay", r#""not-sent""#)])[0]
     );
 }

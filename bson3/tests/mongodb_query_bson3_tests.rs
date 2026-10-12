@@ -40,6 +40,11 @@ mod optional_date_hook {
 #[path = "../../tests/mongodb_query_tests/tests.rs"]
 mod tests;
 
+// Outside `cfg(test)`, where clippy's `large_stack_frames` reports what a type generates.
+#[cfg(all(feature = "chrono", feature = "mongodb"))]
+#[path = "../../tests/mongodb_query_tests/wide.rs"]
+mod wide;
+
 // Version 3's hook that stores a chrono date as a BSON date, under the name the shared sources
 // write as a field's `with`.
 #[cfg(test)]

@@ -8,6 +8,11 @@ extern crate bson2 as bson;
 #[path = "mongodb_query_tests/tests.rs"]
 mod tests;
 
+// Outside `cfg(test)`, where clippy's `large_stack_frames` reports what a type generates.
+#[cfg(all(feature = "chrono", feature = "mongodb"))]
+#[path = "mongodb_query_tests/wide.rs"]
+mod wide;
+
 // Version 2's hooks that store a chrono date as a BSON date, over a date and over an `Option` of
 // one, under the names the shared sources write as a field's `with`.
 #[cfg(test)]

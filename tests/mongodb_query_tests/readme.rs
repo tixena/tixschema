@@ -17,7 +17,10 @@ const DECLARED_CLOSING: &str =
     "/// Windows that close before an instant, and windows that open before it.
 fn closing_before(instant: DateTime<Utc>) -> Result<[Filter<Window>; 2], WriteError> {
     let paths = Window::MONGO_FIELDS;
-    Ok([paths.closes_at.lt(instant)?, paths.opens_at.lt(instant)?])
+    Ok([
+        paths.closes_at().lt(instant)?,
+        paths.opens_at().lt(instant)?,
+    ])
 }";
 
 /// The lines the README binds each major version's hook under one name with: version 2's, and
@@ -58,7 +61,10 @@ pub struct Window {
 /// Windows that close before an instant, and windows that open before it.
 fn closing_before(instant: DateTime<Utc>) -> Result<[Filter<Window>; 2], WriteError> {
     let paths = Window::MONGO_FIELDS;
-    Ok([paths.closes_at.lt(instant)?, paths.opens_at.lt(instant)?])
+    Ok([
+        paths.closes_at().lt(instant)?,
+        paths.opens_at().lt(instant)?,
+    ])
 }
 
 fn readme() -> &'static str {

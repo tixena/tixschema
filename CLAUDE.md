@@ -116,7 +116,7 @@ just ci
    - `zod.rs`: Generates Zod v4 schema strings (`z.string()`, `z.union()`, etc.), embeds examples in `.meta()`
    - `jsonschema.rs`: Generates JSON schema objects
    - `object_id.rs`: MongoDB ObjectId type detection and schema generation
-   - `recovering_decode.rs`: Generates what `#[model_schema(decode_with)]` adds to a type: `from_value_with` and `from_value_piped`, `from_bson_with` and `from_bson_piped` under `bson`, the walker of each, and the callback's and the resolvers' types in `{type}_schema`. `recovering_decode/enums.rs` holds the walkers of an enum. Under `mongodb` three more files emit into the same module and onto the same type: `recovering_decode/query.rs` the query types (`Filter`, `Update`, the path kinds), `recovering_decode/fields.rs` the type's own typed paths (`MongoFields`, `MONGO_FIELDS`, `mongo_fields_under`), and `recovering_decode/operations.rs` the operations (`find_one`, `find`, `count`, `insert_one`, the updates and the deletes, with `Read` and `OperationError`)
+   - `recovering_decode.rs`: Generates what `#[model_schema(decode_with)]` adds to a type: `from_value_with` and `from_value_piped`, `from_bson_with` and `from_bson_piped` under `bson`, the walker of each, and the callback's and the resolvers' types in `{type}_schema`. `recovering_decode/enums.rs` holds the walkers of an enum. Under `mongodb` three more files emit into the same module and onto the same type: `recovering_decode/query.rs` the query types (`Filter`, `Update`, the path kinds, `nest`), `recovering_decode/fields.rs` the type's own typed paths (`MongoFields`, `MONGO_FIELDS`, one function per field), and `recovering_decode/operations.rs` the operations (`find_one`, `find`, `count`, `insert_one`, the updates and the deletes, with `Read` and `OperationError`)
    - `model_schema_prop.rs`: Parses field-level customization attributes (`pattern`, `minLength`, `maxLength`, `minimum`, `maximum`, `literal`, `as`, `preprocess`)
 
 5. **Code Generation** ([generation/](src/generation/))
@@ -184,7 +184,7 @@ The crate uses optional features for minimal dependencies:
 - `serde`: Enables Serde attribute parsing and field renaming
 - `zod`: Enables Zod schema generation (v4 syntax)
 - `jsonschema`: Enables `json_schema()` method generation
-- `mongodb`: Enables MongoDB ObjectId type support; turns on `bson`. On a type that opts in with `decode_with` it also generates the typed field paths (`MONGO_FIELDS`, `mongo_fields_under`), the filters and updates they build, and the operations over a `mongodb::Collection<bson::Document>` of the type's rows. A consuming crate that declares such a type lists the `mongodb` driver, built for the major version of `bson` it lists
+- `mongodb`: Enables MongoDB ObjectId type support; turns on `bson`. On a type that opts in with `decode_with` it also generates the typed field paths (`MONGO_FIELDS`, one function per field, `nest` below a nested type), the filters and updates they build, and the operations over a `mongodb::Collection<bson::Document>` of the type's rows. A consuming crate that declares such a type lists the `mongodb` driver, built for the major version of `bson` it lists
 - `bson`: BSON support, turned on by `mongodb`; turns on `serde`. Generates `from_bson_with` and `from_bson_piped` on types that opt in with `decode_with`
 - `typescript`: Enables TypeScript type generation
 - `chrono`: Enables chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`)
@@ -925,12 +925,13 @@ sections are the consumer's view; this is what a change to the emitter has to ke
 - **Every name the flag adds is its own.** Each walker method carries the flag's name
   (`decode_with_value_issues`, `decode_with_bson_fields`, `decode_with_value_named`), and a
   method's own type parameters take a name the item does not write (`unclaimed_parameter`): `F`
-  and `I`, and under `mongodb` `Root` and `U`, numbered where the item writes one. An entry point
-  and an operation are the name they are called by (`from_bson_piped`, `find_one`), and the typed
-  paths carry the feature's (`MONGO_FIELDS`, `mongo_fields_under`, `mongo_write_{field}`,
-  `mongo_read_row`). `every_added_method_but_the_entry_point_carries_the_flags_name` pins the
-  whole list in order: a function of the author's own under one of those names is a duplicate
-  definition (E0592).
+  and `I`, and under `mongodb` `U`, numbered where the item writes one. The parameters a struct
+  of paths declares beside the type's own are named the same way: `Root`, and `Whole` and `Value`
+  on a type serde writes as one value. An entry point and an operation are the name they are
+  called by (`from_bson_piped`, `find_one`), and the typed paths carry the feature's
+  (`MONGO_FIELDS`, `mongo_write_{field}`, `mongo_read_row`).
+  `every_added_method_but_the_entry_point_carries_the_flags_name` pins the whole list in order: a
+  function of the author's own under one of those names is a duplicate definition (E0592).
 - **Both entry points of a source share its two reads.** `entry_methods` and `bson_entry_methods`
   build the first read and the second read once, as token fragments, and splice them into the
   callback entry point and into the piped one, so neither read can change for one and not the
@@ -940,40 +941,63 @@ sections are the consumer's view; this is what a change to the emitter has to ke
   flagged type of a consumer that denies it.
 - **What `mongodb` adds is emitted under `#[cfg(feature = "mongodb")]`, and nothing of it in any
   other build.** `query.rs` writes the query types into the module (`query_items`, spliced by
-  `module_items`). `fields.rs` writes `MongoFields` into the module, and onto the type
-  `MONGO_FIELDS`, `mongo_fields_under` and one `mongo_write_{field}` per hooked field
+  `module_items`). `fields.rs` writes `MongoFields` into the module with one function per field,
+  and onto the type `MONGO_FIELDS` and one `mongo_write_{field}` per hooked field
   (`struct_paths`, `enum_paths`). `operations.rs` writes `OperationError` and `Read` into the
   module (`error_items`, `read_items`) and the operations onto the type, beside the BSON entry
   points and under their bounds (`methods`, called from `bson_entry_methods`). Each is reached
   through a `cfg`'d pair in `recovering_decode.rs`, whose other half answers nothing, so a type
   without the flag expands as before and a flagged type in a build without `mongodb` gains no
   operation and no path.
-- **Two flagged types share no declaration; what one expansion writes about another is fixed.**
-  A field typed with a flagged model holds that model's own struct of paths, named
-  `super::{type}_schema::MongoFields<Root, ..>` and built by
-  `<Model>::mongo_fields_under::<Root>(prefix)`, `prefix` being the keys so far as
-  `[Option<&'static str>; 8]`. The name `MongoFields`, the function's name and signature and the
-  array of eight keys are the whole of what crosses from one type's expansion to another's: a
-  change to any of them changes every flagged type at once. A type serde writes as one value
-  (`written_as_one_value`, recorded as `Declared::OneValue`) is one path, `MongoFields<Root, ..,
-  Whole>`, whose path type the type's own `impl` and every holder write, so its module names no
-  type of its author's and builds inside a function body.
-- **A member is typed only where its walker is called.** `Own::seen_model` reaches a struct or an
-  enum `#[model_schema]` was written on above (`declared`), never the type itself, one declared
-  below, an alias or another crate's type: each of those is one whole value, and so is a field
-  under a hook or one serde never reads back, where no walker is called either. A hooked field's
-  path writes through `mongo_write_{field}`, which calls the hook as the attribute writes it.
+- **A type's paths hold its own keys, and nothing of another type's.** `MongoFields` holds a
+  marker and no path. Each named member is a `const fn` of it (`of_functions`) that answers one
+  path kind at a key written as a literal, relative to the type: `"total"`, and `"list.0"` where
+  the type's own shape puts two keys. A `MongoPath` is that one key. So the size of what is
+  generated for a type does not follow what the type holds, and no function builds a tree:
+  `tests/mongodb_query_tests/wide.rs` holds four levels of six fields each to clippy's
+  `large_stack_frames`. Each binary declares that module outside `cfg(test)`, where the lint
+  reports; inside it clippy reports nothing for the same types. A tuple of slots stays a tuple of
+  paths, a position being a member access.
+- **`nest` is the one way below a nested type, and two standard traits are what crosses.** A
+  path kind carries the model `nest` reaches as its last parameter, `N`: the field's type read
+  through `Option`, the list and the wrappers `through_wrappers` reads, which `reached_through`
+  writes only where it is not the value an operator takes. `nest` takes a filter over the rows
+  of `N` or an update of them by the bound `Nests<Root, N, Kind>`, which each module implements
+  twice over the two markers a filter and an update carry (`AsFilter`, `AsUpdate`), and writes
+  each key under the path's own (`nested_filter`, `nested_update`, `nested_key`). No expansion
+  names another type's module: a flattened model and a variant that holds one at the enum's own
+  level are a `Nested<Root, N>` at the key they are written under.
+- **A function that calls a hook is written beside the type.** A hooked path writes through
+  `mongo_write_{field}`, a function of the type's own that calls the hook as the attribute
+  writes it. The schema module cannot name a type declared inside a function, so `of_functions`
+  puts every function whose path calls one (`Built::calls_a_hook`) in an `impl` of the struct of
+  paths beside the type (`TypedPaths::beside`), and the rest in the module.
+- **A type serde writes as one value is one path.** `written_as_one_value`, recorded as
+  `Declared::OneValue`: its `MongoFields<Root, .., Whole>` holds the path at the empty key and
+  dereferences to it, the path type being a parameter the type's own `impl` writes, so its module
+  names no type of its author's and builds inside a function body. Held by another type it is a
+  plain kind over the value, a `Field` or an `OptionalField`.
+- **A member is a model only where its walker is called.** `Own::seen_model` reaches a struct or
+  an enum `#[model_schema]` was written on above (`declared`), never the type itself, one
+  declared below, an alias or another crate's type: each of those is one whole value, and so is a
+  field under a hook or one serde never reads back, where no walker is called either. `nest`
+  reaches below a whole value as it does below a model.
+- **An `is_{variant}` keeps its name.** `enum_paths` claims the names of the asks first, and the
+  function of a variant that meets one is numbered by `unclaimed`. A struct of paths carries no
+  inherent function but the members' own and the asks, so a field named `built`, `plain`, `key`
+  or `nest` builds. `MongoFields::built` is on the struct of a one-value type, and of a tuple
+  that keeps a marker beside its slots (`Own::keeping`), neither of which has a field function.
 - **A path is under the name serde writes.** `parse_written_renames` reads `rename`, `rename_all`
   and `rename_all_fields` for their `serialize` side in every build, where the schema surfaces
   refuse a list whose two sides differ.
 - **Two standard traits join filters and updates across modules.** A `Filter<Root>` is
   `Into<bson::Document>` and `AsRef<PhantomData<Root>>`, and an `Update<Root>` is
   `Into<bson::Document>` and `AsRef<PhantomData<fn(Root) -> Root>>`. `Filter::and`, `Filter::or`,
-  `Update::and`, `ModelList::elem_match`, `ModelList::pull` and every operation take a filter or
-  an update by those bounds, never as the module's own type: that is what lets a filter built from
-  a nested model's path, a `customer_schema::Filter<Invoice>`, join and be taken, and what refuses
-  an update where a filter is asked. `a_filter_and_an_update_each_carry_a_marker_of_their_own`
-  pins each bound.
+  `Update::and`, `ModelList::elem_match`, `ModelList::pull`, `nest` and every operation take a
+  filter or an update by those bounds, never as the module's own type: that is what lets a filter
+  of another module over the same rows join and be taken, a filter over a nested model be
+  nested, and what refuses an update where a filter is asked.
+  `a_filter_and_an_update_each_carry_a_marker_of_their_own` pins each bound.
 - **The operations hand the driver documents, and read each row themselves.** The collection is
   `mongodb::Collection<bson::Document>`: a row is read through `from_bson_piped`
   (`mongo_read_row`) and written through `bson::Serializer::new` (`mongo_written_row`), never by
@@ -1395,7 +1419,7 @@ tixschema/
 │   │   │   ├── enums.rs          # The walkers of an enum
 │   │   │   ├── aliases.rs        # A field typed with an alias, walked as the type it names
 │   │   │   ├── query.rs          # mongodb: Filter, Update and the path kinds
-│   │   │   ├── fields.rs         # mongodb: MongoFields, MONGO_FIELDS, mongo_fields_under
+│   │   │   ├── fields.rs         # mongodb: MongoFields, MONGO_FIELDS, one function per field
 │   │   │   └── operations.rs     # mongodb: OperationError, Read and the operations
 │   │   └── model_schema_prop.rs  # Field attribute parsing
 │   └── generation/

@@ -64,8 +64,8 @@ fn a_list_form_whose_directions_agree_names_the_key_serde_stores() {
     });
     assert_eq!(
         [
-            looked_up(&row, parcel.reference.eq(String::new()).unwrap()),
-            looked_up(&row, parcel.weight_grams.eq(0_u32).unwrap()),
+            looked_up(&row, parcel.reference().eq(String::new()).unwrap()),
+            looked_up(&row, parcel.weight_grams().eq(0_u32).unwrap()),
         ],
         pairs([("ref", r#""P-1""#), ("weightGrams", "Int64(450)")])
     );
@@ -80,7 +80,10 @@ fn a_variant_and_its_fields_are_under_the_names_their_list_forms_write() {
     assert_eq!(
         [
             looked_up(&air, carriage.is_air()),
-            looked_up(&air, carriage.air.flight_code.eq(String::new()).unwrap()),
+            looked_up(
+                &air,
+                carriage.air().flight_code().eq(String::new()).unwrap()
+            ),
         ],
         pairs([("mode", r#""byAir""#), ("flightCode", r#""IB6500""#)])
     );
@@ -92,7 +95,7 @@ fn a_variant_and_its_fields_are_under_the_names_their_list_forms_write() {
             looked_up(&land, carriage.is_over_land()),
             looked_up(
                 &land,
-                carriage.over_land.road_name.eq(String::new()).unwrap()
+                carriage.over_land().road_name().eq(String::new()).unwrap()
             ),
         ],
         pairs([("mode", r#""over-land""#), ("roadName", r#""DR-1""#)])
@@ -103,7 +106,7 @@ fn a_variant_and_its_fields_are_under_the_names_their_list_forms_write() {
     assert_eq!(
         [
             looked_up(&sea, carriage.is_sea()),
-            looked_up(&sea, carriage.sea.ship_name.eq(String::new()).unwrap()),
+            looked_up(&sea, carriage.sea().ship_name().eq(String::new()).unwrap()),
         ],
         pairs([("mode", r#""sea""#), ("SHIP_NAME", r#""Caribe""#)])
     );

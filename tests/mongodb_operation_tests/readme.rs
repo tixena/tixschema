@@ -29,7 +29,7 @@ use tixschema::model_schema;
 const QUOTED_ERRORS: [(&str, &str); 12] = [
     (
         QUERY_EMITTER,
-        "error[E0599]: no method named `unset` found for struct `invoice_schema::Field<Root, V>` in the current scope",
+        "error[E0599]: no method named `unset` found for struct `invoice_schema::Field<Root, V, N>` in the current scope",
     ),
     (
         QUERY_EMITTER,
@@ -37,23 +37,23 @@ const QUOTED_ERRORS: [(&str, &str); 12] = [
     ),
     (
         QUERY_EMITTER,
+        "error[E0277]: the trait bound `order_schema::Filter<Order>: invoice_schema::Nests<Invoice, Customer, _>` is not satisfied",
+    ),
+    (
+        QUERY_EMITTER,
         "error[E0277]: the trait bound `bson::Document: AsRef<PhantomData<Invoice>>` is not satisfied",
     ),
     (
         QUERY_EMITTER,
-        "error[E0277]: the trait bound `Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied",
+        "error[E0277]: the trait bound `invoice_schema::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied",
     ),
     (
         QUERY_EMITTER,
         "error[E0277]: the trait bound `invoice_schema::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied",
     ),
     (
-        QUERY_EMITTER,
-        "error[E0080]: evaluation panicked: a typed MongoDB path holds at most 8 keys",
-    ),
-    (
         PATHS_EMITTER,
-        "error[E0015]: cannot perform non-const deref coercion on `invoice_schema::Model<Invoice, Customer, customer_schema::MongoFields<Invoice>>` in constants",
+        "error[E0599]: no method named `amount` found for struct `invoice_schema::MongoFields<Root>` in the current scope",
     ),
     (
         PATHS_EMITTER,
@@ -185,8 +185,8 @@ pub enum Payment {
     Cash,
 }
 
-// Below every model it holds: a field typed with a model declared above reaches that model's own
-// paths, and one typed with a model declared below is one whole value.
+// Below every model it holds: a field typed with a model declared above is a `Model`, and one
+// typed with a model declared below is one whole value.
 #[model_schema(decode_with)]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]

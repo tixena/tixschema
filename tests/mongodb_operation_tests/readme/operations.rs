@@ -80,8 +80,8 @@ async fn every_operation(
     invoice: &Invoice,
 ) -> Result<(), OperationError> {
     let paths = Invoice::MONGO_FIELDS;
-    let drafts = || paths.status.eq(InvoiceStatus::Draft);
-    let voided = || paths.total.set(0.0_f64);
+    let drafts = || paths.status().eq(InvoiceStatus::Draft);
+    let voided = || paths.total().set(0.0_f64);
     let resolvers: [Resolver<'_, Document, Bson>; 1] = [&whole_number_as_text];
 
     let _stored: InsertOneResult = invoice.insert_one(invoices).await?;
@@ -105,11 +105,11 @@ async fn largest_unpaid(
 ) -> Result<(Vec<Invoice>, u64), OperationError> {
     let paths = Invoice::MONGO_FIELDS;
     let unpaid = || {
-        paths
-            .customer
-            .name
+        Customer::MONGO_FIELDS
+            .name()
             .eq(customer.to_owned())
-            .map(|named| named.and(paths.paid_at.exists(false)))
+            .map(|named| paths.customer().nest(named))
+            .map(|of_customer| of_customer.and(paths.paid_at().exists(false)))
     };
     let largest = Invoice::find_with(invoices, unpaid()?, &[&whole_number_as_text])
         .sort(doc! { "total": -1_i32 })
@@ -165,7 +165,7 @@ async fn customer_named(
     customers: &Collection<Document>,
     name: &str,
 ) -> Result<Option<Customer>, customer_schema::OperationError> {
-    let named = Customer::MONGO_FIELDS.name.eq(name.to_owned())?;
+    let named = Customer::MONGO_FIELDS.name().eq(name.to_owned())?;
     Customer::find_one_with(customers, named, &[&id_dropped]).await
 }",
 ];
@@ -311,7 +311,7 @@ async fn customer_named(
     customers: &Collection<Document>,
     name: &str,
 ) -> Result<Option<Customer>, customer_schema::OperationError> {
-    let named = Customer::MONGO_FIELDS.name.eq(name.to_owned())?;
+    let named = Customer::MONGO_FIELDS.name().eq(name.to_owned())?;
     Customer::find_one_with(customers, named, &[&id_dropped]).await
 }
 
@@ -321,8 +321,8 @@ async fn every_operation(
     invoice: &Invoice,
 ) -> Result<(), OperationError> {
     let paths = Invoice::MONGO_FIELDS;
-    let drafts = || paths.status.eq(InvoiceStatus::Draft);
-    let voided = || paths.total.set(0.0_f64);
+    let drafts = || paths.status().eq(InvoiceStatus::Draft);
+    let voided = || paths.total().set(0.0_f64);
     let resolvers: [Resolver<'_, Document, Bson>; 1] = [&whole_number_as_text];
 
     let _stored: InsertOneResult = invoice.insert_one(invoices).await?;
@@ -368,11 +368,11 @@ async fn largest_unpaid(
 ) -> Result<(Vec<Invoice>, u64), OperationError> {
     let paths = Invoice::MONGO_FIELDS;
     let unpaid = || {
-        paths
-            .customer
-            .name
+        Customer::MONGO_FIELDS
+            .name()
             .eq(customer.to_owned())
-            .map(|named| named.and(paths.paid_at.exists(false)))
+            .map(|named| paths.customer().nest(named))
+            .map(|of_customer| of_customer.and(paths.paid_at().exists(false)))
     };
     let largest = Invoice::find_with(invoices, unpaid()?, &[&whole_number_as_text])
         .sort(doc! { "total": -1_i32 })
@@ -642,7 +642,7 @@ async fn live_the_readme_examples_run_against_a_collection() {
         open_invoices: 3,
     };
     acme.insert_one(&customers).await.unwrap();
-    let named = || Customer::MONGO_FIELDS.name.eq("Acme".to_owned()).unwrap();
+    let named = || Customer::MONGO_FIELDS.name().eq("Acme".to_owned()).unwrap();
     let refused = Customer::find_one(&customers, named()).await.unwrap_err();
     say(&format!(
         "a row whose `_id` its type does not declare: {refused}"

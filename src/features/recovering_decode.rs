@@ -52,10 +52,14 @@ const ADDED_TYPE_COUNT: usize = 15;
     any(feature = "typescript", feature = "zod", feature = "jsonschema"),
     feature = "mongodb"
 ))]
-const ADDED_TYPE_COUNT: usize = 29;
+const ADDED_TYPE_COUNT: usize = 33;
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
+    #[cfg(feature = "mongodb")]
+    "AsFilter",
+    #[cfg(feature = "mongodb")]
+    "AsUpdate",
     "Asked",
     #[cfg(feature = "mongodb")]
     "Element",
@@ -78,6 +82,10 @@ const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
     "MongoFields",
     #[cfg(feature = "mongodb")]
     "MongoPath",
+    #[cfg(feature = "mongodb")]
+    "Nested",
+    #[cfg(feature = "mongodb")]
+    "Nests",
     #[cfg(feature = "mongodb")]
     "OperationError",
     #[cfg(feature = "mongodb")]
@@ -359,7 +367,7 @@ pub struct RecoveringDecode {
     /// in a build where none writes one.
     pub schema_module: TokenStream,
     /// The `impl` holding the entry points and the walkers, or one per source on a type with a
-    /// type parameter.
+    /// type parameter, and whatever else is written beside the type.
     pub type_impl: TokenStream,
 }
 
@@ -717,9 +725,11 @@ enum Step<'ty> {
     Present(Box<Walk<'ty>>),
 }
 
-/// What `mongodb` adds for a type's typed paths. Empty in a build without it.
+/// What `mongodb` adds for a type's typed paths: beside the type, in its schema module, and in
+/// its own `impl`. Empty in a build without it.
 #[derive(Default)]
 struct TypedPaths {
+    beside: TokenStream,
     module_items: TokenStream,
     type_items: TokenStream,
 }
@@ -2088,6 +2098,7 @@ where
         items.extend(read_whole_items());
     }
     items.extend(written.reach.module_items());
+    type_impl.extend(paths.beside.clone());
     type_impl.extend(written.reach.guards());
     RecoveringDecode {
         schema_module: placed_in_schema_module(&module, &items),
@@ -2213,15 +2224,13 @@ fn binding(stem: &str, depth: usize) -> Ident {
     Ident::new(&name, Span::call_site())
 }
 
-/// `generics` with `bounds` joined to every type parameter and to the type itself, which carries
-/// whatever more serde's derive asks of one. A parameter stays bounded in one place: its `where`
-/// predicate if it has one, else its name.
-fn bounded_by(generics: &Generics, bounds: &Punctuated<TypeParamBound, Token![+]>) -> Generics {
-    let mut bounded = generics.clone();
-    bounded
-        .make_where_clause()
-        .predicates
-        .push(parse_quote!(Self: #bounds));
+/// `bounds` joined to every type parameter of `bounded` but `skipped`. A parameter stays bounded
+/// in one place: its `where` predicate if it has one, else its name.
+fn bound_parameters(
+    bounded: &mut Generics,
+    bounds: &Punctuated<TypeParamBound, Token![+]>,
+    skipped: Option<&Ident>,
+) {
     let mut predicates: Vec<&mut PredicateType> = bounded
         .where_clause
         .iter_mut()
@@ -2238,6 +2247,9 @@ fn bounded_by(generics: &Generics, bounds: &Punctuated<TypeParamBound, Token![+]
         let GenericParam::Type(declared) = parameter else {
             continue;
         };
+        if skipped.is_some_and(|left_out| *left_out == declared.ident) {
+            continue;
+        }
         let bounding = predicates.iter_mut().find(|bounding| {
             matches!(&bounding.bounded_ty, Type::Path(named) if named.path.is_ident(&declared.ident))
         });
@@ -2248,6 +2260,17 @@ fn bounded_by(generics: &Generics, bounds: &Punctuated<TypeParamBound, Token![+]
             declared.bounds.extend(bounds.clone());
         }
     }
+}
+
+/// `generics` with `bounds` joined to every type parameter and to the type itself, which carries
+/// whatever more serde's derive asks of one.
+fn bounded_by(generics: &Generics, bounds: &Punctuated<TypeParamBound, Token![+]>) -> Generics {
+    let mut bounded = generics.clone();
+    bounded
+        .make_where_clause()
+        .predicates
+        .push(parse_quote!(Self: #bounds));
+    bound_parameters(&mut bounded, bounds, None);
     bounded
 }
 

@@ -1,6 +1,6 @@
 //! A field typed with a type tixschema has not seen as a flagged model where the field's type is
 //! expanded: one declared below, a plain alias, the type itself, and one of two types that hold
-//! each other. Each is one whole value, and the type's own function gives the paths below it.
+//! each other. Each is one whole value, and `nest` reaches the paths below it.
 
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -65,27 +65,31 @@ fn tag(name: &str) -> Tag {
 fn a_model_declared_below_and_one_behind_a_plain_alias_are_one_whole_value() {
     let post = Post::MONGO_FIELDS;
     assert_eq!(
-        shown(post.tag.eq(tag("news")).unwrap()),
+        shown(post.tag().eq(tag("news")).unwrap()),
         r#"{ "tag": { "$eq": { "name": "news" } } }"#
     );
     assert_eq!(
-        shown(post.label.set(tag("pinned")).unwrap()),
+        shown(post.label().set(tag("pinned")).unwrap()),
         r#"{ "$set": { "label": { "name": "pinned" } } }"#
     );
 }
 
 #[test]
-fn the_types_own_function_gives_the_paths_below_a_whole_value() {
+fn nest_reaches_the_paths_below_a_whole_value() {
     let post = Post::MONGO_FIELDS;
-    let below = Tag::mongo_fields_under::<Post>(post.tag.segments());
+    let below = post
+        .tag()
+        .nest(Tag::MONGO_FIELDS.name().eq("news".to_owned()).unwrap());
+    assert_eq!(
+        shown(post.title().eq("Hello".to_owned()).unwrap().and(below)),
+        r#"{ "$and": [{ "title": { "$eq": "Hello" } }, { "tag.name": { "$eq": "news" } }] }"#
+    );
     assert_eq!(
         shown(
-            post.title
-                .eq("Hello".to_owned())
-                .unwrap()
-                .and(below.name.eq("news".to_owned()).unwrap())
+            post.label()
+                .nest(Tag::MONGO_FIELDS.name().eq("rust".to_owned()).unwrap())
         ),
-        r#"{ "$and": [{ "title": { "$eq": "Hello" } }, { "tag.name": { "$eq": "news" } }] }"#
+        r#"{ "label.name": { "$eq": "rust" } }"#
     );
 }
 
@@ -98,17 +102,21 @@ fn a_type_that_holds_itself_is_one_whole_value_there() {
         parent: None,
     };
     assert_eq!(
-        shown(category.children.push(leaf).unwrap()),
+        shown(category.children().push(leaf).unwrap()),
         r#"{ "$push": { "children": { "children": [], "name": "leaf" } } }"#
     );
     assert_eq!(
-        shown(category.parent.exists(false)),
+        shown(category.parent().exists(false)),
         r#"{ "parent": { "$exists": false } }"#
     );
-    let below = Category::mongo_fields_under::<Category>(category.parent.segments());
+    let named_root = || Category::MONGO_FIELDS.name().eq("root".to_owned()).unwrap();
     assert_eq!(
-        shown(below.name.eq("root".to_owned()).unwrap()),
+        shown(category.parent().nest(named_root())),
         r#"{ "parent.name": { "$eq": "root" } }"#
+    );
+    assert_eq!(
+        shown(category.children().nest(named_root())),
+        r#"{ "children.name": { "$eq": "root" } }"#
     );
 }
 
@@ -116,21 +124,27 @@ fn a_type_that_holds_itself_is_one_whole_value_there() {
 fn two_types_that_hold_each_other_both_build() {
     let thread = Thread::MONGO_FIELDS;
     assert_eq!(
-        shown(thread.latest.exists(true)),
+        shown(thread.latest().exists(true)),
         r#"{ "latest": { "$exists": true } }"#
     );
     let reply = Reply::MONGO_FIELDS;
     assert_eq!(
-        shown(reply.thread.subject.eq("Hi".to_owned()).unwrap()),
+        shown(
+            reply
+                .thread()
+                .nest(thread.subject().eq("Hi".to_owned()).unwrap())
+        ),
         r#"{ "thread.subject": { "$eq": "Hi" } }"#
     );
     assert_eq!(
-        shown(reply.thread.latest.exists(false)),
+        shown(reply.thread().nest(thread.latest().exists(false))),
         r#"{ "thread.latest": { "$exists": false } }"#
     );
-    let below = Reply::mongo_fields_under::<Thread>(thread.latest.segments());
+    let below = reply
+        .thread()
+        .nest(thread.subject().eq("Hi".to_owned()).unwrap());
     assert_eq!(
-        shown(below.thread.subject.eq("Hi".to_owned()).unwrap()),
+        shown(thread.latest().nest(below)),
         r#"{ "latest.thread.subject": { "$eq": "Hi" } }"#
     );
 }

@@ -9,6 +9,19 @@ use tixschema::model_schema;
 use super::shown;
 use crate::{date_hook, optional_date_hook};
 
+/// A variant's field stored through a hook of its own.
+#[model_schema(decode_with)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum Opening {
+    Never,
+    #[serde(rename_all = "camelCase")]
+    Once {
+        #[serde(with = "date_hook")]
+        opens_at: DateTime<Utc>,
+    },
+}
+
 #[model_schema(decode_with)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -56,10 +69,8 @@ fn a_hooked_date_in_an_option_is_written_as_a_bson_date() {
     assert_eq!(
         shown(
             Template::MONGO_FIELDS
-                .publish_template_to
-                .to_date
-                .lt(now())
-                .unwrap()
+                .publish_template_to()
+                .nest(PublishWindow::MONGO_FIELDS.to_date().lt(now()).unwrap())
         ),
         r#"{ "publishTemplateTo.toDate": { "$lt": Date(1791394800000 ms) } }"#
     );
@@ -70,10 +81,8 @@ fn a_hooked_date_is_written_as_a_bson_date() {
     assert_eq!(
         shown(
             Template::MONGO_FIELDS
-                .publish_template_to
-                .from_date
-                .lt(now())
-                .unwrap()
+                .publish_template_to()
+                .nest(PublishWindow::MONGO_FIELDS.from_date().lt(now()).unwrap())
         ),
         r#"{ "publishTemplateTo.fromDate": { "$lt": Date(1791394800000 ms) } }"#
     );
@@ -84,23 +93,28 @@ fn every_operator_of_a_hooked_path_writes_through_the_hook() {
     assert_eq!(
         shown(
             PublishWindow::MONGO_FIELDS
-                .to_date
+                .to_date()
                 .gte(now())
                 .unwrap()
-                .and(PublishWindow::MONGO_FIELDS.from_date.lt(now()).unwrap())
+                .and(PublishWindow::MONGO_FIELDS.from_date().lt(now()).unwrap())
         ),
         r#"{ "$and": [{ "toDate": { "$gte": Date(1791394800000 ms) } }, { "fromDate": { "$lt": Date(1791394800000 ms) } }] }"#
     );
     assert_eq!(
-        shown(PublishWindow::MONGO_FIELDS.to_date.is_in([now()]).unwrap()),
+        shown(
+            PublishWindow::MONGO_FIELDS
+                .to_date()
+                .is_in([now()])
+                .unwrap()
+        ),
         r#"{ "toDate": { "$in": [Date(1791394800000 ms)] } }"#
     );
     assert_eq!(
-        shown(PublishWindow::MONGO_FIELDS.to_date.set(now()).unwrap()),
+        shown(PublishWindow::MONGO_FIELDS.to_date().set(now()).unwrap()),
         r#"{ "$set": { "toDate": Date(1791394800000 ms) } }"#
     );
     assert_eq!(
-        shown(PublishWindow::MONGO_FIELDS.to_date.unset()),
+        shown(PublishWindow::MONGO_FIELDS.to_date().unset()),
         r#"{ "$unset": { "toDate": "" } }"#
     );
 }
@@ -109,7 +123,7 @@ fn every_operator_of_a_hooked_path_writes_through_the_hook() {
 #[test]
 fn a_date_with_no_hook_is_written_as_text() {
     assert_eq!(
-        shown(PublishWindow::MONGO_FIELDS.announced.lt(now()).unwrap()),
+        shown(PublishWindow::MONGO_FIELDS.announced().lt(now()).unwrap()),
         r#"{ "announced": { "$lt": "2026-10-07T17:40:00Z" } }"#
     );
 }
@@ -131,7 +145,7 @@ fn a_hooked_path_writes_what_serde_stores_for_the_field() {
         (
             "fromDate",
             PublishWindow::MONGO_FIELDS
-                .from_date
+                .from_date()
                 .eq(now())
                 .unwrap()
                 .into_document(),
@@ -139,7 +153,7 @@ fn a_hooked_path_writes_what_serde_stores_for_the_field() {
         (
             "toDate",
             PublishWindow::MONGO_FIELDS
-                .to_date
+                .to_date()
                 .eq(now())
                 .unwrap()
                 .into_document(),
@@ -147,7 +161,7 @@ fn a_hooked_path_writes_what_serde_stores_for_the_field() {
         (
             "announced",
             PublishWindow::MONGO_FIELDS
-                .announced
+                .announced()
                 .eq(now())
                 .unwrap()
                 .into_document(),
@@ -162,15 +176,15 @@ fn a_hooked_path_writes_what_serde_stores_for_the_field() {
 fn a_date_under_as_number_is_written_as_a_number() {
     let stamped = Stamped::MONGO_FIELDS;
     assert_eq!(
-        shown(stamped.created_at.lt(now()).unwrap()),
+        shown(stamped.created_at().lt(now()).unwrap()),
         r#"{ "createdAt": { "$lt": Int64(1791394800000) } }"#
     );
     assert_eq!(
-        shown(stamped.seen_at.lt(now()).unwrap()),
+        shown(stamped.seen_at().lt(now()).unwrap()),
         r#"{ "seenAt": { "$lt": Int64(1791394800000) } }"#
     );
     assert_eq!(
-        shown(stamped.seen_at.exists(false)),
+        shown(stamped.seen_at().exists(false)),
         r#"{ "seenAt": { "$exists": false } }"#
     );
     let row = Stamped {
@@ -182,5 +196,35 @@ fn a_date_under_as_number_is_written_as_a_number() {
     assert_eq!(
         shown(row.as_document().unwrap().clone()),
         r#"{ "createdAt": Int64(1791394800000), "seenAt": Int64(1791394800000) }"#
+    );
+}
+
+#[test]
+fn a_hooked_field_of_a_variant_is_written_as_a_bson_date() {
+    let opening = Opening::MONGO_FIELDS;
+    assert_eq!(
+        shown(opening.once().opens_at().lt(now()).unwrap()),
+        r#"{ "opensAt": { "$lt": Date(1791394800000 ms) } }"#
+    );
+    assert_eq!(
+        shown(opening.is_never()),
+        r#"{ "kind": { "$eq": "never" } }"#
+    );
+}
+
+/// The function of a hooked path calls one of the type's own, and is written beside the type.
+#[test]
+fn a_type_with_a_hooked_field_declared_inside_a_function_builds() {
+    #[model_schema(decode_with)]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Stamp {
+        #[serde(with = "date_hook")]
+        stamped_at: DateTime<Utc>,
+    }
+
+    assert_eq!(
+        shown(Stamp::MONGO_FIELDS.stamped_at().lt(now()).unwrap()),
+        r#"{ "stampedAt": { "$lt": Date(1791394800000 ms) } }"#
     );
 }

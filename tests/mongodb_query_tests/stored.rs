@@ -117,82 +117,159 @@ fn invoice() -> Invoice {
 /// The paths of the row's own values, of the models it holds bare, and of the list of plain
 /// values.
 fn plain_paths(stored: &Document) -> Vec<(String, String)> {
-    let paths = Invoice::MONGO_FIELDS;
+    let (paths, customer) = (Invoice::MONGO_FIELDS, Customer::MONGO_FIELDS);
+    let (place, point) = (Address::MONGO_FIELDS, Point::MONGO_FIELDS);
     let row = invoice();
     vec![
-        looked_up(stored, paths.id.eq(row.id).unwrap()),
-        looked_up(stored, paths.number.eq(row.number).unwrap()),
-        looked_up(stored, paths.total.eq(row.total).unwrap()),
-        looked_up(stored, paths.status.eq(row.status).unwrap()),
-        looked_up(stored, paths.paid_at.exists(true)),
-        looked_up(stored, paths.tags.size(2)),
-        looked_up(stored, paths.customer.name.eq(String::new()).unwrap()),
-        looked_up(stored, paths.customer.open_invoices.eq(0_u32).unwrap()),
+        looked_up(stored, paths.id().eq(row.id).unwrap()),
+        looked_up(stored, paths.number().eq(row.number).unwrap()),
+        looked_up(stored, paths.total().eq(row.total).unwrap()),
+        looked_up(stored, paths.status().eq(row.status).unwrap()),
+        looked_up(stored, paths.paid_at().exists(true)),
+        looked_up(stored, paths.tags().size(2)),
         looked_up(
             stored,
-            paths.customer.address.city.eq(String::new()).unwrap(),
+            paths
+                .customer()
+                .nest(customer.name().eq(String::new()).unwrap()),
         ),
         looked_up(
             stored,
             paths
-                .customer
-                .address
-                .postal_code
-                .eq(String::new())
-                .unwrap(),
+                .customer()
+                .nest(customer.open_invoices().eq(0_u32).unwrap()),
         ),
-        looked_up(stored, paths.scores.size(2)),
-        looked_up(stored, paths.origin.0.eq(0.0_f64).unwrap()),
-        looked_up(stored, paths.origin.1.eq(0.0_f64).unwrap()),
+        looked_up(
+            stored,
+            paths.customer().nest(
+                customer
+                    .address()
+                    .nest(place.city().eq(String::new()).unwrap()),
+            ),
+        ),
+        looked_up(
+            stored,
+            paths.customer().nest(
+                customer
+                    .address()
+                    .nest(place.postal_code().eq(String::new()).unwrap()),
+            ),
+        ),
+        looked_up(stored, paths.scores().size(2)),
+        looked_up(stored, paths.origin().nest(point.0.eq(0.0_f64).unwrap())),
+        looked_up(stored, paths.origin().nest(point.1.eq(0.0_f64).unwrap())),
     ]
 }
 
 /// The paths below a list of models, a model a row may leave out, a flattened model and a generic
 /// one.
 fn nested_paths(stored: &Document) -> Vec<(String, String)> {
-    let paths = Invoice::MONGO_FIELDS;
+    let (paths, item) = (Invoice::MONGO_FIELDS, LineItem::MONGO_FIELDS);
+    let (place, audit) = (Address::MONGO_FIELDS, Audit::MONGO_FIELDS);
+    let shipped = Wrapper::<Address>::MONGO_FIELDS;
     vec![
-        looked_up(stored, paths.items.article.eq(String::new()).unwrap()),
-        looked_up(stored, paths.items.price.eq(0.0_f64).unwrap()),
-        looked_up(stored, paths.items.quantity.eq(0_u32).unwrap()),
-        looked_up(stored, paths.billing.city.eq(String::new()).unwrap()),
-        looked_up(stored, paths.billing.postal_code.eq(String::new()).unwrap()),
-        looked_up(stored, paths.audit.created_by.eq(String::new()).unwrap()),
-        looked_up(stored, paths.audit.revision.eq(0_u32).unwrap()),
-        looked_up(stored, paths.shipping.inner.eq(address()).unwrap()),
-        looked_up(stored, paths.shipping.label.eq(String::new()).unwrap()),
-        looked_up(stored, paths.shipping.history.size(1)),
+        looked_up(
+            stored,
+            paths
+                .items()
+                .nest(item.article().eq(String::new()).unwrap()),
+        ),
+        looked_up(
+            stored,
+            paths.items().nest(item.price().eq(0.0_f64).unwrap()),
+        ),
+        looked_up(
+            stored,
+            paths.items().nest(item.quantity().eq(0_u32).unwrap()),
+        ),
+        looked_up(
+            stored,
+            paths
+                .billing()
+                .nest(place.city().eq(String::new()).unwrap()),
+        ),
+        looked_up(
+            stored,
+            paths
+                .billing()
+                .nest(place.postal_code().eq(String::new()).unwrap()),
+        ),
+        looked_up(
+            stored,
+            paths
+                .audit()
+                .nest(audit.created_by().eq(String::new()).unwrap()),
+        ),
+        looked_up(
+            stored,
+            paths.audit().nest(audit.revision().eq(0_u32).unwrap()),
+        ),
+        looked_up(
+            stored,
+            paths
+                .shipping()
+                .nest(shipped.inner().eq(address()).unwrap()),
+        ),
+        looked_up(
+            stored,
+            paths
+                .shipping()
+                .nest(shipped.label().eq(String::new()).unwrap()),
+        ),
+        looked_up(stored, paths.shipping().nest(shipped.history().size(1))),
     ]
 }
 
 /// The paths of an enum in each form serde writes one, for the variant the stored row holds.
 fn enum_paths(stored: &Document) -> Vec<(String, String)> {
-    let paths = Invoice::MONGO_FIELDS;
+    let (paths, payment) = (Invoice::MONGO_FIELDS, Payment::MONGO_FIELDS);
+    let (delivery, rebate) = (Delivery::MONGO_FIELDS, Rebate::MONGO_FIELDS);
+    let reference = Reference::MONGO_FIELDS;
     vec![
-        looked_up(stored, paths.payment.is_card()),
-        looked_up(stored, paths.payment.card.last4.eq(String::new()).unwrap()),
-        looked_up(stored, paths.payment.card.exp_month.eq(0_u32).unwrap()),
-        looked_up(stored, paths.delivery.is_courier()),
+        looked_up(stored, paths.payment().nest(payment.is_card())),
         looked_up(
             stored,
-            paths.delivery.courier.carrier.eq(String::new()).unwrap(),
+            paths
+                .payment()
+                .nest(payment.card().last4().eq(String::new()).unwrap()),
         ),
         looked_up(
             stored,
-            paths.delivery.courier.tracking.eq(String::new()).unwrap(),
+            paths
+                .payment()
+                .nest(payment.card().exp_month().eq(0_u32).unwrap()),
         ),
-        looked_up(stored, paths.discount.is_coupon()),
+        looked_up(stored, paths.delivery().nest(delivery.is_courier())),
         looked_up(
             stored,
-            paths.discount.coupon.code.eq(String::new()).unwrap(),
+            paths
+                .delivery()
+                .nest(delivery.courier().carrier().eq(String::new()).unwrap()),
         ),
         looked_up(
             stored,
-            paths.reference.detailed.code.eq(String::new()).unwrap(),
+            paths
+                .delivery()
+                .nest(delivery.courier().tracking().eq(String::new()).unwrap()),
+        ),
+        looked_up(stored, paths.discount().nest(rebate.is_coupon())),
+        looked_up(
+            stored,
+            paths
+                .discount()
+                .nest(rebate.coupon().code().eq(String::new()).unwrap()),
         ),
         looked_up(
             stored,
-            paths.reference.detailed.issuer.eq(String::new()).unwrap(),
+            paths
+                .reference()
+                .nest(reference.detailed().code().eq(String::new()).unwrap()),
+        ),
+        looked_up(
+            stored,
+            paths
+                .reference()
+                .nest(reference.detailed().issuer().eq(String::new()).unwrap()),
         ),
     ]
 }

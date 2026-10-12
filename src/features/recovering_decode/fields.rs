@@ -6,15 +6,15 @@ use proc_macro2::{Group, Ident, Spacing, Span, TokenStream, TokenTree};
 use quote::{ToTokens as _, format_ident, quote};
 use syn::ext::IdentExt as _;
 use syn::{
-    Field, Fields, FieldsNamed, FieldsUnnamed, GenericParam, Generics, ItemEnum, ItemStruct,
-    PathArguments, PathSegment, Type, Variant, WherePredicate, parse_quote,
+    Field, Fields, FieldsNamed, FieldsUnnamed, GenericParam, Generics, ItemEnum, ItemStruct, Type,
+    Variant, WherePredicate, parse_quote,
 };
 
 use super::aliases::PRIMITIVES;
 use super::enums::Tagging;
 use super::{
-    Step, TypedPaths, hooked_leaf, starts_at_a_parameter, type_arguments, unclaimed_parameter,
-    value_slot, written_names,
+    Step, TypedPaths, bound_parameters, hooked_leaf, starts_at_a_parameter, type_arguments,
+    unclaimed_parameter, value_slot, written_names,
 };
 use crate::features::serde::{
     has_serde_skip_serializing, parse_serde_field_attributes, parse_serde_field_hooks,
@@ -94,16 +94,93 @@ struct Ask {
     stem: String,
 }
 
-/// What an enum's struct of paths keeps beside its members: the path its `is_{variant}` methods
-/// read, and those methods.
-struct Asked {
-    methods: TokenStream,
-    path: TokenStream,
+/// What builds one member's path, which each scope that builds one writes from where it sits.
+enum Built {
+    /// A struct of `mongo_members`: one that holds no path where `slots` is `None`, and the
+    /// tuple of what builds each slot otherwise.
+    Held {
+        named: Ident,
+        slots: Option<Vec<Self>>,
+    },
+    /// A path kind at `key`, whose values the function `writer` of the type's own hands to the
+    /// field's hook.
+    Hooked {
+        key: String,
+        kind: Ident,
+        writer: Ident,
+    },
+    /// `Nested` at `key`.
+    Nested { key: String },
+    /// A path kind at `key`, whose values their type's own `Serialize` writes.
+    Plain { key: String, kind: Ident },
+    /// `()`: the slot of a tuple that has no path.
+    Skipped,
 }
 
-/// The paths of one type, as they are gathered: what `mongo_members` holds and what the type's
-/// `impl` gains beside the function that builds them.
+impl Built {
+    /// Whether the expression names a function of the type's own, which calls a field's hook.
+    fn calls_a_hook(&self) -> bool {
+        if let Self::Held {
+            named: _named,
+            slots,
+        } = self
+        {
+            slots.iter().flatten().any(Self::calls_a_hook)
+        } else {
+            matches!(
+                self,
+                Self::Hooked {
+                    key: _key,
+                    kind: _kind,
+                    writer: _writer,
+                }
+            )
+        }
+    }
+
+    /// The expression, as a module `depth` below the flagged type writes it, and as the type's
+    /// own scope does at no depth.
+    fn written(&self, own: &Own<'_>, depth: usize) -> TokenStream {
+        let kinds = own.kinds(depth);
+        let path = |key: &String| {
+            if key.is_empty() {
+                quote! { #kinds MongoPath::ROOT }
+            } else {
+                quote! { #kinds MongoPath::at(#key) }
+            }
+        };
+        match self {
+            Self::Held { named, slots: None } => {
+                quote! { #kinds mongo_members::#named { row: ::core::marker::PhantomData } }
+            }
+            Self::Held {
+                named,
+                slots: Some(slots),
+            } => {
+                let each = slots.iter().map(|slot| slot.written(own, depth));
+                quote! { #kinds mongo_members::#named(#(#each),*) }
+            }
+            Self::Hooked { key, kind, writer } => {
+                let (at, itself) = (path(key), own.itself(depth));
+                quote! { #kinds #kind::hooked(#at, <#itself>::#writer) }
+            }
+            Self::Nested { key } => {
+                let at = path(key);
+                quote! { #kinds Nested::at(#at) }
+            }
+            Self::Plain { key, kind } => {
+                let at = path(key);
+                quote! { #kinds #kind::plain(#at) }
+            }
+            Self::Skipped => quote! { () },
+        }
+    }
+}
+
+/// The paths of one type, as they are gathered: what is written beside the type, what
+/// `mongo_members` holds, and what the type's `impl` gains beside the const that holds them.
 struct Emitter<'item> {
+    beside: Vec<TokenStream>,
     held: Vec<(String, TokenStream)>,
     own: Own<'item>,
     writers: Vec<(String, TokenStream)>,
@@ -119,9 +196,9 @@ impl<'item> Emitter<'item> {
                 Put::Under(content) => Some((*content).to_owned()),
                 Put::UnderItsName => Some(of.name.to_owned()),
             },
-            prefix: quote! { prefix },
+            under: String::new(),
         };
-        let below = place.below(&self.own.module);
+        let below = place.joined();
         match &variant.fields {
             Fields::Named(named) => {
                 let rule = parse_written_renames(&variant.attrs).rename_all;
@@ -132,7 +209,7 @@ impl<'item> Emitter<'item> {
                     Some(of.stem),
                     of.read,
                 );
-                self.held(of.rust_name, &of.told(), &Members::Named(members))
+                self.held(of.rust_name, &of.told(), Members::Named(members))
             }
             Fields::Unit => None,
             Fields::Unnamed(slots) => {
@@ -145,29 +222,26 @@ impl<'item> Emitter<'item> {
                     return None;
                 }
                 let members = self.positional(slots, &below, Some(of.stem), of.read);
-                self.held(of.rust_name, &of.told(), &Members::Positional(members))
+                self.held(of.rust_name, &of.told(), Members::Positional(members))
             }
         }
     }
 
     /// What the paths add: `declared` beside the structs `mongo_members` holds, and on the type
-    /// the const, the function answering `built`, and the functions hooked paths write through.
+    /// the const `built` is the value of and the functions hooked paths write through.
     /// `one_value` says the struct of paths is one path, whose type the type's `impl` writes.
     fn emitted(self, declared: &TokenStream, built: &TokenStream, one_value: bool) -> TypedPaths {
-        let (module, root, arguments) = (&self.own.module, &self.own.root, self.own.arguments());
-        let (as_the_row, as_asked) = if one_value {
-            (
-                quote! { , #module::Field<Self, Self> },
-                quote! { , #module::Field<#root, Self> },
-            )
+        let (module, arguments) = (&self.own.module, self.own.arguments());
+        let as_the_row = if one_value {
+            quote! { , #module::Field<Self, Self> }
         } else {
-            (TokenStream::new(), TokenStream::new())
+            TokenStream::new()
         };
         let members = (!self.held.is_empty()).then(|| {
             let held = self.held.iter().map(|(_named, written)| written);
             quote! {
-                /// The structs of paths `MongoFields` holds: one per variant, and per tuple, with
-                /// paths of its own.
+                /// The structs of paths a function of `MongoFields` answers: one per variant, and
+                /// per tuple, with paths of its own.
                 pub mod mongo_members {
                     use super::*;
 
@@ -175,42 +249,30 @@ impl<'item> Emitter<'item> {
                 }
             }
         });
-        // A type with no key of its own reads nothing of what leads to it.
-        let prefix = if written_names(built.clone()).contains(&"prefix".to_owned()) {
-            quote! { prefix }
-        } else {
-            quote! { _ }
-        };
-        let writers = self.writers.iter().map(|(_named, written)| written);
+        let (beside, writers) = (
+            &self.beside,
+            self.writers.iter().map(|(_named, written)| written),
+        );
         TypedPaths {
+            beside: quote! { #(#beside)* },
             module_items: quote! {
                 #declared
                 #members
             },
             type_items: quote! {
                 /// The typed MongoDB paths of this type, as the row a filter or an update is over.
-                pub const MONGO_FIELDS: #module::MongoFields<Self #arguments #as_the_row> =
-                    Self::mongo_fields_under(#module::MongoPath::ROOT);
-
-                /// The typed MongoDB paths of a value of this type held under the keys of `prefix`,
-                /// in a row of the type the paths are asked as.
-                #[must_use]
-                pub const fn mongo_fields_under<#root>(
-                    #prefix: [::core::option::Option<&'static str>; 8],
-                ) -> #module::MongoFields<#root #arguments #as_asked> {
-                    #built
-                }
+                pub const MONGO_FIELDS: #module::MongoFields<Self #arguments #as_the_row> = #built;
 
                 #(#writers)*
             },
         }
     }
 
-    /// The paths of a flattened field, which are those of the type it is typed with under the
-    /// keys leading to the type that flattens it. `None` for any field but one serde reads as a
-    /// struct or an enum `#[model_schema]` was written on above, or as an `Option` of one, and
-    /// for one serde writes as one value, which has no key to put there.
-    fn flattened(&self, field: &Field, prefix: &TokenStream, read: bool) -> Option<Member> {
+    /// What a flattened field holds: the type it is typed with writes its keys among those of
+    /// what flattens it, at `under`, and `nest` reaches them there. `None` for any field but one
+    /// serde reads as a struct or an enum `#[model_schema]` was written on above, or as an
+    /// `Option` of one, and for one serde writes as one value, which has no key to put there.
+    fn flattened(&self, field: &Field, under: &str, read: bool) -> Option<Member> {
         let hooks = parse_serde_field_hooks(&field.attrs);
         let hooked = hooked_leaf(
             &field.ty,
@@ -228,18 +290,33 @@ impl<'item> Emitter<'item> {
             Held::Value => self.own.seen_model(&field.ty),
             Held::List(_) | Held::Map | Held::Optional(_) => None,
         }?;
-        (!model.one_value).then(|| paths_of(&model, prefix))
+        (!model.one_value).then(|| {
+            let place = Place {
+                key: None,
+                under: under.to_owned(),
+            };
+            Member {
+                built: Built::Nested {
+                    key: place.joined(),
+                },
+                shown: Shown::Nested {
+                    model: model.ty.to_token_stream(),
+                },
+                told: format!(
+                    "What the model serde writes {} holds: `nest` reaches its paths.",
+                    place.told()
+                ),
+            }
+        })
     }
 
     /// A struct of `members` in `mongo_members`, named after `base` and told as `told`, as the
-    /// one member that holds it. `None` where no member is a path.
-    fn held(&mut self, base: &str, told: &str, members: &Members) -> Option<Member> {
+    /// one member that answers it. `None` where no member is a path.
+    fn held(&mut self, base: &str, told: &str, members: Members) -> Option<Member> {
         if members.is_empty() {
             return None;
         }
         let own = &self.own;
-        let used = own.used(members);
-        let generics = own.declared(IN_MEMBERS, Some(&used));
         // A struct named as a prelude type or as a parameter would be read in its place by every
         // member beside it that names one.
         let taken: Vec<String> = self
@@ -250,16 +327,32 @@ impl<'item> Emitter<'item> {
             .chain(own.parameters.iter().cloned())
             .collect();
         let name = Ident::new(&unclaimed(base, &taken), Span::call_site());
-        let arguments = own.arguments_among(&used);
-        let (module, built) = (&own.module, members.built());
-        let written = all_public(&name, members, &generics, told, own, IN_MEMBERS);
+        let (arguments, written, slots) = match members {
+            // A function may name the type itself, to reach a hook: every parameter is declared.
+            Members::Named(functions) => {
+                let (written, beside) = of_functions(&name, &functions, told, own, None);
+                self.beside.extend(beside);
+                (own.arguments(), written, None)
+            }
+            Members::Positional(slots) => {
+                let used = own.used(&slots);
+                let generics = own.declared(IN_MEMBERS, Some(&used));
+                let written = of_slots(&name, &slots, &generics, told, own, IN_MEMBERS);
+                let built = slots.into_iter().map(|slot| slot.built).collect();
+                (own.arguments_among(&used), written, Some(built))
+            }
+        };
         self.held.push((name.to_string(), written));
         Some(Member {
+            built: Built::Held {
+                named: name.clone(),
+                slots,
+            },
             shown: Shown::Held {
                 arguments,
-                named: name.clone(),
+                named: name,
             },
-            value: quote! { #module::mongo_members::#name #built },
+            told: told.to_owned(),
         })
     }
 
@@ -267,7 +360,6 @@ impl<'item> Emitter<'item> {
     /// the field holds it, which under an `Option` is `Some`.
     fn hooked(&mut self, ty: &Type, place: &Place, stem: &str, write: &TokenStream) -> Member {
         let module = &self.own.module;
-        let path = place.path(module);
         let (of_kind, value, handed) = match held(ty) {
             Held::Optional(inner) if !through_wrappers(ty).1 => (
                 "OptionalField",
@@ -284,10 +376,7 @@ impl<'item> Emitter<'item> {
             .map(|(named, _)| named.clone())
             .collect();
         let named = unclaimed(&format!("mongo_write_{stem}"), &taken);
-        let (writer, kind) = (
-            Ident::new(&named, Span::call_site()),
-            Ident::new(of_kind, Span::call_site()),
-        );
+        let writer = Ident::new(&named, Span::call_site());
         let told = format!("What `{stem}` holds, as its own serde hook writes it.");
         self.writers.push((
             named,
@@ -299,23 +388,28 @@ impl<'item> Emitter<'item> {
             },
         ));
         Member {
+            built: Built::Hooked {
+                key: place.joined(),
+                kind: Ident::new(of_kind, Span::call_site()),
+                writer,
+            },
             shown: Shown::Kind {
-                fields: None,
-                kind: kind.clone(),
+                kind: Ident::new(of_kind, Span::call_site()),
+                nested: reached_through(value),
                 value: value.to_token_stream(),
             },
-            value: quote! { #module::#kind::hooked(#path, Self::#writer) },
+            told: format!("The path of {}.", place.told()),
         }
     }
 
     /// One member per field of `named` that serde writes, under the field's own name: the key
-    /// serde writes it at under `prefix`, cased by `rename_all` where the field names none, or
-    /// what a flattened one holds under `prefix` itself.
+    /// serde writes it at under `under`, cased by `rename_all` where the field names none, or
+    /// what a flattened one holds at `under` itself.
     fn keyed(
         &mut self,
         named: &FieldsNamed,
         rename_all: Option<&str>,
-        prefix: &TokenStream,
+        under: &str,
         variant: Option<&str>,
         read: bool,
     ) -> Vec<(Ident, Member)> {
@@ -331,14 +425,14 @@ impl<'item> Emitter<'item> {
             let meta = parse_serde_field_attributes(&field.attrs);
             let written = ident.unraw().to_string();
             let member = if meta.flatten {
-                self.flattened(field, prefix, field_read)
+                self.flattened(field, under, field_read)
             } else {
                 let renamed = parse_written_renames(&field.attrs).rename;
                 let place = Place {
                     key: Some(renamed.unwrap_or_else(|| {
                         resolve_rename_rule(rename_all).apply_to_field(&written)
                     })),
-                    prefix: prefix.clone(),
+                    under: under.to_owned(),
                 };
                 self.member(
                     field,
@@ -356,11 +450,31 @@ impl<'item> Emitter<'item> {
         members
     }
 
-    /// `MongoFields` holding `members`, with what an enum keeps beside them, and what the type's
-    /// own function builds it with. Members are public and what the struct keeps is not, so a
-    /// struct with both holds its members in one of `mongo_members` and dereferences to it.
-    fn laid_out(&mut self, members: &Members, asked: Option<&Asked>) -> (TokenStream, TokenStream) {
-        let used = self.own.used(members);
+    /// `MongoFields` for `members`, with the `is_{variant}` methods an enum asks by, and what the
+    /// type's own const holds as it. Named members are functions of a struct that holds no path.
+    /// The slots of a tuple are public members; a tuple with a parameter no slot names keeps its
+    /// marker beside them, in a struct of `mongo_members` it dereferences to.
+    fn laid_out(
+        &mut self,
+        members: Members,
+        asked: Option<&TokenStream>,
+    ) -> (TokenStream, TokenStream) {
+        let named = Ident::new("MongoFields", Span::call_site());
+        let slots = match members {
+            Members::Named(functions) => {
+                let own = &self.own;
+                let module = &own.module;
+                let told = format!("{} It holds no path.", own.told());
+                let (declared, beside) = of_functions(&named, &functions, &told, own, asked);
+                self.beside.extend(beside);
+                return (
+                    declared,
+                    quote! { #module::MongoFields { row: ::core::marker::PhantomData } },
+                );
+            }
+            Members::Positional(slots) => slots,
+        };
+        let used = self.own.used(&slots);
         let unused: Vec<Ident> = self
             .own
             .type_parameters
@@ -368,21 +482,23 @@ impl<'item> Emitter<'item> {
             .filter(|parameter| !used.contains(parameter))
             .map(|parameter| Ident::new(parameter, Span::call_site()))
             .collect();
-        if asked.is_none() && unused.is_empty() && !members.is_empty() {
-            let (own, built) = (&self.own, members.built());
-            let module = &own.module;
-            let generics = own.declared(IN_MODULE, None);
-            let named = Ident::new("MongoFields", Span::call_site());
+        let none = slots
+            .iter()
+            .all(|slot| matches!(slot.shown, Shown::Skipped));
+        if unused.is_empty() && !none {
+            let own = &self.own;
+            let (module, generics) = (&own.module, own.declared(IN_MODULE, None));
+            let each = slots.iter().map(|slot| slot.built.written(own, 0));
             return (
-                all_public(&named, members, &generics, &own.told(), own, IN_MODULE),
-                quote! { #module::MongoFields #built },
+                of_slots(&named, &slots, &generics, &own.told(), own, IN_MODULE),
+                quote! { #module::MongoFields(#(#each),*) },
             );
         }
         let told = format!(
             "The paths `MongoFields` holds for `{}`, which it dereferences to.",
             self.own.name.unraw()
         );
-        let inner = self.held("Members", &told, members);
+        let inner = self.held("Members", &told, Members::Positional(slots));
         let marked = if inner.is_some() {
             unused
         } else {
@@ -395,7 +511,7 @@ impl<'item> Emitter<'item> {
                 )
                 .collect()
         };
-        self.own.keeping(inner.as_ref(), asked, &marked)
+        self.own.keeping(inner.as_ref(), &marked)
     }
 
     /// The path of one field or slot serde writes at `place`: through its own hook where it has
@@ -413,8 +529,8 @@ impl<'item> Emitter<'item> {
         {
             return Some(self.hooked(&field.ty, place, stem, write));
         }
-        // A type is asked for its own paths only where its walker is: a hook reads the value
-        // whole, and a value serde never reads back is walked by nothing.
+        // A type is a model only where its walker is: a hook reads the value whole, and a value
+        // serde never reads back is walked by nothing.
         self.own.typed(&field.ty, place, read && hooked.is_none())
     }
 
@@ -429,6 +545,7 @@ impl<'item> Emitter<'item> {
                 .collect()
         };
         Self {
+            beside: Vec::new(),
             held: Vec::new(),
             own: Own {
                 generics,
@@ -453,15 +570,16 @@ impl<'item> Emitter<'item> {
     }
 
     /// What a variant's one slot holds. Under a key of its own it is a member like any field.
-    /// With none, the paths of a flagged type serde writes under keys sit at the enum's own
-    /// level, and any other value is the enum's own where serde writes it bare.
+    /// With none, the keys of a flagged type serde writes under keys sit at the enum's own
+    /// level, where `nest` reaches them, and any other value is the enum's own where serde
+    /// writes it bare.
     fn only_slot(&mut self, only: &Field, place: &Place, of: &OfVariant<'_>) -> Option<Member> {
         if has_serde_skip_serializing(&only.attrs) {
             return None;
         }
         let read = of.read && !parse_serde_key_omission(&only.attrs).skips_deserializing;
         if place.key.is_none() {
-            if let Some(fields) = self.flattened(only, &place.prefix, read) {
+            if let Some(fields) = self.flattened(only, &place.under, read) {
                 return Some(fields);
             }
             if matches!(of.put, Put::Beside) {
@@ -471,12 +589,12 @@ impl<'item> Emitter<'item> {
         self.member(only, place, of.stem, read)
     }
 
-    /// One member per slot of `slots`, at the position serde writes it under `prefix`. A slot
+    /// One member per slot of `slots`, at the position serde writes it under `under`. A slot
     /// with no path keeps its place as `()`, so a member's position is its slot's.
     fn positional(
         &mut self,
         slots: &FieldsUnnamed,
-        prefix: &TokenStream,
+        under: &str,
         variant: Option<&str>,
         read: bool,
     ) -> Vec<Member> {
@@ -489,7 +607,7 @@ impl<'item> Emitter<'item> {
             }
             let place = Place {
                 key: Some(position.to_string()),
-                prefix: prefix.clone(),
+                under: under.to_owned(),
             };
             position = position.saturating_add(1);
             let slot_read = read && !parse_serde_key_omission(&slot.attrs).skips_deserializing;
@@ -520,66 +638,32 @@ enum Named<'tagging> {
     ByTag(&'tagging str),
 }
 
-/// One path, or one struct of paths, as a member of the struct that holds it.
+/// One path, or one struct of paths, as a member of the struct that answers it.
 struct Member {
+    built: Built,
     shown: Shown,
-    value: TokenStream,
+    /// What the function that answers it is told as.
+    told: String,
 }
 
 impl Member {
-    fn skipped() -> Self {
+    const fn skipped() -> Self {
         Self {
+            built: Built::Skipped,
             shown: Shown::Skipped,
-            value: quote! { () },
+            told: String::new(),
         }
     }
 }
 
-/// The members of one struct of paths: under the names of the fields that write them, or by
-/// position.
+/// The members of one struct of paths: each under the name of the function that answers it,
+/// or by position.
 enum Members {
     Named(Vec<(Ident, Member)>),
     Positional(Vec<Member>),
 }
 
 impl Members {
-    /// What the type's own function writes after the struct's name to build it.
-    fn built(&self) -> TokenStream {
-        match self {
-            Self::Named(members) => {
-                let each = members.iter().map(|(name, member)| {
-                    let value = &member.value;
-                    quote! { #name: #value }
-                });
-                quote! { { #(#each),* } }
-            }
-            Self::Positional(members) => {
-                let each = members.iter().map(|member| &member.value);
-                quote! { (#(#each),*) }
-            }
-        }
-    }
-
-    /// The members as a module `depth` below the type declares them.
-    fn declared(&self, own: &Own<'_>, depth: usize) -> TokenStream {
-        match self {
-            Self::Named(members) => {
-                let each = members.iter().map(|(name, member)| {
-                    let written = member.shown.written(own, depth);
-                    quote! { pub #name: #written }
-                });
-                quote! { #(#each),* }
-            }
-            Self::Positional(members) => {
-                let each = members.iter().map(|member| {
-                    let written = member.shown.written(own, depth);
-                    quote! { pub #written }
-                });
-                quote! { #(#each),* }
-            }
-        }
-    }
-
     /// Whether none of them is a path.
     fn is_empty(&self) -> bool {
         match self {
@@ -587,16 +671,6 @@ impl Members {
             Self::Positional(members) => members
                 .iter()
                 .all(|member| matches!(member.shown, Shown::Skipped)),
-        }
-    }
-
-    fn shown(&self) -> Vec<&Shown> {
-        match self {
-            Self::Named(members) => members
-                .iter()
-                .map(|(_name, member)| &member.shown)
-                .collect(),
-            Self::Positional(members) => members.iter().map(|member| &member.shown).collect(),
         }
     }
 }
@@ -704,27 +778,13 @@ impl Own<'_> {
         quote! { #above #name #type_generics }
     }
 
-    /// `MongoFields` keeping what a consumer does not read: the path `asked` reads, a marker of
-    /// the `marked` parameters nothing else names, and `inner`, the struct of its members, which
-    /// it dereferences to. With it, what the type's own function builds it with.
-    fn keeping(
-        &self,
-        inner: Option<&Member>,
-        asked: Option<&Asked>,
-        marked: &[Ident],
-    ) -> (TokenStream, TokenStream) {
+    /// `MongoFields` of a tuple keeping what a consumer does not read: a marker of the `marked`
+    /// parameters no slot names, beside `inner`, the struct of its slots, which it dereferences
+    /// to. With it, what the type's own const holds as it.
+    fn keeping(&self, inner: Option<&Member>, marked: &[Ident]) -> (TokenStream, TokenStream) {
         let (module, generics) = (&self.module, self.declared(IN_MODULE, None));
         let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
         let members = inner.map(|member| member.shown.written(self, IN_MODULE));
-        let (asked_field, asked_handed, asked_kept) = if asked.is_some() {
-            (
-                quote! { asked: self::MongoPath, },
-                quote! { asked: self::MongoPath, },
-                quote! { asked, },
-            )
-        } else {
-            (TokenStream::new(), TokenStream::new(), TokenStream::new())
-        };
         let (members_field, members_handed, members_kept) =
             members.as_ref().map_or_else(Default::default, |held| {
                 (
@@ -741,7 +801,6 @@ impl Own<'_> {
                 quote! { unused: ::core::marker::PhantomData, },
             )
         };
-        let methods = asked.map(|kept| &kept.methods);
         let reached = members.as_ref().map(|held| {
             quote! {
                 impl #impl_generics ::core::ops::Deref for MongoFields #type_generics #where_clause {
@@ -761,7 +820,6 @@ impl Own<'_> {
             #[doc = #told]
             #[non_exhaustive]
             pub struct MongoFields #generics #where_clause {
-                #asked_field
                 #members_field
                 #marker_field
             }
@@ -769,26 +827,31 @@ impl Own<'_> {
             #shown
 
             impl #impl_generics MongoFields #type_generics #where_clause {
-                /// The struct of paths, from what the type's own function builds for it.
+                /// The struct of paths, from what the type's own const builds for it.
                 #[must_use]
-                pub const fn built(#asked_handed #members_handed) -> Self {
-                    Self { #asked_kept #members_kept #marker_kept }
+                pub const fn built(#members_handed) -> Self {
+                    Self { #members_kept #marker_kept }
                 }
-
-                #methods
             }
 
             #reached
         };
-        let path = asked.map(|kept| {
-            let read = &kept.path;
-            quote! { #read, }
-        });
-        let built = inner.map(|member| &member.value);
-        (
-            declared,
-            quote! { #module::MongoFields::built(#path #built) },
-        )
+        let built = inner.map(|member| member.built.written(self, 0));
+        (declared, quote! { #module::MongoFields::built(#built) })
+    }
+
+    /// What names one of the schema module's own items a module `depth` below the type, and
+    /// beside the type at no depth: through a path, so that a parameter of the type's own of the
+    /// same name does not stand in for one.
+    fn kinds(&self, depth: usize) -> TokenStream {
+        if depth == 0 {
+            let module = &self.module;
+            quote! { #module:: }
+        } else if depth == IN_MODULE {
+            quote! { self:: }
+        } else {
+            supers(depth.saturating_sub(IN_MODULE))
+        }
     }
 
     /// What names `ident` a module `depth` below the type, where it starts a path that goes on
@@ -827,8 +890,11 @@ impl Own<'_> {
     }
 
     /// `tokens`, a type or a bound written beside the flagged type, as a module `depth` below it
-    /// writes the same.
+    /// writes the same: as they stand at no depth.
     fn scoped(&self, tokens: TokenStream, depth: usize) -> TokenStream {
+        if depth == 0 {
+            return tokens;
+        }
         let mut scoped: Vec<TokenTree> = Vec::new();
         let mut rest = tokens.into_iter().peekable();
         while let Some(token) = rest.next() {
@@ -868,16 +934,15 @@ impl Own<'_> {
     }
 
     /// The type `ty` is, through the wrappers serde writes as the value they hold, where that is
-    /// a struct or an enum `#[model_schema]` was written on above, whose module holds a struct of
-    /// paths, with whether serde writes it as one value. `None` for any other: the type itself,
-    /// one declared below, an alias, a type of another crate.
+    /// a struct or an enum `#[model_schema]` was written on above, with whether serde writes it
+    /// as one value. `None` for any other: the type itself, one declared below, an alias, a type
+    /// of another crate.
     fn seen_model<'ty>(&self, ty: &'ty Type) -> Option<Seen<'ty>> {
         let (inner, _) = through_wrappers(ty);
         let Type::Path(named) = inner else {
             return None;
         };
-        let last = named.path.segments.last()?;
-        let name = last.ident.unraw().to_string();
+        let name = named.path.segments.last()?.ident.unraw().to_string();
         let itself = name == "Self" || self.name.unraw() == name;
         let def = get_field_def("", inner, "");
         let sibling = def.array_depth == 0
@@ -893,7 +958,6 @@ impl Own<'_> {
             Some(Declared::Alias(_)) | None => return None,
         };
         reached.then_some(Seen {
-            last,
             one_value,
             ty: inner,
         })
@@ -902,15 +966,14 @@ impl Own<'_> {
     /// What the struct of paths is told as.
     fn told(&self) -> String {
         format!(
-            "The typed MongoDB paths of `{}`, under whatever leads to it in a row of `{}`.",
-            self.name.unraw(),
-            self.root
+            "The typed MongoDB paths of `{}`, each under no key but the type's own.",
+            self.name.unraw()
         )
     }
 
     /// The member of a value of type `ty` that serde writes at `place`, by what the type is:
-    /// `None` for a map, whose keys are data. `below` says a flagged type is asked for its own
-    /// paths, where one is otherwise one whole value.
+    /// `None` for a map, whose keys are data. `below` says a flagged type serde writes under
+    /// keys is a model, where one is otherwise one whole value.
     ///
     /// A list of a flagged type serde writes as one value is a list of plain values, matched
     /// through its elements. This builds:
@@ -933,9 +996,9 @@ impl Own<'_> {
     /// }
     ///
     /// fn main() -> Result<(), game_schema::WriteError> {
-    ///     let f = &Game::MONGO_FIELDS;
-    ///     let _ = f.best.gt(Score(80))?;
-    ///     let _ = f.scores.elem_match(f.scores.element().gt(Score(5))?);
+    ///     let f = Game::MONGO_FIELDS;
+    ///     let _ = f.best().gt(Score(80))?;
+    ///     let _ = f.scores().elem_match(f.scores().element().gt(Score(5))?);
     ///     Ok(())
     /// }
     /// ```
@@ -964,19 +1027,19 @@ impl Own<'_> {
     /// }
     ///
     /// fn main() -> Result<(), game_schema::WriteError> {
-    ///     let f = &Game::MONGO_FIELDS;
-    ///     let _ = f.best.gt(Score(80))?;
-    ///     let _ = f.scores.elem_match(Score::MONGO_FIELDS.gt(Score(5))?);
+    ///     let f = Game::MONGO_FIELDS;
+    ///     let _ = f.best().gt(Score(80))?;
+    ///     let _ = f.scores().elem_match(Score::MONGO_FIELDS.gt(Score(5))?);
     ///     Ok(())
     /// }
     /// ```
     ///
     /// ```text
     /// error[E0308]: `?` operator has incompatible types
-    ///   --> tests/zz_probe.rs:20:33
+    ///   --> tests/zz_probe.rs:20:35
     ///    |
-    /// 20 |     let _ = f.scores.elem_match(Score::MONGO_FIELDS.gt(Score(5))?);
-    ///    |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Element<Score>`, found `Filter<Score>`
+    /// 20 |     let _ = f.scores().elem_match(Score::MONGO_FIELDS.gt(Score(5))?);
+    ///    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Element<Score>`, found `Filter<Score>`
     ///    |
     ///    = note: `?` operator cannot convert from `score_schema::Filter<Score>` to `game_schema::Element<Score>`
     ///    = note: expected struct `game_schema::Element<Score>`
@@ -985,55 +1048,43 @@ impl Own<'_> {
     /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
     /// ```
     fn typed(&self, ty: &Type, place: &Place, below: bool) -> Option<Member> {
-        let (kinds, value, listed) = match held(ty) {
-            Held::List(inner) => (["ListField", "ModelList"], inner, true),
+        let (kinds, value) = match held(ty) {
+            Held::List(inner) => (["ListField", "ModelList"], inner),
             Held::Map => return None,
             Held::Optional(inner) => {
                 if matches!(held(inner), Held::Map) {
                     return None;
                 }
-                (["OptionalField", "OptionalModel"], inner, false)
+                (["OptionalField", "OptionalModel"], inner)
             }
-            Held::Value => (["Field", "Model"], ty, false),
+            Held::Value => (["Field", "Model"], ty),
         };
-        let module = &self.module;
-        let path = place.path(module);
-        // The elements of a list of values serde writes whole are plain values: a filter over
-        // the paths of one would have no key to write an operator under.
+        // A value serde writes whole is a plain one, with every comparison its own: a filter
+        // over the paths of one has no key to write an operator under.
         let model = self
             .seen_model(value)
-            .filter(|seen| below && !(listed && seen.one_value));
-        let [plain, typed] = kinds.map(|kind| Ident::new(kind, Span::call_site()));
-        Some(model.map_or_else(
-            || Member {
-                shown: Shown::Kind {
-                    fields: None,
-                    kind: plain.clone(),
-                    value: value.to_token_stream(),
-                },
-                value: quote! { #module::#plain::plain(#path) },
+            .is_some_and(|seen| below && !seen.one_value);
+        let [plain, typed] = kinds;
+        let kind = Ident::new(if model { typed } else { plain }, Span::call_site());
+        Some(Member {
+            built: Built::Plain {
+                key: place.joined(),
+                kind: kind.clone(),
             },
-            |seen| {
-                let fields = paths_of(&seen, &place.below(module));
-                let built = &fields.value;
-                Member {
-                    value: quote! { #module::#typed::plain(#path, #built) },
-                    shown: Shown::Kind {
-                        fields: Some(Box::new(fields.shown)),
-                        kind: typed.clone(),
-                        value: value.to_token_stream(),
-                    },
-                }
+            shown: Shown::Kind {
+                kind,
+                nested: reached_through(value),
+                value: value.to_token_stream(),
             },
-        ))
+            told: format!("The path of {}.", place.told()),
+        })
     }
 
     /// Those of the type's own parameters the types of `members` name.
-    fn used(&self, members: &Members) -> Vec<String> {
+    fn used(&self, members: &[Member]) -> Vec<String> {
         let written: Vec<String> = members
-            .shown()
-            .into_iter()
-            .flat_map(|shown| written_names(shown.written(self, IN_MODULE)))
+            .iter()
+            .flat_map(|member| written_names(member.shown.written(self, IN_MODULE)))
             .collect();
         self.parameters
             .iter()
@@ -1043,8 +1094,8 @@ impl Own<'_> {
     }
 
     /// `MongoFields` of a type serde writes as one value, and what builds it: the path of that
-    /// value, which it dereferences to. `text` adds `$regex`, for a value serde writes as text.
-    /// The path is a parameter the type's own `impl` and every holder write, so the module names
+    /// value, at the empty key, which it dereferences to. `text` adds `$regex`, for a value serde
+    /// writes as text. The path is a parameter the type's own `impl` writes, so the module names
     /// no type of its author's and builds where `super` does not reach the type: in a function.
     fn whole(&self, text: bool) -> (TokenStream, TokenStream) {
         let (module, root, whole, value) = (&self.module, &self.root, &self.whole, &self.value);
@@ -1067,7 +1118,8 @@ impl Own<'_> {
                     /// `$regex` with `$options`: rows whose text at this path matches `pattern`.
                     #[must_use]
                     pub fn regex(&self, pattern: &str, options: &str) -> self::Filter<#root> {
-                        self::Field::<#root, ::std::string::String>::plain(self.whole.path).regex(pattern, options)
+                        self::Field::<#root, ::std::string::String, ::std::string::String>::plain(self.whole.path)
+                            .regex(pattern, options)
                     }
                 }
             }
@@ -1106,43 +1158,61 @@ impl Own<'_> {
         };
         (
             declared,
-            quote! { #module::MongoFields::built(#module::Field::plain(#module::MongoPath::at(prefix))) },
+            quote! { #module::MongoFields::built(#module::Field::plain(#module::MongoPath::ROOT)) },
         )
+    }
+
+    /// `declared`, the parameters a struct of functions declares a module `depth` below the
+    /// type, under what the type's own `impl` of its paths is under: `Serialize` for itself and
+    /// for each of its type parameters, which a path writes a value with.
+    fn writing(&self, declared: &Generics, depth: usize) -> Generics {
+        let mut bounded = declared.clone();
+        if !self.type_parameters.is_empty() {
+            let itself = self.itself(depth);
+            bounded
+                .make_where_clause()
+                .predicates
+                .push(parse_quote!(#itself: ::serde::Serialize));
+            bound_parameters(
+                &mut bounded,
+                &parse_quote!(::serde::Serialize),
+                Some(&self.root),
+            );
+        }
+        bounded
     }
 }
 
-/// Where serde writes a value: the keys leading to what holds it, and its own key there, or none
-/// for a value written in place of what holds it.
+/// Where serde writes a value: the key of what holds it, relative to the type the paths are of,
+/// and its own key there, or none for a value written in place of what holds it.
 struct Place {
     key: Option<String>,
-    prefix: TokenStream,
+    under: String,
 }
 
 impl Place {
-    /// The keys leading to what the value itself holds.
-    fn below(&self, module: &Ident) -> TokenStream {
-        if self.key.is_some() {
-            let path = self.path(module);
-            quote! { #path.segments }
-        } else {
-            self.prefix.clone()
+    /// The key of the value, relative to the type the paths are of: empty for the type itself.
+    fn joined(&self) -> String {
+        match &self.key {
+            None => self.under.clone(),
+            Some(key) if self.under.is_empty() => key.clone(),
+            Some(key) => format!("{}.{key}", self.under),
         }
     }
 
-    /// The path of the value.
-    fn path(&self, module: &Ident) -> TokenStream {
-        let prefix = &self.prefix;
-        self.key.as_ref().map_or_else(
-            || quote! { #module::MongoPath::at(#prefix) },
-            |key| quote! { #module::MongoPath::under(#prefix, #key) },
-        )
+    /// The place, as the doc of a function names it.
+    fn told(&self) -> String {
+        let key = self.joined();
+        if key.is_empty() {
+            "the value itself".to_owned()
+        } else {
+            format!("`{key}`")
+        }
     }
 }
 
 /// A flagged type a member is typed with, as the type that holds the member writes it.
 struct Seen<'ty> {
-    /// The last name of its path, which its module is named after.
-    last: &'ty PathSegment,
     /// serde writes the type as one value, so its struct of paths is one path.
     one_value: bool,
     ty: &'ty Type,
@@ -1168,20 +1238,15 @@ enum Shown {
         arguments: TokenStream,
         named: Ident,
     },
-    /// One of the module's path kinds over a value of the author's: `Field<Root, V>`, and with
-    /// the struct of paths of a flagged type `Model<Root, M, F>`.
+    /// One of the module's path kinds over a value of the author's: `Field<Root, V>`, and
+    /// `Field<Root, V, N>` where the value wraps the model `nest` reaches.
     Kind {
-        fields: Option<Box<Self>>,
         kind: Ident,
+        nested: Option<TokenStream>,
         value: TokenStream,
     },
-    /// Another flagged type's own struct of paths: its module, what the type is written with,
-    /// and for a type serde writes as one value the type itself, which its one path is over.
-    Nested {
-        arguments: TokenStream,
-        module: Ident,
-        whole: Option<TokenStream>,
-    },
+    /// `Nested<Root, N>`, over a flagged model the author wrote.
+    Nested { model: TokenStream },
     /// No path: the slot of a tuple that has none.
     Skipped,
 }
@@ -1189,58 +1254,40 @@ enum Shown {
 impl Shown {
     /// The type, as a module `depth` below the flagged type writes it.
     fn written(&self, own: &Own<'_>, depth: usize) -> TokenStream {
-        let root = &own.root;
+        let (root, kinds) = (&own.root, own.kinds(depth));
         match self {
             Self::Held { arguments, named } => {
-                if depth == IN_MODULE {
-                    quote! { self::mongo_members::#named<#root #arguments> }
-                } else {
+                if depth == IN_MEMBERS {
                     quote! { self::#named<#root #arguments> }
+                } else {
+                    quote! { #kinds mongo_members::#named<#root #arguments> }
                 }
             }
             Self::Kind {
-                fields,
                 kind,
+                nested,
                 value,
             } => {
-                // The path kinds are the schema module's own, named through a path so that a
-                // parameter of the type's own of the same name does not stand in for one.
-                let kinds = if depth == IN_MODULE {
-                    quote! { self:: }
-                } else {
-                    supers(depth.saturating_sub(IN_MODULE))
-                };
                 let of = own.scoped(value.clone(), depth);
-                let nested = fields.as_ref().map(|held| {
-                    let written = held.written(own, depth);
+                let reached = nested.as_ref().map(|model| {
+                    let written = own.scoped(model.clone(), depth);
                     quote! { , #written }
                 });
-                quote! { #kinds #kind<#root, #of #nested> }
+                quote! { #kinds #kind<#root, #of #reached> }
             }
-            Self::Nested {
-                arguments,
-                module,
-                whole,
-            } => {
-                let above = supers(depth);
-                let with = own.scoped(arguments.clone(), depth);
-                // The path of a type written as one value is a parameter of its struct of paths,
-                // which names no type of its author's: whoever holds the struct writes it.
-                let path = whole.as_ref().map(|value| {
-                    let of = own.scoped(value.clone(), depth);
-                    quote! { , #above #module::Field<#root, #of> }
-                });
-                quote! { #above #module::MongoFields<#root #with #path> }
+            Self::Nested { model } => {
+                let of = own.scoped(model.clone(), depth);
+                quote! { #kinds Nested<#root, #of> }
             }
             Self::Skipped => quote! { () },
         }
     }
 }
 
-/// The typed paths of an enum: one member per variant that holds a value serde writes, and one
+/// The typed paths of an enum: one function per variant that holds a value serde writes, and one
 /// `is_{variant}` per variant where serde writes what names it. A plain enum is one value.
 ///
-/// A member typed with a plain enum takes a value of the enum and nothing else. The run below
+/// A path typed with a plain enum takes a value of the enum and nothing else. The run below
 /// hands one the text serde writes for a variant. A `compile_fail` doctest asserts only that some
 /// error was raised, so it was compiled standalone as an ordinary test file, and the text under
 /// it is the only error it earned, verbatim:
@@ -1265,18 +1312,18 @@ impl Shown {
 /// }
 ///
 /// fn main() {
-///     let _ = Invoice::MONGO_FIELDS.status.eq("past-due");
+///     let _ = Invoice::MONGO_FIELDS.status().eq("past-due");
 /// }
 /// ```
 ///
 /// ```text
 /// error[E0308]: mismatched types
-///   --> tests/zz_probe.rs:20:45
+///   --> tests/zz_probe.rs:20:47
 ///    |
-/// 20 |     let _ = Invoice::MONGO_FIELDS.status.eq("past-due");
-///    |                                          -- ^^^^^^^^^^ expected `InvoiceStatus`, found `&str`
-///    |                                          |
-///    |                                          arguments to this method are incorrect
+/// 20 |     let _ = Invoice::MONGO_FIELDS.status().eq("past-due");
+///    |                                            -- ^^^^^^^^^^ expected `InvoiceStatus`, found `&str`
+///    |                                            |
+///    |                                            arguments to this method are incorrect
 ///    |
 /// note: method defined here
 ///   --> tests/zz_probe.rs:13:1
@@ -1301,7 +1348,7 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
         Tagging::Untagged => (Put::InPlace, None),
     };
     let container = parse_written_renames(&item.attrs);
-    let mut members: Vec<(Ident, Member)> = Vec::new();
+    let mut holding: Vec<(String, Member)> = Vec::new();
     let mut asks: Vec<Ask> = Vec::new();
     for variant in &item.variants {
         if has_serde_skip_serializing(&variant.attrs) {
@@ -1324,7 +1371,7 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
             stem: &stem,
         };
         if let Some(member) = emitter.content(variant, &of) {
-            members.push((member_ident(&stem), member));
+            holding.push((stem.clone(), member));
         }
         asks.push(Ask {
             holds: writes_an_object(variant),
@@ -1333,15 +1380,27 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
         });
     }
     let asked = named.map(|by| asked(&by, &asks, &emitter.own));
-    let (declared, built) = emitter.laid_out(&Members::Named(members), asked.as_ref());
+    // An `is_{variant}` keeps its name, and the function of a variant that meets one is numbered.
+    let mut taken: Vec<String> = if asked.is_some() {
+        asks.iter().map(|ask| format!("is_{}", ask.stem)).collect()
+    } else {
+        Vec::new()
+    };
+    let mut members: Vec<(Ident, Member)> = Vec::new();
+    for (stem, member) in holding {
+        let name = unclaimed(&stem, &taken);
+        members.push((member_ident(&name), member));
+        taken.push(name);
+    }
+    let (declared, built) = emitter.laid_out(Members::Named(members), asked.as_ref());
     emitter.emitted(&declared, &built, false)
 }
 
-/// The typed paths of a struct: one member per field or slot serde writes, and one value for a
-/// struct serde writes as the value it holds, or as nothing.
+/// The typed paths of a struct: one function per field serde writes, one member per slot of a
+/// tuple, and one value for a struct serde writes as the value it holds, or as nothing.
 ///
-/// A path takes a value of its field's own type, and a field typed with a flagged type declared
-/// above reaches that type's paths. This builds:
+/// A path takes a value of its field's own type, and is a value a `const` item holds. `nest`
+/// writes what is asked of a nested type's own paths under the field that holds it. This builds:
 ///
 /// ```rust
 /// # extern crate bson2 as bson;
@@ -1389,27 +1448,69 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 ///     pub total: f64,
 /// }
 ///
+/// const TOTAL: invoice_schema::Field<Invoice, f64> = Invoice::MONGO_FIELDS.total();
+///
 /// fn main() -> Result<(), invoice_schema::WriteError> {
-///     let f = &Invoice::MONGO_FIELDS;
+///     let (f, customer) = (Invoice::MONGO_FIELDS, Customer::MONGO_FIELDS);
+///     let few_open = f.customer().nest(customer.open_invoices().lte(3)?);
 ///     let _ = f
-///         .status
+///         .status()
 ///         .eq(InvoiceStatus::PastDue)?
-///         .or(f.total.gt(1000.0)?)
-///         .and(f.tags.contains("export".to_owned())?.or(f.customer.open_invoices.lte(3)?))
-///         .or(f.paid_at.exists(true).negated());
-///     let _ = f.customer.address.city.eq("Santo Domingo".to_owned())?;
+///         .or(TOTAL.gt(1000.0)?)
+///         .and(f.tags().contains("export".to_owned())?.or(few_open))
+///         .or(f.paid_at().exists(true).negated());
+///     let in_city = Address::MONGO_FIELDS.city().eq("Santo Domingo".to_owned())?;
+///     let _ = f.customer().nest(customer.address().nest(in_city));
 ///     let _ = f
-///         .number
+///         .number()
 ///         .eq("INV-0042".to_owned())?
 ///         .and(invoice_schema::Filter::<Invoice>::raw(doc! { "details.costCenter": "CC-7" }));
 ///     Ok(())
 /// }
 /// ```
 ///
-/// Each run below declares one such type and asks of a generated path what its kind refuses. A
+/// Each run below declares one such type and asks of its paths what they refuse. A
 /// `compile_fail` doctest asserts only that some error was raised, so each was compiled
 /// standalone as an ordinary test file, and the text under it is the only error it earned,
 /// verbatim.
+///
+/// A field the type does not declare, which is a function its struct of paths does not have:
+///
+/// ```rust,compile_fail
+/// # extern crate bson2 as bson;
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema(decode_with)]
+/// #[derive(Debug, Deserialize, Serialize)]
+/// pub struct Customer {
+///     pub name: String,
+/// }
+///
+/// #[model_schema(decode_with)]
+/// #[derive(Debug, Deserialize, Serialize)]
+/// pub struct Invoice {
+///     pub customer: Customer,
+///     pub total: f64,
+/// }
+///
+/// fn main() {
+///     let _ = Invoice::MONGO_FIELDS.amount().gt(1000.0);
+/// }
+/// ```
+///
+/// ```text
+/// error[E0599]: no method named `amount` found for struct `invoice_schema::MongoFields<Root>` in the current scope
+///   --> tests/zz_probe.rs:19:35
+///    |
+/// 11 | #[model_schema(decode_with)]
+///    | ---------------------------- method `amount` not found for this struct
+/// ...
+/// 19 |     let _ = Invoice::MONGO_FIELDS.amount().gt(1000.0);
+///    |                                   ^^^^^^ method not found in `invoice_schema::MongoFields<Invoice>`
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
 ///
 /// `$unset` on a field every row holds:
 ///
@@ -1425,19 +1526,19 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 /// }
 ///
 /// fn main() {
-///     let _ = Invoice::MONGO_FIELDS.number.unset();
+///     let _ = Invoice::MONGO_FIELDS.number().unset();
 /// }
 /// ```
 ///
 /// ```text
-/// error[E0599]: no method named `unset` found for struct `invoice_schema::Field<Root, V>` in the current scope
-///   --> tests/zz_probe.rs:12:42
+/// error[E0599]: no method named `unset` found for struct `invoice_schema::Field<Root, V, N>` in the current scope
+///   --> tests/zz_probe.rs:12:44
 ///    |
 ///  5 | #[model_schema(decode_with)]
 ///    | ---------------------------- method `unset` not found for this struct
 /// ...
-/// 12 |     let _ = Invoice::MONGO_FIELDS.number.unset();
-///    |                                          ^^^^^
+/// 12 |     let _ = Invoice::MONGO_FIELDS.number().unset();
+///    |                                            ^^^^^
 ///    |
 /// help: there is a method `set` with a similar name, but with different arguments
 ///   --> tests/zz_probe.rs:5:1
@@ -1464,18 +1565,18 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 /// }
 ///
 /// fn main() {
-///     let _ = Invoice::MONGO_FIELDS.open_invoices.lte("3");
+///     let _ = Invoice::MONGO_FIELDS.open_invoices().lte("3");
 /// }
 /// ```
 ///
 /// ```text
 /// error[E0308]: mismatched types
-///   --> tests/zz_probe.rs:13:53
+///   --> tests/zz_probe.rs:13:55
 ///    |
-/// 13 |     let _ = Invoice::MONGO_FIELDS.open_invoices.lte("3");
-///    |                                                 --- ^^^ expected `u32`, found `&str`
-///    |                                                 |
-///    |                                                 arguments to this method are incorrect
+/// 13 |     let _ = Invoice::MONGO_FIELDS.open_invoices().lte("3");
+///    |                                                   --- ^^^ expected `u32`, found `&str`
+///    |                                                   |
+///    |                                                   arguments to this method are incorrect
 ///    |
 /// note: method defined here
 ///   --> tests/zz_probe.rs:5:1
@@ -1501,18 +1602,18 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 /// }
 ///
 /// fn main() {
-///     let _ = Invoice::MONGO_FIELDS.total.gt("1000");
+///     let _ = Invoice::MONGO_FIELDS.total().gt("1000");
 /// }
 /// ```
 ///
 /// ```text
 /// error[E0308]: mismatched types
-///   --> tests/zz_probe.rs:12:44
+///   --> tests/zz_probe.rs:12:46
 ///    |
-/// 12 |     let _ = Invoice::MONGO_FIELDS.total.gt("1000");
-///    |                                         -- ^^^^^^ expected `f64`, found `&str`
-///    |                                         |
-///    |                                         arguments to this method are incorrect
+/// 12 |     let _ = Invoice::MONGO_FIELDS.total().gt("1000");
+///    |                                           -- ^^^^^^ expected `f64`, found `&str`
+///    |                                           |
+///    |                                           arguments to this method are incorrect
 ///    |
 /// note: method defined here
 ///   --> tests/zz_probe.rs:5:1
@@ -1540,20 +1641,20 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 /// }
 ///
 /// fn main() -> Result<(), invoice_schema::WriteError> {
-///     let _ = Invoice::MONGO_FIELDS.tags.gt("export".to_owned())?;
+///     let _ = Invoice::MONGO_FIELDS.tags().gt("export".to_owned())?;
 ///     Ok(())
 /// }
 /// ```
 ///
 /// ```text
 /// error[E0599]: `ListField<Invoice, std::string::String>` is not an iterator
-///   --> tests/zz_probe.rs:12:40
+///   --> tests/zz_probe.rs:12:42
 ///    |
 ///  5 | #[model_schema(decode_with)]
 ///    | ---------------------------- method `gt` not found for this struct because it doesn't satisfy `ListField<Invoice, std::string::String>: Iterator`
 /// ...
-/// 12 |     let _ = Invoice::MONGO_FIELDS.tags.gt("export".to_owned())?;
-///    |                                        ^^ `ListField<Invoice, std::string::String>` is not an iterator
+/// 12 |     let _ = Invoice::MONGO_FIELDS.tags().gt("export".to_owned())?;
+///    |                                          ^^ `ListField<Invoice, std::string::String>` is not an iterator
 ///    |
 ///    = note: the following trait bounds were not satisfied:
 ///            `ListField<Invoice, std::string::String>: Iterator`
@@ -1587,20 +1688,20 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 /// }
 ///
 /// fn main() -> Result<(), invoice_schema::WriteError> {
-///     let invoice = &Invoice::MONGO_FIELDS;
-///     let _ = invoice.total.gt(1000.0)?.and(Order::MONGO_FIELDS.placed.eq(true)?);
+///     let invoice = Invoice::MONGO_FIELDS;
+///     let _ = invoice.total().gt(1000.0)?.and(Order::MONGO_FIELDS.placed().eq(true)?);
 ///     Ok(())
 /// }
 /// ```
 ///
 /// ```text
 /// error[E0277]: the trait bound `order_schema::Filter<Order>: AsRef<PhantomData<Invoice>>` is not satisfied
-///   --> tests/zz_probe.rs:19:43
+///   --> tests/zz_probe.rs:19:45
 ///    |
-/// 19 |     let _ = invoice.total.gt(1000.0)?.and(Order::MONGO_FIELDS.placed.eq(true)?);
-///    |                                       --- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
-///    |                                       |
-///    |                                       required by a bound introduced by this call
+/// 19 |     let _ = invoice.total().gt(1000.0)?.and(Order::MONGO_FIELDS.placed().eq(true)?);
+///    |                                         --- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+///    |                                         |
+///    |                                         required by a bound introduced by this call
 ///    |
 /// help: the trait `AsRef<PhantomData<Invoice>>` is not implemented for `order_schema::Filter<Order>`
 ///       but trait `AsRef<PhantomData<Order>>` is implemented for it
@@ -1620,7 +1721,6 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 /// ```
 pub fn struct_paths(item: &ItemStruct, written: &[String]) -> TypedPaths {
     let mut emitter = Emitter::new(&item.ident, &item.generics, written);
-    let prefix = quote! { prefix };
     let (declared, built, one_value) = match (value_slot(item), &item.fields) {
         (Some(slot), _) => {
             let (declared, built) = emitter.own.whole(is_text(slot));
@@ -1628,8 +1728,8 @@ pub fn struct_paths(item: &ItemStruct, written: &[String]) -> TypedPaths {
         }
         (None, Fields::Named(named)) => {
             let rule = parse_written_renames(&item.attrs).rename_all;
-            let members = emitter.keyed(named, rule.as_deref(), &prefix, None, true);
-            let (declared, built) = emitter.laid_out(&Members::Named(members), None);
+            let members = emitter.keyed(named, rule.as_deref(), "", None, true);
+            let (declared, built) = emitter.laid_out(Members::Named(members), None);
             (declared, built, false)
         }
         (None, Fields::Unit) => {
@@ -1637,56 +1737,36 @@ pub fn struct_paths(item: &ItemStruct, written: &[String]) -> TypedPaths {
             (declared, built, true)
         }
         (None, Fields::Unnamed(slots)) => {
-            let members = emitter.positional(slots, &prefix, None, true);
-            let (declared, built) = emitter.laid_out(&Members::Positional(members), None);
+            let members = emitter.positional(slots, "", None, true);
+            let (declared, built) = emitter.laid_out(Members::Positional(members), None);
             (declared, built, false)
         }
     };
     emitter.emitted(&declared, &built, one_value)
 }
 
-/// A struct that holds nothing but `members`, each one public, under the parameters `generics`
-/// declares, told as `told`, as a module `depth` below the type declares it.
-fn all_public(
-    named: &Ident,
-    members: &Members,
-    generics: &Generics,
-    told: &str,
-    own: &Own<'_>,
-    depth: usize,
-) -> TokenStream {
-    let where_clause = &generics.where_clause;
-    let (declared, shown) = (members.declared(own, depth), shown_as(named, generics));
-    match members {
-        Members::Named(_) => quote! {
-            #[doc = #told]
-            #[non_exhaustive]
-            pub struct #named #generics #where_clause {
-                #declared
-            }
-
-            #shown
-        },
-        Members::Positional(_) => quote! {
-            #[doc = #told]
-            #[non_exhaustive]
-            pub struct #named #generics (#declared) #where_clause;
-
-            #shown
-        },
-    }
-}
-
-/// What an enum's struct of paths keeps to answer `is_{variant}`, by what names a variant in the
-/// form serde writes the enum in.
-fn asked(by: &Named<'_>, asks: &[Ask], own: &Own<'_>) -> Asked {
-    let (module, root) = (&own.module, &own.root);
-    let method = |ask: &Ask, body: &TokenStream| {
+/// The `is_{variant}` methods of an enum's struct of paths, by what names a variant in the form
+/// serde writes the enum in: each reads the key that names it as the enum's own level writes it.
+fn asked(by: &Named<'_>, asks: &[Ask], own: &Own<'_>) -> TokenStream {
+    let root = &own.root;
+    let each = asks.iter().map(|ask| {
         let named = format_ident!("is_{}", ask.stem);
         let told = format!(
-            "Rows whose value at this path is the variant serde writes as `{}`.",
+            "Rows whose value is the variant serde writes as `{}`.",
             ask.name
         );
+        let name = &ask.name;
+        let body = match by {
+            Named::ByItsKey if ask.holds => {
+                quote! { self::Filter::held(#name, "$exists", bson::Bson::Boolean(true)) }
+            }
+            Named::ByItsKey => {
+                quote! { self::Filter::held("", "$eq", bson::Bson::String(#name.to_owned())) }
+            }
+            Named::ByTag(tag) => {
+                quote! { self::Filter::held(#tag, "$eq", bson::Bson::String(#name.to_owned())) }
+            }
+        };
         quote! {
             #[doc = #told]
             #[must_use]
@@ -1694,61 +1774,8 @@ fn asked(by: &Named<'_>, asks: &[Ask], own: &Own<'_>) -> Asked {
                 #body
             }
         }
-    };
-    match by {
-        Named::ByItsKey => {
-            let each = asks.iter().map(|ask| {
-                let name = &ask.name;
-                if ask.holds {
-                    method(ask, &quote! { self.keyed(#name) })
-                } else {
-                    method(
-                        ask,
-                        &quote! { self::Filter::held(self.asked.key(), "$eq", bson::Bson::String(#name.to_owned())) },
-                    )
-                }
-            });
-            let keyed = asks.iter().any(|ask| ask.holds).then(|| {
-                quote! {
-                    fn keyed(&self, variant: &str) -> self::Filter<#root> {
-                        let mut key = self.asked.key();
-                        if !key.is_empty() {
-                            key.push('.');
-                        }
-                        key.push_str(variant);
-                        self::Filter::held(key, "$exists", bson::Bson::Boolean(true))
-                    }
-                }
-            });
-            Asked {
-                methods: quote! {
-                    #keyed
-                    #(#each)*
-                },
-                path: quote! { #module::MongoPath::at(prefix) },
-            }
-        }
-        Named::ByTag(tag) => {
-            let each = asks.iter().map(|ask| {
-                let name = &ask.name;
-                method(ask, &quote! { self.tagged(#name) })
-            });
-            let tagged = (!asks.is_empty()).then(|| {
-                quote! {
-                    fn tagged(&self, variant: &str) -> self::Filter<#root> {
-                        self::Filter::held(self.asked.key(), "$eq", bson::Bson::String(variant.to_owned()))
-                    }
-                }
-            });
-            Asked {
-                methods: quote! {
-                    #tagged
-                    #(#each)*
-                },
-                path: quote! { #module::MongoPath::under(prefix, #tag) },
-            }
-        }
-    }
+    });
+    quote! { #(#each)* }
 }
 
 /// Whether the tokens end on `::`, so that the name after them continues a path.
@@ -1813,144 +1840,112 @@ fn member_ident(name: &str) -> Ident {
     }
 }
 
-/// The struct of paths of the flagged type `seen`, built by that type's own function under the
-/// keys of `prefix`.
-///
-/// A path kind reaches the nested type's paths by dereferencing, which a `const` item cannot do.
-/// A member of the row itself is held in one, and a path below a nested model is read in a
-/// function. This builds:
-///
-/// ```rust
-/// # extern crate bson2 as bson;
-/// use serde::{Deserialize, Serialize};
-/// use tixschema::model_schema;
-///
-/// #[model_schema(decode_with)]
-/// #[derive(Debug, Deserialize, Serialize)]
-/// pub struct Address {
-///     pub city: String,
-/// }
-///
-/// #[model_schema(decode_with)]
-/// #[derive(Debug, Deserialize, Serialize)]
-/// pub struct Customer {
-///     pub address: Address,
-/// }
-///
-/// #[model_schema(decode_with)]
-/// #[derive(Debug, Deserialize, Serialize)]
-/// pub struct Invoice {
-///     pub customer: Customer,
-///     pub total: f64,
-/// }
-///
-/// const TOTAL: invoice_schema::Field<Invoice, f64> = Invoice::MONGO_FIELDS.total;
-///
-/// fn main() {
-///     let city = &Invoice::MONGO_FIELDS.customer.address.city;
-///     let _ = (TOTAL.segments(), city.segments());
-/// }
-/// ```
-///
-/// The run below is that one with the path below the nested model held in a `const` item too,
-/// and nothing else changed. A `compile_fail` doctest asserts only that some error was raised, so
-/// it was compiled standalone as an ordinary test file, and the text under it is the only two
-/// errors it earned, verbatim:
-///
-/// ```rust,compile_fail
-/// # extern crate bson2 as bson;
-/// use serde::{Deserialize, Serialize};
-/// use tixschema::model_schema;
-///
-/// #[model_schema(decode_with)]
-/// #[derive(Debug, Deserialize, Serialize)]
-/// pub struct Address {
-///     pub city: String,
-/// }
-///
-/// #[model_schema(decode_with)]
-/// #[derive(Debug, Deserialize, Serialize)]
-/// pub struct Customer {
-///     pub address: Address,
-/// }
-///
-/// #[model_schema(decode_with)]
-/// #[derive(Debug, Deserialize, Serialize)]
-/// pub struct Invoice {
-///     pub customer: Customer,
-///     pub total: f64,
-/// }
-///
-/// const TOTAL: invoice_schema::Field<Invoice, f64> = Invoice::MONGO_FIELDS.total;
-/// const CITY: address_schema::Field<Invoice, String> = Invoice::MONGO_FIELDS.customer.address.city;
-///
-/// fn main() {
-///     let _ = (TOTAL.segments(), CITY.segments());
-/// }
-/// ```
-///
-/// ```text
-/// error[E0015]: cannot perform non-const deref coercion on `invoice_schema::Model<Invoice, Customer, customer_schema::MongoFields<Invoice>>` in constants
-///   --> tests/zz_probe.rs:25:54
-///    |
-/// 25 | const CITY: address_schema::Field<Invoice, String> = Invoice::MONGO_FIELDS.customer.address.city;
-///    |                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-///    |
-///    = note: attempting to deref into `customer_schema::MongoFields<Invoice>`
-/// note: deref defined here
-///   --> tests/zz_probe.rs:17:1
-///    |
-/// 17 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/// note: impl defined here, but it is not `const`
-///   --> tests/zz_probe.rs:17:1
-///    |
-/// 17 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-///    = note: calls in constants are limited to constant functions, tuple structs and tuple variants
-///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
-///
-/// error[E0015]: cannot perform non-const deref coercion on `customer_schema::Model<Invoice, Address, address_schema::MongoFields<Invoice>>` in constants
-///   --> tests/zz_probe.rs:25:54
-///    |
-/// 25 | const CITY: address_schema::Field<Invoice, String> = Invoice::MONGO_FIELDS.customer.address.city;
-///    |                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-///    |
-///    = note: attempting to deref into `address_schema::MongoFields<Invoice>`
-/// note: deref defined here
-///   --> tests/zz_probe.rs:11:1
-///    |
-/// 11 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/// note: impl defined here, but it is not `const`
-///   --> tests/zz_probe.rs:11:1
-///    |
-/// 11 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-///    = note: calls in constants are limited to constant functions, tuple structs and tuple variants
-///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
-///
-/// error: could not compile `tixschema` (test "zz_probe") due to 2 previous errors
-/// ```
-fn paths_of(seen: &Seen<'_>, prefix: &TokenStream) -> Member {
-    let arguments = if let PathArguments::AngleBracketed(angled) = &seen.last.arguments {
-        let each = angled.args.iter();
-        quote! { #(, #each)* }
+/// A struct `named` that holds no path, told as `told`, with one function per member of `members`
+/// that answers the member's path, and `more` beside them. It carries no function to be built
+/// with, whose name a member's could meet: its one member is a public marker, which whoever
+/// builds the struct writes. With it, the `impl` written beside the type for the functions that
+/// call a hook: a function of the type's own, which the schema module cannot name where the
+/// type is declared inside a function.
+fn of_functions(
+    named: &Ident,
+    members: &[(Ident, Member)],
+    told: &str,
+    own: &Own<'_>,
+    more: Option<&TokenStream>,
+) -> (TokenStream, Option<TokenStream>) {
+    let depth = if named == "MongoFields" {
+        IN_MODULE
     } else {
-        TokenStream::new()
+        IN_MEMBERS
     };
-    let module = ident_schema_module_name(&seen.last.ident.unraw().to_string());
-    let model = seen.ty;
-    Member {
-        shown: Shown::Nested {
-            arguments,
-            // Spanned on the type's name, so a module that is not in scope beside the type that
-            // holds the member is reported at the member's own field.
-            module: Ident::new(&module, seen.last.ident.span()),
-            whole: seen.one_value.then(|| model.to_token_stream()),
-        },
-        value: quote! { <#model>::mongo_fields_under(#prefix) },
+    let function = |(name, member): &(Ident, Member), from: usize| {
+        let (of, answered, built) = (
+            &member.told,
+            member.shown.written(own, from),
+            member.built.written(own, from),
+        );
+        quote! {
+            #[doc = #of]
+            #[must_use]
+            pub const fn #name(&self) -> #answered {
+                #built
+            }
+        }
+    };
+    let (hooked, plain): (Vec<_>, Vec<_>) = members
+        .iter()
+        .partition(|(_name, member)| member.built.calls_a_hook());
+    let generics = own.declared(depth, None);
+    let where_clause = &generics.where_clause;
+    let marked = generics.type_params().map(|parameter| &parameter.ident);
+    let shown = shown_as(named, &generics);
+    let answering = (!plain.is_empty() || more.is_some()).then(|| {
+        let functions = plain.iter().map(|member| function(member, depth));
+        let writing = own.writing(&generics, depth);
+        let (impl_generics, type_generics, bounds) = writing.split_for_impl();
+        quote! {
+            impl #impl_generics #named #type_generics #bounds {
+                #(#functions)*
+
+                #more
+            }
+        }
+    });
+    let beside = (!hooked.is_empty()).then(|| {
+        let functions = hooked.iter().map(|member| function(member, 0));
+        let writing = own.writing(&own.declared(0, None), 0);
+        let (impl_generics, type_generics, bounds) = writing.split_for_impl();
+        let kinds = own.kinds(0);
+        let within = (depth == IN_MEMBERS).then(|| quote! { mongo_members:: });
+        quote! {
+            impl #impl_generics #kinds #within #named #type_generics #bounds {
+                #(#functions)*
+            }
+        }
+    });
+    let declared = quote! {
+        #[doc = #told]
+        #[non_exhaustive]
+        pub struct #named #generics #where_clause {
+            /// The row the paths are of, and what the type is written with: no path is held.
+            pub row: ::core::marker::PhantomData<fn() -> (#(#marked,)*)>,
+        }
+
+        #shown
+
+        #answering
+    };
+    (declared, beside)
+}
+
+/// A tuple struct `named` whose every member is one of `slots`, each one public, under the
+/// parameters `generics` declares, told as `told`, as a module `depth` below the type declares
+/// it.
+fn of_slots(
+    named: &Ident,
+    slots: &[Member],
+    generics: &Generics,
+    told: &str,
+    own: &Own<'_>,
+    depth: usize,
+) -> TokenStream {
+    let where_clause = &generics.where_clause;
+    let shown = shown_as(named, generics);
+    let each = slots.iter().map(|slot| slot.shown.written(own, depth));
+    quote! {
+        #[doc = #told]
+        #[non_exhaustive]
+        pub struct #named #generics (#(pub #each),*) #where_clause;
+
+        #shown
     }
+}
+
+/// The model `nest` reaches under a value of type `value`, where that is not `value` itself:
+/// what the wrappers serde writes as the value they hold are around.
+fn reached_through(value: &Type) -> Option<TokenStream> {
+    let (inner, wrapped) = through_wrappers(value);
+    wrapped.then(|| inner.to_token_stream())
 }
 
 /// `Debug` for the struct of paths `named`, declared under `generics`: its name alone. A derive
