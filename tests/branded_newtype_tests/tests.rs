@@ -2426,7 +2426,11 @@ mod branded_chrono_zod_tests {
     #[test]
     fn every_chrono_brand_reads_its_annotation_off_its_own_raw_schema() {
         for (name, value, zod) in [
-            ("UtcStamp", "z.coerce.date()", UtcStamp::zod_schema()),
+            (
+                "UtcStamp",
+                "z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date())",
+                UtcStamp::zod_schema(),
+            ),
             ("DayStamp", "z.iso.date()", DayStamp::zod_schema()),
             (
                 "MomentStamp",
@@ -2495,7 +2499,7 @@ mod branded_chrono_zod_tests {
             ),
             (
                 "InstantFamily",
-                "z.coerce.date()",
+                "z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date())",
                 InstantFamily::<DateTime<Utc>>::zod_schema(),
             ),
         ] {
