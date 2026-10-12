@@ -2,6 +2,7 @@
 //! the typed paths that build them. Two binaries compile this module, each with the name `bson`
 //! bound to one major version of the library, so every case runs against both.
 
+mod arms;
 mod hooked;
 mod nested;
 // A build that describes a type refuses a renaming whose two directions name two keys.

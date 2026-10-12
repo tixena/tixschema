@@ -4760,6 +4760,89 @@ fn bolts() -> LineItem {
 | `paths.payment().nest(payment.card().last4().eq("4242".to_owned())?)` | `{ "payment.last4": { "$eq": "4242" } }` |
 | `paths.payment().set(Payment::Cash)?` | `{ "$set": { "payment": { "kind": "cash" } } }` |
 
+**The arms of an enum under a tag.** `<tag>__<value>()` is a function of the enum's own paths, one per variant serde writes, and it answers the rows of that arm. Its name is the tag key, `__`, and the value serde writes for the variant, each in snake case. What it answers is an arm filter, an `ArmFilter<Root, M>`: a filter over the rows of the enum that holds the arm's tag from the start, and whose `and` takes a filter over the rows of `M`, the model the arm holds, and over no other. So a field of an arm is asked only together with that arm's tag, and a row of another arm that writes the same key is not matched. The function is a `const fn`, so a `const` item holds an arm filter, and each use of the `const` is a new value:
+
+```rust
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Courier {
+    pub name: String,
+    pub region: String,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "type")]
+pub enum Transport {
+    #[serde(rename = "by-courier")]
+    ByCourier(Courier),
+    Collected,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Booking {
+    pub depot_code: String,
+    #[serde(flatten)]
+    pub transport: Transport,
+}
+
+/// The bookings a courier carries, held in a `const`.
+const BY_COURIER: transport_schema::ArmFilter<Transport, Courier> =
+    Transport::MONGO_FIELDS.type__by_courier();
+
+/// The bookings one courier carries out of one depot.
+fn couriered(depot: &str, courier: &str) -> Result<booking_schema::Filter<Booking>, WriteError> {
+    let booking = Booking::MONGO_FIELDS;
+    let by_name = BY_COURIER.and(Courier::MONGO_FIELDS.name().eq(courier.to_owned())?);
+    Ok(booking
+        .transport()
+        .nest(by_name)
+        .and(booking.depot_code().eq(depot.to_owned())?))
+}
+```
+
+| Written | The document it builds |
+|---------|------------------------|
+| `couriered("SDQ-1", "Acme Freight")?` | `{ "$and": [{ "type": { "$eq": "by-courier" } }, { "name": { "$eq": "Acme Freight" } }, { "depotCode": { "$eq": "SDQ-1" } }] }` |
+| `Booking::count(&collection, couriered("SDQ-1", "Acme Freight")?).await?` | the count of those rows |
+
+`collection` is a `mongodb::Collection<bson::Document>` of bookings. `Booking` flattens the enum, so `nest` writes the tag and the condition among the row's own keys. Where a row holds the enum under a key, `nest` writes both under that key. With the model in another crate nothing changes: `Courier::MONGO_FIELDS` is that crate's, and `and` takes its filter by the two standard traits ([Filters and updates](#filters-and-updates)).
+
+An arm filter is a filter over the rows of its enum. It turns into the document of its tag alone, `and` adds each condition to one `$and`, and `Filter::from` makes it the module's own `Filter`, which has `negated`:
+
+| Written | The document it builds |
+|---------|------------------------|
+| `BY_COURIER` | `{ "type": { "$eq": "by-courier" } }` |
+| `BY_COURIER.and(Courier::MONGO_FIELDS.name().eq("Acme".to_owned())?)` | `{ "$and": [{ "type": { "$eq": "by-courier" } }, { "name": { "$eq": "Acme" } }] }` |
+| `transport_schema::Filter::from(BY_COURIER).negated()` | `{ "$nor": [{ "type": { "$eq": "by-courier" } }] }` |
+
+The model `M` an arm is over follows from what its variant holds:
+
+| The variant holds | `M` |
+|-------------------|-----|
+| One slot serde writes | The slot's type, read through `Option`, a list and the wrappers `nest` reads through: what `nest` reaches below a path over that slot. `ByCourier(Courier)` is over `Courier`, and an arm that holds a `Box<Courier>` is over `Courier` too. A map is `()` |
+| Fields written in the variant, several slots, nothing, or one slot serde never writes | `()` |
+
+The snake case of a tag key and of a value is its words in lower case, joined by one `_`. A word ends at a character that is no ASCII letter or digit, before a capital that follows a small letter or a digit, and before a capital a small letter follows where a capital comes before it: `docType` is `doc_type`, `HTTPServer` is `http_server`, `v2Beta` is `v2_beta`, and `@type` is `type`.
+
+| The enum | The variant | Its arm function |
+|----------|-------------|------------------|
+| `#[serde(tag = "type")]` | `#[serde(rename = "by-courier")] ByCourier(Courier)` | `type__by_courier()` |
+| `#[serde(tag = "type")]` | `Collected` | `type__collected()` |
+| `#[serde(tag = "docType", content = "body", rename_all = "kebab-case")]` | `PastDue(Notice)` | `doc_type__past_due()` |
+
+**An arm whose `M` is `()` answers its tag alone**: no model is there for its `and` to be over. A condition on fields written in the variant joins through the plain `and`, here with `payment` the paths of `Payment`:
+
+| Written | The document it builds |
+|---------|------------------------|
+| `payment.kind__cash()` | `{ "kind": { "$eq": "cash" } }` |
+| `paths.payment().nest(payment.kind__cash())` | `{ "payment.kind": { "$eq": "cash" } }` |
+| `payment.card().last4().eq("4242".to_owned())?.and(payment.kind__card())` | `{ "$and": [{ "last4": { "$eq": "4242" } }, { "kind": { "$eq": "card" } }] }` |
+
+**`and` on an arm filter refuses a filter over another type.** With `Wagon` a flagged struct that declares a `number`, `BY_COURIER.and(Wagon::MONGO_FIELDS.number().eq("W-9".to_owned())?)` is ``error[E0277]: the trait bound `wagon_schema::Filter<Wagon>: AsRef<PhantomData<Courier>>` is not satisfied``.
+
 ### Filters and updates
 
 `and` and `or` join two filters over the same rows, and `negated` turns one around. `and` on an update merges two updates of the same rows: the keys of each operator are put together, and a key both write keeps the later value. `Filter::raw` and `Update::raw` take a document written by hand, for what has no typed form:
@@ -4777,6 +4860,7 @@ fn bolts() -> LineItem {
 - **`nest` joins two keys with a dot, and leaves an empty one out with its dot.** `customer` and `address.city` are `customer.address.city`. A model serde flattens into the type that holds it has no key there, so its keys are written as they are. The one path of a type serde writes as one value is the empty key, so under `status` it is `status`.
 - **A filter is nested whole.** Each of its keys is written under the path's, inside `$and`, `$or` and `$nor` too. Any other key that starts with `$`, which a `Filter::raw` document may write at its top, is kept as it is written. In an update, each key of each operator is written under the path's, and its value is kept.
 - **A filter joins a filter over the same rows, whichever module it comes from.** What `and` and `or` ask of their argument is that it turn into a `bson::Document` and carry the row type, which every module's `Filter` does through two standard traits, `Into<bson::Document>` and `AsRef<PhantomData<Root>>`. `nest` asks the same of what it is handed, over the nested model. The answer is of the type `and` was called on.
+- **An arm filter goes where a filter over its enum goes.** A `transport_schema::ArmFilter<Transport, Courier>` turns into a `bson::Document` and carries the row type `Transport` through the same two traits, so `nest` on a path that holds a `Transport` takes one, and so do `and`, `or`, `elem_match` on a list of the enum, and every operation. It is no `Filter` itself: `transport_schema::Filter::from(arm)` makes it the module's own `Filter<Transport>`, which starts a join and has `negated`. Its own `and` asks the two traits of its argument over the model the arm holds ([The arms of an enum under a tag](#operators)).
 - **A filter over another type's rows is refused.** Handed `Order::MONGO_FIELDS.placed().eq(true)?`, `and` on a filter over `Invoice` is ``error[E0277]: the trait bound `order_schema::Filter<Order>: AsRef<PhantomData<Invoice>>` is not satisfied``, and `nest` on `paths.customer()`, which holds a `Customer`, is ``error[E0277]: the trait bound `order_schema::Filter<Order>: invoice_schema::Nests<Invoice, Customer, _>` is not satisfied``.
 - **An update is refused where a filter is asked, and a filter where an update is.** An update carries `AsRef<PhantomData<fn(Root) -> Root>>` in place of a filter's marker. `paths.total().gt(1000.0)?.and(paths.total().set(0.0)?)` is ``error[E0277]: the trait bound `invoice_schema::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied``, and `paths.total().set(0.0)?.and(paths.total().gt(1000.0)?)` is ``error[E0277]: the trait bound `invoice_schema::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied``.
 - **A document is not a filter until `Filter::raw` makes it one.** `and` handed a `doc! { .. }` as it stands is ``error[E0277]: the trait bound `bson::Document: AsRef<PhantomData<Invoice>>` is not satisfied``. `raw` gives the document the row type of what it joins, and nothing checks what it holds: its keys and its values are the caller's.
@@ -4841,8 +4925,8 @@ What a flagged type's own paths are follows from the shape serde writes the type
 |------------------|-----------|
 | A struct with named fields | One function per field, under the field's Rust name |
 | A tuple struct with several slots | A tuple of paths, each slot's key its position: with `Point` a `struct Point(f64, f64)`, `Point::MONGO_FIELDS.0` writes the key `0`, and nested under a field `origin`, `origin.0`. A slot serde never writes keeps its place as `()` |
-| An internally tagged enum | `is_<variant>()` is `$eq` on the tag's key. A variant's fields sit beside the tag: a function named after the variant answers a struct with one function per field. A variant that holds one flagged model answers a `Nested` at the empty key |
-| An adjacently tagged enum | The same `is_<variant>()`. What a variant holds is under the content key: its fields, one value, or a tuple of positions |
+| An internally tagged enum | `is_<variant>()` is `$eq` on the tag's key, and `<tag>__<value>()` answers the arm filter of each variant. A variant's fields sit beside the tag: a function named after the variant answers a struct with one function per field. A variant that holds one flagged model answers a `Nested` at the empty key |
+| An adjacently tagged enum | The same `is_<variant>()` and `<tag>__<value>()`. What a variant holds is under the content key: its fields, one value, or a tuple of positions, and each condition of its arm filter |
 | An externally tagged enum | What a variant holds is under the name serde writes the variant as. `is_<variant>()` is `$exists` on that key, and `$eq` with the name for a variant that holds nothing |
 | An untagged enum | One function per variant that holds a value, its paths at the enum's own level. No `is_<variant>()`: nothing stored names the variant |
 | A brand, a single-slot tuple struct, a `#[serde(transparent)]` struct, a plain enum, a unit struct | One path at the empty key, which `MONGO_FIELDS` dereferences to, with the operators of a `Field`, and `regex` where the one value is a `String` |
@@ -4851,7 +4935,9 @@ What a flagged type's own paths are follows from the shape serde writes the type
 - **A path is under the name serde writes.** `rename` on a field, `rename_all` on the type, `rename` and `rename_all` on a variant and `rename_all_fields` on an enum all count. A renaming written as a list counts by its `serialize` side, `rename(serialize = "ref", deserialize = "ref")` being the key `ref`. A list whose two sides name two keys is refused by every schema surface, as before; a build with none takes it, and the path is the key that is written.
 - **A function of an enum is named after its variant, in snake case**: a variant `OverLand` is the function `over_land()` and the method `is_over_land()`. A variant serde never writes has neither.
 - **`is_<variant>()` keeps its name.** With variants `Card` and `IsCard`, `is_card()` asks for `Card` and `is_is_card()` for `IsCard`, and what `IsCard` holds is reached through `is_card2()`: the function of a variant that meets a taken name is numbered, as those of two variants with one snake-case name are.
-- **A generic type has its paths at each filling**: with `Wrapper<T>` declaring `inner: T` and `label: String`, `Wrapper::<u32>::MONGO_FIELDS.inner()` is a `Field<Wrapper<u32>, u32>`.
+- **An arm function is named `<tag>__<value>()`**: the tag key and the value serde writes for the variant, each in snake case, with `__` between them. An enum serde writes under a tag key has one per variant serde writes, whatever the variant holds. An externally tagged, an untagged and a plain enum have none, since they store no tag key. Beside the functions, the schema module of the enum declares `Arm`, an enum with one unit arm per variant that has a function: `transport_schema::Arm::ByCourier`.
+- **No two functions of an enum's paths take one name.** `__` is in the name of an arm function and of no other, and what would break that is refused where `decode_with` is read, with `mongodb` on and off. A variant whose Rust name holds `__` is ``model_schema: type `Transport`: variant `By__Courier` holds `__` in its name. Under a tag and `decode_with`, `__` parts the tag from the value in the function of each arm, `type__<value>()`. Rename the variant``. Two values that read as one in snake case are ``model_schema: type `Transport`: variants `ByCourier` and `Couriered` are written `by-courier` and `by_courier` under the tag `type`, and both read `by_courier` in snake case, so `type__by_courier()` would answer for both. Rename one of the two values``. An arm function that meets an `is_<variant>()`, which takes a tag key that reads `is` and a variant whose name starts with `_`, is ``model_schema: type `Transport`: the arm function `is__parcel()` of variant `Parcel` and `is__parcel()`, which asks for variant `_Parcel`, would be one function. Rename the variant `_Parcel` ``. An enum without `decode_with` has no arm function, and is refused none of the three.
+- **A generic type has its paths at each filling**: with `Wrapper<T>` declaring `inner: T` and `label: String`, `Wrapper::<u32>::MONGO_FIELDS.inner()` is a `Field<Wrapper<u32>, u32>`. The arms of a generic enum are at each filling too.
 
 **A field with a serde hook is compared the way it is stored.** A `chrono` date writes text, so a date kept as a BSON date carries the `bson` library's hook, and a filter on it has to write a BSON date too. The path writes its values through the field's own hook, here bound as `date_hook`:
 
