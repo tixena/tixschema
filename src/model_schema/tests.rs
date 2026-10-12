@@ -14,8 +14,9 @@ use super::{
     check_nullable_field_serialization, check_omitted_key_is_readable,
     check_optional_field_serialization, checked_member, collect_untagged_members,
     constrained_shape, enum_cfg_attr_guard_errors, generate_field_validation,
-    generate_numeric_validation_code, generate_string_validation_code, has_serde_default,
-    helper_name_stem, internally_tagged_guard_errors, member_access_expr, needs_injected_default,
+    generate_list_validation_code, generate_numeric_validation_code,
+    generate_string_validation_code, has_serde_default, helper_name_stem,
+    internally_tagged_guard_errors, member_access_expr, needs_injected_default,
     parse_serde_field_attributes, parse_serde_type_attributes, render_untagged_variant,
 };
 
@@ -319,6 +320,28 @@ const TEXT_REACH: [(&str, bool); 24] = [
     ("u32", false),
     ("bool", false),
     ("char", false),
+];
+
+/// Every list spelling, with how many wrappers it is reached through and whether a brand holds
+/// it as its own value.
+#[cfg(feature = "serde")]
+const LIST_REACH: [(&str, usize, bool); 16] = [
+    ("Vec<String>", 0, true),
+    ("VecDeque<Part>", 0, true),
+    ("HashSet<Tag>", 0, true),
+    ("BTreeSet<u8>", 0, true),
+    ("BinaryHeap<u8>", 0, true),
+    ("[String; 2]", 0, true),
+    ("Vec<Vec<String>>", 0, true),
+    ("Vec<T>", 0, true),
+    ("Vec<&'a str>", 0, true),
+    ("Box<[u8]>", 1, true),
+    ("Arc<Vec<Part>>", 1, true),
+    ("Cow<'a, [u8]>", 1, true),
+    ("Option<Vec<Part>>", 1, false),
+    ("Option<Box<[Part]>>", 2, false),
+    ("&'a [String]", 1, false),
+    ("Option<&'a Vec<u8>>", 2, false),
 ];
 
 /// The flag's verdict on a declaration's sole member, read the way `process_field` reads it: the
@@ -3265,7 +3288,7 @@ fn a_bound_on_a_chrono_field_is_refused() {
         for field_type in [
             quote::quote! { chrono::NaiveDate },
             quote::quote! { Option<chrono::NaiveTime> },
-            quote::quote! { Vec<chrono::NaiveDateTime> },
+            quote::quote! { Box<chrono::NaiveDateTime> },
             quote::quote! { chrono::DateTime<chrono::Utc> },
         ] {
             let errors = field_prop_guard_errors(&syn::parse_quote! {
@@ -3341,7 +3364,6 @@ fn a_bound_on_a_map_or_tuple_field_is_refused() {
         for (field_type, shape) in [
             (quote::quote! { HashMap<String, String> }, "a map"),
             (quote::quote! { Option<HashMap<String, u32>> }, "a map"),
-            (quote::quote! { Vec<HashMap<String, u32>> }, "a map"),
             (quote::quote! { (String, String) }, "a tuple"),
             (quote::quote! { Option<(String, u32)> }, "a tuple"),
         ] {
@@ -3375,8 +3397,7 @@ fn a_length_or_a_pattern_on_a_numeric_field_is_refused() {
             (quote::quote! { f64 }, "`f64`"),
             (quote::quote! { isize }, "`isize`"),
             (quote::quote! { Option<i64> }, "`Option<i64>`"),
-            (quote::quote! { Vec<u8> }, "`Vec<u8>`"),
-            (quote::quote! { [f32; 2] }, "f32"),
+            (quote::quote! { Box<f32> }, "`Box<f32>`"),
             (quote::quote! { &'static u16 }, "`&'static u16`"),
         ] {
             let errors = field_prop_guard_errors(&syn::parse_quote! {
@@ -3413,7 +3434,6 @@ fn a_range_on_a_string_field_is_refused() {
         for (field_type, declared) in [
             (quote::quote! { String }, "`String`"),
             (quote::quote! { Option<String> }, "`Option<String>`"),
-            (quote::quote! { Vec<String> }, "`Vec<String>`"),
             (quote::quote! { &'static str }, "`&'static str`"),
             (quote::quote! { Cow<'static, str> }, "`Cow<'static, str>`"),
             (quote::quote! { Box<str> }, "`Box<str>`"),
@@ -3478,10 +3498,16 @@ fn a_bound_of_the_wrong_kind_is_named_without_the_keys_beside_it() {
     );
 }
 
-/// The README prints both refusals, each held here to what the guard says.
+/// The README prints each refusal, held here to what the guard says.
 #[test]
 fn the_readme_shows_the_refusal_of_a_bound_of_the_wrong_kind() {
     let readme = include_str!("../../README.md");
+    let on_a_list: syn::ItemStruct = syn::parse_quote! {
+        struct Article {
+            #[model_schema_prop(minLength = 1, pattern = "^[a-z]+$")]
+            tags: Vec<String>,
+        }
+    };
     let on_a_number: syn::ItemStruct = syn::parse_quote! {
         struct Product {
             #[model_schema_prop(minLength = 3)]
@@ -3509,6 +3535,15 @@ fn the_readme_shows_the_refusal_of_a_bound_of_the_wrong_kind() {
              reach neither Zod, nor the JSON schema, nor the generated validator. Bound a string \
              with `minLength`, `maxLength` or `pattern`, or drop it.",
         ),
+        (
+            on_a_list,
+            "model_schema: field `tags`: `pattern` cannot apply to a `Vec<String>` field \u{2014} a \
+             key measures the field's own value, and this field writes a list, which has no text \
+             for a pattern and no number for a range. `minLength` and `maxLength` count the \
+             list's items, and no key written here reaches them. A rule for each item goes on the \
+             item's own type: declare the item as a `#[serde(transparent)]` brand that carries \
+             the `pattern`.",
+        ),
     ] {
         let errors = field_prop_guard_errors(&item);
         assert_eq!(errors.len(), 1, "got: {errors:?}");
@@ -3525,7 +3560,7 @@ fn a_bound_of_the_fields_own_kind_is_left_alone() {
     for field in [
         quote::quote! { #[model_schema_prop(minimum = 0, maximum = 9)] count: u32 },
         quote::quote! { #[model_schema_prop(minimum = 0.5)] ratio: Option<f64> },
-        quote::quote! { #[model_schema_prop(maximum = 9)] counts: Vec<i16> },
+        quote::quote! { #[model_schema_prop(maxLength = 9)] counts: Vec<i16> },
         quote::quote! { #[model_schema_prop(minLength = 3, pattern = "^[a-z]+$")] name: String },
         quote::quote! { #[model_schema_prop(maxLength = 9)] name: &'static str },
         quote::quote! { #[model_schema_prop(minLength = 3)] names: Vec<&'static str> },
@@ -3547,12 +3582,7 @@ fn a_range_on_a_field_typed_with_a_named_type_is_refused() {
         (quote::quote! { minimum = 5 }, "minimum"),
         (quote::quote! { maximum = 5 }, "maximum"),
     ] {
-        for field_type in [
-            quote::quote! { Count },
-            quote::quote! { Option<Count> },
-            quote::quote! { Vec<Count> },
-            quote::quote! { HashSet<Count> },
-        ] {
+        for field_type in [quote::quote! { Count }, quote::quote! { Option<Count> }] {
             let errors = field_prop_guard_errors(&syn::parse_quote! {
                 struct Report {
                     #[model_schema_prop(#constraint)]
@@ -3581,7 +3611,6 @@ fn a_length_on_a_field_typed_with_a_generic_named_type_is_refused() {
         for field_type in [
             quote::quote! { UserId<String> },
             quote::quote! { Option<UserId<String>> },
-            quote::quote! { Vec<UserId<String>> },
         ] {
             let errors = field_prop_guard_errors(&syn::parse_quote! {
                 struct Report {
@@ -3606,7 +3635,7 @@ fn a_length_on_a_field_typed_with_a_named_type_is_left_to_the_compiler() {
     for field_type in [
         quote::quote! { Slug },
         quote::quote! { Option<Slug> },
-        quote::quote! { Vec<Slug> },
+        quote::quote! { Box<Slug> },
     ] {
         let errors = field_prop_guard_errors(&syn::parse_quote! {
             struct Report {
@@ -3615,6 +3644,121 @@ fn a_length_on_a_field_typed_with_a_named_type_is_left_to_the_compiler() {
             }
         });
         assert!(errors.is_empty(), "for {field_type}: {errors:?}");
+    }
+}
+
+/// Every spelling of a list a field is written as, holding each kind of item a bound on the item
+/// itself is refused on.
+fn list_spellings() -> Vec<proc_macro2::TokenStream> {
+    vec![
+        quote::quote! { Vec<String> },
+        quote::quote! { Vec<u8> },
+        quote::quote! { [f32; 2] },
+        quote::quote! { Option<Vec<Part>> },
+        quote::quote! { Vec<Vec<String>> },
+        quote::quote! { Vec<UserId<String>> },
+        quote::quote! { Vec<HashMap<String, u32>> },
+        quote::quote! { Vec<(String, u32)> },
+        quote::quote! { Vec<IdType> },
+        quote::quote! { Option<Vec<IdType>> },
+        quote::quote! { VecDeque<Slug> },
+        quote::quote! { HashSet<Count> },
+        quote::quote! { BTreeSet<String> },
+        quote::quote! { BinaryHeap<u8> },
+        quote::quote! { Box<[String]> },
+        quote::quote! { &'static [u8] },
+        #[cfg(feature = "chrono")]
+        quote::quote! { Vec<chrono::NaiveDateTime> },
+        #[cfg(feature = "mongodb")]
+        quote::quote! { Vec<ObjectId> },
+    ]
+}
+
+/// A length written on a list counts the list, which every item type leaves it free to do.
+#[test]
+fn a_length_on_a_list_is_left_alone_whatever_the_list_holds() {
+    for constraint in [
+        quote::quote! { minLength = 1 },
+        quote::quote! { maxLength = 3 },
+        quote::quote! { minLength = 1, maxLength = 3 },
+    ] {
+        for field_type in list_spellings() {
+            let errors = field_prop_guard_errors_in_scope(
+                &syn::parse_quote! {
+                    struct Report {
+                        #[model_schema_prop(#constraint)]
+                        held: #field_type,
+                    }
+                },
+                &["IdType".to_owned()],
+            );
+            assert!(
+                errors.is_empty(),
+                "for {constraint} on {field_type}: {errors:?}"
+            );
+        }
+    }
+}
+
+/// A list has no text for a pattern and no number for a range, whatever it holds.
+#[test]
+fn a_pattern_or_a_range_on_a_list_is_refused() {
+    let on_a_brand = "brand that carries the `pattern`";
+    let no_place = "a range for each number of a list has no place to be written";
+    for (constraint, key, advice) in [
+        (
+            quote::quote! { pattern = "^[a-z]+$" },
+            "pattern",
+            on_a_brand,
+        ),
+        (quote::quote! { minimum = 1 }, "minimum", no_place),
+        (quote::quote! { maximum = 9 }, "maximum", no_place),
+    ] {
+        for field_type in list_spellings() {
+            let errors = field_prop_guard_errors_in_scope(
+                &syn::parse_quote! {
+                    struct Report {
+                        #[model_schema_prop(#constraint)]
+                        held: #field_type,
+                    }
+                },
+                &["IdType".to_owned()],
+            );
+            assert_eq!(errors.len(), 1, "for {key} on {field_type}: {errors:?}");
+            for needle in [
+                "compile_error",
+                "field `held`",
+                &format!("`{key}` cannot apply"),
+                "this field writes a list",
+                "`minLength` and `maxLength` count the list's items",
+                advice,
+            ] {
+                assert!(
+                    errors[0].contains(needle),
+                    "{needle} missing for {key} on {field_type}: {}",
+                    errors[0]
+                );
+            }
+        }
+    }
+}
+
+/// The refusal on a list names the keys a list cannot carry, and no length written beside them.
+#[test]
+fn the_refusal_on_a_list_names_the_keys_that_reach_nothing() {
+    let errors = field_prop_guard_errors(&syn::parse_quote! {
+        struct Report {
+            #[model_schema_prop(minLength = 1, pattern = "^[a-z]+$", minimum = 1, maximum = 9)]
+            tags: Vec<String>,
+        }
+    });
+    assert_eq!(errors.len(), 1, "got: {errors:?}");
+    for needle in [
+        "field `tags`: `pattern`, `minimum`, `maximum` cannot apply to a `Vec<String>` field",
+        "brand that carries the `pattern`",
+        "a range for each number of a list has no place to be written",
+    ] {
+        assert!(errors[0].contains(needle), "{needle}: {}", errors[0]);
     }
 }
 
@@ -3712,12 +3856,7 @@ fn a_bound_on_a_parameter_typed_field_is_refused() {
         (quote::quote! { minimum = 5 }, "minimum"),
         (quote::quote! { maximum = 5 }, "maximum"),
     ] {
-        for field_type in [
-            quote::quote! { IdType },
-            quote::quote! { Option<IdType> },
-            quote::quote! { Vec<IdType> },
-            quote::quote! { Option<Vec<IdType>> },
-        ] {
+        for field_type in [quote::quote! { IdType }, quote::quote! { Option<IdType> }] {
             let errors = field_prop_guard_errors_in_scope(
                 &syn::parse_quote! {
                     struct Report {
@@ -3824,9 +3963,10 @@ fn the_constraint_docs_are_written_only_where_the_bound_is_kept() {
 fn the_constraint_docs_are_silent_for_a_bound_of_the_wrong_kind() {
     for field in [
         quote::quote! { #[model_schema_prop(minLength = 3, maxLength = 9)] count: u32 },
-        quote::quote! { #[model_schema_prop(minLength = 3)] counts: Option<Vec<f64>> },
+        quote::quote! { #[model_schema_prop(minLength = 3)] count: Option<Box<f64>> },
         quote::quote! { #[model_schema_prop(minimum = 5, maximum = 9)] name: String },
         quote::quote! { #[model_schema_prop(minimum = 5)] name: &'static str },
+        quote::quote! { #[model_schema_prop(minimum = 5, maximum = 9)] counts: Vec<f64> },
     ] {
         let docs = field_docs_after_meta(&syn::parse_quote! {
             struct Report {
@@ -3859,6 +3999,26 @@ fn the_constraint_docs_are_silent_for_a_bound_of_the_wrong_kind() {
         !on_a_borrowed_string.contains("Minimum value"),
         "{on_a_borrowed_string}"
     );
+}
+
+/// A list's count is stated in the words a string's length is, whatever the list holds.
+#[test]
+fn the_constraint_docs_state_the_count_a_list_is_held_to() {
+    for field_type in list_spellings() {
+        let docs = field_docs_after_meta_in_scope(
+            &syn::parse_quote! {
+                struct Report {
+                    #[model_schema_prop(minLength = 1, maxLength = 3, minimum = 5)]
+                    held: #field_type,
+                }
+            },
+            &["IdType".to_owned()],
+        );
+        assert_eq!(
+            docs, " * held\n * \n * Minimum length: 1\n * Maximum length: 3",
+            "for {field_type}"
+        );
+    }
 }
 
 #[test]
@@ -5063,12 +5223,14 @@ fn string_constraints_over_a_non_string_inner_are_rejected() {
         ("i32", "numeric"),
         ("f64", "numeric"),
         ("bool", "boolean"),
-        ("Vec<String>", "container"),
-        ("[u8; 4]", "container"),
-        ("BTreeSet<String>", "container"),
-        ("BinaryHeap<String>", "container"),
-        ("HashSet<String>", "container"),
-        ("VecDeque<String>", "container"),
+        ("Vec<String>", "`pattern` on a list"),
+        ("[u8; 4]", "`pattern` on a list"),
+        ("BTreeSet<String>", "`pattern` on a list"),
+        ("BinaryHeap<String>", "`pattern` on a list"),
+        ("HashSet<String>", "`pattern` on a list"),
+        ("VecDeque<String>", "`pattern` on a list"),
+        ("Box<[String]>", "`pattern` on a list"),
+        ("RefCell<Vec<String>>", "container"),
         ("HashMap<String, String>", "container"),
         ("(String, String)", "container"),
         ("serde_json::Value", "opaque"),
@@ -5085,6 +5247,74 @@ fn string_constraints_over_a_non_string_inner_are_rejected() {
         assert!(errors[0].contains("compile_error"), "got: {}", errors[0]);
         assert!(errors[0].contains("`Branded`"), "got: {}", errors[0]);
         assert!(errors[0].contains(shape), "for {inner}, got: {}", errors[0]);
+    }
+}
+
+/// A brand over a list takes the two lengths, which count its items, whatever the list holds.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn a_length_over_a_list_inner_passes_and_a_pattern_beside_it_is_refused() {
+    for inner in [
+        "Vec<String>",
+        "Vec<Part>",
+        "[u8; 4]",
+        "BTreeSet<String>",
+        "BinaryHeap<u8>",
+        "HashSet<String>",
+        "VecDeque<Part>",
+        "Vec<Vec<String>>",
+        "Box<[String]>",
+        "Arc<Vec<Part>>",
+        "Vec<T>",
+        "HashSet<T>",
+    ] {
+        let generics = if inner.contains("T>") { "<T>" } else { "" };
+        let item: syn::ItemStruct = syn::parse_str(&format!(
+            "#[serde(transparent)] struct Listed{generics}(pub {inner});"
+        ))
+        .unwrap();
+        for lengths in [
+            quote::quote! { minLength = 1 },
+            quote::quote! { maxLength = 3 },
+            quote::quote! { minLength = 1, maxLength = 3 },
+        ] {
+            let errors = branded_errors_with(&item, &super::parse_model_schema_args(lengths));
+            assert!(errors.is_empty(), "for {inner}, got: {errors:?}");
+        }
+        let errors = branded_errors_with(
+            &item,
+            &super::parse_model_schema_args(quote::quote! { minLength = 1, pattern = "^[a-z]+$" }),
+        );
+        assert_eq!(errors.len(), 1, "for {inner}, got: {errors:?}");
+        for needle in [
+            "branded newtype `Listed` writes `pattern` on a list",
+            "`minLength` and `maxLength` count the list's items",
+            "brand that carries the `pattern`",
+        ] {
+            assert!(errors[0].contains(needle), "{needle}: {}", errors[0]);
+        }
+    }
+}
+
+/// A list no transparent wrapper holds is refused the lengths, as it was.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn a_length_over_a_list_behind_a_cell_or_a_borrow_is_refused() {
+    for inner in [
+        "RefCell<Vec<String>>",
+        "Mutex<Vec<u8>>",
+        "&'static [String]",
+    ] {
+        let ty: syn::Type = syn::parse_str(inner).unwrap();
+        let errors = branded_errors_with(
+            &syn::parse_quote! {
+                #[serde(transparent)]
+                struct Listed(pub #ty);
+            },
+            &super::parse_model_schema_args(quote::quote! { minLength = 1 }),
+        );
+        assert_eq!(errors.len(), 1, "for {inner}, got: {errors:?}");
+        assert!(errors[0].contains("container"), "got: {}", errors[0]);
     }
 }
 
@@ -6218,19 +6448,14 @@ fn an_enums_check_reaches_a_field_written_as_a_string_or_a_path() {
     }
 }
 
-/// The reach is the constraint walk's own: a text leaf, under no list.
+/// The reach is the constraint walk's own: a text leaf, which a list is not.
 #[cfg(feature = "serde")]
 #[test]
 fn the_reach_of_an_enums_check_is_the_constraint_walks() {
     for (spelling, reached) in TEXT_REACH {
         let ty: syn::Type = syn::parse_str(spelling).unwrap();
-        let walked = constrained_shape(&ty).is_some_and(|shape| {
-            matches!(shape.leaf, ConstraintLeaf::Path | ConstraintLeaf::Str)
-                && !shape
-                    .wraps
-                    .iter()
-                    .any(|wrap| matches!(wrap, super::ConstraintWrap::Sequence))
-        });
+        let walked = constrained_shape(&ty)
+            .is_some_and(|shape| matches!(shape.leaf, ConstraintLeaf::Path | ConstraintLeaf::Str));
         assert_eq!(walked, reached, "for {spelling}");
     }
 }
@@ -8406,11 +8631,24 @@ fn constrained_to_string_calls_carry_the_inner_fields_location() {
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
 ))]
 fn constrained_brand_emission(inner: &str, module: &str) -> (String, String, String) {
+    brand_emission_under(inner, module, quote::quote! { pattern = "^[a-z]+$" })
+}
+
+/// [`constrained_brand_emission`] under the checks `written` on the brand.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn brand_emission_under(
+    inner: &str,
+    module: &str,
+    written: proc_macro2::TokenStream,
+) -> (String, String, String) {
     let ty: syn::Type = syn::parse_str(inner).unwrap();
     let item: syn::ItemStruct = syn::parse_quote!(
         pub struct Branded(pub #ty);
     );
-    let args = super::parse_model_schema_args(quote::quote! { pattern = "^[a-z]+$" });
+    let args = super::parse_model_schema_args(written);
     let validation =
         super::build_branded_validation(&args, &[], item.fields.iter().next().unwrap()).unwrap();
     let module_ident = syn::Ident::new(module, proc_macro2::Span::call_site());
@@ -8429,6 +8667,41 @@ fn constrained_brand_emission(inner: &str, module: &str) -> (String, String, Str
     )
 }
 
+/// A brand over a list is counted by the validator and the hook a list field gets, under the
+/// brand's own names and reporting under no field.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn a_brand_over_a_list_counts_its_items_where_a_string_brand_measures_its_text() {
+    let lengths = || quote::quote! { minLength = 1, maxLength = 3 };
+    let (validate_fn, deserialize_fn, validate_method) =
+        brand_emission_under("Vec<Part>", "name_config_schema", lengths());
+    assert_eq!(
+        format!("{validate_fn} {deserialize_fn}"),
+        emitted_list_module("Vec<Part>")
+            .replace("validate_field_value", "validate_value")
+            .replace("deserialize_field", "deserialize_value")
+            .replace("\"'{}': {}, got {}\" , \"field\" ,", "\"{}, got {}\" ,")
+    );
+    assert!(
+        validate_method.contains("name_config_schema :: validate_value (& self . 0)"),
+        "got: {validate_method}"
+    );
+
+    let (_, boxed_hook, boxed_method) =
+        brand_emission_under("Box<[String]>", "name_config_schema", lengths());
+    assert!(
+        boxed_hook.contains("H0 : :: core :: ops :: Deref < Target = L >"),
+        "got: {boxed_hook}"
+    );
+    assert!(
+        boxed_method.contains("name_config_schema :: validate_value (& * self . 0)"),
+        "got: {boxed_method}"
+    );
+}
+
 /// The constrained path's generated text is what it has always been.
 #[cfg(all(
     feature = "serde",
@@ -8436,7 +8709,7 @@ fn constrained_brand_emission(inner: &str, module: &str) -> (String, String, Str
 ))]
 #[test]
 fn the_constrained_path_renders_the_same_to_string_calls_it_always_has() {
-    for spelling in ["String", "Option<PathBuf>", "Vec<PathBuf>"] {
+    for spelling in ["String", "Option<PathBuf>", "Slug"] {
         let (validate_fn, deserialize_fn, validate_method) =
             constrained_brand_emission(spelling, "slug_id_schema");
         assert!(
@@ -10250,6 +10523,7 @@ fn a_variant_member_is_reached_through_the_binding_its_arm_made() {
         "Option<String>",
         "Vec<String>",
         "Option<Arc<[String]>>",
+        "Box<Option<String>>",
     ] {
         assert_eq!(
             emitted_validation_from(spelling, MemberAccess::VariantBinding),
@@ -10312,17 +10586,16 @@ fn a_borrowed_str_is_dereferenced_through() {
         emitted_validation("Option<Box<str>>")
     );
     assert_eq!(
-        emitted_validation("Vec<&'a str>"),
-        emitted_validation("Vec<Box<str>>")
+        emitted_validation("&'a [u8]"),
+        emitted_validation("Box<[u8]>")
     );
 }
 
+/// A list is checked itself, in place, as a bare string is: nothing it holds is walked.
 #[cfg(feature = "serde")]
 #[test]
-fn a_sequence_is_checked_per_element() {
-    let expected = "{ let value_0 = & self . field ; for value_1 in value_0 { if let :: core :: \
-                    result :: Result :: Err (reported) = check (value_1) { errors . extend \
-                    (reported) ; } } }";
+fn a_sequence_is_checked_itself_and_none_of_its_elements() {
+    let expected = emitted_validation("String");
     for wrapper in SEQUENCE_WRAPPERS {
         assert_eq!(
             emitted_validation(&format!("{wrapper}<String>")),
@@ -10334,24 +10607,24 @@ fn a_sequence_is_checked_per_element() {
         emitted_validation("[:: std :: string :: String ; 2]"),
         expected
     );
-
+    assert_eq!(emitted_validation("Vec<Vec<String>>"), expected);
+    assert_eq!(emitted_validation("Vec<Part>"), expected);
     assert_eq!(
-        emitted_validation("Vec<Vec<String>>"),
-        "{ let value_0 = & self . field ; for value_1 in value_0 { for value_2 in value_1 { if \
-         let :: core :: result :: Result :: Err (reported) = check (value_2) { errors . extend \
-         (reported) ; } } } }"
+        emitted_validation("Option<Vec<u8>>"),
+        emitted_validation("Option<String>")
     );
 }
 
-/// The wrappers compose in the order they were written, each reaching exactly one level.
+/// The wrappers compose in the order they were written, each reaching exactly one level, and
+/// the walk stops at the list they hold.
 #[cfg(feature = "serde")]
 #[test]
 fn mixed_wrappers_compose_in_written_order() {
     assert_eq!(
         emitted_validation("Option<Arc<[String]>>"),
         "{ let value_0 = & self . field ; if let :: core :: option :: Option :: Some (value_1) = \
-         value_0 { let value_2 = & * * value_1 ; for value_3 in value_2 { if let :: core :: result \
-         :: Result :: Err (reported) = check (value_3) { errors . extend (reported) ; } } } }"
+         value_0 { let value_2 = & * * value_1 ; if let :: core :: result :: Result :: Err \
+         (reported) = check (value_2) { errors . extend (reported) ; } } }"
     );
 }
 
@@ -10395,6 +10668,112 @@ fn emitted_pattern_validator(pattern: &str) -> String {
     .module_items
     .to_string();
     module[..module.find("pub fn deserialize_field").unwrap()].to_owned()
+}
+
+/// The schema-module items emitted for a list field spelled `spelling` under `minLength = 1,
+/// maxLength = 3`, as tokens.
+#[cfg(feature = "serde")]
+fn emitted_list_module(spelling: &str) -> String {
+    let ty: syn::Type = syn::parse_str(spelling).unwrap();
+    let shape = constrained_shape(&ty).unwrap();
+    let meta = ModelSchemaPropMeta {
+        max_length: Some(3),
+        min_length: Some(1),
+        ..ModelSchemaPropMeta::default()
+    };
+    generate_list_validation_code(&checked_struct_field(), &meta, &shape.wraps)
+        .module_items
+        .to_string()
+}
+
+/// A list's validator and hook name no type the list holds, so one text serves every list.
+#[cfg(feature = "serde")]
+#[test]
+fn a_list_is_counted_by_a_validator_and_a_hook_written_over_any_list() {
+    let module = emitted_list_module("Vec<Part>");
+    assert_eq!(
+        module,
+        "pub fn validate_field_value < L > (list : & L) -> :: core :: result :: Result < () , :: \
+         std :: vec :: Vec < :: std :: string :: String >> where L : ? :: core :: marker :: Sized \
+         , for < 'held > & 'held L : :: core :: iter :: IntoIterator , { let held = list . \
+         into_iter () . count () ; let mut errors : :: std :: vec :: Vec < :: std :: string :: \
+         String > = :: std :: vec :: Vec :: new () ; if held < 1usize { errors . push (format ! \
+         (\"'{}': {}, got {}\" , \"field\" , \"too short: minimum length is 1\" , held)) ; } if \
+         held > 3usize { errors . push (format ! (\"'{}': {}, got {}\" , \"field\" , \"too long: \
+         maximum length is 3\" , held)) ; } if errors . is_empty () { :: core :: result :: Result \
+         :: Ok (()) } else { :: core :: result :: Result :: Err (errors) } } pub fn \
+         deserialize_field < 'de , D , L > (deserializer : D) -> :: core :: result :: Result < L \
+         , D :: Error > where D : serde :: Deserializer < 'de > , L : serde :: Deserialize < 'de \
+         > , for < 'held > & 'held L : :: core :: iter :: IntoIterator , { let read = < L as \
+         serde :: Deserialize > :: deserialize (deserializer) ? ; let check = | value_0 : & L | \
+         -> :: core :: result :: Result < () , :: std :: vec :: Vec < :: std :: string :: String \
+         >> { validate_field_value (value_0) ? ; :: core :: result :: Result :: Ok (()) } ; check \
+         (& read) . map_err (| violations : :: std :: vec :: Vec < :: std :: string :: String > | \
+         serde :: de :: Error :: custom (violations . join (\"; \"))) ? ; :: core :: result :: \
+         Result :: Ok (read) }"
+    );
+    for spelling in [
+        "Vec<T>",
+        "Vec<Self>",
+        "Vec<&'a str>",
+        "HashSet<String>",
+        "BTreeSet<u8>",
+        "BinaryHeap<u8>",
+        "VecDeque<Part>",
+        "[String; 2]",
+        "Vec<Vec<String>>",
+    ] {
+        assert_eq!(emitted_list_module(spelling), module, "for {spelling}");
+    }
+}
+
+/// A wrapped list's hook names each transparent wrapper by what it derefs to.
+#[cfg(feature = "serde")]
+#[test]
+fn a_wrapped_lists_hook_reads_through_its_wrappers() {
+    let module = emitted_list_module("Option<Arc<[String]>>");
+    assert_eq!(emitted_list_module("Option<Box<[T]>>"), module);
+    for written in [
+        "pub fn deserialize_field < 'de , D , H1 , L > (deserializer : D) -> :: core :: result :: \
+         Result < :: core :: option :: Option < H1 > , D :: Error > where D : serde :: \
+         Deserializer < 'de > , :: core :: option :: Option < H1 > : serde :: Deserialize < 'de > \
+         , H1 : :: core :: ops :: Deref < Target = L > , L : ? :: core :: marker :: Sized , for < \
+         'held > & 'held L : :: core :: iter :: IntoIterator , {",
+        "if let :: core :: option :: Option :: Some (value_1) = value_0 { let value_2 = & * * \
+         value_1 ; validate_field_value (value_2) ? ; }",
+    ] {
+        assert!(module.contains(written), "{written} is not in: {module}");
+    }
+
+    let nested = emitted_list_module("Box<Option<Rc<Vec<u8>>>>");
+    for written in [
+        "pub fn deserialize_field < 'de , D , H2 , H0 , L > (deserializer : D) -> :: core :: \
+         result :: Result < H0 , D :: Error > where D : serde :: Deserializer < 'de > , H0 : \
+         serde :: Deserialize < 'de > , H2 : :: core :: ops :: Deref < Target = L > , H0 : :: \
+         core :: ops :: Deref < Target = :: core :: option :: Option < H2 > > , L : ? :: core :: \
+         marker :: Sized , for < 'held > & 'held L : :: core :: iter :: IntoIterator , {",
+        "let value_1 = & * * value_0 ; if let :: core :: option :: Option :: Some (value_2) = \
+         value_1 { let value_3 = & * * value_2 ; validate_field_value (value_3) ? ; }",
+    ] {
+        assert!(nested.contains(written), "{written} is not in: {nested}");
+    }
+}
+
+/// A borrowed list is counted by `validate()` alone.
+#[cfg(feature = "serde")]
+#[test]
+fn a_borrowed_list_publishes_its_validator_and_no_hook() {
+    for spelling in ["&'a [String]", "&'static Vec<u8>", "Option<&'a [Part]>"] {
+        let module = emitted_list_module(spelling);
+        assert!(
+            module.starts_with("pub fn validate_field_value < L > (list : & L)"),
+            "for {spelling}: {module}"
+        );
+        assert!(
+            !module.contains("deserialize_field"),
+            "a hook was emitted for {spelling}: {module}"
+        );
+    }
 }
 
 /// Just the deserializer of [`emitted_string_module`], which is everything after the validator.
@@ -10714,11 +11093,9 @@ fn wire_walk_of(spelling: &str) -> String {
 fn the_wire_walk_is_the_validate_walk_shape_for_shape() {
     for spelling in [
         "Box<String>",
-        "Vec<String>",
         "Cow<'static, str>",
-        "Option<Vec<String>>",
-        "Option<Arc<[String]>>",
-        "Vec<Vec<String>>",
+        "Option<Box<str>>",
+        "Box<Option<String>>",
     ] {
         let walk = wire_walk_of(spelling);
         let deserializer = emitted_string_deserializer(spelling);
@@ -10760,12 +11137,7 @@ fn a_borrowed_field_type_carries_its_lifetime_into_the_hook() {
 #[cfg(feature = "serde")]
 #[test]
 fn a_borrowed_str_publishes_its_validator_and_no_hook() {
-    for spelling in [
-        "&'a str",
-        "&'static str",
-        "Option<&'a str>",
-        "Vec<&'static str>",
-    ] {
+    for spelling in ["&'a str", "&'static str", "Option<&'a str>"] {
         let module = emitted_string_module(spelling);
         assert!(
             module.starts_with("pub fn validate_field_value (value : & str)"),
@@ -10776,7 +11148,12 @@ fn a_borrowed_str_publishes_its_validator_and_no_hook() {
             "a hook was emitted for {spelling}: {module}"
         );
     }
-    for spelling in ["String", "Option<String>", "Vec<Box<str>>", "Cow<'a, str>"] {
+    for spelling in [
+        "String",
+        "Option<String>",
+        "Box<Option<String>>",
+        "Cow<'a, str>",
+    ] {
         assert!(
             emitted_string_module(spelling).contains("pub fn deserialize_field"),
             "the hook of {spelling} went missing"
@@ -10796,7 +11173,8 @@ fn a_borrowed_str_member_is_hung_with_no_hook() {
         quote::quote! { note: &'a str },
         quote::quote! { note: &'static str },
         quote::quote! { #[serde(borrow)] note: Option<&'a str> },
-        quote::quote! { #[serde(borrow)] note: Vec<&'a str> },
+        quote::quote! { note: &'a [String] },
+        quote::quote! { note: Option<&'a Vec<u8>> },
         quote::quote! { #[serde(deserialize_with = "trimmed")] note: &'a str },
         quote::quote! { #[serde(with = "trimmed")] note: &'a str },
     ] {
@@ -10880,13 +11258,13 @@ fn a_field_without_a_constrainable_value_has_no_shape() {
     }
 }
 
-/// `str` is the one borrow a bound is read through.
+/// `str` and a list are the borrows a bound is read through.
 #[cfg(feature = "serde")]
 #[test]
-fn a_reference_to_anything_but_str_has_no_shape() {
+fn a_reference_to_anything_but_str_or_a_list_has_no_shape() {
     for spelling in [
         "&'a String",
-        "&'a [String]",
+        "&'a Option<Vec<String>>",
         "&'a u32",
         "&'a Path",
         "&'a Slug",
@@ -10907,16 +11285,63 @@ fn a_field_typed_with_a_named_type_ends_on_that_type() {
     for (spelling, leaf, depth) in [
         ("Tag", "Tag", 0),
         ("Option<Tag>", "Tag", 1),
-        ("Vec<Box<tags::Tag>>", "tags :: Tag", 2),
+        ("Option<Box<tags::Tag>>", "tags :: Tag", 2),
     ] {
         let ty: syn::Type = syn::parse_str(spelling).unwrap();
         let shape = constrained_shape(&ty).unwrap();
         let written = match shape.leaf {
             ConstraintLeaf::Named(named) => quote::ToTokens::to_token_stream(&named).to_string(),
-            ConstraintLeaf::Number(_) | ConstraintLeaf::Path | ConstraintLeaf::Str => String::new(),
+            ConstraintLeaf::List
+            | ConstraintLeaf::Number(_)
+            | ConstraintLeaf::Path
+            | ConstraintLeaf::Str => String::new(),
         };
         assert_eq!(written, leaf, "for {spelling}");
         assert_eq!(shape.wraps.len(), depth, "for {spelling}");
+    }
+}
+
+/// A list is a value of its own: the walk ends on it and reads nothing it holds.
+#[cfg(feature = "serde")]
+#[test]
+fn a_list_is_the_value_the_walk_ends_on() {
+    for (spelling, depth, _held) in LIST_REACH {
+        let ty: syn::Type = syn::parse_str(spelling).unwrap();
+        let shape = constrained_shape(&ty).unwrap();
+        assert!(matches!(shape.leaf, ConstraintLeaf::List), "for {spelling}");
+        assert_eq!(shape.wraps.len(), depth, "for {spelling}");
+    }
+}
+
+/// `held_as_a_list` is the constraint walk held to a list behind transparent wrappers alone.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn the_list_a_brand_holds_is_the_constraint_walks() {
+    let no_list = [
+        "String",
+        "Option<String>",
+        "Box<str>",
+        "Tag",
+        "HashMap<String, u8>",
+    ];
+    for (spelling, held) in LIST_REACH
+        .iter()
+        .map(|&(spelling, _depth, held)| (spelling, held))
+        .chain(no_list.map(|spelling| (spelling, false)))
+    {
+        let ty: syn::Type = syn::parse_str(spelling).unwrap();
+        let walked = constrained_shape(&ty).is_some_and(|shape| {
+            matches!(shape.leaf, ConstraintLeaf::List)
+                && shape
+                    .wraps
+                    .iter()
+                    .all(|wrap| matches!(wrap, super::ConstraintWrap::Transparent))
+        });
+        assert_eq!(walked, held, "the walk, for {spelling}");
+        assert_eq!(super::held_as_a_list(&ty), held, "for {spelling}");
     }
 }
 
@@ -11382,7 +11807,7 @@ fn every_path_spelling_reaches_a_constrainable_value() {
         "Box<Path>",
         "Cow<'a, Path>",
         "Option<PathBuf>",
-        "Vec<PathBuf>",
+        "Option<Box<Path>>",
     ] {
         let ty: syn::Type = syn::parse_str(spelling).unwrap();
         let shape = constrained_shape(&ty).unwrap();

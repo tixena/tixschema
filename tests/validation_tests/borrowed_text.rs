@@ -117,7 +117,7 @@ mod a_bound_on_a_borrowed_str {
             alias: Some("al"),
             name: "Al",
             region: "north",
-            tags: vec!["ok", "x"],
+            tags: vec!["only"],
         };
         assert_eq!(
             broken.validate().unwrap_err(),
@@ -134,16 +134,17 @@ mod a_bound_on_a_borrowed_str {
             alias: None,
             name: "alice",
             region: "east",
-            tags: vec!["ok"],
+            tags: vec!["o", "k"],
         };
         kept.validate().unwrap();
     }
 
     #[test]
     fn a_borrowed_value_is_read_and_then_held_to_its_bound_by_validate() {
-        let read: Account<'_> =
-            serde_json::from_str(r#"{"alias":"al","name":"alice","region":"east","tags":["x"]}"#)
-                .unwrap();
+        let read: Account<'_> = serde_json::from_str(
+            r#"{"alias":"al","name":"alice","region":"east","tags":["only"]}"#,
+        )
+        .unwrap();
         assert_eq!(read.alias, Some("al"));
         assert_eq!(
             read.validate().unwrap_err(),
@@ -154,7 +155,7 @@ mod a_bound_on_a_borrowed_str {
         );
 
         let without_alias: Account<'_> =
-            serde_json::from_str(r#"{"name":"alice","region":"east","tags":[]}"#).unwrap();
+            serde_json::from_str(r#"{"name":"alice","region":"east","tags":["a","b"]}"#).unwrap();
         assert_eq!(without_alias.alias, None);
         without_alias.validate().unwrap();
     }

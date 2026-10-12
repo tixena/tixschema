@@ -14,17 +14,33 @@ struct BoundedGroup {
     #[model_schema_prop(minLength = 1)]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     human_name: Option<String>,
+    #[serde(default)]
+    labels: Vec<BoundedLabel>,
     #[model_schema_prop(minimum = 1)]
     level: i32,
     #[model_schema_prop(minLength = 1)]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     sort_field: Option<BoundedPath>,
     source: BoundedPath,
-    #[model_schema_prop(minLength = 2, pattern = "^[a-z]+$")]
+    #[model_schema_prop(minLength = 1, maxLength = 2)]
     tags: Vec<String>,
-    #[model_schema_prop(maxLength = 3)]
+    #[model_schema_prop(maxLength = 3, pattern = "^[a-z]+$")]
     title: String,
 }
+
+/// A label held to a rule of its own, which is where a rule for each item of a list is written.
+/// A brand's rule is read with its schema surface, so a build with none writes none.
+#[cfg_attr(
+    any(feature = "typescript", feature = "zod", feature = "jsonschema"),
+    model_schema(decode_with, minLength = 2)
+)]
+#[cfg_attr(
+    not(any(feature = "typescript", feature = "zod", feature = "jsonschema")),
+    model_schema(decode_with)
+)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct BoundedLabel(String);
 
 #[model_schema(decode_with)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -35,6 +51,7 @@ struct BoundedPath(String);
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum BoundedSlots {
     Code(#[model_schema_prop(pattern = "^[A-Z]{3}$")] String),
+    Many(#[model_schema_prop(maxLength = 1)] Vec<String>),
     Pair(
         #[model_schema_prop(minLength = 2)] String,
         #[model_schema_prop(minimum = 1)] i32,
@@ -52,6 +69,21 @@ enum BoundedSlotsAdjacent {
     ),
 }
 
+/// An untagged member that is a list, which the read counts to choose the variant.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(untagged)]
+enum BoundedChoice {
+    Few(#[model_schema_prop(maxLength = 2)] Vec<String>),
+    Text(String),
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct BoundedChooser {
+    choice: BoundedChoice,
+}
+
 #[model_schema(decode_with, minLength = 1, maxLength = 5)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum BoundedByEnum {
@@ -67,7 +99,7 @@ fn broken() -> Document {
         "level": 0_i32,
         "sortField": "",
         "source": "Items",
-        "tags": ["ok", "A"],
+        "tags": ["ok", "A", "b"],
         "title": "long",
     }
 }
@@ -88,15 +120,59 @@ fn a_broken_bound_is_listed_at_its_value_once_per_violation() {
             "level: invalid: expected I32, found Int32(0): too small: minimum is 1, got 0",
             "sortField: invalid: expected Model(\"BoundedPath\"), found String(\"\"): too short: \
              minimum length is 1, got 0",
-            "tags[1]: invalid: expected String, found String(\"A\"): too short: minimum length is \
-             2, got 1",
-            "tags[1]: invalid: expected String, found String(\"A\"): does not match pattern \
-             '^[a-z]+$'",
+            "tags: invalid: expected Array(String), found Array([String(\"ok\"), String(\"A\"), \
+             String(\"b\")]): too long: maximum length is 2, got 3",
             "title: invalid: expected String, found String(\"long\"): too long: maximum length is \
              3, got 4",
         ]
     );
     assert_eq!(calls, 1);
+}
+
+/// A list that breaks its bound is one issue at the list, whatever its items are.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn a_list_that_breaks_its_bound_is_one_issue_at_the_list() {
+    let stored = doc! { "level": 1_i32, "source": "Items", "tags": [], "title": "ok" };
+    let read =
+        BoundedGroup::from_bson_with(stored, |_raw, _found| bounded_group_schema::Verdict::Reject);
+    assert_eq!(
+        read.unwrap_err().to_string().lines().collect::<Vec<&str>>(),
+        [
+            "tags: invalid: expected Array(String), found Array([]): too short: minimum length is 1, got 0"
+        ]
+    );
+}
+
+/// A callback puts a list inside its bound at the issue's path, and the read answers it.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn a_callback_that_sets_a_list_at_its_path_recovers_the_read() {
+    use bounded_group_schema::{Issue, Verdict};
+
+    let stored = doc! { "level": 1_i32, "source": "Items", "tags": ["a", "b", "c"], "title": "ok" };
+    let read = BoundedGroup::from_bson_with(stored, |raw, found| {
+        let [
+            Issue::Invalid {
+                path,
+                expected: _expected,
+                found: _found,
+                reason: _reason,
+            },
+        ] = found
+        else {
+            return Verdict::Reject;
+        };
+        path.set_in_document(
+            raw,
+            Bson::Array(vec![
+                Bson::String("a".to_owned()),
+                Bson::String("b".to_owned()),
+            ]),
+        );
+        Verdict::Fixed
+    });
+    assert_eq!(read.unwrap().tags, ["a", "b"]);
 }
 
 #[test]
@@ -174,6 +250,56 @@ fn a_broken_bound_in_a_tagged_slot_is_listed_at_the_slot() {
 }
 
 #[test]
+fn a_list_in_a_variants_slot_is_listed_once_at_the_slot() {
+    use bounded_slots_schema::Verdict;
+
+    let held = BoundedSlots::from_bson_with(doc! { "Many": ["only"] }, |_, _| Verdict::Reject);
+    assert_eq!(held, Ok(BoundedSlots::Many(vec!["only".to_owned()])));
+    let many = BoundedSlots::from_bson_with(doc! { "Many": ["a", "b"] }, |_, _| Verdict::Reject);
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    assert_eq!(
+        many.unwrap_err().to_string().lines().collect::<Vec<&str>>(),
+        [
+            "Many: invalid: expected Array(String), found Array([String(\"a\"), String(\"b\")]): \
+             too long: maximum length is 1, got 2"
+        ]
+    );
+    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    assert_eq!(
+        many,
+        Ok(BoundedSlots::Many(vec!["a".to_owned(), "b".to_owned()]))
+    );
+}
+
+#[test]
+fn an_untagged_list_member_is_read_through_the_hook_that_counts_it() {
+    use bounded_chooser_schema::Verdict;
+
+    let few = BoundedChooser::from_bson_with(doc! { "choice": ["a", "b"] }, |_, _| Verdict::Reject);
+    assert_eq!(
+        few,
+        Ok(BoundedChooser {
+            choice: BoundedChoice::Few(vec!["a".to_owned(), "b".to_owned()])
+        })
+    );
+    let many =
+        BoundedChooser::from_bson_with(doc! { "choice": ["a", "b", "c"] }, |_, _| Verdict::Reject);
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    assert_eq!(
+        many.unwrap_err().to_string().lines().collect::<Vec<&str>>(),
+        [
+            "choice: no variant: found Array([String(\"a\"), String(\"b\"), String(\"c\")]), \
+             tried Few, Text"
+        ]
+    );
+    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    assert!(
+        many.is_ok(),
+        "no surface hangs the hook, so the list is read"
+    );
+}
+
+#[test]
 fn a_bound_written_on_the_enum_is_listed_at_each_string_it_reaches() {
     use bounded_by_enum_schema::Verdict;
 
@@ -231,8 +357,8 @@ fn a_bound_written_on_the_enum_is_listed_at_each_string_it_reaches() {
 #[test]
 fn a_callback_that_removes_what_breaks_a_bound_recovers_the_read() {
     let stored = doc! {
-        "humanName": "", "level": 1_i32, "sortField": "", "source": "Items", "tags": ["A"],
-        "title": "ok",
+        "humanName": "", "labels": ["A", "ok"], "level": 1_i32, "sortField": "", "source": "Items",
+        "tags": ["A"], "title": "ok",
     };
     let read = BoundedGroup::from_bson_with(stored, |raw, found| {
         for issue in found {
@@ -252,23 +378,24 @@ fn a_callback_that_removes_what_breaks_a_bound_recovers_the_read() {
         read,
         Ok(BoundedGroup {
             human_name: None,
+            labels: vec![BoundedLabel("ok".to_owned())],
             level: 1,
             sort_field: None,
             source: BoundedPath("Items".to_owned()),
-            tags: Vec::new(),
+            tags: vec!["A".to_owned()],
             title: "ok".to_owned(),
         })
     );
 }
 
-/// A tag that breaks two bounds is two issues at one path, alike but for the reason.
+/// A title that breaks two bounds is two issues at one path, alike but for the reason.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn two_bounds_broken_by_one_value_are_repaired_once_at_its_path() {
     use bounded_group_schema::{Issue, Verdict};
 
     let stored = || {
-        doc! { "level": 1_i32, "source": "Items", "tags": ["A", "ok"], "title": "ok" }
+        doc! { "level": 1_i32, "source": "Items", "tags": ["ok"], "title": "LONG" }
     };
     let listed = BoundedGroup::from_bson_with(stored(), |_raw, _found| Verdict::Reject);
     assert_eq!(
@@ -278,9 +405,9 @@ fn two_bounds_broken_by_one_value_are_repaired_once_at_its_path() {
             .lines()
             .collect::<Vec<&str>>(),
         [
-            "tags[0]: invalid: expected String, found String(\"A\"): too short: minimum length is \
-             2, got 1",
-            "tags[0]: invalid: expected String, found String(\"A\"): does not match pattern \
+            "title: invalid: expected String, found String(\"LONG\"): too long: maximum length is \
+             3, got 4",
+            "title: invalid: expected String, found String(\"LONG\"): does not match pattern \
              '^[a-z]+$'",
         ]
     );
@@ -301,9 +428,9 @@ fn two_bounds_broken_by_one_value_are_repaired_once_at_its_path() {
         path.set_in_document(raw, Bson::String("aa".to_owned()));
         Verdict::Fixed
     });
-    assert_eq!(set_once.unwrap().tags, ["aa", "ok"]);
+    assert_eq!(set_once.unwrap().title, "aa");
 
-    let removed_for_each = BoundedGroup::from_bson_with(stored(), |raw, found| {
+    let set_for_each = BoundedGroup::from_bson_with(stored(), |raw, found| {
         for issue in found {
             if let Issue::Invalid {
                 path,
@@ -312,12 +439,12 @@ fn two_bounds_broken_by_one_value_are_repaired_once_at_its_path() {
                 reason: _reason,
             } = issue
             {
-                path.remove_from_document(raw);
+                path.set_in_document(raw, Bson::String("ok".to_owned()));
             }
         }
         Verdict::Fixed
     });
-    assert_eq!(removed_for_each.unwrap().tags, Vec::<String>::new());
+    assert_eq!(set_for_each.unwrap().title, "ok");
 }
 
 /// The bound stays off serde's own read, which reads the value that breaks it.

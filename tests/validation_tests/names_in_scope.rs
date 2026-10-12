@@ -26,6 +26,7 @@ mod a_one_parameter_result {
     #[model_schema()]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Record {
+        #[model_schema_prop(minLength = 1)]
         pub versions: Vec<Version>,
     }
 
@@ -131,6 +132,8 @@ mod a_type_named_sized {
             pub inner: PlainInner,
             #[model_schema_prop(minimum = 1)]
             pub level: i32,
+            #[model_schema_prop(maxLength = 2)]
+            pub listed: Box<[i32]>,
         }
 
         #[model_schema()]
@@ -149,6 +152,8 @@ mod a_type_named_sized {
         pub inner: Inner,
         #[model_schema_prop(minimum = 1)]
         pub level: i32,
+        #[model_schema_prop(maxLength = 2)]
+        pub listed: Box<[i32]>,
     }
 
     #[model_schema()]
@@ -178,7 +183,7 @@ mod a_type_named_sized {
         assert!(Sized::ts_definition().contains("text: string"));
 
         let holder: Holder = serde_json::from_value(
-            serde_json::json!({ "inner": { "number": 1_i32 }, "level": 0_i32 }),
+            serde_json::json!({ "inner": { "number": 1_i32 }, "level": 0_i32, "listed": [1_i32] }),
         )
         .unwrap();
         assert_eq!(holder.validate().unwrap_err().len(), 1);
@@ -217,6 +222,7 @@ mod a_type_named_err {
         pub name: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub note: Option<String>,
+        #[model_schema_prop(minLength = 1)]
         pub tags: Vec<String>,
     }
 
@@ -258,6 +264,7 @@ mod a_type_named_none {
         pub name: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub note: Option<String>,
+        #[model_schema_prop(minLength = 1)]
         pub tags: Vec<String>,
     }
 
@@ -299,6 +306,7 @@ mod a_type_named_ok {
         pub name: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub note: Option<String>,
+        #[model_schema_prop(minLength = 1)]
         pub tags: Vec<String>,
     }
 
@@ -340,6 +348,7 @@ mod a_type_named_some {
         pub name: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub note: Option<String>,
+        #[model_schema_prop(minLength = 1)]
         pub tags: Vec<String>,
     }
 

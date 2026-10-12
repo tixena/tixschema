@@ -7,6 +7,10 @@ extern crate alloc;
 mod field_bound;
 
 #[cfg(test)]
+#[path = "branded_newtype_tests/list_bound.rs"]
+mod list_bound;
+
+#[cfg(test)]
 #[path = "branded_newtype_tests/named_field.rs"]
 mod named_field;
 

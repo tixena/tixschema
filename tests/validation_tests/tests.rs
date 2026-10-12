@@ -2620,7 +2620,7 @@ fn test_validate_boxed_string_too_short() {
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
 ))]
 #[test]
-fn test_validate_vec_string_per_element() {
+fn test_validate_vec_string_counts_its_items() {
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug)]
     pub struct VecConstrained {
@@ -2628,18 +2628,22 @@ fn test_validate_vec_string_per_element() {
         pub tags: Vec<String>,
     }
 
-    let instance = VecConstrained {
+    let held = VecConstrained {
         tags: vec!["ok!".to_owned(), "a".to_owned(), "b".to_owned()],
     };
-    let result = instance.validate();
-    let errors = result.unwrap_err();
     assert_eq!(
-        errors,
-        vec![
-            "'tags': too short: minimum length is 3, got 1",
-            "'tags': too short: minimum length is 3, got 1",
-        ],
-        "Each failing element reports: {errors:?}"
+        held.validate(),
+        Ok(()),
+        "three items meet the bound, and no item is measured by it"
+    );
+
+    let short = VecConstrained {
+        tags: vec!["long enough".to_owned(), "and this".to_owned()],
+    };
+    assert_eq!(
+        short.validate().unwrap_err(),
+        vec!["'tags': too short: minimum length is 3, got 2"],
+        "the list is reported once, by its count"
     );
 }
 
@@ -2658,7 +2662,7 @@ fn test_validate_optional_vec_string() {
     }
 
     let present = OptionalVecConstrained {
-        tags: Some(vec!["a".to_owned()]),
+        tags: Some(vec!["long enough".to_owned()]),
     };
     let errors = present.validate().unwrap_err();
     assert_eq!(
@@ -2666,12 +2670,16 @@ fn test_validate_optional_vec_string() {
         vec!["'tags': too short: minimum length is 3, got 1"],
         "Unexpected errors: {errors:?}"
     );
+    assert_eq!(
+        OptionalVecConstrained { tags: Some(vec![]) }
+            .validate()
+            .unwrap_err(),
+        vec!["'tags': too short: minimum length is 3, got 0"],
+        "an empty list is a list, and is counted"
+    );
 
     let absent = OptionalVecConstrained { tags: None };
-    assert!(
-        absent.validate().is_ok(),
-        "A None holds no elements to constrain"
-    );
+    assert!(absent.validate().is_ok(), "A None holds no list to count");
 }
 
 #[cfg(all(
@@ -2679,7 +2687,7 @@ fn test_validate_optional_vec_string() {
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
 ))]
 #[test]
-fn test_validate_nested_vec_string() {
+fn test_validate_nested_vec_counts_the_outer_list() {
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug)]
     pub struct NestedVecConstrained {
@@ -2693,8 +2701,16 @@ fn test_validate_nested_vec_string() {
     let errors = instance.validate().unwrap_err();
     assert_eq!(
         errors,
-        vec!["'rows': too short: minimum length is 3, got 1"],
-        "The constraint lands on the innermost element: {errors:?}"
+        vec!["'rows': too short: minimum length is 3, got 2"],
+        "The constraint counts the outer list: {errors:?}"
+    );
+    assert_eq!(
+        NestedVecConstrained {
+            rows: vec![vec![], vec!["a".to_owned()], vec![]],
+        }
+        .validate(),
+        Ok(()),
+        "nothing is said about an inner list, or about what it holds"
     );
 }
 
@@ -2740,13 +2756,18 @@ fn test_validate_arc_slice_mixed_wrappers() {
         pub codes: Option<Arc<[String]>>,
     }
 
-    let instance = MixedWrappers {
+    let held = MixedWrappers {
         codes: Some(Arc::from(["ok".to_owned(), "toolong".to_owned()])),
+    };
+    assert_eq!(held.validate(), Ok(()), "two items, of any length");
+
+    let instance = MixedWrappers {
+        codes: Some(Arc::from(["a".to_owned(), "b".to_owned(), "c".to_owned()])),
     };
     let errors = instance.validate().unwrap_err();
     assert_eq!(
         errors,
-        vec!["'codes': too long: maximum length is 2, got 7"],
+        vec!["'codes': too long: maximum length is 2, got 3"],
         "Unexpected errors: {errors:?}"
     );
 }
@@ -2940,21 +2961,20 @@ fn test_a_vec_of_strings_is_read_and_then_held_to_its_bound_by_validate() {
     let read = serde_json::from_str::<WireVec>(r#"{"tags":["ok!","a"]}"#).unwrap();
     assert_eq!(
         read.validate().unwrap_err(),
-        vec!["'tags': too short: minimum length is 3, got 1"],
-        "the element that broke the bound is the one reported, and the good one beside it is not"
+        vec!["'tags': too short: minimum length is 3, got 2"],
+        "the list is read, and then reported by its count"
     );
+    let held = serde_json::from_str::<WireVec>(r#"{"tags":["ok!","a","b"]}"#).unwrap();
     assert_eq!(
-        serde_json::from_str::<WireVec>(r#"{"tags":["ok!","two"]}"#)
-            .unwrap()
-            .tags,
-        vec!["ok!".to_owned(), "two".to_owned()]
+        held.tags,
+        vec!["ok!".to_owned(), "a".to_owned(), "b".to_owned()]
     );
-    assert!(
-        serde_json::from_str::<WireVec>(r#"{"tags":[]}"#)
-            .unwrap()
-            .tags
-            .is_empty(),
-        "An empty array writes no element to constrain"
+    held.validate().unwrap();
+    let empty = serde_json::from_str::<WireVec>(r#"{"tags":[]}"#).unwrap();
+    assert_eq!(
+        empty.validate().unwrap_err(),
+        vec!["'tags': too short: minimum length is 3, got 0"],
+        "An empty array is read, and is a list of no items"
     );
 }
 
@@ -2976,7 +2996,7 @@ fn test_an_optional_vec_is_read_and_then_held_to_its_bound_by_validate() {
     let read = serde_json::from_str::<WireOptionalVec>(r#"{"tags":["ok!","a"]}"#).unwrap();
     assert_eq!(
         read.validate().unwrap_err(),
-        vec!["'tags': too short: minimum length is 3, got 1"]
+        vec!["'tags': too short: minimum length is 3, got 2"]
     );
     assert!(
         serde_json::from_str::<WireOptionalVec>("{}")
@@ -2999,7 +3019,7 @@ fn test_an_optional_number_is_read_and_then_held_to_its_range_by_validate() {
         #[model_schema_prop(minimum = 18, maximum = 120)]
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub age: Option<u32>,
-        #[model_schema_prop(minimum = 1)]
+        #[model_schema_prop(maxLength = 2)]
         pub counts: Vec<u32>,
     }
 
@@ -3012,14 +3032,14 @@ fn test_an_optional_number_is_read_and_then_held_to_its_range_by_validate() {
     );
 
     assert_eq!(
-        serde_json::from_str::<WireNumeric>(r#"{"age":21,"counts":[1,0]}"#)
+        serde_json::from_str::<WireNumeric>(r#"{"age":21,"counts":[1,0,7]}"#)
             .unwrap()
             .validate()
             .unwrap_err(),
-        vec!["'counts': too small: minimum is 1, got 0"]
+        vec!["'counts': too long: maximum length is 2, got 3"]
     );
 
-    let accepted = serde_json::from_str::<WireNumeric>(r#"{"age":21,"counts":[1]}"#).unwrap();
+    let accepted = serde_json::from_str::<WireNumeric>(r#"{"age":21,"counts":[1,0]}"#).unwrap();
     assert_eq!(accepted.age, Some(21));
     accepted.validate().unwrap();
 }
@@ -3049,8 +3069,7 @@ fn test_every_wrapped_shape_is_read_and_then_refused_by_validate() {
         pub tags: Vec<String>,
     }
 
-    const GOOD: &str =
-        r#"{"opt":"aaa","boxed":"bbb","tags":["ccc"],"cow":"ddd","nested":["eee"],"plain":"fff"}"#;
+    const GOOD: &str = r#"{"opt":"aaa","boxed":"bbb","tags":["c","c","c"],"cow":"ddd","nested":["e","e","e"],"plain":"fff"}"#;
 
     let accepted = serde_json::from_str::<WireAgreement>(GOOD).unwrap();
     assert!(
@@ -3346,16 +3365,16 @@ fn test_enum_validate_reaches_through_a_members_wrappers() {
 
     assert!(
         Wrapped::One {
-            tags: vec!["ab".to_owned()],
+            tags: vec!["a".to_owned(), "b".to_owned()],
             note: None,
         }
         .validate()
         .is_ok(),
-        "a None writes nothing for the bound to describe"
+        "a None writes nothing for the bound to describe, and two items are two whatever they hold"
     );
     assert_eq!(
         Wrapped::One {
-            tags: vec!["ab".to_owned(), "c".to_owned()],
+            tags: vec!["long enough".to_owned()],
             note: Some("d".to_owned()),
         }
         .validate()
@@ -3448,7 +3467,7 @@ fn test_a_member_named_like_the_walks_own_bindings_is_still_checked() {
     assert_eq!(
         Shadowing::One {
             errors: "A".to_owned(),
-            value_0: vec!["B".to_owned()],
+            value_0: vec!["long enough".to_owned()],
         }
         .validate()
         .unwrap_err(),
@@ -3716,7 +3735,7 @@ fn test_a_tagged_tuple_variants_slot_check_reaches_the_json_schema() {
         { "type": "integer", "minimum": 1.0_f64, "maximum": 10.0_f64 }
     ]);
     let tags = serde_json::json!({
-        "type": "array", "items": { "type": "string", "minLength": 2_u32 }
+        "type": "array", "items": { "type": "string" }, "minItems": 2_u32
     });
 
     let external = JsonExternal::json_schema();
@@ -3749,14 +3768,15 @@ fn test_a_tagged_slot_is_reached_through_its_wrappers() {
         Tags(#[model_schema_prop(minLength = 2)] Vec<String>),
     }
 
+    SlotWrapped::Tags(vec!["c".to_owned(), "d".to_owned()])
+        .validate()
+        .unwrap();
     assert_eq!(
-        SlotWrapped::Tags(vec!["ab".to_owned(), "c".to_owned(), "d".to_owned()])
+        SlotWrapped::Tags(vec!["long enough".to_owned()])
             .validate()
             .unwrap_err(),
-        vec![
-            "'0': too short: minimum length is 2, got 1".to_owned(),
-            "'0': too short: minimum length is 2, got 1".to_owned(),
-        ]
+        vec!["'0': too short: minimum length is 2, got 1".to_owned()],
+        "a slot typed as a list is counted, as a named member is"
     );
     assert_eq!(
         SlotWrapped::Note(Some("e".to_owned()))

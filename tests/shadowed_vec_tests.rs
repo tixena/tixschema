@@ -6,6 +6,8 @@
 
 #![cfg(all(feature = "serde", feature = "typescript"))]
 
+extern crate alloc;
+
 #[cfg(test)]
 #[path = "shadowed_vec_tests/tests.rs"]
 mod tests;

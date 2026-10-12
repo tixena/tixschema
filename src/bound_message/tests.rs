@@ -77,6 +77,32 @@ fn a_length_bound_reads_its_measure_off_the_issue() {
 
 #[cfg(feature = "zod")]
 #[test]
+fn a_bound_on_a_list_counts_the_items_the_issue_holds() {
+    assert_eq!(
+        zod_error_arg(Bound::MinItems(1)),
+        "{ error: (issue) => `too short: minimum length is 1, got ${Array.isArray(issue.input) ? issue.input.length : 0}` }"
+    );
+    assert_eq!(
+        zod_error_arg(Bound::MaxItems(3)),
+        "{ error: (issue) => `too long: maximum length is 3, got ${Array.isArray(issue.input) ? issue.input.length : 0}` }"
+    );
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_bound_on_a_list_is_reported_in_a_strings_words() {
+    assert_eq!(
+        rendered(Bound::MinItems(1), Some("name_config"), &quote! { held }),
+        r#"format ! ("'{}': {}, got {}" , "name_config" , "too short: minimum length is 1" , held)"#
+    );
+    assert_eq!(
+        rendered(Bound::MaxItems(3), None, &quote! { held }),
+        r#"format ! ("{}, got {}" , "too long: maximum length is 3" , held)"#
+    );
+}
+
+#[cfg(feature = "zod")]
+#[test]
 fn a_numeric_bound_reads_the_value_itself_off_the_issue() {
     assert_eq!(
         zod_error_arg(Bound::Minimum(0.0)),
@@ -111,8 +137,10 @@ fn a_pattern_reaches_the_quoted_string_escaped() {
 #[test]
 fn every_sentence_opens_with_a_stem_the_list_spells_and_no_stem_is_unwritten() {
     let written = [
+        Bound::MaxItems(3),
         Bound::MaxLength(50),
         Bound::Maximum(120.0),
+        Bound::MinItems(1),
         Bound::MinLength(3),
         Bound::Minimum(0.0),
         Bound::Pattern("^[a-z]+$"),

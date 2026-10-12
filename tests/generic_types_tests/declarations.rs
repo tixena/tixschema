@@ -18,10 +18,11 @@ use tixschema::model_schema;
 
 /// What the bounded driver prints: each broken bound under its key in the bound's own words, and
 /// a value inside every bound as it was sent.
-const BOUNDED: &str = "[[\"later: too long: maximum length is 3, got 4\",\"many.1: too short: \
+const BOUNDED: &str = "[[\"later: too long: maximum length is 3, got 4\",\"many: too short: \
                        minimum length is 2, got 1\",\"sort: too short: minimum length is 1, got \
                        0\"],[\"sort: does not match pattern '^[a-z.]*$'\"],{\"later\":\"abc\",\
-                       \"many\":[\"ab\"],\"sort\":\"a.b\"},{\"later\":\"abc\",\"many\":[]}]";
+                       \"many\":[\"ab\",\"c\"],\"sort\":\"a.b\"},{\"later\":\"abc\",\"many\":[\"a\",\
+                       \"b\"]}]";
 
 /// Loads the compiled bundle and parses through the struct whose fields bound a brand.
 const BOUNDED_DRIVER: &str = r#"import { DeclaredBounded$Schema } from "./lib/index.js";
@@ -34,10 +35,10 @@ const said = (value) => {
 };
 console.log(
   JSON.stringify([
-    said({ later: "abcd", many: ["ab", "c"], sort: "" }),
-    said({ later: "abc", many: [], sort: "A" }),
-    said({ later: "abc", many: ["ab"], sort: "a.b" }),
-    said({ later: "abc", many: [] }),
+    said({ later: "abcd", many: ["ab"], sort: "" }),
+    said({ later: "abc", many: ["ab", "c"], sort: "A" }),
+    said({ later: "abc", many: ["ab", "c"], sort: "a.b" }),
+    said({ later: "abc", many: ["a", "b"] }),
   ]),
 );
 "#;
@@ -240,8 +241,8 @@ const PROJECT: &str = r#"{
 
 static STOOD_DOWN: Once = Once::new();
 
-/// A struct whose fields bound a brand over a string: one declared below it, a list of one
-/// declared above, and an optional one.
+/// A struct whose fields bound a brand over a string, one declared below it and an optional one,
+/// and count a list of one declared above.
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeclaredBounded {

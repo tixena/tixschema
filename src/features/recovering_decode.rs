@@ -831,19 +831,36 @@ impl Walker<'_> {
                     binding("index", depth),
                     binding("item", depth),
                 );
+                // A bound written on the field measures the list, and none of its items.
                 let each = self.statement(
                     inner,
                     &item,
                     &under(segments, &quote! { ::core::result::Result::Err(#index) }),
                     depth,
-                    validator,
+                    None,
                 );
                 let expected = self.expected(reported);
+                let walked =
+                    quote! {{ for (#index, #item) in #items.iter().enumerate() { #each } }};
+                let whole = read_as_a_list(walk.ty);
+                let matched = source.items(&items);
                 vec![
                     Arm {
-                        body: quote! {{ for (#index, #item) in #items.iter().enumerate() { #each } }},
+                        body: self.bounded(
+                            &walked,
+                            validator,
+                            &whole,
+                            held,
+                            &own_reader(&whole),
+                            &path,
+                        ),
                         nothing: false,
-                        pattern: source.items(&items),
+                        // The bound reads the list whole, so the arm keeps hold of it.
+                        pattern: if validator.is_some() {
+                            quote! { #held @ #matched }
+                        } else {
+                            matched
+                        },
                     },
                     not_the_shape(held, &path, &expected, "not an array"),
                 ]
@@ -3225,6 +3242,16 @@ fn operation_methods(_module: &Ident, _written: &[String]) -> TokenStream {
 
 fn own_reader(ty: &Type) -> TokenStream {
     quote! { <#ty as serde::Deserialize>::deserialize }
+}
+
+/// The type a walked list is read whole as, to be held to its field's bound: the list's own, and
+/// a boxed slice for a slice, which no reader hands back unsized.
+fn read_as_a_list(ty: &Type) -> Type {
+    if matches!(ty, Type::Slice(_)) {
+        parse_quote! { ::std::boxed::Box<#ty> }
+    } else {
+        ty.clone()
+    }
 }
 
 /// `items` as they are emitted: beside what a schema surface writes into `{type}_schema`.

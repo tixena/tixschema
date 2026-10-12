@@ -7,6 +7,26 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tixschema::model_schema;
 
+/// A path whose own length a brand holds, which is where a rule for each path of a list goes.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[model_schema(no_display, minLength = 3)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(transparent)]
+struct BoundedPath(PathBuf);
+
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct ListedPaths {
+    listed: Vec<BoundedPath>,
+}
+
 /// `Path` is `PathBuf`'s borrowed form, reachable only behind a wrapper or a reference. Every
 /// spelling below writes the same JSON string the owned form writes.
 #[model_schema()]
@@ -207,7 +227,7 @@ fn test_every_constrained_path_spelling_is_held_to_its_bound() {
         rced: Rc<Path>,
     }
 
-    const GOOD: &str = r#"{"arced":"/aaa","boxed":"/bbb","cowed":"/ccc","listed":["/ddd"],"maybe":"/eee","owned":"/fff","rced":"/ggg"}"#;
+    const GOOD: &str = r#"{"arced":"/aaa","boxed":"/bbb","cowed":"/ccc","listed":["d","d","d"],"maybe":"/eee","owned":"/fff","rced":"/ggg"}"#;
     const SPELLINGS: [(&str, &str); 7] = [
         ("arced", r#""a""#),
         ("boxed", r#""b""#),
@@ -256,6 +276,30 @@ fn test_every_constrained_path_spelling_is_held_to_its_bound() {
             .map(|(field, _)| format!("'{field}': too short: minimum length is 3, got 1"))
             .collect::<Vec<_>>(),
         "every spelling must report for itself"
+    );
+}
+
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn test_each_path_of_a_list_is_held_by_the_brand_it_is_typed_with() {
+    let held = ListedPaths {
+        listed: vec![
+            BoundedPath(PathBuf::from("/etc")),
+            BoundedPath(PathBuf::from("/a")),
+        ],
+    };
+    assert_eq!(
+        held.validate().unwrap_err(),
+        vec!["'listed': too short: minimum length is 3, got 2"]
+    );
+    assert_eq!(
+        serde_json::from_str::<ListedPaths>(r#"{"listed":["/etc","/a"]}"#)
+            .unwrap_err()
+            .to_string(),
+        "'listed': too short: minimum length is 3, got 2 at line 1 column 23"
     );
 }
 

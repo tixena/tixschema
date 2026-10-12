@@ -571,7 +571,7 @@ fn test_min_length_zod() {
     assert!(zod_schema.contains("name: z.string().min(1, { error: (issue) => `too short: minimum length is 1, got ${String(issue.input).length}` })"));
     assert!(zod_schema.contains("username: z.string().min(5, { error: (issue) => `too short: minimum length is 5, got ${String(issue.input).length}` })"));
     assert!(zod_schema.contains("password: z.string().min(10, { error: (issue) => `too short: minimum length is 10, got ${String(issue.input).length}` })"));
-    assert!(zod_schema.contains("tags: z.array(z.string().min(2, { error: (issue) => `too short: minimum length is 2, got ${String(issue.input).length}` }))"));
+    assert!(zod_schema.contains("tags: z.array(z.string()).min(2, { error: (issue) => `too short: minimum length is 2, got ${Array.isArray(issue.input) ? issue.input.length : 0}` }),"));
 
     assert!(zod_schema.contains("description: z.string(),"));
 
@@ -609,8 +609,8 @@ fn test_min_length_json_schema() {
 
     let tags_prop = &properties["tags"];
     assert_eq!(tags_prop["type"], "array");
-    assert_eq!(tags_prop["items"]["type"], "string");
-    assert_eq!(tags_prop["items"]["minLength"], 2_i32);
+    assert_eq!(tags_prop["items"], serde_json::json!({ "type": "string" }));
+    assert_eq!(tags_prop["minItems"], 2_i32);
 }
 
 #[test]

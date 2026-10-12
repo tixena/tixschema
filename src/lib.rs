@@ -652,7 +652,8 @@ export const Document$Schema: ZodType<Document> = Document$RawSchema;
 /// `Display`): the brand then gets no `Display` impl and no such requirement, while the generated
 /// schema is unchanged. String constraints are a separate matter -- `pattern`, `minLength`, and
 /// `maxLength` validate through `to_string()`, so a constrained brand needs a `Display` inner
-/// whether or not it passes `no_display`.
+/// whether or not it passes `no_display`. A brand over a list is the exception: `minLength` and
+/// `maxLength` count its items, which needs no `Display`, and `pattern` is refused on it.
 ///
 /// ```rust
 /// use tixschema::model_schema;
@@ -761,6 +762,37 @@ pub fn model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 /// A `PathBuf` field carries these too, as does the `Path` borrow behind a wrapper: serde writes a
 /// path as a JSON string, and the checks measure that string — the path's `to_string_lossy`
 /// rendering, which is the exact wire value for every path serde can write.
+///
+/// ### List Length
+///
+/// A key written on a field measures the field's own value. On a list — `Vec`, `VecDeque`,
+/// `HashSet`, `BTreeSet`, `BinaryHeap`, a slice or `[T; N]`, under `Option` and the transparent
+/// wrappers — `minLength` and `maxLength` count its items, whatever they are, and no key written
+/// on a list reaches the items. Zod writes `.min(N)` and `.max(N)` on the array, the JSON Schema
+/// writes `"minItems"` and `"maxItems"`, and `validate()` reports the list once. `pattern`,
+/// `minimum` and `maximum` on a list are compile errors: a rule for each item goes on the item's
+/// own type, a branded newtype that carries it.
+///
+/// ```rust
+/// use tixschema::{model_schema, model_schema_prop};
+/// use serde::{Deserialize, Serialize};
+///
+/// #[model_schema()]
+/// #[derive(Serialize, Deserialize)]
+/// pub struct PartData {
+///     pub value: String,
+/// }
+///
+/// #[model_schema()]
+/// #[derive(Serialize, Deserialize)]
+/// pub struct DocumentData {
+///     // One to three parts, each of any length.
+///     #[model_schema_prop(minLength = 1, maxLength = 3)]
+///     pub name_config: Vec<PartData>,
+/// }
+///
+/// fn main() {}
+/// ```
 ///
 /// ### Numeric Constraints
 ///
