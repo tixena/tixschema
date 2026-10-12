@@ -4843,6 +4843,46 @@ The snake case of a tag key and of a value is its words in lower case, joined by
 
 **`and` on an arm filter refuses a filter over another type.** With `Wagon` a flagged struct that declares a `number`, `BY_COURIER.and(Wagon::MONGO_FIELDS.number().eq("W-9".to_owned())?)` is ``error[E0277]: the trait bound `wagon_schema::Filter<Wagon>: AsRef<PhantomData<Courier>>` is not satisfied``.
 
+**An arm takes an update of the model it holds.** `update` on an arm filter takes an update of the rows of `M`, the model the arm holds, and of no other, and answers an arm update, an `ArmUpdate<Root, M>`: an update of the rows of the enum, with each key of the model written where the arm holds it. `and` on an arm update merges one more update of `M`, as `and` on an update does. `tag_on_insert` adds the arm's tag to `$setOnInsert`, which an upsert writes where it inserts the row. The tag is written only where it is asked for: an update of a row that is there needs none.
+
+```rust
+/// A booking's courier renamed, with the arm's tag written where an upsert inserts the row.
+fn recouriered(courier: &str) -> Result<booking_schema::Update<Booking>, WriteError> {
+    let renamed = BY_COURIER
+        .update(Courier::MONGO_FIELDS.name().set(courier.to_owned())?)
+        .tag_on_insert();
+    Ok(Booking::MONGO_FIELDS.transport().nest(renamed))
+}
+```
+
+| Written | The document it builds |
+|---------|------------------------|
+| `recouriered("Acme Freight")?` | `{ "$set": { "name": "Acme Freight" }, "$setOnInsert": { "type": "by-courier" } }` |
+| `Booking::update_one(&collection, couriered("SDQ-1", "Acme")?, recouriered("Acme Freight")?).await?` | the driver's `UpdateResult` |
+| `collection.update_one(couriered("SDQ-1", "Acme")?.into_document(), recouriered("Acme Freight")?.into_document()).upsert(true).await?` | the same, as an upsert: the driver's own call |
+
+`Booking` flattens the enum, so `nest` writes the model's key and the tag among the row's own keys. Where a row holds the enum under a key, `nest` writes every key under it, the tag included. The model may be of another crate, or declared below the enum: no function of the variant takes its update there, and the arm does.
+
+**An update carries no condition.** `update` leaves behind the conditions `and` added to the arm filter: an update selects no row, and the filter the operation takes beside it does, as `couriered` does above. No operation upserts. An upsert is the driver's own call ([A query the operations do not cover](#a-query-the-operations-do-not-cover)), which `into_document()` hands the filter and the update.
+
+The tag is written at the enum's own level under either tagging, and what the arm holds is written under the content key where the enum has one. `Update::from` makes an arm update the module's own `Update`. `courier` and `notice` are `Courier::MONGO_FIELDS` and `Notice::MONGO_FIELDS`, and `paper` is the paths of the enum of the last row of the table of arm functions above, whose `PastDue(Notice)` holds a `Notice` that declares a `code`:
+
+| Written | The document it builds |
+|---------|------------------------|
+| `BY_COURIER.update(courier.name().set("Renamed".to_owned())?)` | `{ "$set": { "name": "Renamed" } }` |
+| `BY_COURIER.update(courier.name().set("Renamed".to_owned())?).and(courier.region().set_on_insert("north".to_owned())?).tag_on_insert()` | `{ "$set": { "name": "Renamed" }, "$setOnInsert": { "region": "north", "type": "by-courier" } }` |
+| `paper.doc_type__past_due().update(notice.code().set("N-8".to_owned())?).tag_on_insert()` | `{ "$set": { "body.code": "N-8" }, "$setOnInsert": { "docType": "past-due" } }` |
+| `transport_schema::Update::from(BY_COURIER.tag_on_insert())` | `{ "$setOnInsert": { "type": "by-courier" } }` |
+
+**An arm whose `M` is `()` writes its tag all the same.** No update is over `()`, so `update` has nothing to take there, and `tag_on_insert` is on the arm filter itself. What it answers joins a plain update of the fields written in the variant:
+
+| Written | The document it builds |
+|---------|------------------------|
+| `payment.kind__cash().tag_on_insert()` | `{ "$setOnInsert": { "kind": "cash" } }` |
+| `payment.card().last4().set("4242".to_owned())?.and(payment.kind__card().tag_on_insert())` | `{ "$set": { "last4": "4242" }, "$setOnInsert": { "kind": "card" } }` |
+
+**`update` on an arm filter takes an update of the arm's model and nothing else.** Handed a filter over the rows of that model, `BY_COURIER.update(Courier::MONGO_FIELDS.name().eq("Acme".to_owned())?)` is ``error[E0277]: the trait bound `courier_schema::Filter<Courier>: AsRef<PhantomData<fn(Courier) -> Courier>>` is not satisfied``. Handed an update of another type, with `Wagon` a flagged struct that declares a `number`, `BY_COURIER.update(Wagon::MONGO_FIELDS.number().set("W-1".to_owned())?)` is ``error[E0277]: the trait bound `wagon_schema::Update<Wagon>: AsRef<PhantomData<fn(Courier) -> Courier>>` is not satisfied``. An arm update is no filter: it carries an update's marker and no other, so `BY_COURIER.and(BY_COURIER.tag_on_insert())` does not compile (`E0277`).
+
 ### Filters and updates
 
 `and` and `or` join two filters over the same rows, and `negated` turns one around. `and` on an update merges two updates of the same rows: the keys of each operator are put together, and a key both write keeps the later value. `Filter::raw` and `Update::raw` take a document written by hand, for what has no typed form:
@@ -4861,6 +4901,7 @@ The snake case of a tag key and of a value is its words in lower case, joined by
 - **A filter is nested whole.** Each of its keys is written under the path's, inside `$and`, `$or` and `$nor` too. Any other key that starts with `$`, which a `Filter::raw` document may write at its top, is kept as it is written. In an update, each key of each operator is written under the path's, and its value is kept.
 - **A filter joins a filter over the same rows, whichever module it comes from.** What `and` and `or` ask of their argument is that it turn into a `bson::Document` and carry the row type, which every module's `Filter` does through two standard traits, `Into<bson::Document>` and `AsRef<PhantomData<Root>>`. `nest` asks the same of what it is handed, over the nested model. The answer is of the type `and` was called on.
 - **An arm filter goes where a filter over its enum goes.** A `transport_schema::ArmFilter<Transport, Courier>` turns into a `bson::Document` and carries the row type `Transport` through the same two traits, so `nest` on a path that holds a `Transport` takes one, and so do `and`, `or`, `elem_match` on a list of the enum, and every operation. It is no `Filter` itself: `transport_schema::Filter::from(arm)` makes it the module's own `Filter<Transport>`, which starts a join and has `negated`. Its own `and` asks the two traits of its argument over the model the arm holds ([The arms of an enum under a tag](#operators)).
+- **An arm update goes where an update of its enum goes.** A `transport_schema::ArmUpdate<Transport, Courier>` turns into a `bson::Document` and carries `AsRef<PhantomData<fn(Transport) -> Transport>>`, an update's marker over the rows of the enum, and no other. So `nest` on a path that holds a `Transport` takes one, and so do `and` on an update of the enum, `update_one` and `update_many`, and nothing that asks for a filter does. `transport_schema::Update::from(arm)` makes it the module's own `Update<Transport>`. Its own `and`, and `update` on the arm filter, ask the two traits of their argument over the model the arm holds ([The arms of an enum under a tag](#operators)).
 - **A filter over another type's rows is refused.** Handed `Order::MONGO_FIELDS.placed().eq(true)?`, `and` on a filter over `Invoice` is ``error[E0277]: the trait bound `order_schema::Filter<Order>: AsRef<PhantomData<Invoice>>` is not satisfied``, and `nest` on `paths.customer()`, which holds a `Customer`, is ``error[E0277]: the trait bound `order_schema::Filter<Order>: invoice_schema::Nests<Invoice, Customer, _>` is not satisfied``.
 - **An update is refused where a filter is asked, and a filter where an update is.** An update carries `AsRef<PhantomData<fn(Root) -> Root>>` in place of a filter's marker. `paths.total().gt(1000.0)?.and(paths.total().set(0.0)?)` is ``error[E0277]: the trait bound `invoice_schema::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied``, and `paths.total().set(0.0)?.and(paths.total().gt(1000.0)?)` is ``error[E0277]: the trait bound `invoice_schema::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied``.
 - **A document is not a filter until `Filter::raw` makes it one.** `and` handed a `doc! { .. }` as it stands is ``error[E0277]: the trait bound `bson::Document: AsRef<PhantomData<Invoice>>` is not satisfied``. `raw` gives the document the row type of what it joins, and nothing checks what it holds: its keys and its values are the caller's.

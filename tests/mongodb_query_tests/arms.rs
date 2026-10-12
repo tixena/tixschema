@@ -1,6 +1,8 @@
 //! The arms of an enum serde writes under a tag: one function per arm, named after the tag key
 //! and the value serde writes for the variant, each in snake case. It answers a filter that holds
 //! the arm's tag, and whose `and` takes conditions on the model the arm holds and on no other.
+//! Its `update` takes an update of that model, and `tag_on_insert` writes the arm's tag where an
+//! upsert inserts the row.
 
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -123,6 +125,26 @@ fn labelled(label: &str) -> pallet_schema::Filter<Pallet<String>> {
 /// The couriers named `Acme`.
 fn named() -> courier_schema::Filter<Courier> {
     Courier::MONGO_FIELDS.name().eq("Acme".to_owned()).unwrap()
+}
+
+/// A courier renamed: an update of the rows of `Courier`.
+fn renamed() -> courier_schema::Update<Courier> {
+    Courier::MONGO_FIELDS
+        .name()
+        .set("Renamed".to_owned())
+        .unwrap()
+}
+
+/// A courier renamed through its arm, with its region and the arm's tag written on insert.
+fn renamed_with_its_tag() -> shipping_schema::ArmUpdate<Shipping, Courier> {
+    let in_the_north = Courier::MONGO_FIELDS
+        .region()
+        .set_on_insert("north".to_owned())
+        .unwrap();
+    BY_COURIER
+        .update(renamed())
+        .and(in_the_north)
+        .tag_on_insert()
 }
 
 #[test]
@@ -267,6 +289,120 @@ fn an_arm_filter_joins_a_plain_filter_over_the_enum() {
     assert_eq!(
         shown(shipping_schema::Filter::from(BY_COURIER).negated()),
         r#"{ "$nor": [{ "type": { "$eq": "by-courier" } }] }"#
+    );
+}
+
+/// `Courier` is declared below `Shipping`, so no function of the variant takes its update: the
+/// arm does, and what flattens the enum nests it among the row's own keys.
+#[test]
+fn an_arm_takes_an_update_of_the_model_it_holds() {
+    let waybill = Waybill::MONGO_FIELDS;
+    assert_eq!(
+        shown(waybill.shipping().nest(BY_COURIER.update(renamed()))),
+        r#"{ "$set": { "name": "Renamed" } }"#
+    );
+    assert_eq!(
+        shown(BY_COURIER.update(renamed()).into_document()),
+        r#"{ "$set": { "name": "Renamed" } }"#
+    );
+}
+
+/// The keys of each operator are joined, and the tag is written at the enum's own level.
+#[test]
+fn an_arm_update_merges_a_second_update_and_writes_its_tag_on_insert() {
+    held::<shipping_schema::ArmUpdate<Shipping, Courier>>(&renamed_with_its_tag());
+    assert_eq!(
+        shown(renamed_with_its_tag()),
+        r#"{ "$set": { "name": "Renamed" }, "$setOnInsert": { "region": "north", "type": "by-courier" } }"#
+    );
+}
+
+/// `nest` writes every key under the key that holds the enum, the tag included, and the holder's
+/// own update joins what it answers.
+#[test]
+fn an_arm_update_goes_through_what_holds_the_enum() {
+    let (waybill, manifest) = (Waybill::MONGO_FIELDS, Manifest::MONGO_FIELDS);
+    assert_eq!(
+        shown(manifest.shipping().nest(renamed_with_its_tag())),
+        r#"{ "$set": { "shipping.name": "Renamed" }, "$setOnInsert": { "shipping.region": "north", "shipping.type": "by-courier" } }"#
+    );
+    let at_the_depot = waybill
+        .depot_code()
+        .set_on_insert("SDQ-1".to_owned())
+        .unwrap();
+    assert_eq!(
+        shown(
+            waybill
+                .shipping()
+                .nest(renamed_with_its_tag())
+                .and(at_the_depot)
+        ),
+        r#"{ "$set": { "name": "Renamed" }, "$setOnInsert": { "region": "north", "type": "by-courier", "depotCode": "SDQ-1" } }"#
+    );
+}
+
+/// The model's keys are under the content key, and the tag is beside it.
+#[test]
+fn an_arm_update_of_an_adjacently_tagged_enum_writes_its_tag_beside_the_content_key() {
+    let coded = Notice::MONGO_FIELDS.code().set("N-8".to_owned()).unwrap();
+    assert_eq!(
+        shown(
+            Paper::MONGO_FIELDS
+                .doc_type__past_due()
+                .update(coded)
+                .tag_on_insert()
+        ),
+        r#"{ "$set": { "body.code": "N-8" }, "$setOnInsert": { "docType": "past-due" } }"#
+    );
+}
+
+/// No update is over `()`: the tag is asked for on the arm filter, and joins a plain update of
+/// the fields written in the variant.
+#[test]
+fn an_arm_that_holds_no_model_writes_its_tag_on_insert() {
+    let shipping = Shipping::MONGO_FIELDS;
+    held::<shipping_schema::ArmUpdate<Shipping, ()>>(&shipping.type__collected().tag_on_insert());
+    assert_eq!(
+        shown(shipping.type__collected().tag_on_insert()),
+        r#"{ "$setOnInsert": { "type": "Collected" } }"#
+    );
+    let in_the_bay = shipping
+        .locker()
+        .bay_number()
+        .set("B-3".to_owned())
+        .unwrap();
+    assert_eq!(
+        shown(in_the_bay.and(shipping.type__locker().tag_on_insert())),
+        r#"{ "$set": { "bayNumber": "B-3" }, "$setOnInsert": { "type": "Locker" } }"#
+    );
+}
+
+/// `Box<Wagon>` is read through: the arm takes an update of `Wagon`.
+#[test]
+fn an_arm_over_a_wrapped_model_takes_an_update_of_the_model() {
+    let numbered = Wagon::MONGO_FIELDS.number().set("W-1".to_owned()).unwrap();
+    assert_eq!(
+        shown(Shipping::MONGO_FIELDS.type__by_rail().update(numbered)),
+        r#"{ "$set": { "number": "W-1" } }"#
+    );
+}
+
+/// An update selects no row: the operation's own filter carries the conditions.
+#[test]
+fn an_arm_update_leaves_the_conditions_of_its_arm_filter_behind() {
+    assert_eq!(
+        shown(BY_COURIER.and(named()).update(renamed())),
+        r#"{ "$set": { "name": "Renamed" } }"#
+    );
+}
+
+#[test]
+fn an_arm_update_turns_into_the_update_of_its_enums_module() {
+    let own: shipping_schema::Update<Shipping> =
+        shipping_schema::Update::from(BY_COURIER.tag_on_insert());
+    assert_eq!(
+        shown(own.and(BY_COURIER.update(renamed()))),
+        r#"{ "$setOnInsert": { "type": "by-courier" }, "$set": { "name": "Renamed" } }"#
     );
 }
 

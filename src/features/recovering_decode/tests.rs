@@ -951,6 +951,7 @@ fn the_query_types_are_declared_under_mongodb_alone_and_none_is_exhaustive() {
         "Filter",
         "ArmFilter",
         "Update",
+        "ArmUpdate",
         "AsFilter",
         "AsUpdate",
         "Field",
@@ -1005,8 +1006,12 @@ fn each_query_type_has_the_operators_of_its_kind() {
     for (named, operators) in [
         ("MongoPath", &["at", "key"][..]),
         ("Filter", &["raw", "and", "or", "negated", "into_document"]),
-        ("ArmFilter", &["of", "and", "into_document"]),
+        (
+            "ArmFilter",
+            &["of", "and", "update", "tag_on_insert", "into_document"],
+        ),
         ("Update", &["raw", "and", "into_document"]),
+        ("ArmUpdate", &["and", "tag_on_insert", "into_document"]),
         (
             "Field",
             &[
@@ -1132,6 +1137,8 @@ fn a_filter_and_an_update_each_carry_a_marker_of_their_own() {
         "impl<Root,M:?::core::marker::Sized>::core::convert::AsRef<::core::marker::PhantomData<Root>>\
          forArmFilter<Root,M>",
         "impl<Root>::core::convert::AsRef<::core::marker::PhantomData<fn(Root)->Root>>forUpdate<Root>",
+        "impl<Root,M:?::core::marker::Sized>\
+         ::core::convert::AsRef<::core::marker::PhantomData<fn(Root)->Root>>forArmUpdate<Root,M>",
     ] {
         assert!(packed.contains(carried), "missing `{carried}`");
     }
@@ -1144,7 +1151,7 @@ fn a_filter_and_an_update_each_carry_a_marker_of_their_own() {
     ] {
         assert!(packed.contains(taken), "missing `{taken}`");
     }
-    assert_eq!(packed.matches("AsRef<").count(), 12);
+    assert_eq!(packed.matches("AsRef<").count(), 15);
     let added: syn::File = syn::parse2(emitted).unwrap();
     let asked: Vec<(String, String)> = query_methods(&added)
         .into_iter()
@@ -1164,7 +1171,9 @@ fn a_filter_and_an_update_each_carry_a_marker_of_their_own() {
         ("Filter::and", "Root"),
         ("Filter::or", "Root"),
         ("ArmFilter::and", "M"),
+        ("ArmFilter::update", "fn (M) -> M"),
         ("Update::and", "fn (Root) -> Root"),
+        ("ArmUpdate::and", "fn (M) -> M"),
         ("ModelList::elem_match", "N"),
         ("ModelList::pull", "N"),
     ]
@@ -1183,6 +1192,34 @@ fn a_filter_and_an_update_each_carry_a_marker_of_their_own() {
         ["Field", "ListField", "Model", "ModelList", "Nested"]
             .map(|on| format!("{on}: where E : Nests < Root , N , Kind > ,"))
     );
+}
+
+/// The loop that joins the keys of an operator is written once, and each merge calls it.
+#[cfg(feature = "mongodb")]
+#[test]
+fn an_update_and_an_arm_update_merge_through_one_function() {
+    let packed: String = super::query::query_items()
+        .to_string()
+        .split_whitespace()
+        .collect();
+    assert_eq!(packed.matches("existing.insert(key,value);").count(), 1);
+    assert_eq!(packed.matches("fnmerged_update(").count(), 1);
+    for written in [
+        // `Update::and`.
+        "Self::raw(Self::merged_update(self.document,other.into()))",
+        // `ArmFilter::update`: the model's keys at the arm's place, and no condition.
+        "ArmUpdate{tag:self.tag,value:self.value,place:self.place,\
+         document:nested_update(self.place.key(),change.into()),of:::core::marker::PhantomData,}",
+        // `ArmUpdate::and`.
+        "self.document=Update::<Root>::merged_update(self.document,\
+         nested_update(self.place.key(),change.into()));",
+        // `tag_on_insert`: the tag under its own key, at the enum's level.
+        "tagged.insert(self.tag,bson::Bson::String(self.value.to_owned()));",
+        "written.insert(\"$setOnInsert\",bson::Bson::Document(tagged));\
+         self.document=Update::<Root>::merged_update(self.document,written);",
+    ] {
+        assert!(packed.contains(written), "missing `{written}`");
+    }
 }
 
 #[cfg(feature = "mongodb")]

@@ -19,6 +19,7 @@ pub fn query_items() -> TokenStream {
     let filter = filter_items();
     let arm_filter = arm_filter_items();
     let update = update_items();
+    let arm_update = arm_update_items();
     let nests = nests_items();
     let field = field_items();
     let optional_field = optional_field_items();
@@ -33,6 +34,7 @@ pub fn query_items() -> TokenStream {
         #filter
         #arm_filter
         #update
+        #arm_update
         #nests
         #field
         #optional_field
@@ -194,6 +196,37 @@ fn arm_filter_items() -> TokenStream {
                 self
             }
 
+            /// The arm's model changed by `change`, an update of the rows of `M`, from any module,
+            /// each of its keys written at the arm's place. An update selects no row: the
+            /// conditions `and` added are left behind, and the operation's own filter carries them.
+            #[must_use]
+            pub fn update<U>(self, change: U) -> ArmUpdate<Root, M>
+            where
+                U: ::core::convert::Into<bson::Document> + ::core::convert::AsRef<::core::marker::PhantomData<fn(M) -> M>>,
+            {
+                ArmUpdate {
+                    tag: self.tag,
+                    value: self.value,
+                    place: self.place,
+                    document: nested_update(self.place.key(), change.into()),
+                    of: ::core::marker::PhantomData,
+                }
+            }
+
+            /// The arm's tag written on insert, and nothing else: the update of an arm that holds
+            /// no model.
+            #[must_use]
+            pub fn tag_on_insert(self) -> ArmUpdate<Root, M> {
+                ArmUpdate {
+                    tag: self.tag,
+                    value: self.value,
+                    place: self.place,
+                    document: bson::Document::new(),
+                    of: ::core::marker::PhantomData,
+                }
+                .tag_on_insert()
+            }
+
             /// The document the driver takes.
             #[must_use]
             pub fn into_document(self) -> bson::Document {
@@ -228,6 +261,244 @@ fn arm_filter_items() -> TokenStream {
 
         impl<Root, M: ?::core::marker::Sized> ::core::convert::AsRef<::core::marker::PhantomData<Root>> for ArmFilter<Root, M> {
             fn as_ref(&self) -> &::core::marker::PhantomData<Root> {
+                &::core::marker::PhantomData
+            }
+        }
+    }
+}
+
+/// `ArmUpdate`: what `update` and `tag_on_insert` on an arm filter answer, an update of the rows
+/// of the arm's enum.
+///
+/// An arm's `update` takes an update of the rows of the model the arm holds, and `tag_on_insert`
+/// writes the arm's tag beside it. This builds:
+///
+/// ```rust
+/// # extern crate bson2 as bson;
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema(decode_with)]
+/// #[derive(Debug, Deserialize, Serialize)]
+/// pub struct Courier {
+///     pub name: String,
+///     pub region: String,
+/// }
+///
+/// #[model_schema(decode_with)]
+/// #[derive(Debug, Deserialize, Serialize)]
+/// #[serde(tag = "type")]
+/// pub enum Transport {
+///     #[serde(rename = "by-courier")]
+///     ByCourier(Courier),
+///     Collected,
+/// }
+///
+/// const BY_COURIER: transport_schema::ArmFilter<Transport, Courier> =
+///     Transport::MONGO_FIELDS.type__by_courier();
+///
+/// fn main() -> Result<(), transport_schema::WriteError> {
+///     let renamed = BY_COURIER.update(Courier::MONGO_FIELDS.name().set("Acme".to_owned())?);
+///     assert_eq!(
+///         renamed.tag_on_insert().into_document().to_string(),
+///         r#"{ "$set": { "name": "Acme" }, "$setOnInsert": { "type": "by-courier" } }"#
+///     );
+///     let collected = Transport::MONGO_FIELDS.type__collected().tag_on_insert();
+///     assert_eq!(
+///         transport_schema::Update::from(collected).into_document().to_string(),
+///         r#"{ "$setOnInsert": { "type": "Collected" } }"#
+///     );
+///     Ok(())
+/// }
+/// ```
+///
+/// Each run below hands `update` something that is no update of the rows of `Courier`. A
+/// `compile_fail` doctest asserts only that some error was raised, so each was compiled
+/// standalone as an ordinary test file, and the text under it is the only error it earned,
+/// verbatim.
+///
+/// A filter over the rows of `Courier`, which carries a filter's marker and not an update's:
+///
+/// ```rust,compile_fail
+/// # extern crate bson2 as bson;
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema(decode_with)]
+/// #[derive(Debug, Deserialize, Serialize)]
+/// pub struct Courier {
+///     pub name: String,
+///     pub region: String,
+/// }
+///
+/// #[model_schema(decode_with)]
+/// #[derive(Debug, Deserialize, Serialize)]
+/// #[serde(tag = "type")]
+/// pub enum Transport {
+///     #[serde(rename = "by-courier")]
+///     ByCourier(Courier),
+///     Collected,
+/// }
+///
+/// const BY_COURIER: transport_schema::ArmFilter<Transport, Courier> =
+///     Transport::MONGO_FIELDS.type__by_courier();
+///
+/// fn main() -> Result<(), transport_schema::WriteError> {
+///     let _ = BY_COURIER.update(Courier::MONGO_FIELDS.name().eq("Acme".to_owned())?);
+///     Ok(())
+/// }
+/// ```
+///
+/// ```text
+/// error[E0277]: the trait bound `courier_schema::Filter<Courier>: AsRef<PhantomData<fn(Courier) -> Courier>>` is not satisfied
+///   --> tests/zz_probe.rs:25:31
+///    |
+/// 25 |     let _ = BY_COURIER.update(Courier::MONGO_FIELDS.name().eq("Acme".to_owned())?);
+///    |                        ------ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+///    |                        |
+///    |                        required by a bound introduced by this call
+///    |
+/// help: the trait `AsRef<PhantomData<fn(Courier) -> Courier>>` is not implemented for `courier_schema::Filter<Courier>`
+///       but trait `AsRef<PhantomData<Courier>>` is implemented for it
+///   --> tests/zz_probe.rs:5:1
+///    |
+///  5 | #[model_schema(decode_with)]
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///    = help: for that trait implementation, expected `Courier`, found `fn(Courier) -> Courier`
+/// note: required by a bound in `transport_schema::ArmFilter::<Root, M>::update`
+///   --> tests/zz_probe.rs:12:1
+///    |
+/// 12 | #[model_schema(decode_with)]
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `ArmFilter::<Root, M>::update`
+///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
+///
+/// An update of the rows of `Wagon`, a type the arm does not hold:
+///
+/// ```rust,compile_fail
+/// # extern crate bson2 as bson;
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema(decode_with)]
+/// #[derive(Debug, Deserialize, Serialize)]
+/// pub struct Courier {
+///     pub name: String,
+///     pub region: String,
+/// }
+///
+/// #[model_schema(decode_with)]
+/// #[derive(Debug, Deserialize, Serialize)]
+/// #[serde(tag = "type")]
+/// pub enum Transport {
+///     #[serde(rename = "by-courier")]
+///     ByCourier(Courier),
+///     Collected,
+/// }
+///
+/// #[model_schema(decode_with)]
+/// #[derive(Debug, Deserialize, Serialize)]
+/// pub struct Wagon {
+///     pub number: String,
+/// }
+///
+/// const BY_COURIER: transport_schema::ArmFilter<Transport, Courier> =
+///     Transport::MONGO_FIELDS.type__by_courier();
+///
+/// fn main() -> Result<(), transport_schema::WriteError> {
+///     let _ = BY_COURIER.update(Wagon::MONGO_FIELDS.number().set("W-1".to_owned())?);
+///     Ok(())
+/// }
+/// ```
+///
+/// ```text
+/// error[E0277]: the trait bound `wagon_schema::Update<Wagon>: AsRef<PhantomData<fn(Courier) -> Courier>>` is not satisfied
+///   --> tests/zz_probe.rs:31:31
+///    |
+/// 31 |     let _ = BY_COURIER.update(Wagon::MONGO_FIELDS.number().set("W-1".to_owned())?);
+///    |                        ------ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+///    |                        |
+///    |                        required by a bound introduced by this call
+///    |
+/// help: the trait `AsRef<PhantomData<fn(Courier) -> Courier>>` is not implemented for `wagon_schema::Update<Wagon>`
+///       but trait `AsRef<PhantomData<fn(Wagon) -> Wagon>>` is implemented for it
+///   --> tests/zz_probe.rs:21:1
+///    |
+/// 21 | #[model_schema(decode_with)]
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/// note: required by a bound in `transport_schema::ArmFilter::<Root, M>::update`
+///   --> tests/zz_probe.rs:12:1
+///    |
+/// 12 | #[model_schema(decode_with)]
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `ArmFilter::<Root, M>::update`
+///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
+fn arm_update_items() -> TokenStream {
+    quote! {
+        /// An update of the rows of one arm of an enum serde writes under a tag: what `update` and
+        /// `and` change of the model `M` the arm holds, and the arm's tag where it is written on
+        /// insert.
+        #[derive(Debug)]
+        #[non_exhaustive]
+        pub struct ArmUpdate<Root, M: ?::core::marker::Sized> {
+            tag: &'static str,
+            value: &'static str,
+            place: MongoPath,
+            document: bson::Document,
+            of: ::core::marker::PhantomData<fn(&M) -> Root>,
+        }
+
+        impl<Root, M> ArmUpdate<Root, M>
+        where
+            M: ?::core::marker::Sized,
+        {
+            /// Both updates as one. `change` is an update of the rows of `M`, from any module, and
+            /// each of its keys is written at the arm's place.
+            #[must_use]
+            pub fn and<U>(mut self, change: U) -> Self
+            where
+                U: ::core::convert::Into<bson::Document> + ::core::convert::AsRef<::core::marker::PhantomData<fn(M) -> M>>,
+            {
+                self.document = Update::<Root>::merged_update(self.document, nested_update(self.place.key(), change.into()));
+                self
+            }
+
+            /// `$setOnInsert` of the arm's tag: what an upsert writes where it inserts the row.
+            #[must_use]
+            pub fn tag_on_insert(mut self) -> Self {
+                let mut tagged = bson::Document::new();
+                tagged.insert(self.tag, bson::Bson::String(self.value.to_owned()));
+                let mut written = bson::Document::new();
+                written.insert("$setOnInsert", bson::Bson::Document(tagged));
+                self.document = Update::<Root>::merged_update(self.document, written);
+                self
+            }
+
+            /// The document the driver takes.
+            #[must_use]
+            pub fn into_document(self) -> bson::Document {
+                self.document
+            }
+        }
+
+        impl<Root, M: ?::core::marker::Sized> ::core::convert::From<ArmUpdate<Root, M>> for bson::Document {
+            fn from(arm: ArmUpdate<Root, M>) -> Self {
+                arm.document
+            }
+        }
+
+        impl<Root, M: ?::core::marker::Sized> ::core::convert::From<ArmUpdate<Root, M>> for Update<Root> {
+            fn from(arm: ArmUpdate<Root, M>) -> Self {
+                Self::raw(arm.document)
+            }
+        }
+
+        impl<Root, M: ?::core::marker::Sized> ::core::convert::AsRef<::core::marker::PhantomData<fn(Root) -> Root>> for ArmUpdate<Root, M> {
+            fn as_ref(&self) -> &::core::marker::PhantomData<fn(Root) -> Root> {
                 &::core::marker::PhantomData
             }
         }
@@ -1834,17 +2105,11 @@ fn update_items() -> TokenStream {
                 Self::raw(document)
             }
 
-            /// Both updates as one: the keys of each operator are merged. `other` is an update of
-            /// the same rows, from any module.
-            #[must_use]
-            pub fn and<U>(self, other: U) -> Self
-            where
-                U: ::core::convert::Into<bson::Document> + ::core::convert::AsRef<::core::marker::PhantomData<fn(Root) -> Root>>,
-            {
-                let mut document = self.document;
-                let merged: bson::Document = other.into();
-                for (operator, added) in merged {
-                    match (document.get_mut(&operator), added) {
+            /// Both updates as one document: the keys of each operator of `added` join that
+            /// operator's own in `document`.
+            fn merged_update(mut document: bson::Document, added: bson::Document) -> bson::Document {
+                for (operator, changed) in added {
+                    match (document.get_mut(&operator), changed) {
                         (::core::option::Option::Some(bson::Bson::Document(existing)), bson::Bson::Document(keys)) => {
                             for (key, value) in keys {
                                 existing.insert(key, value);
@@ -1855,7 +2120,17 @@ fn update_items() -> TokenStream {
                         }
                     }
                 }
-                Self::raw(document)
+                document
+            }
+
+            /// Both updates as one: the keys of each operator are merged. `other` is an update of
+            /// the same rows, from any module.
+            #[must_use]
+            pub fn and<U>(self, other: U) -> Self
+            where
+                U: ::core::convert::Into<bson::Document> + ::core::convert::AsRef<::core::marker::PhantomData<fn(Root) -> Root>>,
+            {
+                Self::raw(Self::merged_update(self.document, other.into()))
             }
 
             /// The document the driver takes.

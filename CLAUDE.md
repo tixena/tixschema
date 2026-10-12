@@ -116,7 +116,7 @@ just ci
    - `zod.rs`: Generates Zod v4 schema strings (`z.string()`, `z.union()`, etc.), embeds examples in `.meta()`
    - `jsonschema.rs`: Generates JSON schema objects
    - `object_id.rs`: MongoDB ObjectId type detection and schema generation
-   - `recovering_decode.rs`: Generates what `#[model_schema(decode_with)]` adds to a type: `from_value_with` and `from_value_piped`, `from_bson_with` and `from_bson_piped` under `bson`, the walker of each, and the callback's and the resolvers' types in `{type}_schema`. `recovering_decode/enums.rs` holds the walkers of an enum, and the names its typed paths read a variant by (`written_variants`, `tag_arms`). Under `mongodb` three more files emit into the same module and onto the same type: `recovering_decode/query.rs` the query types (`Filter`, `ArmFilter`, `Update`, the path kinds, `nest`), `recovering_decode/fields.rs` the type's own typed paths (`MongoFields`, `MONGO_FIELDS`, one function per field, and one per arm of an enum under a tag), and `recovering_decode/operations.rs` the operations (`find_one`, `find`, `count`, `insert_one`, the updates and the deletes, with `Read` and `OperationError`)
+   - `recovering_decode.rs`: Generates what `#[model_schema(decode_with)]` adds to a type: `from_value_with` and `from_value_piped`, `from_bson_with` and `from_bson_piped` under `bson`, the walker of each, and the callback's and the resolvers' types in `{type}_schema`. `recovering_decode/enums.rs` holds the walkers of an enum, and the names its typed paths read a variant by (`written_variants`, `tag_arms`). Under `mongodb` three more files emit into the same module and onto the same type: `recovering_decode/query.rs` the query types (`Filter`, `ArmFilter`, `Update`, `ArmUpdate`, the path kinds, `nest`), `recovering_decode/fields.rs` the type's own typed paths (`MongoFields`, `MONGO_FIELDS`, one function per field, and one per arm of an enum under a tag), and `recovering_decode/operations.rs` the operations (`find_one`, `find`, `count`, `insert_one`, the updates and the deletes, with `Read` and `OperationError`)
    - `model_schema_prop.rs`: Parses field-level customization attributes (`pattern`, `minLength`, `maxLength`, `minimum`, `maximum`, `literal`, `as`, `preprocess`)
 
 5. **Code Generation** ([generation/](src/generation/))
@@ -1016,6 +1016,16 @@ sections are the consumer's view; this is what a change to the emitter has to ke
     `content`. Its `and` takes a filter over the rows of `M` by the two standard traits and
     writes it at the place through `nested_filter`. It carries `Into<bson::Document>` and
     `AsRef<PhantomData<Root>>` itself, and `Filter` converts from it.
+  - `ArmFilter::update` and `ArmFilter::tag_on_insert` answer `ArmUpdate<Root, M>` (`query.rs`),
+    an update of the rows of the enum. `update` and `ArmUpdate::and` take an update of the rows
+    of `M` by the two standard traits and write it at the place through `nested_update`, and
+    `update` leaves the arm filter's conditions behind. `tag_on_insert`, on both, adds the tag
+    to `$setOnInsert` under the tag key, at the enum's own level and never at the place, and
+    only where it is called. An arm update carries `Into<bson::Document>` and
+    `AsRef<PhantomData<fn(Root) -> Root>>`, that `AsRef` alone, and `Update` converts from it.
+    Every merge is `Update::merged_update`, a private function of `Update` that `Update::and`
+    calls too: `an_update_and_an_arm_update_merge_through_one_function` holds the loop to being
+    written once.
   - `M` is what `nest` reaches below a path over the variant's one slot (`arm_model`, through
     `taken` and `through_wrappers`), and `()` for any other variant and for a map. No registry
     is asked, so a model declared above, one declared below and one of another crate are one
@@ -1038,11 +1048,11 @@ sections are the consumer's view; this is what a change to the emitter has to ke
 - **Two standard traits join filters and updates across modules.** A `Filter<Root>` is
   `Into<bson::Document>` and `AsRef<PhantomData<Root>>`, and an `Update<Root>` is
   `Into<bson::Document>` and `AsRef<PhantomData<fn(Root) -> Root>>`. `Filter::and`, `Filter::or`,
-  `ArmFilter::and`, `Update::and`, `ModelList::elem_match`, `ModelList::pull`, `nest` and every
-  operation take a filter or an update by those bounds, never as the module's own type: that is what lets a filter
-  of another module over the same rows join and be taken, a filter over a nested model be
-  nested, and what refuses an update where a filter is asked.
-  `a_filter_and_an_update_each_carry_a_marker_of_their_own` pins each bound.
+  `ArmFilter::and`, `ArmFilter::update`, `Update::and`, `ArmUpdate::and`, `ModelList::elem_match`,
+  `ModelList::pull`, `nest` and every operation take a filter or an update by those bounds, never
+  as the module's own type: that is what lets a filter of another module over the same rows join
+  and be taken, a filter over a nested model be nested, and what refuses an update where a filter
+  is asked. `a_filter_and_an_update_each_carry_a_marker_of_their_own` pins each bound.
 - **The operations hand the driver documents, and read each row themselves.** The collection is
   `mongodb::Collection<bson::Document>`: a row is read through `from_bson_piped`
   (`mongo_read_row`) and written through `bson::Serializer::new` (`mongo_written_row`), never by

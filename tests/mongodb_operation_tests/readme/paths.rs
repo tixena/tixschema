@@ -5,9 +5,12 @@
 //! A table row is read off the code: a call is turned into the row's first cell by `stringify!`,
 //! and the document it writes into the second.
 
+use core::error::Error;
+
 use bson::oid::ObjectId;
 use bson::{Document, doc};
-use mongodb::Database;
+use mongodb::results::UpdateResult;
+use mongodb::{Collection, Database};
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
@@ -32,6 +35,17 @@ macro_rules! arm {
     }};
 }
 
+/// One row of a README table whose call changes rows in MongoDB: the call as it is written over
+/// `$collection`, held to compiling in a function nothing calls.
+macro_rules! called {
+    ($collection:ident: $($call:tt)+) => {{
+        held(&|$collection: Collection<Document>| async move {
+            Ok::<UpdateResult, Box<dyn Error + Send + Sync>>($($call)+)
+        });
+        stringify!($($call)+)
+    }};
+}
+
 /// One row of the README's table of kinds: a function of `Invoice`'s paths, held by the compiler
 /// to answering the kind the row names.
 macro_rules! kind {
@@ -49,8 +63,8 @@ macro_rules! written {
 }
 
 /// The models the README declares for the arms of an enum under a tag, the `const` that holds one
-/// arm filter and the function that nests it, character for character.
-const DECLARED_ARMS: [&str; 5] = [
+/// arm filter and the functions that nest it and its update, character for character.
+const DECLARED_ARMS: [&str; 6] = [
     "#[model_schema(decode_with)]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Courier {
@@ -84,6 +98,13 @@ fn couriered(depot: &str, courier: &str) -> Result<booking_schema::Filter<Bookin
         .transport()
         .nest(by_name)
         .and(booking.depot_code().eq(depot.to_owned())?))
+}",
+    "/// A booking's courier renamed, with the arm's tag written where an upsert inserts the row.
+fn recouriered(courier: &str) -> Result<booking_schema::Update<Booking>, WriteError> {
+    let renamed = BY_COURIER
+        .update(Courier::MONGO_FIELDS.name().set(courier.to_owned())?)
+        .tag_on_insert();
+    Ok(Booking::MONGO_FIELDS.transport().nest(renamed))
 }",
 ];
 
@@ -265,7 +286,19 @@ fn built() -> Result<Vec<(&'static str, String)>, WriteError> {
         written!(surcharged(12.5)?),
         written!(carried_by("Acme Freight")?),
         written!(couriered("SDQ-1", "Acme Freight")?),
+        written!(recouriered("Acme Freight")?),
     ])
+}
+
+/// Whether the README holds the table row of `call` and then `answered`, a cell of prose: the
+/// call with no regard for spacing, and the prose character for character.
+fn call_is_documented(call: &str, answered: &str) -> bool {
+    let closing = format!("` | {answered} |");
+    readme().lines().any(|line| {
+        line.strip_prefix("| `")
+            .and_then(|rest| rest.strip_suffix(closing.as_str()))
+            .is_some_and(|shown| squeezed(shown) == squeezed(call))
+    })
 }
 
 /// Shipments of one carrier. `Carrier` is declared below `Shipment`, so `carrier` is one whole
@@ -333,6 +366,14 @@ fn paid(at: &str) -> Result<Update<Invoice>, WriteError> {
         .and(paths.tags().push("settled".to_owned())?))
 }
 
+/// A booking's courier renamed, with the arm's tag written where an upsert inserts the row.
+fn recouriered(courier: &str) -> Result<booking_schema::Update<Booking>, WriteError> {
+    let renamed = BY_COURIER
+        .update(Courier::MONGO_FIELDS.name().set(courier.to_owned())?)
+        .tag_on_insert();
+    Ok(Booking::MONGO_FIELDS.transport().nest(renamed))
+}
+
 /// Whether the README holds the table row `code` and then `document`: the code cells with no
 /// regard for spacing, which `stringify!` writes its own way, and the document character for
 /// character.
@@ -393,6 +434,37 @@ fn written_by_an_arm() -> Result<Vec<(&'static str, String)>, WriteError> {
                 .last4()
                 .eq("4242".to_owned())?
                 .and(payment.kind__card())
+        ),
+    ])
+}
+
+/// The rows of the README's tables for an arm update: what `update`, `and` and `tag_on_insert`
+/// write, under a content key too, and the tag of an arm that holds no model.
+fn written_by_an_arm_update() -> Result<Vec<(&'static str, String)>, WriteError> {
+    let (courier, notice) = (Courier::MONGO_FIELDS, Notice::MONGO_FIELDS);
+    let (paper, payment) = (Paper::MONGO_FIELDS, Payment::MONGO_FIELDS);
+    Ok(vec![
+        written!(BY_COURIER.update(courier.name().set("Renamed".to_owned())?)),
+        written!(
+            BY_COURIER
+                .update(courier.name().set("Renamed".to_owned())?)
+                .and(courier.region().set_on_insert("north".to_owned())?)
+                .tag_on_insert()
+        ),
+        written!(
+            paper
+                .doc_type__past_due()
+                .update(notice.code().set("N-8".to_owned())?)
+                .tag_on_insert()
+        ),
+        written!(transport_schema::Update::from(BY_COURIER.tag_on_insert())),
+        written!(payment.kind__cash().tag_on_insert()),
+        written!(
+            payment
+                .card()
+                .last4()
+                .set("4242".to_owned())?
+                .and(payment.kind__card().tag_on_insert())
         ),
     ])
 }
@@ -560,6 +632,7 @@ fn the_readme_shows_the_document_each_call_writes() {
         written_by_a_model(),
         written_by_joining(),
         written_by_an_arm(),
+        written_by_an_arm_update(),
     ];
     let missing: Vec<String> = rows
         .into_iter()
@@ -643,4 +716,30 @@ fn the_readme_names_the_function_and_the_model_of_each_arm() {
     // The call the README counts those rows with compiles, and is never run.
     held(&counted);
     assert_documented(&format!("| `{DECLARED_COUNT}` | the count of those rows |"));
+}
+
+/// The model an arm update is over, and the two calls the README changes the rows of an arm
+/// with: the operation, and the driver's own call that upserts. Neither is run.
+#[test]
+fn the_readme_changes_the_rows_of_an_arm_through_its_update() {
+    held::<transport_schema::ArmUpdate<Transport, Courier>>(&BY_COURIER.tag_on_insert());
+    held::<payment_schema::ArmUpdate<Payment, ()>>(
+        &Payment::MONGO_FIELDS.kind__cash().tag_on_insert(),
+    );
+    let rows = [
+        (
+            called!(collection: Booking::update_one(&collection, couriered("SDQ-1", "Acme")?, recouriered("Acme Freight")?).await?),
+            "the driver's `UpdateResult`",
+        ),
+        (
+            called!(collection: collection.update_one(couriered("SDQ-1", "Acme")?.into_document(), recouriered("Acme Freight")?.into_document()).upsert(true).await?),
+            "the same, as an upsert: the driver's own call",
+        ),
+    ];
+    for (call, answered) in rows {
+        assert!(
+            call_is_documented(call, answered),
+            "the README has no row for this call:\n| `{call}` | {answered} |"
+        );
+    }
 }
