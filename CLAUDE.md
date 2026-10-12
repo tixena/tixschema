@@ -982,7 +982,12 @@ sections are the consumer's view; this is what a change to the emitter has to ke
   `mongo_write_{field}`, a function of the type's own that calls the hook as the attribute
   writes it. The schema module cannot name a type declared inside a function, so `of_functions`
   puts every function whose path calls one (`Built::calls_a_hook`) in an `impl` of the struct of
-  paths beside the type (`TypedPaths::beside`), and the rest in the module.
+  paths beside the type (`TypedPaths::beside`), and the rest in the module. In that `impl`
+  `Self` is the struct of paths, so `Own::scoped` at no depth writes the type's own name
+  wherever its author wrote `Self` (`Own::naming_itself`): in the value of the path,
+  `children: Vec<Self>` on `Node` being a `Field<Root, Vec<Node>>`, and in a bound of the
+  type's own, which the arm functions of an enum under a tag are written under as well.
+  `mongo_write_{field}` is in the type's own `impl` and keeps `Self` as written.
 - **A type serde writes as one value is one path.** `written_as_one_value`, recorded as
   `Declared::OneValue`: its `MongoFields<Root, .., Whole>` holds the path at the empty key and
   dereferences to it, the path type being a parameter the type's own `impl` writes, so its module

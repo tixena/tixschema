@@ -985,10 +985,11 @@ impl Own<'_> {
     }
 
     /// `tokens`, a type or a bound written beside the flagged type, as a module `depth` below it
-    /// writes the same: as they stand at no depth.
+    /// writes the same. At no depth they stand but for `Self`, which an `impl` of another type
+    /// beside the flagged one would read as that other type.
     fn scoped(&self, tokens: TokenStream, depth: usize) -> TokenStream {
         if depth == 0 {
-            return tokens;
+            return self.naming_itself(tokens);
         }
         let mut scoped: Vec<TokenTree> = Vec::new();
         let mut rest = tokens.into_iter().peekable();

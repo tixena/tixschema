@@ -4870,6 +4870,76 @@ fn a_hooked_path_is_a_function_written_beside_the_type() {
     assert!(!generic.contains("mongo_write"), "got: {generic}");
 }
 
+/// Beside the type `Self` is the struct of paths the `impl` is of. What is written there names
+/// the type where its author wrote `Self`: the value of a hooked path, and a bound of its own.
+#[cfg(feature = "mongodb")]
+#[test]
+fn what_is_written_beside_the_type_names_the_type_where_its_author_wrote_self() {
+    for (source, written) in [
+        (
+            "pub struct Row { #[serde(with = \"hook\")] pub a: Vec<Self> }",
+            "impl<Root>row_schema::MongoFields<Root>{",
+        ),
+        (
+            "pub struct Row { #[serde(with = \"hook\")] pub a: Vec<Self> }",
+            "pubconstfna(&self)->row_schema::Field<Root,Vec<Row>>{row_schema::Field::hooked(\
+             row_schema::MongoPath::at(\"a\"),<Row>::mongo_write_a)}",
+        ),
+        (
+            "pub struct Row { #[serde(with = \"hook\")] pub a: Option<Box<Self>> }",
+            "pubconstfna(&self)->row_schema::OptionalField<Root,Box<Row>,Row>{\
+             row_schema::OptionalField::hooked(row_schema::MongoPath::at(\"a\"),<Row>::mongo_write_a)}",
+        ),
+        (
+            "pub struct Row<T> { #[serde(with = \"hook\")] pub a: Vec<Self>, pub b: T }",
+            "pubconstfna(&self)->row_schema::Field<Root,Vec<Row<T>>>{row_schema::Field::hooked(\
+             row_schema::MongoPath::at(\"a\"),<Row<T>>::mongo_write_a)}",
+        ),
+        (
+            "pub struct Row where Self: Marked { #[serde(with = \"hook\")] pub a: u8 }",
+            "impl<Root>row_schema::MongoFields<Root>whereRow:Marked{",
+        ),
+    ] {
+        let (_module, on_the_type) = typed_paths_of(source, &[]);
+        assert!(
+            on_the_type.contains(written),
+            "for {source}, missing `{written}` in: {on_the_type}"
+        );
+    }
+    // The function a hooked path writes through is in the type's own `impl`, as its author wrote
+    // the value.
+    let (_declared, in_its_impl) = typed_paths_of(
+        "pub struct Row { #[serde(with = \"hook\")] pub a: Vec<Self> }",
+        &[],
+    );
+    assert!(
+        in_its_impl.contains("fnmongo_write_a(value:Vec<Self>)->"),
+        "got: {in_its_impl}"
+    );
+    for (source, written) in [
+        (
+            "pub enum Row { Kept { #[serde(with = \"hook\")] at: Vec<Self> }, Lost }",
+            "impl<Root>row_schema::mongo_members::Kept<Root>{",
+        ),
+        (
+            "pub enum Row { Kept { #[serde(with = \"hook\")] at: Vec<Self> }, Lost }",
+            "pubconstfnat(&self)->row_schema::Field<Root,Vec<Row>>{row_schema::Field::hooked(\
+             row_schema::MongoPath::at(\"Kept.at\"),<Row>::mongo_write_kept_at)}",
+        ),
+        // The arms of an enum under a tag are written beside it as well.
+        (
+            "#[serde(tag = \"kind\")] pub enum Row where Self: Marked { Kept { at: u8 }, Lost }",
+            "impl<Root>row_schema::MongoFields<Root>whereRow:Marked{",
+        ),
+    ] {
+        let (_module, on_the_type) = typed_enum_paths_of(source, &[]);
+        assert!(
+            on_the_type.contains(written),
+            "for {source}, missing `{written}` in: {on_the_type}"
+        );
+    }
+}
+
 #[cfg(feature = "mongodb")]
 #[test]
 fn a_function_is_named_after_its_field_and_writes_the_key_serde_does() {
