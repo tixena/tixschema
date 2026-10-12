@@ -670,6 +670,18 @@ enum TupleStructShape {
     BareValue(Box<FieldDef>),
 }
 
+/// What walking a tuple struct's slots yields.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+struct TupleSlots {
+    /// The `compile_error!` tokens of every guard a slot violates.
+    guard_errors: Vec<proc_macro2::TokenStream>,
+    shape: TupleStructShape,
+    /// What each constrained slot contributes to `validate()`.
+    validate_bodies: Vec<proc_macro2::TokenStream>,
+    /// The validator and the hook of each constrained slot.
+    validation_fns: Vec<proc_macro2::TokenStream>,
+}
+
 /// One constrained member of a variant as the arm that matched it binds it: where the pattern finds
 /// it, and the name the check reads it under.
 struct BoundMember {
@@ -5089,8 +5101,7 @@ fn check_slot_wire_is_readable(
     ))
 }
 
-/// Walks a tuple struct's slots, returning the shape they publish and the `compile_error!` tokens
-/// of every guard a slot violates.
+/// Walks a tuple struct's slots.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn collect_tuple_slots(
     fields: &mut syn::Fields,
@@ -5100,10 +5111,12 @@ fn collect_tuple_slots(
     generics: &syn::Generics,
     container_defaulted: bool,
     container_read_back: bool,
-) -> (TupleStructShape, Vec<proc_macro2::TokenStream>) {
+) -> TupleSlots {
     let declared_slots = fields.len();
     let type_parameters = type_parameters_in_scope(generics);
     let mut slots: Vec<FieldDef> = Vec::new();
+    let mut validation_fns: Vec<proc_macro2::TokenStream> = Vec::new();
+    let mut validate_bodies: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut guard_errors: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut deferred_attrs: Vec<Vec<syn::Attribute>> = Vec::new();
     for (index, field) in fields.iter_mut().enumerate() {
@@ -5113,7 +5126,7 @@ fn collect_tuple_slots(
         {
             guard_errors.push(rejection.to_compile_error());
         }
-        let (slot, _, _, slot_guard_errors) = process_field(
+        let (slot, validation_fn, validate_body, slot_guard_errors) = process_field(
             &FieldContext {
                 container_defaulted,
                 container_read_back,
@@ -5129,6 +5142,8 @@ fn collect_tuple_slots(
             &mut deferred_attrs,
         );
         guard_errors.extend(slot_guard_errors);
+        validation_fns.extend(validation_fn);
+        validate_bodies.extend(validate_body);
         if slot_attributes_reach_the_wire(declared_slots) && omission.absent_from_wire() {
             continue;
         }
@@ -5137,7 +5152,12 @@ fn collect_tuple_slots(
     if guard_errors.is_empty() {
         apply_deferred_field_attrs(fields.iter_mut(), deferred_attrs);
     }
-    (tuple_struct_shape(declared_slots, slots), guard_errors)
+    TupleSlots {
+        guard_errors,
+        shape: tuple_struct_shape(declared_slots, slots),
+        validate_bodies,
+        validation_fns,
+    }
 }
 
 /// The shape a tuple struct's declared arity and described slots amount to. Keyed on the
@@ -5421,8 +5441,8 @@ fn maps_of_itself_through_the_self_view(
 #[cfg(feature = "jsonschema")]
 fn tuple_struct_json_body(item_name: &str, shape: &TupleStructShape) -> proc_macro2::TokenStream {
     let described = match shape {
-        TupleStructShape::Array(slots) => tuple_json_schema_value(slots),
-        TupleStructShape::BareValue(slot) => build_tuple_element_json_schema(slot),
+        TupleStructShape::Array(slots) => bounded_slots_json_schema(slots),
+        TupleStructShape::BareValue(slot) => bounded_slot_json_schema(slot),
     };
     match described {
         Ok(value) => value,
@@ -5508,7 +5528,7 @@ fn process_tuple_struct(
         ),
     );
 
-    let (shape, guard_errors) = collect_tuple_slots(
+    let slots = collect_tuple_slots(
         &mut item_struct.fields,
         rename_all,
         &module_name,
@@ -5521,7 +5541,7 @@ fn process_tuple_struct(
     // A violated slot guard makes the whole contract unsound, so the schema surface is dropped and
     // only the original item plus the errors are emitted.
     if let Some(output) =
-        guard_failure_output(&item_struct, Some(&item_struct.ident), &guard_errors)
+        guard_failure_output(&item_struct, Some(&item_struct.ident), &slots.guard_errors)
     {
         return output;
     }
@@ -5533,7 +5553,7 @@ fn process_tuple_struct(
         #[cfg(feature = "jsonschema")]
         json_schema_methods(
             &item_name,
-            &tuple_struct_json_body(&item_name, &shape),
+            &tuple_struct_json_body(&item_name, &slots.shape),
             &schema_parameters(&item_struct.generics, args),
         ),
         #[cfg(feature = "typescript")]
@@ -5542,7 +5562,7 @@ fn process_tuple_struct(
             &item_name,
             &name.to_string(),
             &ts_generic_params(&item_struct.generics),
-            &tuple_struct_ts_body(&shape),
+            &tuple_struct_ts_body(&slots.shape),
         ),
         #[cfg(feature = "zod")]
         build_tuple_struct_zod_schema_method(
@@ -5551,10 +5571,10 @@ fn process_tuple_struct(
             &type_parameters_in_scope(&item_struct.generics),
             &PublishedBinding {
                 default_types: &args.default_types,
-                republished: tuple_struct_republishes_slot(&shape),
+                republished: tuple_struct_republishes_slot(&slots.shape),
             },
             &tuple_struct_zod_body(
-                &shape,
+                &slots.shape,
                 &SlotOwner {
                     item_name: &item_name,
                     #[cfg(feature = "typescript")]
@@ -5594,8 +5614,8 @@ fn process_tuple_struct(
             module_ident: &module_ident,
             name: &name,
             schema_impl_items: &schema_impl_items,
-            validate_method: &None,
-            validation_fns: &[],
+            validate_method: &struct_validate_method(&slots.validate_bodies, &module_ident),
+            validation_fns: &slots.validation_fns,
         },
         &TokenStream::new(),
         &decode_with,
@@ -8280,7 +8300,7 @@ fn render_external_content(
             let zod = String::new();
 
             #[cfg(feature = "jsonschema")]
-            let json = variant_slot_json_schema(fld).unwrap_or_else(|rejection| {
+            let json = bounded_slot_json_schema(fld).unwrap_or_else(|rejection| {
                 external_content_rejection_value(discriminator_value, &rejection)
             });
             #[cfg(not(feature = "jsonschema"))]
@@ -8311,7 +8331,7 @@ fn render_external_content(
             let zod = String::new();
 
             #[cfg(feature = "jsonschema")]
-            let json = variant_slots_json_schema(field_defs).unwrap_or_else(|rejection| {
+            let json = bounded_slots_json_schema(field_defs).unwrap_or_else(|rejection| {
                 external_content_rejection_value(discriminator_value, &rejection)
             });
             #[cfg(not(feature = "jsonschema"))]
@@ -10439,7 +10459,7 @@ fn push_single_tuple_json_field(
     fld: &FieldDef,
 ) {
     let content_name_str = content_name.to_owned();
-    let field_schema = match variant_slot_json_schema(fld) {
+    let field_schema = match bounded_slot_json_schema(fld) {
         Ok(field_schema) => field_schema,
         Err(rejection) => {
             json_schema_variant_fields.push(map_member_rejection_error(content_name, &rejection));
@@ -10568,7 +10588,7 @@ fn write_tuple_multiple_variant_fields(
     #[cfg(feature = "jsonschema")]
     {
         let content_name_str = content_name.to_owned();
-        match variant_slots_json_schema(field_defs) {
+        match bounded_slots_json_schema(field_defs) {
             Ok(tuple_schema) => json_schema_variant_fields.push(quote! {
                 properties.insert(#content_name_str.to_string(), #tuple_schema);
                 required.push(serde_json::Value::String(#content_name_str.to_string()));
@@ -10954,8 +10974,8 @@ fn numeric_bound_keywords(fld: &FieldDef) -> proc_macro2::TokenStream {
     quote! { #minimum #maximum }
 }
 
-/// The value a variant's slot holds under its wrappers, carrying the bounds written on the slot as
-/// a named member's schema carries them, or `None` for a slot that writes none.
+/// The value a slot holds under its wrappers, carrying the bounds written on the slot as a named
+/// member's schema carries them, or `None` for a slot that writes none.
 #[cfg(feature = "jsonschema")]
 fn bounded_slot_item(value: &FieldDef) -> Option<proc_macro2::TokenStream> {
     let meta = value.model_schema_prop_meta.as_ref()?;
@@ -10976,9 +10996,10 @@ fn bounded_slot_item(value: &FieldDef) -> Option<proc_macro2::TokenStream> {
     Some(quote! { serde_json::json!({ "type": #keyword #bounds }) })
 }
 
-/// [`build_tuple_element_json_schema`] for a variant's slot, whose own bounds reach its value.
+/// [`build_tuple_element_json_schema`] for a slot of a tuple variant or of a tuple struct, whose
+/// own bounds reach its value.
 #[cfg(feature = "jsonschema")]
-fn variant_slot_json_schema(
+fn bounded_slot_json_schema(
     fld: &FieldDef,
 ) -> Result<proc_macro2::TokenStream, MapMemberRejection> {
     let value = normalized_slot_value(fld);
@@ -11000,12 +11021,13 @@ fn tuple_json_schema_value(
     tuple_json_schema_of(elements, build_tuple_element_json_schema)
 }
 
-/// [`tuple_json_schema_value`] for the slots of a tuple variant, each carrying its own bounds.
+/// [`tuple_json_schema_value`] for the slots of a tuple variant or of a tuple struct, each
+/// carrying its own bounds.
 #[cfg(feature = "jsonschema")]
-fn variant_slots_json_schema(
+fn bounded_slots_json_schema(
     slots: &[FieldDef],
 ) -> Result<proc_macro2::TokenStream, MapMemberRejection> {
-    tuple_json_schema_of(slots, variant_slot_json_schema)
+    tuple_json_schema_of(slots, bounded_slot_json_schema)
 }
 
 /// The fixed-arity array of `elements`, each described by `described`.
@@ -12007,6 +12029,21 @@ fn member_access_expr(
         MemberAccess::SelfField => quote! { &self.#field_ident_tok },
         MemberAccess::VariantBinding => {
             let binding = member_binding(field_ident_tok);
+            quote! { #binding }
+        }
+    }
+}
+
+/// [`member_access_expr`] for a positional slot, which goes by its place in the declaration.
+#[cfg(feature = "serde")]
+fn slot_access_expr(access: MemberAccess, index: usize) -> proc_macro2::TokenStream {
+    match access {
+        MemberAccess::SelfField => {
+            let slot = syn::Index::from(index);
+            quote! { &self.#slot }
+        }
+        MemberAccess::VariantBinding => {
+            let binding = positional_member_binding(index);
             quote! { #binding }
         }
     }
@@ -13837,7 +13874,7 @@ fn member_prop_meta(field: &Field, enum_args: Option<&ModelSchemaArgs>) -> Model
 /// Processes a field and returns its definition, optional module items (validators/deserializers),
 /// optional `validate_body` (contribution to the type-level `validate()` method), and the
 /// `compile_error!` tokens for every guard the field violates. `index` is the field's place in
-/// its declaration, which is what names a variant's slot.
+/// its declaration, which is what names a slot.
 fn process_field(
     ctx: &FieldContext<'_>,
     field: &mut Field,
@@ -14242,60 +14279,40 @@ fn needs_injected_default(wraps: &[ConstraintWrap], has_default: bool) -> bool {
     matches!(first_opaque, Some(ConstraintWrap::Optional)) && !has_default
 }
 
-/// The `compile_error!` tokens for a length or range constraint written on a tuple struct's slot,
-/// the one positional slot no match arm binds for `validate()` to read.
-#[cfg(feature = "serde")]
-fn positional_constraint_guard_error(field: &Field) -> proc_macro2::TokenStream {
-    syn::Error::new_spanned(
-        field,
-        format!(
-            "model_schema: {}: pattern, minLength, maxLength, minimum and maximum are unsupported \
-             on a tuple struct's slot — `validate()` reads a struct's member off `self` by its \
-             field ident, which a slot has none of. Write a struct with named fields, or drop the \
-             constraint.",
-            field_label(&field_ident_string(field))
-        ),
-    )
-    .to_compile_error()
-}
-
-/// How a constrained member's helpers name and reach it, or `None` for a tuple struct's slot. A
-/// variant's slot goes by its position, and the lone slot of an untagged member is reported under
-/// no name, as what its own type reports is.
+/// How a constrained member's helpers name and reach it. A slot goes by its position, and the lone
+/// slot of an untagged member is reported under no name, as what its own type reports is.
 #[cfg(feature = "serde")]
 fn checked_member(
     field: &Field,
     index: usize,
     variant_ident: Option<&str>,
     gate: ConstraintGate,
-) -> Option<CheckedMember> {
-    let Some(member) = field.ident.as_ref() else {
-        variant_ident?;
-        let position = index.to_string();
-        let binding = positional_member_binding(index);
-        let stem = helper_name_stem(&position, variant_ident);
-        return Some(CheckedMember {
-            checked: quote! { #binding },
-            label: String::new(),
-            reported: (gate == ConstraintGate::Validator).then_some(position),
-            stem,
-        });
-    };
+) -> CheckedMember {
     // The variant that scopes the helper names also says where the value is reached from: a
-    // variant's member is bound by its arm, a struct's field is read off `self`.
+    // variant's member is bound by its arm, a struct's is read off `self`.
     let access = if variant_ident.is_some() {
         MemberAccess::VariantBinding
     } else {
         MemberAccess::SelfField
     };
+    let Some(member) = field.ident.as_ref() else {
+        let position = index.to_string();
+        let stem = helper_name_stem(&position, variant_ident);
+        return CheckedMember {
+            checked: slot_access_expr(access, index),
+            label: String::new(),
+            reported: (gate == ConstraintGate::Validator).then_some(position),
+            stem,
+        };
+    };
     let named = member.unraw().to_string();
     let stem = helper_name_stem(&named, variant_ident);
-    Some(CheckedMember {
+    CheckedMember {
         checked: member_access_expr(access, member),
         label: named.clone(),
         reported: Some(named),
         stem,
-    })
+    }
 }
 
 /// The `compile_error!` tokens for a length or range constraint written on a field reached through
@@ -14344,11 +14361,7 @@ fn generate_field_validation(
     let has_numeric_constraints =
         model_schema_prop_meta.minimum.is_some() || model_schema_prop_meta.maximum.is_some();
 
-    let Some(member) = checked_member(field, index, variant_ident, gate) else {
-        let refused = (has_string_constraints || has_numeric_constraints)
-            .then(|| positional_constraint_guard_error(field));
-        return (None, None, refused);
-    };
+    let member = checked_member(field, index, variant_ident, gate);
 
     let (Some(module_name), Some(shape)) = (schema_module_name, constrained_shape(&field.ty))
     else {

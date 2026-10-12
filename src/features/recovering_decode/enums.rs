@@ -785,7 +785,7 @@ fn walked_variants<'item>(
             let stem = to_snake_case(&rust_name);
             let content = Shape::of_variant(variant, rename_all_fields, module_name, parameters);
             let lone_bound = matches!(content, Shape::Held(_))
-                .then(|| slot_validator(module_name, &ident.to_string(), 0))
+                .then(|| slot_validator(module_name, Some(&ident.to_string()), 0))
                 .flatten();
             WalkedVariant {
                 aliases: meta.aliases,

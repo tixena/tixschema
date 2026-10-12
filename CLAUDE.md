@@ -446,10 +446,14 @@ hook (`ends_on_a_borrow`), and `generate_field_validation` hangs nothing on one.
 member of an untagged enum is therefore the one constrained member the read does not check: it is
 read as it is with no bound written, and `validate()` answers for the bound.
 
-A slot of a tuple variant takes the five keys, and is checked exactly where a named member in the
-same position is. `checked_member` is the one seam that names a member for its helpers: a slot goes
-by its declaration index (`validate_{variant}_{index}_value`, `deserialize_{variant}_{index}`) and
-is read off the binding its arm makes (`positional_member_binding`, `bound_member`).
+A slot takes the five keys, of a tuple variant and of a tuple struct, and is checked exactly where a
+named member in the same position is. `checked_member` is the one seam that names a member for its
+helpers: a slot goes by its declaration index, behind its variant where it has one
+(`validate_{variant}_{index}_value`, `deserialize_{variant}_{index}`) and alone in a struct
+(`validate_{index}_value`, `deserialize_{index}`), a stem no field's can meet, an ident never
+starting with a digit. A variant's slot is read off the binding its arm makes
+(`positional_member_binding`, `bound_member`), and a struct's off `self` by its index
+(`slot_access_expr`).
 
 - The lone slot of an untagged newtype variant is hung with the hook, and `validate()` reports it
   under no name, as it reports what the slot's own type declares. A slot with a check of its own
@@ -458,10 +462,20 @@ is read off the binding its arm makes (`positional_member_binding`, `bound_membe
   (`'0': …`, `'1': …`). Its validator is recorded under the `Validator` gate, and the recovering
   decode reads it back through `slot_validator`: `Slot::validator` for a variant of several slots,
   `WalkedVariant::lone_bound` for a variant of one, each an `Invalid` at the slot's own path.
-- The JSON Schema writes a variant slot's bounds through `variant_slot_json_schema` and
-  `variant_slots_json_schema`; Zod reads them off the slot's `FieldDef` as it does for any member.
-- A tuple struct's slot is still refused, by `positional_constraint_guard_error`: `validate()`
-  reads a struct's member off `self` by its ident.
+- A slot of a tuple struct is checked where a named field of a struct is: by `validate()` alone,
+  reported under its position. `collect_tuple_slots` hands each slot's validator and `validate()`
+  fragment to `process_tuple_struct` in `TupleSlots`. The recovering decode reads the validator
+  back through `slot_validator` with no variant: `Slot::validator` for a struct of several slots,
+  and for a struct of one, which serde writes as the slot's value, the validator
+  `struct_recovering_decode` hands `held_methods`. A list, an `Option` or a model in that slot is
+  walked with it as a field's value is, and a plain value is held to it by `lone_slot_bound`,
+  which reads the struct whole with its own reader, so a hook on the slot has run before the
+  bound is checked.
+- A `#[serde(transparent)]` struct of one slot is a brand, and `branded_slot_prop_errors` still
+  refuses a `#[model_schema_prop]` on its slot.
+- The JSON Schema writes a slot's bounds through `bounded_slot_json_schema` and
+  `bounded_slots_json_schema`, a variant's and a tuple struct's alike; Zod reads them off the
+  slot's `FieldDef` as it does for any member.
 
 A string check written on an enum, `#[model_schema(minLength = N, maxLength = N, pattern = "...")]`,
 is the same check written on each field the enum reaches, enforced exactly where that field's own
