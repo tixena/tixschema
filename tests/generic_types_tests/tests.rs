@@ -825,7 +825,7 @@ mod zod {
             "keyed: Inner$SchemaFactory(z.object({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { \
              message: \"Invalid ObjectId\" }) })),",
             "sized: Inner$SchemaFactory(z.number().int()),",
-            "stamped: Inner$SchemaFactory(z.coerce.date()),",
+            "stamped: Inner$SchemaFactory(z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date())),",
         ] {
             assert!(zod.contains(call), "Missing {call:?} in: {zod}");
         }

@@ -3852,10 +3852,10 @@ Supported types and mappings:
 | `NaiveDate` | `string` | `z.iso.date()` | `"date"` |
 | `NaiveTime` | `string` | `z.preprocess(<millis arrow>, z.iso.time())` | `"time"` |
 | `NaiveDateTime` | `string` | `z.iso.datetime({ local: true })` | `"date-time"` |
-| `DateTime<Tz>` (default) | `Date` | `z.coerce.date()` | `"date-time"` |
+| `DateTime<Tz>` (default) | `Date` | `z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date())` | `"date-time"` |
 | `DateTime<Tz>` + `#[model_schema_prop(as_number)]` | `number` | `z.preprocess(<epoch arrow>, z.number())` | `"date-time"` |
 
-`DateTime<Tz>` renders as a native TypeScript `Date` (`z.coerce.date()`) by default, which is what MongoDB needs to expire a BSON `Date` via TTL. The bare `as_number` flag opts a single `DateTime<Tz>` field into an epoch-milliseconds `number` instead, validated by a self-contained inline coercer (no imported helper). `as_number` is only valid on a `DateTime<Tz>` field — using it elsewhere is a compile error.
+`DateTime<Tz>` renders as a native TypeScript `Date` by default, which is what MongoDB needs to expire a BSON `Date` via TTL. A `Date`, an ISO string and epoch milliseconds are coerced to one; anything else is refused before the coercion, since `z.coerce.date()` alone reads `null` as `1970-01-01T00:00:00.000Z` and `true` as one millisecond later. An `Option<DateTime<Tz>>` still reads `null` as `undefined`, through the `z.null()` arm every `Option` has. The bare `as_number` flag opts a single `DateTime<Tz>` field into an epoch-milliseconds `number` instead, validated by a self-contained inline coercer (no imported helper). `as_number` is only valid on a `DateTime<Tz>` field — using it elsewhere is a compile error.
 
 On the Rust side, `as_number` also injects `#[serde(with = "chrono::serde::ts_milliseconds")]` (or `ts_milliseconds_option` for an `Option<DateTime<Tz>>`), so the field serializes to, and deserializes from, the same epoch-milliseconds number every surface describes — no hand-written serde attribute needed. Where the field already carries its own `with` or `deserialize_with`, the injection is held back and the author's hook runs instead.
 
@@ -3905,9 +3905,9 @@ export const Event$Schema: ZodType<Event> = z.strictObject({
   date: z.iso.date(),
   time: z.preprocess((arg) => { if (typeof arg === "number") { const s = Math.floor(arg / 1000); const hh = String(Math.floor(s / 3600)).padStart(2, "0"); const mm = String(Math.floor((s % 3600) / 60)).padStart(2, "0"); const ss = String(s % 60).padStart(2, "0"); return `${hh}:${mm}:${ss}`; } return arg; }, z.iso.time()),
   local_datetime: z.iso.datetime({ local: true }),
-  created_at: z.coerce.date(),
+  created_at: z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date()),
   epoch_ms: z.preprocess((arg) => { if (arg instanceof Date) return arg.getTime(); if (typeof arg === "string") return Date.parse(arg); return arg; }, z.number()),
-  updated_at: z.union([z.null().transform(() => undefined), z.coerce.date(), z.undefined()]).prefault(undefined),
+  updated_at: z.union([z.null().transform(() => undefined), z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date()), z.undefined()]).prefault(undefined),
 });
 ```
 

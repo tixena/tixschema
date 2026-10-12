@@ -357,8 +357,8 @@ fn test_the_chrono_example_is_declarable_and_shows_what_it_emits() {
         "pub struct Event {",
         &Event::zod_schema(),
         &[
-            "  created_at: z.coerce.date(),",
-            "  updated_at: z.union([z.null().transform(() => undefined), z.coerce.date(), z.undefined()]).prefault(undefined),",
+            "  created_at: z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date()),",
+            "  updated_at: z.union([z.null().transform(() => undefined), z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date()), z.undefined()]).prefault(undefined),",
         ],
     );
 }

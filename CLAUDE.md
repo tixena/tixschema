@@ -310,7 +310,7 @@ unaffected at every position: a stringified key describes as `{"type": "object",
 - Custom types → Reference by the name the referenced type publishes (its ident, or its `name` override)
 - A unit struct (`pub struct Ping;`, no braces) → `Record<string, never>` (unchanged); the wire is `{}` both ways: the macro replaces the author's own `Serialize`/`Deserialize` derive with impls writing and reading `{}` (serde's own derive writes and reads `null`, refusing `{}`). Kotlin renders `@Serializable object Ping` rather than a `class`; Dart and Swift render their own no-data type. Declared above a service as `Result<Ping, E>`, it reads like a `()` success on every client — a braced `struct Ping {}` is a different shape and is unaffected
 - `ObjectId` → `ObjectId` (with $oid validation)
-- `DateTime<Tz>` → `Date` (Zod `z.coerce.date()`); with `#[model_schema_prop(as_number)]` → `number` (inline epoch-ms coercer)
+- `DateTime<Tz>` → `Date` (Zod `z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date())`, which refuses `null` and booleans that `z.coerce.date()` alone reads as 1970); with `#[model_schema_prop(as_number)]` → `number` (inline epoch-ms coercer)
 - `NaiveTime` → `string` (Zod `z.iso.time()` wrapped in an inline preprocessor that also accepts millis-since-start-of-day)
 - `#[serde(flatten)]` field → TypeScript intersection (`A & B`), Zod `.and(...)`. A source writing more than one key set — a registered choice, or one reached through an `Option` — multiplies instead: `zod_merged_joins` builds one `.and(...)` chain per key set, `zod_merged_statements` binds the object to `{Type}$OwnSchema` and joins the copies where the object is a struct's own published binding, and `zod_merged_object` writes the object out once per copy where it is an enum variant's fragment of a larger literal. Either way the item contributes exactly one member to whatever union encloses it
 - `#[serde(untagged)]` enum → TypeScript union (`A | B`), Zod `z.union([...])`, JSON Schema `anyOf`
@@ -659,7 +659,7 @@ Rules:
   bound argument (`idType`), never the opaque `z.unknown()`
 - Either binding is annotated `typeof` the raw `const` beneath it, never a Zod class: `.brand()`
   narrows at the value position, and the class an inner renders to is zod's to decide
-  (`z.coerce.date()` is a `ZodCoercedDate`, `z.iso.date()` a `ZodISODate`, a brand over a brand a
+  (the `DateTime<Tz>` schema is a `ZodPipe`, `z.iso.date()` a `ZodISODate`, a brand over a brand a
   `$ZodBranded` of a `$ZodBranded`). Reading the annotation off the value is the one spelling that
   stays true of all of them
 - Serde transparent serialization works normally — the newtype is invisible in JSON
