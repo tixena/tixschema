@@ -600,8 +600,9 @@ mod zod {
         assert!(
             zod.contains(
                 "  const hit = Wrapper$SchemaFactoryCache.get(idType);\n  if (hit) return \
-                 hit;\n\n  const schema = buildWrapper$Schema(idType);\n  \
-                 Wrapper$SchemaFactoryCache.set(idType, schema);\n  return schema;\n}"
+                 hit;\n\n  const schema = buildWrapper$Schema(idType).meta({\n    examples: \
+                 []\n  });\n  Wrapper$SchemaFactoryCache.set(idType, schema);\n  return \
+                 schema;\n}"
             ),
             "Got: {zod}"
         );
@@ -616,7 +617,8 @@ mod zod {
             "  let byDType = byCType.get(cType);",
             "  let byEType = byDType.get(dType);",
             "  const hit = byEType.get(eType);",
-            "  const schema = buildQuintet$Schema(aType, bType, cType, dType, eType);",
+            "  const schema = buildQuintet$Schema(aType, bType, cType, dType, eType).meta({\n    \
+             examples: []\n  });",
             "  byEType.set(eType, schema);",
         ] {
             assert!(zod.contains(lookup), "Missing {lookup:?} in: {zod}");

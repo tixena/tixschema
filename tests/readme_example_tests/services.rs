@@ -370,7 +370,7 @@ fn the_schema_a_declared_message_publishes_is_shown_as_the_generator_writes_it()
     assert_shown(
         &published,
         "export const ExpireCreditRequest$Schema: ZodType<ExpireCreditRequest> = \
-         ExpireCreditRequest$RawSchema;",
+         ExpireCreditRequest$RawSchema.meta({\n  examples: []\n});",
     );
 }
 
@@ -384,7 +384,7 @@ fn the_schema_an_empty_message_publishes_is_shown_too() {
     );
     assert_shown(
         &published,
-        "export const SweepRequest$Schema: ZodType<SweepRequest> = SweepRequest$RawSchema;",
+        "export const SweepRequest$Schema: ZodType<SweepRequest> = SweepRequest$RawSchema.meta({\n  examples: []\n});",
     );
 }
 

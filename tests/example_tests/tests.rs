@@ -3,6 +3,16 @@
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
+/// An alias of a number, which has no `impl` to carry an example on.
+#[cfg(feature = "zod")]
+#[model_schema()]
+pub type Score = u32;
+
+/// An alias that declares a parameter.
+#[cfg(feature = "zod")]
+#[model_schema(default_types(Held = String))]
+pub type Several<Held> = Vec<Held>;
+
 #[cfg(feature = "zod")]
 #[test]
 fn test_simple_enum_example() {
@@ -23,7 +33,7 @@ fn test_simple_enum_example() {
     assert_eq!(example.as_str().unwrap(), "Numeric");
 
     let zod = DataType::zod_schema();
-    assert!(zod.contains("example:"));
+    assert!(zod.contains("examples: [\"Numeric\"]"), "Got: {zod}");
     assert!(zod.contains("\"Numeric\""));
 
     #[cfg(feature = "typescript")]
@@ -62,7 +72,10 @@ fn test_simple_struct_example() {
     assert_eq!(example["age"].as_u64().unwrap(), 25);
 
     let zod = User::zod_schema();
-    assert!(zod.contains("example:"));
+    assert!(
+        zod.contains("examples: [{\"age\":25,\"name\":\"John Doe\"}]"),
+        "Got: {zod}"
+    );
     assert!(zod.contains("John Doe"));
     assert!(zod.contains("25"));
 }
@@ -96,7 +109,10 @@ fn test_complex_struct_with_logic() {
     assert_eq!(example["age"].as_u64().unwrap(), 30);
 
     let zod = ComplexUser::zod_schema();
-    assert!(zod.contains("example:"));
+    assert!(
+        zod.contains("examples: [{\"age\":30,\"id\":\"usr_123\",\"tags\":[\"admin\",\"active\"]}]"),
+        "Got: {zod}"
+    );
 }
 
 #[cfg(feature = "zod")]
@@ -128,7 +144,13 @@ fn test_nested_types_example() {
     assert_eq!(example["optional_field"].as_str().unwrap(), "present");
 
     let zod = Profile::zod_schema();
-    assert!(zod.contains("example:"));
+    assert!(
+        zod.contains(
+            "examples: [{\"metadata\":{\"key1\":\"value1\"},\"optional_field\":\"present\",\"\
+             tags\":[\"tag1\"]}]"
+        ),
+        "Got: {zod}"
+    );
 }
 
 #[cfg(feature = "zod")]
@@ -156,28 +178,58 @@ fn test_discriminated_enum_example() {
     assert_eq!(example["timestamp"].as_str().unwrap(), "2024-01-01");
 
     let zod = Event::zod_schema();
-    assert!(zod.contains("example:"));
+    assert!(zod.contains("examples: [{"), "Got: {zod}");
 }
 
 #[cfg(feature = "zod")]
 #[test]
-fn test_multiple_examples_uses_first() {
+fn every_example_block_reaches_the_schema() {
     /// Type with multiple examples
     /// ```rust example
-    /// let _: FirstExample = FirstExample { value: 1 };
+    /// let _: SeveralExamples = SeveralExamples { value: 1 };
     /// ```
     /// Second description
     /// ```rust example
-    /// let _: FirstExample = FirstExample { value: 2 };
+    /// let _: SeveralExamples = SeveralExamples { value: 2 };
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
-    pub struct FirstExample {
+    pub struct SeveralExamples {
         pub value: u32,
     }
 
-    let example = FirstExample::schema_example();
-    assert_eq!(example["value"].as_u64().unwrap(), 1);
+    assert_eq!(
+        SeveralExamples::schema_examples(),
+        vec![
+            serde_json::json!({ "value": 1_u32 }),
+            serde_json::json!({ "value": 2_u32 })
+        ],
+    );
+    assert_eq!(
+        SeveralExamples::schema_example(),
+        serde_json::json!({ "value": 1_u32 })
+    );
+    assert!(
+        SeveralExamples::zod_schema()
+            .contains(".meta({\n  examples: [{\"value\":1},{\"value\":2}]\n})"),
+        "{}",
+        SeveralExamples::zod_schema()
+    );
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn a_type_with_no_block_publishes_an_empty_list() {
+    /// Type without example
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Plain {
+        pub value: u32,
+    }
+
+    let zod = Plain::zod_schema();
+    assert!(zod.ends_with(".meta({\n  examples: []\n});"), "Got: {zod}");
+    assert!(!zod.contains("example:"), "Got: {zod}");
 }
 
 #[test]
@@ -198,6 +250,7 @@ fn test_no_example_no_method() {
     {
         let zod = NoExample::zod_schema();
         assert!(!zod.contains("example:"));
+        assert!(zod.contains("examples: []"), "Got: {zod}");
     }
 }
 
@@ -218,7 +271,10 @@ fn test_typescript_zod_format() {
 
     assert!(zod.contains("ZodType<"));
     assert!(zod.contains("$RawSchema"));
-    assert!(zod.contains("example:"));
+    assert!(
+        zod.contains("examples: [{\"name\":\"test\"}]"),
+        "Got: {zod}"
+    );
 }
 
 #[cfg(all(feature = "zod", not(feature = "typescript")))]
@@ -237,7 +293,10 @@ fn test_javascript_zod_format() {
     let zod = Test::zod_schema();
 
     assert!(!zod.contains("ZodType<"));
-    assert!(zod.contains("example:"));
+    assert!(
+        zod.contains("examples: [{\"name\":\"test\"}]"),
+        "Got: {zod}"
+    );
 }
 
 #[cfg(feature = "zod")]
@@ -268,7 +327,7 @@ fn test_serde_attributes_in_example() {
     );
 
     let zod = UserWithSerde::zod_schema();
-    assert!(zod.contains("example:"));
+    assert!(zod.contains("examples: [{"), "Got: {zod}");
 }
 
 #[cfg(all(feature = "zod", feature = "mongodb"))]
@@ -297,7 +356,7 @@ fn test_objectid_example() {
     assert!(example["id"].get("$oid").is_some());
 
     let zod = Document::zod_schema();
-    assert!(zod.contains("example:"));
+    assert!(zod.contains("examples: [{"), "Got: {zod}");
 }
 
 #[test]
@@ -319,6 +378,7 @@ fn test_example_fence_must_be_exact() {
     {
         let zod = RegularFence::zod_schema();
         assert!(!zod.contains("example:"));
+        assert!(zod.contains("examples: []"), "Got: {zod}");
     }
 }
 
@@ -357,7 +417,7 @@ fn test_regex_transform_println() {
     assert_eq!(example.as_str().unwrap(), "Integer");
 
     let zod = DataType::zod_schema();
-    assert!(zod.contains("example:"));
+    assert!(zod.contains("examples: [\"Integer\"]"), "Got: {zod}");
     assert!(zod.contains("\"Integer\""));
 }
 
@@ -379,7 +439,7 @@ fn test_regex_transform_let_underscore() {
     assert_eq!(example.as_str().unwrap(), "Active");
 
     let zod = Status::zod_schema();
-    assert!(zod.contains("example:"));
+    assert!(zod.contains("examples: [\"Active\"]"), "Got: {zod}");
     assert!(zod.contains("\"Active\""));
 }
 
@@ -418,7 +478,7 @@ fn test_description_escapes_quotes() {
     }
 
     let zod = QuoteTest::zod_schema();
-    assert!(zod.contains("example:"));
+    assert!(zod.contains("examples: [\"Active\"]"), "Got: {zod}");
     assert!(zod.contains("description:"));
     assert!(zod.contains(r#"\"quoted\""#));
 }
@@ -571,8 +631,8 @@ fn a_factory_carries_its_example_on_the_schema_it_memoizes() {
     let zod = Held::<String>::zod_schema();
     assert!(
         zod.contains(
-            "  const schema = buildHeld$Schema(valueType).meta({\n    example: \
-             {\"value\":\"x\"}\n  });\n"
+            "  const schema = buildHeld$Schema(valueType).meta({\n    examples: \
+             [{\"value\":\"x\"}]\n  });\n"
         ),
         "Got: {zod}"
     );
@@ -601,14 +661,14 @@ fn a_plain_const_still_carries_its_example_on_the_exported_binding() {
     #[cfg(feature = "typescript")]
     assert!(
         zod.contains(
-            "export const Kept$Schema: ZodType<Kept> = Kept$RawSchema.meta({\n  example: \
-             {\"value\":\"x\"}\n});"
+            "export const Kept$Schema: ZodType<Kept> = Kept$RawSchema.meta({\n  examples: \
+             [{\"value\":\"x\"}]\n});"
         ),
         "Got: {zod}"
     );
     #[cfg(not(feature = "typescript"))]
     assert!(
-        zod.contains(".meta({\n  example: {\"value\":\"x\"}\n});"),
+        zod.contains(".meta({\n  examples: [{\"value\":\"x\"}]\n});"),
         "Got: {zod}"
     );
 }
@@ -651,4 +711,474 @@ fn a_const_declaring_item_keeps_its_example_where_no_example_is_read() {
         label: "x".to_owned(),
     };
     assert_eq!(slotted.label, "x");
+}
+
+/// What a schema that declares no parameter ends in, holding `examples` on the binding it exports.
+#[cfg(feature = "zod")]
+fn ends_in_examples(zod: &str, examples: &str) -> bool {
+    zod.ends_with(&format!(".meta({{\n  examples: {examples}\n}});"))
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn one_block_publishes_one_item_and_no_example_key() {
+    /// Type with one example
+    /// ```rust example
+    /// Single { value: 7 }
+    /// ```
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Single {
+        pub value: u32,
+    }
+
+    assert_eq!(
+        Single::schema_examples(),
+        vec![serde_json::json!({ "value": 7_u32 })]
+    );
+    assert_eq!(
+        Single::schema_example(),
+        serde_json::json!({ "value": 7_u32 })
+    );
+
+    let zod = Single::zod_schema();
+    assert!(ends_in_examples(&zod, "[{\"value\":7}]"), "Got: {zod}");
+    assert!(!zod.contains("example:"), "Got: {zod}");
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn an_empty_block_is_skipped_between_two_filled_ones() {
+    /// Type with an empty block
+    /// ```rust example
+    /// Sparse { value: 1 }
+    /// ```
+    /// ```rust example
+    /// ```
+    /// ```rust example
+    /// Sparse { value: 3 }
+    /// ```
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Sparse {
+        pub value: u32,
+    }
+
+    assert_eq!(
+        Sparse::schema_examples(),
+        vec![
+            serde_json::json!({ "value": 1_u32 }),
+            serde_json::json!({ "value": 3_u32 })
+        ]
+    );
+    let zod = Sparse::zod_schema();
+    assert!(
+        ends_in_examples(&zod, "[{\"value\":1},{\"value\":3}]"),
+        "Got: {zod}"
+    );
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn each_block_is_built_in_a_scope_of_its_own() {
+    /// Two blocks binding the same name
+    /// ```rust example
+    /// let value = 1;
+    /// Scoped { value }
+    /// ```
+    /// ```rust example
+    /// let value = 2;
+    /// Scoped { value }
+    /// ```
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Scoped {
+        pub value: u32,
+    }
+
+    assert_eq!(
+        Scoped::schema_examples(),
+        vec![
+            serde_json::json!({ "value": 1_u32 }),
+            serde_json::json!({ "value": 2_u32 })
+        ]
+    );
+}
+
+#[cfg(all(feature = "zod", feature = "serde"))]
+#[test]
+fn an_internally_tagged_enum_publishes_one_example_per_variant() {
+    /// A shape, one example per variant
+    /// ```rust example
+    /// Shape::Circle { radius: 2 }
+    /// ```
+    /// ```rust example
+    /// Shape::Square { side: 3 }
+    /// ```
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    #[serde(tag = "kind")]
+    pub enum Shape {
+        Circle { radius: u32 },
+        Square { side: u32 },
+    }
+
+    assert_eq!(
+        Shape::schema_examples(),
+        vec![
+            serde_json::json!({ "kind": "Circle", "radius": 2_u32 }),
+            serde_json::json!({ "kind": "Square", "side": 3_u32 })
+        ]
+    );
+    assert_eq!(
+        Shape::schema_example(),
+        serde_json::json!({ "kind": "Circle", "radius": 2_u32 })
+    );
+    let zod = Shape::zod_schema();
+    assert!(
+        ends_in_examples(
+            &zod,
+            "[{\"kind\":\"Circle\",\"radius\":2},{\"kind\":\"Square\",\"side\":3}]"
+        ),
+        "Got: {zod}"
+    );
+    assert!(!zod.contains("example:"), "Got: {zod}");
+}
+
+#[cfg(all(feature = "zod", feature = "serde"))]
+#[test]
+fn every_tagging_of_an_enum_carries_its_examples() {
+    /// Written under the variant's name
+    /// ```rust example
+    /// Outer::Held { held: 1 }
+    /// ```
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub enum Outer {
+        Held { held: u32 },
+        Idle,
+    }
+
+    /// Written under two keys
+    /// ```rust example
+    /// Adjacent::Held { held: 1 }
+    /// ```
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    #[serde(tag = "kind", content = "body")]
+    pub enum Adjacent {
+        Held { held: u32 },
+        Idle,
+    }
+
+    /// Written as the variant's own value
+    /// ```rust example
+    /// Bare::Text("x".to_owned())
+    /// ```
+    /// ```rust example
+    /// Bare::Count(2)
+    /// ```
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    #[serde(untagged)]
+    pub enum Bare {
+        Count(u32),
+        Text(String),
+    }
+
+    let outer = Outer::zod_schema();
+    assert!(
+        ends_in_examples(&outer, "[{\"Held\":{\"held\":1}}]"),
+        "Got: {outer}"
+    );
+    let adjacent = Adjacent::zod_schema();
+    assert!(
+        ends_in_examples(&adjacent, "[{\"body\":{\"held\":1},\"kind\":\"Held\"}]")
+            || ends_in_examples(&adjacent, "[{\"kind\":\"Held\",\"body\":{\"held\":1}}]"),
+        "Got: {adjacent}"
+    );
+    let bare = Bare::zod_schema();
+    assert!(ends_in_examples(&bare, "[\"x\",2]"), "Got: {bare}");
+    assert_eq!(
+        Bare::schema_examples(),
+        vec![serde_json::json!("x"), serde_json::json!(2_u32)]
+    );
+}
+
+#[cfg(all(feature = "zod", feature = "serde"))]
+#[test]
+fn every_tagging_of_an_enum_with_no_block_publishes_an_empty_list() {
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub enum Outer {
+        Held { held: u32 },
+        Idle,
+    }
+
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    #[serde(tag = "kind")]
+    pub enum Inner {
+        Held { held: u32 },
+        Idle,
+    }
+
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    #[serde(tag = "kind", content = "body")]
+    pub enum Adjacent {
+        Held { held: u32 },
+        Idle,
+    }
+
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    #[serde(untagged)]
+    pub enum Bare {
+        Count(u32),
+        Text(String),
+    }
+
+    for zod in [
+        Outer::zod_schema(),
+        Inner::zod_schema(),
+        Adjacent::zod_schema(),
+        Bare::zod_schema(),
+    ] {
+        assert!(ends_in_examples(&zod, "[]"), "Got: {zod}");
+        assert!(!zod.contains("example:"), "Got: {zod}");
+    }
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn a_plain_enum_holds_its_examples_inside_its_own_meta() {
+    /// A level
+    /// ```rust example
+    /// Level::Low
+    /// ```
+    /// ```rust example
+    /// Level::High
+    /// ```
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub enum Level {
+        High,
+        Low,
+    }
+
+    /// A level with no example
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub enum Grade {
+        High,
+        Low,
+    }
+
+    assert_eq!(
+        Level::schema_examples(),
+        vec![serde_json::json!("Low"), serde_json::json!("High")]
+    );
+    assert_eq!(Level::schema_example(), serde_json::json!("Low"));
+    let level = Level::zod_schema();
+    assert!(
+        level.contains(".meta({\n  description: \"A level\",\n  examples: [\"Low\",\"High\"],\n})"),
+        "Got: {level}"
+    );
+    assert_eq!(level.matches(".meta(").count(), 1, "Got: {level}");
+
+    let grade = Grade::zod_schema();
+    assert!(
+        grade.contains(".meta({\n  description: \"A level with no example\",\n  examples: [],\n})"),
+        "Got: {grade}"
+    );
+    assert_eq!(grade.matches(".meta(").count(), 1, "Got: {grade}");
+    assert!(!grade.contains("example:"), "Got: {grade}");
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn a_generic_struct_holds_its_examples_on_the_schema_it_memoizes() {
+    /// A generic type carrying two example blocks.
+    ///
+    /// ```rust example
+    /// Pair { value: "x".to_owned() }
+    /// ```
+    /// ```rust example
+    /// Pair { value: "y".to_owned() }
+    /// ```
+    #[model_schema(default_types(ValueType = String))]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Pair<ValueType> {
+        pub value: ValueType,
+    }
+
+    /// A generic type carrying none.
+    #[model_schema(default_types(ValueType = String))]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Lone<ValueType> {
+        pub value: ValueType,
+    }
+
+    assert_eq!(
+        Pair::<String>::schema_examples(),
+        vec![
+            serde_json::json!({ "value": "x" }),
+            serde_json::json!({ "value": "y" })
+        ]
+    );
+    let pair = Pair::<String>::zod_schema();
+    assert!(
+        pair.contains(
+            "  const schema = buildPair$Schema(valueType).meta({\n    examples: \
+             [{\"value\":\"x\"},{\"value\":\"y\"}]\n  });\n"
+        ),
+        "Got: {pair}"
+    );
+    assert_eq!(pair.matches(".meta(").count(), 1, "Got: {pair}");
+
+    let lone = Lone::<String>::zod_schema();
+    assert!(
+        lone.contains(
+            "  const schema = buildLone$Schema(valueType).meta({\n    examples: []\n  });\n"
+        ),
+        "Got: {lone}"
+    );
+    assert_eq!(lone.matches(".meta(").count(), 1, "Got: {lone}");
+    assert!(!lone.contains("example:"), "Got: {lone}");
+}
+
+#[cfg(all(feature = "zod", feature = "serde"))]
+#[test]
+fn a_brand_holds_its_examples_inside_its_own_meta() {
+    /// A token
+    /// ```rust example
+    /// Token("a".to_owned())
+    /// ```
+    /// ```rust example
+    /// Token("b".to_owned())
+    /// ```
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    #[serde(transparent)]
+    pub struct Token(pub String);
+
+    /// A token with no example
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    #[serde(transparent)]
+    pub struct Ticket(pub String);
+
+    /// A generic token with no example
+    #[model_schema(default_types(Held = String))]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    #[serde(transparent)]
+    pub struct Stub<Held>(pub Held);
+
+    assert_eq!(
+        Token::schema_examples(),
+        vec![serde_json::json!("a"), serde_json::json!("b")]
+    );
+    assert_eq!(Token::schema_example(), serde_json::json!("a"));
+    let token = Token::zod_schema();
+    assert!(
+        token.contains(".meta({\n  description: \"A token\",\n  examples: [\"a\",\"b\"],\n});"),
+        "Got: {token}"
+    );
+    assert_eq!(token.matches(".meta(").count(), 1, "Got: {token}");
+
+    let ticket = Ticket::zod_schema();
+    assert!(
+        ticket
+            .contains(".meta({\n  description: \"A token with no example\",\n  examples: [],\n});"),
+        "Got: {ticket}"
+    );
+    assert_eq!(ticket.matches(".meta(").count(), 1, "Got: {ticket}");
+    assert!(!ticket.contains("example:"), "Got: {ticket}");
+
+    let stub = Stub::<String>::zod_schema();
+    assert!(
+        stub.contains(
+            "held.meta({\n  description: \"A generic token with no example\",\n  examples: [],\n})"
+        ),
+        "Got: {stub}"
+    );
+    assert_eq!(stub.matches(".meta(").count(), 1, "Got: {stub}");
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn an_alias_publishes_an_empty_list() {
+    let held: Several<Score> = vec![7];
+    assert_eq!(held, [7]);
+
+    // An alias publishes under its own name with `Type` after it, and its ident beside that.
+    let score = score_schema::Schema::zod_schema();
+    assert!(
+        score.ends_with(
+            ".meta({\n  examples: []\n});\n\nexport const Score$Schema = ScoreType$Schema;"
+        ),
+        "Got: {score}"
+    );
+    assert_eq!(score.matches(".meta(").count(), 1, "Got: {score}");
+    assert!(!score.contains("example:"), "Got: {score}");
+
+    let several = several_schema::Schema::zod_schema();
+    assert!(
+        several.contains(
+            "  const schema = buildSeveralType$Schema(held).meta({\n    examples: []\n  });\n"
+        ),
+        "Got: {several}"
+    );
+    assert_eq!(several.matches(".meta(").count(), 1, "Got: {several}");
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn a_tuple_struct_and_a_unit_struct_publish_an_empty_list() {
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Point(pub u32, pub u32);
+
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Wrapped(pub u32);
+
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Ping;
+
+    for zod in [
+        Point::zod_schema(),
+        Wrapped::zod_schema(),
+        Ping::zod_schema(),
+    ] {
+        assert!(ends_in_examples(&zod, "[]"), "Got: {zod}");
+        assert!(!zod.contains("example:"), "Got: {zod}");
+    }
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn a_tuple_struct_carries_its_examples() {
+    /// A point
+    /// ```rust example
+    /// Point(1, 2)
+    /// ```
+    /// ```rust example
+    /// Point(3, 4)
+    /// ```
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Point(pub u32, pub u32);
+
+    assert_eq!(
+        Point::schema_examples(),
+        vec![
+            serde_json::json!([1_u32, 2_u32]),
+            serde_json::json!([3_u32, 4_u32])
+        ]
+    );
+    let zod = Point::zod_schema();
+    assert!(ends_in_examples(&zod, "[[1,2],[3,4]]"), "Got: {zod}");
 }

@@ -101,8 +101,8 @@ just ci
 2. **Macro Execution** ([model_schema.rs](src/model_schema.rs))
    - `exec_model_schema()` routes to `process_struct()`, `process_enum()`, `process_type_alias()`, or `process_branded_newtype()`
    - Parses Serde attributes when `serde` feature enabled
-   - Extracts example code from doc comments (` ```rust example` fences)
-   - Generates methods: `ts_definition()`, optionally `json_schema()`, optionally `schema_example()`, and optionally `validate()`
+   - Extracts example code from doc comments (every ` ```rust example` fence)
+   - Generates methods: `ts_definition()`, optionally `json_schema()`, optionally `schema_examples()` with `schema_example()`, and optionally `validate()`
    - `process_branded_newtype()`: handles `#[serde(transparent)]` structs serde writes as the value of one field -- a single-slot tuple struct, or a struct with named fields -- generating Zod brand schemas or `unique symbol` branded TypeScript types
 
 3. **Type Analysis** ([field_type.rs](src/field_type.rs))
@@ -123,12 +123,12 @@ just ci
    - `typescript.rs`: Generates TypeScript type definitions and Zod schemas
    - Combines FieldDef trees into complete type/schema strings
    - Handles discriminated unions, generics, nested types
-   - Calls `schema_example()` method to embed examples in Zod `.meta()` when available
+   - Every `zod_schema()` writes `examples` into the schema's `.meta()`: `[]` as text where the type writes no block, `schema_examples()` serialized where it writes one or more
 
 6. **Example Extraction** ([utils.rs](src/utils.rs))
-   - `extract_example_from_docs()`: Parses ` ```rust example` code fences from doc comments
-   - Returns first example found (if multiple exist)
-   - Example code is inserted into generated `schema_example()` method
+   - `extract_examples_tokens()`: Parses every ` ```rust example` code fence from doc comments
+   - Returns each block's tokens in the order written, an empty block skipped
+   - Each block's code is inserted, in a scope of its own, into the generated `schema_examples()` method
    - Compiler validates example code at compile time
 
 7. **Service Schema Accessors** ([features/service_schema.rs](src/features/service_schema.rs))
@@ -334,6 +334,8 @@ export const User$Schema = z.strictObject({
   name: z.string(),
   email: z.union([z.null().transform(() => undefined), z.string(), z.undefined()]).prefault(undefined),      // Modern v4 syntax, null coerced to undefined
   age: z.union([z.null().transform(() => undefined), z.number().int(), z.undefined()]).prefault(undefined),  // Works with JSON schema generation
+}).meta({
+  examples: []
 });
 
 // ❌ OLD FORMAT (no longer generated)
@@ -596,6 +598,7 @@ With `zod` + `typescript` features:
 export type CorrelationId = string & $brand<"CorrelationId">;
 const CorrelationId$RawSchema = z.string().brand<"CorrelationId">().meta({
   description: "CorrelationId",
+  examples: [],
 });
 
 export const CorrelationId$Schema: typeof CorrelationId$RawSchema = CorrelationId$RawSchema;
@@ -618,6 +621,7 @@ const buildUserId$Schema = <IdType extends ZodType>(
 ) =>
   idType.meta({
   description: "UserId",
+  examples: [],
 }).brand<"UserId">();
 
 type UserId$SchemaOf<IdType extends ZodType> = ReturnType<
@@ -1144,14 +1148,34 @@ pub struct User {
 - Use the exact syntax: ` ```rust example` (note the space and `example` keyword)
 - The example code must type-check at compile time
 - The last expression in the block should evaluate to the type
-- Examples are **optional** - if not provided, no `schema_example()` method is generated
-- If multiple examples exist, only the first one is used
+- A type may write several blocks, one value each. Every block is built, in a scope of its own, and published in the order written; an empty block is skipped
+- Examples are **optional** - a type that writes none gets no `schema_examples()` and no `schema_example()`, and publishes `examples: []`
 - Examples respect Serde attributes (field names are serialized correctly)
 
 **Generated Code:**
-- A `schema_example()` method is generated that returns `serde_json::Value`
-- The Zod schema includes `.meta({ example: <serialized_json> })`
-- The example is serialized using Serde, so it matches your API's JSON format
+- A `schema_examples()` method is generated that returns `Vec<serde_json::Value>`, one value per block, and a `schema_example()` beside it that returns the first
+- The Zod schema of **every** type holds `examples` in its `.meta()`, and none writes an `example` key: `examples: []` where the type writes no block, and the serialized `schema_examples()` where it writes one or more
+- Each example is serialized using Serde, so it matches your API's JSON format
+
+```typescript
+// no block
+export const Plain$Schema: ZodType<Plain> = Plain$RawSchema.meta({
+  examples: []
+});
+
+// two blocks
+export const SeveralExamples$Schema: ZodType<SeveralExamples> = SeveralExamples$RawSchema.meta({
+  examples: [{"value":1},{"value":2}]
+});
+```
+
+**What a change to the emitter has to keep:**
+- `extract_examples_tokens` in `src/utils.rs` is the one reader of the blocks, and `schema_examples_methods` the one builder of the two functions: `item_schema_example_method` (a struct, a tuple struct), `enum_schema_example_method` (the five enum shapes) and `build_branded_schema_example` (a brand) all hand it their blocks
+- `zod_examples_json` writes the list: the text `"[]"` where the type writes no block, so such a type names no `serde_json` and no function of its own, and `serde_json::to_string(&Self::schema_examples())` where it writes one
+- `zod_schema_with_examples` writes the `zod_schema()` of every shape that publishes its binding through `zod_published_binding`: the delegate on a struct, a tuple struct, a unit struct and a tagged or untagged enum, and the module's own method on an alias, which has no `impl` to carry an example on and therefore always publishes `[]`. `zod_examples_injection` puts the list on the exported `const` ahead of its `;` where the item declares no parameter, and on the factory's memoized binding (`const schema = buildX$Schema(…).meta({ … });`) where it declares one, so `X$SchemaDefault` and every other call of the factory carry it
+- A brand and a plain enum already write one `.meta({ description })`, and `build_branded_delegate_items` puts `examples` inside it, after the description. A generic brand writes that `.meta` in its builder, and its memoized binding takes no second one
+- A renamed item's re-export and a generic item's `$SchemaDefault` publish another binding of the same schema and carry no `.meta` of their own
+- The const-parameter refusal (`const_parameter_example_errors`) fires where any block is written
 
 ## Common Development Tasks
 
@@ -1424,6 +1448,8 @@ export const Document$Schema = z.strictObject({
   metadata: z.record(z.string(), z.object({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) })),
   parent_id: z.union([z.null().transform(() => undefined), z.object({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) }), z.undefined()]).prefault(undefined),
   related: z.record(z.string(), z.array(z.object({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) }))),
+}).meta({
+  examples: []
 });
 ```
 

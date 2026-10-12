@@ -58,6 +58,8 @@ use super::{
     VariantKind, check_variant_slot_wire_is_readable, parse_serde_key_omission, variant_wire_kind,
 };
 
+#[cfg(feature = "zod")]
+use core::slice::from_ref;
 use syn::spanned::Spanned as _;
 
 #[cfg(feature = "serde")]
@@ -4622,7 +4624,7 @@ fn struct_schema_example_carries_no_cfg_attribute() {
     let generics = syn::Generics::default();
     let example: proc_macro2::TokenStream = "Report { id: 1 }".parse().unwrap();
     let tokens = super::item_schema_example_method(
-        Some(&example),
+        from_ref(&example),
         &name,
         &generics,
         &super::ModelSchemaArgs::default(),
@@ -4649,7 +4651,7 @@ fn struct_schema_example_instantiates_every_type_parameter() {
         (syn::parse_quote!(<'a>), "let value : Report ="),
     ] {
         let rendered = super::item_schema_example_method(
-            Some(&example),
+            from_ref(&example),
             &name,
             &generics,
             &super::ModelSchemaArgs::default(),
@@ -4686,9 +4688,10 @@ fn struct_schema_example_instantiates_each_parameter_at_its_declared_filling() {
             default_types,
             ..Default::default()
         };
-        let rendered = super::item_schema_example_method(Some(&example), &name, &generics, &args)
-            .unwrap()
-            .to_string();
+        let rendered =
+            super::item_schema_example_method(from_ref(&example), &name, &generics, &args)
+                .unwrap()
+                .to_string();
         assert!(rendered.contains(expected), "Got: {rendered}");
     }
 }
@@ -4705,7 +4708,7 @@ fn an_unfilled_parameter_falls_back_to_the_standard_string_by_its_full_path() {
         ..Default::default()
     };
     let render = |args: &super::ModelSchemaArgs| {
-        super::item_schema_example_method(Some(&example), &name, &generics, args)
+        super::item_schema_example_method(from_ref(&example), &name, &generics, args)
             .unwrap()
             .to_string()
     };
@@ -4719,6 +4722,123 @@ fn an_unfilled_parameter_falls_back_to_the_standard_string_by_its_full_path() {
         fallen_back.contains("let value : Report < :: std :: string :: String > ="),
         "got: {fallen_back}"
     );
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn every_block_is_built_in_a_scope_of_its_own_and_the_first_is_the_example() {
+    let name: syn::Ident = syn::parse_quote!(Report);
+    let blocks: [proc_macro2::TokenStream; 2] = [
+        "Report { id: 1 }".parse().unwrap(),
+        "Report { id: 2 }".parse().unwrap(),
+    ];
+    let rendered = super::item_schema_example_method(
+        &blocks,
+        &name,
+        &syn::Generics::default(),
+        &super::ModelSchemaArgs::default(),
+    )
+    .unwrap()
+    .to_string();
+    let written = quote::quote! {
+        pub fn schema_examples() -> ::std::vec::Vec<serde_json::Value> {
+            ::std::vec![
+                {
+                    let value: Report = { Report { id: 1 } };
+                    serde_json::to_value(&value).unwrap()
+                },
+                {
+                    let value: Report = { Report { id: 2 } };
+                    serde_json::to_value(&value).unwrap()
+                }
+            ]
+        }
+
+        pub fn schema_example() -> serde_json::Value {
+            Self::schema_examples().swap_remove(0)
+        }
+    }
+    .to_string();
+    assert_eq!(rendered, written);
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn a_type_that_writes_no_block_gets_no_example_method() {
+    let name: syn::Ident = syn::parse_quote!(Report);
+    assert!(
+        super::item_schema_example_method(
+            &[],
+            &name,
+            &syn::Generics::default(),
+            &super::ModelSchemaArgs::default(),
+        )
+        .is_none()
+    );
+    assert!(
+        super::build_branded_schema_example(&[], &name, &[], &super::ModelSchemaArgs::default())
+            .is_empty()
+    );
+}
+
+/// A crate that lists no `serde_json` keeps building where its types write no example.
+#[cfg(feature = "zod")]
+#[test]
+fn a_type_that_writes_no_block_names_no_serde_json_for_its_empty_list() {
+    let module: syn::Ident = syn::parse_quote!(report_schema);
+    let zod_delegates: Vec<String> = [
+        super::build_struct_delegate_items(&module, "Report", "Report", &[], None),
+        super::build_struct_delegate_items(
+            &module,
+            "Report",
+            "Report",
+            &["IdType".to_owned()],
+            None,
+        ),
+        super::build_branded_delegate_items(&module, false),
+    ]
+    .into_iter()
+    .flatten()
+    .map(|item| item.to_string())
+    .filter(|item| item.contains("fn zod_schema"))
+    .collect();
+
+    assert_eq!(zod_delegates.len(), 3, "{zod_delegates:?}");
+    for delegate in zod_delegates {
+        assert!(
+            delegate.contains("let examples_json = \"[]\" ;"),
+            "Got: {delegate}"
+        );
+        assert!(!delegate.contains("serde_json"), "Got: {delegate}");
+        assert!(!delegate.contains("schema_example"), "Got: {delegate}");
+    }
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn a_type_that_writes_a_block_reads_its_list_off_schema_examples() {
+    let module: syn::Ident = syn::parse_quote!(report_schema);
+    let methods = quote::quote! { pub fn schema_examples() {} };
+    let zod_delegates: Vec<String> = [
+        super::build_struct_delegate_items(&module, "Report", "Report", &[], Some(&methods)),
+        super::build_branded_delegate_items(&module, true),
+    ]
+    .into_iter()
+    .flatten()
+    .map(|item| item.to_string())
+    .filter(|item| item.contains("fn zod_schema"))
+    .collect();
+
+    assert_eq!(zod_delegates.len(), 2, "{zod_delegates:?}");
+    for delegate in zod_delegates {
+        assert!(
+            delegate.contains(
+                "let examples_json = serde_json :: to_string (& Self :: schema_examples ()) . \
+                 unwrap () ;"
+            ),
+            "Got: {delegate}"
+        );
+    }
 }
 
 #[cfg(feature = "zod")]
@@ -4913,7 +5033,7 @@ fn branded_schema_example_carries_no_cfg_attribute() {
         vec!["A".to_owned(), "B".to_owned()],
     ] {
         let tokens = super::build_branded_schema_example(
-            Some(&example),
+            from_ref(&example),
             &name,
             &generic_params,
             &super::ModelSchemaArgs::default(),
@@ -4939,7 +5059,7 @@ fn branded_schema_example_instantiates_every_parameter() {
         ),
     ] {
         let rendered = super::build_branded_schema_example(
-            Some(&example),
+            from_ref(&example),
             &name,
             &generic_params,
             &super::ModelSchemaArgs::default(),
@@ -4959,7 +5079,7 @@ fn branded_schema_example_instantiates_each_parameter_at_its_declared_filling() 
         ..Default::default()
     };
     let rendered = super::build_branded_schema_example(
-        Some(&example),
+        from_ref(&example),
         &name,
         &["A".to_owned(), "B".to_owned()],
         &args,
@@ -8711,6 +8831,17 @@ fn a_doc_example_is_refused_once_and_names_every_const_declared() {
     for needle in ["WIDTH", "DEPTH"] {
         assert!(rendered.contains(needle), "{needle} missing: {rendered}");
     }
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn several_doc_examples_on_a_const_declaring_item_earn_one_refusal() {
+    let source = format!(
+        "{EXAMPLE_DOC_BLOCK}{EXAMPLE_DOC_BLOCK}pub enum Probe<const WIDTH: usize> {{ Held }}"
+    );
+    let refusals = const_example_refusals(&source);
+    assert_eq!(refusals.len(), 1, "got: {refusals:?}");
+    assert_eq!(refusals[0].span().source_text().as_deref(), Some("WIDTH"));
 }
 
 #[cfg(feature = "zod")]

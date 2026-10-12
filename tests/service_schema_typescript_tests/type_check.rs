@@ -61,6 +61,7 @@ declare type ZodType<Parsed> = {
 
 declare type ZodBuilder = ZodType<never> & {
   int(): ZodBuilder;
+  meta(data: { examples: ReadonlyArray<unknown> }): ZodBuilder;
   prefault(value: unknown): ZodBuilder;
   transform(map: (value: never) => unknown): ZodBuilder;
 };
