@@ -1,5 +1,6 @@
 //! A flagged type whose fields name types their author called `Element`, `Field`, `Filter`,
-//! `Model` and `Update`, and one whose fields name `AsFilter`, `AsUpdate`, `Nested` and `Nests`.
+//! `Model` and `Update`, one whose fields name `AsFilter`, `AsUpdate`, `Nested` and `Nests`, and
+//! an enum under a tag whose arms hold types called `Arm` and `ArmFilter`.
 //! Under `mongodb` the flag adds types of those names to `{type}_schema`, and what that module
 //! already held goes on reading the author's, as the struct of paths does.
 //! A type parameter of one of those names is the parameter wherever the struct of paths names
@@ -10,6 +11,18 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::shown;
+
+#[model_schema(decode_with)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+struct Arm {
+    name: String,
+}
+
+#[model_schema(decode_with)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+struct ArmFilter {
+    name: String,
+}
 
 #[model_schema(decode_with)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -45,6 +58,15 @@ struct Filter {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct Model {
     name: String,
+}
+
+/// An enum under a tag whose arms hold a type named as each thing the flag adds for an arm.
+#[model_schema(decode_with)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum Limb {
+    Lower(ArmFilter),
+    Upper(Arm),
 }
 
 /// Holds a type named as each thing `nest` is declared with.
@@ -209,5 +231,29 @@ fn a_type_named_like_what_nest_is_declared_with_is_read_as_the_authors() {
     assert_eq!(
         shown(paths.as_filter().set(marked.as_filter).unwrap()),
         r#"{ "$set": { "as_filter": { "name": "a" } } }"#
+    );
+}
+
+/// The arm function names the author's type, and the module's own `Arm` lists the variants.
+#[test]
+fn a_type_named_like_what_an_arm_is_declared_with_is_read_as_the_authors() {
+    let stored = doc! { "kind": "upper", "name": "left" };
+    let left = Limb::Upper(Arm {
+        name: named("left"),
+    });
+    assert_eq!(Limb::from_bson_piped(stored, &[]), Ok(left));
+    let upper: limb_schema::ArmFilter<Limb, Arm> = Limb::MONGO_FIELDS.kind__upper();
+    assert_eq!(
+        shown(upper.and(Arm::MONGO_FIELDS.name().eq(named("left")).unwrap())),
+        r#"{ "$and": [{ "kind": { "$eq": "upper" } }, { "name": { "$eq": "left" } }] }"#
+    );
+    let lower: limb_schema::ArmFilter<Limb, ArmFilter> = Limb::MONGO_FIELDS.kind__lower();
+    assert_eq!(
+        shown(lower.and(ArmFilter::MONGO_FIELDS.name().eq(named("right")).unwrap())),
+        r#"{ "$and": [{ "kind": { "$eq": "lower" } }, { "name": { "$eq": "right" } }] }"#
+    );
+    assert_eq!(
+        format!("{:?}", [limb_schema::Arm::Lower, limb_schema::Arm::Upper]),
+        "[Lower, Upper]"
     );
 }

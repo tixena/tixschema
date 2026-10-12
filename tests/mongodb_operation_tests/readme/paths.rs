@@ -1,22 +1,36 @@
 //! What the README shows of the typed paths: the kind each function of `Invoice::MONGO_FIELDS`
-//! answers, the document each operator writes, the filters and updates its examples build, and
-//! the paths `nest` reaches below a nested model.
+//! answers, the document each operator writes, the filters and updates its examples build, the
+//! paths `nest` reaches below a nested model, and the arms of an enum under a tag.
 //!
 //! A table row is read off the code: a call is turned into the row's first cell by `stringify!`,
 //! and the document it writes into the second.
 
 use bson::oid::ObjectId;
 use bson::{Document, doc};
+use mongodb::Database;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-use super::invoice_schema;
 use super::{
     Address, Customer, Invoice, InvoiceStatus, LineItem, Payment, assert_declared_and_documented,
     assert_documented, readme,
 };
+use super::{invoice_schema, payment_schema};
 
 use invoice_schema::{Filter, Update, WriteError};
+
+/// One row of the README's table of arm functions: what an enum is declared under, one of its
+/// variants, and the function of that variant's arm, held by the compiler to being there. With
+/// it, the name of the enum.
+macro_rules! arm {
+    ($of:ident . $function:ident () : $attribute:literal, $variant:literal) => {{
+        held(&$of::MONGO_FIELDS.$function());
+        (
+            stringify!($of),
+            [$attribute, $variant, stringify!($function())],
+        )
+    }};
+}
 
 /// One row of the README's table of kinds: a function of `Invoice`'s paths, held by the compiler
 /// to answering the kind the row names.
@@ -33,6 +47,45 @@ macro_rules! written {
         (stringify!($($call)+), Document::from($($call)+).to_string())
     };
 }
+
+/// The models the README declares for the arms of an enum under a tag, the `const` that holds one
+/// arm filter and the function that nests it, character for character.
+const DECLARED_ARMS: [&str; 5] = [
+    "#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Courier {
+    pub name: String,
+    pub region: String,
+}",
+    r#"#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "type")]
+pub enum Transport {
+    #[serde(rename = "by-courier")]
+    ByCourier(Courier),
+    Collected,
+}"#,
+    r#"#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Booking {
+    pub depot_code: String,
+    #[serde(flatten)]
+    pub transport: Transport,
+}"#,
+    "/// The bookings a courier carries, held in a `const`.
+const BY_COURIER: transport_schema::ArmFilter<Transport, Courier> =
+    Transport::MONGO_FIELDS.type__by_courier();",
+    "/// The bookings one courier carries out of one depot.
+fn couriered(depot: &str, courier: &str) -> Result<booking_schema::Filter<Booking>, WriteError> {
+    let booking = Booking::MONGO_FIELDS;
+    let by_name = BY_COURIER.and(Courier::MONGO_FIELDS.name().eq(courier.to_owned())?);
+    Ok(booking
+        .transport()
+        .nest(by_name)
+        .and(booking.depot_code().eq(depot.to_owned())?))
+}",
+];
 
 /// The functions the README builds its filters and updates with, character for character.
 const DECLARED_BUILDERS: [&str; 6] = [
@@ -94,6 +147,10 @@ fn surcharged(by: f64) -> Result<Update<Invoice>, WriteError> {
 const DECLARED_CONST: &str =
     "const TOTAL: invoice_schema::Field<Invoice, f64> = Invoice::MONGO_FIELDS.total();";
 
+/// The call the README counts the rows of an arm with, character for character.
+const DECLARED_COUNT: &str =
+    r#"Booking::count(&collection, couriered("SDQ-1", "Acme Freight")?).await?"#;
+
 /// The line the README brings the query types into scope with.
 const DECLARED_IMPORT: &str = "use invoice_schema::{Filter, Update, WriteError};";
 
@@ -123,7 +180,59 @@ fn carried_by(name: &str) -> Result<shipment_schema::Filter<Shipment>, WriteErro
 }"#,
 ];
 
+/// The rows of the README's table of the model an arm is over, each one whole.
+const SHOWN_ARM_MODELS: [&str; 2] = [
+    "| One slot serde writes | The slot's type, read through `Option`, a list and the wrappers `nest` reads through: what `nest` reaches below a path over that slot. `ByCourier(Courier)` is over `Courier`, and an arm that holds a `Box<Courier>` is over `Courier` too. A map is `()` |",
+    "| Fields written in the variant, several slots, nothing, or one slot serde never writes | `()` |",
+];
+
+/// The bookings a courier carries, held in a `const`.
+const BY_COURIER: transport_schema::ArmFilter<Transport, Courier> =
+    Transport::MONGO_FIELDS.type__by_courier();
+
 const TOTAL: invoice_schema::Field<Invoice, f64> = Invoice::MONGO_FIELDS.total();
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Courier {
+    pub name: String,
+    pub region: String,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "type")]
+pub enum Transport {
+    #[serde(rename = "by-courier")]
+    ByCourier(Courier),
+    Collected,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Booking {
+    pub depot_code: String,
+    #[serde(flatten)]
+    pub transport: Transport,
+}
+
+/// What an arm of [`Paper`] holds.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Notice {
+    pub code: String,
+}
+
+/// What the README's tables of arms say beside its own example, held by the compiler: an enum
+/// under a tag key of two words, and an arm whose model is behind a wrapper.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "docType", content = "body", rename_all = "kebab-case")]
+pub enum Paper {
+    Forwarded(Box<Courier>),
+    PastDue(Notice),
+}
 
 #[model_schema(decode_with)]
 #[derive(Debug, Deserialize, Serialize)]
@@ -155,6 +264,7 @@ fn built() -> Result<Vec<(&'static str, String)>, WriteError> {
         written!(of_cost_center("CC-7")?),
         written!(surcharged(12.5)?),
         written!(carried_by("Acme Freight")?),
+        written!(couriered("SDQ-1", "Acme Freight")?),
     ])
 }
 
@@ -173,6 +283,23 @@ fn carried_by(name: &str) -> Result<shipment_schema::Filter<Shipment>, WriteErro
 fn cells(line: &str) -> Option<Vec<&str>> {
     let inner = line.strip_prefix("| `")?.strip_suffix("` |")?;
     Some(inner.split("` | `").collect())
+}
+
+/// The call the README counts the rows of an arm with, held to compiling. It is never run.
+async fn counted(database: &Database) -> Result<u64, booking_schema::OperationError> {
+    let collection = database.collection("bookings");
+    let how_many = Booking::count(&collection, couriered("SDQ-1", "Acme Freight")?).await?;
+    Ok(how_many)
+}
+
+/// The bookings one courier carries out of one depot.
+fn couriered(depot: &str, courier: &str) -> Result<booking_schema::Filter<Booking>, WriteError> {
+    let booking = Booking::MONGO_FIELDS;
+    let by_name = BY_COURIER.and(Courier::MONGO_FIELDS.name().eq(courier.to_owned())?);
+    Ok(booking
+        .transport()
+        .nest(by_name)
+        .and(booking.depot_code().eq(depot.to_owned())?))
 }
 
 /// Compiles only where `path` is of the kind `T`.
@@ -248,6 +375,26 @@ fn to_chase(city: &str, above: f64) -> Result<Filter<Invoice>, WriteError> {
         .or(paths.total().gt(above)?)
         .and(paths.customer().nest(customer.address().nest(in_city)))
         .and(paths.paid_at().exists(false)))
+}
+
+/// The rows of the README's tables for the arms of an enum under a tag: what an arm filter
+/// writes, and an arm that holds no model.
+fn written_by_an_arm() -> Result<Vec<(&'static str, String)>, WriteError> {
+    let (paths, payment) = (Invoice::MONGO_FIELDS, Payment::MONGO_FIELDS);
+    Ok(vec![
+        written!(BY_COURIER),
+        written!(BY_COURIER.and(Courier::MONGO_FIELDS.name().eq("Acme".to_owned())?)),
+        written!(transport_schema::Filter::from(BY_COURIER).negated()),
+        written!(payment.kind__cash()),
+        written!(paths.payment().nest(payment.kind__cash())),
+        written!(
+            payment
+                .card()
+                .last4()
+                .eq("4242".to_owned())?
+                .and(payment.kind__card())
+        ),
+    ])
 }
 
 /// The rows of the README's table for a path of one value every row holds, and for one a row
@@ -397,7 +544,8 @@ fn the_readme_declares_the_builders_that_compile_here() {
     for pinned in DECLARED_BUILDERS
         .into_iter()
         .chain(DECLARED_UNSEEN)
-        .chain([DECLARED_IMPORT])
+        .chain(DECLARED_ARMS)
+        .chain([DECLARED_IMPORT, DECLARED_COUNT])
     {
         assert_declared_and_documented(source, pinned);
     }
@@ -411,6 +559,7 @@ fn the_readme_shows_the_document_each_call_writes() {
         written_by_a_list(),
         written_by_a_model(),
         written_by_joining(),
+        written_by_an_arm(),
     ];
     let missing: Vec<String> = rows
         .into_iter()
@@ -457,4 +606,41 @@ fn the_readme_names_the_kind_each_path_of_an_invoice_is() {
     held::<shipment_schema::Field<Shipment, Carrier>>(&Shipment::MONGO_FIELDS.carrier());
     held::<Field<Invoice, f64>>(&TOTAL);
     assert_declared_and_documented(include_str!("paths.rs"), DECLARED_CONST);
+}
+
+#[test]
+fn the_readme_names_the_function_and_the_model_of_each_arm() {
+    let rows = [
+        arm!(Transport.type__by_courier(): r#"#[serde(tag = "type")]"#, r#"#[serde(rename = "by-courier")] ByCourier(Courier)"#),
+        arm!(Transport.type__collected(): r#"#[serde(tag = "type")]"#, "Collected"),
+        arm!(Paper.doc_type__past_due(): r#"#[serde(tag = "docType", content = "body", rename_all = "kebab-case")]"#, "PastDue(Notice)"),
+    ];
+    let source = squeezed(include_str!("paths.rs"));
+    for (named, row) in rows {
+        let [attribute, variant, function] = row;
+        assert!(
+            row_is_documented(&row, None),
+            "the README has no row for this arm:\n| `{attribute}` | `{variant}` | `{function}` |"
+        );
+        let declared = format!("{}pubenum{named}{{", squeezed(attribute));
+        assert!(
+            source.contains(&declared) && source.contains(&format!("{},", squeezed(variant))),
+            "`{named}` is no longer declared under `{attribute}` with `{variant}`"
+        );
+    }
+    for shown in SHOWN_ARM_MODELS {
+        assert_documented(shown);
+    }
+    held::<transport_schema::ArmFilter<Transport, Courier>>(&BY_COURIER);
+    held::<transport_schema::ArmFilter<Transport, ()>>(&Transport::MONGO_FIELDS.type__collected());
+    held::<paper_schema::ArmFilter<Paper, Courier>>(&Paper::MONGO_FIELDS.doc_type__forwarded());
+    held::<paper_schema::ArmFilter<Paper, Notice>>(&Paper::MONGO_FIELDS.doc_type__past_due());
+    held::<payment_schema::ArmFilter<Payment, ()>>(&Payment::MONGO_FIELDS.kind__card());
+    assert_eq!(
+        format!("{:?}", transport_schema::Arm::ByCourier),
+        "ByCourier"
+    );
+    // The call the README counts those rows with compiles, and is never run.
+    held(&counted);
+    assert_documented(&format!("| `{DECLARED_COUNT}` | the count of those rows |"));
 }

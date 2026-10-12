@@ -17,6 +17,10 @@ use super::{
     names_the_unreadable_row, readable, seeded_id, unreadable, whole_number_as_text,
 };
 
+/// The rows a courier carries, as the arm of the enum's own paths asks for them.
+const BY_COURIER: shipping_schema::ArmFilter<Shipping, Courier> =
+    Shipping::MONGO_FIELDS.type__by_courier();
+
 /// A row whose total is of whatever type fills `T`: an unsigned one can hold more than BSON has
 /// a number for.
 #[model_schema(decode_with, default_types(T = u32))]
@@ -33,6 +37,36 @@ struct Tally {
     #[serde(skip)]
     seen: Cell<u32>,
     total: u32,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+struct Wagon {
+    number: String,
+}
+
+/// An enum under a tag: each arm of its paths answers a filter over its rows.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "type")]
+enum Shipping {
+    #[serde(rename = "by-courier")]
+    ByCourier(Courier),
+    #[serde(rename = "by-rail")]
+    ByRail(Box<Wagon>),
+    Collected,
+    #[serde(rename_all = "camelCase")]
+    Locker {
+        bay_number: String,
+    },
+}
+
+/// Declared below `Shipping`, which has not seen it where it is expanded.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, Serialize)]
+struct Courier {
+    name: String,
+    region: String,
 }
 
 /// Compiles only where what awaits an operation on a row no two threads share can be moved to
@@ -60,6 +94,12 @@ const fn compiles<C>(_checked: &C)
 where
     C: Fn(&Collection<Document>),
 {
+}
+
+/// Compiles only where a delete takes an arm filter, and what awaits it can be moved to another
+/// thread.
+fn a_delete_takes_an_arm_filter(held: &Collection<Document>) {
+    sendable(&Shipping::delete_many(held, BY_COURIER));
 }
 
 /// Compiles only where the error crosses threads and borrows nothing.
@@ -339,6 +379,33 @@ async fn a_read_holds_the_options_it_is_given() {
              hint: Some({hint:?}), collation: Some({collation:?}), resolvers: 1, .. }}"
         )
     );
+}
+
+/// An arm filter is a filter over the rows of its enum: a read holds its document, and a delete
+/// takes one.
+#[tokio::test]
+async fn an_operation_takes_an_arm_filter_over_the_types_rows() {
+    let never = never_connected().await;
+    let found = Shipping::find(&never, BY_COURIER);
+    assert_eq!(
+        format!("{found:?}"),
+        format!(
+            "Read {{ filter: {:?}, sort: None, limit: None, skip: None, hint: None, collation: \
+             None, resolvers: 0, .. }}",
+            doc! { "type": { "$eq": "by-courier" } }
+        )
+    );
+    let named = Courier::MONGO_FIELDS.name().eq("Acme".to_owned()).unwrap();
+    let counted = Shipping::count(&never, BY_COURIER.and(named));
+    assert_eq!(
+        format!("{counted:?}"),
+        format!(
+            "Read {{ filter: {:?}, sort: None, limit: None, skip: None, hint: None, collation: \
+             None, resolvers: 0, .. }}",
+            doc! { "$and": [{ "type": { "$eq": "by-courier" } }, { "name": { "$eq": "Acme" } }] }
+        )
+    );
+    compiles(&a_delete_takes_an_arm_filter);
 }
 
 #[tokio::test]

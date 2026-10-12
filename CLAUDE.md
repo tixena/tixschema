@@ -116,7 +116,7 @@ just ci
    - `zod.rs`: Generates Zod v4 schema strings (`z.string()`, `z.union()`, etc.), embeds examples in `.meta()`
    - `jsonschema.rs`: Generates JSON schema objects
    - `object_id.rs`: MongoDB ObjectId type detection and schema generation
-   - `recovering_decode.rs`: Generates what `#[model_schema(decode_with)]` adds to a type: `from_value_with` and `from_value_piped`, `from_bson_with` and `from_bson_piped` under `bson`, the walker of each, and the callback's and the resolvers' types in `{type}_schema`. `recovering_decode/enums.rs` holds the walkers of an enum. Under `mongodb` three more files emit into the same module and onto the same type: `recovering_decode/query.rs` the query types (`Filter`, `Update`, the path kinds, `nest`), `recovering_decode/fields.rs` the type's own typed paths (`MongoFields`, `MONGO_FIELDS`, one function per field), and `recovering_decode/operations.rs` the operations (`find_one`, `find`, `count`, `insert_one`, the updates and the deletes, with `Read` and `OperationError`)
+   - `recovering_decode.rs`: Generates what `#[model_schema(decode_with)]` adds to a type: `from_value_with` and `from_value_piped`, `from_bson_with` and `from_bson_piped` under `bson`, the walker of each, and the callback's and the resolvers' types in `{type}_schema`. `recovering_decode/enums.rs` holds the walkers of an enum, and the names its typed paths read a variant by (`written_variants`, `tag_arms`). Under `mongodb` three more files emit into the same module and onto the same type: `recovering_decode/query.rs` the query types (`Filter`, `ArmFilter`, `Update`, the path kinds, `nest`), `recovering_decode/fields.rs` the type's own typed paths (`MongoFields`, `MONGO_FIELDS`, one function per field, and one per arm of an enum under a tag), and `recovering_decode/operations.rs` the operations (`find_one`, `find`, `count`, `insert_one`, the updates and the deletes, with `Read` and `OperationError`)
    - `model_schema_prop.rs`: Parses field-level customization attributes (`pattern`, `minLength`, `maxLength`, `minimum`, `maximum`, `literal`, `as`, `preprocess`)
 
 5. **Code Generation** ([generation/](src/generation/))
@@ -184,7 +184,7 @@ The crate uses optional features for minimal dependencies:
 - `serde`: Enables Serde attribute parsing and field renaming
 - `zod`: Enables Zod schema generation (v4 syntax)
 - `jsonschema`: Enables `json_schema()` method generation
-- `mongodb`: Enables MongoDB ObjectId type support; turns on `bson`. On a type that opts in with `decode_with` it also generates the typed field paths (`MONGO_FIELDS`, one function per field, `nest` below a nested type), the filters and updates they build, and the operations over a `mongodb::Collection<bson::Document>` of the type's rows. A consuming crate that declares such a type lists the `mongodb` driver, built for the major version of `bson` it lists
+- `mongodb`: Enables MongoDB ObjectId type support; turns on `bson`. On a type that opts in with `decode_with` it also generates the typed field paths (`MONGO_FIELDS`, one function per field, `nest` below a nested type, and `<tag>__<value>()` for each arm of an enum under a tag), the filters and updates they build, and the operations over a `mongodb::Collection<bson::Document>` of the type's rows. A consuming crate that declares such a type lists the `mongodb` driver, built for the major version of `bson` it lists
 - `bson`: BSON support, turned on by `mongodb`; turns on `serde`. Generates `from_bson_with` and `from_bson_piped` on types that opt in with `decode_with`
 - `typescript`: Enables TypeScript type generation
 - `chrono`: Enables chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`)
@@ -995,17 +995,47 @@ sections are the consumer's view; this is what a change to the emitter has to ke
   reaches below a whole value as it does below a model.
 - **An `is_{variant}` keeps its name.** `enum_paths` claims the names of the asks first, and the
   function of a variant that meets one is numbered by `unclaimed`. A struct of paths carries no
-  inherent function but the members' own and the asks, so a field named `built`, `plain`, `key`
-  or `nest` builds. `MongoFields::built` is on the struct of a one-value type, and of a tuple
-  that keeps a marker beside its slots (`Own::keeping`), neither of which has a field function.
+  inherent function but the members' own, the asks and, on an enum under a tag key, the arm
+  functions, so a field named `built`, `plain`, `key` or `nest` builds. `MongoFields::built` is
+  on the struct of a one-value type, and of a tuple that keeps a marker beside its slots
+  (`Own::keeping`), neither of which has a field function.
+- **An enum under a tag key has one filter per arm, and a name two functions would take is
+  refused.** `tag_arms` in `recovering_decode/enums.rs` is the one seam: for an enum
+  `Tagging::of` reads as `Internal` or `Adjacent` it answers the tag key and one `TagArm` per
+  variant serde writes, with the value serde writes for it and the name of its function,
+  `<tag>__<value>`, each side through `snake_form`. `written_variants` beside it is where a
+  variant's written name and the stem of its `is_{stem}` are read, for every enum: `fields.rs`
+  computes neither.
+  - `Emitter::arms` writes the functions in an `impl` of the struct of paths **beside the
+    type**, as a hooked path's function is, so the model an arm holds is named as its author
+    wrote it and an enum declared inside a function builds. `Own::naming_itself` writes `Self`
+    as the enum there. Each is a `const fn` that answers `ArmFilter<Root, M>`.
+  - `ArmFilter` (`query.rs`, in every flagged type's module) holds the tag, the value, the arm's
+    place and the conditions, and no document until it is turned into one. The place is
+    `MongoPath::ROOT` under a tag written beside the fields and the content key under
+    `content`. Its `and` takes a filter over the rows of `M` by the two standard traits and
+    writes it at the place through `nested_filter`. It carries `Into<bson::Document>` and
+    `AsRef<PhantomData<Root>>` itself, and `Filter` converts from it.
+  - `M` is what `nest` reaches below a path over the variant's one slot (`arm_model`, through
+    `taken` and `through_wrappers`), and `()` for any other variant and for a map. No registry
+    is asked, so a model declared above, one declared below and one of another crate are one
+    case.
+  - `Arm`, in the enum's own module, has one unit arm per variant that has a function, under
+    the variant's ident, with no serde attribute. Nothing emitted reads it.
+  - `tag_arm_refusals` refuses what would let two functions of the struct take one name: `__`
+    in a variant's Rust name, two values with one snake case, and an arm function that meets an
+    `is_{variant}`. `decode_with_guard_errors` raises them under `serde`, so the verdict is the
+    same with `mongodb` on and off, and an enum without `decode_with` is refused nothing.
+  - A name that is no identifier, under a tag key whose snake case starts with a digit, is
+    written as no function and no arm (`function_ident`).
 - **A path is under the name serde writes.** `parse_written_renames` reads `rename`, `rename_all`
   and `rename_all_fields` for their `serialize` side in every build, where the schema surfaces
   refuse a list whose two sides differ.
 - **Two standard traits join filters and updates across modules.** A `Filter<Root>` is
   `Into<bson::Document>` and `AsRef<PhantomData<Root>>`, and an `Update<Root>` is
   `Into<bson::Document>` and `AsRef<PhantomData<fn(Root) -> Root>>`. `Filter::and`, `Filter::or`,
-  `Update::and`, `ModelList::elem_match`, `ModelList::pull`, `nest` and every operation take a
-  filter or an update by those bounds, never as the module's own type: that is what lets a filter
+  `ArmFilter::and`, `Update::and`, `ModelList::elem_match`, `ModelList::pull`, `nest` and every
+  operation take a filter or an update by those bounds, never as the module's own type: that is what lets a filter
   of another module over the same rows join and be taken, a filter over a nested model be
   nested, and what refuses an update where a filter is asked.
   `a_filter_and_an_update_each_carry_a_marker_of_their_own` pins each bound.
@@ -1027,7 +1057,8 @@ sections are the consumer's view; this is what a change to the emitter has to ke
 - **The lists of what the flag adds are pinned.** `ADDED_TYPE_NAMES`, with `ADDED_TYPE_COUNT`, is
   every type name the flag puts into a schema module, the ones `mongodb` adds under their own
   `cfg`: `reading_the_authors_scope` reads past those names, and
-  `every_type_the_flag_adds_is_a_name_read_past` holds the list to what the module declares.
+  `every_type_the_flag_adds_is_a_name_read_past` holds the list to what the module of a struct
+  and that of an enum under a tag declare.
   `OPERATIONS` in `recovering_decode/tests.rs` is what `mongodb` adds to the type. A type or a
   method the flag gains joins its list in the same change.
 - **The emitted code names only what both major versions of the `bson` library have.** Every BSON

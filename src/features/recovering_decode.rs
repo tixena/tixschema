@@ -52,10 +52,14 @@ const ADDED_TYPE_COUNT: usize = 15;
     any(feature = "typescript", feature = "zod", feature = "jsonschema"),
     feature = "mongodb"
 ))]
-const ADDED_TYPE_COUNT: usize = 33;
+const ADDED_TYPE_COUNT: usize = 35;
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
+    #[cfg(feature = "mongodb")]
+    "Arm",
+    #[cfg(feature = "mongodb")]
+    "ArmFilter",
     #[cfg(feature = "mongodb")]
     "AsFilter",
     #[cfg(feature = "mongodb")]
@@ -3732,6 +3736,17 @@ fn type_impls(
         #(#impls)*
         #of_paths
     }
+}
+
+/// `base`, numbered where `taken` already holds it.
+fn unclaimed(base: &str, taken: &[String]) -> String {
+    let mut name = base.to_owned();
+    let mut number = 1_u32;
+    while taken.contains(&name) {
+        number = number.saturating_add(1);
+        name = format!("{base}{number}");
+    }
+    name
 }
 
 /// A name for a type parameter of a method's own: `base`, numbered where the item writes that

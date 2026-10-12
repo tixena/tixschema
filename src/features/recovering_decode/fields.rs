@@ -11,10 +11,10 @@ use syn::{
 };
 
 use super::aliases::PRIMITIVES;
-use super::enums::Tagging;
+use super::enums::{TagArm, Tagging, WrittenVariant, tag_arms, written_variants};
 use super::{
     Step, TypedPaths, bound_parameters, hooked_leaf, starts_at_a_parameter, type_arguments,
-    unclaimed_parameter, value_slot, written_names,
+    unclaimed, unclaimed_parameter, value_slot, written_names,
 };
 use crate::features::serde::{
     has_serde_skip_serializing, parse_serde_field_attributes, parse_serde_field_hooks,
@@ -24,9 +24,9 @@ use crate::field_type::{
     FieldDefType, get_field_def, is_map_wrapper, is_refused_sequence_wrapper, is_sequence_wrapper,
     is_transparent_wrapper,
 };
-use crate::model_schema::helper_name_stem;
+use crate::model_schema::{helper_name_stem, written_spelling};
 use crate::rename_rule::resolve_rename_rule;
-use crate::utils::{Declared, declared, ident_schema_module_name, to_snake_case, written_type};
+use crate::utils::{Declared, declared, ident_schema_module_name, written_type};
 
 /// How many modules below the type its members module is.
 const IN_MEMBERS: usize = 2;
@@ -187,6 +187,72 @@ struct Emitter<'item> {
 }
 
 impl<'item> Emitter<'item> {
+    /// The arms of an enum serde writes under `tag`: `Arm` for its schema module, and beside the
+    /// type one function per arm of its struct of paths, where the model an arm holds is named as
+    /// its author wrote it. An arm whose function would be no identifier has neither.
+    fn arms(&mut self, tag: &str, arms: &[TagArm<'_>], put: &Put<'_>) -> TokenStream {
+        let own = &self.own;
+        let (kinds, root) = (own.kinds(0), &own.root);
+        let place = if let Put::Under(content) = put {
+            quote! { #kinds MongoPath::at(#content) }
+        } else {
+            quote! { #kinds MongoPath::ROOT }
+        };
+        let named: Vec<(Ident, &TagArm<'_>)> = arms
+            .iter()
+            .filter_map(|arm| Some((function_ident(&arm.function)?, arm)))
+            .collect();
+        if named.is_empty() {
+            return TokenStream::new();
+        }
+        let functions = named.iter().map(|(function, arm)| {
+            let value = &arm.value;
+            let held = arm_model(arm.variant).map(|ty| own.naming_itself(ty.to_token_stream()));
+            let asked = held.as_ref().map_or_else(
+                || "the tag alone".to_owned(),
+                |model| {
+                    format!(
+                        "the tag is asked, and `and` takes conditions on the `{}` it holds",
+                        written_spelling(model)
+                    )
+                },
+            );
+            let told = format!("Rows of the arm serde writes as `{value}`: {asked}.");
+            let model = held.unwrap_or_else(|| quote! { () });
+            quote! {
+                #[doc = #told]
+                #[must_use]
+                pub const fn #function(&self) -> #kinds ArmFilter<#root, #model> {
+                    #kinds ArmFilter::of(#tag, #value, #place)
+                }
+            }
+        });
+        let writing = own.writing(&own.declared(0, None), 0);
+        let (impl_generics, type_generics, bounds) = writing.split_for_impl();
+        self.beside.push(quote! {
+            impl #impl_generics #kinds MongoFields #type_generics #bounds {
+                #(#functions)*
+            }
+        });
+        let told = format!(
+            "The arms of `{}`, one per variant serde writes.",
+            own.name.unraw()
+        );
+        let each = named.iter().map(|(_function, arm)| {
+            let mut name = arm.variant.ident.clone();
+            name.set_span(Span::call_site());
+            name
+        });
+        quote! {
+            #[doc = #told]
+            #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+            #[non_exhaustive]
+            pub enum Arm {
+                #(#each,)*
+            }
+        }
+    }
+
     /// What one variant holds, where serde writes it, as one member. `None` for a variant with no
     /// path of its own.
     fn content(&mut self, variant: &Variant, of: &OfVariant<'_>) -> Option<Member> {
@@ -854,6 +920,35 @@ impl Own<'_> {
         }
     }
 
+    /// `tokens`, a type written beside the flagged type, with `Self` written as the type itself:
+    /// what an `impl` of another type beside it reads.
+    fn naming_itself(&self, tokens: TokenStream) -> TokenStream {
+        let mut named: Vec<TokenTree> = Vec::new();
+        let mut rest = tokens.into_iter().peekable();
+        while let Some(token) = rest.next() {
+            match token {
+                TokenTree::Group(group) => {
+                    let mut inner =
+                        Group::new(group.delimiter(), self.naming_itself(group.stream()));
+                    inner.set_span(group.span());
+                    named.push(TokenTree::Group(inner));
+                }
+                TokenTree::Ident(ident) if ident == "Self" => {
+                    let leads = matches!(
+                        rest.peek(),
+                        Some(TokenTree::Punct(mark))
+                            if mark.as_char() == ':' && mark.spacing() == Spacing::Joint
+                    );
+                    named.extend(self.renamed(&ident, leads, 0));
+                }
+                other @ (TokenTree::Ident(_) | TokenTree::Punct(_) | TokenTree::Literal(_)) => {
+                    named.push(other);
+                }
+            }
+        }
+        named.into_iter().collect()
+    }
+
     /// What names `ident` a module `depth` below the type, where it starts a path that goes on
     /// when `leads`. A name alone is a member of the module above, unless it is a keyword, a
     /// primitive, a prelude name or a parameter; a longer path is read as its author wrote it.
@@ -1048,17 +1143,7 @@ impl Own<'_> {
     /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
     /// ```
     fn typed(&self, ty: &Type, place: &Place, below: bool) -> Option<Member> {
-        let (kinds, value) = match held(ty) {
-            Held::List(inner) => (["ListField", "ModelList"], inner),
-            Held::Map => return None,
-            Held::Optional(inner) => {
-                if matches!(held(inner), Held::Map) {
-                    return None;
-                }
-                (["OptionalField", "OptionalModel"], inner)
-            }
-            Held::Value => (["Field", "Model"], ty),
-        };
+        let (kinds, value) = taken(ty)?;
         // A value serde writes whole is a plain one, with every comparison its own: a filter
         // over the paths of one has no key to write an operator under.
         let model = self
@@ -1347,23 +1432,18 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
         }
         Tagging::Untagged => (Put::InPlace, None),
     };
-    let container = parse_written_renames(&item.attrs);
+    let fields_rule = parse_written_renames(&item.attrs).rename_all_fields;
     let mut holding: Vec<(String, Member)> = Vec::new();
     let mut asks: Vec<Ask> = Vec::new();
-    for variant in &item.variants {
-        if has_serde_skip_serializing(&variant.attrs) {
-            continue;
-        }
+    for WrittenVariant {
+        name,
+        stem,
+        variant,
+    } in written_variants(item)
+    {
         let rust_name = variant.ident.unraw().to_string();
-        let name = parse_written_renames(&variant.attrs)
-            .rename
-            .unwrap_or_else(|| {
-                resolve_rename_rule(container.rename_all.as_deref()).apply_to_variant(&rust_name)
-            });
-        let taken: Vec<String> = asks.iter().map(|ask| ask.stem.clone()).collect();
-        let stem = unclaimed(&to_snake_case(&rust_name), &taken);
         let of = OfVariant {
-            fields_rule: container.rename_all_fields.as_deref(),
+            fields_rule: fields_rule.as_deref(),
             name: &name,
             put: &put,
             read: !parse_serde_key_omission(&variant.attrs).skips_deserializing,
@@ -1392,7 +1472,10 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
         members.push((member_ident(&name), member));
         taken.push(name);
     }
-    let (declared, built) = emitter.laid_out(Members::Named(members), asked.as_ref());
+    let (mut declared, built) = emitter.laid_out(Members::Named(members), asked.as_ref());
+    if let Some((tag, arms)) = tag_arms(item) {
+        declared.extend(emitter.arms(&tag, &arms, &put));
+    }
     emitter.emitted(&declared, &built, false)
 }
 
@@ -1745,6 +1828,24 @@ pub fn struct_paths(item: &ItemStruct, written: &[String]) -> TypedPaths {
     emitter.emitted(&declared, &built, one_value)
 }
 
+/// The model the arm of `variant` holds: what a path kind over its one slot names as the model
+/// `nest` reaches. `None` for a variant with fields of its own, with several slots, with nothing
+/// or with one slot serde never writes, and for a map.
+fn arm_model(variant: &Variant) -> Option<&Type> {
+    let Fields::Unnamed(slots) = &variant.fields else {
+        return None;
+    };
+    let mut written = slots.unnamed.iter();
+    let (Some(only), None) = (written.next(), written.next()) else {
+        return None;
+    };
+    if has_serde_skip_serializing(&only.attrs) {
+        return None;
+    }
+    let (_kinds, value) = taken(&only.ty)?;
+    Some(through_wrappers(value).0)
+}
+
 /// The `is_{variant}` methods of an enum's struct of paths, by what names a variant in the form
 /// serde writes the enum in: each reads the key that names it as the enum's own level writes it.
 fn asked(by: &Named<'_>, asks: &[Ask], own: &Own<'_>) -> TokenStream {
@@ -1784,6 +1885,14 @@ fn continues_a_path(tokens: &[TokenTree]) -> bool {
         return false;
     };
     first.as_char() == ':' && first.spacing() == Spacing::Joint && second.as_char() == ':'
+}
+
+/// `name` as the name of a function, at the call site's span. `None` where it is no identifier,
+/// as under a tag key whose snake case starts with a digit.
+fn function_ident(name: &str) -> Option<Ident> {
+    syn::parse_str::<Ident>(name)
+        .is_ok()
+        .then(|| format_ident!("{name}"))
 }
 
 /// How serde writes a value of type `ty`, read through the wrappers it writes as the value they
@@ -1968,6 +2077,19 @@ fn supers(depth: usize) -> TokenStream {
     quote! { #(#each)* }
 }
 
+/// What an operator over a value of type `ty` takes, with the kinds a path over it is where the
+/// value is a plain one and where it is a model: what a list or an `Option` holds, or the value
+/// itself. `None` for a map, whose keys are data.
+fn taken(ty: &Type) -> Option<([&'static str; 2], &Type)> {
+    match held(ty) {
+        Held::List(inner) => Some((["ListField", "ModelList"], inner)),
+        Held::Map => None,
+        Held::Optional(inner) => (!matches!(held(inner), Held::Map))
+            .then_some((["OptionalField", "OptionalModel"], inner)),
+        Held::Value => Some((["Field", "Model"], ty)),
+    }
+}
+
 /// `ty` read through the wrappers serde writes as the value they hold, and whether it had any.
 fn through_wrappers(ty: &Type) -> (&Type, bool) {
     let mut inner = written_type(ty);
@@ -1990,17 +2112,6 @@ fn through_wrappers(ty: &Type) -> (&Type, bool) {
         inner = written_type(held_type);
         wrapped = true;
     }
-}
-
-/// `base`, numbered where `taken` already holds it.
-fn unclaimed(base: &str, taken: &[String]) -> String {
-    let mut name = base.to_owned();
-    let mut number = 1_u32;
-    while taken.contains(&name) {
-        number = number.saturating_add(1);
-        name = format!("{base}{number}");
-    }
-    name
 }
 
 /// Whether serde writes `variant` as an object under its name. One that holds nothing is written
