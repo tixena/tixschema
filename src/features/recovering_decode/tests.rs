@@ -53,6 +53,15 @@ const FLATTENING: &str = "pub struct Entry { #[serde(flatten)] pub audit: Audit,
 const FLATTENING_A_PARAMETER: &str =
     "pub struct Envelope<T> { #[serde(flatten)] pub body: T, pub id: String }";
 
+/// An enum under a tag written beside what each variant holds, and one under a tag and a content
+/// key: each has one arm per variant serde writes.
+const SHIPPING: &str = "#[serde(tag = \"type\")] pub enum Shipping { \
+     #[serde(rename = \"by-courier\")] ByCourier(Courier), \
+     #[serde(rename = \"by-rail\")] ByRail(Box<Wagon>), Collected, \
+     #[serde(rename_all = \"camelCase\")] Locker { bay_number: String } }";
+const PAPER: &str = "#[serde(tag = \"docType\", content = \"body\", rename_all = \"kebab-case\")] \
+     pub enum Paper { PastDue(Notice), Receipt }";
+
 /// What `mongodb` adds to every type beside its BSON entry points, in the order written: the
 /// reads and the count, the writes, and the read and the write of one stored row they share.
 const OPERATIONS: [&str; 12] = [
@@ -300,6 +309,25 @@ fn paths_module_items(source: &str) -> proc_macro2::TokenStream {
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
 ))]
 fn paths_module_items(_source: &str) -> proc_macro2::TokenStream {
+    proc_macro2::TokenStream::new()
+}
+
+/// What the typed paths of the enum `source` declares add to its schema module.
+#[cfg(all(
+    feature = "mongodb",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn enum_paths_module_items(source: &str) -> proc_macro2::TokenStream {
+    let item: syn::ItemEnum = syn::parse_str(source).unwrap();
+    super::fields::enum_paths(&item, &[]).module_items
+}
+
+/// A build without `mongodb` writes no typed path.
+#[cfg(all(
+    not(feature = "mongodb"),
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn enum_paths_module_items(_source: &str) -> proc_macro2::TokenStream {
     proc_macro2::TokenStream::new()
 }
 
@@ -921,6 +949,7 @@ fn the_query_types_are_declared_under_mongodb_alone_and_none_is_exhaustive() {
     let query_types = [
         "MongoPath",
         "Filter",
+        "ArmFilter",
         "Update",
         "AsFilter",
         "AsUpdate",
@@ -976,6 +1005,7 @@ fn each_query_type_has_the_operators_of_its_kind() {
     for (named, operators) in [
         ("MongoPath", &["at", "key"][..]),
         ("Filter", &["raw", "and", "or", "negated", "into_document"]),
+        ("ArmFilter", &["of", "and", "into_document"]),
         ("Update", &["raw", "and", "into_document"]),
         (
             "Field",
@@ -1099,6 +1129,8 @@ fn a_filter_and_an_update_each_carry_a_marker_of_their_own() {
     let packed: String = emitted.to_string().split_whitespace().collect();
     for carried in [
         "impl<Root>::core::convert::AsRef<::core::marker::PhantomData<Root>>forFilter<Root>",
+        "impl<Root,M:?::core::marker::Sized>::core::convert::AsRef<::core::marker::PhantomData<Root>>\
+         forArmFilter<Root,M>",
         "impl<Root>::core::convert::AsRef<::core::marker::PhantomData<fn(Root)->Root>>forUpdate<Root>",
     ] {
         assert!(packed.contains(carried), "missing `{carried}`");
@@ -1112,7 +1144,7 @@ fn a_filter_and_an_update_each_carry_a_marker_of_their_own() {
     ] {
         assert!(packed.contains(taken), "missing `{taken}`");
     }
-    assert_eq!(packed.matches("AsRef<").count(), 10);
+    assert_eq!(packed.matches("AsRef<").count(), 12);
     let added: syn::File = syn::parse2(emitted).unwrap();
     let asked: Vec<(String, String)> = query_methods(&added)
         .into_iter()
@@ -1131,6 +1163,7 @@ fn a_filter_and_an_update_each_carry_a_marker_of_their_own() {
         ("Filter::joined", "Root"),
         ("Filter::and", "Root"),
         ("Filter::or", "Root"),
+        ("ArmFilter::and", "M"),
         ("Update::and", "fn (Root) -> Root"),
         ("ModelList::elem_match", "N"),
         ("ModelList::pull", "N"),
@@ -1887,6 +1920,7 @@ fn every_type_the_flag_adds_is_a_name_read_past() {
     every.extend(read_whole_items());
     every.extend(entry_of_items());
     every.extend(paths_module_items("pub struct Named { pub title: String }"));
+    every.extend(enum_paths_module_items(INTERNAL));
     let added: syn::File = syn::parse2(every).unwrap();
     let mut declared: Vec<String> = added
         .items
@@ -1906,6 +1940,8 @@ fn every_type_the_flag_adds_is_a_name_read_past() {
         })
         .collect();
     declared.sort();
+    // A struct and an enum each declare their own `MongoFields`.
+    declared.dedup();
     assert_eq!(declared, ADDED_TYPE_NAMES);
 }
 
@@ -2642,14 +2678,29 @@ fn the_bson_walker_of_each_struct_shape_matches_the_librarys_own_types() {
 
 #[test]
 fn every_enum_form_adds_the_same_methods_and_an_untagged_one_a_method_per_variant() {
-    let forms: [(&str, &[&str]); 5] = [
-        ("pub enum Status { Draft, Published }", &[]),
-        (EXTERNAL, &[]),
-        (INTERNAL, &[]),
-        (ADJACENT, &[]),
-        (UNTAGGED, &["email", "word"]),
+    // An enum under a tag key has one function per arm, in an `impl` of its struct of paths.
+    let forms: [(&str, &[&str], &[&str]); 5] = [
+        ("pub enum Status { Draft, Published }", &[], &[]),
+        (EXTERNAL, &[], &[]),
+        (
+            INTERNAL,
+            &[],
+            &["kind__clear", "kind__solid", "kind__versioned"],
+        ),
+        (
+            ADJACENT,
+            &[],
+            &[
+                "kind__dashed",
+                "kind__hairline",
+                "kind__level",
+                "kind__span",
+                "kind__width",
+            ],
+        ),
+        (UNTAGGED, &["email", "word"], &[]),
     ];
-    for (source, walked) in forms {
+    for (source, walked, arms) in forms {
         let of_source = |stem: &str| {
             let mut named = methods_of(stem);
             named.extend(
@@ -2665,8 +2716,18 @@ fn every_enum_form_adds_the_same_methods_and_an_untagged_one_a_method_per_varian
         }
         named.extend(paths_members());
         let (_attributes, declared) = source.split_once("pub enum ").unwrap();
-        let header = format!("impl {}", declared.split(' ').next().unwrap());
-        assert_eq!(added_enum_impls(source), [(header, named)], "for {source}");
+        let name = declared.split(' ').next().unwrap();
+        let mut impls = vec![(format!("impl {name}"), named)];
+        if cfg!(feature = "mongodb") && !arms.is_empty() {
+            impls.push((
+                format!(
+                    "impl < Root > {}_schema :: MongoFields < Root >",
+                    name.to_lowercase()
+                ),
+                arms.iter().map(|arm| (*arm).to_owned()).collect(),
+            ));
+        }
+        assert_eq!(added_enum_impls(source), impls, "for {source}");
     }
 }
 
@@ -3166,9 +3227,13 @@ fn variants_lists_every_tag_serde_reads_and_none_of_a_variant_it_never_reads() {
             listed > 0 && listed == emitted.matches(variants).count(),
             "for {source}, got: {emitted}"
         );
+        // The typed paths name every variant serde writes, one it never reads back among them.
+        let walkers = emitted
+            .split_once("# [doc = r\" The typed MongoDB paths of this type")
+            .map_or(emitted.as_str(), |(walkers, _paths)| walkers);
         assert!(
-            !emitted.contains(never_read),
-            "for {source}, got: {emitted}"
+            !walkers.contains(never_read),
+            "for {source}, got: {walkers}"
         );
     }
 }
@@ -5342,4 +5407,357 @@ fn the_typed_paths_name_only_what_both_majors_of_the_bson_library_have() {
     for absent in ["doc!", "#[allow", "#[expect", "doc(hidden)"] {
         assert!(!written.contains(absent), "found `{absent}` in: {written}");
     }
+}
+
+/// The tag key of the enum `source` declares and its arms, each as its function, the value serde
+/// writes for it and its variant's name. `None` for an enum serde writes under no tag key.
+fn arms_of(source: &str) -> Option<(String, Vec<[String; 3]>)> {
+    let item: syn::ItemEnum = syn::parse_str(source).unwrap();
+    let (tag, arms) = super::enums::tag_arms(&item)?;
+    let listed = arms
+        .into_iter()
+        .map(|arm| [arm.function, arm.value, arm.variant.ident.to_string()])
+        .collect();
+    Some((tag, listed))
+}
+
+/// What the enum `source` declares is refused, each refusal as its sentence and what it is
+/// spanned on.
+fn arm_refusals_of(source: &str) -> Vec<(String, String)> {
+    let item: syn::ItemEnum = syn::parse_str(source).unwrap();
+    super::enums::tag_arm_refusals(&item)
+        .iter()
+        .map(|refusal| {
+            (
+                refusal.to_string(),
+                refusal.span().source_text().unwrap_or_default(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn snake_form_writes_the_words_of_a_tag_key_and_of_a_value_in_lower_case() {
+    for (text, snake) in [
+        ("type", "type"),
+        ("docType", "doc_type"),
+        ("by-courier", "by_courier"),
+        ("PastDue", "past_due"),
+        ("pastDue", "past_due"),
+        ("PAST_DUE", "past_due"),
+        ("past.due", "past_due"),
+        ("HTTPServer", "http_server"),
+        ("v2Beta", "v2_beta"),
+        ("@type", "type"),
+        ("_id", "id"),
+    ] {
+        assert_eq!(super::enums::snake_form(text), snake, "for {text}");
+    }
+    // The README states the rule with four of these.
+    for shown in [
+        "`docType` is `doc_type`",
+        "`HTTPServer` is `http_server`",
+        "`v2Beta` is `v2_beta`",
+        "`@type` is `type`",
+    ] {
+        assert!(
+            include_str!("../../../README.md").contains(shown),
+            "the README no longer says: {shown}"
+        );
+    }
+}
+
+#[test]
+fn an_enum_under_a_tag_key_has_one_arm_per_variant_serde_writes() {
+    let arm = |function: &str, value: &str, variant: &str| {
+        [function.to_owned(), value.to_owned(), variant.to_owned()]
+    };
+    assert_eq!(
+        arms_of(SHIPPING),
+        Some((
+            "type".to_owned(),
+            vec![
+                arm("type__by_courier", "by-courier", "ByCourier"),
+                arm("type__by_rail", "by-rail", "ByRail"),
+                arm("type__collected", "Collected", "Collected"),
+                arm("type__locker", "Locker", "Locker"),
+            ]
+        ))
+    );
+    assert_eq!(
+        arms_of(PAPER),
+        Some((
+            "docType".to_owned(),
+            vec![
+                arm("doc_type__past_due", "past-due", "PastDue"),
+                arm("doc_type__receipt", "receipt", "Receipt"),
+            ]
+        ))
+    );
+    // The value is the one serde writes, and a variant it never writes is no arm.
+    assert_eq!(
+        arms_of(
+            "#[serde(tag = \"kind\")] pub enum Gate { #[serde(skip)] Lost, Open, \
+             #[serde(rename(serialize = \"sent\", deserialize = \"received\"))] Posted, \
+             #[serde(skip_serializing)] Shut, #[serde(skip_deserializing)] Stuck }"
+        ),
+        Some((
+            "kind".to_owned(),
+            vec![
+                arm("kind__open", "Open", "Open"),
+                arm("kind__sent", "sent", "Posted"),
+                arm("kind__stuck", "Stuck", "Stuck"),
+            ]
+        ))
+    );
+    for source in [EXTERNAL, UNTAGGED, "pub enum Status { Draft, Published }"] {
+        assert_eq!(arms_of(source), None, "for {source}");
+    }
+}
+
+#[test]
+fn a_variant_whose_name_holds_two_underscores_is_refused_under_a_tag_key() {
+    for (source, function) in [
+        (
+            "#[serde(tag = \"type\")] pub enum Shipping { By__Courier(Courier), Collected }",
+            "type",
+        ),
+        (
+            "#[serde(tag = \"docType\", content = \"body\")] pub enum Shipping { \
+             By__Courier(Courier), Collected }",
+            "doc_type",
+        ),
+    ] {
+        assert_eq!(
+            arm_refusals_of(source),
+            [(
+                format!(
+                    "variant `By__Courier` holds `__` in its name. Under a tag and \
+                     `decode_with`, `__` parts the tag from the value in the function of each \
+                     arm, `{function}__<value>()`. Rename the variant"
+                ),
+                "By__Courier".to_owned()
+            )],
+            "for {source}"
+        );
+    }
+}
+
+#[test]
+fn two_values_that_read_as_one_in_snake_case_are_refused_under_a_tag_key() {
+    assert_eq!(
+        arm_refusals_of(
+            "#[serde(tag = \"type\")] pub enum Shipping { \
+             #[serde(rename = \"by-courier\")] ByCourier(Courier), Collected, \
+             #[serde(rename = \"by_courier\")] Couriered }"
+        ),
+        [(
+            "variants `ByCourier` and `Couriered` are written `by-courier` and `by_courier` \
+             under the tag `type`, and both read `by_courier` in snake case, so \
+             `type__by_courier()` would answer for both. Rename one of the two values"
+                .to_owned(),
+            "Couriered".to_owned()
+        )]
+    );
+}
+
+#[test]
+fn an_arm_function_that_meets_an_ask_is_refused() {
+    let met = || {
+        (
+            "the arm function `is__parcel()` of variant `Parcel` and `is__parcel()`, which asks \
+             for variant `_Parcel`, would be one function. Rename the variant `_Parcel`"
+                .to_owned(),
+            "_Parcel".to_owned(),
+        )
+    };
+    assert_eq!(
+        arm_refusals_of(
+            "#[serde(tag = \"is\")] pub enum Shipping { Parcel, \
+             #[serde(rename = \"boxed\")] _Parcel }"
+        ),
+        [met()]
+    );
+    // Left to its own name, `_Parcel` is written under a value that reads as `Parcel` does too.
+    assert_eq!(
+        arm_refusals_of("#[serde(tag = \"is\")] pub enum Shipping { Parcel, _Parcel }"),
+        [
+            (
+                "variants `Parcel` and `_Parcel` are written `Parcel` and `_Parcel` under the \
+                 tag `is`, and both read `parcel` in snake case, so `is__parcel()` would answer \
+                 for both. Rename one of the two values"
+                    .to_owned(),
+                "_Parcel".to_owned()
+            ),
+            met()
+        ]
+    );
+}
+
+/// No function is named after a variant serde never writes, and none after a tag where no tag key
+/// is stored.
+#[test]
+fn an_enum_whose_paths_share_no_name_is_refused_nothing() {
+    for source in [
+        SHIPPING,
+        PAPER,
+        "#[serde(tag = \"type\")] pub enum Shipping { \
+         #[serde(skip_serializing)] By__Courier(Courier), Collected }",
+        "pub enum Shipping { By__Courier(Courier), Collected }",
+        "#[serde(untagged)] pub enum Shipping { By__Courier(Courier), Collected }",
+        "pub enum Is { Parcel, _Parcel }",
+    ] {
+        assert_eq!(arm_refusals_of(source), [], "for {source}");
+    }
+}
+
+#[cfg(feature = "mongodb")]
+#[test]
+fn an_arm_is_a_function_written_beside_the_type_that_answers_its_tag() {
+    let packed = |text: &str| text.split_whitespace().collect::<String>();
+    let (module, on_the_type) = typed_enum_paths_of(SHIPPING, &[]);
+    for written in [
+        "impl<Root>shipping_schema::MongoFields<Root>{",
+        "#[must_use]pubconstfntype__by_courier(&self)->shipping_schema::ArmFilter<Root,Courier>\
+         {shipping_schema::ArmFilter::of(\"type\",\"by-courier\",shipping_schema::MongoPath::ROOT)}",
+        "#[must_use]pubconstfntype__by_rail(&self)->shipping_schema::ArmFilter<Root,Wagon>\
+         {shipping_schema::ArmFilter::of(\"type\",\"by-rail\",shipping_schema::MongoPath::ROOT)}",
+        "#[must_use]pubconstfntype__collected(&self)->shipping_schema::ArmFilter<Root,()>\
+         {shipping_schema::ArmFilter::of(\"type\",\"Collected\",shipping_schema::MongoPath::ROOT)}",
+        "#[must_use]pubconstfntype__locker(&self)->shipping_schema::ArmFilter<Root,()>\
+         {shipping_schema::ArmFilter::of(\"type\",\"Locker\",shipping_schema::MongoPath::ROOT)}",
+    ] {
+        assert!(
+            on_the_type.contains(written),
+            "missing `{written}` in: {on_the_type}"
+        );
+    }
+    for told in [
+        "# [doc = \"Rows of the arm serde writes as `by-courier`: the tag is asked, and `and` \
+         takes conditions on the `Courier` it holds.\"]",
+        "# [doc = \"Rows of the arm serde writes as `by-rail`: the tag is asked, and `and` takes \
+         conditions on the `Wagon` it holds.\"]",
+        "# [doc = \"Rows of the arm serde writes as `Collected`: the tag alone.\"]",
+        "# [doc = \"Rows of the arm serde writes as `Locker`: the tag alone.\"]",
+    ] {
+        assert!(
+            on_the_type.contains(&packed(told)),
+            "missing `{told}` in: {on_the_type}"
+        );
+    }
+    let arms = packed(
+        "# [doc = \"The arms of `Shipping`, one per variant serde writes.\"] \
+         # [derive (Clone , Copy , Debug , Eq , PartialEq)] # [non_exhaustive] \
+         pub enum Arm { ByCourier , ByRail , Collected , Locker , }",
+    );
+    assert!(module.contains(&arms), "missing `{arms}` in: {module}");
+    assert!(!module.contains("__"), "got: {module}");
+    assert!(!module.contains("#[serde"), "got: {module}");
+}
+
+/// What an arm holds is written under the content key, which is the arm's place.
+#[cfg(feature = "mongodb")]
+#[test]
+fn an_arm_of_an_adjacently_tagged_enum_is_placed_at_the_content_key() {
+    let (module, on_the_type) = typed_enum_paths_of(PAPER, &[]);
+    for written in [
+        "impl<Root>paper_schema::MongoFields<Root>{",
+        "pubconstfndoc_type__past_due(&self)->paper_schema::ArmFilter<Root,Notice>\
+         {paper_schema::ArmFilter::of(\"docType\",\"past-due\",paper_schema::MongoPath::at(\"body\"))}",
+        "pubconstfndoc_type__receipt(&self)->paper_schema::ArmFilter<Root,()>\
+         {paper_schema::ArmFilter::of(\"docType\",\"receipt\",paper_schema::MongoPath::at(\"body\"))}",
+    ] {
+        assert!(
+            on_the_type.contains(written),
+            "missing `{written}` in: {on_the_type}"
+        );
+    }
+    assert!(
+        module.contains("pubenumArm{PastDue,Receipt,}"),
+        "got: {module}"
+    );
+}
+
+/// The model is the one `nest` reaches below a path over the slot, named as its author wrote it.
+#[cfg(feature = "mongodb")]
+#[test]
+fn an_arm_holds_the_model_a_path_over_its_one_slot_reaches() {
+    let (module, on_the_type) = typed_enum_paths_of(
+        "#[serde(tag = \"kind\", content = \"held\")] pub enum Row<T> { Boxed(Box<Inner>), \
+         Filled(Wrapper<T>), Listed(Vec<Inner>), Mapped(HashMap<String, Inner>), \
+         Maybe(Option<Arc<Inner>>), Named { held: Inner }, Nothing, Of(T), Pair(u8, u8), \
+         Then(Box<Self>), Unwritten(#[serde(skip_serializing)] Inner) }",
+        &["Inner"],
+    );
+    assert!(
+        on_the_type.contains(
+            "impl<Root,T:::serde::Serialize>row_schema::MongoFields<Root,T>\
+             whereRow<T>:::serde::Serialize{"
+        ),
+        "got: {on_the_type}"
+    );
+    for (arm, model) in [
+        ("boxed", "Inner"),
+        ("filled", "Wrapper<T>"),
+        ("listed", "Inner"),
+        ("mapped", "()"),
+        ("maybe", "Inner"),
+        ("named", "()"),
+        ("nothing", "()"),
+        ("of", "T"),
+        ("pair", "()"),
+        ("then", "Row<T>"),
+        ("unwritten", "()"),
+    ] {
+        let written =
+            format!("pubconstfnkind__{arm}(&self)->row_schema::ArmFilter<Root,{model}>{{");
+        assert!(
+            on_the_type.contains(&written),
+            "missing `{written}` in: {on_the_type}"
+        );
+    }
+    assert!(
+        module.contains(
+            "pubenumArm{Boxed,Filled,Listed,Mapped,Maybe,Named,Nothing,Of,Pair,Then,Unwritten,}"
+        ),
+        "got: {module}"
+    );
+}
+
+#[cfg(feature = "mongodb")]
+#[test]
+fn an_enum_serde_writes_under_no_tag_key_has_no_arm() {
+    for source in [EXTERNAL, UNTAGGED, "pub enum Status { Draft, Published }"] {
+        let (module, on_the_type) = typed_enum_paths_of(source, &["Inner"]);
+        let emitted = format!("{module}{on_the_type}");
+        for absent in ["__", "enumArm", "ArmFilter"] {
+            assert!(
+                !emitted.contains(absent),
+                "for {source}, found `{absent}` in: {emitted}"
+            );
+        }
+    }
+}
+
+/// A tag key whose snake case starts with a digit names no function.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_variant_serde_never_writes_and_a_name_that_is_no_identifier_have_no_arm() {
+    let (module, on_the_type) = typed_enum_paths_of(
+        "#[serde(tag = \"kind\")] pub enum Gate { #[serde(skip)] Lost, Open, \
+         #[serde(skip_serializing)] Shut(Inner) }",
+        &["Inner"],
+    );
+    assert!(module.contains("pubenumArm{Open,}"), "got: {module}");
+    let emitted = format!("{module}{on_the_type}");
+    for absent in ["kind__lost", "kind__shut", "Lost", "Shut"] {
+        assert!(!emitted.contains(absent), "found `{absent}` in: {emitted}");
+    }
+    let (numbered, on_the_numbered) =
+        typed_enum_paths_of("#[serde(tag = \"2fa\")] pub enum Gate { Open, Shut }", &[]);
+    let unnamed = format!("{numbered}{on_the_numbered}");
+    for absent in ["__", "enumArm", "ArmFilter"] {
+        assert!(!unnamed.contains(absent), "found `{absent}` in: {unnamed}");
+    }
+    assert!(numbered.contains("pubfnis_open("), "got: {numbered}");
 }

@@ -9,17 +9,17 @@ use core::iter::once;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{ToTokens as _, format_ident, quote};
 use syn::ext::IdentExt as _;
-use syn::{Fields, ItemEnum, Type, parse_quote};
+use syn::{Fields, ItemEnum, Type, Variant, parse_quote};
 
 use super::aliases::Reach;
 use super::{
     Arm, Casing, FieldValidator, Handed, Keyed, Lookup, RecoveringDecode, Shape, Step, TypedPaths,
     Walk, Walker, Written, added_to, binding, flattened_walker_call, not_the_shape,
-    path_expression, slot_validator, written_names,
+    path_expression, slot_validator, unclaimed, written_names,
 };
 use crate::features::serde::{
-    parse_read_renames, parse_serde_field_attributes, parse_serde_key_omission,
-    parse_serde_type_attributes, parse_written_renames,
+    has_serde_skip_serializing, parse_read_renames, parse_serde_field_attributes,
+    parse_serde_key_omission, parse_serde_type_attributes, parse_written_renames,
 };
 use crate::field_type::{get_field_def, is_plain_enum};
 use crate::rename_rule::resolve_rename_rule;
@@ -56,6 +56,25 @@ impl Tagging {
             },
         }
     }
+}
+
+/// One arm of an enum serde writes under a tag key, as its arm function names it.
+pub struct TagArm<'item> {
+    /// `<tag>__<value>`, each side in snake case.
+    pub function: String,
+    /// The value serde writes under the tag for the variant.
+    pub value: String,
+    pub variant: &'item Variant,
+}
+
+/// One variant serde writes, as the typed paths of its enum name it.
+pub struct WrittenVariant<'item> {
+    /// The name serde writes the variant under.
+    pub name: String,
+    /// The variant's Rust name in snake case, numbered where an earlier variant reads the same:
+    /// `is_{stem}` asks for the variant.
+    pub stem: String,
+    pub variant: &'item Variant,
 }
 
 /// One variant as its enum's walker reads it.
@@ -750,6 +769,110 @@ fn missing_tag(tag: &str, expected: &TokenStream) -> TokenStream {
     }
 }
 
+/// `text` in snake case, as an arm function writes a tag key and a value: its words in lower
+/// case, joined by one `_`. A word ends at a character that is no ASCII letter or digit, before
+/// a capital that follows a small letter or a digit, and before a capital a small letter follows
+/// where a capital comes before it.
+pub fn snake_form(text: &str) -> String {
+    let letters: Vec<char> = text.chars().collect();
+    let mut snake = String::new();
+    let mut parted = false;
+    for (at, &letter) in letters.iter().enumerate() {
+        if !letter.is_ascii_alphanumeric() {
+            parted = true;
+            continue;
+        }
+        let before = at.checked_sub(1).and_then(|earlier| letters.get(earlier));
+        let after = letters.get(at.saturating_add(1));
+        let starts_a_word = letter.is_ascii_uppercase()
+            && before.is_some_and(|earlier| {
+                earlier.is_ascii_lowercase()
+                    || earlier.is_ascii_digit()
+                    || (earlier.is_ascii_uppercase() && after.is_some_and(char::is_ascii_lowercase))
+            });
+        if (parted || starts_a_word) && !snake.is_empty() {
+            snake.push('_');
+        }
+        parted = false;
+        snake.push(letter.to_ascii_lowercase());
+    }
+    snake
+}
+
+/// What keeps two functions of the enum's paths from taking one name.
+pub fn tag_arm_refusals(item: &ItemEnum) -> Vec<syn::Error> {
+    let Some((tag, arms)) = tag_arms(item) else {
+        return Vec::new();
+    };
+    let under = snake_form(&tag);
+    let named = |variant: &Variant| variant.ident.unraw().to_string();
+    let in_a_name = arms
+        .iter()
+        .filter(|arm| named(arm.variant).contains("__"))
+        .map(|arm| {
+            let message = format!(
+                "variant `{}` holds `__` in its name. Under a tag and `decode_with`, `__` parts \
+                 the tag from the value in the function of each arm, `{under}__<value>()`. Rename \
+                 the variant",
+                named(arm.variant)
+            );
+            syn::Error::new_spanned(&arm.variant.ident, message)
+        });
+    let of_two_values = arms.iter().enumerate().filter_map(|(at, arm)| {
+        let first = arms
+            .iter()
+            .take(at)
+            .find(|other| other.function == arm.function)?;
+        let message = format!(
+            "variants `{}` and `{}` are written `{}` and `{}` under the tag `{tag}`, and both \
+             read `{}` in snake case, so `{}()` would answer for both. Rename one of the two \
+             values",
+            named(first.variant),
+            named(arm.variant),
+            first.value,
+            arm.value,
+            snake_form(&arm.value),
+            arm.function
+        );
+        Some(syn::Error::new_spanned(&arm.variant.ident, message))
+    });
+    let asks = written_variants(item);
+    let with_an_ask = asks.iter().filter_map(|ask| {
+        let function = format!("is_{}", ask.stem);
+        let arm = arms.iter().find(|arm| arm.function == function)?;
+        let (held, asked) = (named(arm.variant), named(ask.variant));
+        let message = format!(
+            "the arm function `{function}()` of variant `{held}` and `{function}()`, which asks \
+             for variant `{asked}`, would be one function. Rename the variant `{asked}`"
+        );
+        Some(syn::Error::new_spanned(&ask.variant.ident, message))
+    });
+    in_a_name.chain(of_two_values).chain(with_an_ask).collect()
+}
+
+/// The tag key and the arms of an enum serde writes under one: an arm per variant serde writes,
+/// in the order written. `None` for any other enum.
+pub fn tag_arms(item: &ItemEnum) -> Option<(String, Vec<TagArm<'_>>)> {
+    let tag = match Tagging::of(item) {
+        Tagging::Adjacent {
+            content: _content,
+            tag,
+        } => tag,
+        Tagging::Internal { tag } => tag,
+        Tagging::External | Tagging::Plain | Tagging::Untagged => return None,
+    };
+    let under = snake_form(&tag);
+    let arms = written_variants(item)
+        .into_iter()
+        .map(|written| TagArm {
+            function: format!("{under}__{}", snake_form(&written.name)),
+            value: written.name,
+            variant: written.variant,
+        })
+        .collect();
+    Some((tag, arms))
+}
+
 /// Every variant of `item_enum` as its walker reads it, in the order declared.
 fn walked_variants<'item>(
     item_enum: &'item ItemEnum,
@@ -799,4 +922,28 @@ fn walked_variants<'item>(
             }
         })
         .collect()
+}
+
+/// Every variant of `item` serde writes, in the order written, under the name serde writes it
+/// as: its own `rename`, or its Rust name cased by the enum's `rename_all`.
+pub fn written_variants(item: &ItemEnum) -> Vec<WrittenVariant<'_>> {
+    let rule = parse_written_renames(&item.attrs).rename_all;
+    let mut written: Vec<WrittenVariant<'_>> = Vec::new();
+    for variant in &item.variants {
+        if has_serde_skip_serializing(&variant.attrs) {
+            continue;
+        }
+        let rust_name = variant.ident.unraw().to_string();
+        let name = parse_written_renames(&variant.attrs)
+            .rename
+            .unwrap_or_else(|| resolve_rename_rule(rule.as_deref()).apply_to_variant(&rust_name));
+        let taken: Vec<String> = written.iter().map(|earlier| earlier.stem.clone()).collect();
+        let stem = unclaimed(&to_snake_case(&rust_name), &taken);
+        written.push(WrittenVariant {
+            name,
+            stem,
+            variant,
+        });
+    }
+    written
 }

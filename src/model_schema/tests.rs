@@ -7154,6 +7154,90 @@ fn decode_with_is_not_refused_on_a_field_that_borrows_nothing_from_the_value() {
     }
 }
 
+/// Three enums under a tag two functions of whose typed paths would take one name, each beside
+/// what `decode_with` is refused on it for.
+#[cfg(feature = "serde")]
+fn enums_with_one_name_for_two_functions() -> [(&'static str, &'static str); 3] {
+    [
+        (
+            "#[serde(tag = \"type\")] pub enum Transport { \
+             By__Courier { name: String }, Collected }",
+            "model_schema: type `Transport`: variant `By__Courier` holds `__` in its name. Under \
+             a tag and `decode_with`, `__` parts the tag from the value in the function of each \
+             arm, `type__<value>()`. Rename the variant",
+        ),
+        (
+            "#[serde(tag = \"type\")] pub enum Transport { \
+             #[serde(rename = \"by-courier\")] ByCourier { name: String }, \
+             #[serde(rename = \"by_courier\")] Couriered }",
+            "model_schema: type `Transport`: variants `ByCourier` and `Couriered` are written \
+             `by-courier` and `by_courier` under the tag `type`, and both read `by_courier` in \
+             snake case, so `type__by_courier()` would answer for both. Rename one of the two \
+             values",
+        ),
+        (
+            "#[serde(tag = \"is\")] pub enum Transport { Parcel, _Parcel }",
+            "model_schema: type `Transport`: the arm function `is__parcel()` of variant `Parcel` \
+             and `is__parcel()`, which asks for variant `_Parcel`, would be one function. Rename \
+             the variant `_Parcel`",
+        ),
+    ]
+}
+
+/// The README quotes each refusal as it is printed.
+#[cfg(feature = "serde")]
+#[test]
+fn decode_with_is_refused_where_two_functions_of_an_enums_paths_would_take_one_name() {
+    for (source, refusal) in enums_with_one_name_for_two_functions() {
+        let expanded = expansion_under("decode_with", source);
+        assert!(expanded.contains(refusal), "for {source}, got: {expanded}");
+        assert!(
+            !expanded.contains("fn from_value_with"),
+            "for {source}, got: {expanded}"
+        );
+        assert!(
+            include_str!("../../README.md").contains(refusal),
+            "the README no longer quotes this refusal:\n{refusal}"
+        );
+    }
+}
+
+/// The variant that holds `__`, the second of two values with one snake case, and the variant an
+/// `is_` asks for.
+#[cfg(feature = "serde")]
+#[test]
+fn each_refusal_of_a_name_two_functions_would_take_is_spanned_on_its_variant() {
+    for ((source, _refusal), variant) in enums_with_one_name_for_two_functions().into_iter().zip([
+        "By__Courier",
+        "Couriered",
+        "_Parcel",
+    ]) {
+        let item: syn::Item = syn::parse_str(source).unwrap();
+        let args = super::parse_model_schema_args(syn::parse_str("decode_with").unwrap());
+        let located: Vec<String> = super::decode_with_guard_errors(&item, &args)
+            .iter()
+            .flat_map(located_source_texts)
+            .collect();
+        assert!(
+            !located.is_empty() && located.iter().all(|text| text == variant),
+            "for {source}, got: {located:?}"
+        );
+    }
+}
+
+/// An enum without the flag has no arm function, and is refused none of the three.
+#[cfg(feature = "serde")]
+#[test]
+fn an_enum_without_decode_with_keeps_a_name_two_arm_functions_would_take() {
+    for (source, _refusal) in enums_with_one_name_for_two_functions() {
+        let expanded = expansion_under("", source);
+        assert!(
+            !expanded.contains("compile_error"),
+            "for {source}, got: {expanded}"
+        );
+    }
+}
+
 #[test]
 fn an_item_without_decode_with_expands_as_it_did() {
     for source in [

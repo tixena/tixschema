@@ -105,7 +105,8 @@ use crate::features::serde::{brand_field, has_serde_default, parse_serde_key_omi
 use crate::features::recovering_decode::reading_the_authors_scope;
 #[cfg(feature = "serde")]
 use crate::features::recovering_decode::{
-    enums::enum_recovering_decode, struct_recovering_decode, written_as_one_value,
+    enums::{enum_recovering_decode, tag_arm_refusals},
+    struct_recovering_decode, written_as_one_value,
 };
 // The type is named where a positional slot's own omission is read: the tuple-struct walk, which
 // only a describing build performs, and the variant walk, which every build performs.
@@ -2329,8 +2330,24 @@ fn published_name_collision_errors(
     vec![syn::Error::new_spanned(ident, message).to_compile_error()]
 }
 
-/// The `compile_error!` tokens `decode_with` earns where it cannot be written: on an alias, and on
-/// a type that borrows.
+/// What keeps two functions of the typed paths of an enum under a tag from taking one name.
+#[cfg(feature = "serde")]
+fn decode_with_arm_refusals(item: &Item) -> Vec<syn::Error> {
+    if let Item::Enum(item_enum) = item {
+        tag_arm_refusals(item_enum)
+    } else {
+        Vec::new()
+    }
+}
+
+/// Without `serde` nothing reads the tag an arm is named by.
+#[cfg(not(feature = "serde"))]
+const fn decode_with_arm_refusals(_item: &Item) -> Vec<syn::Error> {
+    Vec::new()
+}
+
+/// The `compile_error!` tokens `decode_with` earns where it cannot be written: on an alias, on a
+/// type that borrows, and on an enum under a tag two of whose arms would take one name.
 fn decode_with_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2::TokenStream> {
     if !args.decode_with {
         return Vec::new();
@@ -2350,8 +2367,9 @@ fn decode_with_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_mac
         None
     };
     refusal
-        .iter()
-        .map(|rejection| attr_guard_error(rejection, &item_label(item)))
+        .into_iter()
+        .chain(decode_with_arm_refusals(item))
+        .map(|rejection| attr_guard_error(&rejection, &item_label(item)))
         .collect()
 }
 
@@ -2466,7 +2484,10 @@ fn held_reference(written: &syn::Type) -> Option<&syn::TypeReference> {
 }
 
 /// Tokens as their author spells them, without the spaces a token stream prints between them.
-fn written_spelling(tokens: &impl quote::ToTokens) -> String {
+pub fn written_spelling<T>(tokens: &T) -> String
+where
+    T: quote::ToTokens,
+{
     quote! { #tokens }
         .to_string()
         .replace(" < ", "<")

@@ -17,6 +17,7 @@ const COMPARISONS: [(&str, &str, &str); 6] = [
 pub fn query_items() -> TokenStream {
     let path = path_items();
     let filter = filter_items();
+    let arm_filter = arm_filter_items();
     let update = update_items();
     let nests = nests_items();
     let field = field_items();
@@ -30,6 +31,7 @@ pub fn query_items() -> TokenStream {
     quote! {
         #path
         #filter
+        #arm_filter
         #update
         #nests
         #field
@@ -40,6 +42,195 @@ pub fn query_items() -> TokenStream {
         #optional_model
         #model_list
         #nested
+    }
+}
+
+/// `ArmFilter`: the rows of one arm of an enum serde writes under a tag, with the conditions on
+/// the model that arm holds.
+///
+/// An arm filter is a value a `const` item holds, and its `and` takes a filter over the rows of
+/// the model the arm holds. This builds:
+///
+/// ```rust
+/// # extern crate bson2 as bson;
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema(decode_with)]
+/// #[derive(Debug, Deserialize, Serialize)]
+/// pub struct Courier {
+///     pub name: String,
+///     pub region: String,
+/// }
+///
+/// #[model_schema(decode_with)]
+/// #[derive(Debug, Deserialize, Serialize)]
+/// #[serde(tag = "type")]
+/// pub enum Transport {
+///     #[serde(rename = "by-courier")]
+///     ByCourier(Courier),
+///     Collected,
+/// }
+///
+/// const BY_COURIER: transport_schema::ArmFilter<Transport, Courier> =
+///     Transport::MONGO_FIELDS.type__by_courier();
+///
+/// fn main() -> Result<(), transport_schema::WriteError> {
+///     assert_eq!(
+///         BY_COURIER.into_document().to_string(),
+///         r#"{ "type": { "$eq": "by-courier" } }"#
+///     );
+///     let named = BY_COURIER.and(Courier::MONGO_FIELDS.name().eq("Acme".to_owned())?);
+///     assert_eq!(
+///         named.into_document().to_string(),
+///         r#"{ "$and": [{ "type": { "$eq": "by-courier" } }, { "name": { "$eq": "Acme" } }] }"#
+///     );
+///     let others = transport_schema::Filter::from(BY_COURIER).negated();
+///     assert_eq!(
+///         others.into_document().to_string(),
+///         r#"{ "$nor": [{ "type": { "$eq": "by-courier" } }] }"#
+///     );
+///     Ok(())
+/// }
+/// ```
+///
+/// The run below hands `and` a filter over the rows of `Wagon`, a type the arm does not hold. A
+/// `compile_fail` doctest asserts only that some error was raised, so it was compiled standalone
+/// as an ordinary test file, and the text under it is the only error it earned, verbatim:
+///
+/// ```rust,compile_fail
+/// # extern crate bson2 as bson;
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema(decode_with)]
+/// #[derive(Debug, Deserialize, Serialize)]
+/// pub struct Courier {
+///     pub name: String,
+///     pub region: String,
+/// }
+///
+/// #[model_schema(decode_with)]
+/// #[derive(Debug, Deserialize, Serialize)]
+/// #[serde(tag = "type")]
+/// pub enum Transport {
+///     #[serde(rename = "by-courier")]
+///     ByCourier(Courier),
+///     Collected,
+/// }
+///
+/// #[model_schema(decode_with)]
+/// #[derive(Debug, Deserialize, Serialize)]
+/// pub struct Wagon {
+///     pub number: String,
+/// }
+///
+/// const BY_COURIER: transport_schema::ArmFilter<Transport, Courier> =
+///     Transport::MONGO_FIELDS.type__by_courier();
+///
+/// fn main() -> Result<(), transport_schema::WriteError> {
+///     let _ = BY_COURIER.and(Wagon::MONGO_FIELDS.number().eq("W-9".to_owned())?);
+///     Ok(())
+/// }
+/// ```
+///
+/// ```text
+/// error[E0277]: the trait bound `wagon_schema::Filter<Wagon>: AsRef<PhantomData<Courier>>` is not satisfied
+///   --> tests/zz_probe.rs:31:28
+///    |
+/// 31 |     let _ = BY_COURIER.and(Wagon::MONGO_FIELDS.number().eq("W-9".to_owned())?);
+///    |                        --- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+///    |                        |
+///    |                        required by a bound introduced by this call
+///    |
+/// help: the trait `AsRef<PhantomData<Courier>>` is not implemented for `wagon_schema::Filter<Wagon>`
+///       but trait `AsRef<PhantomData<Wagon>>` is implemented for it
+///   --> tests/zz_probe.rs:21:1
+///    |
+/// 21 | #[model_schema(decode_with)]
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///    = help: for that trait implementation, expected `Wagon`, found `Courier`
+/// note: required by a bound in `transport_schema::ArmFilter::<Root, M>::and`
+///   --> tests/zz_probe.rs:12:1
+///    |
+/// 12 | #[model_schema(decode_with)]
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `ArmFilter::<Root, M>::and`
+///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///
+/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// ```
+fn arm_filter_items() -> TokenStream {
+    quote! {
+        /// Rows of one arm of an enum serde writes under a tag: the arm's tag, and the conditions
+        /// `and` adds on the model `M` the arm holds.
+        #[derive(Debug)]
+        #[non_exhaustive]
+        pub struct ArmFilter<Root, M: ?::core::marker::Sized> {
+            tag: &'static str,
+            value: &'static str,
+            place: MongoPath,
+            conditions: ::std::vec::Vec<bson::Document>,
+            of: ::core::marker::PhantomData<fn(&M) -> Root>,
+        }
+
+        impl<Root, M> ArmFilter<Root, M>
+        where
+            M: ?::core::marker::Sized,
+        {
+            /// The rows whose `tag` is `written`, with what the arm holds written at `place`.
+            #[must_use]
+            pub const fn of(tag: &'static str, written: &'static str, place: MongoPath) -> Self {
+                Self { tag, value: written, place, conditions: ::std::vec::Vec::new(), of: ::core::marker::PhantomData }
+            }
+
+            /// `$and`: the arm's rows that `condition` matches too. `condition` is a filter over the
+            /// rows of `M`, from any module, and each of its keys is written at the arm's place.
+            #[must_use]
+            pub fn and<F>(mut self, condition: F) -> Self
+            where
+                F: ::core::convert::Into<bson::Document> + ::core::convert::AsRef<::core::marker::PhantomData<M>>,
+            {
+                self.conditions.push(nested_filter(self.place.key(), condition.into()));
+                self
+            }
+
+            /// The document the driver takes.
+            #[must_use]
+            pub fn into_document(self) -> bson::Document {
+                self.into()
+            }
+        }
+
+        impl<Root, M: ?::core::marker::Sized> ::core::convert::From<ArmFilter<Root, M>> for bson::Document {
+            fn from(arm: ArmFilter<Root, M>) -> Self {
+                let mut asked = Self::new();
+                asked.insert("$eq", bson::Bson::String(arm.value.to_owned()));
+                let mut tagged = Self::new();
+                tagged.insert(arm.tag, bson::Bson::Document(asked));
+                if arm.conditions.is_empty() {
+                    return tagged;
+                }
+                let members = ::core::iter::once(tagged)
+                    .chain(arm.conditions)
+                    .map(bson::Bson::Document)
+                    .collect::<::std::vec::Vec<bson::Bson>>();
+                let mut joined = Self::new();
+                joined.insert("$and", bson::Bson::Array(members));
+                joined
+            }
+        }
+
+        impl<Root, M: ?::core::marker::Sized> ::core::convert::From<ArmFilter<Root, M>> for Filter<Root> {
+            fn from(arm: ArmFilter<Root, M>) -> Self {
+                Self::raw(arm.into())
+            }
+        }
+
+        impl<Root, M: ?::core::marker::Sized> ::core::convert::AsRef<::core::marker::PhantomData<Root>> for ArmFilter<Root, M> {
+            fn as_ref(&self) -> &::core::marker::PhantomData<Root> {
+                &::core::marker::PhantomData
+            }
+        }
     }
 }
 
