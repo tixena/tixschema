@@ -367,7 +367,7 @@ The order is the Rust type's. A schema describes an object and states no order, 
 
 The [recovering decode](#recovering-decode-decode_with) walks each of these maps entry by entry, each issue at its key's path, and an `IndexSet` item by item. Its second read is plain serde, so an `IndexMap` field is filled in the order of the source: a `bson` document keeps the order the row stored, and a `serde_json::Value` holds its keys as the table says of `serde_json::Map`. Under `mongodb` a map has no typed path, whichever of the four it is, and an `IndexSet` field is a `ListField`.
 
-`Map` is read by its last name, as `Value` is. A field written `Map<K, V>` is `serde_json`'s map, unless the crate declared a `#[model_schema()]` type of its own named `Map` above the field: that type keeps its name. With the `indexmap` feature off, a type written `IndexMap<K, V>` or `IndexSet<T>` is refused with the feature named, unless the crate declared a type of its own under that name above. See [`IndexMap` or `IndexSet` Without the Feature](#indexmap-or-indexset-without-the-feature).
+`Map` is read by its last name, as `Value` is: a field written `Map<K, V>` is `serde_json`'s map. A `#[model_schema()]` type of the crate's own named `IndexMap`, `IndexSet` or `Map`, declared above the type that holds it, keeps its name: a field written with that name is that type, with the `indexmap` feature on or off. With the feature off, any other type written `IndexMap<K, V>` or `IndexSet<T>` is refused with the feature named. See [`IndexMap` or `IndexSet` Without the Feature](#indexmap-or-indexset-without-the-feature).
 
 ### Pointers and Borrowed Values
 
@@ -3224,7 +3224,7 @@ A list of four parts answers `'name_config': too long: maximum length is 3, got 
 - **`validate()`** reports the list once, under the field's name. On a member of an `#[serde(untagged)]` enum the read counts it too, and the [recovering decode](#recovering-decode-decode_with) lists one `Invalid` at the list. See [Where a constraint is checked](#where-a-constraint-is-checked).
 - **TypeScript** stays `Array<Part>`, with `Minimum length: 1` and `Maximum length: 3` in the member's comment.
 
-Every list takes the two keys: `Vec`, `VecDeque`, `HashSet`, `BTreeSet`, `BinaryHeap`, a slice (`Box<[T]>`, `&'a [T]`) and a fixed-size array `[T; N]`, whatever `T` is -- a model, a string, a number, a map, one of the item's own type parameters, or the item itself. On `[T; N]` the JSON Schema states the declared length and the bound together. `Option` and the transparent wrappers (`Box`, `Rc`, `Arc`, `Cow`) are read through, each holding one value: an `Option<Vec<T>>` that is `None` passes, and `Some(vec![])` is counted. A list is a value of its own and is not read through, so on a `Vec<Vec<String>>` the keys count the outer list and say nothing of the inner ones.
+Every list takes the two keys: `Vec`, `VecDeque`, `HashSet`, `BTreeSet`, `BinaryHeap`, a slice (`Box<[T]>`, `&'a [T]`), a fixed-size array `[T; N]`, and `IndexSet<T>` under the `indexmap` feature, whatever `T` is -- a model, a string, a number, a map, one of the item's own type parameters, or the item itself. On `[T; N]` the JSON Schema states the declared length and the bound together. `Option` and the transparent wrappers (`Box`, `Rc`, `Arc`, `Cow`) are read through, each holding one value: an `Option<Vec<T>>` that is `None` passes, and `Some(vec![])` is counted. A list is a value of its own and is not read through, so on a `Vec<Vec<String>>` the keys count the outer list and say nothing of the inner ones.
 
 `pattern`, `minimum` and `maximum` on a list are compile errors, a list having no text and no number. A rule for each item goes on the item's own type, a [branded newtype](#branded-newtype-validation-constraints) that carries it, and `validate()` runs it on each item beside the list's own count:
 
@@ -4817,7 +4817,7 @@ A function is there for every key serde writes, and the kind it answers follows 
 |-----------|---------------------------|
 | A plain value `T` | `Field<Root, T>` |
 | `Option<T>` | `OptionalField<Root, T>` |
-| `Vec<T>`, `VecDeque<T>`, `HashSet<T>`, `BTreeSet<T>`, `BinaryHeap<T>`, `LinkedList<T>`, `[T; N]`, `[T]` | `ListField<Root, T>` |
+| `Vec<T>`, `VecDeque<T>`, `HashSet<T>`, `BTreeSet<T>`, `BinaryHeap<T>`, `LinkedList<T>`, `[T; N]`, `[T]`, and `IndexSet<T>` under the `indexmap` feature | `ListField<Root, T>` |
 | A struct or an enum `M` declared with `#[model_schema(decode_with)]` above the type, which serde writes under keys | `Model<Root, M>`, whose `nest` reaches `M`'s own paths |
 | `Option<M>` | `OptionalModel<Root, M>` |
 | A list of `M` | `ModelList<Root, M>` |

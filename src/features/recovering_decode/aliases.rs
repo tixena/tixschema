@@ -7,6 +7,8 @@ use syn::ext::IdentExt as _;
 use syn::{Expr, Fields, GenericArgument, PathArguments, Type, TypePath, parse_quote};
 
 use crate::field_type::is_map_wrapper;
+#[cfg(feature = "indexmap")]
+use crate::utils::is_declared_ident;
 use crate::utils::{Declared, declared, written_type};
 
 /// How deep an alias of an alias is followed.
@@ -231,8 +233,9 @@ fn holder_of_one(name: &str) -> Option<TokenStream> {
             Some(quote! { ::std::collections::#ident })
         }
         "Box" => Some(quote! { ::std::boxed::Box }),
+        // indexmap's, unless this crate declared a type of its own under the name.
         #[cfg(feature = "indexmap")]
-        "IndexSet" => Some(quote! { indexmap::IndexSet }),
+        "IndexSet" if !is_declared_ident(name) => Some(quote! { indexmap::IndexSet }),
         "Option" => Some(quote! { ::core::option::Option }),
         "Rc" => Some(quote! { ::std::rc::Rc }),
         "Vec" => Some(quote! { ::std::vec::Vec }),

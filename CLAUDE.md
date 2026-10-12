@@ -265,11 +265,13 @@ pub struct BadMapKey {
 
 `is_map_wrapper` in `src/field_type.rs` is the one seam that says which names are a map: `HashMap`,
 `BTreeMap`, `IndexMap` under the `indexmap` feature, and `Map`, which is `serde_json`'s, read by its
-last name as `Value` is, unless the crate declared a type of its own under it (`is_declared_ident`,
-read off the published names, the one registry every build writes). The field definition, the
-constraint walk, the recovering decode's walker and its rewriting of an alias, and the MongoDB paths
-all ask it, as they ask `is_sequence_wrapper` for a list, which takes `IndexSet` under the same
-feature. A key is held to the rules of this section whichever of those maps it is written in.
+last name as `Value` is. The field definition, the constraint walk, the recovering decode's walker
+and its rewriting of an alias, and the MongoDB paths all ask it, as they ask `is_sequence_wrapper`
+for a list, which takes `IndexSet` under the same feature. `IndexMap`, `IndexSet` and `Map` are
+names of another crate's, so the two functions ask `is_declared_ident` for the three: a type the
+crate declared under one of them above keeps the name, with the feature on or off.
+`is_declared_ident` reads the published names, the one registry every build writes. A key is held
+to the rules of this section whichever of those maps it is written in.
 
 On the two nominal surfaces a key renders in the form serde **writes** it wherever the key's own
 value form is not a TypeScript property key, and under the name it was written with wherever it is.
