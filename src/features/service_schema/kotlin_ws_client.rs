@@ -695,6 +695,8 @@ fn attachment_class(named: &str) -> String {
     )
 }
 
+/// The collector starts undispatched, so it has subscribed when `attach` returns: `frames.inbound`
+/// replays nothing, and a frame that met no subscriber would never be dispatched.
 fn attach_dispatcher_fn(named: &str, fn_prefix: &str, has_headers: bool) -> String {
     let fields = fault_fields_typescript_name(named);
     let headers_arg = if has_headers {
@@ -715,7 +717,7 @@ fn attach_dispatcher_fn(named: &str, fn_prefix: &str, has_headers: bool) -> Stri
          handlers: {named}Handlers,\n  \
          onFault: ({fields}) -> Unit,\n\
          ): {named}WsAttachment {{\n  \
-         val job = frames.scope.launch {{\n    \
+         val job = frames.scope.launch(start = CoroutineStart.UNDISPATCHED) {{\n    \
          frames.inbound.collect {{ text ->\n      \
          val frame = runCatching {{ Json.parseToJsonElement(text).jsonObject }}.getOrNull() ?: return@collect\n      \
          if ((frame[\"service\"] as? JsonPrimitive)?.contentOrNull != \"{named}\") return@collect\n      \

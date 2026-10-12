@@ -190,6 +190,21 @@ fn the_factory_binds_a_socket_and_options_and_returns_the_transport_extended_wit
 }
 
 #[test]
+fn the_transport_is_listening_when_the_factory_returns() {
+    let written = ws_client_of(MIXED_SERVICE);
+    assert!(
+        written.contains(
+            "  socket.addEventListener(\"message\", onMessage);\n  \
+             socket.addEventListener(\"close\", onClose);\n  \
+             schedulePing();\n  \
+             return {\n"
+        ),
+        "both listeners are registered in the factory's own body, ahead of its `return`, so no \
+         frame the socket delivers to the returned transport is missed. Got: {written}"
+    );
+}
+
+#[test]
 fn the_heartbeat_defaults_to_thirty_and_ten_seconds_and_a_missed_pong_closes_the_socket() {
     let written = ws_client_of(MIXED_SERVICE);
     assert!(

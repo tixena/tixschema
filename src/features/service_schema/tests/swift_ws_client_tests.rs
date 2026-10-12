@@ -136,6 +136,26 @@ fn inbound_frames_are_fed_through_one_ordered_async_stream_rather_than_a_task_pe
 }
 
 #[test]
+fn the_socket_feeds_the_stream_before_the_task_that_reads_it_is_started() {
+    let written = swift_ws_client_of(SWIFT_WS_SERVICE);
+    let init = body_from(
+        &written,
+        "public init(socket: any ConversationClientServiceWsSocket",
+    );
+    assert!(
+        init.contains(
+            "socket.onMessage = { text in outbound.yield(text) }\n    \
+             socket.onClose = { outbound.finish() }\n    \
+             Task { [weak self] in\n      \
+             for await text in inbound {"
+        ),
+        "the initializer hands the socket its reader itself, and the stream holds every frame \
+         yielded before the reading task first runs, so none that arrives once the initializer has \
+         returned is missed. Got: {init}"
+    );
+}
+
+#[test]
 fn the_transport_answers_an_inbound_ping_and_treats_a_pong_as_rearming() {
     let written = swift_ws_client_of(SWIFT_WS_SERVICE);
     let handler = body_from(
