@@ -54,9 +54,10 @@ use crate::bound_message::zod_error_arg;
 
 #[cfg(feature = "typescript")]
 use crate::utils::ts_generic_params;
-use crate::utils::type_parameters_in_scope;
-#[cfg(feature = "serde")]
-use crate::utils::written_type;
+use crate::utils::{
+    constraining_pattern, emittable_pattern, portable_pattern, type_parameters_in_scope,
+    written_type,
+};
 
 #[cfg(feature = "zod")]
 use crate::utils::{
@@ -73,9 +74,8 @@ use crate::features::object_id::OBJECT_ID_HEX_PATTERN;
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use crate::utils::{
-    AliasKind, MapKeyWire, PublishedShape, ShapeQuestion, constraining_pattern, emittable_pattern,
-    lookup_alias_info, portable_pattern, record_key_wire, record_shape_question,
-    record_value_shape, shape_questions_for,
+    AliasKind, MapKeyWire, PublishedShape, ShapeQuestion, lookup_alias_info, record_key_wire,
+    record_shape_question, record_value_shape, shape_questions_for,
 };
 
 #[cfg(feature = "serde")]
@@ -94,7 +94,7 @@ use crate::features::serde::rename_direction_rejection;
 #[cfg(feature = "serde")]
 use crate::features::serde::{
     NAMED_READ_HOOK_PREFIX, SerdeFieldMeta, SerdeTypeMeta, derives_deserialize,
-    has_serde_read_hook, struct_tag,
+    has_serde_read_hook, parse_read_renames, parse_written_renames, struct_tag,
 };
 use crate::features::serde::{brand_field, has_serde_default, parse_serde_key_omission};
 
@@ -122,10 +122,10 @@ use crate::field_type::{parse_serde_field_attributes, parse_serde_type_attribute
 ))]
 use crate::field_type::is_sequence_wrapper;
 
+use crate::field_type::is_ownership_wrapper;
 #[cfg(feature = "serde")]
 use crate::field_type::{
-    is_interior_mutability_wrapper, is_ownership_wrapper, is_refused_sequence_wrapper,
-    is_transparent_wrapper,
+    is_interior_mutability_wrapper, is_refused_sequence_wrapper, is_transparent_wrapper,
 };
 
 use crate::features::model_schema_prop::{
@@ -585,7 +585,6 @@ struct ModelSchemaArgs {
     pattern: Option<String>,
     /// What keeps `pattern` off the surfaces it was written for, spanned on the literal it was
     /// written as.
-    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     pattern_rejection: Option<syn::Error>,
     /// The first of `pattern`, `minLength` and `maxLength` written, and where: a refusal of the
     /// check is spanned there.
@@ -710,6 +709,9 @@ struct FieldContext<'ctx> {
     container_defaulted: bool,
     /// Whether the container is read back at all — whether `Deserialize` is among what it derives.
     container_read_back: bool,
+    /// The arguments of the enum the field's variant belongs to: a string check written there is
+    /// the field's own as well, where it reaches the field.
+    enum_args: Option<&'ctx ModelSchemaArgs>,
     rename_all: Option<&'ctx str>,
     schema_module_name: Option<&'ctx str>,
     type_name: &'ctx str,
@@ -1133,7 +1135,6 @@ fn unknown_arg_rejection(meta: &Meta) -> syn::Error {
 /// Records a `pattern` argument in splice-ready spelling, or, when refused, as written alongside
 /// what keeps it off every surface — the guards that answer for it read that one was given, not
 /// what it says.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn record_pattern(result: &mut ModelSchemaArgs, lit_str: &syn::LitStr) {
     match portable_pattern(lit_str)
         .and_then(|portable| constraining_pattern(lit_str, portable))
@@ -1145,13 +1146,6 @@ fn record_pattern(result: &mut ModelSchemaArgs, lit_str: &syn::LitStr) {
             result.pattern = Some(lit_str.value());
         }
     }
-}
-
-/// Without a schema feature no surface reads the argument, so it is kept as written and never
-/// judged.
-#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-fn record_pattern(result: &mut ModelSchemaArgs, lit_str: &syn::LitStr) {
-    result.pattern = Some(lit_str.value());
 }
 
 pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -3861,8 +3855,9 @@ const fn branded_cfg_attr_guard_errors(
 }
 
 /// The `compile_error!` tokens for a brand whose `pattern` argument a guard refuses, or `None`
-/// when it carries none or it clears them. The brand is the only shape that reads a type-level
-/// `pattern`; every other shape is refused the argument before a surface is built.
+/// when it carries none or it clears them. An enum answers for its own in
+/// [`enum_string_check_refusal_output`]; every other shape is refused the argument before a surface
+/// is built.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn branded_pattern_error(name: &Ident, args: &ModelSchemaArgs) -> Option<proc_macro2::TokenStream> {
     args.pattern_rejection
@@ -4187,6 +4182,7 @@ fn collect_struct_fields(
             &FieldContext {
                 container_defaulted,
                 container_read_back,
+                enum_args: None,
                 rename_all,
                 schema_module_name: module_name_opt,
                 type_name,
@@ -4273,20 +4269,162 @@ fn no_brand_string_check_refusal(check: &str) -> String {
     )
 }
 
-/// The refusal of a type-level string check written on an enum, which is no brand.
+/// The refusal of a string check written on an enum that cannot hold as written, or `None` for
+/// one that does and for an enum that writes none.
 fn enum_string_check_refusal_output(
     item_enum: &syn::ItemEnum,
     args: &ModelSchemaArgs,
 ) -> Option<TokenStream> {
-    let (check, written_at) = args.string_check?;
-    let name = &item_enum.ident;
-    let refusal = no_brand_string_check_refusal(check);
-    let error = syn::Error::new(
-        written_at,
-        prefixed_guard_message(&format!("type `{name}`: {refusal}")),
+    guard_failure_output(
+        item_enum,
+        Some(&item_enum.ident),
+        &enum_string_check_errors(item_enum, args),
     )
-    .to_compile_error();
-    guard_failure_output(item_enum, Some(name), &[error])
+}
+
+/// What an enum's string check is refused for: a `pattern` no surface reads, a check that reaches
+/// nothing, and each name of a unit variant that breaks it.
+fn enum_string_check_errors(
+    item_enum: &syn::ItemEnum,
+    args: &ModelSchemaArgs,
+) -> Vec<proc_macro2::TokenStream> {
+    let Some((check, written_at)) = args.string_check else {
+        return Vec::new();
+    };
+    let name = &item_enum.ident;
+    if let Some(rejection) = &args.pattern_rejection {
+        return vec![pattern_guard_error(rejection, &format!("type `{name}`"))];
+    }
+    if !enum_check_reaches_nothing(item_enum) {
+        return unit_variant_name_errors(item_enum, args);
+    }
+    let refusal = format!(
+        "`{check}` reaches nothing here: an enum's check holds each variant written with no data \
+         and each field written as a string or a path, and `{name}` has neither"
+    );
+    vec![
+        syn::Error::new(
+            written_at,
+            prefixed_guard_message(&format!("type `{name}`: {refusal}")),
+        )
+        .to_compile_error(),
+    ]
+}
+
+/// Whether an enum's string check has nothing to hold: no variant written with no data, and no
+/// field written as a string or a path.
+fn enum_check_reaches_nothing(item_enum: &syn::ItemEnum) -> bool {
+    !item_enum.variants.iter().any(|variant| {
+        matches!(variant_wire_kind(variant), VariantKind::Unit)
+            || variant
+                .fields
+                .iter()
+                .any(|member| written_as_text(&member.ty))
+    })
+}
+
+/// Each name serde writes or reads for `variant`, the written one first, beside the direction it
+/// is named in. An untagged enum writes a variant with no data as `null`, under no name.
+#[cfg(feature = "serde")]
+fn variant_wire_names(
+    item_enum: &syn::ItemEnum,
+    variant: &syn::Variant,
+) -> Vec<(&'static str, String)> {
+    if has_serde_untagged(&item_enum.attrs) {
+        return Vec::new();
+    }
+    let ident = variant.ident.to_string();
+    let written = get_final_variant_name(
+        &ident,
+        parse_written_renames(&variant.attrs).rename.as_deref(),
+        parse_written_renames(&item_enum.attrs)
+            .rename_all
+            .as_deref(),
+    );
+    let read = get_final_variant_name(
+        &ident,
+        parse_read_renames(&variant.attrs).rename.as_deref(),
+        parse_read_renames(&item_enum.attrs).rename_all.as_deref(),
+    );
+    let mut names = vec![("written", written)];
+    let mut read_under = parse_serde_field_attributes(&variant.attrs).aliases;
+    read_under.insert(0, read);
+    for name in read_under {
+        if names.iter().all(|(_, known)| *known != name) {
+            names.push(("read", name));
+        }
+    }
+    names
+}
+
+/// Without `serde` no attribute is read, and every surface writes the variant's ident.
+#[cfg(not(feature = "serde"))]
+fn variant_wire_names(
+    _item_enum: &syn::ItemEnum,
+    variant: &syn::Variant,
+) -> Vec<(&'static str, String)> {
+    vec![("written", variant.ident.to_string())]
+}
+
+/// The checks of `args` that `name` breaks, each as it is written, measured as a field's validator
+/// measures a value.
+fn checks_broken_by(
+    name: &str,
+    args: &ModelSchemaArgs,
+    pattern: Option<&regex::Regex>,
+) -> Vec<String> {
+    let too_short = args
+        .min_length
+        .filter(|min_len| name.len() < *min_len)
+        .map(|min_len| format!("`minLength = {min_len}`"));
+    let too_long = args
+        .max_length
+        .filter(|max_len| name.len() > *max_len)
+        .map(|max_len| format!("`maxLength = {max_len}`"));
+    let unmatched = pattern
+        .filter(|built| !built.is_match(name))
+        .map(|built| format!("`pattern = {:?}`", built.as_str()));
+    too_short
+        .into_iter()
+        .chain(too_long)
+        .chain(unmatched)
+        .collect()
+}
+
+/// One `compile_error!` per name of a variant written with no data that breaks the enum's string
+/// check, spanned on the variant.
+fn unit_variant_name_errors(
+    item_enum: &syn::ItemEnum,
+    args: &ModelSchemaArgs,
+) -> Vec<proc_macro2::TokenStream> {
+    let type_name = &item_enum.ident;
+    let pattern = args
+        .pattern
+        .as_deref()
+        .and_then(|written| regex::Regex::new(written).ok());
+    let mut errors: Vec<proc_macro2::TokenStream> = Vec::new();
+    for variant in &item_enum.variants {
+        if !matches!(variant_wire_kind(variant), VariantKind::Unit) {
+            continue;
+        }
+        for (direction, name) in variant_wire_names(item_enum, variant) {
+            let broken = checks_broken_by(&name, args, pattern.as_ref());
+            if broken.is_empty() {
+                continue;
+            }
+            let refusal = format!(
+                "type `{type_name}`: variant `{}` is {direction} `{name}`, which breaks {} written \
+                 on the enum",
+                variant.ident,
+                broken.join(" and ")
+            );
+            errors.push(
+                syn::Error::new_spanned(variant, prefixed_guard_message(&refusal))
+                    .to_compile_error(),
+            );
+        }
+    }
+    errors
 }
 
 /// The refusal of a type-level string check written on a type alias: the alias is another name
@@ -4961,6 +5099,7 @@ fn collect_tuple_slots(
             &FieldContext {
                 container_defaulted,
                 container_read_back,
+                enum_args: None,
                 rename_all,
                 schema_module_name: Some(module_name),
                 type_name,
@@ -7631,6 +7770,7 @@ fn collect_discriminated_variants(
     item_enum: &mut syn::ItemEnum,
     casing: EnumCasing<'_>,
     enum_module_name_opt: Option<&str>,
+    args: &ModelSchemaArgs,
 ) -> DiscriminatedVariantData {
     let type_parameters = type_parameters_in_scope(&item_enum.generics);
     let mut variants: Vec<DiscriminatedVariant> = Vec::new();
@@ -7659,6 +7799,7 @@ fn collect_discriminated_variants(
         let member_ctx = FieldContext {
             container_defaulted: variant_defaulted,
             container_read_back: enum_read_back,
+            enum_args: Some(args),
             rename_all: variant_rename_all.as_deref(),
             schema_module_name: enum_module_name_opt,
             type_name: &enum_type_name,
@@ -7879,7 +8020,8 @@ fn process_discriminated_enum(
 
     // Bind both result tuples whole so feature-gated field access marks them used (no per-element
     // guards): `variants` = (variants, validation_fns, guard_errors); `rendered` = (ts, zod, json).
-    let variants = collect_discriminated_variants(&mut item_enum, casing, enum_module_name_opt);
+    let variants =
+        collect_discriminated_variants(&mut item_enum, casing, enum_module_name_opt, args);
     if let Some(output) = guard_failure_output(&item_enum, Some(&item_enum.ident), &variants.2) {
         return output;
     }
@@ -8401,7 +8543,8 @@ fn process_externally_tagged_enum(
     let enum_module_name_opt = None;
 
     let self_type_name = item_enum.ident.to_string();
-    let variants = collect_discriminated_variants(&mut item_enum, casing, enum_module_name_opt);
+    let variants =
+        collect_discriminated_variants(&mut item_enum, casing, enum_module_name_opt, args);
     if let Some(output) = guard_failure_output(&item_enum, Some(&item_enum.ident), &variants.2) {
         return output;
     }
@@ -8808,7 +8951,8 @@ fn process_internally_tagged_enum(
         return output;
     }
 
-    let variants = collect_discriminated_variants(&mut item_enum, casing, enum_module_name_opt);
+    let variants =
+        collect_discriminated_variants(&mut item_enum, casing, enum_module_name_opt, args);
     if let Some(output) = guard_failure_output(&item_enum, Some(&item_enum.ident), &variants.2) {
         return output;
     }
@@ -9159,19 +9303,33 @@ fn untagged_named_json_value(
     variant_merged_json_value(&object, flattened_fields, self_type_name, variant_name)
 }
 
+/// The `allOf` a string states two patterns in, where its enum's holds beside its own: one
+/// `pattern` keyword states one.
+#[cfg(feature = "jsonschema")]
+fn both_patterns_json(fld: &FieldDef) -> Option<proc_macro2::TokenStream> {
+    let meta = fld.model_schema_prop_meta.as_ref()?;
+    let (own, held) = (meta.pattern.as_ref()?, meta.enum_pattern.as_ref()?);
+    Some(quote! { serde_json::json!([{ "pattern": #own }, { "pattern": #held }]) })
+}
+
 /// Builds the `{ "type": "string", ... }` JSON-schema value token for a `String` field, including
 /// any `pattern` / `minLength` / `maxLength` constraints from its `model_schema_prop` metadata.
 #[cfg(feature = "jsonschema")]
 fn string_field_json_schema_value(fld: &FieldDef) -> proc_macro2::TokenStream {
     let meta = fld.model_schema_prop_meta.as_ref();
-    let pattern_insert = meta.and_then(|m| m.pattern.clone()).map(|p| {
-        quote! {
-            string_schema.insert(
-                "pattern".to_string(),
-                serde_json::Value::String(#p.to_string()),
-            );
-        }
-    });
+    let pattern_insert = both_patterns_json(fld).map_or_else(
+        || {
+            meta.and_then(|m| m.pattern.clone()).map(|p| {
+                quote! {
+                    string_schema.insert(
+                        "pattern".to_string(),
+                        serde_json::Value::String(#p.to_string()),
+                    );
+                }
+            })
+        },
+        |both| Some(quote! { string_schema.insert("allOf".to_string(), #both); }),
+    );
     let min_insert = meta.and_then(|m| m.min_length).map(|n| {
         let len = n as u64;
         quote! {
@@ -9325,6 +9483,8 @@ const fn untagged_variant_context<'ctx>(
         // An untagged member's own reader is hung by the walk that collects it, where a member's
         // bound decides which variant the payload is; nothing this context reaches hangs one.
         container_read_back: false,
+        // That walk holds the member to its enum's check as well, ahead of this context.
+        enum_args: None,
         rename_all,
         schema_module_name,
         type_name: enum_type_name,
@@ -9387,6 +9547,7 @@ fn collect_untagged_variant_members(
     schema_module_name: Option<&str>,
     type_parameters: &[String],
     rename_all_fields: Option<&str>,
+    args: &ModelSchemaArgs,
 ) -> UntaggedVariantMembers {
     let variant_name = variant.ident.to_string();
     let variant_defaulted = has_serde_default(&variant.attrs);
@@ -9425,7 +9586,7 @@ fn collect_untagged_variant_members(
         }
 
         let field_name = field_ident_string(field);
-        let prop_meta = parse_model_schema_prop_attributes(&field.attrs);
+        let prop_meta = member_prop_meta(field, Some(args));
         let serde_field_meta = parse_serde_field_attributes(&field.attrs);
 
         let new_attrs = declaration_attrs(field);
@@ -9500,6 +9661,7 @@ fn collect_untagged_variant_members(
 fn collect_untagged_members(
     item_enum: &mut syn::ItemEnum,
     schema_module_name: Option<&str>,
+    args: &ModelSchemaArgs,
 ) -> UntaggedMemberData {
     let enum_type_name = item_enum.ident.to_string();
     let type_parameters = type_parameters_in_scope(&item_enum.generics);
@@ -9529,6 +9691,7 @@ fn collect_untagged_members(
             schema_module_name,
             &type_parameters,
             rename_all_fields.as_deref(),
+            args,
         );
         guard_errors.append(&mut walked.guard_errors);
         validation_fns.append(&mut walked.validation_fns);
@@ -9873,7 +10036,7 @@ fn process_untagged_enum(
         guard_errors,
         enum_validation_fns,
         validate_arms,
-    ) = collect_untagged_members(&mut item_enum, enum_module_name_opt);
+    ) = collect_untagged_members(&mut item_enum, enum_module_name_opt, args);
 
     // A violated field guard makes the whole contract unsound, so the schema surface is dropped
     // and only the original item plus the errors are emitted.
@@ -11339,9 +11502,14 @@ fn build_string_field_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro
     let max_len_insert = max_len_opt.map(|max_len| {
         quote! { schema_obj.insert("maxLength".to_string(), serde_json::json!(#max_len)); }
     });
-    let pattern_insert = pattern_opt.as_ref().map(|pattern| {
-        quote! { schema_obj.insert("pattern".to_string(), serde_json::json!(#pattern)); }
-    });
+    let pattern_insert = both_patterns_json(fld).map_or_else(
+        || {
+            pattern_opt.as_ref().map(|pattern| {
+                quote! { schema_obj.insert("pattern".to_string(), serde_json::json!(#pattern)); }
+            })
+        },
+        |both| Some(quote! { schema_obj.insert("allOf".to_string(), #both); }),
+    );
 
     let schema = nullable_slot_json_schema_value(
         fld,
@@ -12275,7 +12443,7 @@ fn generate_string_validation_code(
         });
     }
 
-    if let Some(pattern) = &meta.pattern {
+    for pattern in meta.patterns() {
         let reported = rust_violation(Bound::Pattern(pattern), named, &measured);
         checks.push(pattern_check(pattern, &quote! { errors.push(#reported); }));
     }
@@ -12532,7 +12700,6 @@ fn blocking_interior_mutability_wrapper(ty: &syn::Type) -> Option<String> {
 }
 
 /// Whether a reference borrows `str`, the one borrow a bound is read through.
-#[cfg(feature = "serde")]
 fn names_str(borrowed: &syn::Type) -> bool {
     let syn::Type::Path(named) = written_type(borrowed) else {
         return false;
@@ -12575,7 +12742,6 @@ fn generic_wrap(ident: &str) -> Option<ConstraintWrap> {
 
 /// The one type argument a wrapper holds. A lifetime writes nothing and is not one, which is what
 /// lets `Cow<'a, str>` answer here exactly as `Box<str>` does.
-#[cfg(feature = "serde")]
 fn sole_type_argument(args: &syn::AngleBracketedGenericArguments) -> Option<&syn::Type> {
     let mut types = args.args.iter().filter_map(|arg| {
         if let syn::GenericArgument::Type(ty) = arg {
@@ -13301,6 +13467,61 @@ fn check_undescribable_std_field(
     ))
 }
 
+/// Whether a field is written as a string or a path itself, under `Option`, an ownership wrapper or
+/// the borrow of a `str`, which is what an enum's own string check reaches. It is the walk
+/// `constrained_shape` makes, held to its two text leaves and stopped by a list.
+fn written_as_text(ty: &syn::Type) -> bool {
+    let mut current = ty;
+    loop {
+        current = written_type(current);
+        if let syn::Type::Reference(reference) = current {
+            return names_str(&reference.elem);
+        }
+        let syn::Type::Path(path) = current else {
+            return false;
+        };
+        let Some(segment) = path.path.segments.last() else {
+            return false;
+        };
+        let ident = segment.ident.to_string();
+        if matches!(segment.arguments, syn::PathArguments::None) {
+            return matches!(ident.as_str(), "String" | "str" | "PathBuf" | "Path");
+        }
+        let syn::PathArguments::AngleBracketed(held) = &segment.arguments else {
+            return false;
+        };
+        if ident != "Option" && !is_ownership_wrapper(&ident) {
+            return false;
+        }
+        let Some(inner) = sole_type_argument(held) else {
+            return false;
+        };
+        current = inner;
+    }
+}
+
+/// A member's own `model_schema_prop`, held to the string check of the enum around it where that
+/// check reaches the member: the longer `minLength`, the shorter `maxLength`, and both patterns.
+fn member_prop_meta(field: &Field, enum_args: Option<&ModelSchemaArgs>) -> ModelSchemaPropMeta {
+    let mut meta = parse_model_schema_prop_attributes(&field.attrs);
+    let Some(args) = enum_args.filter(|_| written_as_text(&field.ty)) else {
+        return meta;
+    };
+    meta.min_length = meta.min_length.max(args.min_length);
+    meta.max_length = match (meta.max_length, args.max_length) {
+        (Some(own), Some(held)) => Some(own.min(held)),
+        (own, held) => own.or(held),
+    };
+    if meta.pattern.is_none() {
+        meta.pattern.clone_from(&args.pattern);
+    }
+    #[cfg(any(feature = "serde", feature = "zod", feature = "jsonschema"))]
+    if meta.pattern != args.pattern {
+        meta.enum_pattern.clone_from(&args.pattern);
+    }
+    meta
+}
+
 /// Processes a field and returns its definition, optional module items (validators/deserializers),
 /// optional `validate_body` (contribution to the type-level `validate()` method), and the
 /// `compile_error!` tokens for every guard the field violates. `index` is the field's place in
@@ -13331,7 +13552,7 @@ fn process_field(
 
     let raw_field_ident = field_ident_string(field);
 
-    let model_schema_prop_meta = parse_model_schema_prop_attributes(&field.attrs);
+    let model_schema_prop_meta = member_prop_meta(field, ctx.enum_args);
 
     let new_attrs = declaration_attrs(field);
 

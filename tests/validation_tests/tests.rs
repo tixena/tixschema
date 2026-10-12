@@ -767,6 +767,547 @@ mod a_bound_inside_an_untagged_variant {
     }
 }
 
+/// What a check written on an enum holds: each string the enum carries, where that string's own
+/// check is held, and nothing a list, a named type, a number or a type parameter carries.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+mod a_check_the_enum_declares {
+    use alloc::borrow::Cow;
+    use alloc::sync::Arc;
+    use serde::{Deserialize, Serialize};
+    use std::path::PathBuf;
+    use tixschema::model_schema;
+
+    #[model_schema(minLength = 2)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(transparent)]
+    pub struct Label(pub String);
+
+    #[model_schema(minLength = 1, maxLength = 5)]
+    #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub enum Held {
+        Bare,
+        Branded {
+            label: Label,
+        },
+        Counted {
+            count: u32,
+        },
+        Listed {
+            tags: Vec<String>,
+        },
+        Maybe {
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            note: Option<String>,
+        },
+        Named {
+            label: String,
+        },
+        Own {
+            #[model_schema_prop(minLength = 3)]
+            label: String,
+        },
+        Pair(String, u32),
+        Slot(String),
+    }
+
+    #[model_schema(minLength = 1, maxLength = 5)]
+    #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "kind")]
+    pub enum HeldInternal {
+        Bare,
+        Named {
+            label: String,
+        },
+        Own {
+            #[model_schema_prop(minLength = 3)]
+            label: String,
+        },
+    }
+
+    #[model_schema(minLength = 1, maxLength = 5)]
+    #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "kind", content = "data")]
+    pub enum HeldAdjacent {
+        Bare,
+        Named { label: String },
+        Pair(String, u32),
+        Slot(String),
+    }
+
+    #[model_schema(pattern = "^[a-z]+$")]
+    #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "kind")]
+    pub enum Matched {
+        Own {
+            #[model_schema_prop(pattern = "^ab")]
+            word: String,
+        },
+        Plain {
+            word: String,
+        },
+    }
+
+    #[model_schema(maxLength = 5, default_types(Carried = String))]
+    #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub enum Given<Carried> {
+        Filled { value: Carried },
+        Text { value: String },
+    }
+
+    #[model_schema(maxLength = 3)]
+    #[derive(Debug, Deserialize, Serialize)]
+    pub enum Wrapped {
+        Boxed { text: Box<str> },
+        Cowed { text: Cow<'static, str> },
+        Maybe(Option<Box<str>>),
+        Path { at: PathBuf },
+        Shared { text: Arc<str> },
+    }
+
+    #[test]
+    fn test_an_enums_check_is_reported_under_the_fields_name_and_the_slots_position() {
+        let short = "too short: minimum length is 1, got 0";
+        let long = "too long: maximum length is 5, got 6";
+        let (empty, six) = (String::new(), "abcdef".to_owned());
+
+        assert_eq!(
+            Held::Named {
+                label: empty.clone()
+            }
+            .validate()
+            .unwrap_err(),
+            vec![format!("'label': {short}")]
+        );
+        assert_eq!(
+            Held::Named { label: six.clone() }.validate().unwrap_err(),
+            vec![format!("'label': {long}")]
+        );
+        assert_eq!(
+            Held::Slot(empty.clone()).validate().unwrap_err(),
+            vec![format!("'0': {short}")]
+        );
+        assert_eq!(
+            Held::Pair(six.clone(), 0).validate().unwrap_err(),
+            vec![format!("'0': {long}")]
+        );
+        assert_eq!(
+            Held::Maybe {
+                note: Some(empty.clone())
+            }
+            .validate()
+            .unwrap_err(),
+            vec![format!("'note': {short}")]
+        );
+        assert_eq!(
+            HeldInternal::Named { label: six.clone() }
+                .validate()
+                .unwrap_err(),
+            vec![format!("'label': {long}")]
+        );
+        assert_eq!(
+            HeldAdjacent::Named {
+                label: empty.clone()
+            }
+            .validate()
+            .unwrap_err(),
+            vec![format!("'label': {short}")]
+        );
+        assert_eq!(
+            HeldAdjacent::Slot(six).validate().unwrap_err(),
+            vec![format!("'0': {long}")]
+        );
+        assert_eq!(
+            HeldAdjacent::Pair(empty, 0).validate().unwrap_err(),
+            vec![format!("'0': {short}")]
+        );
+
+        Held::Maybe { note: None }.validate().unwrap();
+        Held::Named {
+            label: "abcde".to_owned(),
+        }
+        .validate()
+        .unwrap();
+        Held::Bare.validate().unwrap();
+        HeldInternal::Bare.validate().unwrap();
+        HeldAdjacent::Bare.validate().unwrap();
+        assert_eq!(
+            held_schema::validate_slot_0_value("").unwrap_err(),
+            vec![format!("'0': {short}")]
+        );
+    }
+
+    #[test]
+    fn test_an_enums_check_reaches_a_string_or_a_path_under_its_wrappers() {
+        let long = "too long: maximum length is 3, got 4";
+        for (held, reported) in [
+            (
+                Wrapped::Boxed {
+                    text: "abcd".into(),
+                },
+                format!("'text': {long}"),
+            ),
+            (
+                Wrapped::Cowed {
+                    text: Cow::Borrowed("abcd"),
+                },
+                format!("'text': {long}"),
+            ),
+            (Wrapped::Maybe(Some("abcd".into())), format!("'0': {long}")),
+            (
+                Wrapped::Path {
+                    at: PathBuf::from("/tmp"),
+                },
+                format!("'at': {long}"),
+            ),
+            (
+                Wrapped::Shared {
+                    text: Arc::from("abcd"),
+                },
+                format!("'text': {long}"),
+            ),
+        ] {
+            assert_eq!(held.validate().unwrap_err(), vec![reported]);
+        }
+        Wrapped::Maybe(None).validate().unwrap();
+        Wrapped::Path {
+            at: PathBuf::from("/a"),
+        }
+        .validate()
+        .unwrap();
+    }
+
+    #[test]
+    fn test_an_enums_check_reaches_no_list_named_type_number_or_type_parameter() {
+        Held::Listed {
+            tags: vec![String::new(), "abcdef".to_owned()],
+        }
+        .validate()
+        .unwrap();
+        Held::Branded {
+            label: Label("abcdefgh".to_owned()),
+        }
+        .validate()
+        .unwrap();
+        assert_eq!(
+            Held::Branded {
+                label: Label("a".to_owned())
+            }
+            .validate()
+            .unwrap_err(),
+            vec!["'label': too short: minimum length is 2, got 1"]
+        );
+        Held::Counted { count: 0 }.validate().unwrap();
+
+        Given::<String>::Filled {
+            value: "abcdefgh".to_owned(),
+        }
+        .validate()
+        .unwrap();
+        assert_eq!(
+            Given::<String>::Text {
+                value: "abcdefgh".to_owned()
+            }
+            .validate()
+            .unwrap_err(),
+            vec!["'value': too long: maximum length is 5, got 8"]
+        );
+    }
+
+    #[test]
+    fn test_a_field_with_a_check_of_its_own_under_its_enums_is_held_to_both() {
+        for (label, refused) in [
+            ("ab", Some("'label': too short: minimum length is 3, got 2")),
+            (
+                "abcdef",
+                Some("'label': too long: maximum length is 5, got 6"),
+            ),
+            ("abc", None),
+            ("abcde", None),
+        ] {
+            let reported: Vec<String> = refused.into_iter().map(str::to_owned).collect();
+            let external = Held::Own {
+                label: label.to_owned(),
+            };
+            let internal = HeldInternal::Own {
+                label: label.to_owned(),
+            };
+            assert_eq!(external.validate().err().unwrap_or_default(), reported);
+            assert_eq!(internal.validate().err().unwrap_or_default(), reported);
+        }
+
+        let (own, of_the_enum) = (
+            "'word': does not match pattern '^ab'",
+            "'word': does not match pattern '^[a-z]+$'",
+        );
+        for (word, refused) in [
+            ("XY", vec![own, of_the_enum]),
+            ("xyz", vec![own]),
+            ("abC", vec![of_the_enum]),
+            ("abc", vec![]),
+        ] {
+            let matched = Matched::Own {
+                word: word.to_owned(),
+            };
+            assert_eq!(matched.validate().err().unwrap_or_default(), refused);
+        }
+        assert_eq!(
+            Matched::Plain {
+                word: "XY".to_owned()
+            }
+            .validate()
+            .unwrap_err(),
+            vec![of_the_enum]
+        );
+    }
+
+    #[test]
+    fn test_a_tagged_enum_under_a_check_is_read_and_written_as_before() {
+        for (wire, read) in [
+            (
+                r#"{"Named":{"label":""}}"#,
+                Held::Named {
+                    label: String::new(),
+                },
+            ),
+            (r#"{"Slot":"abcdef"}"#, Held::Slot("abcdef".to_owned())),
+            (r#"{"Pair":["",0]}"#, Held::Pair(String::new(), 0)),
+            (
+                r#"{"Own":{"label":"ab"}}"#,
+                Held::Own {
+                    label: "ab".to_owned(),
+                },
+            ),
+            (r#""Bare""#, Held::Bare),
+        ] {
+            assert_eq!(serde_json::from_str::<Held>(wire).unwrap(), read);
+            assert_eq!(serde_json::to_string(&read).unwrap(), wire);
+        }
+        let internal = r#"{"kind":"Named","label":"abcdef"}"#;
+        assert_eq!(
+            serde_json::from_str::<HeldInternal>(internal).unwrap(),
+            HeldInternal::Named {
+                label: "abcdef".to_owned()
+            }
+        );
+        let adjacent = r#"{"kind":"Slot","data":""}"#;
+        let slot = serde_json::from_str::<HeldAdjacent>(adjacent).unwrap();
+        assert_eq!(slot, HeldAdjacent::Slot(String::new()));
+        assert_eq!(serde_json::to_string(&slot).unwrap(), adjacent);
+    }
+
+    #[cfg(feature = "zod")]
+    #[test]
+    fn test_an_enums_check_reaches_zod_on_each_string_it_carries() {
+        let min = "min(1, { error: (issue) => `too short: minimum length is 1, got \
+                   ${String(issue.input).length}` })";
+        let own_min = "min(3, { error: (issue) => `too short: minimum length is 3, got \
+                       ${String(issue.input).length}` })";
+        let max = "max(5, { error: (issue) => `too long: maximum length is 5, got \
+                   ${String(issue.input).length}` })";
+        let held = format!("z.string().{min}.{max}");
+
+        let external = Held::zod_schema();
+        for member in [
+            format!("label: {held},"),
+            format!("label: z.string().{own_min}.{max},"),
+            format!("\"Pair\": z.tuple([{held}, z.number().int()]),"),
+            format!("\"Slot\": {held},"),
+            "label: Label$Schema,".to_owned(),
+            "tags: z.array(z.string()),".to_owned(),
+            "count: z.number().int(),".to_owned(),
+            "z.literal(\"Bare\")".to_owned(),
+        ] {
+            assert!(external.contains(&member), "{member} in:\n{external}");
+        }
+        assert!(
+            external.contains(&format!(
+                "z.union([z.null().transform(() => undefined), {held}, z.undefined()])"
+            )),
+            "Got:\n{external}"
+        );
+
+        let internal = HeldInternal::zod_schema();
+        assert!(
+            internal.contains(&format!("label: {held},")),
+            "Got:\n{internal}"
+        );
+        let adjacent = HeldAdjacent::zod_schema();
+        for member in [
+            format!("label: {held},"),
+            format!("data: z.tuple([{held}, z.number().int()]),"),
+            format!("data: {held},"),
+        ] {
+            assert!(adjacent.contains(&member), "{member} in:\n{adjacent}");
+        }
+
+        let matched = Matched::zod_schema();
+        let own = "check(z.regex(/^ab/, { error: \"does not match pattern '^ab'\" }))";
+        let of_the_enum =
+            "check(z.regex(/^[a-z]+$/, { error: \"does not match pattern '^[a-z]+$'\" }))";
+        for member in [
+            format!("word: z.string().{own}.{of_the_enum},"),
+            format!("word: z.string().{of_the_enum},"),
+        ] {
+            assert!(matched.contains(&member), "{member} in:\n{matched}");
+        }
+
+        let given = Given::<String>::zod_schema();
+        assert!(given.contains("value: carried,"), "Got:\n{given}");
+    }
+
+    #[cfg(feature = "jsonschema")]
+    #[test]
+    fn test_an_enums_check_reaches_the_json_schema_on_each_string_it_carries() {
+        let held = serde_json::json!({ "type": "string", "minLength": 1_u32, "maxLength": 5_u32 });
+
+        let external = Held::json_schema();
+        let member =
+            |at: usize, variant: &str| external["oneOf"][at]["properties"][variant].clone();
+        assert_eq!(
+            external["oneOf"][0],
+            serde_json::json!({ "type": "string", "const": "Bare" })
+        );
+        assert_eq!(
+            member(3, "Listed")["properties"]["tags"],
+            serde_json::json!({ "type": "array", "items": { "type": "string" } })
+        );
+        assert_eq!(
+            member(4, "Maybe")["properties"]["note"],
+            serde_json::json!({ "anyOf": [held, { "type": "null" }] })
+        );
+        assert_eq!(member(5, "Named")["properties"]["label"], held);
+        assert_eq!(
+            member(6, "Own")["properties"]["label"],
+            serde_json::json!({ "type": "string", "minLength": 3_u32, "maxLength": 5_u32 })
+        );
+        assert_eq!(
+            member(7, "Pair")["prefixItems"],
+            serde_json::json!([held, { "type": "integer" }])
+        );
+        assert_eq!(member(8, "Slot"), held);
+        assert_eq!(
+            member(2, "Counted")["properties"]["count"],
+            serde_json::json!({ "type": "integer" })
+        );
+        let branded = member(1, "Branded")["properties"]["label"].to_string();
+        assert!(!branded.contains("maxLength"), "Got: {branded}");
+
+        let internal = HeldInternal::json_schema();
+        assert_eq!(internal["oneOf"][1]["properties"]["label"], held);
+        let adjacent = HeldAdjacent::json_schema();
+        assert_eq!(
+            adjacent["oneOf"][1]["properties"]["data"]["properties"]["label"],
+            held
+        );
+        assert_eq!(adjacent["oneOf"][3]["properties"]["data"], held);
+
+        let matched = Matched::json_schema();
+        assert_eq!(
+            matched["oneOf"][0]["properties"]["word"],
+            serde_json::json!({
+                "type": "string",
+                "allOf": [{ "pattern": "^ab" }, { "pattern": "^[a-z]+$" }]
+            })
+        );
+        assert_eq!(
+            matched["oneOf"][1]["properties"]["word"],
+            serde_json::json!({ "type": "string", "pattern": "^[a-z]+$" })
+        );
+    }
+
+    #[test]
+    fn test_readme_enum_check_example_prints_what_the_generator_writes() {
+        #[model_schema(minLength = 1, maxLength = 5, pattern = "^[a-z]+$")]
+        #[derive(Debug, Deserialize, Serialize)]
+        #[serde(tag = "kind")]
+        pub enum Tag {
+            Plain {
+                word: String,
+            },
+            Prefixed {
+                #[model_schema_prop(minLength = 3, pattern = "^ab")]
+                word: String,
+            },
+        }
+
+        let readme = include_str!("../../README.md");
+        for reported in [
+            Tag::Plain {
+                word: "abcdef".to_owned(),
+            }
+            .validate(),
+            Tag::Prefixed {
+                word: "XY".to_owned(),
+            }
+            .validate(),
+        ] {
+            reported.as_ref().unwrap_err();
+            let shown = format!("// {reported:?}");
+            assert!(
+                readme.contains(&shown),
+                "the README no longer shows {shown}"
+            );
+        }
+        Tag::Prefixed {
+            word: "abc".to_owned(),
+        }
+        .validate()
+        .unwrap();
+
+        #[cfg(feature = "jsonschema")]
+        assert_eq!(
+            Tag::json_schema()["oneOf"][1]["properties"]["word"],
+            serde_json::json!({
+                "type": "string",
+                "minLength": 3_u32,
+                "maxLength": 5_u32,
+                "allOf": [{ "pattern": "^ab" }, { "pattern": "^[a-z]+$" }]
+            })
+        );
+    }
+
+    #[cfg(feature = "typescript")]
+    #[test]
+    fn test_an_enums_check_leaves_the_typescript_type_alone() {
+        #[model_schema()]
+        #[derive(Debug, Deserialize, Serialize)]
+        #[serde(tag = "kind")]
+        pub enum Open {
+            Bare,
+            Named { label: String },
+        }
+
+        #[model_schema(minLength = 1, maxLength = 5)]
+        #[derive(Debug, Deserialize, Serialize)]
+        #[serde(tag = "kind")]
+        pub enum Shut {
+            Bare,
+            Named { label: String },
+        }
+
+        let uncommented = |ts: String| -> String {
+            ts.lines()
+                .map(str::trim_start)
+                .filter(|line| !line.starts_with('*') && !line.starts_with("/*"))
+                .collect::<Vec<&str>>()
+                .join("\n")
+                .replace("Shut", "Open")
+        };
+        assert_eq!(
+            uncommented(Shut::ts_definition()),
+            uncommented(Open::ts_definition())
+        );
+        let held = Shut::ts_definition();
+        assert!(
+            held.contains("   * Minimum length: 1\n   * Maximum length: 5\n"),
+            "Got:\n{held}"
+        );
+    }
+}
+
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")

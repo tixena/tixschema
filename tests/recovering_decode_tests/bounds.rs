@@ -70,6 +70,14 @@ enum BoundedSlotsAdjacent {
     ),
 }
 
+#[model_schema(decode_with, minLength = 1, maxLength = 5)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+enum BoundedByEnum {
+    Label { text: String },
+    Slot(String),
+    Tags { tags: Vec<String> },
+}
+
 /// A stored group that breaks every bound `BoundedGroup` writes.
 fn broken() -> Value {
     json!({
@@ -228,6 +236,55 @@ fn a_broken_bound_in_a_tagged_slot_is_listed_at_the_slot() {
             adjacent_pair,
             Ok(BoundedSlotsAdjacent::Pair("a".to_owned(), 0))
         );
+    }
+}
+
+#[test]
+fn a_bound_written_on_the_enum_is_listed_at_each_string_it_reaches() {
+    use bounded_by_enum_schema::Verdict;
+
+    let held = BoundedByEnum::from_value_with(json!({ "Slot": "abcde" }), |_, _| Verdict::Reject);
+    assert_eq!(held, Ok(BoundedByEnum::Slot("abcde".to_owned())));
+    let tags =
+        BoundedByEnum::from_value_with(json!({ "Tags": { "tags": ["", "abcdef"] } }), |_, _| {
+            Verdict::Reject
+        });
+    assert_eq!(
+        tags,
+        Ok(BoundedByEnum::Tags {
+            tags: vec![String::new(), "abcdef".to_owned()]
+        })
+    );
+
+    let label =
+        BoundedByEnum::from_value_with(json!({ "Label": { "text": "" } }), |_, _| Verdict::Reject);
+    let slot = BoundedByEnum::from_value_with(json!({ "Slot": "abcdef" }), |_, _| Verdict::Reject);
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    {
+        assert_eq!(
+            lines(&label.unwrap_err()),
+            [
+                "Label.text: invalid: expected String, found String(\"\"): too short: minimum \
+                 length is 1, got 0"
+            ]
+        );
+        assert_eq!(
+            lines(&slot.unwrap_err()),
+            [
+                "Slot: invalid: expected String, found String(\"abcdef\"): too long: maximum \
+                 length is 5, got 6"
+            ]
+        );
+    }
+    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    {
+        assert_eq!(
+            label,
+            Ok(BoundedByEnum::Label {
+                text: String::new()
+            })
+        );
+        assert_eq!(slot, Ok(BoundedByEnum::Slot("abcdef".to_owned())));
     }
 }
 

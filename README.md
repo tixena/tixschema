@@ -581,6 +581,90 @@ Only a value Serde writes as an object has members to put beside the tag. A newt
 
 A name is not a promise of an object either. A newtype variant wrapping a plain `#[model_schema()]` enum is rejected at expansion the same way: a plain enum writes its own variant name, which Serde puts beside the tag as a key holding null and which a schema closed around the tag rejects. Every other named type -- a struct, a newtype over a scalar -- looks alike to the expansion, so one that turns out not to be written as an object is caught when `json_schema()` runs, with a diagnostic naming the variant, the inner type and the same remedy. The TypeScript and Zod intersections for that case are a known gap: they are written, and only the JSON Schema surface refuses them.
 
+#### A Check Written on the Enum
+
+`minLength`, `maxLength` and `pattern` written in an enum's own `#[model_schema(...)]`, each alone or together, are the check of every string the enum carries. A free-text arm is held to a length with no attribute on the arm and no brand declared for it:
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+pub enum KnownKind {
+    #[serde(rename = "application/pdf")]
+    Pdf,
+}
+
+#[model_schema(minLength = 1, maxLength = 20)]
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ContentKind {
+    Known(KnownKind),
+    Other(String),
+}
+
+ContentKind::Other(String::new()).validate();
+// Err(["too short: minimum length is 1, got 0"])
+ContentKind::Other("a".repeat(21)).validate();
+// Err(["too long: maximum length is 20, got 21"])
+```
+
+`"text/csv"` reads as `Other` and `"application/pdf"` as `Known`, while `""` and a value of 21 characters match no variant. The Zod schema is `z.union([KnownKind$Schema, z.string().min(1, ...).max(20, ...)])`, the second member of the JSON Schema's `anyOf` is `{ "type": "string", "minLength": 1, "maxLength": 20 }`, and the TypeScript type is still `KnownKind | string`. The wire does not change.
+
+The enum's check is the same check written in `#[model_schema_prop(...)]` on each field it reaches, and it is enforced exactly where that field's own check is, on every enum Serde writes: plain, externally, internally and adjacently tagged, and `#[serde(untagged)]`.
+
+- **Reached:** a field of any variant, a named member or a slot, written as a string or a path itself -- `String`, `&str`, `PathBuf` -- under `Option` and the transparent wrappers `Box`, `Rc`, `Arc` and `Cow`.
+- **Not reached:** the items of a list, so a field written `Vec<String>` is held to nothing; a field typed with a named type, a brand included, which carries its own check; a number, a `bool`, a map and a tuple; and a field typed with one of the enum's own type parameters.
+- **A member of an untagged enum** is checked by the read, which is what chooses the variant, and by `validate()`, the Zod schema and the JSON Schema.
+- **A member of a tagged enum** is checked by `validate()`, the Zod schema, the JSON Schema and the [recovering decode](#recovering-decode-decode_with), and the read admits the value. See [Where a constraint is checked](#where-a-constraint-is-checked).
+
+`validate()` reports a named member under its name, a tagged variant's slot under its position and an untagged newtype variant's slot under no name, as it does for [a check written on the member](#a-slot-of-a-tuple-variant). A validator is published only where a schema surface is on (`typescript`, `zod` or `jsonschema`), so in a build with none the enum's check holds a field to nothing, as the field's own does there.
+
+A field that writes a check of its own under the enum's is held to both. `minLength` is the larger of the two and `maxLength` the smaller. Two patterns are both checked: the Zod schema writes two `.check(z.regex(...))`, the JSON Schema states both in an `allOf`, and `validate()` reports each one the value fails.
+
+```rust
+#[model_schema(minLength = 1, maxLength = 5, pattern = "^[a-z]+$")]
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum Tag {
+    Plain { word: String },
+    Prefixed {
+        #[model_schema_prop(minLength = 3, pattern = "^ab")]
+        word: String,
+    },
+}
+
+Tag::Plain { word: "abcdef".to_string() }.validate();
+// Err(["'word': too long: maximum length is 5, got 6"])
+Tag::Prefixed { word: "XY".to_string() }.validate();
+// Err(["'word': too short: minimum length is 3, got 2", "'word': does not match pattern '^ab'", "'word': does not match pattern '^[a-z]+$'"])
+```
+
+The JSON Schema describes `word` of `Prefixed` as `{ "type": "string", "minLength": 3, "maxLength": 5, "allOf": [{ "pattern": "^ab" }, { "pattern": "^[a-z]+$" }] }`.
+
+**A unit variant's name is checked at expansion.** Each name Serde writes or reads for a variant written with no data -- its name after `rename` and `rename_all`, in each direction where the two differ, and each `alias` -- is measured as a field's value is. A name that breaks the check is a compile error on the variant, in every feature configuration, naming the variant, the name and the check:
+
+```rust
+#[model_schema(minLength = 2, maxLength = 3)]
+#[derive(Serialize, Deserialize)]
+pub enum Size {
+    S,
+    Xl,
+    Xxxxl,
+}
+```
+
+```text
+error: model_schema: type `Size`: variant `S` is written `S`, which breaks `minLength = 2` written on the enum
+error: model_schema: type `Size`: variant `Xxxxl` is written `Xxxxl`, which breaks `maxLength = 3` written on the enum
+```
+
+The name of a variant that carries data is not checked, and an enum whose names all fit publishes exactly what it publishes with no check written.
+
+**A check that reaches nothing is refused.** An enum with no unit variant and no field written as a string or a path leaves the check nothing to hold, so `#[model_schema(minLength = 1)]` on `enum Shape { Circle { r: u32 } }` is a compile error rather than a check dropped in silence:
+
+```text
+error: model_schema: type `Shape`: `minLength` reaches nothing here: an enum's check holds each variant written with no data and each field written as a string or a path, and `Shape` has neither
+```
+
 ### Intersection Types (`#[serde(flatten)]`)
 
 A struct field marked `#[serde(flatten)]` is lifted into the parent type as a TypeScript intersection (`A & B`) and a Zod `.and()` chain, instead of a nested object. This is the idiomatic way to compose a common set of fields with a discriminated union.
@@ -747,7 +831,7 @@ pub enum MimeType {
 }
 ```
 
-The arm still writes and reads a bare string, and its TypeScript type is still `KnownMimeType | string`. `"text/csv"` reads as `Other` and `"application/pdf"` as `Known`; `""`, a value of 128 characters and `"Text/CSV"` match no variant, because the hook hung on the slot takes `Other` out as it does for a named member. The Zod schema writes the three checks on the arm's member of the union, `z.union([KnownMimeType$Schema, z.string().min(1, ...).max(127, ...).check(z.regex(...))])`, and the JSON Schema on its member of the `anyOf`: `{ "type": "string", "minLength": 1, "maxLength": 127, "pattern": "^[a-z]+/[a-z0-9.+-]+$" }`. A numeric arm takes `minimum` and `maximum` the same way. [A slot of a tuple variant](#a-slot-of-a-tuple-variant) says how `validate()` reports the slot.
+The arm still writes and reads a bare string, and its TypeScript type is still `KnownMimeType | string`. `"text/csv"` reads as `Other` and `"application/pdf"` as `Known`; `""`, a value of 128 characters and `"Text/CSV"` match no variant, because the hook hung on the slot takes `Other` out as it does for a named member. The Zod schema writes the three checks on the arm's member of the union, `z.union([KnownMimeType$Schema, z.string().min(1, ...).max(127, ...).check(z.regex(...))])`, and the JSON Schema on its member of the `anyOf`: `{ "type": "string", "minLength": 1, "maxLength": 127, "pattern": "^[a-z]+/[a-z0-9.+-]+$" }`. A numeric arm takes `minimum` and `maximum` the same way. [A slot of a tuple variant](#a-slot-of-a-tuple-variant) says how `validate()` reports the slot. A length or a pattern that holds every string the enum carries is written once, on the enum: see [A Check Written on the Enum](#a-check-written-on-the-enum).
 
 A member holding a map or a tuple describes as the struct field written from the same type does, on every surface. A map is dispatched on the classification its key earns -- enumerated properties for a key whose members the expansion knows, `additionalProperties` for an open one -- and a key no surface can write is refused at the member, at whatever depth the map sits at. A tuple is the fixed-arity array Serde writes, `prefixItems` and the arity bounds included. A member the parser could not classify at all is the one shape that stays permissive: it carries no type name to narrow with, so it admits any value, exactly as the same field does.
 
@@ -1310,7 +1394,7 @@ A generic brand carries the requirement as a `Display` bound on each type parame
 
 You can add `pattern`, `minLength`, and `maxLength` constraints directly on the `#[model_schema()]` attribute for branded newtypes. Constraints are enforced in three places: the generated Zod schema, serde deserialization, and a `validate()` method on the type. A brand is the one Rust position where the check still runs on the read, and it has to: a message holding a branded field publishes no `validate()` that reaches into it, so the read is the only thing there is.
 
-The three checks are written on a branded newtype only: on any other item -- a struct that is no brand, an enum or a type alias -- they are refused at expansion, and a check on a field is written in `#[model_schema_prop(...)]`.
+The three checks are written on a branded newtype, and on [an enum](#a-check-written-on-the-enum), which holds every string it carries to them. On a struct that is no brand and on a type alias they are refused at expansion, and a check on a field is written in `#[model_schema_prop(...)]`.
 
 A bound written here holds every value of the brand. One that should hold a single field is written on that field instead, and the brand keeps none: see [A field typed with a branded string](#a-field-typed-with-a-branded-string).
 

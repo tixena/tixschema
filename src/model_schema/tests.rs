@@ -293,6 +293,34 @@ const UNCASED: EnumCasing<'static> = EnumCasing {
     variants: None,
 };
 
+/// Every type the reach of an enum's check is asked of, beside the answer.
+const TEXT_REACH: [(&str, bool); 24] = [
+    ("String", true),
+    ("&'a str", true),
+    ("PathBuf", true),
+    ("std::path::PathBuf", true),
+    ("Option<String>", true),
+    ("Box<str>", true),
+    ("Rc<String>", true),
+    ("Arc<Option<PathBuf>>", true),
+    ("Cow<'a, str>", true),
+    ("Option<Box<String>>", true),
+    ("Vec<String>", false),
+    ("Option<Vec<String>>", false),
+    ("[String; 2]", false),
+    ("HashSet<String>", false),
+    ("HashMap<String, String>", false),
+    ("(String, String)", false),
+    ("RefCell<String>", false),
+    ("&'a String", false),
+    ("KnownKind", false),
+    ("Slug<String>", false),
+    ("T", false),
+    ("u32", false),
+    ("bool", false),
+    ("char", false),
+];
+
 /// The flag's verdict on a declaration's sole member, read the way `process_field` reads it: the
 /// omission the field declares is on the def before the guard asks its question of it.
 fn ts_optional_verdict(item: &syn::ItemStruct, flag_set: bool) -> Result<(), String> {
@@ -743,7 +771,7 @@ fn positional_option_field_is_exempt() {
 /// Collects the untagged-path guard failures as rendered `compile_error!` token streams.
 #[cfg(feature = "serde")]
 fn untagged_guard_error_tokens(item: &mut syn::ItemEnum) -> Vec<proc_macro2::TokenStream> {
-    collect_untagged_members(item, UNTAGGED_MODULE).5
+    collect_untagged_members(item, UNTAGGED_MODULE, &super::ModelSchemaArgs::default()).5
 }
 
 /// Collects the untagged-path guard failures as rendered `compile_error!` token strings.
@@ -910,8 +938,11 @@ fn untagged_member_carries_its_constraint_to_the_surfaces() {
             },
         }
     };
-    let (_, _, zod_parts, _, _, errors, _, _) =
-        collect_untagged_members(&mut item, UNTAGGED_MODULE);
+    let (_, _, zod_parts, _, _, errors, _, _) = collect_untagged_members(
+        &mut item,
+        UNTAGGED_MODULE,
+        &super::ModelSchemaArgs::default(),
+    );
     assert!(errors.is_empty(), "got: {errors:?}");
     assert!(
         zod_parts[0].contains(
@@ -935,8 +966,11 @@ fn untagged_member_constraint_generates_the_validator_and_hangs_it_on_the_member
             },
         }
     };
-    let (_, _, _, _, _, errors, validation_fns, _) =
-        collect_untagged_members(&mut item, UNTAGGED_MODULE);
+    let (_, _, _, _, _, errors, validation_fns, _) = collect_untagged_members(
+        &mut item,
+        UNTAGGED_MODULE,
+        &super::ModelSchemaArgs::default(),
+    );
     assert!(errors.is_empty(), "got: {errors:?}");
     assert_eq!(validation_fns.len(), 1, "got: {validation_fns:?}");
     let rendered = validation_fns[0].to_string();
@@ -968,7 +1002,8 @@ fn untagged_member_constraint_generates_nothing_without_a_schema_module() {
             },
         }
     };
-    let (_, _, _, _, _, errors, validation_fns, _) = collect_untagged_members(&mut item, None);
+    let (_, _, _, _, _, errors, validation_fns, _) =
+        collect_untagged_members(&mut item, None, &super::ModelSchemaArgs::default());
     assert!(errors.is_empty(), "got: {errors:?}");
     assert!(validation_fns.is_empty(), "got: {validation_fns:?}");
     let attrs = &item.variants[0].fields.iter().next().unwrap().attrs;
@@ -1013,8 +1048,11 @@ fn untagged_newtype_member_constraint_is_named_by_its_position_and_hung_on_the_s
             ),
         }
     };
-    let (_, _, _, _, _, errors, validation_fns, arms) =
-        collect_untagged_members(&mut item, UNTAGGED_MODULE);
+    let (_, _, _, _, _, errors, validation_fns, arms) = collect_untagged_members(
+        &mut item,
+        UNTAGGED_MODULE,
+        &super::ModelSchemaArgs::default(),
+    );
     assert!(errors.is_empty(), "got: {errors:?}");
     assert_eq!(validation_fns.len(), 1, "got: {validation_fns:?}");
     let rendered = validation_fns[0].to_string();
@@ -1056,7 +1094,11 @@ fn untagged_member_prop_attribute_is_stripped_from_the_emitted_item() {
             },
         }
     };
-    collect_untagged_members(&mut item, UNTAGGED_MODULE);
+    collect_untagged_members(
+        &mut item,
+        UNTAGGED_MODULE,
+        &super::ModelSchemaArgs::default(),
+    );
     let attrs = &item.variants[0].fields.iter().next().unwrap().attrs;
     assert!(
         !attrs
@@ -1173,11 +1215,15 @@ fn untagged_member_reaching_an_unwritable_map_key_is_refused() {
 /// The JSON-schema values the untagged walk renders its members as.
 #[cfg(all(feature = "serde", feature = "jsonschema"))]
 fn untagged_member_values(mut item: syn::ItemEnum) -> Vec<String> {
-    collect_untagged_members(&mut item, UNTAGGED_MODULE)
-        .4
-        .iter()
-        .map(ToString::to_string)
-        .collect()
+    collect_untagged_members(
+        &mut item,
+        UNTAGGED_MODULE,
+        &super::ModelSchemaArgs::default(),
+    )
+    .4
+    .iter()
+    .map(ToString::to_string)
+    .collect()
 }
 
 #[cfg(all(feature = "serde", feature = "jsonschema"))]
@@ -2595,7 +2641,12 @@ fn a_refused_map_key_leaves_no_hook_naming_the_dropped_module() {
             },
         }
     };
-    let errors = collect_untagged_members(&mut item, UNTAGGED_MODULE).5;
+    let errors = collect_untagged_members(
+        &mut item,
+        UNTAGGED_MODULE,
+        &super::ModelSchemaArgs::default(),
+    )
+    .5;
     assert_eq!(errors.len(), 1, "got: {errors:?}");
     assert!(
         errors[0].to_string().contains("a map key must be a plain"),
@@ -2906,7 +2957,11 @@ fn an_optional_untagged_member_is_hung_with_the_hook_and_the_default_it_answers_
             },
         }
     };
-    let (_, _, _, _, _, errors, _, _) = collect_untagged_members(&mut item, UNTAGGED_MODULE);
+    let (_, _, _, _, _, errors, _, _) = collect_untagged_members(
+        &mut item,
+        UNTAGGED_MODULE,
+        &super::ModelSchemaArgs::default(),
+    );
     assert!(errors.is_empty(), "got: {errors:?}");
     let attrs = &item.variants[0].fields.iter().next().unwrap().attrs;
     let rendered = quote::quote!(#(#attrs)*).to_string();
@@ -5931,13 +5986,13 @@ fn a_string_check_on_a_struct_that_is_no_brand_is_refused() {
 }
 
 #[test]
-fn a_string_check_on_an_enum_is_refused() {
-    for (args, check) in [
-        ("minLength = 1", "minLength"),
-        ("maxLength = 2", "maxLength"),
-        ("pattern = \"^[A-Z]{3}$\"", "pattern"),
-        ("pattern = \"(\"", "pattern"),
-        ("name = \"Level\", minLength = 1", "minLength"),
+fn a_string_check_on_an_enum_builds_under_every_tagging() {
+    for args in [
+        "minLength = 1",
+        "maxLength = 9",
+        "pattern = \"^[A-Za-z]+$\"",
+        "minLength = 1, maxLength = 9, pattern = \"^[A-Za-z]+$\"",
+        "name = \"Level\", minLength = 1",
     ] {
         for source in [
             "pub enum Tier { Gold, Silver }",
@@ -5947,12 +6002,9 @@ fn a_string_check_on_an_enum_is_refused() {
             "#[serde(untagged)] pub enum Tier { Text(String), Count(u32) }",
         ] {
             let expanded = expansion_under(args, source);
-            assert!(expanded.contains("compile_error"), "got: {expanded}");
             assert!(
-                expanded.contains(&format!(
-                    "type `Tier`: `{check}` is supported only on a branded newtype"
-                )),
-                "got: {expanded}"
+                !expanded.contains("compile_error"),
+                "for `{args}` on `{source}`: {expanded}"
             );
         }
     }
@@ -5962,6 +6014,297 @@ fn a_string_check_on_an_enum_is_refused() {
 fn an_enum_with_no_string_check_is_not_refused() {
     let expanded = expansion_under("", "pub enum Tier { Gold, Silver }");
     assert!(!expanded.contains("compile_error"), "got: {expanded}");
+}
+
+#[test]
+fn a_unit_variants_name_that_breaks_the_enums_check_is_a_build_error() {
+    let readme = include_str!("../../README.md");
+    let sized = expansion_under(
+        "minLength = 2, maxLength = 3",
+        "pub enum Size { S, Xl, Xxxxl }",
+    );
+    assert_eq!(sized.matches("compile_error").count(), 2, "got: {sized}");
+    for refusal in [
+        "type `Size`: variant `S` is written `S`, which breaks `minLength = 2` written on the enum",
+        "type `Size`: variant `Xxxxl` is written `Xxxxl`, which breaks `maxLength = 3` written on \
+         the enum",
+    ] {
+        assert!(sized.contains(refusal), "got: {sized}");
+        assert!(
+            readme.contains(&format!("error: model_schema: {refusal}\n")),
+            "the README no longer shows: {refusal}"
+        );
+    }
+
+    let matched = expansion_under(
+        "minLength = 3, pattern = \"^[a-z]+$\"",
+        "pub enum Tier { Ab, gold, Named { label: String } }",
+    );
+    assert_eq!(
+        matched.matches("compile_error").count(),
+        1,
+        "got: {matched}"
+    );
+    assert!(
+        matched.contains(
+            "type `Tier`: variant `Ab` is written `Ab`, which breaks `minLength = 3` and `pattern \
+             = "
+        ),
+        "got: {matched}"
+    );
+}
+
+#[test]
+fn the_name_of_a_variant_that_carries_data_is_not_measured() {
+    let expanded = expansion_under(
+        "minLength = 9",
+        "pub enum Tier { Named { label: String }, Slot(String) }",
+    );
+    assert!(!expanded.contains("compile_error"), "got: {expanded}");
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn each_name_serde_writes_or_reads_for_a_unit_variant_is_measured() {
+    for (args, source, refusal) in [
+        (
+            "maxLength = 4",
+            "pub enum Kind { #[serde(rename = \"application/pdf\")] Pdf, Txt }",
+            "type `Kind`: variant `Pdf` is written `application/pdf`, which breaks `maxLength = 4` \
+             written on the enum",
+        ),
+        (
+            "maxLength = 5",
+            "#[serde(rename_all = \"SCREAMING_SNAKE_CASE\")] pub enum Kind { TooLong, Ok }",
+            "type `Kind`: variant `TooLong` is written `TOO_LONG`, which breaks `maxLength = 5` \
+             written on the enum",
+        ),
+        (
+            "maxLength = 3",
+            "pub enum Kind { #[serde(alias = \"portable\", alias = \"Pdf\")] Pdf, Txt }",
+            "type `Kind`: variant `Pdf` is read `portable`, which breaks `maxLength = 3` written \
+             on the enum",
+        ),
+        (
+            "maxLength = 3",
+            "#[serde(tag = \"kind\")] pub enum Kind { #[serde(rename = \"portable\")] Pdf, Txt }",
+            "type `Kind`: variant `Pdf` is written `portable`, which breaks `maxLength = 3` \
+             written on the enum",
+        ),
+    ] {
+        let expanded = expansion_under(args, source);
+        assert_eq!(
+            expanded.matches("compile_error").count(),
+            1,
+            "got: {expanded}"
+        );
+        assert!(expanded.contains(refusal), "got: {expanded}");
+    }
+}
+
+/// A schema surface refuses a rename whose two directions differ, ahead of the check.
+#[cfg(all(
+    feature = "serde",
+    not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
+))]
+#[test]
+fn a_unit_variants_read_name_is_measured_where_it_is_not_the_written_one() {
+    let expanded = expansion_under(
+        "maxLength = 3",
+        "pub enum Kind { #[serde(rename(serialize = \"pdf\", deserialize = \"portable\"))] Pdf }",
+    );
+    assert_eq!(
+        expanded.matches("compile_error").count(),
+        1,
+        "got: {expanded}"
+    );
+    assert!(
+        expanded.contains(
+            "type `Kind`: variant `Pdf` is read `portable`, which breaks `maxLength = 3` written \
+             on the enum"
+        ),
+        "got: {expanded}"
+    );
+}
+
+/// An untagged enum writes a unit variant as `null`, and refuses it for that.
+#[cfg(feature = "serde")]
+#[test]
+fn an_untagged_unit_variant_has_no_name_to_measure() {
+    let expanded = expansion_under(
+        "minLength = 9",
+        "#[serde(untagged)] pub enum Loose { Nothing, Text(String) }",
+    );
+    assert!(!expanded.contains("which breaks"), "got: {expanded}");
+    assert!(
+        expanded.contains("`Nothing` is a unit variant"),
+        "got: {expanded}"
+    );
+}
+
+#[test]
+fn an_enum_whose_names_all_fit_its_check_publishes_what_it_did() {
+    let source = "pub enum Tier { Gold, Silver }";
+    let checked = expansion_under(
+        "minLength = 4, maxLength = 6, pattern = \"^[A-Z][a-z]+$\"",
+        source,
+    );
+    assert!(!checked.contains("compile_error"), "got: {checked}");
+    assert_eq!(checked, expansion_under("", source));
+}
+
+#[test]
+fn an_enums_string_check_that_reaches_nothing_is_refused() {
+    for (args, check) in [
+        ("minLength = 1", "minLength"),
+        ("maxLength = 9", "maxLength"),
+        ("pattern = \"^[a-z]+$\"", "pattern"),
+        ("name = \"Outline\", minLength = 1", "minLength"),
+    ] {
+        for source in [
+            "pub enum Shape { Circle { r: u32 } }",
+            "pub enum Shape { Listed(Vec<String>), Named { label: Label }, Sized(u32) }",
+            "#[serde(tag = \"kind\")] pub enum Shape { Circle { r: u32 } }",
+            "#[serde(untagged)] pub enum Shape { Count(u32), Named(Label) }",
+        ] {
+            let expanded = expansion_under(args, source);
+            assert_eq!(
+                expanded.matches("compile_error").count(),
+                1,
+                "got: {expanded}"
+            );
+            assert!(
+                expanded.contains(&format!(
+                    "type `Shape`: `{check}` reaches nothing here: an enum's check holds each \
+                     variant written with no data and each field written as a string or a path, \
+                     and `Shape` has neither"
+                )),
+                "got: {expanded}"
+            );
+        }
+    }
+    assert!(
+        include_str!("../../README.md").contains(
+            "error: model_schema: type `Shape`: `minLength` reaches nothing here: an enum's check \
+             holds each variant written with no data and each field written as a string or a \
+             path, and `Shape` has neither\n"
+        ),
+        "the README no longer shows the refusal"
+    );
+}
+
+#[test]
+fn a_pattern_no_surface_reads_is_refused_on_an_enum() {
+    let expanded = expansion_under(
+        "pattern = \"(\"",
+        "pub enum Tier { Named { label: String }, Bare }",
+    );
+    assert_eq!(
+        expanded.matches("compile_error").count(),
+        1,
+        "got: {expanded}"
+    );
+    assert!(
+        expanded.contains("type `Tier`: `pattern` is not a regex"),
+        "got: {expanded}"
+    );
+}
+
+#[test]
+fn an_enums_check_reaches_a_field_written_as_a_string_or_a_path() {
+    for (spelling, reached) in TEXT_REACH {
+        let ty: syn::Type = syn::parse_str(spelling).unwrap();
+        assert_eq!(super::written_as_text(&ty), reached, "for {spelling}");
+    }
+}
+
+/// The reach is the constraint walk's own: a text leaf, under no list.
+#[cfg(feature = "serde")]
+#[test]
+fn the_reach_of_an_enums_check_is_the_constraint_walks() {
+    for (spelling, reached) in TEXT_REACH {
+        let ty: syn::Type = syn::parse_str(spelling).unwrap();
+        let walked = constrained_shape(&ty).is_some_and(|shape| {
+            matches!(shape.leaf, ConstraintLeaf::Path | ConstraintLeaf::Str)
+                && !shape
+                    .wraps
+                    .iter()
+                    .any(|wrap| matches!(wrap, super::ConstraintWrap::Sequence))
+        });
+        assert_eq!(walked, reached, "for {spelling}");
+    }
+}
+
+/// What `member_prop_meta` holds a member written as `source` to under the enum's `enum_check`.
+fn held_member(enum_check: &str, source: &str) -> ModelSchemaPropMeta {
+    let args = super::parse_model_schema_args(syn::parse_str(enum_check).unwrap());
+    let item: syn::ItemStruct = syn::parse_str(&format!("struct Probe {{ {source} }}")).unwrap();
+    super::member_prop_meta(item.fields.iter().next().unwrap(), Some(&args))
+}
+
+#[test]
+fn a_member_is_held_to_its_own_lengths_and_its_enums() {
+    let enum_check = "minLength = 2, maxLength = 5";
+    for (source, min_length, max_length) in [
+        ("label: String", Some(2), Some(5)),
+        (
+            "#[model_schema_prop(minLength = 3)] label: String",
+            Some(3),
+            Some(5),
+        ),
+        (
+            "#[model_schema_prop(minLength = 1, maxLength = 9)] label: String",
+            Some(2),
+            Some(5),
+        ),
+        (
+            "#[model_schema_prop(maxLength = 4)] label: Option<String>",
+            Some(2),
+            Some(4),
+        ),
+        (
+            "#[model_schema_prop(minLength = 1)] labels: Vec<String>",
+            Some(1),
+            None,
+        ),
+        ("label: Label", None, None),
+        ("count: u32", None, None),
+    ] {
+        let held = held_member(enum_check, source);
+        assert_eq!(held.min_length, min_length, "for {source}");
+        assert_eq!(held.max_length, max_length, "for {source}");
+    }
+}
+
+#[cfg(any(feature = "serde", feature = "zod"))]
+#[test]
+fn a_member_is_held_to_its_own_pattern_and_its_enums() {
+    let enum_check = "pattern = \"^[a-z]+$\"";
+    for (source, patterns) in [
+        ("label: String", vec!["^[a-z]+$"]),
+        (
+            "#[model_schema_prop(pattern = \"^a\")] label: String",
+            vec!["^a", "^[a-z]+$"],
+        ),
+        (
+            "#[model_schema_prop(pattern = \"^[a-z]+$\")] label: String",
+            vec!["^[a-z]+$"],
+        ),
+        (
+            "#[model_schema_prop(pattern = \"^a\")] label: Label",
+            vec!["^a"],
+        ),
+        ("labels: Vec<String>", vec![]),
+    ] {
+        let held = held_member(enum_check, source);
+        assert_eq!(
+            held.patterns().collect::<Vec<_>>(),
+            patterns,
+            "for {source}"
+        );
+    }
+    let unchecked = held_member("", "#[model_schema_prop(pattern = \"^a\")] label: String");
+    assert_eq!(unchecked.patterns().collect::<Vec<_>>(), vec!["^a"]);
 }
 
 #[test]
@@ -9795,7 +10138,12 @@ fn rendered_discriminated_union() -> (Vec<String>, Vec<String>, Vec<String>) {
             Archive,
         }
     };
-    let variants = collect_discriminated_variants(&mut item, UNCASED, Some("action_schema"));
+    let variants = collect_discriminated_variants(
+        &mut item,
+        UNCASED,
+        Some("action_schema"),
+        &super::ModelSchemaArgs::default(),
+    );
     let rendered = render_discriminated_variants("type", "value", "Action", &variants.0);
     (
         rendered.0,
@@ -9854,7 +10202,12 @@ fn adjacently_tagged_empty_named_variant_nests_an_empty_content_object() {
             Unit,
         }
     };
-    let variants = collect_discriminated_variants(&mut item, UNCASED, Some("probe_schema"));
+    let variants = collect_discriminated_variants(
+        &mut item,
+        UNCASED,
+        Some("probe_schema"),
+        &super::ModelSchemaArgs::default(),
+    );
     let rendered = render_discriminated_variants("kind", "data", "Probe", &variants.0);
 
     let ts = &rendered.0[0];
@@ -10268,7 +10621,12 @@ fn a_constrained_tuple_variant_names_its_helpers_by_the_slots_position() {
             Three(String),
         }
     };
-    let variants = collect_discriminated_variants(&mut item, UNCASED, Some("probe_schema"));
+    let variants = collect_discriminated_variants(
+        &mut item,
+        UNCASED,
+        Some("probe_schema"),
+        &super::ModelSchemaArgs::default(),
+    );
 
     let errors: Vec<String> = variants.2.iter().map(ToString::to_string).collect();
     assert!(errors.is_empty(), "got: {errors:?}");
@@ -11126,8 +11484,11 @@ fn a_scalar_union_member_is_recorded_as_the_type_serde_writes_it_as() {
             Many(Vec<Holder>),
         }
     };
-    let (_, _, _, merge_parts, _, errors, _, _) =
-        collect_untagged_members(&mut item, UNTAGGED_MODULE);
+    let (_, _, _, merge_parts, _, errors, _, _) = collect_untagged_members(
+        &mut item,
+        UNTAGGED_MODULE,
+        &super::ModelSchemaArgs::default(),
+    );
     assert!(errors.is_empty(), "got: {errors:?}");
     let recorded: Vec<(String, Option<&str>)> = merge_parts
         .iter()
@@ -11234,8 +11595,11 @@ fn recorded_union_flatten_error(
     mut item: syn::ItemEnum,
     field: &syn::Field,
 ) -> Option<String> {
-    let (_, _, _, merge_parts, _, errors, _, _) =
-        collect_untagged_members(&mut item, UNTAGGED_MODULE);
+    let (_, _, _, merge_parts, _, errors, _, _) = collect_untagged_members(
+        &mut item,
+        UNTAGGED_MODULE,
+        &super::ModelSchemaArgs::default(),
+    );
     assert!(errors.is_empty(), "got: {errors:?}");
     register_alias_info(
         rust_ident,
@@ -11251,8 +11615,11 @@ fn recorded_union_flatten_error(
 /// write, in declaration order.
 #[cfg(all(feature = "serde", feature = "zod"))]
 fn recorded_member_trails(mut item: syn::ItemEnum) -> Vec<(String, Option<&'static str>)> {
-    let (_, _, _, merge_parts, _, errors, _, _) =
-        collect_untagged_members(&mut item, UNTAGGED_MODULE);
+    let (_, _, _, merge_parts, _, errors, _, _) = collect_untagged_members(
+        &mut item,
+        UNTAGGED_MODULE,
+        &super::ModelSchemaArgs::default(),
+    );
     assert!(errors.is_empty(), "got: {errors:?}");
     merge_parts
         .iter()
@@ -12049,17 +12416,28 @@ fn an_untagged_sibling_exclusion_writes_a_non_identifier_key_as_a_string() {
 /// Collects a discriminated enum's guard failures as rendered `compile_error!` token strings.
 #[cfg(feature = "serde")]
 fn discriminated_guard_errors(mut item: syn::ItemEnum) -> Vec<String> {
-    collect_discriminated_variants(&mut item, UNCASED, Some("probe_schema"))
-        .2
-        .iter()
-        .map(ToString::to_string)
-        .collect()
+    collect_discriminated_variants(
+        &mut item,
+        UNCASED,
+        Some("probe_schema"),
+        &super::ModelSchemaArgs::default(),
+    )
+    .2
+    .iter()
+    .map(ToString::to_string)
+    .collect()
 }
 
 /// The field defs one variant of a discriminated enum collected, beside the ones it flattens.
 #[cfg(feature = "serde")]
 fn collected_variant_fields(mut item: syn::ItemEnum) -> (Vec<String>, Vec<String>) {
-    let variants = collect_discriminated_variants(&mut item, UNCASED, Some("probe_schema")).0;
+    let variants = collect_discriminated_variants(
+        &mut item,
+        UNCASED,
+        Some("probe_schema"),
+        &super::ModelSchemaArgs::default(),
+    )
+    .0;
     let variant = variants.first().unwrap();
     (
         variant.field_defs.iter().map(|f| f.name.clone()).collect(),
@@ -12143,8 +12521,11 @@ fn a_flattened_variant_field_over_a_multi_branch_source_is_accepted() {
             Second(Other),
         }
     };
-    let (_, _, _, merge_parts, _, errors, _, _) =
-        collect_untagged_members(&mut choice, UNTAGGED_MODULE);
+    let (_, _, _, merge_parts, _, errors, _, _) = collect_untagged_members(
+        &mut choice,
+        UNTAGGED_MODULE,
+        &super::ModelSchemaArgs::default(),
+    );
     assert!(errors.is_empty(), "got: {errors:?}");
     register_alias_info(
         "VariantChoice",
@@ -12185,8 +12566,14 @@ fn an_optional_flattened_variant_field_is_accepted() {
 #[cfg(feature = "serde")]
 fn collected_untagged_variant_fields(mut item: syn::ItemEnum) -> (Vec<String>, Vec<String>) {
     let variant = item.variants.first_mut().unwrap();
-    let walked =
-        super::collect_untagged_variant_members(variant, "Probe", UNTAGGED_MODULE, &[], None);
+    let walked = super::collect_untagged_variant_members(
+        variant,
+        "Probe",
+        UNTAGGED_MODULE,
+        &[],
+        None,
+        &super::ModelSchemaArgs::default(),
+    );
     (
         walked.field_defs.iter().map(|f| f.name.clone()).collect(),
         walked
@@ -12226,8 +12613,14 @@ fn a_flattening_untagged_member_proves_no_key_list() {
         }
     };
     let variant = item.variants.first_mut().unwrap();
-    let walked =
-        super::collect_untagged_variant_members(variant, "Probe", UNTAGGED_MODULE, &[], None);
+    let walked = super::collect_untagged_variant_members(
+        variant,
+        "Probe",
+        UNTAGGED_MODULE,
+        &[],
+        None,
+        &super::ModelSchemaArgs::default(),
+    );
     assert_eq!(
         super::untagged_member_keys(
             &VariantKind::Named,
@@ -12281,8 +12674,11 @@ fn a_flattened_untagged_variant_field_over_a_multi_branch_source_is_accepted() {
             Second(Other),
         }
     };
-    let (_, _, _, merge_parts, _, errors, _, _) =
-        collect_untagged_members(&mut choice, UNTAGGED_MODULE);
+    let (_, _, _, merge_parts, _, errors, _, _) = collect_untagged_members(
+        &mut choice,
+        UNTAGGED_MODULE,
+        &super::ModelSchemaArgs::default(),
+    );
     assert!(errors.is_empty(), "got: {errors:?}");
     register_alias_info(
         "UntaggedVariantChoice",
