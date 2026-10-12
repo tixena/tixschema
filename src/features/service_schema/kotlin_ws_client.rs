@@ -136,7 +136,8 @@ fn transport_class(named: &str, has_headers: bool) -> String {
 }
 
 /// The class's own doc, its constructor, the fields every other piece reaches for, `init`, and the
-/// `frames` seam an attachment dispatches over.
+/// `frames` seam an attachment dispatches over. `uncorrelated` has no bound: `tryEmit` refuses a
+/// frame a full buffer cannot take, and the request it carries would never be answered.
 fn transport_header_stmt(named: &str) -> String {
     format!(
         "/// A `{named}` `ws_rpc` transport that owns `socket` under the preferred ownership\n\
@@ -155,7 +156,7 @@ fn transport_header_stmt(named: &str) -> String {
          ) {{\n  \
          private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)\n  \
          private val pending = mutableMapOf<String, CompletableDeferred<JsonObject?>>()\n  \
-         private val uncorrelated = MutableSharedFlow<String>(extraBufferCapacity = 64)\n  \
+         private val uncorrelated = MutableSharedFlow<String>(extraBufferCapacity = Int.MAX_VALUE)\n  \
          private var nextId = 1\n  \
          private var pongJob: Job? = null\n  \
          private var closed = false\n\n  \

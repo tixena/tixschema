@@ -105,6 +105,57 @@ void main() async {
 }
 ";
 
+/// 2,000 `window` requests added to the transport's stream in one loop with no `await`, the
+/// dispatcher attached to its `frames`, and the `ok` replies written to the sink counted.
+const BURST_DRIVER: &str = "
+Future<bool> until(bool Function() predicate, {int timeoutMs = 2000}) async {
+  final deadline = DateTime.now().add(Duration(milliseconds: timeoutMs));
+  while (!predicate() && DateTime.now().isBefore(deadline)) {
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+  }
+  return predicate();
+}
+
+void main() async {
+  var replies = 0;
+  final outbound = StreamController<dynamic>();
+  outbound.stream.listen((raw) {
+    final frame = jsonDecode(raw as String) as Map<String, dynamic>;
+    if (frame['kind'] == 'reply' && frame['ok'] == true) replies += 1;
+  });
+  final inbound = StreamController<dynamic>();
+  final transport = ConversationClientServiceWsTransport(
+    sink: outbound.sink,
+    stream: inbound.stream,
+    heartbeat: ConversationClientServiceWsHeartbeat.off(),
+  );
+  final detach = attachConversationClientServiceWsDispatcher<void>(
+    transport.frames,
+    null,
+    ConversationClientServiceHandlers<void>(
+      purgeConversation: (ctx, req) async {},
+      window: (ctx, req) async => WindowPage(items: <String>['a', 'b']),
+    ),
+    onFault: (fault) {},
+  );
+  for (var id = 1; id <= 2000; id += 1) {
+    inbound.add(jsonEncode(<String, dynamic>{
+      'kind': 'request',
+      'id': 'b$id',
+      'service': 'ConversationClientService',
+      'operation': 'window',
+      'payload': <String, dynamic>{'conversationId': 'abc'},
+    }));
+  }
+  final allInTime = await until(() => replies >= 2000);
+  final answered = replies;
+  detach();
+  transport.close();
+
+  print(jsonEncode(<String, dynamic>{'allInTime': allInTime, 'answered': answered}));
+}
+";
+
 /// Drives the `ws_rpc` client through a lone `String` message and list, integer and plain-enum
 /// answers, then the dispatcher attachment through the same shapes on its own frames record.
 const SHELF_DRIVER: &str = "
@@ -214,8 +265,8 @@ void main() async {
 }
 ";
 
-/// The generated classes the client calls, the client, and the driver.
-fn module() -> String {
+/// The generated classes the client calls, the client, and `driver`.
+fn module(driver: &str) -> String {
     [
         "import 'dart:async';".to_owned(),
         "import 'dart:convert';".to_owned(),
@@ -224,14 +275,14 @@ fn module() -> String {
         window_error_dart::dart_definition(),
         ConversationClientServiceSchema::dart_definition(),
         ConversationClientServiceSchema::dart_ws_client(),
-        DRIVER.to_owned(),
+        driver.to_owned(),
     ]
     .join("\n\n")
 }
 
 /// What the driver printed, or `None` where no runtime was reachable.
 fn driven() -> Option<serde_json::Value> {
-    let wrote = ran("dart", RUNTIME_VAR, "dart", "client.dart", &module())?;
+    let wrote = ran("dart", RUNTIME_VAR, "dart", "client.dart", &module(DRIVER))?;
     Some(serde_json::from_str(wrote.trim()).unwrap())
 }
 
@@ -285,6 +336,25 @@ fn a_request_still_waiting_when_the_transport_closes_answers_the_fault_member() 
         written["closed"], true,
         "the transport settles a pending request with a value, not an error, once it closes, and \
          the client turns that into the same fault member. Got: {written:#?}"
+    );
+}
+
+#[test]
+fn a_burst_of_request_frames_is_answered_whole() {
+    let Some(wrote) = ran(
+        "dart",
+        RUNTIME_VAR,
+        "dart",
+        "burst_ws.dart",
+        &module(BURST_DRIVER),
+    ) else {
+        return;
+    };
+    let written: serde_json::Value = serde_json::from_str(wrote.trim()).unwrap();
+    assert_eq!(
+        written,
+        serde_json::json!({"allInTime": true, "answered": 2_000_i32}),
+        "a frame added to the stream while others waited for the dispatcher was never answered"
     );
 }
 
