@@ -395,7 +395,7 @@ All validation constraints generate checks in **Zod (frontend), JSON Schema, and
 | `literal = "val"` | `String` | `z.literal("val")` | `{"type": "string", "const": "val"}` | — |
 | `literal = true` | `bool` | `z.literal(true)` | `{"type": "boolean", "const": true}` | — |
 | `literal = 214` | numeric | `z.literal(214)` | `{"type": "number", "const": 214}` | — |
-| `preprocess = ["fn"]` | any | `z.preprocess(fn, ...)` | — | — (Zod-only) |
+| `preprocess = ["fn"]` | any, and a type | `z.preprocess(fn, ...)` | — | every read of the type calls `fn` in snake case on the payload, a `serde_json::Value`, ahead of the value's read |
 | `check = ["fn"]` | any, and a type | `.check((ctx) => { ... fn(own.value, own); ... })` | — | `validate()` calls `fn` in snake case, in every build, and the type's read refuses with its messages; an issue of the recovering decode |
 | `ts_optional` | `Option<T>` | — | — | — (TypeScript-only) |
 | `as_number` | `DateTime<Tz>` | inline `z.preprocess(..., z.number())` | — | serde `with = chrono::serde::ts_milliseconds` injected |
@@ -529,8 +529,8 @@ A `check = ["name", ...]` names functions of the consumer's own, on a field and,
 `#[model_schema(...)]`, on a type. `README.md`'s "Checks" section is the consumer's view; this is
 what a change has to keep.
 
-- **One reader.** `check_names` in `src/features/model_schema_prop.rs` reads the key for both
-  attributes, in every build, into `CheckName { name, written_at }`, and raises the five refusals,
+- **One reader.** `function_names` in `src/features/model_schema_prop.rs` reads the key for both
+  attributes, in every build, into `FunctionName { name, written_at }`, and raises the five refusals,
   each spanned on what was written: no array, an element that is no string literal, a name that is
   no identifier, no name, a name twice. `apply_arg` and `parse_prop_key` both call it, and the key
   is in `KNOWN_ARGS` and `KNOWN_KEYS`. `checks::alias_refusal_output` refuses it on a type alias at
@@ -699,7 +699,8 @@ has to keep.
 - `src/model_schema/judged_read.rs` is the seam. `of_struct` and `of_enum` are handed the item and
   whether it publishes `validate()`, from `struct_output_with_unit_impls`,
   `enum_output_with_decode` and `process_plain_enum`. An item that derives no `Deserialize`, or
-  publishes no `validate()`, gains nothing and is emitted as it was written, token for token.
+  publishes no `validate()` and names no `preprocess` ("A payload corrected before it is read",
+  below), gains nothing and is emitted as it was written, token for token.
 - serde's derive runs on a copy of the item, `ModelSchemaRemote`, declared inside
   `model_schema_read_unjudged` under `#[serde(remote = "Type")]` (`remote_definition`). `remote`
   is not written on the item itself: the derive would then write inherent `deserialize` and
@@ -740,8 +741,9 @@ has to keep.
   not, a declared type in an `Arc` and in a fixed array among them. A model there, in a tuple
   and under a type parameter judges itself as it is read, and ends the read at the first one
   that breaks a rule.
-- A unit struct's `Deserialize` is the macro's already (`unit_struct_serde_impls`), and gains
-  `model_schema_read_unjudged` and the `validate()` call where the struct has a check.
+- A unit struct's `Deserialize` is the macro's already (`unit_struct_serde_impls`), and
+  `unit_struct_read` gives it `model_schema_read_unjudged` and the `validate()` call where the
+  struct has a check.
 - `remote`, `from`, `try_from` and `into` (`serde_conversion`) on an item whose read the macro
   writes are refused by `conversion_refusal`, in every build.
 - `model_schema_read_unjudged` is the type's own name. Each name the function declares beside
@@ -755,6 +757,90 @@ has to keep.
 - `tests/validation_tests/refusing_read.rs` holds each shape, the bounds and the README's
   sample; `tests/check_tests/read.rs` the read of a type that names a check, in every build;
   `tests/recovering_decode_bson_tests/refused_read.rs` a BSON document under each major.
+
+#### A payload corrected before it is read
+
+A `preprocess = ["name", ...]` names functions of the consumer's own, on a field and, in
+`#[model_schema(...)]`, on a type: each takes a payload and answers the payload the value is read
+from. Rust calls the snake case of the name, `fn trimmed(payload: serde_json::Value) ->
+serde_json::Value`, and the Zod schema the name as written, `function trimmed(payload: unknown):
+unknown`. The documents call the key a last resort, and a change keeps them saying so: a function
+runs on every read, on a payload no schema describes. `README.md`'s "Preprocessing" section is
+the consumer's view; this is what a change has to keep.
+
+- **One reader, the one of `check`.** `function_names` reads the key for both attributes, in
+  every build, with the five refusals of a `check` under the key's own words
+  (`PREPROCESS_TAKES`). `apply_arg` and `parse_prop_key` both call it, and the key is in
+  `KNOWN_ARGS` and `KNOWN_KEYS`. `preprocess::alias_refusal_output` refuses it on a type alias at
+  `process_item`, and `branded_slot_prop_errors` on a brand's slot: a brand takes it on the type.
+- **`src/model_schema/preprocess.rs` holds what the item names.** `record`, called from
+  `record_item_functions` at `exec_model_schema`, writes the type's functions and each member's,
+  by variant and index, and `named()` is what the read and the recovering decode read. An item
+  that derives no `Deserialize` records nothing, and a member serde never reads neither: nothing
+  is called for either, and nothing is refused.
+- **Every call is written beside the type**, by `preprocess::corrected`: the snake case of the
+  name as an ident located at the string literal (`checks::located`), each call over the answer
+  of the one before, so a missing function is E0425 at the attribute. No call is written into
+  `{type}_schema`.
+- **The read is the judged read's.** `judged` in `judged_read.rs` answers for an item that
+  publishes `validate()` or names a function, and `written_read` calls `validate()` only where
+  one is published. Where the type names functions of its own, `unjudged_read` writes
+  `model_schema_read_unjudged` as the payload read into a `serde_json::Value`, the calls, and
+  `model_schema_read_corrected` over what they answer, which is the copy's read; the refusal of
+  a corrected payload is told through `told_by`. The order of one read is the type's functions,
+  each member's as it is read, the value, then `validate()`.
+- **A member's functions are called by a function local to the read, hung on the copy.**
+  `hooked` writes one per member, of three kinds. Alone, `read_corrected_{stem}`, generic over
+  what it reads. Where the member already has `read_unjudged_{stem}`, that one function corrects
+  the payload first (`MemberHook::function`). Where the copy keeps a `deserialize_with` or a
+  `with` of tixschema's own, an untagged member's bound hook and the one `as_number` injects,
+  `corrected_hook` reads the corrected payload through that function and takes the attribute's
+  place on the copy (`HungOn::replaces`): under the type the member is written with, or, for a
+  counted list, under the header `list_hook_header` shares with `list_deserializer`. A key the
+  payload does not hold is serde's to answer, and no function is called for it, where the Zod
+  schema calls the field's function with `undefined`: the documents state both, and
+  `type_check_a_function_is_handed_under_zod_what_a_rust_read_does_not_hand_it` holds them.
+- **Every name a read declares is its own.** `Corrects` holds `payload`, `corrected` and the
+  reader's parameter, each numbered where a function is called under it, and both outer
+  functions take the reader under that name: a hook nested in them is a `fn` item, which cannot
+  name a parameter of the function around it.
+- **The refusals are raised at `exec_model_schema`, in every build.** `preprocess::refusals`,
+  through `preprocess_refusal_output`: a member read through a `deserialize_with` or a `with` of
+  its author's (`read_hook`), a member that borrows, and a type that holds one
+  (`read_bounds::borrows`). The item is emitted stripped of its member keys
+  (`without_member_keys`). `conversion_refusal` refuses `remote`, `from`, `try_from` and `into`
+  in the words of a type that names a `preprocess`.
+- **A unit struct and a brand.** `unit_struct_correction` writes the two functions of a unit
+  struct around the visitor `unit_struct_read` already writes, and `branded_read` gives a brand
+  the judged read where it names a function.
+- **The recovering decode corrects once.** `Walker::corrects_own` is read off `named().own`. An
+  entry point calls `decode_with_{source}_corrected` on the value as it takes it, reads through
+  `decode_with_read_corrected` and walks through `decode_with_{source}_corrected_issues`,
+  `_named` and `_fields`; the three public names stay, for a holder, each correcting a copy
+  first (`corrected_entries`). Under BSON the value crosses through `bson::Deserializer::new` and
+  back through `bson::Serializer::new`, and a value that cannot cross is one `Undescribed` with
+  no callback. A member that names functions is a leaf read whole through
+  `preprocess::corrected_reader`, with nothing written back (`Whole::corrected`), so its
+  function is called by the read and by the listing.
+  `a_type_that_names_a_preprocess_adds_the_walk_of_a_corrected_value` pins the names in order.
+- **One writer of the Zod wrap.** `zod_preprocess_wrap` in `src/field_type.rs` writes a field's
+  and a type's, the first name outermost. `zod_published_binding` wraps what `zod_check_wrap`
+  answers (`PublishedBinding::preprocess`), inside the `.meta` and inside a generic's builder;
+  `branded_zod_expression` wraps ahead of `.brand()`, and
+  `generate_plain_enum_zod_schema_method` ahead of the `.meta` a plain enum writes itself.
+- **A holder reads the binding.** `record_zod_binding_preprocess` notes which bindings call a
+  function (`ZOD_PREPROCESSED`), an alias of one included, and `flattened_zod_branches` and
+  `zod_member_leaves` write no member of such a type in its place: a flattened choice that names
+  one is joined by its binding, the one schema that calls the function.
+- **The tests.** `src/model_schema/preprocess/tests.rs` holds the refusals and the emitted read;
+  `tests/pattern_preprocess_tests/` the models, the reads of every shape (`read.rs`), the chained
+  hooks (`chained.rs`), the Zod text (`zod.rs`) and the README (`readme.rs`);
+  `tests/recovering_decode_tests/preprocessed.rs` and
+  `tests/recovering_decode_bson_tests/preprocessed.rs` the recovering decode, the second under
+  each `bson` major; `tests/service_schema_dispatch_tests/corrected_request_service.rs` a
+  dispatched request. `tests/generic_types_tests/declarations.rs` compiles the models in a
+  bundle of their own (`corrections`) and holds what node prints to what the Rust read prints,
+  from one table (`SAMPLE`, `POSITIONS`).
 
 `validate()` is written in the type's own `impl`, beside the schema delegates
 (`assemble_schema_output`, `assemble_branded_output`), so a type that declares a parameter has it
@@ -1121,7 +1207,9 @@ sections are the consumer's view; this is what a change to the emitter has to ke
   `decode_with_read_unjudged`. A generic type's `impl` asks what that read asks beside
   `Deserialize` of a parameter (`read_under`), at every lifetime, and the function repeats none
   of it: a bound asked by the `impl` and by the function is one the compiler cannot choose
-  between (E0283). A list held to a count of its own is read whole through `listed_reader`.
+  between (E0283). A list held to a count of its own is read whole through `listed_reader`. A
+  type that names a `preprocess` on itself is read through `decode_with_read_corrected`, from a
+  value its functions corrected once (section 7, "A payload corrected before it is read").
 - **A walker is generic over the issue type.** Each walker method takes a type parameter for the
   issue it builds and an `IssueFromParts` constructor, a function pointer over standard types, so
   one type's walker builds another type's issues at their full path. Two flagged types share no
@@ -1728,8 +1816,10 @@ tixschema/
 │   ├── model_schema.rs           # Main macro logic
 │   ├── model_schema/
 │   │   ├── checks.rs             # check: the calls validate() makes, the alias refusal
-│   │   └── judged_read.rs        # The Deserialize of a type that publishes validate()
+│   │   ├── judged_read.rs        # The Deserialize of a type that publishes validate() or names a preprocess
+│   │   └── preprocess.rs         # preprocess: what an item names, the calls of a read, the refusals
 │   ├── check_example.md          # The check example the rustdoc runs and the README shows
+│   ├── preprocess_example.md     # The preprocess example the rustdoc runs and the README shows
 │   ├── field_type.rs             # Type system (FieldDef, FieldDefType)
 │   ├── utils.rs                  # Helpers (naming, docs, serde parsing)
 │   ├── features/
@@ -1754,6 +1844,8 @@ tixschema/
 │       └── typescript.rs         # TypeScript/Zod code generation
 ├── tests/
 │   ├── basic_tests.rs
+│   ├── pattern_preprocess_tests.rs       # pattern and preprocess: the Zod text, and every read of a preprocess
+│   ├── pattern_preprocess_tests/         # The models, the reads, the chained hooks, the Zod text, the README
 │   ├── check_tests.rs                    # check, as validate() runs it
 │   ├── check_tests/                      # The models, the shared table, the members, the README
 │   ├── collection_tests.rs

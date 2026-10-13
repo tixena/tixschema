@@ -372,10 +372,10 @@ fn a_type_with_no_check_and_no_bound_publishes_no_validate() {
 #[cfg(feature = "zod")]
 #[test]
 fn the_zod_wrap_hands_each_function_a_payload_of_its_own() {
-    use crate::features::model_schema_prop::CheckName;
+    use crate::features::model_schema_prop::FunctionName;
     use crate::field_type::zod_check_wrap;
 
-    let named = |name: &str| CheckName {
+    let named = |name: &str| FunctionName {
         name: name.to_owned(),
         written_at: proc_macro2::Span::call_site(),
     };

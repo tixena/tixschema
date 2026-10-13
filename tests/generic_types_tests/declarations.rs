@@ -7,6 +7,10 @@
 #[path = "../check_tests/models.rs"]
 mod checked;
 
+/// The models a `preprocess` is written on, which the `preprocess` tests read through serde.
+#[path = "../pattern_preprocess_tests/models.rs"]
+mod corrected;
+
 #[cfg(feature = "chrono")]
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -267,6 +271,114 @@ console.log(printed.join("\n"));
 
 const COMPILER_VAR: &str = "TIXSCHEMA_TSC";
 
+/// The functions the `preprocess` keys of the bundle name, as a consumer writes them in
+/// TypeScript: each takes the payload and answers the payload the schema reads. `handed` keeps
+/// what `orUnnamed` was called with, `undefined` under that word.
+const CORRECTIONS: &str = r#"import type { ParsePayload } from "zod/v4/core";
+
+export function trimmed(payload: unknown): unknown {
+  return typeof payload === "string" ? payload.trim() : payload;
+}
+
+export function withoutFragile(payload: unknown): unknown {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return payload;
+  }
+  return "fragileItemCodes" in payload ? payload : { ...payload, fragileItemCodes: [] };
+}
+
+export function unwrapped(payload: unknown): unknown {
+  if (typeof payload !== "object" || payload === null || !("payload" in payload)) {
+    return payload;
+  }
+  return payload.payload;
+}
+
+export function withChildren(payload: unknown): unknown {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return payload;
+  }
+  return "children" in payload ? payload : { ...payload, children: [] };
+}
+
+export function trimmedPlate(payload: unknown): unknown {
+  if (typeof payload !== "object" || payload === null || !("plate" in payload)) {
+    return payload;
+  }
+  return typeof payload.plate === "string" ? { ...payload, plate: payload.plate.trim() } : payload;
+}
+
+export function withItsKeys(payload: unknown): unknown {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return payload;
+  }
+  return { ...payload, keys: Object.keys(payload).sort() };
+}
+
+export const handed: Array<unknown> = [];
+
+export function orUnnamed(payload: unknown): unknown {
+  handed.push(payload === undefined ? "undefined" : payload);
+  return payload === null ? "unnamed" : payload;
+}
+
+export function withinLimit(value: Weighed, ctx: ParsePayload<Weighed>): void {
+  if (value.grams > 1000) {
+    ctx.issues.push({
+      code: "custom",
+      message: `${value.grams} is over the limit of 1000`,
+      path: ["grams"],
+      input: value,
+    });
+  }
+}"#;
+
+/// Loads the compiled bundle of the `preprocess` models, parses the payload of each case through
+/// the schema its type publishes, and prints what a Rust read prints for the same case.
+const CORRECTIONS_DRIVER: &str = r#"import { z } from "zod";
+import * as lib from "./lib/index.js";
+
+const schemas = {
+  Parcel: lib.Parcel$Schema,
+  Manifest: lib.Manifest$Schema,
+  Shelf: lib.Shelf$Schema,
+  Crated: lib.Crated$Schema,
+  Delivery: lib.Delivery$Schema,
+  Consigned: lib.Consigned$Schema,
+  Slot: lib.Slot$Schema,
+  Either: lib.Either$Schema,
+  Node: lib.Node$Schema,
+  Routed: lib.Routed$Schema,
+  ClosedDock: lib.ClosedDock$Schema,
+  Stack: lib.Stack$Schema,
+  Label: lib.Label$Schema,
+  Grade: lib.Grade$Schema,
+  Shipment: lib.Shipment$Schema,
+  Transfer: lib.Transfer$Schema,
+  Handover: lib.Handover$Schema,
+  Reference: lib.Reference$Schema,
+  "Crate<String>": lib.Crate$SchemaDefault,
+  "Crate<u32>": lib.Crate$SchemaFactory(z.number().int()),
+  Wrapped: lib.Wrapped$Schema,
+  Weighed: lib.Weighed$Schema,
+  Unnamed: lib.Unnamed$Schema,
+};
+const printed = [];
+for (const [name, schema, payload] of CASES) {
+  const read = schemas[schema].safeParse(JSON.parse(payload));
+  if (read.success) {
+    printed.push(`${name}: read ${JSON.stringify(read.data)}`);
+    continue;
+  }
+  printed.push(`${name}: refused`);
+  for (const issue of read.error.issues) {
+    const lead = issue.path.length > 0 ? `'${issue.path.join(".")}': ` : "";
+    printed.push(`    ${lead}${issue.message}`);
+  }
+}
+console.log(printed.join("\n"));
+"#;
+
 /// What the examples driver prints: the list each schema's `.meta` holds, empty where the type
 /// writes no block and one value per block where it writes some.
 const EXAMPLES: &str = "{\"plain\":[],\"exampled\":[{\"value\":1},{\"value\":2}],\"brand\":[],\
@@ -375,6 +487,24 @@ const OPTIONAL_LOADED: &str =
 
 const NODE_VAR: &str = "TIXSCHEMA_NODE";
 
+/// What the driver of the two differences prints. Zod calls a field's function with `undefined`
+/// for a key the payload does not hold, and with the `null` a payload holds; and it hands the
+/// function of a flattened type the holder's whole object.
+const UNHELD: &str = "{\"absent\":\"refused\",\"handed\":[\"undefined\",null],\"held\":{\"label\":\
+                      \"unnamed\"},\"flattened\":{\"dock\":\"north\",\"keys\":[\"dock\",\"tag\"],\"tag\":\
+                      \"t\"}}";
+
+/// Loads the bundle of the `preprocess` models and parses an object without the key of a field
+/// that names a function, one that holds `null` under it, and a holder of a flattened type.
+const UNHELD_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+
+const said = (read) => (read.success ? read.data : "refused");
+const absent = said(lib.Unnamed$Schema.safeParse({}));
+const held = said(lib.Unnamed$Schema.safeParse({ label: null }));
+const flattened = said(lib.Pinned$Schema.safeParse({ dock: "north", tag: "t" }));
+console.log(JSON.stringify({ absent, handed: lib.handed, held, flattened }));
+"#;
+
 /// The second package: it names the first only through `./lib`, where the declarations are.
 const CONSUMER: &str = r#"import {
   type DeclaredAhead,
@@ -481,6 +611,11 @@ const CONSUMER_PROJECT: &str = r#"{
 
 const PACKAGE: &str = r#"{ "type": "module", "private": true }
 "#;
+
+/// What a consumer's module writes ahead of the generated text. `z` is bound as a constant, which
+/// names no type: the weakest binding a consumer's own module may hand the bundle.
+const PREAMBLE: &str = "import * as zod from \"zod\";\nimport type { ZodType, $brand } from \
+                        \"zod\";\nimport type { SomeType } from \"zod/v4/core\";\n\nconst z = zod;";
 
 /// The first package: the bundle, compiled with declarations into `lib`.
 const PROJECT: &str = r#"{
@@ -684,11 +819,7 @@ pub struct DeclaredSlots<IdType>(pub IdType, pub Vec<Self>);
 
 fn bundle() -> String {
     [
-        // `z` bound as a constant, which names no type: the weakest binding a consumer's own
-        // module may hand the bundle.
-        "import * as zod from \"zod\";\nimport type { ZodType, $brand } from \"zod\";\nimport type { \
-         SomeType } from \"zod/v4/core\";\n\nconst z = zod;"
-            .to_owned(),
+        PREAMBLE.to_owned(),
         DeclaredPath::ts_definition(),
         DeclaredPath::zod_schema(),
         DeclaredBounded::ts_definition(),
@@ -768,6 +899,66 @@ fn checks() -> Vec<String> {
     ]
 }
 
+/// The types a `preprocess` is written on, the types that hold them and the functions they name:
+/// a bundle of its own, several of its names being those of the types a check is written on.
+fn corrections() -> String {
+    [
+        PREAMBLE.to_owned(),
+        corrected::Parcel::ts_definition(),
+        corrected::Parcel::zod_schema(),
+        corrected::Tagged::ts_definition(),
+        corrected::Tagged::zod_schema(),
+        corrected::Pinned::ts_definition(),
+        corrected::Pinned::zod_schema(),
+        corrected::Carrier::ts_definition(),
+        corrected::Carrier::zod_schema(),
+        corrected::ClosedDock::ts_definition(),
+        corrected::ClosedDock::zod_schema(),
+        corrected::Consigned::ts_definition(),
+        corrected::Consigned::zod_schema(),
+        corrected::Crate::<String>::ts_definition(),
+        corrected::Crate::<String>::zod_schema(),
+        corrected::Crated::ts_definition(),
+        corrected::Crated::zod_schema(),
+        corrected::Delivery::ts_definition(),
+        corrected::Delivery::zod_schema(),
+        corrected::Either::ts_definition(),
+        corrected::Either::zod_schema(),
+        corrected::Grade::ts_definition(),
+        corrected::Grade::zod_schema(),
+        corrected::Handover::ts_definition(),
+        corrected::Handover::zod_schema(),
+        corrected::Label::ts_definition(),
+        corrected::Label::zod_schema(),
+        corrected::Manifest::ts_definition(),
+        corrected::Manifest::zod_schema(),
+        corrected::Node::ts_definition(),
+        corrected::Node::zod_schema(),
+        corrected::Reference::ts_definition(),
+        corrected::Reference::zod_schema(),
+        corrected::Routed::ts_definition(),
+        corrected::Routed::zod_schema(),
+        corrected::Shelf::ts_definition(),
+        corrected::Shelf::zod_schema(),
+        corrected::Shipment::ts_definition(),
+        corrected::Shipment::zod_schema(),
+        corrected::Slot::ts_definition(),
+        corrected::Slot::zod_schema(),
+        corrected::Stack::ts_definition(),
+        corrected::Stack::zod_schema(),
+        corrected::Transfer::ts_definition(),
+        corrected::Transfer::zod_schema(),
+        corrected::Unnamed::ts_definition(),
+        corrected::Unnamed::zod_schema(),
+        corrected::Weighed::ts_definition(),
+        corrected::Weighed::zod_schema(),
+        corrected::Wrapped::ts_definition(),
+        corrected::Wrapped::zod_schema(),
+        CORRECTIONS.to_owned(),
+    ]
+    .join("\n\n")
+}
+
 /// The types that hold a date, which the bundle declares where `chrono` is on.
 #[cfg(feature = "chrono")]
 fn dated() -> Vec<String> {
@@ -839,6 +1030,11 @@ fn stand_down() {
 /// The first package in a directory of its own for the check `named`, compiled with its
 /// declarations, or `None` where the compiler or `zod` is not reachable.
 fn built(named: &str) -> Option<PathBuf> {
+    built_from(named, &bundle())
+}
+
+/// The package `built` answers, over the generated text `source`.
+fn built_from(named: &str, source: &str) -> Option<PathBuf> {
     let Some(modules) = node_modules() else {
         stand_down();
         return None;
@@ -851,7 +1047,7 @@ fn built(named: &str) -> Option<PathBuf> {
     symlink(&modules, at.join("node_modules")).unwrap();
     fs::write(at.join("package.json"), PACKAGE).unwrap();
     fs::write(at.join("tsconfig.json"), PROJECT).unwrap();
-    fs::write(at.join("src/index.ts"), bundle()).unwrap();
+    fs::write(at.join("src/index.ts"), source).unwrap();
 
     let Some((emitted, said)) = compiled(&at, "tsconfig.json") else {
         fs::remove_dir_all(&at).unwrap();
@@ -882,7 +1078,12 @@ fn type_check_a_recursive_generic_keeps_its_type_in_another_package() {
 /// What `driver` prints once the bundle built for the check `named` is loaded under `node`, with
 /// what it wrote to its stderr, or `None` where the bundle or the runtime is not reachable.
 fn loaded(named: &str, driver: &str) -> Option<(String, String)> {
-    let at = built(named)?;
+    loaded_from(named, &bundle(), driver)
+}
+
+/// What `loaded` answers, over the generated text `source`.
+fn loaded_from(named: &str, source: &str, driver: &str) -> Option<(String, String)> {
+    let at = built_from(named, source)?;
     fs::write(at.join("run.mjs"), driver).unwrap();
     let named_node = env::var(NODE_VAR).ok();
     let node = named_node.clone().unwrap_or_else(|| "node".to_owned());
@@ -995,6 +1196,64 @@ fn type_check_a_check_answers_under_zod_what_validate_answers() {
         printed,
         answered.trim_end(),
         "the schemas do not answer what `validate()` answers:\n{failed}"
+    );
+}
+
+/// Each row of the sample, each position another type reads a preprocessed type in and each
+/// shape the key is written on is parsed by the schema its type publishes, and the two sides are
+/// compared as one text.
+#[test]
+fn type_check_a_preprocess_answers_under_zod_what_a_rust_read_answers() {
+    let sample = corrected::sample_report();
+    assert_eq!(sample, corrected::SAMPLE);
+    let positions = corrected::positions();
+    let read: String = positions
+        .iter()
+        .map(|(_name, _schema, _payload, printed)| printed.as_str())
+        .collect();
+    assert_eq!(read, corrected::POSITIONS);
+
+    let of_the_sample = corrected::SAMPLE_ROWS.iter().map(|&(row, payload)| {
+        let schema = if row == "row 5" { "Manifest" } else { "Parcel" };
+        (row, schema, payload)
+    });
+    let of_the_positions = positions
+        .iter()
+        .map(|&(name, schema, payload, _)| (name, schema, payload));
+    let cases: Vec<(&str, &str, &str)> = of_the_sample.chain(of_the_positions).collect();
+    let driver = CORRECTIONS_DRIVER.replace("CASES", &serde_json::to_string(&cases).unwrap());
+    let Some((printed, failed)) = loaded_from("corrections", &corrections(), &driver) else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        format!("{sample}{read}").trim_end(),
+        "the schemas do not read what a Rust read reads:\n{failed}"
+    );
+}
+
+/// The two places a function is handed something else under zod than in a Rust read. A serde
+/// read answers a key the payload does not hold itself, and calls no function for it; and it
+/// hands the function of a flattened type the keys its holder does not take.
+#[test]
+fn type_check_a_function_is_handed_under_zod_what_a_rust_read_does_not_hand_it() {
+    assert_eq!(
+        serde_json::from_str::<corrected::Unnamed>("{}")
+            .unwrap_err()
+            .to_string(),
+        "missing field `label` at line 1 column 2"
+    );
+    let pinned: corrected::Pinned = serde_json::from_str(r#"{"dock":"north","tag":"t"}"#).unwrap();
+    assert_eq!(
+        serde_json::to_string(&pinned).unwrap(),
+        r#"{"dock":"north","keys":["tag"],"tag":"t"}"#
+    );
+    let Some((printed, failed)) = loaded_from("unheld", &corrections(), UNHELD_DRIVER) else {
+        return;
+    };
+    assert_eq!(
+        printed, UNHELD,
+        "the bundle does not load and parse under node:\n{failed}"
     );
 }
 

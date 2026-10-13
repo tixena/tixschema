@@ -20,7 +20,7 @@ use syn::ext::IdentExt as _;
 use syn::{Attribute, Expr, Field, GenericParam, Generics, Lit, LitStr, Meta, Type, Variant};
 
 #[cfg(feature = "serde")]
-use crate::features::model_schema_prop::CheckName;
+use crate::features::model_schema_prop::FunctionName;
 
 #[cfg(any(
     feature = "typescript",
@@ -591,6 +591,8 @@ thread_local! {
     /// Each generic item's own `$SchemaDefault` fold-comparison keys, one plain rendering per
     /// parameter in declaration order — see [`record_zod_default_arguments`].
     static ZOD_DEFAULT_ARGUMENTS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
+    /// The names whose Zod binding calls a `preprocess` of the type's own.
+    static ZOD_PREPROCESSED: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
 }
 
 thread_local! {
@@ -656,9 +658,9 @@ struct NamedChecks {
     /// Whether the item names a check, on itself or on a member.
     named: bool,
     /// The checks each member names, by schema module and helper stem.
-    of_members: HashMap<(String, String), Vec<CheckName>>,
+    of_members: HashMap<(String, String), Vec<FunctionName>>,
     /// The checks written on the type, by schema module.
-    own: HashMap<String, Vec<CheckName>>,
+    own: HashMap<String, Vec<FunctionName>>,
 }
 
 #[cfg(feature = "serde")]
@@ -684,7 +686,7 @@ pub fn names_a_check() -> bool {
 /// Records the checks written on the type whose schema module is `module`, and whether the type
 /// or a member of it names any.
 #[cfg(feature = "serde")]
-pub fn record_own_checks(module: &str, checks: &[CheckName], named: bool) {
+pub fn record_own_checks(module: &str, checks: &[FunctionName], named: bool) {
     NAMED_CHECKS.with(|held| {
         let mut recorded = held.borrow_mut();
         recorded.named = named;
@@ -694,7 +696,7 @@ pub fn record_own_checks(module: &str, checks: &[CheckName], named: bool) {
 
 /// Records the checks the member whose helpers are named from `stem` names.
 #[cfg(feature = "serde")]
-pub fn record_member_checks(module: &str, stem: &str, checks: &[CheckName]) {
+pub fn record_member_checks(module: &str, stem: &str, checks: &[FunctionName]) {
     if checks.is_empty() {
         return;
     }
@@ -707,13 +709,13 @@ pub fn record_member_checks(module: &str, stem: &str, checks: &[CheckName]) {
 
 /// The checks written on the type whose schema module is `module`.
 #[cfg(feature = "serde")]
-pub fn own_checks(module: &str) -> Vec<CheckName> {
+pub fn own_checks(module: &str) -> Vec<FunctionName> {
     NAMED_CHECKS.with(|held| held.borrow().own.get(module).cloned().unwrap_or_default())
 }
 
 /// The checks the member whose helpers are named from `stem` names, in `module`.
 #[cfg(feature = "serde")]
-pub fn member_checks(module: &str, stem: &str) -> Vec<CheckName> {
+pub fn member_checks(module: &str, stem: &str) -> Vec<FunctionName> {
     NAMED_CHECKS.with(|held| {
         held.borrow()
             .of_members
@@ -930,6 +932,26 @@ pub fn record_zod_factory(rust_ident: &str, publishes: bool) {
 #[cfg(feature = "zod")]
 pub fn publishes_zod_factory(rust_ident: &str) -> bool {
     ZOD_FACTORY_PUBLISHERS.with(|names| names.borrow().contains(rust_ident))
+}
+
+/// Records whether the Zod binding published under `rust_ident` calls a `preprocess` of the
+/// type's own.
+#[cfg(feature = "zod")]
+pub fn record_zod_preprocess(rust_ident: &str, calls: bool) {
+    ZOD_PREPROCESSED.with(|names| {
+        if calls {
+            names.borrow_mut().insert(rust_ident.to_owned());
+        } else {
+            names.borrow_mut().remove(rust_ident);
+        }
+    });
+}
+
+/// Whether the Zod binding published under `rust_ident` calls a `preprocess` of the type's own:
+/// the binding is then the one schema that calls it. See [`record_zod_preprocess`].
+#[cfg(feature = "zod")]
+pub fn names_a_zod_preprocess(rust_ident: &str) -> bool {
+    ZOD_PREPROCESSED.with(|names| names.borrow().contains(rust_ident))
 }
 
 /// Records `rust_ident`'s own `$SchemaDefault` fold-comparison keys — the plain

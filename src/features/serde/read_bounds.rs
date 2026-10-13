@@ -296,7 +296,7 @@ fn lifetimes_of(written: &LitStr) -> Vec<Lifetime> {
 }
 
 /// Every lifetime a type writes that a value of it could borrow for.
-fn written_lifetimes(ty: &Type, found: &mut Vec<Lifetime>) {
+pub fn written_lifetimes(ty: &Type, found: &mut Vec<Lifetime>) {
     match ty {
         Type::Array(held) => written_lifetimes(&held.elem, found),
         Type::Group(held) => written_lifetimes(&held.elem, found),
@@ -425,6 +425,18 @@ fn borrowed_by(read: &ReadField<'_>) -> Vec<Lifetime> {
         }
     }
     found
+}
+
+/// Whether the read of `field` borrows from what it is read from, under a variant that carries
+/// the attributes `of_variant`.
+pub fn borrows(field: &Field, of_variant: Option<&[Attribute]>) -> bool {
+    let variant = of_variant.map(ReadAttrs::of);
+    !borrowed_by(&ReadField {
+        attrs: ReadAttrs::of(&field.attrs),
+        field,
+        variant: variant.as_ref(),
+    })
+    .is_empty()
 }
 
 /// Whether the derive reads the field's type with its `Deserialize`, and so asks one of each

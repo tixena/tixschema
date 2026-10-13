@@ -6,6 +6,7 @@ extern crate alloc;
 
 pub mod checks;
 pub mod judged_read;
+pub mod preprocess;
 
 use alloc::borrow::ToOwned;
 use core::fmt::Write as _;
@@ -36,7 +37,7 @@ use syn::Ident;
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use crate::field_type::ZOD_SCHEMA_BOUND;
 #[cfg(feature = "zod")]
-use crate::field_type::zod_check_wrap;
+use crate::field_type::{zod_check_wrap, zod_preprocess_wrap};
 use crate::{
     field_type::{
         BoundKind, FieldDef, FieldDefType, VariantKind, classify_variant, format_number_literal,
@@ -67,7 +68,8 @@ use crate::utils::{
 #[cfg(feature = "zod")]
 use crate::utils::{
     escape_js_regex_literal, extract_examples_tokens, publishes_zod_factory,
-    record_zod_default_arguments, record_zod_factory, zod_default_arguments, zod_factory_argument,
+    record_zod_default_arguments, record_zod_factory, record_zod_preprocess, zod_default_arguments,
+    zod_factory_argument,
 };
 
 #[cfg(all(feature = "zod", feature = "mongodb"))]
@@ -143,7 +145,7 @@ use crate::field_type::{
 };
 
 use crate::features::model_schema_prop::{
-    CHECK_TAKES, CheckName, LiteralValue, ModelSchemaPropMeta, check_names,
+    CHECK_TAKES, FunctionName, LiteralValue, ModelSchemaPropMeta, PREPROCESS_TAKES, function_names,
     parse_model_schema_prop_attributes,
 };
 
@@ -234,10 +236,14 @@ const KNOWN_ARGS: &[&str] = &[
     "default_types",
     "decode_with",
     "check",
+    "preprocess",
 ];
 
 /// What a refusal of a `check` written in `#[model_schema(...)]` opens with.
 const TYPE_CHECK: &str = "`model_schema` argument `check`";
+
+/// What a refusal of a `preprocess` written in `#[model_schema(...)]` opens with.
+const TYPE_PREPROCESS: &str = "`model_schema` argument `preprocess`";
 
 /// What every plain-enum flatten diagnostic says about its own reach, so an author who fixes the
 /// one declaration named there knows what was and was not checked around it.
@@ -401,6 +407,19 @@ struct ConstrainedShape {
     /// Every non-`'static` lifetime the field's type spells, deduplicated.
     lifetimes: Vec<syn::Lifetime>,
     wraps: Vec<ConstraintWrap>,
+}
+
+/// What the serde hook of a list held to a count is declared with: the type it reads, the type
+/// parameters that type is written from, and the bounds it holds them to.
+#[cfg(feature = "serde")]
+struct ListHookHeader {
+    /// What holds `L` to being a list whose items are counted.
+    counted: proc_macro2::TokenStream,
+    /// What holds each transparent wrapper to what it derefs to.
+    held_to: Vec<proc_macro2::TokenStream>,
+    /// One type parameter per transparent wrapper the list is written under.
+    holders: Vec<proc_macro2::Ident>,
+    read: proc_macro2::TokenStream,
 }
 
 /// The value a constrained field ultimately writes, and how it is spelled.
@@ -668,7 +687,7 @@ struct ModelSchemaArgs {
     /// cannot read — spanned on the tokens that earned it.
     arg_rejection: Option<syn::Error>,
     /// The functions `check` names, in the order written: each takes the whole value.
-    check: Vec<CheckName>,
+    check: Vec<FunctionName>,
     /// `decode_with`: the type gets `from_value_with` and `from_bson_with`, and their walkers.
     decode_with: bool,
     /// The default type declared per type parameter, in written order: `default_types(IdType =
@@ -686,6 +705,8 @@ struct ModelSchemaArgs {
     /// What keeps `pattern` off the surfaces it was written for, spanned on the literal it was
     /// written as.
     pattern_rejection: Option<syn::Error>,
+    /// The functions `preprocess` names, in the order written: each takes the whole payload.
+    preprocess: Vec<FunctionName>,
     /// The first of `pattern`, `minLength` and `maxLength` written, and where: a refusal of the
     /// check is spanned there.
     string_check: Option<(&'static str, proc_macro2::Span)>,
@@ -871,8 +892,10 @@ struct ZodDefaultInputs<'defaults> {
 #[cfg(feature = "zod")]
 struct PublishedBinding<'binding> {
     /// The checks written on the type, which its own expression carries.
-    checks: &'binding [CheckName],
+    checks: &'binding [FunctionName],
     default_types: &'binding [(syn::Ident, syn::Type)],
+    /// The functions `preprocess` names on the type, each written around its own expression.
+    preprocess: &'binding [FunctionName],
     /// Whether the published expression *is* a sibling's own binding — see
     /// [`republishes_sibling_binding`].
     republished: bool,
@@ -1119,22 +1142,22 @@ fn apply_arg(result: &mut ModelSchemaArgs, meta: &Meta) -> syn::Result<()> {
     } else if path.is_ident("decode_with") {
         result.decode_with = flag_arg(meta, "decode_with")?;
     } else if path.is_ident("check") {
-        result.check = check_arg(meta)?;
+        result.check = functions_arg(meta, TYPE_CHECK, CHECK_TAKES)?;
+    } else if path.is_ident("preprocess") {
+        result.preprocess = functions_arg(meta, TYPE_PREPROCESS, PREPROCESS_TAKES)?;
     } else {
         return Err(unknown_arg_rejection(meta));
     }
     Ok(())
 }
 
-/// The functions a `check = [...]` argument names, in the order written.
-fn check_arg(meta: &Meta) -> syn::Result<Vec<CheckName>> {
+/// The functions a `check = [...]` or a `preprocess = [...]` argument names, in the order
+/// written. `subject` opens a refusal, and `takes` says what the argument is written with.
+fn functions_arg(meta: &Meta, subject: &str, takes: &str) -> syn::Result<Vec<FunctionName>> {
     let Meta::NameValue(written) = meta else {
-        return Err(syn::Error::new_spanned(
-            meta,
-            format!("{TYPE_CHECK} {CHECK_TAKES}"),
-        ));
+        return Err(syn::Error::new_spanned(meta, format!("{subject} {takes}")));
     };
-    check_names(&written.value, TYPE_CHECK)
+    function_names(&written.value, subject, takes)
 }
 
 /// The literal an argument's value was written as — every valued `model_schema` argument reaches
@@ -1386,6 +1409,10 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     {
         return output;
     }
+    // A `preprocess` the read of the item cannot call is refused here, in every build.
+    if let Some(output) = preprocess_refusal_output(&item, &parsed_args) {
+        return output;
+    }
     // `decode_with` generates methods on the type it is written on, so a shape that cannot carry
     // them is refused here rather than left with plain serde.
     if let Some(output) = guard_failure_output(
@@ -1407,7 +1434,7 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // Which Zod binding this item publishes turns on whether it declares type parameters, and a
     // field written at the item's own name reads that answer back the way any other reference does.
     record_item(&item);
-    record_item_checks(&item, &parsed_args);
+    record_item_functions(&item, &parsed_args);
     // Whether a filling satisfies the bounds its parameter declares is a question about trait
     // impls, which a proc macro cannot answer, so it is asked of the compiler.
     let filling_bound_checks = default_types_bound_checks(&item, &parsed_args);
@@ -1441,6 +1468,7 @@ fn process_item(item: Item, args: &ModelSchemaArgs) -> TokenStream {
     } else if let Item::Type(item_type) = item {
         alias_string_check_refusal_output(&item_type, args)
             .or_else(|| checks::alias_refusal_output(&item_type, &args.check))
+            .or_else(|| preprocess::alias_refusal_output(&item_type, &args.preprocess))
             .unwrap_or_else(|| process_type_alias(item_type, args))
     } else {
         syn::Error::new_spanned(
@@ -2235,6 +2263,10 @@ const fn flattened_name_offers_absence(_fld: &FieldDef) -> bool {
 /// contributes one key set and is joined as the one operand it is.
 #[cfg(all(feature = "serde", feature = "zod"))]
 fn flattened_zod_branches(fld: &FieldDef) -> Vec<String> {
+    // The binding of a type that names a `preprocess` is the one schema that calls it.
+    if fld.zod_names_a_preprocess() {
+        return Vec::new();
+    }
     let members = fld.zod_union_members();
     if !members.is_empty() {
         return members.into_iter().map(|member| member.spelling).collect();
@@ -2249,6 +2281,9 @@ fn flattened_zod_branches(fld: &FieldDef) -> Vec<String> {
 /// an absence there.
 #[cfg(all(feature = "zod", not(feature = "serde")))]
 fn flattened_zod_branches(fld: &FieldDef) -> Vec<String> {
+    if fld.zod_names_a_preprocess() {
+        return Vec::new();
+    }
     fld.zod_union_members()
         .into_iter()
         .map(|member| member.spelling)
@@ -2637,6 +2672,29 @@ fn decode_with_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_mac
         .collect()
 }
 
+/// What `item` is replaced by where the read of it cannot call a `preprocess` it names: the item
+/// with its members' own attribute taken off, and each refusal. `None` where every function it
+/// names is one its read calls.
+fn preprocess_refusal_output(item: &Item, args: &ModelSchemaArgs) -> Option<TokenStream> {
+    let refusals: Vec<proc_macro2::TokenStream> = preprocess::refusals(item, &args.preprocess)
+        .iter()
+        .map(|rejection| attr_guard_error(rejection, &item_label(item)))
+        .collect();
+    guard_failure_output(
+        &preprocess::without_member_keys(item),
+        item_schema_ident(item),
+        &refusals,
+    )
+}
+
+/// Records the functions an item names for the parts of its expansion written apart: its checks,
+/// and the `preprocess` of the type and of each member.
+fn record_item_functions(item: &Item, args: &ModelSchemaArgs) {
+    record_item_checks(item, args);
+    preprocess::record(item, &args.preprocess);
+    record_zod_binding_preprocess(item, args);
+}
+
 fn decode_with_alias_refusal(alias: &ItemType) -> syn::Error {
     let name = &alias.ident;
     let target = written_spelling(&alias.ty);
@@ -2826,6 +2884,25 @@ fn record_own_zod_binding(item: &Item) {
 /// Nothing, in a build that reads a value and publishes no Zod binding.
 #[cfg(all(feature = "serde", not(feature = "zod")))]
 const fn record_own_zod_binding(_item: &Item) {}
+
+/// Records whether the Zod binding `item` publishes calls a `preprocess`: the type names one, or
+/// it is another name for a type that does. A type that holds it then reads that binding whole.
+#[cfg(feature = "zod")]
+fn record_zod_binding_preprocess(item: &Item, args: &ModelSchemaArgs) {
+    let Some(name) = item_schema_ident(item) else {
+        return;
+    };
+    let aliased = if let Item::Type(alias) = item {
+        get_field_def("", &alias.ty, "").zod_names_a_preprocess()
+    } else {
+        false
+    };
+    record_zod_preprocess(&name.to_string(), aliased || !args.preprocess.is_empty());
+}
+
+/// Nothing, in a build that publishes no Zod binding.
+#[cfg(not(feature = "zod"))]
+const fn record_zod_binding_preprocess(_item: &Item, _args: &ModelSchemaArgs) {}
 
 /// The parameters an item declares — the three shapes `model_schema` expands each bind their own;
 /// anything else binds none this expansion can read.
@@ -5404,7 +5481,8 @@ fn unit_struct_impls_for(_item_struct: &syn::ItemStruct) -> proc_macro2::TokenSt
 /// Strips `Serialize`/`Deserialize` from a unit struct's own `#[derive(...)]` and answers with
 /// impls that write and read `{}` in their place — only the impl whose derive was present. Where
 /// the struct publishes `validate()`, its read is `model_schema_read_unjudged` and then
-/// `validate()`, as that of every other type that publishes one.
+/// `validate()`, as that of every other type that publishes one. Where it names a `preprocess`,
+/// `model_schema_read_unjudged` calls each function on the payload first.
 #[cfg(feature = "serde")]
 fn unit_struct_serde_impls(
     item_struct: &mut syn::ItemStruct,
@@ -5457,56 +5535,88 @@ fn unit_struct_serde_impls(
         }
     });
 
-    let deserialize_impl = reads.then(|| {
-        let expecting = format!("an empty object for `{type_name}`");
-        let read = quote! {
-            struct UnitStructVisitor;
-            impl<'de> ::serde::de::Visitor<'de> for UnitStructVisitor {
-                type Value = #name;
-                fn expecting(&self, formatter: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-                    formatter.write_str(#expecting)
-                }
-                fn visit_map<A: ::serde::de::MapAccess<'de>>(
-                    self,
-                    mut map: A,
-                ) -> ::core::result::Result<Self::Value, A::Error> {
-                    while map.next_entry::<::serde::de::IgnoredAny, ::serde::de::IgnoredAny>()?.is_some() {}
-                    ::core::result::Result::Ok(#name)
+    let deserialize_impl = reads.then(|| unit_struct_read(name, publishes_validate));
+
+    quote! {
+        #serialize_impl
+        #deserialize_impl
+    }
+}
+
+/// The `Deserialize` of the unit struct `name`, which reads `{}`: alone, or after
+/// `model_schema_read_unjudged` where the struct publishes `validate()` or names a `preprocess`.
+#[cfg(feature = "serde")]
+fn unit_struct_read(name: &syn::Ident, publishes_validate: bool) -> proc_macro2::TokenStream {
+    let type_name = name.to_string();
+    let expecting = format!("an empty object for `{type_name}`");
+    let read = quote! {
+        struct UnitStructVisitor;
+        impl<'de> ::serde::de::Visitor<'de> for UnitStructVisitor {
+            type Value = #name;
+            fn expecting(&self, formatter: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                formatter.write_str(#expecting)
+            }
+            fn visit_map<A: ::serde::de::MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> ::core::result::Result<Self::Value, A::Error> {
+                while map.next_entry::<::serde::de::IgnoredAny, ::serde::de::IgnoredAny>()?.is_some() {}
+                ::core::result::Result::Ok(#name)
+            }
+        }
+        deserializer.deserialize_struct(#type_name, &[], UnitStructVisitor)
+    };
+    let corrected = judged_read::unit_struct_correction(name);
+    if !publishes_validate && corrected.is_none() {
+        return quote! {
+            impl<'de> ::serde::Deserialize<'de> for #name {
+                fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> ::core::result::Result<Self, D::Error> {
+                    #read
                 }
             }
-            deserializer.deserialize_struct(#type_name, &[], UnitStructVisitor)
         };
-        if !publishes_validate {
-            return quote! {
-                impl<'de> ::serde::Deserialize<'de> for #name {
-                    fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> ::core::result::Result<Self, D::Error> {
-                        #read
-                    }
-                }
-            };
-        }
-        let refusal = refusal_from_violations();
-        quote! {
-            impl #name {
+    }
+    let unjudged = corrected.map_or_else(
+        || {
+            quote! {
                 /// The read alone, for a holder that judges the whole value once.
                 pub fn model_schema_read_unjudged<'de, D: ::serde::Deserializer<'de>>(deserializer: D) -> ::core::result::Result<Self, D::Error> {
                     #read
                 }
             }
+        },
+        |(correction, of_corrected)| {
+            quote! {
+                #correction
 
-            impl<'de> ::serde::Deserialize<'de> for #name {
-                fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> ::core::result::Result<Self, D::Error> {
-                    let read = Self::model_schema_read_unjudged(deserializer)?;
-                    read.validate().map_err(#refusal)?;
-                    ::core::result::Result::Ok(read)
+                /// The read of a payload the functions `preprocess` names on the type have
+                /// corrected.
+                pub fn #of_corrected<'de, D: ::serde::Deserializer<'de>>(deserializer: D) -> ::core::result::Result<Self, D::Error> {
+                    #read
                 }
             }
+        },
+    );
+    let judged = if publishes_validate {
+        let refusal = refusal_from_violations();
+        quote! {
+            let read = Self::model_schema_read_unjudged(deserializer)?;
+            read.validate().map_err(#refusal)?;
+            ::core::result::Result::Ok(read)
         }
-    });
-
+    } else {
+        quote! { Self::model_schema_read_unjudged(deserializer) }
+    };
     quote! {
-        #serialize_impl
-        #deserialize_impl
+        impl #name {
+            #unjudged
+        }
+
+        impl<'de> ::serde::Deserialize<'de> for #name {
+            fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> ::core::result::Result<Self, D::Error> {
+                #judged
+            }
+        }
     }
 }
 
@@ -6025,6 +6135,7 @@ fn process_tuple_struct(
             &PublishedBinding {
                 checks: &args.check,
                 default_types: &args.default_types,
+                preprocess: &args.preprocess,
                 republished: tuple_struct_republishes_slot(&slots.shape),
             },
             &tuple_struct_zod_body(
@@ -7078,7 +7189,10 @@ fn branded_zod_expression(
     inner: &FieldDef,
     plain_description: &str,
 ) -> String {
-    let value = zod_check_wrap(branded_zod_inner(args, inner), &args.check);
+    let value = zod_preprocess_wrap(
+        zod_check_wrap(branded_zod_inner(args, inner), &args.check),
+        &args.preprocess,
+    );
     let brand = zod_brand_call(item_name);
     let described = format!(".meta({{\n  description: \"{plain_description}\",\n}})");
     if parameters.is_empty() {
@@ -7437,7 +7551,7 @@ fn branded_bound_call(
 fn with_branded_checks(
     bound_validate: proc_macro2::TokenStream,
     bound: Option<&proc_macro2::TokenStream>,
-    named: &[CheckName],
+    named: &[FunctionName],
 ) -> proc_macro2::TokenStream {
     let own = checks::ItemChecks {
         named: !named.is_empty(),
@@ -7698,14 +7812,13 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
     let bound_call: Option<proc_macro2::TokenStream> = None;
     let validate_method = with_branded_checks(bound_validate, bound_call.as_ref(), &args.check);
 
-    // Read off the struct as it is emitted: the hook a constrained brand reads through is hung.
-    let decode_with = struct_decode_with(&output_struct, args);
+    let (decode_with, read_struct) = branded_read(output_struct, args, !validate_method.is_empty());
 
     assemble_branded_output(&BrandedNewtypeOutput {
         decode_with: &decode_with,
         delegate_impl_items: &delegate_impl_items,
         display_tokens: &display_tokens,
-        item_struct: &output_struct,
+        item_struct: &read_struct,
         module_ident: &module_ident,
         name: &name,
         schema_example_tokens: &schema_example_tokens,
@@ -7713,6 +7826,25 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
         validate_method: &validate_method,
         validation_tokens: &validation_tokens,
     })
+}
+
+/// What is written beside a brand after its own `impl`, and the brand as it is emitted: what
+/// `decode_with` adds, and the read the macro writes for a brand that names a `preprocess`, each
+/// function called on the payload, then the brand's own read, then its `validate()` where it
+/// `publishes_validate`. A brand that names none keeps the read serde's derive writes it.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+fn branded_read(
+    mut brand: syn::ItemStruct,
+    args: &ModelSchemaArgs,
+    publishes_validate: bool,
+) -> (DecodeWithParts, syn::ItemStruct) {
+    // Read off the struct as it is emitted: the hook a constrained brand reads through is hung.
+    let mut beside = struct_decode_with(&brand, args);
+    if preprocess::named().any() {
+        let judged = judged_read::of_struct(&mut brand, publishes_validate);
+        beside.type_impl.extend(judged);
+    }
+    (beside, brand)
 }
 
 /// `model_schema_bound_text`: the text a bound written on a field of this brand's type is measured
@@ -8369,7 +8501,7 @@ fn process_plain_enum(
         &rust_ident,
         &schema_code,
         &docs_and_description.1,
-        &args.check,
+        args,
     );
 
     #[cfg(not(any(feature = "typescript", feature = "zod")))]
@@ -10742,7 +10874,13 @@ fn zod_merge_branches(
 /// and the absence's.
 #[cfg(all(feature = "serde", feature = "zod"))]
 fn zod_member_leaves(fld: &FieldDef, rendered: &str) -> Vec<ZodUnionMember> {
-    let nested = fld.zod_union_members();
+    // The binding of a type that names a `preprocess` is the one schema that calls it, so no
+    // member of it is written in its place.
+    let nested = if fld.zod_names_a_preprocess() {
+        Vec::new()
+    } else {
+        fld.zod_union_members()
+    };
     let mut leaves = if !nested.is_empty() {
         nested
     } else if let Some(published) = named_wire_leaves(fld) {
@@ -13801,22 +13939,18 @@ fn list_validator(
     }
 }
 
-/// The serde hook of a list written under `wraps`, or nothing for one a reference borrows. It
-/// names the list `L` and each transparent wrapper by what it derefs to, so it reads whatever type
-/// the member declares.
+/// What the serde hook of a list written under `wraps` is declared with, or `None` for one a
+/// reference borrows. It names the list `L` and each transparent wrapper by what it derefs to, so
+/// it reads whatever type the member declares.
 #[cfg(feature = "serde")]
-fn list_deserializer(
-    deserializer: &proc_macro2::Ident,
-    validator: &proc_macro2::Ident,
-    wraps: &[ConstraintWrap],
-) -> proc_macro2::TokenStream {
+fn list_hook_header(wraps: &[ConstraintWrap]) -> Option<ListHookHeader> {
     let mut read = quote! { L };
     let mut holders: Vec<proc_macro2::Ident> = Vec::new();
     let mut held_to: Vec<proc_macro2::TokenStream> = Vec::new();
     for (depth, wrap) in wraps.iter().enumerate().rev() {
         match *wrap {
             ConstraintWrap::Borrowed | ConstraintWrap::Map | ConstraintWrap::Sequence => {
-                return quote! {};
+                return None;
             }
             ConstraintWrap::Optional => read = quote! { ::core::option::Option<#read> },
             ConstraintWrap::Transparent => {
@@ -13833,7 +13967,30 @@ fn list_deserializer(
             }
         }
     }
-    let counted = counted_list_bounds(matches!(wraps.last(), Some(ConstraintWrap::Transparent)));
+    Some(ListHookHeader {
+        counted: counted_list_bounds(matches!(wraps.last(), Some(ConstraintWrap::Transparent))),
+        held_to,
+        holders,
+        read,
+    })
+}
+
+/// The serde hook of a list written under `wraps`, or nothing for one a reference borrows.
+#[cfg(feature = "serde")]
+fn list_deserializer(
+    deserializer: &proc_macro2::Ident,
+    validator: &proc_macro2::Ident,
+    wraps: &[ConstraintWrap],
+) -> proc_macro2::TokenStream {
+    let Some(ListHookHeader {
+        counted,
+        held_to,
+        holders,
+        read,
+    }) = list_hook_header(wraps)
+    else {
+        return quote! {};
+    };
     let head = wrap_binding(0);
     let leaf = constraint_leaf(CheckSink::Fail, &walked_value(wraps), validator);
     let walk = walk_wraps(wraps, &head, 1, &leaf);
@@ -15444,7 +15601,7 @@ fn placed_member_checks(
     field: &Field,
     index: usize,
     wire_name: &str,
-    named: &[CheckName],
+    named: &[FunctionName],
 ) -> Option<proc_macro2::TokenStream> {
     checks::member_calls(
         &member_place(field, index, ctx.variant_ident.is_some(), true, wire_name),
@@ -16508,8 +16665,12 @@ fn zod_published_binding(
     reexport: &str,
 ) -> String {
     // On the type's own expression, so every binding of it carries them: the one schema of a
-    // type with no parameter, and each schema its builder builds for a type with one.
-    let checked = zod_check_wrap(expression.to_owned(), published.checks);
+    // type with no parameter, and each schema its builder builds for a type with one. A
+    // `preprocess` is written around the checked expression: it corrects what the checks judge.
+    let checked = zod_preprocess_wrap(
+        zod_check_wrap(expression.to_owned(), published.checks),
+        published.preprocess,
+    );
     if parameters.is_empty() {
         zod_const_block(
             item_name,
@@ -16697,6 +16858,7 @@ fn generate_zod_schema_method(
             &PublishedBinding {
                 checks: &args.check,
                 default_types: &args.default_types,
+                preprocess: &args.preprocess,
                 republished: false,
             },
             &preamble,
@@ -16818,19 +16980,24 @@ fn generate_plain_enum_zod_schema_method(
     rust_ident: &str,
     schema_code: &str,
     description: &str,
-    checks: &[CheckName],
+    args: &ModelSchemaArgs,
 ) -> proc_macro2::TokenStream {
     #[cfg(feature = "zod")]
     {
         let reexport = ident_reexport_zod(rust_ident, item_name, "$Schema");
         // The checks the enum names, on the enumeration itself and ahead of its description.
-        let checked = zod_check_wrap(String::new(), checks);
+        let checked = zod_check_wrap(String::new(), &args.check);
+        // Each function `preprocess` names is written around the checked enumeration: `opened`
+        // ahead of it, and `closed` after it.
+        let around = zod_preprocess_wrap(String::new(), &args.preprocess);
+        let opened = around.trim_end_matches(')');
+        let closed = ")".repeat(args.preprocess.len());
         // When typescript feature is enabled, generate TypeScript-style Zod schema
         #[cfg(feature = "typescript")]
         {
             quote::quote! {
                 pub fn zod_schema() -> ::std::string::String {
-                    format!("const {}$RawSchema = z.enum([{}]){}.meta({{\n  description: \"{}\",\n}});\n\nexport const {}$Schema: ZodType<{}> = {}$RawSchema;{}", #item_name, #schema_code, #checked, #description, #item_name, #item_name, #item_name, #reexport)
+                    format!("const {}$RawSchema = {}z.enum([{}]){}{}.meta({{\n  description: \"{}\",\n}});\n\nexport const {}$Schema: ZodType<{}> = {}$RawSchema;{}", #item_name, #opened, #schema_code, #checked, #closed, #description, #item_name, #item_name, #item_name, #reexport)
                 }
             }
         }
@@ -16840,7 +17007,7 @@ fn generate_plain_enum_zod_schema_method(
         {
             quote::quote! {
                 pub fn zod_schema() -> ::std::string::String {
-                    format!("export const {}$Schema = z.enum([{}]){}.meta({{\n  description: \"{}\",\n}});{}", #item_name, #schema_code, #checked, #description, #reexport)
+                    format!("export const {}$Schema = {}z.enum([{}]){}{}.meta({{\n  description: \"{}\",\n}});{}", #item_name, #opened, #schema_code, #checked, #closed, #description, #reexport)
                 }
             }
         }
@@ -16848,7 +17015,7 @@ fn generate_plain_enum_zod_schema_method(
 
     #[cfg(not(feature = "zod"))]
     {
-        let _: &_ = &(item_name, rust_ident, schema_code, description, checks);
+        let _: &_ = &(item_name, rust_ident, schema_code, description, args);
         quote::quote! {
             // No method: the `zod` feature is off.
         }
@@ -16925,6 +17092,7 @@ fn generate_discriminated_enum_zod_schema_method(
             &PublishedBinding {
                 checks: &args.check,
                 default_types: &args.default_types,
+                preprocess: &args.preprocess,
                 republished: false,
             },
             "",
@@ -17062,10 +17230,12 @@ fn generate_alias_zod_method(
             export_name,
             rust_ident,
             &parameters,
-            // A check on an alias is refused: it has no `impl` to call a function from.
+            // A check and a `preprocess` on an alias are refused: it has no `impl` to call a
+            // function from, and no read of its own.
             &PublishedBinding {
                 checks: &[],
                 default_types,
+                preprocess: &[],
                 republished: republishes_sibling_binding(&surface),
             },
             "",

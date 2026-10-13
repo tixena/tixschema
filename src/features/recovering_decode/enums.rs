@@ -220,7 +220,7 @@ impl EnumWalker<'_> {
     /// one key names a variant over what it holds. A value in any other form is read whole.
     fn external_methods(&self) -> TokenStream {
         let source = self.walker.source;
-        let fields = source.method("fields");
+        let fields = self.walker.own_method("fields");
         let expected = self.variants_expected();
         let (units, holding): (Vec<&WalkedVariant<'_>>, Vec<&WalkedVariant<'_>>) = self
             .variants
@@ -483,9 +483,10 @@ impl EnumWalker<'_> {
             .walker
             .source
             .object_reader(&Ident::new("object", Span::call_site()));
+        let own_read = self.walker.own_read();
         quote! {
             let here = [path, &[::core::result::Result::Ok(#tag.to_owned())]].concat();
-            out.push(match Self::decode_with_read_unjudged(#reader) {
+            out.push(match Self::#own_read(#reader) {
                 ::core::result::Result::Err(refused) => issue("Invalid", here, #expected, ::core::option::Option::Some(tag.clone()), ::core::option::Option::Some(refused.to_string()), ::std::vec::Vec::new()),
                 ::core::result::Result::Ok(_) => issue("Mistyped", here, #expected, ::core::option::Option::Some(tag.clone()), ::core::option::Option::None, ::std::vec::Vec::new()),
             });
@@ -567,8 +568,9 @@ impl EnumWalker<'_> {
         });
         let names = self.variants.iter().map(|variant| &variant.rust_name);
         let whole = source.object_value(&object);
+        let own_read = self.walker.own_read();
         quote! {
-            match Self::decode_with_read_unjudged(#reader) {
+            match Self::#own_read(#reader) {
                 #(#picked)*
                 #unread
                 ::core::result::Result::Err(_) => {
@@ -612,8 +614,9 @@ impl EnumWalker<'_> {
             }
         });
         let names = variants.iter().map(|variant| &variant.rust_name);
+        let own_read = self.walker.own_read();
         let walked = self.walker.issues_method(&quote! {
-            match Self::decode_with_read_unjudged(#reader) {
+            match Self::#own_read(#reader) {
                 #(#picked)*
                 #unread
                 ::core::result::Result::Err(_) => {
@@ -627,10 +630,9 @@ impl EnumWalker<'_> {
             .walker
             .source
             .object_reader(&Ident::new("object", Span::call_site()));
-        let asked = self.walker.named_method(
-            true,
-            &quote! { Self::decode_with_read_unjudged(#read).is_ok() },
-        );
+        let asked = self
+            .walker
+            .named_method(true, &quote! { Self::#own_read(#read).is_ok() });
         let keyed = self
             .walker
             .fields_method(true, true, &self.untagged_fields());

@@ -6,6 +6,8 @@ use super::aliases::entry_of_items;
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use super::{ADDED_TYPE_NAMES, read_whole_items, reading_the_authors_scope};
 use super::{RecoveringDecode, module_items, written_names};
+use crate::features::model_schema_prop::FunctionName;
+use crate::model_schema::preprocess;
 use crate::utils::{Declared, record_declared};
 use quote::ToTokens as _;
 
@@ -609,6 +611,58 @@ fn every_added_method_but_the_entry_point_carries_the_flags_name() {
     ]);
     if cfg!(feature = "bson") {
         named.push("decode_with_bson_check_issues");
+    }
+    assert_eq!(methods, named);
+}
+
+/// A type that names a `preprocess` on itself keeps each walk under its name, over a value its
+/// functions corrected, for a holder to call, and adds the walk of a value already corrected.
+#[test]
+fn a_type_that_names_a_preprocess_adds_the_walk_of_a_corrected_value() {
+    let item: syn::ItemStruct =
+        syn::parse_str("#[derive(Deserialize)] pub struct Named { pub title: String }").unwrap();
+    let named_on_the_type = [FunctionName {
+        name: "unwrapped".to_owned(),
+        written_at: proc_macro2::Span::call_site(),
+    }];
+    preprocess::record(&syn::Item::Struct(item.clone()), &named_on_the_type);
+    let emitted = struct_recovering_decode(&item);
+    // The record is the item's own: a test run after this one on the same thread reads none.
+    preprocess::record(&syn::Item::Struct(item), &[]);
+    let added: syn::ItemImpl = syn::parse2(emitted.type_impl).unwrap();
+    let methods: Vec<String> = added.items.iter().filter_map(member_name).collect();
+    let mut named = vec![
+        "from_value_with",
+        "from_value_piped",
+        "decode_with_value_report",
+        "decode_with_value_corrected_issues",
+        "decode_with_value_corrected_named",
+        "decode_with_value_corrected_fields",
+        "decode_with_value_corrected",
+        "decode_with_value_issues",
+        "decode_with_value_named",
+        "decode_with_value_fields",
+        LISTED_READ,
+        "decode_with_read_corrected",
+    ];
+    if cfg!(feature = "bson") {
+        named.extend(["from_bson_with", "from_bson_piped"]);
+        if cfg!(feature = "mongodb") {
+            named.extend(OPERATIONS);
+        }
+        named.extend([
+            "decode_with_bson_report",
+            "decode_with_bson_corrected_issues",
+            "decode_with_bson_corrected_named",
+            "decode_with_bson_corrected_fields",
+            "decode_with_bson_corrected",
+            "decode_with_bson_issues",
+            "decode_with_bson_named",
+            "decode_with_bson_fields",
+        ]);
+    }
+    if cfg!(feature = "mongodb") {
+        named.push("MONGO_FIELDS");
     }
     assert_eq!(methods, named);
 }

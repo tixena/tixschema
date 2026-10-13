@@ -26,6 +26,7 @@ use syn::{
 };
 
 use self::aliases::Reach;
+use crate::features::model_schema_prop::FunctionName;
 use crate::features::serde::read_bounds::read_bounds;
 use crate::features::serde::{
     NAMED_READ_HOOK_PREFIX, SerdeFieldHooks, has_serde_default, has_serde_read_hook,
@@ -38,11 +39,12 @@ use crate::field_type::{
     is_transparent_wrapper,
 };
 use crate::model_schema::judged_read::{listed_read, listed_reader};
+use crate::model_schema::preprocess;
 use crate::model_schema::{helper_name_stem, recovering_bound_check};
 use crate::rename_rule::resolve_rename_rule;
 use crate::utils::{
-    Declared, declared, field_validator_name, ident_schema_module_name, type_parameters_in_scope,
-    written_names, written_type,
+    Declared, declared, field_validator_name, ident_schema_module_name, to_snake_case,
+    type_parameters_in_scope, written_names, written_type,
 };
 
 #[cfg(all(
@@ -194,12 +196,17 @@ impl<'item> Flattened<'item> {
         matches!(self, Self::Model(_) | Self::Optional(_, _))
     }
 
-    fn of(field: &'item Field, module_name: &str, parameters: &[String]) -> Self {
+    fn of(
+        field: &'item Field,
+        module_name: &str,
+        parameters: &[String],
+        corrected: &[FunctionName],
+    ) -> Self {
         // serde reads nothing into the field, and the keys it wrote for it are still in the object.
         if parse_serde_key_omission(&field.attrs).skips_deserializing {
             return Self::Unwalked(None);
         }
-        let Walk { step, ty } = member_walk(field, module_name, parameters);
+        let Walk { step, ty } = member_walk(field, module_name, parameters, corrected);
         match step {
             Step::Entries(values) => Self::Entries(*values),
             // Flattened, serde reads an `Option` as absent where the type's own reader refuses, and
@@ -396,8 +403,10 @@ impl<'item> Shape<'item> {
         if has_serde_transparent(&item_struct.attrs)
             && let Some(only) = transparent_field(&item_struct.fields)
         {
-            return Self::Held(held_walk(only, module_name, parameters));
+            // The slot of a brand names no function: a `preprocess` there is refused.
+            return Self::Held(held_walk(only, module_name, parameters, &[]));
         }
+        let named_on = preprocess::named();
         let defaulted = has_serde_default(&item_struct.attrs);
         match &item_struct.fields {
             Fields::Named(named) => {
@@ -425,7 +434,12 @@ impl<'item> Shape<'item> {
             Fields::Unnamed(slots) => {
                 let mut written = slots.unnamed.iter();
                 if let (Some(only), None) = (written.next(), written.next()) {
-                    return Self::Held(held_walk(only, module_name, parameters));
+                    return Self::Held(held_walk(
+                        only,
+                        module_name,
+                        parameters,
+                        named_on.of_member(None, 0),
+                    ));
                 }
                 Self::Slots(
                     slots
@@ -434,7 +448,14 @@ impl<'item> Shape<'item> {
                         .enumerate()
                         .filter_map(|(index, slot)| {
                             let validator = slot_validator(module_name, None, index);
-                            walked_slot(slot, defaulted, module_name, parameters, validator)
+                            walked_slot(
+                                slot,
+                                defaulted,
+                                module_name,
+                                parameters,
+                                validator,
+                                named_on.of_member(None, index),
+                            )
                         })
                         .collect(),
                 )
@@ -470,6 +491,8 @@ impl<'item> Shape<'item> {
             }
             Fields::Unit => Self::Nothing,
             Fields::Unnamed(slots) => {
+                let named = variant.ident.to_string();
+                let named_on = preprocess::named();
                 let mut written = slots.unnamed.iter();
                 if let (Some(only), None) = (written.next(), written.next()) {
                     // serde writes a variant whose one slot it neither writes nor reads as a unit
@@ -477,9 +500,13 @@ impl<'item> Shape<'item> {
                     if parse_serde_key_omission(&only.attrs).absent_from_wire() {
                         return Self::Nothing;
                     }
-                    return Self::Held(member_walk(only, module_name, parameters));
+                    return Self::Held(member_walk(
+                        only,
+                        module_name,
+                        parameters,
+                        named_on.of_member(Some(&named), 0),
+                    ));
                 }
-                let named = variant.ident.to_string();
                 Self::Slots(
                     slots
                         .unnamed
@@ -487,7 +514,14 @@ impl<'item> Shape<'item> {
                         .enumerate()
                         .filter_map(|(index, slot)| {
                             let validator = slot_validator(module_name, Some(&named), index);
-                            walked_slot(slot, false, module_name, parameters, validator)
+                            walked_slot(
+                                slot,
+                                false,
+                                module_name,
+                                parameters,
+                                validator,
+                                named_on.of_member(Some(&named), index),
+                            )
                         })
                         .collect(),
                 )
@@ -549,11 +583,11 @@ impl Source {
 
     /// The entry point and the report it runs. `written` holds every name the type's item
     /// writes, none of which a method's own type parameter takes.
-    fn entry_methods(self, module: &Ident, written: &[String]) -> TokenStream {
+    fn entry_methods(self, module: &Ident, written: &[String], corrects_own: bool) -> TokenStream {
         match self {
             #[cfg(feature = "bson")]
-            Self::Bson => bson_entry_methods(module, written),
-            Self::Json => entry_methods(module, &unclaimed_parameter("F", written)),
+            Self::Bson => bson_entry_methods(module, written, corrects_own),
+            Self::Json => entry_methods(module, &unclaimed_parameter("F", written), corrects_own),
         }
     }
 
@@ -784,6 +818,9 @@ struct WalkedField<'item> {
 
 /// The function serde reads a plain value with, and the one that writes it back.
 struct Whole {
+    /// The value is read from the payload a `preprocess` of its member corrected, so what it is
+    /// stored as is not held to what the type writes back.
+    corrected: bool,
     hooked: bool,
     /// The value's type names one of the type's own parameters, which nothing shows to be
     /// `Serialize` where the JSON walker reads it.
@@ -809,6 +846,9 @@ struct Written<'reach> {
 
 /// What the generated code names of the type it is generated for, and the source it walks.
 struct Walker<'item> {
+    /// The type names a `preprocess` of its own: its walkers read a value its functions have
+    /// corrected, and the methods another type's walker calls correct the value first.
+    corrects_own: bool,
     issue_parameter: &'item Ident,
     module: &'item Ident,
     own_name: &'item str,
@@ -990,6 +1030,96 @@ impl Walker<'_> {
         }
     }
 
+    /// What a type that names a `preprocess` of its own adds for this source: the function that
+    /// answers a value as the type's functions correct it, and the three methods another type's
+    /// walker calls, each of which corrects a copy of what it is handed and walks that. A key the
+    /// functions took out of an object is the type's own, as each key its fields are read from.
+    fn corrected_entries(&self, functions: &[FunctionName]) -> TokenStream {
+        let (module, source, built) = (self.module, self.source, self.issue_parameter);
+        let (value, object_type, expected) = (source.value(), source.object(), self.own_model());
+        let [issues, named, fields] = ["issues", "named", "fields"].map(|part| source.method(part));
+        let [of_issues, of_named, of_fields] =
+            ["issues", "named", "fields"].map(|part| self.own_method(part));
+        let (corrector, signature) = (source.method("corrected"), self.signature());
+        let (correction, as_a_value, as_an_object) = match source {
+            #[cfg(feature = "bson")]
+            Source::Bson => (
+                quote! {
+                    /// What the functions `preprocess` names on the type answer for `whole`, which
+                    /// crosses to a `serde_json::Value` and back through serde. `Err` holds what
+                    /// serde says of a value one of the two cannot hold.
+                    fn #corrector(whole: bson::Bson) -> ::core::result::Result<bson::Bson, ::std::string::String> {
+                        let crossed = <::serde_json::Value as ::serde::Deserialize>::deserialize(bson::Deserializer::new(whole))
+                            .map_err(|refused| refused.to_string())?;
+                        ::serde::Serialize::serialize(&Self::decode_with_value_corrected(crossed), bson::Serializer::new())
+                            .map_err(|refused| refused.to_string())
+                    }
+                },
+                quote! { Self::#corrector(found.clone()) },
+                quote! { ::core::result::Result::Ok(bson::Bson::Document(corrected)) = Self::#corrector(bson::Bson::Document(object.clone())) },
+            ),
+            Source::Json => {
+                let taken: Vec<String> = functions
+                    .iter()
+                    .map(|function| to_snake_case(&function.name))
+                    .collect();
+                let handed = unclaimed_parameter("value", &taken);
+                let answered = preprocess::corrected(functions, quote! { #handed });
+                (
+                    quote! {
+                        /// What the functions `preprocess` names on the type answer for a value.
+                        fn #corrector(#handed: serde_json::Value) -> serde_json::Value {
+                            #answered
+                        }
+                    },
+                    quote! { ::core::result::Result::<serde_json::Value, ::std::string::String>::Ok(Self::#corrector(found.clone())) },
+                    quote! { serde_json::Value::Object(corrected) = Self::#corrector(serde_json::Value::Object(object.clone())) },
+                )
+            }
+        };
+        quote! {
+            #correction
+
+            /// Lists every issue in `found`, read as this type at `path`, once the functions
+            /// `preprocess` names on the type have corrected it.
+            pub fn #issues #signature {
+                match #as_a_value {
+                    ::core::result::Result::Ok(corrected) => Self::#of_issues(&corrected, path, issue, out),
+                    ::core::result::Result::Err(reason) => out.push(issue("Invalid", path.to_vec(), #expected, ::core::option::Option::Some(found.clone()), ::core::option::Option::Some(reason), ::std::vec::Vec::new())),
+                }
+            }
+
+            /// Whether `object`, once the functions `preprocess` names on the type have corrected
+            /// it, holds what names a value of this type.
+            pub fn #named(object: &#object_type) -> bool {
+                let #as_an_object else {
+                    return false;
+                };
+                Self::#of_named(&corrected)
+            }
+
+            /// Lists every issue in this type's fields inside `object`, once the functions
+            /// `preprocess` names on the type have corrected it, and returns the keys that are its
+            /// own: each one its fields are read from, and each one the functions took out.
+            pub fn #fields<'a, #built>(
+                object: &'a #object_type,
+                path: &[::core::result::Result<::std::string::String, usize>],
+                issue: #module::IssueFromParts<#value, #built>,
+                out: &mut ::std::vec::Vec<#built>,
+            ) -> ::std::vec::Vec<&'a str> {
+                let #as_an_object else {
+                    return ::std::vec::Vec::new();
+                };
+                let declared = Self::#of_fields(&corrected, path, issue, out);
+                object
+                    .keys()
+                    .map(::std::string::String::as_str)
+                    .filter(|key| declared.contains(key) || !corrected.contains_key(*key))
+                    .collect()
+            }
+        }
+    }
+
     /// What walks each entry of `object`, held at `segments`, as an entry of a map of `values`:
     /// every one, or each one whose key `unclaimed` holds of.
     fn entries_walk(
@@ -1064,7 +1194,7 @@ impl Walker<'_> {
     fn fields_method(&self, reads_object: bool, lists: bool, body: &TokenStream) -> TokenStream {
         let (module, source, built) = (self.module, self.source, self.issue_parameter);
         let (fields, value, object_type) =
-            (source.method("fields"), source.value(), source.object());
+            (self.own_method("fields"), source.value(), source.object());
         let bound = |name: &str, read: bool| {
             if read {
                 let named = Ident::new(name, Span::call_site());
@@ -1328,7 +1458,7 @@ impl Walker<'_> {
 
     /// `decode_with_{source}_issues` running `body`.
     fn issues_method(&self, body: &TokenStream) -> TokenStream {
-        let issues = self.source.method("issues");
+        let issues = self.own_method("issues");
         let signature = self.signature();
         quote! {
             /// Lists every issue in `found`, read as this type at `path`.
@@ -1464,7 +1594,11 @@ impl Walker<'_> {
         let (module, source) = (self.module, self.source);
         let (expected, leaf) = (self.expected(ty), source.leaf());
         let (read, pinned) = (&whole.read, whole.hooked.then_some(ty));
-        let written = source.written(whole.parameterized, pinned, whole.write.as_ref());
+        let written = if whole.corrected {
+            source.unwritten(pinned)
+        } else {
+            source.written(whole.parameterized, pinned, whole.write.as_ref())
+        };
         let listed = quote! {
             out.extend(#module::#leaf(#held, #read, #written, #path, #expected, issue))
         };
@@ -1496,11 +1630,11 @@ impl Walker<'_> {
         let Some(check) = self.bound_check(validator, ty) else {
             return TokenStream::new();
         };
-        let expected = self.expected(ty);
+        let (expected, own_read) = (self.expected(ty), self.own_read());
         quote! {
             out.extend(#module::#bound(
                 found,
-                Self::decode_with_read_unjudged,
+                Self::#own_read,
                 |held: &Self| {
                     let check = #check;
                     check(&held.0)
@@ -1609,7 +1743,7 @@ impl Walker<'_> {
     /// `decode_with_{source}_named` answering `body`. An `object` that `body` does not read is
     /// bound as `_`.
     fn named_method(&self, reads_object: bool, body: &TokenStream) -> TokenStream {
-        let (named, object_type) = (self.source.method("named"), self.source.object());
+        let (named, object_type) = (self.own_method("named"), self.source.object());
         let object = if reads_object {
             quote! { object }
         } else {
@@ -1632,7 +1766,7 @@ impl Walker<'_> {
     /// `decode_with_{source}_fields` does not return as the type's own is `Unknown`.
     fn object_issues_method(&self) -> TokenStream {
         let source = self.source;
-        let fields = source.method("fields");
+        let fields = self.own_method("fields");
         let held_as = self.held_as(&source.object_of_found());
         self.issues_method(&quote! {
             #held_as
@@ -1693,10 +1827,26 @@ impl Walker<'_> {
             .reduce(|answer, next| quote! { #answer || #next })
     }
 
+    /// One of the methods that walk a value of the type itself: where the type corrects its own
+    /// payload, the one that walks a value its functions have corrected.
+    fn own_method(&self, part: &str) -> Ident {
+        if self.corrects_own {
+            self.source.method(&format!("corrected_{part}"))
+        } else {
+            self.source.method(part)
+        }
+    }
+
     /// What an issue names as expected where the type itself is: `Model`, by the type's name.
     fn own_model(&self) -> TokenStream {
         let own_name = self.own_name;
         quote! { &[("Model", &[#own_name], 0)] }
+    }
+
+    /// The read of the type itself its walkers list from: where the type corrects its own
+    /// payload, the read of a payload its functions have corrected.
+    fn own_read(&self) -> Ident {
+        own_read(self.corrects_own)
     }
 
     /// What lists the issues of the position `at` among `items`: its value walked when it is
@@ -1813,10 +1963,10 @@ impl Walker<'_> {
     /// What lists `found` read whole with the type's own reader: serde's verdict on it, at the
     /// value, naming `expected`.
     fn read_whole(&self, expected: &TokenStream) -> TokenStream {
-        let (module, leaf) = (self.module, self.source.leaf());
+        let (module, leaf, own_read) = (self.module, self.source.leaf(), self.own_read());
         let written = self.written_whole();
         quote! {
-            out.extend(#module::#leaf(found, Self::decode_with_read_unjudged, #written, path.to_vec(), #expected, issue))
+            out.extend(#module::#leaf(found, Self::#own_read, #written, path.to_vec(), #expected, issue))
         }
     }
 
@@ -1825,7 +1975,8 @@ impl Walker<'_> {
     fn read_whole_flattened(&self, unseen: bool, expected: &TokenStream) -> TokenStream {
         let (module, leaf) = (self.module, self.source.leaf());
         let own: Type = parse_quote! { Self };
-        let read = quote! { Self::decode_with_read_unjudged };
+        let own_read = self.own_read();
+        let read = quote! { Self::#own_read };
         let (unwritten, absent) = (
             self.source.unwritten(None),
             self.read_as_absent(unseen, &read, &own),
@@ -2091,24 +2242,29 @@ where
     let own_name = name.to_string();
     let module = Ident::new(module_name, Span::call_site());
     let issue_parameter = unclaimed_parameter("I", &written.names);
+    let own_functions = preprocess::named().own;
+    let corrects_own = !own_functions.is_empty();
     let of_sources: Vec<TokenStream> = Source::GENERATED
         .iter()
         .enumerate()
         .map(|(at, &source)| {
             let walker = Walker {
+                corrects_own,
                 issue_parameter: &issue_parameter,
                 module: &module,
                 own_name: &own_name,
                 parameters,
                 source,
             };
-            let entry = source.entry_methods(&module, &written.names);
+            let entry = source.entry_methods(&module, &written.names, corrects_own);
             let walk_methods = methods(&walker);
+            let corrected = corrects_own.then(|| walker.corrected_entries(&own_functions));
             // Every source reads through it, and the first one's bounds are the fewest.
             let read = (at == 0).then_some(&written.read);
             quote! {
                 #entry
                 #walk_methods
+                #corrected
                 #read
             }
         })
@@ -2404,13 +2560,32 @@ fn bson_bound_items() -> TokenStream {
 /// copied once per read by serde. Both entry points open with the same read and close with the
 /// same one. Under `mongodb` the operations that read a stored row through them sit beside them.
 #[cfg(feature = "bson")]
-fn bson_entry_methods(module: &Ident, written: &[String]) -> TokenStream {
+fn bson_entry_methods(module: &Ident, written: &[String], corrects_own: bool) -> TokenStream {
     let decider = unclaimed_parameter("F", written);
     let operations = operation_methods(module, written);
+    let (own_read, walked) = (
+        own_read(corrects_own),
+        own_walker(Source::Bson, corrects_own),
+    );
     // The read lists what it finds, so nothing below it is judged as it is read.
-    let read = quote! { Self::decode_with_read_unjudged(bson::Deserializer::new(whole.clone())) };
+    let read = quote! { Self::#own_read(bson::Deserializer::new(whole.clone())) };
+    // The functions a type names for itself are called once, on the document as it is taken.
+    let taken = if corrects_own {
+        quote! {
+            let mut whole = match Self::decode_with_bson_corrected(bson::Bson::Document(document)) {
+                ::core::result::Result::Ok(corrected) => corrected,
+                ::core::result::Result::Err(reason) => {
+                    return ::core::result::Result::Err(#module::Unrecovered {
+                        issues: ::std::vec::Vec::from([#module::Issue::Undescribed { reason }]),
+                    });
+                }
+            };
+        }
+    } else {
+        quote! { let mut whole = bson::Bson::Document(document); }
+    };
     let first_read = quote! {
-        let mut whole = bson::Bson::Document(document);
+        #taken
         let found = match #read {
             ::core::result::Result::Ok(decoded) => {
                 let mut found = Self::decode_with_bson_report(&whole, ::core::option::Option::None);
@@ -2474,7 +2649,7 @@ fn bson_entry_methods(module: &Ident, written: &[String]) -> TokenStream {
 
         fn decode_with_bson_report(whole: &bson::Bson, refused: ::core::option::Option<::std::string::String>) -> ::std::vec::Vec<#module::Issue<bson::Bson>> {
             let mut out = ::std::vec::Vec::new();
-            Self::decode_with_bson_issues(whole, &[], #module::issue_from_parts, &mut out);
+            Self::#walked(whole, &[], #module::issue_from_parts, &mut out);
             if let ::core::option::Option::Some(reason) = refused
                 && out.iter().all(|found| matches!(found, #module::Issue::Unknown { .. } | #module::Issue::Mistyped { .. }))
             {
@@ -2742,14 +2917,41 @@ fn callback_items() -> TokenStream {
     }
 }
 
+/// The read of the type itself its recovering read lists from: the read of a payload its
+/// functions have corrected where it `corrects_own`, and its unjudged read where it names none.
+fn own_read(corrects_own: bool) -> Ident {
+    if corrects_own {
+        format_ident!("decode_with_read_corrected")
+    } else {
+        format_ident!("decode_with_read_unjudged")
+    }
+}
+
+/// The method that lists the issues of a value the entry points of `source` hold: the walker of
+/// a corrected value where the type `corrects_own`, the entry point having called its functions.
+fn own_walker(source: Source, corrects_own: bool) -> Ident {
+    if corrects_own {
+        source.method("corrected_issues")
+    } else {
+        source.method("issues")
+    }
+}
+
 /// `from_value_with`, `from_value_piped` and the report they run. The report is told what serde
 /// said of the value, so each decode reads the value with serde once. Both entry points open
 /// with the same read and close with the same one.
-fn entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
+fn entry_methods(module: &Ident, decider: &Ident, corrects_own: bool) -> TokenStream {
+    let (own_read, walked) = (
+        own_read(corrects_own),
+        own_walker(Source::Json, corrects_own),
+    );
     // The read lists what it finds, so nothing below it is judged as it is read. A check takes
     // the value serde built, so each read serde accepts is followed by the checks.
-    let read = quote! { Self::decode_with_read_unjudged(&value) };
+    let read = quote! { Self::#own_read(&value) };
+    // The functions a type names for itself are called once, on the value as it is taken.
+    let taken = corrects_own.then(|| quote! { value = Self::decode_with_value_corrected(value); });
     let first_read = quote! {
+        #taken
         let found = match #read {
             ::core::result::Result::Ok(decoded) => {
                 let mut found = Self::decode_with_value_report(&value, ::core::option::Option::None);
@@ -2807,7 +3009,7 @@ fn entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
 
         fn decode_with_value_report(value: &serde_json::Value, refused: ::core::option::Option<::std::string::String>) -> ::std::vec::Vec<#module::Issue<serde_json::Value>> {
             let mut out = ::std::vec::Vec::new();
-            Self::decode_with_value_issues(value, &[], #module::issue_from_parts, &mut out);
+            Self::#walked(value, &[], #module::issue_from_parts, &mut out);
             if let ::core::option::Option::Some(reason) = refused
                 && out.iter().all(|found| matches!(found, #module::Issue::Unknown { .. } | #module::Issue::Mistyped { .. }))
             {
@@ -3056,13 +3258,20 @@ fn held_in<'ty>(
 /// How the value a single-slot tuple struct holds is walked, or the one a `#[serde(transparent)]`
 /// struct holds in its field. A hook on the slot is one the type's own reader runs, so the slot is
 /// then one value whatever its type holds.
-fn held_walk<'item>(slot: &'item Field, module_name: &str, parameters: &[String]) -> Walk<'item> {
+fn held_walk<'item>(
+    slot: &'item Field,
+    module_name: &str,
+    parameters: &[String],
+    corrected: &[FunctionName],
+) -> Walk<'item> {
     let hooks = parse_serde_field_hooks(&slot.attrs);
-    if hooked_leaf(&slot.ty, &hooks, module_name, parameters).is_none() {
+    // A slot that names a `preprocess` is read through a hook of the type's own reader as well.
+    if corrected.is_empty() && hooked_leaf(&slot.ty, &hooks, module_name, parameters).is_none() {
         return walk_of(&slot.ty, parameters);
     }
     Walk {
         step: Step::Leaf(Whole {
+            corrected: false,
             hooked: true,
             parameterized: names_a_parameter(&slot.ty, parameters),
             read: own_reader(&slot.ty),
@@ -3129,6 +3338,7 @@ fn hooked_leaf(
         |through| Some(quote! { #through }),
     );
     Some(Step::Leaf(Whole {
+        corrected: false,
         hooked: true,
         parameterized: names_a_parameter(ty, parameters),
         read,
@@ -3152,20 +3362,43 @@ fn is_off_the_wire(field: &Field) -> bool {
         && has_serde_skip_serializing(&field.attrs)
 }
 
-/// How the value of a field or a slot is walked: through its author's hooks, or by its type.
+/// How the value of a field or a slot is walked: through its author's hooks, or by its type. A
+/// member that names a `preprocess` is one value, read from the payload the functions `corrected`
+/// name answer for what is stored, through the hook it carries or with its own type's reader.
 fn member_walk<'item>(
     member: &'item Field,
     module_name: &str,
     parameters: &[String],
+    corrected: &[FunctionName],
 ) -> Walk<'item> {
     let hooks = parse_serde_field_hooks(&member.attrs);
-    hooked_leaf(&member.ty, &hooks, module_name, parameters).map_or_else(
-        || walk_of(&member.ty, parameters),
-        |step| Walk {
-            step,
-            ty: &member.ty,
-        },
-    )
+    let hooked = hooked_leaf(&member.ty, &hooks, module_name, parameters);
+    if corrected.is_empty() {
+        return hooked.map_or_else(
+            || walk_of(&member.ty, parameters),
+            |step| Walk {
+                step,
+                ty: &member.ty,
+            },
+        );
+    }
+    let through = match hooked {
+        Some(Step::Leaf(whole)) => whole.read,
+        Some(
+            Step::Entries(_) | Step::Items(_) | Step::Model | Step::Positions(_) | Step::Present(_),
+        )
+        | None => own_reader(&member.ty),
+    };
+    Walk {
+        step: Step::Leaf(Whole {
+            corrected: true,
+            hooked: true,
+            parameterized: names_a_parameter(&member.ty, parameters),
+            read: preprocess::corrected_reader(corrected, &through),
+            write: None,
+        }),
+        ty: &member.ty,
+    }
 }
 
 /// Hands a value to the walker of the model type its field is declared as.
@@ -3557,6 +3790,7 @@ fn path_step<'ty>(type_path: &'ty TypePath, ty: &'ty Type, parameters: &[String]
 fn plain_value<'ty>(ty: &'ty Type, parameters: &[String]) -> Walk<'ty> {
     Walk {
         step: Step::Leaf(Whole {
+            corrected: false,
             hooked: false,
             parameterized: names_a_parameter(ty, parameters),
             read: own_reader(ty),
@@ -3910,6 +4144,7 @@ fn walked_field<'item>(
     module_name: &str,
     parameters: &[String],
     variant: Option<&str>,
+    corrected: &[FunctionName],
 ) -> Option<WalkedField<'item>> {
     let ident = field.ident.as_ref()?;
     if is_off_the_wire(field) {
@@ -3928,8 +4163,10 @@ fn walked_field<'item>(
     };
     let key = renamed
         .unwrap_or_else(|| resolve_rename_rule(rule).apply_to_field(&ident.unraw().to_string()));
-    let walk = (!omission.skips_deserializing).then(|| member_walk(field, module_name, parameters));
-    // With a read hook on the field, serde's derive no longer reads a missing key as `None`.
+    let walk = (!omission.skips_deserializing)
+        .then(|| member_walk(field, module_name, parameters, corrected));
+    // With a read hook on the field, serde's derive no longer reads a missing key as `None`. The
+    // hook a `preprocess` is called from is hung with the `default` that reads it so.
     let optional =
         !has_serde_read_hook(&field.attrs) && get_field_def("", &field.ty, "").is_optional();
     Some(WalkedField {
@@ -3954,7 +4191,9 @@ fn walked_fields<'item>(
 ) -> Keyed<'item> {
     let mut fields: Vec<WalkedField<'item>> = Vec::new();
     let mut flattened: Vec<Flattened<'item>> = Vec::new();
-    for field in &named.named {
+    let named_on = preprocess::named();
+    for (index, field) in named.named.iter().enumerate() {
+        let corrected = named_on.of_member(variant, index);
         if !parse_serde_field_attributes(&field.attrs).flatten {
             fields.extend(walked_field(
                 field,
@@ -3963,11 +4202,12 @@ fn walked_fields<'item>(
                 module_name,
                 parameters,
                 variant,
+                corrected,
             ));
         } else if is_off_the_wire(field) {
             // serde neither writes nor reads the field, so no key in the object is its own.
         } else {
-            flattened.push(Flattened::of(field, module_name, parameters));
+            flattened.push(Flattened::of(field, module_name, parameters, corrected));
         }
     }
     let declared = fields
@@ -3990,13 +4230,14 @@ fn walked_slot<'item>(
     module_name: &str,
     parameters: &[String],
     validator: Option<FieldValidator>,
+    corrected: &[FunctionName],
 ) -> Option<Slot<'item>> {
     let omission = parse_serde_key_omission(&slot.attrs);
     (!omission.skips_deserializing).then(|| Slot {
         absence_is_read: omission.defaulted || container_defaulted,
         ty: &slot.ty,
         validator,
-        walk: member_walk(slot, module_name, parameters),
+        walk: member_walk(slot, module_name, parameters, corrected),
     })
 }
 

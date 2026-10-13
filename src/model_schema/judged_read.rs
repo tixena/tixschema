@@ -7,25 +7,33 @@
 //! `Deserialize` the macro writes would answer `Type::deserialize(..)` with the unjudged read. A
 //! holder reads the models it holds through their unjudged read, so the whole value is judged
 //! once, by the type the caller asked for.
+//!
+//! A type that names a `preprocess`, on itself or on a member, has the same read written for it:
+//! each function is called on the payload inside the unjudged read, ahead of what it corrects.
 
 #[cfg(feature = "serde")]
 use core::cell::RefCell;
 use core::mem;
+use core::slice;
 
 use proc_macro2::{Group, Ident, Span, TokenStream, TokenTree};
 use quote::{ToTokens as _, quote};
-#[cfg(feature = "serde")]
 use syn::ext::IdentExt as _;
 use syn::punctuated::Punctuated;
 use syn::{Attribute, DeriveInput, Field, Fields, ItemEnum, ItemStruct, LitStr, Token};
 
+use super::preprocess::{self, Named};
 #[cfg(feature = "serde")]
 use super::{
-    ConstraintWrap, HeldEnd, helper_name_stem, joined_violations_fn, map_value_argument,
+    ConstraintLeaf, ConstraintWrap, HeldEnd, constrained_shape, helper_name_stem,
+    joined_violations_fn, list_hook_header, map_value_argument,
     names_what_the_module_cannot_repeat, needs_injected_default, nested_under_fn, reads_through,
-    reports_a_bound_fn, sole_type_argument,
+    reports_a_bound_fn,
 };
-use super::{prefixed_guard_message, refusal_from_violations};
+use super::{prefixed_guard_message, refusal_from_violations, sole_type_argument};
+use crate::features::model_schema_prop::FunctionName;
+#[cfg(feature = "serde")]
+use crate::features::serde::NAMED_READ_HOOK_PREFIX;
 #[cfg(feature = "serde")]
 use crate::features::serde::has_serde_read_hook;
 #[cfg(all(
@@ -33,15 +41,16 @@ use crate::features::serde::has_serde_read_hook;
     not(any(feature = "typescript", feature = "zod", feature = "jsonschema"))
 ))]
 use crate::features::serde::has_serde_transparent;
-use crate::features::serde::read_bounds::{ReadBounds, read_bounds};
-use crate::features::serde::{derives_deserialize, derives_serialize, serde_conversion};
 #[cfg(feature = "serde")]
-use crate::features::serde::{has_serde_default, parse_serde_key_omission};
+use crate::features::serde::parse_serde_key_omission;
+use crate::features::serde::read_bounds::{ReadBounds, read_bounds, written_lifetimes};
+use crate::features::serde::{
+    derives_deserialize, derives_serialize, has_serde_default, read_hook, serde_conversion,
+};
 #[cfg(feature = "serde")]
 use crate::field_type::is_map_wrapper;
-use crate::utils::written_names;
-#[cfg(feature = "serde")]
-use crate::utils::written_type;
+use crate::field_type::is_ownership_wrapper;
+use crate::utils::{to_snake_case, written_names, written_type};
 
 /// The read the recovering decode of a type lists from, which every type under the flag has.
 #[cfg(feature = "serde")]
@@ -55,8 +64,17 @@ const FALLBACK: &str = "ReadUnjudged";
 #[cfg(feature = "serde")]
 const HELD: &str = "Unjudged";
 
+/// What the name of the read of a corrected payload ends on, in place of [`UNJUDGED`].
+const CORRECTED: &str = "_corrected";
+
+/// The name of the type a member's hook reads, where it reads whatever type the member declares.
+const READ: &str = "Read";
+
 /// The name of the copy of an item serde's derive writes the unjudged read on.
 const REMOTE: &str = "ModelSchemaRemote";
+
+/// What the name of an unjudged read ends on.
+const UNJUDGED: &str = "_unjudged";
 
 /// The read of a type that publishes `validate()`, before its `validate()`.
 pub const UNJUDGED_READ: &str = "model_schema_read_unjudged";
@@ -79,7 +97,23 @@ struct Hooked {
 struct HungOn {
     attrs: Vec<Attribute>,
     index: usize,
+    /// Whether the hook is read in place of the one the member's own attributes name.
+    replaces: bool,
     variant: Option<String>,
+}
+
+/// What a read calls of the functions `preprocess` names, and the names it declares to call
+/// them: none is a name the item writes, or one of the functions.
+struct Corrects {
+    /// The name Rust calls each function under.
+    called: Vec<String>,
+    /// What holds the payload the functions answered.
+    corrected: Ident,
+    /// The parameter a function of the read takes its deserializer under.
+    deserializer: Ident,
+    named: Named,
+    /// What holds the payload as it was read.
+    payload: Ident,
 }
 
 /// The hook one member of the item being expanded reads the models it holds through. It is held
@@ -138,12 +172,49 @@ thread_local! {
     static MEMBER_HOOKS: RefCell<Vec<MemberHook>> = const { RefCell::new(Vec::new()) };
 }
 
+impl Corrects {
+    /// The name the read declares a hook under: `named`, numbered where a function is called
+    /// under it.
+    fn hook_name(&self, named: &str) -> Ident {
+        unclaimed_parameter(named, &self.called)
+    }
+
+    /// What the item being expanded names, with names for what a read of it declares: none of
+    /// `written`, the names the item writes.
+    fn of(written: &[String]) -> Self {
+        let named = preprocess::named();
+        let called = named.rust_names();
+        let mut taken = written.to_vec();
+        taken.extend(called.iter().cloned());
+        Self {
+            corrected: unclaimed_parameter("corrected", &taken),
+            deserializer: unclaimed_parameter("deserializer", &called),
+            payload: unclaimed_parameter("payload", &taken),
+            called,
+            named,
+        }
+    }
+
+    /// The statements that read the payload from the deserializer and bind what `functions`
+    /// answer for it.
+    fn statements(&self, functions: &[FunctionName]) -> TokenStream {
+        let (deserializer, payload, corrected) =
+            (&self.deserializer, &self.payload, &self.corrected);
+        let answered = preprocess::corrected(functions, quote! { #payload });
+        quote! {
+            let #payload = <::serde_json::Value as serde::Deserialize>::deserialize(#deserializer)?;
+            let #corrected = #answered;
+        }
+    }
+}
+
 #[cfg(feature = "serde")]
 impl MemberHook {
     /// The function the member is read through: its type with each model it holds read through
-    /// that model's `unjudged` read.
-    fn function(&self, unjudged: &Ident, reader: &Ident) -> TokenStream {
-        let name = Ident::new(&self.name, Span::call_site());
+    /// that model's `unjudged` read, from the payload the member's own functions corrected where
+    /// it names any.
+    fn function(&self, unjudged: &Ident, reader: &Ident, corrects: &Corrects) -> TokenStream {
+        let name = corrects.hook_name(&self.name);
         let held_as = Ident::new(&self.held_as, Span::call_site());
         let [ty, leaf, read_as, back] = [&self.ty, &self.leaf, &self.read_as, &self.back]
             .map(|written| written.parse::<TokenStream>().unwrap_or_default());
@@ -151,8 +222,34 @@ impl MemberHook {
             let renaming = named_refusal(key);
             quote! { .map_err(#renaming) }
         });
+        let functions = corrects
+            .named
+            .of_member(self.variant.as_deref(), self.index);
+        if functions.is_empty() {
+            return quote! {
+                fn #name<'de, #reader>(deserializer: #reader) -> ::core::result::Result<#ty, #reader::Error>
+                where
+                    #reader: serde::Deserializer<'de>,
+                {
+                    struct #held_as(#leaf);
+                    impl<'de> serde::Deserialize<'de> for #held_as {
+                        fn deserialize<#reader>(deserializer: #reader) -> ::core::result::Result<Self, #reader::Error>
+                        where
+                            #reader: serde::Deserializer<'de>,
+                        {
+                            <#leaf>::#unjudged(deserializer).map(#held_as)
+                        }
+                    }
+                    let held_0 = <#read_as as serde::Deserialize>::deserialize(deserializer) #renamed ?;
+                    ::core::result::Result::Ok(#back)
+                }
+            };
+        }
+        let (deserializer, corrected) = (&corrects.deserializer, &corrects.corrected);
+        let correction = corrects.statements(functions);
+        let told = told_by(reader);
         quote! {
-            fn #name<'de, #reader>(deserializer: #reader) -> ::core::result::Result<#ty, #reader::Error>
+            fn #name<'de, #reader>(#deserializer: #reader) -> ::core::result::Result<#ty, #reader::Error>
             where
                 #reader: serde::Deserializer<'de>,
             {
@@ -165,7 +262,8 @@ impl MemberHook {
                         <#leaf>::#unjudged(deserializer).map(#held_as)
                     }
                 }
-                let held_0 = <#read_as as serde::Deserialize>::deserialize(deserializer) #renamed ?;
+                #correction
+                let held_0 = <#read_as as serde::Deserialize>::deserialize(#corrected) #told #renamed ?;
                 ::core::result::Result::Ok(#back)
             }
         }
@@ -176,6 +274,20 @@ impl MemberHook {
 #[cfg(feature = "serde")]
 pub fn forget_member_hooks() {
     MEMBER_HOOKS.with(|held| held.borrow_mut().clear());
+}
+
+/// What turns the refusal of a corrected payload, which is that payload's own, into the one the
+/// deserializer of type `reader` answers.
+fn told_by(reader: &Ident) -> TokenStream {
+    quote! { .map_err(<#reader::Error as serde::de::Error>::custom) }
+}
+
+/// The name of the read of a payload the type's own functions have corrected, beside the unjudged
+/// read `unjudged`.
+fn corrected_read(unjudged: &Ident) -> Ident {
+    let named = unjudged.to_string();
+    let stem = named.strip_suffix(UNJUDGED).unwrap_or(&named);
+    Ident::new(&format!("{stem}{CORRECTED}"), Span::call_site())
 }
 
 /// The binding a level of [`Reached::back`] holds its value under.
@@ -460,15 +572,20 @@ fn kept_by_the_copy(attrs: &[Attribute]) -> Vec<Attribute> {
         .collect()
 }
 
-/// The attributes that hang `hook` on a member of the copy.
-#[cfg(feature = "serde")]
-fn hook_attrs(hook: &MemberHook) -> Vec<Attribute> {
-    let path = LitStr::new(&hook.name, Span::call_site());
+/// The attributes that hang the hook `named` on a member of the copy, with the `default` that
+/// reads a missing key as it is read with no hook where `defaulted`.
+fn hook_attrs(named: &Ident, defaulted: bool) -> Vec<Attribute> {
+    let path = LitStr::new(&named.to_string(), Span::call_site());
     let mut attrs: Vec<Attribute> = vec![syn::parse_quote! { #[serde(deserialize_with = #path)] }];
-    if hook.defaulted {
+    if defaulted {
         attrs.push(syn::parse_quote! { #[serde(default)] });
     }
     attrs
+}
+
+/// Whether `attr` names the function a member is read through.
+fn names_a_read_hook(attr: &Attribute) -> bool {
+    read_hook(slice::from_ref(attr)).is_some()
 }
 
 /// The members of the copy as serde's derive reads them: each with the attributes it keeps, and
@@ -480,6 +597,10 @@ fn copied_fields(fields: &mut Fields, variant: Option<&str>, hung: &[HungOn]) {
         let hooked = hung
             .iter()
             .find(|hook| hook.index == index && hook.variant.as_deref() == variant);
+        // serde takes one function per member, and the hook calls the one it is read in place of.
+        if hooked.is_some_and(|hook| hook.replaces) {
+            field.attrs.retain(|attr| !names_a_read_hook(attr));
+        }
         field
             .attrs
             .extend(hooked.into_iter().flat_map(|hook| hook.attrs.clone()));
@@ -558,7 +679,7 @@ fn held_fallback(named: &Ident, unjudged: &Ident) -> TokenStream {
 /// A name for a type parameter of a function written for an item: `base`, numbered where one of
 /// `written`, the names the item writes, is that name. The parameter would hide a type of its
 /// name wherever the function writes one, and be refused beside a parameter of the type's own.
-fn unclaimed_parameter(base: &str, written: &[String]) -> Ident {
+pub(super) fn unclaimed_parameter(base: &str, written: &[String]) -> Ident {
     let mut named = base.to_owned();
     let mut tried: usize = 1;
     while written.contains(&named) {
@@ -574,23 +695,31 @@ fn reader_parameter(input: &DeriveInput) -> Ident {
 }
 
 /// What the hooks recorded for the item being expanded add to its read, each model read through
-/// its own `unjudged` read.
+/// its own `unjudged` read, from the payload the member's own functions corrected.
 #[cfg(feature = "serde")]
-fn hooked(unjudged: &Ident, reader: &Ident, written: &[String]) -> Hooked {
+fn unjudged_hooks(
+    unjudged: &Ident,
+    reader: &Ident,
+    written: &[String],
+    corrects: &Corrects,
+) -> Hooked {
     MEMBER_HOOKS.with(|held| {
         let hooks = held.borrow();
         if hooks.is_empty() {
             return Hooked::default();
         }
         let fallback = held_fallback(&unclaimed_parameter(FALLBACK, written), unjudged);
-        let functions = hooks.iter().map(|hook| hook.function(unjudged, reader));
+        let functions = hooks
+            .iter()
+            .map(|hook| hook.function(unjudged, reader, corrects));
         Hooked {
             functions: quote! { #fallback #(#functions)* },
             hung: hooks
                 .iter()
                 .map(|hook| HungOn {
-                    attrs: hook_attrs(hook),
+                    attrs: hook_attrs(&corrects.hook_name(&hook.name), hook.defaulted),
                     index: hook.index,
+                    replaces: false,
                     variant: hook.variant.clone(),
                 })
                 .collect(),
@@ -600,8 +729,227 @@ fn hooked(unjudged: &Ident, reader: &Ident, written: &[String]) -> Hooked {
 
 /// No hook is recorded in a build that reads no serde attribute: a model below judges itself.
 #[cfg(not(feature = "serde"))]
-fn hooked(_unjudged: &Ident, _reader: &Ident, _written: &[String]) -> Hooked {
+fn unjudged_hooks(
+    _unjudged: &Ident,
+    _reader: &Ident,
+    _written: &[String],
+    _corrects: &Corrects,
+) -> Hooked {
     Hooked::default()
+}
+
+/// The members of `input`, each with its place and the name of the variant that holds it.
+fn members_of(input: &DeriveInput) -> Vec<(Option<String>, usize, &Field)> {
+    match &input.data {
+        syn::Data::Struct(held) => held
+            .fields
+            .iter()
+            .enumerate()
+            .map(|(index, field)| (None, index, field))
+            .collect(),
+        syn::Data::Enum(held) => held
+            .variants
+            .iter()
+            .flat_map(|variant| {
+                let named = variant.ident.to_string();
+                variant
+                    .fields
+                    .iter()
+                    .enumerate()
+                    .map(move |(index, field)| (Some(named.clone()), index, field))
+            })
+            .collect(),
+        syn::Data::Union(_) => Vec::new(),
+    }
+}
+
+/// Whether a missing key of `field` is read as `None` where no hook is hung on it: a named field
+/// written as an `Option`, itself or under an ownership wrapper.
+fn reads_a_missing_key(field: &Field) -> bool {
+    if field.ident.is_none() {
+        return false;
+    }
+    let mut current = &field.ty;
+    loop {
+        let syn::Type::Path(named) = written_type(current) else {
+            return false;
+        };
+        let Some(last) = named.path.segments.last() else {
+            return false;
+        };
+        if last.ident == "Option" {
+            return true;
+        }
+        let syn::PathArguments::AngleBracketed(held) = &last.arguments else {
+            return false;
+        };
+        if !is_ownership_wrapper(&last.ident.to_string()) {
+            return false;
+        }
+        let Some(inner) = sole_type_argument(held) else {
+            return false;
+        };
+        current = inner;
+    }
+}
+
+/// What the hook of a list held to a count is declared with, where `path` names that hook of
+/// `field`: its type parameters, the type it reads and the bounds it holds that type to.
+#[cfg(feature = "serde")]
+fn counted_list_header(
+    field: &Field,
+    key: &str,
+    path: &str,
+) -> Option<(TokenStream, TokenStream, TokenStream)> {
+    let renames = path
+        .rsplit("::")
+        .next()
+        .is_some_and(|last| last.starts_with(NAMED_READ_HOOK_PREFIX));
+    if key != "deserialize_with" || renames {
+        return None;
+    }
+    let shape = constrained_shape(&field.ty)?;
+    if !matches!(shape.leaf, ConstraintLeaf::List) {
+        return None;
+    }
+    let header = list_hook_header(&shape.wraps)?;
+    let (holders, read, held_to, counted) = (
+        &header.holders,
+        &header.read,
+        &header.held_to,
+        &header.counted,
+    );
+    Some((
+        quote! { #(#holders,)* L },
+        read.clone(),
+        quote! { #read: serde::Deserialize<'de>, #(#held_to)* #counted },
+    ))
+}
+
+/// No list is held to a count in a build that reads no serde attribute.
+#[cfg(not(feature = "serde"))]
+const fn counted_list_header(
+    _field: &Field,
+    _key: &str,
+    _path: &str,
+) -> Option<(TokenStream, TokenStream, TokenStream)> {
+    None
+}
+
+/// The hook a member that names `functions` is read through where the macro hangs no other on
+/// the copy: it reads the payload, calls the functions, and reads the member from what they
+/// answer. A member the macro already reads through a function of the type's schema module, or
+/// through a module serde names, is read through that one, from the corrected payload.
+fn corrected_hook(
+    field: &Field,
+    named: &Ident,
+    functions: &[FunctionName],
+    reader: &Ident,
+    written: &[String],
+    corrects: &Corrects,
+) -> TokenStream {
+    let (deserializer, corrected) = (&corrects.deserializer, &corrects.corrected);
+    let correction = corrects.statements(functions);
+    let told = told_by(reader);
+    let Some((key, path)) = read_hook(&field.attrs) else {
+        let read = unclaimed_parameter(READ, written);
+        return quote! {
+            fn #named<'de, #reader, #read>(#deserializer: #reader) -> ::core::result::Result<#read, #reader::Error>
+            where
+                #reader: serde::Deserializer<'de>,
+                #read: serde::Deserialize<'de>,
+            {
+                #correction
+                <#read as serde::Deserialize>::deserialize(#corrected) #told
+            }
+        };
+    };
+    let through = path.parse::<syn::ExprPath>().map_or_else(
+        |_| TokenStream::new(),
+        |function| {
+            if key == "with" {
+                quote! { #function::deserialize }
+            } else {
+                quote! { #function }
+            }
+        },
+    );
+    let (parameters, read, held_to) = counted_list_header(field, key, &path.value())
+        .unwrap_or_else(|| {
+            let mut lifetimes: Vec<syn::Lifetime> = Vec::new();
+            written_lifetimes(&field.ty, &mut lifetimes);
+            let mut declared: Vec<syn::Lifetime> = Vec::new();
+            for lifetime in lifetimes {
+                if lifetime.ident != "static" && !declared.contains(&lifetime) {
+                    declared.push(lifetime);
+                }
+            }
+            let ty = &field.ty;
+            (
+                quote! { #(#declared,)* },
+                quote! { #ty },
+                TokenStream::new(),
+            )
+        });
+    quote! {
+        fn #named<'de, #reader, #parameters>(#deserializer: #reader) -> ::core::result::Result<#read, #reader::Error>
+        where
+            #reader: serde::Deserializer<'de>,
+            #held_to
+        {
+            #correction
+            #through(#corrected) #told
+        }
+    }
+}
+
+/// What the hooks of the item's members add to its read: each model a member holds read through
+/// its own `unjudged` read, and each member that names a `preprocess` read from the payload its
+/// functions corrected.
+fn hooked(
+    input: &DeriveInput,
+    unjudged: &Ident,
+    reader: &Ident,
+    written: &[String],
+    corrects: &Corrects,
+) -> Hooked {
+    let mut hooked = unjudged_hooks(unjudged, reader, written, corrects);
+    let container_defaulted = has_serde_default(&input.attrs);
+    for (variant, index, field) in members_of(input) {
+        let functions = corrects.named.of_member(variant.as_deref(), index);
+        let taken = hooked
+            .hung
+            .iter()
+            .any(|hung| hung.index == index && hung.variant == variant);
+        if functions.is_empty() || taken {
+            continue;
+        }
+        let stem = field
+            .ident
+            .as_ref()
+            .map_or_else(|| index.to_string(), |member| member.unraw().to_string());
+        let placed = variant.as_ref().map_or_else(
+            || stem.clone(),
+            |held| format!("{}_{stem}", to_snake_case(held)),
+        );
+        let named = corrects.hook_name(&format!("read_corrected_{placed}"));
+        let chained = read_hook(&field.attrs).is_some();
+        // A hook the copy keeps brings the `default` it was hung with.
+        let defaulted = !chained
+            && !container_defaulted
+            && !has_serde_default(&field.attrs)
+            && reads_a_missing_key(field);
+        hooked.functions.extend(corrected_hook(
+            field, &named, functions, reader, written, corrects,
+        ));
+        hooked.hung.push(HungOn {
+            attrs: hook_attrs(&named, defaulted),
+            index,
+            replaces: chained,
+            variant,
+        });
+    }
+    hooked
 }
 
 /// The read alone of `input`, a function of the type under the name `unjudged`: serde's derive on
@@ -609,6 +957,10 @@ fn hooked(_unjudged: &Ident, _reader: &Ident, _written: &[String]) -> Hooked {
 /// read. It is written under the bounds serde's derive writes on the impl it would have written,
 /// which are answered beside it, or under none of its own where `asked_by_the_impl`: a bound
 /// asked twice, by the impl and by the function, is one the compiler cannot choose between.
+///
+/// Where the type names a `preprocess` of its own, the function reads the payload, calls each
+/// function on it, and hands what they answer to a second function, written beside it, which
+/// reads the copy: the read of a payload already corrected.
 fn unjudged_read(
     input: &DeriveInput,
     derive: &syn::Path,
@@ -621,7 +973,8 @@ fn unjudged_read(
     // own types beside them.
     let written = written_names(input.to_token_stream());
     let reader = unclaimed_parameter("D", &written);
-    let Hooked { functions, hung } = hooked(unjudged, &reader, &written);
+    let corrects = Corrects::of(&written);
+    let Hooked { functions, hung } = hooked(input, unjudged, &reader, &written, &corrects);
     let remote_name = unclaimed_parameter(REMOTE, &written);
     let remote = remote_definition(input, &remote_name, &hung, &bounds, derive);
     let (_, type_generics, _) = input.generics.split_for_impl();
@@ -638,10 +991,44 @@ fn unjudged_read(
         (quote! { 'static }, quote! { <#reader> })
     };
     let borrowing = outlived(&bounds);
-    let borrowed_for = borrowing.iter();
+    let borrowed_for: Vec<&syn::WherePredicate> = borrowing.iter().collect();
+    let own = &corrects.named.own;
+    // A hook is declared inside the function that reads the copy, where that function's own
+    // parameter is in scope: it goes by a name no function a hook calls has.
+    let (deserializer, corrected) = (&corrects.deserializer, &corrects.corrected);
+    if own.is_empty() {
+        let read = quote! {
+            #[doc = #doc]
+            pub fn #unjudged #read_parameters (#deserializer: #reader) -> ::core::result::Result<Self, #reader::Error>
+            where
+                #reader: serde::Deserializer<#de>,
+                #(#borrowed_for,)*
+                #(#predicates,)*
+            {
+                #functions
+                #remote
+                <#remote_name #type_generics>::deserialize(#deserializer)
+            }
+        };
+        return (read, bounds);
+    }
+    let correction = corrects.statements(own);
+    let told = told_by(&reader);
+    let of_corrected = corrected_read(unjudged);
     let read = quote! {
         #[doc = #doc]
-        pub fn #unjudged #read_parameters (deserializer: #reader) -> ::core::result::Result<Self, #reader::Error>
+        pub fn #unjudged #read_parameters (#deserializer: #reader) -> ::core::result::Result<Self, #reader::Error>
+        where
+            #reader: serde::Deserializer<#de>,
+            #(#borrowed_for,)*
+            #(#predicates,)*
+        {
+            #correction
+            Self::#of_corrected(#corrected) #told
+        }
+
+        /// The read of a payload the functions `preprocess` names on the type have corrected.
+        pub fn #of_corrected #read_parameters (#deserializer: #reader) -> ::core::result::Result<Self, #reader::Error>
         where
             #reader: serde::Deserializer<#de>,
             #(#borrowed_for,)*
@@ -649,7 +1036,7 @@ fn unjudged_read(
         {
             #functions
             #remote
-            <#remote_name #type_generics>::deserialize(deserializer)
+            <#remote_name #type_generics>::deserialize(#deserializer)
         }
     };
     (read, bounds)
@@ -664,9 +1051,9 @@ fn outlived(bounds: &ReadBounds) -> Option<syn::WherePredicate> {
         .map(|borrowed| syn::parse_quote! { 'de: #(#borrowed)+* })
 }
 
-/// `model_schema_read_unjudged` and the `Deserialize` that runs `validate()` after it, for an
-/// item that derives `Deserialize` by `derive`.
-fn written_read(input: &DeriveInput, derive: &syn::Path) -> TokenStream {
+/// `model_schema_read_unjudged` and the `Deserialize` that calls it, for an item that derives
+/// `Deserialize` by `derive`: with `validate()` run after it where the item `publishes_validate`.
+fn written_read(input: &DeriveInput, derive: &syn::Path, publishes_validate: bool) -> TokenStream {
     let name = &input.ident;
     let unjudged = Ident::new(UNJUDGED_READ, Span::call_site());
     let (read, bounds) = unjudged_read(
@@ -691,6 +1078,15 @@ fn written_read(input: &DeriveInput, derive: &syn::Path) -> TokenStream {
     read_where.predicates.extend(outlived(&bounds));
     read_where.predicates.extend(bounds.predicates);
     let (read_impl_generics, _, read_where_clause) = read_at.split_for_impl();
+    let judged = if publishes_validate {
+        quote! {
+            let read = Self::#unjudged(deserializer)?;
+            read.validate().map_err(#refusal)?;
+            ::core::result::Result::Ok(read)
+        }
+    } else {
+        quote! { Self::#unjudged(deserializer) }
+    };
     quote! {
         impl #impl_generics #name #type_generics #where_clause {
             #read
@@ -701,43 +1097,88 @@ fn written_read(input: &DeriveInput, derive: &syn::Path) -> TokenStream {
             where
                 #reader: serde::Deserializer<#de>,
             {
-                let read = Self::#unjudged(deserializer)?;
-                read.validate().map_err(#refusal)?;
-                ::core::result::Result::Ok(read)
+                #judged
             }
         }
     }
 }
 
-/// The refusal of a conversion of the author's own on an item that publishes `validate()`.
-fn conversion_refusal(input: &DeriveInput, key: &str, written_at: Span) -> TokenStream {
+/// What the unjudged read of the unit struct `name` is written as where the struct names a
+/// `preprocess`: `model_schema_read_unjudged`, which calls each function on the payload and reads
+/// what they answer through the function it is answered beside, and that function's name.
+#[cfg(feature = "serde")]
+pub fn unit_struct_correction(name: &Ident) -> Option<(TokenStream, Ident)> {
+    let corrects = Corrects::of(&[name.to_string()]);
+    let own = &corrects.named.own;
+    if own.is_empty() {
+        return None;
+    }
+    let unjudged = Ident::new(UNJUDGED_READ, Span::call_site());
+    let of_corrected = corrected_read(&unjudged);
+    let (deserializer, corrected) = (&corrects.deserializer, &corrects.corrected);
+    let correction = corrects.statements(own);
+    Some((
+        quote! {
+            /// The read alone, for a holder that judges the whole value once.
+            pub fn #unjudged<'de, D: ::serde::Deserializer<'de>>(#deserializer: D) -> ::core::result::Result<Self, D::Error> {
+                #correction
+                Self::#of_corrected(#corrected).map_err(<D::Error as ::serde::de::Error>::custom)
+            }
+        },
+        of_corrected,
+    ))
+}
+
+/// The refusal of a conversion of the author's own on an item whose read the macro writes: one
+/// that publishes `validate()`, or one that `corrects` its payload with a `preprocess`.
+fn conversion_refusal(
+    input: &DeriveInput,
+    key: &str,
+    written_at: Span,
+    corrects: bool,
+) -> TokenStream {
     let name = &input.ident;
-    let refusal = format!(
-        "type `{name}`: `#[serde({key} = ...)]` puts a conversion of its author's between the \
-         type and what serde reads or writes for it, and `{name}` publishes `validate()`, so \
-         `#[model_schema()]` writes its `Deserialize`: the read of its members, then \
-         `validate()`. It cannot put that judgement behind a conversion it does not write. Take \
-         `{key}` off the type and convert where the value is read, or take off the bounds and \
-         the checks that make the type publish `validate()`."
-    );
+    let refusal = if corrects {
+        format!(
+            "type `{name}`: `#[serde({key} = ...)]` puts a conversion of its author's between \
+             the type and what serde reads or writes for it, and `{name}` names a `preprocess`, \
+             so `#[model_schema()]` writes its `Deserialize`: each function called on the \
+             payload, then the read of its members. It cannot put that read behind a conversion \
+             it does not write. Take `{key}` off the type and convert where the value is read, \
+             or take the `preprocess` off the type and its members."
+        )
+    } else {
+        format!(
+            "type `{name}`: `#[serde({key} = ...)]` puts a conversion of its author's between \
+             the type and what serde reads or writes for it, and `{name}` publishes \
+             `validate()`, so `#[model_schema()]` writes its `Deserialize`: the read of its \
+             members, then `validate()`. It cannot put that judgement behind a conversion it \
+             does not write. Take `{key}` off the type and convert where the value is read, or \
+             take off the bounds and the checks that make the type publish `validate()`."
+        )
+    };
     syn::Error::new(written_at, prefixed_guard_message(&refusal)).to_compile_error()
 }
 
-/// What an item that derives `Deserialize` and publishes `validate()` gains, or the refusal of a
-/// conversion written on it. `None` for every other item, which is left as it is.
+/// What an item that derives `Deserialize` gains where it publishes `validate()` or names a
+/// `preprocess`, on itself or on a member, or the refusal of a conversion written on it. `None`
+/// for every other item, which is left as it is.
 fn judged(input: &DeriveInput, publishes_validate: bool) -> Option<Judged> {
-    if !publishes_validate || !derives_deserialize(&input.attrs) {
+    let corrects = preprocess::named().any();
+    if !(publishes_validate || corrects) || !derives_deserialize(&input.attrs) {
         return None;
     }
     let derive = deserialize_derive(&input.attrs)?;
     Some(match serde_conversion(&input.attrs) {
-        Some((key, written_at)) => Judged::Refused(conversion_refusal(input, key, written_at)),
-        None => Judged::Written(written_read(input, &derive)),
+        Some((key, written_at)) => {
+            Judged::Refused(conversion_refusal(input, key, written_at, corrects))
+        }
+        None => Judged::Written(written_read(input, &derive, publishes_validate)),
     })
 }
 
-/// What a struct's read gains where it derives `Deserialize` and publishes `validate()`, taking
-/// the struct's own `Deserialize` off it. Nothing for any other struct.
+/// What a struct's read gains where it derives `Deserialize` and publishes `validate()` or names
+/// a `preprocess`, taking the struct's own `Deserialize` off it. Nothing for any other struct.
 pub fn of_struct(item: &mut ItemStruct, publishes_validate: bool) -> TokenStream {
     match judged(&DeriveInput::from(item.clone()), publishes_validate) {
         Some(Judged::Written(read)) => {
@@ -829,6 +1270,21 @@ fn delegated_listed_read(input: &DeriveInput) -> TokenStream {
     );
     let reader = reader_parameter(input);
     let fallback = held_fallback(&Ident::new(FALLBACK, Span::call_site()), &unjudged);
+    // A type that names a `preprocess` of its own has the read of a corrected payload beside its
+    // unjudged read, and the recovering read lists from it once it has called the functions.
+    let of_corrected = (!preprocess::named().own.is_empty()).then(|| {
+        let (listed_corrected, corrected) = (corrected_read(&listed), corrected_read(&unjudged));
+        quote! {
+            /// The read of a payload the functions `preprocess` names on the type have corrected,
+            /// for the recovering read to list from.
+            pub fn #listed_corrected<'de, #reader>(deserializer: #reader) -> ::core::result::Result<Self, #reader::Error>
+            where
+                #reader: serde::Deserializer<'de>,
+            {
+                Self::#corrected(deserializer)
+            }
+        }
+    });
     quote! {
         /// The read alone, for the recovering read to list from: the type's unjudged read where
         /// it publishes `validate()`, and serde's where it publishes none.
@@ -839,6 +1295,8 @@ fn delegated_listed_read(input: &DeriveInput) -> TokenStream {
             #fallback
             <Self>::#unjudged(deserializer)
         }
+
+        #of_corrected
     }
 }
 

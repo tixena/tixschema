@@ -3,7 +3,42 @@
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use serde::{Deserialize, Serialize};
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+use serde_json::Value;
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use tixschema::model_schema;
+
+// The Rust side of each function a `preprocess` below names: a read of the type calls it, so it
+// is declared wherever the type is. Each answers its payload as it is.
+
+#[cfg(feature = "zod")]
+const fn a(payload: Value) -> Value {
+    payload
+}
+
+#[cfg(feature = "zod")]
+const fn b(payload: Value) -> Value {
+    payload
+}
+
+#[cfg(feature = "zod")]
+const fn c(payload: Value) -> Value {
+    payload
+}
+
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+const fn epoch_to_date(payload: Value) -> Value {
+    payload
+}
+
+#[cfg(feature = "zod")]
+const fn to_lowercase(payload: Value) -> Value {
+    payload
+}
+
+#[cfg(feature = "zod")]
+const fn trim(payload: Value) -> Value {
+    payload
+}
 
 #[cfg(feature = "zod")]
 #[test]

@@ -12,6 +12,7 @@ use mongodb::options::{ClientOptions, Collation, CollationStrength, Hint};
 use mongodb::{Client, Collection};
 
 use super::invoice_schema::OperationError;
+use super::offline::Receipt;
 use super::{
     Customer, Invoice, InvoiceStatus, every_row, invoice, names_the_unreadable_row, numbered,
     readable, seeded_id, stored, unreadable, whole_number_as_text,
@@ -223,6 +224,28 @@ async fn live_a_seeded_row_reads_and_no_row_is_none() {
         .await
         .unwrap();
     assert_eq!(absent, None, "a filter matching no row answers `None`");
+    held.drop().await.unwrap();
+}
+
+/// A row is read through the functions its type and its number name, by `find_one` and by
+/// `find`: the stored row holds no total, and a number with spaces at its ends.
+#[tokio::test]
+async fn live_a_row_is_read_through_the_functions_its_type_names() {
+    let stored = doc! { "_id": seeded_id(), "number": " R-1 " };
+    let Some(held) = seeded("corrected", vec![stored]).await else {
+        return;
+    };
+    let read = Receipt::new(seeded_id(), "R-1", 0);
+    let paths = Receipt::MONGO_FIELDS;
+    let one = Receipt::find_one(&held, paths.id().eq(seeded_id()).unwrap())
+        .await
+        .unwrap();
+    say(&format!("find_one answers {one:?}"));
+    assert_eq!(one.as_ref(), Some(&read), "the row is read corrected");
+    let every = Receipt::find(&held, paths.id().eq(seeded_id()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(every, [read], "each row of a cursor is read corrected");
     held.drop().await.unwrap();
 }
 

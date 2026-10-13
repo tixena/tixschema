@@ -75,6 +75,13 @@ pub struct NullableSlot(#[model_schema_prop(nullable)] pub Option<String>);
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct SubstitutedSlot(#[model_schema_prop(as = String)] pub String);
 
+/// The Rust side of the function the `preprocess` of a slot above names: a read of the type calls
+/// it, and it answers the payload as it is.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+const fn trim(payload: serde_json::Value) -> serde_json::Value {
+    payload
+}
+
 /// The wire criterion the newtype surfaces are read against.
 /// Whether `zod` binds `expression` whole: to the raw `const` beside TypeScript, and to the
 /// exported one, which holds the examples, without it.

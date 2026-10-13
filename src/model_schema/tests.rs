@@ -7026,7 +7026,7 @@ fn an_alias_claims_the_suffixed_name_it_publishes() {
 
 #[test]
 fn no_argument_the_parser_reads_is_rejected() {
-    let probes: [proc_macro2::TokenStream; 8] = [
+    let probes: [proc_macro2::TokenStream; 9] = [
         quote::quote! { name = "Renamed" },
         quote::quote! { pattern = "^[a-z]+$" },
         quote::quote! { minLength = 1 },
@@ -7035,6 +7035,7 @@ fn no_argument_the_parser_reads_is_rejected() {
         quote::quote! { default_types(IdType = String) },
         quote::quote! { decode_with },
         quote::quote! { check = ["withinParcel"] },
+        quote::quote! { preprocess = ["withoutFragile"] },
     ];
     assert_eq!(probes.len(), super::KNOWN_ARGS.len());
 
