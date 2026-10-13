@@ -50,6 +50,7 @@ mod method_parameter_names;
 mod one_direction;
 mod ordered_maps;
 mod piped;
+mod preprocessed;
 mod shadowing;
 #[cfg(all(feature = "chrono", feature = "mongodb"))]
 mod stored_record;

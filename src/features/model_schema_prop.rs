@@ -26,13 +26,20 @@ const KNOWN_KEYS: &[&str] = &[
 /// What a refusal of a `check` written in `#[model_schema_prop(...)]` opens with.
 const PROP_CHECK: &str = "`model_schema_prop` key `check`";
 
+/// What a refusal of a `preprocess` written in `#[model_schema_prop(...)]` opens with.
+const PROP_PREPROCESS: &str = "`model_schema_prop` key `preprocess`";
+
 /// What a `check` takes, said where it is written any other way.
 pub const CHECK_TAKES: &str =
     "takes an array of string literals, each naming a function: `check = [\"withinParcel\"]`";
 
-/// One function a `check` key names, and where the name is written.
+/// What a `preprocess` takes, said where it is written any other way.
+pub const PREPROCESS_TAKES: &str =
+    "takes an array of string literals, each naming a function: `preprocess = [\"trimmed\"]`";
+
+/// One function a `check` or a `preprocess` key names, and where the name is written.
 #[derive(Clone, Debug)]
-pub struct CheckName {
+pub struct FunctionName {
     pub name: String,
     pub written_at: Span,
 }
@@ -147,10 +154,13 @@ pub enum LiteralValue {
 ///   compile — the `Option`-null guard refuses it — so the one shape the flag is live on is a build
 ///   with the feature off.
 ///
-/// ## Zod preprocessing
+/// ## Preprocessing
 ///
-/// - `preprocess = ["fn1", "fn2"]` — wrap the Zod schema with `z.preprocess()` calls (Zod-only, no Rust-side effect).
-///   Multiple functions are nested: `z.preprocess(fn1, z.preprocess(fn2, innerSchema))`.
+/// - `preprocess = ["fn1", "fn2"]` — the functions of the developer's own that correct the field's
+///   payload before the field is read from it, in the order written, each over the answer of the
+///   one before. Every Rust read of the type calls the snake case of each name over a
+///   `serde_json::Value`, and the Zod schema nests them, the first outermost:
+///   `z.preprocess(fn1, z.preprocess(fn2, innerSchema))`.
 ///
 /// ## Checks
 ///
@@ -188,7 +198,7 @@ pub struct ModelSchemaPropMeta {
     pub as_type: Option<Type>,
     pub attr_rejection: Option<syn::Error>,
     /// The functions `check` names, in the order written.
-    pub check: Vec<CheckName>,
+    pub check: Vec<FunctionName>,
     /// The `pattern` of the enum the field's variant belongs to, where the field writes one of its
     /// own in [`Self::pattern`]: the value is held to both.
     #[cfg(any(feature = "serde", feature = "zod", feature = "jsonschema"))]
@@ -210,7 +220,8 @@ pub struct ModelSchemaPropMeta {
     /// What keeps `pattern` off the surfaces it was written for, spanned on the literal it was
     /// written as.
     pub pattern_rejection: Option<syn::Error>,
-    pub preprocess: Vec<String>,
+    /// The functions `preprocess` names, in the order written.
+    pub preprocess: Vec<FunctionName>,
     pub ts_optional: bool,
 }
 
@@ -271,18 +282,9 @@ fn parse_prop_key(nested: &ParseNestedMeta, meta: &mut ModelSchemaPropMeta) -> s
             }
         }
     } else if nested.path.is_ident("preprocess") {
-        let arr: syn::ExprArray = nested.value()?.parse()?;
-        meta.preprocess = arr
-            .elems
-            .iter()
-            .map(preprocess_fn_name)
-            .collect::<syn::Result<_>>()?;
+        meta.preprocess = named_functions(nested, PROP_PREPROCESS, PREPROCESS_TAKES)?;
     } else if nested.path.is_ident("check") {
-        if !nested.input.peek(syn::Token![=]) {
-            return Err(check_refusal(&nested.path, PROP_CHECK, CHECK_TAKES));
-        }
-        let written: syn::Expr = nested.value()?.parse()?;
-        meta.check = check_names(&written, PROP_CHECK)?;
+        meta.check = named_functions(nested, PROP_CHECK, CHECK_TAKES)?;
     } else if nested.path.is_ident("ts_optional") {
         meta.ts_optional = true;
     } else if nested.path.is_ident("as_number") {
@@ -333,27 +335,30 @@ fn literal_prop_value(nested: &ParseNestedMeta) -> syn::Result<LiteralValue> {
     }
 }
 
-/// The name one `preprocess` element carries: the function is spliced into the emitted Zod schema
-/// by name, so a string literal is the only element that names one.
-fn preprocess_fn_name(elem: &syn::Expr) -> syn::Result<String> {
-    if let syn::Expr::Lit(expr_lit) = elem
-        && let syn::Lit::Str(name) = &expr_lit.lit
-    {
-        Ok(name.value())
-    } else {
-        Err(syn::Error::new_spanned(
-            elem,
-            "`model_schema_prop` key `preprocess` takes an array of string literals, each naming a \
-             function to wrap the Zod schema with",
-        ))
+/// The functions a `check` or a `preprocess` of `#[model_schema_prop]` names, written as the value
+/// of the key `nested` stands at.
+fn named_functions(
+    nested: &ParseNestedMeta,
+    subject: &str,
+    takes: &str,
+) -> syn::Result<Vec<FunctionName>> {
+    if !nested.input.peek(syn::Token![=]) {
+        return Err(check_refusal(&nested.path, subject, takes));
     }
+    let written: syn::Expr = nested.value()?.parse()?;
+    function_names(&written, subject, takes)
 }
 
-/// The functions a `check` names, read off the value it is written with, for `#[model_schema]` and
-/// `#[model_schema_prop]` alike. `subject` opens a refusal: the attribute and the key.
-pub fn check_names(written: &syn::Expr, subject: &str) -> syn::Result<Vec<CheckName>> {
+/// The functions a `check` or a `preprocess` names, read off the value it is written with, for
+/// `#[model_schema]` and `#[model_schema_prop]` alike. `subject` opens a refusal, the attribute
+/// and the key, and `takes` says what the key is written with.
+pub fn function_names(
+    written: &syn::Expr,
+    subject: &str,
+    takes: &str,
+) -> syn::Result<Vec<FunctionName>> {
     let syn::Expr::Array(array) = written else {
-        return Err(check_refusal(written, subject, CHECK_TAKES));
+        return Err(check_refusal(written, subject, takes));
     };
     if array.elems.is_empty() {
         return Err(check_refusal(
@@ -362,7 +367,7 @@ pub fn check_names(written: &syn::Expr, subject: &str) -> syn::Result<Vec<CheckN
             "names no function: write one name at least, or drop the key",
         ));
     }
-    let mut named: Vec<CheckName> = Vec::with_capacity(array.elems.len());
+    let mut named: Vec<FunctionName> = Vec::with_capacity(array.elems.len());
     for element in &array.elems {
         let read = check_name(element, subject)?;
         if named.iter().any(|earlier| earlier.name == read.name) {
@@ -380,9 +385,9 @@ pub fn check_names(written: &syn::Expr, subject: &str) -> syn::Result<Vec<CheckN
     Ok(named)
 }
 
-/// The name one element of a `check` carries: the function is called under it in every language,
-/// so it is a string literal that spells an identifier.
-fn check_name(element: &syn::Expr, subject: &str) -> syn::Result<CheckName> {
+/// The name one element of a `check` or of a `preprocess` carries: the function is called under
+/// it in every language, so it is a string literal that spells an identifier.
+fn check_name(element: &syn::Expr, subject: &str) -> syn::Result<FunctionName> {
     let syn::Expr::Lit(syn::ExprLit {
         lit: Lit::Str(written),
         attrs: _attrs,
@@ -400,7 +405,7 @@ fn check_name(element: &syn::Expr, subject: &str) -> syn::Result<CheckName> {
         .next()
         .is_some_and(|letter| letter.is_ascii_alphabetic() || letter == '_');
     if opens && letters.all(|letter| letter.is_ascii_alphanumeric() || letter == '_') {
-        return Ok(CheckName {
+        return Ok(FunctionName {
             name,
             written_at: written.span(),
         });
@@ -415,7 +420,7 @@ fn check_name(element: &syn::Expr, subject: &str) -> syn::Result<CheckName> {
     ))
 }
 
-/// A refusal of a `check`, spanned on what was written.
+/// A refusal of a `check` or of a `preprocess`, spanned on what was written.
 fn check_refusal(written: impl quote::ToTokens, subject: &str, refusal: &str) -> syn::Error {
     syn::Error::new_spanned(written, format!("{subject} {refusal}"))
 }

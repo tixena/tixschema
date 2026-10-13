@@ -12,7 +12,7 @@ use super::{
     MemberPlace, guard_failure_output, nested_under_fn, prefixed_guard_message, sole_type_argument,
     wrap_binding, written_spelling,
 };
-use crate::features::model_schema_prop::{CheckName, parse_model_schema_prop_attributes};
+use crate::features::model_schema_prop::{FunctionName, parse_model_schema_prop_attributes};
 use crate::field_type::is_ownership_wrapper;
 use crate::utils::{to_snake_case, written_type};
 
@@ -31,12 +31,12 @@ pub struct ItemChecks<'args> {
     /// the schema module for itself, so a check is called where that import is not in scope.
     pub named: bool,
     /// The checks written on the type, in the order written.
-    pub own: &'args [CheckName],
+    pub own: &'args [FunctionName],
 }
 
 impl<'args> ItemChecks<'args> {
     /// The checks `own` written on a type, beside whether one of its `members` names any.
-    pub fn of<'member, M>(own: &'args [CheckName], mut members: M) -> Self
+    pub fn of<'member, M>(own: &'args [FunctionName], mut members: M) -> Self
     where
         M: Iterator<Item = &'member Field>,
     {
@@ -67,7 +67,7 @@ fn names_a_check(member: &Field) -> bool {
 
 /// Where a check's name is written, with the macro's own hygiene: what the compiler says of the
 /// call is said at the attribute, and a consumer's lints judge the call as generated.
-fn located(check: &CheckName) -> Span {
+pub(super) fn located(check: &FunctionName) -> Span {
     check.written_at.resolved_at(Span::call_site())
 }
 
@@ -154,7 +154,7 @@ fn located(check: &CheckName) -> Span {
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
 pub fn call(
-    check: &CheckName,
+    check: &FunctionName,
     subject: &TokenStream,
     reported: Option<&str>,
     sink: &str,
@@ -242,7 +242,7 @@ fn reached(steps: &[CheckStep], value: &Ident, depth: usize, leaf: &TokenStream)
 pub fn member_calls(
     place: &MemberPlace,
     ty: &syn::Type,
-    checks: &[CheckName],
+    checks: &[FunctionName],
     sink: &str,
 ) -> Option<TokenStream> {
     if checks.is_empty() {
@@ -273,7 +273,7 @@ pub fn member_calls(
 
 /// The refusal of a `check` written on a type alias: an alias is another name for its target, and
 /// has no `impl` of its own to call a function from.
-pub fn alias_refusal_output(item_type: &ItemType, checks: &[CheckName]) -> Option<TokenStream> {
+pub fn alias_refusal_output(item_type: &ItemType, checks: &[FunctionName]) -> Option<TokenStream> {
     let first = checks.first()?;
     let name = &item_type.ident;
     let target = written_spelling(&item_type.ty);

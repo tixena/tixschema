@@ -45,6 +45,7 @@ mod flattened;
 mod one_direction;
 mod ordered_maps;
 mod piped;
+mod preprocessed;
 mod readme;
 mod readme_resolvers;
 mod refused_read;

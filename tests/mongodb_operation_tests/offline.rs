@@ -5,10 +5,12 @@
 use core::cell::Cell;
 use core::error::Error;
 
+use bson::oid::ObjectId;
 use bson::{Bson, Document, doc};
 use mongodb::options::{ClientOptions, Collation, Hint};
 use mongodb::{Client, Collection};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tixschema::model_schema;
 
 use super::invoice_schema::{Field, Filter, MongoPath, OperationError, Resolver};
@@ -67,6 +69,44 @@ enum Shipping {
 struct Courier {
     name: String,
     region: String,
+}
+
+/// A row whose type and whose number each name a function that corrects what is stored.
+#[model_schema(decode_with, preprocess = ["withATotal"])]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub(super) struct Receipt {
+    #[serde(rename = "_id")]
+    id: ObjectId,
+    #[model_schema_prop(preprocess = ["trimmedNumber"])]
+    number: String,
+    total: u32,
+}
+
+impl Receipt {
+    pub(super) fn new(id: ObjectId, number: &str, total: u32) -> Self {
+        Self {
+            id,
+            number: number.to_owned(),
+            total,
+        }
+    }
+}
+
+/// The payload of a text without the spaces at its ends.
+fn trimmed_number(payload: Value) -> Value {
+    if let Value::String(text) = payload {
+        Value::String(text.trim().to_owned())
+    } else {
+        payload
+    }
+}
+
+/// A row with a total of zero where it holds none.
+fn with_a_total(mut payload: Value) -> Value {
+    if let Some(row) = payload.as_object_mut() {
+        row.entry("total").or_insert_with(|| 0_u32.into());
+    }
+    payload
 }
 
 /// Compiles only where what awaits an operation on a row no two threads share can be moved to
@@ -539,4 +579,19 @@ fn the_id_of_a_refused_row_is_told_as_bson_displays_it() {
             "for {told}, got: {refused:?}"
         );
     }
+}
+
+/// Every read of a row calls the functions its type and its members name: the type's gives the
+/// row the total it holds none of, and the number's trims it. No bound is declared, so a build
+/// with no schema surface answers the same.
+#[test]
+fn a_stored_row_is_read_through_the_functions_its_type_names() {
+    let id = ObjectId::parse_str("0123456789abcdef01234567").unwrap();
+    assert_eq!(
+        Receipt::mongo_read_row(doc! { "_id": id, "number": " R-1 " }, &[]).ok(),
+        Some(Receipt::new(id, "R-1", 0))
+    );
+    let stored = Receipt::new(id, "R-2", 7);
+    let written = stored.mongo_written_row().unwrap();
+    assert_eq!(Receipt::mongo_read_row(written, &[]).ok(), Some(stored));
 }

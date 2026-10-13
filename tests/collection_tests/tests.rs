@@ -12,6 +12,7 @@ use chrono::{DateTime, NaiveDateTime, NaiveTime, Utc};
 use core::hash::BuildHasher;
 use core::iter::once;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::hash::DefaultHasher;
 use std::path::PathBuf;
@@ -792,6 +793,12 @@ struct DocumentedSequenceFields {
     /// Documented vec field.
     documented_vec: Vec<String>,
     undocumented_vec: Vec<String>,
+}
+
+/// The Rust side of the function the `preprocess` of each list above names: a read of the type
+/// calls it, and it answers the payload as it is.
+const fn trim(payload: Value) -> Value {
+    payload
 }
 
 /// The member an `Option` field written with a `skip_serializing_if` renders as. The attribute

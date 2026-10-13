@@ -15,7 +15,7 @@ use syn::spanned::Spanned as _;
 use syn::Attribute;
 
 #[cfg(feature = "zod")]
-use crate::features::model_schema_prop::CheckName;
+use crate::features::model_schema_prop::FunctionName;
 use crate::features::model_schema_prop::ModelSchemaPropMeta;
 use crate::utils::{MapKeyWire, is_declared_ident, lookup_alias_info, written_type};
 
@@ -23,7 +23,8 @@ use crate::utils::{MapKeyWire, is_declared_ident, lookup_alias_info, written_typ
 use crate::bound_message::{Bound, zod_error_arg};
 #[cfg(feature = "zod")]
 use crate::utils::{
-    ZodUnionMember, escape_js_regex_literal, publishes_zod_factory, zod_factory_argument,
+    ZodUnionMember, escape_js_regex_literal, names_a_zod_preprocess, publishes_zod_factory,
+    zod_factory_argument,
 };
 
 #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
@@ -243,7 +244,7 @@ impl FieldDef {
 
     /// The functions the field's `check` names.
     #[cfg(feature = "zod")]
-    fn checks(&self) -> &[CheckName] {
+    fn checks(&self) -> &[FunctionName] {
         match &self.model_schema_prop_meta {
             Some(meta) => &meta.check,
             None => &[],
@@ -1414,6 +1415,13 @@ impl FieldDef {
         }
     }
 
+    /// Whether the type this field names calls a `preprocess` of its own in its Zod binding, which
+    /// is then the one schema that calls it: no member of it is written in its place.
+    #[cfg(feature = "zod")]
+    pub fn zod_names_a_preprocess(&self) -> bool {
+        matches!(&self.field_type, FieldDefType::SiblingType(name, _) if names_a_zod_preprocess(name))
+    }
+
     /// Builds the Zod schema string for a numeric field, applying any min/max constraints.
     #[cfg(feature = "zod")]
     fn zod_number_type(&self, base: &str) -> String {
@@ -1440,12 +1448,7 @@ impl FieldDef {
         let Some(meta) = &self.model_schema_prop_meta else {
             return schema;
         };
-        meta.preprocess
-            .iter()
-            .rev()
-            .fold(schema, |wrapped, fn_name| {
-                format!("z.preprocess({fn_name}, {wrapped})")
-            })
+        zod_preprocess_wrap(schema, &meta.preprocess)
     }
 
     /// The Zod schema for a value in a slot that cannot be dropped — a tuple element, a map entry,
@@ -1530,13 +1533,23 @@ impl FieldDef {
     }
 }
 
+/// `schema` inside one `z.preprocess(fn, …)` per function named, the first one written outermost,
+/// so each is handed the answer of the one before it. A field's schema and a type's own
+/// expression are both wrapped here.
+#[cfg(feature = "zod")]
+pub fn zod_preprocess_wrap(schema: String, functions: &[FunctionName]) -> String {
+    functions.iter().rev().fold(schema, |wrapped, function| {
+        format!("z.preprocess({}, {wrapped})", function.name)
+    })
+}
+
 /// `schema` with one `.check(…)` per function named, in the order written. Each hands its
 /// function the value and a payload of its own, and copies what the function pushed with
 /// `continue: true`: Zod skips a later check where an earlier issue carries no such flag, and an
 /// issue's own flag cannot be set where it was pushed. No type is named, so a build without
 /// `typescript` writes the same text.
 #[cfg(feature = "zod")]
-pub fn zod_check_wrap(schema: String, checks: &[CheckName]) -> String {
+pub fn zod_check_wrap(schema: String, checks: &[FunctionName]) -> String {
     checks.iter().fold(schema, |wrapped, check| {
         format!(
             "{wrapped}.check((ctx) => {{\n  const own = {{ value: ctx.value, issues: \

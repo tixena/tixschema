@@ -707,6 +707,14 @@ export const Document$Schema: ZodType<Document> = Document$RawSchema.meta({
 /// A `#[serde(transparent)]` struct with a *named* field is no brand, and its field attributes are
 /// read as any other named field's are.
 ///
+/// ## Preprocessing
+///
+/// `preprocess = ["withoutFragile"]` names functions of the consumer's own that correct the whole
+/// payload before the value is read from it, beside the same key on a field. Every Rust read of
+/// the type calls the snake case of each name, `without_fragile(payload)`, ahead of every field's
+/// function, and the type's Zod schema is wrapped in one `z.preprocess(...)` per name.
+/// `model_schema_prop` documents the key under "Preprocessing".
+///
 /// ## Checks
 ///
 /// `check = ["withinParcel"]` names functions of the consumer's own that judge the whole value,
@@ -731,6 +739,11 @@ export const Document$Schema: ZodType<Document> = Document$RawSchema.meta({
 /// `validate()` stays, for a value built in code or changed after it was read. `remote`, `from`,
 /// `try_from` and `into` written on such a type are refused, and a function of the consumer's own
 /// named `model_schema_read_unjudged` on it is a duplicate definition (`E0592`).
+///
+/// A type that names a `preprocess`, on itself or on a field, has its `Deserialize` written the
+/// same way whether or not it publishes `validate()`, and is refused the same four attributes.
+/// One that names a `preprocess` on itself gains `model_schema_read_corrected` as well, the read
+/// of a payload its functions have already corrected.
 ///
 #[proc_macro_attribute]
 pub fn model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -922,25 +935,66 @@ pub fn model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 /// }
 /// ```
 ///
-/// ## Zod Preprocessing
+/// ## Preprocessing
 ///
-/// - `preprocess = ["fn1", "fn2"]` — wrap the Zod schema with `z.preprocess()` calls
-///   (Zod-only, no effect on Rust types or serde deserialization)
+/// - `preprocess = ["name", ...]` — functions of the consumer's own that correct the field's
+///   payload before the field is read from it, each named once and called under that name by
+///   every read
 ///
-/// Multiple preprocessors are applied as nested calls, innermost first:
+/// The same key on the type, `#[model_schema(preprocess = ["name"])]`, names functions that
+/// correct the whole payload, ahead of every field's. Rust calls the snake case of each name, in
+/// scope where the type is declared, and the Zod schema calls the name as written:
 ///
-/// ```rust
-/// use tixschema::{model_schema, model_schema_prop};
-/// use serde::{Deserialize, Serialize};
+/// ```text
+/// fn trimmed(payload: serde_json::Value) -> serde_json::Value           // a field's function
+/// fn without_fragile(payload: serde_json::Value) -> serde_json::Value   // a type's function
 ///
-/// #[model_schema()]
-/// #[derive(Serialize, Deserialize)]
-/// pub struct EventData {
-///     // → z.preprocess(trim, z.preprocess(normalize, z.string()))
-///     #[model_schema_prop(preprocess = ["trim", "normalize"])]
-///     pub name: String,
-/// }
+/// function trimmed(payload: unknown): unknown
+/// function withoutFragile(payload: unknown): unknown
 /// ```
+///
+/// The key is a last resort: a function runs on every read, on a payload no schema describes.
+/// Reach for it where the payload cannot be corrected where it is written, and where a serde
+/// `default`, an `Option` or an `alias` does not say what is meant.
+///
+/// A type that names a `preprocess`, on itself or on a field, and derives `Deserialize` has that
+/// `Deserialize` written here, whether or not it publishes `validate()`. One read runs in this
+/// order: the type's functions, in the order written, each over the answer of the one before;
+/// each field's functions as the field is read; serde builds the value; `validate()` judges it,
+/// where the type publishes one. Every serde read calls them, from a JSON text, a
+/// `serde_json::Value`, a BSON document under either major and any other format that describes
+/// itself, and so do a holder's read at any depth, the recovering decode of a type declared with
+/// `decode_with`, a MongoDB operation that reads a row and a service's dispatcher. The Zod schema
+/// writes `z.preprocess(name, ...)` around the field's schema and around the type's own
+/// expression, the first name outermost. The JSON Schema calls no function, the Dart, Swift and
+/// Kotlin types are written as they are without the key, and a value built in code is never
+/// read, so nothing corrects it.
+///
+/// A key the payload does not hold is read as serde reads an absent key, a `default` or an
+/// `Option` answering for it and `missing field` otherwise, and the field's function is not
+/// called. The Zod schema calls the field's function with `undefined` for such a key. A `null`
+/// the payload holds is handed to the function on both sides.
+///
+/// A function takes a `serde_json::Value` whatever the payload was read from, so a consumer that
+/// names a `preprocess` lists `serde_json`. Under BSON an `ObjectId` and a date cross as
+/// `{"$oid": ...}` and `{"$date": ...}` and are read back to the values they were, and a value
+/// JSON has no form for, a generic binary or a `Decimal128`, is refused.
+///
+#[cfg_attr(
+    all(
+        feature = "serde",
+        any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    ),
+    doc = include_str!("preprocess_example.md")
+)]
+///
+/// The key is refused where it is not an array of string literals, where a name is no identifier,
+/// where it names no function and where it names one twice, each spanned on what was written. It
+/// is refused beside a `deserialize_with` or a `with` of the consumer's own on the same field,
+/// serde reading a field through one function; on a field that borrows from the payload, and on
+/// a type that holds one; on a type alias; on the slot of a branded newtype, whose `preprocess`
+/// is written on the type; and beside `as`. `remote`, `from`, `try_from` and `into` are refused
+/// on a type that names one. A name with no function in scope is `E0425` at the string literal.
 ///
 /// ## Checks
 ///

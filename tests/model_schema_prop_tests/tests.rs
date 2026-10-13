@@ -263,6 +263,21 @@ struct NullableGeneric<IdType> {
     pub name: String,
 }
 
+/// The Rust side of the function a `preprocess` above names: a read of the type calls it, and it
+/// answers the payload as it is.
+#[cfg(all(
+    test,
+    any(
+        feature = "typescript",
+        feature = "jsonschema",
+        feature = "zod",
+        feature = "serde"
+    )
+))]
+const fn trim(payload: serde_json::Value) -> serde_json::Value {
+    payload
+}
+
 /// The member an `Option` field written with a `skip_serializing_if` renders as. The attribute
 /// decides the wire, not the spelling, and none of these fields carries `ts_optional`.
 #[cfg(feature = "typescript")]

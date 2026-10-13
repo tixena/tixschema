@@ -98,8 +98,21 @@ mod scalar_path_bound_service;
 #[path = "service_schema_dispatch_tests/scalar_path_bound_http_rest_transport.rs"]
 mod scalar_path_bound_http_rest_transport;
 
+/// `CorrectedRequestService`, whose one message names a `preprocess`, and the tests driving it.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_dispatch_tests/corrected_request_service.rs"]
+mod corrected_request_service;
+
+/// The `http_rest` dispatcher for `CorrectedRequestService`, in a module of its own.
+#[cfg(all(test, feature = "serde"))]
+#[path = "service_schema_dispatch_tests/corrected_request_http_rest_transport.rs"]
+mod corrected_request_http_rest_transport;
+
 // A transport's dispatcher reaches what the service declared through `$crate`, which is this
 // binary's root: a service written in a submodule is named here for the expansion to resolve.
+#[cfg(all(test, feature = "serde"))]
+use corrected_request_service::{CorrectedRequestService, corrected_request_service_schema};
 #[cfg(all(test, feature = "serde"))]
 use multipart_service::{UploadService, upload_service_schema};
 #[cfg(all(test, feature = "serde"))]

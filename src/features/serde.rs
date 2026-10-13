@@ -17,9 +17,9 @@ use proc_macro2::{Group, Span};
 use syn::ext::IdentExt as _;
 use syn::meta::ParseNestedMeta;
 use syn::token::Paren;
-use syn::{Attribute, Field, Fields, Ident, ItemStruct, Token, Type};
+use syn::{Attribute, Field, Fields, Ident, ItemStruct, LitStr, Token, Type};
 #[cfg(feature = "serde")]
-use syn::{Error, LitStr, Meta};
+use syn::{Error, Meta};
 
 #[cfg(feature = "serde")]
 const CFG_ATTR_SERDE_REJECTION: &str = "cfg_attr-wrapped serde attribute is invisible to \
@@ -238,6 +238,32 @@ pub fn serde_conversion(attrs: &[Attribute]) -> Option<(&'static str, Span)> {
         })
         .unwrap_or_else(|e| {
             log::trace!("Failed to parse serde conversion attribute: {e}");
+        });
+    }
+    found
+}
+
+/// The function a field is read through, with the key that names it: `deserialize_with`, or
+/// `with`, which names the module that holds it. Read in every build: a field takes one.
+pub fn read_hook(attrs: &[Attribute]) -> Option<(&'static str, LitStr)> {
+    let mut found: Option<(&'static str, LitStr)> = None;
+    for attr in attrs {
+        if !attr.path().is_ident("serde") {
+            continue;
+        }
+        attr.parse_nested_meta(|nested| {
+            let key = ["deserialize_with", "with"]
+                .into_iter()
+                .find(|key| nested.path.is_ident(key));
+            if let Some(named) = key {
+                let path: LitStr = nested.value()?.parse()?;
+                found.get_or_insert((named, path));
+                return Ok(());
+            }
+            consume_unread_value(&nested)
+        })
+        .unwrap_or_else(|e| {
+            log::trace!("Failed to parse serde read-hook attribute: {e}");
         });
     }
     found
