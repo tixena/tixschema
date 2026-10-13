@@ -3453,11 +3453,12 @@ error[E0592]: duplicate definitions with name `validate`
 
 #### The path a message names
 
-Each message opens with where the broken value sits in the payload, in single quotes: the key serde writes for each member on the way to the value, and the index of each item of a list, joined by dots. The keys are the ones the Zod schema of the same declaration writes, and the ones an issue of the [recovering decode](#recovering-decode-decode_with) holds in its path.
+Each message opens with where the broken value sits in the payload, in single quotes: the key serde writes for each member on the way to the value, the index of each item of a list and the key of each entry of a map, joined by dots. The keys are the ones the Zod schema of the same declaration writes, and the ones an issue of the [recovering decode](#recovering-decode-decode_with) holds in its path.
 
 - **A member** is named by the key serde writes it under. `rename_all` on a struct, `rename_all_fields` on an enum and a variant's own `rename_all` each move the name, and a field's own `rename` wins over the three. A type that renames nothing names each field as it was declared.
 - **An item of a list** is named by its index, counted from zero, at each level of the list. A `grid: Vec<Vec<Package>>` answers `'grid.0.1.itemLabel': too short: minimum length is 1, got 0`, and a `code_list: Vec<Code>` answers `'codeList.1': too short: minimum length is 2, got 1`. A count written on the list itself is reported at the list, with no index: a `parcel_list` under `minLength = 1` answers `'parcelList': too short: minimum length is 1, got 0` when it is empty.
-- **A slot** is named by its position, `'0'`. A `#[serde(flatten)]` member, an `Option` and the lone slot of an `#[serde(untagged)]` variant write no key and add no segment.
+- **An entry of a map** is named by its key, as serde writes it. A `parcels_by_dock: BTreeMap<String, Parcel>` answers `'parcelsByDock.north.itemLabel': too short: minimum length is 1, got 0`. A key that is no string is the text serde writes for it: `'byNumber.7.itemLabel'` for a `u32`, `'byFlag.true.itemLabel'` for a `bool`, and for a plain enum the name serde writes the variant under, `'byDock.north.itemLabel'`. A map of lists and a list of maps name the key and the index in the order the payload nests them: `'listsByDock.north.1.itemLabel'` and `'docksInOrder.1.north.itemLabel'`. See [A model held in a map, in a slot or in a tuple](#a-model-held-in-a-map-in-a-slot-or-in-a-tuple).
+- **A slot** is named by its position, `'0'`, and so is a position of a tuple written as a field's type: `'deckPair.1.itemLabel'`. A `#[serde(flatten)]` member, an `Option` and the lone slot of an `#[serde(untagged)]` variant write no key and add no segment.
 
 ```rust
 #[model_schema(minLength = 2)]
@@ -3639,7 +3640,55 @@ A `#[serde(flatten)]` hop writes no key, so it contributes no segment: a bound u
 
 This reaches through `Option`, `Box`/`Cow`/`Rc`/`Arc` and every level of a list, a fixed array included, to each item a list holds -- beside the count a key written on the list holds it to, and with the item's [index](#the-path-a-message-names) written after the field's key at each level -- and applies to a struct's field, to a named member of an enum variant under any tagging, and to the lone slot of an `#[serde(untagged)]` newtype variant. That last one contributes no segment either, for the same reason a flattened hop contributes none: what an untagged newtype member writes on the wire *is* the inner value, so a violation beneath it is already one of the enclosing object's own keys. So a union of newtype members publishes a `validate()` that dispatches to whichever variant the value holds, and a field holding such a union reports the path the payload spells -- `'account.jti': too short: ...` whether the account is a union or a plain struct.
 
-It reaches nothing through a map or a tuple. Through a tuple struct's slot it reaches nothing below the slot: `validate()` runs the check [written on the slot itself](#a-slot-of-a-tuple-struct), reported under the slot's position, and a bound the slot's own type declares is not run from there. Through a *tagged* variant's slot it reaches nothing below the slot either: the arm binds the slot by its position and runs the check [written on the slot itself](#a-slot-of-a-tuple-variant), reported under that position, and a bound the slot's own type declares is not run from there.
+#### A model held in a map, in a slot or in a tuple
+
+`validate()` runs what each of these holds as well, and names it by the place the payload holds it at:
+
+| Held | Reported under |
+|---|---|
+| as a value of a `HashMap`, of a `BTreeMap` and, under the [`indexmap` feature](#feature-flags), of an `IndexMap` | the entry's key, as serde writes it |
+| in a slot of a tuple struct, and of a tuple variant of a tagged enum | the slot's position, as the check [written on the slot itself](#a-slot-of-a-tuple-struct) is |
+| in a tuple written as a field's type, `(String, Parcel)` | its position in the tuple |
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Parcel {
+    #[model_schema_prop(minLength = 1)]
+    pub item_label: String,
+}
+
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Terminal {
+    pub first_parcel: Parcel,
+    pub parcels_by_dock: BTreeMap<String, Parcel>,
+}
+
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+pub struct Consignment(#[model_schema_prop(minLength = 1)] pub String, pub Parcel);
+
+let unlabelled = || Parcel { item_label: String::new() };
+
+Terminal {
+    first_parcel: Parcel { item_label: "A".to_string() },
+    parcels_by_dock: BTreeMap::from([("north".to_string(), unlabelled())]),
+}
+.validate();
+// Err(["'parcelsByDock.north.itemLabel': too short: minimum length is 1, got 0"])
+
+Consignment(String::new(), unlabelled()).validate();
+// Err(["'0': too short: minimum length is 1, got 0", "'1.itemLabel': too short: minimum length is 1, got 0"])
+```
+
+The walk goes on below each of the three as it does below a field: through an `Option`, the transparent wrappers and every level of a list, and from a map into a list or another map. The entries of a map are reported in the order the map yields them: sorted for a `BTreeMap`, as inserted for an `IndexMap`, and in no fixed order for a `HashMap`. An empty map reports nothing. A map, a slot and a tuple that hold no declared type add nothing to `validate()`, and a type that holds nothing else publishes none.
+
+**A key is the text serde writes for it**, read through the key's own `Serialize` with the serializer serde has kept for a `Formatter` since 1.0.108: a string as it is, a number and a `bool` as serde stringifies them, a plain enum under the name serde writes for the variant, a [brand](#branded-newtypes) as its inner value, and a `chrono::NaiveDateTime` as serde writes it, `2026-10-13T04:17:00`, where the type prints `2026-10-13 04:17:00`. A map written as the whole value -- a `#[serde(flatten)]` map, and the lone slot of an `#[serde(untagged)]` variant -- names each entry by its key alone, `'north.itemLabel': ...`.
+
+`validate()` is written under the bounds the type declares, so a key typed with one of the type's own parameters is written only where the type declares `Serialize` for it. `struct Rack<Key: Ord + Serialize>` over a `by_key: BTreeMap<Key, Parcel>` answers `'byKey.north.itemLabel': ...`, and `struct Shelf<Key: Ord>` runs each parcel as well and names the field alone, `'byKey.itemLabel': ...`.
 
 The brand's read-time hook stands unchanged beside this, so a brand's bound is now enforced in both places. They answer different questions: a payload arriving over the wire is refused on the read, and a message built in Rust -- where no read ever ran, which is every outbound message a generated client sends -- is refused by `validate()`. A nested type's bound has no hook at all, so its enclosing `validate()` is the only thing that enforces it.
 

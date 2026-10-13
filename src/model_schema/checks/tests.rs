@@ -304,7 +304,7 @@ fn the_reach_of_a_check_is_the_reach_of_a_bound() {
         "Arc<Option<Rc<PathBuf>>>",
     ] {
         let ty: syn::Type = syn::parse_str(written).unwrap();
-        // A bound stops at a list, so its walk holds no step into one.
+        // A bound stops at a list and reads no map, so its walk holds no step into either.
         let bound: Option<Vec<CheckStep>> = constrained_shape(&ty).and_then(|shape| {
             shape
                 .wraps
@@ -312,7 +312,7 @@ fn the_reach_of_a_check_is_the_reach_of_a_bound() {
                 .map(|wrap| match wrap {
                     ConstraintWrap::Optional => Some(CheckStep::Present),
                     ConstraintWrap::Borrowed | ConstraintWrap::Transparent => Some(CheckStep::Held),
-                    ConstraintWrap::Sequence => None,
+                    ConstraintWrap::Map | ConstraintWrap::Sequence => None,
                 })
                 .collect()
         });

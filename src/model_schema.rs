@@ -476,15 +476,63 @@ struct CheckedMember {
 
 /// A wrapper a value is reached through, outermost first: `Option` yields its `Some`, a transparent
 /// wrapper yields what it derefs to, and a reference yields the `str` or the list it borrows, which
-/// only the validator reaches. A sequence yields each element, on the walk to what a field's own
-/// type declares alone: a field's own bound stops at a list.
+/// only the validator reaches. A sequence yields each element and a map each entry's value, on the
+/// walk to what a field's own type declares alone: a field's own bound stops at a list and reads
+/// no map.
 #[cfg(feature = "serde")]
 #[derive(Clone, Copy)]
 enum ConstraintWrap {
     Borrowed,
+    Map,
     Optional,
     Sequence,
     Transparent,
+}
+
+/// What the walk below a member ends on.
+#[cfg(feature = "serde")]
+enum HeldEnd {
+    /// A value of a declared type, whose own `validate()` is run.
+    Declared,
+    /// A tuple: each position that holds something the walk reaches, with the walk below it.
+    Positions(Vec<(usize, HeldShape)>),
+}
+
+/// The walk from a member's value to every value below it whose own type may publish `validate()`.
+#[cfg(feature = "serde")]
+struct HeldShape {
+    end: HeldEnd,
+    /// The wrappers the walk reads through to its end, outermost first.
+    wraps: Vec<ConstraintWrap>,
+}
+
+#[cfg(feature = "serde")]
+impl HeldShape {
+    /// Whether the walk reads a map, at any depth.
+    fn walks_a_map(&self) -> bool {
+        self.wraps
+            .iter()
+            .any(|wrap| matches!(*wrap, ConstraintWrap::Map))
+            || match &self.end {
+                HeldEnd::Declared => false,
+                HeldEnd::Positions(positions) => {
+                    positions.iter().any(|(_, held)| held.walks_a_map())
+                }
+            }
+    }
+}
+
+/// One step of the place a walk holds a value at.
+#[cfg(feature = "serde")]
+#[derive(Clone)]
+enum PlaceStep {
+    /// The depth a list level binds its item's index at.
+    Index(usize),
+    /// The depth a map level binds its entry at, whose key is written as serde writes it, where
+    /// serde does.
+    Key(usize),
+    /// A key or a position serde writes, read as the walk is written.
+    Written(String),
 }
 
 /// Holds the generated validation code for a single field.
@@ -4535,7 +4583,9 @@ fn collect_struct_fields(
             // The walk is rebuilt here, the body above being discarded with the rest of a flattened
             // field's. It is rebuilt under no name: the hop writes no key.
             #[cfg(feature = "serde")]
-            if let Some(body) = nested_validate_body(field, &f_def, false, None) {
+            if let Some(body) =
+                nested_validate_body(field, &f_def, &flattened_place(field, index, false))
+            {
                 validate_bodies.push(body);
             }
             validate_bodies.extend(flattened_member_checks(field, &f_def, index, false));
@@ -10393,15 +10443,17 @@ fn collect_untagged_variant_members(
         // Read once the member's def exists, since that is what says whether the member names a
         // type that could publish a validator.
         let bound = bound_member(field, index);
+        // A slot of an untagged variant is reported under no name.
+        let place = member_place(field, index, true, false, &wire_name);
         let declared = match (is_flatten, field.ident.is_some()) {
-            (true, _) => nested_validate_body(field, &member_def, true, None),
-            (false, true) => {
-                named_member_validate_body(validate_body, field, &member_def, true, &wire_name)
+            (true, _) => {
+                nested_validate_body(field, &member_def, &flattened_place(field, index, true))
             }
-            (false, false) => {
-                let nested = positional_member_validate_body(field, &member_def, &bound.binding);
-                slot_validate_body(validate_body, nested)
-            }
+            (false, true) => named_member_validate_body(validate_body, field, &member_def, &place),
+            (false, false) => slot_validate_body(
+                validate_body,
+                nested_validate_body(field, &member_def, &place),
+            ),
         };
         let named = untagged_member_checks(field, &member_def, index, is_flatten, &wire_name);
         if let Some(body) = then_checks(declared, named) {
@@ -12677,6 +12729,18 @@ fn index_binding(depth: usize) -> proc_macro2::Ident {
     proc_macro2::Ident::new(&format!("index_{depth}"), proc_macro2::Span::call_site())
 }
 
+/// The binding a map level of a walk holds its entry's key under, numbered as the value is.
+#[cfg(feature = "serde")]
+fn entry_binding(depth: usize) -> proc_macro2::Ident {
+    proc_macro2::Ident::new(&format!("entry_{depth}"), proc_macro2::Span::call_site())
+}
+
+/// The binding the text serde writes for that key is held under, where a report is written.
+#[cfg(feature = "serde")]
+fn key_binding(depth: usize) -> proc_macro2::Ident {
+    proc_macro2::Ident::new(&format!("key_{depth}"), proc_macro2::Span::call_site())
+}
+
 /// The name a variant's constrained member is bound under in the arm that matched it.
 fn member_binding(field_ident: &proc_macro2::Ident) -> proc_macro2::Ident {
     proc_macro2::Ident::new(
@@ -12808,6 +12872,15 @@ fn walk_wraps(
                 }
             }
         }
+        // Reached by the nested walk alone, whose leaf writes each key into its report.
+        ConstraintWrap::Map => {
+            let entry = entry_binding(depth);
+            quote! {
+                for (#entry, #next) in #value {
+                    #inner
+                }
+            }
+        }
         ConstraintWrap::Borrowed | ConstraintWrap::Transparent => quote! {
             let #next = &**#value;
             #inner
@@ -12815,28 +12888,119 @@ fn walk_wraps(
     }
 }
 
-/// Builds the `validate()` contribution for a field the enclosing type declares no bound on, whose
-/// own type may publish one — a constrained brand, or a nested `#[model_schema()]` type.
+/// Builds the `validate()` contribution for a member the enclosing type declares no bound on, whose
+/// own type may publish one, or holds a type that may — a constrained brand, or a nested
+/// `#[model_schema()]` type. The member is read where `place` says, and each report is written
+/// under the name `place` gives it, then under the place the walk holds its value at.
 ///
 /// The fallback rides inside the block rather than once per validator so that a nested check is the
 /// same tokens wherever it lands: a struct's method body, or one arm of an enum's `match`, where a
 /// once-per-validator item would sit in the wrong scope.
 #[cfg(feature = "serde")]
-fn build_nested_validation(
-    wraps: &[ConstraintWrap],
-    checked: &proc_macro2::TokenStream,
-    under: Option<&str>,
-) -> proc_macro2::TokenStream {
+fn build_nested_validation(shape: &HeldShape, place: &MemberPlace) -> proc_macro2::TokenStream {
     let head = wrap_binding(0);
-    let leaf = nested_leaf(wraps, under);
-    let walk = walk_wraps(wraps, &head, 1, &leaf);
+    let under: Vec<PlaceStep> = place
+        .reported
+        .iter()
+        .map(|key| PlaceStep::Written(key.clone()))
+        .collect();
+    let walk = held_walk(shape, &head, 1, &under);
     let fallback = unpublished_validate_fallback();
+    let keyed = shape.walks_a_map().then(written_key_items);
+    let checked = &place.checked;
     quote! {
         {
             #fallback
+            #keyed
             let #head = #checked;
             #walk
         }
+    }
+}
+
+/// The walk of `shape` from `value`, held at `place`, whose first wrapper binds at `depth`.
+#[cfg(feature = "serde")]
+fn held_walk(
+    shape: &HeldShape,
+    value: &proc_macro2::Ident,
+    depth: usize,
+    place: &[PlaceStep],
+) -> proc_macro2::TokenStream {
+    let below = depth.saturating_add(shape.wraps.len());
+    let held = held_at(place, &shape.wraps, depth);
+    // What the last wrapper binds, or the value itself where the walk reads through none.
+    let reached = below
+        .checked_sub(1)
+        .filter(|_| !shape.wraps.is_empty())
+        .map_or_else(|| value.clone(), wrap_binding);
+    let end = match &shape.end {
+        HeldEnd::Declared => nested_leaf(&reached, &held),
+        HeldEnd::Positions(positions) => {
+            let position = wrap_binding(below);
+            let walks = positions.iter().map(|(at, of_position)| {
+                let slot = syn::Index::from(*at);
+                let mut held_under = held.clone();
+                held_under.push(PlaceStep::Written(at.to_string()));
+                let walk = held_walk(of_position, &position, below.saturating_add(1), &held_under);
+                quote! {
+                    {
+                        let #position = &#reached.#slot;
+                        #walk
+                    }
+                }
+            });
+            quote! { #(#walks)* }
+        }
+    };
+    walk_wraps(&shape.wraps, value, depth, &end)
+}
+
+/// `place` with what a walk over `wraps` adds to it, where the first wrapper binds at `depth`: the
+/// index of each list level and the key of each map level.
+#[cfg(feature = "serde")]
+fn held_at(place: &[PlaceStep], wraps: &[ConstraintWrap], depth: usize) -> Vec<PlaceStep> {
+    let mut held = place.to_vec();
+    for (at, wrap) in wraps.iter().enumerate() {
+        let bound_at = depth.saturating_add(at);
+        match *wrap {
+            ConstraintWrap::Map => held.push(PlaceStep::Key(bound_at)),
+            ConstraintWrap::Sequence => held.push(PlaceStep::Index(bound_at)),
+            ConstraintWrap::Borrowed | ConstraintWrap::Optional | ConstraintWrap::Transparent => {}
+        }
+    }
+    held
+}
+
+/// What the nested walk reads the key of a map's entry with. `written_key` answers the text
+/// serde writes for the key, through serde's serializer for a `Formatter`, and nothing where serde
+/// writes no text. The trait for a reference answers nothing for a key whose type has no
+/// `Serialize` in reach, a type parameter that declares none among them.
+#[cfg(feature = "serde")]
+fn written_key_items() -> proc_macro2::TokenStream {
+    quote! {
+        struct MapKey<'held, K: ?::core::marker::Sized>(&'held K);
+        impl<K: ?::core::marker::Sized + serde::Serialize> ::core::fmt::Display for MapKey<'_, K> {
+            fn fmt(&self, formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                serde::Serialize::serialize(self.0, formatter)
+            }
+        }
+        trait WrittenKey {
+            fn written_key(self) -> ::core::option::Option<::std::string::String>;
+        }
+        impl<K: ?::core::marker::Sized + serde::Serialize> WrittenKey for MapKey<'_, K> {
+            fn written_key(self) -> ::core::option::Option<::std::string::String> {
+                let mut written = ::std::string::String::new();
+                ::core::fmt::Write::write_fmt(&mut written, format_args!("{self}"))
+                    .ok()
+                    .map(|()| written)
+            }
+        }
+        trait UnwrittenKey: ::core::marker::Sized {
+            fn written_key(self) -> ::core::option::Option<::std::string::String> {
+                ::core::option::Option::None
+            }
+        }
+        impl<K: ?::core::marker::Sized> UnwrittenKey for &MapKey<'_, K> {}
     }
 }
 
@@ -12853,12 +13017,11 @@ fn unpublished_validate_fallback() -> proc_macro2::TokenStream {
     }
 }
 
-/// The nested check a walk over `wraps` ends on: whatever the field's own type reported, attributed
-/// to the place that holds it.
+/// The nested check a walk ends on: whatever the type of `value` reported, attributed to `place`,
+/// which holds it.
 #[cfg(feature = "serde")]
-fn nested_leaf(wraps: &[ConstraintWrap], under: Option<&str>) -> proc_macro2::TokenStream {
-    let value = walked_value(wraps);
-    let Some(place) = nested_place(wraps, under) else {
+fn nested_leaf(value: &proc_macro2::Ident, place: &[PlaceStep]) -> proc_macro2::TokenStream {
+    let Some(named) = named_at(place) else {
         return quote! {
             if let ::core::result::Result::Err(reported) = #value.validate() {
                 errors.extend(reported);
@@ -12866,36 +13029,100 @@ fn nested_leaf(wraps: &[ConstraintWrap], under: Option<&str>) -> proc_macro2::To
         };
     };
     let naming = nested_under_fn();
+    // A key is read where a report is written under it, and for no entry that reports nothing.
+    let keys: Vec<proc_macro2::TokenStream> = place
+        .iter()
+        .filter_map(|step| match step {
+            PlaceStep::Key(depth) => {
+                let (entry, key) = (entry_binding(*depth), key_binding(*depth));
+                Some(quote! { let #key = MapKey(#entry).written_key(); })
+            }
+            PlaceStep::Index(_) | PlaceStep::Written(_) => None,
+        })
+        .collect();
+    let keyed = (!keys.is_empty()).then(keyed_under_fn);
     quote! {
         if let ::core::result::Result::Err(reported) = #value.validate() {
             #naming
+            #keyed
+            #(#keys)*
             errors.extend(
                 reported
                     .iter()
-                    .map(|violation| nested_under(#place, violation)),
+                    .map(|violation| #named),
             );
         }
     }
 }
 
-/// Where the value a walk over `wraps` ends on sits in the payload, as the `&str` a report is
-/// written under: the key `under`, then the index of each list level, innermost last, joined by
-/// dots. `None` for a value reached under no key and through no list.
+/// `violation` as it is reported from `place`, or `None` for a value held at no place. Each run of
+/// keys, positions and indexes is written into it at once, and the key of a map's entry between
+/// two runs on its own, there being none where serde writes none.
 #[cfg(feature = "serde")]
-fn nested_place(wraps: &[ConstraintWrap], under: Option<&str>) -> Option<proc_macro2::TokenStream> {
-    let indexes: Vec<String> = wraps
-        .iter()
-        .enumerate()
-        .filter(|(_, wrap)| matches!(**wrap, ConstraintWrap::Sequence))
-        .map(|(at, _)| format!("{{{}}}", index_binding(at.saturating_add(1))))
-        .collect();
-    if indexes.is_empty() {
-        return under.map(|key| quote! { #key });
+fn named_at(place: &[PlaceStep]) -> Option<proc_macro2::TokenStream> {
+    let mut keys = place.iter().rev().filter_map(|step| match step {
+        PlaceStep::Key(depth) => Some(key_binding(*depth)),
+        PlaceStep::Index(_) | PlaceStep::Written(_) => None,
+    });
+    let mut named: Option<proc_macro2::TokenStream> = None;
+    let runs = place.rsplit(|step| matches!(step, PlaceStep::Key(_)));
+    for (at, run) in runs.enumerate() {
+        if at > 0 {
+            let key = keys.next()?;
+            let reported = reported_so_far(named.as_ref());
+            named = Some(quote! { keyed_under(#key.as_deref(), #reported) });
+        }
+        if let Some(under) = nested_place(run) {
+            let reported = reported_so_far(named.as_ref());
+            named = Some(quote! { nested_under(#under, #reported) });
+        }
     }
-    // The key is text inside a format string, where a brace opens an argument.
-    let key = under.map(|key| key.replace('{', "{{").replace('}', "}}"));
-    let template = key.into_iter().chain(indexes).collect::<Vec<_>>().join(".");
-    Some(quote! { &format!(#template) })
+    named
+}
+
+/// The violation a name is written into next: the one reported, or what `named` made of it.
+#[cfg(feature = "serde")]
+fn reported_so_far(named: Option<&proc_macro2::TokenStream>) -> proc_macro2::TokenStream {
+    named.map_or_else(|| quote! { violation }, |written| quote! { &#written })
+}
+
+/// A run of keys, positions and indexes as the `&str` a report is written under, joined by dots, or
+/// `None` for an empty run.
+#[cfg(feature = "serde")]
+fn nested_place(run: &[PlaceStep]) -> Option<proc_macro2::TokenStream> {
+    let bound = run.iter().any(|step| matches!(step, PlaceStep::Index(_)));
+    let steps: Vec<String> = run
+        .iter()
+        .filter_map(|step| match step {
+            PlaceStep::Index(depth) => Some(format!("{{{}}}", index_binding(*depth))),
+            PlaceStep::Key(_) => None,
+            // A key is text inside a format string, where a brace opens an argument.
+            PlaceStep::Written(key) if bound => Some(key.replace('{', "{{").replace('}', "}}")),
+            PlaceStep::Written(key) => Some(key.clone()),
+        })
+        .collect();
+    if steps.is_empty() {
+        return None;
+    }
+    let template = steps.join(".");
+    Some(if bound {
+        quote! { &format!(#template) }
+    } else {
+        quote! { #template }
+    })
+}
+
+/// `violation` under the key of a map's entry, or as it is where serde writes no text for the key.
+#[cfg(feature = "serde")]
+fn keyed_under_fn() -> proc_macro2::TokenStream {
+    quote! {
+        fn keyed_under(key: ::core::option::Option<&str>, violation: &str) -> ::std::string::String {
+            match key {
+                ::core::option::Option::Some(written) => nested_under(written, violation),
+                ::core::option::Option::None => violation.to_owned(),
+            }
+        }
+    }
 }
 
 /// The one spelling rule for writing a holding field's name into a report the value's own type
@@ -13466,7 +13693,9 @@ fn list_deserializer(
     let mut held_to: Vec<proc_macro2::TokenStream> = Vec::new();
     for (depth, wrap) in wraps.iter().enumerate().rev() {
         match *wrap {
-            ConstraintWrap::Borrowed | ConstraintWrap::Sequence => return quote! {},
+            ConstraintWrap::Borrowed | ConstraintWrap::Map | ConstraintWrap::Sequence => {
+                return quote! {};
+            }
             ConstraintWrap::Optional => read = quote! { ::core::option::Option<#read> },
             ConstraintWrap::Transparent => {
                 let holder =
@@ -13615,6 +13844,104 @@ fn nested_shape(ty: &syn::Type) -> Option<Vec<ConstraintWrap>> {
             return None;
         }
     }
+}
+
+/// Reads a member's type down to every value whose own type would publish the validator, against
+/// what `def` says the type holds: through each level of a list, to a map's values and to each
+/// position of a tuple. `None` where it holds no declared type.
+#[cfg(feature = "serde")]
+fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
+    let mut wraps = Vec::new();
+    let mut current = ty;
+    let mut held = def;
+    loop {
+        current = written_type(current);
+        if let syn::Type::Array(array) = current {
+            wraps.push(ConstraintWrap::Sequence);
+            current = &array.elem;
+        } else if let syn::Type::Slice(slice) = current {
+            wraps.push(ConstraintWrap::Sequence);
+            current = &slice.elem;
+        } else if let syn::Type::Tuple(tuple) = current {
+            let FieldDefType::Tuple(of_positions) = &held.field_type else {
+                return None;
+            };
+            let positions: Vec<(usize, HeldShape)> = tuple
+                .elems
+                .iter()
+                .zip(of_positions)
+                .enumerate()
+                .filter_map(|(at, (position, of_position))| {
+                    Some((at, held_shape(position, of_position)?))
+                })
+                .collect();
+            return (!positions.is_empty()).then_some(HeldShape {
+                end: HeldEnd::Positions(positions),
+                wraps,
+            });
+        } else if let syn::Type::Path(path) = current {
+            let segment = path.path.segments.last()?;
+            let ident = segment.ident.to_string();
+            let declared = matches!(held.field_type, FieldDefType::SiblingType(_, _));
+            if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+                if is_map_wrapper(&ident) {
+                    let FieldDefType::Map(_, of_values) = &held.field_type else {
+                        return None;
+                    };
+                    wraps.push(ConstraintWrap::Map);
+                    current = map_value_argument(args)?;
+                    held = of_values;
+                    continue;
+                }
+                let Some(wrap) = generic_wrap(&ident) else {
+                    return (declared && !reads_through(&ident)).then_some(HeldShape {
+                        end: HeldEnd::Declared,
+                        wraps,
+                    });
+                };
+                wraps.push(wrap);
+                current = sole_type_argument(args)?;
+                held = list_item_def(held, &ident);
+            } else if matches!(segment.arguments, syn::PathArguments::None) {
+                return declared.then_some(HeldShape {
+                    end: HeldEnd::Declared,
+                    wraps,
+                });
+            } else {
+                return None;
+            }
+        } else {
+            return None;
+        }
+    }
+}
+
+/// What `def` says a list written `wrapper` holds. A list other than a `Vec` is described as a type
+/// of its own over its items, and every other wrapper as what it holds.
+#[cfg(feature = "serde")]
+fn list_item_def<'def>(def: &'def FieldDef, wrapper: &str) -> &'def FieldDef {
+    if let FieldDefType::SiblingType(named, arguments) = &def.field_type
+        && named == wrapper
+    {
+        arguments.first().unwrap_or(def)
+    } else {
+        def
+    }
+}
+
+/// The type of a map's values, its second type argument.
+#[cfg(feature = "serde")]
+fn map_value_argument(args: &syn::AngleBracketedGenericArguments) -> Option<&syn::Type> {
+    args.args
+        .iter()
+        .filter_map(|arg| {
+            if let syn::GenericArgument::Type(ty) = arg {
+                Some(ty)
+            } else {
+                None
+            }
+        })
+        .nth(1)
 }
 
 /// Whether a generic name stands for a std container the crate describes by what it holds, rather
@@ -14694,8 +15021,7 @@ fn process_field(
         validate_body,
         field,
         &field_def,
-        ctx.variant_ident.is_some(),
-        &final_name,
+        &member_place(field, index, ctx.variant_ident.is_some(), true, &final_name),
     );
     #[cfg(not(feature = "serde"))]
     let declared = validate_body;
@@ -14724,12 +15050,12 @@ fn process_field(
     (field_def, validation_fn, body, guard_errors)
 }
 
-/// The wrapper chain a field's own type is reached through, and `None` where nothing below the
-/// field could publish a validator to run at all.
+/// The wrapper chain a field's own type is reached through, where the field is a reference to a
+/// declared type under an `Option`, a list and the transparent wrappers, and `None` for any other.
 ///
-/// Which types could is the crate's own answer rather than a second list: every leaf a surface
+/// Which types are is the crate's own answer rather than a second list: every leaf a surface
 /// renders itself — a primitive, a date, an `ObjectId`, a map, a tuple, one of the item's own
-/// parameters — is not a reference to a declared type and publishes nothing.
+/// parameters — is no reference to a declared type.
 #[cfg(feature = "serde")]
 fn reachable_nested_shape(field: &Field, field_def: &FieldDef) -> Option<Vec<ConstraintWrap>> {
     matches!(field_def.field_type, FieldDefType::SiblingType(_, _))
@@ -14737,27 +15063,41 @@ fn reachable_nested_shape(field: &Field, field_def: &FieldDef) -> Option<Vec<Con
         .flatten()
 }
 
-/// The `validate()` contribution for a named field whose *own type* carries the bound — a
-/// constrained brand, or a nested `#[model_schema()]` type — or `None` where there is nothing below
-/// it to run. `under` is the key serde writes the field under, and `None` for a flattened field,
-/// which writes none. A positional slot has no ident to reach it by, and is answered by
-/// [`positional_member_validate_body`] instead.
+/// [`held_shape`] of a named member, of a flattened one and of an untagged variant's slot. A set, a
+/// deque and a heap are described as a declared type is, so such a member was walked to whatever
+/// it holds before a map and a tuple were read, and still is.
+#[cfg(feature = "serde")]
+fn member_held_shape(field: &Field, field_def: &FieldDef) -> Option<HeldShape> {
+    held_shape(&field.ty, field_def).or_else(|| {
+        reachable_nested_shape(field, field_def).map(|wraps| HeldShape {
+            end: HeldEnd::Declared,
+            wraps,
+        })
+    })
+}
+
+/// The `validate()` contribution of what a member's *own type* declares — a constrained brand, or
+/// a nested `#[model_schema()]` type, held itself, in a list, as a map's value or in a tuple — or
+/// `None` where there is nothing below it to run. `place` is where the member is read and the name
+/// it is reported under, which is none for a flattened member and for an untagged variant's slot.
 #[cfg(feature = "serde")]
 fn nested_validate_body(
     field: &Field,
     field_def: &FieldDef,
-    in_variant: bool,
-    under: Option<&str>,
+    place: &MemberPlace,
 ) -> Option<proc_macro2::TokenStream> {
-    let field_ident_tok = field.ident.as_ref()?;
-    let wraps = reachable_nested_shape(field, field_def)?;
-    let access = if in_variant {
-        MemberAccess::VariantBinding
-    } else {
-        MemberAccess::SelfField
-    };
-    let checked = member_access_expr(access, field_ident_tok);
-    Some(build_nested_validation(&wraps, &checked, under))
+    member_held_shape(field, field_def).map(|shape| build_nested_validation(&shape, place))
+}
+
+/// [`nested_validate_body`] for a slot of a tuple struct and of a tagged variant, read by what its
+/// def holds alone.
+#[cfg(feature = "serde")]
+fn slot_nested_validate_body(
+    field: &Field,
+    field_def: &FieldDef,
+    place: &MemberPlace,
+) -> Option<proc_macro2::TokenStream> {
+    held_shape(&field.ty, field_def).map(|shape| build_nested_validation(&shape, place))
 }
 
 /// The read-time hook for a named field whose *own type* carries the bound — a constrained brand,
@@ -14886,36 +15226,26 @@ fn names_what_the_module_cannot_repeat(ty: &syn::Type, type_parameters: &[String
         .any(|word| word == "Self" || type_parameters.iter().any(|named| named == word))
 }
 
-/// What the type of an untagged newtype variant's lone slot contributes to `validate()`, read off
-/// the binding the arm that matched it introduced.
-#[cfg(feature = "serde")]
-fn positional_member_validate_body(
-    field: &Field,
-    field_def: &FieldDef,
-    binding: &proc_macro2::Ident,
-) -> Option<proc_macro2::TokenStream> {
-    let wraps = reachable_nested_shape(field, field_def)?;
-    Some(build_nested_validation(&wraps, &quote! { #binding }, None))
-}
-
 /// What a member contributes to `validate()`: its own check, or the one its type declares where
 /// it writes none. A list runs both: its own check counts it, and its items' type holds each item.
-/// `wire_name` is the key serde writes the member under.
+/// `place` is where the member is read and the name it is reported under: the key serde writes a
+/// named member under, and a slot's position.
 #[cfg(feature = "serde")]
 fn named_member_validate_body(
     own: Option<proc_macro2::TokenStream>,
     field: &Field,
     field_def: &FieldDef,
-    in_variant: bool,
-    wire_name: &str,
+    place: &MemberPlace,
 ) -> Option<proc_macro2::TokenStream> {
     if own.is_some() && !field_def.is_list() {
         return own;
     }
-    slot_validate_body(
-        own,
-        nested_validate_body(field, field_def, in_variant, Some(wire_name)),
-    )
+    let below = if field.ident.is_some() {
+        nested_validate_body(field, field_def, place)
+    } else {
+        slot_nested_validate_body(field, field_def, place)
+    };
+    slot_validate_body(own, below)
 }
 
 /// What a member adds to `validate()`: what its bounds and its type declare, then the checks it
@@ -14958,7 +15288,7 @@ fn flattened_member_walk(
     checks: &mut Vec<proc_macro2::TokenStream>,
 ) {
     #[cfg(feature = "serde")]
-    let declared = nested_validate_body(field, field_def, true, None);
+    let declared = nested_validate_body(field, field_def, &flattened_place(field, index, true));
     #[cfg(not(feature = "serde"))]
     let declared: Option<proc_macro2::TokenStream> = None;
     let named = flattened_member_checks(field, field_def, index, true);
@@ -14977,11 +15307,20 @@ fn flattened_member_checks(
     in_variant: bool,
 ) -> Option<proc_macro2::TokenStream> {
     let named = &field_def.model_schema_prop_meta.as_ref()?.check;
-    let place = MemberPlace {
+    checks::member_calls(
+        &flattened_place(field, index, in_variant),
+        &field.ty,
+        named,
+        VALIDATE_SINK,
+    )
+}
+
+/// Where a flattened member is read, under no name: the member writes no key of its own.
+fn flattened_place(field: &Field, index: usize, in_variant: bool) -> MemberPlace {
+    MemberPlace {
         reported: None,
         ..member_place(field, index, in_variant, false, "")
-    };
-    checks::member_calls(&place, &field.ty, named, VALIDATE_SINK)
+    }
 }
 
 /// What the checks a member of an untagged variant names add to `validate()`. The variant's lone

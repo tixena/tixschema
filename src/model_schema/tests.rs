@@ -3158,8 +3158,16 @@ fn a_field_whose_type_could_publish_a_validator_contributes_a_body_that_runs_it(
 fn a_nested_report_is_placed_under_its_key_and_the_index_of_each_list_level() {
     let place = |spelling: &str, under: Option<&str>| {
         let ty: syn::Type = syn::parse_str(spelling).unwrap();
-        super::nested_place(&super::nested_shape(&ty).unwrap(), under)
-            .map(|written| written.to_string())
+        let held: Vec<super::PlaceStep> = under
+            .map(|key| super::PlaceStep::Written(key.to_owned()))
+            .into_iter()
+            .collect();
+        super::nested_place(&super::held_at(
+            &held,
+            &super::nested_shape(&ty).unwrap(),
+            1,
+        ))
+        .map(|written| written.to_string())
     };
     assert_eq!(place("Slug", None), None);
     assert_eq!(place("Option<Slug>", Some("slug")).unwrap(), r#""slug""#);
@@ -3202,6 +3210,255 @@ fn a_nested_report_is_placed_under_its_key_and_the_index_of_each_list_level() {
     ] {
         assert!(body.contains(written), "{written} is not in {body}");
     }
+}
+
+/// What the fields of `item` add to `validate()`, under camel case, as one text.
+#[cfg(feature = "serde")]
+fn walked_bodies(item: &mut syn::ItemStruct) -> String {
+    let generics = item.generics.clone();
+    super::collect_struct_fields(
+        &mut item.fields,
+        Some("camelCase"),
+        Some("terminal_schema"),
+        "Terminal",
+        &generics,
+        false,
+        false,
+    )
+    .3
+    .iter()
+    .map(ToString::to_string)
+    .collect()
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_map_of_declared_types_is_walked_entry_by_entry_under_the_key_serde_writes() {
+    let mut item: syn::ItemStruct = syn::parse_quote! {
+        struct Terminal {
+            parcels_by_dock: BTreeMap<String, Parcel>,
+            docks_in_order: Vec<Option<HashMap<Dock, Vec<Parcel>>>>,
+        }
+    };
+    let body = walked_bodies(&mut item);
+    for written in [
+        "impl < K : ? :: core :: marker :: Sized + serde :: Serialize > :: core :: fmt :: Display \
+         for MapKey < '_ , K >",
+        "serde :: Serialize :: serialize (self . 0 , formatter)",
+        "for (entry_1 , value_1) in value_0 { if let",
+        "let key_1 = MapKey (entry_1) . written_key () ; errors . extend",
+        r#"nested_under ("parcelsByDock" , & keyed_under (key_1 . as_deref () , violation))"#,
+        "for (entry_3 , value_3) in value_2 { for",
+        "let key_3 = MapKey (entry_3) . written_key () ; errors . extend",
+        r#"nested_under (& format ! ("docksInOrder.{index_1}") , & keyed_under (key_3 . as_deref () , & nested_under (& format ! ("{index_4}") , violation)))"#,
+    ] {
+        assert!(body.contains(written), "{written} is not in {body}");
+    }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_tuple_written_as_a_fields_type_is_walked_position_by_position() {
+    let mut item: syn::ItemStruct = syn::parse_quote! {
+        struct Terminal {
+            deck_pairs: Vec<(String, Parcel, Option<Parcel>)>,
+        }
+    };
+    let body = walked_bodies(&mut item);
+    for written in [
+        "for (index_1 , value_1) in value_0 . into_iter () . enumerate ()",
+        "let value_2 = & value_1 . 1 ;",
+        r#"nested_under (& format ! ("deckPairs.{index_1}.1") , violation)"#,
+        "let value_2 = & value_1 . 2 ;",
+        "if let :: core :: option :: Option :: Some (value_3) = value_2",
+        r#"nested_under (& format ! ("deckPairs.{index_1}.2") , violation)"#,
+    ] {
+        assert!(body.contains(written), "{written} is not in {body}");
+    }
+    assert!(
+        !body.contains("value_1 . 0"),
+        "a position that holds no declared type is not read: {body}"
+    );
+}
+
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn a_slot_of_a_tuple_struct_is_walked_and_reported_under_its_position() {
+    let mut item: syn::ItemStruct = syn::parse_quote! {
+        struct Consignment(String, Parcel, Vec<Parcel>);
+    };
+    let body: String = super::collect_tuple_slots(
+        &mut item.fields,
+        None,
+        "consignment_schema",
+        "Consignment",
+        &syn::Generics::default(),
+        false,
+        false,
+    )
+    .validate_bodies
+    .iter()
+    .map(ToString::to_string)
+    .collect();
+    for written in [
+        "let value_0 = & self . 1 ;",
+        r#"nested_under ("1" , violation)"#,
+        "let value_0 = & self . 2 ;",
+        r#"nested_under (& format ! ("2.{index_1}") , violation)"#,
+    ] {
+        assert!(body.contains(written), "{written} is not in {body}");
+    }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_slot_of_a_tagged_variant_is_walked_and_reported_under_its_position() {
+    let mut item: syn::ItemEnum = syn::parse_quote! {
+        enum Freight {
+            Boxed(Parcel),
+            Split(String, Parcel),
+        }
+    };
+    let arms: String = collect_discriminated_variants(
+        &mut item,
+        UNCASED,
+        Some("freight_schema"),
+        &super::ModelSchemaArgs::default(),
+    )
+    .3
+    .iter()
+    .map(ToString::to_string)
+    .collect();
+    for written in [
+        "Self :: Boxed (member_slot_0)",
+        "let value_0 = member_slot_0 ;",
+        r#"nested_under ("0" , violation)"#,
+        "Self :: Split (_ , member_slot_1)",
+        "let value_0 = member_slot_1 ;",
+        r#"nested_under ("1" , violation)"#,
+    ] {
+        assert!(arms.contains(written), "{written} is not in {arms}");
+    }
+}
+
+/// A map, a tuple and a slot that hold no declared type are not walked, a type parameter and a
+/// set of strings among what they hold.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn a_map_a_tuple_and_a_slot_that_hold_no_declared_type_add_nothing_to_validate() {
+    let mut fields: syn::ItemStruct = syn::parse_quote! {
+        struct Terminal<Held> {
+            counts: BTreeMap<String, u32>,
+            held_by_dock: BTreeMap<String, Held>,
+            held_pair: (u32, Held),
+            labels: HashMap<String, Vec<String>>,
+            nested: Option<BTreeMap<String, (bool, char)>>,
+            pair: (String, u32),
+            sets_by_dock: BTreeMap<String, HashSet<String>>,
+        }
+    };
+    assert_eq!(walked_bodies(&mut fields), "");
+
+    let mut slots: syn::ItemStruct = syn::parse_quote! {
+        struct Docket<Held>(String, u32, BTreeMap<String, u32>, (bool, Held), HashSet<String>, Held);
+    };
+    let generics = slots.generics.clone();
+    let walked = super::collect_tuple_slots(
+        &mut slots.fields,
+        None,
+        "docket_schema",
+        "Docket",
+        &generics,
+        false,
+        false,
+    );
+    assert_eq!(
+        walked
+            .validate_bodies
+            .iter()
+            .map(ToString::to_string)
+            .collect::<String>(),
+        ""
+    );
+
+    let mut variants: syn::ItemEnum = syn::parse_quote! {
+        enum Seal {
+            Mapped(BTreeMap<String, u32>),
+            Paired(String, (u32, bool)),
+            Listed(HashSet<String>),
+        }
+    };
+    let arms = collect_discriminated_variants(
+        &mut variants,
+        UNCASED,
+        Some("seal_schema"),
+        &super::ModelSchemaArgs::default(),
+    )
+    .3;
+    assert!(
+        arms.is_empty(),
+        "got: {:?}",
+        arms.iter().map(ToString::to_string).collect::<Vec<_>>()
+    );
+}
+
+/// A set is described as a declared type is, so a field written as one was walked to whatever it
+/// holds before a map and a tuple were read, and still is.
+#[cfg(feature = "serde")]
+#[test]
+fn a_field_written_as_a_set_is_walked_as_it_was() {
+    let mut item: syn::ItemStruct = syn::parse_quote! {
+        struct Terminal {
+            dock_names: HashSet<String>,
+        }
+    };
+    let body = walked_bodies(&mut item);
+    for written in [
+        "for (index_1 , value_1) in value_0 . into_iter () . enumerate ()",
+        "value_1 . validate ()",
+        r#"nested_under (& format ! ("dockNames.{index_1}") , violation)"#,
+    ] {
+        assert!(body.contains(written), "{written} is not in {body}");
+    }
+}
+
+/// The reader hung on a field that holds a declared type is hung on no map and no tuple.
+#[cfg(feature = "serde")]
+#[test]
+fn a_map_and_a_tuple_of_declared_types_are_hung_with_no_reader() {
+    let mut item: syn::ItemStruct = syn::parse_quote! {
+        #[derive(serde::Deserialize)]
+        struct Terminal {
+            deck_pair: (String, Parcel),
+            parcels_by_dock: BTreeMap<String, Parcel>,
+        }
+    };
+    let collected = super::collect_struct_fields(
+        &mut item.fields,
+        Some("camelCase"),
+        Some("terminal_schema"),
+        "Terminal",
+        &syn::Generics::default(),
+        false,
+        true,
+    );
+    assert!(collected.4.is_empty(), "got: {:?}", collected.4);
+    assert_eq!(walked_field_attrs(item.fields.iter()), "");
+    assert!(
+        collected.2.is_empty(),
+        "got: {:?}",
+        collected
+            .2
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+    );
 }
 
 #[cfg(feature = "serde")]
