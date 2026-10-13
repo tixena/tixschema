@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 
 use tixschema::model_schema;
 
+use super::read::{kept, serializers};
+
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WindowRequest {
@@ -459,7 +461,7 @@ fn test_unit_struct_is_an_object() {
     assert_eq!(ping, ping.clone());
     let kotlin = ping_kotlin::kotlin_definition();
     assert!(
-        kotlin.contains("@Serializable object Ping"),
+        kotlin.contains("@KeepGeneratedSerializer object Ping {"),
         "got: {kotlin}"
     );
     assert!(!kotlin.contains("class Ping"), "got: {kotlin}");
@@ -515,11 +517,13 @@ fn test_plain_enum() {
 fn test_internal_tagged_enum() {
     let kotlin = window_error_kotlin::kotlin_definition();
     assert!(
-        kotlin.contains("@JsonClassDiscriminator(\"kind\")"),
+        kotlin.contains("val tag = (obj[\"kind\"] as? JsonPrimitive)?.content"),
         "got: {kotlin}"
     );
     assert!(
-        kotlin.contains("sealed interface WindowError"),
+        kotlin.contains(
+            "@Serializable(with = WindowErrorSerializer::class) sealed interface WindowError"
+        ),
         "got: {kotlin}"
     );
     assert!(
@@ -673,7 +677,10 @@ fn test_object_id_bare() {
 fn test_branded_newtype() {
     let kotlin = correlation_id_kotlin::kotlin_definition();
     assert!(
-        kotlin.contains("@JvmInline @Serializable value class CorrelationId(val value: String)"),
+        kotlin.contains(
+            "@JvmInline @Serializable(with = CorrelationIdSerializer::class) \
+             @KeepGeneratedSerializer value class CorrelationId(val value: String)"
+        ),
         "got: {kotlin}"
     );
 }
@@ -717,7 +724,7 @@ fn test_generic_enum_unit_variant() {
     );
     assert!(
         kotlin.contains(
-            "class ChoiceSerializer<T: Any>(private val tSerializer: KSerializer<T>) : KSerializer<Choice<T>>"
+            "class ChoiceUnjudged<T: Any>(private val tSerializer: KSerializer<T>) : KSerializer<Choice<T>>"
         ),
         "the generated serializer is a class over one constructor serializer per type parameter, \
          not the `object` a non-generic item keeps. got: {kotlin}"
@@ -782,7 +789,7 @@ fn test_generic_dispatched_enum_serializer_class() {
     );
     assert!(
         kotlin.contains(
-            "class ChoiceSerializer<T: Any>(private val tSerializer: KSerializer<T>) : KSerializer<Choice<T>>"
+            "class ChoiceUnjudged<T: Any>(private val tSerializer: KSerializer<T>) : KSerializer<Choice<T>>"
         ),
         "a generic item's serializer is a class over one constructor serializer per parameter, \
          not the singleton `object` a non-generic item keeps. got: {kotlin}"
@@ -806,7 +813,7 @@ fn test_generic_adjacent_tagged_enum() {
     let kotlin = adjacent_choice_kotlin::kotlin_definition();
     assert!(
         kotlin.contains(
-            "class AdjacentChoiceSerializer<T: Any>(private val tSerializer: KSerializer<T>) : KSerializer<AdjacentChoice<T>>"
+            "class AdjacentChoiceUnjudged<T: Any>(private val tSerializer: KSerializer<T>) : KSerializer<AdjacentChoice<T>>"
         ),
         "got: {kotlin}"
     );
@@ -830,7 +837,7 @@ fn test_generic_untagged_enum() {
     );
     assert!(
         kotlin.contains(
-            "class UntaggedChoiceSerializer<T: Any>(private val tSerializer: KSerializer<T>) : KSerializer<UntaggedChoice<T>>"
+            "class UntaggedChoiceUnjudged<T: Any>(private val tSerializer: KSerializer<T>) : KSerializer<UntaggedChoice<T>>"
         ),
         "got: {kotlin}"
     );
@@ -854,7 +861,7 @@ fn test_generic_enum_two_type_parameters() {
     let kotlin = either_kotlin::kotlin_definition();
     assert!(
         kotlin.contains(
-            "class EitherSerializer<L: Any, R: Any>(private val lSerializer: KSerializer<L>, private val rSerializer: KSerializer<R>) : KSerializer<Either<L, R>>"
+            "class EitherUnjudged<L: Any, R: Any>(private val lSerializer: KSerializer<L>, private val rSerializer: KSerializer<R>) : KSerializer<Either<L, R>>"
         ),
         "one constructor serializer per type parameter. got: {kotlin}"
     );
@@ -897,7 +904,7 @@ fn test_generic_tuple_struct_serializer_class() {
     );
     assert!(
         kotlin.contains(
-            "class GenericPairSerializer<T: Any>(private val tSerializer: KSerializer<T>) : KSerializer<GenericPair<T>>"
+            "class GenericPairUnjudged<T: Any>(private val tSerializer: KSerializer<T>) : KSerializer<GenericPair<T>>"
         ),
         "the tuple-struct path earns the same generic serializer class as the enum shapes. got: {kotlin}"
     );
@@ -921,7 +928,7 @@ fn test_generic_flatten_own_field() {
     );
     assert!(
         kotlin.contains(
-            "class TaggedSerializer<T: Any>(private val tSerializer: KSerializer<T>) : KSerializer<Tagged<T>>"
+            "class TaggedUnjudged<T: Any>(private val tSerializer: KSerializer<T>) : KSerializer<Tagged<T>>"
         ),
         "the flatten-merging serializer earns the same generic class as the other hand-rolled \
          serializers, not the `object` a non-generic flatten struct keeps. got: {kotlin}"
@@ -937,8 +944,8 @@ fn test_generic_flatten_own_field() {
         "got: {kotlin}"
     );
     assert!(
-        kotlin.contains("output.json.encodeToJsonElement(serializer<Stamp>(), value.stamp)"),
-        "the flattened non-generic sibling still resolves through the reified lookup. got: {kotlin}"
+        kotlin.contains("output.json.encodeToJsonElement(StampUnjudged, value.stamp)"),
+        "the flattened non-generic sibling is read and written by its unjudged serializer. got: {kotlin}"
     );
 }
 
@@ -952,26 +959,26 @@ fn test_generic_flatten_generic_sibling() {
     );
     assert!(
         kotlin.contains(
-            "class EnvelopeSerializer<T: Any>(private val tSerializer: KSerializer<T>) : KSerializer<Envelope<T>>"
+            "class EnvelopeUnjudged<T: Any>(private val tSerializer: KSerializer<T>) : KSerializer<Envelope<T>>"
         ),
         "got: {kotlin}"
     );
     assert!(
         kotlin.contains(
-            "output.json.encodeToJsonElement(Wrapper.serializer(tSerializer), value.body).jsonObject.forEach"
+            "output.json.encodeToJsonElement(WrapperUnjudged(tSerializer), value.body).jsonObject.forEach"
         ),
-        "a flattened generic sibling reads its keys and value through its own companion serializer, \
+        "a flattened generic sibling reads its keys and value through its unjudged serializer, \
          bound to the constructor argument. got: {kotlin}"
     );
     assert!(
         kotlin.contains(
-            "val bodyKeys = (Wrapper.serializer(tSerializer)).descriptor.elementNames.toSet()"
+            "val bodyKeys = (WrapperUnjudged(tSerializer)).descriptor.elementNames.toSet()"
         ),
         "got: {kotlin}"
     );
     assert!(
         kotlin.contains(
-            "val body = lenient.decodeFromJsonElement(Wrapper.serializer(tSerializer), obj)"
+            "val body = lenient.decodeFromJsonElement(WrapperUnjudged(tSerializer), obj)"
         ),
         "got: {kotlin}"
     );
@@ -981,8 +988,12 @@ fn test_generic_flatten_generic_sibling() {
 fn a_member_named_after_a_hard_keyword_is_written_between_backticks() {
     assert_eq!(
         reserved_members_kotlin::kotlin_definition(),
-        "@Serializable data class ReservedMembers(val `class`: String, val `in`: String, val \
-         type: String) { fun validate(): List<String> = emptyList() }"
+        format!(
+            "{} data class ReservedMembers(val `class`: String, val `in`: String, val type: \
+             String) {{ fun validate(): List<String> = emptyList() }} {}",
+            kept("ReservedMembers"),
+            serializers("ReservedMembers")
+        )
     );
     assert_eq!(
         reserved_member_kotlin::kotlin_definition(),

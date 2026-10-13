@@ -140,6 +140,12 @@ mod run_kotlin_ws_headers;
 #[path = "service_schema_emitted_client_tests/run_kotlin_validate.rs"]
 mod run_kotlin_validate;
 
+/// The read of the emitted Kotlin types, which refuses what `validate()` refuses, and the fault
+/// each client answers for such a reply.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_read.rs"]
+mod run_kotlin_read;
+
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/runtime.rs"]
 mod runtime;

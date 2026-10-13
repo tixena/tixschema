@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 #[cfg(feature = "serde")]
+use super::read::judged;
+use super::read::{judged_over, kept, kept_inline, serializers};
+#[cfg(feature = "serde")]
 use super::tests::{
     audit_kotlin, date_value_kotlin, dynamic_value_kotlin, external_tagged_kotlin,
     simple_choice_kotlin, status_kotlin, window_error_kotlin,
@@ -221,23 +224,26 @@ fn a_class_runs_each_members_rules_and_then_its_own_check() {
     assert_eq!(
         parcel_kotlin::kotlin_definition(),
         format!(
-            "@Serializable data class Parcel(val fragileItemCodes: List<String>, val \
-             itemCodeList: List<String>, val label: String) {{ fun validate(): List<String> {{ \
-             val violations = mutableListOf<String>(); \
-             violations.addAll(withoutDuplicates(itemCodeList).map {{ \
+            "{} data class Parcel(val fragileItemCodes: List<String>, val itemCodeList: \
+             List<String>, val label: String) {{ fun validate(): List<String> {{ val violations = \
+             mutableListOf<String>(); violations.addAll(withoutDuplicates(itemCodeList).map {{ \
              kotlinSchemaUnder(\"itemCodeList\", it) }}); if (label.codePointCount(0, \
              label.length) < 1) violations.add(\"'label': too short: minimum length is 1, got \
              ${{label.codePointCount(0, label.length)}}\"); \
-             violations.addAll(withinParcel(this)); return violations }}; {UNDER} }}"
+             violations.addAll(withinParcel(this)); return violations }}; {UNDER} }} {}",
+            kept("Parcel"),
+            serializers("Parcel")
         )
     );
     assert_eq!(
         manifest_kotlin::kotlin_definition(),
         format!(
-            "@Serializable data class Manifest(val parcel: Parcel) {{ fun validate(): \
-             List<String> {{ val violations = mutableListOf<String>(); \
+            "{} data class Manifest(@Serializable(with = ParcelUnjudged::class) val parcel: \
+             Parcel) {{ fun validate(): List<String> {{ val violations = mutableListOf<String>(); \
              violations.addAll(parcel.validate().map {{ kotlinSchemaUnder(\"parcel\", it) }}); \
-             return violations }}; {UNDER} }}"
+             return violations }}; {UNDER} }} {}",
+            kept("Manifest"),
+            serializers("Manifest")
         )
     );
 }
@@ -247,14 +253,20 @@ fn a_holder_of_a_type_declared_below_writes_what_a_type_with_no_validate_answers
     assert_eq!(
         shelf_kotlin::kotlin_definition(),
         format!(
-            "@Serializable data class Shelf(val later: Later) {{ fun validate(): List<String> {{ \
-             val violations = mutableListOf<String>(); violations.addAll(later.validate().map {{ \
-             kotlinSchemaUnder(\"later\", it) }}); return violations }}; {FALLBACK}; {UNDER} }}"
+            "{} data class Shelf(val later: Later) {{ fun validate(): List<String> {{ val \
+             violations = mutableListOf<String>(); violations.addAll(later.validate().map {{ \
+             kotlinSchemaUnder(\"later\", it) }}); return violations }}; {FALLBACK}; {UNDER} }} {}",
+            kept("Shelf"),
+            serializers("Shelf")
         )
     );
     assert_eq!(
         later_kotlin::kotlin_definition(),
-        format!("@Serializable data class Later(val label: String) {{ {NO_RULE} }}")
+        format!(
+            "{} data class Later(val label: String) {{ {NO_RULE} }} {}",
+            kept("Later"),
+            serializers("Later")
+        )
     );
 }
 
@@ -265,15 +277,19 @@ fn a_brand_answers_its_text() {
     assert_eq!(
         slug_kotlin::kotlin_definition(),
         format!(
-            "@JvmInline @Serializable value class Slug(val value: String) {{ fun \
-             kotlinSchemaText(): String = value; {NO_RULE} }}"
+            "{} value class Slug(val value: String) {{ fun kotlinSchemaText(): String = value; \
+             {NO_RULE} }} {}",
+            kept_inline("Slug"),
+            serializers("Slug")
         )
     );
     assert_eq!(
         badge_kotlin::kotlin_definition(),
         format!(
-            "@JvmInline @Serializable value class Badge(val value: Slug) {{ fun \
-             kotlinSchemaText(): String = value.kotlinSchemaText(); {NO_RULE}; {TEXT} }}"
+            "{} value class Badge(val value: Slug) {{ fun kotlinSchemaText(): String = \
+             value.kotlinSchemaText(); {NO_RULE}; {TEXT} }} {}",
+            kept_inline("Badge"),
+            serializers("Badge")
         )
     );
 }
@@ -285,12 +301,14 @@ fn a_bound_on_a_declared_type_measures_the_text_the_type_answers() {
     assert_eq!(
         entry_kotlin::kotlin_definition(),
         format!(
-            "@Serializable data class Entry(val late: LateSlug, val slug: Slug, val titled: \
-             TitleType) {{ fun validate(): List<String> {{ val violations = \
-             mutableListOf<String>(); {}; {}; {}; return violations }}; {TEXT} }}",
+            "{} data class Entry(val late: LateSlug, val slug: Slug, val titled: TitleType) {{ \
+             fun validate(): List<String> {{ val violations = mutableListOf<String>(); {}; {}; \
+             {}; return violations }}; {TEXT} }} {}",
+            kept("Entry"),
             asked_statement("late", "'late': ", 3),
             asked_statement("slug", "'slug': ", 3),
-            asked_statement("titled", "'titled': ", 2)
+            asked_statement("titled", "'titled': ", 2),
+            serializers("Entry")
         )
     );
 }
@@ -322,24 +340,39 @@ fn every_shape_carries_validate() {
     for (definition, written) in [
         (
             ping_kotlin::kotlin_definition(),
-            format!("@Serializable object Ping {{ {NO_RULE} }}"),
+            format!(
+                "{} object Ping {{ {NO_RULE} }} {}",
+                kept("Ping"),
+                serializers("Ping")
+            ),
         ),
         (
             correlation_id_kotlin::kotlin_definition(),
             format!(
-                "@JvmInline @Serializable value class CorrelationId(val value: String) {{ fun \
-                 kotlinSchemaText(): String = value; {NO_RULE} }}"
+                "{} value class CorrelationId(val value: String) {{ fun kotlinSchemaText(): \
+                 String = value; {NO_RULE} }} {}",
+                kept_inline("CorrelationId"),
+                serializers("CorrelationId")
             ),
         ),
         (
             wrapper_kotlin::kotlin_definition(),
-            format!("@Serializable data class Wrapper<T>(val value: T) {{ {NO_RULE} }}"),
+            format!(
+                "{} data class Wrapper<T>(val value: T) {{ {NO_RULE} }} \
+                 @OptIn(ExperimentalSerializationApi::class) class WrapperUnjudged<T>(tSerializer: \
+                 KSerializer<T>) : KSerializer<Wrapper<T>> by \
+                 Wrapper.generatedSerializer(tSerializer) {}",
+                kept("Wrapper"),
+                judged_over("Wrapper", "T", "", "tSerializer")
+            ),
         ),
         (
             widget_kotlin::kotlin_definition(),
             format!(
-                "@Serializable data class RenamedWidget(val label: String) {{ {NO_RULE} }} \
-                 typealias Widget = RenamedWidget;"
+                "{} data class RenamedWidget(val label: String) {{ {NO_RULE} }} {} typealias \
+                 Widget = RenamedWidget;",
+                kept("RenamedWidget"),
+                serializers("RenamedWidget")
             ),
         ),
     ] {
@@ -349,14 +382,20 @@ fn every_shape_carries_validate() {
     assert!(
         pair.contains(&format!(
             "data class GenericPair<T>(val slot0: T, val slot1: UInt) {{ {NO_RULE} }} class \
-             GenericPairSerializer<T: Any>("
+             GenericPairUnjudged<T: Any>("
         )),
+        "got: {pair}"
+    );
+    assert!(
+        pair.ends_with(&judged_over("GenericPair", "T", ": Any", "tSerializer")),
         "got: {pair}"
     );
     let holder = holds_tuple_kotlin::kotlin_definition();
     assert!(
-        holder.contains("@Serializable data class HoldsTuple(val coords: KotlinTuple")
-            && holder.ends_with(&format!(") {{ {NO_RULE} }}")),
+        holder.contains(&format!(
+            "{} data class HoldsTuple(val coords: KotlinTuple",
+            kept("HoldsTuple")
+        )) && holder.ends_with(&format!(") {{ {NO_RULE} }} {}", serializers("HoldsTuple"))),
         "got: {holder}"
     );
 }
@@ -438,36 +477,37 @@ fn a_flattened_member_is_reported_under_no_name() {
         audit.contains(
             "data class Audit(val id: String, val stamp: Stamp) { fun validate(): List<String> { \
              val violations = mutableListOf<String>(); violations.addAll(stamp.validate()); \
-             return violations } } object AuditSerializer"
+             return violations } } object AuditUnjudged"
         ),
         "got: {audit}"
     );
 }
 
-/// The serializer each of these shapes carries, as it was written before the type had a body.
+/// The serializer the emitter writes for each of these shapes is its unjudged one, a model it
+/// holds read unjudged, and the type's own serializer follows it.
 #[cfg(feature = "serde")]
 #[test]
-fn the_serializer_of_each_shape_is_the_text_it_was() {
-    for (definition, serializer) in [
+fn the_serializer_the_emitter_writes_for_each_shape_is_its_unjudged_one() {
+    for (definition, unjudged, own) in [
         (
             audit_kotlin::kotlin_definition(),
-            "object AuditSerializer : KSerializer<Audit> { override val descriptor: \
+            "object AuditUnjudged : KSerializer<Audit> { override val descriptor: \
              SerialDescriptor = buildClassSerialDescriptor(\"Audit\"); private val lenient = Json \
              { ignoreUnknownKeys = true }; override fun serialize(encoder: Encoder, value: Audit) \
              { val output = encoder as JsonEncoder; output.encodeJsonElement(buildJsonObject { \
              put(\"id\", output.json.encodeToJsonElement(serializer<String>(), value.id)); \
-             output.json.encodeToJsonElement(serializer<Stamp>(), \
-             value.stamp).jsonObject.forEach { (k, v) -> put(k, v) } }) }; override fun \
-             deserialize(decoder: Decoder): Audit { val input = decoder as JsonDecoder; val obj = \
-             input.decodeJsonElement().jsonObject; val id = \
-             input.json.decodeFromJsonElement(serializer<String>(), obj.getValue(\"id\")); val \
-             stampKeys = (serializer<Stamp>()).descriptor.elementNames.toSet(); val stamp = \
-             lenient.decodeFromJsonElement(serializer<Stamp>(), obj); return Audit(id = id, \
-             stamp = stamp) } }",
+             output.json.encodeToJsonElement(StampUnjudged, value.stamp).jsonObject.forEach { (k, \
+             v) -> put(k, v) } }) }; override fun deserialize(decoder: Decoder): Audit { val \
+             input = decoder as JsonDecoder; val obj = input.decodeJsonElement().jsonObject; val \
+             id = input.json.decodeFromJsonElement(serializer<String>(), obj.getValue(\"id\")); \
+             val stampKeys = (StampUnjudged).descriptor.elementNames.toSet(); val stamp = \
+             lenient.decodeFromJsonElement(StampUnjudged, obj); return Audit(id = id, stamp = \
+             stamp) } }",
+            judged("Audit"),
         ),
         (
             generic_pair_kotlin::kotlin_definition(),
-            "class GenericPairSerializer<T: Any>(private val tSerializer: KSerializer<T>) : \
+            "class GenericPairUnjudged<T: Any>(private val tSerializer: KSerializer<T>) : \
              KSerializer<GenericPair<T>> { override val descriptor: SerialDescriptor = \
              buildClassSerialDescriptor(\"GenericPair\"); override fun serialize(encoder: \
              Encoder, value: GenericPair<T>) { val output = encoder as JsonEncoder; \
@@ -478,10 +518,11 @@ fn the_serializer_of_each_shape_is_the_text_it_was() {
              JsonDecoder; val array = input.decodeJsonElement().jsonArray; return \
              GenericPair(input.json.decodeFromJsonElement(tSerializer, array[0]), \
              input.json.decodeFromJsonElement(serializer<UInt>(), array[1])) } }",
+            judged_over("GenericPair", "T", ": Any", "tSerializer"),
         ),
         (
             simple_choice_kotlin::kotlin_definition(),
-            "object SimpleChoiceSerializer : KSerializer<SimpleChoice> { override val \
+            "object SimpleChoiceUnjudged : KSerializer<SimpleChoice> { override val \
              descriptor: SerialDescriptor = buildClassSerialDescriptor(\"SimpleChoice\"); \
              override fun serialize(encoder: Encoder, value: SimpleChoice) { val output = encoder \
              as JsonEncoder; output.encodeJsonElement(when (value) { is SimpleChoiceNone -> \
@@ -494,10 +535,11 @@ fn the_serializer_of_each_shape_is_the_text_it_was() {
              \"None\" -> SimpleChoiceNone; \"Value\" -> \
              SimpleChoiceValue(input.json.decodeFromJsonElement(serializer<String>(), data)) else \
              -> error(\"unknown tag \" + tag) } } }",
+            judged("SimpleChoice"),
         ),
         (
             dynamic_value_kotlin::kotlin_definition(),
-            "object DynamicValueSerializer : KSerializer<DynamicValue> { override val \
+            "object DynamicValueUnjudged : KSerializer<DynamicValue> { override val \
              descriptor: SerialDescriptor = buildClassSerialDescriptor(\"DynamicValue\"); \
              override fun serialize(encoder: Encoder, value: DynamicValue) { val output = encoder \
              as JsonEncoder; output.encodeJsonElement(when (value) { is DynamicValueFlag -> \
@@ -514,10 +556,11 @@ fn the_serializer_of_each_shape_is_the_text_it_was() {
              \"Nothing\" -> DynamicValueNothing; \"Number\" -> \
              DynamicValueNumber(input.json.decodeFromJsonElement(serializer<Long>(), data!!)) \
              else -> error(\"unknown tag \" + tag) } } }",
+            judged("DynamicValue"),
         ),
         (
             date_value_kotlin::kotlin_definition(),
-            "object DateValueSerializer : KSerializer<DateValue> { override val descriptor: \
+            "object DateValueUnjudged : KSerializer<DateValue> { override val descriptor: \
              SerialDescriptor = buildClassSerialDescriptor(\"DateValue\"); override fun \
              serialize(encoder: Encoder, value: DateValue) { val output = encoder as JsonEncoder; \
              output.encodeJsonElement(when (value) { is DateValueEpoch -> \
@@ -529,11 +572,12 @@ fn the_serializer_of_each_shape_is_the_text_it_was() {
              input.json.decodeFromJsonElement(serializer<DateValueEpoch>(), element) as DateValue \
              }.recoverCatching { input.json.decodeFromJsonElement(serializer<DateValueIso>(), \
              element) as DateValue }.getOrElse { error(\"No variant of DateValue matched\") } } }",
+            judged("DateValue"),
         ),
     ] {
         assert!(
-            definition.ends_with(serializer),
-            "the serializer moved in: {definition}"
+            definition.ends_with(&format!("{unjudged} {own}")),
+            "the serializers moved in: {definition}"
         );
     }
 }
