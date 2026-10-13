@@ -11,6 +11,10 @@ mod borrowed_text;
 mod declared_by_macro;
 
 #[cfg(test)]
+#[path = "validation_tests/held_models.rs"]
+mod held_models;
+
+#[cfg(test)]
 #[path = "validation_tests/list_bounds.rs"]
 mod list_bounds;
 

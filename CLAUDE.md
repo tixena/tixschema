@@ -265,11 +265,12 @@ pub struct BadMapKey {
 
 `is_map_wrapper` in `src/field_type.rs` is the one seam that says which names are a map: `HashMap`,
 `BTreeMap`, `IndexMap` under the `indexmap` feature, and `Map`, which is `serde_json`'s, read by its
-last name as `Value` is. The field definition, the constraint walk, the recovering decode's walker
-and its rewriting of an alias, and the MongoDB paths all ask it, as they ask `is_sequence_wrapper`
-for a list, which takes `IndexSet` under the same feature. `IndexMap`, `IndexSet` and `Map` are
-names of another crate's, so the two functions ask `is_declared_ident` for the three: a type the
-crate declared under one of them above keeps the name, with the feature on or off.
+last name as `Value` is. The field definition, the constraint walk, the walk `validate()` makes to
+what a member holds, the recovering decode's walker and its rewriting of an alias, and the MongoDB
+paths all ask it, as they ask `is_sequence_wrapper` for a list, which takes `IndexSet` under the
+same feature. `IndexMap`, `IndexSet` and `Map` are names of another crate's, so the two functions
+ask `is_declared_ident` for the three: a type the crate declared under one of them above keeps the
+name, with the feature on or off.
 `is_declared_ident` reads the published names, the one registry every build writes. A key is held
 to the rules of this section whichever of those maps it is written in.
 
@@ -473,12 +474,14 @@ starting with a digit. A variant's slot is read off the binding its arm makes
   under no name, as it reports what the slot's own type declares. A slot with a check of its own
   and a type that declares one runs both (`slot_validate_body`).
 - A slot of a tagged variant is checked by `validate()` alone and reported under its position
-  (`'0': …`, `'1': …`). Its validator is recorded under the `Validator` gate, and the recovering
-  decode reads it back through `slot_validator`: `Slot::validator` for a variant of several slots,
-  `WalkedVariant::lone_bound` for a variant of one, each an `Invalid` at the slot's own path.
+  (`'0': …`, `'1': …`), as what its type holds is. Its validator is recorded under the
+  `Validator` gate, and the recovering decode reads it back through `slot_validator`:
+  `Slot::validator` for a variant of several slots, `WalkedVariant::lone_bound` for a variant of
+  one, each an `Invalid` at the slot's own path.
 - A slot of a tuple struct is checked where a named field of a struct is: by `validate()` alone,
-  reported under its position. `collect_tuple_slots` hands each slot's validator and `validate()`
-  fragment to `process_tuple_struct` in `TupleSlots`. The recovering decode reads the validator
+  reported under its position, as what its type holds is. `collect_tuple_slots` hands each
+  slot's validator and `validate()` fragment to `process_tuple_struct` in `TupleSlots`. The
+  recovering decode reads the validator
   back through `slot_validator` with no variant: `Slot::validator` for a struct of several slots,
   and for a struct of one, which serde writes as the slot's value, the validator
   `struct_recovering_decode` hands `held_methods`. A list, an `Option` or a model in that slot is
@@ -629,7 +632,7 @@ match result {
 ```
 
 A message names a value by its path in the payload, in single quotes: the key serde writes for
-each member, and the index of each item of a list, joined by dots
+each member, the index of each item of a list and the key of each entry of a map, joined by dots
 (`'parcelList.0.itemLabel': too short: minimum length is 1, got 0`). `README.md`'s "The path a
 message names" section is the consumer's view; this is what a change has to keep.
 
@@ -642,14 +645,43 @@ message names" section is the consumer's view; this is what a change has to keep
 - `CheckedMember::label` and `CheckedMember::stem` keep the Rust ident: a refusal at build time
   and a helper (`validate_{field}_value`) name the field as its author wrote it.
 - A slot keeps its position (`'0'`). A flattened member is walked under no name
-  (`nested_validate_body` is handed `None`), as the lone slot of an untagged variant is
-  (`positional_member_validate_body`), and an `Option` adds no segment.
-- The index is written by the nested walk alone. `walk_wraps` binds one per list level
-  (`index_binding`), and `nested_place` writes them after the member's key, innermost last. A
-  member's own bound stops at a list (`constrained_shape`), so a list's count is reported at
-  the list, with no index.
+  (`flattened_place`), as a slot of an untagged variant is (`member_place` names none there), and
+  an `Option` adds no segment.
+- The index and the key are written by the nested walk alone. `walk_wraps` binds one index per
+  list level (`index_binding`) and one entry per map level (`entry_binding`), `held_at` lists
+  them after the member's key as `PlaceStep`s, innermost last, and `named_at` writes the name.
+  `nested_leaf` reads a key (`key_binding`) only where a report is written under it, so an entry
+  that reports nothing costs no text. A member's own bound stops at a list and reads no map
+  (`constrained_shape`), so a list's count is reported at the list, with no index.
 - The validator of a member is the one sentence both `validate()` and its `deserialize_{field}`
   hook answer with, so the hook names the same key.
+
+`validate()` runs the `validate()` of every value of a declared type a member holds, and
+`README.md`'s "A model held in a map, in a slot or in a tuple" section is the consumer's view:
+
+- `held_shape` reads the member's type against its def: through `Option`, the transparent
+  wrappers and each level of a list, into a map's values (`ConstraintWrap::Map`, which
+  `is_map_wrapper` decides) and into each position of a tuple written as a type
+  (`HeldEnd::Positions`). `held_walk` writes the walk and `nested_leaf` the call. A walk that
+  ends on no declared type is `None` and adds no token: a primitive, one of the item's own
+  parameters and a set of either are none.
+- A slot of a tuple struct and of a tagged variant is walked as a named member is
+  (`slot_nested_validate_body`), read and reported through `member_place`, under its position.
+- A named member, a flattened one and an untagged variant's slot fall back on
+  `reachable_nested_shape` (`member_held_shape`), the walk they had before a map and a tuple were
+  read. A set, a deque and a heap are described as a declared type is, so a field written
+  `HashSet<String>` is walked to its strings, and its type publishes a `validate()` that reports
+  nothing. `named_read_hook` is hung by `reachable_nested_shape` alone: on no map and no tuple.
+- A map's key is the text serde writes for it. `written_key_items` declares `MapKey` in the walk's
+  block: its `Display` hands the key's own `Serialize` the `Formatter`, serde's serializer for
+  which (in serde from 1.0.108) writes a string, a number, a `bool`, a `char`, a unit variant's
+  written name and a newtype's inner. `written_key` answers `None` where serde writes no text,
+  and where the key's type has no `Serialize` in reach (`UnwrittenKey`, reached for `&MapKey`
+  alone), a type parameter that declares none among them: `validate()` is written under the
+  bounds the type declares. `keyed_under` then leaves the key out of the name. Nothing here
+  names `serde_json`.
+- `nested_under` composes: a name is written into a report one run of steps at a time, innermost
+  first, which is what lets a key be left out.
 
 The macro also generates into the type's schema module:
 - `validate_{field}_value(&FieldType) -> Result<(), String>` — pure static validator per field
