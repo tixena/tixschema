@@ -29,7 +29,7 @@ use self::aliases::Reach;
 use crate::features::model_schema_prop::FunctionName;
 use crate::features::serde::read_bounds::read_bounds;
 use crate::features::serde::{
-    NAMED_READ_HOOK_PREFIX, SerdeFieldHooks, has_serde_default, has_serde_read_hook,
+    NAMED_READ_HOOK_PREFIX, SerdeFieldHooks, Tagging, has_serde_default, has_serde_read_hook,
     has_serde_skip_serializing, has_serde_transparent, parse_read_renames,
     parse_serde_field_attributes, parse_serde_field_hooks, parse_serde_key_omission,
     parse_serde_type_attributes, parse_written_renames, transparent_field,
@@ -45,8 +45,8 @@ use crate::model_schema::preprocess;
 use crate::model_schema::{helper_name_stem, recovering_bound_check};
 use crate::rename_rule::resolve_rename_rule;
 use crate::utils::{
-    Declared, declared, field_validator_name, ident_schema_module_name, to_snake_case,
-    type_parameters_in_scope, written_names, written_type,
+    Declared, declared, field_validator_name, holds_field_validator, ident_schema_module_name,
+    to_snake_case, type_parameters_in_scope, written_names, written_type,
 };
 
 #[cfg(all(
@@ -801,9 +801,9 @@ impl Walk<'_> {
 
 /// The validator tixschema published for a field's own bound, which serde's read does not run.
 struct FieldValidator {
-    /// The name the validator writes in front of each violation: the key serde writes the field
-    /// under, or a slot's position.
-    named: String,
+    /// The name the validator writes in front of each violation: the steps serde writes on the
+    /// way to the field. `None` for a validator that writes no name.
+    named: Option<String>,
     validator: Ident,
 }
 
@@ -993,7 +993,11 @@ impl Walker<'_> {
     fn bound_check(&self, validator: Option<&FieldValidator>, ty: &Type) -> Option<TokenStream> {
         let member = validator?;
         let (module, checked_by) = (self.module, &member.validator);
-        recovering_bound_check(&quote! { #module::#checked_by }, &member.named, ty)
+        recovering_bound_check(
+            &quote! { #module::#checked_by },
+            member.named.as_deref(),
+            ty,
+        )
     }
 
     /// `listed` followed by what holds the value under `held`, read through `read` as `ty`, to the
@@ -2235,7 +2239,7 @@ pub fn value_slot(item_struct: &ItemStruct) -> Option<&Field> {
 /// attribute tags.
 pub fn written_as_one_value(item: &Item) -> bool {
     if let Item::Enum(item_enum) = item {
-        matches!(enums::Tagging::of(item_enum), enums::Tagging::Plain)
+        matches!(Tagging::of(item_enum), Tagging::Plain)
     } else if let Item::Struct(item_struct) = item {
         matches!(item_struct.fields, Fields::Unit) || value_slot(item_struct).is_some()
     } else {
@@ -4262,15 +4266,15 @@ fn walked_slot<'item>(
 }
 
 /// The validator recorded for the bound the member `declared_as` declares, where it declares
-/// one, under the name the validator writes: the key serde writes the member under.
+/// one, with the name the validator writes.
 fn recorded_validator(
     module_name: &str,
     declared_as: &str,
     variant: Option<&str>,
 ) -> Option<FieldValidator> {
     let stem = helper_name_stem(declared_as, variant);
-    field_validator_name(module_name, &stem).map(|named| FieldValidator {
-        named,
+    holds_field_validator(module_name, &stem).then(|| FieldValidator {
+        named: field_validator_name(module_name, &stem),
         validator: format_ident!("validate_{stem}_value"),
     })
 }

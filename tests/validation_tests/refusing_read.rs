@@ -155,6 +155,22 @@ mod a_read_refuses_what_validate_refuses {
         Single(Parcel),
     }
 
+    /// A bounded brand held by a named member of a variant, under each form serde writes a
+    /// variant's name or a content key ahead of the member.
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(rename_all_fields = "camelCase")]
+    pub enum Sorted {
+        Coded { parcel_code: Code },
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "kind", content = "held", rename_all_fields = "camelCase")]
+    pub enum SortedUnderAKey {
+        Coded { parcel_code: Code },
+    }
+
     /// An untagged enum whose first variant is chosen by its member's bound.
     #[model_schema()]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -718,6 +734,45 @@ mod a_read_refuses_what_validate_refuses {
         );
         let read: Crane = serde_json::from_str(r#"{"loadCode":"ab"}"#).unwrap();
         assert_eq!(read.load_code, Code("ab".to_owned()));
+    }
+
+    /// The read names the brand by the path `validate()` names it by: below the variant's name,
+    /// and below the content key.
+    #[test]
+    fn a_bounded_brand_in_a_variants_member_refuses_under_the_path_validate_names() {
+        let coded = Sorted::Coded {
+            parcel_code: Code("a".to_owned()),
+        };
+        let under_a_key = SortedUnderAKey::Coded {
+            parcel_code: Code("a".to_owned()),
+        };
+        assert_eq!(
+            [coded.validate(), under_a_key.validate()],
+            [
+                Err(vec![
+                    "'Coded.parcelCode': too short: minimum length is 2, got 1".to_owned()
+                ]),
+                Err(vec![
+                    "'held.parcelCode': too short: minimum length is 2, got 1".to_owned()
+                ]),
+            ]
+        );
+        assert_eq!(
+            serde_json::from_str::<Sorted>(&serde_json::to_string(&coded).unwrap())
+                .unwrap_err()
+                .to_string(),
+            "'Coded.parcelCode': too short: minimum length is 2, got 1 at line 1 column 27"
+        );
+        assert_eq!(
+            serde_json::from_str::<SortedUnderAKey>(&serde_json::to_string(&under_a_key).unwrap())
+                .unwrap_err()
+                .to_string(),
+            "'held.parcelCode': too short: minimum length is 2, got 1 at line 1 column 41"
+        );
+        let kept = Sorted::Coded {
+            parcel_code: Code("ab".to_owned()),
+        };
+        read_as_validated(&kept, kept.validate());
     }
 
     #[test]

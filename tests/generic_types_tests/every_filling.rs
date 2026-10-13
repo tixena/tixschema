@@ -211,7 +211,7 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             }
             .validate()
             .unwrap_err(),
-            [UNLABELLED]
+            ["'Packed.label': too short: minimum length is 1, got 0"]
         );
         assert_eq!(
             LoadExternal::<u32>::Packed {
@@ -220,7 +220,7 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             }
             .validate()
             .unwrap_err(),
-            [UNLABELLED]
+            ["'Packed.label': too short: minimum length is 1, got 0"]
         );
         assert_eq!(LoadExternal::<u32>::Unpacked.validate(), Ok(()));
 
@@ -251,7 +251,7 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             }
             .validate()
             .unwrap_err(),
-            [UNLABELLED]
+            ["'load.label': too short: minimum length is 1, got 0"]
         );
         assert_eq!(
             LoadAdjacent::<u32>::Packed {
@@ -260,7 +260,7 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             }
             .validate()
             .unwrap_err(),
-            [UNLABELLED]
+            ["'load.label': too short: minimum length is 1, got 0"]
         );
         assert_eq!(LoadAdjacent::<u32>::Unpacked.validate(), Ok(()));
 

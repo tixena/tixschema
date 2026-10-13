@@ -897,12 +897,16 @@ pub fn model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 /// ```
 ///
 /// Every constrained field that fails contributes its own message. Each opens with where the value
-/// sits in the payload, in single quotes: the key serde writes for the field, so a `rename_all`
-/// moves the name and a field's own `rename` wins over it, then the index of each item of a list
-/// and the key of each entry of a map, joined by dots. A broken label in the second item of a
-/// `parcel_list` under `rename_all = "camelCase"` reads
-/// `'parcelList.1.itemLabel': too short: minimum length is 1, got 0`. A slot is named by its
-/// position, `'0'`, and a field no attribute renames is named as it was declared:
+/// sits in the payload, in single quotes: every step serde writes on the way to it, joined by
+/// dots. A step is the key serde writes for a field, so a `rename_all` moves the name and a
+/// field's own `rename` wins over it, the name or the content key serde writes a variant under,
+/// a slot's position among several, the index of each item of a list and the key of each entry of
+/// a map. Where serde writes the value itself there is no step: the one slot of a struct, and of a
+/// variant, adds none. A broken label in the second item of a `parcel_list` under
+/// `rename_all = "camelCase"` reads
+/// `'parcelList.1.itemLabel': too short: minimum length is 1, got 0`, a broken member of the
+/// variant `Loose` of an enum with no tag attribute reads `'Loose.freightLabel': ...`, and a field
+/// no attribute renames is named as it was declared:
 ///
 /// ```text
 /// let reg = RegistrationData { username: "ab".to_string(), age: 150 };

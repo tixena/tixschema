@@ -3315,7 +3315,7 @@ fn a_slot_of_a_tuple_struct_is_walked_and_reported_under_its_position() {
 
 #[cfg(feature = "serde")]
 #[test]
-fn a_slot_of_a_tagged_variant_is_walked_and_reported_under_its_position() {
+fn a_slot_of_a_tagged_variant_is_walked_and_reported_under_the_variants_name() {
     let mut item: syn::ItemEnum = syn::parse_quote! {
         enum Freight {
             Boxed(Parcel),
@@ -3335,10 +3335,10 @@ fn a_slot_of_a_tagged_variant_is_walked_and_reported_under_its_position() {
     for written in [
         "Self :: Boxed (member_slot_0)",
         "let value_0 = member_slot_0 ;",
-        r#"nested_under ("0" , violation)"#,
+        r#"nested_under ("Boxed" , violation)"#,
         "Self :: Split (_ , member_slot_1)",
         "let value_0 = member_slot_1 ;",
-        r#"nested_under ("1" , violation)"#,
+        r#"nested_under ("Split.1" , violation)"#,
     ] {
         assert!(arms.contains(written), "{written} is not in {arms}");
     }
@@ -11818,7 +11818,7 @@ fn mixed_wrappers_compose_in_written_order() {
 fn checked_struct_field() -> CheckedMember {
     let item: syn::ItemStruct = syn::parse_quote! { struct Probe { field: String } };
     let field = item.fields.iter().next().unwrap();
-    checked_member(field, 0, None, ConstraintGate::Validator, "field")
+    checked_member(field, 0, None, &["field".to_owned()])
 }
 
 /// The schema-module items emitted for a `minLength` field spelled `spelling`, as tokens.
@@ -12045,10 +12045,12 @@ fn generated_validation_under(
 ) -> (bool, bool, Option<String>, usize) {
     let field = item.fields.iter().next().unwrap();
     let mut new_attrs = Vec::new();
+    let steps = [vec!["member".to_owned()]];
     let ctx = FieldContext {
         container_defaulted: false,
         container_read_back: false,
         enum_args: None,
+        member_steps: &steps,
         rename_all: None,
         schema_module_name: Some("probe_schema"),
         type_name: "Probe",
@@ -12056,7 +12058,7 @@ fn generated_validation_under(
         variant_ident: variant,
     };
     let (module_items, validate_body, guard_error) =
-        generate_field_validation(&ctx, field, 0, "member", constraint, gate, &mut new_attrs);
+        generate_field_validation(&ctx, field, 0, constraint, gate, &mut new_attrs);
     (
         module_items.is_some(),
         validate_body.is_some(),
@@ -12205,12 +12207,12 @@ fn a_constrained_tuple_variant_names_its_helpers_by_the_slots_position() {
         (
             &validation_fns[0],
             "fn validate_one_0_value",
-            r#"format ! ("'{}': {}, got {}" , "0""#,
+            r#"format ! ("'{}': {}, got {}" , "One""#,
         ),
         (
             &validation_fns[1],
             "fn validate_two_1_value",
-            r#"format ! ("'{}': {}, got {}" , "1""#,
+            r#"format ! ("'{}': {}, got {}" , "Two.1""#,
         ),
     ] {
         assert!(rendered.contains(validator), "got: {rendered}");
@@ -14187,6 +14189,7 @@ fn collected_untagged_variant_fields(mut item: syn::ItemEnum) -> (Vec<String>, V
         &[],
         None,
         &super::ModelSchemaArgs::default(),
+        &[],
     );
     (
         walked.field_defs.iter().map(|f| f.name.clone()).collect(),
@@ -14234,6 +14237,7 @@ fn a_flattening_untagged_member_proves_no_key_list() {
         &[],
         None,
         &super::ModelSchemaArgs::default(),
+        &[],
     );
     assert_eq!(
         super::untagged_member_keys(

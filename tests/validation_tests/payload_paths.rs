@@ -1,5 +1,5 @@
 //! A message of `validate()` names a value by its path in the payload: the key serde writes for
-//! each member, and the index of each item of a list.
+//! each member, the name it writes a variant under, and the index of each item of a list.
 
 #[cfg(all(
     feature = "serde",
@@ -332,7 +332,7 @@ mod a_message_names_the_path_in_the_payload {
     }
 
     #[test]
-    fn a_slot_is_named_by_its_position() {
+    fn a_slot_among_several_is_named_by_its_position_and_a_variant_by_its_name() {
         assert_eq!(
             Docket(String::new(), 0).validate().unwrap_err(),
             vec![
@@ -342,14 +342,18 @@ mod a_message_names_the_path_in_the_payload {
         );
         assert_eq!(
             Seal::Stamped(String::new()).validate().unwrap_err(),
-            vec!["'0': too short: minimum length is 1, got 0"]
+            vec!["'Stamped': too short: minimum length is 1, got 0"]
+        );
+        assert_eq!(
+            serde_json::to_string(&Seal::Stamped(String::new())).unwrap(),
+            r#"{"Stamped":""}"#
         );
         let signed = Seal::Signed {
             signed_by: String::new(),
         };
         assert_eq!(
             signed.validate().unwrap_err(),
-            vec!["'signedBy': too short: minimum length is 1, got 0"]
+            vec!["'Signed.signedBy': too short: minimum length is 1, got 0"]
         );
     }
 
@@ -478,6 +482,37 @@ mod a_message_names_the_path_in_the_payload {
                 "the README no longer shows `{shown}`"
             );
         }
+
+        let labelled = Load::Labelled {
+            load_label: String::new(),
+            load_parcels: Vec::new(),
+        };
+        let stamped = Seal::Stamped(String::new());
+        for (written, answered, shown) in [
+            (
+                serde_json::to_string(&stamped).unwrap(),
+                stamped.validate(),
+                "`'Stamped': too short: minimum length is 1, got 0` for the payload \
+                 `{\"Stamped\":\"\"}`",
+            ),
+            (
+                serde_json::to_string(&labelled).unwrap(),
+                labelled.validate(),
+                "| `{\"loadLabel\":\"\",\"loadParcels\":[]}` | `'loadLabel'` | `'itemLabel'` |",
+            ),
+        ] {
+            let named = answered.unwrap_err().concat();
+            let lead = named.split(": ").next().unwrap_or_default();
+            assert!(
+                shown.contains(&format!("`{written}`")) && shown.contains(&format!("`{lead}")),
+                "{shown} is not what a run answers: {written}, {named}"
+            );
+            assert!(readme.contains(shown), "the README no longer shows {shown}");
+        }
+        assert_eq!(
+            Load::Whole(unlabelled()).validate().unwrap_err(),
+            ["'itemLabel': too short: minimum length is 1, got 0"]
+        );
 
         let counted = Hold {
             parcel_list: vec![sound(), unlabelled()],

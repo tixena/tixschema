@@ -419,11 +419,11 @@ mod a_key_on_a_list {
             Shipment::Boxes { labels: Vec::new() }
                 .validate()
                 .unwrap_err(),
-            vec!["'labels': too short: minimum length is 1, got 0"]
+            vec!["'Boxes.labels': too short: minimum length is 1, got 0"]
         );
         assert_eq!(
             Shipment::Pallets(vec![1, 2, 3]).validate().unwrap_err(),
-            vec!["'0': too long: maximum length is 2, got 3"]
+            vec!["'Pallets': too long: maximum length is 2, got 3"]
         );
         assert_eq!(Shipment::Pallets(Vec::new()).validate(), Ok(()));
     }

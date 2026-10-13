@@ -151,6 +151,17 @@ enum BoundedDispatch {
     },
 }
 
+/// A struct whose first slot serde skips: the slots after it move up in the array. A build with
+/// no schema surface holds no bound, and does not build it.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct BoundedAfterASkip(
+    #[serde(skip)] u8,
+    #[model_schema_prop(minLength = 2)] String,
+    BoundedParcel,
+);
+
 /// A struct of one slot read through a hook, which trims what it reads.
 #[model_schema(decode_with)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -800,5 +811,53 @@ fn plain_serde_refuses_what_breaks_a_bound() {
         let (walked, calls) = rejected(broken());
         assert_eq!(walked.unwrap(), admitted);
         assert_eq!(calls, 0);
+    }
+}
+
+/// `validate()`, the Zod schema and the recovering decode give a slot after a skipped one the
+/// position it has in the array serde writes.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn a_slot_after_a_skipped_one_is_named_by_its_position_in_the_array() {
+    let held = BoundedAfterASkip(
+        7,
+        "a".to_owned(),
+        BoundedParcel {
+            fragile_item_codes: vec!["x".to_owned()],
+            item_label: String::new(),
+        },
+    );
+    let written = serde_json::to_value(&held).unwrap();
+    assert_eq!(
+        written,
+        json!(["a", { "fragileItemCodes": ["x"], "label": "" }])
+    );
+    assert_eq!(
+        held.validate().unwrap_err(),
+        [
+            "'0': too short: minimum length is 2, got 1",
+            "'1.label': too short: minimum length is 1, got 0",
+        ]
+    );
+    let read = BoundedAfterASkip::from_value_with(written, |_raw, _found| {
+        bounded_after_a_skip_schema::Verdict::Reject
+    });
+    assert_eq!(
+        lines(&read.unwrap_err()),
+        [
+            "[0]: invalid: expected String, found String(\"a\"): too short: minimum length is 2, \
+             got 1",
+            "[1].label: invalid: expected String, found String(\"\"): too short: minimum length \
+             is 1, got 0",
+        ]
+    );
+    #[cfg(feature = "zod")]
+    {
+        let schema = BoundedAfterASkip::zod_schema();
+        assert!(
+            schema.contains("z.tuple([z.string().min(2, ")
+                && schema.contains("), BoundedParcel$Schema])"),
+            "Got:\n{schema}"
+        );
     }
 }
