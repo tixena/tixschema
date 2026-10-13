@@ -27,6 +27,10 @@ mod names_in_scope;
 mod payload_paths;
 
 #[cfg(test)]
+#[path = "validation_tests/refusing_read.rs"]
+mod refusing_read;
+
+#[cfg(test)]
 #[path = "validation_tests/tests.rs"]
 mod tests;
 

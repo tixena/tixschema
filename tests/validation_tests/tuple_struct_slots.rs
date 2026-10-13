@@ -127,13 +127,18 @@ mod a_check_on_a_slot {
     }
 
     #[test]
-    fn serde_reads_what_a_slots_bound_refuses_and_the_wire_is_unchanged() {
-        let read: Pair = serde_json::from_str(r#"["",0]"#).unwrap();
-        assert_eq!(read, Pair(String::new(), 0));
+    fn serde_refuses_what_a_slots_bound_refuses_and_the_wire_is_unchanged() {
+        let broken = Pair(String::new(), 0);
+        assert_eq!(serde_json::to_string(&broken).unwrap(), r#"["",0]"#);
         assert_eq!(
-            serde_json::to_string(&Pair("a".to_owned(), 1)).unwrap(),
-            r#"["a",1]"#
+            serde_json::from_str::<Pair>(r#"["",0]"#)
+                .unwrap_err()
+                .to_string(),
+            broken.validate().unwrap_err().join("; ")
         );
+        let kept = Pair("a".to_owned(), 1);
+        assert_eq!(serde_json::to_string(&kept).unwrap(), r#"["a",1]"#);
+        assert_eq!(serde_json::from_str::<Pair>(r#"["a",1]"#).unwrap(), kept);
     }
 
     #[test]
@@ -143,8 +148,16 @@ mod a_check_on_a_slot {
             vec!["'0': too short: minimum length is 1, got 0".to_owned()]
         );
         assert_eq!(Lone("a".to_owned()).validate(), Ok(()));
-        let read: Lone = serde_json::from_str(r#""""#).unwrap();
-        assert_eq!(read, Lone(String::new()));
+        assert_eq!(
+            serde_json::from_str::<Lone>(r#""""#)
+                .unwrap_err()
+                .to_string(),
+            Lone(String::new()).validate().unwrap_err().join("; ")
+        );
+        assert_eq!(
+            serde_json::from_str::<Lone>(r#""a""#).unwrap(),
+            Lone("a".to_owned())
+        );
         assert_eq!(
             serde_json::to_string(&Lone("a".to_owned())).unwrap(),
             r#""a""#

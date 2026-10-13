@@ -715,6 +715,23 @@ export const Document$Schema: ZodType<Document> = Document$RawSchema.meta({
 /// recovering decode lists what a check refuses as an issue. `model_schema_prop` documents the key
 /// under "Checks".
 ///
+/// ## A read refuses what `validate()` refuses
+///
+/// A type that publishes `validate()` and derives `Deserialize` has that `Deserialize` written
+/// here: serde's derive reads the members, on a private copy of the item, and `validate()` then
+/// judges the value read. A payload that breaks a bound or a check is answered with an error
+/// holding every message `validate()` answers, joined by `; `, and with no value.
+///
+/// A holder reads a model it holds in a field, an `Option`, a `Vec`, a `Box` or a map's value
+/// through that model's `model_schema_read_unjudged`, the read alone, so the whole value is judged
+/// once, by the type the read was asked for, and each message is at its full path. A model held
+/// any other way judges itself as it is read: in a tuple, a fixed array, a set, an `Rc` or an
+/// `Arc`, under one of the holder's type parameters, or by a type with no `#[model_schema]`.
+///
+/// `validate()` stays, for a value built in code or changed after it was read. `remote`, `from`,
+/// `try_from` and `into` written on such a type are refused, and a function of the consumer's own
+/// named `model_schema_read_unjudged` on it is a duplicate definition (`E0592`).
+///
 #[proc_macro_attribute]
 pub fn model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     exec_model_schema(args.into(), input.into()).into()
@@ -727,7 +744,8 @@ pub fn model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ## Validation Constraints
 ///
-/// These generate matching validation in Zod, JSON Schema, and Rust serde deserialization.
+/// These generate matching validation in Zod, in the JSON Schema and in Rust, where `validate()`
+/// reports each one and a serde read of the type refuses the payload with what it reports.
 ///
 /// ### String Constraints
 ///
@@ -835,8 +853,10 @@ pub fn model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// With `serde` and a schema output feature (`zod`, `typescript`, or `jsonschema`) both active, a
 /// type carrying at least one constrained field also gets a
-/// `validate(&self) -> Result<(), Vec<String>>` method for validating instances constructed in
-/// code. Serde deserialization validates automatically.
+/// `validate(&self) -> Result<(), Vec<String>>` method. A serde read of a type that derives
+/// `Deserialize` reads the members and then calls it: a payload that breaks a bound is answered
+/// with an error holding every message, joined by `; `, and with no value. Call it on a value
+/// built in code, or changed after it was read.
 ///
 /// The method is written in the type's own `impl`, so a type that declares a type parameter has
 /// it at every filling, and a type that holds one at any filling runs it. A `validate` of the
@@ -955,8 +975,9 @@ pub fn model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 /// is written once, over every filling. The Zod schema carries one `.check(...)` per name, on the
 /// schema of the value the Rust function takes, and a type declared with `decode_with` lists each
 /// message as an `Issue::Invalid`, `expected: Unknown`, at the path the message leads with. A
-/// serde read runs no check, the JSON Schema calls no function, and the Dart, Swift and Kotlin
-/// types are written as they are without the key.
+/// serde read of the type runs `validate()` on the value it read, checks included, and refuses
+/// the payload with what it answers. The JSON Schema calls no function, and the Dart, Swift and
+/// Kotlin types are written as they are without the key.
 ///
 #[cfg_attr(
     all(

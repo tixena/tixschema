@@ -47,6 +47,7 @@ mod ordered_maps;
 mod piped;
 mod readme;
 mod readme_resolvers;
+mod refused_read;
 mod shared_resolvers;
 
 use core::error::Error;

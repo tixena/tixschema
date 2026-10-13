@@ -381,22 +381,22 @@ the key or without it, as serde does.
 
 ### 7. Field Validation Attributes (`#[model_schema_prop(...)]`)
 
-All validation constraints generate checks in **Zod (frontend), JSON Schema, and Rust**. In Rust the check runs in `validate()`, and in the recovering decode of a type declared with `decode_with`, which lists each violation as an issue. It also runs as serde reads the payload in one position only: a member of an untagged enum, where the check decides which variant the payload is:
+All validation constraints generate checks in **Zod (frontend), JSON Schema, and Rust**. In Rust the check runs in `validate()`, which the type's own `Deserialize` calls on the value it read, so a serde read refuses what `validate()` refuses ("A read refuses what `validate()` refuses", below), and in the recovering decode of a type declared with `decode_with`, which lists each violation as an issue. While the members are still being read it runs in one position only: a member of an untagged enum, where the check decides which variant the payload is:
 
 | Attribute | Field Type | Zod | JSON Schema | Rust |
 |-----------|------------|-----|-------------|------------|
-| `pattern = "regex"` | `String` | `.check(z.regex(/regex/))` | `"pattern"` | `validate()`; the read too on an untagged enum's member |
-| `minLength = N` | `String` | `.min(N)` | `"minLength"` | `validate()`; the read too on an untagged enum's member |
-| `maxLength = N` | `String` | `.max(N)` | `"maxLength"` | `validate()`; the read too on an untagged enum's member |
-| `minLength = N` | a list | `.min(N)` on the array | `"minItems"` | `validate()`; the read too on an untagged enum's member |
-| `maxLength = N` | a list | `.max(N)` on the array | `"maxItems"` | `validate()`; the read too on an untagged enum's member |
-| `minimum = N` | numeric | `.min(N)` | `"minimum"` | `validate()`; the read too on an untagged enum's member |
-| `maximum = N` | numeric | `.max(N)` | `"maximum"` | `validate()`; the read too on an untagged enum's member |
+| `pattern = "regex"` | `String` | `.check(z.regex(/regex/))` | `"pattern"` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum |
+| `minLength = N` | `String` | `.min(N)` | `"minLength"` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum |
+| `maxLength = N` | `String` | `.max(N)` | `"maxLength"` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum |
+| `minLength = N` | a list | `.min(N)` on the array | `"minItems"` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum |
+| `maxLength = N` | a list | `.max(N)` on the array | `"maxItems"` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum |
+| `minimum = N` | numeric | `.min(N)` | `"minimum"` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum |
+| `maximum = N` | numeric | `.max(N)` | `"maximum"` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum |
 | `literal = "val"` | `String` | `z.literal("val")` | `{"type": "string", "const": "val"}` | — |
 | `literal = true` | `bool` | `z.literal(true)` | `{"type": "boolean", "const": true}` | — |
 | `literal = 214` | numeric | `z.literal(214)` | `{"type": "number", "const": 214}` | — |
 | `preprocess = ["fn"]` | any | `z.preprocess(fn, ...)` | — | — (Zod-only) |
-| `check = ["fn"]` | any, and a type | `.check((ctx) => { ... fn(own.value, own); ... })` | — | `validate()` calls `fn` in snake case, in every build; an issue of the recovering decode |
+| `check = ["fn"]` | any, and a type | `.check((ctx) => { ... fn(own.value, own); ... })` | — | `validate()` calls `fn` in snake case, in every build, and the type's read refuses with its messages; an issue of the recovering decode |
 | `ts_optional` | `Option<T>` | — | — | — (TypeScript-only) |
 | `as_number` | `DateTime<Tz>` | inline `z.preprocess(..., z.number())` | — | serde `with = chrono::serde::ts_milliseconds` injected |
 | `nullable` | `Option<T>` | `z.union([T, z.null()])`, key required | `anyOf: [T, {"type":"null"}]`, key required | guard: refuses a key-dropping serde attr |
@@ -621,7 +621,7 @@ pub struct User {
 
 #### Generated `validate()` method
 
-When any field has constraints, the macro generates a `validate(&self) -> Result<(), Vec<String>>` method that aggregates all per-field errors. On a struct field, and on a field of a tagged enum's variant, this is the only place the constraint is checked: serde reads a payload that breaks it:
+When any field has constraints, the macro generates a `validate(&self) -> Result<(), Vec<String>>` method that aggregates all per-field errors. It judges a value built or changed in code, and the type's own `Deserialize` calls it on the value it read:
 
 ```rust
 let result = my_instance.validate();
@@ -671,7 +671,8 @@ message names" section is the consumer's view; this is what a change has to keep
   `reachable_nested_shape` (`member_held_shape`), the walk they had before a map and a tuple were
   read. A set, a deque and a heap are described as a declared type is, so a field written
   `HashSet<String>` is walked to its strings, and its type publishes a `validate()` that reports
-  nothing. `named_read_hook` is hung by `reachable_nested_shape` alone: on no map and no tuple.
+  nothing. `named_read_hook` is hung by `reachable_nested_shape` alone: on no map and no tuple,
+  and on no member the type's unjudged read reaches (`member_read_hook`).
 - A map's key is the text serde writes for it. `written_key_items` declares `MapKey` in the walk's
   block: its `Display` hands the key's own `Serialize` the `Formatter`, serde's serializer for
   which (in serde from 1.0.108) writes a string, a number, a `bool`, a `char`, a unit variant's
@@ -685,8 +686,75 @@ message names" section is the consumer's view; this is what a change has to keep
 
 The macro also generates into the type's schema module:
 - `validate_{field}_value(&FieldType) -> Result<(), String>` — pure static validator per field
-- `deserialize_{variant}_{field}(D) -> Result<FieldType, E>` — serde hook that calls the static validator, generated only for a member of an untagged enum, the one position where the check runs on the read
+- `deserialize_{variant}_{field}(D) -> Result<FieldType, E>` — serde hook that calls the static validator, generated only for a member of an untagged enum, the one position where a member's check runs as the member is read
 - A tuple variant's slot writes its declaration index where a named member writes `{field}`: `validate_other_0_value` and `deserialize_other_0` for the lone slot of `Other`
+
+#### A read refuses what `validate()` refuses
+
+A type's read is its own unjudged read, followed by its `validate()`. A holder reads the models it
+holds unjudged, so the whole value is judged once, by the type the caller asked for. `README.md`'s
+"A read refuses what `validate()` refuses" section is the consumer's view; this is what a change
+has to keep.
+
+- `src/model_schema/judged_read.rs` is the seam. `of_struct` and `of_enum` are handed the item and
+  whether it publishes `validate()`, from `struct_output_with_unit_impls`,
+  `enum_output_with_decode` and `process_plain_enum`. An item that derives no `Deserialize`, or
+  publishes no `validate()`, gains nothing and is emitted as it was written, token for token.
+- serde's derive runs on a copy of the item, `ModelSchemaRemote`, declared inside
+  `model_schema_read_unjudged` under `#[serde(remote = "Type")]` (`remote_definition`). `remote`
+  is not written on the item itself: the derive would then write inherent `deserialize` and
+  `serialize` functions on the type, where `Type::deserialize(..)` would answer the unjudged read
+  and clippy's `same_name_method` fires inside the derive's output in the consumer's crate.
+  `Deserialize` is taken off the item's derive list (`leave_the_read_to_the_macro`), and the
+  item's serde attributes with it where it derives no `Serialize` either. `Serialize` stays the
+  derive's, untouched.
+- The copy keeps the item's `serde` and `cfg` attributes and no other (`kept_by_the_copy`), is
+  written with the macro's own spans (`generated`), and names the type wherever the item writes
+  `Self` (`naming_the_type`).
+- The written `impl Deserialize` and the function carry the bounds serde's derive writes, which
+  `read_bounds` in `src/features/serde/read_bounds.rs` reads off the item: a container, a field
+  and a variant `bound`; `Self: Default` for a container `default`; `Deserialize<'de>` for each
+  parameter a read field names, none for `PhantomData`, a skipped field, a field or a variant
+  read through `with` or `deserialize_with`, and a borrowing `Cow`; `Default` for a bare
+  `default` and for a skipped field nothing names a function for; an associated type by its
+  path; and the lifetimes `'de` outlives, `'static` among them reading the type at `'static`. A
+  bound wider than the derive's refuses a type that builds without it. The copy is given the
+  bounds as an explicit `bound(deserialize = ...)` wherever the item's container writes none,
+  the derive holding the copy, and not the type, to `Default` for a container `default`.
+- A holder's hook is recorded as its members are walked (`hook_member`, from `member_read_hook`
+  for a field and a slot and from `read_untagged_member_unjudged`), and written when the item's
+  read is: `MEMBER_HOOKS` holds each as text, a token outliving no expansion, and
+  `exec_model_schema` clears it. `reached` reads the member's type: a declared type itself, or
+  under `Option`, `Vec`, `Box` and a map's value, in any nesting. A hook is recorded only where
+  `validate()` walks the same wrappers (`held_shape`), which is what judges what the hook leaves
+  unjudged, and never for a member serde does not read, one read through a hook of its
+  author's, or a type that names a lifetime, `Self` or one of the item's parameters.
+- The hooks are functions local to `model_schema_read_unjudged`: `read_unjudged_{stem}`, each
+  with a local `Unjudged` newtype whose `Deserialize` calls the leaf's
+  `model_schema_read_unjudged`, behind the local `ReadUnjudged` trait. An inherent function is
+  found ahead of a trait's, so a type with no unjudged read of its own is read as serde reads
+  it. A refusal a brand below raises is answered under the field's key (`named_refusal`) where
+  `named_below` says the named reader did so, and an outermost `Option` under a key is given
+  `#[serde(default)]` by the rule of `needs_injected_default`, the container writing none.
+- `named_read_hook` stays for a named field `reachable_nested_shape` walks and `reached` does
+  not, a declared type in an `Arc` and in a fixed array among them. A model there, in a tuple
+  and under a type parameter judges itself as it is read, and ends the read at the first one
+  that breaks a rule.
+- A unit struct's `Deserialize` is the macro's already (`unit_struct_serde_impls`), and gains
+  `model_schema_read_unjudged` and the `validate()` call where the struct has a check.
+- `remote`, `from`, `try_from` and `into` (`serde_conversion`) on an item whose read the macro
+  writes are refused by `conversion_refusal`, in every build.
+- `model_schema_read_unjudged` is the type's own name. Each name the function declares beside
+  the item's own types is numbered where the item writes it (`unclaimed_parameter`): the
+  reader's type parameter `D`, the copy `ModelSchemaRemote`, the trait `ReadUnjudged`, and the
+  `Unjudged` of a hook where the member's type writes that name.
+- A service's dispatcher reads a request through `unjudged_{operation}`, which
+  `message_readers` in `src/service_schema/support.rs` writes into the service module, and calls
+  the validator next. The AMQP and WebSocket arm hands it a `serde_json::Deserializer` over the
+  payload and ends it, as `from_slice` does, and the HTTP dispatcher the value it carried.
+- `tests/validation_tests/refusing_read.rs` holds each shape, the bounds and the README's
+  sample; `tests/check_tests/read.rs` the read of a type that names a check, in every build;
+  `tests/recovering_decode_bson_tests/refused_read.rs` a BSON document under each major.
 
 `validate()` is written in the type's own `impl`, beside the schema delegates
 (`assemble_schema_output`, `assemble_branded_output`), so a type that declares a parameter has it
@@ -1030,8 +1098,8 @@ where the two types are one (section 7, "Generated `validate()` method").
 ### Recovering Decode
 
 `#[model_schema(decode_with)]` gives a type `from_value_with`, and `from_bson_with` under `bson`:
-plain serde reads the value, a walker lists every issue in it, and a callback supplied with the
-call rejects the record or fixes it once. `from_value_piped` and `from_bson_piped` are the same
+serde reads the value with the type's read alone, a walker lists every issue in it, and a
+callback supplied with the call rejects the record or fixes it once. `from_value_piped` and `from_bson_piped` are the same
 reads over resolvers run in order, each answering one issue. Under `mongodb` the type also gets
 its typed MongoDB paths, the filters and updates they build, and the operations that read and
 write its rows. `README.md`'s "Recovering Decode" and "MongoDB Operations and Typed Filters"
@@ -1042,6 +1110,18 @@ sections are the consumer's view; this is what a change to the emitter has to ke
   same in every feature combination and are raised before any shape is split off. The emitter
   itself runs under `serde`, from `struct_decode_with` and `enum_decode_with`, and reads the item
   as it is emitted, so a read hook tixschema hangs on a field is one the walker reads through.
+- **Every read the flag makes is the type's read alone.** A plain read of a type ends on its
+  `validate()` (section 7, "A read refuses what `validate()` refuses"), and a refusal there would
+  hide the list. `listed_read` in `judged_read.rs` writes `decode_with_read_unjudged` on every
+  flagged type, once, after the first source's methods, and the entry points, `read_whole`,
+  `lone_slot_bound` and the enum walkers read `Self` through it. Where a schema surface is on it
+  calls the type's `model_schema_read_unjudged` behind the `ReadUnjudged` fallback. With none on,
+  a holder that names no check publishes no `validate()` and its own read judges what it holds,
+  so the function is serde's derive on a copy of the item, each model below read through its own
+  `decode_with_read_unjudged`. A generic type's `impl` asks what that read asks beside
+  `Deserialize` of a parameter (`read_under`), at every lifetime, and the function repeats none
+  of it: a bound asked by the `impl` and by the function is one the compiler cannot choose
+  between (E0283). A list held to a count of its own is read whole through `listed_reader`.
 - **A walker is generic over the issue type.** Each walker method takes a type parameter for the
   issue it builds and an `IssueFromParts` constructor, a function pointer over standard types, so
   one type's walker builds another type's issues at their full path. Two flagged types share no
@@ -1092,8 +1172,8 @@ sections are the consumer's view; this is what a change to the emitter has to ke
   `every_added_method_but_the_entry_point_carries_the_flags_name` pins.
 - **Every name the flag adds is its own.** Each walker method carries the flag's name
   (`decode_with_value_issues`, `decode_with_bson_fields`, `decode_with_value_named`), and a
-  method's own type parameters take a name the item does not write (`unclaimed_parameter`): `F`
-  and `I`, and under `mongodb` `U`, numbered where the item writes one. The parameters a struct
+  method's own type parameters take a name the item does not write (`unclaimed_parameter`): `D`,
+  `F` and `I`, and under `mongodb` `U`, numbered where the item writes one. The parameters a struct
   of paths declares beside the type's own are named the same way: `Root`, and `Whole` and `Value`
   on a type serde writes as one value. An entry point and an operation are the name they are
   called by (`from_bson_piped`, `find_one`), and the typed paths carry the feature's
@@ -1647,13 +1727,16 @@ tixschema/
 │   ├── lib.rs                    # Entry point, macro exports
 │   ├── model_schema.rs           # Main macro logic
 │   ├── model_schema/
-│   │   └── checks.rs             # check: the calls validate() makes, the alias refusal
+│   │   ├── checks.rs             # check: the calls validate() makes, the alias refusal
+│   │   └── judged_read.rs        # The Deserialize of a type that publishes validate()
 │   ├── check_example.md          # The check example the rustdoc runs and the README shows
 │   ├── field_type.rs             # Type system (FieldDef, FieldDefType)
 │   ├── utils.rs                  # Helpers (naming, docs, serde parsing)
 │   ├── features/
 │   │   ├── mod.rs                # Feature detection
 │   │   ├── serde.rs              # Serde attribute parsing
+│   │   ├── serde/
+│   │   │   └── read_bounds.rs    # The bounds serde's derive writes on a Deserialize impl
 │   │   ├── zod.rs                # Zod schema generation
 │   │   ├── jsonschema.rs         # JSON schema generation
 │   │   ├── object_id.rs          # ObjectId support

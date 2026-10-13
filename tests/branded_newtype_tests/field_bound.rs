@@ -88,14 +88,22 @@ mod bounded_at_the_field {
         assert_eq!(held("ab", None, &[], "dir", "title").validate(), Ok(()));
     }
 
-    /// The bound is the validator's to answer: serde reads the value that breaks it.
+    /// The read refuses the value the bound refuses, with what `validate()` answers of it.
     #[test]
-    fn serde_reads_a_value_the_bound_refuses() {
-        let read: BoundHolder = serde_json::from_value(serde_json::json!({
+    fn serde_refuses_a_value_the_bound_refuses() {
+        let read = serde_json::from_value::<BoundHolder>(serde_json::json!({
             "bare": "a", "dir": "d", "free": "", "many": ["abcd"], "maybe": "", "titled": "t"
+        }));
+        let refused = held("a", Some(""), &["abcd"], "d", "t")
+            .validate()
+            .unwrap_err()
+            .join("; ");
+        assert_eq!(read.map_err(|error| error.to_string()), Err(refused));
+        let kept: BoundHolder = serde_json::from_value(serde_json::json!({
+            "bare": "ab", "dir": "dir", "free": "", "many": ["abcd"], "maybe": "ab", "titled": "title"
         }))
         .unwrap();
-        assert_eq!(read, held("a", Some(""), &["abcd"], "d", "t"));
+        assert_eq!(kept, held("ab", Some("ab"), &["abcd"], "dir", "title"));
     }
 
     /// The brand itself keeps no bound: a field that writes none beside it holds any value.

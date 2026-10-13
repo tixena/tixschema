@@ -180,6 +180,19 @@ fn broken() -> Value {
     })
 }
 
+/// The group `broken()` stores, built in code.
+fn broken_group() -> BoundedGroup {
+    BoundedGroup {
+        human_name: Some(String::new()),
+        labels: Vec::new(),
+        level: 0,
+        sort_field: Some(BoundedPath(String::new())),
+        source: BoundedPath("Items".to_owned()),
+        tags: vec!["ok".to_owned(), "A".to_owned(), "b".to_owned()],
+        title: "long".to_owned(),
+    }
+}
+
 /// Reads `stored` with a callback that rejects, and answers the read with how often it ran.
 fn rejected(
     stored: Value,
@@ -770,16 +783,22 @@ fn a_value_inside_every_bound_never_reaches_the_callback() {
     assert_eq!(calls, 0);
 }
 
-/// The bound stays off serde's own read, which reads the value that breaks it.
+/// Serde's own read refuses what breaks a bound, with what `validate()` answers of the value. A
+/// build with no schema surface publishes no `validate()`, and reads it.
 #[test]
-fn plain_serde_reads_what_breaks_a_bound() {
-    let read: BoundedGroup = serde_json::from_value(broken()).unwrap();
-    assert_eq!(read.sort_field, Some(BoundedPath(String::new())));
-    assert_eq!(read.human_name, Some(String::new()));
+fn plain_serde_refuses_what_breaks_a_bound() {
+    let read = serde_json::from_value::<BoundedGroup>(broken());
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    assert_eq!(
+        read.map_err(|refused| refused.to_string()),
+        Err(broken_group().validate().unwrap_err().join("; "))
+    );
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
     {
+        let admitted = read.unwrap();
+        assert_eq!(admitted, broken_group());
         let (walked, calls) = rejected(broken());
-        assert_eq!(walked.unwrap(), read);
+        assert_eq!(walked.unwrap(), admitted);
         assert_eq!(calls, 0);
     }
 }

@@ -54,8 +54,17 @@ mod a_one_parameter_result {
                 .unwrap();
         assert_eq!(record.to_string(), "1 versions");
 
-        let named: Named = serde_json::from_value(serde_json::json!({ "name": "ab" })).unwrap();
+        let named = Named {
+            name: "ab".to_owned(),
+        };
         assert_eq!(named.validate().unwrap_err().len(), 1);
+        assert_eq!(
+            serde_json::from_value::<Named>(serde_json::json!({ "name": "ab" }))
+                .unwrap_err()
+                .to_string(),
+            named.validate().unwrap_err().join("; ")
+        );
+        serde_json::from_value::<Named>(serde_json::json!({ "name": "abc" })).unwrap();
 
         serde_json::from_value::<Slug>(serde_json::json!("ab")).unwrap_err();
         assert_eq!(
@@ -182,11 +191,17 @@ mod a_type_named_sized {
         );
         assert!(Sized::ts_definition().contains("text: string"));
 
-        let holder: Holder = serde_json::from_value(
+        let refused = serde_json::from_value::<Holder>(
             serde_json::json!({ "inner": { "number": 1_i32 }, "level": 0_i32, "listed": [1_i32] }),
         )
+        .unwrap_err()
+        .to_string();
+        assert_eq!(refused, "'level': too small: minimum is 1, got 0");
+        let holder: Holder = serde_json::from_value(
+            serde_json::json!({ "inner": { "number": 1_i32 }, "level": 1_i32, "listed": [1_i32] }),
+        )
         .unwrap();
-        assert_eq!(holder.validate().unwrap_err().len(), 1);
+        holder.validate().unwrap();
     }
 
     #[cfg(feature = "zod")]
@@ -238,13 +253,21 @@ mod a_type_named_err {
 
     #[test]
     fn a_struct_declared_beside_it_builds_reads_and_validates() {
-        let read: BesideErrHolder = serde_json::from_value(serde_json::json!({
+        let refused = serde_json::from_value::<BesideErrHolder>(serde_json::json!({
             "inner": { "number": 1_i32 },
             "name": "ab",
             "tags": ["t"],
         }))
+        .unwrap_err()
+        .to_string();
+        assert_eq!(refused, "'name': too short: minimum length is 3, got 2");
+        let read: BesideErrHolder = serde_json::from_value(serde_json::json!({
+            "inner": { "number": 1_i32 },
+            "name": "abc",
+            "tags": ["t"],
+        }))
         .unwrap();
-        assert_eq!(read.validate().unwrap_err().len(), 1);
+        read.validate().unwrap();
         assert!(BesideErrHolder::ts_definition().contains("  inner: BesideErrInner;"));
         assert_eq!(serde_json::to_value(Err).unwrap(), serde_json::json!({}));
     }
@@ -280,13 +303,21 @@ mod a_type_named_none {
 
     #[test]
     fn a_struct_declared_beside_it_builds_reads_and_validates() {
-        let read: BesideNoneHolder = serde_json::from_value(serde_json::json!({
+        let refused = serde_json::from_value::<BesideNoneHolder>(serde_json::json!({
             "inner": { "number": 1_i32 },
             "name": "ab",
             "tags": ["t"],
         }))
+        .unwrap_err()
+        .to_string();
+        assert_eq!(refused, "'name': too short: minimum length is 3, got 2");
+        let read: BesideNoneHolder = serde_json::from_value(serde_json::json!({
+            "inner": { "number": 1_i32 },
+            "name": "abc",
+            "tags": ["t"],
+        }))
         .unwrap();
-        assert_eq!(read.validate().unwrap_err().len(), 1);
+        read.validate().unwrap();
         assert!(BesideNoneHolder::ts_definition().contains("  inner: BesideNoneInner;"));
         assert_eq!(serde_json::to_value(None).unwrap(), serde_json::json!({}));
     }
@@ -322,13 +353,21 @@ mod a_type_named_ok {
 
     #[test]
     fn a_struct_declared_beside_it_builds_reads_and_validates() {
-        let read: BesideOkHolder = serde_json::from_value(serde_json::json!({
+        let refused = serde_json::from_value::<BesideOkHolder>(serde_json::json!({
             "inner": { "number": 1_i32 },
             "name": "ab",
             "tags": ["t"],
         }))
+        .unwrap_err()
+        .to_string();
+        assert_eq!(refused, "'name': too short: minimum length is 3, got 2");
+        let read: BesideOkHolder = serde_json::from_value(serde_json::json!({
+            "inner": { "number": 1_i32 },
+            "name": "abc",
+            "tags": ["t"],
+        }))
         .unwrap();
-        assert_eq!(read.validate().unwrap_err().len(), 1);
+        read.validate().unwrap();
         assert!(BesideOkHolder::ts_definition().contains("  inner: BesideOkInner;"));
         assert_eq!(serde_json::to_value(Ok).unwrap(), serde_json::json!({}));
     }
@@ -364,13 +403,21 @@ mod a_type_named_some {
 
     #[test]
     fn a_struct_declared_beside_it_builds_reads_and_validates() {
-        let read: BesideSomeHolder = serde_json::from_value(serde_json::json!({
+        let refused = serde_json::from_value::<BesideSomeHolder>(serde_json::json!({
             "inner": { "number": 1_i32 },
             "name": "ab",
             "tags": ["t"],
         }))
+        .unwrap_err()
+        .to_string();
+        assert_eq!(refused, "'name': too short: minimum length is 3, got 2");
+        let read: BesideSomeHolder = serde_json::from_value(serde_json::json!({
+            "inner": { "number": 1_i32 },
+            "name": "abc",
+            "tags": ["t"],
+        }))
         .unwrap();
-        assert_eq!(read.validate().unwrap_err().len(), 1);
+        read.validate().unwrap();
         assert!(BesideSomeHolder::ts_definition().contains("  inner: BesideSomeInner;"));
         assert_eq!(serde_json::to_value(Some).unwrap(), serde_json::json!({}));
     }

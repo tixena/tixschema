@@ -29,10 +29,25 @@ pub struct String {
 #[test]
 fn a_struct_declared_beside_it_builds_reads_and_validates() {
     let read: Holder = serde_json::from_value(
-        serde_json::json!({ "inner": { "number": 1_i32 }, "level": 0_i32, "queued": [] }),
+        serde_json::json!({ "inner": { "number": 1_i32 }, "level": 1_i32, "queued": [1_i32] }),
     )
     .unwrap();
-    assert_eq!(read.validate().unwrap_err().len(), 2);
+    assert_eq!(read.validate(), Ok(()));
+    let broken = Holder {
+        inner: Inner { number: 1 },
+        level: 0,
+        queued: VecDeque::new(),
+    };
+    let reported = broken.validate().unwrap_err();
+    assert_eq!(reported.len(), 2);
+    assert_eq!(
+        serde_json::from_value::<Holder>(
+            serde_json::json!({ "inner": { "number": 1_i32 }, "level": 0_i32, "queued": [] }),
+        )
+        .unwrap_err()
+        .to_string(),
+        reported.join("; ")
+    );
     assert!(Holder::ts_definition().contains("  inner: Inner;"));
     assert!(String::ts_definition().contains("  count: number;"));
 }

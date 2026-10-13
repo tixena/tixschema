@@ -3481,6 +3481,88 @@ fn a_field_holding_a_declared_type_is_read_through_one_that_names_the_field() {
         true,
     );
     assert!(collected.4.is_empty(), "got: {:?}", collected.4);
+    // The reader is one of the item's own read, hung on the copy serde's derive reads.
+    assert_eq!(walked_field_attrs(item.fields.iter()), "");
+    assert!(
+        collected.2.is_empty(),
+        "got: {:?}",
+        collected
+            .2
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+    );
+
+    let read = super::judged_read::of_struct(&mut item, true).to_string();
+    for written in [
+        "# [serde (deserialize_with = \"read_unjudged_organization_id\")] organization_id : Slug",
+        "fn read_unjudged_organization_id < 'de , D > (deserializer : D) -> :: core :: result :: \
+         Result < Slug , D :: Error >",
+        "< Slug > :: model_schema_read_unjudged (deserializer) . map (Unjudged)",
+        // The key as the wire spells it: the name serde was reading for, and the one the schema
+        // reports.
+        "nested_under (\"organizationId\" , violation)",
+    ] {
+        assert!(read.contains(written), "missing `{written}`, got: {read}");
+    }
+    assert!(!read.contains("\"organization_id\""), "got: {read}");
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn the_names_a_read_declares_are_never_names_the_item_writes() {
+    let mut item: syn::ItemStruct = syn::parse_quote! {
+        #[derive(serde::Deserialize)]
+        struct Enrolment {
+            first: Unjudged,
+            second: Vec<ReadUnjudged>,
+            third: ModelSchemaRemote,
+        }
+    };
+    let collected = super::collect_struct_fields(
+        &mut item.fields,
+        None,
+        Some("enrolment_schema"),
+        "Enrolment",
+        &syn::Generics::default(),
+        false,
+        true,
+    );
+    assert!(collected.4.is_empty(), "got: {:?}", collected.4);
+    let read = super::judged_read::of_struct(&mut item, true).to_string();
+    for written in [
+        "struct Unjudged2 (Unjudged) ;",
+        "< Unjudged > :: model_schema_read_unjudged (deserializer) . map (Unjudged2)",
+        "struct Unjudged (ReadUnjudged) ;",
+        "trait ReadUnjudged2 < 'de > : serde :: Deserialize < 'de >",
+        "impl < 'de , T : serde :: Deserialize < 'de >> ReadUnjudged2 < 'de > for T { }",
+        "struct ModelSchemaRemote2 {",
+        "< ModelSchemaRemote2 > :: deserialize (deserializer)",
+    ] {
+        assert!(read.contains(written), "missing `{written}`, got: {read}");
+    }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_field_the_unjudged_read_does_not_reach_keeps_a_reader_in_the_schema_module() {
+    let mut item: syn::ItemStruct = syn::parse_quote! {
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Enrolment {
+            organization_id: Arc<Slug>,
+        }
+    };
+    let collected = super::collect_struct_fields(
+        &mut item.fields,
+        Some("camelCase"),
+        Some("enrolment_schema"),
+        "Enrolment",
+        &syn::Generics::default(),
+        false,
+        true,
+    );
+    assert!(collected.4.is_empty(), "got: {:?}", collected.4);
 
     let rendered = walked_field_attrs(item.fields.iter());
     assert_eq!(
@@ -3506,6 +3588,8 @@ fn a_field_holding_a_declared_type_is_read_through_one_that_names_the_field() {
         !published.contains("\"organization_id\""),
         "got: {published}"
     );
+    let read = super::judged_read::of_struct(&mut item, true).to_string();
+    assert!(!read.contains("read_unjudged_"), "got: {read}");
 }
 
 #[cfg(feature = "serde")]
@@ -7429,8 +7513,8 @@ fn decode_with_walks_a_transparent_struct_with_a_named_field_as_the_value_of_its
         .map_or(added, |(methods, _)| methods);
     assert!(
         walker.contains(
-            "{ out . extend (decode_holder_schema :: value_leaf (found , < Self as serde :: \
-             Deserialize > :: deserialize , | read | serde_json :: to_value (read) . ok () , \
+            "{ out . extend (decode_holder_schema :: value_leaf (found , Self :: \
+             decode_with_read_unjudged , | read | serde_json :: to_value (read) . ok () , \
              path . to_vec () , & [(\"String\" , & [] , 0)] , issue)) ; }"
         ),
         "got: {walker}"
@@ -7702,9 +7786,11 @@ fn decode_with_reads_a_constrained_brand_with_the_brands_own_reader() {
     for emitted in [
         "# [serde (deserialize_with = \"decode_code_schema::deserialize_value\")] pub String",
         "pub fn deserialize_value < 'de , D > (deserializer : D)",
-        "decode_code_schema :: value_leaf (found , < Self as serde :: Deserialize > :: deserialize , \
+        "decode_code_schema :: value_leaf (found , Self :: decode_with_read_unjudged , \
          | read | serde_json :: to_value (read) . ok () , path . to_vec () , \
          & [(\"String\" , & [] , 0)] , issue)",
+        // A brand has no unjudged read of its own, so the one it is listed from is its own reader.
+        "trait ReadUnjudged < 'de > : serde :: Deserialize < 'de >",
     ] {
         assert!(
             expanded.contains(emitted),
@@ -8211,12 +8297,14 @@ fn a_flagged_type_names_the_type_it_reaches_and_never_its_module() {
 ))]
 #[test]
 fn what_a_schema_module_already_held_reads_the_authors_scope_past_the_added_names() {
-    let source = "#[derive(Deserialize)] pub struct DecodeTicket { pub issue: Issue, pub trail: Vec<Segment> }";
+    // A model in an `Arc` and in a fixed array is one the type's unjudged read does not reach, so
+    // its reader stays in the schema module.
+    let source = "#[derive(Deserialize)] pub struct DecodeTicket { pub issue: Arc<Issue>, pub trail: [Segment; 2] }";
     let flagged = expansion_under("decode_with", source);
     for scoped in [
-        "Result < super :: Issue , D :: Error >",
-        "< super :: Issue > :: deserialize (deserializer)",
-        "Result < Vec < super :: Segment > , D :: Error >",
+        "Result < Arc < super :: Issue > , D :: Error >",
+        "< Arc < super :: Issue > > :: deserialize (deserializer)",
+        "Result < [super :: Segment ; 2] , D :: Error >",
     ] {
         assert!(
             flagged.contains(scoped),

@@ -11,6 +11,10 @@ mod members;
 mod models;
 
 #[cfg(test)]
+#[path = "check_tests/read.rs"]
+mod read;
+
+#[cfg(test)]
 #[path = "check_tests/readme.rs"]
 mod readme;
 

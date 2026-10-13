@@ -16,6 +16,7 @@ use regex_syntax::ast::{
 use regex_syntax::hir;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use syn::ext::IdentExt as _;
 use syn::{Attribute, Expr, Field, GenericParam, Generics, Lit, LitStr, Meta, Type, Variant};
 
 #[cfg(feature = "serde")]
@@ -1059,6 +1060,30 @@ pub fn is_recorded_unit_struct_type(ty: &Type) -> bool {
 
 pub fn lookup_alias_info(rust_ident: &str) -> Option<AliasInfo> {
     ALIAS_INFO.with(|map| map.borrow().get(rust_ident).cloned())
+}
+
+/// Every name `tokens` write: each identifier, and each word of a string, which is where a serde
+/// attribute writes the path of a hook.
+pub fn written_names(tokens: proc_macro2::TokenStream) -> Vec<String> {
+    tokens
+        .into_iter()
+        .flat_map(|token| match token {
+            proc_macro2::TokenTree::Group(group) => written_names(group.stream()),
+            proc_macro2::TokenTree::Ident(ident) => vec![ident.unraw().to_string()],
+            proc_macro2::TokenTree::Literal(literal) => {
+                if let Lit::Str(text) = Lit::new(literal) {
+                    text.value()
+                        .split(|letter: char| !letter.is_alphanumeric() && letter != '_')
+                        .filter(|word| !word.is_empty())
+                        .map(str::to_owned)
+                        .collect()
+                } else {
+                    Vec::new()
+                }
+            }
+            proc_macro2::TokenTree::Punct(_) => Vec::new(),
+        })
+        .collect()
 }
 
 /// The type a spelling names, read through the invisible grouping a `macro_rules!` substitution

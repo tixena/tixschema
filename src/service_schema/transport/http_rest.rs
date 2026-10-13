@@ -13,7 +13,9 @@ use crate::service_schema::parse::{
     scalar_kind, service_declares_a_placeholder, service_declares_a_stream,
     service_declares_multipart, tuple_elements, vec_inner, wire_key, written,
 };
-use crate::service_schema::support::{message_alias_ident, message_validator_ident, module_ident};
+use crate::service_schema::support::{
+    message_alias_ident, message_reader_ident, message_validator_ident, module_ident,
+};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Ident, Type};
@@ -783,9 +785,12 @@ fn dispatch_arm(module: &Ident, operation: &OperationDef, has_stream: bool) -> T
     );
 
     let message_alias = message_alias_ident(operation);
+    let reader = message_reader_ident(operation);
     let validator = message_validator_ident(operation);
+    // The message is read with no judgement of its own, and the validator answers next.
     let decode_and_validate = quote! {
-        let received: $crate::#module::#message_alias = match ::serde_json::from_value(#value_expr) {
+        let carried: ::serde_json::Value = #value_expr;
+        let received: $crate::#module::#message_alias = match $crate::#module::#reader(carried) {
             ::core::result::Result::Ok(received) => received,
             ::core::result::Result::Err(rejected) => return handler.on_fault(&refused_payload(#wire, &rejected)),
         };

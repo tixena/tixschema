@@ -140,19 +140,22 @@ mod a_bound_on_a_borrowed_str {
     }
 
     #[test]
-    fn a_borrowed_value_is_read_and_then_held_to_its_bound_by_validate() {
+    fn a_borrowed_value_is_held_to_its_bound_as_it_is_read() {
+        assert_eq!(
+            serde_json::from_str::<Account<'_>>(
+                r#"{"alias":"al","name":"alice","region":"east","tags":["only"]}"#,
+            )
+            .unwrap_err()
+            .to_string(),
+            "'alias': too short: minimum length is 3, got 2; \
+             'tags': too short: minimum length is 2, got 1"
+        );
         let read: Account<'_> = serde_json::from_str(
-            r#"{"alias":"al","name":"alice","region":"east","tags":["only"]}"#,
+            r#"{"alias":"alf","name":"alice","region":"east","tags":["a","b"]}"#,
         )
         .unwrap();
-        assert_eq!(read.alias, Some("al"));
-        assert_eq!(
-            read.validate().unwrap_err(),
-            vec![
-                "'alias': too short: minimum length is 3, got 2",
-                "'tags': too short: minimum length is 2, got 1",
-            ]
-        );
+        assert_eq!(read.alias, Some("alf"));
+        read.validate().unwrap();
 
         let without_alias: Account<'_> =
             serde_json::from_str(r#"{"name":"alice","region":"east","tags":["a","b"]}"#).unwrap();
@@ -217,27 +220,40 @@ mod a_bound_on_a_borrowed_str {
     }
 
     #[test]
-    fn a_tagged_variants_borrowed_member_is_held_by_validate() {
-        let read: Step<'_> = serde_json::from_str(r#"{"kind":"Rename","to":"ALICE"}"#).unwrap();
+    fn a_tagged_variants_borrowed_member_is_held_as_it_is_read() {
+        let built = Step::Rename { to: "ALICE" };
         assert_eq!(
-            read.validate().unwrap_err(),
+            built.validate().unwrap_err(),
             vec!["'to': does not match pattern '^[a-z]+$'"]
+        );
+        assert_eq!(
+            serde_json::from_str::<Step<'_>>(r#"{"kind":"Rename","to":"ALICE"}"#)
+                .unwrap_err()
+                .to_string(),
+            built.validate().unwrap_err().join("; ")
         );
     }
 
     #[test]
-    fn an_untagged_borrowed_member_is_read_unchecked_and_then_held_by_validate() {
+    fn an_untagged_borrowed_member_chooses_no_variant_and_is_held_once_the_value_is_read() {
         const BREAKS_LONG: &str = r#"{"text":"al"}"#;
 
-        let read: Handle<'_> = serde_json::from_str(BREAKS_LONG).unwrap();
-        assert_eq!(read, Handle::Long { text: "al" });
+        // The variant is chosen by shape alone, a borrowed member being read through no hook, and
+        // the value read is then refused with what `validate()` answers of it.
+        let built = Handle::Long { text: "al" };
+        assert_eq!(
+            built.validate().unwrap_err(),
+            vec!["'text': too short: minimum length is 3, got 2"]
+        );
+        assert_eq!(
+            serde_json::from_str::<Handle<'_>>(BREAKS_LONG)
+                .unwrap_err()
+                .to_string(),
+            built.validate().unwrap_err().join("; ")
+        );
         assert_eq!(
             serde_json::from_str::<HandleUnbounded<'_>>(BREAKS_LONG).unwrap(),
             HandleUnbounded::Long { text: "al" }
-        );
-        assert_eq!(
-            read.validate().unwrap_err(),
-            vec!["'text': too short: minimum length is 3, got 2"]
         );
 
         let kept: Handle<'_> = serde_json::from_str(r#"{"text":"alice"}"#).unwrap();
@@ -248,11 +264,17 @@ mod a_bound_on_a_borrowed_str {
     /// Nothing is hung beside a reader of the author's own, which serde admits one of per field.
     #[test]
     fn an_untagged_borrowed_member_is_read_by_the_reader_its_author_wrote() {
-        let read: Trimmed<'_> = serde_json::from_str(r#"{"text":" a "}"#).unwrap();
-        assert_eq!(read, Trimmed::Text { text: "a" });
+        // `got 1`: the author's reader trimmed the text before the read held it to its bound.
         assert_eq!(
-            read.validate().unwrap_err(),
-            vec!["'text': too short: minimum length is 3, got 1"]
+            serde_json::from_str::<Trimmed<'_>>(r#"{"text":" a "}"#)
+                .unwrap_err()
+                .to_string(),
+            Trimmed::Text { text: "a" }
+                .validate()
+                .unwrap_err()
+                .join("; ")
         );
+        let kept: Trimmed<'_> = serde_json::from_str(r#"{"text":" alice "}"#).unwrap();
+        assert_eq!(kept, Trimmed::Text { text: "alice" });
     }
 }
