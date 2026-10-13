@@ -77,17 +77,30 @@ fn balance_of(organization_id: u32) -> Poll<Result<BalanceAnswer, BalanceFailure
 #[test]
 fn a_type_declared_beside_them_reads() {
     let read: BalanceRequest =
-        serde_json::from_value(serde_json::json!({ "note": "", "organizationId": 3_u32 })).unwrap();
-    assert_eq!(read.note, "");
+        serde_json::from_value(serde_json::json!({ "note": "x", "organizationId": 3_u32 }))
+            .unwrap();
+    assert_eq!(read.note, "x");
     assert_eq!(read.tags, None);
 }
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_type_declared_beside_them_validates() {
-    let read: BalanceRequest =
-        serde_json::from_value(serde_json::json!({ "note": "", "organizationId": 3_u32 })).unwrap();
-    assert_eq!(read.validate().unwrap_err().len(), 1);
+    let broken = BalanceRequest {
+        note: String::new(),
+        organization_id: 3,
+        tags: None,
+    };
+    let reported = broken.validate().unwrap_err();
+    assert_eq!(reported.len(), 1);
+    assert_eq!(
+        serde_json::from_value::<BalanceRequest>(
+            serde_json::json!({ "note": "", "organizationId": 3_u32 })
+        )
+        .unwrap_err()
+        .to_string(),
+        reported.join("; ")
+    );
 }
 
 #[test]

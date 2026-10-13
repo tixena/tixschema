@@ -2030,10 +2030,9 @@ fn every_instantiation_the_wire_accepts_writes_string_keys() {
 fn a_lifetime_struct_still_holds_its_field_to_its_bound() {
     assert_eq!(
         serde_json::from_str::<LifetimeStruct<'_>>(r#"{"label":""}"#)
-            .unwrap()
-            .validate()
-            .unwrap_err(),
-        vec!["'label': too short: minimum length is 1, got 0"],
+            .unwrap_err()
+            .to_string(),
+        "'label': too short: minimum length is 1, got 0",
         "the borrowed field was read and then held to its bound"
     );
 

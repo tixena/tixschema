@@ -14,18 +14,19 @@ use core::iter::once;
 use core::mem::take;
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-use proc_macro2::{Group, Spacing};
-use proc_macro2::{Ident, Literal, Span, TokenStream, TokenTree};
+use proc_macro2::{Group, Spacing, TokenTree};
+use proc_macro2::{Ident, Literal, Span, TokenStream};
 use quote::{ToTokens as _, format_ident, quote};
 use syn::ext::IdentExt as _;
 use syn::punctuated::Punctuated;
 use syn::{
-    Field, Fields, FieldsNamed, GenericArgument, GenericParam, Generics, Item, ItemStruct, Lit,
-    LitStr, PathArguments, PredicateType, Token, Type, TypeParamBound, TypePath, Variant,
-    WherePredicate, parse_quote,
+    DeriveInput, Field, Fields, FieldsNamed, GenericArgument, GenericParam, Generics, Item,
+    ItemStruct, LitStr, PathArguments, PredicateType, Token, Type, TypeParamBound, TypePath,
+    Variant, WherePredicate, parse_quote,
 };
 
 use self::aliases::Reach;
+use crate::features::serde::read_bounds::read_bounds;
 use crate::features::serde::{
     NAMED_READ_HOOK_PREFIX, SerdeFieldHooks, has_serde_default, has_serde_read_hook,
     has_serde_skip_serializing, has_serde_transparent, parse_read_renames,
@@ -36,11 +37,12 @@ use crate::field_type::{
     FieldDefType, get_field_def, is_map_wrapper, is_refused_sequence_wrapper, is_sequence_wrapper,
     is_transparent_wrapper,
 };
+use crate::model_schema::judged_read::{listed_read, listed_reader};
 use crate::model_schema::{helper_name_stem, recovering_bound_check};
 use crate::rename_rule::resolve_rename_rule;
 use crate::utils::{
     Declared, declared, field_validator_name, ident_schema_module_name, type_parameters_in_scope,
-    written_type,
+    written_names, written_type,
 };
 
 #[cfg(all(
@@ -798,6 +800,11 @@ struct Written<'reach> {
     check_messages: TokenStream,
     names: Vec<String>,
     reach: &'reach Reach,
+    /// `decode_with_read_unjudged`, the read every source lists from.
+    read: TokenStream,
+    /// What serde's derive asks of the type's parameters to read it, beside `Deserialize`: the
+    /// read every source lists from is written under the same.
+    read_predicates: Vec<WherePredicate>,
 }
 
 /// What the generated code names of the type it is generated for, and the source it walks.
@@ -871,12 +878,16 @@ impl Walker<'_> {
                 let matched = source.items(&items);
                 vec![
                     Arm {
+                        // The items are walked one by one, so the list is read with none judged.
                         body: self.bounded(
                             &walked,
                             validator,
                             &whole,
                             held,
-                            &own_reader(&whole),
+                            &(!inner.reads_whole())
+                                .then(|| listed_reader(&whole, self.parameters))
+                                .flatten()
+                                .unwrap_or_else(|| own_reader(&whole)),
                             &path,
                         ),
                         nothing: false,
@@ -1489,7 +1500,7 @@ impl Walker<'_> {
         quote! {
             out.extend(#module::#bound(
                 found,
-                <Self as serde::Deserialize>::deserialize,
+                Self::decode_with_read_unjudged,
                 |held: &Self| {
                     let check = #check;
                     check(&held.0)
@@ -1805,7 +1816,7 @@ impl Walker<'_> {
         let (module, leaf) = (self.module, self.source.leaf());
         let written = self.written_whole();
         quote! {
-            out.extend(#module::#leaf(found, <Self as serde::Deserialize>::deserialize, #written, path.to_vec(), #expected, issue))
+            out.extend(#module::#leaf(found, Self::decode_with_read_unjudged, #written, path.to_vec(), #expected, issue))
         }
     }
 
@@ -1814,7 +1825,7 @@ impl Walker<'_> {
     fn read_whole_flattened(&self, unseen: bool, expected: &TokenStream) -> TokenStream {
         let (module, leaf) = (self.module, self.source.leaf());
         let own: Type = parse_quote! { Self };
-        let read = own_reader(&own);
+        let read = quote! { Self::decode_with_read_unjudged };
         let (unwritten, absent) = (
             self.source.unwritten(None),
             self.read_as_absent(unseen, &read, &own),
@@ -2026,6 +2037,8 @@ pub fn struct_recovering_decode(item_struct: &ItemStruct) -> RecoveringDecode {
             check_messages: checks::struct_check_messages(item_struct, &module_name, &parameters),
             names,
             reach: &reach,
+            read: listed_read(&DeriveInput::from(item_struct.clone())),
+            read_predicates: read_bounds(&DeriveInput::from(item_struct.clone())).predicates,
         },
         &paths,
         |walker| walker.methods(&shape, lone_bound.as_ref()),
@@ -2080,7 +2093,8 @@ where
     let issue_parameter = unclaimed_parameter("I", &written.names);
     let of_sources: Vec<TokenStream> = Source::GENERATED
         .iter()
-        .map(|&source| {
+        .enumerate()
+        .map(|(at, &source)| {
             let walker = Walker {
                 issue_parameter: &issue_parameter,
                 module: &module,
@@ -2090,16 +2104,19 @@ where
             };
             let entry = source.entry_methods(&module, &written.names);
             let walk_methods = methods(&walker);
+            // Every source reads through it, and the first one's bounds are the fewest.
+            let read = (at == 0).then_some(&written.read);
             quote! {
                 #entry
                 #walk_methods
+                #read
             }
         })
         .collect();
     let mut type_impl = type_impls(
         name,
         generics,
-        !parameters.is_empty(),
+        &written.read_predicates,
         &of_sources,
         &paths.type_items,
     );
@@ -2289,6 +2306,32 @@ fn bounded_by(generics: &Generics, bounds: &Punctuated<TypeParamBound, Token![+]
     bounded
 }
 
+/// `generics` with what serde's derive asks to read the type beside `Deserialize` of a parameter,
+/// which a source's own bounds already ask: each of `predicates` that asks more, held at every
+/// lifetime serde reads at.
+fn read_under(generics: &Generics, predicates: &[WherePredicate]) -> Generics {
+    let asked_already: Vec<String> = generics
+        .type_params()
+        .map(|parameter| format!("{} : serde :: Deserialize < 'de >", parameter.ident))
+        .collect();
+    let mut bounded = generics.clone();
+    for predicate in predicates {
+        let written = predicate.to_token_stream().to_string();
+        if asked_already.contains(&written) {
+            continue;
+        }
+        let mut at_every_read = predicate.clone();
+        if let WherePredicate::Type(of_type) = &mut at_every_read
+            && of_type.lifetimes.is_none()
+            && written.contains("'de")
+        {
+            of_type.lifetimes = Some(parse_quote!(for<'de>));
+        }
+        bounded.make_where_clause().predicates.push(at_every_read);
+    }
+    bounded
+}
+
 /// `value_bound` and `bson_bound`: what holds a value serde read to the bound its field declares.
 fn bound_items() -> TokenStream {
     let bson_bound = bson_bound_items();
@@ -2364,9 +2407,11 @@ fn bson_bound_items() -> TokenStream {
 fn bson_entry_methods(module: &Ident, written: &[String]) -> TokenStream {
     let decider = unclaimed_parameter("F", written);
     let operations = operation_methods(module, written);
+    // The read lists what it finds, so nothing below it is judged as it is read.
+    let read = quote! { Self::decode_with_read_unjudged(bson::Deserializer::new(whole.clone())) };
     let first_read = quote! {
         let mut whole = bson::Bson::Document(document);
-        let found = match <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(whole.clone())) {
+        let found = match #read {
             ::core::result::Result::Ok(decoded) => {
                 let mut found = Self::decode_with_bson_report(&whole, ::core::option::Option::None);
                 found.extend(Self::decode_with_bson_check_issues(&whole, &decoded.decode_with_check_messages()));
@@ -2383,7 +2428,7 @@ fn bson_entry_methods(module: &Ident, written: &[String]) -> TokenStream {
         };
     };
     let second_read = quote! {
-        let read = <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(whole.clone()));
+        let read = #read;
         let mut again = Self::decode_with_bson_report(&whole, read.as_ref().err().map(::std::string::ToString::to_string));
         if let ::core::result::Result::Ok(decoded) = &read {
             again.extend(Self::decode_with_bson_check_issues(&whole, &decoded.decode_with_check_messages()));
@@ -2701,9 +2746,11 @@ fn callback_items() -> TokenStream {
 /// said of the value, so each decode reads the value with serde once. Both entry points open
 /// with the same read and close with the same one.
 fn entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
-    // A check takes the value serde built, so each read serde accepts is followed by the checks.
+    // The read lists what it finds, so nothing below it is judged as it is read. A check takes
+    // the value serde built, so each read serde accepts is followed by the checks.
+    let read = quote! { Self::decode_with_read_unjudged(&value) };
     let first_read = quote! {
-        let found = match <Self as serde::Deserialize>::deserialize(&value) {
+        let found = match #read {
             ::core::result::Result::Ok(decoded) => {
                 let mut found = Self::decode_with_value_report(&value, ::core::option::Option::None);
                 found.extend(Self::decode_with_value_check_issues(&value, &decoded.decode_with_check_messages()));
@@ -2716,7 +2763,7 @@ fn entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
         };
     };
     let second_read = quote! {
-        let read = <Self as serde::Deserialize>::deserialize(&value);
+        let read = #read;
         let mut again = Self::decode_with_value_report(&value, read.as_ref().err().map(::std::string::ToString::to_string));
         if let ::core::result::Result::Ok(decoded) = &read {
             again.extend(Self::decode_with_value_check_issues(&value, &decoded.decode_with_check_messages()));
@@ -3718,11 +3765,11 @@ fn type_arguments(arguments: &PathArguments) -> impl Iterator<Item = &Type> {
 fn type_impls(
     name: &Ident,
     generics: &Generics,
-    generic: bool,
+    read_predicates: &[WherePredicate],
     methods: &[TokenStream],
     paths: &TokenStream,
 ) -> TokenStream {
-    if !generic {
+    if type_parameters_in_scope(generics).is_empty() {
         let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
         return quote! {
             impl #impl_generics #name #type_generics #where_clause {
@@ -3735,7 +3782,7 @@ fn type_impls(
         .iter()
         .zip(methods)
         .map(|(source, of_source)| {
-            let bounded = source.bounded(generics);
+            let bounded = read_under(&source.bounded(generics), read_predicates);
             let (impl_generics, type_generics, where_clause) = bounded.split_for_impl();
             quote! {
                 impl #impl_generics #name #type_generics #where_clause {
@@ -3995,30 +4042,6 @@ fn walks_itself(ty: &Type, depth: usize) -> bool {
             .is_ok_and(|aliased| walks_itself(&aliased, depth.saturating_add(1))),
         Some(Declared::Alias(_)) | None => false,
     }
-}
-
-/// Every name `tokens` write: each identifier, and each word of a string, which is where a serde
-/// attribute writes the path of a hook.
-fn written_names(tokens: TokenStream) -> Vec<String> {
-    tokens
-        .into_iter()
-        .flat_map(|token| match token {
-            TokenTree::Group(group) => written_names(group.stream()),
-            TokenTree::Ident(ident) => vec![ident.unraw().to_string()],
-            TokenTree::Literal(literal) => {
-                if let Lit::Str(text) = Lit::new(literal) {
-                    text.value()
-                        .split(|letter: char| !letter.is_alphanumeric() && letter != '_')
-                        .filter(|word| !word.is_empty())
-                        .map(str::to_owned)
-                        .collect()
-                } else {
-                    Vec::new()
-                }
-            }
-            TokenTree::Punct(_) => Vec::new(),
-        })
-        .collect()
 }
 
 #[cfg(test)]

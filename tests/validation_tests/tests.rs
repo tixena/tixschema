@@ -240,15 +240,25 @@ mod a_bound_the_fields_own_type_declares {
 
     #[test]
     fn test_a_nested_types_own_report_is_carried_up_under_the_field_that_held_it() {
-        // The payload reads: a nested bound is enforced nowhere on the read, which is what leaves
-        // the message's own validator as the only thing that can enforce it at all.
-        let read: Holder = serde_json::from_str(r#"{"holds":{"name":"a"}}"#).unwrap();
+        // The holder reads what it holds unjudged and judges the whole value once, so the read
+        // refuses with the holder's own report.
         assert_eq!(
-            read.holds.validate().unwrap_err(),
+            serde_json::from_str::<Holder>(r#"{"holds":{"name":"a"}}"#)
+                .unwrap_err()
+                .to_string(),
+            "'holds.name': too short: minimum length is 3, got 1"
+        );
+        let built = Holder {
+            holds: Held {
+                name: "a".to_owned(),
+            },
+        };
+        assert_eq!(
+            built.holds.validate().unwrap_err(),
             vec!["'name': too short: minimum length is 3, got 1".to_owned()]
         );
         assert_eq!(
-            read.validate().unwrap_err(),
+            built.validate().unwrap_err(),
             vec!["'holds.name': too short: minimum length is 3, got 1".to_owned()]
         );
 
@@ -385,10 +395,9 @@ mod a_bound_the_fields_own_type_declares {
     fn test_a_nested_field_keeps_its_walk_beside_a_plain_sibling() {
         assert_eq!(
             serde_json::from_str::<PlainAccount>(r#"{"aud":"acme","claims":{"jti":""}}"#)
-                .unwrap()
-                .validate()
-                .unwrap_err(),
-            vec!["'claims.jti': too short: minimum length is 1, got 0".to_owned()]
+                .unwrap_err()
+                .to_string(),
+            "'claims.jti': too short: minimum length is 1, got 0"
         );
         assert_eq!(
             serde_json::from_str::<PlainAccount>(r#"{"aud":"acme","claims":{"jti":"a"}}"#)
@@ -398,10 +407,9 @@ mod a_bound_the_fields_own_type_declares {
         );
         assert_eq!(
             serde_json::from_str::<SoleField>(r#"{"claims":{"jti":""}}"#)
-                .unwrap()
-                .validate()
-                .unwrap_err(),
-            vec!["'claims.jti': too short: minimum length is 1, got 0".to_owned()],
+                .unwrap_err()
+                .to_string(),
+            "'claims.jti': too short: minimum length is 1, got 0",
             "the sole-field shape has to keep answering what it always did"
         );
     }
@@ -411,10 +419,9 @@ mod a_bound_the_fields_own_type_declares {
     fn test_a_bound_two_hops_down_is_reached_and_names_the_whole_path() {
         assert_eq!(
             serde_json::from_str::<DeepEnvelope>(r#"{"account":{"claims":{"jti":""}}}"#)
-                .unwrap()
-                .validate()
-                .unwrap_err(),
-            vec!["'account.claims.jti': too short: minimum length is 1, got 0".to_owned()]
+                .unwrap_err()
+                .to_string(),
+            "'account.claims.jti': too short: minimum length is 1, got 0"
         );
         assert_eq!(
             serde_json::from_str::<DeepEnvelope>(r#"{"account":{"claims":{"jti":"a"}}}"#)
@@ -428,10 +435,9 @@ mod a_bound_the_fields_own_type_declares {
     fn test_a_flattened_hop_keeps_the_walk_and_contributes_no_segment() {
         assert_eq!(
             serde_json::from_str::<FlatEnvelope>(r#"{"account":{"aud":"acme","jti":""}}"#)
-                .unwrap()
-                .validate()
-                .unwrap_err(),
-            vec!["'account.jti': too short: minimum length is 1, got 0".to_owned()]
+                .unwrap_err()
+                .to_string(),
+            "'account.jti': too short: minimum length is 1, got 0"
         );
         assert_eq!(
             serde_json::from_str::<FlatEnvelope>(r#"{"account":{"aud":"acme","jti":"a"}}"#)
@@ -445,10 +451,9 @@ mod a_bound_the_fields_own_type_declares {
     fn test_an_untagged_members_flattened_field_keeps_its_walk() {
         assert_eq!(
             serde_json::from_str::<UntaggedFlat>(r#"{"aud":"acme","jti":""}"#)
-                .unwrap()
-                .validate()
-                .unwrap_err(),
-            vec!["'jti': too short: minimum length is 1, got 0".to_owned()]
+                .unwrap_err()
+                .to_string(),
+            "'jti': too short: minimum length is 1, got 0"
         );
         assert_eq!(
             serde_json::from_str::<UntaggedFlat>(r#"{"aud":"acme","jti":"a"}"#)
@@ -462,10 +467,9 @@ mod a_bound_the_fields_own_type_declares {
     fn test_a_tagged_variants_flattened_member_keeps_its_walk() {
         assert_eq!(
             serde_json::from_str::<TaggedFlat>(r#"{"kind":"Bearer","aud":"acme","jti":""}"#)
-                .unwrap()
-                .validate()
-                .unwrap_err(),
-            vec!["'jti': too short: minimum length is 1, got 0".to_owned()]
+                .unwrap_err()
+                .to_string(),
+            "'jti': too short: minimum length is 1, got 0"
         );
         assert_eq!(
             serde_json::from_str::<TaggedFlat>(r#"{"kind":"Bearer","aud":"acme","jti":"a"}"#)
@@ -601,17 +605,15 @@ mod a_bound_inside_an_untagged_variant {
     fn test_an_untagged_union_dispatches_to_whichever_variant_it_holds() {
         assert_eq!(
             serde_json::from_str::<ScopedAccount>(r#"{"aud":"app-user","jti":""}"#)
-                .unwrap()
-                .validate()
-                .unwrap_err(),
-            vec!["'jti': too short: minimum length is 1, got 0".to_owned()]
+                .unwrap_err()
+                .to_string(),
+            "'jti': too short: minimum length is 1, got 0"
         );
         assert_eq!(
             serde_json::from_str::<ScopedAccount>(r#"{"sysAdminUsername":"ops","jti":""}"#)
-                .unwrap()
-                .validate()
-                .unwrap_err(),
-            vec!["'jti': too short: minimum length is 1, got 0".to_owned()],
+                .unwrap_err()
+                .to_string(),
+            "'jti': too short: minimum length is 1, got 0",
             "the second member has to be walked too, or the arm is one variant's rather than the \
              union's"
         );
@@ -627,10 +629,9 @@ mod a_bound_inside_an_untagged_variant {
     fn test_a_union_inside_a_union_is_walked_to_the_bound_beneath_both() {
         assert_eq!(
             serde_json::from_str::<ScopedEnvelope>(r#"{"account":{"tokenId":"t-1","jti":""}}"#)
-                .unwrap()
-                .validate()
-                .unwrap_err(),
-            vec!["'account.jti': too short: minimum length is 1, got 0".to_owned()]
+                .unwrap_err()
+                .to_string(),
+            "'account.jti': too short: minimum length is 1, got 0"
         );
         assert_eq!(
             serde_json::from_str::<ScopedEnvelope>(r#"{"account":{"tokenId":"t-1","jti":"a"}}"#)
@@ -644,10 +645,9 @@ mod a_bound_inside_an_untagged_variant {
     fn test_a_field_holding_an_untagged_union_names_the_path_the_payload_spells() {
         assert_eq!(
             serde_json::from_str::<ScopedEnvelope>(r#"{"account":{"aud":"app-user","jti":""}}"#)
-                .unwrap()
-                .validate()
-                .unwrap_err(),
-            vec!["'account.jti': too short: minimum length is 1, got 0".to_owned()]
+                .unwrap_err()
+                .to_string(),
+            "'account.jti': too short: minimum length is 1, got 0"
         );
         assert_eq!(
             serde_json::from_str::<ScopedEnvelope>(r#"{"account":{"aud":"app-user","jti":"a"}}"#)
@@ -659,31 +659,28 @@ mod a_bound_inside_an_untagged_variant {
 
     #[test]
     fn test_a_message_that_is_itself_untagged_answers_what_its_variant_answers() {
-        let refused = "'account.jti': too short: minimum length is 1, got 0".to_owned();
+        let refused = "'account.jti': too short: minimum length is 1, got 0";
         assert_eq!(
             serde_json::from_str::<EitherEnvelope>(r#"{"account":{"aud":"app-user","jti":""}}"#)
-                .unwrap()
-                .validate()
-                .unwrap_err(),
-            vec![refused.clone()]
+                .unwrap_err()
+                .to_string(),
+            refused
         );
         assert_eq!(
             serde_json::from_str::<EitherEnvelope>(
                 r#"{"account":{"sysAdminUsername":"ops","jti":""}}"#
             )
-            .unwrap()
-            .validate()
-            .unwrap_err(),
-            vec![refused.clone()]
+            .unwrap_err()
+            .to_string(),
+            refused
         );
         assert_eq!(
             serde_json::from_str::<AdminEnvelope>(
                 r#"{"account":{"sysAdminUsername":"ops","jti":""}}"#
             )
-            .unwrap()
-            .validate()
-            .unwrap_err(),
-            vec![refused],
+            .unwrap_err()
+            .to_string(),
+            refused,
             "the shape that already refused has to keep refusing, in the same words"
         );
     }
@@ -1064,7 +1061,7 @@ mod a_check_the_enum_declares {
     }
 
     #[test]
-    fn test_a_tagged_enum_under_a_check_is_read_and_written_as_before() {
+    fn test_a_tagged_enum_under_a_check_is_written_as_before_and_read_as_validate_judges_it() {
         for (wire, read) in [
             (
                 r#"{"Named":{"label":""}}"#,
@@ -1080,22 +1077,49 @@ mod a_check_the_enum_declares {
                     label: "ab".to_owned(),
                 },
             ),
+            (
+                r#"{"Named":{"label":"abc"}}"#,
+                Held::Named {
+                    label: "abc".to_owned(),
+                },
+            ),
+            (r#"{"Slot":"abc"}"#, Held::Slot("abc".to_owned())),
+            (r#"{"Pair":["abc",0]}"#, Held::Pair("abc".to_owned(), 0)),
             (r#""Bare""#, Held::Bare),
         ] {
-            assert_eq!(serde_json::from_str::<Held>(wire).unwrap(), read);
             assert_eq!(serde_json::to_string(&read).unwrap(), wire);
+            // The value where it keeps the check, and what `validate()` answers of it where it
+            // breaks it.
+            let judged = read.validate().map_err(|reported| reported.join("; "));
+            assert_eq!(
+                serde_json::from_str::<Held>(wire).map_err(|refused| refused.to_string()),
+                judged.map(|()| read)
+            );
         }
         let internal = r#"{"kind":"Named","label":"abcdef"}"#;
+        let named = HeldInternal::Named {
+            label: "abcdef".to_owned(),
+        };
         assert_eq!(
-            serde_json::from_str::<HeldInternal>(internal).unwrap(),
-            HeldInternal::Named {
-                label: "abcdef".to_owned()
-            }
+            serde_json::from_str::<HeldInternal>(internal)
+                .unwrap_err()
+                .to_string(),
+            named.validate().unwrap_err().join("; ")
         );
         let adjacent = r#"{"kind":"Slot","data":""}"#;
-        let slot = serde_json::from_str::<HeldAdjacent>(adjacent).unwrap();
-        assert_eq!(slot, HeldAdjacent::Slot(String::new()));
+        let slot = HeldAdjacent::Slot(String::new());
         assert_eq!(serde_json::to_string(&slot).unwrap(), adjacent);
+        assert_eq!(
+            serde_json::from_str::<HeldAdjacent>(adjacent)
+                .unwrap_err()
+                .to_string(),
+            slot.validate().unwrap_err().join("; ")
+        );
+        let kept = r#"{"kind":"Slot","data":"abc"}"#;
+        assert_eq!(
+            serde_json::from_str::<HeldAdjacent>(kept).unwrap(),
+            HeldAdjacent::Slot("abc".to_owned())
+        );
     }
 
     #[cfg(feature = "zod")]
@@ -1473,13 +1497,13 @@ fn test_max_length_rust_invalid() {
     }
 
     let invalid = r#"{"name": "too long value"}"#;
-    // A value out of range is still structurally a message: every key is present and every value is
-    // of the type its field declared.
-    let read = serde_json::from_str::<MaxLengthInvalid>(invalid).unwrap();
-    let errors = read.validate().unwrap_err();
+    // The read refuses a value out of range, with what the validator answers of it.
+    let refused = serde_json::from_str::<MaxLengthInvalid>(invalid)
+        .unwrap_err()
+        .to_string();
     assert!(
-        errors[0].contains("too long"),
-        "Error should mention 'too long': {errors:?}"
+        refused.contains("too long"),
+        "Error should mention 'too long': {refused}"
     );
 }
 
@@ -1519,13 +1543,13 @@ fn test_min_length_rust_invalid() {
     }
 
     let invalid = r#"{"name": "hi"}"#;
-    // A value out of range is still structurally a message: every key is present and every value is
-    // of the type its field declared.
-    let read = serde_json::from_str::<MinLengthRustInvalid>(invalid).unwrap();
-    let errors = read.validate().unwrap_err();
+    // The read refuses a value out of range, with what the validator answers of it.
+    let refused = serde_json::from_str::<MinLengthRustInvalid>(invalid)
+        .unwrap_err()
+        .to_string();
     assert!(
-        errors[0].contains("too short"),
-        "Error should mention 'too short': {errors:?}"
+        refused.contains("too short"),
+        "Error should mention 'too short': {refused}"
     );
 }
 
@@ -1565,15 +1589,13 @@ fn test_combined_string_constraints_too_short() {
     }
 
     let invalid = r#"{"id": "ab"}"#;
-    // Structurally a message either way; which of the three constraints it breaks is
-    // the validator's to say, and it says which one.
-    let errors = serde_json::from_str::<CombinedStringShort>(invalid)
-        .unwrap()
-        .validate()
-        .unwrap_err();
+    // The read refuses it, and says which of the three constraints it breaks.
+    let refused = serde_json::from_str::<CombinedStringShort>(invalid)
+        .unwrap_err()
+        .to_string();
     assert!(
-        errors[0].contains("too short"),
-        "Too short value should be refused for that: {errors:?}"
+        refused.contains("too short"),
+        "Too short value should be refused for that: {refused}"
     );
 }
 
@@ -1591,15 +1613,13 @@ fn test_combined_string_constraints_pattern_fail() {
     }
 
     let invalid = r#"{"id": "Hello123"}"#;
-    // Structurally a message either way; which of the three constraints it breaks is
-    // the validator's to say, and it says which one.
-    let errors = serde_json::from_str::<CombinedStringPattern>(invalid)
-        .unwrap()
-        .validate()
-        .unwrap_err();
+    // The read refuses it, and says which of the three constraints it breaks.
+    let refused = serde_json::from_str::<CombinedStringPattern>(invalid)
+        .unwrap_err()
+        .to_string();
     assert!(
-        errors[0].contains("does not match pattern"),
-        "Value failing pattern should be refused for that: {errors:?}"
+        refused.contains("does not match pattern"),
+        "Value failing pattern should be refused for that: {refused}"
     );
 }
 
@@ -1811,13 +1831,13 @@ fn test_minimum_rust_invalid() {
     }
 
     let invalid = r#"{"count": 3}"#;
-    // A value out of range is still structurally a message: every key is present and every value is
-    // of the type its field declared.
-    let read = serde_json::from_str::<MinimumRustInvalid>(invalid).unwrap();
-    let errors = read.validate().unwrap_err();
+    // The read refuses a value out of range, with what the validator answers of it.
+    let refused = serde_json::from_str::<MinimumRustInvalid>(invalid)
+        .unwrap_err()
+        .to_string();
     assert!(
-        errors[0].contains("too small"),
-        "Error should mention 'too small': {errors:?}"
+        refused.contains("too small"),
+        "Error should mention 'too small': {refused}"
     );
 }
 
@@ -1857,13 +1877,13 @@ fn test_maximum_rust_invalid() {
     }
 
     let invalid = r#"{"count": 99}"#;
-    // A value out of range is still structurally a message: every key is present and every value is
-    // of the type its field declared.
-    let read = serde_json::from_str::<MaximumRustInvalid>(invalid).unwrap();
-    let errors = read.validate().unwrap_err();
+    // The read refuses a value out of range, with what the validator answers of it.
+    let refused = serde_json::from_str::<MaximumRustInvalid>(invalid)
+        .unwrap_err()
+        .to_string();
     assert!(
-        errors[0].contains("too large"),
-        "Error should mention 'too large': {errors:?}"
+        refused.contains("too large"),
+        "Error should mention 'too large': {refused}"
     );
 }
 
@@ -2191,13 +2211,13 @@ fn test_minimum_float_rust_invalid() {
     }
 
     let invalid = r#"{"ratio": -0.5}"#;
-    // A value out of range is still structurally a message: every key is present and every value is
-    // of the type its field declared.
-    let read = serde_json::from_str::<MinFloatInvalid>(invalid).unwrap();
-    let errors = read.validate().unwrap_err();
+    // The read refuses a value out of range, with what the validator answers of it.
+    let refused = serde_json::from_str::<MinFloatInvalid>(invalid)
+        .unwrap_err()
+        .to_string();
     assert!(
-        errors[0].contains("too small"),
-        "Error should mention 'too small': {errors:?}"
+        refused.contains("too small"),
+        "Error should mention 'too small': {refused}"
     );
 }
 
@@ -2237,13 +2257,13 @@ fn test_maximum_float_rust_invalid() {
     }
 
     let invalid = r#"{"value": 15.0}"#;
-    // A value out of range is still structurally a message: every key is present and every value is
-    // of the type its field declared.
-    let read = serde_json::from_str::<MaxFloatInvalid>(invalid).unwrap();
-    let errors = read.validate().unwrap_err();
+    // The read refuses a value out of range, with what the validator answers of it.
+    let refused = serde_json::from_str::<MaxFloatInvalid>(invalid)
+        .unwrap_err()
+        .to_string();
     assert!(
-        errors[0].contains("too large"),
-        "Error should mention 'too large': {errors:?}"
+        refused.contains("too large"),
+        "Error should mention 'too large': {refused}"
     );
 }
 
@@ -2811,7 +2831,7 @@ fn test_validate_boxed_option_string() {
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
 ))]
 #[test]
-fn test_an_optional_string_is_read_and_then_held_to_its_bound_by_validate() {
+fn test_an_optional_string_is_held_to_its_bound_as_it_is_read() {
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug)]
     pub struct WireOptional {
@@ -2820,10 +2840,11 @@ fn test_an_optional_string_is_read_and_then_held_to_its_bound_by_validate() {
         pub nickname: Option<String>,
     }
 
-    let read = serde_json::from_str::<WireOptional>(r#"{"nickname":"a"}"#).unwrap();
     assert_eq!(
-        read.validate().unwrap_err(),
-        vec!["'nickname': too short: minimum length is 3, got 1"],
+        serde_json::from_str::<WireOptional>(r#"{"nickname":"a"}"#)
+            .unwrap_err()
+            .to_string(),
+        "'nickname': too short: minimum length is 3, got 1",
         "the bound reaches through the Option, and names the field"
     );
 
@@ -2897,7 +2918,7 @@ fn test_deserialize_optional_string_keeps_a_written_default() {
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
 ))]
 #[test]
-fn test_a_boxed_string_is_read_and_then_held_to_its_bound_by_validate() {
+fn test_a_boxed_string_is_held_to_its_bound_as_it_is_read() {
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug)]
     pub struct WireBoxed {
@@ -2905,10 +2926,11 @@ fn test_a_boxed_string_is_read_and_then_held_to_its_bound_by_validate() {
         pub label: Box<str>,
     }
 
-    let read = serde_json::from_str::<WireBoxed>(r#"{"label":"a"}"#).unwrap();
     assert_eq!(
-        read.validate().unwrap_err(),
-        vec!["'label': too short: minimum length is 3, got 1"]
+        serde_json::from_str::<WireBoxed>(r#"{"label":"a"}"#)
+            .unwrap_err()
+            .to_string(),
+        "'label': too short: minimum length is 3, got 1"
     );
     assert_eq!(
         &*serde_json::from_str::<WireBoxed>(r#"{"label":"abc"}"#)
@@ -2924,7 +2946,7 @@ fn test_a_boxed_string_is_read_and_then_held_to_its_bound_by_validate() {
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
 ))]
 #[test]
-fn test_a_cow_string_is_read_and_then_held_to_its_bound_by_validate() {
+fn test_a_cow_string_is_held_to_its_bound_as_it_is_read() {
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug)]
     pub struct WireCow {
@@ -2932,10 +2954,11 @@ fn test_a_cow_string_is_read_and_then_held_to_its_bound_by_validate() {
         pub label: Cow<'static, str>,
     }
 
-    let read = serde_json::from_str::<WireCow>(r#"{"label":"a"}"#).unwrap();
     assert_eq!(
-        read.validate().unwrap_err(),
-        vec!["'label': too short: minimum length is 3, got 1"]
+        serde_json::from_str::<WireCow>(r#"{"label":"a"}"#)
+            .unwrap_err()
+            .to_string(),
+        "'label': too short: minimum length is 3, got 1"
     );
     assert_eq!(
         serde_json::from_str::<WireCow>(r#"{"label":"abc"}"#)
@@ -2950,7 +2973,7 @@ fn test_a_cow_string_is_read_and_then_held_to_its_bound_by_validate() {
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
 ))]
 #[test]
-fn test_a_vec_of_strings_is_read_and_then_held_to_its_bound_by_validate() {
+fn test_a_vec_of_strings_is_held_to_its_bound_as_it_is_read() {
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug)]
     pub struct WireVec {
@@ -2958,10 +2981,11 @@ fn test_a_vec_of_strings_is_read_and_then_held_to_its_bound_by_validate() {
         pub tags: Vec<String>,
     }
 
-    let read = serde_json::from_str::<WireVec>(r#"{"tags":["ok!","a"]}"#).unwrap();
     assert_eq!(
-        read.validate().unwrap_err(),
-        vec!["'tags': too short: minimum length is 3, got 2"],
+        serde_json::from_str::<WireVec>(r#"{"tags":["ok!","a"]}"#)
+            .unwrap_err()
+            .to_string(),
+        "'tags': too short: minimum length is 3, got 2",
         "the list is read, and then reported by its count"
     );
     let held = serde_json::from_str::<WireVec>(r#"{"tags":["ok!","a","b"]}"#).unwrap();
@@ -2970,10 +2994,11 @@ fn test_a_vec_of_strings_is_read_and_then_held_to_its_bound_by_validate() {
         vec!["ok!".to_owned(), "a".to_owned(), "b".to_owned()]
     );
     held.validate().unwrap();
-    let empty = serde_json::from_str::<WireVec>(r#"{"tags":[]}"#).unwrap();
     assert_eq!(
-        empty.validate().unwrap_err(),
-        vec!["'tags': too short: minimum length is 3, got 0"],
+        serde_json::from_str::<WireVec>(r#"{"tags":[]}"#)
+            .unwrap_err()
+            .to_string(),
+        "'tags': too short: minimum length is 3, got 0",
         "An empty array is read, and is a list of no items"
     );
 }
@@ -2984,7 +3009,7 @@ fn test_a_vec_of_strings_is_read_and_then_held_to_its_bound_by_validate() {
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
 ))]
 #[test]
-fn test_an_optional_vec_is_read_and_then_held_to_its_bound_by_validate() {
+fn test_an_optional_vec_is_held_to_its_bound_as_it_is_read() {
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug)]
     pub struct WireOptionalVec {
@@ -2993,10 +3018,11 @@ fn test_an_optional_vec_is_read_and_then_held_to_its_bound_by_validate() {
         pub tags: Option<Vec<String>>,
     }
 
-    let read = serde_json::from_str::<WireOptionalVec>(r#"{"tags":["ok!","a"]}"#).unwrap();
     assert_eq!(
-        read.validate().unwrap_err(),
-        vec!["'tags': too short: minimum length is 3, got 2"]
+        serde_json::from_str::<WireOptionalVec>(r#"{"tags":["ok!","a"]}"#)
+            .unwrap_err()
+            .to_string(),
+        "'tags': too short: minimum length is 3, got 2"
     );
     assert!(
         serde_json::from_str::<WireOptionalVec>("{}")
@@ -3012,7 +3038,7 @@ fn test_an_optional_vec_is_read_and_then_held_to_its_bound_by_validate() {
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
 ))]
 #[test]
-fn test_an_optional_number_is_read_and_then_held_to_its_range_by_validate() {
+fn test_an_optional_number_is_held_to_its_range_as_it_is_read() {
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug)]
     pub struct WireNumeric {
@@ -3025,18 +3051,16 @@ fn test_an_optional_number_is_read_and_then_held_to_its_range_by_validate() {
 
     assert_eq!(
         serde_json::from_str::<WireNumeric>(r#"{"age":5,"counts":[1]}"#)
-            .unwrap()
-            .validate()
-            .unwrap_err(),
-        vec!["'age': too small: minimum is 18, got 5"]
+            .unwrap_err()
+            .to_string(),
+        "'age': too small: minimum is 18, got 5"
     );
 
     assert_eq!(
         serde_json::from_str::<WireNumeric>(r#"{"age":21,"counts":[1,0,7]}"#)
-            .unwrap()
-            .validate()
-            .unwrap_err(),
-        vec!["'counts': too long: maximum length is 2, got 3"]
+            .unwrap_err()
+            .to_string(),
+        "'counts': too long: maximum length is 2, got 3"
     );
 
     let accepted = serde_json::from_str::<WireNumeric>(r#"{"age":21,"counts":[1,0]}"#).unwrap();
@@ -3049,7 +3073,7 @@ fn test_an_optional_number_is_read_and_then_held_to_its_range_by_validate() {
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
 ))]
 #[test]
-fn test_every_wrapped_shape_is_read_and_then_refused_by_validate() {
+fn test_every_wrapped_shape_is_refused_as_it_is_read() {
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug)]
     pub struct WireAgreement {
@@ -3088,16 +3112,12 @@ fn test_every_wrapped_shape_is_read_and_then_refused_by_validate() {
     ] {
         let mut payload: serde_json::Value = serde_json::from_str(GOOD).unwrap();
         payload[field] = serde_json::from_str(short).unwrap();
-        let admitted =
-            serde_json::from_str::<WireAgreement>(&payload.to_string()).map_err(|refused| {
-                format!("`{field}` broke a bound and the read refused it: {refused}")
-            });
-        assert_eq!(admitted.as_ref().err(), None);
-        let read = admitted.unwrap();
         assert_eq!(
-            read.validate().unwrap_err(),
-            vec![format!("'{field}': too short: minimum length is 3, got 1")],
-            "`{field}` broke its bound and validate() did not say so"
+            serde_json::from_str::<WireAgreement>(&payload.to_string())
+                .unwrap_err()
+                .to_string(),
+            format!("'{field}': too short: minimum length is 3, got 1"),
+            "`{field}` broke its bound and the read did not say so"
         );
     }
 }
@@ -3126,10 +3146,9 @@ fn test_two_variants_naming_one_field_keep_their_own_constraints() {
     // in doubt and the bound is the validator's to apply — the variant's own bound, and only it.
     assert_eq!(
         serde_json::from_str::<Action>(r#"{"kind":"Delete","note":"abc"}"#)
-            .unwrap()
-            .validate()
-            .unwrap_err(),
-        vec!["'note': too short: minimum length is 5, got 3"]
+            .unwrap_err()
+            .to_string(),
+        "'note': too short: minimum length is 5, got 3"
     );
     assert!(
         serde_json::from_str::<Action>(r#"{"kind":"Delete","note":"abcde"}"#)
@@ -3141,10 +3160,9 @@ fn test_two_variants_naming_one_field_keep_their_own_constraints() {
 
     assert_eq!(
         serde_json::from_str::<Action>(r#"{"kind":"Upload","note":"ab"}"#)
-            .unwrap()
-            .validate()
-            .unwrap_err(),
-        vec!["'note': too short: minimum length is 3, got 2"]
+            .unwrap_err()
+            .to_string(),
+        "'note': too short: minimum length is 3, got 2"
     );
     assert!(
         serde_json::from_str::<Action>(r#"{"kind":"Upload","note":"abc"}"#)
@@ -3603,7 +3621,7 @@ fn test_a_tagged_tuple_variants_slot_is_checked_under_its_position() {
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
 ))]
 #[test]
-fn test_a_tagged_tuple_variants_checked_slot_is_read_and_written_as_before() {
+fn test_a_tagged_tuple_variants_checked_slot_is_written_as_before_and_read_as_validate_judges_it() {
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
     pub enum WireExternal {
@@ -3625,39 +3643,61 @@ fn test_a_tagged_tuple_variants_checked_slot_is_read_and_written_as_before() {
         ),
     }
 
-    assert_eq!(
-        serde_json::from_str::<WireExternal>(r#"{"Code":"abc"}"#).unwrap(),
-        WireExternal::Code("abc".to_owned())
-    );
-    assert_eq!(
-        serde_json::from_str::<WireExternal>(r#"{"Pair":["a",0]}"#).unwrap(),
-        WireExternal::Pair("a".to_owned(), 0)
-    );
-    assert_eq!(
-        serde_json::from_str::<WireAdjacent>(r#"{"kind":"Code","data":"abc"}"#).unwrap(),
-        WireAdjacent::Code("abc".to_owned())
-    );
-    assert_eq!(
-        serde_json::from_str::<WireAdjacent>(r#"{"kind":"Pair","data":["a",0]}"#).unwrap(),
-        WireAdjacent::Pair("a".to_owned(), 0)
-    );
+    // A slot that breaks its check is refused with what `validate()` answers of the same value.
+    for (wire, built) in [
+        (r#"{"Code":"abc"}"#, WireExternal::Code("abc".to_owned())),
+        (r#"{"Pair":["a",0]}"#, WireExternal::Pair("a".to_owned(), 0)),
+    ] {
+        assert_eq!(serde_json::to_string(&built).unwrap(), wire);
+        assert_eq!(
+            serde_json::from_str::<WireExternal>(wire)
+                .unwrap_err()
+                .to_string(),
+            built.validate().unwrap_err().join("; ")
+        );
+    }
+    for (wire, built) in [
+        (
+            r#"{"kind":"Code","data":"abc"}"#,
+            WireAdjacent::Code("abc".to_owned()),
+        ),
+        (
+            r#"{"kind":"Pair","data":["a",0]}"#,
+            WireAdjacent::Pair("a".to_owned(), 0),
+        ),
+    ] {
+        assert_eq!(serde_json::to_string(&built).unwrap(), wire);
+        assert_eq!(
+            serde_json::from_str::<WireAdjacent>(wire)
+                .unwrap_err()
+                .to_string(),
+            built.validate().unwrap_err().join("; ")
+        );
+    }
 
-    assert_eq!(
-        serde_json::to_string(&WireExternal::Code("ABC".to_owned())).unwrap(),
-        r#"{"Code":"ABC"}"#
-    );
-    assert_eq!(
-        serde_json::to_string(&WireExternal::Pair("ab".to_owned(), 1)).unwrap(),
-        r#"{"Pair":["ab",1]}"#
-    );
-    assert_eq!(
-        serde_json::to_string(&WireAdjacent::Code("ABC".to_owned())).unwrap(),
-        r#"{"kind":"Code","data":"ABC"}"#
-    );
-    assert_eq!(
-        serde_json::to_string(&WireAdjacent::Pair("ab".to_owned(), 1)).unwrap(),
-        r#"{"kind":"Pair","data":["ab",1]}"#
-    );
+    for (wire, kept) in [
+        (r#"{"Code":"ABC"}"#, WireExternal::Code("ABC".to_owned())),
+        (
+            r#"{"Pair":["ab",1]}"#,
+            WireExternal::Pair("ab".to_owned(), 1),
+        ),
+    ] {
+        assert_eq!(serde_json::to_string(&kept).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<WireExternal>(wire).unwrap(), kept);
+    }
+    for (wire, kept) in [
+        (
+            r#"{"kind":"Code","data":"ABC"}"#,
+            WireAdjacent::Code("ABC".to_owned()),
+        ),
+        (
+            r#"{"kind":"Pair","data":["ab",1]}"#,
+            WireAdjacent::Pair("ab".to_owned(), 1),
+        ),
+    ] {
+        assert_eq!(serde_json::to_string(&kept).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<WireAdjacent>(wire).unwrap(), kept);
+    }
 }
 
 #[cfg(all(feature = "serde", feature = "zod"))]
@@ -3816,12 +3856,23 @@ fn test_readme_slot_validate_example_prints_what_the_generator_writes() {
         );
     }
 
-    for (wire, read) in [
+    for (wire, built) in [
         (r#"{"Code":"abc"}"#, Entry::Code("abc".to_owned())),
         (r#"{"Pair":["a",0]}"#, Entry::Pair("a".to_owned(), 0)),
     ] {
-        assert_eq!(serde_json::from_str::<Entry>(wire).unwrap(), read);
-        assert_eq!(serde_json::to_string(&read).unwrap(), wire);
+        assert_eq!(
+            serde_json::from_str::<Entry>(wire).unwrap_err().to_string(),
+            built.validate().unwrap_err().join("; ")
+        );
+        assert_eq!(serde_json::to_string(&built).unwrap(), wire);
+        assert!(readme.contains(wire), "the README no longer shows {wire}");
+    }
+    for (wire, kept) in [
+        (r#"{"Code":"ABC"}"#, Entry::Code("ABC".to_owned())),
+        (r#"{"Pair":["ab",1]}"#, Entry::Pair("ab".to_owned(), 1)),
+    ] {
+        assert_eq!(serde_json::from_str::<Entry>(wire).unwrap(), kept);
+        assert_eq!(serde_json::to_string(&kept).unwrap(), wire);
         assert!(readme.contains(wire), "the README no longer shows {wire}");
     }
     entry_schema::validate_code_0_value("ABC").unwrap();

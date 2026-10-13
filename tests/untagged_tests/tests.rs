@@ -1680,7 +1680,7 @@ fn test_untagged_objectid_member_spells_the_one_oid_object() {
 }
 
 #[test]
-fn test_the_bound_runs_on_an_untagged_read_and_in_a_tagged_twins_validator() {
+fn test_the_bound_runs_on_an_untagged_read_and_on_a_tagged_twins() {
     assert_eq!(
         serde_json::from_str::<SoleConstrainedUnion>(r#"{"slug":"A"}"#)
             .unwrap_err()
@@ -1690,13 +1690,14 @@ fn test_the_bound_runs_on_an_untagged_read_and_in_a_tagged_twins_validator() {
     );
     assert_eq!(
         serde_json::from_str::<SoleConstrainedTagged>(r#"{"kind":"Slug","slug":"A"}"#)
-            .unwrap()
-            .validate()
-            .unwrap_err(),
-        vec![
-            "'slug': too short: minimum length is 2, got 1",
-            "'slug': does not match pattern '^[a-z]+$'",
-        ],
+            .unwrap_err()
+            .to_string(),
+        SoleConstrainedTagged::Slug {
+            slug: "A".to_owned()
+        }
+        .validate()
+        .unwrap_err()
+        .join("; "),
         "the tag settled which variant this is, so the payload is a message and the bounds are \
          what it failed"
     );

@@ -9,7 +9,7 @@ use core::iter::once;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{ToTokens as _, format_ident, quote};
 use syn::ext::IdentExt as _;
-use syn::{Fields, ItemEnum, Type, Variant, parse_quote};
+use syn::{DeriveInput, Fields, ItemEnum, Type, Variant, parse_quote};
 
 use super::aliases::Reach;
 use super::checks::enum_check_messages;
@@ -18,11 +18,13 @@ use super::{
     Walk, Walker, Written, added_to, binding, flattened_walker_call, not_the_shape,
     path_expression, slot_validator, unclaimed, written_names,
 };
+use crate::features::serde::read_bounds::read_bounds;
 use crate::features::serde::{
     has_serde_skip_serializing, parse_read_renames, parse_serde_field_attributes,
     parse_serde_key_omission, parse_serde_type_attributes, parse_written_renames,
 };
 use crate::field_type::{get_field_def, is_plain_enum};
+use crate::model_schema::judged_read::listed_read;
 use crate::rename_rule::resolve_rename_rule;
 use crate::utils::{ident_schema_module_name, to_snake_case, type_parameters_in_scope};
 
@@ -483,7 +485,7 @@ impl EnumWalker<'_> {
             .object_reader(&Ident::new("object", Span::call_site()));
         quote! {
             let here = [path, &[::core::result::Result::Ok(#tag.to_owned())]].concat();
-            out.push(match <Self as serde::Deserialize>::deserialize(#reader) {
+            out.push(match Self::decode_with_read_unjudged(#reader) {
                 ::core::result::Result::Err(refused) => issue("Invalid", here, #expected, ::core::option::Option::Some(tag.clone()), ::core::option::Option::Some(refused.to_string()), ::std::vec::Vec::new()),
                 ::core::result::Result::Ok(_) => issue("Mistyped", here, #expected, ::core::option::Option::Some(tag.clone()), ::core::option::Option::None, ::std::vec::Vec::new()),
             });
@@ -566,7 +568,7 @@ impl EnumWalker<'_> {
         let names = self.variants.iter().map(|variant| &variant.rust_name);
         let whole = source.object_value(&object);
         quote! {
-            match <Self as serde::Deserialize>::deserialize(#reader) {
+            match Self::decode_with_read_unjudged(#reader) {
                 #(#picked)*
                 #unread
                 ::core::result::Result::Err(_) => {
@@ -611,7 +613,7 @@ impl EnumWalker<'_> {
         });
         let names = variants.iter().map(|variant| &variant.rust_name);
         let walked = self.walker.issues_method(&quote! {
-            match <Self as serde::Deserialize>::deserialize(#reader) {
+            match Self::decode_with_read_unjudged(#reader) {
                 #(#picked)*
                 #unread
                 ::core::result::Result::Err(_) => {
@@ -627,7 +629,7 @@ impl EnumWalker<'_> {
             .object_reader(&Ident::new("object", Span::call_site()));
         let asked = self.walker.named_method(
             true,
-            &quote! { <Self as serde::Deserialize>::deserialize(#read).is_ok() },
+            &quote! { Self::decode_with_read_unjudged(#read).is_ok() },
         );
         let keyed = self
             .walker
@@ -738,6 +740,8 @@ pub fn enum_recovering_decode(item_enum: &ItemEnum) -> RecoveringDecode {
             check_messages: enum_check_messages(item_enum, &module_name, &parameters),
             names,
             reach: &reach,
+            read: listed_read(&DeriveInput::from(item_enum.clone())),
+            read_predicates: read_bounds(&DeriveInput::from(item_enum.clone())).predicates,
         },
         &paths,
         |walker| {

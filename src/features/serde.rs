@@ -5,17 +5,19 @@
 //! object is a fact about the wire under every toggle, and every build emits surfaces that claim
 //! to describe that wire.
 
+pub mod read_bounds;
+
 #[cfg(all(test, feature = "serde"))]
 use crate::rename_rule::resolve_rename_rule;
 use crate::utils::written_type;
-use proc_macro2::Group;
 #[cfg(feature = "serde")]
 use proc_macro2::{Delimiter, TokenTree};
+use proc_macro2::{Group, Span};
 #[cfg(feature = "serde")]
 use syn::ext::IdentExt as _;
 use syn::meta::ParseNestedMeta;
 use syn::token::Paren;
-use syn::{Attribute, Field, Fields, ItemStruct, Token, Type};
+use syn::{Attribute, Field, Fields, Ident, ItemStruct, Token, Type};
 #[cfg(feature = "serde")]
 use syn::{Error, LitStr, Meta};
 
@@ -28,6 +30,10 @@ const CFG_ATTR_SERDE_REJECTION: &str = "cfg_attr-wrapped serde attribute is invi
 /// The recovering decode reads past such a hook, which changes a message and never a verdict.
 #[cfg(feature = "serde")]
 pub const NAMED_READ_HOOK_PREFIX: &str = "deserialize_named_";
+
+/// The container keys that put a conversion of the author's between an item and what serde reads
+/// or writes for it.
+const CONVERSION_KEYS: [&str; 4] = ["remote", "from", "try_from", "into"];
 
 /// What a field's serde attributes say about the key it writes. Read in every build, unlike the
 /// rest of this module, since one walk answers all three questions together and the guard that
@@ -172,8 +178,17 @@ pub fn has_serde_default(attrs: &[Attribute]) -> bool {
 
 /// Whether the item is written to be read back at all — whether `Deserialize` is among what it
 /// derives, in any spelling of the path.
-#[cfg(feature = "serde")]
 pub fn derives_deserialize(attrs: &[Attribute]) -> bool {
+    derives(attrs, "Deserialize")
+}
+
+/// Whether `Serialize` is among what the item derives, in any spelling of the path.
+pub fn derives_serialize(attrs: &[Attribute]) -> bool {
+    derives(attrs, "Serialize")
+}
+
+/// Whether a derive list of the item names a path that ends on `named`.
+fn derives(attrs: &[Attribute], named: &str) -> bool {
     attrs
         .iter()
         .filter(|attr| attr.path().is_ident("derive"))
@@ -184,7 +199,7 @@ pub fn derives_deserialize(attrs: &[Attribute]) -> bool {
                     .path
                     .segments
                     .last()
-                    .is_some_and(|segment| segment.ident == "Deserialize")
+                    .is_some_and(|segment| segment.ident == named)
                 {
                     found = true;
                 }
@@ -195,6 +210,37 @@ pub fn derives_deserialize(attrs: &[Attribute]) -> bool {
             });
             found
         })
+}
+
+/// The conversion of its author's a container reads or writes through, with where it is written:
+/// `remote`, `from`, `try_from` or `into`, the first one written.
+pub fn serde_conversion(attrs: &[Attribute]) -> Option<(&'static str, Span)> {
+    let mut found: Option<(&'static str, Span)> = None;
+    for attr in attrs {
+        if !attr.path().is_ident("serde") {
+            continue;
+        }
+        attr.parse_nested_meta(|nested| {
+            let written = CONVERSION_KEYS
+                .into_iter()
+                .find(|key| nested.path.is_ident(key));
+            if let (Some(key), None) = (written, found) {
+                found = Some((
+                    key,
+                    nested
+                        .path
+                        .get_ident()
+                        .map_or_else(Span::call_site, Ident::span),
+                ));
+            }
+            consume_unread_value(&nested)?;
+            Ok(())
+        })
+        .unwrap_or_else(|e| {
+            log::trace!("Failed to parse serde conversion attribute: {e}");
+        });
+    }
+    found
 }
 
 /// Whether the field already reads itself through a function of the author's own (`with = "…"` or

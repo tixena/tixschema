@@ -141,6 +141,7 @@ pub fn emit(service: &ServiceDef, asked: &[Transport], non_exhaustive: bool) -> 
     let envelope = answered_envelope();
     let validation = message_validation();
     let messages = message_type_aliases(service);
+    let message_readers = message_readers(service);
     let validators = message_validators(service);
     let readers = violation_readers();
     let anchors = root_anchors(service, asked);
@@ -168,6 +169,7 @@ pub fn emit(service: &ServiceDef, asked: &[Transport], non_exhaustive: bool) -> 
             #envelope
             #validation
             #messages
+            #message_readers
             #validators
             #readers
             #anchors
@@ -691,6 +693,16 @@ pub fn message_validator_ident(operation: &OperationDef) -> Ident {
     )
 }
 
+/// The name an operation's unjudged read is published under: `read_balance` becomes
+/// `unjudged_read_balance`.
+pub fn message_reader_ident(operation: &OperationDef) -> Ident {
+    format_ident!(
+        "unjudged_{}",
+        operation.ident,
+        span = operation.ident.span()
+    )
+}
+
 /// The name an operation's message is republished under: `read_balance` becomes
 /// `ReadBalanceMessage`.
 pub fn message_alias_ident(operation: &OperationDef) -> Ident {
@@ -699,6 +711,45 @@ pub fn message_alias_ident(operation: &OperationDef) -> Ident {
         RenameRule::PascalCase.apply_to_field(&written(&operation.ident)),
         span = operation.ident.span()
     )
+}
+
+/// One reader per operation: the operation's message read with no judgement of its own, at the
+/// concrete type an inherent `model_schema_read_unjudged` needs to win at. A dispatcher reads a
+/// request through it and then asks the message to validate itself, so a broken bound is the
+/// validator's to report, with its field.
+fn message_readers(service: &ServiceDef) -> TokenStream {
+    let declared = service.operations.iter().map(|operation| {
+        let named = message_reader_ident(operation);
+        let message = message_alias_ident(operation);
+        let doc = format!(
+            "The message of operation `{}`, read with no judgement of its own.",
+            operation.wire_name
+        );
+        quote! {
+            #[doc = #doc]
+            pub fn #named<'de, D>(deserializer: D) -> ::core::result::Result<#message, D::Error>
+            where
+                D: ::serde::Deserializer<'de>,
+            {
+                /// How a message that publishes no `validate()` is read: as serde reads it. An
+                /// inherent function is found ahead of this one, so a message that publishes one
+                /// answers with its own unjudged read.
+                trait ReadUnjudged<'de>: ::serde::Deserialize<'de> {
+                    fn model_schema_read_unjudged<D>(deserializer: D) -> ::core::result::Result<Self, D::Error>
+                    where
+                        D: ::serde::Deserializer<'de>,
+                    {
+                        <Self as ::serde::Deserialize<'de>>::deserialize(deserializer)
+                    }
+                }
+                impl<'de, T: ::serde::Deserialize<'de>> ReadUnjudged<'de> for T {}
+                <#message>::model_schema_read_unjudged(deserializer)
+            }
+        }
+    });
+    quote! {
+        #(#declared)*
+    }
 }
 
 /// One validator per operation: the operation's message asked to validate itself, at the concrete
@@ -749,10 +800,11 @@ fn violation_readers() -> TokenStream {
         /// `'organization_id': too short: …`. A line written any other way names none.
         ///
         /// It is read off a deserializer's refusal as well as off a validator's report, because
-        /// those are the same message. A field carrying a constraint gets a serde
-        /// `deserialize_with` hook running the very check `validate()` runs, and the hook hands
-        /// serde that check's message verbatim — so a payload refused before it ever became a
-        /// message still names the field it got wrong.
+        /// the two are one message wherever a bound is what refused. A dispatcher reads a
+        /// message with no judgement of the message's own and asks `validate()` next, which
+        /// reports each bound and each check. A read that judges while it reads, the member of
+        /// an untagged variant and a constrained newtype, hands serde the sentence the
+        /// validator writes, so a payload refused there still names the field it got wrong.
         pub fn named_field(reported: &str) -> ::core::option::Option<&str> {
             let (field, _rest) = reported.strip_prefix('\'')?.split_once('\'')?;
             ::core::option::Option::Some(field)

@@ -608,12 +608,15 @@ fn a_read_that_calls_no_callback_runs_a_fields_reader_twice() {
 #[test]
 fn a_constraint_on_a_struct_field_is_the_walkers_to_check() {
     let stored = json!({ "code": "AB", "count": "5", "name": "ab", "port": "80" });
+    // Serde's own read refuses the value where the type publishes `validate()`.
+    let plain = serde_json::from_value::<Hooked>(stored.clone());
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     assert_eq!(
-        serde_json::from_value::<Hooked>(stored.clone())
-            .unwrap()
-            .name,
-        "ab"
+        plain.unwrap_err().to_string(),
+        "'name': too short: minimum length is 3, got 2"
     );
+    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    assert_eq!(plain.unwrap().name, "ab");
     let mut calls = 0_u32;
     let read = Hooked::from_value_with(stored, |_raw, _found| {
         calls += 1;

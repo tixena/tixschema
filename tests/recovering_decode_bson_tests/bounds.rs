@@ -145,6 +145,19 @@ fn broken() -> Document {
     }
 }
 
+/// The group `broken()` stores, built in code.
+fn broken_group() -> BoundedGroup {
+    BoundedGroup {
+        human_name: Some(String::new()),
+        labels: Vec::new(),
+        level: 0,
+        sort_field: Some(BoundedPath(String::new())),
+        source: BoundedPath("Items".to_owned()),
+        tags: vec!["ok".to_owned(), "A".to_owned(), "b".to_owned()],
+        title: "long".to_owned(),
+    }
+}
+
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_broken_bound_is_listed_at_its_value_once_per_violation() {
@@ -630,15 +643,21 @@ fn two_bounds_broken_by_one_value_are_repaired_once_at_its_path() {
     assert_eq!(set_for_each.unwrap().title, "ok");
 }
 
-/// The bound stays off serde's own read, which reads the value that breaks it.
+/// Serde's own read refuses what breaks a bound, with what `validate()` answers of the value. A
+/// build with no schema surface publishes no `validate()`, and reads it.
 #[test]
-fn plain_serde_reads_what_breaks_a_bound() {
-    let read =
-        BoundedGroup::deserialize(bson::Deserializer::new(Bson::Document(broken()))).unwrap();
-    assert_eq!(read.sort_field, Some(BoundedPath(String::new())));
-    assert_eq!(read.human_name, Some(String::new()));
+fn plain_serde_refuses_what_breaks_a_bound() {
+    let read = BoundedGroup::deserialize(bson::Deserializer::new(Bson::Document(broken())));
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    {
+        let refused = read.unwrap_err().to_string();
+        let reported = broken_group().validate().unwrap_err().join("; ");
+        assert!(refused.contains(&reported), "got: {refused}");
+    }
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
     {
+        let read = read.unwrap();
+        assert_eq!(read, broken_group());
         let mut calls = 0_u32;
         let walked = BoundedGroup::from_bson_with(broken(), |_raw, _found| {
             calls += 1;

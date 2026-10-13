@@ -109,7 +109,7 @@ fn test_pattern_rust_validation_valid() {
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
 ))]
 #[test]
-fn test_pattern_rust_validation_invalid_reaches_validate() {
+fn test_pattern_rust_validation_invalid_is_refused_as_it_is_read() {
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug)]
     pub struct ValidationInvalid {
@@ -117,16 +117,14 @@ fn test_pattern_rust_validation_invalid_reaches_validate() {
         pub id: String,
     }
 
-    // A string that matches no pattern is still a string, so the read admits it and the
-    // validator is what holds it to the pattern.
+    // The read holds the string to the pattern, and refuses with what the validator answers.
     let invalid = r#"{"id": "not-a-hex-id"}"#;
-    let errors = serde_json::from_str::<ValidationInvalid>(invalid)
-        .unwrap()
-        .validate()
-        .unwrap_err();
+    let refused = serde_json::from_str::<ValidationInvalid>(invalid)
+        .unwrap_err()
+        .to_string();
     assert!(
-        errors[0].contains("does not match pattern"),
-        "Error: {errors:?}"
+        refused.contains("does not match pattern"),
+        "Error: {refused}"
     );
 }
 
@@ -418,15 +416,14 @@ fn test_pattern_enum_variant_serde_validation() {
     );
 
     // Invalid: contains uppercase and digits. The tag named the variant before its members were
-    // read, so the value is never in doubt and the pattern is the validator's to apply.
+    // read, so the value is never in doubt, and the read refuses it once it is whole.
     let invalid = r#"{"type": "Item", "key": "Hello123"}"#;
-    let errors = serde_json::from_str::<PatternEnumSerde>(invalid)
-        .unwrap()
-        .validate()
-        .unwrap_err();
+    let refused = serde_json::from_str::<PatternEnumSerde>(invalid)
+        .unwrap_err()
+        .to_string();
     assert!(
-        errors[0].contains("does not match pattern"),
-        "Error should mention pattern mismatch: {errors:?}"
+        refused.contains("does not match pattern"),
+        "Error should mention pattern mismatch: {refused}"
     );
 }
 
@@ -546,13 +543,12 @@ fn test_the_escaped_zod_pattern_matches_the_value_set_the_validator_enforces() {
         r#"{"name": "/ETC"}"#,
         r#"{"name": "//etc"}"#,
     ] {
-        let errors = serde_json::from_str::<SlashValidated>(rejected)
-            .unwrap()
-            .validate()
-            .unwrap_err();
+        let refused = serde_json::from_str::<SlashValidated>(rejected)
+            .unwrap_err()
+            .to_string();
         assert!(
-            errors[0].contains("does not match pattern"),
-            "Expected a pattern rejection for {rejected}: {errors:?}"
+            refused.contains("does not match pattern"),
+            "Expected a pattern rejection for {rejected}: {refused}"
         );
     }
 }
@@ -704,13 +700,12 @@ fn test_the_escaped_newline_literal_matches_the_value_set_the_validator_enforces
 
     serde_json::from_str::<NewlineValidated>(r#"{"name": "a\nbc"}"#).unwrap();
     for rejected in [r#"{"name": "abc"}"#, r#"{"name": "a\n\nbc"}"#] {
-        let errors = serde_json::from_str::<NewlineValidated>(rejected)
-            .unwrap()
-            .validate()
-            .unwrap_err();
+        let refused = serde_json::from_str::<NewlineValidated>(rejected)
+            .unwrap_err()
+            .to_string();
         assert!(
-            errors[0].contains("does not match pattern"),
-            "Expected a pattern rejection for {rejected}: {errors:?}"
+            refused.contains("does not match pattern"),
+            "Expected a pattern rejection for {rejected}: {refused}"
         );
     }
 }
@@ -774,13 +769,12 @@ fn test_the_rewritten_named_group_matches_the_value_set_the_validator_enforces()
         r#"{"tag": "ABC-42"}"#,
         r#"{"tag": "-42"}"#,
     ] {
-        let errors = serde_json::from_str::<RustNamedGroupValidated>(rejected)
-            .unwrap()
-            .validate()
-            .unwrap_err();
+        let refused = serde_json::from_str::<RustNamedGroupValidated>(rejected)
+            .unwrap_err()
+            .to_string();
         assert!(
-            errors[0].contains("does not match pattern"),
-            "Expected a pattern rejection for {rejected}: {errors:?}"
+            refused.contains("does not match pattern"),
+            "Expected a pattern rejection for {rejected}: {refused}"
         );
     }
 }

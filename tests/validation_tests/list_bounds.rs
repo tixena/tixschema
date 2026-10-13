@@ -455,13 +455,14 @@ mod a_key_on_a_list {
         }
     }
 
-    /// serde reads a list that breaks its bound: the bound is `validate()`'s to answer.
+    /// serde refuses a list that breaks its bound, with what `validate()` answers of it.
     #[test]
-    fn serde_reads_a_list_its_bound_refuses() {
-        let read: Document = serde_json::from_str(r#"{"nameConfig":[]}"#).unwrap();
+    fn serde_refuses_a_list_its_bound_refuses() {
         assert_eq!(
-            read.validate().unwrap_err(),
-            vec!["'nameConfig': too short: minimum length is 1, got 0"]
+            serde_json::from_str::<Document>(r#"{"nameConfig":[]}"#)
+                .unwrap_err()
+                .to_string(),
+            "'nameConfig': too short: minimum length is 1, got 0"
         );
     }
 

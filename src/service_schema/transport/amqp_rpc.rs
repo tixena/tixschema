@@ -224,7 +224,9 @@ use crate::service_schema::parse::{
     HeaderIn, MultipartPart, OperationDef, OperationInputs, OperationOutcome, ServiceDef,
     argument_local, is_unit_type, option_inner, tuple_elements,
 };
-use crate::service_schema::support::{message_alias_ident, message_validator_ident, module_ident};
+use crate::service_schema::support::{
+    message_alias_ident, message_reader_ident, message_validator_ident, module_ident,
+};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Ident, Type};
@@ -456,7 +458,7 @@ fn reply_settled_block(
 /// names the wire name rather than what arrived, this arm being the one that answered to it.
 pub(super) fn arm(module: &Ident, operation: &OperationDef) -> TokenStream {
     let wire = &operation.wire_name;
-    let message = message_alias_ident(operation);
+    let reader = message_reader_ident(operation);
     let validator = message_validator_ident(operation);
     let call = call_arguments(operation);
     let method = &operation.ident;
@@ -474,9 +476,11 @@ pub(super) fn arm(module: &Ident, operation: &OperationDef) -> TokenStream {
     };
     quote! {
         #wire => {
-            let received = match ::serde_json::from_slice::<$crate::#module::#message>(
-                message.payload(),
-            ) {
+            // The message is read with no judgement of its own, and the validator answers next.
+            let mut payload = ::serde_json::Deserializer::from_slice(message.payload());
+            let received = match $crate::#module::#reader(&mut payload)
+                .and_then(|read| payload.end().map(|()| read))
+            {
                 ::core::result::Result::Ok(received) => received,
                 ::core::result::Result::Err(rejected) => {
                     return reply.fault(refused_payload(#wire, &rejected)).await;

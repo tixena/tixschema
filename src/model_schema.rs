@@ -5,6 +5,7 @@
 extern crate alloc;
 
 pub mod checks;
+pub mod judged_read;
 
 use alloc::borrow::ToOwned;
 use core::fmt::Write as _;
@@ -480,7 +481,7 @@ struct CheckedMember {
 /// walk to what a field's own type declares alone: a field's own bound stops at a list and reads
 /// no map.
 #[cfg(feature = "serde")]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 enum ConstraintWrap {
     Borrowed,
     Map,
@@ -895,6 +896,13 @@ enum DefaultZodRendering {
     Eager(String),
 }
 
+/// What a plain enum's output holds after the enum's own `impl`.
+struct PlainEnumAdded<'added> {
+    decode_with: &'added DecodeWithParts,
+    /// The read the macro writes for an enum that publishes `validate()`.
+    judged: &'added proc_macro2::TokenStream,
+}
+
 /// The parts [`assemble_schema_output`] joins.
 #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
 struct SchemaOutputParts<'parts, T> {
@@ -907,6 +915,23 @@ struct SchemaOutputParts<'parts, T> {
     /// The type's `validate()`, written beside its delegates so every filling has it.
     validate_method: &'parts Option<proc_macro2::TokenStream>,
     validation_fns: &'parts [proc_macro2::TokenStream],
+}
+
+#[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
+impl<'parts, T> SchemaOutputParts<'parts, T> {
+    /// These parts around `item`, the item as it is emitted.
+    const fn of(&self, item: &'parts T) -> Self {
+        Self {
+            delegate_impl_items: self.delegate_impl_items,
+            generics: self.generics,
+            item,
+            module_ident: self.module_ident,
+            name: self.name,
+            schema_impl_items: self.schema_impl_items,
+            validate_method: self.validate_method,
+            validation_fns: self.validation_fns,
+        }
+    }
 }
 
 #[cfg(feature = "zod")]
@@ -1289,6 +1314,9 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     {
         return output;
     }
+    // An item's read holds the hooks of its own members alone.
+    #[cfg(feature = "serde")]
+    judged_read::forget_member_hooks();
     // Read in every feature combination: a transport reads it whether or not a surface is on.
     record_wire_scalar_item(&item);
     record_untagged_enum_item(&item);
@@ -5106,8 +5134,9 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
         return output;
     }
 
+    // A unit struct holds no member, so it publishes `validate()` for its own checks alone.
     #[cfg(feature = "serde")]
-    let unit_struct_impls = unit_struct_impls_for(&mut item_struct);
+    let unit_struct_impls = unit_struct_impls_for(&mut item_struct, !args.check.is_empty());
     #[cfg(not(feature = "serde"))]
     let unit_struct_impls = unit_struct_impls_for(&item_struct);
 
@@ -5186,11 +5215,14 @@ fn struct_output_with_unit_impls(
     unit_struct_impls: &proc_macro2::TokenStream,
     decode_with: &DecodeWithParts,
 ) -> TokenStream {
-    let base = assemble_schema_output(parts, &decode_with.schema_module);
+    let mut read = parts.item.clone();
+    let judged = judged_read::of_struct(&mut read, parts.validate_method.is_some());
+    let base = assemble_schema_output(&parts.of(&read), &decode_with.schema_module);
     let decode_with_impl = &decode_with.type_impl;
     quote! {
         #base
         #unit_struct_impls
+        #judged
         #decode_with_impl
     }
 }
@@ -5211,12 +5243,15 @@ fn struct_output_with_unit_impls(
         validate_bodies,
         item_checks,
     );
+    let mut read = item_struct.clone();
+    let judged = judged_read::of_struct(&mut read, !validate_impl.is_empty());
     let decode_with_module = &decode_with.schema_module;
     let decode_with_impl = &decode_with.type_impl;
     let output = quote! {
-        #item_struct
+        #read
         #unit_struct_impls
         #validate_impl
+        #judged
         #decode_with_module
         #decode_with_impl
     };
@@ -5304,10 +5339,13 @@ fn enum_output_with_decode(
     parts: &SchemaOutputParts<syn::ItemEnum>,
     decode_with: &DecodeWithParts,
 ) -> TokenStream {
-    let base = assemble_schema_output(parts, &decode_with.schema_module);
+    let mut read = parts.item.clone();
+    let judged = judged_read::of_enum(&mut read, parts.validate_method.is_some());
+    let base = assemble_schema_output(&parts.of(&read), &decode_with.schema_module);
     let decode_with_impl = &decode_with.type_impl;
     quote! {
         #base
+        #judged
         #decode_with_impl
     }
 }
@@ -5328,11 +5366,14 @@ fn enum_output_with_decode(
         &matched_arms(arms),
         item_checks,
     );
+    let mut read = item_enum.clone();
+    let judged = judged_read::of_enum(&mut read, !validate_impl.is_empty());
     let decode_with_module = &decode_with.schema_module;
     let decode_with_impl = &decode_with.type_impl;
     let output = quote! {
-        #item_enum
+        #read
         #validate_impl
+        #judged
         #decode_with_module
         #decode_with_impl
     };
@@ -5342,10 +5383,13 @@ fn enum_output_with_decode(
 
 /// Records a unit struct in the registry `is_unit_type` reads, then rewrites its derive.
 #[cfg(feature = "serde")]
-fn unit_struct_impls_for(item_struct: &mut syn::ItemStruct) -> proc_macro2::TokenStream {
+fn unit_struct_impls_for(
+    item_struct: &mut syn::ItemStruct,
+    publishes_validate: bool,
+) -> proc_macro2::TokenStream {
     if matches!(item_struct.fields, syn::Fields::Unit) {
         record_unit_struct(&item_struct.ident.to_string());
-        return unit_struct_serde_impls(item_struct);
+        return unit_struct_serde_impls(item_struct, publishes_validate);
     }
     quote! {}
 }
@@ -5358,9 +5402,14 @@ fn unit_struct_impls_for(_item_struct: &syn::ItemStruct) -> proc_macro2::TokenSt
 }
 
 /// Strips `Serialize`/`Deserialize` from a unit struct's own `#[derive(...)]` and answers with
-/// impls that write and read `{}` in their place — only the impl whose derive was present.
+/// impls that write and read `{}` in their place — only the impl whose derive was present. Where
+/// the struct publishes `validate()`, its read is `model_schema_read_unjudged` and then
+/// `validate()`, as that of every other type that publishes one.
 #[cfg(feature = "serde")]
-fn unit_struct_serde_impls(item_struct: &mut syn::ItemStruct) -> proc_macro2::TokenStream {
+fn unit_struct_serde_impls(
+    item_struct: &mut syn::ItemStruct,
+    publishes_validate: bool,
+) -> proc_macro2::TokenStream {
     let name = &item_struct.ident;
     let type_name = name.to_string();
     let mut writes = false;
@@ -5410,24 +5459,46 @@ fn unit_struct_serde_impls(item_struct: &mut syn::ItemStruct) -> proc_macro2::To
 
     let deserialize_impl = reads.then(|| {
         let expecting = format!("an empty object for `{type_name}`");
+        let read = quote! {
+            struct UnitStructVisitor;
+            impl<'de> ::serde::de::Visitor<'de> for UnitStructVisitor {
+                type Value = #name;
+                fn expecting(&self, formatter: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                    formatter.write_str(#expecting)
+                }
+                fn visit_map<A: ::serde::de::MapAccess<'de>>(
+                    self,
+                    mut map: A,
+                ) -> ::core::result::Result<Self::Value, A::Error> {
+                    while map.next_entry::<::serde::de::IgnoredAny, ::serde::de::IgnoredAny>()?.is_some() {}
+                    ::core::result::Result::Ok(#name)
+                }
+            }
+            deserializer.deserialize_struct(#type_name, &[], UnitStructVisitor)
+        };
+        if !publishes_validate {
+            return quote! {
+                impl<'de> ::serde::Deserialize<'de> for #name {
+                    fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> ::core::result::Result<Self, D::Error> {
+                        #read
+                    }
+                }
+            };
+        }
+        let refusal = refusal_from_violations();
         quote! {
+            impl #name {
+                /// The read alone, for a holder that judges the whole value once.
+                pub fn model_schema_read_unjudged<'de, D: ::serde::Deserializer<'de>>(deserializer: D) -> ::core::result::Result<Self, D::Error> {
+                    #read
+                }
+            }
+
             impl<'de> ::serde::Deserialize<'de> for #name {
                 fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> ::core::result::Result<Self, D::Error> {
-                    struct UnitStructVisitor;
-                    impl<'de> ::serde::de::Visitor<'de> for UnitStructVisitor {
-                        type Value = #name;
-                        fn expecting(&self, formatter: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-                            formatter.write_str(#expecting)
-                        }
-                        fn visit_map<A: ::serde::de::MapAccess<'de>>(
-                            self,
-                            mut map: A,
-                        ) -> ::core::result::Result<Self::Value, A::Error> {
-                            while map.next_entry::<::serde::de::IgnoredAny, ::serde::de::IgnoredAny>()?.is_some() {}
-                            ::core::result::Result::Ok(#name)
-                        }
-                    }
-                    deserializer.deserialize_struct(#type_name, &[], UnitStructVisitor)
+                    let read = Self::model_schema_read_unjudged(deserializer)?;
+                    read.validate().map_err(#refusal)?;
+                    ::core::result::Result::Ok(read)
                 }
             }
         }
@@ -8336,16 +8407,23 @@ fn process_plain_enum(
 
     let decode_with = enum_decode_with(&item_enum, args);
 
+    // A plain enum publishes `validate()` for the checks written on it, and for nothing else.
+    let mut read = item_enum.clone();
+    let judged = judged_read::of_enum(&mut read, !args.check.is_empty());
+
     #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     {
         plain_enum_output(
-            &item_enum,
+            &read,
             name,
             &module_ident,
             &schema_impl_items,
             &delegate_impl_items,
             &enumerated,
-            &decode_with,
+            &PlainEnumAdded {
+                decode_with: &decode_with,
+                judged: &judged,
+            },
         )
     }
 
@@ -8353,7 +8431,16 @@ fn process_plain_enum(
     {
         let validate_impl =
             checks_validate_impl(&item_enum.ident, &item_enum.generics, &[], &item_checks);
-        plain_enum_output(&item_enum, name, &enumerated, &decode_with, &validate_impl)
+        plain_enum_output(
+            &read,
+            name,
+            &enumerated,
+            &PlainEnumAdded {
+                decode_with: &decode_with,
+                judged: &judged,
+            },
+            &validate_impl,
+        )
     }
 }
 
@@ -8367,8 +8454,9 @@ fn plain_enum_output(
     schema_impl_items: &[proc_macro2::TokenStream],
     delegate_impl_items: &[proc_macro2::TokenStream],
     enum_values: &[proc_macro2::TokenStream],
-    decode_with: &DecodeWithParts,
+    added: &PlainEnumAdded<'_>,
 ) -> TokenStream {
+    let (decode_with, judged) = (added.decode_with, added.judged);
     // A plain enum publishes `enum_members()` from an `impl` of its own rather than through
     // `assemble_schema_output`, so it repeats the declaration's parameters itself.
     let (impl_generics, type_generics, where_clause) = item_enum.generics.split_for_impl();
@@ -8403,6 +8491,7 @@ fn plain_enum_output(
             }
         }
 
+        #judged
         #decode_with_impl
     };
     log::trace!("{output}");
@@ -8416,9 +8505,10 @@ fn plain_enum_output(
     item_enum: &syn::ItemEnum,
     name: &syn::Ident,
     enum_values: &[proc_macro2::TokenStream],
-    decode_with: &DecodeWithParts,
+    added: &PlainEnumAdded<'_>,
     validate_impl: &proc_macro2::TokenStream,
 ) -> TokenStream {
+    let (decode_with, judged) = (added.decode_with, added.judged);
     let (impl_generics, type_generics, where_clause) = item_enum.generics.split_for_impl();
     let decode_with_module = &decode_with.schema_module;
     let decode_with_impl = &decode_with.type_impl;
@@ -8434,6 +8524,7 @@ fn plain_enum_output(
         }
 
         #validate_impl
+        #judged
         #decode_with_module
         #decode_with_impl
     };
@@ -10302,6 +10393,38 @@ const fn untagged_variant_context<'ctx>(
     }
 }
 
+/// Gives a member of an untagged variant the hook that reads the models it holds unjudged. The
+/// variant is then chosen as it was before a model judged itself as it was read, and the enum's
+/// own read judges what the member holds. A member its own bound reads, the last one `walked`
+/// holds attributes for, is read by that hook alone.
+#[cfg(feature = "serde")]
+fn read_untagged_member_unjudged(
+    ctx: &FieldContext<'_>,
+    field: &Field,
+    member_def: &FieldDef,
+    index: usize,
+    walked: &UntaggedVariantMembers,
+) {
+    if !walked.deferred_attrs.last().is_some_and(Vec::is_empty) {
+        return;
+    }
+    let Some(shape) = member_held_shape(field, member_def) else {
+        return;
+    };
+    judged_read::hook_member(
+        field,
+        &shape,
+        &judged_read::HookPlace {
+            container_defaulted: ctx.container_defaulted,
+            index,
+            renamed_under: None,
+            type_parameters: ctx.type_parameters,
+            variant: ctx.variant_ident,
+            written_under_a_key: field.ident.is_some() && !is_flattened_field(field),
+        },
+    );
+}
+
 /// One untagged member's finished def, beside the guard verdicts it earned — the whole of what
 /// the collector's loop needs back for the field. `container_defaulted` is the variant's own
 /// `#[serde(default)]`, the container this member's omission is read against. `final_field_name`
@@ -10441,9 +10564,8 @@ fn collect_untagged_variant_members(
         );
         walked.guard_errors.extend(member_guard_errors);
         // Read once the member's def exists, since that is what says whether the member names a
-        // type that could publish a validator.
-        let bound = bound_member(field, index);
-        // A slot of an untagged variant is reported under no name.
+        // type that could publish a validator. A slot of an untagged variant is reported under
+        // no name.
         let place = member_place(field, index, true, false, &wire_name);
         let declared = match (is_flatten, field.ident.is_some()) {
             (true, _) => {
@@ -10455,9 +10577,10 @@ fn collect_untagged_variant_members(
                 nested_validate_body(field, &member_def, &place),
             ),
         };
+        read_untagged_member_unjudged(&member_ctx, field, &member_def, index, &walked);
         let named = untagged_member_checks(field, &member_def, index, is_flatten, &wire_name);
         if let Some(body) = then_checks(declared, named) {
-            walked.bound.push(bound);
+            walked.bound.push(bound_member(field, index));
             walked.checks.push(body);
         }
         if is_flatten {
@@ -13164,7 +13287,6 @@ fn reports_a_bound_fn() -> proc_macro2::TokenStream {
 /// How a report reaches serde, which carries one sentence and not a list: joined the way the
 /// dispatcher joins a fault's detail, so a payload refused as it was read and one refused after it
 /// was read say the same thing in the same order.
-#[cfg(feature = "serde")]
 fn refusal_from_violations() -> proc_macro2::TokenStream {
     quote! {
         |violations: ::std::vec::Vec<::std::string::String>| serde::de::Error::custom(violations.join("; "))
@@ -15016,6 +15138,19 @@ fn process_field(
 
     apply_model_schema_prop_meta(&mut field_def, model_schema_prop_meta, &final_name);
 
+    // The read-time half of the reach `validate()` has below: what the field's own type turns
+    // away before `validate()` is ever asked.
+    #[cfg(feature = "serde")]
+    if let Some((hook, attrs)) =
+        member_read_hook(ctx, field, &field_def, index, validate_body.as_ref())
+    {
+        validation_fn = Some(match validation_fn {
+            Some(already) => quote! { #already #hook },
+            None => hook,
+        });
+        injected_attrs.extend(attrs);
+    }
+
     #[cfg(feature = "serde")]
     let declared = named_member_validate_body(
         validate_body,
@@ -15026,19 +15161,6 @@ fn process_field(
     #[cfg(not(feature = "serde"))]
     let declared = validate_body;
     let body = then_checks(declared, own_checks);
-
-    // The read-time half of the same reach: what the field's own type turns away before
-    // `validate()` is ever asked.
-    #[cfg(feature = "serde")]
-    if let Some((hook, attrs)) =
-        named_read_hook(field, &field_def, ctx, &raw_field_ident, &final_name)
-    {
-        validation_fn = Some(match validation_fn {
-            Some(already) => quote! { #already #hook },
-            None => hook,
-        });
-        injected_attrs.extend(attrs);
-    }
 
     #[cfg(feature = "serde")]
     if let Some(attr) = as_number_serde_hook(field, &field_def) {
@@ -15100,6 +15222,88 @@ fn slot_nested_validate_body(
     held_shape(&field.ty, field_def).map(|shape| build_nested_validation(&shape, place))
 }
 
+/// The wrappers a named field's own type is reached through, where a refusal it raises as it is
+/// read is answered under the field's key, and `None` for every field it is answered as it is.
+#[cfg(feature = "serde")]
+fn named_below(
+    field: &Field,
+    field_def: &FieldDef,
+    ctx: &FieldContext<'_>,
+) -> Option<Vec<ConstraintWrap>> {
+    ctx.schema_module_name?;
+    field.ident.as_ref()?;
+    if !ctx.container_read_back
+        || is_flattened_field(field)
+        || names_what_the_module_cannot_repeat(&field.ty, ctx.type_parameters)
+    {
+        return None;
+    }
+    let serde_meta = parse_serde_field_attributes(&field.attrs);
+    if serde_meta.skip || has_serde_read_hook(&field.attrs) {
+        return None;
+    }
+    reachable_nested_shape(field, field_def)
+}
+
+/// Gives a member of a struct, or of a tagged variant, the hook that reads the models it holds
+/// unjudged, where the item is read back and `validate()` walks what the member holds. Answers
+/// whether it was given one.
+#[cfg(feature = "serde")]
+fn read_unjudged_below(
+    ctx: &FieldContext<'_>,
+    field: &Field,
+    field_def: &FieldDef,
+    index: usize,
+    wire_name: &str,
+) -> bool {
+    if !ctx.container_read_back {
+        return false;
+    }
+    let walked = if field.ident.is_some() {
+        member_held_shape(field, field_def)
+    } else {
+        held_shape(&field.ty, field_def)
+    };
+    let Some(shape) = walked else {
+        return false;
+    };
+    judged_read::hook_member(
+        field,
+        &shape,
+        &judged_read::HookPlace {
+            container_defaulted: ctx.container_defaulted,
+            index,
+            renamed_under: named_below(field, field_def, ctx).map(|_| wire_name),
+            type_parameters: ctx.type_parameters,
+            variant: ctx.variant_ident,
+            written_under_a_key: field.ident.is_some() && !is_flattened_field(field),
+        },
+    )
+}
+
+/// The hook a member's own type is read through as the item is read, with the attributes that
+/// hang it on the field. What `validate()` walks is read unjudged, through a hook of the item's
+/// own read, the whole value being judged once it is read: `None` then, and for every member no
+/// hook is hung on.
+#[cfg(feature = "serde")]
+fn member_read_hook(
+    ctx: &FieldContext<'_>,
+    field: &Field,
+    field_def: &FieldDef,
+    index: usize,
+    own_bound: Option<&proc_macro2::TokenStream>,
+) -> Option<(proc_macro2::TokenStream, Vec<syn::Attribute>)> {
+    // The def is named by the key serde writes the member under.
+    let wire_name = field_def.name.as_str();
+    // A member's own bound stands in for what its type declares, a list's count apart, and a
+    // flattened member is walked whatever it writes.
+    let walked_below = own_bound.is_none() || field_def.is_list() || is_flattened_field(field);
+    if walked_below && read_unjudged_below(ctx, field, field_def, index, wire_name) {
+        return None;
+    }
+    named_read_hook(field, field_def, ctx, &field_ident_string(field), wire_name)
+}
+
 /// The read-time hook for a named field whose *own type* carries the bound — a constrained brand,
 /// or a nested `#[model_schema()]` type holding one — together with the serde attributes that hang
 /// it on the field. `None` for every field no hook may be hung on.
@@ -15112,18 +15316,7 @@ fn named_read_hook(
     wire_name: &str,
 ) -> Option<(proc_macro2::TokenStream, Vec<syn::Attribute>)> {
     let module_name = ctx.schema_module_name?;
-    field.ident.as_ref()?;
-    if !ctx.container_read_back
-        || is_flattened_field(field)
-        || names_what_the_module_cannot_repeat(&field.ty, ctx.type_parameters)
-    {
-        return None;
-    }
-    let serde_meta = parse_serde_field_attributes(&field.attrs);
-    if serde_meta.skip || has_serde_read_hook(&field.attrs) {
-        return None;
-    }
-    let wraps = reachable_nested_shape(field, field_def)?;
+    let wraps = named_below(field, field_def, ctx)?;
 
     let stem = helper_name_stem(raw_field_ident, ctx.variant_ident);
     let hook_ident = proc_macro2::Ident::new(
@@ -15157,30 +15350,14 @@ fn build_named_read_hook(
     field_ty: &syn::Type,
     wire_name: &str,
 ) -> proc_macro2::TokenStream {
-    let naming = nested_under_fn();
-    let recogniser = reports_a_bound_fn();
-    let splitter = joined_violations_fn();
+    let renaming = judged_read::named_refusal(wire_name);
     quote! {
         pub fn #hook_ident<'de, D>(deserializer: D) -> ::core::result::Result<#field_ty, D::Error>
         where
             D: serde::Deserializer<'de>,
         {
             use serde::Deserialize;
-            <#field_ty>::deserialize(deserializer).map_err(|refused| {
-                #naming
-                #recogniser
-                #splitter
-                let reported = refused.to_string();
-                let violations = joined_violations(&reported);
-                if !violations.iter().all(|violation| reports_a_bound(violation)) {
-                    return refused;
-                }
-                let named: ::std::vec::Vec<::std::string::String> = violations
-                    .iter()
-                    .map(|violation| nested_under(#wire_name, violation))
-                    .collect();
-                serde::de::Error::custom(named.join("; "))
-            })
+            <#field_ty>::deserialize(deserializer).map_err(#renaming)
         }
     }
 }

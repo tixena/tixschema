@@ -1787,11 +1787,10 @@ fn every_arm_is_keyed_on_the_wire_name_and_never_on_anything_in_the_payload() {
 #[test]
 fn an_arm_validates_before_it_calls_and_faults_on_both_ways_the_message_can_be_wrong() {
     let emitted = expanded_over_amqp_rpc(MIXED_SERVICE);
+    // The message's own read would refuse a broken bound as a payload serde cannot read. The
+    // arm reads it unjudged, so the validator is what answers for it, with its field.
     let deserialized = emitted
-        .find(
-            "serde_json :: from_slice :: < $ crate :: usage_service_schema :: \
-             GetAvailableBalanceMessage >",
-        )
+        .find("$ crate :: usage_service_schema :: unjudged_get_available_balance (& mut payload)")
         .unwrap();
     let validated = emitted
         .find("$ crate :: usage_service_schema :: validated_get_available_balance (& received)")
@@ -1808,6 +1807,18 @@ fn an_arm_validates_before_it_calls_and_faults_on_both_ways_the_message_can_be_w
             && emitted.contains("ServiceFault :: unknown_operation"),
         "got: {emitted}"
     );
+    for written in [
+        "pub fn unjudged_get_available_balance < 'de , D > (deserializer : D) -> :: core :: \
+         result :: Result < GetAvailableBalanceMessage , D :: Error >",
+        "< GetAvailableBalanceMessage > :: model_schema_read_unjudged (deserializer)",
+        // What follows the message in the payload is refused, as `from_slice` refuses it.
+        ". and_then (| read | payload . end () . map (| () | read))",
+    ] {
+        assert!(
+            emitted.contains(written),
+            "missing `{written}`, got: {emitted}"
+        );
+    }
 }
 
 #[test]
@@ -2435,10 +2446,7 @@ fn the_dispatcher_reads_an_incoming_message_through_its_accessors() {
         "the operation is matched through the reader. Got: {body}"
     );
     assert!(
-        body.contains(
-            "from_slice :: < $ crate :: usage_service_schema :: GetAvailableBalanceMessage > \
-             (message . payload () ,)"
-        ),
+        body.contains(":: serde_json :: Deserializer :: from_slice (message . payload ())"),
         "the payload is handed to serde through the reader. Got: {body}"
     );
     for (reached, through) in [
