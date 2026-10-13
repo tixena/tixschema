@@ -206,8 +206,8 @@ fn a_struct_earns_codable_with_coding_keys() {
         "got: {swift}"
     );
     assert!(swift.contains("case limit"), "got: {swift}");
-    // No hand-written codec: nothing in this struct needs one.
-    assert!(!swift.contains("init(from decoder:"), "got: {swift}");
+    // The read is written, to judge the value it reads; nothing here needs a written `encode`.
+    assert!(swift.contains("init(from decoder:"), "got: {swift}");
     assert!(!swift.contains("func encode(to encoder:"), "got: {swift}");
 }
 
@@ -279,9 +279,9 @@ fn an_internally_tagged_enum_merges_the_tag_into_the_payloads_own_object() {
         swift.contains("case swiftSchemaTag = \"type\""),
         "got: {swift}"
     );
-    assert!(
-        swift.contains("case \"Foo\": self = .foo(try InternalTaggedFooPayload(from: decoder))")
-    );
+    assert!(swift.contains(
+        "case \"Foo\": self = .foo(try InternalTaggedFooPayload(swiftSchemaUnjudged: decoder))"
+    ));
     assert!(
         swift.contains("case \"Reset\": self = .reset"),
         "got: {swift}"
@@ -322,8 +322,12 @@ fn an_untagged_enum_tries_each_member_in_turn() {
         swift.contains("public enum Untagged: Codable, Sendable"),
         "got: {swift}"
     );
-    assert!(swift.contains("if let value = try? UntaggedCountPayload(from: decoder)"));
-    assert!(swift.contains("if let value = try? UntaggedTextPayload(from: decoder)"));
+    assert!(
+        swift.contains("if let value = try? UntaggedCountPayload(swiftSchemaUnjudged: decoder)")
+    );
+    assert!(
+        swift.contains("if let value = try? UntaggedTextPayload(swiftSchemaUnjudged: decoder)")
+    );
     assert!(swift.contains("no untagged member matched"), "got: {swift}");
 }
 
@@ -598,12 +602,24 @@ fn a_member_named_after_a_reserved_word_is_written_between_backticks() {
         reserved_members_swift::swift_definition(),
         "public struct ReservedMembers: Codable, Sendable { public let `class`: String; public \
          let `in`: String; public let type: String; enum CodingKeys: String, CodingKey { case \
-         `class`; case `in`; case type;  }; public func validate() -> [String] { [] } }; "
+         `class`; case `in`; case type;  }; public init(`class`: String, `in`: String, type: \
+         String) { self.`class` = `class`; self.`in` = `in`; self.type = type;  }; public \
+         init(swiftSchemaUnjudged decoder: Decoder) throws { let container = try \
+         decoder.container(keyedBy: CodingKeys.self); self.`class` = try \
+         container.decode(String.self, forKey: .`class`); self.`in` = try \
+         container.decode(String.self, forKey: .`in`); self.type = try \
+         container.decode(String.self, forKey: .type) }; public init(from decoder: Decoder) \
+         throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validate(); if \
+         !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: \
+         decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }; public \
+         func validate() -> [String] { [] } }; "
     );
     assert_eq!(
         reserved_member_swift::swift_definition(),
         "public enum ReservedMember: String, Codable, Sendable { case `default` = \"Default\"; \
-         case `in` = \"In\"; case other = \"Other\"; public func validate() -> [String] { [] } }"
+         case `in` = \"In\"; case other = \"Other\"; public init(swiftSchemaUnjudged decoder: \
+         Decoder) throws { try self.init(from: decoder) }; public func validate() -> [String] { [] \
+         } }"
     );
     assert_eq!(
         serde_json::to_value(ReservedMembers {

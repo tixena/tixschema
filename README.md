@@ -102,7 +102,7 @@ serde_json::from_str::<Ping>("{}").unwrap();
 serde_json::from_str::<Ping>("null").unwrap_err();
 ```
 
-TypeScript, Zod and JSON Schema describe it exactly as a braced empty struct already does: `Record<string, never>`, `z.strictObject({})`, `{"type": "object", "additionalProperties": false, "properties": {}, "required": []}`. Dart, Swift and Kotlin each publish their own no-data type -- Dart a `const` class, Swift an empty `Codable` struct, and Kotlin `@Serializable object Ping` rather than a `class` (a braced `struct Ping {}` still publishes a `class`, since it is a different shape). Declared above a service as an operation's success, `Result<Ping, E>`, a unit struct reads like a `()` success on every client -- the limit is a registry's own: the struct must be declared in the same crate, above the service, or the client sees the field-position type instead (and the call still succeeds, since both sides still agree the wire is `{}`).
+TypeScript, Zod and JSON Schema describe it exactly as a braced empty struct already does: `Record<string, never>`, `z.strictObject({})`, `{"type": "object", "additionalProperties": false, "properties": {}, "required": []}`. Dart, Swift and Kotlin each publish their own no-data type -- Dart a `const` class, Swift an empty `Codable` struct, and Kotlin a serializable `object Ping` rather than a `class` (a braced `struct Ping {}` still publishes a `class`, since it is a different shape). Declared above a service as an operation's success, `Result<Ping, E>`, a unit struct reads like a `()` success on every client -- the limit is a registry's own: the struct must be declared in the same crate, above the service, or the client sees the field-position type instead (and the call still succeeds, since both sides still agree the wire is `{}`).
 
 ### Published Names (`name`)
 
@@ -3997,7 +3997,7 @@ A field's check is written on the schema of the value the Rust function takes: a
 
 **In the Dart `validate()`** every emitted Dart type has, under the name as written. See [`validate()` in Dart](#validate-in-dart).
 
-**In the `validate()` of the Kotlin client.** Every Kotlin type carries one, which runs the bounds and calls each check under the name written. See [`validate()` in the Kotlin client](#validate-in-the-kotlin-client).
+**In the `validate()` of the Kotlin client.** Every Kotlin type carries one, which runs the bounds and calls each check under the name written, and the serializer of the type calls it on the value it read. See [`validate()` in the Kotlin client](#validate-in-the-kotlin-client) and [The read in the Kotlin client](#the-read-in-the-kotlin-client).
 
 **In the Swift client**, in the [`validate()`](#validate-in-the-swift-client) every emitted type has: a member's checks after its bounds and after what the value it holds reports, the type's own last, each a call of the Swift function of that name.
 
@@ -4292,12 +4292,13 @@ Terminal with no spareParcel key, all good: read
 
 Every type `kotlin_definition()` writes carries `fun validate(): List<String>`: a data class, the `object` of a unit struct, the value class of a brand, a tuple struct, a sealed interface with each of its variants, and a plain enum. It answers the messages Rust's [`validate()`](#the-validate-method) answers for the same value, in the same order, and an empty list for a value that keeps every rule. A type with no rule answers `emptyList()`.
 
-`validate()` is a method you call. The serializer of each type is written as it was, and reading a payload calls nothing.
+The serializer of a type calls it on the value it read: [the read refuses what `validate()` refuses](#the-read-in-the-kotlin-client). You call it yourself on a value built in code, and on one changed after it was read.
 
 This is what the `Parcel` and the `Manifest` of [Checks](#checks-check) emit. The emitter writes each type on one line, and each line break below stands for one space of it:
 
 ```kotlin
-@Serializable data class Parcel(val label: String, val itemCodeList: List<String>, val fragileItemCodes: List<String>) {
+@OptIn(ExperimentalSerializationApi::class) @Serializable(with = ParcelSerializer::class) @KeepGeneratedSerializer
+data class Parcel(val label: String, val itemCodeList: List<String>, val fragileItemCodes: List<String>) {
   fun validate(): List<String> {
     val violations = mutableListOf<String>();
     if (label.codePointCount(0, label.length) < 1) violations.add("'label': too short: minimum length is 1, got ${label.codePointCount(0, label.length)}");
@@ -4310,8 +4311,20 @@ This is what the `Parcel` and the `Manifest` of [Checks](#checks-check) emit. Th
     return if (violation.startsWith("'") && end > 0) { "'$place.${violation.substring(1, end)}'${violation.substring(end + 1)}" } else { "'$place': $violation" }
   }
 }
+@OptIn(ExperimentalSerializationApi::class) object ParcelUnjudged : KSerializer<Parcel> by Parcel.generatedSerializer()
+object ParcelSerializer : KSerializer<Parcel> {
+  override val descriptor: SerialDescriptor = ParcelUnjudged.descriptor;
+  override fun serialize(encoder: Encoder, value: Parcel) = ParcelUnjudged.serialize(encoder, value);
+  override fun deserialize(decoder: Decoder): Parcel {
+    val read = ParcelUnjudged.deserialize(decoder);
+    val violations = read.validate();
+    if (violations.isNotEmpty()) throw SerializationException(violations.joinToString("; "));
+    return read
+  }
+}
 
-@Serializable data class Manifest(val parcel: Parcel) {
+@OptIn(ExperimentalSerializationApi::class) @Serializable(with = ManifestSerializer::class) @KeepGeneratedSerializer
+data class Manifest(@Serializable(with = ParcelUnjudged::class) val parcel: Parcel) {
   fun validate(): List<String> {
     val violations = mutableListOf<String>();
     violations.addAll(parcel.validate().map { kotlinSchemaUnder("parcel", it) });
@@ -4322,9 +4335,20 @@ This is what the `Parcel` and the `Manifest` of [Checks](#checks-check) emit. Th
     return if (violation.startsWith("'") && end > 0) { "'$place.${violation.substring(1, end)}'${violation.substring(end + 1)}" } else { "'$place': $violation" }
   }
 }
+@OptIn(ExperimentalSerializationApi::class) object ManifestUnjudged : KSerializer<Manifest> by Manifest.generatedSerializer()
+object ManifestSerializer : KSerializer<Manifest> {
+  override val descriptor: SerialDescriptor = ManifestUnjudged.descriptor;
+  override fun serialize(encoder: Encoder, value: Manifest) = ManifestUnjudged.serialize(encoder, value);
+  override fun deserialize(decoder: Decoder): Manifest {
+    val read = ManifestUnjudged.deserialize(decoder);
+    val violations = read.validate();
+    if (violations.isNotEmpty()) throw SerializationException(violations.joinToString("; "));
+    return read
+  }
+}
 ```
 
-A parcel read from `{"label":"","itemCodeList":["x","x"],"fragileItemCodes":["y"]}` answers the three lines Rust answers, and a manifest that holds a parcel with `"y"` outside its codes answers the fourth:
+The `validate()` of the parcel `{"label":"","itemCodeList":["x","x"],"fragileItemCodes":["y"]}` answers the three lines Rust answers, and that of a manifest that holds a parcel with `"y"` outside its codes answers the fourth:
 
 ```text
 'label': too short: minimum length is 1, got 0
@@ -4335,7 +4359,7 @@ A parcel read from `{"label":"","itemCodeList":["x","x"],"fragileItemCodes":["y"
 
 - **The order is Rust's.** Each member in the order declared: its bounds, then what the value it holds reports, then the checks it names. The type's own checks run last. Every rule runs, and none stops another.
 - **A member with a bound of its own** is not asked for what its type declares, a list apart: a list runs its count and then each item, as in Rust.
-- **Every function a type calls is in the type's own body.** `kotlinSchemaUnder` writes a holder's key into a message, and is written into each type that names a place. The emitted types are joined into one file, so nothing is written beside a type, and tixschema ships no runtime library.
+- **Every function a type calls is in the type's own body.** `kotlinSchemaUnder` writes a holder's key into a message, and is written into each type that names a place. The emitted types are joined into one file, so no function is written beside a type, and tixschema ships no runtime library. The two serializers of a type are the only declarations beside it, each under the type's own name.
 - **A member named `validate` builds and keeps its key**, a property and a method being two names to Kotlin. A member named `violations` is read as `this.violations`.
 - **Every build with the `kotlin` feature writes the same `validate()`.** The emitter reads the declaration itself, so a build with no schema surface, where Rust holds no bound, still writes each bound a field declares into the Kotlin client.
 
@@ -4386,7 +4410,7 @@ Rust writes no text for a brand over a brand, and refuses a string bound on a fi
 
 #### A brand
 
-The value class of a brand runs the brand's own `minLength`, `maxLength` and `pattern` over `value`, then the checks the brand names, and names no place: `too short: minimum length is 2, got 1`. A brand over a list counts its items.
+The value class of a brand runs the brand's own `minLength`, `maxLength` and `pattern` over `value`, then the checks the brand names, and names no place: `too short: minimum length is 2, got 1`. A brand over a list counts its items. A brand with such a bound carries `fun kotlinSchemaBound(): List<String>` beside `validate()`: what the bounds alone answer, the checks apart, which is what [an untagged enum chooses a variant by](#the-read-in-the-kotlin-client).
 
 A brand that holds one of its type parameters bare runs its bounds where the value is of the type declared for the parameter, and at no other filling: `if (value is String) { ... }`. Where the declared type is itself written with arguments, `default_types(WrapType = StrictDocumentId<String>)`, the JVM keeps no argument to tell the filling by, and the value class runs no bound.
 
@@ -4443,13 +4467,115 @@ A field's check names no path, and `validate()` writes its messages under the fi
 error: unresolved reference 'withinParcel'.
 ```
 
+#### The read in the Kotlin client
+
+The serializer of a type throws for a payload whose value breaks a bound or a check, and hands no object back. `Json.decodeFromString<Parcel>(payload)`, `serializer<Parcel>()` and a property typed `Parcel` in a class of your own all read through `ParcelSerializer`, the type's own serializer: it reads the value and calls `validate()` on it. What it throws is `SerializationException`, the exception of `kotlinx.serialization`, and its message is what `validate()` answers of the value read, every message, joined by `; `:
+
+```kotlin
+Json.decodeFromString<Parcel>("""{"label":"","itemCodeList":["x"],"fragileItemCodes":["x","y"]}""")
+// SerializationException: 'label': too short: minimum length is 1, got 0; 'fragileItemCodes.1': y is outside of itemCodeList
+```
+
+**Every type has two serializers**, a plain enum apart:
+
+| | What it reads | Who names it |
+|---|---|---|
+| `{Type}Unjudged` | the payload, with no judgement | a holder, for each model it holds, and you, to read a value that breaks a rule |
+| `{Type}Serializer` | through the first, and then throws what `validate()` answers | the type: `@Serializable(with = ParcelSerializer::class)` |
+
+Both write the same payload, and writing judges nothing: a broken value built in code is written as it is. A type with parameters writes the two as classes over one serializer per parameter, `CrateUnjudged(serializer<String>())`.
+
+- **A class, the `object` of a unit struct and the value class of a brand keep the serializer the plugin writes**, with `@KeepGeneratedSerializer`, and `{Type}Unjudged` is that serializer under a name: `object ParcelUnjudged : KSerializer<Parcel> by Parcel.generatedSerializer()`. The annotation is an experimental one of `kotlinx.serialization`, so each such type carries `@OptIn(ExperimentalSerializationApi::class)`. This repository compiles the emitted source with `kotlinx.serialization` 1.11.0, the version `just kotlin-libs` installs.
+- **A struct with a `#[serde(flatten)]` member, a tuple struct and an enum under every tagging** have a serializer tixschema writes, and it is the unjudged one.
+- **An enum under a tag alone is read by a serializer tixschema writes as well.** The plugin refuses `@KeepGeneratedSerializer` on a sealed interface, so the enum carries no `@JsonClassDiscriminator`: its unjudged serializer reads the tag key, takes it off the object and reads the rest as the variant, and writes the variant with the tag ahead of its members. A tag no variant has, and a payload with no tag, throw `SerializationException`.
+- **A plain enum keeps the one serializer the plugin writes**, and its read judges nothing. One that names a check is refused by the read of a type that holds it, and by your own call of `validate()`.
+- **A refusal the decoder raises itself is its own, unchanged**: a missing key, a value of another type. No value was read for `validate()` to judge.
+
+**The file the definitions are written into imports what they name.** The two serializers of every type name `KSerializer` and `SerializationException` of `kotlinx.serialization`, `SerialDescriptor` of its `descriptors` package, and `Encoder` and `Decoder` of its `encoding` package. A serializer tixschema writes names the `json` package as well, and `builtins` where it composes the serializer of a list, a map or a nullable:
+
+```kotlin
+import kotlinx.serialization.*
+import kotlinx.serialization.builtins.*
+import kotlinx.serialization.descriptors.*
+import kotlinx.serialization.encoding.*
+import kotlinx.serialization.json.*
+```
+
+**A holder reads what it holds unjudged, and the whole value is judged once**, by the type the read was asked for. It names the unjudged serializer of each model where the model is written, on the property and inside a list, a nullable and a map:
+
+```kotlin
+data class Manifest(
+  @Serializable(with = ParcelUnjudged::class) val firstParcel: Parcel,
+  val parcelList: List<@Serializable(with = ParcelUnjudged::class) Parcel>,
+  val parcelsByDock: Map<String, @Serializable(with = ParcelUnjudged::class) Parcel>,
+  @Serializable(with = ParcelUnjudged::class) val spareParcel: Parcel? = null,
+)
+```
+
+A manifest that holds a broken parcel in each of the four places is refused once, with every message at its full place. The message is one line, broken here after each `; `, and it is the text the [Rust read](#a-read-refuses-what-validate-refuses) answers of the same payload:
+
+```text
+'firstParcel.label': too short: minimum length is 1, got 0;
+'parcelList.1.fragileItemCodes.1': y is outside of itemCodeList;
+'parcelsByDock.north.label': too short: minimum length is 1, got 0;
+'spareParcel.fragileItemCodes.1': y is outside of itemCodeList
+```
+
+A model is read unjudged where the holder's `validate()` asks it for what it reports, and nowhere else. Held any other way it is read by its own serializer and judges itself as it is read: the payload is refused there too, by the first broken model, with that model's own messages and no place in front of them.
+
+| Held | Judged |
+|---|---|
+| in a field, a nullable, a list, a map's values, a tuple written as a field's type, a `#[serde(flatten)]` member, a slot of a tuple struct or of a variant | once, with its holder, each message at its full place |
+| behind one of the holder's own type parameters | by itself: `Crate<Parcel>` with a broken parcel answers `'fragileItemCodes.1': y is outside of itemCodeList` |
+| by a brand, and by a member that writes a length or a pattern of its own on a brand | by itself: `too short: minimum length is 2, got 1`, where Rust writes the member's key in front, `'code': too short: ...` |
+| where its type is declared below its holder, is an alias, or is a type of your own | by itself: the emitter has written no `{Type}Unjudged` under that name when it writes the holder |
+
+Rust reads a model declared below its holder unjudged, so the two differ there: a holder that breaks a bound of its own and holds such a model that breaks one answers both messages in Rust, and the model's alone in Kotlin. Declare the model above the type that holds it, and the two answer the same text.
+
+**An `#[serde(untagged)]` enum takes the variant serde takes.** Its unjudged serializer tries each variant in the order declared and takes the first whose payload decodes and whose bounds hold: each member's own, and the `minLength`, `maxLength` and `pattern` of each brand the variant holds. A [check](#checks-check) and what a held model reports choose no variant: the variant is chosen first, and the enum's own serializer then refuses the value. A variant with such a bound, and the value class of a brand with one, carry `fun kotlinSchemaBound(): List<String>` for that: what the bounds alone answer.
+
+```rust
+#[model_schema(pattern = "^[A-Z]+$", check = ["unreserved"])]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Tag(pub String);
+
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Mark {
+    Brief(#[model_schema_prop(maxLength = 3)] String),
+    Coded(Tag),
+    Plain(String),
+}
+```
+
+| Payload | Read |
+|---|---|
+| `"ab"` | `MarkBrief` |
+| `"ABCD"` | `MarkCoded`: past the bound of the first variant |
+| `"abcd"` | `MarkPlain`: past that bound, and outside the pattern of the brand |
+| `"NONE"` | refused with `a tag is not NONE`: `MarkCoded` is chosen, and the check of the brand refuses it |
+
+A payload no variant takes throws `IllegalStateException: No variant of Mark matched`.
+
+**The generated clients answer their fault for a reply that breaks a rule**, with the messages in the fault's detail: `undeserializable-payload` from the `http_rest` client, and `failed-validation` from the `ws_rpc` one.
+
+**To read a value that breaks a rule**, name the unjudged serializer, and call `validate()` for what is wrong with it:
+
+```kotlin
+val parcel = Json.decodeFromString(ParcelUnjudged, payload)
+parcel.validate()
+// ['label': too short: minimum length is 1, got 0, 'fragileItemCodes.1': y is outside of itemCodeList]
+```
+
 
 ### `validate()` in the Swift client
 
-Every Swift type `swift_definition()` writes has `public func validate() -> [String]`: a struct, a tuple struct, a unit struct, the wrapper of a [branded newtype](#branded-newtypes), an enum under every tagging and a plain one, a type with a parameter at every filling, and the struct written for a variant's named members or for a tuple. It answers one message per broken rule, and an empty list for a value that keeps every one. Reading judges nothing: the `Codable` of a type is what it was, and a struct whose `Codable` Swift synthesizes keeps it.
+Every Swift type `swift_definition()` writes has `public func validate() -> [String]`: a struct, a tuple struct, a unit struct, the wrapper of a [branded newtype](#branded-newtypes), an enum under every tagging and a plain one, a type with a parameter at every filling, and the struct written for a variant's named members or for a tuple. It answers one message per broken rule, and an empty list for a value that keeps every one. It judges a value built or changed in code, and `init(from:)` of the type calls it on the value it read, so [a read refuses what it refuses](#a-swift-read-refuses-what-validate-refuses).
 
 ```swift
-let parcel = try JSONDecoder().decode(Parcel.self, from: payload)
+let parcel = Parcel(label: "", itemCodeList: ["x", "x"], fragileItemCodes: [])
 let violations = parcel.validate()
 // ["'label': too short: minimum length is 1, got 0", "'itemCodeList': duplicate item code x"]
 ```
@@ -4535,8 +4661,88 @@ error: cannot find 'withinParcel' in scope
 **What you declare.**
 
 - **A field named `validate`** is declared `validate_`, the method having the name, and keeps its key: `case validate_ = "validate"`.
-- **A type tixschema has not written** is one a holder cannot tell from a model declared below it, so it calls its `validate()`: a type of your own that a generated type holds declares `func validate() -> [String] { [] }`. An alias of a type that has none (`type LaterTitle = String;`) is declared above the type that holds it. Declared below, the Swift compiler answers `value of type 'LaterTitle' (aka 'String') has no member 'validate'`.
+- **A type tixschema has not written** is one a holder cannot tell from a model declared below it, so it calls its `validate()` and reads it through its `init(swiftSchemaUnjudged:)`: a type of your own that a generated type holds declares `func validate() -> [String] { [] }` and `init(swiftSchemaUnjudged decoder: Decoder) throws { try self.init(from: decoder) }`. An alias of a type that has none (`type LaterTitle = String;`) is declared above the type that holds it. Declared below, the Swift compiler answers `value of type 'LaterTitle' (aka 'String') has no member 'validate'`.
 - **An alias of a string that a field bounds** is declared above that field's type. Declared below, it is a name the emitter reads as a brand, and the Swift compiler answers `value of type 'LaterTitle' (aka 'String') has no member 'swiftSchemaBoundText'`. The same error answers a length or a pattern on a field typed with a struct or an enum, which holds no string to measure.
+
+#### A Swift read refuses what `validate()` refuses
+
+`init(from:)` of every type `swift_definition()` writes reads the type and then calls `validate()` on the value it read, as [the Rust read](#a-read-refuses-what-validate-refuses) does. A payload whose value breaks a bound or a check is thrown as `DecodingError.dataCorrupted`, and no value is handed back:
+
+```swift
+do {
+  let manifest = try JSONDecoder().decode(Manifest.self, from: payload)
+  carry(manifest)
+} catch DecodingError.dataCorrupted(let context) {
+  print(context.debugDescription)
+}
+```
+
+The `debugDescription` is the list `validate()` answers of the value read, every message, joined by `; `. A manifest that holds a broken parcel in a field, a list, a map and an optional is refused once, each message at its full path. The error is one line, broken here after each `; `:
+
+```text
+'firstParcel.label': too short: minimum length is 1, got 0;
+'parcelList.1.fragileItemCodes.1': y is outside of itemCodeList;
+'parcelsByDock.north.label': too short: minimum length is 1, got 0;
+'spareParcel.fragileItemCodes.1': y is outside of itemCodeList
+```
+
+The text holds no coding path. `codingPath` is the decoder's own, as for every decoding error: empty for the value the read was asked for, and `1` for the second manifest of a `[Manifest]`.
+
+**What the emitter writes.** Every struct and every enum has two initializers that read it:
+
+```swift
+public init(swiftSchemaUnjudged decoder: Decoder) throws {
+  let container = try decoder.container(keyedBy: CodingKeys.self)
+  self.label = try container.decode(String.self, forKey: .label)
+  self.itemCodeList = try container.decode([String].self, forKey: .itemCodeList)
+  self.fragileItemCodes = try container.decode([String].self, forKey: .fragileItemCodes)
+}
+
+public init(from decoder: Decoder) throws {
+  try self.init(swiftSchemaUnjudged: decoder)
+  let violations = validate()
+  if !violations.isEmpty {
+    throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: violations.joined(separator: "; ")))
+  }
+}
+```
+
+- **`init(swiftSchemaUnjudged:)` is the read alone.** It builds the value from the same payload and judges nothing. It is what a type that holds another reads it with, and what reads a value that is to be repaired: call it from an `init(from:)` of your own, which is where a `Decoder` is handed out.
+- **Every struct declares its memberwise initializer**, `public init(label: String, itemCodeList: [String], fragileItemCodes: [String])` here: the one Swift synthesizes is gone once a struct writes an `init(from:)`. A value built with it is judged when you call `validate()`.
+- **`encode(to:)` is what it was**, the one Swift synthesizes wherever it was. Writing judges nothing.
+- **A plain enum that names no check** keeps the `init(from:)` Swift synthesizes, and its `init(swiftSchemaUnjudged:)` is that read.
+
+**A type that holds another reads it with no judgement**, handed a decoder of its own, so the whole value is judged once, by the type the read was asked for:
+
+```swift
+_ = try container.decodeNil(forKey: .firstParcel)
+self.firstParcel = try Parcel(swiftSchemaUnjudged: container.superDecoder(forKey: .firstParcel))
+
+var listed = try container.nestedUnkeyedContainer(forKey: .parcelList)
+var items: [Parcel] = []
+while !listed.isAtEnd { items.append(try Parcel(swiftSchemaUnjudged: listed.superDecoder())) }
+self.parcelList = items
+
+let keyed = try container.nestedContainer(keyedBy: SwiftSchemaAnyKey.self, forKey: .parcelsByDock)
+var entries: [String: Parcel] = [:]
+for entry in keyed.allKeys { entries[entry.stringValue] = try Parcel(swiftSchemaUnjudged: keyed.superDecoder(forKey: entry)) }
+self.parcelsByDock = entries
+
+if container.contains(.spareParcel), try !container.decodeNil(forKey: .spareParcel) { self.spareParcel = try Parcel(swiftSchemaUnjudged: container.superDecoder(forKey: .spareParcel)) } else { self.spareParcel = nil }
+```
+
+`SwiftSchemaAnyKey` is a private key type written into each type that reads a map entry by entry. A value is read with no judgement exactly where the `validate()` of its holder runs its `validate()`. Anywhere else it is read through `Decodable` and judges itself: the first broken one ends the read with its own messages, under the coding path it sits at.
+
+| Held | Judged |
+|---|---|
+| in a field, an optional, a list, a map's value, a tuple, a flattened member or the payload of a variant, in any nesting of those | once, with its holder, each message at its full path |
+| under one of the holder's type parameters | by itself, as it is read: a `Crate<Parcel>` whose second parcel is broken is refused with `'fragileItemCodes.1': y is outside of itemCodeList`, under the coding path `codes`, `1` |
+| in a field that carries a bound of its own, a list apart | by itself, as it is read: the field's bound stands in place of what its type declares in `validate()`, so the holder judges nothing of the type |
+| as the value a brand wraps | by itself, as it is read |
+
+- **An absent key and a `null` are read as they were.** A key a struct requires is still `keyNotFound` where it is absent, which is what the first statement above is for: `superDecoder(forKey:)` answers a decoder over `null` for an absent key. An optional member is still `nil` for an absent key and for a `null`.
+- **An `#[serde(untagged)]` enum takes the variant serde takes.** Its `init(swiftSchemaUnjudged:)` takes the first variant whose payload reads and whose own bounds hold: a bound written on a member, and the `pattern`, `minLength` and `maxLength` of a [brand](#branded-newtypes) the member holds, which the brand's wrapper answers for alone with `swiftSchemaValidateBound()`. A check and a model the variant holds choose nothing: the variant is taken, and `init(from:)` then refuses the value. A brand declared below the enum is not known to carry a bound where the enum is written, and chooses nothing either: declare it above the enum.
+- **The service clients answer the fault they had** for a reply that breaks a rule, the thrown error reaching the handling they have for a reply that does not read: `swift_http_client()` answers `undeserializable-payload` and `swift_ws_client()` answers `failed-validation`, each with the messages in its `detail`.
 
 ### Literal Values
 
@@ -6840,8 +7046,8 @@ The crate uses optional features to control code generation and dependencies. Ea
 | `chrono` | No | Chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`) |
 | `indexmap` | No | `indexmap` type support: `IndexMap` as a map and `IndexSet` as a list. See [The order of a map's keys](#the-order-of-a-maps-keys) |
 | `dart` | No | Dart type generation via `dart_definition()`, with a JSON `fromJson`/`toJson` codec whose read [calls each `preprocess`](#a-preprocess-in-the-dart-client) and [refuses what `validate()` refuses](#the-dart-read-refuses-what-validate-refuses), and a [`validate()`](#validate-in-dart) on every type |
-| `swift` | No | Swift type generation with a `Codable` codec, and a [`validate()`](#validate-in-the-swift-client) on every type |
-| `kotlin` | No | Kotlin type generation via `kotlin_definition()`, with `kotlinx.serialization` annotations and a [`validate()`](#validate-in-the-kotlin-client) on every type. A consuming Kotlin build declares two runtime dependencies the emitted code names -- `org.jetbrains.kotlinx:kotlinx-serialization-json` for the JSON codec and `org.jetbrains.kotlinx:kotlinx-coroutines-core` for the transport's own reply correlation and heartbeat -- plus the Kotlin Gradle plugin `kotlin("plugin.serialization")` |
+| `swift` | No | Swift type generation with a `Codable` codec, and a [`validate()`](#validate-in-the-swift-client) on every type, which [the read of each calls](#a-swift-read-refuses-what-validate-refuses) |
+| `kotlin` | No | Kotlin type generation via `kotlin_definition()`, with `kotlinx.serialization` annotations, a [`validate()`](#validate-in-the-kotlin-client) on every type and [a read that refuses what it refuses](#the-read-in-the-kotlin-client). A consuming Kotlin build declares two runtime dependencies the emitted code names -- `org.jetbrains.kotlinx:kotlinx-serialization-json` for the JSON codec and `org.jetbrains.kotlinx:kotlinx-coroutines-core` for the transport's own reply correlation and heartbeat -- plus the Kotlin Gradle plugin `kotlin("plugin.serialization")` |
 
 Common configurations:
 

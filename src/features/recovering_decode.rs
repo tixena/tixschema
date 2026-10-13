@@ -2436,13 +2436,18 @@ fn binding(stem: &str, depth: usize) -> Ident {
     Ident::new(&name, Span::call_site())
 }
 
-/// `bounds` joined to every type parameter of `bounded` but `skipped`. A parameter stays bounded
-/// in one place: its `where` predicate if it has one, else its name.
+/// `bounds` joined to every type parameter of `bounded` but `skipped`, each bound only where the
+/// parameter does not ask it already. A parameter stays bounded in one place: its `where`
+/// predicate if it has one, else its name.
 fn bound_parameters(
     bounded: &mut Generics,
     bounds: &Punctuated<TypeParamBound, Token![+]>,
     skipped: Option<&Ident>,
 ) {
+    let asked: Vec<(Ident, Vec<String>)> = bounded
+        .type_params()
+        .map(|parameter| (parameter.ident.clone(), asked_of(bounded, &parameter.ident)))
+        .collect();
     let mut predicates: Vec<&mut PredicateType> = bounded
         .where_clause
         .iter_mut()
@@ -2465,11 +2470,23 @@ fn bound_parameters(
         let bounding = predicates.iter_mut().find(|bounding| {
             matches!(&bounding.bounded_ty, Type::Path(named) if named.path.is_ident(&declared.ident))
         });
+        let already = asked
+            .iter()
+            .find(|(named, _)| *named == declared.ident)
+            .map_or(&[][..], |(_, traits)| traits.as_slice());
+        let more = bounds
+            .iter()
+            .filter(|bound| !asks_one_of(bound, already))
+            .cloned();
         if let Some(in_where) = bounding {
-            in_where.bounds.extend(take(&mut declared.bounds));
-            in_where.bounds.extend(bounds.clone());
+            let in_place: Vec<String> = in_where.bounds.iter().filter_map(asked_trait).collect();
+            let moved = take(&mut declared.bounds)
+                .into_iter()
+                .filter(|bound| !asks_one_of(bound, &in_place));
+            in_where.bounds.extend(moved);
+            in_where.bounds.extend(more);
         } else {
-            declared.bounds.extend(bounds.clone());
+            declared.bounds.extend(more);
         }
     }
 }
@@ -2530,7 +2547,7 @@ fn asking_more(generics: &Generics, predicate: &WherePredicate) -> Option<WhereP
     let more: Punctuated<TypeParamBound, Token![+]> = of_type
         .bounds
         .iter()
-        .filter(|bound| asked_trait(bound).is_none_or(|of_trait| !asked.contains(&of_trait)))
+        .filter(|bound| !asks_one_of(bound, &asked))
         .cloned()
         .collect();
     if more.is_empty() {
@@ -2577,6 +2594,11 @@ fn asked_of(generics: &Generics, named: &Ident) -> Vec<String> {
         .chain(in_where)
         .filter_map(asked_trait)
         .collect()
+}
+
+/// Whether `bound` asks a trait `asked` lists.
+fn asks_one_of(bound: &TypeParamBound, asked: &[String]) -> bool {
+    asked_trait(bound).is_some_and(|of_trait| asked.contains(&of_trait))
 }
 
 /// `value_bound` and `bson_bound`: what holds a value serde read to the bound its field declares.

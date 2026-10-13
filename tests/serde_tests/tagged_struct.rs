@@ -185,7 +185,7 @@ mod on_a_mobile_surface {
         for written in [
             "private enum SwiftSchemaTagCodingKeys: String, CodingKey { case swiftSchemaTag = \"kind\" };",
             "var tagged = encoder.container(keyedBy: SwiftSchemaTagCodingKeys.self); try tagged.encode(\"TaggedMobile\", forKey: .swiftSchemaTag);",
-            "public init(from decoder: Decoder) throws { let container = try decoder.container(keyedBy: CodingKeys.self); self.name = try container.decode(String.self, forKey: .name) };",
+            "public init(swiftSchemaUnjudged decoder: Decoder) throws { let container = try decoder.container(keyedBy: CodingKeys.self); self.name = try container.decode(String.self, forKey: .name) };",
         ] {
             assert!(
                 definition.contains(written),
@@ -199,10 +199,20 @@ mod on_a_mobile_surface {
     fn kotlin_holds_the_tag_in_a_property_it_always_encodes() {
         assert_eq!(
             tagged_mobile_kotlin::kotlin_definition(),
-            "@OptIn(ExperimentalSerializationApi::class) @Serializable data class \
+            "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
+             TaggedMobileSerializer::class) @KeepGeneratedSerializer data class \
              TaggedMobile(val name: String) { @SerialName(\"kind\") @EncodeDefault val \
              kotlinSchemaTag: String = \"TaggedMobile\"; fun validate(): List<String> = \
-             emptyList() }"
+             emptyList() } @OptIn(ExperimentalSerializationApi::class) object \
+             TaggedMobileUnjudged : KSerializer<TaggedMobile> by \
+             TaggedMobile.generatedSerializer() object TaggedMobileSerializer : \
+             KSerializer<TaggedMobile> { override val descriptor: SerialDescriptor = \
+             TaggedMobileUnjudged.descriptor; override fun serialize(encoder: Encoder, value: \
+             TaggedMobile) = TaggedMobileUnjudged.serialize(encoder, value); override fun \
+             deserialize(decoder: Decoder): TaggedMobile { val read = \
+             TaggedMobileUnjudged.deserialize(decoder); val violations = read.validate(); if \
+             (violations.isNotEmpty()) throw \
+             SerializationException(violations.joinToString(\"; \")); return read } }"
         );
     }
 }

@@ -1,6 +1,9 @@
 //! `validate()` on each Kotlin type the emitter writes: every member's bounds, what the value it
 //! holds reports and the checks it names, in the order declared, then the type's own checks. The
 //! order and each message are the ones Rust's `validate()` writes.
+//!
+//! A brand with a bound, and a variant of an untagged enum, carry `kotlinSchemaBound()` beside
+//! it: what the bounds alone answer, which is what chooses the variant a payload is read as.
 
 extern crate alloc;
 
@@ -17,6 +20,15 @@ use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
 /// The list `validate()` collects its messages in.
 const VIOLATIONS: &str = "violations";
 
+/// What a walk asks each value of a declared type it reaches for.
+#[derive(Clone, Copy)]
+enum Asked {
+    /// What its own bounds answer, the checks it names apart: `kotlinSchemaBound()`.
+    Bound,
+    /// Every message of the value: `validate()`.
+    Report,
+}
+
 /// A function a type's body carries beside `validate()`, for the statements that call it. Each is
 /// private to the type that writes it: emitted types are joined into one file.
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
@@ -29,6 +41,9 @@ enum Helper {
     /// What a string answers where a declared type is asked for its text: itself. A brand
     /// answers with a member of its own, which is found ahead of this.
     Text,
+    /// What a held value answers for its own bounds where its type carries none: every type but
+    /// a brand with a bound, whose member is found ahead of it.
+    Unbounded,
     /// A violation under the place that holds the value it is about: written into the name the
     /// violation leads with, or in front of one that leads with none.
     Under,
@@ -67,15 +82,25 @@ pub struct Member<'member> {
 /// What a type the emitter wrote publishes to one written after it.
 #[derive(Clone, Copy)]
 struct Noted {
+    /// Whether the type carries `kotlinSchemaBound()`, a brand with a bound of its own: `None`
+    /// for an alias, which is whatever it names.
+    bound: Option<bool>,
     /// Whether a value of the type answers its text: a brand that carries `kotlinSchemaText()`,
     /// and an alias of a string or of such a brand.
     text: bool,
+    /// Whether `{Type}Unjudged` reads the type with no judgement.
+    unjudged: bool,
     /// Whether the type carries `validate()`.
     validates: bool,
 }
 
 /// The `validate()` of one Kotlin type, as it is written.
 pub struct Rules<'item> {
+    /// What the bounds alone add: a brand's own, and those that choose a variant of an untagged
+    /// enum. They are written into `kotlinSchemaBound()`.
+    bounds: Vec<String>,
+    /// Whether the members are those of a variant of an untagged enum, which its bounds choose.
+    chooses: bool,
     /// The functions the statements call, each written once into the type's body.
     helpers: BTreeSet<Helper>,
     /// The type parameters the item declares `Serialize` for: a map's key typed with one is
@@ -99,6 +124,7 @@ impl Helper {
                  java.math.BigDecimal(shown).stripTrailingZeros().toPlainString()"
             }
             Self::Text => "private fun String.kotlinSchemaText(): String = this",
+            Self::Unbounded => "private fun Any?.kotlinSchemaBound(): List<String> = emptyList()",
             Self::Under => {
                 "private fun kotlinSchemaUnder(place: String, violation: String): String { val \
                  end = violation.indexOf('\\'', 1); return if (violation.startsWith(\"'\") && end \
@@ -184,31 +210,24 @@ impl<'item> Rules<'item> {
             .map_or_else(Vec::new, |text| text_statements(meta, &text, place))
     }
 
+    /// Whether the type answers what its bounds alone hold a value to.
+    pub const fn bounded(&self) -> bool {
+        !self.bounds.is_empty()
+    }
+
     /// What a brand's own bounds add, over the value it holds and under no place. `default` is
     /// the type declared for the parameter a brand holds bare: the bounds run where the value is
     /// of that type, and at no other filling.
     pub fn brand(&mut self, member: &Member<'_>, default: Option<&FieldDef>) {
-        if let Some(declared) = default {
-            let Some(meta) = member.def.model_schema_prop_meta.as_ref() else {
-                return;
-            };
-            if !bounds_a_text(meta) {
-                return;
-            }
-            let Some(text) = self.text_read(declared, &member.read) else {
-                return;
-            };
-            self.statements.push(format!(
-                "if ({} is {}) {{ {} }}",
-                member.read,
-                kotlin_typename(declared),
-                text_statements(meta, &text, None).join("; ")
-            ));
-            return;
-        }
-        let (held, read) = presented(member);
-        let bound = self.bound_statements(member, &held, &read);
-        self.push_presented(member, &read, bound);
+        let bounds = if let Some(declared) = default {
+            self.default_statements(member, declared)
+        } else {
+            let (held, read) = presented(member);
+            let bound = self.bound_statements(member, &held, &read);
+            behind(member, &read, &bound)
+        };
+        self.bounds.extend(bounds.iter().cloned());
+        self.statements.extend(bounds);
     }
 
     /// What the checks `member` names add, each called on `read` and its messages written under
@@ -226,6 +245,18 @@ impl<'item> Rules<'item> {
             .collect()
     }
 
+    /// The rules of a variant of an untagged enum: `validate()`, and the bounds that choose the
+    /// variant, which are each member's own and those of each brand it holds.
+    pub const fn choosing(serializable: &'item [String]) -> Self {
+        Self {
+            bounds: Vec::new(),
+            chooses: true,
+            helpers: BTreeSet::new(),
+            serializable,
+            statements: Vec::new(),
+        }
+    }
+
     /// The statement that collects what `answered` lists, each message under `place`.
     fn collected(&mut self, answered: &str, place: Option<&str>) -> String {
         place.map_or_else(
@@ -239,29 +270,50 @@ impl<'item> Rules<'item> {
         )
     }
 
-    /// What the value `read` holds reports: the `validate()` of each value of a declared type
-    /// under it, through a nullable, each level of a list, a map's values and a tuple's
-    /// positions. `depth` numbers the names the walk binds.
+    /// What a brand's bounds add at `declared`, the type declared for the parameter it holds
+    /// bare.
+    fn default_statements(&mut self, member: &Member<'_>, declared: &FieldDef) -> Vec<String> {
+        let Some(meta) = member.def.model_schema_prop_meta.as_ref() else {
+            return Vec::new();
+        };
+        if !bounds_a_text(meta) {
+            return Vec::new();
+        }
+        let Some(text) = self.text_read(declared, &member.read) else {
+            return Vec::new();
+        };
+        vec![format!(
+            "if ({} is {}) {{ {} }}",
+            member.read,
+            kotlin_typename(declared),
+            text_statements(meta, &text, None).join("; ")
+        )]
+    }
+
+    /// What the value `read` holds answers `asked`: each value of a declared type under it,
+    /// through a nullable, each level of a list, a map's values and a tuple's positions. `depth`
+    /// numbers the names the walk binds.
     fn held_statements(
         &mut self,
         def: &FieldDef,
         read: &str,
         place: Option<&str>,
         depth: usize,
+        asked: Asked,
     ) -> Vec<String> {
+        let below = depth.saturating_add(1);
         if def.is_optional() {
             let held = bound_name("held", depth);
-            let below = self.held_statements(&present(def), &held, place, depth.saturating_add(1));
-            return wrapped(&below, |inner| {
+            let inside = self.held_statements(&present(def), &held, place, below, asked);
+            return wrapped(&inside, |inner| {
                 format!("{read}?.let {{ {held} -> {inner} }}")
             });
         }
         if def.array_depth > 0 {
             let (index, held) = (bound_name("index", depth), bound_name("held", depth));
             let at = stepped(place, &format!("${index}"));
-            let below =
-                self.held_statements(&item_of(def), &held, Some(&at), depth.saturating_add(1));
-            return wrapped(&below, |inner| {
+            let inside = self.held_statements(&item_of(def), &held, Some(&at), below, asked);
+            return wrapped(&inside, |inner| {
                 format!("{read}.forEachIndexed {{ {index}, {held} -> {inner} }}")
             });
         }
@@ -270,12 +322,12 @@ impl<'item> Rules<'item> {
                 && is_sequence_wrapper(name)
             {
                 let listed = def.collection_element_field(element);
-                return self.held_statements(&listed, read, place, depth);
+                return self.held_statements(&listed, read, place, depth, asked);
             }
-            if !validates(name) {
-                self.helpers.insert(Helper::Fallback);
-            }
-            vec![self.collected(&format!("{read}.validate()"), place)]
+            self.method_asked(name, asked)
+                .map_or_else(Vec::new, |method| {
+                    vec![self.collected(&format!("{read}.{method}()"), place)]
+                })
         } else if let FieldDefType::Map(key, value) = &def.field_type {
             let (entry, held) = (bound_name("key", depth), bound_name("held", depth));
             let written = self.key_step(key, &entry);
@@ -283,13 +335,13 @@ impl<'item> Rules<'item> {
                 || place.map(ToOwned::to_owned),
                 |key_text| Some(stepped(place, key_text)),
             );
-            let below = self.held_statements(value, &held, at.as_deref(), depth.saturating_add(1));
+            let inside = self.held_statements(value, &held, at.as_deref(), below, asked);
             let bound = if written.is_some() {
                 entry.as_str()
             } else {
                 "_"
             };
-            wrapped(&below, |inner| {
+            wrapped(&inside, |inner| {
                 format!("for (({bound}, {held}) in {read}) {{ {inner} }}")
             })
         } else if let FieldDefType::Tuple(positions) = &def.field_type {
@@ -297,7 +349,7 @@ impl<'item> Rules<'item> {
             for (at, position) in positions.iter().enumerate() {
                 let slot = format!("{read}.slot{at}");
                 let under = stepped(place, &at.to_string());
-                found.extend(self.held_statements(position, &slot, Some(&under), depth));
+                found.extend(self.held_statements(position, &slot, Some(&under), depth, asked));
             }
             found
         } else {
@@ -324,20 +376,52 @@ impl<'item> Rules<'item> {
     }
 
     /// What `member` adds: its bounds, what the value it holds reports where no bound of its own
-    /// stands in for that, then the checks it names.
+    /// stands in for that, then the checks it names. Where the bounds choose a variant, they are
+    /// the member's own and those of each brand it holds.
     pub fn member(&mut self, member: &Member<'_>) {
         let (held, read) = presented(member);
+        let place = member.place.as_deref();
+        let depth = usize::from(member.def.is_optional());
         let mut statements = self.bound_statements(member, &held, &read);
-        if statements.is_empty() || held.is_list() {
-            let depth = usize::from(member.def.is_optional());
-            statements.extend(self.held_statements(&held, &read, member.place.as_deref(), depth));
+        let asks_the_held = statements.is_empty() || held.is_list();
+        if self.chooses {
+            let mut choosing = statements.clone();
+            if asks_the_held {
+                choosing.extend(self.held_statements(&held, &read, place, depth, Asked::Bound));
+            }
+            self.bounds.extend(behind(member, &read, &choosing));
+        }
+        if asks_the_held {
+            statements.extend(self.held_statements(&held, &read, place, depth, Asked::Report));
         }
         statements.extend(self.check_statements(member, &read));
-        self.push_presented(member, &read, statements);
+        self.statements.extend(behind(member, &read, &statements));
+    }
+
+    /// The method a value of the declared type `name` is asked through, and `None` where the
+    /// type is known to carry no bound of its own.
+    fn method_asked(&mut self, name: &str, asked: Asked) -> Option<&'static str> {
+        match asked {
+            Asked::Bound => {
+                let carried = carries_a_bound(name);
+                if carried.is_none() {
+                    self.helpers.insert(Helper::Unbounded);
+                }
+                (carried != Some(false)).then_some("kotlinSchemaBound")
+            }
+            Asked::Report => {
+                if !validates(name) {
+                    self.helpers.insert(Helper::Fallback);
+                }
+                Some("validate")
+            }
+        }
     }
 
     pub const fn of(serializable: &'item [String]) -> Self {
         Self {
+            bounds: Vec::new(),
+            chooses: false,
             helpers: BTreeSet::new(),
             serializable,
             statements: Vec::new(),
@@ -351,18 +435,6 @@ impl<'item> Rules<'item> {
                 "{VIOLATIONS}.addAll({}(this))",
                 kotlin_name(&check.name)
             ));
-        }
-    }
-
-    /// Adds `statements`, which read `read`, behind the member's own `Option` where it has one.
-    fn push_presented(&mut self, member: &Member<'_>, read: &str, statements: Vec<String>) {
-        if member.def.is_optional() {
-            let behind = wrapped(&statements, |inner| {
-                format!("{}?.let {{ {read} -> {inner} }}", member.read)
-            });
-            self.statements.extend(behind);
-        } else {
-            self.statements.extend(statements);
         }
     }
 
@@ -419,8 +491,9 @@ impl<'item> Rules<'item> {
         }
     }
 
-    /// The members the type's body carries: `validate()`, written as `modifier` opens it, and
-    /// each function its statements call.
+    /// The members the type's body carries: `validate()`, written as `modifier` opens it,
+    /// `kotlinSchemaBound()` where the type answers its bounds alone, and each function their
+    /// statements call.
     pub fn written(&mut self, modifier: &str) -> String {
         let statements = mem::take(&mut self.statements);
         let validate = if statements.is_empty() {
@@ -433,6 +506,14 @@ impl<'item> Rules<'item> {
             )
         };
         let mut members = vec![validate];
+        let bounds = mem::take(&mut self.bounds);
+        if !bounds.is_empty() {
+            members.push(format!(
+                "fun kotlinSchemaBound(): List<String> {{ val {VIOLATIONS} = \
+                 mutableListOf<String>(); {}; return {VIOLATIONS} }}",
+                bounds.join("; ")
+            ));
+        }
         members.extend(
             mem::take(&mut self.helpers)
                 .into_iter()
@@ -449,6 +530,32 @@ fn answers_a_text(def: &FieldDef) -> bool {
     })
 }
 
+/// Whether `validate()` asks what a member typed `def` holds for what it reports: no bound of the
+/// member's own stands in for that, a list apart. A model is read unjudged there, and only there.
+pub fn asks_the_held(def: &FieldDef) -> bool {
+    let member = Member {
+        def,
+        place: None,
+        read: String::new(),
+    };
+    let (held, read) = presented(&member);
+    held.is_list()
+        || Rules::of(&[])
+            .bound_statements(&member, &held, &read)
+            .is_empty()
+}
+
+/// `statements`, which read `read`, behind the member's own `Option` where it has one.
+fn behind(member: &Member<'_>, read: &str, statements: &[String]) -> Vec<String> {
+    if member.def.is_optional() {
+        wrapped(statements, |inner| {
+            format!("{}?.let {{ {read} -> {inner} }}", member.read)
+        })
+    } else {
+        statements.to_vec()
+    }
+}
+
 /// The name a walk binds at `depth`: `held`, then `held2` below it, so no lambda shadows another.
 fn bound_name(stem: &str, depth: usize) -> String {
     if depth == 0 {
@@ -461,6 +568,12 @@ fn bound_name(stem: &str, depth: usize) -> String {
 /// Whether `meta` writes a length or a pattern.
 const fn bounds_a_text(meta: &ModelSchemaPropMeta) -> bool {
     meta.min_length.is_some() || meta.max_length.is_some() || meta.pattern.is_some()
+}
+
+/// Whether the type the emitter wrote under `rust_ident` carries `kotlinSchemaBound()`, and
+/// `None` where it wrote none under that name, or an alias.
+fn carries_a_bound(rust_ident: &str) -> Option<bool> {
+    NOTED.with(|seen| seen.borrow().get(rust_ident).and_then(|noted| noted.bound))
 }
 
 /// What `minLength` and `maxLength` add on a list, whose items they count.
@@ -541,29 +654,49 @@ pub fn note_alias(rust_ident: &str, target: &FieldDef) {
     note(
         rust_ident,
         Noted {
+            bound: None,
             text,
+            unjudged: false,
             validates: false,
         },
     );
 }
 
-/// Notes a brand, which carries `validate()`, and `kotlinSchemaText()` where `text` says so.
-pub fn note_brand(rust_ident: &str, text: bool) {
+/// Notes a brand, which carries `validate()`, `kotlinSchemaText()` where `text` says so and
+/// `kotlinSchemaBound()` where `bound` does.
+pub fn note_brand(rust_ident: &str, text: bool, bound: bool) {
     note(
         rust_ident,
         Noted {
+            bound: Some(bound),
             text,
+            unjudged: true,
             validates: true,
         },
     );
 }
 
-/// Notes a type that carries `validate()` and answers no text.
+/// Notes a type that carries `validate()`, answers no text, and is read by two serializers.
 pub fn note_model(rust_ident: &str) {
     note(
         rust_ident,
         Noted {
+            bound: Some(false),
             text: false,
+            unjudged: true,
+            validates: true,
+        },
+    );
+}
+
+/// Notes a plain enum, which carries `validate()` and keeps the one serializer the plugin writes.
+pub fn note_plain_enum(rust_ident: &str) {
+    note(
+        rust_ident,
+        Noted {
+            bound: Some(false),
+            text: false,
+            unjudged: false,
             validates: true,
         },
     );
@@ -600,6 +733,15 @@ fn presented(member: &Member<'_>) -> (FieldDef, String) {
     } else {
         (member.def.clone(), member.read.clone())
     }
+}
+
+/// Whether the emitter wrote a type under `rust_ident` that `{Type}Unjudged` reads.
+pub fn reads_unjudged(rust_ident: &str) -> bool {
+    NOTED.with(|seen| {
+        seen.borrow()
+            .get(rust_ident)
+            .is_some_and(|noted| noted.unjudged)
+    })
 }
 
 /// `place` with `step` written after it.
