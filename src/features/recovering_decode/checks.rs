@@ -10,11 +10,10 @@ use quote::{format_ident, quote};
 use syn::ext::IdentExt as _;
 use syn::{Field, Fields, ItemEnum, ItemStruct, PathArguments, Type};
 
-use super::enums::Tagging;
 use super::{hooked_leaf, type_arguments, value_slot};
 use crate::features::serde::{
-    has_serde_transparent, parse_serde_field_attributes, parse_serde_field_hooks,
-    parse_serde_key_omission, parse_written_renames,
+    has_serde_transparent, member_steps, parse_serde_field_hooks, parse_serde_key_omission,
+    parse_written_renames, variant_steps,
 };
 use crate::field_type::{
     FieldDefType, classify_variant, get_field_def, is_map_wrapper, is_ownership_wrapper,
@@ -25,7 +24,6 @@ use crate::model_schema::{
     BoundMember, MemberPlace, bound_member, build_member_check_arms, helper_name_stem,
     nested_under_fn, variant_check_pattern,
 };
-use crate::rename_rule::resolve_rename_rule;
 use crate::utils::{Declared, declared, member_checks, own_checks, written_type};
 
 /// The list `decode_with_check_messages` collects each message in.
@@ -117,11 +115,10 @@ pub fn enum_check_messages(
     module_name: &str,
     parameters: &[String],
 ) -> TokenStream {
-    let tagging = Tagging::of(item_enum);
     let mut of_members: Vec<(TokenStream, Vec<TokenStream>)> = Vec::new();
     let mut of_held: Vec<(TokenStream, Vec<TokenStream>)> = Vec::new();
     for variant in &item_enum.variants {
-        let members = variant_members(item_enum, variant, &tagging);
+        let members = variant_members(item_enum, variant);
         of_members.push(arm(variant, &members, |member| member.own(module_name)));
         of_held.push(arm(variant, &members, |member| {
             member.held(module_name, parameters)
@@ -323,18 +320,6 @@ fn binding(stem: &str, depth: usize) -> Ident {
     format_ident!("{stem}_{depth}")
 }
 
-/// The key serde writes `field` under: its own `rename`, or its name cased by `rename_all`.
-fn written_key(field: &Field, rename_all: Option<&str>) -> Option<String> {
-    let ident = field.ident.as_ref()?;
-    Some(
-        parse_written_renames(&field.attrs)
-            .rename
-            .unwrap_or_else(|| {
-                resolve_rename_rule(rename_all).apply_to_field(&ident.unraw().to_string())
-            }),
-    )
-}
-
 /// What a member's helpers are named from: its Rust name, or a slot's position.
 fn declared_as(field: &Field, index: usize) -> String {
     field
@@ -343,36 +328,18 @@ fn declared_as(field: &Field, index: usize) -> String {
         .map_or_else(|| index.to_string(), |member| member.unraw().to_string())
 }
 
-/// The members of `fields` serde reads, each beside its place among the ones declared, with the
-/// place serde writes it at under `prefix`: a named member under its key, the only slot at
-/// `prefix` itself where `lone_is_the_value` says serde writes it as the whole value, and any
-/// other slot under its position among the slots serde reads.
+/// The members of `fields` serde reads, each beside its place among the ones declared and the
+/// steps serde writes on the way to it.
 fn read_members<'item>(
     fields: &'item Fields,
     prefix: &[String],
     rename_all: Option<&str>,
     lone_is_the_value: bool,
 ) -> Vec<(&'item Field, usize, Vec<String>)> {
-    let mut position = 0_usize;
-    let mut members = Vec::new();
-    for (index, field) in fields.iter().enumerate() {
-        if parse_serde_key_omission(&field.attrs).skips_deserializing {
-            continue;
-        }
-        let mut place = prefix.to_vec();
-        if let Some(key) = written_key(field, rename_all) {
-            if !parse_serde_field_attributes(&field.attrs).flatten {
-                place.push(key);
-            }
-        } else if !lone_is_the_value {
-            place.push(position.to_string());
-        } else {
-            // The slot is the value serde writes, at the place of what holds it.
-        }
-        position = position.saturating_add(1);
-        members.push((field, index, place));
-    }
-    members
+    member_steps(fields, prefix, rename_all, lone_is_the_value)
+        .into_iter()
+        .filter(|(field, _, _)| !parse_serde_key_omission(&field.attrs).skips_deserializing)
+        .collect()
 }
 
 /// The members of a struct, each read off `self`.
@@ -407,27 +374,11 @@ fn struct_members(item_struct: &ItemStruct) -> Vec<Member<'_>> {
 fn variant_members<'item>(
     item_enum: &'item ItemEnum,
     variant: &'item syn::Variant,
-    tagging: &Tagging,
 ) -> Vec<(Member<'item>, usize)> {
-    let container = parse_written_renames(&item_enum.attrs);
-    let named = variant.ident.unraw().to_string();
-    let prefix: Vec<String> = if let Tagging::Adjacent { content, tag: _tag } = tagging {
-        vec![content.clone()]
-    } else if matches!(tagging, Tagging::External) {
-        vec![
-            parse_written_renames(&variant.attrs)
-                .rename
-                .unwrap_or_else(|| {
-                    resolve_rename_rule(container.rename_all.as_deref()).apply_to_variant(&named)
-                }),
-        ]
-    } else {
-        // serde writes what the variant holds beside the tag, or as the value itself.
-        Vec::new()
-    };
+    let prefix = variant_steps(item_enum, variant);
     let rename_all = parse_written_renames(&variant.attrs)
         .rename_all
-        .or(container.rename_all_fields);
+        .or_else(|| parse_written_renames(&item_enum.attrs).rename_all_fields);
     let lone = matches!(&variant.fields, Fields::Unnamed(slots) if slots.unnamed.len() == 1);
     let variant_name = variant.ident.to_string();
     read_members(&variant.fields, &prefix, rename_all.as_deref(), lone)

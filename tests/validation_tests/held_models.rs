@@ -1,5 +1,5 @@
 //! `validate()` runs the `validate()` of a model held as the value of a map, in a slot and in a
-//! tuple, and names it by the key serde writes for the entry, or by its position.
+//! tuple, and names it by the steps serde writes on the way to it.
 
 #[cfg(all(
     feature = "serde",
@@ -9,9 +9,34 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     use alloc::collections::BTreeMap;
     use alloc::sync::Arc;
     use core::fmt;
+    use core::fmt::Write as _;
     use serde::{Deserialize, Serialize};
     use std::collections::HashMap;
     use tixschema::model_schema;
+
+    /// What serde writes for a broken value in each place it writes a member at, with what
+    /// `validate()` answers of the value under it.
+    const PLACES: &str = r#"{"itemLabel":""}
+    'itemLabel': too short: minimum length is 1, got 0
+{"sealedLoad":{"itemLabel":""}}
+    'sealedLoad.itemLabel': too short: minimum length is 1, got 0
+{"Boxed":{"itemLabel":""}}
+    'Boxed.itemLabel': too short: minimum length is 1, got 0
+{"Split":["",{"itemLabel":""}]}
+    'Split.0': too short: minimum length is 1, got 0
+    'Split.1.itemLabel': too short: minimum length is 1, got 0
+{"Loose":{"freightLabel":""}}
+    'Loose.freightLabel': too short: minimum length is 1, got 0
+{"kind":"Boxed","held":{"itemLabel":""}}
+    'held.itemLabel': too short: minimum length is 1, got 0
+{"kind":"Boxed","itemLabel":""}
+    'itemLabel': too short: minimum length is 1, got 0
+{"Stamped":""}
+    'Stamped': too short: minimum length is 1, got 0
+["",0]
+    '0': too short: minimum length is 1, got 0
+    '1': too small: minimum is 1, got 0
+"#;
 
     #[model_schema()]
     #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -147,6 +172,20 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
         },
     }
 
+    /// A variant of one slot held to a bound of its own.
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub enum Seal {
+        Stamped(#[model_schema_prop(minLength = 1)] String),
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct Docket(
+        #[model_schema_prop(minLength = 1)] pub String,
+        #[model_schema_prop(minimum = 1)] pub u32,
+    );
+
     #[model_schema()]
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
@@ -232,6 +271,20 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     /// The message of an unlabelled parcel held at `path`.
     fn unlabelled_at(path: &str) -> String {
         format!("'{path}': too short: minimum length is 1, got 0")
+    }
+
+    /// What serde writes for `value`, then each message `validate()` answered of it on a line of
+    /// its own.
+    fn placed<T>(value: &T, answered: Result<(), Vec<String>>) -> String
+    where
+        T: Serialize,
+    {
+        let mut printed = serde_json::to_string(value).unwrap();
+        printed.push('\n');
+        for message in answered.unwrap_err() {
+            writeln!(printed, "    {message}").unwrap();
+        }
+        printed
     }
 
     /// One unlabelled parcel under the key `north`.
@@ -462,18 +515,66 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     }
 
     #[test]
-    fn the_one_slot_of_a_struct_is_reported_under_its_position() {
+    fn a_value_is_named_by_the_steps_serde_writes_on_the_way_to_it() {
+        let crane = Crane {
+            sealed_load: Sealed(unlabelled()),
+        };
+        let split = Freight::Split(String::new(), unlabelled());
+        let loose = Freight::Loose {
+            freight_label: String::new(),
+        };
+        let printed = [
+            placed(&Sealed(unlabelled()), Sealed(unlabelled()).validate()),
+            placed(&crane, crane.validate()),
+            placed(
+                &Freight::Boxed(unlabelled()),
+                Freight::Boxed(unlabelled()).validate(),
+            ),
+            placed(&split, split.validate()),
+            placed(&loose, loose.validate()),
+            placed(
+                &Haul::Boxed(unlabelled()),
+                Haul::Boxed(unlabelled()).validate(),
+            ),
+            placed(
+                &Lift::Boxed(unlabelled()),
+                Lift::Boxed(unlabelled()).validate(),
+            ),
+            placed(
+                &Seal::Stamped(String::new()),
+                Seal::Stamped(String::new()).validate(),
+            ),
+            placed(
+                &Docket(String::new(), 0),
+                Docket(String::new(), 0).validate(),
+            ),
+        ]
+        .concat();
+        assert_eq!(printed, PLACES);
+    }
+
+    /// serde writes a struct of one slot as the slot's value.
+    #[test]
+    fn the_one_slot_of_a_struct_adds_no_step() {
+        assert_eq!(
+            Sealed(unlabelled()).validate(),
+            Err(vec![unlabelled_at("itemLabel")])
+        );
+        assert_eq!(
+            serde_json::to_string(&Sealed(unlabelled())).unwrap(),
+            r#"{"itemLabel":""}"#
+        );
         let crane = Crane {
             sealed_load: Sealed(unlabelled()),
         };
         assert_eq!(
             crane.validate(),
-            Err(vec![unlabelled_at("sealedLoad.0.itemLabel")])
+            Err(vec![unlabelled_at("sealedLoad.itemLabel")])
         );
     }
 
     #[test]
-    fn a_model_held_in_the_one_slot_of_a_tagged_variant_is_reported_under_its_position() {
+    fn a_model_held_in_the_one_slot_of_a_variant_is_reported_under_the_variants_name() {
         assert_eq!(
             [
                 Freight::Boxed(unlabelled()).validate(),
@@ -481,27 +582,33 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
                 Freight::Boxed(sound()).validate(),
             ],
             [
-                Err(vec![unlabelled_at("0.itemLabel")]),
-                Err(vec![unlabelled_at("0.1.itemLabel")]),
+                Err(vec![unlabelled_at("Boxed.itemLabel")]),
+                Err(vec![unlabelled_at("Stacked.1.itemLabel")]),
                 Ok(()),
             ]
         );
     }
 
     #[test]
-    fn a_model_held_in_a_tagged_variant_of_several_slots_is_reported_under_its_position() {
+    fn a_member_of_a_variant_of_several_is_reported_under_the_variants_name() {
         assert_eq!(
             Freight::Split(String::new(), unlabelled()).validate(),
-            Err(vec![unlabelled_at("0"), unlabelled_at("1.itemLabel")])
+            Err(vec![
+                unlabelled_at("Split.0"),
+                unlabelled_at("Split.1.itemLabel")
+            ])
         );
         let loose = Freight::Loose {
             freight_label: String::new(),
         };
-        assert_eq!(loose.validate(), Err(vec![unlabelled_at("freightLabel")]));
+        assert_eq!(
+            loose.validate(),
+            Err(vec![unlabelled_at("Loose.freightLabel")])
+        );
     }
 
     #[test]
-    fn a_slot_is_reported_under_its_position_under_a_content_key_and_beside_a_tag() {
+    fn a_member_is_reported_under_a_content_key_and_under_no_step_beside_a_tag() {
         let loose = Haul::Loose {
             haul_label: "a".to_owned(),
         };
@@ -517,11 +624,24 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
                 lifted.validate(),
             ],
             [
-                Err(vec![unlabelled_at("0.itemLabel")]),
-                Err(vec![unlabelled_at("1.itemLabel")]),
-                Err(vec![unlabelled_at("0.itemLabel")]),
+                Err(vec![unlabelled_at("held.itemLabel")]),
+                Err(vec![unlabelled_at("held.1.itemLabel")]),
+                Err(vec![unlabelled_at("itemLabel")]),
                 Ok(()),
                 Ok(()),
+            ]
+        );
+        let unlabelled_haul = Haul::Loose {
+            haul_label: String::new(),
+        };
+        let unlabelled_lift = Lift::Loose {
+            lift_label: String::new(),
+        };
+        assert_eq!(
+            [unlabelled_haul.validate(), unlabelled_lift.validate()],
+            [
+                Err(vec![unlabelled_at("held.haulLabel")]),
+                Err(vec![unlabelled_at("liftLabel")]),
             ]
         );
     }
@@ -586,6 +706,81 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
             ],
             "`validate()` is written under the bounds the type declares, and names no key it \
              cannot ask serde to write"
+        );
+    }
+
+    /// Each row the README shows for a member of a variant, and what it shows for the one slot
+    /// of a struct, is what serde writes and what a run answers.
+    #[test]
+    fn the_readme_shows_the_steps_serde_writes_for_a_variant_and_for_the_one_slot() {
+        let readme = include_str!("../../README.md");
+        let freight = Freight::Loose {
+            freight_label: String::new(),
+        };
+        let haul = Haul::Loose {
+            haul_label: String::new(),
+        };
+        let lift = Lift::Loose {
+            lift_label: String::new(),
+        };
+        let written = [
+            serde_json::to_string(&freight).unwrap(),
+            serde_json::to_string(&haul).unwrap(),
+            serde_json::to_string(&lift).unwrap(),
+            serde_json::to_string(&Sealed(unlabelled())).unwrap(),
+        ];
+        assert_eq!(
+            written,
+            [
+                r#"{"Loose":{"freightLabel":""}}"#,
+                r#"{"kind":"Loose","held":{"haulLabel":""}}"#,
+                r#"{"kind":"Loose","liftLabel":""}"#,
+                r#"{"itemLabel":""}"#,
+            ]
+        );
+        let crane = Crane {
+            sealed_load: Sealed(unlabelled()),
+        };
+        let named: Vec<String> = [
+            freight.validate(),
+            Freight::Boxed(unlabelled()).validate(),
+            Freight::Split("a".to_owned(), unlabelled()).validate(),
+            haul.validate(),
+            Haul::Boxed(unlabelled()).validate(),
+            Haul::Split("a".to_owned(), unlabelled()).validate(),
+            lift.validate(),
+            Lift::Boxed(unlabelled()).validate(),
+            Sealed(unlabelled()).validate(),
+            crane.validate(),
+        ]
+        .into_iter()
+        .flat_map(Result::unwrap_err)
+        .map(|reported| reported.replace(": too short: minimum length is 1, got 0", ""))
+        .collect();
+        assert_eq!(
+            named,
+            [
+                "'Loose.freightLabel'",
+                "'Boxed.itemLabel'",
+                "'Split.1.itemLabel'",
+                "'held.haulLabel'",
+                "'held.itemLabel'",
+                "'held.1.itemLabel'",
+                "'liftLabel'",
+                "'itemLabel'",
+                "'itemLabel'",
+                "'sealedLoad.itemLabel'",
+            ]
+        );
+        for shown in written.iter().chain(&named) {
+            assert!(
+                readme.contains(&format!("`{shown}")),
+                "the README no longer shows {shown}"
+            );
+        }
+        assert!(
+            include_str!("../../src/lib.rs").contains("`'Loose.freightLabel': ...`"),
+            "the rustdoc no longer shows 'Loose.freightLabel'"
         );
     }
 

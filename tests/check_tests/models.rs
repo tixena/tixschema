@@ -2,6 +2,14 @@
 //! table, and one type per shape a check is written on. Each case is a value built here, with the
 //! payload serde writes for it and what `validate()` answers of it.
 
+/// The places serde writes a member at, where a bound is held and a holder runs what it holds.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[path = "places.rs"]
+pub mod places;
+
 use core::fmt::Write as _;
 
 use serde::{Deserialize, Serialize};

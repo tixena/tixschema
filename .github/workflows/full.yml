@@ -1,0 +1,256 @@
+name: Full Pipeline
+
+# Every combination of the feature sets, the emitted clients and the audit: every three days, and
+# whenever it is started by hand. A change is held to the gate of `ci.yml`.
+on:
+  schedule:
+    - cron: '0 6 */3 * *'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        toolchain: stable
+        components: clippy, rustfmt
+
+    - name: Install just, cargo-hack and cargo-audit
+      uses: taiki-e/install-action@v2
+      with:
+        tool: just,cargo-hack,cargo-audit
+
+    - name: Cache cargo registry
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+          bson3/target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+
+    # The emitted-client runs and the tsc type check stand down when their toolchain is missing, so CI
+    # installs each one; the runner image already carries Swift, Kotlin and a JRE.
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24
+
+    - name: Setup Dart
+      uses: dart-lang/setup-dart@v1
+
+    - name: Install zod, ws and tsc for the emitted TypeScript
+      run: |
+        npm install --no-save --no-package-lock --prefix "$RUNNER_TEMP/node" zod@4.6.5 ws@8.21.3 typescript@5.9.3
+        echo "TIXSCHEMA_NODE_MODULES=$RUNNER_TEMP/node" >> "$GITHUB_ENV"
+        echo "TIXSCHEMA_TSC=$RUNNER_TEMP/node/node_modules/.bin/tsc" >> "$GITHUB_ENV"
+
+    - name: Install the Kotlin jars the emitted Kotlin compiles against
+      run: just kotlin-libs
+
+    - name: Show the toolchains
+      run: |
+        node --version
+        "$TIXSCHEMA_TSC" --version
+        dart --version
+        swift --version
+        kotlinc -version
+        java -version
+
+    - name: Build project
+      id: build
+      run: |
+        echo "🏗️ Building project..."
+        cargo build --verbose
+
+    - name: Run code checks
+      id: check
+      run: |
+        echo "🔍 Running code checks..."
+        just check
+
+    - name: Run lint across all feature combinations
+      id: lint-all
+      run: |
+        echo "🧹 Linting every combination of the feature sets..."
+        just lint-sets
+
+    - name: Run basic tests
+      id: test-basic
+      run: |
+        echo "🧪 Running basic tests..."
+        cargo test --verbose
+
+    - name: Run extensive tests
+      id: test-extensive
+      env:
+        RUSTFLAGS: ""
+      run: |
+        echo "🚀 Testing every combination of the feature sets..."
+        just test-sets
+
+    - name: Type-check the emitted TypeScript
+      id: typecheck-ts
+      run: |
+        echo "🔎 Type-checking the emitted TypeScript with tsc..."
+        just typecheck-ts
+
+    - name: Run the emitted clients under their own toolchains
+      id: test-emitted
+      run: |
+        echo "🌐 Running the emitted Node, Dart, Swift and Kotlin clients..."
+        just test-emitted
+
+    - name: Run security audit
+      id: audit
+      # No Cargo.lock is committed (library crate), so the recipe generates one to scan for each
+      # of the two packages, this one and `bson3/`.
+      run: |
+        echo "🛡️ Running security audit..."
+        just audit
+
+    - name: Send Discord notification
+      if: always()
+      # All GitHub context is passed via env, never interpolated into the script body, so a commit
+      # message cannot break the JSON or inject shell. jq assembles the payload.
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        REPO: ${{ github.repository }}
+        BRANCH: ${{ github.head_ref || github.ref_name }}
+        COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        PUSH_MSG: ${{ github.event.head_commit.message }}
+        PUSH_AUTHOR: ${{ github.event.head_commit.author.name }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_TITLE: ${{ github.event.pull_request.title }}
+        PR_URL: ${{ github.event.pull_request.html_url }}
+        PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        ACTOR: ${{ github.actor }}
+        SERVER_URL: ${{ github.server_url }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        TIMESTAMP: ${{ github.event.head_commit.timestamp }}
+        BLD: ${{ steps.build.outcome }}
+        CHK: ${{ steps.check.outcome }}
+        LALL: ${{ steps.lint-all.outcome }}
+        TBASIC: ${{ steps.test-basic.outcome }}
+        TEXT: ${{ steps.test-extensive.outcome }}
+        TSC: ${{ steps.typecheck-ts.outcome }}
+        EMIT: ${{ steps.test-emitted.outcome }}
+        AUDIT: ${{ steps.audit.outcome }}
+      run: |
+        # Validate repository to prevent forks from sending notifications
+        if [[ "$REPO" != "eburgos/tixschema" && "$REPO" != "tixena/tixschema" ]]; then
+          echo "⏭️ Skipping Discord notification (repository is $REPO, a fork)"
+          exit 0
+        fi
+
+        # Overall status + which step failed
+        JOB_STATUS="success"
+        FAILED_STEP="None"
+        if [[ "$BLD" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Build (cargo build)";
+        elif [[ "$CHK" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Code checks (just check)";
+        elif [[ "$LALL" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Lint the feature sets (just lint-sets)";
+        elif [[ "$TBASIC" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Basic tests (cargo test)";
+        elif [[ "$TEXT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Feature-set tests (just test-sets)";
+        elif [[ "$TSC" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Emitted TypeScript type check (just typecheck-ts)";
+        elif [[ "$EMIT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Emitted clients (just test-emitted)";
+        elif [[ "$AUDIT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Security audit (cargo audit)";
+        fi
+
+        icon() { case "$1" in success) printf '✅';; failure) printf '❌';; *) printf '⏭️';; esac; }
+        STATUS_VALUE=$(printf '🏗️ Build: %s\n🔍 Check: %s\n🧹 Lint (all features): %s\n🧪 Basic Tests: %s\n🚀 Extensive Tests: %s\n🔎 Emitted TypeScript: %s\n🌐 Emitted Clients: %s\n🛡️ Audit: %s' \
+          "$(icon "$BLD")" "$(icon "$CHK")" "$(icon "$LALL")" "$(icon "$TBASIC")" "$(icon "$TEXT")" "$(icon "$TSC")" "$(icon "$EMIT")" "$(icon "$AUDIT")")
+
+        # Per-event details: commit message / author / PR link
+        if [[ "$EVENT_NAME" == "pull_request" ]]; then
+          COMMIT_MSG="$PR_TITLE"
+          AUTHOR="${PR_AUTHOR:-$ACTOR}"
+          PR_MD="[#${PR_NUMBER}: ${PR_TITLE}](${PR_URL})"
+        else
+          COMMIT_MSG=$(printf '%s' "$PUSH_MSG" | head -n1)
+          AUTHOR="${PUSH_AUTHOR:-$ACTOR}"
+          PR_MD=""
+        fi
+        [[ -z "$COMMIT_MSG" ]] && COMMIT_MSG="(no message)"
+        SHORT_SHA="${COMMIT_SHA:0:7}"
+        COMMIT_MD="[\`${SHORT_SHA}\`](${SERVER_URL}/${REPO}/commit/${COMMIT_SHA})"
+
+        if [[ "$JOB_STATUS" == "success" ]]; then
+          TITLE="✅ Full Pipeline Success"; DESC="All tests passed successfully!"; COLOR=3066993; BTN_STYLE=5; BTN_LABEL="View Build"
+        else
+          TITLE="❌ Full Pipeline Failed"; DESC="Build or tests failed!"; COLOR=15158332; BTN_STYLE=5; BTN_LABEL="View Failed Build"
+        fi
+
+        # Assemble the payload with jq (safe escaping of all dynamic strings)
+        PAYLOAD=$(jq -n \
+          --arg title "$TITLE" --arg desc "$DESC" --argjson color "$COLOR" \
+          --arg repo "$REPO" --arg branch "$BRANCH" --arg author "$AUTHOR" \
+          --arg commit "$COMMIT_MD" --arg msg "$COMMIT_MSG" \
+          --arg pr "$PR_MD" --arg failed "$FAILED_STEP" --arg status "$STATUS_VALUE" \
+          --arg ts "$TIMESTAMP" \
+          --arg run_url "$RUN_URL" --argjson btn_style "$BTN_STYLE" --arg btn_label "$BTN_LABEL" \
+          '{
+            embeds: [
+              ({
+                title: $title,
+                description: $desc,
+                color: $color,
+                fields: (
+                  [ {name: "Repository", value: $repo, inline: true},
+                    {name: "Branch", value: $branch, inline: true},
+                    {name: "Author", value: $author, inline: true},
+                    {name: "Commit", value: ($commit + "  " + $msg), inline: false} ]
+                  + (if $pr != "" then [ {name: "Pull Request", value: $pr, inline: false} ] else [] end)
+                  + (if $failed != "None" then [ {name: "Failed Step", value: $failed, inline: false} ] else [] end)
+                  + [ {name: "Build Status", value: $status, inline: false} ]
+                ),
+                footer: {text: "Core Model Macros CI"}
+              } + (if $ts != "" then {timestamp: $ts} else {} end))
+            ],
+            components: [
+              {type: 1, components: [ {type: 2, style: $btn_style, label: $btn_label, url: $run_url} ]}
+            ]
+          }')
+
+        echo "Sending Discord notification..."
+        echo "Event: $EVENT_NAME | Branch: $BRANCH | Commit: $SHORT_SHA | Author: $AUTHOR"
+        echo "Job Status: $JOB_STATUS"
+        echo "Failed Step: $FAILED_STEP"
+        echo "Title: $TITLE"
+        echo "Payload size: ${#PAYLOAD} bytes"
+
+        if [[ -z "$DISCORD_WEBHOOK" ]]; then
+          echo "❌ DISCORD_WEBHOOK is empty or not available to this run; nothing was sent"
+          exit 0
+        fi
+
+        # The webhook's own name and channel, read back without its token.
+        WEBHOOK_INFO=$(curl -s "$DISCORD_WEBHOOK" | jq -c '{webhook_name: .name, webhook_id: .id, channel_id: .channel_id, guild_id: .guild_id}' 2>/dev/null || true)
+        echo "Webhook: ${WEBHOOK_INFO:-(could not read the webhook details)}"
+
+        # wait=true makes Discord answer with the created message instead of an empty 204.
+        SEP='?'; [[ "$DISCORD_WEBHOOK" == *\?* ]] && SEP='&'
+        RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" -H "Content-Type: application/json" -d "$PAYLOAD" "${DISCORD_WEBHOOK}${SEP}wait=true")
+        HTTP_STATUS=$(echo "$RESPONSE" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
+        BODY=$(echo "$RESPONSE" | sed -e 's/HTTPSTATUS:[0-9]*$//')
+
+        if [[ $HTTP_STATUS -eq 200 || $HTTP_STATUS -eq 204 ]]; then
+          echo "✅ Discord notification sent successfully (HTTP $HTTP_STATUS)"
+          MESSAGE_INFO=$(echo "$BODY" | jq -c '{message_id: .id, channel_id: .channel_id, timestamp: .timestamp, embeds: (.embeds | length)}' 2>/dev/null || true)
+          echo "Message: ${MESSAGE_INFO:-(no message body returned)}"
+        else
+          echo "❌ Discord notification failed (HTTP $HTTP_STATUS)"
+          echo "Response: $BODY"
+        fi

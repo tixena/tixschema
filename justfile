@@ -242,10 +242,18 @@ clean:
     cargo clean --manifest-path bson3/Cargo.toml
     @echo "✅ Build artifacts cleaned!"
 
-# Full pipeline (standardized `all` entry point across tixena repos): lints and key feature
-# combinations, each gate a single build. The exhaustive powerset lives in `all-powerset`.
-all: lint lint-all-features test-named-features
+# The gate (standardized `all` entry point across tixena repos): every feature on, one lint, one
+# build, one test run. It is what a change is held to, here and in CI.
+all:
+    cargo clippy --all-targets --all-features -- -D warnings
+    cargo build --all-features
+    cargo test --all-features
     @echo "All checks completed successfully!"
+
+# The longer run over both packages: default and all-features lints, the format check and the
+# named feature lists (what `all` ran before). Run every few days, with the feature sets.
+all-named: lint lint-all-features test-named-features
+    @echo "All named checks completed successfully!"
 
 # Exhaustive pipeline - the feature-powerset gates over every plain-feature combination (what `all` ran
 # before). Slow; run before a release or after touching feature gates.
