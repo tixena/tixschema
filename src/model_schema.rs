@@ -16667,11 +16667,11 @@ fn zod_published_binding(
     // On the type's own expression, so every binding of it carries them: the one schema of a
     // type with no parameter, and each schema its builder builds for a type with one. A
     // `preprocess` is written around the checked expression: it corrects what the checks judge.
-    let checked = zod_preprocess_wrap(
-        zod_check_wrap(expression.to_owned(), published.checks),
-        published.preprocess,
-    );
     if parameters.is_empty() {
+        let checked = zod_preprocess_wrap(
+            zod_check_wrap(expression.to_owned(), published.checks),
+            published.preprocess,
+        );
         zod_const_block(
             item_name,
             preamble,
@@ -16686,10 +16686,62 @@ fn zod_published_binding(
             constrained: None,
             default_types: published.default_types,
         };
-        zod_factory_block(
-            item_name, rust_ident, parameters, &defaults, preamble, &checked, reexport,
-        )
+        let (run_ahead, built) =
+            zod_checked_in_a_builder(item_name, parameters, expression, published.checks);
+        let factory = zod_factory_block(
+            item_name,
+            rust_ident,
+            parameters,
+            &defaults,
+            preamble,
+            &zod_preprocess_wrap(built, published.preprocess),
+            reexport,
+        );
+        format!("{run_ahead}{factory}")
     }
+}
+
+/// The checks of a type that declares parameters, as its builder runs them: the function that
+/// runs them, written ahead of the builder, and the builder's expression handed to it. Inside the
+/// builder Zod cannot say a member written from a parameter is required, so the value a check is
+/// handed there is not the published type. The function's overload hands the schema back as it
+/// is, and its implementation takes a schema of the published type at any filling.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+fn zod_checked_in_a_builder(
+    item_name: &str,
+    parameters: &[String],
+    expression: &str,
+    checks: &[FunctionName],
+) -> (String, String) {
+    if checks.is_empty() {
+        return (String::new(), expression.to_owned());
+    }
+    let any_filling = parameters
+        .iter()
+        .map(|_| "ZodType[\"_zod\"][\"output\"]")
+        .collect::<Vec<_>>()
+        .join(", ");
+    let run = zod_check_wrap("built".to_owned(), checks);
+    (
+        format!(
+            "function {item_name}$Checked<Built extends ZodType>(built: Built): Built;\nfunction \
+             {item_name}$Checked(built: ZodType<{item_name}<{any_filling}>>): ZodType {{\n  \
+             return {run};\n}}\n\n"
+        ),
+        format!("{item_name}$Checked({expression})"),
+    )
+}
+
+/// Without a TypeScript type to state what a check is handed, the checks are written on the
+/// builder's expression itself.
+#[cfg(all(feature = "zod", not(feature = "typescript")))]
+fn zod_checked_in_a_builder(
+    _item_name: &str,
+    _parameters: &[String],
+    expression: &str,
+    checks: &[FunctionName],
+) -> (String, String) {
+    (String::new(), zod_check_wrap(expression.to_owned(), checks))
 }
 
 /// The list a type's `.meta` holds its examples in: each block's value where the type writes one,

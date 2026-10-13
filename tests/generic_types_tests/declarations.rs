@@ -223,6 +223,12 @@ export function holdingACode<CodeType>(value: Array<CodeType>, ctx: ParsePayload
   }
 }
 
+export function withEntries<IdType>(value: Ledger<IdType>, ctx: ParsePayload<Ledger<IdType>>): void {
+  if (value.entries.length === 0) {
+    ctx.issues.push({ code: "custom", message: "a ledger holds at least one entry", path: ["entries"], input: value });
+  }
+}
+
 export function shortList(value: Array<string>, ctx: ParsePayload<Array<string>>): void {
   if (value.length > 2) {
     ctx.issues.push({ code: "custom", message: `${value[2]} is one code too many`, path: [2], input: value });
@@ -251,6 +257,8 @@ const schemas = {
   "Crate<u32>": lib.Crate$SchemaFactory(z.number().int()),
   "Batch<String>": lib.Batch$SchemaDefault,
   "Batch<u32>": lib.Batch$SchemaFactory(z.number().int()),
+  "Ledger<String>": lib.Ledger$SchemaDefault,
+  "Ledger<u32>": lib.Ledger$SchemaFactory(z.number().int()),
   Pallet: lib.Pallet$Schema,
 };
 const printed = [];
@@ -893,6 +901,8 @@ fn checks() -> Vec<String> {
         checked::Crate::<String>::zod_schema(),
         checked::Batch::<String>::ts_definition(),
         checked::Batch::<String>::zod_schema(),
+        checked::Ledger::<String>::ts_definition(),
+        checked::Ledger::<String>::zod_schema(),
         checked::Pallet::ts_definition(),
         checked::Pallet::zod_schema(),
         CHECKS.to_owned(),
