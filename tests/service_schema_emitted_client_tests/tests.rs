@@ -1349,7 +1349,7 @@ fn the_watch_backend_answers_ok_unit() {
 }
 
 /// The transports never suspend, so one poll answers them.
-fn poll_once<Answering>(answering: Answering) -> Option<Answering::Output>
+pub fn poll_once<Answering>(answering: Answering) -> Option<Answering::Output>
 where
     Answering: Future,
 {

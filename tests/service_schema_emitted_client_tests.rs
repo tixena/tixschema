@@ -90,6 +90,11 @@ mod run_dart_ws_headers;
 #[path = "service_schema_emitted_client_tests/run_dart_validate.rs"]
 mod run_dart_validate;
 
+/// The read of each emitted Dart type, which refuses what its `validate()` refuses.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_read.rs"]
+mod run_dart_read;
+
 /// A service named after reserved words, called through each mobile client and read by the Rust
 /// dispatcher.
 #[cfg(test)]
@@ -112,6 +117,15 @@ mod run_swift_validate;
 #[cfg(all(test, feature = "swift"))]
 #[path = "service_schema_emitted_client_tests/swift_validate_models.rs"]
 mod swift_validate_models;
+
+/// The emitted read of each shape, run and compared with the Rust `validate()` and the Rust read.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_read.rs"]
+mod run_swift_read;
+
+#[cfg(all(test, feature = "swift"))]
+#[path = "service_schema_emitted_client_tests/swift_read_models.rs"]
+mod swift_read_models;
 
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin.rs"]
@@ -138,6 +152,8 @@ mod runtime;
 
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
+#[cfg(all(test, feature = "dart"))]
+use run_dart_read::{ParcelClientService, parcel_client_service_schema};
 #[cfg(test)]
 use tests::{
     ArchiveClientService, ContentClientService, ConversationClientService, EchoClientService,

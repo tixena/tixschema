@@ -163,7 +163,7 @@ fn without_duplicates(value: &[String]) -> Result<(), Vec<String>> {
 }
 
 /// The bounds, then each field's check, then the type's check, with the helper a place is written
-/// by. Nothing is added to the codec: `Codable` stays synthesized.
+/// by. The read is written ahead of them, and `encode(to:)` stays synthesized.
 #[test]
 fn a_struct_runs_its_bounds_its_fields_checks_then_its_own() {
     assert_eq!(
@@ -173,6 +173,19 @@ fn a_struct_runs_its_bounds_its_fields_checks_then_its_own() {
             "public let itemCodeList: [String]; public let label: String; ",
             "enum CodingKeys: String, CodingKey { case fragileItemCodes; case itemCodeList; ",
             "case label;  }; ",
+            "public init(fragileItemCodes: [String], itemCodeList: [String], label: String) ",
+            "{ self.fragileItemCodes = fragileItemCodes; self.itemCodeList = itemCodeList; ",
+            "self.label = label;  }; ",
+            "public init(swiftSchemaUnjudged decoder: Decoder) throws ",
+            "{ let container = try decoder.container(keyedBy: CodingKeys.self); ",
+            "self.fragileItemCodes = try container.decode([String].self, forKey: .fragileItemCodes); ",
+            "self.itemCodeList = try container.decode([String].self, forKey: .itemCodeList); ",
+            "self.label = try container.decode(String.self, forKey: .label) }; ",
+            "public init(from decoder: Decoder) throws { ",
+            "try self.init(swiftSchemaUnjudged: decoder); let violations = validate(); ",
+            "if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(",
+            "codingPath: decoder.codingPath, ",
+            r#"debugDescription: violations.joined(separator: "; "))) } }; "#,
             "public func validate() -> [String] { var errors: [String] = []; ",
             "errors += withoutDuplicates(itemCodeList).map ",
             r#"{ Parcel.swiftSchemaUnder("itemCodeList", $0) }; "#,
@@ -258,12 +271,12 @@ fn every_emitted_type_has_validate() {
 }
 
 #[test]
-fn a_type_with_no_rule_keeps_the_codec_it_had() {
+fn a_type_with_no_rule_keeps_the_encode_it_had() {
     let swift = window_request_swift::swift_definition();
     assert!(swift.contains(NO_RULE), "got: {swift}");
-    assert!(!swift.contains("init(from decoder:"), "got: {swift}");
+    assert!(!swift.contains("func encode(to encoder:"), "got: {swift}");
     let ruled = parcel_swift::swift_definition();
-    assert!(!ruled.contains("init(from decoder:"), "got: {ruled}");
+    assert!(ruled.contains("init(from decoder:"), "got: {ruled}");
     assert!(!ruled.contains("func encode(to encoder:"), "got: {ruled}");
 }
 
@@ -395,6 +408,9 @@ fn an_enum_runs_the_rules_of_the_case_it_holds() {
         concat!(
             "public struct FreightLoosePayload: Codable, Sendable { public let freightLabel: ",
             "String; enum CodingKeys: String, CodingKey { case freightLabel;  }; ",
+            "public init(freightLabel: String) { self.freightLabel = freightLabel;  }; ",
+        ),
+        concat!(
             "public func validate() -> [String] { var errors: [String] = []; ",
             "if freightLabel.unicodeScalars.count < 1 { errors.append(\"'freightLabel': too short",
         ),

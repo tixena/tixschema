@@ -1,5 +1,6 @@
-//! What the Dart backend writes for a brand's own string check. A build with no schema surface
-//! refuses such a check, so these are declared where one is on.
+//! What the Dart backend writes for a brand's own string check: in `validate()`, and alone in
+//! `validateBound()`, which chooses a variant of an untagged enum that holds the brand. A build
+//! with no schema surface refuses such a check, so these are declared where one is on.
 
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -36,7 +37,13 @@ fn a_brand_over_a_string_measures_its_value_under_no_place() {
     assert_eq!(
         slug_dart::dart_definition(),
         "class Slug { const Slug(this.value); final String value; factory Slug.fromJson(dynamic \
-         json) => Slug(json as String); dynamic toJson() => value; List<String> validate() => [ \
+         json) { final read = Slug.fromJsonUnjudged(json); final violations = read.validate(); \
+         if (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; } \
+         factory Slug.fromJsonUnjudged(dynamic json) => Slug(json as String); dynamic toJson() \
+         => value; List<String> validateBound() => [ if (value.runes.length < 2) \"too short: \
+         minimum length is 2, got ${value.runes.length}\", if \
+         (!RegExp(\"^[A-Z]+\\$\").hasMatch(value)) \"does not match pattern '^[A-Z]+\\$'\", ]; \
+         List<String> validate() => [ \
          if (value.runes.length < 2) \"too short: minimum length is 2, got \
          ${value.runes.length}\", if (!RegExp(\"^[A-Z]+\\$\").hasMatch(value)) \"does not match \
          pattern '^[A-Z]+\\$'\", ]; }"
@@ -50,10 +57,16 @@ fn a_brand_with_a_parameter_measures_its_declared_default_alone() {
     assert_eq!(
         tag_dart::dart_definition(),
         "class Tag<IdType> { const Tag(this.value); final IdType value; factory \
-         Tag.fromJson(dynamic json, IdType Function(dynamic) idTypeFromJson) => \
+         Tag.fromJson(dynamic json, IdType Function(dynamic) idTypeFromJson) { final read = \
+         Tag.fromJsonUnjudged(json, idTypeFromJson); final violations = read.validate(); if \
+         (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; } \
+         factory Tag.fromJsonUnjudged(dynamic json, IdType Function(dynamic) idTypeFromJson) => \
          Tag(idTypeFromJson(json)); dynamic toJson(dynamic Function(IdType) idTypeToJson) => \
-         idTypeToJson(value); List<String> validate() => [ if (value case final String held) if \
-         (held.runes.length < 2) \"too short: minimum length is 2, got ${held.runes.length}\", ]; }"
+         idTypeToJson(value); List<String> validateBound() => [ if (value case final String \
+         held) if (held.runes.length < 2) \"too short: minimum length is 2, got \
+         ${held.runes.length}\", ]; List<String> validate() => [ if (value case final String \
+         held) if (held.runes.length < 2) \"too short: minimum length is 2, got \
+         ${held.runes.length}\", ]; }"
     );
 }
 
@@ -62,8 +75,14 @@ fn a_brand_over_a_list_counts_its_items() {
     assert_eq!(
         batch_dart::dart_definition(),
         "class Batch { const Batch(this.value); final List<String> value; factory \
-         Batch.fromJson(dynamic json) => Batch((json as List<dynamic>).map((e) => e as \
+         Batch.fromJson(dynamic json) { final read = Batch.fromJsonUnjudged(json); final \
+         violations = read.validate(); if (violations.isNotEmpty) throw \
+         FormatException(violations.join('; ')); return read; } factory \
+         Batch.fromJsonUnjudged(dynamic json) => Batch((json as List<dynamic>).map((e) => e as \
          String).toList()); dynamic toJson() => value.map((e) => e).toList(); List<String> \
+         validateBound() => [ if (value.length < 1) \"too short: minimum length is 1, got \
+         ${value.length}\", if (value.length > 2) \"too long: maximum length is 2, got \
+         ${value.length}\", ]; List<String> \
          validate() => [ if (value.length < 1) \"too short: minimum length is 1, got \
          ${value.length}\", if (value.length > 2) \"too long: maximum length is 2, got \
          ${value.length}\", ]; }"
