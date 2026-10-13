@@ -85,10 +85,17 @@ fn told_by_this_major(refused: &str) -> String {
 #[test]
 fn a_document_that_breaks_a_bound_and_a_check_is_refused_with_what_validate_answers() {
     let refused = broken().validate().unwrap_err().join("; ");
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     assert_eq!(
         refused,
         "'itemLabel': too short: minimum length is 1, got 0; \
          'fragileItemCodes.1': y is outside of itemCodeList"
+    );
+    // A build with no schema surface holds no bound, and the check alone answers.
+    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    assert_eq!(
+        refused,
+        "'fragileItemCodes.1': y is outside of itemCodeList"
     );
     assert_eq!(
         read_document::<DockedParcel>(doc! { "itemLabel": "", "fragileItemCodes": ["x", "y"] }),
@@ -101,6 +108,7 @@ fn a_document_that_breaks_a_bound_and_a_check_is_refused_with_what_validate_answ
     );
 }
 
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_document_is_refused_with_every_message_of_every_model_it_holds_at_its_full_path() {
     let held = manifest_of(&broken());
@@ -121,6 +129,18 @@ fn a_document_is_refused_with_every_message_of_every_model_it_holds_at_its_full_
     assert_eq!(
         read_document::<DockedManifest>(written(&held)),
         Err(told_by_this_major(&refused))
+    );
+}
+
+/// A holder that names no check publishes no `validate()` in a build with no schema surface, and
+/// the first broken parcel it holds refuses the read, with its own message.
+#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+#[test]
+fn a_document_is_refused_by_the_first_broken_model_where_its_holder_publishes_no_validate() {
+    let refused = read_document::<DockedManifest>(written(&manifest_of(&broken()))).unwrap_err();
+    assert!(
+        refused.contains("'fragileItemCodes.1': y is outside of itemCodeList"),
+        "got: {refused}"
     );
 }
 
