@@ -637,26 +637,30 @@ thread_local! {
 
 #[cfg(feature = "serde")]
 thread_local! {
-    /// The fields a validator was published for, by schema module and helper stem: those of the
-    /// item being expanded, read by the recovering decode of that same item.
-    static FIELD_VALIDATORS: RefCell<HashSet<(String, String)>> = RefCell::new(HashSet::new());
+    /// The fields a validator was published for, by schema module and helper stem, each with the
+    /// name its validator writes in front of a violation: those of the item being expanded, read
+    /// by the recovering decode of that same item.
+    static FIELD_VALIDATORS: RefCell<HashMap<(String, String), String>> =
+        RefCell::new(HashMap::new());
 }
 
-/// Whether `module` holds `validate_{stem}_value`, the validator of a field's own bound.
+/// The name `validate_{stem}_value` of `module` reports its field under: the key serde writes it
+/// under, or a slot's position. `None` where `module` holds no such validator.
 #[cfg(feature = "serde")]
-pub fn has_field_validator(module: &str, stem: &str) -> bool {
+pub fn field_validator_name(module: &str, stem: &str) -> Option<String> {
     FIELD_VALIDATORS.with(|held| {
         held.borrow()
-            .contains(&(module.to_owned(), stem.to_owned()))
+            .get(&(module.to_owned(), stem.to_owned()))
+            .cloned()
     })
 }
 
-/// Records that `module` holds `validate_{stem}_value`.
+/// Records that `module` holds `validate_{stem}_value`, which reports its field under `named`.
 #[cfg(feature = "serde")]
-pub fn record_field_validator(module: &str, stem: &str) {
+pub fn record_field_validator(module: &str, stem: &str, named: &str) {
     FIELD_VALIDATORS.with(|held| {
         held.borrow_mut()
-            .insert((module.to_owned(), stem.to_owned()));
+            .insert((module.to_owned(), stem.to_owned()), named.to_owned());
     });
 }
 

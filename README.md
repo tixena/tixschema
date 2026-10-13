@@ -3239,19 +3239,19 @@ pub struct Document {
 }
 
 Document { name_config: Vec::new() }.validate();
-// Err(["'name_config': too short: minimum length is 1, got 0"])
+// Err(["'nameConfig': too short: minimum length is 1, got 0"])
 ```
 
-A list of four parts answers `'name_config': too long: maximum length is 3, got 4`, and a list of one to three passes whatever its items hold. Each key works alone.
+A list of four parts answers `'nameConfig': too long: maximum length is 3, got 4`, and a list of one to three passes whatever its items hold. Each key works alone.
 
 - **Zod** writes the count on the array: `z.array(Part$Schema).min(1, { error: ... }).max(3, { error: ... })`, each check reporting the sentence `validate()` reports.
 - **JSON Schema** writes `"minItems": 1, "maxItems": 3` on the array, which are the keywords a validator reads there.
-- **`validate()`** reports the list once, under the field's name. On a member of an `#[serde(untagged)]` enum the read counts it too, and the [recovering decode](#recovering-decode-decode_with) lists one `Invalid` at the list. See [Where a constraint is checked](#where-a-constraint-is-checked).
+- **`validate()`** reports the list once, under the field's key. On a member of an `#[serde(untagged)]` enum the read counts it too, and the [recovering decode](#recovering-decode-decode_with) lists one `Invalid` at the list. See [Where a constraint is checked](#where-a-constraint-is-checked).
 - **TypeScript** stays `Array<Part>`, with `Minimum length: 1` and `Maximum length: 3` in the member's comment.
 
 Every list takes the two keys: `Vec`, `VecDeque`, `HashSet`, `BTreeSet`, `BinaryHeap`, a slice (`Box<[T]>`, `&'a [T]`), a fixed-size array `[T; N]`, and `IndexSet<T>` under the `indexmap` feature, whatever `T` is -- a model, a string, a number, a map, one of the item's own type parameters, or the item itself. On `[T; N]` the JSON Schema states the declared length and the bound together. `Option` and the transparent wrappers (`Box`, `Rc`, `Arc`, `Cow`) are read through, each holding one value: an `Option<Vec<T>>` that is `None` passes, and `Some(vec![])` is counted. A list is a value of its own and is not read through, so on a `Vec<Vec<String>>` the keys count the outer list and say nothing of the inner ones.
 
-`pattern`, `minimum` and `maximum` on a list are compile errors, a list having no text and no number. A rule for each item goes on the item's own type, a [branded newtype](#branded-newtype-validation-constraints) that carries it, and `validate()` runs it on each item beside the list's own count:
+`pattern`, `minimum` and `maximum` on a list are compile errors, a list having no text and no number. A rule for each item goes on the item's own type, a [branded newtype](#branded-newtype-validation-constraints) that carries it, and `validate()` runs it on each item beside the list's own count, reporting each item under [its index](#the-path-a-message-names):
 
 ```rust
 #[model_schema(pattern = "^[a-z]+$", minLength = 1, maxLength = 3)]
@@ -3365,6 +3365,84 @@ assert!(Action::Upload { note: "abc".to_string() }.validate().is_ok());
 
 Parity with structs runs both ways: an enum no member of which carries a constraint publishes no `validate()`, exactly as a constraint-free struct publishes none.
 
+#### The path a message names
+
+Each message opens with where the broken value sits in the payload, in single quotes: the key serde writes for each member on the way to the value, and the index of each item of a list, joined by dots. The keys are the ones the Zod schema of the same declaration writes, and the ones an issue of the [recovering decode](#recovering-decode-decode_with) holds in its path.
+
+- **A member** is named by the key serde writes it under. `rename_all` on a struct, `rename_all_fields` on an enum and a variant's own `rename_all` each move the name, and a field's own `rename` wins over the three. A type that renames nothing names each field as it was declared.
+- **An item of a list** is named by its index, counted from zero, at each level of the list. A `grid: Vec<Vec<Package>>` answers `'grid.0.1.itemLabel': too short: minimum length is 1, got 0`, and a `code_list: Vec<Code>` answers `'codeList.1': too short: minimum length is 2, got 1`. A count written on the list itself is reported at the list, with no index: a `parcel_list` under `minLength = 1` answers `'parcelList': too short: minimum length is 1, got 0` when it is empty.
+- **A slot** is named by its position, `'0'`. A `#[serde(flatten)]` member, an `Option` and the lone slot of an `#[serde(untagged)]` variant write no key and add no segment.
+
+```rust
+#[model_schema(minLength = 2)]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Code(pub String);
+
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Package {
+    #[model_schema_prop(minLength = 1)]
+    pub item_label: String,
+    #[serde(rename = "codes")]
+    #[model_schema_prop(minLength = 1)]
+    pub listed_item_codes: Vec<String>,
+    pub parcel_code: Code,
+}
+
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Base {
+    #[model_schema_prop(minLength = 1)]
+    pub base_name: String,
+}
+
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Manifest {
+    pub first_parcel: Package,
+    pub parcel_list: Vec<Package>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spare_parcel: Option<Package>,
+    #[serde(flatten)]
+    pub starting_base: Base,
+}
+
+let broken = || Package {
+    item_label: String::new(),
+    listed_item_codes: Vec::new(),
+    parcel_code: Code("a".to_string()),
+};
+let manifest = Manifest {
+    first_parcel: broken(),
+    parcel_list: vec![broken(), broken()],
+    spare_parcel: Some(broken()),
+    starting_base: Base { base_name: String::new() },
+};
+println!("{}", manifest.validate().unwrap_err().join("\n"));
+```
+
+```text
+'firstParcel.itemLabel': too short: minimum length is 1, got 0
+'firstParcel.codes': too short: minimum length is 1, got 0
+'firstParcel.parcelCode': too short: minimum length is 2, got 1
+'parcelList.0.itemLabel': too short: minimum length is 1, got 0
+'parcelList.0.codes': too short: minimum length is 1, got 0
+'parcelList.0.parcelCode': too short: minimum length is 2, got 1
+'parcelList.1.itemLabel': too short: minimum length is 1, got 0
+'parcelList.1.codes': too short: minimum length is 1, got 0
+'parcelList.1.parcelCode': too short: minimum length is 2, got 1
+'spareParcel.itemLabel': too short: minimum length is 1, got 0
+'spareParcel.codes': too short: minimum length is 1, got 0
+'spareParcel.parcelCode': too short: minimum length is 2, got 1
+'baseName': too short: minimum length is 1, got 0
+```
+
+What a program is written with keeps its Rust name: the helpers of `item_label` are `validate_item_label_value` and `deserialize_item_label`, and a refusal at build time names the field as its author wrote it.
+
 #### A slot of a tuple variant
 
 A slot of a tuple variant takes the five constraints as a named member of the variant does, with one slot or several, and the variant's wire and TypeScript type do not change. The Zod schema and the JSON Schema write the checks on the slot's own member, and the Rust side enforces them where it enforces a named member's in the same position:
@@ -3469,11 +3547,11 @@ Enrolment { slug: Slug("a".to_string()) }.validate();
 // Err(["'slug': too short: minimum length is 3, got 1"])
 ```
 
-The brand's own report says `too short: ...` and names nothing, the brand being the value rather than a field of anything -- so the field name is the message's to supply, written first and in single quotes, which is where a reader of these reports already looks for one: `'slug': too short: ...`. A nested type's report already names its own member, and the field name is written *into* that name rather than in front of it: `'holds.name': too short: ...`. One quoted run carries the whole path, so a reader taking the first one gets the member that was actually wrong rather than the hop above it -- and it is the string the TypeScript schema published from the same declaration reports for the same payload.
+The brand's own report says `too short: ...` and names nothing, the brand being the value rather than a field of anything -- so the field's key is the message's to supply, written first and in single quotes, which is where a reader of these reports already looks for one: `'slug': too short: ...`. A nested type's report already names its own member, and the field's key is written *into* that name rather than in front of it: `'holds.name': too short: ...`. One quoted run carries the whole path, so a reader taking the first one gets the member that was actually wrong rather than the hop above it -- and it is the string the TypeScript schema published from the same declaration reports for the same payload.
 
 A `#[serde(flatten)]` hop writes no key, so it contributes no segment: a bound under a flattened `claims` inside `account` reads `'account.jti': too short: ...`, which is what the wire carries and what TypeScript names.
 
-This reaches through `Option`, `Box`/`Cow`/`Rc`/`Arc` and every level of a list, a fixed array included, to each item a list holds -- beside the count a key written on the list holds it to -- and applies to a struct's field, to a named member of an enum variant under any tagging, and to the lone slot of an `#[serde(untagged)]` newtype variant. That last one contributes no segment either, for the same reason a flattened hop contributes none: what an untagged newtype member writes on the wire *is* the inner value, so a violation beneath it is already one of the enclosing object's own keys. So a union of newtype members publishes a `validate()` that dispatches to whichever variant the value holds, and a field holding such a union reports the path the payload spells -- `'account.jti': too short: ...` whether the account is a union or a plain struct.
+This reaches through `Option`, `Box`/`Cow`/`Rc`/`Arc` and every level of a list, a fixed array included, to each item a list holds -- beside the count a key written on the list holds it to, and with the item's [index](#the-path-a-message-names) written after the field's key at each level -- and applies to a struct's field, to a named member of an enum variant under any tagging, and to the lone slot of an `#[serde(untagged)]` newtype variant. That last one contributes no segment either, for the same reason a flattened hop contributes none: what an untagged newtype member writes on the wire *is* the inner value, so a violation beneath it is already one of the enclosing object's own keys. So a union of newtype members publishes a `validate()` that dispatches to whichever variant the value holds, and a field holding such a union reports the path the payload spells -- `'account.jti': too short: ...` whether the account is a union or a plain struct.
 
 It reaches nothing through a map or a tuple. Through a tuple struct's slot it reaches nothing below the slot: `validate()` runs the check [written on the slot itself](#a-slot-of-a-tuple-struct), reported under the slot's position, and a bound the slot's own type declares is not run from there. Through a *tagged* variant's slot it reaches nothing below the slot either: the arm binds the slot by its position and runs the check [written on the slot itself](#a-slot-of-a-tuple-variant), reported under that position, and a bound the slot's own type declares is not run from there.
 

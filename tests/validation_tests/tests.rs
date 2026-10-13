@@ -230,10 +230,10 @@ mod a_bound_the_fields_own_type_declares {
             .unwrap_err(),
             vec![
                 "'boxed': too short: minimum length is 3, got 1".to_owned(),
-                "'fixed': too short: minimum length is 3, got 1".to_owned(),
-                "'listed': too short: minimum length is 3, got 1".to_owned(),
+                "'fixed.1': too short: minimum length is 3, got 1".to_owned(),
+                "'listed.1': too short: minimum length is 3, got 1".to_owned(),
                 "'maybe': too short: minimum length is 3, got 1".to_owned(),
-                "'maybe_listed': too short: minimum length is 3, got 1".to_owned(),
+                "'maybe_listed.0': too short: minimum length is 3, got 1".to_owned(),
             ],
         );
     }
@@ -354,9 +354,9 @@ mod a_bound_the_fields_own_type_declares {
         for (field, broken) in [
             ("boxed", boxed),
             ("cow", cow),
-            ("listed", listed),
+            ("listed.1", listed),
             ("maybe", maybe),
-            ("maybe_listed", maybe_listed),
+            ("maybe_listed.0", maybe_listed),
             ("plain", plain),
             ("shared", shared),
         ] {

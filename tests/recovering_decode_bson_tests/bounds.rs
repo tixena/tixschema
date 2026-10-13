@@ -111,6 +111,28 @@ struct BoundedHolder {
     pair: BoundedPair,
 }
 
+/// A parcel whose fields serde writes under other names than their own.
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BoundedParcel {
+    #[model_schema_prop(minLength = 1)]
+    fragile_item_codes: Vec<String>,
+    #[model_schema_prop(minLength = 1)]
+    #[serde(rename = "label")]
+    item_label: String,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all_fields = "camelCase")]
+enum BoundedDispatch {
+    ByAir {
+        #[model_schema_prop(minLength = 1)]
+        flight_number: String,
+    },
+}
+
 /// A stored group that breaks every bound `BoundedGroup` writes.
 fn broken() -> Document {
     doc! {
@@ -146,6 +168,65 @@ fn a_broken_bound_is_listed_at_its_value_once_per_violation() {
         ]
     );
     assert_eq!(calls, 1);
+}
+
+/// The issue's path holds the key serde writes the field under, and its reason holds no name.
+#[test]
+fn the_reason_of_a_renamed_fields_bound_holds_no_name() {
+    let mut listed: Vec<String> = Vec::new();
+    let parcel = BoundedParcel::from_bson_with(
+        doc! { "fragileItemCodes": [], "label": "" },
+        |_raw, found| {
+            listed.extend(found.iter().map(|issue| format!("{issue:?}")));
+            bounded_parcel_schema::Verdict::Reject
+        },
+    );
+    let mut in_a_variant: Vec<String> = Vec::new();
+    let dispatch = BoundedDispatch::from_bson_with(
+        doc! { "kind": "ByAir", "flightNumber": "" },
+        |_raw, found| {
+            in_a_variant.extend(found.iter().map(|issue| format!("{issue:?}")));
+            bounded_dispatch_schema::Verdict::Reject
+        },
+    );
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    {
+        assert!(parcel.is_err(), "the callback rejected");
+        assert_eq!(
+            listed,
+            [
+                "Invalid { path: Path([Key(\"fragileItemCodes\")]), expected: Array(String), \
+                 found: Array([]), reason: \"too short: minimum length is 1, got 0\" }",
+                "Invalid { path: Path([Key(\"label\")]), expected: String, found: String(\"\"), \
+                 reason: \"too short: minimum length is 1, got 0\" }",
+            ]
+        );
+        assert!(dispatch.is_err(), "the callback rejected");
+        assert_eq!(
+            in_a_variant,
+            [
+                "Invalid { path: Path([Key(\"flightNumber\")]), expected: String, found: \
+                 String(\"\"), reason: \"too short: minimum length is 1, got 0\" }"
+            ]
+        );
+    }
+    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    {
+        assert_eq!(
+            parcel,
+            Ok(BoundedParcel {
+                fragile_item_codes: Vec::new(),
+                item_label: String::new(),
+            })
+        );
+        assert_eq!(
+            dispatch,
+            Ok(BoundedDispatch::ByAir {
+                flight_number: String::new()
+            })
+        );
+        assert_eq!((listed, in_a_variant), (Vec::new(), Vec::new()));
+    }
 }
 
 /// A list that breaks its bound is one issue at the list, whatever its items are.

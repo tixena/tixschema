@@ -564,6 +564,29 @@ match result {
 }
 ```
 
+A message names a value by its path in the payload, in single quotes: the key serde writes for
+each member, and the index of each item of a list, joined by dots
+(`'parcelList.0.itemLabel': too short: minimum length is 1, got 0`). `README.md`'s "The path a
+message names" section is the consumer's view; this is what a change has to keep.
+
+- A named member is reported under the key serde writes it under. `process_field` and
+  `collect_untagged_variant_members` resolve it with `get_final_field_name` ahead of
+  `generate_field_validation`, and `checked_member` holds it in `CheckedMember::reported`: a
+  field's own `rename`, or the casing of its struct, of its variant, or of its enum's
+  `rename_all_fields`. `rename_direction_guard_errors` refuses a `rename` whose two sides differ
+  in every build that publishes `validate()`, so there is one such key.
+- `CheckedMember::label` and `CheckedMember::stem` keep the Rust ident: a refusal at build time
+  and a helper (`validate_{field}_value`) name the field as its author wrote it.
+- A slot keeps its position (`'0'`). A flattened member is walked under no name
+  (`nested_validate_body` is handed `None`), as the lone slot of an untagged variant is
+  (`positional_member_validate_body`), and an `Option` adds no segment.
+- The index is written by the nested walk alone. `walk_wraps` binds one per list level
+  (`index_binding`), and `nested_place` writes them after the member's key, innermost last. A
+  member's own bound stops at a list (`constrained_shape`), so a list's count is reported at
+  the list, with no index.
+- The validator of a member is the one sentence both `validate()` and its `deserialize_{field}`
+  hook answer with, so the hook names the same key.
+
 The macro also generates into the type's schema module:
 - `validate_{field}_value(&FieldType) -> Result<(), String>` — pure static validator per field
 - `deserialize_{variant}_{field}(D) -> Result<FieldType, E>` — serde hook that calls the static validator, generated only for a member of an untagged enum, the one position where the check runs on the read
@@ -930,10 +953,13 @@ sections are the consumer's view; this is what a change to the emitter has to ke
   holds the two to one type.
 - **A field's bound is the walker's to list.** `generate_field_validation` records each validator
   it publishes under the `Validator` gate (`record_field_validator`, by schema module and helper
-  stem), `walked_field` reads it back, and `Walker::bounded` writes one `{source}_bound` call
-  beside the read of each value the bound reaches: the validator run on what serde read, one
-  `Invalid` per violation, the field's name taken off the sentence. `recovering_bound_check`
-  builds the closure from the walk's own type at that position. A list is that position: the arm
+  stem, with the name the validator writes in front of a violation), `walked_field` reads it back
+  (`recorded_validator`, into `FieldValidator::named`), and `Walker::bounded` writes one
+  `{source}_bound` call beside the read of each value the bound reaches: the validator run on
+  what serde read, one `Invalid` per violation, that name taken off the sentence. The name is
+  the key serde writes the field under, read from the registry and computed nowhere else, so
+  the two cannot drift. `recovering_bound_check` builds the closure from the walk's own type at
+  that position. A list is that position: the arm
   that walks its items hands them no validator, and holds the list read whole (`read_as_a_list`)
   to its count, one `Invalid` at the list. The registry is cleared per item at `exec_model_schema`, and holds nothing in a
   build with no schema surface, where no validator is published.

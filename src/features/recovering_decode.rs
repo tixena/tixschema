@@ -38,7 +38,7 @@ use crate::field_type::{
 use crate::model_schema::{helper_name_stem, recovering_bound_check};
 use crate::rename_rule::resolve_rename_rule;
 use crate::utils::{
-    Declared, declared, has_field_validator, ident_schema_module_name, type_parameters_in_scope,
+    Declared, declared, field_validator_name, ident_schema_module_name, type_parameters_in_scope,
     written_type,
 };
 
@@ -759,7 +759,8 @@ impl Walk<'_> {
 
 /// The validator tixschema published for a field's own bound, which serde's read does not run.
 struct FieldValidator {
-    /// The field's name, as the validator writes it in front of each violation.
+    /// The name the validator writes in front of each violation: the key serde writes the field
+    /// under, or a slot's position.
     named: String,
     validator: Ident,
 }
@@ -3872,7 +3873,7 @@ fn walked_field<'item>(
         aliases: meta.aliases,
         key,
         ty: &field.ty,
-        validator: recorded_validator(module_name, ident.unraw().to_string(), variant),
+        validator: recorded_validator(module_name, &ident.unraw().to_string(), variant),
         walk,
     })
 }
@@ -3935,14 +3936,15 @@ fn walked_slot<'item>(
     })
 }
 
-/// The validator recorded for the bound the member `named` declares, where it declares one.
+/// The validator recorded for the bound the member `declared_as` declares, where it declares
+/// one, under the name the validator writes: the key serde writes the member under.
 fn recorded_validator(
     module_name: &str,
-    named: String,
+    declared_as: &str,
     variant: Option<&str>,
 ) -> Option<FieldValidator> {
-    let stem = helper_name_stem(&named, variant);
-    has_field_validator(module_name, &stem).then(|| FieldValidator {
+    let stem = helper_name_stem(declared_as, variant);
+    field_validator_name(module_name, &stem).map(|named| FieldValidator {
         named,
         validator: format_ident!("validate_{stem}_value"),
     })
@@ -3955,7 +3957,7 @@ fn slot_validator(
     variant: Option<&str>,
     index: usize,
 ) -> Option<FieldValidator> {
-    recorded_validator(module_name, index.to_string(), variant)
+    recorded_validator(module_name, &index.to_string(), variant)
 }
 
 /// Whether the walker of `ty` is called as it stands: `ty` is the type being walked, or a struct

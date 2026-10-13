@@ -156,7 +156,7 @@ mod a_key_on_a_list {
             }
             .validate()
             .unwrap_err(),
-            vec!["'name_config': too short: minimum length is 1, got 0"]
+            vec!["'nameConfig': too short: minimum length is 1, got 0"]
         );
         assert_eq!(
             Document {
@@ -164,7 +164,7 @@ mod a_key_on_a_list {
             }
             .validate()
             .unwrap_err(),
-            vec!["'name_config': too long: maximum length is 3, got 4"]
+            vec!["'nameConfig': too long: maximum length is 3, got 4"]
         );
         for held in 1..=3 {
             let admitted = Document {
@@ -326,8 +326,8 @@ mod a_key_on_a_list {
             .validate()
             .unwrap_err(),
             vec![
-                "'free': too short: minimum length is 3, got 2",
-                "'free': too short: minimum length is 3, got 1",
+                "'free.1': too short: minimum length is 3, got 2",
+                "'free.2': too short: minimum length is 3, got 1",
             ]
         );
         assert_eq!(
@@ -339,7 +339,7 @@ mod a_key_on_a_list {
             .unwrap_err(),
             vec![
                 "'counted': too long: maximum length is 2, got 3",
-                "'counted': too short: minimum length is 3, got 2",
+                "'counted.1': too short: minimum length is 3, got 2",
             ],
             "the list is counted, and each item is still held by its brand"
         );
@@ -366,7 +366,7 @@ mod a_key_on_a_list {
             }
             .validate()
             .unwrap_err(),
-            vec!["'lines.code': too short: minimum length is 2, got 1"]
+            vec!["'lines.1.code': too short: minimum length is 2, got 1"]
         );
     }
 
@@ -441,11 +441,11 @@ mod a_key_on_a_list {
         for (reported, shown) in [
             (
                 empty.validate().unwrap_err(),
-                "// Err([\"'name_config': too short: minimum length is 1, got 0\"])",
+                "// Err([\"'nameConfig': too short: minimum length is 1, got 0\"])",
             ),
             (
                 full.validate().unwrap_err(),
-                "answers `'name_config': too long: maximum length is 3, got 4`",
+                "answers `'nameConfig': too long: maximum length is 3, got 4`",
             ),
         ] {
             assert_eq!(reported.len(), 1, "one report for one bound: {reported:?}");
@@ -461,7 +461,7 @@ mod a_key_on_a_list {
         let read: Document = serde_json::from_str(r#"{"nameConfig":[]}"#).unwrap();
         assert_eq!(
             read.validate().unwrap_err(),
-            vec!["'name_config': too short: minimum length is 1, got 0"]
+            vec!["'nameConfig': too short: minimum length is 1, got 0"]
         );
     }
 
@@ -477,12 +477,12 @@ mod a_key_on_a_list {
         assert_eq!(hooked(r#"[{"value":"a"}]"#), Ok(1));
         assert_eq!(
             hooked("[]"),
-            Err("'name_config': too short: minimum length is 1, got 0".to_owned())
+            Err("'nameConfig': too short: minimum length is 1, got 0".to_owned())
         );
         assert_eq!(
             document_schema::validate_name_config_value(&parts(4)),
             Err(vec![
-                "'name_config': too long: maximum length is 3, got 4".to_owned()
+                "'nameConfig': too long: maximum length is 3, got 4".to_owned()
             ])
         );
     }
