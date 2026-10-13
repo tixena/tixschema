@@ -16,6 +16,12 @@ use crate::bound_message::{Bound, swift_literal_text, swift_violation};
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::field_type::{FieldDef, FieldDefType, get_field_def, is_sequence_wrapper};
 
+/// The helpers a statement of `validate()` calls, each with the text that calls it.
+const HELPERS: [(&str, &str); 2] = [
+    ("swiftSchemaUnder(", UNDER_HELPER),
+    ("swiftSchemaPlain(", PLAIN_HELPER),
+];
+
 /// What a float is quoted back with, written into each type that measures one: a whole float
 /// without `.0`, as Rust writes it.
 const PLAIN_HELPER: &str = "private static func swiftSchemaPlain<Number: BinaryFloatingPoint>(_ value: Number) -> String { \
@@ -55,6 +61,9 @@ pub(super) struct Checked<'member> {
 /// What a name the emitter has written stands for, as a type that holds it reads it.
 #[derive(Clone, Copy)]
 struct Noted {
+    /// Whether the type is a brand with a bound of its own, which `swiftSchemaValidateBound`
+    /// answers for alone.
+    bounded: bool,
     /// How the string a bound measures is read off a value of the type, where it holds one.
     text: Option<Text>,
     /// Whether the `validate()` of the type runs a rule, and so whether a holder calls it. A type
@@ -87,6 +96,15 @@ pub(super) enum Text {
     Member,
     /// An alias of a string, which is the string.
     Plain,
+}
+
+/// What a walk below a member runs of each value of a named type it reaches.
+#[derive(Clone, Copy)]
+enum Walk {
+    /// The bound of a brand alone, which chooses a variant of an untagged enum.
+    Bound,
+    /// Its `validate()`.
+    Rules,
 }
 
 impl Bindings {
@@ -138,9 +156,23 @@ thread_local! {
 /// value of it, and `validates` whether its `validate()` runs a rule.
 pub(super) fn note(rust_ident: &str, text: Option<Text>, validates: bool) {
     NOTED.with(|names| {
-        names
-            .borrow_mut()
-            .insert(rust_ident.to_owned(), Noted { text, validates });
+        names.borrow_mut().insert(
+            rust_ident.to_owned(),
+            Noted {
+                bounded: false,
+                text,
+                validates,
+            },
+        );
+    });
+}
+
+/// Records that the name noted as `rust_ident` stands for a brand with a bound of its own.
+pub(super) fn note_bounded(rust_ident: &str) {
+    NOTED.with(|names| {
+        if let Some(seen) = names.borrow_mut().get_mut(rust_ident) {
+            seen.bounded = true;
+        }
     });
 }
 
@@ -180,19 +212,76 @@ pub(super) fn method(rules: &[String]) -> String {
         return "public func validate() -> [String] { [] }".to_owned();
     }
     let body = rules.join("; ");
-    let mut written = format!(
-        "public func validate() -> [String] {{ var errors: [String] = []; {body}; return errors }}"
-    );
-    for (called, helper) in [
-        ("swiftSchemaUnder(", UNDER_HELPER),
-        ("swiftSchemaPlain(", PLAIN_HELPER),
-    ] {
-        if body.contains(called) {
+    format!(
+        "public func validate() -> [String] {{ var errors: [String] = []; {body}; return errors }}{}",
+        helpers(&body, "")
+    )
+}
+
+/// The helpers `called` names that `declared` does not write, each after a separator.
+pub(super) fn helpers(called: &str, declared: &str) -> String {
+    HELPERS
+        .iter()
+        .filter(|(call, helper)| called.contains(call) && !declared.contains(helper))
+        .fold(String::new(), |mut written, (_, helper)| {
             written.push_str("; ");
             written.push_str(helper);
-        }
+            written
+        })
+}
+
+/// The member a brand answers for its bounds alone with, the checks it names apart: what chooses
+/// a variant of an untagged enum that holds the brand.
+pub(super) fn bound_member(bounds: &[String]) -> String {
+    format!(
+        "public func swiftSchemaValidateBound() -> [String] {{ var errors: [String] = []; {}; \
+         return errors }}",
+        bounds.join("; ")
+    )
+}
+
+/// What chooses a variant of an untagged enum, of one member: its own bounds, and the bound of a
+/// brand it holds. A check and a model choose nothing.
+pub(super) fn bound_alone(owner: &str, member: &Checked<'_>) -> Vec<String> {
+    let meta = member.def.model_schema_prop_meta.as_ref();
+    let mut rules = meta.map_or_else(Vec::new, |written| bound_rules(owner, member, written));
+    if walked(member, &rules) {
+        rules.extend(held_walk(
+            Walk::Bound,
+            owner,
+            member.def,
+            &member.access,
+            &written_step(member.step.as_deref()),
+            &mut Bindings::default(),
+        ));
     }
-    written
+    rules
+}
+
+/// Whether the walk below a member runs: where no bound of its own stands in its place.
+fn walked(member: &Checked<'_>, bounds: &[String]) -> bool {
+    bounds.is_empty() || member.runs_both || member.def.is_list()
+}
+
+/// Whether `validate()` runs the `validate()` of a value a member of `def` holds: what the read
+/// of the member leaves unjudged.
+pub(super) fn walks(def: &FieldDef, runs_both: bool) -> bool {
+    let member = Checked {
+        access: String::new(),
+        def,
+        runs_both,
+        step: None,
+    };
+    let bounds = def
+        .model_schema_prop_meta
+        .as_ref()
+        .map_or_else(Vec::new, |written| bound_rules("", &member, written));
+    walked(&member, &bounds) && reaches(def)
+}
+
+/// Whether a walk of `def` reaches a value whose `validate()` it runs.
+pub(super) fn reaches(def: &FieldDef) -> bool {
+    held_walk(Walk::Rules, "", def, "", &[], &mut Bindings::default()).is_some()
 }
 
 /// The calls of a type's own checks, each on the whole value, its messages as it writes them.
@@ -278,10 +367,11 @@ pub(super) fn tuple_struct_rules(owner: &str, slots: &[FieldDef]) -> Vec<String>
 pub(super) fn member_rules(owner: &str, member: &Checked<'_>) -> Vec<String> {
     let meta = member.def.model_schema_prop_meta.as_ref();
     let mut rules = meta.map_or_else(Vec::new, |written| bound_rules(owner, member, written));
-    if rules.is_empty() || member.runs_both || member.def.is_list() {
+    if walked(member, &rules) {
         let place = written_step(member.step.as_deref());
         let mut bindings = Bindings::default();
         rules.extend(held_walk(
+            Walk::Rules,
             owner,
             member.def,
             &member.access,
@@ -361,13 +451,23 @@ pub(super) fn text_of(def: &FieldDef) -> Option<Text> {
 
 /// Whether `def` names one type whose `validate()` a holder runs, as an alias of it does.
 pub(super) fn names_a_validated_type(def: &FieldDef) -> bool {
+    named_alone(def).is_some_and(validates)
+}
+
+/// Whether `def` names one brand with a bound of its own, as an alias of it does.
+pub(super) fn names_a_bounded_type(def: &FieldDef) -> bool {
+    named_alone(def).is_some_and(bounded)
+}
+
+/// The name `def` is written with where it names one type declared elsewhere, under no wrapper.
+fn named_alone(def: &FieldDef) -> Option<&str> {
     if def.is_list() || def.is_optional() {
-        return false;
+        return None;
     }
     let FieldDefType::SiblingType(named, _) = &def.field_type else {
-        return false;
+        return None;
     };
-    validates(named)
+    Some(named)
 }
 
 /// The name `def` is written with where it names a type declared elsewhere with no argument.
@@ -382,6 +482,11 @@ fn declared_name(def: &FieldDef) -> Option<&str> {
 /// and one of a name the emitter has not written yet, a type declared below.
 fn validates(rust_ident: &str) -> bool {
     noted(rust_ident).is_none_or(|seen| seen.validates)
+}
+
+/// Whether `rust_ident` names a brand the emitter has written with a bound of its own.
+fn bounded(rust_ident: &str) -> bool {
+    noted(rust_ident).is_some_and(|seen| seen.bounded)
 }
 
 /// What reads the string a bound measures off one value of `def`: nothing for a string and for an
@@ -638,7 +743,7 @@ fn check_rules(owner: &str, member: &Checked<'_>, checks: &[FunctionName]) -> Ve
 }
 
 /// `def` as the value it holds where it holds one.
-fn under_option(def: &FieldDef) -> FieldDef {
+pub(super) fn under_option(def: &FieldDef) -> FieldDef {
     let mut held = def.clone();
     held.nullable_levels
         .retain(|level| *level != def.array_depth);
@@ -646,7 +751,7 @@ fn under_option(def: &FieldDef) -> FieldDef {
 }
 
 /// What each item of the list `def` describes is.
-fn item_of(def: &FieldDef) -> FieldDef {
+pub(super) fn item_of(def: &FieldDef) -> FieldDef {
     let mut item = def.clone();
     item.array_depth = def.array_depth.saturating_sub(1);
     item.nullable_levels
@@ -654,10 +759,12 @@ fn item_of(def: &FieldDef) -> FieldDef {
     item
 }
 
-/// The statement that runs the `validate()` of every value `def` holds that has one, each report
-/// under `place` and what the walk adds to it: the index of an item, the key of an entry. `None`
-/// where it holds no such value. A value behind a type parameter is not reached.
+/// The statement that runs, of every value `def` holds that has it, what `walk` names: its
+/// `validate()`, or the bound of a brand alone. Each report is under `place` and what the walk
+/// adds to it: the index of an item, the key of an entry. `None` where it holds no such value. A
+/// value behind a type parameter is not reached.
 fn held_walk(
+    walk: Walk,
     owner: &str,
     def: &FieldDef,
     value: &str,
@@ -666,14 +773,14 @@ fn held_walk(
 ) -> Option<String> {
     if def.is_optional() {
         let held = bindings.next_held();
-        let below = held_walk(owner, &under_option(def), &held, place, bindings)?;
+        let below = held_walk(walk, owner, &under_option(def), &held, place, bindings)?;
         return Some(format!("if let {held} = {value} {{ {below} }}"));
     }
     if def.array_depth > 0 {
         let (index, held) = (bindings.next_index(), bindings.next_held());
         let mut at = place.to_vec();
         at.push(Step::Read(index.clone()));
-        let below = held_walk(owner, &item_of(def), &held, &at, bindings)?;
+        let below = held_walk(walk, owner, &item_of(def), &held, &at, bindings)?;
         return Some(format!(
             "for ({index}, {held}) in {value}.enumerated() {{ {below} }}"
         ));
@@ -682,14 +789,14 @@ fn held_walk(
         let (named, held) = (bindings.next_key(), bindings.next_held());
         let mut at = place.to_vec();
         at.push(Step::Read(key_text(key, &named)));
-        let below = held_walk(owner, entry, &held, &at, bindings)?;
+        let below = held_walk(walk, owner, entry, &held, &at, bindings)?;
         return Some(format!(
             "for ({named}, {held}) in {value}.sorted(by: {{ {} }}) {{ {below} }}",
             key_order(key)
         ));
     }
     if let FieldDefType::Tuple(slots) = &def.field_type {
-        return (!slot_rules(owner, slots).is_empty())
+        return (matches!(walk, Walk::Rules) && !slot_rules(owner, slots).is_empty())
             .then(|| reporting(owner, place, &format!("{value}.validate()")));
     }
     let FieldDefType::SiblingType(named, arguments) = &def.field_type else {
@@ -699,6 +806,7 @@ fn held_walk(
         && is_sequence_wrapper(named)
     {
         return held_walk(
+            walk,
             owner,
             &def.collection_element_field(item),
             value,
@@ -706,7 +814,11 @@ fn held_walk(
             bindings,
         );
     }
-    validates(named).then(|| reporting(owner, place, &format!("{value}.validate()")))
+    let (asked, answers) = match walk {
+        Walk::Bound => ("swiftSchemaValidateBound", bounded(named)),
+        Walk::Rules => ("validate", validates(named)),
+    };
+    answers.then(|| reporting(owner, place, &format!("{value}.{asked}()")))
 }
 
 /// The text serde writes for the key of a map's entry, read off `named`.

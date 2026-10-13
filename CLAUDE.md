@@ -198,7 +198,7 @@ The crate uses optional features for minimal dependencies:
 - `chrono`: Enables chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`)
 - `indexmap`: Enables indexmap type support: `IndexMap` as a map, `IndexSet` as a list. It adds no dependency: the generated code names the types of the crate that declares them. With the feature off a type written `IndexMap<_, _>` or `IndexSet<_>` is refused at `exec_model_schema` with the feature named (`indexmap_feature_errors`), unless the crate declared a type of its own under the name above
 - `dart`: Enables Dart type generation with a JSON codec whose read refuses what `validate()` refuses, a `validate()` on every type, and the Dart HTTP client
-- `swift`: Enables Swift type generation with a `Codable` codec, and `validate()` on every emitted type: the bounds and the checks, run as the Rust `validate()` runs them
+- `swift`: Enables Swift type generation with a `Codable` codec, and `validate()` on every emitted type: the bounds and the checks, run as the Rust `validate()` runs them. `init(from:)` of each type calls it on the value it read and refuses what it refuses
 - `kotlin`: Enables Kotlin type generation with `kotlinx.serialization` annotations, and a `validate()` on every type that runs the bounds and calls the checks. A consuming Kotlin build declares two dependencies: the runtime library `org.jetbrains.kotlinx:kotlinx-serialization-json` and the Kotlin Gradle plugin `kotlin("plugin.serialization")`
 
 **Feature sets**: `web` (the default: `serde`, `zod`, `jsonschema`, `typescript`), `mobile` (`serde`, `dart`, `swift`, `kotlin`) and `mongo` (`mongodb`, `chrono`, `indexmap`). CI tests the powerset of the sets (`just test-sets`); `just test` runs the powerset of the plain features locally
@@ -1286,6 +1286,68 @@ the Swift client" section is the consumer's view; this is what a change to the e
   declares a field named `validate` as `validate_`, with its key kept. `swift_field_member` is
   the same seam, so a service client reads the property under the name it was declared with.
 
+### 11. The Swift read
+
+Every Swift type the emitter writes has two reads: `init(swiftSchemaUnjudged:)` is the type's own,
+and `init(from:)` runs it and then `validate()`, throwing `DecodingError.dataCorrupted` with every
+message joined by `; ` under the decoder's own coding path. `README.md`'s "A Swift read refuses
+what `validate()` refuses" section is the consumer's view; this is what a change to the emitter has
+to keep.
+
+- **`src/features/swift/read.rs` writes both.** `both` takes the statements of the type's own read
+  and writes the pair, `JUDGED` being one text for every type. A struct, the struct written for a
+  variant's members and for a tuple, a brand's wrapper, a tuple struct and an enum under every
+  tagging call it. A plain enum that names no check keeps the `init(from:)` Swift synthesizes, and
+  its unjudged initializer is that read.
+- **A member is read unjudged exactly where `validate()` walks it.** `validate::walks` is the one
+  question: no bound of the member's own stands in place of the walk (`walked`, which
+  `member_rules` and `bound_alone` ask too) and `held_walk` ends on a value whose `validate()` it
+  runs (`reaches`). `read::unjudged` then takes the member apart as `held_walk` does: an `Option`,
+  each level of a list, a map's values, the struct written for a tuple, a named type. A step added
+  to one is added to the other: a value the read leaves unjudged and the walk does not reach is
+  judged by nothing.
+- **Any other value is read through `Decodable` and judges itself**: one behind a type parameter,
+  one in a field with a bound of its own, and the value a brand wraps, a brand's `validate()`
+  running no `validate()` of what it holds.
+- **A held type is handed a decoder of its own** (`Source`): `superDecoder(forKey:)` under a key,
+  `superDecoder()` in a list, and the holder's decoder for a flattened member, the tuple of a
+  tuple struct and a payload beside a tag.
+- **An absent key is what it was** (`Presence`). `superDecoder(forKey:)` answers a decoder over
+  `null` for an absent key, where `decode` answers `keyNotFound`, so `Refused` writes
+  `_ = try container.decodeNil(forKey:)` ahead of the read of a held type. `Nil` is an optional
+  member's: `contains`, then `decodeNil`. `decode_statement` is told whether Swift synthesized the
+  read before one was written (`synthesized`): a synthesized read took the absent key of every
+  optional member as `nil`, a `nullable` one included, and a written one refused that key.
+- **Every struct writes its memberwise initializer**, public, the struct written for a tuple
+  included: Swift synthesizes none beside a written `init(from:)`.
+- **`encode(to:)` does not move.** `struct_body_content` writes it where it wrote it before
+  (`needs_encode`), and Swift synthesizes it everywhere else.
+- **Nothing is shared between two emitted types.** `SwiftSchemaAnyKey`, the key type a map is read
+  entry by entry under, is private to each type whose read names it (`any_key`). `Locals` numbers
+  what one initializer declares (`listed`, `items`, `keyed`, `entries`, `entry`, `number`), and a
+  property is assigned through `self.` alone, so one named after a local is never read as it.
+- **A map under a key Swift reads through a wrapper** (`MapKeys::Wrapped`) is read by the wrapper,
+  which gains an `init(swiftSchemaUnjudged:)` where its values are walked.
+- **An untagged enum takes the variant serde takes.** `validate::bound_alone` is what chooses: a
+  member's own bounds, and `held_walk` under `Walk::Bound`, which asks each brand the member
+  holds for `swiftSchemaValidateBound()`, the member the wrapper of a bounded brand declares
+  (`bound_member`). The enum writes one `swiftSchemaBound{Variant}` per variant that has such a
+  rule, and one `swiftSchemaRead{Variant}` where a slot is read in several statements. A check and
+  a model choose nothing. The registry says which name is a bounded brand (`note_bounded`), so one
+  declared below the enum chooses nothing.
+- **A name the emitter has not written is read as a model**, as `validate()` calls it: a type
+  declared below its holder, and a type of the consumer's own, which declares
+  `init(swiftSchemaUnjudged:)` beside `validate()`.
+- **The tests.** `src/features/swift/read/tests.rs` holds each `Source` and `Presence`, and the
+  README's block to what the emitter writes for the documents' parcel;
+  `tests/swift_tests/read.rs` pins the text of each shape;
+  `tests/service_schema_emitted_client_tests/run_swift_read.rs` compiles the emitted types with
+  `-warnings-as-errors`, holds each read to the Rust `validate()` of the value and to the Rust
+  read of the payload, an untagged enum to the variant serde takes, and each client to its fault.
+  `an_absent_key_and_a_null_are_read_as_they_were` passed on the emitter before a read was
+  written. The `validate()` runs read a payload through the unjudged initializer, and build in
+  code the three values no read hands back.
+
 ### Generic Types and Zod Factories
 
 A Zod schema is a runtime value and TypeScript generics do not exist at runtime, so a generic
@@ -2147,6 +2209,7 @@ tixschema/
 │   │   │   └── operations.rs     # mongodb: OperationError, Read and the operations
 │   │   ├── swift.rs              # Swift types and their Codable codec
 │   │   ├── swift/
+│   │   │   ├── read.rs           # The two reads of every Swift type: its own, and the one that judges
 │   │   │   └── validate.rs       # validate() of every Swift type: bounds, checks, holders
 │   │   └── model_schema_prop.rs  # Field attribute parsing
 │   └── generation/
