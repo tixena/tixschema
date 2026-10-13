@@ -421,14 +421,14 @@ mod a_message_names_the_path_in_the_payload {
             serde_json::from_str::<Package>(r#"{"itemLabel":"A","codes":["x"],"parcelCode":"a"}"#);
         assert_eq!(
             parcel.unwrap_err().to_string(),
-            "'parcelCode': too short: minimum length is 2, got 1 at line 1 column 48"
+            "'parcelCode': too short: minimum length is 2, got 1"
         );
         let manifest = serde_json::from_str::<Manifest>(
             r#"{"firstParcel":{"itemLabel":"A","codes":["x"],"parcelCode":"a"},"parcelList":[],"baseName":"north"}"#,
         );
         assert_eq!(
             manifest.unwrap_err().to_string(),
-            "'firstParcel.parcelCode': too short: minimum length is 2, got 1 at line 1 column 63"
+            "'firstParcel.parcelCode': too short: minimum length is 2, got 1"
         );
         let held = Manifest {
             first_parcel: Package {

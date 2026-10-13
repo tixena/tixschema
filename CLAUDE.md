@@ -440,7 +440,7 @@ section is the consumer's view; this is what a change has to keep.
 - A brand over a list (`held_as_a_list`: the list itself, or behind `Box`/`Rc`/`Arc`/`Cow`) takes the
   two lengths on the type. `branded_value_inner` hands them to the inner's def as its count, so Zod
   and the JSON Schema write them where a field's list carries them, and `branded_list_validation`
-  emits the list's validator and hook under the brand's names, with no `Display` bound. `pattern`
+  emits the list's validator under the brand's name, with no `Display` bound. `pattern`
   on such a brand is refused by `branded_constraint_inner_error`.
 
 A length or a pattern on a field typed with a type declared elsewhere reaches a brand over a
@@ -743,7 +743,7 @@ holds unjudged, so the whole value is judged once, by the type the caller asked 
 has to keep.
 
 - `src/model_schema/judged_read.rs` is the seam. `of_struct` and `of_enum` are handed the item and
-  whether it publishes `validate()`, from `struct_output_with_unit_impls`,
+  whether it publishes `validate()`, from `struct_output_with_unit_impls`, `branded_read`,
   `enum_output_with_decode` and `process_plain_enum`. An item that derives no `Deserialize`, or
   publishes no `validate()` and names no `preprocess` ("A payload corrected before it is read",
   below), gains nothing and is emitted as it was written, token for token.
@@ -780,14 +780,29 @@ has to keep.
   with a local `Unjudged` newtype whose `Deserialize` calls the leaf's
   `model_schema_read_unjudged`, behind the local `ReadUnjudged` trait. An inherent function is
   found ahead of a trait's, so a type with no unjudged read of its own is read as serde reads
-  it. A refusal a brand below raises is answered under the name `validate()` reports the field
-  under (`named_refusal`) where `named_below` says the named reader did so, and an outermost
-  `Option` under a key is given
-  `#[serde(default)]` by the rule of `needs_injected_default`, the container writing none.
+  it. A refusal raised below the member, by a type that judges itself as it is read, is answered
+  under the name `validate()` reports the field under (`named_refusal`) where `named_below` says
+  the named reader did so, and an outermost `Option` under a key is given `#[serde(default)]` by
+  the rule of `needs_injected_default`, the container writing none.
+- A brand takes the same read. `branded_read` hands `of_struct` every brand, and one that
+  publishes `validate()` (a bound, a count of a list, a check) or names a `preprocess` gains
+  `model_schema_read_unjudged` and the written `Deserialize`. No hook is hung on a brand's slot,
+  and a brand with none of the four is emitted as it was written. A holder's hook therefore
+  reads a brand unjudged, and the holder's `validate()` names it: `'listed.1': too short: ...`.
+- `BrandBound` holds what a brand's own bound adds: the validator in the schema module, the call
+  `validate()` makes, and `model_schema_validate_bound`, a method of the brand's own that
+  answers for the bound alone (`judged_read::BOUND_ALONE`). It has two readers. A member of an
+  untagged enum is held to it as the member is read (`HookPlace::choosing`,
+  `MemberHook::held_leaf`), behind the local `ChosenByShape` trait, which answers `Ok(())` for a
+  reference to any type with no such method: the bound of a brand chooses the variant, as it did
+  where the brand refused in a read of its own, and nothing of a model chooses one. And the read
+  a recovering decode lists a bounded brand from holds the value to it (`bounded_listed_read`,
+  through `brand_recovering_decode`), so the walker lists a broken bound as the refusal of the
+  value. A check a brand names chooses no variant: the enum's `validate()` refuses with it.
 - `named_read_hook` stays for a named field `reachable_nested_shape` walks and `reached` does
-  not, a declared type in an `Arc` and in a fixed array among them. A model there, in a tuple
-  and under a type parameter judges itself as it is read, and ends the read at the first one
-  that breaks a rule.
+  not, a declared type in an `Arc` and in a fixed array among them. A model or a brand there,
+  in a tuple and under a type parameter judges itself as it is read, and ends the read at the
+  first one that breaks a rule.
 - A unit struct's `Deserialize` is the macro's already (`unit_struct_serde_impls`), and
   `unit_struct_read` gives it `model_schema_read_unjudged` and the `validate()` call where the
   struct has a check.
@@ -795,15 +810,17 @@ has to keep.
   writes are refused by `conversion_refusal`, in every build.
 - `model_schema_read_unjudged` is the type's own name. Each name the function declares beside
   the item's own types is numbered where the item writes it (`unclaimed_parameter`): the
-  reader's type parameter `D`, the copy `ModelSchemaRemote`, the trait `ReadUnjudged`, and the
-  `Unjudged` of a hook where the member's type writes that name.
+  reader's type parameter `D`, the copy `ModelSchemaRemote`, the traits `ReadUnjudged` and
+  `ChosenByShape`, and the `Unjudged` of a hook where the member's type writes that name.
 - A service's dispatcher reads a request through `unjudged_{operation}`, which
   `message_readers` in `src/service_schema/support.rs` writes into the service module, and calls
   the validator next. The AMQP and WebSocket arm hands it a `serde_json::Deserializer` over the
   payload and ends it, as `from_slice` does, and the HTTP dispatcher the value it carried.
 - `tests/validation_tests/refusing_read.rs` holds each shape, the bounds and the README's
-  sample; `tests/check_tests/read.rs` the read of a type that names a check, in every build;
-  `tests/recovering_decode_bson_tests/refused_read.rs` a BSON document under each major.
+  sample; `tests/branded_newtype_tests/read.rs` a brand under each inner, held in each place and
+  in an untagged enum; `tests/check_tests/read.rs` the read of a type that names a check, in
+  every build; `tests/recovering_decode_bson_tests/refused_read.rs` a BSON value under each
+  major.
 
 #### A payload corrected before it is read
 
@@ -859,7 +876,7 @@ the consumer's view; this is what a change has to keep.
   in the words of a type that names a `preprocess`.
 - **A unit struct and a brand.** `unit_struct_correction` writes the two functions of a unit
   struct around the visitor `unit_struct_read` already writes, and `branded_read` gives a brand
-  the judged read where it names a function.
+  the judged read where it names a function, as where it publishes `validate()`.
 - **The recovering decode corrects once.** `Walker::corrects_own` is read off `named().own`. An
   entry point calls `decode_with_{source}_corrected` on the value as it takes it, reads through
   `decode_with_read_corrected` and walks through `decode_with_{source}_corrected_issues`,
@@ -909,9 +926,9 @@ this is what a change has to keep.
   lifetime it writes replaced by that one: the value outlives the borrow, and is never read at
   a lifetime longer than its own. It answers the result and no reference. A brand over a list
   counts its items at every filling and takes no such function.
-- The macro adds no bound to a brand's declaration. The `Display` the read hook renders the value
-  through stays on the hook and in the `#[serde(bound(deserialize = ...))]`
-  `inject_branded_serde_attrs` writes.
+- The macro adds no bound to a brand's declaration, and a brand's read asks of a parameter what
+  serde's derive asks (`read_bounds`). Nothing asks `Display` of a parameter, on the read or in
+  `validate()`.
 - A consumer's own `validate` on one filling is a duplicate definition (E0592).
   `struct_validate_method`'s doc comment holds the run.
 
@@ -1002,6 +1019,9 @@ Rules:
   `$ZodBranded` of a `$ZodBranded`). Reading the annotation off the value is the one spelling that
   stays true of all of them
 - Serde transparent serialization works normally — the newtype is invisible in JSON
+- A brand that carries a bound or names a check is read as a struct or an enum is (section 7, "A
+  read refuses what `validate()` refuses"): its own unjudged read, then its `validate()`. No hook
+  is hung on its slot, and a type that holds the brand reads it unjudged and names it at its path
 - The slot takes no `#[model_schema_prop(...)]`: a brand publishes its inner's own schema with a
   `.brand()` written onto it, so no key written there reaches any surface, and one written there is
   refused at `exec_model_schema` — the ungated seam, so the verdict is the same in every feature
@@ -1218,15 +1238,15 @@ argument bound to the parameter's declared filling (`json_argument_value`, defau
 bounds through the same `allOf` a named inner is narrowed through — never the inert `{}` a
 parameter with no default at all would describe as.
 
-The serde read holds the same line: `build_branded_validation`'s generic `deserialize_value` hook
-compares `type_identity::<T>()` against the inner type with each parameter's declared default
-substituted in (`substitute_declared_defaults`, reading `declared_default_syn_type`), and only
-runs the checks when they are equal, so the read reaches the same one filling `$SchemaDefault` and
-`validate()` do. `type_identity` is emitted into the schema module by `embedded_type_identity`, a
-copy of `typeid::of` (see `THIRD-PARTY-NOTICES`), so a consumer adds no dependency for it.
-`validate()` is at every filling and asks the same question: `validate_at_declared_default`, this
-crate's own beside `type_identity`, runs the checks on the value read as the declared default
-where the two types are one (section 7, "Generated `validate()` method").
+The serde read holds the same line, being the brand's unjudged read followed by its `validate()`
+(section 7, "A read refuses what `validate()` refuses"). `validate()` is at every filling and asks
+which one it holds: `validate_at_declared_default`, which `build_branded_validation` emits beside
+`type_identity`, compares `type_identity::<T>()` against the inner type with each parameter's
+declared default substituted in (`substitute_declared_defaults`, reading
+`declared_default_syn_type`), and runs the checks on the value read as that default only where the
+two types are one, so the read and `validate()` reach the same one filling `$SchemaDefault` does.
+`type_identity` is emitted into the schema module by `embedded_type_identity`, a copy of
+`typeid::of` (see `THIRD-PARTY-NOTICES`), so a consumer adds no dependency for it.
 
 ### Recovering Decode
 

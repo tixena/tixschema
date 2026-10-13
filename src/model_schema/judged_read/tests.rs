@@ -247,3 +247,43 @@ fn an_enum_is_read_on_a_copy_that_keeps_what_serde_reads_of_each_variant() {
                 [serde (rename = \"rename\")] Rename { # [serde (default)] to : String } , Stop }";
     assert!(read.contains(copy), "missing `{copy}` in: {read}");
 }
+
+/// A member of an untagged enum is held to the bound a brand carries as it is read, behind a
+/// trait that answers for a type with no such bound, and a struct's member is held to none.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn a_member_that_chooses_a_variant_is_held_to_the_bound_of_a_brand() {
+    let chosen = expansion_under(
+        "",
+        "#[derive(Deserialize)] #[serde(untagged)] pub enum ChosenMark { Labelled(ChosenLabel), \
+         Named(ChosenByShape) }",
+    );
+    for written in [
+        "trait ChosenByShape2 { fn model_schema_validate_bound (& self) -> :: core :: result :: \
+         Result < () , :: std :: vec :: Vec < :: std :: string :: String >> { :: core :: result \
+         :: Result :: Ok (()) } } impl < T : ? :: core :: marker :: Sized > ChosenByShape2 for & \
+         T { }",
+        "let held = < ChosenLabel > :: model_schema_read_unjudged (deserializer) ? ; let chosen \
+         = & held ; chosen . model_schema_validate_bound () . map_err (",
+        ":: core :: result :: Result :: Ok (Unjudged (held))",
+    ] {
+        assert!(chosen.contains(written), "missing `{written}` in: {chosen}");
+    }
+
+    let held = expansion_under(
+        "",
+        "#[derive(Deserialize)] pub struct ChosenHolder { pub label: ChosenLabel }",
+    );
+    assert!(
+        held.contains(
+            "< ChosenLabel > :: model_schema_read_unjudged (deserializer) . map (Unjudged)"
+        ),
+        "got: {held}"
+    );
+    for unwritten in ["model_schema_validate_bound", "ChosenByShape"] {
+        assert!(!held.contains(unwritten), "found `{unwritten}` in: {held}");
+    }
+}

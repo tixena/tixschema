@@ -678,9 +678,8 @@ export const Document$Schema: ZodType<Document> = Document$RawSchema.meta({
 /// pub struct Tags(pub Vec<String>);
 /// ```
 ///
-/// A generic brand carries the requirement as a `Display` bound on its `Display` impl, and on its
-/// read where it carries string checks, so a non-`Display` type argument is rejected where the
-/// brand is displayed or read, not where it is declared.
+/// A generic brand carries the requirement as a `Display` bound on its `Display` impl, so a
+/// non-`Display` type argument is rejected where the brand is displayed, not where it is declared.
 ///
 /// String constraints on a brand whose inner is one of its own type parameters are those of the
 /// parameter's declared default (`default_types`, or `String` where the entry is left out). So
@@ -735,6 +734,11 @@ export const Document$Schema: ZodType<Document> = Document$RawSchema.meta({
 /// once, by the type the read was asked for, and each message is at its full path. A model held
 /// any other way judges itself as it is read: in a tuple, a fixed array, a set, an `Rc` or an
 /// `Arc`, under one of the holder's type parameters, or by a type with no `#[model_schema]`.
+///
+/// A branded newtype that carries a bound or names a check is read the same way, and held the
+/// same way: `'listed.1': too short: minimum length is 3, got 2` names the second brand of a
+/// list. A member of an `#[serde(untagged)]` enum is held to the bound of a brand as it is read,
+/// the bound choosing the variant.
 ///
 /// `validate()` stays, for a value built in code or changed after it was read. `remote`, `from`,
 /// `try_from` and `into` written on such a type are refused, and a function of the consumer's own

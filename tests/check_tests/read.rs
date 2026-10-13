@@ -7,8 +7,8 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::models::{
-    ClosedDock, Crate, Grade, Handover, Pallet, Reference, Route, Shipment, Stack, Transfer,
-    parcels,
+    Batch, ClosedDock, Code, Crate, Grade, Handover, Pallet, Reference, Route, Shipment, Stack,
+    Transfer, parcels,
 };
 
 fn texts(written: &[&str]) -> Vec<String> {
@@ -126,4 +126,32 @@ fn a_type_with_a_parameter_is_read_as_validate_answers_at_each_filling() {
         };
         read_as_validated(&counted, counted.validate());
     }
+}
+
+#[test]
+fn a_brand_is_read_as_validate_answers() {
+    for text in ["abc", "ABC"] {
+        let code = Code(text.to_owned());
+        read_as_validated(&code, code.validate());
+    }
+    assert_eq!(
+        serde_json::from_str::<Code>(r#""abc""#)
+            .map(|read| read.0)
+            .map_err(|refused| refused.to_string()),
+        Err("a code is upper case".to_owned())
+    );
+    for codes in [texts(&[]), texts(&["a"])] {
+        let batch = Batch(codes);
+        read_as_validated(&batch, batch.validate());
+    }
+    for codes in [Vec::<u32>::new(), vec![7]] {
+        let counted = Batch(codes);
+        read_as_validated(&counted, counted.validate());
+    }
+    assert_eq!(
+        serde_json::from_str::<Batch<u32>>("[]")
+            .map(|read| read.0)
+            .map_err(|refused| refused.to_string()),
+        Err("a batch holds at least one code".to_owned())
+    );
 }

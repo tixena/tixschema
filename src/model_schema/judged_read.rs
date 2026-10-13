@@ -64,6 +64,16 @@ const FALLBACK: &str = "ReadUnjudged";
 #[cfg(feature = "serde")]
 const HELD: &str = "Unjudged";
 
+/// What a brand's own bound answers of a value, the checks the brand names apart. A member of an
+/// untagged enum that holds the brand is held to it as it is read, so the bound chooses the
+/// variant, and so is the value a recovering read lists the brand from.
+#[cfg(feature = "serde")]
+pub const BOUND_ALONE: &str = "model_schema_validate_bound";
+
+/// The name of the trait that answers [`BOUND_ALONE`] for a type that carries no such bound.
+#[cfg(feature = "serde")]
+const CHOSEN_BY_SHAPE: &str = "ChosenByShape";
+
 /// What the name of the read of a corrected payload ends on, in place of [`UNJUDGED`].
 const CORRECTED: &str = "_corrected";
 
@@ -123,6 +133,8 @@ struct Corrects {
 struct MemberHook {
     /// The member's value, built back from `held_0`, what `read_as` was read into.
     back: String,
+    /// Whether the member's read chooses the variant of an untagged enum.
+    choosing: bool,
     /// Whether a missing key is read as the member's default, as it is with no hook.
     defaulted: bool,
     /// The name of the type `read_as` writes where the member's type writes the model.
@@ -143,10 +155,14 @@ struct MemberHook {
 /// Where a member sits in its item, as its hook is written and hung.
 #[cfg(feature = "serde")]
 pub(super) struct HookPlace<'item> {
+    /// Whether the member's read chooses the variant of an untagged enum: a brand it holds is
+    /// then held to its own bound as it is read.
+    pub choosing: bool,
     /// Whether the container answers a missing key itself, with `#[serde(default)]`.
     pub container_defaulted: bool,
     pub index: usize,
-    /// The key a refusal a brand below raises is answered under, where it is answered under one.
+    /// The key a refusal raised below the member is answered under, where it is answered under
+    /// one.
     pub renamed_under: Option<&'item str>,
     pub type_parameters: &'item [String],
     pub variant: Option<&'item str>,
@@ -218,6 +234,7 @@ impl MemberHook {
         let held_as = Ident::new(&self.held_as, Span::call_site());
         let [ty, leaf, read_as, back] = [&self.ty, &self.leaf, &self.read_as, &self.back]
             .map(|written| written.parse::<TokenStream>().unwrap_or_default());
+        let held_leaf = self.held_leaf(&leaf, &held_as, unjudged);
         let renamed = self.renamed_under.as_deref().map(|key| {
             let renaming = named_refusal(key);
             quote! { .map_err(#renaming) }
@@ -237,7 +254,7 @@ impl MemberHook {
                         where
                             #reader: serde::Deserializer<'de>,
                         {
-                            <#leaf>::#unjudged(deserializer).map(#held_as)
+                            #held_leaf
                         }
                     }
                     let held_0 = <#read_as as serde::Deserialize>::deserialize(deserializer) #renamed ?;
@@ -259,13 +276,29 @@ impl MemberHook {
                     where
                         #reader: serde::Deserializer<'de>,
                     {
-                        <#leaf>::#unjudged(deserializer).map(#held_as)
+                        #held_leaf
                     }
                 }
                 #correction
                 let held_0 = <#read_as as serde::Deserialize>::deserialize(#corrected) #told #renamed ?;
                 ::core::result::Result::Ok(#back)
             }
+        }
+    }
+
+    /// What answers `leaf`, the model the member holds, as `held_as`: its `unjudged` read, held
+    /// to the bound a brand carries where the member chooses a variant.
+    fn held_leaf(&self, leaf: &TokenStream, held_as: &Ident, unjudged: &Ident) -> TokenStream {
+        if !self.choosing {
+            return quote! { <#leaf>::#unjudged(deserializer).map(#held_as) };
+        }
+        let bound_alone = Ident::new(BOUND_ALONE, Span::call_site());
+        let refusal = refusal_from_violations();
+        quote! {
+            let held = <#leaf>::#unjudged(deserializer)?;
+            let chosen = &held;
+            chosen.#bound_alone().map_err(#refusal)?;
+            ::core::result::Result::Ok(#held_as(held))
         }
     }
 }
@@ -448,6 +481,7 @@ pub(super) fn hook_member(field: &Field, shape: &super::HeldShape, place: &HookP
     MEMBER_HOOKS.with(|held| {
         held.borrow_mut().push(MemberHook {
             back: read.back.to_string(),
+            choosing: place.choosing,
             defaulted,
             held_as: held_as.to_string(),
             index: place.index,
@@ -676,6 +710,22 @@ fn held_fallback(named: &Ident, unjudged: &Ident) -> TokenStream {
     }
 }
 
+/// What a type answers of [`BOUND_ALONE`] where it carries no such bound: nothing, so its shape
+/// alone chooses the variant. An inherent method is found ahead of the one the trait gives a
+/// reference, so a brand that carries a bound answers with its own.
+#[cfg(feature = "serde")]
+fn chosen_by_shape(named: &Ident) -> TokenStream {
+    let bound_alone = Ident::new(BOUND_ALONE, Span::call_site());
+    quote! {
+        trait #named {
+            fn #bound_alone(&self) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
+                ::core::result::Result::Ok(())
+            }
+        }
+        impl<T: ?::core::marker::Sized> #named for &T {}
+    }
+}
+
 /// A name for a type parameter of a function written for an item: `base`, numbered where one of
 /// `written`, the names the item writes, is that name. The parameter would hide a type of its
 /// name wherever the function writes one, and be refused beside a parameter of the type's own.
@@ -709,11 +759,15 @@ fn unjudged_hooks(
             return Hooked::default();
         }
         let fallback = held_fallback(&unclaimed_parameter(FALLBACK, written), unjudged);
+        let chosen = hooks
+            .iter()
+            .any(|hook| hook.choosing)
+            .then(|| chosen_by_shape(&unclaimed_parameter(CHOSEN_BY_SHAPE, written)));
         let functions = hooks
             .iter()
             .map(|hook| hook.function(unjudged, reader, corrects));
         Hooked {
-            functions: quote! { #fallback #(#functions)* },
+            functions: quote! { #fallback #chosen #(#functions)* },
             hung: hooks
                 .iter()
                 .map(|hook| HungOn {
@@ -1221,7 +1275,18 @@ pub fn of_enum(item: &mut ItemEnum, publishes_validate: bool) -> TokenStream {
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
 ))]
 pub fn listed_read(input: &DeriveInput) -> TokenStream {
-    delegated_listed_read(input)
+    delegated_listed_read(input, false)
+}
+
+/// [`listed_read`] of a brand that carries a bound, which no walk lists: the brand's unjudged
+/// read, refused where [`BOUND_ALONE`] answers a violation of the value read. The checks the
+/// brand names are listed beside it, from the value this read answers.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+pub fn bounded_listed_read(input: &DeriveInput) -> TokenStream {
+    delegated_listed_read(input, true)
 }
 
 /// `decode_with_read_unjudged`, the read the recovering decode of `input` lists from, in a build
@@ -1236,7 +1301,7 @@ pub fn listed_read(input: &DeriveInput) -> TokenStream {
     let own_members = deserialize_derive(&input.attrs)
         .filter(|_| serde_conversion(&input.attrs).is_none() && !is_a_brand(input));
     let Some(derive) = own_members else {
-        return delegated_listed_read(input);
+        return delegated_listed_read(input, false);
     };
     let unjudged = Ident::new(LISTED_READ, Span::call_site());
     unjudged_read(
@@ -1261,19 +1326,36 @@ fn is_a_brand(input: &DeriveInput) -> bool {
     has_serde_transparent(&input.attrs)
 }
 
-/// `decode_with_read_unjudged` of a type whose own unjudged read is the one to list from.
+/// `decode_with_read_unjudged` of a type whose own unjudged read is the one to list from, refused
+/// where the type is `bounded` and [`BOUND_ALONE`] answers a violation of the value read.
 #[cfg(feature = "serde")]
-fn delegated_listed_read(input: &DeriveInput) -> TokenStream {
+fn delegated_listed_read(input: &DeriveInput, bounded: bool) -> TokenStream {
     let (listed, unjudged) = (
         Ident::new(LISTED_READ, Span::call_site()),
         Ident::new(UNJUDGED_READ, Span::call_site()),
     );
     let reader = reader_parameter(input);
     let fallback = held_fallback(&Ident::new(FALLBACK, Span::call_site()), &unjudged);
+    let (bound_alone, refusal) = (
+        Ident::new(BOUND_ALONE, Span::call_site()),
+        refusal_from_violations(),
+    );
+    let answered = |read: TokenStream| {
+        if !bounded {
+            return read;
+        }
+        quote! {
+            let read = #read?;
+            read.#bound_alone().map_err(#refusal)?;
+            ::core::result::Result::Ok(read)
+        }
+    };
+    let of_unjudged = answered(quote! { <Self>::#unjudged(deserializer) });
     // A type that names a `preprocess` of its own has the read of a corrected payload beside its
     // unjudged read, and the recovering read lists from it once it has called the functions.
     let of_corrected = (!preprocess::named().own.is_empty()).then(|| {
         let (listed_corrected, corrected) = (corrected_read(&listed), corrected_read(&unjudged));
+        let read = answered(quote! { Self::#corrected(deserializer) });
         quote! {
             /// The read of a payload the functions `preprocess` names on the type have corrected,
             /// for the recovering read to list from.
@@ -1281,7 +1363,7 @@ fn delegated_listed_read(input: &DeriveInput) -> TokenStream {
             where
                 #reader: serde::Deserializer<'de>,
             {
-                Self::#corrected(deserializer)
+                #read
             }
         }
     });
@@ -1293,7 +1375,7 @@ fn delegated_listed_read(input: &DeriveInput) -> TokenStream {
             #reader: serde::Deserializer<'de>,
         {
             #fallback
-            <Self>::#unjudged(deserializer)
+            #of_unjudged
         }
 
         #of_corrected

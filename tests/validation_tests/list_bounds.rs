@@ -347,7 +347,7 @@ mod a_key_on_a_list {
             serde_json::from_str::<Tagged>(r#"{"counted":["ab"],"free":[]}"#)
                 .unwrap_err()
                 .to_string(),
-            "'counted': too short: minimum length is 3, got 2 at line 1 column 17"
+            "'counted.0': too short: minimum length is 3, got 2"
         );
     }
 

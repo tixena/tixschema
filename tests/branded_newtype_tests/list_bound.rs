@@ -124,7 +124,7 @@ mod a_length_on_a_brand_over_a_list {
             serde_json::from_str::<Template>(r#"{"name_config":[]}"#)
                 .unwrap_err()
                 .to_string(),
-            "'name_config': too short: minimum length is 1, got 0 at line 1 column 18"
+            "'name_config': too short: minimum length is 1, got 0"
         );
         let built = Template {
             name_config: NameConfig(Vec::new()),
