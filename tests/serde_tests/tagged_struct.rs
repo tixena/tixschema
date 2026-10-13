@@ -185,7 +185,7 @@ mod on_a_mobile_surface {
         for written in [
             "private enum SwiftSchemaTagCodingKeys: String, CodingKey { case swiftSchemaTag = \"kind\" };",
             "var tagged = encoder.container(keyedBy: SwiftSchemaTagCodingKeys.self); try tagged.encode(\"TaggedMobile\", forKey: .swiftSchemaTag);",
-            "public init(from decoder: Decoder) throws { let container = try decoder.container(keyedBy: CodingKeys.self); self.name = try container.decode(String.self, forKey: .name) };",
+            "public init(swiftSchemaUnjudged decoder: Decoder) throws { let container = try decoder.container(keyedBy: CodingKeys.self); self.name = try container.decode(String.self, forKey: .name) };",
         ] {
             assert!(
                 definition.contains(written),

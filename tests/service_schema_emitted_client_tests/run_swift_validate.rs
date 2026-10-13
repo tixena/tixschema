@@ -26,7 +26,7 @@ use super::swift_validate_models::{
 const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
 
 /// The two functions of the parcel, as the README shows them.
-const SHOWN_FUNCTIONS: &str = r#"func withoutDuplicates(_ value: [String]) -> [String] {
+pub const SHOWN_FUNCTIONS: &str = r#"func withoutDuplicates(_ value: [String]) -> [String] {
   var seen = Set<String>()
   for code in value where !seen.insert(code).inserted {
     return ["duplicate item code \(code)"]
@@ -45,7 +45,7 @@ const ALIAS_BELOW_ERROR: &str =
     "value of type 'LaterTitle' (aka 'String') has no member 'swiftSchemaBoundText'";
 
 /// The developer's other functions, written by hand in Swift.
-const FUNCTIONS: &str = r#"
+pub const FUNCTIONS: &str = r#"
 func takingParcels(_ value: ClosedDock) -> [String] {
   ["a closed dock takes no parcel"]
 }
@@ -66,6 +66,7 @@ func withoutASparePair(_ value: [Package]) -> [String] {
 "#;
 
 /// What a run reads a payload and prints an answer with, in the form the Rust side prints its own.
+/// A payload is read through the unjudged initializer of its type, which judges nothing.
 const HARNESS: &str = r#"
 func report(_ name: String, _ violations: [String]) {
   if violations.isEmpty {
@@ -76,8 +77,17 @@ func report(_ name: String, _ violations: [String]) {
   }
 }
 
-func read<Read: Decodable>(_ type: Read.Type, _ payload: String) -> Read {
-  try! JSONDecoder().decode(type, from: Data(payload.utf8))
+protocol ReadUnjudged {
+  init(swiftSchemaUnjudged decoder: Decoder) throws
+}
+
+struct Unjudged<Held: ReadUnjudged>: Decodable {
+  let held: Held
+  init(from decoder: Decoder) throws { held = try Held(swiftSchemaUnjudged: decoder) }
+}
+
+func read<Read: ReadUnjudged>(_ type: Read.Type, _ payload: String) -> Read {
+  try! JSONDecoder().decode(Unjudged<Read>.self, from: Data(payload.utf8)).held
 }
 "#;
 
@@ -151,7 +161,7 @@ fn driver_of(cases: &[Case]) -> String {
 }
 
 /// Every emitted definition the runs read, in the order they are declared.
-fn definitions() -> Vec<String> {
+pub fn definitions() -> Vec<String> {
     vec![
         parcel_swift::swift_definition(),
         manifest_swift::swift_definition(),
@@ -184,12 +194,29 @@ fn definitions() -> Vec<String> {
     ]
 }
 
+/// The conformance the harness asks of each type `lines` read, written once per type.
+fn conformances(lines: &str) -> String {
+    let mut named: Vec<&str> = lines
+        .split("read(")
+        .skip(1)
+        .filter_map(|after| after.split_once(".self")?.0.split('<').next())
+        .collect();
+    named.sort_unstable();
+    named.dedup();
+    named
+        .iter()
+        .map(|read| format!("extension {read}: ReadUnjudged {{}}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// The module one run compiles: `declared`, the functions the developer writes, and `lines`.
 fn module(declared: Vec<String>, functions: &str, lines: &str) -> String {
     let mut parts = vec!["import Foundation".to_owned()];
     parts.extend(declared);
     parts.push(functions.to_owned());
     parts.push(HARNESS.to_owned());
+    parts.push(conformances(lines));
     parts.push(lines.to_owned());
     parts.join("\n\n")
 }
@@ -222,7 +249,7 @@ fn parcel(label: &str, codes: &[&str], fragile: &[&str]) -> Parcel {
     }
 }
 
-fn package(item_label: &str, parcel_code: &str) -> Package {
+pub fn package(item_label: &str, parcel_code: &str) -> Package {
     Package {
         item_label: item_label.to_owned(),
         parcel_code: Code(parcel_code.to_owned()),
@@ -230,11 +257,11 @@ fn package(item_label: &str, parcel_code: &str) -> Package {
 }
 
 /// A package that breaks its own bound and its code's.
-fn broken() -> Package {
+pub fn broken() -> Package {
     package("", "a")
 }
 
-fn depot(held: &dyn Fn() -> Package, base_name: &str) -> Depot {
+pub fn depot(held: &dyn Fn() -> Package, base_name: &str) -> Depot {
     Depot {
         by_number: BTreeMap::from([(10, held()), (7, held())]),
         deck_pair: ("port".to_owned(), held()),
@@ -252,7 +279,7 @@ fn depot(held: &dyn Fn() -> Package, base_name: &str) -> Depot {
     }
 }
 
-fn gauge(draft_metres: f64, holds: usize, knots: u32, text: &str, spare: bool) -> Gauge {
+pub fn gauge(draft_metres: f64, holds: usize, knots: u32, text: &str, spare: bool) -> Gauge {
     Gauge {
         draft_metres,
         hold_codes: vec!["h".to_owned(); holds],
@@ -532,17 +559,26 @@ fn a_bound_on_a_named_type_measures_the_string_it_holds() {
         short_code: Code(short_code.to_owned()),
         titled: Title::from(titled),
     };
-    let held = [
-        ("Waybill, each bound broken", waybill("a", "abcd", "t")),
-        (
-            "Waybill, a code its own type refuses",
-            waybill("ab", "a", "ti"),
+    let broken = waybill("a", "abcd", "t");
+    let refused = waybill("ab", "a", "ti");
+    // A read hands back no waybill whose code its own type refuses, so this one is built.
+    let cases = [
+        case(
+            "Waybill, each bound broken",
+            "Waybill",
+            &broken,
+            broken.validate(),
         ),
+        Case {
+            answered: refused.validate(),
+            name: "Waybill, a code its own type refuses",
+            read: concat!(
+                r#"Waybill(laterCode: LaterCode(value: "ab"), "#,
+                r#"shortCode: Code(value: "a"), titled: "ti")"#,
+            )
+            .to_owned(),
+        },
     ];
-    let cases: Vec<Case> = held
-        .iter()
-        .map(|(name, written)| case(name, "Waybill", written, written.validate()))
-        .collect();
     let expected = rust_report(&cases);
     assert_eq!(
         expected,
@@ -892,6 +928,13 @@ an enum's check, no member: passes
 /// the value itself. A plain enum holds nothing to judge.
 #[test]
 fn a_member_of_a_variant_under_a_tag_is_named_by_the_steps_serde_writes() {
+    // No variant of an untagged enum takes a payload that breaks its bound, so the two are built.
+    for unread in [
+        Tally::Named(String::new()),
+        Tally::Counted { tally_count: 0 },
+    ] {
+        serde_json::from_value::<Tally>(serde_json::to_value(unread).unwrap()).unwrap_err();
+    }
     let read: Vec<(&str, String)> = vec![
         (
             "tag and content, the one slot",
@@ -931,13 +974,10 @@ fn a_member_of_a_variant_under_a_tag_is_named_by_the_steps_serde_writes() {
             "tag alone, the enum's own check",
             read_as("Lift", &Lift::Unladen),
         ),
-        (
-            "untagged, a slot",
-            read_as("Tally", &Tally::Named(String::new())),
-        ),
+        ("untagged, a slot", r#"Tally.named("")"#.to_owned()),
         (
             "untagged, a named member",
-            read_as("Tally", &Tally::Counted { tally_count: 0 }),
+            "Tally.counted(TallyCountedPayload(tallyCount: 0))".to_owned(),
         ),
         ("a plain enum", read_as("Grade", &Grade::Express)),
     ];

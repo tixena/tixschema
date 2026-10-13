@@ -4373,10 +4373,10 @@ error: unresolved reference 'withinParcel'.
 
 ### `validate()` in the Swift client
 
-Every Swift type `swift_definition()` writes has `public func validate() -> [String]`: a struct, a tuple struct, a unit struct, the wrapper of a [branded newtype](#branded-newtypes), an enum under every tagging and a plain one, a type with a parameter at every filling, and the struct written for a variant's named members or for a tuple. It answers one message per broken rule, and an empty list for a value that keeps every one. Reading judges nothing: the `Codable` of a type is what it was, and a struct whose `Codable` Swift synthesizes keeps it.
+Every Swift type `swift_definition()` writes has `public func validate() -> [String]`: a struct, a tuple struct, a unit struct, the wrapper of a [branded newtype](#branded-newtypes), an enum under every tagging and a plain one, a type with a parameter at every filling, and the struct written for a variant's named members or for a tuple. It answers one message per broken rule, and an empty list for a value that keeps every one. It judges a value built or changed in code, and `init(from:)` of the type calls it on the value it read, so [a read refuses what it refuses](#a-swift-read-refuses-what-validate-refuses).
 
 ```swift
-let parcel = try JSONDecoder().decode(Parcel.self, from: payload)
+let parcel = Parcel(label: "", itemCodeList: ["x", "x"], fragileItemCodes: [])
 let violations = parcel.validate()
 // ["'label': too short: minimum length is 1, got 0", "'itemCodeList': duplicate item code x"]
 ```
@@ -4462,8 +4462,88 @@ error: cannot find 'withinParcel' in scope
 **What you declare.**
 
 - **A field named `validate`** is declared `validate_`, the method having the name, and keeps its key: `case validate_ = "validate"`.
-- **A type tixschema has not written** is one a holder cannot tell from a model declared below it, so it calls its `validate()`: a type of your own that a generated type holds declares `func validate() -> [String] { [] }`. An alias of a type that has none (`type LaterTitle = String;`) is declared above the type that holds it. Declared below, the Swift compiler answers `value of type 'LaterTitle' (aka 'String') has no member 'validate'`.
+- **A type tixschema has not written** is one a holder cannot tell from a model declared below it, so it calls its `validate()` and reads it through its `init(swiftSchemaUnjudged:)`: a type of your own that a generated type holds declares `func validate() -> [String] { [] }` and `init(swiftSchemaUnjudged decoder: Decoder) throws { try self.init(from: decoder) }`. An alias of a type that has none (`type LaterTitle = String;`) is declared above the type that holds it. Declared below, the Swift compiler answers `value of type 'LaterTitle' (aka 'String') has no member 'validate'`.
 - **An alias of a string that a field bounds** is declared above that field's type. Declared below, it is a name the emitter reads as a brand, and the Swift compiler answers `value of type 'LaterTitle' (aka 'String') has no member 'swiftSchemaBoundText'`. The same error answers a length or a pattern on a field typed with a struct or an enum, which holds no string to measure.
+
+#### A Swift read refuses what `validate()` refuses
+
+`init(from:)` of every type `swift_definition()` writes reads the type and then calls `validate()` on the value it read, as [the Rust read](#a-read-refuses-what-validate-refuses) does. A payload whose value breaks a bound or a check is thrown as `DecodingError.dataCorrupted`, and no value is handed back:
+
+```swift
+do {
+  let manifest = try JSONDecoder().decode(Manifest.self, from: payload)
+  carry(manifest)
+} catch DecodingError.dataCorrupted(let context) {
+  print(context.debugDescription)
+}
+```
+
+The `debugDescription` is the list `validate()` answers of the value read, every message, joined by `; `. A manifest that holds a broken parcel in a field, a list, a map and an optional is refused once, each message at its full path. The error is one line, broken here after each `; `:
+
+```text
+'firstParcel.label': too short: minimum length is 1, got 0;
+'parcelList.1.fragileItemCodes.1': y is outside of itemCodeList;
+'parcelsByDock.north.label': too short: minimum length is 1, got 0;
+'spareParcel.fragileItemCodes.1': y is outside of itemCodeList
+```
+
+The text holds no coding path. `codingPath` is the decoder's own, as for every decoding error: empty for the value the read was asked for, and `1` for the second manifest of a `[Manifest]`.
+
+**What the emitter writes.** Every struct and every enum has two initializers that read it:
+
+```swift
+public init(swiftSchemaUnjudged decoder: Decoder) throws {
+  let container = try decoder.container(keyedBy: CodingKeys.self)
+  self.label = try container.decode(String.self, forKey: .label)
+  self.itemCodeList = try container.decode([String].self, forKey: .itemCodeList)
+  self.fragileItemCodes = try container.decode([String].self, forKey: .fragileItemCodes)
+}
+
+public init(from decoder: Decoder) throws {
+  try self.init(swiftSchemaUnjudged: decoder)
+  let violations = validate()
+  if !violations.isEmpty {
+    throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: violations.joined(separator: "; ")))
+  }
+}
+```
+
+- **`init(swiftSchemaUnjudged:)` is the read alone.** It builds the value from the same payload and judges nothing. It is what a type that holds another reads it with, and what reads a value that is to be repaired: call it from an `init(from:)` of your own, which is where a `Decoder` is handed out.
+- **Every struct declares its memberwise initializer**, `public init(label: String, itemCodeList: [String], fragileItemCodes: [String])` here: the one Swift synthesizes is gone once a struct writes an `init(from:)`. A value built with it is judged when you call `validate()`.
+- **`encode(to:)` is what it was**, the one Swift synthesizes wherever it was. Writing judges nothing.
+- **A plain enum that names no check** keeps the `init(from:)` Swift synthesizes, and its `init(swiftSchemaUnjudged:)` is that read.
+
+**A type that holds another reads it with no judgement**, handed a decoder of its own, so the whole value is judged once, by the type the read was asked for:
+
+```swift
+_ = try container.decodeNil(forKey: .firstParcel)
+self.firstParcel = try Parcel(swiftSchemaUnjudged: container.superDecoder(forKey: .firstParcel))
+
+var listed = try container.nestedUnkeyedContainer(forKey: .parcelList)
+var items: [Parcel] = []
+while !listed.isAtEnd { items.append(try Parcel(swiftSchemaUnjudged: listed.superDecoder())) }
+self.parcelList = items
+
+let keyed = try container.nestedContainer(keyedBy: SwiftSchemaAnyKey.self, forKey: .parcelsByDock)
+var entries: [String: Parcel] = [:]
+for entry in keyed.allKeys { entries[entry.stringValue] = try Parcel(swiftSchemaUnjudged: keyed.superDecoder(forKey: entry)) }
+self.parcelsByDock = entries
+
+if container.contains(.spareParcel), try !container.decodeNil(forKey: .spareParcel) { self.spareParcel = try Parcel(swiftSchemaUnjudged: container.superDecoder(forKey: .spareParcel)) } else { self.spareParcel = nil }
+```
+
+`SwiftSchemaAnyKey` is a private key type written into each type that reads a map entry by entry. A value is read with no judgement exactly where the `validate()` of its holder runs its `validate()`. Anywhere else it is read through `Decodable` and judges itself: the first broken one ends the read with its own messages, under the coding path it sits at.
+
+| Held | Judged |
+|---|---|
+| in a field, an optional, a list, a map's value, a tuple, a flattened member or the payload of a variant, in any nesting of those | once, with its holder, each message at its full path |
+| under one of the holder's type parameters | by itself, as it is read: a `Crate<Parcel>` whose second parcel is broken is refused with `'fragileItemCodes.1': y is outside of itemCodeList`, under the coding path `codes`, `1` |
+| in a field that carries a bound of its own, a list apart | by itself, as it is read: the field's bound stands in place of what its type declares in `validate()`, so the holder judges nothing of the type |
+| as the value a brand wraps | by itself, as it is read |
+
+- **An absent key and a `null` are read as they were.** A key a struct requires is still `keyNotFound` where it is absent, which is what the first statement above is for: `superDecoder(forKey:)` answers a decoder over `null` for an absent key. An optional member is still `nil` for an absent key and for a `null`.
+- **An `#[serde(untagged)]` enum takes the variant serde takes.** Its `init(swiftSchemaUnjudged:)` takes the first variant whose payload reads and whose own bounds hold: a bound written on a member, and the `pattern`, `minLength` and `maxLength` of a [brand](#branded-newtypes) the member holds, which the brand's wrapper answers for alone with `swiftSchemaValidateBound()`. A check and a model the variant holds choose nothing: the variant is taken, and `init(from:)` then refuses the value. A brand declared below the enum is not known to carry a bound where the enum is written, and chooses nothing either: declare it above the enum.
+- **The service clients answer the fault they had** for a reply that breaks a rule, the thrown error reaching the handling they have for a reply that does not read: `swift_http_client()` answers `undeserializable-payload` and `swift_ws_client()` answers `failed-validation`, each with the messages in its `detail`.
 
 ### Literal Values
 
@@ -6715,7 +6795,7 @@ The crate uses optional features to control code generation and dependencies. Ea
 | `chrono` | No | Chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`) |
 | `indexmap` | No | `indexmap` type support: `IndexMap` as a map and `IndexSet` as a list. See [The order of a map's keys](#the-order-of-a-maps-keys) |
 | `dart` | No | Dart type generation via `dart_definition()`, with a JSON `fromJson`/`toJson` codec and a [`validate()`](#validate-in-dart) on every type |
-| `swift` | No | Swift type generation with a `Codable` codec, and a [`validate()`](#validate-in-the-swift-client) on every type |
+| `swift` | No | Swift type generation with a `Codable` codec, and a [`validate()`](#validate-in-the-swift-client) on every type, which [the read of each calls](#a-swift-read-refuses-what-validate-refuses) |
 | `kotlin` | No | Kotlin type generation via `kotlin_definition()`, with `kotlinx.serialization` annotations and a [`validate()`](#validate-in-the-kotlin-client) on every type. A consuming Kotlin build declares two runtime dependencies the emitted code names -- `org.jetbrains.kotlinx:kotlinx-serialization-json` for the JSON codec and `org.jetbrains.kotlinx:kotlinx-coroutines-core` for the transport's own reply correlation and heartbeat -- plus the Kotlin Gradle plugin `kotlin("plugin.serialization")` |
 
 Common configurations:
