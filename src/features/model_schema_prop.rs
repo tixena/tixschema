@@ -205,7 +205,8 @@ pub struct ModelSchemaPropMeta {
         feature = "serde",
         feature = "zod",
         feature = "jsonschema",
-        feature = "dart"
+        feature = "dart",
+        feature = "swift"
     ))]
     pub enum_pattern: Option<String>,
     pub literal: Option<LiteralValue>,
@@ -230,7 +231,12 @@ pub struct ModelSchemaPropMeta {
     pub ts_optional: bool,
 }
 
-#[cfg(any(feature = "serde", feature = "zod", feature = "dart"))]
+#[cfg(any(
+    feature = "serde",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift"
+))]
 impl ModelSchemaPropMeta {
     /// Every pattern the value is held to: the field's own, then its enum's where both are written.
     pub fn patterns(&self) -> impl Iterator<Item = &str> {

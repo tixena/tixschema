@@ -1,5 +1,8 @@
 //! The sentence one violated bound is reported in, built once and handed to every emitter.
 
+#[cfg(feature = "swift")]
+use core::fmt::Write as _;
+
 #[cfg(feature = "dart")]
 use crate::features::dart::dart_escaped;
 #[cfg(feature = "kotlin")]
@@ -26,7 +29,8 @@ pub const VIOLATION_STEMS: [&str; 5] = [
     feature = "serde",
     feature = "zod",
     feature = "dart",
-    feature = "kotlin"
+    feature = "kotlin",
+    feature = "swift"
 ))]
 #[derive(Clone, Copy)]
 pub enum Bound<'pattern> {
@@ -44,7 +48,8 @@ pub enum Bound<'pattern> {
     feature = "serde",
     feature = "zod",
     feature = "dart",
-    feature = "kotlin"
+    feature = "kotlin",
+    feature = "swift"
 ))]
 #[derive(Clone, Copy)]
 enum Observed {
@@ -57,7 +62,8 @@ enum Observed {
     feature = "serde",
     feature = "zod",
     feature = "dart",
-    feature = "kotlin"
+    feature = "kotlin",
+    feature = "swift"
 ))]
 impl Bound<'_> {
     /// What the sentence quotes back, or `None` for a bound whose report names only itself.
@@ -181,6 +187,43 @@ pub fn dart_violation(bound: Bound<'_>, place: Option<&str>, observed: &str) -> 
     match bound.observed() {
         Some(_) => format!("\"{led}{stated}, got ${{{observed}}}\""),
         None => format!("\"{led}{stated}\""),
+    }
+}
+
+/// `text` as it is written between the `"` delimiters of a Swift string literal.
+#[cfg(feature = "swift")]
+pub fn swift_literal_text(text: &str) -> String {
+    let mut written = String::with_capacity(text.len());
+    for letter in text.chars() {
+        match letter {
+            '\\' => written.push_str("\\\\"),
+            '"' => written.push_str("\\\""),
+            '\n' => written.push_str("\\n"),
+            '\r' => written.push_str("\\r"),
+            '\t' => written.push_str("\\t"),
+            other if other.is_control() => {
+                write!(written, "\\u{{{:X}}}", u32::from(other)).unwrap();
+            }
+            other => written.push(other),
+        }
+    }
+    written
+}
+
+/// The Swift string literal a generated `validate()` appends to its report for `bound`: the
+/// sentence `rust_violation` writes.
+///
+/// `place` is the name the value is reported under, or `None` for a value reported under none.
+/// `observed` is the Swift expression the sentence quotes back.
+#[cfg(feature = "swift")]
+pub fn swift_violation(bound: Bound<'_>, place: Option<&str>, observed: &str) -> String {
+    let stated = swift_literal_text(&bound.stated());
+    let named = place.map(swift_literal_text);
+    match (named, bound.observed()) {
+        (Some(under), Some(_)) => format!("\"'{under}': {stated}, got \\({observed})\""),
+        (Some(under), None) => format!("\"'{under}': {stated}\""),
+        (None, Some(_)) => format!("\"{stated}, got \\({observed})\""),
+        (None, None) => format!("\"{stated}\""),
     }
 }
 

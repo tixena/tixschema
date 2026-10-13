@@ -3089,7 +3089,7 @@ There is no subscription operation, no topic and no broker: a push travels exact
 
 ## Field Validation (`model_schema_prop`)
 
-Use `#[model_schema_prop(...)]` on individual fields to add validation constraints, name [checks](#checks-check) of your own, override types, or correct a payload before it is read ([`preprocess`](#preprocessing-preprocess)). Constraints are enforced in Zod (frontend) and in Rust, by a generated `validate()` method that a serde read of the type runs on the value it read. The Dart types hold them as well, in [a `validate()` of their own](#validate-in-dart).
+Use `#[model_schema_prop(...)]` on individual fields to add validation constraints, name [checks](#checks-check) of your own, override types, or correct a payload before it is read ([`preprocess`](#preprocessing-preprocess)). Constraints are enforced in Zod (frontend) and in Rust, by a generated `validate()` method that a serde read of the type runs on the value it read. The Dart types hold them as well, in [a `validate()` of their own](#validate-in-dart). The Swift client runs them in a [`validate()`](#validate-in-the-swift-client) of its own.
 
 ### String Constraints (minLength, maxLength, pattern)
 
@@ -3999,7 +3999,9 @@ A field's check is written on the schema of the value the Rust function takes: a
 
 **In the `validate()` of the Kotlin client.** Every Kotlin type carries one, which runs the bounds and calls each check under the name written. See [`validate()` in the Kotlin client](#validate-in-the-kotlin-client).
 
-**Nowhere else.** The JSON Schema calls no function, and a document is written as it is without the key. The Swift types read the key and are written as they are without it. The Zod schema of a type that flattens an `#[serde(untagged)]` enum writes that enum's variants out one by one, with each member's check and without the check written on the enum itself, which the holder's `validate()` does run.
+**In the Swift client**, in the [`validate()`](#validate-in-the-swift-client) every emitted type has: a member's checks after its bounds and after what the value it holds reports, the type's own last, each a call of the Swift function of that name.
+
+**Nowhere else.** The JSON Schema calls no function, and a document is written as it is without the key. The Zod schema of a type that flattens an `#[serde(untagged)]` enum writes that enum's variants out one by one, with each member's check and without the check written on the enum itself, which the holder's `validate()` does run.
 
 #### What is refused
 
@@ -4367,6 +4369,101 @@ A field's check names no path, and `validate()` writes its messages under the fi
 ```text
 error: unresolved reference 'withinParcel'.
 ```
+
+
+### `validate()` in the Swift client
+
+Every Swift type `swift_definition()` writes has `public func validate() -> [String]`: a struct, a tuple struct, a unit struct, the wrapper of a [branded newtype](#branded-newtypes), an enum under every tagging and a plain one, a type with a parameter at every filling, and the struct written for a variant's named members or for a tuple. It answers one message per broken rule, and an empty list for a value that keeps every one. Reading judges nothing: the `Codable` of a type is what it was, and a struct whose `Codable` Swift synthesizes keeps it.
+
+```swift
+let parcel = try JSONDecoder().decode(Parcel.self, from: payload)
+let violations = parcel.validate()
+// ["'label': too short: minimum length is 1, got 0", "'itemCodeList': duplicate item code x"]
+```
+
+A type with no rule, which holds no type that has one, declares `public func validate() -> [String] { [] }`.
+
+**What runs** is what the Rust [`validate()`](#the-validate-method) of the type runs, in its order and in its words: a member's bounds, then what the value it holds reports, then the checks it names, member by member as declared, and the type's own checks last. A bound written on a member stands in place of the bounds its type declares, but on a list, which is counted and walked.
+
+| Written in Rust | What Swift runs |
+|---|---|
+| `minLength`, `maxLength` on a string | `value.unicodeScalars.count`: the string is counted in Unicode code points |
+| `minLength`, `maxLength` on a list | `value.count` |
+| `minimum`, `maximum` | `value < N`, `value > N` |
+| `pattern`, and an enum's own beside a field's | `value.range(of: "...", options: .regularExpression) == nil`: a match anywhere in the string |
+| `check = ["withinParcel"]` | `withinParcel(value)`, the Swift function of that name |
+
+- **The unit of a length is the Unicode code point**: `"é"` counts 1, `"e\u{301}"` 2, and a character outside the Basic Multilingual Plane 1. The Rust `validate()` measures a string with `len()`, its bytes in UTF-8, so the two agree on ASCII text and differ beyond it.
+- **A whole float is quoted back without `.0`**, as Rust writes it: `2.0` reads `got 2`.
+- **An `Option` is measured where it holds a value.**
+- **A range no value of the type can break is not written**: `minimum = 0` on a `u32` adds no comparison, which Swift would warn of.
+- **A pattern is read by Foundation's regular expressions**, so a type that carries one needs `import Foundation`. Two constructs are written another way for that engine to read the pattern as the `regex` crate does: `$` as `\z`, since it otherwise also matches ahead of a line terminator that ends the string, and `\v` as `\u000B`, since it is otherwise every vertical space. The message quotes the pattern as you wrote it.
+- **A branded newtype runs its own bounds on the value it wraps**, under no path. One that declares a parameter runs them where the value is of its declared default's Swift type (`value as? String`), and at no other filling. A `String`, a `PathBuf` and a `char` are all a Swift `String`.
+- **A bound on a field typed with a brand** measures the text the brand's wrapper answers with `swiftSchemaBoundText`, a member every brand over a string or a path has; a brand over a brand answers through the brand it holds. The brand is declared above the field's type or below it. A bound on a field typed with an alias of a string measures the string.
+
+**A type that holds another** runs its `validate()` and writes each message under the place it holds it at:
+
+```swift
+errors += firstParcel.validate().map { Manifest.swiftSchemaUnder("firstParcel", $0) }
+for (index, held) in parcelList.enumerated() { errors += held.validate().map { Manifest.swiftSchemaUnder("parcelList.\(index)", $0) } }
+for (key, held) in parcelsByDock.sorted(by: { $0.key < $1.key }) { errors += held.validate().map { Manifest.swiftSchemaUnder("parcelsByDock.\(key)", $0) } }
+if let held = spareParcel { errors += held.validate().map { Manifest.swiftSchemaUnder("spareParcel", $0) } }
+```
+
+A Swift dictionary keeps no order, so a map is walked by its sorted keys. A value behind a type parameter is not reached, as in Rust. `swiftSchemaUnder` is a private function written into each type that names a place: nothing is shared between two emitted types, and nothing is declared beside them.
+
+**The path a message names** is the steps serde writes on the way to the value, joined by dots: a key, a position in an array, or nothing where serde writes the value itself.
+
+| Member | serde writes it | The name |
+|---|---|---|
+| a named field of a struct | under its key | `'itemLabel'` |
+| a slot of a tuple struct of several slots | at its position in the array | `'1'` |
+| the one slot of a struct serde writes as the value itself | as the value itself | none: the sentence alone, or the holder's key alone |
+| a named member of a variant, no tag attribute | `{"Loose":{"freightLabel":…}}` | `'Loose.freightLabel'` |
+| the one slot of a variant, no tag attribute | `{"Boxed":…}` | `'Boxed'`, and `'Boxed.itemLabel'` for a model it holds |
+| a slot of a variant of several, no tag attribute | `{"Split":[…]}` | `'Split.1'` |
+| a named member, tag and content key | `{"kind":"Loose","held":{…}}` | `'held.haulLabel'` |
+| the one slot, tag and content key | `{"kind":"Boxed","held":…}` | `'held'` |
+| a slot of several, tag and content key | `{"kind":"Split","held":[…]}` | `'held.1'` |
+| a named member, tag alone | beside the tag | `'liftLabel'` |
+| the one slot, tag alone | its own keys beside the tag | none |
+| a member of an untagged variant | as the value itself, or under its key | none for a slot, its key for a named member |
+
+**The functions you write** are any functions of the module the generated types are compiled in. A check is called under the name the attribute writes:
+
+| | Swift |
+|---|---|
+| A field's check | `func withoutDuplicates(_ value: [String]) -> [String]` |
+| A type's check | `func withinParcel(_ value: Parcel) -> [String]` |
+| The check of a type with a parameter, written once | `func withACode<CodeType>(_ value: Crate<CodeType>) -> [String]` |
+
+```swift
+func withoutDuplicates(_ value: [String]) -> [String] {
+  var seen = Set<String>()
+  for code in value where !seen.insert(code).inserted {
+    return ["duplicate item code \(code)"]
+  }
+  return []
+}
+
+func withinParcel(_ value: Parcel) -> [String] {
+  value.fragileItemCodes.enumerated()
+    .filter { !value.itemCodeList.contains($0.element) }
+    .map { "'fragileItemCodes.\($0.offset)': \($0.element) is outside of itemCodeList" }
+}
+```
+
+A function answers one message per broken rule, and an empty list for none. A field's check takes the field's own value, under an `Option` only where one is held, and names no path: `validate()` writes each message under the field. A type's check takes the whole value and leads each message with the path of what it refuses, as [in Rust](#the-messages). A name with no function does not build:
+
+```text
+error: cannot find 'withinParcel' in scope
+```
+
+**What you declare.**
+
+- **A field named `validate`** is declared `validate_`, the method having the name, and keeps its key: `case validate_ = "validate"`.
+- **A type tixschema has not written** is one a holder cannot tell from a model declared below it, so it calls its `validate()`: a type of your own that a generated type holds declares `func validate() -> [String] { [] }`. An alias of a type that has none (`type LaterTitle = String;`) is declared above the type that holds it. Declared below, the Swift compiler answers `value of type 'LaterTitle' (aka 'String') has no member 'validate'`.
+- **An alias of a string that a field bounds** is declared above that field's type. Declared below, it is a name the emitter reads as a brand, and the Swift compiler answers `value of type 'LaterTitle' (aka 'String') has no member 'swiftSchemaBoundText'`. The same error answers a length or a pattern on a field typed with a struct or an enum, which holds no string to measure.
 
 ### Literal Values
 
@@ -6618,7 +6715,7 @@ The crate uses optional features to control code generation and dependencies. Ea
 | `chrono` | No | Chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`) |
 | `indexmap` | No | `indexmap` type support: `IndexMap` as a map and `IndexSet` as a list. See [The order of a map's keys](#the-order-of-a-maps-keys) |
 | `dart` | No | Dart type generation via `dart_definition()`, with a JSON `fromJson`/`toJson` codec and a [`validate()`](#validate-in-dart) on every type |
-| `swift` | No | Swift type generation with a `Codable` codec |
+| `swift` | No | Swift type generation with a `Codable` codec, and a [`validate()`](#validate-in-the-swift-client) on every type |
 | `kotlin` | No | Kotlin type generation via `kotlin_definition()`, with `kotlinx.serialization` annotations and a [`validate()`](#validate-in-the-kotlin-client) on every type. A consuming Kotlin build declares two runtime dependencies the emitted code names -- `org.jetbrains.kotlinx:kotlinx-serialization-json` for the JSON codec and `org.jetbrains.kotlinx:kotlinx-coroutines-core` for the transport's own reply correlation and heartbeat -- plus the Kotlin Gradle plugin `kotlin("plugin.serialization")` |
 
 Common configurations:
@@ -6661,6 +6758,8 @@ pub struct Reserved {
 The words are each language's own: Dart's [reserved words](https://dart.dev/language/keywords), Swift's [keywords](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/lexicalstructure/#Keywords-and-Punctuation) reserved in a declaration, a statement or an expression, and Kotlin's [hard keywords](https://kotlinlang.org/docs/keyword-reference.html#hard-keywords). A word a language reserves in one context only -- `type` in Swift, `value` in Kotlin, `get` in Dart -- names a member as it is. Dart also moves a field named `dynamic`, the type every emitted `fromJson` and `toJson` is written with, a field and a plain enum's member named `validate`, the method every emitted type has, and a plain enum's member named `index`, `values` or `wireValue`, each of which a Dart enum or the emitted one already holds. Where the moved name is one the type writes itself (`class` beside `class_`), it takes a second underscore.
 
 A plain enum's members are lower-cased by Dart and Swift, so the same rule reaches a variant: `Default` is `default_` in Dart and `` `default` `` in Swift. Kotlin keeps a variant's spelling, which no keyword matches.
+
+Swift also moves a field named `validate`, the [method every emitted type has](#validate-in-the-swift-client): the property is `validate_`, and `CodingKeys` keeps the key, `case validate_ = "validate"`.
 
 A service's clients follow the same rule for an operation, an argument and a path placeholder. An argument Rust needs a raw identifier for binds the placeholder written without it, `r#in` and `{in}`:
 

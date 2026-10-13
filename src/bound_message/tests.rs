@@ -11,15 +11,19 @@ use super::dart_violation;
 use super::kotlin_violation;
 #[cfg(feature = "serde")]
 use super::rust_violation;
+#[cfg(all(feature = "serde", feature = "swift"))]
+use super::swift_violation;
 #[cfg(feature = "zod")]
 use super::zod_error_arg;
 
 #[cfg(feature = "serde")]
 use quote::quote;
-#[cfg(all(feature = "serde", feature = "kotlin"))]
+#[cfg(all(feature = "serde", any(feature = "kotlin", feature = "swift")))]
+use syn::Token;
+#[cfg(all(feature = "serde", any(feature = "kotlin", feature = "swift")))]
 use syn::punctuated::Punctuated;
 #[cfg(all(feature = "serde", feature = "kotlin"))]
-use syn::{Expr, ExprLit, ExprMacro, ExprMethodCall, Lit, Token};
+use syn::{Expr, ExprLit, ExprMacro, ExprMethodCall, Lit};
 
 /// The tokens `rust_violation` builds, as one line with the spacing `quote!` prints.
 #[cfg(feature = "serde")]
@@ -313,4 +317,91 @@ fn the_three_renderings_of_a_bound_hold_one_sentence() {
             "Dart does not write `{stated}`: {dart}"
         );
     }
+}
+
+/// The text of `argument` where it is a string literal, and its tokens where it is anything else.
+#[cfg(all(feature = "serde", feature = "swift"))]
+fn written(argument: &syn::Expr) -> String {
+    if let syn::Expr::Lit(syn::ExprLit {
+        lit: syn::Lit::Str(text),
+        attrs: _attrs,
+    }) = argument
+    {
+        text.value()
+    } else {
+        quote! { #argument }.to_string()
+    }
+}
+
+/// The sentence `rust_violation` writes for `bound` under `place`, read off the tokens it builds:
+/// the template with each argument written into it, the observed value as `observed`.
+#[cfg(all(feature = "serde", feature = "swift"))]
+fn rust_sentence_with_observed(bound: Bound<'_>, place: Option<&str>) -> String {
+    let built = rust_violation(bound, place, &quote! { observed });
+    if let Ok(owned) = syn::parse2::<syn::ExprMethodCall>(built.clone()) {
+        return written(&owned.receiver);
+    }
+    let formatted: syn::ExprMacro = syn::parse2(built).unwrap();
+    let arguments = formatted
+        .mac
+        .parse_body_with(Punctuated::<syn::Expr, Token![,]>::parse_terminated)
+        .unwrap();
+    let mut texts = arguments.iter().map(written);
+    let template = texts.next().unwrap();
+    texts.fold(template, |sentence, argument| {
+        sentence.replacen("{}", &argument, 1)
+    })
+}
+
+/// The sentence a Swift literal `swift_violation` wrote holds, the observed value as `observed`.
+#[cfg(all(feature = "serde", feature = "swift"))]
+fn swift_sentence(literal: &str) -> String {
+    literal
+        .trim_matches('"')
+        .replace("\\(observed)", "observed")
+        .replace("\\\"", "\"")
+        .replace("\\\\", "\\")
+}
+
+#[cfg(all(feature = "serde", feature = "swift"))]
+#[test]
+fn the_swift_sentence_is_the_one_rust_writes_for_each_bound() {
+    for bound in [
+        Bound::MaxItems(3),
+        Bound::MaxLength(50),
+        Bound::Maximum(120.0),
+        Bound::MinItems(1),
+        Bound::MinLength(3),
+        Bound::Minimum(0.5),
+        Bound::Pattern("^[a-z]+$"),
+        Bound::Pattern("^\"[0-9A-Za-z_]+\\.txt\"$"),
+    ] {
+        for place in [Some("itemLabel"), None] {
+            assert_eq!(
+                swift_sentence(&swift_violation(bound, place, "observed")),
+                rust_sentence_with_observed(bound, place)
+            );
+        }
+    }
+}
+
+#[cfg(all(feature = "serde", feature = "swift"))]
+#[test]
+fn a_swift_sentence_is_one_string_literal() {
+    assert_eq!(
+        swift_violation(
+            Bound::MinLength(1),
+            Some("label"),
+            "label.unicodeScalars.count"
+        ),
+        r#""'label': too short: minimum length is 1, got \(label.unicodeScalars.count)""#
+    );
+    assert_eq!(
+        swift_violation(Bound::Maximum(120.0), None, "age"),
+        r#""too large: maximum is 120, got \(age)""#
+    );
+    assert_eq!(
+        swift_violation(Bound::Pattern("^a\\.b\"$"), Some("slug"), "slug"),
+        r#""'slug': does not match pattern '^a\\.b\"$'""#
+    );
 }

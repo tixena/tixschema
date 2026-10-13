@@ -198,7 +198,7 @@ The crate uses optional features for minimal dependencies:
 - `chrono`: Enables chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`)
 - `indexmap`: Enables indexmap type support: `IndexMap` as a map, `IndexSet` as a list. It adds no dependency: the generated code names the types of the crate that declares them. With the feature off a type written `IndexMap<_, _>` or `IndexSet<_>` is refused at `exec_model_schema` with the feature named (`indexmap_feature_errors`), unless the crate declared a type of its own under the name above
 - `dart`: Enables Dart type generation with a JSON codec and a `validate()` on every type, and the Dart HTTP client
-- `swift`: Enables Swift type generation with a `Codable` codec
+- `swift`: Enables Swift type generation with a `Codable` codec, and `validate()` on every emitted type: the bounds and the checks, run as the Rust `validate()` runs them
 - `kotlin`: Enables Kotlin type generation with `kotlinx.serialization` annotations, and a `validate()` on every type that runs the bounds and calls the checks. A consuming Kotlin build declares two dependencies: the runtime library `org.jetbrains.kotlinx:kotlinx-serialization-json` and the Kotlin Gradle plugin `kotlin("plugin.serialization")`
 
 **Feature sets**: `web` (the default: `serde`, `zod`, `jsonschema`, `typescript`), `mobile` (`serde`, `dart`, `swift`, `kotlin`) and `mongo` (`mongodb`, `chrono`, `indexmap`). CI tests the powerset of the sets (`just test-sets`); `just test` runs the powerset of the plain features locally
@@ -1179,6 +1179,61 @@ declares a model type named `Vec` or `String` needs a test binary of its own
 (`tests/shadowed_vec_tests.rs`): the registry is keyed by ident for the whole crate, so a field
 written `Vec` in any later expansion would be read as that type.
 
+### 10. The Swift `validate()`
+
+Every Swift type the emitter writes has `public func validate() -> [String]`, which runs what the
+Rust `validate()` of the type runs, in its order and in its words. `README.md`'s "`validate()` in
+the Swift client" section is the consumer's view; this is what a change to the emitter has to keep.
+
+- **The emitter is handed what it reads.** `swift_suffix_tokens` in `src/model_schema.rs` builds a
+  `SwiftTypeArgs`: the `name` override, the type's `check` names, a brand's or an enum's
+  `minLength`, `maxLength` and `pattern`, the declared `default_types`, and `member_meta`, which is
+  `member_prop_meta` with the enum's arguments where the item is an enum. Every member's bounds
+  are read through it (`member_def`), so an enum's string check reaches in Swift the fields it
+  reaches in Rust.
+- **`src/features/swift/validate.rs` writes the method.** `member_rules` is one member: its bounds
+  (`bound_rules`), what the value it holds reports (`held_walk`), then the checks it names
+  (`check_rules`). A bound of the member's own stands in place of the walk, but on a list and on
+  the slot of an untagged variant (`Checked::runs_both`), which is `named_member_validate_body`'s
+  and `slot_validate_body`'s rule. `own_checks` are the type's, last. `method` writes the method
+  and the helpers its statements call, and `[]` for a type with no rule.
+- **One sentence source.** `swift_violation` in `src/bound_message.rs` is written from
+  `Bound::stated()`, as `rust_violation` is, and
+  `the_swift_sentence_is_the_one_rust_writes_for_each_bound` holds the two together.
+- **The unit of a length is the Unicode code point** (`unicodeScalars.count`), and a list is
+  counted by `count`. Rust measures a string with `len()`, its bytes: a test of a non-ASCII string
+  pins this client's own text.
+- **A range is written where a value can break it.** `Number::least` and `Number::most` answer no
+  literal for a bound outside the range of the field's integer type: `x < 0` on an unsigned
+  integer is a warning in Swift. A float is quoted back through `swiftSchemaPlain`, which drops
+  the `.0` Rust does not write.
+- **A pattern is respelled for Foundation.** `swift_pattern` writes `$` as `\z` and `\v` as
+  `\u000B`, which is what makes the engine read the portable pattern as the `regex` crate does. The
+  message quotes the pattern as written.
+- **A place is the steps serde writes.** A named member goes by `SwiftField::wire_name`, a
+  flattened one by none, a slot of a tuple by its position (`slot_rules`), the one slot of a tuple
+  struct by none (`tuple_struct_rules`), and a variant's payload by the variant's name with no tag
+  attribute, by the content key under one, and by none under a tag alone and in an untagged enum
+  (`resolve_variant_payload`'s `step`). `held_walk` adds the index of an item and the key of an
+  entry, a map being walked by its sorted keys.
+- **Nothing is shared between two emitted types, and nothing is declared beside them.**
+  `swiftSchemaUnder` and `swiftSchemaPlain` are private static functions written into each type
+  whose statements call them (`method`). A name a second emitted type would declare too does not
+  compile once the types are joined into one file.
+- **A named type is measured by what the language finds.** A brand over a string or a path
+  declares `swiftSchemaBoundText` (`brand_text_member`), a brand over a brand answering through the
+  one it holds, and a bound on a field typed with any named type reads that member, declared above
+  or below. The registry (`note`, `Text`) decides one thing: an alias of a string the emitter has
+  written is measured as the string. No bound is refused as the type is expanded: a type with no
+  such member is the Swift compiler's to refuse.
+- **A holder calls `validate()` on every named type it holds** but one the registry has noted as
+  running no rule (`validates`): a type declared below is called, the holder having no way to tell
+  it from one with a rule.
+- **A local of the method is never read as a property.** `property_read` reads a property named
+  `errors`, `held`, `index` or `key` through `self` (`TAKEN_BY_VALIDATE`), and `swift_property`
+  declares a field named `validate` as `validate_`, with its key kept. `swift_field_member` is
+  the same seam, so a service client reads the property under the name it was declared with.
+
 ### Generic Types and Zod Factories
 
 A Zod schema is a runtime value and TypeScript generics do not exist at runtime, so a generic
@@ -2038,6 +2093,9 @@ tixschema/
 │   │   │   ├── query.rs          # mongodb: Filter, Update and the path kinds
 │   │   │   ├── fields.rs         # mongodb: MongoFields, MONGO_FIELDS, one function per field
 │   │   │   └── operations.rs     # mongodb: OperationError, Read and the operations
+│   │   ├── swift.rs              # Swift types and their Codable codec
+│   │   ├── swift/
+│   │   │   └── validate.rs       # validate() of every Swift type: bounds, checks, holders
 │   │   └── model_schema_prop.rs  # Field attribute parsing
 │   └── generation/
 │       ├── mod.rs
@@ -2085,7 +2143,7 @@ tixschema/
 5. **Using Zod v3** → Generated schemas use v4 syntax and won't work
 6. **Testing without feature combinations** → May break in different feature configurations
 7. **Declaring `u64`/`usize` under `swift` or `kotlin`** → Refused at expansion: neither target has a mapping for an unsigned 64-bit or pointer-sized integer. Use `i64`, or `u32` where the range allows
-8. **A member named after a word Dart, Swift or Kotlin reserves** → Written in the form the language accepts, the wire key unchanged: `dart_member` adds a trailing underscore (Dart has no escape), `swift_member` and `kotlin_property_name` write backticks. Each list (`DART_RESERVED`, `SWIFT_RESERVED`, `KOTLIN_HARD_KEYWORDS`) holds only words the real compiler refused as a member name, so a name that compiled before is emitted as before. A longer identifier built from a member's name (`wireFor`, `forKeys`) reads it through `swift_bare`/`kotlin_bare`. The service clients name a method, a parameter and a request's member through the same seams (`dart_local`/`dart_field_member`, `swift_member`/`swift_field_member`, `kotlin_name`/`kotlin_property_name`), and every name the service code reads as text goes through `parse::written`, which drops a raw identifier's `r#`; `parse::field_ident` writes it back where a keyword-named field is read in Rust. The TypeScript emitters name a header or part argument through `message::parameter_name` and a placeholder's local through `message::local_name`, which add a trailing underscore to a word `tsc` refuses as a parameter or a local in a module (`REFUSED_AS_A_NAME`, each one measured)
+8. **A member named after a word Dart, Swift or Kotlin reserves** → Written in the form the language accepts, the wire key unchanged: `dart_member` adds a trailing underscore (Dart has no escape), `swift_member` and `kotlin_property_name` write backticks. `swift_property` also declares a field named `validate` as `validate_`, the method every emitted Swift type has. Each list (`DART_RESERVED`, `SWIFT_RESERVED`, `KOTLIN_HARD_KEYWORDS`) holds only words the real compiler refused as a member name, so a name that compiled before is emitted as before. A longer identifier built from a member's name (`wireFor`, `forKeys`) reads it through `swift_bare`/`kotlin_bare`. The service clients name a method, a parameter and a request's member through the same seams (`dart_local`/`dart_field_member`, `swift_member`/`swift_field_member`, `kotlin_name`/`kotlin_property_name`), and every name the service code reads as text goes through `parse::written`, which drops a raw identifier's `r#`; `parse::field_ident` writes it back where a keyword-named field is read in Rust. The TypeScript emitters name a header or part argument through `message::parameter_name` and a placeholder's local through `message::local_name`, which add a trailing underscore to a word `tsc` refuses as a parameter or a local in a module (`REFUSED_AS_A_NAME`, each one measured)
 9. **An argument or placeholder named after a local the generated code writes around it** (`path`, `headers`, `body`, `request`, `message`) → Never read as that local, and never a change to what a caller writes. The Rust transports hold a header or part argument in `parse::argument_local` (`argument_{name}`), bound there by a dispatcher and moved there by a client's method ahead of its own locals, and a path placeholder in `placeholder_{name}`. Each client emitter holds a `TAKEN_BY_A_METHOD` list of the locals and parameters its methods write: TypeScript (`message::parameter_name`) and Dart (`dart_parameter`) move a positional argument's name, Swift keeps the label and moves the name the method reads it by (`swift_parameter_declared`), Kotlin keeps the parameter and copies it first (`held_copies`, `kotlin_held`). A local added to an emitted method goes into that emitter's list
 
 ## Debugging Tips
