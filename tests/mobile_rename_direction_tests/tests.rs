@@ -100,8 +100,8 @@ fn the_dart_definition_names_each_agreed_key() {
     assert_names(
         &carriage_dart::dart_definition(),
         &[
-            "case 'byAir': return CarriageAir.fromJson(json);",
-            "case 'over-land': return CarriageOverLand.fromJson(json);",
+            "case 'byAir': return CarriageAir.fromJsonUnjudged(json);",
+            "case 'over-land': return CarriageOverLand.fromJsonUnjudged(json);",
             "'mode': 'byAir','flightCode': flight_code",
             "'mode': 'over-land','roadName': road_name",
         ],
