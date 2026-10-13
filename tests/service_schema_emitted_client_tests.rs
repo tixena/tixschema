@@ -85,6 +85,11 @@ mod run_dart_ws;
 #[path = "service_schema_emitted_client_tests/run_dart_ws_headers.rs"]
 mod run_dart_ws_headers;
 
+/// The `validate()` of each emitted Dart type, run beside Rust's own.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_validate.rs"]
+mod run_dart_validate;
+
 /// A service named after reserved words, called through each mobile client and read by the Rust
 /// dispatcher.
 #[cfg(test)]

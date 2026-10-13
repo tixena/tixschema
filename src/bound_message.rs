@@ -1,5 +1,7 @@
-//! The sentence one violated bound is reported in, built once and handed to both emitters.
+//! The sentence one violated bound is reported in, built once and handed to every emitter.
 
+#[cfg(feature = "dart")]
+use crate::features::dart::dart_escaped;
 #[cfg(feature = "zod")]
 use crate::utils::escape_js_double_quoted;
 #[cfg(feature = "serde")]
@@ -18,7 +20,7 @@ pub const VIOLATION_STEMS: [&str; 5] = [
 
 /// A bound a declaration can carry, at the one value it was written with. `MaxItems` and
 /// `MinItems` are `maxLength` and `minLength` written on a list, whose items they count.
-#[cfg(any(feature = "serde", feature = "zod"))]
+#[cfg(any(feature = "serde", feature = "zod", feature = "dart"))]
 #[derive(Clone, Copy)]
 pub enum Bound<'pattern> {
     MaxItems(usize),
@@ -31,7 +33,7 @@ pub enum Bound<'pattern> {
 }
 
 /// How a sentence measures the value that broke the bound, for the bounds that quote one back.
-#[cfg(any(feature = "serde", feature = "zod"))]
+#[cfg(any(feature = "serde", feature = "zod", feature = "dart"))]
 #[derive(Clone, Copy)]
 enum Observed {
     Count,
@@ -39,7 +41,7 @@ enum Observed {
     Value,
 }
 
-#[cfg(any(feature = "serde", feature = "zod"))]
+#[cfg(any(feature = "serde", feature = "zod", feature = "dart"))]
 impl Bound<'_> {
     /// What the sentence quotes back, or `None` for a bound whose report names only itself.
     const fn observed(self) -> Option<Observed> {
@@ -135,6 +137,22 @@ pub fn zod_error_arg(bound: Bound<'_>) -> String {
     }
 }
 
+/// The Dart string a generated `validate()` lists for `bound`: the sentence [`rust_violation`]
+/// writes.
+///
+/// `place` is what the message opens with between its quotes, as a Dart string holds it, or
+/// `None` for a value reported at no place. `observed` is the Dart expression the sentence quotes
+/// back, read where the string is written.
+#[cfg(feature = "dart")]
+pub fn dart_violation(bound: Bound<'_>, place: Option<&str>, observed: &str) -> String {
+    let stated = dart_escaped(&bound.stated(), '"');
+    let led = place.map_or_else(String::new, |named| format!("'{named}': "));
+    match bound.observed() {
+        Some(_) => format!("\"{led}{stated}, got ${{{observed}}}\""),
+        None => format!("\"{led}{stated}\""),
+    }
+}
+
 #[cfg(test)]
-#[cfg(any(feature = "serde", feature = "zod"))]
+#[cfg(any(feature = "serde", feature = "zod", feature = "dart"))]
 mod tests;

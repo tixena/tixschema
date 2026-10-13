@@ -162,7 +162,7 @@ use crate::features::jsonschema::{
 use crate::utils::json_argument_binding;
 
 #[cfg(feature = "dart")]
-use crate::features::dart::dart_schema_dispatch;
+use crate::features::dart::{DartTypeArgs, dart_schema_dispatch};
 
 #[cfg(feature = "swift")]
 use crate::features::swift::{refuses_swift, swift_schema_dispatch};
@@ -1493,7 +1493,7 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     let registering = item_schema_ident(&item).cloned();
     // Independent of the dispatch below: it reads its own borrow of `item` ahead of the move, and
     // needs none of the machinery the other surfaces share.
-    let dart_tokens = dart_suffix_tokens(&item, parsed_args.name_override.as_deref());
+    let dart_tokens = dart_suffix_tokens(&item, &parsed_args);
     // Same independence as the Dart tokens above; the refusal walks the item's own fields ahead
     // of the move too, since it names each one by its declared type.
     let swift_tokens = swift_suffix_tokens(&item, parsed_args.name_override.as_deref());
@@ -1531,13 +1531,28 @@ fn process_item(item: Item, args: &ModelSchemaArgs) -> TokenStream {
 
 /// The Dart tokens `item` earns, or nothing without the `dart` feature — always callable, so the
 /// tokens that follow the item's own expansion never need a `#[cfg]`-gated `let` of their own.
+/// The backend is handed what it reads of `args`: the name, the checks, the string check of a
+/// brand or of an enum, and each member's bounds as [`member_prop_meta`] holds them.
 #[cfg(feature = "dart")]
-fn dart_suffix_tokens(item: &Item, name_override: Option<&str>) -> TokenStream {
-    dart_schema_dispatch(item, name_override)
+fn dart_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
+    // An enum's own string check is the one that reaches its members.
+    let reaching = matches!(item, Item::Enum(_)).then_some(args);
+    dart_schema_dispatch(
+        item,
+        &DartTypeArgs {
+            check: &args.check,
+            default_types: &args.default_types,
+            max_length: args.max_length,
+            member_meta: &|member| member_prop_meta(member, reaching),
+            min_length: args.min_length,
+            name_override: args.name_override.as_deref(),
+            pattern: args.pattern.as_deref(),
+        },
+    )
 }
 
 #[cfg(not(feature = "dart"))]
-fn dart_suffix_tokens(_item: &Item, _name_override: Option<&str>) -> TokenStream {
+fn dart_suffix_tokens(_item: &Item, _args: &ModelSchemaArgs) -> TokenStream {
     TokenStream::new()
 }
 
@@ -15165,7 +15180,12 @@ fn member_prop_meta(field: &Field, enum_args: Option<&ModelSchemaArgs>) -> Model
     if meta.pattern.is_none() {
         meta.pattern.clone_from(&args.pattern);
     }
-    #[cfg(any(feature = "serde", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(
+        feature = "serde",
+        feature = "zod",
+        feature = "jsonschema",
+        feature = "dart"
+    ))]
     if meta.pattern != args.pattern {
         meta.enum_pattern.clone_from(&args.pattern);
     }

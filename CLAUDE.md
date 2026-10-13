@@ -197,7 +197,7 @@ The crate uses optional features for minimal dependencies:
 - `typescript`: Enables TypeScript type generation
 - `chrono`: Enables chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`)
 - `indexmap`: Enables indexmap type support: `IndexMap` as a map, `IndexSet` as a list. It adds no dependency: the generated code names the types of the crate that declares them. With the feature off a type written `IndexMap<_, _>` or `IndexSet<_>` is refused at `exec_model_schema` with the feature named (`indexmap_feature_errors`), unless the crate declared a type of its own under the name above
-- `dart`: Enables Dart type generation with a JSON codec, and the Dart HTTP client
+- `dart`: Enables Dart type generation with a JSON codec and a `validate()` on every type, and the Dart HTTP client
 - `swift`: Enables Swift type generation with a `Codable` codec
 - `kotlin`: Enables Kotlin type generation with `kotlinx.serialization` annotations. A consuming Kotlin build declares two dependencies: the runtime library `org.jetbrains.kotlinx:kotlinx-serialization-json` and the Kotlin Gradle plugin `kotlin("plugin.serialization")`
 
@@ -931,6 +931,68 @@ this is what a change has to keep.
   `validate()`.
 - A consumer's own `validate` on one filling is a duplicate definition (E0592).
   `struct_validate_method`'s doc comment holds the run.
+
+#### `validate()` on the Dart types
+
+Every type `src/features/dart.rs` writes has `List<String> validate()`, which runs what the Rust
+`validate()` of the type runs, in its order. `README.md`'s "`validate()` in Dart" section is the
+consumer's view; this is what a change has to keep.
+
+- **The dispatch is handed what it reads of the attribute.** `dart_suffix_tokens` builds a
+  `DartTypeArgs`: the name, the type's `check`, a brand's or an enum's `minLength`, `maxLength` and
+  `pattern`, `default_types`, and `member_meta`, which is `member_prop_meta` with the enum's
+  arguments for a member of an enum. `ModelSchemaArgs` stays private to `model_schema.rs`. Every
+  member's `FieldDef` takes its meta through `field_def_with_prop_meta`, so an enum's string check
+  reaches in Dart the fields `written_as_text` says it reaches.
+- **One sentence source.** `dart_violation` in `src/bound_message.rs` writes the Dart string from
+  `Bound::stated()`, as `rust_violation` and `zod_error_arg` do, and
+  `the_three_renderings_of_a_bound_hold_one_sentence` holds the three to it. `dart_escaped` writes
+  a text between two quotes of a Dart string, which reads `$` as an interpolation.
+- **A member** is `member_elements`: its own bounds (`bound_elements`), then what the value it
+  holds reports where the member writes no bound or is a list (`held_elements`), then its checks
+  (`check_elements`). That is the order `named_member_validate_body` and `then_checks` give Rust.
+  A type's own checks come last (`own_check_elements`).
+- **A check is called under the name the attribute writes**, a function of the consumer's that
+  answers its messages as a list: `List<String> withoutDuplicates(List<String> value)` for a
+  field's, which takes the field's own value and names no place,
+  `List<String> withinParcel(Parcel value)` for a type's, which is handed `this` and leads each
+  message with a place, and `List<String> withACode<CodeType>(Crate<CodeType> value)` for a type
+  with a parameter, written once. A missing function is the Dart compiler's to report.
+- **A length** is `runes.length` on a string, its Unicode code points, and `length` on a list. A
+  member typed with a named type is measured on `_boundText(...)`, and a `double` is quoted back
+  through `_number`, a whole one without `.0`. `_under` writes a place in front of a message, as
+  `nested_under` does in Rust. `validate_members` writes each helper into the type that calls it
+  and into no other: two emitted types share nothing.
+- **What a value holds** is walked over its `FieldDef`: an optional (`present`, an
+  `if (x case final held?)`), each level of a list and of a set (`item_elements`, the index a
+  step of the place), a map's values (the key's text from `dart_map_key_text`), a tuple's
+  positions (`slot_elements`) and a declared type, whose `validate()` is called with no knowledge
+  of what it declares. A type parameter is not reached. A binder is named by its depth
+  (`binder`): `held`, `index` and `entry`, then `held1`.
+- **A place is the steps serde writes on the way to the value** (`Step`): a key, a position in an
+  array, or nothing. `tagged_variant_steps` answers a variant's: the content key, nothing beside a
+  tag, and otherwise the name the variant is written under. A tuple struct that declares one slot,
+  an untagged variant and a `#[serde(flatten)]` member add no step, and a slot of several is its
+  position on the wire.
+- **A brand** (`brand_validate`) runs the type's string check on `value` under no place, then its
+  checks, and no `validate()` of what it wraps. Over a bare parameter it measures the declared
+  default (`declared_default`) behind `if (value case final String held)`. An alias runs its
+  target's `validate()` where the target is a declared type written as itself.
+- **A sealed enum** declares `List<String> validate();` on its base (`VALIDATE_DECLARED`), and
+  `variant_validate` writes each variant's override, the enum's checks last, each handed `this`.
+  A plain enum runs its checks.
+- **`validate` is a taken name** in `DART_FIELD_NAMES_TAKEN` and `DART_ENUM_NAMES_TAKEN`.
+- **The codec is untouched.** `validate()` is written after `toJson` in each class, and `fromJson`
+  calls nothing. `the_codec_of_each_type_is_the_text_it_was` in `tests/dart_tests/validate.rs`
+  holds every piece of the codec's text, in its order.
+- **The tests.** `tests/dart_tests/validate.rs` pins the text of each shape and calls no Rust
+  `validate()`, so it holds in a build with no schema surface. `tests/dart_tests/bounded_brands.rs`
+  pins a brand's string check, which such a build refuses.
+  `tests/service_schema_emitted_client_tests/run_dart_validate.rs` runs the emitted source under
+  the Dart SDK: a value under a named field, in a list, in a map and in an optional is compared
+  with what Rust's `validate()` answers of it, a slot and a variant's member are written out, and
+  the README's section is held to the text. `dart analyze` passes every shape whose codec it
+  passed before.
 
 ### 8. Branded Newtypes
 
