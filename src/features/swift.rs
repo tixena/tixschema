@@ -1,10 +1,12 @@
 //! Swift type and `Codable`-codec generation.
 
+mod preprocess;
 mod read;
 mod validate;
 
 use core::cell::RefCell;
 use core::fmt::Write as _;
+use core::iter;
 use std::collections::HashMap;
 
 use proc_macro2::TokenStream;
@@ -120,6 +122,8 @@ pub struct SwiftTypeArgs<'args> {
     pub min_length: Option<usize>,
     pub name_override: Option<&'args str>,
     pub pattern: Option<&'args str>,
+    /// The functions the type names on itself, in the order written: each takes the payload.
+    pub preprocess: &'args [FunctionName],
 }
 
 /// What every tagging of an enum is written from.
@@ -150,13 +154,27 @@ enum Wrapped {
 struct VariantPayload {
     /// What chooses the variant in an untagged enum: the bounds of its own members, on `payload`.
     bound: Vec<String>,
+    /// The one slot of the variant, with what its types are named from, where it names a function.
+    corrected: Option<(FieldDef, String)>,
     held: Option<String>,
     rules: Vec<String>,
+    /// Whether the payload is a type written for the variant that reads the keys the types around
+    /// it took.
+    takes_keys: bool,
     /// The one slot of the variant, with what its types are named from, where `validate()` runs
     /// the `validate()` of a value it holds.
     walked: Option<(FieldDef, String)>,
     /// Whether the payload is a type written for the variant.
     written: bool,
+}
+
+/// Where the payload of one variant is read from, and what its read is named from.
+struct VariantRead<'read> {
+    /// The key type of the container the payload is read from, where its key is written `.name`.
+    keys: &'read str,
+    source: &'read read::Source,
+    /// What the locals and the type written for the payload are named from.
+    stem: &'read str,
 }
 
 /// What a field's own leaf value needs beyond a plain `container.decode`/`.encode` call — the
@@ -199,12 +217,40 @@ struct SwiftFieldShape {
 }
 
 impl VariantPayload {
-    /// The statements that read the payload from `source` and hand it to `sink`: a type written
-    /// for the variant and a value `validate()` walks unjudged, any other as it was.
-    fn read(&self, source: &read::Source, sink: &dyn Fn(&str) -> String) -> String {
+    /// The statements that read the payload and hand it to `sink`: a type written for the variant
+    /// and a value `validate()` walks unjudged, a slot that names a function from what the
+    /// function answers, and any other as it was. A type written for such a slot joins `twins`.
+    fn read(
+        &self,
+        from: &VariantRead<'_>,
+        sink: &dyn Fn(&str) -> String,
+        twins: &mut Vec<String>,
+    ) -> String {
         let held = self.held.as_deref().unwrap_or_default();
+        let source = from.source;
         if self.written {
-            return read::held(source, held, sink);
+            return self
+                .takes_keys
+                .then(|| read::beside(source, held, sink))
+                .flatten()
+                .unwrap_or_else(|| read::held(source, held, sink));
+        }
+        if let Some((def, hint)) = &self.corrected {
+            return preprocess::member(
+                &preprocess::Member {
+                    def,
+                    functions: preprocess::functions(def),
+                    hint,
+                    keys: from.keys,
+                    plain: preprocess::Plain::Declared,
+                    real_type: held,
+                    stem: from.stem,
+                    walked: self.walked.is_some(),
+                },
+                source,
+                sink,
+                twins,
+            );
         }
         match &self.walked {
             Some((def, hint)) => {
@@ -613,6 +659,7 @@ fn tuple_struct(
     generic_params: &str,
     elements: &[(String, String)],
     reads: &str,
+    twins: Vec<String>,
     validate: &str,
 ) -> String {
     let slot_names: Vec<String> = (0..elements.len())
@@ -639,9 +686,14 @@ fn tuple_struct(
         write!(acc, "try container.encode({slot}); ").unwrap();
         acc
     });
-    let both = read::both(&format!(
-        "var container = try decoder.unkeyedContainer(); {reads}"
-    ));
+    let both = read::both(
+        &format!("var container = try decoder.unkeyedContainer(); {reads}"),
+        &preprocess::Written {
+            named: struct_name,
+            twins,
+            ..preprocess::Written::default()
+        },
+    );
     format!(
         "public struct {struct_name}{generic_params}: Codable, Sendable {{ \
          {decls} \
@@ -723,6 +775,7 @@ fn tuple_shape(elements: &[FieldDef], name_hint: &str, aux: &mut Vec<String>) ->
     let struct_name = format!("{name_hint}Tuple");
     let mut locals = read::Locals::default();
     let mut reads = String::new();
+    let mut twins = Vec::new();
     let rendered: Vec<(String, String)> = elements
         .iter()
         .enumerate()
@@ -731,7 +784,25 @@ fn tuple_shape(elements: &[FieldDef], name_hint: &str, aux: &mut Vec<String>) ->
             let element_type = swift_full_real_type(element, &hint, aux);
             let source = read::Source::Listed("container".to_owned());
             let slot = |held: &str| format!("slot{index} = {held}");
-            let read = if validate::walks(element, false) {
+            let walked = validate::walks(element, false);
+            let functions = preprocess::functions(element);
+            let read = if !functions.is_empty() {
+                preprocess::member(
+                    &preprocess::Member {
+                        def: element,
+                        functions,
+                        hint: &hint,
+                        keys: "",
+                        plain: preprocess::Plain::Declared,
+                        real_type: &element_type,
+                        stem: &format!("slot{index}"),
+                        walked,
+                    },
+                    &source,
+                    &slot,
+                    &mut twins,
+                )
+            } else if walked {
                 read::unjudged(element, &hint, &source, &slot, &mut locals)
             } else {
                 slot(&format!("try {}", source.plain(&element_type)))
@@ -746,6 +817,7 @@ fn tuple_shape(elements: &[FieldDef], name_hint: &str, aux: &mut Vec<String>) ->
         "",
         &rendered,
         &reads,
+        twins,
         &validate::method(&rules),
     ));
     direct_shape(struct_name)
@@ -984,31 +1056,38 @@ fn encode_conversion(field: &FieldDef, shape: &SwiftFieldShape, level: u8, expr:
 }
 
 /// The statements that read a field in the type's own read, ending on `self.{name} = ...`. A
-/// field `validate()` walks is read unjudged. `synthesized` says Swift wrote the read before the
-/// emitter did, where an optional member took an absent key as `nil` whether its key is required
-/// or not.
+/// field `validate()` walks is read unjudged, and one that names a function from what it
+/// answers. `synthesized` says Swift wrote the read before the emitter did, where an optional
+/// member took an absent key as `nil` whether its key is required or not.
 fn decode_statement(
     field: &SwiftField,
     container: &str,
     synthesized: bool,
+    taken: &str,
     locals: &mut read::Locals,
+    twins: &mut Vec<String>,
 ) -> String {
     let absent_is_nil = field.field_def.is_optional() && (synthesized || !field.required);
-    if validate::walks(&field.field_def, false) {
-        let source = if field.flatten {
-            read::Source::Decoder
-        } else {
-            read::Source::Keyed {
-                container: container.to_owned(),
-                key: format!(".{}", field.swift_name),
-                presence: if absent_is_nil {
-                    read::Presence::Nil
-                } else {
-                    read::Presence::Refused
-                },
-            }
-        };
-        let member = |held: &str| format!("self.{} = {held}", field.swift_name);
+    let source = if field.flatten {
+        read::Source::Beside(taken.to_owned())
+    } else {
+        read::Source::Keyed {
+            container: container.to_owned(),
+            key: format!(".{}", field.swift_name),
+            presence: if absent_is_nil {
+                read::Presence::Nil
+            } else {
+                read::Presence::Refused
+            },
+        }
+    };
+    let member = |held: &str| format!("self.{} = {held}", field.swift_name);
+    let walked = validate::walks(&field.field_def, false);
+    let functions = preprocess::functions(&field.field_def);
+    if !functions.is_empty() {
+        return corrected_field(field, functions, walked, &source, twins);
+    }
+    if walked || (field.flatten && preprocess::beside(&field.field_def)) {
         return read::unjudged(&field.field_def, &field.hint, &source, &member, locals);
     }
     if field.flatten {
@@ -1018,6 +1097,73 @@ fn decode_statement(
             real_type = field.real_type,
         );
     }
+    keyed_read(field, container, absent_is_nil)
+}
+
+/// The statements that read from `source` a field that names `functions`, from what they answer:
+/// as its own type, or as the type it is written as, turned into its own.
+fn corrected_field(
+    field: &SwiftField,
+    functions: &[FunctionName],
+    walked: bool,
+    source: &read::Source,
+    twins: &mut Vec<String>,
+) -> String {
+    let wire_array = swift_wire_array_type(&field.field_def, &field.shape);
+    let wire = if field.field_def.is_optional() {
+        format!("{wire_array}?")
+    } else {
+        wire_array
+    };
+    let convert = |local: &str| converted(field, local);
+    let plain = if matches!(field.shape.leaf_conversion, LeafConversion::None) {
+        preprocess::Plain::Declared
+    } else {
+        preprocess::Plain::Wire {
+            convert: &convert,
+            wire: &wire,
+        }
+    };
+    preprocess::member(
+        &preprocess::Member {
+            def: &field.field_def,
+            functions,
+            hint: &field.hint,
+            keys: "CodingKeys",
+            plain,
+            real_type: &field.real_type,
+            stem: swift_bare(&field.swift_name),
+            walked,
+        },
+        source,
+        &|held| format!("self.{} = {held}", field.swift_name),
+        twins,
+    )
+}
+
+/// What `local` holds, a field read as the type it is written as, turned into the field's own.
+fn converted(field: &SwiftField, local: &str) -> String {
+    if field.field_def.is_optional() {
+        let inner = decode_conversion(
+            &field.field_def,
+            &field.shape,
+            field.field_def.array_depth,
+            "$0",
+        );
+        format!("try {local}.map {{ {inner} }}")
+    } else {
+        decode_conversion(
+            &field.field_def,
+            &field.shape,
+            field.field_def.array_depth,
+            local,
+        )
+    }
+}
+
+/// The statements that read under its key a field `validate()` walks nothing of: as its own type,
+/// or as the type it is written as, turned into its own.
+fn keyed_read(field: &SwiftField, container: &str, absent_is_nil: bool) -> String {
     if matches!(field.shape.leaf_conversion, LeafConversion::None) {
         return if absent_is_nil {
             let inner = field
@@ -1056,25 +1202,10 @@ fn decode_statement(
         )
     };
     let local = format!("wire{}", swift_upper_camel(swift_bare(&field.swift_name)));
-    let convert = if field.field_def.is_optional() {
-        let inner = decode_conversion(
-            &field.field_def,
-            &field.shape,
-            field.field_def.array_depth,
-            "$0",
-        );
-        format!("try {local}.map {{ {inner} }}")
-    } else {
-        decode_conversion(
-            &field.field_def,
-            &field.shape,
-            field.field_def.array_depth,
-            &local,
-        )
-    };
     format!(
-        "let {local} = {read}; self.{} = {convert}",
-        field.swift_name
+        "let {local} = {read}; self.{} = {}",
+        field.swift_name,
+        converted(field, &local)
     )
 }
 
@@ -1263,14 +1394,16 @@ fn swift_coding_keys(fields: &[SwiftField], extra: &[(String, String)]) -> Strin
 }
 
 /// The body of a set of [`SwiftField`]s: properties, `CodingKeys`, the memberwise initializer,
-/// the two reads, `encode(to:)` only where synthesis cannot reach, then `validate`, the method
-/// every emitted type has. `extra_coding_keys` lists cases with no matching field (an
-/// internally-tagged variant's tag).
+/// the reads, `encode(to:)` only where synthesis cannot reach, then `validate`, the method every
+/// emitted type has. `extra_coding_keys` lists cases with no matching field (an
+/// internally-tagged variant's tag), and `corrects` the functions the struct `owner` names.
 fn struct_body_content(
     fields: &[SwiftField],
     extra_coding_keys: &[(String, String)],
     own_tag: Option<&(String, String)>,
     validate: &str,
+    owner: &str,
+    corrects: &[FunctionName],
 ) -> String {
     let props = fields.iter().fold(String::new(), |mut acc, field| {
         write!(
@@ -1292,9 +1425,25 @@ fn struct_body_content(
 
     let memberwise_init = memberwise_initializer(fields);
     let mut locals = read::Locals::default();
+    let mut twins = Vec::new();
+    let taken = preprocess::taken_with(
+        fields
+            .iter()
+            .filter(|field| !field.flatten)
+            .map(|field| field.wire_name.as_str()),
+    );
     let members = fields
         .iter()
-        .map(|field| decode_statement(field, "container", !unsynthesized, &mut locals))
+        .map(|field| {
+            decode_statement(
+                field,
+                "container",
+                !unsynthesized,
+                &taken,
+                &mut locals,
+                &mut twins,
+            )
+        })
         .collect::<Vec<_>>()
         .join("; ");
     let keyed = if fields.is_empty() {
@@ -1302,7 +1451,15 @@ fn struct_body_content(
     } else {
         "let container = try decoder.container(keyedBy: CodingKeys.self); "
     };
-    let reads = read::both(&format!("{keyed}{members}"));
+    let reads = read::both(
+        &format!("{keyed}{members}"),
+        &preprocess::Written {
+            beside: "",
+            named: owner,
+            own: corrects,
+            twins,
+        },
+    );
     let encode_method = if needs_encode {
         let statements = fields
             .iter()
@@ -1371,15 +1528,23 @@ fn field_rules(owner: &str, fields: &[SwiftField]) -> Vec<String> {
 
 /// The `public struct {export_name}{generics}: Codable, Sendable { ... }` a named-field struct or
 /// a struct-shaped variant payload earns, with the `DateTime` helpers appended when a field needs
-/// them. `rules` is what its `validate()` runs.
+/// them. `rules` is what its `validate()` runs, and `corrects` the functions it names on itself.
 fn struct_declaration(
     export_name: &str,
     generic_params: &str,
     fields: &[SwiftField],
     own_tag: Option<&(String, String)>,
     rules: &[String],
+    corrects: &[FunctionName],
 ) -> String {
-    let content = struct_body_content(fields, &[], own_tag, &validate::method(rules));
+    let content = struct_body_content(
+        fields,
+        &[],
+        own_tag,
+        &validate::method(rules),
+        export_name,
+        corrects,
+    );
     let helpers = datetime_helpers_for(export_name, fields);
     format!(
         "public struct {export_name}{generic_params}: Codable, Sendable {{ {content} }}; {helpers}"
@@ -1400,7 +1565,7 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
         return value_wrapper_tokens(
             &item_struct.ident,
             &item_struct.generics,
-            args.name_override,
+            args,
             &value_field,
             &Wrapped::Brand {
                 bounds,
@@ -1437,7 +1602,9 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
         &fields,
         own_tag.as_ref(),
         &rules,
+        args.preprocess,
     );
+    preprocess::note(&rust_ident, read::takes_keys(&body));
     let typealias = ident_typealias(&rust_ident, &export_name, &generic_params);
     let swift_source = if aux.is_empty() {
         format!("{body}{typealias}")
@@ -1466,13 +1633,13 @@ fn brand_value_field(
 fn value_wrapper_tokens(
     ident: &Ident,
     generics: &syn::Generics,
-    name_override: Option<&str>,
+    args: &SwiftTypeArgs<'_>,
     value_field: &FieldDef,
     wrapped: &Wrapped,
     rules: &[String],
 ) -> TokenStream {
     let rust_ident = ident.to_string();
-    let export_name = compute_item_export_name(&rust_ident, name_override);
+    let export_name = compute_item_export_name(&rust_ident, args.name_override);
     register_swift_name(&rust_ident, &export_name);
     let mut validate = validate::method(rules);
     match wrapped {
@@ -1539,13 +1706,15 @@ fn value_wrapper_tokens(
             wire_name: "value".to_owned(),
         }],
     );
-    // A tuple struct's `validate()` judges the tuple it wraps, and a brand's judges no value the
-    // one it wraps holds.
-    let reads = read::both(&if matches!(wrapped, Wrapped::Tuple) {
-        format!("self.value = try {real_type}(swiftSchemaUnjudged: decoder)")
-    } else {
-        format!("let container = try decoder.singleValueContainer(); self.value = {decode}")
-    });
+    let reads = read::both(
+        &wrapper_read(wrapped, value_field, &real_type, &decode),
+        &preprocess::Written {
+            named: &export_name,
+            own: args.preprocess,
+            ..preprocess::Written::default()
+        },
+    );
+    preprocess::note(&rust_ident, read::takes_keys(&reads));
     let body = format!(
         "public struct {export_name}{generic_params}: Codable, Sendable {{ \
          public let value: {real_type}; \
@@ -1562,6 +1731,30 @@ fn value_wrapper_tokens(
     };
 
     swift_module_tokens(&rust_ident, ident.span(), &swift_source)
+}
+
+/// The statements of the own read of a struct of one `value`: a tuple struct reads its tuple
+/// alone, and a brand reads its value as `decode` reads it. A value that takes the keys the types
+/// around it took is handed them, and judged there as its own read judges it.
+fn wrapper_read(
+    wrapped: &Wrapped,
+    value_field: &FieldDef,
+    real_type: &str,
+    decode: &str,
+) -> String {
+    if matches!(wrapped, Wrapped::Tuple) {
+        return format!("self.value = try {real_type}(swiftSchemaUnjudged: decoder)");
+    }
+    if !value_field.is_optional() && preprocess::beside(value_field) {
+        let taken = preprocess::taken_with(iter::empty());
+        return format!(
+            "self.value = try {real_type}(swiftSchemaUnjudged: decoder, swiftSchemaWithout: {taken}); \
+             let held = value.validate(); if !held.isEmpty {{ throw DecodingError.dataCorrupted(\
+             DecodingError.Context(codingPath: decoder.codingPath, \
+             debugDescription: held.joined(separator: \"; \"))) }}"
+        );
+    }
+    format!("let container = try decoder.singleValueContainer(); self.value = {decode}")
 }
 
 /// The Swift tokens for a non-branded tuple struct: the single-slot shape shares
@@ -1601,7 +1794,7 @@ fn tuple_struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>)
     value_wrapper_tokens(
         &item_struct.ident,
         &item_struct.generics,
-        args.name_override,
+        args,
         &tuple_field,
         &Wrapped::Tuple,
         &rules,
@@ -1623,6 +1816,10 @@ fn alias_swift_tokens(item_type: &ItemType, name_override: Option<&str>) -> Toke
     if validate::names_a_bounded_type(&target) {
         validate::note_bounded(&item_type.ident.to_string());
     }
+    preprocess::note(
+        &item_type.ident.to_string(),
+        !target.is_optional() && preprocess::beside(&target),
+    );
     let generic_params = swift_generic_params(&item_type.generics);
     let mut aux = Vec::new();
     let target_type = swift_full_real_type(&target, &export_name, &mut aux);
@@ -1651,8 +1848,10 @@ fn resolve_variant_payload(
     match classify_variant(variant) {
         VariantKind::Unit => VariantPayload {
             bound: Vec::new(),
+            corrected: None,
             held: None,
             rules: Vec::new(),
+            takes_keys: false,
             walked: None,
             written: false,
         },
@@ -1681,13 +1880,9 @@ fn named_payload(
         aux,
     );
     let members = field_rules(&struct_name, &fields);
-    aux.push(struct_declaration(
-        &struct_name,
-        "",
-        &fields,
-        None,
-        &members,
-    ));
+    let declared = struct_declaration(&struct_name, "", &fields, None, &members, &[]);
+    let takes_keys = read::takes_keys(&declared);
+    aux.push(declared);
     let bound = fields
         .iter()
         .flat_map(|field| {
@@ -1704,8 +1899,10 @@ fn named_payload(
         .collect();
     VariantPayload {
         bound,
+        corrected: None,
         held: Some(struct_name),
         rules: validate::payload_rules(export_name, step, !members.is_empty()),
+        takes_keys,
         walked: None,
         written: true,
     }
@@ -1735,11 +1932,20 @@ fn slot_payload(
     };
     let rules = validate::member_rules(export_name, &checked);
     let bound = validate::bound_alone(export_name, &checked);
-    let walked = validate::walks(&field_def, runs_both).then(|| (field_def.clone(), hint));
+    // Under a tag alone and under none, the slot is read from the decoder of the enum.
+    let handed_keys = shape.tag_attrs.content.is_none()
+        && (shape.tag_attrs.untagged || shape.tag_attrs.tag.is_some())
+        && preprocess::beside(&field_def);
+    let walked = (validate::walks(&field_def, runs_both) || handed_keys)
+        .then(|| (field_def.clone(), hint.clone()));
+    let corrected =
+        (!preprocess::functions(&field_def).is_empty()).then(|| (field_def.clone(), hint));
     VariantPayload {
         bound,
+        corrected,
         held: Some(held),
         rules,
+        takes_keys: false,
         walked,
         written: false,
     }
@@ -1794,8 +2000,10 @@ fn slots_payload(
     let hint = format!("{export_name}{}", variant.ident);
     VariantPayload {
         bound,
+        corrected: None,
         held: Some(swift_full_real_type(&tuple_field, &hint, aux)),
         rules: validate::payload_rules(export_name, step, checked),
+        takes_keys: false,
         walked: None,
         written: true,
     }
@@ -1815,8 +2023,9 @@ fn plain_enum_swift_source(
     item_enum: &ItemEnum,
     rust_ident: &str,
     export_name: &str,
-    checks: &[FunctionName],
+    args: &SwiftTypeArgs<'_>,
 ) -> String {
+    let checks = args.check;
     let rule = container_rename_rule(&item_enum.attrs);
     let cases = item_enum
         .variants
@@ -1831,21 +2040,29 @@ fn plain_enum_swift_source(
         });
     validate::note(rust_ident, None, !checks.is_empty());
     let validate = validate::method(&validate::own_checks(checks));
-    // With no check there is nothing to judge, and the read stays the one Swift synthesizes.
-    let reads = if checks.is_empty() {
+    // With no check and no function there is nothing to judge or to call, and the read stays the
+    // one Swift synthesizes.
+    let reads = if checks.is_empty() && args.preprocess.is_empty() {
         format!(
             "public {} {{ try self.init(from: decoder) }}; ",
             read::UNJUDGED
         )
     } else {
-        read::both(&format!(
-            "let container = try decoder.singleValueContainer(); \
-             let raw = try container.decode(String.self); \
-             guard let read = {export_name}(rawValue: raw) else {{ \
-             throw DecodingError.dataCorruptedError(in: container, debugDescription: \
-             \"Cannot initialize {export_name} from invalid String value \\(raw)\") }}; \
-             self = read"
-        ))
+        read::both(
+            &format!(
+                "let container = try decoder.singleValueContainer(); \
+                 let raw = try container.decode(String.self); \
+                 guard let read = {export_name}(rawValue: raw) else {{ \
+                 throw DecodingError.dataCorruptedError(in: container, debugDescription: \
+                 \"Cannot initialize {export_name} from invalid String value \\(raw)\") }}; \
+                 self = read"
+            ),
+            &preprocess::Written {
+                named: export_name,
+                own: args.preprocess,
+                ..preprocess::Written::default()
+            },
+        )
     };
     let body = format!(
         "public enum {export_name}: String, Codable, Sendable {{ {cases}{reads}{validate} }}"
@@ -1859,7 +2076,7 @@ fn plain_enum_swift_source(
 /// rather than serde's bare `{"Foo": payload}`, so this writes the codec by hand instead.
 fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> String {
     let &EnumShape {
-        args: _args,
+        args,
         export_name,
         generic_params,
         item_enum,
@@ -1874,6 +2091,7 @@ fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
     let mut object_decode_arms = String::new();
     let mut encode_arms = String::new();
     let mut ruled: Vec<(String, Vec<String>)> = Vec::new();
+    let mut twins = Vec::new();
     for variant in &item_enum.variants {
         let rust_name = variant.ident.to_string();
         let case_name = swift_member(&RenameRule::CamelCase.apply_to_variant(&rust_name));
@@ -1889,7 +2107,16 @@ fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
                 key: "key".to_owned(),
                 presence: read::Presence::Known,
             };
-            let read = payload.read(&source, &|held| format!("self = .{case_name}({held})"));
+            let from = VariantRead {
+                keys: "",
+                source: &source,
+                stem: swift_bare(&case_name),
+            };
+            let read = payload.read(
+                &from,
+                &|held| format!("self = .{case_name}({held})"),
+                &mut twins,
+            );
             write!(object_decode_arms, "case \"{wire_tag}\": {read}; ").unwrap();
             write!(
                 encode_arms,
@@ -1914,15 +2141,23 @@ fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
          var stringValue: String; init?(stringValue: String) { self.stringValue = stringValue }; \
          var intValue: Int? { nil }; init?(intValue: Int) { nil } };"
         .to_owned();
-    let reads = read::both(&format!(
-        "if let single = try? decoder.singleValueContainer(), let tag = try? single.decode(String.self) {{ \
-         switch tag {{ {unit_decode_arms} default: break }} }}; \
-         let container = try decoder.container(keyedBy: SwiftSchemaExternalCodingKey.self); \
-         guard let key = container.allKeys.first else {{ \
-         throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \"empty object for {export_name}\")) }}; \
-         switch key.stringValue {{ {object_decode_arms} \
-         default: throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \"unknown tag \\(key.stringValue)\")) }}"
-    ));
+    let reads = read::both(
+        &format!(
+            "if let single = try? decoder.singleValueContainer(), let tag = try? single.decode(String.self) {{ \
+             switch tag {{ {unit_decode_arms} default: break }} }}; \
+             let container = try decoder.container(keyedBy: SwiftSchemaExternalCodingKey.self); \
+             guard let key = container.allKeys.first else {{ \
+             throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \"empty object for {export_name}\")) }}; \
+             switch key.stringValue {{ {object_decode_arms} \
+             default: throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \"unknown tag \\(key.stringValue)\")) }}"
+        ),
+        &preprocess::Written {
+            beside: "",
+            named: export_name,
+            own: args.preprocess,
+            twins,
+        },
+    );
     let encode_method = format!(
         "public func encode(to encoder: Encoder) throws {{ switch self {{ {encode_arms} }} }};"
     );
@@ -1939,7 +2174,7 @@ fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
 /// struct decodes/encodes through the *same* `decoder`/`encoder` the enum's own tag read from.
 fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> String {
     let &EnumShape {
-        args: _args,
+        args,
         export_name,
         generic_params,
         item_enum,
@@ -1954,6 +2189,9 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
     let mut decode_arms = String::new();
     let mut encode_arms = String::new();
     let mut ruled: Vec<(String, Vec<String>)> = Vec::new();
+    let mut twins = Vec::new();
+    // A payload is read from the object the tag is in, and is not handed the tag.
+    let source = read::Source::Beside(preprocess::taken_with(iter::once(tag_key)));
     for variant in &item_enum.variants {
         let rust_name = variant.ident.to_string();
         let case_name = swift_member(&RenameRule::CamelCase.apply_to_variant(&rust_name));
@@ -1963,9 +2201,16 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
         ruled.push((case_name.clone(), payload.rules.clone()));
         cases.push_str(&variant_case(&case_name, payload.held.as_deref()));
         if payload.held.is_some() {
-            let read = payload.read(&read::Source::Decoder, &|held| {
-                format!("self = .{case_name}({held})")
-            });
+            let from = VariantRead {
+                keys: "",
+                source: &source,
+                stem: swift_bare(&case_name),
+            };
+            let read = payload.read(
+                &from,
+                &|held| format!("self = .{case_name}({held})"),
+                &mut twins,
+            );
             write!(decode_arms, "case \"{wire_tag}\": {read}; ").unwrap();
             write!(
                 encode_arms,
@@ -1985,11 +2230,19 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
     let tag_coding_key = format!(
         "private enum SwiftSchemaTagCodingKeys: String, CodingKey {{ case swiftSchemaTag = \"{tag_key}\" }};"
     );
-    let reads = read::both(&format!(
-        "let container = try decoder.container(keyedBy: SwiftSchemaTagCodingKeys.self); \
-         let tag = try container.decode(String.self, forKey: .swiftSchemaTag); \
-         switch tag {{ {decode_arms} default: throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \"unknown tag \\(tag)\")) }}"
-    ));
+    let reads = read::both(
+        &format!(
+            "let container = try decoder.container(keyedBy: SwiftSchemaTagCodingKeys.self); \
+             let tag = try container.decode(String.self, forKey: .swiftSchemaTag); \
+             switch tag {{ {decode_arms} default: throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \"unknown tag \\(tag)\")) }}"
+        ),
+        &preprocess::Written {
+            beside: "",
+            named: export_name,
+            own: args.preprocess,
+            twins,
+        },
+    );
     let encode_method = format!(
         "public func encode(to encoder: Encoder) throws {{ \
          var container = encoder.container(keyedBy: SwiftSchemaTagCodingKeys.self); \
@@ -2008,7 +2261,7 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
 /// encodes through the `content` key directly, needing no shared-decoder trick.
 fn adjacent_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> String {
     let &EnumShape {
-        args: _args,
+        args,
         export_name,
         generic_params,
         item_enum,
@@ -2024,6 +2277,7 @@ fn adjacent_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
     let mut decode_arms = String::new();
     let mut encode_arms = String::new();
     let mut ruled: Vec<(String, Vec<String>)> = Vec::new();
+    let mut twins = Vec::new();
     for variant in &item_enum.variants {
         let rust_name = variant.ident.to_string();
         let case_name = swift_member(&RenameRule::CamelCase.apply_to_variant(&rust_name));
@@ -2038,7 +2292,16 @@ fn adjacent_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
                 key: ".swiftSchemaContent".to_owned(),
                 presence: read::Presence::Refused,
             };
-            let read = payload.read(&source, &|held| format!("self = .{case_name}({held})"));
+            let from = VariantRead {
+                keys: "SwiftSchemaAdjacentCodingKeys",
+                source: &source,
+                stem: swift_bare(&case_name),
+            };
+            let read = payload.read(
+                &from,
+                &|held| format!("self = .{case_name}({held})"),
+                &mut twins,
+            );
             write!(decode_arms, "case \"{wire_tag}\": {read}; ").unwrap();
             write!(
                 encode_arms,
@@ -2059,11 +2322,19 @@ fn adjacent_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
         "private enum SwiftSchemaAdjacentCodingKeys: String, CodingKey {{ \
          case swiftSchemaContent = \"{content_key}\", swiftSchemaTag = \"{tag_key}\" }};"
     );
-    let reads = read::both(&format!(
-        "let container = try decoder.container(keyedBy: SwiftSchemaAdjacentCodingKeys.self); \
-         let tag = try container.decode(String.self, forKey: .swiftSchemaTag); \
-         switch tag {{ {decode_arms} default: throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \"unknown tag \\(tag)\")) }}"
-    ));
+    let reads = read::both(
+        &format!(
+            "let container = try decoder.container(keyedBy: SwiftSchemaAdjacentCodingKeys.self); \
+             let tag = try container.decode(String.self, forKey: .swiftSchemaTag); \
+             switch tag {{ {decode_arms} default: throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \"unknown tag \\(tag)\")) }}"
+        ),
+        &preprocess::Written {
+            beside: "",
+            named: export_name,
+            own: args.preprocess,
+            twins,
+        },
+    );
     let encode_method = format!(
         "public func encode(to encoder: Encoder) throws {{ \
          var container = encoder.container(keyedBy: SwiftSchemaAdjacentCodingKeys.self); \
@@ -2082,7 +2353,7 @@ fn adjacent_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
 /// a model a variant holds choose nothing: `init(from:)` judges the variant taken.
 fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> String {
     let &EnumShape {
-        args: _args,
+        args,
         export_name,
         generic_params,
         item_enum,
@@ -2096,6 +2367,9 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
     let mut decode_attempts = String::new();
     let mut encode_arms = String::new();
     let mut ruled: Vec<(String, Vec<String>)> = Vec::new();
+    let mut twins = Vec::new();
+    // A payload is read from the decoder of the enum, and is handed the keys the enum is.
+    let source = read::Source::Beside(preprocess::taken_with(iter::empty()));
     for variant in &item_enum.variants {
         let rust_name = variant.ident.to_string();
         let case_name = swift_member(&RenameRule::CamelCase.apply_to_variant(&rust_name));
@@ -2104,21 +2378,14 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
         cases.push_str(&variant_case(&case_name, payload.held.as_deref()));
         if let Some(ty) = &payload.held {
             let named = variant.ident.unraw();
-            let returned = payload.read(&read::Source::Decoder, &|held| format!("return {held}"));
-            // One expression is tried where it is written, and a read of several statements in a
-            // function of its own.
-            let tried = match returned.strip_prefix("return try ") {
-                Some(read) if !returned.contains("; ") => read.to_owned(),
-                _ => {
-                    write!(
-                        choosers,
-                        "private static func swiftSchemaRead{named}(_ decoder: Decoder) throws \
-                         -> {ty} {{ {returned} }}; "
-                    )
-                    .unwrap();
-                    format!("{export_name}.swiftSchemaRead{named}(decoder)")
-                }
+            let from = VariantRead {
+                keys: "",
+                source: &source,
+                stem: swift_bare(&case_name),
             };
+            let returned = payload.read(&from, &|held| format!("return {held}"), &mut twins);
+            let reader = format!("swiftSchemaRead{named}");
+            let tried = tried_read(&returned, export_name, &reader, ty, &mut choosers);
             let holds = if payload.bound.is_empty() {
                 String::new()
             } else {
@@ -2154,9 +2421,17 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
             .unwrap();
         }
     }
-    let reads = read::both(&format!(
-        "{decode_attempts}throw DecodingError.typeMismatch({export_name}.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \"no untagged member matched\"))"
-    ));
+    let reads = read::both(
+        &format!(
+            "{decode_attempts}throw DecodingError.typeMismatch({export_name}.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \"no untagged member matched\"))"
+        ),
+        &preprocess::Written {
+            beside: &choosers,
+            named: export_name,
+            own: args.preprocess,
+            twins,
+        },
+    );
     let encode_method = format!(
         "public func encode(to encoder: Encoder) throws {{ switch self {{ {encode_arms} }} }};"
     );
@@ -2168,6 +2443,36 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
     );
     let typealias = ident_typealias(rust_ident, export_name, generic_params);
     format!("{body}{typealias}")
+}
+
+/// The expression the untagged enum `owner` tries a variant's payload with, of type `read_as`,
+/// where `returned` is the statements that read it: one expression is tried where it is written,
+/// and a read of several statements in the function `reader`, added to `choosers` and handed the
+/// keys taken where its statements name them.
+fn tried_read(
+    returned: &str,
+    owner: &str,
+    reader: &str,
+    read_as: &str,
+    choosers: &mut String,
+) -> String {
+    if let Some(read) = returned.strip_prefix("return try ")
+        && !returned.contains("; ")
+    {
+        return read.to_owned();
+    }
+    let (taking, taken) = if read::names_taken(returned) {
+        (", _ taken: [String]", ", taken")
+    } else {
+        ("", "")
+    };
+    write!(
+        choosers,
+        "private static func {reader}(_ decoder: Decoder{taking}) throws -> {read_as} \
+         {{ {returned} }}; "
+    )
+    .unwrap();
+    format!("{owner}.{reader}(decoder{taken})")
 }
 
 /// An enum's `validate()`: the rules of the case the value holds, then the enum's own checks.
@@ -2201,7 +2506,7 @@ fn enum_swift_tokens(item_enum: &ItemEnum, args: &SwiftTypeArgs<'_>) -> TokenStr
     };
     let mut aux = Vec::new();
     let swift_source = if is_plain_enum(item_enum) && writes_bare_variant_names {
-        plain_enum_swift_source(item_enum, &rust_ident, &export_name, args.check)
+        plain_enum_swift_source(item_enum, &rust_ident, &export_name, args)
     } else if tag_attrs.untagged {
         untagged_enum_swift_source(&shape, &mut aux)
     } else if tag_attrs.tag.is_some() && tag_attrs.content.is_some() {
@@ -2211,6 +2516,7 @@ fn enum_swift_tokens(item_enum: &ItemEnum, args: &SwiftTypeArgs<'_>) -> TokenStr
     } else {
         external_tagged_enum_swift_source(&shape, &mut aux)
     };
+    preprocess::note(&rust_ident, read::takes_keys(&swift_source));
     let full_source = if aux.is_empty() {
         swift_source
     } else {

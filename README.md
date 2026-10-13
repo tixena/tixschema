@@ -4876,7 +4876,7 @@ beside `preprocess`; the two have no defined order.
 
 ### Preprocessing (`preprocess`)
 
-`preprocess = ["name", ...]` names functions of your own that correct a payload before a value is read from it: a label written with spaces at its ends, a key an older writer left out. It is written on a type, in `#[model_schema(...)]`, and on a field, in `#[model_schema_prop(...)]`. A name is written once, and every read calls a function under it: Rust the snake case of the name, `withoutFragile` as `without_fragile`, and the Zod schema and [the Dart client](#a-preprocess-in-the-dart-client) the name as written.
+`preprocess = ["name", ...]` names functions of your own that correct a payload before a value is read from it: a label written with spaces at its ends, a key an older writer left out. It is written on a type, in `#[model_schema(...)]`, and on a field, in `#[model_schema_prop(...)]`. A name is written once, and every read calls a function under it: Rust the snake case of the name, `withoutFragile` as `without_fragile`, and the Zod schema, [the Dart client](#a-preprocess-in-the-dart-client) and [the Swift client](#preprocess-in-the-swift-client) the name as written.
 
 **The key is a last resort.** A function of yours runs on every read of the type, on a payload no schema describes. Reach for it where the payload cannot be corrected where it is written, and where a serde `default`, an `Option` or an `alias` does not say what you mean.
 
@@ -5040,7 +5040,9 @@ A type that holds another reads it through that type's functions wherever it hol
 
 **In [the Dart client](#a-preprocess-in-the-dart-client)**, in the read of every type `dart_definition()` writes, under the `dart` feature.
 
-**Nowhere else.** Writing calls no function, `Serialize` being serde's derive, and neither does `validate()`: a value built in code is never read, so nothing corrects it. The JSON Schema describes the value the type is read to and calls no function. The Swift and Kotlin types read the key and are written as they are without it.
+**In the Swift client**, in every read of a type `swift_definition()` writes: [`preprocess` in the Swift client](#preprocess-in-the-swift-client) is what it calls and what it is handed.
+
+**Nowhere else.** Writing calls no function, `Serialize` being serde's derive, and neither does `validate()`: a value built in code is never read, so nothing corrects it. The JSON Schema describes the value the type is read to and calls no function. The Kotlin types read the key and are written as they are without it.
 
 #### A key the payload does not hold
 
@@ -5158,6 +5160,81 @@ With those two functions, `Parcel.fromJson` and `Manifest.fromJson` answer for t
 - **The service clients read a reply through `fromJson`**, so a reply is corrected as any other payload is.
 - **A name with no function does not compile**, and the Dart compiler reports the call: `Error: Method not found: 'trimmed'.`
 - **A member of the type hides a function of its name** inside the class, as it hides a [check](#the-functions-you-write-in-dart): a `preprocess` named `label` on a type with a field `label` is reported as a name with no function. The names a read declares itself hide none: `json`, `payload`, `map`, `tag`, `read` and the converter it takes for a type parameter, `codeTypeFromJson`, are numbered where a function is called under one, `json2`.
+
+#### `preprocess` in the Swift client
+
+Every read of a type `swift_definition()` writes calls the functions the type and its members name: `init(from:)`, [`init(swiftSchemaUnjudged:)`](#a-swift-read-refuses-what-validate-refuses), and the service clients, which read a reply through `init(from:)`. Every shape takes the key on the type: a struct, a tuple struct, a unit struct, the wrapper of a [branded newtype](#branded-newtypes), an enum under every tagging and a plain one, and a type with a parameter at every filling. A member takes it in a struct, in the named members and the slots of a variant, and in the slots of a tuple struct.
+
+**The key is a last resort in Swift as it is in Rust.** A function of yours runs on every read of the type, on a payload no type describes, and you write it again in each language that reads the type.
+
+The two functions of the example in Swift, each under the name the attribute writes:
+
+```swift
+func trimmed(_ payload: Any) -> Any {
+  guard let text = payload as? String else { return payload }
+  return text.trimmingCharacters(in: .whitespaces)
+}
+
+func withoutFragile(_ payload: Any) -> Any {
+  guard var members = payload as? [String: Any], members["fragileItemCodes"] == nil else { return payload }
+  members["fragileItemCodes"] = [String]()
+  return members
+}
+```
+
+| | Swift |
+|---|---|
+| A field's function | `func trimmed(_ payload: Any) -> Any` |
+| A type's function | `func withoutFragile(_ payload: Any) -> Any` |
+
+A function is any function of the module the generated types are compiled in, and a type that names one needs `import Foundation`. A name with no function does not build:
+
+```text
+error: cannot find 'trimmed' in scope
+```
+
+- **The payload arrives as the Swift values of a JSON value**: an object as a `[String: Any]`, a list as an `[Any]`, a text as a `String`, `true` and `false` as a `Bool`, a number an `Int64` holds as an `Int64`, any other number as a `Double`, and `null` as an `NSNull`. `5`, `2.0` and `1e3` are each an `Int64`. It is untyped, as in Rust: `{"label": 5}` reaches `trimmed` as the `Int64` it is.
+- **A function answers a payload in the same values**, and answers a payload it has nothing to correct in as it is. An answer that is no JSON value, a `Date` or a value of a type of your own, is thrown as `DecodingError.dataCorrupted`, `a preprocess answered a value that is not JSON`.
+- **A function is not called for a key the payload does not hold.** The key is read as it is with no function named: `keyNotFound` for a member the type requires, `nil` for an optional one. A `null` the payload holds is a payload, and the function is handed an `NSNull`.
+- **Several functions run in the order written**, each over the answer of the one before: `preprocess = ["unwrapped", "withoutFragile"]` calls `withoutFragile(unwrapped(payload))`.
+- **A type with a parameter writes its function once**, the payload having no type.
+- **The order of one read is [the Rust read's](#the-order-of-one-read)**: the type's functions on the whole payload, each member's as that member is read, then the value is built, and `init(from:)` calls `validate()` on it. A bound and a check judge what the functions answered.
+
+The Swift read answers the sample as the Rust read does:
+
+| # | Payload | A Swift read |
+|---|---|---|
+| 1 | `{"label":"  A  ","itemCodeList":["x"],"fragileItemCodes":["x"]}` | read; `label` is `"A"` |
+| 2 | `{"label":"   ","itemCodeList":["x"],"fragileItemCodes":["x"]}` | thrown, `DecodingError.dataCorrupted`: `'label': too short: minimum length is 1, got 0` |
+| 3 | `{"label":"A","itemCodeList":["x"]}` | read; `fragileItemCodes` is `[]` |
+| 5 | row 1 inside `Manifest`, under `parcel` | read; `parcel.label` is `"A"` |
+
+**What the emitter writes** for `Parcel`, beside its properties, its `CodingKeys`, its memberwise initializer and its `init(from:)`:
+
+```swift
+private init(swiftSchemaCorrected decoder: Decoder) throws {
+  let container = try decoder.container(keyedBy: CodingKeys.self)
+  self.fragileItemCodes = try container.decode([String].self, forKey: .fragileItemCodes)
+  self.itemCodeList = try container.decode([String].self, forKey: .itemCodeList)
+  let labelPayload = try container.decode(SwiftSchemaPayload.self, forKey: .label).value
+  self.label = try SwiftSchemaPayload.read(String.self, from: trimmed(labelPayload), at: container.codingPath + [CodingKeys.label])
+}
+
+public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws {
+  self = try SwiftSchemaPayload.read(SwiftSchemaRead.self, from: withoutFragile(try SwiftSchemaPayload(from: decoder, without: taken).value), at: decoder.codingPath).value
+}
+
+public init(swiftSchemaUnjudged decoder: Decoder) throws {
+  try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: [])
+}
+```
+
+- **`SwiftSchemaPayload` is a private type written into each type that names a function**, on itself or on a member, and into no other: nothing is shared between two emitted types. It reads any JSON value from a `Decoder`, and reads a type back from what a function answers, through `JSONSerialization` and a `JSONDecoder` of its own.
+- **A member's function is called in the type's own read**, on the payload of the member's key, and the member is read from what it answers.
+- **A type's function is called by `init(swiftSchemaUnjudged:)`**, which reads the value from what it answers through the private `init(swiftSchemaCorrected:)`, the read of a payload the functions have already corrected. `SwiftSchemaRead` is the private type that hands that initializer a decoder.
+- **A type that holds another reads it through that type's functions** wherever it holds it: in a field, an optional, a list, a map's value, a tuple, a flattened member and the payload of a variant. A model the `validate()` of its holder walks is read with no judgement where its member names a function too, through a private type written for the member, `SwiftSchemaReadFirstParcel` for `firstParcel`, so the whole value is still judged once.
+- **A payload the read refuses once corrected is reported at the coding path of the value**, under the path of whatever holds the type: `label` for a parcel read alone, and `1`, `parcel`, `label` for the parcel of the second manifest of a list.
+- **A function is handed the keys no type around its own took**, as [the Rust read hands them](#where-a-function-is-called). The function of a type flattened into a holder is not handed the keys of the holder's own members, nor those of a holder of that holder, and the function of a type a variant holds under a tag alone is not handed the tag. `init(swiftSchemaUnjudged:swiftSchemaWithout:)` is the read that takes those keys. It is written for a type that names a function on itself, and for every type that reads one from its own decoder: a holder that flattens it, an enum that holds it under a tag alone or with no tag, and a brand over it. The type is declared above the type that reads it: declared below, or held under a type parameter, it is read from the whole object of its holder.
 
 ### Optional TypeScript Keys (`ts_optional`)
 

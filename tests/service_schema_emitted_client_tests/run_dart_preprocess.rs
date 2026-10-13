@@ -6,10 +6,6 @@
 
 #![cfg(feature = "dart")]
 
-/// The models of `tests/pattern_preprocess_tests/`, with the function each `preprocess` names.
-#[path = "../pattern_preprocess_tests/models.rs"]
-mod models;
-
 use alloc::collections::BTreeMap;
 use core::cell::RefCell;
 use core::fmt::Write as _;
@@ -22,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tixschema::{model_schema, service_schema};
 
-use self::models::{
+use super::preprocess_models::{
     POSITIONS, Parcel, Pinned, SAMPLE, SAMPLE_ROWS, Tagged, carrier_dart, closed_dock_dart,
     consigned_dart, crate_dart, crated_dart, delivery_dart, either_dart, grade_dart, handover_dart,
     label_dart, manifest_dart, node_dart, parcel_dart, pinned_dart, positions, reference_dart,

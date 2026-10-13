@@ -1560,7 +1560,8 @@ fn dart_suffix_tokens(_item: &Item, _args: &ModelSchemaArgs) -> TokenStream {
 
 /// The Swift tokens `item` earns, or nothing without the `swift` feature — the same always-
 /// callable shape as [`dart_suffix_tokens`]. The emitter is handed the arguments it reads: the
-/// name, the checks, a brand's or an enum's string check, and each member's own bounds.
+/// name, the checks, the functions a `preprocess` names, a brand's or an enum's string check,
+/// and each member's own bounds.
 #[cfg(feature = "swift")]
 fn swift_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
     let enum_args = matches!(item, Item::Enum(_)).then_some(args);
@@ -1574,6 +1575,7 @@ fn swift_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             min_length: args.min_length,
             name_override: args.name_override.as_deref(),
             pattern: args.pattern.as_deref(),
+            preprocess: &args.preprocess,
         },
     )
 }

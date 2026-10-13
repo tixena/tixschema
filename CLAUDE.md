@@ -198,7 +198,7 @@ The crate uses optional features for minimal dependencies:
 - `chrono`: Enables chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`)
 - `indexmap`: Enables indexmap type support: `IndexMap` as a map, `IndexSet` as a list. It adds no dependency: the generated code names the types of the crate that declares them. With the feature off a type written `IndexMap<_, _>` or `IndexSet<_>` is refused at `exec_model_schema` with the feature named (`indexmap_feature_errors`), unless the crate declared a type of its own under the name above
 - `dart`: Enables Dart type generation with a JSON codec whose read calls each `preprocess` and refuses what `validate()` refuses, a `validate()` on every type, and the Dart HTTP client
-- `swift`: Enables Swift type generation with a `Codable` codec, and `validate()` on every emitted type: the bounds and the checks, run as the Rust `validate()` runs them. `init(from:)` of each type calls it on the value it read and refuses what it refuses
+- `swift`: Enables Swift type generation with a `Codable` codec, and `validate()` on every emitted type: the bounds and the checks, run as the Rust `validate()` runs them. `init(from:)` of each type calls it on the value it read and refuses what it refuses. The read of a type calls the functions a `preprocess` names, on the type and on a member, ahead of the value it builds
 - `kotlin`: Enables Kotlin type generation with `kotlinx.serialization` annotations, a `validate()` on every type that runs the bounds and calls the checks, and a serializer of each type that throws what `validate()` answers of the value it read. A consuming Kotlin build declares two dependencies: the runtime library `org.jetbrains.kotlinx:kotlinx-serialization-json` and the Kotlin Gradle plugin `kotlin("plugin.serialization")`
 
 **Feature sets**: `web` (the default: `serde`, `zod`, `jsonschema`, `typescript`), `mobile` (`serde`, `dart`, `swift`, `kotlin`) and `mongo` (`mongodb`, `chrono`, `indexmap`). CI tests the powerset of the sets (`just test-sets`); `just test` runs the powerset of the plain features locally
@@ -1467,6 +1467,78 @@ to keep.
   written. The `validate()` runs read a payload through the unjudged initializer, and build in
   code the three values no read hands back.
 
+### 12. The Swift `preprocess`
+
+The read of a Swift type calls the functions the type and its members name, each on a payload,
+ahead of the value read from it. A function is called under the name the attribute writes,
+`func trimmed(_ payload: Any) -> Any`, on the Swift values of a JSON value: a `[String: Any]`, an
+`[Any]`, a `String`, a `Bool`, an `Int64` for a number one holds, a `Double` for any other, and an
+`NSNull`. The documents call the key a last resort, and a change keeps them saying so.
+`README.md`'s "`preprocess` in the Swift client" section is the consumer's view; this is what a
+change to the emitter has to keep.
+
+- **The emitter is handed the type's functions.** `swift_suffix_tokens` puts `args.preprocess` in
+  `SwiftTypeArgs::preprocess`, and a member's are in the meta `member_def` reads
+  (`preprocess::functions`). Nothing reads the item's derives: the Swift type is read whether or
+  not the Rust one derives `Deserialize`.
+- **`src/features/swift/preprocess.rs` holds what is written.** `PAYLOAD` is the private
+  `SwiftSchemaPayload`, written into each type that names a function and into no other
+  (`read::both` adds it where the statements or `Written::own` name it). It reads any JSON value
+  from a `Decoder`, reads a type back from one through `JSONSerialization` and a `JSONDecoder` of
+  its own, and writes the coding path of the value into each `DecodingError` of that read. An
+  answer `JSONSerialization.isValidJSONObject` refuses is a `dataCorrupted`, never an exception.
+- **A member's functions are called in the read the member had.** `preprocess::member` is the one
+  writer, called from `decode_statement` (a field), `tuple_shape` (a slot of a tuple) and
+  `VariantPayload::read` (the one slot of a variant). `Source::payload` answers the payload and
+  the coding path of each source: `decode(SwiftSchemaPayload.self, forKey:)` under a key, which
+  refuses an absent key as a plain `decode` does, a decoder of its own for a slot, and the
+  decoder itself. `Source::absent_as_nil` asks an optional member for its key first, so no
+  function is called for a key the payload does not hold. The value is then read as it was read:
+  as its declared type, as its wire type with the conversion it had (`Plain::Wire`), or, where
+  `validate()` walks it, through a private type written for it (`SwiftSchemaRead{Member}`),
+  whose `init(from:)` holds the statements of `read::unjudged`. A model read from a corrected
+  payload is therefore still read with no judgement.
+- **A type's functions are called by its own read.** With `Written::own`, `read::both` writes the
+  statements into the private `init(swiftSchemaCorrected:)`, and `init(swiftSchemaUnjudged:)`
+  hands the functions the payload, then reads `SwiftSchemaRead` from what they answer, a private
+  type whose `init(from:)` calls that initializer. Every caller of `both` passes the type's own
+  functions, so every shape takes the key: a struct, a unit struct, a brand's wrapper, a tuple
+  struct, an enum under each tagging and a plain one, which then writes its read as one that
+  names a check does. `JUDGED` does not move: `init(from:)` judges what the functions answered.
+- **A type written inside another names its owner.** In a private type nested in `Parcel`, `Self`
+  is the nested type, so `both` writes each member's type through `naming_its_owner`.
+- **A function is handed the keys no type around its own took**, as the Rust read hands them.
+  `Source::Beside` is the decoder of a type that reads keys of its own beside the value: a
+  flattened member (`decode_statement`, with the wire names of the struct's own members), a
+  payload under a tag alone (the tag) and an untagged one. It holds the keys as a Swift
+  expression, `taken + ["dock"]` (`taken_with`). A type whose statements name `taken`
+  (`names_taken`) has its own read twice: `init(swiftSchemaUnjudged:swiftSchemaWithout:)`, and
+  `init(swiftSchemaUnjudged:)`, which calls it with no key. A type that names a function on
+  itself always has both, and removes the keys from the payload it hands its functions
+  (`SwiftSchemaPayload(from:without:)`); the statements of its `init(swiftSchemaCorrected:)` then
+  read `let taken: [String] = []`.
+- **The registry says which type takes the keys.** `preprocess::note` records each written type
+  whose reads hold the taking one (`read::takes_keys`), an alias of one included, and
+  `preprocess::beside` is what a holder asks. A flattened member, the slot of a variant read
+  from the enum's decoder and the value of a brand are read through that initializer where the
+  type takes keys, and through the read they had everywhere else, so a type that names no
+  function and reads none is written as it was. A struct written for a variant's members
+  answers through `VariantPayload::takes_keys`. A type declared below its holder is not known
+  to take keys, and is read from the holder's whole object.
+- **An untagged enum hands its readers the keys.** A `swiftSchemaRead{Variant}` whose statements
+  name `taken` takes it as a second parameter, and `Written::beside` hands `both` the readers,
+  which name the payload type and the key type the enum declares ahead of them.
+- **Names.** `swiftSchemaCorrected`, `swiftSchemaWithout`, `SwiftSchemaPayload`, `SwiftSchemaRead`
+  and `SwiftSchemaRead{Member}` are the ones this adds. A local is `{member}Payload`,
+  `{member}Decoder` for a slot, and `wire{Member}` where the member is converted.
+- **The tests.** `src/features/swift/preprocess/tests.rs` holds the call, each source and the
+  registry; `tests/swift_tests/preprocess.rs` pins the text of each shape, and that a type with
+  no function is written as it was;
+  `tests/service_schema_emitted_client_tests/run_swift_preprocess.rs` compiles the emitted types
+  with `-warnings-as-errors` and holds what they read to `SAMPLE` and `POSITIONS` of
+  `tests/pattern_preprocess_tests/models.rs`, the table the Rust read and the Zod schemas are
+  held to, to the Rust read of each payload of its own models, and each client to its reply.
+
 ### Generic Types and Zod Factories
 
 A Zod schema is a runtime value and TypeScript generics do not exist at runtime, so a generic
@@ -2328,6 +2400,7 @@ tixschema/
 │   │   │   └── operations.rs     # mongodb: OperationError, Read and the operations
 │   │   ├── swift.rs              # Swift types and their Codable codec
 │   │   ├── swift/
+│   │   │   ├── preprocess.rs     # preprocess in the Swift read: the payload type, the calls, the keys taken
 │   │   │   ├── read.rs           # The two reads of every Swift type: its own, and the one that judges
 │   │   │   └── validate.rs       # validate() of every Swift type: bounds, checks, holders
 │   │   └── model_schema_prop.rs  # Field attribute parsing
