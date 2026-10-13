@@ -1531,8 +1531,9 @@ fn process_item(item: Item, args: &ModelSchemaArgs) -> TokenStream {
 
 /// The Dart tokens `item` earns, or nothing without the `dart` feature — always callable, so the
 /// tokens that follow the item's own expansion never need a `#[cfg]`-gated `let` of their own.
-/// The backend is handed what it reads of `args`: the name, the checks, the string check of a
-/// brand or of an enum, and each member's bounds as [`member_prop_meta`] holds them.
+/// The backend is handed what it reads of `args`: the name, the checks, the `preprocess`, the
+/// string check of a brand or of an enum, and each member's keys as [`member_prop_meta`] holds
+/// them.
 #[cfg(feature = "dart")]
 fn dart_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
     // An enum's own string check is the one that reaches its members.
@@ -1547,6 +1548,7 @@ fn dart_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             min_length: args.min_length,
             name_override: args.name_override.as_deref(),
             pattern: args.pattern.as_deref(),
+            preprocess: &args.preprocess,
         },
     )
 }

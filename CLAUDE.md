@@ -197,7 +197,7 @@ The crate uses optional features for minimal dependencies:
 - `typescript`: Enables TypeScript type generation
 - `chrono`: Enables chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`)
 - `indexmap`: Enables indexmap type support: `IndexMap` as a map, `IndexSet` as a list. It adds no dependency: the generated code names the types of the crate that declares them. With the feature off a type written `IndexMap<_, _>` or `IndexSet<_>` is refused at `exec_model_schema` with the feature named (`indexmap_feature_errors`), unless the crate declared a type of its own under the name above
-- `dart`: Enables Dart type generation with a JSON codec whose read refuses what `validate()` refuses, a `validate()` on every type, and the Dart HTTP client
+- `dart`: Enables Dart type generation with a JSON codec whose read calls each `preprocess` and refuses what `validate()` refuses, a `validate()` on every type, and the Dart HTTP client
 - `swift`: Enables Swift type generation with a `Codable` codec, and `validate()` on every emitted type: the bounds and the checks, run as the Rust `validate()` runs them. `init(from:)` of each type calls it on the value it read and refuses what it refuses
 - `kotlin`: Enables Kotlin type generation with `kotlinx.serialization` annotations, a `validate()` on every type that runs the bounds and calls the checks, and a serializer of each type that throws what `validate()` answers of the value it read. A consuming Kotlin build declares two dependencies: the runtime library `org.jetbrains.kotlinx:kotlinx-serialization-json` and the Kotlin Gradle plugin `kotlin("plugin.serialization")`
 
@@ -946,9 +946,10 @@ has to keep.
 A `preprocess = ["name", ...]` names functions of the consumer's own, on a field and, in
 `#[model_schema(...)]`, on a type: each takes a payload and answers the payload the value is read
 from. Rust calls the snake case of the name, `fn trimmed(payload: serde_json::Value) ->
-serde_json::Value`, and the Zod schema the name as written, `function trimmed(payload: unknown):
-unknown`. The documents call the key a last resort, and a change keeps them saying so: a function
-runs on every read, on a payload no schema describes. `README.md`'s "Preprocessing" section is
+serde_json::Value`, the Zod schema the name as written, `function trimmed(payload: unknown):
+unknown`, and the Dart read the name as written, `dynamic trimmed(dynamic payload)` ("A
+`preprocess` in the Dart read", below). The documents call the key a last resort, and a change
+keeps them saying so: a function runs on every read, on a payload no schema describes. `README.md`'s "Preprocessing" section is
 the consumer's view; this is what a change has to keep.
 
 - **One reader, the one of `check`.** `function_names` reads the key for both attributes, in
@@ -1164,6 +1165,65 @@ consumer's view; this is what a change has to keep.
   SDK: the sample beside what the Rust read answers, every case of `run_dart_validate.rs` read
   with `fromJson` and held to what its `validate()` answers, an untagged enum beside the variant
   serde takes, a reply that breaks a rule through both clients, and the README's section.
+
+#### A `preprocess` in the Dart read
+
+`fromJsonUnjudged` of every type `src/features/dart.rs` writes calls the functions the type and
+its members name, under the names the attribute writes, each a function of the consumer's own:
+`dynamic trimmed(dynamic payload)`. `fromJson` calls that read, so both correct the payload, and
+`validate()` judges what the functions answered. The order of one read is Rust's: the type's
+functions, each member's as it is read, the value, then `validate()`. `README.md`'s "A
+`preprocess` in the Dart client" section is the consumer's view, which calls the key a last
+resort; this is what a change has to keep.
+
+- **The dispatch is handed the type's functions** in `DartTypeArgs::preprocess`, and a member's
+  are in the meta `member_meta` answers. A type that names none, on itself or on a member, is
+  written as it was, a holder of a flattened member apart (below).
+- **A type's functions are called by `unjudged_read`**, the one writer of the body of every
+  unjudged read: a class, a wrapper (a brand, a tuple struct), the base of a sealed enum and a
+  plain enum. Where the type names functions the read takes its payload as `payload` and holds
+  what they answer as `json`, cast as the read types it (`final json = withoutFragile(payload)
+  as Map<String, dynamic>;`), and a read of no member holds it under no name. `read_pair` writes
+  `fromJson` as it was: it calls no function. A sealed enum calls them in its base alone
+  (`Corrects::of_a_variant`), and a plain enum that names one and no check delegates `fromJson`
+  to `fromJsonUnjudged`.
+- **A member's functions are called by `member_decode`**, around the payload its own read is
+  written over: `constructor_arguments` for a named member, the tuple arm of `dart_decode_at` for
+  a slot, and the arm of a variant that holds one value. `corrected` folds the calls, the first
+  name innermost, so it is the first one called.
+- **No function is called for a key the payload does not hold.** A named member and a slot
+  under a content key are read from `json.containsKey('key') ? f(json['key']) : null`, so an
+  absent key is read as it was, and a `null` the payload holds is handed over. A slot of a tuple
+  and the value under a variant's name are held by every payload that is read.
+- **One read calls each function once.** A read that names its payload more than once, an
+  optional and a tuple, holds the corrected payload under `corrected`, the variable of a `switch`
+  of one arm; any other read is written around the call itself.
+- **A flattened member is read from the keys serde hands it** (`without`): the object without
+  the keys of the members beside it, and without the tag where the holder is a variant under a
+  tag key (`constructor_arguments`' `tag_key`). A function the member names, and one the type it
+  holds names, is handed those keys. A holder with no member of its own hands on `json` as it
+  was. A struct's own tag is not taken out: serde hands it on too. The slot of a variant under a
+  tag key is read from the object without the tag where the slot names a function, and from
+  `json` as it was where it names none, so a type such a slot holds is handed the tag, where
+  Rust hands it none.
+- **Every name a read declares is its own.** `dart_schema_dispatch` records the name of each
+  function the item's reads call (`called_by`, `DART_CALLED`), and `declared` numbers a name
+  where one is called under it (`json2`): `json`, `payload`, `map`, `tag` and `read`, which
+  `Corrects` holds, and the converter of a type parameter (`from_json_argument`), in the
+  signature of both reads and where a value behind the parameter is read. A member of the type
+  still hides a function of its name, as it hides a check's, and the documents say so.
+- **The payload a type's function takes is typed as its read types it**: a
+  `Map<String, dynamic>` for a class and an enum under a tag key, a `String` for a plain enum,
+  `dynamic` for a wrapper and any other enum. A payload of another kind is refused ahead of the
+  function, where Rust hands it over.
+- **The tests.** `tests/dart_tests/preprocess.rs` pins the text of each shape.
+  `tests/service_schema_emitted_client_tests/run_dart_preprocess.rs` compiles the models of
+  `tests/pattern_preprocess_tests/models.rs` and runs them under the Dart SDK: the sample and the
+  shared table of positions print what the Rust read prints, two rows apart (`NOT_READ`), with
+  the keys a flattened type is handed, the calls of one read counted, a function named after a
+  name of the read, a reply through both clients, and the README's section. Its module is
+  declared last in the binary: its models take names the modules above it declare, and an
+  expansion reads a type by its name.
 
 ### 8. Branded Newtypes
 
@@ -2277,7 +2337,7 @@ tixschema/
 ├── tests/
 │   ├── basic_tests.rs
 │   ├── pattern_preprocess_tests.rs       # pattern and preprocess: the Zod text, and every read of a preprocess
-│   ├── pattern_preprocess_tests/         # The models, the reads, the chained hooks, the Zod text, the README
+│   ├── pattern_preprocess_tests/         # The models, the reads, the chained hooks, the Zod text, the README; the Dart run compiles the models
 │   ├── check_tests.rs                    # check, as validate() runs it
 │   ├── check_tests/                      # The models, the shared table, the members, the README
 │   ├── collection_tests.rs
