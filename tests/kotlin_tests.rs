@@ -15,3 +15,9 @@ mod validate;
 #[cfg(feature = "kotlin")]
 #[path = "kotlin_tests/read.rs"]
 mod read;
+
+/// `preprocess`: the functions a type and its members name, as the read of each calls them.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "kotlin_tests/preprocess.rs"]
+mod preprocess;

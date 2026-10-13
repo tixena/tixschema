@@ -170,6 +170,13 @@ mod run_swift_preprocess;
 #[path = "service_schema_emitted_client_tests/run_dart_preprocess.rs"]
 mod run_dart_preprocess;
 
+/// `preprocess` in the emitted Kotlin types: the functions a type and its members name, called
+/// by the read ahead of what it reads. Its models take names no other module of this binary
+/// declares.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_preprocess.rs"]
+mod run_kotlin_preprocess;
+
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
 #[cfg(all(test, feature = "dart"))]
