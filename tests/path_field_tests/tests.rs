@@ -293,7 +293,7 @@ fn test_each_path_of_a_list_is_held_by_the_brand_it_is_typed_with() {
     };
     assert_eq!(
         held.validate().unwrap_err(),
-        vec!["'listed': too short: minimum length is 3, got 2"]
+        vec!["'listed.1': too short: minimum length is 3, got 2"]
     );
     assert_eq!(
         serde_json::from_str::<ListedPaths>(r#"{"listed":["/etc","/a"]}"#)

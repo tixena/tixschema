@@ -9,7 +9,7 @@ use super::{
 
 #[cfg(feature = "serde")]
 use super::{
-    CheckedMember, ConstraintGate, ConstraintLeaf, MemberAccess,
+    CheckedMember, ConstraintGate, ConstraintLeaf, FieldContext, MemberAccess,
     adjacent_collapsed_slot_guard_errors, build_field_validation, cfg_attr_guard_error,
     check_nullable_field_serialization, check_omitted_key_is_readable,
     check_optional_field_serialization, checked_member, collect_untagged_members,
@@ -2967,6 +2967,50 @@ fn a_constraint_refused_its_placement_leaves_no_hook_naming_the_dropped_module()
     assert_eq!(rendered, "", "got: {rendered}");
 }
 
+/// A refusal at build time and a helper name the field as its author wrote it. A report made as
+/// the program runs names the key serde writes.
+#[cfg(feature = "serde")]
+#[test]
+fn a_renamed_field_is_refused_by_its_rust_name_and_reported_under_its_key() {
+    let mut item: syn::ItemStruct = syn::parse_quote! {
+        struct Guarded {
+            #[model_schema_prop(minLength = 2)]
+            held_note: RefCell<String>,
+            #[model_schema_prop(minLength = 2)]
+            item_label: String,
+        }
+    };
+    let collected = super::collect_struct_fields(
+        &mut item.fields,
+        Some("camelCase"),
+        Some("guarded_schema"),
+        "Guarded",
+        &syn::Generics::default(),
+        false,
+        false,
+    );
+    assert_eq!(collected.4.len(), 1, "got: {:?}", collected.4);
+    let refusal = collected.4[0].to_string();
+    assert!(
+        refusal.contains("field `held_note`") && !refusal.contains("heldNote"),
+        "got: {refusal}"
+    );
+
+    let helpers = collected
+        .2
+        .iter()
+        .map(ToString::to_string)
+        .collect::<String>();
+    assert!(
+        helpers.contains("fn validate_item_label_value") && !helpers.contains("itemLabel_value"),
+        "got: {helpers}"
+    );
+    assert!(
+        helpers.contains(r#""itemLabel""#) && !helpers.contains(r#""item_label""#),
+        "got: {helpers}"
+    );
+}
+
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -3105,6 +3149,59 @@ fn a_field_whose_type_could_publish_a_validator_contributes_a_body_that_runs_it(
         rendered, "",
         "reaching a bound from the validator hangs nothing on the field. Got: {rendered}"
     );
+}
+
+/// The place a nested report is written under: the key, then the index each list level of the
+/// walk binds, innermost last.
+#[cfg(feature = "serde")]
+#[test]
+fn a_nested_report_is_placed_under_its_key_and_the_index_of_each_list_level() {
+    let place = |spelling: &str, under: Option<&str>| {
+        let ty: syn::Type = syn::parse_str(spelling).unwrap();
+        super::nested_place(&super::nested_shape(&ty).unwrap(), under)
+            .map(|written| written.to_string())
+    };
+    assert_eq!(place("Slug", None), None);
+    assert_eq!(place("Option<Slug>", Some("slug")).unwrap(), r#""slug""#);
+    assert_eq!(
+        place("Vec<Option<Vec<Slug>>>", Some("slugs")).unwrap(),
+        r#"& format ! ("slugs.{index_1}.{index_3}")"#
+    );
+    assert_eq!(
+        place("Vec<Slug>", None).unwrap(),
+        r#"& format ! ("{index_1}")"#
+    );
+    assert_eq!(
+        place("Vec<Slug>", Some("{slugs}")).unwrap(),
+        r#"& format ! ("{{slugs}}.{index_1}")"#,
+        "a brace of the key is text, where a brace of the template opens an argument"
+    );
+
+    let mut item: syn::ItemStruct = syn::parse_quote! {
+        struct Enrolment {
+            slug_list: Vec<Option<Vec<Slug>>>,
+        }
+    };
+    let body = super::collect_struct_fields(
+        &mut item.fields,
+        Some("camelCase"),
+        Some("enrolment_schema"),
+        "Enrolment",
+        &syn::Generics::default(),
+        false,
+        false,
+    )
+    .3
+    .iter()
+    .map(ToString::to_string)
+    .collect::<String>();
+    for written in [
+        "for (index_1 , value_1) in value_0 . into_iter () . enumerate ()",
+        "for (index_3 , value_3) in value_2 . into_iter () . enumerate ()",
+        r#"nested_under (& format ! ("slugList.{index_1}.{index_3}") , violation)"#,
+    ] {
+        assert!(body.contains(written), "{written} is not in {body}");
+    }
 }
 
 #[cfg(feature = "serde")]
@@ -11362,7 +11459,7 @@ fn mixed_wrappers_compose_in_written_order() {
 fn checked_struct_field() -> CheckedMember {
     let item: syn::ItemStruct = syn::parse_quote! { struct Probe { field: String } };
     let field = item.fields.iter().next().unwrap();
-    checked_member(field, 0, None, ConstraintGate::Validator)
+    checked_member(field, 0, None, ConstraintGate::Validator, "field")
 }
 
 /// The schema-module items emitted for a `minLength` field spelled `spelling`, as tokens.
@@ -11589,15 +11686,18 @@ fn generated_validation_under(
 ) -> (bool, bool, Option<String>, usize) {
     let field = item.fields.iter().next().unwrap();
     let mut new_attrs = Vec::new();
-    let (module_items, validate_body, guard_error) = generate_field_validation(
-        field,
-        Some("probe_schema"),
-        0,
-        variant,
-        constraint,
-        gate,
-        &mut new_attrs,
-    );
+    let ctx = FieldContext {
+        container_defaulted: false,
+        container_read_back: false,
+        enum_args: None,
+        rename_all: None,
+        schema_module_name: Some("probe_schema"),
+        type_name: "Probe",
+        type_parameters: &[],
+        variant_ident: variant,
+    };
+    let (module_items, validate_body, guard_error) =
+        generate_field_validation(&ctx, field, 0, "member", constraint, gate, &mut new_attrs);
     (
         module_items.is_some(),
         validate_body.is_some(),

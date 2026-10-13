@@ -19,6 +19,10 @@ mod list_bounds;
 mod names_in_scope;
 
 #[cfg(test)]
+#[path = "validation_tests/payload_paths.rs"]
+mod payload_paths;
+
+#[cfg(test)]
 #[path = "validation_tests/tests.rs"]
 mod tests;
 
