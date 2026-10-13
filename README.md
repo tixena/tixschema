@@ -4488,7 +4488,7 @@ Both write the same payload, and writing judges nothing: a broken value built in
 - **A class, the `object` of a unit struct and the value class of a brand keep the serializer the plugin writes**, with `@KeepGeneratedSerializer`, and `{Type}Unjudged` is that serializer under a name: `object ParcelUnjudged : KSerializer<Parcel> by Parcel.generatedSerializer()`. The annotation is an experimental one of `kotlinx.serialization`, so each such type carries `@OptIn(ExperimentalSerializationApi::class)`. This repository compiles the emitted source with `kotlinx.serialization` 1.11.0, the version `just kotlin-libs` installs.
 - **A struct with a `#[serde(flatten)]` member, a tuple struct and an enum under every tagging** have a serializer tixschema writes, and it is the unjudged one.
 - **An enum under a tag alone is read by a serializer tixschema writes as well.** The plugin refuses `@KeepGeneratedSerializer` on a sealed interface, so the enum carries no `@JsonClassDiscriminator`: its unjudged serializer reads the tag key, takes it off the object and reads the rest as the variant, and writes the variant with the tag ahead of its members. A tag no variant has, and a payload with no tag, throw `SerializationException`.
-- **A plain enum keeps the one serializer the plugin writes**, and its read judges nothing. One that names a check is refused by the read of a type that holds it, and by your own call of `validate()`.
+- **A plain enum keeps the one serializer the plugin writes**, and its read judges nothing. One that names a check is refused by the read of a type that holds it, and by your own call of `validate()`. One that names a [`preprocess`](#preprocess-in-the-kotlin-client) is read by `{Type}Unjudged`, the one serializer it then has.
 - **A refusal the decoder raises itself is its own, unchanged**: a missing key, a value of another type. No value was read for `validate()` to judge.
 
 **The file the definitions are written into imports what they name.** The two serializers of every type name `KSerializer` and `SerializationException` of `kotlinx.serialization`, `SerialDescriptor` of its `descriptors` package, and `Encoder` and `Decoder` of its `encoding` package. A serializer tixschema writes names the `json` package as well, and `builtins` where it composes the serializer of a list, a map or a nullable:
@@ -4567,6 +4567,86 @@ A payload no variant takes throws `IllegalStateException: No variant of Mark mat
 val parcel = Json.decodeFromString(ParcelUnjudged, payload)
 parcel.validate()
 // ['label': too short: minimum length is 1, got 0, 'fragileItemCodes.1': y is outside of itemCodeList]
+```
+
+#### `preprocess` in the Kotlin client
+
+The Kotlin read calls each function a [`preprocess`](#preprocessing-preprocess) names, under the name the attribute writes, on the payload the Rust read hands its own function. The payload is a `JsonElement` of `kotlinx.serialization`, and the function answers the payload the value is then read from: a payload it has nothing to correct in, as it is. A top-level function of the package, or one the file imports, is in scope. **The key is a last resort** here as it is in Rust: a function of yours runs on every read of the type, on a payload no schema describes.
+
+| | Kotlin |
+|---|---|
+| A field's function | `fun trimmed(payload: JsonElement): JsonElement` |
+| A type's function | `fun withoutFragile(payload: JsonElement): JsonElement` |
+
+The two functions of the [example](#preprocessing-preprocess) in Kotlin:
+
+```kotlin
+fun trimmed(payload: JsonElement): JsonElement =
+    if (payload is JsonPrimitive && payload.isString) JsonPrimitive(payload.content.trim()) else payload
+
+fun withoutFragile(payload: JsonElement): JsonElement =
+    if (payload is JsonObject && "fragileItemCodes" !in payload) {
+        JsonObject(payload + ("fragileItemCodes" to JsonArray(emptyList())))
+    } else {
+        payload
+    }
+```
+
+This is what the `Parcel` of that example emits. The emitter writes it on one line, and each line break below stands for one space of it:
+
+```kotlin
+@OptIn(ExperimentalSerializationApi::class) @Serializable(with = ParcelSerializer::class) @KeepGeneratedSerializer
+data class Parcel(@Serializable(with = ParcelLabelPreprocess::class) val label: String, val itemCodeList: List<String>, val fragileItemCodes: List<String>) {
+  fun validate(): List<String> {
+    val violations = mutableListOf<String>();
+    if (label.codePointCount(0, label.length) < 1) violations.add("'label': too short: minimum length is 1, got ${label.codePointCount(0, label.length)}");
+    return violations
+  }
+}
+@OptIn(ExperimentalSerializationApi::class) object ParcelUnjudged : JsonTransformingSerializer<Parcel>(Parcel.generatedSerializer()) {
+  override fun transformDeserialize(element: JsonElement): JsonElement = withoutFragile(element)
+}
+object ParcelSerializer : KSerializer<Parcel> {
+  override val descriptor: SerialDescriptor = ParcelUnjudged.descriptor;
+  override fun serialize(encoder: Encoder, value: Parcel) = ParcelUnjudged.serialize(encoder, value);
+  override fun deserialize(decoder: Decoder): Parcel {
+    val read = ParcelUnjudged.deserialize(decoder);
+    val violations = read.validate();
+    if (violations.isNotEmpty()) throw SerializationException(violations.joinToString("; "));
+    return read
+  }
+}
+object ParcelLabelPreprocess : JsonTransformingSerializer<String>(serializer<String>()) {
+  override fun transformDeserialize(element: JsonElement): JsonElement = trimmed(element)
+}
+```
+
+The serializer of the type answers each row of the [sample](#preprocessing-preprocess) as the Rust read answers it:
+
+| # | Payload | The Kotlin read |
+|---|---|---|
+| 1 | `{"label":"  A  ","itemCodeList":["x"],"fragileItemCodes":["x"]}` | read; `label` is `"A"` |
+| 2 | `{"label":"   ","itemCodeList":["x"],"fragileItemCodes":["x"]}` | refused: `'label': too short: minimum length is 1, got 0` |
+| 3 | `{"label":"A","itemCodeList":["x"]}` | read; `fragileItemCodes` is `[]` |
+| 5 | row 1 inside `Manifest`, under `parcel` | read; `parcel.label` is `"A"` |
+
+- **The order of one read is Rust's.** The type's functions on the whole payload, each field's as that field is read, the value, then `validate()`: a bound and a [check](#the-checks) judge what the functions answered, which is why row 2 is refused. Several functions run in the order written, each over the answer of the one before: `preprocess = ["unwrapped", "withoutFragile"]` calls `withoutFragile(unwrapped(element))`.
+- **A type's functions are called by `{Type}Unjudged`**, so [both serializers of the type](#the-read-in-the-kotlin-client) read the corrected payload, and so does a type that holds it, wherever it holds it: in a field, a nullable, a list, a map's value, a `#[serde(flatten)]` member, a variant under every tagging, and behind a type parameter. Where the plugin writes the serializer, of a class, of the `object` of a unit struct and of the value class of a brand, `{Type}Unjudged` is a `JsonTransformingSerializer` over it, as above. The serializer tixschema writes for a struct with a `#[serde(flatten)]` member, for a tuple struct and for an enum under every tagging calls the functions on the payload it decodes, and an `#[serde(untagged)]` enum does so once, ahead of the choice of a variant.
+- **A brand's functions take the payload of the value the brand is written over.** The value class of a brand with a parameter keeps the delegation to the plugin's serializer and reads through it in a `deserialize` of its own: the Kotlin compiler hands such a value class unboxed to the `serialize` a `JsonTransformingSerializer` inherits, and the write then throws `ClassCastException`.
+- **A plain enum that names a function has `{Type}Unjudged` as its one serializer**, over the plugin's: `@Serializable(with = GradeUnjudged::class) @KeepGeneratedSerializer enum class Grade`. Its read judges nothing, as before.
+- **A field's functions are called by a serializer of the field's own**, `{Type}{Field}Preprocess`, which the property names, in a class and in a variant's class alike. It reads through the serializer the field has without the key: the plugin's, the unjudged one of a model the holder's `validate()` asks, a nullable one for an `Option`, so the corrected payload is read, and judged, exactly as the payload was.
+- **A field whose type reaches a type parameter has no serializer of its own.** The plugin takes one on a property only where its constructor takes no parameter, or one per argument of the property's own type, so it cannot be handed the serializer of the parameter. `{Type}Unjudged` calls that field's functions at its key in the object, after the type's own, and an enum's serializer does the same for such a member of a variant.
+- **Where tixschema writes the read, a field's functions are called in place**: a member of a struct with a `#[serde(flatten)]` member, a slot of a tuple struct, and the slot of a variant. `val dock = input.json.decodeFromJsonElement(serializer<String>(), trimmed(obj.getValue("dock")))`.
+- **A key the payload does not hold calls no function**, as in Rust: `kotlinx.serialization` asks a property's serializer only for a key the payload holds, and a property with a default keeps it. A `null` the payload holds is a payload, and is handed to the function.
+- **A `#[serde(flatten)]` member a function reads is handed the keys its holder's own members do not take**, as the Rust read hands them: `{"dock":"north","tag":"t"}` hands the function of the flattened type `{"tag":"t"}`. A member flattened ahead of it, of a type that names no function, takes its own keys too, as serde's read of it does. A flattened type declared above its holder that names no function is read from the holder's whole object, as before.
+- **Writing calls no function.** `{Type}Unjudged` and the serializer of a preprocessed field write a value as it is written without the key, and a value built in code is never read, so nothing corrects it.
+- **The path of a refusal below a function starts at the value the function answered.** A field that names a function, and a type that names one, are each read from a JSON value of their own, so a payload the read refuses, where the function left it as it was, is named inside that value and not from the payload the read was handed: `{"label":5}` is refused with `String literal for value of key 'primitive' should be quoted at path: $.primitive`, where a field with no function is named at `$.label`. A list or an object where the field reads a text or a number is thrown by `kotlinx.serialization` 1.11.0 as an `IndexOutOfBoundsException`, which is no `SerializationException`, as it is by every read tixschema writes itself; the generated clients answer their fault for it, as they do for any refusal of a reply.
+- **The definitions name two more types of the `json` package**, `JsonTransformingSerializer` and `JsonElement`, which the [imports of the read](#the-read-in-the-kotlin-client) already bring in.
+
+**A name with no Kotlin function does not compile**, and the Kotlin compiler says so at the call:
+
+```text
+error: unresolved reference 'trimmed'.
 ```
 
 
@@ -4876,7 +4956,7 @@ beside `preprocess`; the two have no defined order.
 
 ### Preprocessing (`preprocess`)
 
-`preprocess = ["name", ...]` names functions of your own that correct a payload before a value is read from it: a label written with spaces at its ends, a key an older writer left out. It is written on a type, in `#[model_schema(...)]`, and on a field, in `#[model_schema_prop(...)]`. A name is written once, and every read calls a function under it: Rust the snake case of the name, `withoutFragile` as `without_fragile`, and the Zod schema the name as written.
+`preprocess = ["name", ...]` names functions of your own that correct a payload before a value is read from it: a label written with spaces at its ends, a key an older writer left out. It is written on a type, in `#[model_schema(...)]`, and on a field, in `#[model_schema_prop(...)]`. A name is written once, and every read calls a function under it: Rust the snake case of the name, `withoutFragile` as `without_fragile`, and the Zod schema and the Kotlin client the name as written.
 
 **The key is a last resort.** A function of yours runs on every read of the type, on a payload no schema describes. Reach for it where the payload cannot be corrected where it is written, and where a serde `default`, an `Option` or an `alias` does not say what you mean.
 
@@ -5038,7 +5118,9 @@ A type that holds another reads it through that type's functions wherever it hol
 
 **In the Zod schema**, as one `z.preprocess(name, ...)` per name.
 
-**Nowhere else.** Writing calls no function, `Serialize` being serde's derive, and neither does `validate()`: a value built in code is never read, so nothing corrects it. The JSON Schema describes the value the type is read to and calls no function. The Dart, Swift and Kotlin types read the key and are written as they are without it.
+**In the read of the Kotlin client**, by the serializers of each type: see [`preprocess` in the Kotlin client](#preprocess-in-the-kotlin-client).
+
+**Nowhere else.** Writing calls no function, `Serialize` being serde's derive, and neither does `validate()`: a value built in code is never read, so nothing corrects it. The JSON Schema describes the value the type is read to and calls no function. The Dart and Swift types read the key and are written as they are without it.
 
 #### A key the payload does not hold
 

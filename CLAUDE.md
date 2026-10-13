@@ -854,6 +854,72 @@ the consumer's view; this is what a change has to keep.
   `run_kotlin_read.rs` holds the README's rows to what the Rust read answers of the same payload,
   and both clients to their fault.
 
+#### The Kotlin client's `preprocess`
+
+The Kotlin read calls each function a `preprocess` names, under the name the attribute writes:
+`fun trimmed(payload: JsonElement): JsonElement`, on a field and on a type alike.
+`src/features/kotlin/preprocess.rs` writes each call, inside the unjudged read, so both
+serializers of a type make it. `README.md`'s "`preprocess` in the Kotlin client" section is the
+consumer's view; this is what a change has to keep. The key is a last resort, and the documents
+say so.
+
+- **The emitter is handed the type's functions.** `KotlinArgs::preprocess` is the type's own,
+  from `kotlin_suffix_tokens`, and a member's are in the meta `KotlinArgs::member_meta` answers
+  (`preprocess::of`). `preprocess::corrected` is the one writer of a call: each function over the
+  answer of the one before, in the order written.
+- **The order of one read is Rust's**: the type's functions on the whole payload, each member's
+  on the member's own, the value, then `validate()` in the type's own serializer. Nothing is
+  called on a write.
+- **A type's functions are in `{Type}Unjudged`.** Where the plugin writes the serializer,
+  `kept_unjudged` hands `read::transforming` the correction: a `JsonTransformingSerializer` over
+  `generatedSerializer()`, in place of the delegation `read::generated` writes. A serializer the
+  emitter writes calls the functions on `input.decodeJsonElement()`: the flatten-merging one, a
+  tuple struct's, a tagged enum's, and an untagged enum's ahead of the choice of a variant. A
+  type that names no function is written token for token as before.
+- **A brand with a parameter is read through `read::transforming_inline`.** kotlinc hands a
+  value class with a parameter unboxed to the `serialize` a `JsonTransformingSerializer` inherits,
+  and the type's own serializer then throws `ClassCastException` on a write. So that one keeps
+  the delegation and overrides `deserialize`.
+- **A plain enum that names a function carries `{Type}Unjudged` as its one serializer**
+  (`read::kept_plain`). `note_plain_enum` still says no holder names it: a holder reads the enum
+  by its own serializer, which is that one.
+- **A member the plugin reads is read through a serializer of its own.** `Plugin::declared`
+  queues `object {Owner}{Member}Preprocess : JsonTransformingSerializer<T>(...)`
+  (`read::corrected_member`) and answers the annotation that names it. It reads through
+  `read::read_whole`: `member_serializer`, the serializer the member has without the key, so a
+  model is still judged once. A tuple is asked for its name once there. `kotlin_module_tokens`
+  writes the queue after the type's source (`preprocess::serializers`).
+- **A member that reaches a type parameter is corrected at its key** (`Plugin::keyed`,
+  `preprocess::keyed`). The plugin takes a serializer on a property only where its constructor
+  takes no parameter, or one per argument of the property's own type, so none can be handed the
+  parameter's serializer. `{Type}Unjudged` corrects such a member of a class, and the enum's
+  serializer the object it hands a variant's class (`variant_keyed`). The lone slot of a variant
+  under a tag alone is corrected the same way, under the `value` key its class reads.
+- **A member the emitter reads is corrected in place**: `own_field_plan`, a slot of a tuple
+  struct, a slot of a variant read by the enum's serializer, a slot of an untagged variant as the
+  variant is tried, and a position of a tuple's wrapper (`tuple_wrapper_typename`).
+- **No function is called for a key the payload does not hold.** The plugin asks a property's
+  serializer only for a key that is there, and `own_field_plan` corrects inside `?.let`. A `null`
+  is handed to the function: the serializer of a nullable member is a
+  `JsonTransformingSerializer<T?>`.
+- **A flattened member a function reads is handed what serde hands it** (`flatten_plan`,
+  `preprocess::takes_the_rest`): the object without the keys the holder's own members take, and
+  without those a member flattened ahead of it took. `HANDED` notes, per type the emitter wrote,
+  whether it hands its object to a function, its own or one of a member it flattens. A type
+  known to hand it to none is read from the whole object, as before, and takes its own keys.
+- **The path of a refusal below a function starts at the value the function answered**: a
+  member and a type that name one are each read from a JSON value of their own. A list or an
+  object where a text or a number is read is thrown by `kotlinx.serialization` 1.11.0 as
+  `IndexOutOfBoundsException`, as it is by every read the emitter writes itself.
+  `run_kotlin_preprocess.rs` pins both, and that each client answers its fault for the second.
+- **The tests.** `src/features/kotlin/tests/preprocess.rs` pins the text of each shape, and the
+  README's block to what the emitter writes for the documents' parcel.
+  `tests/kotlin_tests/preprocess.rs` pins what the macro's own path writes, in every build with
+  `kotlin`. `tests/service_schema_emitted_client_tests/run_kotlin_preprocess.rs` compiles the
+  emitted types with `-Werror`, runs them, and holds each row to what the Rust read prints of
+  the same payload: the README's sample, every position a type is held in, every shape, and
+  every place a member is read. Rows whose words are Kotlin's own are pinned beside them.
+
 #### A read refuses what `validate()` refuses
 
 A type's read is its own unjudged read, followed by its `validate()`. A holder reads the models it

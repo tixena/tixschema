@@ -1582,9 +1582,9 @@ fn swift_suffix_tokens(_item: &Item, _args: &ModelSchemaArgs) -> TokenStream {
 }
 
 /// The Kotlin tokens `item` earns, or nothing without the `kotlin` feature — the same always-
-/// callable shape as [`dart_suffix_tokens`]. The emitter is handed the arguments it reads, and a
-/// member's bounds as every surface reads them: an enum's own string check is each reached
-/// member's as well.
+/// callable shape as [`dart_suffix_tokens`]. The emitter is handed the arguments it reads, the
+/// type's `preprocess` among them, and a member's bounds as every surface reads them: an enum's
+/// own string check is each reached member's as well.
 #[cfg(feature = "kotlin")]
 fn kotlin_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
     let enum_args = matches!(item, Item::Enum(_)).then_some(args);
@@ -1598,6 +1598,7 @@ fn kotlin_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             min_length: args.min_length,
             name_override: args.name_override.as_deref(),
             pattern: args.pattern.as_deref(),
+            preprocess: &args.preprocess,
         },
     )
 }

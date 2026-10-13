@@ -72,6 +72,16 @@ fn arguments(type_parameters: &[String]) -> String {
         .join(", ")
 }
 
+/// The serializer a member that names a function is read through where the plugin reads it:
+/// `read_by`, the one the member is read with, behind `correction`, the Kotlin expression of
+/// `element` corrected.
+pub fn corrected_member(named: &str, ty: &str, read_by: &str, correction: &str) -> String {
+    format!(
+        "object {named} : JsonTransformingSerializer<{ty}>({read_by}) {{ {} }}",
+        transform(correction)
+    )
+}
+
 /// The unjudged serializer of a type the plugin writes a serializer for: the plugin's own, under
 /// the name a holder writes.
 pub fn generated(export_name: &str, generic_params: &str, type_parameters: &[String]) -> String {
@@ -208,6 +218,14 @@ pub fn kept_inline(export_name: &str) -> String {
     )
 }
 
+/// The annotations of a plain enum that names a function: the one serializer it has is the
+/// unjudged one, over the plugin's.
+pub fn kept_plain(export_name: &str) -> String {
+    format!(
+        "{OPTED_IN} @Serializable(with = {export_name}Unjudged::class) @KeepGeneratedSerializer"
+    )
+}
+
 /// A reference to the `KSerializer` a serializer the emitter writes reads the member typed
 /// `field` with.
 pub fn member_serializer(field: &FieldDef, type_parameters: &[String]) -> String {
@@ -251,6 +269,78 @@ pub fn plugin_read(field: &FieldDef) -> (String, String) {
         );
     }
     (String::new(), annotated_typename(field))
+}
+
+/// The Kotlin type the member typed `field` is declared with where a serializer of its own reads
+/// it, and the serializer it is read with behind that one.
+pub fn read_whole(field: &FieldDef, type_parameters: &[String]) -> (String, String) {
+    if matches!(field.field_type, FieldDefType::Tuple(_)) {
+        // Each ask of a tuple's name queues another wrapper, so the name is asked once.
+        let (_, ty) = plugin_read(field);
+        let read_by = format!("serializer<{ty}>()");
+        (ty, read_by)
+    } else {
+        (
+            kotlin_typename(field),
+            member_serializer(field, type_parameters),
+        )
+    }
+}
+
+/// What a serializer that corrects its payload overrides: `correction` is the Kotlin expression
+/// of `element` corrected.
+fn transform(correction: &str) -> String {
+    format!("override fun transformDeserialize(element: JsonElement): JsonElement = {correction}")
+}
+
+/// [`generated`] for a type that corrects its payload: the plugin's serializer behind
+/// `correction`, the Kotlin expression of `element` corrected.
+pub fn transforming(
+    export_name: &str,
+    generic_params: &str,
+    type_parameters: &[String],
+    correction: &str,
+) -> String {
+    let body = transform(correction);
+    if type_parameters.is_empty() {
+        format!(
+            "{OPTED_IN} object {export_name}Unjudged : \
+             JsonTransformingSerializer<{export_name}>({export_name}.generatedSerializer()) {{ \
+             {body} }}"
+        )
+    } else {
+        format!(
+            "{OPTED_IN} class {export_name}Unjudged{}({}) : \
+             JsonTransformingSerializer<{export_name}{generic_params}>({export_name}.\
+             generatedSerializer({})) {{ {body} }}",
+            parameter_list(type_parameters, ""),
+            handed(type_parameters, ""),
+            arguments(type_parameters)
+        )
+    }
+}
+
+/// [`transforming`] for the value class of a brand with parameters, which a transforming
+/// serializer writes unboxed: it delegates to the plugin's serializer, and reads through it from
+/// `correction`, the Kotlin expression of the payload `input` decodes, corrected.
+pub fn transforming_inline(
+    export_name: &str,
+    generic_params: &str,
+    type_parameters: &[String],
+    correction: &str,
+) -> String {
+    let own = format!("{export_name}{generic_params}");
+    let read_by = format!(
+        "{export_name}.generatedSerializer({})",
+        arguments(type_parameters)
+    );
+    format!(
+        "{OPTED_IN} class {export_name}Unjudged{}({}) : KSerializer<{own}> by {read_by} {{ \
+         override fun deserialize(decoder: Decoder): {own} {{ val input = decoder as JsonDecoder; \
+         return input.json.decodeFromJsonElement({read_by}, {correction}) }} }}",
+        parameter_list(type_parameters, ""),
+        handed(type_parameters, "private val ")
+    )
 }
 
 /// The serializer that reads the type written `name` with no judgement, where the emitter wrote

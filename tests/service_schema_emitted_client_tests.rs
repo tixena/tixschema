@@ -150,6 +150,13 @@ mod run_kotlin_read;
 #[path = "service_schema_emitted_client_tests/runtime.rs"]
 mod runtime;
 
+/// `preprocess` in the emitted Kotlin types: the functions a type and its members name, called
+/// by the read ahead of what it reads. Its models take names no other module of this binary
+/// declares.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_preprocess.rs"]
+mod run_kotlin_preprocess;
+
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
 #[cfg(all(test, feature = "dart"))]

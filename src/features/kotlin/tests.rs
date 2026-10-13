@@ -2,6 +2,8 @@
 //! a class, and what `validate()` and the two serializers of a type write for the shapes no
 //! integration test can declare.
 
+mod preprocess;
+
 use proc_macro2::{Span, TokenTree};
 
 use super::validate::jvm_pattern;
@@ -99,6 +101,7 @@ fn plain_args() -> KotlinArgs<'static> {
         min_length: None,
         name_override: None,
         pattern: None,
+        preprocess: &[],
     }
 }
 
