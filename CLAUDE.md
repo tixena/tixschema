@@ -117,7 +117,7 @@ just ci
    - `jsonschema.rs`: Generates JSON schema objects
    - `object_id.rs`: MongoDB ObjectId type detection and schema generation
    - `recovering_decode.rs`: Generates what `#[model_schema(decode_with)]` adds to a type: `from_value_with` and `from_value_piped`, `from_bson_with` and `from_bson_piped` under `bson`, the walker of each, and the callback's and the resolvers' types in `{type}_schema`. `recovering_decode/enums.rs` holds the walkers of an enum, and the names its typed paths read a variant by (`written_variants`, `tag_arms`). Under `mongodb` three more files emit into the same module and onto the same type: `recovering_decode/query.rs` the query types (`Filter`, `ArmFilter`, `Update`, `ArmUpdate`, the path kinds, `nest`), `recovering_decode/fields.rs` the type's own typed paths (`MongoFields`, `MONGO_FIELDS`, one function per field, and one per arm of an enum under a tag), and `recovering_decode/operations.rs` the operations (`find_one`, `find`, `count`, `insert_one`, the updates and the deletes, with `Read` and `OperationError`)
-   - `model_schema_prop.rs`: Parses field-level customization attributes (`pattern`, `minLength`, `maxLength`, `minimum`, `maximum`, `literal`, `as`, `preprocess`)
+   - `model_schema_prop.rs`: Parses field-level customization attributes (`pattern`, `minLength`, `maxLength`, `minimum`, `maximum`, `literal`, `as`, `preprocess`, `check`)
 
 5. **Code Generation** ([generation/](src/generation/))
    - `typescript.rs`: Generates TypeScript type definitions and Zod schemas
@@ -395,6 +395,7 @@ All validation constraints generate checks in **Zod (frontend), JSON Schema, and
 | `literal = true` | `bool` | `z.literal(true)` | `{"type": "boolean", "const": true}` | — |
 | `literal = 214` | numeric | `z.literal(214)` | `{"type": "number", "const": 214}` | — |
 | `preprocess = ["fn"]` | any | `z.preprocess(fn, ...)` | — | — (Zod-only) |
+| `check = ["fn"]` | any, and a type | `.check((ctx) => { ... fn(own.value, own); ... })` | — | `validate()` calls `fn` in snake case, in every build; an issue of the recovering decode |
 | `ts_optional` | `Option<T>` | — | — | — (TypeScript-only) |
 | `as_number` | `DateTime<Tz>` | inline `z.preprocess(..., z.number())` | — | serde `with = chrono::serde::ts_milliseconds` injected |
 | `nullable` | `Option<T>` | `z.union([T, z.null()])`, key required | `anyOf: [T, {"type":"null"}]`, key required | guard: refuses a key-dropping serde attr |
@@ -520,6 +521,69 @@ reads the merged meta as it reads a member's own. `process_field` asks it throug
   `checks_broken_by` measures each as the validator measures a value. An untagged enum writes such
   a variant as `null`, under no name, and refuses it on its own. The name of a variant that carries
   data is not measured.
+
+A `check = ["name", ...]` names functions of the consumer's own, on a field and, in
+`#[model_schema(...)]`, on a type. `README.md`'s "Checks" section is the consumer's view; this is
+what a change has to keep.
+
+- **One reader.** `check_names` in `src/features/model_schema_prop.rs` reads the key for both
+  attributes, in every build, into `CheckName { name, written_at }`, and raises the five refusals,
+  each spanned on what was written: no array, an element that is no string literal, a name that is
+  no identifier, no name, a name twice. `apply_arg` and `parse_prop_key` both call it, and the key
+  is in `KNOWN_ARGS` and `KNOWN_KEYS`. `checks::alias_refusal_output` refuses it on a type alias at
+  `process_item`, and `branded_slot_prop_errors` on a brand's slot, as every key written there.
+- **Every call is written beside the type**, in the type's own `impl`, by `checks::call` in
+  `src/model_schema/checks.rs`: the snake case of the name (`to_snake_case`) as an ident located at
+  the string literal, with the macro's own hygiene, so a missing function (E0425) and a bound the
+  type does not declare (E0277) are reported at the attribute. No call is written into
+  `{type}_schema`: a type declared inside a function body names a function no path from another
+  module reaches.
+- **The glob does not reach a call.** `validate()` of an item that names no check holds
+  `use {type}_schema::*;` and is emitted token for token as before. Where the item names one
+  (`ItemChecks::named`, which `names_a_check` answers for a member's bound from the registry
+  `record_item_checks` writes at `exec_model_schema`), `validate_method` writes no such import and
+  `bound_body` wraps each bound in a block that imports the module for itself. A check named after
+  a helper of the module (`validateLabelValue`) therefore calls the consumer's function.
+- **The order.** A member's bounds and what its type declares, then that member's checks in the
+  order written (`then_checks`), member by member, and the type's own last
+  (`ItemChecks::own_calls`). Every one runs.
+- **A member's check takes the member's own value.** `checks::reach` walks `Option`
+  (`CheckStep::Present`), the ownership wrappers and a reference (`CheckStep::Held`) and stops at
+  whatever is under them, a list and a map included; `the_reach_of_a_check_is_the_reach_of_a_bound`
+  holds it to the wrappers `constrained_shape` reads. It is reported through
+  `MemberPlace::reported`, which `member_place` answers for a bound's member as well: the key serde
+  writes, a slot's position, and nothing for a flattened member and for the lone slot of an
+  untagged newtype variant. `nested_under` writes the name.
+- **`validate()` in every build.** With `serde` and a schema surface it is the method the bounds
+  are in. Without `serde`, and with `serde` and no surface, `validate_method` and
+  `checks_validate_impl` publish it with the checks alone, and only for an item that names one.
+- **Every shape.** `process_struct`, `process_tuple_struct`, a unit struct, the three tagged enum
+  processors and the untagged one (a member's check in its variant's arm, through
+  `build_member_check_arms`, and the enum's own after the `match`), a plain enum, and a brand
+  (`branded_validate_method`: the brand's bound, then its checks, under no path). A generic type's
+  calls are in its generic `impl`, so its function is written once over every filling.
+- **Zod.** `zod_check_wrap` in `src/field_type.rs` is the one writer of the wrap. A field's is
+  written by `FieldDef::zod_checked_base`: after the bounds, inside the member of the `Option`
+  union and of the `nullable` one, on the outermost array after its count, and inside
+  `z.preprocess`, `zod_base` wrapping the checked base. A field that is one factory call hands the
+  checked call into the union's arrow (`zod_handed_calls`). A member with a check is written around
+  (`is_written_around`), so a flattened one is joined whole and never multiplied. A type's is
+  written by `zod_published_binding` from `PublishedBinding::checks`, ahead of `.meta` and inside
+  the builder of a generic item; a plain enum and a brand write it ahead of their own
+  `.meta({ description })`, a brand ahead of `.brand()` too. The wrap's text holds `"\n})"`, so
+  `build_branded_delegate_items` puts the examples at the first one after `.meta({\n  description: `.
+- **The wrap copies each issue with `continue: true`.** Zod skips a later check after an issue
+  without the flag, where Rust runs every one, and `tsc --strict` refuses to set the flag on a
+  pushed issue (TS2540).
+- **No other surface moves.** The JSON Schema, TypeScript, Dart, Swift and Kotlin write what they
+  wrote, and no expected output of a type without the key changes.
+- **The documents' example is a doctest.** `src/check_example.md` is included in
+  `model_schema_prop`'s rustdoc under `serde` and a schema surface, and
+  `tests/check_tests/readme.rs` holds the README to it. `tests/check_tests/models.rs` is compiled
+  by `tests/check_tests.rs` and by `tests/generic_types_tests/declarations.rs`, which parses each
+  case under node and compares the two sides as one text. This crate's lints order a struct's
+  members by name, so the compiled `Parcel` declares `label` last and reports it after
+  `item_code_list`; the doctest declares the members as the documents do.
 
 Multiple constraints on one field are combined. Multiple `preprocess` functions nest:
 `z.preprocess(fn1, z.preprocess(fn2, innerSchema))`.
@@ -981,6 +1045,19 @@ sections are the consumer's view; this is what a change to the emitter has to ke
   that walks its items hands them no validator, and holds the list read whole (`read_as_a_list`)
   to its count, one `Invalid` at the list. The registry is cleared per item at `exec_model_schema`, and holds nothing in a
   build with no schema surface, where no validator is published.
+- **A check is the read's to list, after serde.** `recovering_decode/checks.rs` emits
+  `decode_with_check_messages(&self)` in an `impl` of its own beside the walkers, under the bounds
+  the type's author wrote (`RecoveringDecode::check_messages`, `checks::type_impl`): the members'
+  messages, the type's own, then those of every model it holds, each under the place serde writes
+  it (`parse_written_renames`, and the variant's key or the content key by `Tagging`). A held type
+  is asked through the block-local `Unchecked` trait, so one with no such method answers nothing,
+  and a map's key is written through `WrittenKey`. The checks are read back from the registry
+  `record_item_checks` and `record_member_checks` write, by schema module and helper stem.
+  `entry_methods` and `bson_entry_methods` splice the call after each read serde accepts, in the
+  two shared fragments, and `decode_with_value_check_issues` and `decode_with_bson_check_issues`
+  turn each message into an `Invalid`, `expected: Unknown`, at the message's lead read against the
+  raw value. The three names are in the list
+  `every_added_method_but_the_entry_point_carries_the_flags_name` pins.
 - **Every name the flag adds is its own.** Each walker method carries the flag's name
   (`decode_with_value_issues`, `decode_with_bson_fields`, `decode_with_value_named`), and a
   method's own type parameters take a name the item does not write (`unclaimed_parameter`): `F`
@@ -1537,6 +1614,9 @@ tixschema/
 ├── src/
 │   ├── lib.rs                    # Entry point, macro exports
 │   ├── model_schema.rs           # Main macro logic
+│   ├── model_schema/
+│   │   └── checks.rs             # check: the calls validate() makes, the alias refusal
+│   ├── check_example.md          # The check example the rustdoc runs and the README shows
 │   ├── field_type.rs             # Type system (FieldDef, FieldDefType)
 │   ├── utils.rs                  # Helpers (naming, docs, serde parsing)
 │   ├── features/
@@ -1549,6 +1629,7 @@ tixschema/
 │   │   ├── recovering_decode/
 │   │   │   ├── enums.rs          # The walkers of an enum
 │   │   │   ├── aliases.rs        # A field typed with an alias, walked as the type it names
+│   │   │   ├── checks.rs         # decode_with_check_messages, and its messages as issues
 │   │   │   ├── query.rs          # mongodb: Filter, Update and the path kinds
 │   │   │   ├── fields.rs         # mongodb: MongoFields, MONGO_FIELDS, one function per field
 │   │   │   └── operations.rs     # mongodb: OperationError, Read and the operations
@@ -1558,6 +1639,8 @@ tixschema/
 │       └── typescript.rs         # TypeScript/Zod code generation
 ├── tests/
 │   ├── basic_tests.rs
+│   ├── check_tests.rs                    # check, as validate() runs it
+│   ├── check_tests/                      # The models, the shared table, the members, the README
 │   ├── collection_tests.rs
 │   ├── enum_tests.rs
 │   ├── serde_tests.rs

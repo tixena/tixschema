@@ -31,6 +31,7 @@ mod as_text {
 }
 mod aliased;
 mod bounds;
+mod checks;
 mod flattened;
 // A build that describes a type refuses a renaming whose two directions name two keys.
 #[cfg(not(any(

@@ -12,6 +12,7 @@ use syn::ext::IdentExt as _;
 use syn::{Fields, ItemEnum, Type, Variant, parse_quote};
 
 use super::aliases::Reach;
+use super::checks::enum_check_messages;
 use super::{
     Arm, Casing, FieldValidator, Handed, Keyed, Lookup, RecoveringDecode, Shape, Step, TypedPaths,
     Walk, Walker, Written, added_to, binding, flattened_walker_call, not_the_shape,
@@ -734,6 +735,7 @@ pub fn enum_recovering_decode(item_enum: &ItemEnum) -> RecoveringDecode {
         &module_name,
         &parameters,
         &Written {
+            check_messages: enum_check_messages(item_enum, &module_name, &parameters),
             names,
             reach: &reach,
         },

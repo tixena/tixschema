@@ -3,6 +3,10 @@
 
 #![cfg(all(unix, feature = "serde", feature = "typescript", feature = "zod"))]
 
+/// The models a check is written on, which the `check` tests run through `validate()`.
+#[path = "../check_tests/models.rs"]
+mod checked;
+
 #[cfg(feature = "chrono")]
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -110,6 +114,155 @@ console.log(
     },
   }),
 );
+"#;
+
+/// The functions the checks of the bundle name, as a consumer writes them in TypeScript. Each takes
+/// the value and the payload it pushes its issues to. The check of a brand takes the value the
+/// brand is written over.
+const CHECKS: &str = r#"import type { ParsePayload } from "zod/v4/core";
+
+export function withoutDuplicates(value: Array<string>, ctx: ParsePayload<Array<string>>): void {
+  const seen = new Set<string>();
+  for (const code of value) {
+    if (seen.has(code)) {
+      ctx.issues.push({ code: "custom", message: `duplicate item code ${code}`, path: [], input: value });
+      return;
+    }
+    seen.add(code);
+  }
+}
+
+export function withinParcel(value: Parcel, ctx: ParsePayload<Parcel>): void {
+  value.fragileItemCodes.forEach((code, index) => {
+    if (!value.itemCodeList.includes(code)) {
+      ctx.issues.push({
+        code: "custom",
+        message: `${code} is outside of itemCodeList`,
+        path: ["fragileItemCodes", index],
+        input: value,
+      });
+    }
+  });
+}
+
+export function withARoute(value: Route, ctx: ParsePayload<Route>): void {
+  if (value.stops.length === 0) {
+    ctx.issues.push({ code: "custom", message: "a route makes at least one stop", path: ["stops"], input: value });
+  }
+}
+
+export function withinItsLimit(value: Stack, ctx: ParsePayload<Stack>): void {
+  if (value[0].length > value[1]) {
+    ctx.issues.push({ code: "custom", message: `a stack holds at most ${value[1]} codes`, path: [0], input: value });
+  }
+}
+
+export function takingParcels(value: ClosedDock, ctx: ParsePayload<ClosedDock>): void {
+  ctx.issues.push({ code: "custom", message: "a closed dock takes no parcel", path: [], input: value });
+}
+
+export function withFewStops(value: Shipment, ctx: ParsePayload<Shipment>): void {
+  if (value.kind === "air" && value.stops.length > 2) {
+    ctx.issues.push({ code: "custom", message: "an air shipment makes at most 2 stops", path: ["stops"], input: value });
+  }
+}
+
+export function withAStop(value: Transfer, ctx: ParsePayload<Transfer>): void {
+  if (typeof value === "string") return;
+  if ("Road" in value && value.Road.stops.length === 0) {
+    ctx.issues.push({ code: "custom", message: "a road transfer makes a stop", path: ["Road", "stops"], input: value });
+  }
+  if ("Rail" in value && value.Rail === "") {
+    ctx.issues.push({ code: "custom", message: "a rail transfer names its line", path: ["Rail"], input: value });
+  }
+}
+
+export function signedBySomeone(value: Handover, ctx: ParsePayload<Handover>): void {
+  if (value.kind === "Signed" && value.detail.by === "") {
+    ctx.issues.push({ code: "custom", message: "a handover is signed by someone", path: ["detail", "by"], input: value });
+  }
+}
+
+export function aReference(value: Reference, ctx: ParsePayload<Reference>): void {
+  if (typeof value === "number") {
+    if (value === 0) {
+      ctx.issues.push({ code: "custom", message: "a reference is not zero", path: [], input: value });
+    }
+    return;
+  }
+  if (value.name === "") {
+    ctx.issues.push({ code: "custom", message: "a reference has a name", path: ["name"], input: value });
+  }
+}
+
+export function rated(value: Grade, ctx: ParsePayload<Grade>): void {
+  if (value === "Unrated") {
+    ctx.issues.push({ code: "custom", message: "a parcel is rated", path: [], input: value });
+  }
+}
+
+export function upperCase(value: string, ctx: ParsePayload<string>): void {
+  if (value !== value.toUpperCase()) {
+    ctx.issues.push({ code: "custom", message: "a code is upper case", path: [], input: value });
+  }
+}
+
+export function withACode<CodeType>(value: Crate<CodeType>, ctx: ParsePayload<Crate<CodeType>>): void {
+  if (value.codes.length === 0) {
+    ctx.issues.push({ code: "custom", message: "a crate holds at least one code", path: ["codes"], input: value });
+  }
+}
+
+export function holdingACode<CodeType>(value: Array<CodeType>, ctx: ParsePayload<Array<CodeType>>): void {
+  if (value.length === 0) {
+    ctx.issues.push({ code: "custom", message: "a batch holds at least one code", path: [], input: value });
+  }
+}
+
+export function shortList(value: Array<string>, ctx: ParsePayload<Array<string>>): void {
+  if (value.length > 2) {
+    ctx.issues.push({ code: "custom", message: `${value[2]} is one code too many`, path: [2], input: value });
+  }
+}"#;
+
+/// Loads the compiled bundle, parses the payload of each case through the schema its type
+/// publishes, and prints what the Rust side prints for the same case: a message under the path
+/// of its issue, and alone where that path is empty.
+const CHECKS_DRIVER: &str = r#"import { z } from "zod";
+import * as lib from "./lib/index.js";
+
+const schemas = {
+  Parcel: lib.Parcel$Schema,
+  Manifest: lib.Manifest$Schema,
+  Route: lib.Route$Schema,
+  Stack: lib.Stack$Schema,
+  ClosedDock: lib.ClosedDock$Schema,
+  Shipment: lib.Shipment$Schema,
+  Transfer: lib.Transfer$Schema,
+  Handover: lib.Handover$Schema,
+  Reference: lib.Reference$Schema,
+  Grade: lib.Grade$Schema,
+  Code: lib.Code$Schema,
+  "Crate<String>": lib.Crate$SchemaDefault,
+  "Crate<u32>": lib.Crate$SchemaFactory(z.number().int()),
+  "Batch<String>": lib.Batch$SchemaDefault,
+  "Batch<u32>": lib.Batch$SchemaFactory(z.number().int()),
+  Pallet: lib.Pallet$Schema,
+};
+const printed = [];
+for (const [name, schema, payload] of CASES) {
+  const read = schemas[schema].safeParse(JSON.parse(payload));
+  if (read.success) {
+    printed.push(`${name}: passes`);
+    continue;
+  }
+  printed.push(`${name}: refused`);
+  for (const issue of read.error.issues) {
+    const lead = issue.path.length > 0 ? `'${issue.path.join(".")}': ` : "";
+    printed.push(`    ${lead}${issue.message}`);
+  }
+}
+console.log(printed.join("\n"));
 "#;
 
 const COMPILER_VAR: &str = "TIXSCHEMA_TSC";
@@ -575,8 +728,44 @@ fn bundle() -> String {
     ]
     .into_iter()
     .chain(dated())
+    .chain(checks())
     .collect::<Vec<_>>()
     .join("\n\n")
+}
+
+/// The types a check is written on, and the functions their checks name.
+fn checks() -> Vec<String> {
+    vec![
+        checked::Parcel::ts_definition(),
+        checked::Parcel::zod_schema(),
+        checked::Manifest::ts_definition(),
+        checked::Manifest::zod_schema(),
+        checked::Route::ts_definition(),
+        checked::Route::zod_schema(),
+        checked::Stack::ts_definition(),
+        checked::Stack::zod_schema(),
+        checked::ClosedDock::ts_definition(),
+        checked::ClosedDock::zod_schema(),
+        checked::Shipment::ts_definition(),
+        checked::Shipment::zod_schema(),
+        checked::Transfer::ts_definition(),
+        checked::Transfer::zod_schema(),
+        checked::Handover::ts_definition(),
+        checked::Handover::zod_schema(),
+        checked::Reference::ts_definition(),
+        checked::Reference::zod_schema(),
+        checked::Grade::ts_definition(),
+        checked::Grade::zod_schema(),
+        checked::Code::ts_definition(),
+        checked::Code::zod_schema(),
+        checked::Crate::<String>::ts_definition(),
+        checked::Crate::<String>::zod_schema(),
+        checked::Batch::<String>::ts_definition(),
+        checked::Batch::<String>::zod_schema(),
+        checked::Pallet::ts_definition(),
+        checked::Pallet::zod_schema(),
+        CHECKS.to_owned(),
+    ]
 }
 
 /// The types that hold a date, which the bundle declares where `chrono` is on.
@@ -772,6 +961,40 @@ fn type_check_a_date_refuses_what_is_no_date_in_every_position_that_holds_one() 
     assert_eq!(
         printed, DATED,
         "the bundle does not load and parse under node:\n{failed}"
+    );
+}
+
+/// Each case of the shared table and of the shapes is parsed by the schema its type publishes,
+/// and the two sides are compared as one text.
+#[test]
+fn type_check_a_check_answers_under_zod_what_validate_answers() {
+    let mut table = checked::parcel_cases();
+    table.push(checked::manifest_case());
+    let shapes = checked::shape_cases();
+    let answered = format!("{}{}", checked::report(&table), checked::report(&shapes));
+    assert_eq!(answered, format!("{}{}", checked::TABLE, checked::SHAPES));
+
+    let of_the_table = table.iter().map(|case| {
+        let schema = if case.name == "case 6" {
+            "Manifest"
+        } else {
+            "Parcel"
+        };
+        (case.name, schema, case.payload.as_str())
+    });
+    let of_the_shapes = shapes.iter().map(|case| {
+        let schema = case.name.split(',').next().unwrap_or(case.name);
+        (case.name, schema, case.payload.as_str())
+    });
+    let cases: Vec<(&str, &str, &str)> = of_the_table.chain(of_the_shapes).collect();
+    let driver = CHECKS_DRIVER.replace("CASES", &serde_json::to_string(&cases).unwrap());
+    let Some((printed, failed)) = loaded("checks", &driver) else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        answered.trim_end(),
+        "the schemas do not answer what `validate()` answers:\n{failed}"
     );
 }
 

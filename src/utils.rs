@@ -18,6 +18,9 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use syn::{Attribute, Expr, Field, GenericParam, Generics, Lit, LitStr, Meta, Type, Variant};
 
+#[cfg(feature = "serde")]
+use crate::features::model_schema_prop::CheckName;
+
 #[cfg(any(
     feature = "typescript",
     feature = "zod",
@@ -644,6 +647,81 @@ thread_local! {
         RefCell::new(HashMap::new());
 }
 
+/// The checks the item being expanded names, as the parts of its expansion that are written apart
+/// read them.
+#[cfg(feature = "serde")]
+#[derive(Default)]
+struct NamedChecks {
+    /// Whether the item names a check, on itself or on a member.
+    named: bool,
+    /// The checks each member names, by schema module and helper stem.
+    of_members: HashMap<(String, String), Vec<CheckName>>,
+    /// The checks written on the type, by schema module.
+    own: HashMap<String, Vec<CheckName>>,
+}
+
+#[cfg(feature = "serde")]
+thread_local! {
+    /// The checks of the item being expanded, read by the recovering decode of that same item,
+    /// and by each bound of it: where the item names a check, a bound imports the schema module
+    /// for itself, so that a check is called where that import is not in scope.
+    static NAMED_CHECKS: RefCell<NamedChecks> = RefCell::new(NamedChecks::default());
+}
+
+/// Forgets every check recorded: an expansion reads only the checks of its own item.
+#[cfg(feature = "serde")]
+pub fn forget_checks() {
+    NAMED_CHECKS.with(|held| *held.borrow_mut() = NamedChecks::default());
+}
+
+/// Whether the item being expanded names a check, on itself or on a member.
+#[cfg(feature = "serde")]
+pub fn names_a_check() -> bool {
+    NAMED_CHECKS.with(|held| held.borrow().named)
+}
+
+/// Records the checks written on the type whose schema module is `module`, and whether the type
+/// or a member of it names any.
+#[cfg(feature = "serde")]
+pub fn record_own_checks(module: &str, checks: &[CheckName], named: bool) {
+    NAMED_CHECKS.with(|held| {
+        let mut recorded = held.borrow_mut();
+        recorded.named = named;
+        recorded.own.insert(module.to_owned(), checks.to_vec());
+    });
+}
+
+/// Records the checks the member whose helpers are named from `stem` names.
+#[cfg(feature = "serde")]
+pub fn record_member_checks(module: &str, stem: &str, checks: &[CheckName]) {
+    if checks.is_empty() {
+        return;
+    }
+    NAMED_CHECKS.with(|held| {
+        held.borrow_mut()
+            .of_members
+            .insert((module.to_owned(), stem.to_owned()), checks.to_vec());
+    });
+}
+
+/// The checks written on the type whose schema module is `module`.
+#[cfg(feature = "serde")]
+pub fn own_checks(module: &str) -> Vec<CheckName> {
+    NAMED_CHECKS.with(|held| held.borrow().own.get(module).cloned().unwrap_or_default())
+}
+
+/// The checks the member whose helpers are named from `stem` names, in `module`.
+#[cfg(feature = "serde")]
+pub fn member_checks(module: &str, stem: &str) -> Vec<CheckName> {
+    NAMED_CHECKS.with(|held| {
+        held.borrow()
+            .of_members
+            .get(&(module.to_owned(), stem.to_owned()))
+            .cloned()
+            .unwrap_or_default()
+    })
+}
+
 /// The name `validate_{stem}_value` of `module` reports its field under: the key serde writes it
 /// under, or a slot's position. `None` where `module` holds no such validator.
 #[cfg(feature = "serde")]
@@ -1155,15 +1233,6 @@ fn collect_doc_lines(attrs: &[Attribute]) -> Option<Vec<String>> {
     }
 }
 
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    feature = "serde",
-    feature = "dart",
-    feature = "swift",
-    feature = "kotlin"
-))]
 pub fn to_snake_case(name: &str) -> String {
     let mut result = String::new();
     let mut prev_lower = false;

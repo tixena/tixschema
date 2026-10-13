@@ -1,5 +1,6 @@
 //! Model schema property feature module
 
+use proc_macro2::Span;
 use syn::meta::ParseNestedMeta;
 use syn::{Attribute, Lit, LitStr, Type};
 
@@ -16,10 +17,25 @@ const KNOWN_KEYS: &[&str] = &[
     "maximum",
     "pattern",
     "preprocess",
+    "check",
     "ts_optional",
     "as_number",
     "nullable",
 ];
+
+/// What a refusal of a `check` written in `#[model_schema_prop(...)]` opens with.
+const PROP_CHECK: &str = "`model_schema_prop` key `check`";
+
+/// What a `check` takes, said where it is written any other way.
+pub const CHECK_TAKES: &str =
+    "takes an array of string literals, each naming a function: `check = [\"withinParcel\"]`";
+
+/// One function a `check` key names, and where the name is written.
+#[derive(Clone, Debug)]
+pub struct CheckName {
+    pub name: String,
+    pub written_at: Span,
+}
 
 /// The value a `literal` key was written with, kept in the kind it was written as. The kind decides
 /// which [`crate::field_type::FieldDefType`] the field collapses to and which Rust type may carry
@@ -136,6 +152,17 @@ pub enum LiteralValue {
 /// - `preprocess = ["fn1", "fn2"]` — wrap the Zod schema with `z.preprocess()` calls (Zod-only, no Rust-side effect).
 ///   Multiple functions are nested: `z.preprocess(fn1, z.preprocess(fn2, innerSchema))`.
 ///
+/// ## Checks
+///
+/// - `check = ["fn1", "fn2"]` — the functions of the developer's own that hold the field's value
+///   to a rule, each run after the field's bounds, in the order written. The value is the field's
+///   own, read as a bound reads it: under `Option` and the transparent wrappers, and a list whole.
+///   - Rust: `validate()` calls the snake case of each name, `fn1(&value) -> Result<(),
+///     Vec<String>>`, and writes each message under the field. A type declared with `decode_with`
+///     lists each message as an issue of its recovering read.
+///   - Zod: one `.check(…)` per name on the field's schema, calling `fn1(value, ctx)`.
+///   - JSON Schema: nothing. A document calls no function.
+///
 /// # Example
 ///
 /// ```rust
@@ -160,6 +187,8 @@ pub struct ModelSchemaPropMeta {
     pub as_number: bool,
     pub as_type: Option<Type>,
     pub attr_rejection: Option<syn::Error>,
+    /// The functions `check` names, in the order written.
+    pub check: Vec<CheckName>,
     /// The `pattern` of the enum the field's variant belongs to, where the field writes one of its
     /// own in [`Self::pattern`]: the value is held to both.
     #[cfg(any(feature = "serde", feature = "zod", feature = "jsonschema"))]
@@ -248,6 +277,12 @@ fn parse_prop_key(nested: &ParseNestedMeta, meta: &mut ModelSchemaPropMeta) -> s
             .iter()
             .map(preprocess_fn_name)
             .collect::<syn::Result<_>>()?;
+    } else if nested.path.is_ident("check") {
+        if !nested.input.peek(syn::Token![=]) {
+            return Err(check_refusal(&nested.path, PROP_CHECK, CHECK_TAKES));
+        }
+        let written: syn::Expr = nested.value()?.parse()?;
+        meta.check = check_names(&written, PROP_CHECK)?;
     } else if nested.path.is_ident("ts_optional") {
         meta.ts_optional = true;
     } else if nested.path.is_ident("as_number") {
@@ -312,6 +347,77 @@ fn preprocess_fn_name(elem: &syn::Expr) -> syn::Result<String> {
              function to wrap the Zod schema with",
         ))
     }
+}
+
+/// The functions a `check` names, read off the value it is written with, for `#[model_schema]` and
+/// `#[model_schema_prop]` alike. `subject` opens a refusal: the attribute and the key.
+pub fn check_names(written: &syn::Expr, subject: &str) -> syn::Result<Vec<CheckName>> {
+    let syn::Expr::Array(array) = written else {
+        return Err(check_refusal(written, subject, CHECK_TAKES));
+    };
+    if array.elems.is_empty() {
+        return Err(check_refusal(
+            written,
+            subject,
+            "names no function: write one name at least, or drop the key",
+        ));
+    }
+    let mut named: Vec<CheckName> = Vec::with_capacity(array.elems.len());
+    for element in &array.elems {
+        let read = check_name(element, subject)?;
+        if named.iter().any(|earlier| earlier.name == read.name) {
+            return Err(check_refusal(
+                element,
+                subject,
+                &format!(
+                    "names `{}` twice: the name is written twice, and a function runs once",
+                    read.name
+                ),
+            ));
+        }
+        named.push(read);
+    }
+    Ok(named)
+}
+
+/// The name one element of a `check` carries: the function is called under it in every language,
+/// so it is a string literal that spells an identifier.
+fn check_name(element: &syn::Expr, subject: &str) -> syn::Result<CheckName> {
+    let syn::Expr::Lit(syn::ExprLit {
+        lit: Lit::Str(written),
+        attrs: _attrs,
+    }) = element
+    else {
+        return Err(check_refusal(
+            element,
+            subject,
+            "takes string literals: each element is a string literal that names a function",
+        ));
+    };
+    let name = written.value();
+    let mut letters = name.chars();
+    let opens = letters
+        .next()
+        .is_some_and(|letter| letter.is_ascii_alphabetic() || letter == '_');
+    if opens && letters.all(|letter| letter.is_ascii_alphanumeric() || letter == '_') {
+        return Ok(CheckName {
+            name,
+            written_at: written.span(),
+        });
+    }
+    Err(check_refusal(
+        element,
+        subject,
+        &format!(
+            "names `{name}`, and a name is an identifier: ASCII letters, digits and `_`, not led \
+             by a digit. The name is written as a function's name in every language"
+        ),
+    ))
+}
+
+/// A refusal of a `check`, spanned on what was written.
+fn check_refusal(written: impl quote::ToTokens, subject: &str, refusal: &str) -> syn::Error {
+    syn::Error::new_spanned(written, format!("{subject} {refusal}"))
 }
 
 /// Rejects a key the parser does not read, spanned on the name as written.

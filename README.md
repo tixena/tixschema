@@ -3090,7 +3090,7 @@ There is no subscription operation, no topic and no broker: a push travels exact
 
 ## Field Validation (`model_schema_prop`)
 
-Use `#[model_schema_prop(...)]` on individual fields to add validation constraints, override types, or apply Zod preprocessing. Constraints are enforced in both Zod (frontend) and a generated `validate()` method (Rust).
+Use `#[model_schema_prop(...)]` on individual fields to add validation constraints, name [checks](#checks-check) of your own, override types, or apply Zod preprocessing. Constraints are enforced in both Zod (frontend) and a generated `validate()` method (Rust).
 
 ### String Constraints (minLength, maxLength, pattern)
 
@@ -3340,7 +3340,7 @@ The refusal names the keys of the wrong kind and no other: `minimum` written bes
 
 ### The `validate()` Method
 
-When any field carries a constraint, the macro generates a `validate(&self) -> Result<(), Vec<String>>` method. It is what checks a field's constraints -- on an instance built in Rust and on one just read off the wire alike, the read itself having admitted the value.
+When any field carries a constraint, or the type or one of its fields names a [check](#checks-check), the macro generates a `validate(&self) -> Result<(), Vec<String>>` method. It is what checks a field's constraints -- on an instance built in Rust and on one just read off the wire alike, the read itself having admitted the value.
 
 ```rust
 #[model_schema()]
@@ -3642,6 +3642,248 @@ This reaches through `Option`, `Box`/`Cow`/`Rc`/`Arc` and every level of a list,
 It reaches nothing through a map or a tuple. Through a tuple struct's slot it reaches nothing below the slot: `validate()` runs the check [written on the slot itself](#a-slot-of-a-tuple-struct), reported under the slot's position, and a bound the slot's own type declares is not run from there. Through a *tagged* variant's slot it reaches nothing below the slot either: the arm binds the slot by its position and runs the check [written on the slot itself](#a-slot-of-a-tuple-variant), reported under that position, and a bound the slot's own type declares is not run from there.
 
 The brand's read-time hook stands unchanged beside this, so a brand's bound is now enforced in both places. They answer different questions: a payload arriving over the wire is refused on the read, and a message built in Rust -- where no read ever ran, which is every outbound message a generated client sends -- is refused by `validate()`. A nested type's bound has no hook at all, so its enclosing `validate()` is the only thing that enforces it.
+
+### Checks (`check`)
+
+`check = ["name", ...]` names functions of your own that judge a value: a rule that reads one field against another, or one no bound spells. It is written on a type, in `#[model_schema(...)]`, and on a field, in `#[model_schema_prop(...)]`. A name is written once, and every language calls a function under it: Rust the snake case of the name, `withinParcel` as `within_parcel`, and TypeScript the name as written.
+
+```rust
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use tixschema::{model_schema, model_schema_prop};
+
+#[model_schema(decode_with, check = ["withinParcel"])]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Parcel {
+    #[model_schema_prop(minLength = 1)]
+    pub label: String,
+    #[model_schema_prop(check = ["withoutDuplicates"])]
+    pub item_code_list: Vec<String>,
+    pub fragile_item_codes: Vec<String>,
+}
+
+#[model_schema(decode_with)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Manifest {
+    pub parcel: Parcel,
+}
+
+// A field's check takes the field's own value, and names no path.
+fn without_duplicates(value: &[String]) -> Result<(), Vec<String>> {
+    for (index, code) in value.iter().enumerate() {
+        if value[..index].contains(code) {
+            return Err(vec![format!("duplicate item code {code}")]);
+        }
+    }
+    Ok(())
+}
+
+// A type's check takes the whole value, and leads each message with the path of what it refuses.
+fn within_parcel(value: &Parcel) -> Result<(), Vec<String>> {
+    let outside: Vec<String> = value
+        .fragile_item_codes
+        .iter()
+        .enumerate()
+        .filter(|(_, code)| !value.item_code_list.contains(code))
+        .map(|(index, code)| {
+            format!("'fragileItemCodes.{index}': {code} is outside of itemCodeList")
+        })
+        .collect();
+    if outside.is_empty() { Ok(()) } else { Err(outside) }
+}
+
+fn main() {
+    let parcel = |label: &str, codes: &[&str], fragile: &[&str]| Parcel {
+        label: label.to_string(),
+        item_code_list: codes.iter().map(|code| code.to_string()).collect(),
+        fragile_item_codes: fragile.iter().map(|code| code.to_string()).collect(),
+    };
+    let lines = |answered: Result<(), Vec<String>>| answered.err().unwrap_or_default();
+
+    assert!(parcel("A", &["x"], &["x"]).validate().is_ok());
+    assert_eq!(
+        lines(parcel("", &["x"], &["x"]).validate()),
+        ["'label': too short: minimum length is 1, got 0"]
+    );
+    assert_eq!(
+        lines(parcel("A", &["x", "x"], &["x"]).validate()),
+        ["'itemCodeList': duplicate item code x"]
+    );
+    assert_eq!(
+        lines(parcel("A", &["x"], &["x", "y"]).validate()),
+        ["'fragileItemCodes.1': y is outside of itemCodeList"]
+    );
+    // Every bound and every check runs, and none stops another.
+    assert_eq!(
+        lines(parcel("", &["x", "x"], &["y"]).validate()),
+        [
+            "'label': too short: minimum length is 1, got 0",
+            "'itemCodeList': duplicate item code x",
+            "'fragileItemCodes.0': y is outside of itemCodeList",
+        ]
+    );
+    // A holder runs the `validate()` of what it holds, under the key it holds it at.
+    let manifest = Manifest { parcel: parcel("A", &["x"], &["x", "y"]) };
+    assert_eq!(
+        lines(manifest.validate()),
+        ["'parcel.fragileItemCodes.1': y is outside of itemCodeList"]
+    );
+
+    // The recovering read lists a broken check as an issue, at the place its message names.
+    let read = Parcel::from_value_with(
+        json!({ "label": "A", "itemCodeList": ["x"], "fragileItemCodes": ["x", "y"] }),
+        |_, issues| {
+            assert_eq!(
+                format!("{:?}", issues[0]),
+                r#"Invalid { path: Path([Key("fragileItemCodes"), Index(1)]), expected: Unknown, found: String("y"), reason: "y is outside of itemCodeList" }"#
+            );
+            parcel_schema::Verdict::Reject
+        },
+    );
+    assert!(read.is_err());
+}
+```
+
+#### The functions you write
+
+A Rust function is in scope where the type is declared, a type declared inside a function body included. A TypeScript function is imported by the file the generated schemas are written into, as a [`preprocess`](#zod-preprocessing) function is.
+
+| | Rust | TypeScript |
+|---|---|---|
+| A field's check | `fn without_duplicates(value: &[String]) -> Result<(), Vec<String>>` | `function withoutDuplicates(value: Array<string>, ctx: ParsePayload<Array<string>>): void` |
+| A type's check | `fn within_parcel(value: &Parcel) -> Result<(), Vec<String>>` | `function withinParcel(value: Parcel, ctx: ParsePayload<Parcel>): void` |
+
+`ParsePayload` is zod's own type, `z.core.ParsePayload`, which `zod/v4/core` exports. The two functions of the example in TypeScript:
+
+```ts
+import type { ParsePayload } from "zod/v4/core";
+
+export function withoutDuplicates(value: Array<string>, ctx: ParsePayload<Array<string>>): void {
+  const seen = new Set<string>();
+  for (const code of value) {
+    if (seen.has(code)) {
+      ctx.issues.push({ code: "custom", message: `duplicate item code ${code}`, path: [], input: value });
+      return;
+    }
+    seen.add(code);
+  }
+}
+
+export function withinParcel(value: Parcel, ctx: ParsePayload<Parcel>): void {
+  value.fragileItemCodes.forEach((code, index) => {
+    if (!value.itemCodeList.includes(code)) {
+      ctx.issues.push({
+        code: "custom",
+        message: `${code} is outside of itemCodeList`,
+        path: ["fragileItemCodes", index],
+        input: value,
+      });
+    }
+  });
+}
+```
+
+- **A field's check takes the field's own value**, read as a [bound reads it](#constraints-under-option-and-wrappers): under an `Option` it is called only where a value is held, under `Box`, `Rc`, `Arc`, `Cow` and a reference it takes what they hold, and a list or a map is taken whole. The call passes a reference, so `&[String]` and `&Vec<String>` both take a `Vec<String>`, and `&str` takes a `String`.
+- **A type's check takes the whole value**, `&Parcel`, and an enum's takes the enum, whichever variant it holds.
+- **A type with a parameter writes its function once, over every filling**: `fn with_a_code<CodeType>(value: &Crate<CodeType>) -> Result<(), Vec<String>>`, and `function withACode<CodeType>(value: Crate<CodeType>, ctx: ParsePayload<Crate<CodeType>>): void`.
+- **The check of a [branded newtype](#branded-newtypes)** takes the brand in Rust, `&Code`, and the value the brand is written over in TypeScript, a `string` for a brand over a `String`: the Zod schema writes the check ahead of `.brand()`.
+
+#### The messages
+
+Rust answers `Err` with one message per broken rule, and TypeScript pushes one issue per broken rule to `ctx.issues`: `{ code: "custom", message, path, input: value }`.
+
+- **A field's check names no path.** `validate()` writes each message under the name a bound of that field is reported under: [the key serde writes](#the-path-a-message-names), a slot's position, and nothing for a `#[serde(flatten)]` member and for the lone slot of an `#[serde(untagged)]` variant. A message that leads with a path below the field's value is written into that name: a check of `item_code_list` answering `'1': ...` is reported as `'itemCodeList.1': ...`. In TypeScript the issue's `path` is `[]`, or the path below the field's value, `[1]`, and zod writes the field's own key ahead of it.
+- **A type's check leads each message with the path of what it refuses**, in single quotes, written with the keys of the payload and the index of each item, joined by dots: `'fragileItemCodes.1': y is outside of itemCodeList`. In TypeScript that is `path: ["fragileItemCodes", 1]`. tixschema cannot check a path you write: a key under `rename_all` is the renamed one, as in every generated message. A message with no lead is about the value itself.
+
+#### Where a check runs
+
+**In `validate()`, in every build.** A type that names a check, on itself or on a field, publishes [`validate()`](#the-validate-method) whether or not a field of it carries a bound, with the `serde` feature off and with no schema surface on as well: a function you wrote is called wherever the type is declared. Each member's bounds run first and its checks after them, member by member in the order declared, and the type's checks run last. Several checks of one key run in the order written, and every one runs: none stops another, and none is stopped by a broken bound.
+
+Every shape runs its checks: a struct with named fields, a tuple struct (a slot's check where [a slot's bound](#a-slot-of-a-tuple-struct) is, reported under its position), a unit struct, an enum under every tagging and a plain one (a member's check runs for the variant the value holds, the enum's own after it), a branded newtype (after the brand's own string checks, with no path), and a type with a parameter at every filling. A type that holds another runs the `validate()` of what it holds, as it does [for a bound](#a-bound-the-fields-own-type-declares), so `Manifest` reports `'parcel.fragileItemCodes.1': y is outside of itemCodeList`.
+
+**In the Zod schema**, as one `.check(...)` per name:
+
+```ts
+.check((ctx) => {
+  const own = { value: ctx.value, issues: ctx.issues.slice(0, 0) };
+  withinParcel(own.value, own);
+  for (const issue of own.issues) ctx.issues.push({ ...issue, continue: true });
+})
+```
+
+A field's check is written on the schema of the value the Rust function takes: after the field's bounds, inside the union an `Option` writes, on the array of a list after its count, and inside a `z.preprocess` wrap. A type's check is written on the type's own expression, ahead of `.brand()` on a brand and of the `.meta({ ... })` every binding carries, and inside the builder of a type with a parameter, so every filling of its factory carries it. Each issue is copied with `continue: true`: zod skips a later check once an issue without that flag is listed, and the Rust side runs every one.
+
+**In the [recovering decode](#recovering-decode-decode_with)** of a type declared with `decode_with`. serde builds the value, the checks run on it, and each message is one `Issue::Invalid` of the read: `path` is what the message leads with, read against the raw value, `expected` is `Unknown`, `found` is the raw value at that path, and `reason` is the text after the lead. See [What each shape reports](#what-each-shape-reports).
+
+**Nowhere else.** A serde read runs no check, and neither does the hook an `#[serde(untagged)]` member is read through: a check chooses no variant. The JSON Schema calls no function, and a document is written as it is without the key. The Dart, Swift and Kotlin types read the key and are written as they are without it. The Zod schema of a type that flattens an `#[serde(untagged)]` enum writes that enum's variants out one by one, with each member's check and without the check written on the enum itself, which the holder's `validate()` does run.
+
+#### What is refused
+
+The key is read in every build, and each refusal is spanned on what was written:
+
+| Written | The refusal says |
+|---|---|
+| `check = "withinParcel"` | takes an array of string literals, each naming a function: `check = ["withinParcel"]` |
+| `check = [withinParcel]` | takes string literals: each element is a string literal that names a function |
+| `check = ["within-parcel"]` | names `within-parcel`, and a name is an identifier: ASCII letters, digits and `_`, not led by a digit. The name is written as a function's name in every language |
+| `check = []` | names no function: write one name at least, or drop the key |
+| `check = ["a", "a"]` | names `a` twice: the name is written twice, and a function runs once |
+
+A `check` on a type alias is refused, an alias having no `impl` of its own to call a function from: write it on the type the alias names, or on a field that holds the alias. A `check` on the slot of a [branded newtype](#branded-newtypes) is refused as every key written there is: a brand's check is written on the type.
+
+**A name with no function in scope does not build**, and the error is reported at the name:
+
+```rust,compile_fail
+#[model_schema(check = ["withinParcel"])]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Parcel {
+    pub label: String,
+}
+```
+
+```text
+error[E0425]: cannot find function `within_parcel` in this scope
+  |
+4 | #[model_schema(check = ["withinParcel"])]
+  |                         ^^^^^^^^^^^^^^ help: try calling `within_parcel` as a method: `self.within_parcel()`
+```
+
+The `help` is the compiler's own. What resolves the error is a function `within_parcel` in scope where `Parcel` is declared.
+
+**A function that asks more of a type parameter than the type declares does not build** until the bound is written on the type, the call being made at every filling:
+
+```rust,compile_fail
+#[model_schema(default_types(CodeType = String), check = ["withoutRepeats"])]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Crate<CodeType> {
+    pub codes: Vec<CodeType>,
+}
+
+fn without_repeats<CodeType>(value: &Crate<CodeType>) -> Result<(), Vec<String>>
+where
+    CodeType: PartialEq,
+{
+    for (index, code) in value.codes.iter().enumerate() {
+        if value.codes[..index].contains(code) {
+            return Err(vec![format!("'codes.{index}': a code is listed once")]);
+        }
+    }
+    Ok(())
+}
+```
+
+```text
+error[E0277]: can't compare `CodeType` with `CodeType`
+   |
+ 4 | #[model_schema(default_types(CodeType = String), check = ["withoutRepeats"])]
+   |                                                           ^^^^^^^^^^^^^^^^ no implementation for `CodeType == CodeType`
+   |
+help: consider restricting type parameter `CodeType` with trait `PartialEq`
+   |
+ 6 | pub struct Crate<CodeType: std::cmp::PartialEq> {
+   |                          +++++++++++++++++++++
+```
 
 ### Literal Values
 
@@ -4250,7 +4492,7 @@ The callback's types and the resolvers' live in the flagged type's own module, `
 
 | `Issue` member | What it says | Example |
 |----------------|--------------|---------|
-| `Invalid { path, expected, found, reason }` | The value is there, and either serde refuses it for its field, or serde reads it and it breaks a `#[model_schema_prop]` bound its field declares. `reason` is serde's own message for the first, in the `bson` library's wording where the value is BSON, and the bound's own sentence for the second | A version holding `"number": "2"` where `number` is an `i32`: `Invalid` at `versions[1].number`, expected `I32`. A `humanName` holding `""` under `minLength = 1`: `Invalid` at `humanName`, reason `too short: minimum length is 1, got 0` |
+| `Invalid { path, expected, found, reason }` | The value is there, and either serde refuses it for its field, or serde reads it and it breaks a `#[model_schema_prop]` bound its field declares, or a [check](#checks-check) refuses it. `reason` is serde's own message for the first, in the `bson` library's wording where the value is BSON, the bound's own sentence for the second, and the check's message after its path for the third | A version holding `"number": "2"` where `number` is an `i32`: `Invalid` at `versions[1].number`, expected `I32`. A `humanName` holding `""` under `minLength = 1`: `Invalid` at `humanName`, reason `too short: minimum length is 1, got 0` |
 | `Missing { path, expected }` | The type requires the key, and it is not there | A record with no `name` where `name` is a `String`: `Missing` at `name`, expected `String` |
 | `Unknown { path, found }` | The key is there, and the type declares no field by that name | A record holding `"legacyField": true`: `Unknown` at `legacyField` |
 | `Mistyped { path, expected, found }` | serde reads the value, but it is held in another form than its field writes: another JSON shape, or another BSON type | An id held as the text `"6a7cc592ca0574e6efdfe217"` where an `ObjectId` writes `{ "$oid": "..." }`: `Mistyped` at `recordId`, expected `ObjectId` |
@@ -4291,6 +4533,7 @@ The walker reads each type in the form serde writes it. A type held in another f
 - A field whose type is another flagged type is walked by that type's walker at the extended path, through a list, a map, an `Option` or a `Box`: `versions[1].number`, `byName.first.number`, `latest.draft`. An optional one is walked when its key is there and does not hold `null`.
 - A value that reads is written back the way its field writes it, through the field's `serialize_with` function or `with` module when it has one, and compared with what is held. A mismatch is `Mistyped`.
 - A `#[model_schema_prop]` bound on a field hangs no read hook, so serde reads a value that breaks it. The walker runs the field's validator on what serde read, and lists each violation as an `Invalid` of its own at the value, with the bound's sentence as its `reason`: `humanName` holding `""` under `minLength = 1` lists `Invalid` at `humanName`, reason `too short: minimum length is 1, got 0`. A value that breaks two bounds lists two issues at its one path, a list that breaks its count is one issue at the list (`tags`, whatever its items are), and a field of a tagged enum's variant is listed the same way. So is a slot of a tagged tuple variant, at the slot's own path: `Pair[1]` for the second slot of an externally tagged `Pair`, and the key the variant's value sits under for a lone slot. And so is a slot of a tuple struct: `[1]` for the second slot of a `struct Pair(String, u32)` read as the value itself, `pair[1]` where a field `pair` holds it, and the path the struct sits at for the one slot of a single-slot struct. A callback or a resolver repairs the value at the issue's path, [once where two issues name it](#reading-from-mongodb). A validator is published only where a schema surface is on (`typescript`, `zod` or `jsonschema`), so a build with none lists nothing.
+- A [check](#checks-check) the type or one of its fields names takes the typed value, which the walker never holds, so the checks run once serde has read the value: after the first read where serde accepts it, and after the read that follows a `Fixed` verdict or the resolvers. Each message is an `Invalid` of its own, expected `Unknown`. With `Parcel` of [the example](#checks-check), `{ "label": "A", "itemCodeList": ["x"], "fragileItemCodes": ["x", "y"] }` lists `Invalid` at `fragileItemCodes[1]`, reason `y is outside of itemCodeList`, and the same parcel held by `Manifest` lists it at `parcel.fragileItemCodes[1]`. The path is what the message leads with, read against the raw value: a segment that is a number where the raw value holds a list is an index, and every other segment is a key. A message with no lead is at the value itself, and `found` is `null` where the path leads nowhere. A member's check is listed where serde writes the member under each tagging of an enum, and the checks of a flagged type held in a field, an `Option`, a list, a map or a `Box` are listed under the key, and the index or the map key, it is held at. A payload serde refuses runs no check, no value having been built: a callback that fixes it meets the checks on the second read, and a `Fixed` verdict that leaves a check broken fails the read with `Unrecovered`, as it does for a bound. A check is listed whether or not a schema surface is on, where a bound is listed only with one. Nothing is listed for a member serde never reads back, nor for what a field read through a hook of your own holds. A path is told apart by its dots, so a map key that holds one is read as two segments.
 
 Read as a struct holding `name: String` and `versions: Vec<Version>`, `{ "name": "Loan", "versions": [{ "number": 1 }, { "number": "2" }], "legacyField": true }` lists `Invalid` at `versions[1].number`, expected `I32`, and `Unknown` at `legacyField`.
 

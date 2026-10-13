@@ -4,6 +4,8 @@
 
 extern crate alloc;
 
+pub mod checks;
+
 use alloc::borrow::ToOwned;
 use core::fmt::Write as _;
 #[cfg(all(feature = "zod", feature = "typescript"))]
@@ -32,6 +34,8 @@ use syn::Ident;
 
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use crate::field_type::ZOD_SCHEMA_BOUND;
+#[cfg(feature = "zod")]
+use crate::field_type::zod_check_wrap;
 use crate::{
     field_type::{
         BoundKind, FieldDef, FieldDefType, VariantKind, classify_variant, format_number_literal,
@@ -138,7 +142,8 @@ use crate::field_type::{
 };
 
 use crate::features::model_schema_prop::{
-    LiteralValue, ModelSchemaPropMeta, parse_model_schema_prop_attributes,
+    CHECK_TAKES, CheckName, LiteralValue, ModelSchemaPropMeta, check_names,
+    parse_model_schema_prop_attributes,
 };
 
 #[cfg(feature = "jsonschema")]
@@ -169,7 +174,12 @@ use crate::utils::get_enum_docs;
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use crate::utils::get_struct_docs;
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "jsonschema",
+    feature = "serde"
+))]
 use crate::utils::ident_schema_module_name;
 
 #[cfg(not(feature = "indexmap"))]
@@ -207,6 +217,8 @@ use crate::utils::record_unit_struct;
 
 #[cfg(feature = "serde")]
 use crate::utils::to_snake_case;
+#[cfg(feature = "serde")]
+use crate::utils::{forget_checks, names_a_check, record_member_checks, record_own_checks};
 
 use crate::rename_rule::resolve_rename_rule;
 
@@ -220,7 +232,11 @@ const KNOWN_ARGS: &[&str] = &[
     "no_display",
     "default_types",
     "decode_with",
+    "check",
 ];
+
+/// What a refusal of a `check` written in `#[model_schema(...)]` opens with.
+const TYPE_CHECK: &str = "`model_schema` argument `check`";
 
 /// What every plain-enum flatten diagnostic says about its own reach, so an author who fixes the
 /// one declaration named there knows what was and was not checked around it.
@@ -230,6 +246,9 @@ const KNOWN_ARGS: &[&str] = &[
 ))]
 const FLATTENED_PLAIN_ENUM_SCOPE: &str = "Only a type the registry has already classified reaches this guard; one it has not keeps its \
      TypeScript and Zod intersection, and is refused by the JSON surface when the merge runs.";
+
+/// The list `validate()` collects each message in.
+const VALIDATE_SINK: &str = "errors";
 
 /// The indent every member of an emitted object is written at, and so the indent its `JSDoc` block
 /// is written at.
@@ -424,13 +443,21 @@ enum CheckSink {
     Fail,
 }
 
-/// How a constrained member's check reaches its value: a struct field off `self`, a variant member
-/// off the binding its match arm introduced.
-#[cfg(feature = "serde")]
+/// How a member's check reaches its value: a struct field off `self`, a variant member off the
+/// binding its match arm introduced.
 #[derive(Clone, Copy)]
 enum MemberAccess {
     SelfField,
     VariantBinding,
+}
+
+/// Where a member is read, and the name it is reported under.
+pub struct MemberPlace {
+    /// The expression the member is read from.
+    pub checked: proc_macro2::TokenStream,
+    /// The key serde writes a named member under, or a slot's position. `None` for a member
+    /// reported under no name.
+    pub reported: Option<String>,
 }
 
 /// A constrained member as its helpers are written.
@@ -591,6 +618,8 @@ struct ModelSchemaArgs {
     /// The parser's refusal of the attribute's arguments — one it does not read, or a value it
     /// cannot read — spanned on the tokens that earned it.
     arg_rejection: Option<syn::Error>,
+    /// The functions `check` names, in the order written: each takes the whole value.
+    check: Vec<CheckName>,
     /// `decode_with`: the type gets `from_value_with` and `from_bson_with`, and their walkers.
     decode_with: bool,
     /// The default type declared per type parameter, in written order: `default_types(IdType =
@@ -700,14 +729,14 @@ struct TupleSlots {
 
 /// One constrained member of a variant as the arm that matched it binds it: where the pattern finds
 /// it, and the name the check reads it under.
-struct BoundMember {
-    binding: proc_macro2::Ident,
+pub struct BoundMember {
+    pub binding: proc_macro2::Ident,
     /// The member's declaration index, which is what places a positional binding in a tuple
     /// pattern — a named member is placed by its ident instead and never consults this.
-    index: usize,
+    pub index: usize,
     /// The member's field ident, or `None` for a positional slot, which the pattern matches by
     /// position because it has no name to match by.
-    named: Option<proc_macro2::Ident>,
+    pub named: Option<proc_macro2::Ident>,
 }
 
 /// What one untagged variant's member walk produces: the members its surfaces are rendered from,
@@ -792,6 +821,8 @@ struct ZodDefaultInputs<'defaults> {
 /// What [`zod_published_binding`] needs beside the item's own name, parameters and expression.
 #[cfg(feature = "zod")]
 struct PublishedBinding<'binding> {
+    /// The checks written on the type, which its own expression carries.
+    checks: &'binding [CheckName],
     default_types: &'binding [(syn::Ident, syn::Type)],
     /// Whether the published expression *is* a sibling's own binding — see
     /// [`republishes_sibling_binding`].
@@ -1014,10 +1045,23 @@ fn apply_arg(result: &mut ModelSchemaArgs, meta: &Meta) -> syn::Result<()> {
         result.default_types = default_types_arg(meta)?;
     } else if path.is_ident("decode_with") {
         result.decode_with = flag_arg(meta, "decode_with")?;
+    } else if path.is_ident("check") {
+        result.check = check_arg(meta)?;
     } else {
         return Err(unknown_arg_rejection(meta));
     }
     Ok(())
+}
+
+/// The functions a `check = [...]` argument names, in the order written.
+fn check_arg(meta: &Meta) -> syn::Result<Vec<CheckName>> {
+    let Meta::NameValue(written) = meta else {
+        return Err(syn::Error::new_spanned(
+            meta,
+            format!("{TYPE_CHECK} {CHECK_TAKES}"),
+        ));
+    };
+    check_names(&written.value, TYPE_CHECK)
 }
 
 /// The literal an argument's value was written as — every valued `model_schema` argument reaches
@@ -1287,6 +1331,7 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // Which Zod binding this item publishes turns on whether it declares type parameters, and a
     // field written at the item's own name reads that answer back the way any other reference does.
     record_item(&item);
+    record_item_checks(&item, &parsed_args);
     // Whether a filling satisfies the bounds its parameter declares is a question about trait
     // impls, which a proc macro cannot answer, so it is asked of the compiler.
     let filling_bound_checks = default_types_bound_checks(&item, &parsed_args);
@@ -1319,6 +1364,7 @@ fn process_item(item: Item, args: &ModelSchemaArgs) -> TokenStream {
             .unwrap_or_else(|| process_enum(item_enum, args))
     } else if let Item::Type(item_type) = item {
         alias_string_check_refusal_output(&item_type, args)
+            .or_else(|| checks::alias_refusal_output(&item_type, &args.check))
             .unwrap_or_else(|| process_type_alias(item_type, args))
     } else {
         syn::Error::new_spanned(
@@ -1885,50 +1931,84 @@ const fn schema_module_items(held: TokenStream, _decode_with_items: &TokenStream
 fn struct_validate_method(
     validate_bodies: &[proc_macro2::TokenStream],
     module_ident: &Ident,
+    checks: &checks::ItemChecks<'_>,
 ) -> Option<proc_macro2::TokenStream> {
-    build_struct_validate_method(validate_bodies, module_ident)
+    validate_method(validate_bodies, Some(module_ident), checks)
 }
 
+/// Without `serde` no bound is held, and `validate()` runs the checks alone.
 #[cfg(all(
     not(feature = "serde"),
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
 ))]
-const fn struct_validate_method(
-    _validate_bodies: &[proc_macro2::TokenStream],
-    _module_ident: &Ident,
-) -> Option<proc_macro2::TokenStream> {
-    None
-}
-
-/// Builds the type-level `validate()` method that aggregates per-field validators, or `None` when
-/// the struct has no constrained fields. It calls the same `validate_{field}_value` functions
-/// serde's `deserialize_with` hooks use, so both paths enforce identical rules.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
-fn build_struct_validate_method(
+fn struct_validate_method(
     validate_bodies: &[proc_macro2::TokenStream],
     module_ident: &Ident,
+    checks: &checks::ItemChecks<'_>,
 ) -> Option<proc_macro2::TokenStream> {
-    (!validate_bodies.is_empty()).then(|| {
-        quote! {
-            /// Validates all constrained fields and returns all validation errors.
-            ///
-            /// Returns `Ok(())` if all constraints pass, or `Err(Vec<String>)` with all errors.
-            pub fn validate(&self) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
-                use #module_ident::*;
-                let mut errors: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
-                #(#validate_bodies)*
-                if errors.is_empty() { ::core::result::Result::Ok(()) } else { ::core::result::Result::Err(errors) }
-            }
+    validate_method(validate_bodies, Some(module_ident), checks)
+}
+
+/// Builds the type-level `validate()`: what each member adds, in the order declared, then the
+/// type's own checks, in the order written. `None` where there is nothing to run. A member's
+/// bound calls the `validate_{field}_value` of the schema module, which is `module_ident`.
+///
+/// A check is called by its name alone, which is read where the type is declared. So where the
+/// item names one, no import of the schema module is in scope of the call: each bound brings the
+/// module in for itself.
+fn validate_method(
+    validate_bodies: &[proc_macro2::TokenStream],
+    module_ident: Option<&proc_macro2::Ident>,
+    checks: &checks::ItemChecks<'_>,
+) -> Option<proc_macro2::TokenStream> {
+    let own = checks.own_calls(VALIDATE_SINK);
+    if validate_bodies.is_empty() && own.is_empty() {
+        return None;
+    }
+    let imported = module_ident
+        .filter(|_| !checks.named)
+        .map(|module| quote! { use #module::*; });
+    Some(quote! {
+        /// Validates all constrained fields and returns all validation errors.
+        ///
+        /// Returns `Ok(())` if all constraints pass, or `Err(Vec<String>)` with all errors.
+        pub fn validate(&self) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
+            #imported
+            let mut errors: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
+            #(#validate_bodies)*
+            #(#own)*
+            if errors.is_empty() { ::core::result::Result::Ok(()) } else { ::core::result::Result::Err(errors) }
         }
     })
 }
 
+/// [`validate_method`] in a build with no schema surface, where no bound is held and a type
+/// publishes `validate()` only for the checks it names, on itself or on a member.
+#[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+fn checks_validate_impl(
+    name: &syn::Ident,
+    generics: &syn::Generics,
+    validate_bodies: &[proc_macro2::TokenStream],
+    checks: &checks::ItemChecks<'_>,
+) -> proc_macro2::TokenStream {
+    let method = checks
+        .named
+        .then(|| validate_method(validate_bodies, None, checks))
+        .flatten();
+    let Some(validate) = method else {
+        return proc_macro2::TokenStream::new();
+    };
+    let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
+    quote! {
+        impl #impl_generics #name #type_generics #where_clause {
+            #validate
+        }
+    }
+}
+
 /// The pattern one variant is matched by in the enum-level `validate()`. Only the constrained
 /// members are bound, each under the name its check reads; everything else is left unread.
-fn variant_check_pattern(
+pub fn variant_check_pattern(
     variant_ident: &proc_macro2::Ident,
     kind: &VariantKind,
     total_fields: usize,
@@ -1975,7 +2055,7 @@ fn variant_check_pattern(
 
 /// The match arms the enum-level `validate()` runs — empty when no variant carries a constrained
 /// member, which is the parity a constraint-free struct has: it publishes no `validate()` either.
-fn build_member_check_arms(
+pub fn build_member_check_arms(
     per_variant: Vec<(proc_macro2::TokenStream, Vec<proc_macro2::TokenStream>)>,
 ) -> Vec<proc_macro2::TokenStream> {
     let mut arms: Vec<proc_macro2::TokenStream> = Vec::new();
@@ -1996,28 +2076,28 @@ fn build_member_check_arms(
     arms
 }
 
-/// Builds the type-level `validate()` method for an enum, aggregating the checks of whichever
-/// variant the value holds, or `None` when no variant carries a constrained member.
+/// The `match` an enum's `validate()` runs its members' arms in, as the one thing its members add,
+/// or nothing where no variant holds a member to check.
+fn matched_arms(arms: &[proc_macro2::TokenStream]) -> Vec<proc_macro2::TokenStream> {
+    if arms.is_empty() {
+        return Vec::new();
+    }
+    vec![quote! {
+        match self {
+            #(#arms),*
+        }
+    }]
+}
+
+/// Builds the type-level `validate()` method for an enum: the checks of whichever variant the
+/// value holds, then the enum's own, or `None` where there is nothing to run.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn build_enum_validate_method(
     arms: &[proc_macro2::TokenStream],
     module_ident: &Ident,
+    checks: &checks::ItemChecks<'_>,
 ) -> Option<proc_macro2::TokenStream> {
-    (!arms.is_empty()).then(|| {
-        quote! {
-            /// Validates all constrained fields and returns all validation errors.
-            ///
-            /// Returns `Ok(())` if all constraints pass, or `Err(Vec<String>)` with all errors.
-            pub fn validate(&self) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
-                use #module_ident::*;
-                let mut errors: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
-                match self {
-                    #(#arms),*
-                }
-                if errors.is_empty() { ::core::result::Result::Ok(()) } else { ::core::result::Result::Err(errors) }
-            }
-        }
-    })
+    validate_method(&matched_arms(arms), Some(module_ident), checks)
 }
 
 /// Computes the TypeScript types and Zod schemas contributed by a struct's `#[serde(flatten)]`
@@ -2182,7 +2262,7 @@ fn struct_schema_impl_items(
             item_name,
             rust_ident,
             &type_parameters,
-            &args.default_types,
+            args,
             &bodies.1,
             "",
             &flatten.1,
@@ -2617,6 +2697,40 @@ fn record_item(item: &Item) {
 /// Nothing, in a build that neither publishes a Zod binding nor reads a value.
 #[cfg(not(any(feature = "serde", feature = "zod")))]
 const fn record_item(_item: &Item) {}
+
+/// Records the checks an item names for the parts of its expansion written apart from the type's
+/// own `validate()`: each bound of it, and its recovering decode.
+#[cfg(feature = "serde")]
+fn record_item_checks(item: &Item, args: &ModelSchemaArgs) {
+    let Some(ident) = item_schema_ident(item) else {
+        return;
+    };
+    let members: Vec<&Field> = if let Item::Struct(item_struct) = item {
+        item_struct.fields.iter().collect()
+    } else if let Item::Enum(item_enum) = item {
+        variant_members(item_enum).collect()
+    } else {
+        Vec::new()
+    };
+    record_own_checks(
+        &ident_schema_module_name(&ident.to_string()),
+        &args.check,
+        checks::ItemChecks::of(&args.check, members.into_iter()).named,
+    );
+}
+
+/// Without `serde` no bound is held and no value is read, so nothing reads an item's checks but
+/// its own `validate()`.
+#[cfg(not(feature = "serde"))]
+const fn record_item_checks(_item: &Item, _args: &ModelSchemaArgs) {}
+
+/// Every member of every variant of `item_enum`, in the order declared.
+fn variant_members(item_enum: &syn::ItemEnum) -> impl Iterator<Item = &Field> {
+    item_enum
+        .variants
+        .iter()
+        .flat_map(|variant| variant.fields.iter())
+}
 
 /// Records which of the two Zod bindings an item publishes, ahead of the shape it is dispatched to.
 #[cfg(feature = "zod")]
@@ -4424,6 +4538,7 @@ fn collect_struct_fields(
             if let Some(body) = nested_validate_body(field, &f_def, false, None) {
                 validate_bodies.push(body);
             }
+            validate_bodies.extend(flattened_member_checks(field, &f_def, index, false));
             flattened_fields.push(f_def);
             continue;
         }
@@ -4923,6 +5038,9 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
     let module_name_opt: Option<&str> = None;
 
+    // Read before the walk, which takes each member's own attribute off it.
+    let item_checks = checks::ItemChecks::of(&args.check, item_struct.fields.iter());
+
     // `collected`: (field_defs, flattened_fields, validation_fns, validate_bodies, guard_errors).
     let collected = struct_members(
         &mut item_struct,
@@ -4930,8 +5048,6 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
         module_name_opt,
         container_defaulted,
     );
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    let _: &_ = &&collected;
 
     // A violated field guard makes the whole contract unsound, so the schema surface is dropped
     // and only the original item plus the errors are emitted.
@@ -4970,7 +5086,7 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
         item_schema_example_method(&docs_and_example.1, &name, &item_struct.generics, args);
 
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-    let validate_method = struct_validate_method(&collected.3, &module_ident);
+    let validate_method = struct_validate_method(&collected.3, &module_ident, &item_checks);
 
     // Build delegating impl items (schema_example is added directly, not as a delegate).
     #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
@@ -5002,7 +5118,13 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
 
     #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
     {
-        struct_output_with_unit_impls(&item_struct, &unit_struct_impls, &decode_with)
+        struct_output_with_unit_impls(
+            &item_struct,
+            &unit_struct_impls,
+            &decode_with,
+            &collected.3,
+            &item_checks,
+        )
     }
 }
 
@@ -5024,18 +5146,27 @@ fn struct_output_with_unit_impls(
 }
 
 /// [`struct_output_with_unit_impls`] where no schema surface is on: the item alone, with a unit
-/// struct's serde impls and what `decode_with` adds appended.
+/// struct's serde impls, the `validate()` its checks earn it and what `decode_with` adds appended.
 #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
 fn struct_output_with_unit_impls(
     item_struct: &syn::ItemStruct,
     unit_struct_impls: &proc_macro2::TokenStream,
     decode_with: &DecodeWithParts,
+    validate_bodies: &[proc_macro2::TokenStream],
+    item_checks: &checks::ItemChecks<'_>,
 ) -> TokenStream {
+    let validate_impl = checks_validate_impl(
+        &item_struct.ident,
+        &item_struct.generics,
+        validate_bodies,
+        item_checks,
+    );
     let decode_with_module = &decode_with.schema_module;
     let decode_with_impl = &decode_with.type_impl;
     let output = quote! {
         #item_struct
         #unit_struct_impls
+        #validate_impl
         #decode_with_module
         #decode_with_impl
     };
@@ -5049,8 +5180,10 @@ fn struct_output_with_unit_impls(
 /// that takes a parameter is left out: what it names depends on what fills it.
 #[cfg(feature = "serde")]
 fn record_declaration(item: &Item) {
-    // An item's walker reads the validators of its own fields, recorded as they are expanded.
+    // An item's walker reads the validators and the checks of its own fields, recorded as they
+    // are expanded.
     forget_field_validators();
+    forget_checks();
     if let Item::Type(alias) = item {
         if alias.generics.params.is_empty() {
             record_declared(
@@ -5082,9 +5215,10 @@ fn struct_decode_with(item_struct: &syn::ItemStruct, args: &ModelSchemaArgs) -> 
         return DecodeWithParts::default();
     }
     let added = struct_recovering_decode(item_struct);
+    let (walkers, checks) = (added.type_impl, added.check_messages);
     DecodeWithParts {
         schema_module: added.schema_module,
-        type_impl: added.type_impl,
+        type_impl: quote! { #walkers #checks },
     }
 }
 
@@ -5101,9 +5235,10 @@ fn enum_decode_with(item_enum: &syn::ItemEnum, args: &ModelSchemaArgs) -> Decode
         return DecodeWithParts::default();
     }
     let added = enum_recovering_decode(item_enum);
+    let (walkers, checks) = (added.type_impl, added.check_messages);
     DecodeWithParts {
         schema_module: added.schema_module,
-        type_impl: added.type_impl,
+        type_impl: quote! { #walkers #checks },
     }
 }
 
@@ -5127,17 +5262,27 @@ fn enum_output_with_decode(
     }
 }
 
-/// [`enum_output_with_decode`] where no schema surface is on: the item alone, with what
-/// `decode_with` adds appended.
+/// [`enum_output_with_decode`] where no schema surface is on: the item alone, with the
+/// `validate()` its checks earn it and what `decode_with` adds appended. `arms` holds what each
+/// variant's members add to that `validate()`.
 #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
 fn enum_output_with_decode(
     item_enum: &syn::ItemEnum,
     decode_with: &DecodeWithParts,
+    arms: &[proc_macro2::TokenStream],
+    item_checks: &checks::ItemChecks<'_>,
 ) -> TokenStream {
+    let validate_impl = checks_validate_impl(
+        &item_enum.ident,
+        &item_enum.generics,
+        &matched_arms(arms),
+        item_checks,
+    );
     let decode_with_module = &decode_with.schema_module;
     let decode_with_impl = &decode_with.type_impl;
     let output = quote! {
         #item_enum
+        #validate_impl
         #decode_with_module
         #decode_with_impl
     };
@@ -5712,6 +5857,9 @@ fn process_tuple_struct(
         ),
     );
 
+    // Read before the walk, which takes each slot's own attribute off it.
+    let item_checks = checks::ItemChecks::of(&args.check, item_struct.fields.iter());
+
     let slots = collect_tuple_slots(
         &mut item_struct.fields,
         rename_all,
@@ -5754,6 +5902,7 @@ fn process_tuple_struct(
             &name.to_string(),
             &type_parameters_in_scope(&item_struct.generics),
             &PublishedBinding {
+                checks: &args.check,
                 default_types: &args.default_types,
                 republished: tuple_struct_republishes_slot(&slots.shape),
             },
@@ -5793,7 +5942,11 @@ fn process_tuple_struct(
             module_ident: &module_ident,
             name: &name,
             schema_impl_items: &schema_impl_items,
-            validate_method: &struct_validate_method(&slots.validate_bodies, &module_ident),
+            validate_method: &struct_validate_method(
+                &slots.validate_bodies,
+                &module_ident,
+                &item_checks,
+            ),
             validation_fns: &slots.validation_fns,
         },
         &TokenStream::new(),
@@ -6804,7 +6957,7 @@ fn branded_zod_expression(
     inner: &FieldDef,
     plain_description: &str,
 ) -> String {
-    let value = branded_zod_inner(args, inner);
+    let value = zod_check_wrap(branded_zod_inner(args, inner), &args.check);
     let brand = zod_brand_call(item_name);
     let described = format!(".meta({{\n  description: \"{plain_description}\",\n}})");
     if parameters.is_empty() {
@@ -6895,9 +7048,12 @@ fn build_branded_delegate_items(
             pub fn zod_schema() -> ::std::string::String {
                 let base_schema = #module_ident::Schema::zod_schema();
                 let examples_json = #examples_json;
-                // The one `.meta({` a brand writes closes on its own line, the only place a newline
-                // precedes a `})` in what the module emitted, so the close is the anchor.
-                if let ::core::option::Option::Some(pos) = base_schema.find("\n})") {
+                // The one `.meta({` a brand writes closes on its own line, and so does each check
+                // written ahead of it, so the anchor is the first such close after the
+                // description.
+                let described = base_schema.find(".meta({\n  description: ").unwrap_or_default();
+                let closed = base_schema[described..].find("\n})").map(|close| described + close);
+                if let ::core::option::Option::Some(pos) = closed {
                     let mut result = base_schema[..pos].to_string();
                     result.push_str(&format!("\n  examples: {},", examples_json));
                     result.push_str(&base_schema[pos..]);
@@ -7127,22 +7283,68 @@ fn inject_branded_serde_attrs(
 
     let validate_fn = &validation.validate_fn;
     let deserialize_fn = &validation.deserialize_fn;
-    let checked_inner = &validation.checked_inner;
     let validation_tokens = quote! {
         #validate_fn
         #deserialize_fn
     };
-    let validator = &validation.validator;
-    let validate_method = quote! {
+    let validate_method =
+        branded_validate_method(Some(&branded_bound_call(validation, module_ident)), &[]);
+    (owned_struct, validation_tokens, validate_method)
+}
+
+/// What a brand's own string checks add to its `validate()`: the validator of its schema module,
+/// run on the value the brand holds.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn branded_bound_call(
+    validation: &BrandedValidation,
+    module_ident: &Ident,
+) -> proc_macro2::TokenStream {
+    let (validator, checked_inner) = (&validation.validator, &validation.checked_inner);
+    quote! {
+        if let ::core::result::Result::Err(reported) = #module_ident::#validator(#checked_inner) {
+            errors.extend(reported);
+        }
+    }
+}
+
+/// `bound_validate`, the `validate()` a brand's own string checks earn it, with the checks the
+/// brand names run after them, or as it stands for a brand that names none.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+fn with_branded_checks(
+    bound_validate: proc_macro2::TokenStream,
+    bound: Option<&proc_macro2::TokenStream>,
+    named: &[CheckName],
+) -> proc_macro2::TokenStream {
+    let own = checks::ItemChecks {
+        named: !named.is_empty(),
+        own: named,
+    }
+    .own_calls(VALIDATE_SINK);
+    if own.is_empty() {
+        bound_validate
+    } else {
+        branded_validate_method(bound, &own)
+    }
+}
+
+/// A brand's `validate()`: its own string checks, then the checks it names, each on the brand
+/// itself. A brand is the value and no member of anything, so no message here names a path.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+fn branded_validate_method(
+    bound: Option<&proc_macro2::TokenStream>,
+    own: &[proc_macro2::TokenStream],
+) -> proc_macro2::TokenStream {
+    quote! {
         pub fn validate(&self) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
             let mut errors = ::std::vec::Vec::new();
-            if let ::core::result::Result::Err(reported) = #module_ident::#validator(#checked_inner) {
-                errors.extend(reported);
-            }
+            #bound
+            #(#own)*
             if errors.is_empty() { ::core::result::Result::Ok(()) } else { ::core::result::Result::Err(errors) }
         }
-    };
-    (owned_struct, validation_tokens, validate_method)
+    }
 }
 
 /// Assembles the final macro output for a branded newtype: the (possibly attribute-injected)
@@ -7356,7 +7558,7 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
         build_branded_display_tokens(&item_struct.generics, &name, inner_field, args);
 
     #[cfg(feature = "serde")]
-    let (output_struct, validation_tokens, validate_method) = inject_branded_serde_attrs(
+    let (output_struct, validation_tokens, bound_validate) = inject_branded_serde_attrs(
         item_struct,
         branded_validation.as_ref(),
         !generic_params.is_empty(),
@@ -7365,11 +7567,15 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
         &module_ident,
     );
     #[cfg(not(feature = "serde"))]
-    let output_struct = item_struct;
+    let (output_struct, validation_tokens, bound_validate) = (item_struct, quote! {}, quote! {});
+
+    #[cfg(feature = "serde")]
+    let bound_call = branded_validation
+        .as_ref()
+        .map(|validation| branded_bound_call(validation, &module_ident));
     #[cfg(not(feature = "serde"))]
-    let validation_tokens = quote! {};
-    #[cfg(not(feature = "serde"))]
-    let validate_method = quote! {};
+    let bound_call: Option<proc_macro2::TokenStream> = None;
+    let validate_method = with_branded_checks(bound_validate, bound_call.as_ref(), &args.check);
 
     // Read off the struct as it is emitted: the hook a constrained brand reads through is hung.
     let decode_with = struct_decode_with(&output_struct, args);
@@ -8042,6 +8248,7 @@ fn process_plain_enum(
         &rust_ident,
         &schema_code,
         &docs_and_description.1,
+        &args.check,
     );
 
     #[cfg(not(any(feature = "typescript", feature = "zod")))]
@@ -8063,13 +8270,18 @@ fn process_plain_enum(
         zod_schema_method,
     ];
 
+    // A plain enum holds no member, so the checks it runs are the ones written on it.
+    let item_checks = checks::ItemChecks::of(&args.check, variant_members(&item_enum));
+
     // Build delegating impl items; the plain-enum delegates match the branded ones, with the
-    // `schema_example()` method chained on after them when an example exists.
+    // `schema_example()` method chained on after them when an example exists, and `validate()`
+    // where the enum names a check.
     #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     let delegate_impl_items: Vec<proc_macro2::TokenStream> =
         build_branded_delegate_items(&module_ident, schema_example_method.is_some())
             .into_iter()
             .chain(schema_example_method)
+            .chain(validate_method(&[], Some(&module_ident), &item_checks))
             .collect();
 
     let decode_with = enum_decode_with(&item_enum, args);
@@ -8089,7 +8301,9 @@ fn process_plain_enum(
 
     #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
     {
-        plain_enum_output(&item_enum, name, &enumerated, &decode_with)
+        let validate_impl =
+            checks_validate_impl(&item_enum.ident, &item_enum.generics, &[], &item_checks);
+        plain_enum_output(&item_enum, name, &enumerated, &decode_with, &validate_impl)
     }
 }
 
@@ -8145,14 +8359,15 @@ fn plain_enum_output(
     output
 }
 
-/// [`plain_enum_output`] where no schema surface is on: the item, `enum_members()`, and what
-/// `decode_with` adds.
+/// [`plain_enum_output`] where no schema surface is on: the item, `enum_members()`, the
+/// `validate()` its checks earn it, and what `decode_with` adds.
 #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
 fn plain_enum_output(
     item_enum: &syn::ItemEnum,
     name: &syn::Ident,
     enum_values: &[proc_macro2::TokenStream],
     decode_with: &DecodeWithParts,
+    validate_impl: &proc_macro2::TokenStream,
 ) -> TokenStream {
     let (impl_generics, type_generics, where_clause) = item_enum.generics.split_for_impl();
     let decode_with_module = &decode_with.schema_module;
@@ -8168,6 +8383,7 @@ fn plain_enum_output(
             }
         }
 
+        #validate_impl
         #decode_with_module
         #decode_with_impl
     };
@@ -8367,7 +8583,6 @@ fn collect_discriminated_variants(
             if is_flatten {
                 let _: (&_, &_) = (&validation_fn, &validate_body);
                 // Rebuilt under no name, as a struct's flattened field is — see there.
-                #[cfg(feature = "serde")]
                 flattened_member_walk(field, &f_def, index, &mut bound, &mut checks);
                 flattened_fields.push(f_def);
                 continue;
@@ -8549,6 +8764,8 @@ fn process_discriminated_enum(
 
     // Bind both result tuples whole so feature-gated field access marks them used (no per-element
     // guards): `variants` = (variants, validation_fns, guard_errors); `rendered` = (ts, zod, json).
+    // Read before the walk, which takes each member's own attribute off it.
+    let item_checks = checks::ItemChecks::of(&args.check, variant_members(&item_enum));
     let variants =
         collect_discriminated_variants(&mut item_enum, casing, enum_module_name_opt, args);
     if let Some(output) = guard_failure_output(&item_enum, Some(&item_enum.ident), &variants.2) {
@@ -8586,7 +8803,7 @@ fn process_discriminated_enum(
         item_name,
         &name.to_string(),
         &type_parameters_in_scope(&item_enum.generics),
-        &args.default_types,
+        args,
         &schema_code,
     );
 
@@ -8630,7 +8847,11 @@ fn process_discriminated_enum(
                 module_ident: &module_ident,
                 name,
                 schema_impl_items: &schema_impl_items,
-                validate_method: &build_enum_validate_method(&variants.3, &module_ident),
+                validate_method: &build_enum_validate_method(
+                    &variants.3,
+                    &module_ident,
+                    &item_checks,
+                ),
                 validation_fns: &variants.1,
             },
             &decode_with,
@@ -8639,7 +8860,7 @@ fn process_discriminated_enum(
 
     #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
     {
-        enum_output_with_decode(&item_enum, &decode_with)
+        enum_output_with_decode(&item_enum, &decode_with, &variants.3, &item_checks)
     }
 }
 
@@ -9071,6 +9292,8 @@ fn process_externally_tagged_enum(
     let enum_module_name_opt = None;
 
     let self_type_name = item_enum.ident.to_string();
+    // Read before the walk, which takes each member's own attribute off it.
+    let item_checks = checks::ItemChecks::of(&args.check, variant_members(&item_enum));
     let variants =
         collect_discriminated_variants(&mut item_enum, casing, enum_module_name_opt, args);
     if let Some(output) = guard_failure_output(&item_enum, Some(&item_enum.ident), &variants.2) {
@@ -9115,7 +9338,7 @@ fn process_externally_tagged_enum(
         item_name,
         &name.to_string(),
         &type_parameters_in_scope(&item_enum.generics),
-        &args.default_types,
+        args,
         &schema_code,
     );
 
@@ -9155,7 +9378,11 @@ fn process_externally_tagged_enum(
                 module_ident: &module_ident,
                 name,
                 schema_impl_items: &schema_impl_items,
-                validate_method: &build_enum_validate_method(&variants.3, &module_ident),
+                validate_method: &build_enum_validate_method(
+                    &variants.3,
+                    &module_ident,
+                    &item_checks,
+                ),
                 validation_fns: &variants.1,
             },
             &decode_with,
@@ -9164,8 +9391,8 @@ fn process_externally_tagged_enum(
 
     #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
     {
-        let _: &_ = &(&variants.1, &variants.3);
-        enum_output_with_decode(&item_enum, &decode_with)
+        let _: &_ = &variants.1;
+        enum_output_with_decode(&item_enum, &decode_with, &variants.3, &item_checks)
     }
 }
 
@@ -9478,6 +9705,8 @@ fn process_internally_tagged_enum(
         return output;
     }
 
+    // Read before the walk, which takes each member's own attribute off it.
+    let item_checks = checks::ItemChecks::of(&args.check, variant_members(&item_enum));
     let variants =
         collect_discriminated_variants(&mut item_enum, casing, enum_module_name_opt, args);
     if let Some(output) = guard_failure_output(&item_enum, Some(&item_enum.ident), &variants.2) {
@@ -9517,7 +9746,7 @@ fn process_internally_tagged_enum(
         item_name,
         &name.to_string(),
         &type_parameters_in_scope(&item_enum.generics),
-        &args.default_types,
+        args,
         &schema_code,
     );
 
@@ -9557,7 +9786,11 @@ fn process_internally_tagged_enum(
                 module_ident: &module_ident,
                 name,
                 schema_impl_items: &schema_impl_items,
-                validate_method: &build_enum_validate_method(&variants.3, &module_ident),
+                validate_method: &build_enum_validate_method(
+                    &variants.3,
+                    &module_ident,
+                    &item_checks,
+                ),
                 validation_fns: &variants.1,
             },
             &decode_with,
@@ -9566,8 +9799,8 @@ fn process_internally_tagged_enum(
 
     #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
     {
-        let _: &_ = &(&variants.1, &variants.3);
-        enum_output_with_decode(&item_enum, &decode_with)
+        let _: &_ = &variants.1;
+        enum_output_with_decode(&item_enum, &decode_with, &variants.3, &item_checks)
     }
 }
 
@@ -10160,7 +10393,7 @@ fn collect_untagged_variant_members(
         // Read once the member's def exists, since that is what says whether the member names a
         // type that could publish a validator.
         let bound = bound_member(field, index);
-        let member_body = match (is_flatten, field.ident.is_some()) {
+        let declared = match (is_flatten, field.ident.is_some()) {
             (true, _) => nested_validate_body(field, &member_def, true, None),
             (false, true) => {
                 named_member_validate_body(validate_body, field, &member_def, true, &wire_name)
@@ -10170,7 +10403,8 @@ fn collect_untagged_variant_members(
                 slot_validate_body(validate_body, nested)
             }
         };
-        if let Some(body) = member_body {
+        let named = untagged_member_checks(field, &member_def, index, is_flatten, &wire_name);
+        if let Some(body) = then_checks(declared, named) {
             walked.bound.push(bound);
             walked.checks.push(body);
         }
@@ -10517,7 +10751,7 @@ fn build_untagged_schema_impl_items(
         item_name,
         &item_enum.ident.to_string(),
         &type_parameters_in_scope(&item_enum.generics),
-        &args.default_types,
+        args,
         &schema_code,
     );
 
@@ -10554,6 +10788,9 @@ fn process_untagged_enum(
     let enum_module_name_opt = Some(module_name.as_str());
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
     let enum_module_name_opt = None;
+
+    // Read before the walk, which takes each member's own attribute off it.
+    let item_checks = checks::ItemChecks::of(&args.check, variant_members(&item_enum));
 
     // Render each variant into its union member (TS / Zod / JSON parts).
     let (
@@ -10605,7 +10842,7 @@ fn process_untagged_enum(
     // The union's own accessor is where a violated member bound is named in Rust: the read hands
     // the bound to serde, which drops the sentence with the candidate it removes.
     #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
-    let validate_method = build_enum_validate_method(&validate_arms, &module_ident);
+    let validate_method = build_enum_validate_method(&validate_arms, &module_ident, &item_checks);
     #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
     let delegate_impl_items = build_struct_delegate_items(
         &module_ident,
@@ -10634,8 +10871,8 @@ fn process_untagged_enum(
 
     #[cfg(not(any(feature = "zod", feature = "typescript", feature = "jsonschema")))]
     {
-        let _: &_ = &(&enum_validation_fns, &validate_arms);
-        enum_output_with_decode(&item_enum, &decode_with)
+        let _: &_ = &enum_validation_fns;
+        enum_output_with_decode(&item_enum, &decode_with, &validate_arms, &item_checks)
     }
 }
 
@@ -12430,7 +12667,6 @@ fn write_field_type_and_schema(
 }
 
 /// The binding a walk step introduces, numbered by depth so no two steps of one chain collide.
-#[cfg(feature = "serde")]
 fn wrap_binding(depth: usize) -> proc_macro2::Ident {
     proc_macro2::Ident::new(&format!("value_{depth}"), proc_macro2::Span::call_site())
 }
@@ -12459,7 +12695,6 @@ fn positional_member_binding(index: usize) -> proc_macro2::Ident {
 }
 
 /// The expression a check reads its value from, in whichever position the member was written.
-#[cfg(feature = "serde")]
 fn member_access_expr(
     access: MemberAccess,
     field_ident_tok: &proc_macro2::Ident,
@@ -12474,7 +12709,6 @@ fn member_access_expr(
 }
 
 /// [`member_access_expr`] for a positional slot, which goes by its place in the declaration.
-#[cfg(feature = "serde")]
 fn slot_access_expr(access: MemberAccess, index: usize) -> proc_macro2::TokenStream {
     match access {
         MemberAccess::SelfField => {
@@ -12665,10 +12899,9 @@ fn nested_place(wraps: &[ConstraintWrap], under: Option<&str>) -> Option<proc_ma
 }
 
 /// The one spelling rule for writing a holding field's name into a report the value's own type
-/// wrote, emitted wherever a name has to be written: the validator's nested walk, and the
-/// read-time hook that answers for a bound checked before `validate()` ever runs.
-#[cfg(feature = "serde")]
-fn nested_under_fn() -> proc_macro2::TokenStream {
+/// wrote, emitted wherever a name has to be written: the validator's nested walk, a member's
+/// check, and the read-time hook that answers for a bound checked before `validate()` ever runs.
+pub fn nested_under_fn() -> proc_macro2::TokenStream {
     quote! {
         fn nested_under(field: &str, violation: &str) -> ::std::string::String {
             match violation
@@ -14446,10 +14679,18 @@ fn process_field(
         serde_guard_errors,
     );
 
+    let own_checks = placed_member_checks(
+        ctx,
+        field,
+        index,
+        &final_name,
+        &model_schema_prop_meta.check,
+    );
+
     apply_model_schema_prop_meta(&mut field_def, model_schema_prop_meta, &final_name);
 
     #[cfg(feature = "serde")]
-    let body = named_member_validate_body(
+    let declared = named_member_validate_body(
         validate_body,
         field,
         &field_def,
@@ -14457,7 +14698,8 @@ fn process_field(
         &final_name,
     );
     #[cfg(not(feature = "serde"))]
-    let body = validate_body;
+    let declared = validate_body;
+    let body = then_checks(declared, own_checks);
 
     // The read-time half of the same reach: what the field's own type turns away before
     // `validate()` is ever asked.
@@ -14676,6 +14918,95 @@ fn named_member_validate_body(
     )
 }
 
+/// What a member adds to `validate()`: what its bounds and its type declare, then the checks it
+/// names.
+fn then_checks(
+    declared: Option<proc_macro2::TokenStream>,
+    checks: Option<proc_macro2::TokenStream>,
+) -> Option<proc_macro2::TokenStream> {
+    match (declared, checks) {
+        (Some(held), Some(named)) => Some(quote! { #held #named }),
+        (held, named) => held.or(named),
+    }
+}
+
+/// What the checks a struct's member names add to `validate()`, or a tagged variant's: such a
+/// member has a key or a position to be reported under.
+fn placed_member_checks(
+    ctx: &FieldContext<'_>,
+    field: &Field,
+    index: usize,
+    wire_name: &str,
+    named: &[CheckName],
+) -> Option<proc_macro2::TokenStream> {
+    checks::member_calls(
+        &member_place(field, index, ctx.variant_ident.is_some(), true, wire_name),
+        &field.ty,
+        named,
+        VALIDATE_SINK,
+    )
+}
+
+/// What a flattened variant member keeps of `validate()`, bound under the name the arm will match
+/// it by: the walk of what its type declares and the checks it names, both under no name, the hop
+/// writing no key of its own.
+fn flattened_member_walk(
+    field: &Field,
+    field_def: &FieldDef,
+    index: usize,
+    bound: &mut Vec<BoundMember>,
+    checks: &mut Vec<proc_macro2::TokenStream>,
+) {
+    #[cfg(feature = "serde")]
+    let declared = nested_validate_body(field, field_def, true, None);
+    #[cfg(not(feature = "serde"))]
+    let declared: Option<proc_macro2::TokenStream> = None;
+    let named = flattened_member_checks(field, field_def, index, true);
+    if let Some(body) = then_checks(declared, named) {
+        bound.push(bound_member(field, index));
+        checks.push(body);
+    }
+}
+
+/// What a flattened member's checks add to `validate()`, under no name: the member writes no key
+/// of its own.
+fn flattened_member_checks(
+    field: &Field,
+    field_def: &FieldDef,
+    index: usize,
+    in_variant: bool,
+) -> Option<proc_macro2::TokenStream> {
+    let named = &field_def.model_schema_prop_meta.as_ref()?.check;
+    let place = MemberPlace {
+        reported: None,
+        ..member_place(field, index, in_variant, false, "")
+    };
+    checks::member_calls(&place, &field.ty, named, VALIDATE_SINK)
+}
+
+/// What the checks a member of an untagged variant names add to `validate()`. The variant's lone
+/// slot is the value serde writes for the variant, so it is reported under no name, as a
+/// flattened member is.
+#[cfg(feature = "serde")]
+fn untagged_member_checks(
+    field: &Field,
+    field_def: &FieldDef,
+    index: usize,
+    flattened: bool,
+    wire_name: &str,
+) -> Option<proc_macro2::TokenStream> {
+    if flattened {
+        return flattened_member_checks(field, field_def, index, true);
+    }
+    let named = &field_def.model_schema_prop_meta.as_ref()?.check;
+    checks::member_calls(
+        &member_place(field, index, true, false, wire_name),
+        &field.ty,
+        named,
+        VALIDATE_SINK,
+    )
+}
+
 /// What an untagged slot's arm runs: the slot's own check, then the one its type declares.
 #[cfg(feature = "serde")]
 fn slot_validate_body(
@@ -14685,28 +15016,6 @@ fn slot_validate_body(
     match (own, nested) {
         (Some(declared), Some(below)) => Some(quote! { #declared #below }),
         (declared, below) => declared.or(below),
-    }
-}
-
-/// The walk a flattened variant member keeps, bound under the name the arm will match it by.
-///
-/// A flattened member's body is discarded with the rest of what the surfaces do not read off it, so
-/// the walk is rebuilt here rather than taken from that body — and rebuilt under no name, the hop
-/// writing no key of its own.
-#[cfg(feature = "serde")]
-fn flattened_member_walk(
-    field: &Field,
-    field_def: &FieldDef,
-    index: usize,
-    bound: &mut Vec<BoundMember>,
-    checks: &mut Vec<proc_macro2::TokenStream>,
-) {
-    if let (Some(body), Some(ident)) = (
-        nested_validate_body(field, field_def, true, None),
-        field.ident.as_ref(),
-    ) {
-        bound.push(named_bound_member(ident, index));
-        checks.push(body);
     }
 }
 
@@ -14720,7 +15029,7 @@ fn named_bound_member(field_ident: &proc_macro2::Ident, index: usize) -> BoundMe
 }
 
 /// A member's entry in the arm's bindings: a named member under its ident, a slot by its position.
-fn bound_member(field: &Field, index: usize) -> BoundMember {
+pub fn bound_member(field: &Field, index: usize) -> BoundMember {
     field.ident.as_ref().map_or_else(
         || BoundMember {
             binding: positional_member_binding(index),
@@ -14747,6 +15056,35 @@ fn needs_injected_default(wraps: &[ConstraintWrap], has_default: bool) -> bool {
     matches!(first_opaque, Some(ConstraintWrap::Optional)) && !has_default
 }
 
+/// Where `validate()` reads a member, and the name it reports it under: the one seam a bound and
+/// a check of the member are both written from. A named member goes by `wire_name`, the key serde
+/// writes it under. A slot goes by its position where `names_a_slot` says it has one, and by no
+/// name where it is the value serde writes for the whole variant.
+fn member_place(
+    field: &Field,
+    index: usize,
+    in_variant: bool,
+    names_a_slot: bool,
+    wire_name: &str,
+) -> MemberPlace {
+    // A variant's member is bound by its arm, a struct's is read off `self`.
+    let access = if in_variant {
+        MemberAccess::VariantBinding
+    } else {
+        MemberAccess::SelfField
+    };
+    field.ident.as_ref().map_or_else(
+        || MemberPlace {
+            checked: slot_access_expr(access, index),
+            reported: names_a_slot.then(|| index.to_string()),
+        },
+        |member| MemberPlace {
+            checked: member_access_expr(access, member),
+            reported: Some(wire_name.to_owned()),
+        },
+    )
+}
+
 /// How a constrained member's helpers name and reach it. A named member is reported under
 /// `wire_name`, the key serde writes it under, and its helpers keep its Rust name. A slot goes by
 /// its position, and the lone slot of an untagged member is reported under no name, as what its
@@ -14759,31 +15097,32 @@ fn checked_member(
     gate: ConstraintGate,
     wire_name: &str,
 ) -> CheckedMember {
-    // The variant that scopes the helper names also says where the value is reached from: a
-    // variant's member is bound by its arm, a struct's is read off `self`.
-    let access = if variant_ident.is_some() {
-        MemberAccess::VariantBinding
-    } else {
-        MemberAccess::SelfField
-    };
-    let Some(member) = field.ident.as_ref() else {
-        let position = index.to_string();
-        let stem = helper_name_stem(&position, variant_ident);
-        return CheckedMember {
-            checked: slot_access_expr(access, index),
-            label: String::new(),
-            reported: (gate == ConstraintGate::Validator).then_some(position),
-            stem,
-        };
-    };
-    let named = member.unraw().to_string();
-    let stem = helper_name_stem(&named, variant_ident);
+    let place = member_place(
+        field,
+        index,
+        variant_ident.is_some(),
+        gate == ConstraintGate::Validator,
+        wire_name,
+    );
+    let label = field
+        .ident
+        .as_ref()
+        .map_or_else(String::new, |member| member.unraw().to_string());
     CheckedMember {
-        checked: member_access_expr(access, member),
-        label: named,
-        reported: Some(wire_name.to_owned()),
-        stem,
+        checked: place.checked,
+        stem: helper_name_stem(&declared_as(field, index), variant_ident),
+        label,
+        reported: place.reported,
     }
+}
+
+/// What a member's helpers are named from: its Rust name, or a slot's position.
+#[cfg(feature = "serde")]
+fn declared_as(field: &Field, index: usize) -> String {
+    field
+        .ident
+        .as_ref()
+        .map_or_else(|| index.to_string(), |member| member.unraw().to_string())
 }
 
 /// The `compile_error!` tokens for a length or range constraint written on a field reached through
@@ -14834,6 +15173,12 @@ fn generate_field_validation(
         model_schema_prop_meta.minimum.is_some() || model_schema_prop_meta.maximum.is_some();
 
     let member = checked_member(field, index, ctx.variant_ident, gate, wire_name);
+    // Recorded under the stem the member's helpers are named from, for the recovering decode.
+    record_member_checks(
+        &ident_schema_module_name(ctx.type_name),
+        &member.stem,
+        &model_schema_prop_meta.check,
+    );
 
     let (Some(module_name), Some(shape)) = (ctx.schema_module_name, constrained_shape(&field.ty))
     else {
@@ -14901,9 +15246,27 @@ fn generate_field_validation(
 
     (
         Some(validation_code.module_items),
-        Some(validation_code.validate_body),
+        Some(bound_body(validation_code.validate_body, module_name)),
         None,
     )
+}
+
+/// What a member's bound adds to `validate()`. It calls a validator of the schema module by its
+/// name alone, which `validate()` imports once for them all. Where the item names a check the
+/// bound imports the module for itself instead, so the check is called where no import of the
+/// module is in scope, and its name is the function its author wrote.
+#[cfg(feature = "serde")]
+fn bound_body(body: proc_macro2::TokenStream, module_name: &str) -> proc_macro2::TokenStream {
+    if !names_a_check() {
+        return body;
+    }
+    let module = proc_macro2::Ident::new(module_name, proc_macro2::Span::call_site());
+    quote! {
+        {
+            use #module::*;
+            #body
+        }
+    }
 }
 
 /// Hands the field the `model_schema_prop` metadata the surfaces read it back off, and applies the
@@ -14930,7 +15293,8 @@ fn apply_model_schema_prop_meta(
         || prop_meta.ts_optional
         || prop_meta.as_number
         || prop_meta.nullable
-        || !prop_meta.preprocess.is_empty())
+        || !prop_meta.preprocess.is_empty()
+        || !prop_meta.check.is_empty())
     .then_some(prop_meta);
 
     if let Some(meta) = &field_def.model_schema_prop_meta
@@ -15627,11 +15991,14 @@ fn zod_published_binding(
     expression: &str,
     reexport: &str,
 ) -> String {
+    // On the type's own expression, so every binding of it carries them: the one schema of a
+    // type with no parameter, and each schema its builder builds for a type with one.
+    let checked = zod_check_wrap(expression.to_owned(), published.checks);
     if parameters.is_empty() {
         zod_const_block(
             item_name,
             preamble,
-            expression,
+            &checked,
             reexport,
             published.republished,
         )
@@ -15643,7 +16010,7 @@ fn zod_published_binding(
             default_types: published.default_types,
         };
         zod_factory_block(
-            item_name, rust_ident, parameters, &defaults, preamble, expression, reexport,
+            item_name, rust_ident, parameters, &defaults, preamble, &checked, reexport,
         )
     }
 }
@@ -15795,7 +16162,7 @@ fn generate_zod_schema_method(
     item_name: &str,
     rust_ident: &str,
     parameters: &[String],
-    default_types: &[(syn::Ident, syn::Type)],
+    args: &ModelSchemaArgs,
     schema_code: &str,
     show_opts: &str,
     flatten_schemas: &[MergedOperand],
@@ -15812,7 +16179,8 @@ fn generate_zod_schema_method(
             parameters,
             // A struct always closes an object of its own, so it publishes no sibling's binding.
             &PublishedBinding {
-                default_types,
+                checks: &args.check,
+                default_types: &args.default_types,
                 republished: false,
             },
             &preamble,
@@ -15833,7 +16201,7 @@ fn generate_zod_schema_method(
             item_name,
             rust_ident,
             parameters,
-            default_types,
+            args,
             schema_code,
             show_opts,
             flatten_schemas,
@@ -15934,16 +16302,19 @@ fn generate_plain_enum_zod_schema_method(
     rust_ident: &str,
     schema_code: &str,
     description: &str,
+    checks: &[CheckName],
 ) -> proc_macro2::TokenStream {
     #[cfg(feature = "zod")]
     {
         let reexport = ident_reexport_zod(rust_ident, item_name, "$Schema");
+        // The checks the enum names, on the enumeration itself and ahead of its description.
+        let checked = zod_check_wrap(String::new(), checks);
         // When typescript feature is enabled, generate TypeScript-style Zod schema
         #[cfg(feature = "typescript")]
         {
             quote::quote! {
                 pub fn zod_schema() -> ::std::string::String {
-                    format!("const {}$RawSchema = z.enum([{}]).meta({{\n  description: \"{}\",\n}});\n\nexport const {}$Schema: ZodType<{}> = {}$RawSchema;{}", #item_name, #schema_code, #description, #item_name, #item_name, #item_name, #reexport)
+                    format!("const {}$RawSchema = z.enum([{}]){}.meta({{\n  description: \"{}\",\n}});\n\nexport const {}$Schema: ZodType<{}> = {}$RawSchema;{}", #item_name, #schema_code, #checked, #description, #item_name, #item_name, #item_name, #reexport)
                 }
             }
         }
@@ -15953,7 +16324,7 @@ fn generate_plain_enum_zod_schema_method(
         {
             quote::quote! {
                 pub fn zod_schema() -> ::std::string::String {
-                    format!("export const {}$Schema = z.enum([{}]).meta({{\n  description: \"{}\",\n}});{}", #item_name, #schema_code, #description, #reexport)
+                    format!("export const {}$Schema = z.enum([{}]){}.meta({{\n  description: \"{}\",\n}});{}", #item_name, #schema_code, #checked, #description, #reexport)
                 }
             }
         }
@@ -15961,7 +16332,7 @@ fn generate_plain_enum_zod_schema_method(
 
     #[cfg(not(feature = "zod"))]
     {
-        let _: &_ = &(item_name, rust_ident, schema_code, description);
+        let _: &_ = &(item_name, rust_ident, schema_code, description, checks);
         quote::quote! {
             // No method: the `zod` feature is off.
         }
@@ -16024,7 +16395,7 @@ fn generate_discriminated_enum_zod_schema_method(
     item_name: &str,
     rust_ident: &str,
     parameters: &[String],
-    default_types: &[(syn::Ident, syn::Type)],
+    args: &ModelSchemaArgs,
     schema_code: &str,
 ) -> proc_macro2::TokenStream {
     #[cfg(feature = "zod")]
@@ -16036,7 +16407,8 @@ fn generate_discriminated_enum_zod_schema_method(
             parameters,
             // A union over its variants is an expression of its own, never a sibling's binding.
             &PublishedBinding {
-                default_types,
+                checks: &args.check,
+                default_types: &args.default_types,
                 republished: false,
             },
             "",
@@ -16052,13 +16424,7 @@ fn generate_discriminated_enum_zod_schema_method(
 
     #[cfg(not(feature = "zod"))]
     {
-        let _: &_ = &(
-            item_name,
-            rust_ident,
-            parameters,
-            default_types,
-            schema_code,
-        );
+        let _: &_ = &(item_name, rust_ident, parameters, args, schema_code);
         quote::quote! {
             // No method: the `zod` feature is off.
         }
@@ -16180,7 +16546,9 @@ fn generate_alias_zod_method(
             export_name,
             rust_ident,
             &parameters,
+            // A check on an alias is refused: it has no `impl` to call a function from.
             &PublishedBinding {
+                checks: &[],
                 default_types,
                 republished: republishes_sibling_binding(&surface),
             },

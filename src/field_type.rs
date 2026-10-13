@@ -14,6 +14,8 @@ use syn::spanned::Spanned as _;
 #[cfg(feature = "serde")]
 use syn::Attribute;
 
+#[cfg(feature = "zod")]
+use crate::features::model_schema_prop::CheckName;
 use crate::features::model_schema_prop::ModelSchemaPropMeta;
 use crate::utils::{MapKeyWire, is_declared_ident, lookup_alias_info, written_type};
 
@@ -236,6 +238,15 @@ impl FieldDef {
             | FieldDefType::NaiveTime
             | FieldDefType::NaiveDateTime
             | FieldDefType::DateTime => None,
+        }
+    }
+
+    /// The functions the field's `check` names.
+    #[cfg(feature = "zod")]
+    fn checks(&self) -> &[CheckName] {
+        match &self.model_schema_prop_meta {
+            Some(meta) => &meta.check,
+            None => &[],
         }
     }
 
@@ -490,11 +501,7 @@ impl FieldDef {
     /// spliced in the name's place has to be the whole of what the operand validates.
     #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
     pub fn flatten_variants(&self) -> Vec<FlattenVariant> {
-        let wrapped = self
-            .model_schema_prop_meta
-            .as_ref()
-            .is_some_and(|meta| !meta.preprocess.is_empty());
-        if self.array_depth > 0 || wrapped {
+        if self.array_depth > 0 || self.is_written_around() {
             return Vec::new();
         }
         let FieldDefType::SiblingType(name, _) = &self.field_type else {
@@ -551,6 +558,16 @@ impl FieldDef {
     /// in struct-field position, a `null` in a slot that cannot be dropped.
     pub fn is_optional(&self) -> bool {
         self.is_nullable_at(self.array_depth)
+    }
+
+    /// Whether the field names a function its schema is written around, a `preprocess` or a
+    /// `check`: what the type it names splices in its own place is then no longer the whole of
+    /// what the field validates.
+    #[cfg(any(feature = "zod", all(feature = "serde", feature = "typescript")))]
+    fn is_written_around(&self) -> bool {
+        self.model_schema_prop_meta
+            .as_ref()
+            .is_some_and(|meta| !meta.preprocess.is_empty() || !meta.check.is_empty())
     }
 
     /// Whether every payload serde writes carries a key for this field — what the JSON surface's
@@ -941,11 +958,7 @@ impl FieldDef {
     /// whose members carry no exclusion the union's own name does not already describe.
     #[cfg(all(feature = "serde", feature = "typescript"))]
     pub fn ts_union_members(&self) -> Vec<String> {
-        let wrapped = self
-            .model_schema_prop_meta
-            .as_ref()
-            .is_some_and(|meta| !meta.preprocess.is_empty());
-        if self.array_depth > 0 || wrapped {
+        if self.array_depth > 0 || self.is_written_around() {
             return Vec::new();
         }
         let FieldDefType::SiblingType(name, _) = &self.field_type else {
@@ -1266,11 +1279,18 @@ impl FieldDef {
     }
 
     /// Builds the Zod schema before the struct-field optional wrap: the type match, the
-    /// array wraps, and the preprocess wrap. The
+    /// array wraps, the checks, and the preprocess wrap. The
     /// `z.union([…, z.undefined()]).prefault(undefined)` wrap lives in `zod_type`.
     #[cfg(feature = "zod")]
     fn zod_base(&self) -> String {
-        self.zod_preprocess_wrap(self.zod_array_base())
+        self.zod_preprocess_wrap(self.zod_checked_base())
+    }
+
+    /// [`Self::zod_array_base`] with the checks the field names written on it: the schema of the
+    /// value a check takes, under any `Option` and inside any `preprocess`.
+    #[cfg(feature = "zod")]
+    fn zod_checked_base(&self) -> String {
+        zod_check_wrap(self.zod_array_base(), self.checks())
     }
 
     /// Every factory call this field's schema is written with, outermost only and once each, in
@@ -1302,6 +1322,20 @@ impl FieldDef {
         } else {
             // Every other type is a leaf, which names no item.
         }
+    }
+
+    /// Every factory call a union is handed in place of, in the text [`Self::zod_checked_base`]
+    /// writes it as. A field that is one call and names a check hands the call in with the checks
+    /// on it: the parameter that stands for the call is no schema a check can be written on.
+    #[cfg(feature = "zod")]
+    fn zod_handed_calls(&self) -> Vec<String> {
+        let mut calls = Vec::new();
+        self.zod_factory_calls(&mut calls);
+        let base = self.zod_array_base();
+        if !self.checks().is_empty() && calls.as_slice() == [base] {
+            return vec![self.zod_checked_base()];
+        }
+        calls
     }
 
     /// The `.min(…)` and `.max(…)` a list's own `minLength` and `maxLength` write on its array.
@@ -1459,10 +1493,9 @@ impl FieldDef {
     /// Generates the Zod schema string for this field (requires "zod" feature).
     pub fn zod_type(&self) -> String {
         if self.is_optional() {
-            let mut calls = Vec::new();
-            self.zod_factory_calls(&mut calls);
+            let calls = self.zod_handed_calls();
             if self.has_nullable() {
-                let union = zod_union_around(&self.zod_array_base(), &calls, |held| {
+                let union = zod_union_around(&self.zod_checked_base(), &calls, |held| {
                     format!("z.union([{held}, z.null()])")
                 });
                 self.zod_preprocess_wrap(union)
@@ -1487,11 +1520,7 @@ impl FieldDef {
     /// nothing for a field that names no such union.
     #[cfg(feature = "zod")]
     pub fn zod_union_members(&self) -> Vec<ZodUnionMember> {
-        let wrapped = self
-            .model_schema_prop_meta
-            .as_ref()
-            .is_some_and(|meta| !meta.preprocess.is_empty());
-        if self.array_depth > 0 || wrapped {
+        if self.array_depth > 0 || self.is_written_around() {
             return Vec::new();
         }
         let FieldDefType::SiblingType(name, _) = &self.field_type else {
@@ -1499,6 +1528,23 @@ impl FieldDef {
         };
         lookup_alias_info(name).map_or_else(Vec::new, |info| info.zod_union_members)
     }
+}
+
+/// `schema` with one `.check(…)` per function named, in the order written. Each hands its
+/// function the value and a payload of its own, and copies what the function pushed with
+/// `continue: true`: Zod skips a later check where an earlier issue carries no such flag, and an
+/// issue's own flag cannot be set where it was pushed. No type is named, so a build without
+/// `typescript` writes the same text.
+#[cfg(feature = "zod")]
+pub fn zod_check_wrap(schema: String, checks: &[CheckName]) -> String {
+    checks.iter().fold(schema, |wrapped, check| {
+        format!(
+            "{wrapped}.check((ctx) => {{\n  const own = {{ value: ctx.value, issues: \
+             ctx.issues.slice(0, 0) }};\n  {}(own.value, own);\n  for (const issue of own.issues) \
+             ctx.issues.push({{ ...issue, continue: true }});\n}})",
+            check.name
+        )
+    })
 }
 
 /// The identifier a generic type parameter's `fromJson` converter argument binds to — `itemTypeFromJson`
