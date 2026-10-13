@@ -83,10 +83,18 @@ just docs-open
 just docs
 ```
 
-### Full CI Pipeline (what CI runs)
+### The Gate (what a change is held to, here and in CI)
 ```bash
-just ci
-# Runs: clean, check-all, test, fmt
+just all
+# Runs, with every feature on: one clippy lint, one build, one test run
+```
+
+### The Full Run (every few days)
+```bash
+just all-named     # both packages: default and all-features lints, the format check, the named feature lists
+just lint-sets     # clippy over every combination of the feature sets
+just test-sets     # tests over every combination of the feature sets
+just test          # tests over every combination of the plain features
 ```
 
 ## Code Architecture
@@ -1748,7 +1756,14 @@ fn test_complex_nested() {
 
 ## CI/CD Integration
 
-The CI pipeline ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs:
+A change is held to the gate, [.github/workflows/ci.yml](.github/workflows/ci.yml), on every push and pull request to `master`. It is `just all`, three lines with every feature on:
+
+1. `cargo clippy --all-targets --all-features -- -D warnings`
+2. `cargo build --all-features`
+3. `cargo test --all-features`
+4. Discord notification with build status
+
+The full run, [.github/workflows/full.yml](.github/workflows/full.yml), is started every three days and by hand. No change waits for it:
 
 1. `cargo build --verbose`
 2. `just check` (cargo check + clippy)
@@ -1760,11 +1775,13 @@ The CI pipeline ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs:
 8. `just audit` (`cargo audit` over a lock file generated for each package, this one and `bson3/`)
 9. Discord notification with build status
 
-CI installs every toolchain those groups need: Node with `zod`, `ws` and `typescript`, Dart, and the Kotlin jars; Swift, Kotlin and a JRE come with the runner image. Inside a plain `cargo test` those groups stand down and pass when their toolchain is missing, so only `just typecheck-ts` and `just test-emitted` prove anything: both refuse to stand down.
+The gate builds one feature selection of one package. What only the full run builds: a build with `serde` and no schema surface (the `mobile` and `mongo` sets), a build without `serde`, and `bson3/`, the package that tests against version 3 of the `bson` library. A break there is found at the next full run.
 
-The MongoDB operations' live checks stand down the same way where `TIXSCHEMA_MONGODB_URI` names no server, and CI names none: `just test-mongodb` is the recipe that refuses to, and no step of the pipeline runs it.
+Both workflows install every toolchain the emitted-client groups need: Node with `zod`, `ws` and `typescript`, Dart, and the Kotlin jars; Swift, Kotlin and a JRE come with the runner image. Inside a plain `cargo test` those groups stand down and pass when their toolchain is missing, so only `just typecheck-ts` and `just test-emitted` prove anything: both refuse to stand down, and both are in the full run.
 
-**Before pushing**, run `just ci` locally to replicate the CI pipeline.
+The MongoDB operations' live checks stand down the same way where `TIXSCHEMA_MONGODB_URI` names no server, and CI names none: `just test-mongodb` is the recipe that refuses to, and no step of either workflow runs it.
+
+**Before pushing**, run `just all`.
 
 ## MongoDB ObjectId Support
 
