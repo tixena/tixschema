@@ -23,3 +23,8 @@ mod validate;
 #[cfg(all(feature = "dart", feature = "serde"))]
 #[path = "dart_tests/read.rs"]
 mod read;
+
+#[cfg(test)]
+#[cfg(all(feature = "dart", feature = "serde"))]
+#[path = "dart_tests/preprocess.rs"]
+mod preprocess;

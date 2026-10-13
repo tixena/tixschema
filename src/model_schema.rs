@@ -1531,8 +1531,9 @@ fn process_item(item: Item, args: &ModelSchemaArgs) -> TokenStream {
 
 /// The Dart tokens `item` earns, or nothing without the `dart` feature — always callable, so the
 /// tokens that follow the item's own expansion never need a `#[cfg]`-gated `let` of their own.
-/// The backend is handed what it reads of `args`: the name, the checks, the string check of a
-/// brand or of an enum, and each member's bounds as [`member_prop_meta`] holds them.
+/// The backend is handed what it reads of `args`: the name, the checks, the `preprocess`, the
+/// string check of a brand or of an enum, and each member's keys as [`member_prop_meta`] holds
+/// them.
 #[cfg(feature = "dart")]
 fn dart_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
     // An enum's own string check is the one that reaches its members.
@@ -1547,6 +1548,7 @@ fn dart_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             min_length: args.min_length,
             name_override: args.name_override.as_deref(),
             pattern: args.pattern.as_deref(),
+            preprocess: &args.preprocess,
         },
     )
 }
@@ -1558,7 +1560,8 @@ fn dart_suffix_tokens(_item: &Item, _args: &ModelSchemaArgs) -> TokenStream {
 
 /// The Swift tokens `item` earns, or nothing without the `swift` feature — the same always-
 /// callable shape as [`dart_suffix_tokens`]. The emitter is handed the arguments it reads: the
-/// name, the checks, a brand's or an enum's string check, and each member's own bounds.
+/// name, the checks, the functions a `preprocess` names, a brand's or an enum's string check,
+/// and each member's own bounds.
 #[cfg(feature = "swift")]
 fn swift_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
     let enum_args = matches!(item, Item::Enum(_)).then_some(args);
@@ -1572,6 +1575,7 @@ fn swift_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             min_length: args.min_length,
             name_override: args.name_override.as_deref(),
             pattern: args.pattern.as_deref(),
+            preprocess: &args.preprocess,
         },
     )
 }

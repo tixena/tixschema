@@ -2,9 +2,14 @@
 //! read, and `init(from:)` runs it and then `validate()`. A member is read unjudged wherever
 //! `validate()` runs the `validate()` of what it holds, so the whole value is judged once.
 
+use super::preprocess::{self, PAYLOAD, Written};
 use super::validate::{item_of, under_option};
 use super::{MapKeys, map_keys, swift_full_real_type};
 use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
+
+/// The read of a type alone, where it has one that takes the keys the types around it took.
+const ALONE: &str = "public init(swiftSchemaUnjudged decoder: Decoder) throws { \
+     try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }";
 
 /// The key type a map is read entry by entry under, written into each type that reads one so.
 const ANY_KEY: &str = "private struct SwiftSchemaAnyKey: CodingKey { var stringValue: String; \
@@ -16,6 +21,13 @@ pub(super) const JUDGED: &str = "public init(from decoder: Decoder) throws { \
      try self.init(swiftSchemaUnjudged: decoder); let violations = validate(); \
      if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(\
      codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }";
+
+/// What names, in the statements of a read, the keys the types around the type took.
+const TAKEN: [&str; 2] = ["swiftSchemaWithout: taken", "without: taken"];
+
+/// What opens the type's own read, handed the keys the types around the type took.
+const TAKING: &str =
+    "init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws";
 
 /// What opens the type's own read.
 pub(super) const UNJUDGED: &str = "init(swiftSchemaUnjudged decoder: Decoder) throws";
@@ -41,6 +53,9 @@ pub(super) enum Presence {
 /// Where a value is read from.
 #[derive(Clone)]
 pub(super) enum Source {
+    /// The decoder the initializer was handed, whose object the type itself reads keys of: the
+    /// expression is those keys, and the ones the types around the type took.
+    Beside(String),
     /// The decoder the initializer was handed.
     Decoder,
     /// Under `key` of the keyed container `container`.
@@ -71,10 +86,25 @@ impl Locals {
 }
 
 impl Source {
+    /// What holds where the source holds a key an absent one of which is read as `nil`, or `None`
+    /// for a source that refuses an absent key or has none.
+    pub(super) fn absent_as_nil(&self) -> Option<String> {
+        if let Self::Keyed {
+            container,
+            key,
+            presence: Presence::Nil,
+        } = self
+        {
+            Some(format!("{container}.contains({key})"))
+        } else {
+            None
+        }
+    }
+
     /// The decoder a held type is handed.
     fn decoder(&self) -> String {
         match self {
-            Self::Decoder => "decoder".to_owned(),
+            Self::Beside(_) | Self::Decoder => "decoder".to_owned(),
             Self::Keyed {
                 container,
                 key,
@@ -87,9 +117,9 @@ impl Source {
     /// What holds where the source holds a value and no `null`, and the source once it does.
     fn holding(&self) -> (String, Self) {
         match self {
-            Self::Decoder => (
+            Self::Beside(_) | Self::Decoder => (
                 "try !decoder.singleValueContainer().decodeNil()".to_owned(),
-                Self::Decoder,
+                self.clone(),
             ),
             Self::Keyed {
                 container,
@@ -116,7 +146,9 @@ impl Source {
     /// The container the entries of a map are read from.
     fn keyed(&self) -> String {
         match self {
-            Self::Decoder => "decoder.container(keyedBy: SwiftSchemaAnyKey.self)".to_owned(),
+            Self::Beside(_) | Self::Decoder => {
+                "decoder.container(keyedBy: SwiftSchemaAnyKey.self)".to_owned()
+            }
             Self::Keyed {
                 container,
                 key,
@@ -130,10 +162,54 @@ impl Source {
         }
     }
 
+    /// The statements that hold in `{stem}Payload` the payload under the source, as a function is
+    /// handed it, and the coding path that payload sits at. `keys` is the key type of the
+    /// container, for a key written `.name`.
+    pub(super) fn payload(&self, stem: &str, keys: &str) -> (String, String) {
+        match self {
+            Self::Beside(taken) => (
+                format!(
+                    "let {stem}Payload = try SwiftSchemaPayload(from: decoder, \
+                     without: {taken}).value; "
+                ),
+                "decoder.codingPath".to_owned(),
+            ),
+            Self::Decoder => (
+                format!("let {stem}Payload = try SwiftSchemaPayload(from: decoder).value; "),
+                "decoder.codingPath".to_owned(),
+            ),
+            Self::Keyed {
+                container,
+                key,
+                presence: _presence,
+            } => {
+                let named = if key.starts_with('.') {
+                    format!("{keys}{key}")
+                } else {
+                    key.clone()
+                };
+                (
+                    format!(
+                        "let {stem}Payload = try {container}.decode(SwiftSchemaPayload.self, \
+                         forKey: {key}).value; "
+                    ),
+                    format!("{container}.codingPath + [{named}]"),
+                )
+            }
+            Self::Listed(listed) => (
+                format!(
+                    "let {stem}Decoder = try {listed}.superDecoder(); \
+                     let {stem}Payload = try SwiftSchemaPayload(from: {stem}Decoder).value; "
+                ),
+                format!("{stem}Decoder.codingPath"),
+            ),
+        }
+    }
+
     /// The value read as the type `read_as` through `Decodable`.
     pub(super) fn plain(&self, read_as: &str) -> String {
         match self {
-            Self::Decoder => format!("{read_as}(from: decoder)"),
+            Self::Beside(_) | Self::Decoder => format!("{read_as}(from: decoder)"),
             Self::Keyed {
                 container,
                 key,
@@ -161,7 +237,7 @@ impl Source {
     /// The container the items of a list are read from.
     fn unkeyed(&self) -> String {
         match self {
-            Self::Decoder => "decoder.unkeyedContainer()".to_owned(),
+            Self::Beside(_) | Self::Decoder => "decoder.unkeyedContainer()".to_owned(),
             Self::Keyed {
                 container,
                 key,
@@ -181,13 +257,79 @@ pub(super) fn any_key(read: &str) -> String {
     }
 }
 
-/// The two reads of a type: its own, whose statements are `body`, and the one that judges. The
-/// key type `body` names comes first.
-pub(super) fn both(body: &str) -> String {
+/// Whether `statements` name the keys the types around the type took.
+pub(super) fn names_taken(statements: &str) -> bool {
+    TAKEN.iter().any(|named| statements.contains(named))
+}
+
+/// Whether `reads`, the reads of a type as [`both`] writes them, hold one that takes the keys the
+/// types around the type took.
+pub(super) fn takes_keys(reads: &str) -> bool {
+    reads.contains(TAKING)
+}
+
+/// The reads of a type whose own statements are `body`: its own, and the one that judges. Its own
+/// is written twice where it takes the keys the types around the type took, and reads `body`
+/// from what the type's functions answer where it names some. The types they name come first.
+pub(super) fn both(body: &str, written: &Written<'_>) -> String {
+    let twins = written.twins.iter().fold(String::new(), |mut held, twin| {
+        held.push_str(&preprocess::naming_its_owner(twin, written.named));
+        held.push_str("; ");
+        held
+    });
+    let read = format!("{}{twins}{body}", written.beside);
+    // An untagged enum writes the key type its readers name ahead of them.
+    let key = if written.beside.contains("SwiftSchemaAnyKey.self") {
+        String::new()
+    } else {
+        any_key(&read)
+    };
+    let payload = if !written.own.is_empty() || read.contains("SwiftSchemaPayload") {
+        format!("{PAYLOAD}; ")
+    } else {
+        String::new()
+    };
+    let taking = names_taken(body) || names_taken(written.beside);
+    let opened = format!("{key}{payload}{twins}");
+    if written.own.is_empty() {
+        return if taking {
+            format!("{opened}public {TAKING} {{ {body} }}; {ALONE}; {JUDGED}; ")
+        } else {
+            format!("{opened}public {UNJUDGED} {{ {body} }}; {JUDGED}; ")
+        };
+    }
+    let owner = written.named;
+    let untaken = if taking {
+        "let taken: [String] = []; "
+    } else {
+        ""
+    };
+    let corrected = preprocess::called(
+        written.own,
+        "try SwiftSchemaPayload(from: decoder, without: taken).value",
+    );
     format!(
-        "{}public {UNJUDGED} {{ {body} }}; {JUDGED}; ",
-        any_key(body)
+        "{opened}private struct SwiftSchemaRead: Decodable {{ let value: {owner}; \
+         init(from decoder: Decoder) throws {{ value = try {owner}(swiftSchemaCorrected: decoder) }} }}; \
+         private init(swiftSchemaCorrected decoder: Decoder) throws {{ {untaken}{body} }}; \
+         public {TAKING} {{ self = try SwiftSchemaPayload.read(SwiftSchemaRead.self, \
+         from: {corrected}, at: decoder.codingPath).value }}; {ALONE}; {JUDGED}; "
     )
+}
+
+/// The statements that read from `source` a value of the type `read_as`, which takes the keys the
+/// types around it took, and hand it to `sink`: `None` for a source that hands no such keys.
+pub(super) fn beside(
+    source: &Source,
+    read_as: &str,
+    sink: &dyn Fn(&str) -> String,
+) -> Option<String> {
+    let Source::Beside(taken) = source else {
+        return None;
+    };
+    Some(sink(&format!(
+        "try {read_as}(swiftSchemaUnjudged: decoder, swiftSchemaWithout: {taken})"
+    )))
 }
 
 /// The statements that read a value of the type `read_as` from `source` through its unjudged
@@ -270,8 +412,14 @@ pub(super) fn unjudged(
                 .map_or_else(|| def.clone(), |item| def.collection_element_field(item));
             unjudged(&items, "Element", source, sink, locals)
         }
-        FieldDefType::SiblingType(_, _)
-        | FieldDefType::Tuple(_)
+        FieldDefType::SiblingType(named, _) => {
+            let read_as = written_type(def, hint);
+            preprocess::takes(named)
+                .then(|| beside(source, &read_as, sink))
+                .flatten()
+                .unwrap_or_else(|| held(source, &read_as, sink))
+        }
+        FieldDefType::Tuple(_)
         | FieldDefType::TypeParam(_)
         | FieldDefType::Unknown
         | FieldDefType::StringLiteral(_)

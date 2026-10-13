@@ -19,6 +19,7 @@ fn emitted(item: &Item) -> String {
             min_length: None,
             name_override: None,
             pattern: None,
+            preprocess: &[],
         },
     )
     .to_string()

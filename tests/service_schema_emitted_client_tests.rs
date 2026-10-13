@@ -150,6 +150,26 @@ mod run_kotlin_read;
 #[path = "service_schema_emitted_client_tests/runtime.rs"]
 mod runtime;
 
+/// The models of the `preprocess` tests: the table the Rust read and the Zod schemas are held to.
+#[cfg(all(test, any(feature = "dart", feature = "swift")))]
+#[path = "pattern_preprocess_tests/models.rs"]
+mod preprocess_models;
+
+#[cfg(all(test, feature = "swift"))]
+#[path = "service_schema_emitted_client_tests/swift_preprocess_models.rs"]
+mod swift_preprocess_models;
+
+/// The emitted read of a type that names a `preprocess`, run and held to that table.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_preprocess.rs"]
+mod run_swift_preprocess;
+
+/// The read of each emitted Dart type that names a `preprocess`. Declared last: its models take
+/// names the modules above declare, and an expansion reads a type by its name.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_preprocess.rs"]
+mod run_dart_preprocess;
+
 /// `preprocess` in the emitted Kotlin types: the functions a type and its members name, called
 /// by the read ahead of what it reads. Its models take names no other module of this binary
 /// declares.
@@ -159,6 +179,8 @@ mod run_kotlin_preprocess;
 
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
+#[cfg(all(test, feature = "dart"))]
+use run_dart_preprocess::{IntakeClientService, intake_client_service_schema};
 #[cfg(all(test, feature = "dart"))]
 use run_dart_read::{ParcelClientService, parcel_client_service_schema};
 #[cfg(test)]
