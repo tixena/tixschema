@@ -7,6 +7,8 @@
 use super::Bound;
 #[cfg(feature = "dart")]
 use super::dart_violation;
+#[cfg(all(feature = "serde", feature = "kotlin"))]
+use super::kotlin_violation;
 #[cfg(feature = "serde")]
 use super::rust_violation;
 #[cfg(feature = "zod")]
@@ -14,6 +16,10 @@ use super::zod_error_arg;
 
 #[cfg(feature = "serde")]
 use quote::quote;
+#[cfg(all(feature = "serde", feature = "kotlin"))]
+use syn::punctuated::Punctuated;
+#[cfg(all(feature = "serde", feature = "kotlin"))]
+use syn::{Expr, ExprLit, ExprMacro, ExprMethodCall, Lit, Token};
 
 /// The tokens `rust_violation` builds, as one line with the spacing `quote!` prints.
 #[cfg(feature = "serde")]
@@ -131,6 +137,90 @@ fn a_pattern_reaches_the_quoted_string_escaped() {
     assert_eq!(
         zod_error_arg(Bound::Pattern(r#"^\d+"x"$"#)),
         r#"{ error: "does not match pattern '^\\d+\"x\"$'" }"#
+    );
+}
+
+/// The text of a string literal, or `None` for any other expression.
+#[cfg(all(feature = "serde", feature = "kotlin"))]
+fn literal_text(written: &Expr) -> Option<String> {
+    if let Expr::Lit(ExprLit {
+        lit: Lit::Str(text),
+        attrs: _attrs,
+    }) = written
+    {
+        Some(text.value())
+    } else {
+        None
+    }
+}
+
+/// The sentence the `format!` `rust_violation` builds writes at run time, with `<observed>` where
+/// it quotes the measured value back.
+#[cfg(all(feature = "serde", feature = "kotlin"))]
+fn rust_sentence(bound: Bound<'_>, field: Option<&str>) -> String {
+    let tokens = rust_violation(bound, field, &quote! { observed });
+    let Ok(formatted) = syn::parse2::<ExprMacro>(tokens.clone()) else {
+        let owned: ExprMethodCall = syn::parse2(tokens).unwrap();
+        return literal_text(&owned.receiver).unwrap();
+    };
+    let mut written = formatted
+        .mac
+        .parse_body_with(Punctuated::<Expr, Token![,]>::parse_terminated)
+        .unwrap()
+        .into_iter();
+    let template = literal_text(&written.next().unwrap()).unwrap();
+    let mut parts = template.split("{}");
+    let mut sentence = parts.next().unwrap().to_owned();
+    for part in parts {
+        let filled = written.next().unwrap();
+        sentence.push_str(&literal_text(&filled).unwrap_or_else(|| "<observed>".to_owned()));
+        sentence.push_str(part);
+    }
+    sentence
+}
+
+/// The sentence the Kotlin string `kotlin_violation` builds writes at run time, read the same way.
+#[cfg(all(feature = "serde", feature = "kotlin"))]
+fn kotlin_sentence(bound: Bound<'_>, place: Option<&str>) -> String {
+    let literal = kotlin_violation(bound, place, "observed");
+    literal
+        .strip_prefix('"')
+        .and_then(|rest| rest.strip_suffix('"'))
+        .unwrap()
+        .replace("${observed}", "<observed>")
+        .replace("\\$", "$")
+        .replace("\\\"", "\"")
+        .replace("\\\\", "\\")
+}
+
+/// Each bound is reported in Kotlin in the sentence Rust reports it in, under a name and under
+/// none.
+#[cfg(all(feature = "serde", feature = "kotlin"))]
+#[test]
+fn kotlin_reports_each_bound_in_the_sentence_rust_reports_it_in() {
+    let written = [
+        Bound::MaxItems(3),
+        Bound::MaxLength(50),
+        Bound::Maximum(120.0),
+        Bound::Maximum(1.5),
+        Bound::MinItems(1),
+        Bound::MinLength(3),
+        Bound::Minimum(0.0),
+        Bound::Pattern("^[a-z]+$"),
+        Bound::Pattern(r#"^\x41"x"$"#),
+    ];
+    for bound in written {
+        for named in [Some("itemLabel"), None] {
+            assert_eq!(kotlin_sentence(bound, named), rust_sentence(bound, named));
+        }
+    }
+    assert_eq!(
+        kotlin_violation(Bound::MinLength(1), Some("label"), "label.length"),
+        r#""'label': too short: minimum length is 1, got ${label.length}""#
+    );
+    assert_eq!(
+        kotlin_violation(Bound::Pattern("^[a-z]+$"), None, "label.length"),
+        r#""does not match pattern '^[a-z]+\$'""#
     );
 }
 

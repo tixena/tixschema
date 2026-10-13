@@ -199,7 +199,7 @@ The crate uses optional features for minimal dependencies:
 - `indexmap`: Enables indexmap type support: `IndexMap` as a map, `IndexSet` as a list. It adds no dependency: the generated code names the types of the crate that declares them. With the feature off a type written `IndexMap<_, _>` or `IndexSet<_>` is refused at `exec_model_schema` with the feature named (`indexmap_feature_errors`), unless the crate declared a type of its own under the name above
 - `dart`: Enables Dart type generation with a JSON codec and a `validate()` on every type, and the Dart HTTP client
 - `swift`: Enables Swift type generation with a `Codable` codec
-- `kotlin`: Enables Kotlin type generation with `kotlinx.serialization` annotations. A consuming Kotlin build declares two dependencies: the runtime library `org.jetbrains.kotlinx:kotlinx-serialization-json` and the Kotlin Gradle plugin `kotlin("plugin.serialization")`
+- `kotlin`: Enables Kotlin type generation with `kotlinx.serialization` annotations, and a `validate()` on every type that runs the bounds and calls the checks. A consuming Kotlin build declares two dependencies: the runtime library `org.jetbrains.kotlinx:kotlinx-serialization-json` and the Kotlin Gradle plugin `kotlin("plugin.serialization")`
 
 **Feature sets**: `web` (the default: `serde`, `zod`, `jsonschema`, `typescript`), `mobile` (`serde`, `dart`, `swift`, `kotlin`) and `mongo` (`mongodb`, `chrono`, `indexmap`). CI tests the powerset of the sets (`just test-sets`); `just test` runs the powerset of the plain features locally
 
@@ -588,8 +588,9 @@ what a change has to keep.
 - **The wrap copies each issue with `continue: true`.** Zod skips a later check after an issue
   without the flag, where Rust runs every one, and `tsc --strict` refuses to set the flag on a
   pushed issue (TS2540).
-- **No other surface moves.** The JSON Schema, TypeScript, Dart, Swift and Kotlin write what they
-  wrote, and no expected output of a type without the key changes.
+- **No other surface moves.** The JSON Schema, TypeScript, Dart and Swift write what they wrote,
+  and no expected output of a type without the key changes. The Kotlin client calls each check in
+  the `validate()` it writes on every type: see "The Kotlin client's `validate()`" below.
 - **The documents' example is a doctest.** `src/check_example.md` is included in
   `model_schema_prop`'s rustdoc under `serde` and a schema surface, and
   `tests/check_tests/readme.rs` holds the README to it. `tests/check_tests/models.rs` is compiled
@@ -734,6 +735,65 @@ The macro also generates into the type's schema module:
 - `validate_{field}_value(&FieldType) -> Result<(), String>` — pure static validator per field
 - `deserialize_{variant}_{field}(D) -> Result<FieldType, E>` — serde hook that calls the static validator, generated only for a member of an untagged enum, the one position where a member's check runs as the member is read
 - A tuple variant's slot writes its declaration index where a named member writes `{field}`: `validate_other_0_value` and `deserialize_other_0` for the lone slot of `Other`
+
+#### The Kotlin client's `validate()`
+
+Every Kotlin type `src/features/kotlin.rs` writes carries `fun validate(): List<String>`, written
+by `src/features/kotlin/validate.rs`: a data class, a unit struct's `object`, a brand's value
+class, a tuple struct, a sealed interface with each variant, and a plain enum. It answers what
+Rust's `validate()` answers for the same value. `README.md`'s "`validate()` in the Kotlin client"
+section is the consumer's view; this is what a change has to keep.
+
+- **The emitter reads what the web surfaces read.** `kotlin_schema_dispatch` takes `KotlinArgs`,
+  which `kotlin_suffix_tokens` builds: the `name` override, the type's `check` names,
+  `default_types`, and a brand's `minLength`, `maxLength` and `pattern`. `KotlinArgs::member_meta`
+  is `member_prop_meta`, so an enum's own string check is each reached member's. `patterns_of`
+  reads `enum_pattern` under the gate that field is compiled under.
+- **`Rules` is the one writer, and its order is Rust's.** `Rules::member` writes a member's bounds
+  (`bound_statements`), then what the value it holds reports (`held_statements`), then its checks
+  (`check_statements`). A member with a bound of its own is not walked, a list apart, which runs
+  its count and then each item: `named_member_validate_body` is the Rust rule. `Rules::own` writes
+  the type's checks last, `Rules::brand` a brand's own bounds and no walk, and `Rules::written` the
+  method. A type with no statement writes `= emptyList()`.
+- **The sentence is `kotlin_violation`'s**, in `src/bound_message.rs`, written from
+  `Bound::stated()`. `kotlin_reports_each_bound_in_the_sentence_rust_reports_it_in` holds it to
+  `rust_violation`, per bound.
+- **The units.** A string's length is `codePointCount`, in Unicode code points, and a list's is
+  `size`. `Number` compares a range in the Kotlin type the field is held as, and quotes a float
+  back through `kotlinSchemaShown`, as Rust's `Display` writes one. `jvm_pattern` writes `$` as
+  `\z`, `\v` as `\x0B` and a named group as a plain one, which is what the `regex` crate reads in
+  the three; the message states the pattern as declared.
+- **Every function a type calls is private to the type's own body** (`Helper`): `kotlinSchemaUnder`,
+  `kotlinSchemaShown`, the `String.kotlinSchemaText()` a declared type is asked through, and the
+  `Any?.validate()` a held type with no `validate()` answers with. The emitted types are joined
+  into one file, where two file-scope declarations of one signature do not compile, and tixschema
+  ships no runtime library.
+- **A declared type is asked for its text, and the language picks.** A brand over a string or a
+  path carries `kotlinSchemaText()` (`Rules::text_member`), and a brand over a brand or over an
+  alias that answers one answers through it. A holder writes `held.kotlinSchemaText()`
+  (`text_read`): a member is found ahead of the holder's own extension of `String`, so a brand
+  declared above or below the holder and an alias of a string all build, and no expansion is
+  refused. `NOTED` is read for two things alone: whether the declared type a brand holds was
+  written above and answers its text, and whether a held type is known to carry `validate()`,
+  which spares its holder the fallback.
+- **A slot and a variant's member are named by the steps serde writes** (`Tagging`,
+  `variant_body`, `slot_rules`): the variant's wire name where no tag is written, the content key
+  under a tag and a content key, and nothing under a tag alone and under no tag; a slot's position
+  where there are several, and nothing for a lone slot.
+- **A map's key is `key_step`'s**: the key itself for a string, a number and a `Boolean`, the text
+  its serializer writes for a declared type, and a type parameter's only where
+  `serialized_parameters` finds `Serialize` declared for it, as Rust writes it.
+- **The walk never asks `kotlin_typename` of a tuple.** Each call queues another wrapper class
+  (`tuple_wrapper_typename`), so a position is read as `slot{N}` off the value.
+- **A brand with a parameter** runs its bounds behind `if (value is {Default})`, the Kotlin type
+  of the parameter's declared default (`declared_default`). A default written with arguments
+  writes no bound: the JVM keeps no argument to tell the filling by.
+- **The tests.** `tests/kotlin_tests/validate.rs` pins the text in every build with `kotlin`, a
+  build with no schema surface included: Rust holds no bound there and Kotlin holds every one.
+  `tests/service_schema_emitted_client_tests/run_kotlin_validate.rs` compiles the emitted types
+  with `-Werror`, runs them, and holds each row to what Rust's `validate()` answers, or, for a
+  slot and a variant's member, to the name written in the row. `src/features/kotlin/tests.rs`
+  holds the README's block to what the emitter writes for the documents' parcel.
 
 #### A read refuses what `validate()` refuses
 

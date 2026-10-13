@@ -3997,7 +3997,9 @@ A field's check is written on the schema of the value the Rust function takes: a
 
 **In the Dart `validate()`** every emitted Dart type has, under the name as written. See [`validate()` in Dart](#validate-in-dart).
 
-**Nowhere else.** The JSON Schema calls no function, and a document is written as it is without the key. The Swift and Kotlin types read the key and are written as they are without it. The Zod schema of a type that flattens an `#[serde(untagged)]` enum writes that enum's variants out one by one, with each member's check and without the check written on the enum itself, which the holder's `validate()` does run.
+**In the `validate()` of the Kotlin client.** Every Kotlin type carries one, which runs the bounds and calls each check under the name written. See [`validate()` in the Kotlin client](#validate-in-the-kotlin-client).
+
+**Nowhere else.** The JSON Schema calls no function, and a document is written as it is without the key. The Swift types read the key and are written as they are without it. The Zod schema of a type that flattens an `#[serde(untagged)]` enum writes that enum's variants out one by one, with each member's check and without the check written on the enum itself, which the holder's `validate()` does run.
 
 #### What is refused
 
@@ -4210,6 +4212,161 @@ The step of a variant is the name serde writes it under: its own `rename`, or th
 - **A class of your own that a model holds** declares `List<String> validate()` as the emitted ones do: a holder calls it with no knowledge of what the held type declares, whether that type is declared above the holder or below it.
 - **A field named `validate`** is the member `validate_`, and keeps its key, as [a reserved word does](#a-member-named-after-a-word-the-client-language-reserves).
 - **Every build writes the same Dart.** The Dart `validate()` holds each bound and calls each check with a schema surface on and with none. One declaration differs: a brand's own `minLength`, `maxLength` or `pattern` is refused by a build with no `typescript`, `zod` or `jsonschema`, so no wrapper carries one there.
+
+### `validate()` in the Kotlin client
+
+Every type `kotlin_definition()` writes carries `fun validate(): List<String>`: a data class, the `object` of a unit struct, the value class of a brand, a tuple struct, a sealed interface with each of its variants, and a plain enum. It answers the messages Rust's [`validate()`](#the-validate-method) answers for the same value, in the same order, and an empty list for a value that keeps every rule. A type with no rule answers `emptyList()`.
+
+`validate()` is a method you call. The serializer of each type is written as it was, and reading a payload calls nothing.
+
+This is what the `Parcel` and the `Manifest` of [Checks](#checks-check) emit. The emitter writes each type on one line, and each line break below stands for one space of it:
+
+```kotlin
+@Serializable data class Parcel(val label: String, val itemCodeList: List<String>, val fragileItemCodes: List<String>) {
+  fun validate(): List<String> {
+    val violations = mutableListOf<String>();
+    if (label.codePointCount(0, label.length) < 1) violations.add("'label': too short: minimum length is 1, got ${label.codePointCount(0, label.length)}");
+    violations.addAll(withoutDuplicates(itemCodeList).map { kotlinSchemaUnder("itemCodeList", it) });
+    violations.addAll(withinParcel(this));
+    return violations
+  };
+  private fun kotlinSchemaUnder(place: String, violation: String): String {
+    val end = violation.indexOf('\'', 1);
+    return if (violation.startsWith("'") && end > 0) { "'$place.${violation.substring(1, end)}'${violation.substring(end + 1)}" } else { "'$place': $violation" }
+  }
+}
+
+@Serializable data class Manifest(val parcel: Parcel) {
+  fun validate(): List<String> {
+    val violations = mutableListOf<String>();
+    violations.addAll(parcel.validate().map { kotlinSchemaUnder("parcel", it) });
+    return violations
+  };
+  private fun kotlinSchemaUnder(place: String, violation: String): String {
+    val end = violation.indexOf('\'', 1);
+    return if (violation.startsWith("'") && end > 0) { "'$place.${violation.substring(1, end)}'${violation.substring(end + 1)}" } else { "'$place': $violation" }
+  }
+}
+```
+
+A parcel read from `{"label":"","itemCodeList":["x","x"],"fragileItemCodes":["y"]}` answers the three lines Rust answers, and a manifest that holds a parcel with `"y"` outside its codes answers the fourth:
+
+```text
+'label': too short: minimum length is 1, got 0
+'itemCodeList': duplicate item code x
+'fragileItemCodes.0': y is outside of itemCodeList
+'parcel.fragileItemCodes.1': y is outside of itemCodeList
+```
+
+- **The order is Rust's.** Each member in the order declared: its bounds, then what the value it holds reports, then the checks it names. The type's own checks run last. Every rule runs, and none stops another.
+- **A member with a bound of its own** is not asked for what its type declares, a list apart: a list runs its count and then each item, as in Rust.
+- **Every function a type calls is in the type's own body.** `kotlinSchemaUnder` writes a holder's key into a message, and is written into each type that names a place. The emitted types are joined into one file, so nothing is written beside a type, and tixschema ships no runtime library.
+- **A member named `validate` builds and keeps its key**, a property and a method being two names to Kotlin. A member named `violations` is read as `this.violations`.
+- **Every build with the `kotlin` feature writes the same `validate()`.** The emitter reads the declaration itself, so a build with no schema surface, where Rust holds no bound, still writes each bound a field declares into the Kotlin client.
+
+#### The bounds
+
+| Key | On | Kotlin writes |
+|---|---|---|
+| `minLength`, `maxLength` | a string | `value.codePointCount(0, value.length)`: Unicode code points |
+| `minLength`, `maxLength` | a list | `value.size` |
+| `minimum`, `maximum` | a number | `value < 1u`, `value > 120.0`: a comparison in the number's own type |
+| `pattern`, and the second pattern an enum writes | a string | `Regex("...").containsMatchIn(value)`: a match anywhere |
+
+- **A length is counted in Unicode code points**, so `"é"` and a character outside the Basic Multilingual Plane each count one. The Rust validator counts the bytes of the UTF-8 text (`len()`) and the Zod schema counts UTF-16 code units (`length`), so the three agree on ASCII text and can differ on any other.
+- **A nullable member is measured only where it holds a value**: `spareLabel?.let { held -> ... }`.
+- **A number is compared in its own type.** An unsigned one is compared with an unsigned literal (`1u`), a `Float` with a `Float` (`0.5f`), a `Double` with a `Double`. A bound that is no value of the type, `minimum = 0.5` on a `u32`, is compared as a `Double`.
+- **A float is quoted back as Rust writes it.** Kotlin prints `150.0` and `2.5E8` where Rust prints `150` and `250000000`, so a type that bounds a float carries `kotlinSchemaShown`, which writes a whole float without `.0` and any float without an exponent.
+- **A pattern is written for the JVM, and stated as you wrote it.** The JVM reads `$` as the end of the text or the place before a last line break, `\v` as any vertical space, and refuses a named group whose name holds `_`. The emitted regex writes `$` as `\z`, `\v` as `\x0B` and a named group as a plain one, which is what the `regex` crate reads in the three. The message still states the pattern of the declaration: `does not match pattern '^[a-z]+$'`.
+
+#### What a holder runs
+
+A holder calls the `validate()` of each value of a declared type it holds, and writes each message under the place the payload holds the value at:
+
+```kotlin
+violations.addAll(firstParcel.validate().map { kotlinSchemaUnder("firstParcel", it) });
+parcelList.forEachIndexed { index, held -> violations.addAll(held.validate().map { kotlinSchemaUnder("parcelList.$index", it) }) };
+spareParcel?.let { held -> violations.addAll(held.validate().map { kotlinSchemaUnder("spareParcel", it) }) };
+for ((key, held) in parcelsByDock) { violations.addAll(held.validate().map { kotlinSchemaUnder("parcelsByDock.$key", it) }) }
+```
+
+- **A list** names each item by its index at each level, and **a tuple** written as a field's type each position: `'parcelGrid.0.1.label'`, `'deckPair.1.label'`.
+- **A map** is walked in the order it holds its entries, and names each by its key as serde writes it. A key that is a string, a number or a `Boolean` is written as it is. A key of a declared type is written as its serializer writes it, so a plain enum goes by the name serde writes the variant under: `'byWing.north.label'`.
+- **A `#[serde(flatten)]` member** writes no key, and what it reports is written under no name. A flattened map names each entry by its key alone.
+- **A value behind a type parameter is not reached**, as in Rust. A key typed with a type parameter is written where the Rust type declares `Serialize` for the parameter, as Kotlin prints it, and left out where the type declares none.
+- **A type the emitter has not written** when it writes the holder has no `validate()` the holder can count on: a type of your own you supply to Kotlin, an alias of a string or of a list, a type declared below. The holder then carries `private fun Any?.validate(): List<String> = emptyList()` in its own body. A member is found ahead of an extension, so a type that has `validate()` answers with its own.
+
+#### A bound on a field typed with a declared type
+
+A length or a pattern on [a field typed with a branded string](#a-field-typed-with-a-branded-string) is run on the string the type holds. The value class of a brand over a string or a path carries `fun kotlinSchemaText(): String = value`, and a brand over such a brand answers through the brand it holds. The holder asks the field for its text, and carries the answer of a string in its own body:
+
+```kotlin
+if (slug.kotlinSchemaText().codePointCount(0, slug.kotlinSchemaText().length) < 3) violations.add("'slug': too short: minimum length is 3, got ${slug.kotlinSchemaText().codePointCount(0, slug.kotlinSchemaText().length)}");
+private fun String.kotlinSchemaText(): String = this
+```
+
+A member is found ahead of an extension, so a brand answers with its own text and an alias of a string with the string. The brand and the alias may be declared above the holder or below it. A field typed with a type that holds no string does not compile in Kotlin, at the holder: `error: candidate 'fun String.kotlinSchemaText(): String' is inapplicable because of a receiver type mismatch.` A brand over a brand answers through the brand it holds where that brand is declared above it.
+
+Rust writes no text for a brand over a brand, and refuses a string bound on a field typed with one. Kotlin measures it.
+
+#### A brand
+
+The value class of a brand runs the brand's own `minLength`, `maxLength` and `pattern` over `value`, then the checks the brand names, and names no place: `too short: minimum length is 2, got 1`. A brand over a list counts its items.
+
+A brand that holds one of its type parameters bare runs its bounds where the value is of the type declared for the parameter, and at no other filling: `if (value is String) { ... }`. Where the declared type is itself written with arguments, `default_types(WrapType = StrictDocumentId<String>)`, the JVM keeps no argument to tell the filling by, and the value class runs no bound.
+
+#### The name of a slot and of a variant's member
+
+A message names a value by the steps serde writes on the way to it: a key, a position in an array, or nothing where serde writes the value itself.
+
+| Member | serde writes it | The name |
+|---|---|---|
+| a slot of a tuple struct of several slots | at its position in the array | `'1'` |
+| the one slot of a tuple struct | as the value itself | none: the sentence alone, or the holder's key |
+| a named member of a variant, no tag attribute | `{"Loose":{"freightLabel":…}}` | `'Loose.freightLabel'` |
+| the one slot of a variant, no tag attribute | `{"Boxed":…}` | `'Boxed'`, and `'Boxed.label'` for a model it holds |
+| a slot of a variant of several, no tag attribute | `{"Split":[…]}` | `'Split.1'` |
+| a named member, tag and content key | `{"kind":"Loose","held":{…}}` | `'held.haulLabel'` |
+| the one slot, tag and content key | `{"kind":"Boxed","held":…}` | `'held'` |
+| a slot of several, tag and content key | `{"kind":"Split","held":[…]}` | `'held.1'` |
+| a named member, tag alone | beside the tag | `'liftLabel'` |
+| the one slot, tag alone | its own keys beside the tag | none |
+| a member of an `#[serde(untagged)]` variant | as the value itself, or under its key | none for the slot, its key for a named member |
+
+The variant's step is the name serde writes it under: the variant's own `rename`, or the enum's `rename_all` applied to its ident. Each variant of a sealed interface overrides `validate()` with the rules of its own members, and the enum's own checks run last in each. A string check written on the enum reaches in Kotlin the fields [it reaches in Rust](#a-check-written-on-the-enum).
+
+#### The checks
+
+A check is called under the name the attribute writes, on the value Rust hands its function, and answers the messages as a list: empty where the value keeps the rule. A top-level function of the package, or one the file imports, is in scope.
+
+| | Kotlin |
+|---|---|
+| A field's check | `fun withoutDuplicates(value: List<String>): List<String>` |
+| A type's check | `fun withinParcel(value: Parcel): List<String>` |
+| The check of a type with a parameter, written once | `fun <CodeType> withACode(value: Crate<CodeType>): List<String>` |
+
+```kotlin
+fun withoutDuplicates(value: List<String>): List<String> {
+    val seen = mutableSetOf<String>()
+    for (code in value) {
+        if (!seen.add(code)) return listOf("duplicate item code $code")
+    }
+    return emptyList()
+}
+
+fun withinParcel(value: Parcel): List<String> =
+    value.fragileItemCodes.withIndex()
+        .filter { it.value !in value.itemCodeList }
+        .map { "'fragileItemCodes.${it.index}': ${it.value} is outside of itemCodeList" }
+```
+
+A field's check names no path, and `validate()` writes its messages under the field. A type's check leads each message with the path of what it refuses, as [in Rust](#the-messages). The check of a nullable member is called only where the member holds a value, and the check of a brand takes the value class.
+
+**A name with no Kotlin function does not compile**, and the Kotlin compiler says so at the call:
+
+```text
+error: unresolved reference 'withinParcel'.
+```
 
 ### Literal Values
 
@@ -6462,7 +6619,7 @@ The crate uses optional features to control code generation and dependencies. Ea
 | `indexmap` | No | `indexmap` type support: `IndexMap` as a map and `IndexSet` as a list. See [The order of a map's keys](#the-order-of-a-maps-keys) |
 | `dart` | No | Dart type generation via `dart_definition()`, with a JSON `fromJson`/`toJson` codec and a [`validate()`](#validate-in-dart) on every type |
 | `swift` | No | Swift type generation with a `Codable` codec |
-| `kotlin` | No | Kotlin type generation via `kotlin_definition()`, with `kotlinx.serialization` annotations. A consuming Kotlin build declares two runtime dependencies the emitted code names -- `org.jetbrains.kotlinx:kotlinx-serialization-json` for the JSON codec and `org.jetbrains.kotlinx:kotlinx-coroutines-core` for the transport's own reply correlation and heartbeat -- plus the Kotlin Gradle plugin `kotlin("plugin.serialization")` |
+| `kotlin` | No | Kotlin type generation via `kotlin_definition()`, with `kotlinx.serialization` annotations and a [`validate()`](#validate-in-the-kotlin-client) on every type. A consuming Kotlin build declares two runtime dependencies the emitted code names -- `org.jetbrains.kotlinx:kotlinx-serialization-json` for the JSON codec and `org.jetbrains.kotlinx:kotlinx-coroutines-core` for the transport's own reply correlation and heartbeat -- plus the Kotlin Gradle plugin `kotlin("plugin.serialization")` |
 
 Common configurations:
 
