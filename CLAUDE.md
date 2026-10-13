@@ -389,25 +389,49 @@ the key or without it, as serde does.
 
 ### 7. Field Validation Attributes (`#[model_schema_prop(...)]`)
 
-All validation constraints generate checks in **Zod (frontend), JSON Schema, and Rust**. In Rust the check runs in `validate()`, which the type's own `Deserialize` calls on the value it read, so a serde read refuses what `validate()` refuses ("A read refuses what `validate()` refuses", below), and in the recovering decode of a type declared with `decode_with`, which lists each violation as an issue. While the members are still being read it runs in one position only: a member of an untagged enum, where the check decides which variant the payload is:
+All validation constraints generate checks in **Zod, JSON Schema, Rust, Dart, Swift and Kotlin**. In Rust the check runs in `validate()`, which the type's own `Deserialize` calls on the value it read, so a serde read refuses what `validate()` refuses ("A read refuses what `validate()` refuses", below), and in the recovering decode of a type declared with `decode_with`, which lists each violation as an issue. While the members are still being read it runs in one position only: a member of an untagged enum, where the check decides which variant the payload is. In Dart, Swift and Kotlin the check runs in the `validate()` every emitted type carries, which the type's read calls on the value it read: `fromJson`, `init(from:)` and `{Type}Serializer`.
 
-| Attribute | Field Type | Zod | JSON Schema | Rust |
-|-----------|------------|-----|-------------|------------|
-| `pattern = "regex"` | `String` | `.check(z.regex(/regex/))` | `"pattern"` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum |
-| `minLength = N` | `String` | `.min(N)` | `"minLength"` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum |
-| `maxLength = N` | `String` | `.max(N)` | `"maxLength"` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum |
-| `minLength = N` | a list | `.min(N)` on the array | `"minItems"` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum |
-| `maxLength = N` | a list | `.max(N)` on the array | `"maxItems"` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum |
-| `minimum = N` | numeric | `.min(N)` | `"minimum"` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum |
-| `maximum = N` | numeric | `.max(N)` | `"maximum"` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum |
-| `literal = "val"` | `String` | `z.literal("val")` | `{"type": "string", "const": "val"}` | — |
-| `literal = true` | `bool` | `z.literal(true)` | `{"type": "boolean", "const": true}` | — |
-| `literal = 214` | numeric | `z.literal(214)` | `{"type": "number", "const": 214}` | — |
-| `preprocess = ["fn"]` | any, and a type | `z.preprocess(fn, ...)` | — | every read of the type calls `fn` in snake case on the payload, a `serde_json::Value`, ahead of the value's read |
-| `check = ["fn"]` | any, and a type | `.check((ctx) => { ... fn(own.value, own); ... })` | — | `validate()` calls `fn` in snake case, in every build, and the type's read refuses with its messages; an issue of the recovering decode |
-| `ts_optional` | `Option<T>` | — | — | — (TypeScript-only) |
-| `as_number` | `DateTime<Tz>` | inline `z.preprocess(..., z.number())` | — | serde `with = chrono::serde::ts_milliseconds` injected |
-| `nullable` | `Option<T>` | `z.union([T, z.null()])`, key required | `anyOf: [T, {"type":"null"}]`, key required | guard: refuses a key-dropping serde attr |
+A function a `preprocess` names is called by the read alone of each language, ahead of the value, so the read that judges calls it too: `model_schema_read_unjudged` in Rust, `z.preprocess(fn, ...)` in the Zod schema, `fromJsonUnjudged` in Dart, `init(swiftSchemaUnjudged:)` in Swift and `{Type}Unjudged` in Kotlin. A function a `check` names is called by `validate()` in the four that have one, and by one `.check(...)` on the Zod schema. Rust calls the snake case of a name, and every other language the name as written:
+
+| Attribute | Field Type | Zod | JSON Schema | Rust | Dart | Swift | Kotlin |
+|-----------|------------|-----|-------------|------------|------|-------|--------|
+| `pattern = "regex"` | `String` | `.check(z.regex(/regex/))` | `"pattern"` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum | `validate()`: `RegExp("...").hasMatch(value)` | `validate()`: `value.range(of: "...", options: .regularExpression) == nil` | `validate()`: `Regex("...").containsMatchIn(value)` |
+| `minLength = N` | `String` | `.min(N)` | `"minLength"` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum | `validate()`: `value.runes.length` | `validate()`: `value.unicodeScalars.count` | `validate()`: `value.codePointCount(0, value.length)` |
+| `maxLength = N` | `String` | `.max(N)` | `"maxLength"` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum | `validate()`: `value.runes.length` | `validate()`: `value.unicodeScalars.count` | `validate()`: `value.codePointCount(0, value.length)` |
+| `minLength = N` | a list | `.min(N)` on the array | `"minItems"` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum | `validate()`: `value.length` | `validate()`: `value.count` | `validate()`: `value.size` |
+| `maxLength = N` | a list | `.max(N)` on the array | `"maxItems"` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum | `validate()`: `value.length` | `validate()`: `value.count` | `validate()`: `value.size` |
+| `minimum = N` | numeric | `.min(N)` | `"minimum"` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum | `validate()`: `value < N` | `validate()`: `value < N` | `validate()`: `value < N`, in the number's own type |
+| `maximum = N` | numeric | `.max(N)` | `"maximum"` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum | `validate()`: `value > N` | `validate()`: `value > N` | `validate()`: `value > N`, in the number's own type |
+| `literal = "val"` | `String` | `z.literal("val")` | `{"type": "string", "const": "val"}` | — | — (a `String`) | — (a `String`) | — (a `String`) |
+| `literal = true` | `bool` | `z.literal(true)` | `{"type": "boolean", "const": true}` | — | — (a `bool`) | — (a `Bool`) | — (a `Boolean`) |
+| `literal = 214` | numeric | `z.literal(214)` | `{"type": "number", "const": 214}` | — | — (a `double`) | — (a `Double`) | — (a `Double`) |
+| `preprocess = ["fn"]` | any, and a type | `z.preprocess(fn, ...)` | — | every read of the type calls `fn` in snake case on the payload, a `serde_json::Value`, ahead of the value's read | in `fromJsonUnjudged`: `fn` on the payload, a `dynamic`, ahead of the value's read | in `init(swiftSchemaUnjudged:)`: `fn` on the payload, an `Any`, ahead of the value's read | in the read of `{Type}Unjudged`: `fn` on the payload, a `JsonElement`, ahead of the value's read |
+| `check = ["fn"]` | any, and a type | `.check((ctx) => { ... fn(own.value, own); ... })` | — | `validate()` calls `fn` in snake case, in every build, and the type's read refuses with its messages; an issue of the recovering decode | `validate()` calls `fn`, and `fromJson` throws `FormatException` with its messages | `validate()` calls `fn`, and `init(from:)` throws `DecodingError.dataCorrupted` with its messages | `validate()` calls `fn`, and `{Type}Serializer` throws `SerializationException` with its messages |
+| `ts_optional` | `Option<T>` | — | — | — (TypeScript-only) | — | — | — |
+| `as_number` | `DateTime<Tz>` | inline `z.preprocess(..., z.number())` | — | serde `with = chrono::serde::ts_milliseconds` injected | an `int` | an `Int64`, which the emitted codec reads from an ISO 8601 string and writes as one | a `Long` |
+| `nullable` | `Option<T>` | `z.union([T, z.null()])`, key required | `anyOf: [T, {"type":"null"}]`, key required | guard: refuses a key-dropping serde attr | `T?`, the one spelling of an `Option` | the key always encoded, `nil` included | no `= null` default on the property |
+
+`README.md`'s "Preprocess and check" section is the one place that states `preprocess` and `check`
+for the five languages side by side. It names the section of each language for the detail and
+repeats none of it. What a change has to keep:
+
+- **Each cell of its table is text the test of that language holds.**
+  `tests/preprocess_and_check_tests/readme.rs` reads the section beside the source of each test:
+  a signature is one the test compiles, an error is one its run asserts, and the name of a read
+  is one the text of the emitter is pinned to. No test holds the TypeScript error of a name with
+  no function, `error TS2304: Cannot find name 'trimmed'.`: it is what `tsc --strict` reports.
+- **The 13 lines are one text in the test of each language.** `tests/check_tests/models.rs`
+  holds them in `TABLE`, which the Rust `validate()` and the Zod schema are compared with, and
+  `run_dart_validate.rs`, `run_swift_validate.rs` and `run_kotlin_validate.rs` each hold a copy
+  their run is compared with. The section shows that text.
+- **The parcel the section declares is compiled.** `tests/preprocess_and_check_tests/models.rs`
+  declares it, its members in the order of their names, and the two reads the section shows are
+  what a run answers.
+- **A limit of a client is stated in the client's own section.** The section says that limits
+  exist and names them in one sentence.
+- **The key is a last resort in every place the documents introduce it**: the section, the
+  section of the key, and the section of each client.
+- **The upgrade list states what a consumer sees**, each item with the text of its error.
 
 **A key written on a field measures the field's own value.** `Option` and the transparent wrappers
 (`Box`, `Rc`, `Arc`, `Cow`, the borrow of a `str` or of a list) hold one value and are read through;
@@ -481,13 +505,15 @@ starting with a digit. A variant's slot is read off the binding its arm makes
 - The lone slot of an untagged newtype variant is hung with the hook, and `validate()` reports it
   under no name, as it reports what the slot's own type declares. A slot with a check of its own
   and a type that declares one runs both (`slot_validate_body`).
-- A slot of a tagged variant is checked by `validate()` alone and reported where serde writes
-  it, as what its type holds is: under the variant's name or the content key, and under its
+- A slot of a tagged variant is checked by `validate()`, which the enum's read runs on the
+  value it read, and by no hook as the slot is read. It is reported where serde writes it, as
+  what its type holds is: under the variant's name or the content key, and under its
   position among several slots (`'Code': …`, `'Pair.1': …`, `'data.1': …`). Its validator is
   recorded under the `Validator` gate, and the recovering decode reads it back through
   `slot_validator`: `Slot::validator` for a variant of several slots,
   `WalkedVariant::lone_bound` for a variant of one, each an `Invalid` at the slot's own path.
-- A slot of a tuple struct is checked where a named field of a struct is: by `validate()` alone,
+- A slot of a tuple struct is checked where a named field of a struct is: by `validate()`,
+  which the struct's read runs on the value it read, and by no hook as the slot is read. It is
   reported under its position among the slots serde reads, and under no name where it is the
   struct's one slot, as what its type holds is. `collect_tuple_slots` hands each
   slot's validator and `validate()` fragment to `process_tuple_struct` in `TupleSlots`. The
@@ -588,9 +614,11 @@ what a change has to keep.
 - **The wrap copies each issue with `continue: true`.** Zod skips a later check after an issue
   without the flag, where Rust runs every one, and `tsc --strict` refuses to set the flag on a
   pushed issue (TS2540).
-- **No other surface moves.** The JSON Schema, TypeScript, Dart and Swift write what they wrote,
-  and no expected output of a type without the key changes. The Kotlin client calls each check in
-  the `validate()` it writes on every type: see "The Kotlin client's `validate()`" below.
+- **The clients call each check.** The Dart, Swift and Kotlin emitters write a call of the
+  function, under the name as written, in the `validate()` every emitted type carries: see
+  "`validate()` on the Dart types", "The Swift `validate()`" and "The Kotlin client's
+  `validate()`" below. The JSON Schema and the TypeScript type write what they wrote, and no
+  expected output of a type without the key changes.
 - **The documents' example is a doctest.** `src/check_example.md` is included in
   `model_schema_prop`'s rustdoc under `serde` and a schema surface, and
   `tests/check_tests/readme.rs` holds the README to it. `tests/check_tests/models.rs` is compiled
@@ -1013,8 +1041,10 @@ A `preprocess = ["name", ...]` names functions of the consumer's own, on a field
 `#[model_schema(...)]`, on a type: each takes a payload and answers the payload the value is read
 from. Rust calls the snake case of the name, `fn trimmed(payload: serde_json::Value) ->
 serde_json::Value`, the Zod schema the name as written, `function trimmed(payload: unknown):
-unknown`, and the Dart read the name as written, `dynamic trimmed(dynamic payload)` ("A
-`preprocess` in the Dart read", below). The documents call the key a last resort, and a change
+unknown`, and each client's read the name as written: `dynamic trimmed(dynamic payload)` in Dart
+("A `preprocess` in the Dart read", below), `func trimmed(_ payload: Any) -> Any` in Swift ("The
+Swift `preprocess`") and `fun trimmed(payload: JsonElement): JsonElement` in Kotlin ("The Kotlin
+client's `preprocess`"). The documents call the key a last resort, and a change
 keeps them saying so: a function runs on every read, on a payload no schema describes. `README.md`'s "Preprocessing" section is
 the consumer's view; this is what a change has to keep.
 
@@ -2479,6 +2509,8 @@ tixschema/
 │   ├── pattern_preprocess_tests/         # The models, the reads, the chained hooks, the Zod text, the README; the Dart run compiles the models
 │   ├── check_tests.rs                    # check, as validate() runs it
 │   ├── check_tests/                      # The models, the shared table, the members, the README
+│   ├── preprocess_and_check_tests.rs     # The README's section that states the two keys for the five languages
+│   ├── preprocess_and_check_tests/       # The parcel the section declares, and the section held to the test of each language
 │   ├── collection_tests.rs
 │   ├── enum_tests.rs
 │   ├── serde_tests.rs

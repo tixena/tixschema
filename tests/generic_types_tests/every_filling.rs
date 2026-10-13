@@ -425,6 +425,33 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
         );
     }
 
+    /// `validate()` reads nothing behind a type parameter, and what fills one judges itself as it
+    /// is read. The README shows both as a run answers them.
+    #[test]
+    fn a_value_behind_a_type_parameter_is_judged_by_its_own_read_alone() {
+        let outer = Crate {
+            codes: vec![unlabelled::<u32>()],
+            label: "outer".to_owned(),
+        };
+        let payload = serde_json::to_string(&outer).unwrap();
+        let refused = serde_json::from_str::<Crate<Crate<u32>>>(&payload)
+            .unwrap_err()
+            .to_string();
+        let readme = include_str!("../../README.md");
+        for shown in [
+            format!("outer.validate();\n// {:?}\n", outer.validate()),
+            format!(
+                "serde_json::from_str::<Crate<Crate<u32>>>(r#\"{payload}\"#);\n// Err: \
+                 {refused}\n"
+            ),
+        ] {
+            assert!(
+                readme.contains(&shown),
+                "the README no longer shows:\n{shown}"
+            );
+        }
+    }
+
     /// What the README and the crate's rustdoc show of a generic type's `validate()` is what a
     /// run answers, and the refusal they quote is the one the emitter's doc comment records.
     #[test]
