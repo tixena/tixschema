@@ -883,7 +883,8 @@ fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
          this.in_,required this.type,}); final String class_;final String in_;final String type; \
          factory ReservedMembers.fromJson(Map<String, dynamic> json) => ReservedMembers(class_: \
          json['class'] as String,in_: json['in'] as String,type: json['type'] as String,); \
-         Map<String, dynamic> toJson() => { 'class': class_,'in': in_,'type': type, }; }"
+         Map<String, dynamic> toJson() => { 'class': class_,'in': in_,'type': type, }; \
+         List<String> validate() => const []; }"
     );
     assert_eq!(
         reserved_member_dart::dart_definition(),
@@ -891,7 +892,8 @@ fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
          ReservedMember(this.wireValue); final String wireValue; static ReservedMember \
          fromJson(String json) => switch (json) { 'Default' => ReservedMember.default_,'In' => \
          ReservedMember.in_,'Other' => ReservedMember.other, _ => throw ArgumentError('Unknown \
-         ReservedMember: ' + json) }; String toJson() => wireValue; }"
+         ReservedMember: ' + json) }; String toJson() => wireValue; List<String> validate() => \
+         const []; }"
     );
     assert_eq!(
         serde_json::to_value(ReservedMembers {

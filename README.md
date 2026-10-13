@@ -3090,7 +3090,7 @@ There is no subscription operation, no topic and no broker: a push travels exact
 
 ## Field Validation (`model_schema_prop`)
 
-Use `#[model_schema_prop(...)]` on individual fields to add validation constraints, name [checks](#checks-check) of your own, override types, or correct a payload before it is read ([`preprocess`](#preprocessing-preprocess)). Constraints are enforced in Zod (frontend) and in Rust, by a generated `validate()` method that a serde read of the type runs on the value it read.
+Use `#[model_schema_prop(...)]` on individual fields to add validation constraints, name [checks](#checks-check) of your own, override types, or correct a payload before it is read ([`preprocess`](#preprocessing-preprocess)). Constraints are enforced in Zod (frontend) and in Rust, by a generated `validate()` method that a serde read of the type runs on the value it read. The Dart types hold them as well, in [a `validate()` of their own](#validate-in-dart).
 
 ### String Constraints (minLength, maxLength, pattern)
 
@@ -3948,7 +3948,9 @@ A field's check is written on the schema of the value the Rust function takes: a
 
 **In a serde read** of a type that derives `Deserialize`. The read runs `validate()` on the value it read, checks included, and [refuses the payload](#a-read-refuses-what-validate-refuses) with what it answers. The hook an `#[serde(untagged)]` member is read through runs no check: a check chooses no variant.
 
-**Nowhere else.** The JSON Schema calls no function, and a document is written as it is without the key. The Dart, Swift and Kotlin types read the key and are written as they are without it. The Zod schema of a type that flattens an `#[serde(untagged)]` enum writes that enum's variants out one by one, with each member's check and without the check written on the enum itself, which the holder's `validate()` does run.
+**In the Dart `validate()`** every emitted Dart type has, under the name as written. See [`validate()` in Dart](#validate-in-dart).
+
+**Nowhere else.** The JSON Schema calls no function, and a document is written as it is without the key. The Swift and Kotlin types read the key and are written as they are without it. The Zod schema of a type that flattens an `#[serde(untagged)]` enum writes that enum's variants out one by one, with each member's check and without the check written on the enum itself, which the holder's `validate()` does run.
 
 #### What is refused
 
@@ -4016,6 +4018,151 @@ help: consider restricting type parameter `CodeType` with trait `PartialEq`
  6 | pub struct Crate<CodeType: std::cmp::PartialEq> {
    |                          +++++++++++++++++++++
 ```
+
+### `validate()` in Dart
+
+With the `dart` feature, every Dart type `dart_definition()` writes has `List<String> validate()`: a class, the wrapper of a [branded newtype](#branded-newtypes) and of a type alias, a tuple struct, a plain enum, and a sealed enum with each of its variants. It runs what the Rust [`validate()`](#the-validate-method) of the same type runs, in the same order, and answers the messages as a list, empty for a value that keeps every rule. A type with no rule answers `const []`.
+
+```rust
+#[model_schema(check = ["withinParcel"])]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Parcel {
+    pub fragile_item_codes: Vec<String>,
+    #[model_schema_prop(check = ["withoutDuplicates"])]
+    pub item_code_list: Vec<String>,
+    #[model_schema_prop(minLength = 1)]
+    pub label: String,
+}
+
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Manifest {
+    pub parcel: Parcel,
+}
+```
+
+`parcel_dart::dart_definition()` writes the class it wrote before, with its constructor, its fields, `fromJson` and `toJson` unchanged, and after them:
+
+```dart
+List<String> validate() => [
+  for (final violation in withoutDuplicates(item_code_list)) _under('itemCodeList', violation),
+  if (label.runes.length < 1) "'label': too short: minimum length is 1, got ${label.runes.length}",
+  ...withinParcel(this),
+];
+
+static String _under(String place, String violation) {
+  if (violation.startsWith("'")) {
+    final end = violation.indexOf("'", 1);
+    if (end > 0) return "'$place.${violation.substring(1, end)}'${violation.substring(end + 1)}";
+  }
+  return "'$place': $violation";
+}
+```
+
+`Manifest` holds a parcel, and runs it under the key it holds it at:
+
+```dart
+List<String> validate() => [
+  for (final violation in parcel.validate()) _under('parcel', violation),
+];
+```
+
+#### The functions you write in Dart
+
+A check is called under the name the attribute writes, `withinParcel`, from inside the emitted class. The function is yours, in scope in the file the emitted definitions are written into. It takes the value and answers its messages, an empty list for a value it passes:
+
+| | Dart |
+|---|---|
+| A field's check | `List<String> withoutDuplicates(List<String> value)` |
+| A type's check | `List<String> withinParcel(Parcel value)` |
+| The check of a type with a parameter, written once | `List<String> withACode<CodeType>(Crate<CodeType> value)` |
+
+```dart
+List<String> withoutDuplicates(List<String> value) {
+  final seen = <String>{};
+  for (final code in value) {
+    if (!seen.add(code)) return ['duplicate item code $code'];
+  }
+  return const [];
+}
+
+List<String> withinParcel(Parcel value) => [
+      for (final (index, code) in value.fragile_item_codes.indexed)
+        if (!value.item_code_list.contains(code)) "'fragileItemCodes.$index': $code is outside of itemCodeList",
+    ];
+```
+
+- **A field's check takes the field's own value** and names no place: `validate()` writes each message under the field's key. Under an `Option` it is called where a value is held.
+- **A type's check takes the whole value** and leads each message with the place of what it refuses, in single quotes, as [the Rust function does](#the-messages). The check of an enum takes the enum, and each variant hands itself over. The check of a brand takes the wrapper.
+- **A member of the type hides a function of its name** inside the class: a check named `label` on a type with a field `label` does not compile. Name the check after the rule.
+
+With those two functions, six payloads read with `fromJson` answer what the Rust `validate()` answers of the same values:
+
+```text
+case 1: passes
+case 2: refused
+    'label': too short: minimum length is 1, got 0
+case 3: refused
+    'itemCodeList': duplicate item code x
+case 4: refused
+    'fragileItemCodes.1': y is outside of itemCodeList
+case 5: refused
+    'itemCodeList': duplicate item code x
+    'label': too short: minimum length is 1, got 0
+    'fragileItemCodes.0': y is outside of itemCodeList
+case 6: refused
+    'parcel.fragileItemCodes.1': y is outside of itemCodeList
+```
+
+**A name with no function does not compile.** The emitted class calls it, and the Dart compiler reports the call:
+
+```text
+Error: The method 'withinParcel' isn't defined for the type 'Parcel'.
+```
+
+#### What Dart checks
+
+| Written in Rust | Dart writes |
+|---|---|
+| `minLength`, `maxLength` on a string | `value.runes.length`, its Unicode code points: `"é"` and a character outside the Basic Multilingual Plane each count one |
+| `minLength`, `maxLength` on a list | `value.length`, its items |
+| `minimum`, `maximum` | `value < N`, `value > N` |
+| `pattern`, and the second pattern [an enum's own check](#a-check-written-on-the-enum) adds | `RegExp("...").hasMatch(value)`, a match anywhere in the string |
+| `check` on a field and on a type | a call of the function under that name |
+
+- **The sentence is the one Rust and Zod write**, from the same source. A whole number is quoted back without `.0`: `too large: maximum is 3, got 4` for a `double` holding `4.0`.
+- **The order is Rust's**: each member as declared, its bounds, then what the value it holds reports, then its checks, and the type's own checks last.
+- **An optional member is measured where it holds a value.** A member typed with a branded string is measured on the text the wrapper holds.
+- **A holder runs the `validate()` of what it holds**, through an optional, each level of a list, a map's values and the positions of a tuple, and writes the place in front: `'parcelList.1.fragileItemCodes.1'`, `'parcelsByDock.north.label'`. An entry of a map is named by the text its key is written as, in the order the map holds its keys. A value behind one of the type's own parameters is not reached, as in Rust.
+- **A brand runs its own string check on the value it wraps**, under no place. A brand over one of its own parameters holds its declared default and no other filling: `if (value case final String held) ...`. A brand over a list counts its items at every filling.
+- **An enum's own string check** reaches in Dart the fields it reaches in Rust.
+
+A message names a value by the steps serde writes on the way to it: a key, a position in an array, or nothing where serde writes the value itself.
+
+| Member | serde writes it | The name |
+|---|---|---|
+| a named field of a struct | under its key | `'itemLabel'` |
+| a slot of a tuple struct of several slots | at its position in the array | `'1'` |
+| the one slot of a struct serde writes as the value itself | as the value itself | none: the sentence alone |
+| a named member of a variant, no tag attribute | `{"Loose":{"freightLabel":...}}` | `'Loose.freightLabel'` |
+| the one slot of a variant, no tag attribute | `{"Boxed":...}` | `'Boxed'`, and `'Boxed.label'` for a model it holds |
+| a slot of a variant of several, no tag attribute | `{"Split":[...]}` | `'Split.1'` |
+| a named member, tag and content key | `{"kind":"Loose","held":{...}}` | `'held.haulLabel'` |
+| the one slot, tag and content key | `{"kind":"Boxed","held":...}` | `'held'` |
+| a slot of several, tag and content key | `{"kind":"Split","held":[...]}` | `'held.1'` |
+| a named member, tag alone | beside the tag | `'liftLabel'` |
+| the one slot, tag alone | its own keys beside the tag | none |
+| a member of an untagged variant | as the value itself, or under its key | none for the slot, its key for a named member |
+
+The step of a variant is the name serde writes it under: its own `rename`, or the enum's `rename_all` over its name. A `#[serde(flatten)]` member writes no key and adds no step.
+
+#### What stays yours
+
+- **`fromJson` reads as it did and calls nothing.** Call `validate()` on the value read, and on a value built in code before it is sent. [`preprocess`](#preprocessing-preprocess) is not called in Dart.
+- **A class of your own that a model holds** declares `List<String> validate()` as the emitted ones do: a holder calls it with no knowledge of what the held type declares, whether that type is declared above the holder or below it.
+- **A field named `validate`** is the member `validate_`, and keeps its key, as [a reserved word does](#a-member-named-after-a-word-the-client-language-reserves).
+- **Every build writes the same Dart.** The Dart `validate()` holds each bound and calls each check with a schema surface on and with none. One declaration differs: a brand's own `minLength`, `maxLength` or `pattern` is refused by a build with no `typescript`, `zod` or `jsonschema`, so no wrapper carries one there.
 
 ### Literal Values
 
@@ -6266,7 +6413,7 @@ The crate uses optional features to control code generation and dependencies. Ea
 | `bson` | No | BSON support: `from_bson_with` and `from_bson_piped` on types that opt in with [`decode_with`](#recovering-decode-decode_with); turns on `serde` |
 | `chrono` | No | Chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`) |
 | `indexmap` | No | `indexmap` type support: `IndexMap` as a map and `IndexSet` as a list. See [The order of a map's keys](#the-order-of-a-maps-keys) |
-| `dart` | No | Dart type generation via `dart_definition()`, with a JSON `fromJson`/`toJson` codec |
+| `dart` | No | Dart type generation via `dart_definition()`, with a JSON `fromJson`/`toJson` codec and a [`validate()`](#validate-in-dart) on every type |
 | `swift` | No | Swift type generation with a `Codable` codec |
 | `kotlin` | No | Kotlin type generation via `kotlin_definition()`, with `kotlinx.serialization` annotations. A consuming Kotlin build declares two runtime dependencies the emitted code names -- `org.jetbrains.kotlinx:kotlinx-serialization-json` for the JSON codec and `org.jetbrains.kotlinx:kotlinx-coroutines-core` for the transport's own reply correlation and heartbeat -- plus the Kotlin Gradle plugin `kotlin("plugin.serialization")` |
 
@@ -6307,7 +6454,7 @@ pub struct Reserved {
 | Swift | ``public let `class`: String; public let `in`: String;`` and ``case `class`; case `in`;`` in `CodingKeys` | `class`, `in` |
 | Kotlin | ``val `class`: String, val `in`: String`` | `class`, `in`, with no `@SerialName` |
 
-The words are each language's own: Dart's [reserved words](https://dart.dev/language/keywords), Swift's [keywords](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/lexicalstructure/#Keywords-and-Punctuation) reserved in a declaration, a statement or an expression, and Kotlin's [hard keywords](https://kotlinlang.org/docs/keyword-reference.html#hard-keywords). A word a language reserves in one context only -- `type` in Swift, `value` in Kotlin, `get` in Dart -- names a member as it is. Dart also moves a field named `dynamic`, the type every emitted `fromJson` and `toJson` is written with, and a plain enum's member named `index`, `values` or `wireValue`, each of which a Dart enum or the emitted one already holds. Where the moved name is one the type writes itself (`class` beside `class_`), it takes a second underscore.
+The words are each language's own: Dart's [reserved words](https://dart.dev/language/keywords), Swift's [keywords](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/lexicalstructure/#Keywords-and-Punctuation) reserved in a declaration, a statement or an expression, and Kotlin's [hard keywords](https://kotlinlang.org/docs/keyword-reference.html#hard-keywords). A word a language reserves in one context only -- `type` in Swift, `value` in Kotlin, `get` in Dart -- names a member as it is. Dart also moves a field named `dynamic`, the type every emitted `fromJson` and `toJson` is written with, a field and a plain enum's member named `validate`, the method every emitted type has, and a plain enum's member named `index`, `values` or `wireValue`, each of which a Dart enum or the emitted one already holds. Where the moved name is one the type writes itself (`class` beside `class_`), it takes a second underscore.
 
 A plain enum's members are lower-cased by Dart and Swift, so the same rule reaches a variant: `Default` is `default_` in Dart and `` `default` `` in Swift. Kotlin keeps a variant's spelling, which no keyword matches.
 

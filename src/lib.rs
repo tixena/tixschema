@@ -1030,8 +1030,9 @@ pub fn model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 /// schema of the value the Rust function takes, and a type declared with `decode_with` lists each
 /// message as an `Issue::Invalid`, `expected: Unknown`, at the path the message leads with. A
 /// serde read of the type runs `validate()` on the value it read, checks included, and refuses
-/// the payload with what it answers. The JSON Schema calls no function, and the Dart, Swift and
-/// Kotlin types are written as they are without the key.
+/// the payload with what it answers. Each Dart type calls a function under the name as written
+/// from its own `validate()`. The JSON Schema calls no function, and the Swift and Kotlin types
+/// are written as they are without the key.
 ///
 #[cfg_attr(
     all(

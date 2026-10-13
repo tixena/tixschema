@@ -1,10 +1,12 @@
-//! What the one sentence looks like in each of the two spellings it is handed out in.
+//! What the one sentence looks like in each of the spellings it is handed out in.
 //!
-//! The proof that the two *agree* is not here — it takes a declaration, a value, and both emitters,
-//! and lives in `tests/language_parity_tests`. What is here is the shape of each rendering, so a
-//! change to either is a change somebody wrote down.
+//! The proof that Rust and Zod *agree* is not here — it takes a declaration, a value, and both
+//! emitters, and lives in `tests/language_parity_tests`. What is here is the shape of each
+//! rendering, so a change to any is a change somebody wrote down.
 
 use super::Bound;
+#[cfg(feature = "dart")]
+use super::dart_violation;
 #[cfg(feature = "serde")]
 use super::rust_violation;
 #[cfg(feature = "zod")]
@@ -158,6 +160,67 @@ fn every_sentence_opens_with_a_stem_the_list_spells_and_no_stem_is_unwritten() {
         assert!(
             written.iter().any(|bound| bound.stated().starts_with(stem)),
             "no bound writes the stem: {stem}"
+        );
+    }
+}
+
+#[cfg(feature = "dart")]
+#[test]
+fn a_dart_string_names_the_place_and_quotes_the_measure_back() {
+    assert_eq!(
+        dart_violation(Bound::MinLength(1), Some("label"), "label.runes.length"),
+        r#""'label': too short: minimum length is 1, got ${label.runes.length}""#
+    );
+    assert_eq!(
+        dart_violation(Bound::MaxItems(3), Some("codes"), "codes.length"),
+        r#""'codes': too long: maximum length is 3, got ${codes.length}""#
+    );
+    assert_eq!(
+        dart_violation(Bound::Maximum(3.0), None, "_number(value)"),
+        r#""too large: maximum is 3, got ${_number(value)}""#,
+        "a whole bound is stated without `.0`, and a value at no place opens with no name"
+    );
+}
+
+#[cfg(feature = "dart")]
+#[test]
+fn a_pattern_reaches_the_dart_string_escaped() {
+    assert_eq!(
+        dart_violation(Bound::Pattern(r#"^\d+"x"$"#), Some("code"), ""),
+        r#""'code': does not match pattern '^\\d+\"x\"\$'""#
+    );
+}
+
+/// Each bound is stated once, and every rendering holds that one sentence.
+#[cfg(all(feature = "serde", feature = "zod", feature = "dart"))]
+#[test]
+fn the_three_renderings_of_a_bound_hold_one_sentence() {
+    let written = [
+        Bound::MaxItems(3),
+        Bound::MaxLength(50),
+        Bound::Maximum(120.0),
+        Bound::Maximum(0.5),
+        Bound::MinItems(1),
+        Bound::MinLength(3),
+        Bound::Minimum(0.0),
+        Bound::Pattern("^[a-z]+"),
+    ];
+    for bound in written {
+        let stated = bound.stated();
+        let rust = rendered(bound, Some("field"), &quote! { held });
+        assert!(
+            rust.contains(&format!("\"{stated}\"")),
+            "Rust does not write `{stated}`: {rust}"
+        );
+        let zod = zod_error_arg(bound);
+        assert!(
+            zod.contains(&stated),
+            "Zod does not write `{stated}`: {zod}"
+        );
+        let dart = dart_violation(bound, Some("field"), "held");
+        assert!(
+            dart.contains(&stated),
+            "Dart does not write `{stated}`: {dart}"
         );
     }
 }
