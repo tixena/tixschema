@@ -318,24 +318,19 @@ type StructFieldData = (
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 struct BrandedNewtypeOutput<'parts> {
     decode_with: &'parts DecodeWithParts,
-    default_types: &'parts [(syn::Ident, syn::Type)],
     delegate_impl_items: &'parts [proc_macro2::TokenStream],
     display_tokens: &'parts proc_macro2::TokenStream,
-    generics: &'parts syn::Generics,
-    generics_for_ty: &'parts syn::Generics,
     item_struct: &'parts syn::ItemStruct,
     module_ident: &'parts Ident,
     name: &'parts Ident,
     schema_example_tokens: &'parts proc_macro2::TokenStream,
     schema_impl_items: &'parts [proc_macro2::TokenStream],
-    /// The type's raw, unsplit `validate()`: [`assemble_branded_output`] runs it through
-    /// [`branded_validate_split`] itself.
     validate_method: &'parts proc_macro2::TokenStream,
     validation_tokens: &'parts proc_macro2::TokenStream,
 }
 
-/// A constrained brand's generated validation: the two schema-module functions, and the expression
-/// through which `validate()` reaches the inner value it hands to the first of them.
+/// A constrained brand's generated validation: the schema-module functions, and the expression
+/// through which `validate()` reaches the inner value it hands `validator`.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -346,6 +341,9 @@ struct BrandedValidation {
     /// Whether the checks read the inner through `Display`, which a list's count does not.
     displayed: bool,
     validate_fn: proc_macro2::TokenStream,
+    /// The schema-module function `validate()` calls: `validate_value`, or for a brand that
+    /// declares a parameter the one that runs it where the filling is the declared default.
+    validator: proc_macro2::Ident,
 }
 
 /// The JSON schema shape a branded newtype's inner field describes.
@@ -818,20 +816,16 @@ enum DefaultZodRendering {
     Eager(String),
 }
 
-/// The parts [`assemble_schema_output`] joins, bundled into a struct because the standalone
-/// default-only `validate()` impl (see [`place_validate_method`]) would otherwise be an eighth
-/// positional argument past `clippy::too_many_arguments`' cap.
+/// The parts [`assemble_schema_output`] joins.
 #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
 struct SchemaOutputParts<'parts, T> {
-    default_types: &'parts [(syn::Ident, syn::Type)],
     delegate_impl_items: &'parts [proc_macro2::TokenStream],
     generics: &'parts syn::Generics,
     item: &'parts T,
     module_ident: &'parts Ident,
     name: &'parts syn::Ident,
     schema_impl_items: &'parts [proc_macro2::TokenStream],
-    /// The type's raw `validate()`, split into its default-only `impl` by
-    /// [`assemble_schema_output`] itself — see [`place_validate_method`].
+    /// The type's `validate()`, written beside its delegates so every filling has it.
     validate_method: &'parts Option<proc_macro2::TokenStream>,
     validation_fns: &'parts [proc_macro2::TokenStream],
 }
@@ -1739,8 +1733,8 @@ fn build_struct_delegate_items(
 }
 
 /// Assembles the final macro output for a struct or enum: the item itself, its schema module
-/// (with the per-field validation functions and the items `decode_with` adds), the type's delegate
-/// impl, and its standalone default-only `validate()` impl when it has one.
+/// (with the per-field validation functions and the items `decode_with` adds), and the type's
+/// `impl`, which holds its delegates and its `validate()` when it has one.
 #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
 fn assemble_schema_output<T>(
     parts: &SchemaOutputParts<T>,
@@ -1756,12 +1750,7 @@ where
     let schema_impl_items = parts.schema_impl_items;
     let validation_fns = parts.validation_fns;
     let delegate_impl_items = parts.delegate_impl_items;
-    let (validate_method, default_validate_impl) = place_validate_method(
-        parts.validate_method.clone(),
-        name,
-        parts.generics,
-        parts.default_types,
-    );
+    let validate_method = parts.validate_method;
     let module_items = schema_module_items(
         quote! {
             #[non_exhaustive]
@@ -1789,8 +1778,6 @@ where
             #(#delegate_impl_items)*
             #validate_method
         }
-
-        #default_validate_impl
     };
 
     log::trace!("{output}");
@@ -1827,6 +1814,70 @@ const fn schema_module_items(held: TokenStream, _decode_with_items: &TokenStream
 /// The type-level `validate()` a struct publishes: the aggregate of its per-field validators, or
 /// `None` where there is nothing to run — no constrained field, or no `serde` to have generated the
 /// validators from.
+///
+/// It is written in the type's own `impl`, so a type that declares a parameter has it at every
+/// filling. This builds:
+///
+/// ```rust
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema(default_types(CodeType = String))]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Crate<CodeType> {
+///     pub codes: Vec<CodeType>,
+///     #[model_schema_prop(minLength = 1)]
+///     pub label: String,
+/// }
+///
+/// fn main() {
+///     let unlabelled = Crate::<u32> { codes: vec![], label: String::new() };
+///     assert_eq!(
+///         unlabelled.validate().unwrap_err(),
+///         ["'label': too short: minimum length is 1, got 0"]
+///     );
+/// }
+/// ```
+///
+/// The run below adds a `validate` of the consumer's own on one filling:
+///
+/// ```rust,compile_fail
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// #[model_schema(default_types(CodeType = String))]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Crate<CodeType> {
+///     pub codes: Vec<CodeType>,
+///     #[model_schema_prop(minLength = 1)]
+///     pub label: String,
+/// }
+///
+/// impl Crate<u32> {
+///     pub fn validate(&self) -> Result<(), Vec<String>> {
+///         if self.codes.contains(&0) {
+///             return Err(vec!["'codes': no code is zero".to_owned()]);
+///         }
+///         Ok(())
+///     }
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// A `compile_fail` doctest asserts only that some error was raised, so the snippet was compiled
+/// standalone as an ordinary test file, and this is the only error it earned:
+///
+/// ```text
+/// error[E0592]: duplicate definitions with name `validate`
+///   --> tests/zz_probe.rs:4:1
+///    |
+///  4 | #[model_schema(default_types(CodeType = String))]
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ duplicate definitions for `validate`
+/// ...
+/// 13 |     pub fn validate(&self) -> Result<(), Vec<String>> {
+///    |     ------------------------------------------------- other definition for `validate`
+/// ```
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -3636,7 +3687,10 @@ fn declared_default_constraint_message(name: &Ident, parameter: &str, default_ty
 /// `parameter`'s declared default as a `syn::Type`, for substituting a concrete Rust type rather
 /// than spelling one for a diagnostic. Falls back to `String` for an entry left out — the same
 /// fallback [`declared_default_type_name`] and [`declared_default_field`] use, so all three agree.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
 fn declared_default_syn_type(
     parameter: &str,
     default_types: &[(syn::Ident, syn::Type)],
@@ -3645,95 +3699,6 @@ fn declared_default_syn_type(
         .iter()
         .find(|(declared, _)| declared == parameter)
         .map_or_else(|| syn::parse_quote!(String), |(_, ty)| ty.clone())
-}
-
-/// The `impl` header and self-type a type's *declared-default* `validate()` is written against:
-/// every type parameter is replaced by [`declared_default_syn_type`]; a lifetime or const
-/// parameter carries through unchanged, since `default_types` only ever fills a type parameter.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-fn default_instantiation(
-    name: &Ident,
-    generics: &syn::Generics,
-    default_types: &[(syn::Ident, syn::Type)],
-) -> (syn::Generics, proc_macro2::TokenStream) {
-    let mut impl_generics = syn::Generics::default();
-    let mut arguments: Vec<proc_macro2::TokenStream> = Vec::new();
-    for param in &generics.params {
-        match param {
-            syn::GenericParam::Type(type_param) => {
-                let default =
-                    declared_default_syn_type(&type_param.ident.to_string(), default_types);
-                arguments.push(quote! { #default });
-            }
-            syn::GenericParam::Lifetime(lifetime_param) => {
-                impl_generics
-                    .params
-                    .push(syn::GenericParam::Lifetime(lifetime_param.clone()));
-                let lifetime = &lifetime_param.lifetime;
-                arguments.push(quote! { #lifetime });
-            }
-            syn::GenericParam::Const(const_param) => {
-                impl_generics
-                    .params
-                    .push(syn::GenericParam::Const(const_param.clone()));
-                let ident = &const_param.ident;
-                arguments.push(quote! { #ident });
-            }
-        }
-    }
-    let self_ty = if arguments.is_empty() {
-        quote! { #name }
-    } else {
-        quote! { #name<#(#arguments),*> }
-    };
-    (impl_generics, self_ty)
-}
-
-/// Splits a generated `validate()` away from a type's other delegate methods when the type has
-/// parameters: the checks belong to the declared default (see [`default_instantiation`]), so it
-/// moves into its own `impl Name<DeclaredDefault>` rather than the shared `impl<T> Name<T>`.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-fn place_validate_method(
-    validate_method: Option<proc_macro2::TokenStream>,
-    name: &Ident,
-    generics: &syn::Generics,
-    default_types: &[(syn::Ident, syn::Type)],
-) -> (Option<proc_macro2::TokenStream>, proc_macro2::TokenStream) {
-    let Some(method) = validate_method else {
-        return (None, quote! {});
-    };
-    if type_parameters_in_scope(generics).is_empty() {
-        return (Some(method), quote! {});
-    }
-    let (default_generics, self_ty) = default_instantiation(name, generics, default_types);
-    let (impl_generics, _, _) = default_generics.split_for_impl();
-    (
-        None,
-        quote! {
-            impl #impl_generics #self_ty {
-                #method
-            }
-        },
-    )
-}
-
-/// A branded newtype's `validate()`, split the same way [`assemble_schema_output`] splits a
-/// struct's or enum's. Takes a raw `TokenStream` rather than an `Option` since that is what the
-/// brand path already has on hand.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-fn branded_validate_split(
-    raw_validate_method: proc_macro2::TokenStream,
-    name: &Ident,
-    generics: &syn::Generics,
-    default_types: &[(syn::Ident, syn::Type)],
-) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
-    let (for_branded_impl, default_validate_impl) = place_validate_method(
-        (!raw_validate_method.is_empty()).then_some(raw_validate_method),
-        name,
-        generics,
-        default_types,
-    );
-    (for_branded_impl.unwrap_or_default(), default_validate_impl)
 }
 
 /// The consult a constrained brand leaves unanswered, for the expansion that registers the name to
@@ -5021,7 +4986,6 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
     {
         struct_output_with_unit_impls(
             &SchemaOutputParts {
-                default_types: &args.default_types,
                 delegate_impl_items: &delegate_impl_items,
                 generics: &item_struct.generics,
                 item: &item_struct,
@@ -5823,7 +5787,6 @@ fn process_tuple_struct(
 
     struct_output_with_unit_impls(
         &SchemaOutputParts {
-            default_types: &args.default_types,
             delegate_impl_items: &delegate_impl_items,
             generics: &item_struct.generics,
             item: &item_struct,
@@ -5903,8 +5866,14 @@ fn build_branded_validation(
             let default_ty =
                 substitute_declared_defaults(inner_ty, generic_params, &args.default_types);
             let type_identity = embedded_type_identity();
+            let at_the_default = embedded_validate_at_declared_default(
+                &default_ty,
+                &branded_checked_value(measures_path, to_string_span, &quote! { held }),
+            );
             quote! {
                 #type_identity
+
+                #at_the_default
 
                 pub fn deserialize_value<'de, D, T>(deserializer: D) -> ::core::result::Result<T, D::Error>
                 where
@@ -5933,15 +5902,23 @@ fn build_branded_validation(
             }
         };
 
+        // A generic brand's checks are its declared default's, so its `validate()` hands the value
+        // over as it is and asks nothing of the parameter.
+        let (validator, checked_inner) = if is_generic {
+            ("validate_at_declared_default", quote! { &self.#held })
+        } else {
+            (
+                "validate_value",
+                branded_checked_value(measures_path, to_string_span, &quote! { self.#held }),
+            )
+        };
+
         BrandedValidation {
-            checked_inner: branded_checked_value(
-                measures_path,
-                to_string_span,
-                &quote! { self.#held },
-            ),
+            checked_inner,
             deserialize_fn,
             displayed: true,
             validate_fn,
+            validator: proc_macro2::Ident::new(validator, proc_macro2::Span::call_site()),
         }
     })
 }
@@ -5969,6 +5946,7 @@ fn branded_list_validation(
         deserialize_fn: list_deserializer(&deserializer, &validator, &wraps),
         displayed: false,
         validate_fn: list_validator(&validator, args.min_length, args.max_length, None),
+        validator,
     })
 }
 
@@ -6003,6 +5981,305 @@ fn embedded_type_identity() -> proc_macro2::TokenStream {
             })
         }
     }
+}
+
+/// `validate_at_declared_default`, beside `type_identity` in a generic brand's schema module: what
+/// `validate_value` answers for `checked`, which reads `held` as `default_ty` at the lifetime of
+/// the borrow, where the filling is that one, and `Ok` at any other; a declared default whose
+/// `Display` is written for one lifetime alone does not build:
+///
+/// ```rust,compile_fail
+/// use core::fmt;
+/// use serde::Serialize;
+/// use tixschema::model_schema;
+///
+/// #[model_schema(no_display)]
+/// #[derive(Serialize)]
+/// #[serde(transparent)]
+/// pub struct Tag<'text>(pub &'text str);
+///
+/// impl fmt::Display for Tag<'static> {
+///     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+///         f.write_str(self.0)
+///     }
+/// }
+///
+/// #[model_schema(minLength = 2, default_types(Text = Tag<'static>))]
+/// #[derive(Serialize)]
+/// #[serde(transparent)]
+/// pub struct Stamp<Text>(pub Text);
+///
+/// fn main() {}
+/// ```
+///
+/// ```text
+/// error[E0521]: borrowed data escapes outside of function
+///   --> tests/zz_probe.rs:16:1
+///    |
+/// 16 |   #[model_schema(minLength = 2, default_types(Text = Tag<'static>))]
+///    |   ^-----------------------------------------------------------------
+///    |   |
+///    |   `held` is a reference that is only valid in the function body
+///    |   lifetime `'held` defined here
+///    |  _in this attribute macro expansion
+///    | |
+/// 17 | | #[derive(Serialize)]
+/// 18 | | #[serde(transparent)]
+/// 19 | | pub struct Stamp<Text>(pub Text);
+///    | |                               ^
+///    | |                               |
+///    | |_______________________________`held` escapes the function body here
+///    |                                 argument requires that `'held` must outlive `'static`
+/// ```
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn embedded_validate_at_declared_default(
+    default_ty: &syn::Type,
+    checked: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    let read_as = at_one_lifetime(default_ty, &syn::parse_quote!('held));
+    quote! {
+        /// What the checks answer for a value, which they hold where its filling is the declared
+        /// default.
+        pub fn validate_at_declared_default<'held, T>(held: &'held T) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
+            if type_identity::<T>() == type_identity::<#read_as>() {
+                // The two are one type but for a lifetime, and each lifetime the default writes is
+                // read as the borrow's own, which the value outlives: none is made longer.
+                let held = unsafe { &*::core::ptr::from_ref(held).cast::<#read_as>() };
+                validate_value(#checked)
+            } else {
+                ::core::result::Result::Ok(())
+            }
+        }
+    }
+}
+
+/// `ty` with every lifetime it writes replaced by `lifetime`: a named one, `'static`, `'_`, and the
+/// one a reference leaves out. A lifetime a `for<...>` binds stays as written, and so does one a
+/// function's signature leaves out, which that signature binds.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn at_one_lifetime(ty: &syn::Type, lifetime: &syn::Lifetime) -> syn::Type {
+    let mut written = ty.clone();
+    type_at_one_lifetime(&mut written, lifetime, &[], false);
+    written
+}
+
+/// [`at_one_lifetime`] over `ty` in place. `bound` holds what the binders around it declare, and
+/// `signature` says whether it stands in a function's signature.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn type_at_one_lifetime(
+    ty: &mut syn::Type,
+    lifetime: &syn::Lifetime,
+    bound: &[syn::Ident],
+    signature: bool,
+) {
+    match ty {
+        syn::Type::Reference(reference) => {
+            if let Some(written) = &mut reference.lifetime {
+                lifetime_at_one(written, lifetime, bound, signature);
+            } else if !signature {
+                reference.lifetime = Some(lifetime.clone());
+            } else {
+                // Left out in a signature, which binds it.
+            }
+            type_at_one_lifetime(&mut reference.elem, lifetime, bound, signature);
+        }
+        syn::Type::Path(named) => {
+            if let Some(qualified) = &mut named.qself {
+                type_at_one_lifetime(&mut qualified.ty, lifetime, bound, signature);
+            }
+            path_at_one_lifetime(&mut named.path, lifetime, bound, signature);
+        }
+        syn::Type::Array(array) => {
+            type_at_one_lifetime(&mut array.elem, lifetime, bound, signature);
+        }
+        syn::Type::Slice(slice) => {
+            type_at_one_lifetime(&mut slice.elem, lifetime, bound, signature);
+        }
+        syn::Type::Paren(paren) => {
+            type_at_one_lifetime(&mut paren.elem, lifetime, bound, signature);
+        }
+        syn::Type::Group(group) => {
+            type_at_one_lifetime(&mut group.elem, lifetime, bound, signature);
+        }
+        syn::Type::Ptr(pointer) => {
+            type_at_one_lifetime(&mut pointer.elem, lifetime, bound, signature);
+        }
+        syn::Type::Tuple(tuple) => {
+            for elem in &mut tuple.elems {
+                type_at_one_lifetime(elem, lifetime, bound, signature);
+            }
+        }
+        syn::Type::FnPtr(function) => {
+            let within = bound_with(bound, function.lifetimes.as_ref());
+            signature_at_one_lifetime(
+                &mut function.inputs,
+                &mut function.output,
+                lifetime,
+                &within,
+            );
+        }
+        syn::Type::TraitObject(object) => {
+            bounds_at_one_lifetime(&mut object.bounds, lifetime, bound, signature);
+        }
+        syn::Type::ImplTrait(opaque) => {
+            bounds_at_one_lifetime(&mut opaque.bounds, lifetime, bound, signature);
+        }
+        syn::Type::Infer(_)
+        | syn::Type::Macro(_)
+        | syn::Type::Never(_)
+        | syn::Type::Verbatim(_)
+        | _ => {}
+    }
+}
+
+/// [`at_one_lifetime`] over the arguments of each segment of `path`.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn path_at_one_lifetime(
+    path: &mut syn::Path,
+    lifetime: &syn::Lifetime,
+    bound: &[syn::Ident],
+    signature: bool,
+) {
+    for segment in &mut path.segments {
+        match &mut segment.arguments {
+            syn::PathArguments::AngleBracketed(written) => {
+                arguments_at_one_lifetime(written, lifetime, bound, signature);
+            }
+            syn::PathArguments::Parenthesized(taken) => {
+                signature_at_one_lifetime(&mut taken.inputs, &mut taken.output, lifetime, bound);
+            }
+            syn::PathArguments::None => {}
+        }
+    }
+}
+
+/// [`at_one_lifetime`] over each of `arguments`.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn arguments_at_one_lifetime(
+    arguments: &mut syn::AngleBracketedGenericArguments,
+    lifetime: &syn::Lifetime,
+    bound: &[syn::Ident],
+    signature: bool,
+) {
+    for argument in &mut arguments.args {
+        match argument {
+            syn::GenericArgument::Lifetime(written) => {
+                lifetime_at_one(written, lifetime, bound, signature);
+            }
+            syn::GenericArgument::Type(inner) => {
+                type_at_one_lifetime(inner, lifetime, bound, signature);
+            }
+            syn::GenericArgument::AssocType(assigned) => {
+                if let Some(own) = &mut assigned.generics {
+                    arguments_at_one_lifetime(own, lifetime, bound, signature);
+                }
+                type_at_one_lifetime(&mut assigned.ty, lifetime, bound, signature);
+            }
+            syn::GenericArgument::Constraint(constrained) => {
+                if let Some(own) = &mut constrained.generics {
+                    arguments_at_one_lifetime(own, lifetime, bound, signature);
+                }
+                bounds_at_one_lifetime(&mut constrained.bounds, lifetime, bound, signature);
+            }
+            syn::GenericArgument::AssocConst(_) | syn::GenericArgument::Const(_) | _ => {}
+        }
+    }
+}
+
+/// [`at_one_lifetime`] over each of `bounds`, a trait's own `for<...>` binding what it declares.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn bounds_at_one_lifetime(
+    bounds: &mut Punctuated<syn::TypeParamBound, Token![+]>,
+    lifetime: &syn::Lifetime,
+    bound: &[syn::Ident],
+    signature: bool,
+) {
+    for held in bounds {
+        match held {
+            syn::TypeParamBound::Trait(of_trait) => {
+                let within = bound_with(bound, of_trait.lifetimes.as_ref());
+                path_at_one_lifetime(&mut of_trait.path, lifetime, &within, signature);
+            }
+            syn::TypeParamBound::Lifetime(written) => {
+                lifetime_at_one(written, lifetime, bound, signature);
+            }
+            syn::TypeParamBound::PreciseCapture(_) | syn::TypeParamBound::Verbatim(_) | _ => {}
+        }
+    }
+}
+
+/// [`at_one_lifetime`] over what a function takes and answers.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn signature_at_one_lifetime(
+    inputs: &mut Punctuated<syn::NamedArg, Token![,]>,
+    output: &mut syn::ReturnType,
+    lifetime: &syn::Lifetime,
+    bound: &[syn::Ident],
+) {
+    for input in inputs {
+        type_at_one_lifetime(&mut input.ty, lifetime, bound, true);
+    }
+    if let syn::ReturnType::Type(_, returned) = output {
+        type_at_one_lifetime(returned, lifetime, bound, true);
+    }
+}
+
+/// Writes `lifetime` over `written`, unless a `for<...>` binds it or a signature left it out.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn lifetime_at_one(
+    written: &mut syn::Lifetime,
+    lifetime: &syn::Lifetime,
+    bound: &[syn::Ident],
+    signature: bool,
+) {
+    let left_out = written.ident == "_";
+    if (left_out && signature) || bound.contains(&written.ident) {
+        return;
+    }
+    *written = lifetime.clone();
+}
+
+/// `bound` with the lifetimes `declared` binds.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn bound_with(bound: &[syn::Ident], declared: Option<&syn::BoundLifetimes>) -> Vec<syn::Ident> {
+    let mut all = bound.to_vec();
+    all.extend(
+        declared
+            .into_iter()
+            .flat_map(|binder| &binder.lifetimes)
+            .filter_map(|parameter| match parameter {
+                syn::GenericParam::Lifetime(named) => Some(named.lifetime.ident.clone()),
+                syn::GenericParam::Type(_) | syn::GenericParam::Const(_) => None,
+            }),
+    );
+    all
 }
 
 /// Every one of `parameters` found in `ty`, replaced by its `default_types` filling via
@@ -6809,20 +7086,14 @@ fn inject_branded_serde_attrs(
         return (owned_struct, quote! {}, quote! {});
     };
 
-    // Add Display bound + serde bound to generic params so serde deserialize_with works.
+    // serde infers no bound for a field read through a hook, so the read's own is written here.
+    // The type itself takes none: `validate()` is under the bounds its author declared.
     if is_generic {
         let displayed = if validation.displayed {
             " + std::fmt::Display"
         } else {
             ""
         };
-        for param in &mut owned_struct.generics.params {
-            if let syn::GenericParam::Type(tp) = param
-                && validation.displayed
-            {
-                tp.bounds.push(syn::parse_quote!(::std::fmt::Display));
-            }
-        }
         let bounds: Vec<String> = generic_params
             .iter()
             .map(|p| format!("{p}: serde::de::DeserializeOwned{displayed}"))
@@ -6861,10 +7132,11 @@ fn inject_branded_serde_attrs(
         #validate_fn
         #deserialize_fn
     };
+    let validator = &validation.validator;
     let validate_method = quote! {
         pub fn validate(&self) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
             let mut errors = ::std::vec::Vec::new();
-            if let ::core::result::Result::Err(reported) = #module_ident::validate_value(#checked_inner) {
+            if let ::core::result::Result::Err(reported) = #module_ident::#validator(#checked_inner) {
                 errors.extend(reported);
             }
             if errors.is_empty() { ::core::result::Result::Ok(()) } else { ::core::result::Result::Err(errors) }
@@ -6874,12 +7146,12 @@ fn inject_branded_serde_attrs(
 }
 
 /// Assembles the final macro output for a branded newtype: the (possibly attribute-injected)
-/// struct, its `Display` impl, the schema module, and the type's delegate impl.
+/// struct, its `Display` impl, the schema module, and the type's `impl`, which holds its
+/// delegates and its `validate()` when it has one.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
-    let (_, type_generics, _) = parts.generics_for_ty.split_for_impl();
-    let (impl_generics, _, where_clause) = parts.generics.split_for_impl();
     let item_struct = parts.item_struct;
+    let (impl_generics, type_generics, where_clause) = item_struct.generics.split_for_impl();
     let display_tokens = parts.display_tokens;
     let module_ident = parts.module_ident;
     let schema_impl_items = parts.schema_impl_items;
@@ -6887,15 +7159,8 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
     let name = parts.name;
     let delegate_impl_items = parts.delegate_impl_items;
     let schema_example_tokens = parts.schema_example_tokens;
+    let validate_method = parts.validate_method;
     let bound_text_method = branded_bound_text_method(item_struct);
-    // A generic brand's `validate()` moves to its own default-only `impl` — see
-    // `branded_validate_split`'s doc comment.
-    let (validate_method, default_validate_impl) = branded_validate_split(
-        parts.validate_method.clone(),
-        name,
-        parts.generics_for_ty,
-        parts.default_types,
-    );
 
     let module_items = schema_module_items(
         quote! {
@@ -6929,8 +7194,6 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
             #validate_method
             #bound_text_method
         }
-
-        #default_validate_impl
 
         #decode_with_impl
     };
@@ -7023,6 +7286,7 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
     #[cfg(feature = "zod")]
     let plain_description = item_description(docs_vec.as_deref(), &item_name);
 
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "serde"))]
     let generic_params = type_parameters_in_scope(&item_struct.generics);
 
     let inner_field = brand_field(&item_struct).unwrap();
@@ -7088,11 +7352,6 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
 
     let delegate_impl_items = build_branded_delegate_items(&module_ident, has_example);
 
-    // `generics` is for the impl block (Display bounds added when constrained); `generics_for_ty`
-    // is the unmodified clone used for the type alias.
-    let generics_for_ty = item_struct.generics.clone();
-    let generics = branded_impl_generics(&item_struct, !generic_params.is_empty(), args);
-
     let display_tokens =
         build_branded_display_tokens(&item_struct.generics, &name, inner_field, args);
 
@@ -7117,11 +7376,8 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
 
     assemble_branded_output(&BrandedNewtypeOutput {
         decode_with: &decode_with,
-        default_types: &args.default_types,
         delegate_impl_items: &delegate_impl_items,
         display_tokens: &display_tokens,
-        generics: &generics,
-        generics_for_ty: &generics_for_ty,
         item_struct: &output_struct,
         module_ident: &module_ident,
         name: &name,
@@ -7238,35 +7494,6 @@ fn branded_bound_text_method(item_struct: &syn::ItemStruct) -> proc_macro2::Toke
 ))]
 fn branded_bound_text_method(_item_struct: &syn::ItemStruct) -> proc_macro2::TokenStream {
     quote! {}
-}
-
-/// Clones a branded newtype's generics, adding a `Display` bound to each type parameter when the
-/// newtype carries string constraints (needed for `.to_string()`-based validation on generic inner
-/// types). Without the `serde` feature no bounds are added.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-fn branded_impl_generics(
-    item_struct: &syn::ItemStruct,
-    is_generic: bool,
-    args: &ModelSchemaArgs,
-) -> syn::Generics {
-    #[cfg(feature = "serde")]
-    let mut generics = item_struct.generics.clone();
-    #[cfg(not(feature = "serde"))]
-    let generics = item_struct.generics.clone();
-    #[cfg(not(feature = "serde"))]
-    let _: &_ = &(is_generic, args);
-    #[cfg(feature = "serde")]
-    if is_generic
-        && args.has_string_constraints()
-        && !brand_field(item_struct).is_some_and(|inner| held_as_a_list(&inner.ty))
-    {
-        for param in &mut generics.params {
-            if let syn::GenericParam::Type(tp) = param {
-                tp.bounds.push(syn::parse_quote!(::std::fmt::Display));
-            }
-        }
-    }
-    generics
 }
 
 /// Processes an enum item and generates TypeScript and Zod schema definitions for it.
@@ -8397,7 +8624,6 @@ fn process_discriminated_enum(
     {
         enum_output_with_decode(
             &SchemaOutputParts {
-                default_types: &args.default_types,
                 delegate_impl_items: &delegate_impl_items,
                 generics: &item_enum.generics,
                 item: &item_enum,
@@ -8923,7 +9149,6 @@ fn process_externally_tagged_enum(
     {
         enum_output_with_decode(
             &SchemaOutputParts {
-                default_types: &args.default_types,
                 delegate_impl_items: &delegate_impl_items,
                 generics: &item_enum.generics,
                 item: &item_enum,
@@ -9326,7 +9551,6 @@ fn process_internally_tagged_enum(
     {
         enum_output_with_decode(
             &SchemaOutputParts {
-                default_types: &args.default_types,
                 delegate_impl_items: &delegate_impl_items,
                 generics: &item_enum.generics,
                 item: &item_enum,
@@ -10395,7 +10619,6 @@ fn process_untagged_enum(
     {
         enum_output_with_decode(
             &SchemaOutputParts {
-                default_types: &args.default_types,
                 delegate_impl_items: &delegate_impl_items,
                 generics: &item_enum.generics,
                 item: &item_enum,

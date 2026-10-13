@@ -678,15 +678,17 @@ export const Document$Schema: ZodType<Document> = Document$RawSchema.meta({
 /// pub struct Tags(pub Vec<String>);
 /// ```
 ///
-/// A generic brand carries the requirement as a `Display` bound on each type parameter, so a
-/// non-`Display` type argument is rejected where the brand is used, not where it is declared.
+/// A generic brand carries the requirement as a `Display` bound on its `Display` impl, and on its
+/// read where it carries string checks, so a non-`Display` type argument is rejected where the
+/// brand is displayed or read, not where it is declared.
 ///
-/// String constraints stop at the brand's own type parameters. TypeScript binds a parameter for
-/// real and Zod reaches it through the argument the brand's own factory binds, but the one JSON
-/// document a brand publishes covers every instantiation and so describes a parameter as `{}`,
-/// where `minLength` goes inert while `validate()` still measures `Display` — three surfaces, three
-/// answers. So `#[model_schema(minLength = 3, default_types(T = String))] struct Slug<T>(pub T);`
-/// is refused at the inner field. Constrain a string-typed inner instead.
+/// String constraints on a brand whose inner is one of its own type parameters are those of the
+/// parameter's declared default (`default_types`, or `String` where the entry is left out). So
+/// `#[model_schema(minLength = 3, default_types(T = String))] struct Slug<T>(pub T);` holds
+/// `Slug<String>` to the bound and no other filling: Zod writes the checks on `$SchemaDefault`'s
+/// argument and leaves the factory without them, and in Rust the read and `validate()` each run
+/// them where the filling is the declared default. `validate()` itself is there at every filling.
+/// A declared default that is no string is refused at the inner field.
 ///
 /// A named inner is judged by what that name publishes, since that is the schema the checks are
 /// appended to: `#[model_schema(minLength = 3)] struct Outer(pub Blob);` over
@@ -827,6 +829,10 @@ pub fn model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 /// type carrying at least one constrained field also gets a
 /// `validate(&self) -> Result<(), Vec<String>>` method for validating instances constructed in
 /// code. Serde deserialization validates automatically.
+///
+/// The method is written in the type's own `impl`, so a type that declares a type parameter has
+/// it at every filling, and a type that holds one at any filling runs it. A `validate` of the
+/// consumer's own on one filling is therefore a duplicate definition (`E0592`).
 ///
 /// ```rust
 /// use tixschema::{model_schema, model_schema_prop};

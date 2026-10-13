@@ -892,17 +892,6 @@ mod constrained_generic_branded_tests {
     #[serde(transparent)]
     pub struct StrictDocumentId<IdType>(pub IdType);
 
-    /// The generated `validate()` sits on `impl StrictDocumentId<String>`, the declared default, so
-    /// a second inherent impl at another instantiation is no duplicate definition.
-    impl StrictDocumentId<u32> {
-        pub fn validate(&self) -> Result<(), Vec<String>> {
-            if self.0 == 0 {
-                return Err(vec!["id must not be zero".to_owned()]);
-            }
-            Ok(())
-        }
-    }
-
     /// A declared default naming `StrictDocumentId` at exactly its own declared default — the
     /// shape the fold exists for.
     #[model_schema(default_types(HolderType = StrictDocumentId<String>))]
@@ -1038,12 +1027,9 @@ mod constrained_generic_branded_tests {
     }
 
     #[test]
-    fn a_hand_written_impl_for_another_instantiation_compiles_and_runs_beside_the_generated_one() {
-        StrictDocumentId(1_u32).validate().unwrap();
-        assert_eq!(
-            StrictDocumentId(0_u32).validate().unwrap_err(),
-            vec!["id must not be zero".to_owned()]
-        );
+    fn another_instantiation_has_the_generated_validate_and_none_of_the_defaults_bounds() {
+        assert_eq!(StrictDocumentId(1_u32).validate(), Ok(()));
+        assert_eq!(StrictDocumentId(0_u32).validate(), Ok(()));
     }
 
     #[test]
