@@ -112,7 +112,7 @@ just ci
    - Handles: Option<T>, Vec<T>, HashMap<String, T>, nested types, generics
 
 4. **Feature Modules** ([features/](src/features/))
-   - `serde.rs`: Parses Serde attributes (`rename`, `rename_all`, `tag`, etc.)
+   - `serde.rs`: Parses Serde attributes (`rename`, `rename_all`, `tag`, etc.), and says what serde writes on the way to a member (`member_steps`, `variant_steps`, over `Tagging`)
    - `zod.rs`: Generates Zod v4 schema strings (`z.string()`, `z.union()`, etc.), embeds examples in `.meta()`
    - `jsonschema.rs`: Generates JSON schema objects
    - `object_id.rs`: MongoDB ObjectId type detection and schema generation
@@ -473,13 +473,15 @@ starting with a digit. A variant's slot is read off the binding its arm makes
 - The lone slot of an untagged newtype variant is hung with the hook, and `validate()` reports it
   under no name, as it reports what the slot's own type declares. A slot with a check of its own
   and a type that declares one runs both (`slot_validate_body`).
-- A slot of a tagged variant is checked by `validate()` alone and reported under its position
-  (`'0': …`, `'1': …`), as what its type holds is. Its validator is recorded under the
-  `Validator` gate, and the recovering decode reads it back through `slot_validator`:
-  `Slot::validator` for a variant of several slots, `WalkedVariant::lone_bound` for a variant of
-  one, each an `Invalid` at the slot's own path.
+- A slot of a tagged variant is checked by `validate()` alone and reported where serde writes
+  it, as what its type holds is: under the variant's name or the content key, and under its
+  position among several slots (`'Code': …`, `'Pair.1': …`, `'data.1': …`). Its validator is
+  recorded under the `Validator` gate, and the recovering decode reads it back through
+  `slot_validator`: `Slot::validator` for a variant of several slots,
+  `WalkedVariant::lone_bound` for a variant of one, each an `Invalid` at the slot's own path.
 - A slot of a tuple struct is checked where a named field of a struct is: by `validate()` alone,
-  reported under its position, as what its type holds is. `collect_tuple_slots` hands each
+  reported under its position among the slots serde reads, and under no name where it is the
+  struct's one slot, as what its type holds is. `collect_tuple_slots` hands each
   slot's validator and `validate()` fragment to `process_tuple_struct` in `TupleSlots`. The
   recovering decode reads the validator
   back through `slot_validator` with no variant: `Slot::validator` for a struct of several slots,
@@ -554,9 +556,9 @@ what a change has to keep.
   (`CheckStep::Present`), the ownership wrappers and a reference (`CheckStep::Held`) and stops at
   whatever is under them, a list and a map included; `the_reach_of_a_check_is_the_reach_of_a_bound`
   holds it to the wrappers `constrained_shape` reads. It is reported through
-  `MemberPlace::reported`, which `member_place` answers for a bound's member as well: the key serde
-  writes, a slot's position, and nothing for a flattened member and for the lone slot of an
-  untagged newtype variant. `nested_under` writes the name.
+  `MemberPlace::reported`, which `member_place` answers for a bound's member as well: the steps
+  serde writes on the way to the member, joined by dots, and nothing where it writes none.
+  `nested_under` writes the name.
 - **`validate()` in every build.** With `serde` and a schema surface it is the method the bounds
   are in. Without `serde`, and with `serde` and no surface, `validate_method` and
   `checks_validate_impl` publish it with the checks alone, and only for an item that names one.
@@ -631,22 +633,57 @@ match result {
 }
 ```
 
-A message names a value by its path in the payload, in single quotes: the key serde writes for
-each member, the index of each item of a list and the key of each entry of a map, joined by dots
-(`'parcelList.0.itemLabel': too short: minimum length is 1, got 0`). `README.md`'s "The path a
-message names" section is the consumer's view; this is what a change has to keep.
+A message names a value by its path in the payload, in single quotes: every step serde writes on
+the way to it, joined by dots (`'parcelList.0.itemLabel': too short: minimum length is 1, got 0`).
+A step is a key, a position in an array, or nothing where serde writes the value itself. It is
+the path an issue of the Zod schema holds, and the one the recovering decode lists. `README.md`'s
+"The path a message names" section is the consumer's view; this is what a change has to keep.
 
-- A named member is reported under the key serde writes it under. `process_field` and
-  `collect_untagged_variant_members` resolve it with `get_final_field_name` ahead of
-  `generate_field_validation`, and `checked_member` holds it in `CheckedMember::reported`: a
-  field's own `rename`, or the casing of its struct, of its variant, or of its enum's
-  `rename_all_fields`. `rename_direction_guard_errors` refuses a `rename` whose two sides differ
-  in every build that publishes `validate()`, so there is one such key.
+| Member | serde writes it | Reported under |
+|---|---|---|
+| a named field of a struct | under its key | `'itemLabel'` |
+| a slot of a tuple struct of several slots | at its position in the array | `'1'`, its position among the slots serde reads |
+| the one slot of a struct | as the value itself | no step |
+| a named member of a variant, no tag attribute | `{"Loose":{"freightLabel":…}}` | `'Loose.freightLabel'` |
+| the one slot of a variant, no tag attribute | `{"Boxed":…}` | `'Boxed'` |
+| a slot of a variant of several, no tag attribute | `{"Split":[…]}` | `'Split.1'` |
+| a named member, `tag` and `content` | `{"kind":"Loose","held":{"haulLabel":…}}` | `'held.haulLabel'` |
+| the one slot, `tag` and `content` | `{"kind":"Boxed","held":…}` | `'held'` |
+| a slot of several, `tag` and `content` | `{"kind":"Split","held":[…]}` | `'held.1'` |
+| a named member, `tag` alone | beside the tag | `'liftLabel'` |
+| the one slot, `tag` alone | its own keys beside the tag | no step |
+| a member of an `untagged` variant | as the value itself, or under its key | no step, or the key |
+
+- **Two functions say what serde writes on the way to a member**, in `src/features/serde.rs`,
+  and nothing else computes a step. `variant_steps` answers what is written ahead of a variant's
+  members, read through `Tagging`: the variant's written name (its own `rename`, else the enum's
+  `rename_all`) with no tag attribute, the content key under `tag` and `content`, and nothing
+  under `tag` alone and for an untagged enum. `member_steps` answers each member's steps below
+  that: a named member under its key (`parse_written_renames`, or the casing it is handed), a
+  flattened one under none, the only slot under none, and any other slot under its position
+  among the slots serde reads. A slot serde does not read has no position.
+- `validate()` and the recovering decode both call them. `steps_of_members` and
+  `steps_of_variants` hand each container's steps to `FieldContext::member_steps`, read before
+  the walk takes a member's attributes off it, and `member_place` joins a member's steps into
+  `MemberPlace::reported`, which `checked_member` holds in `CheckedMember::reported`. A bound, a
+  check and the walk below a member are all written from that one place, a flattened member's
+  and an untagged variant's among them. `read_members` and `variant_members` in
+  `recovering_decode/checks.rs` call the same two, and keep the members serde reads.
+- `rename_direction_guard_errors` refuses a `rename` whose two sides differ in every build that
+  describes a type, so the key a surface is named by (`get_final_field_name`) is the key
+  `member_steps` reads.
+- Without the `serde` feature no attribute is read: a variant is under its own name and a member
+  is as it is declared, the steps serde's defaults write.
 - `CheckedMember::label` and `CheckedMember::stem` keep the Rust ident: a refusal at build time
-  and a helper (`validate_{field}_value`) name the field as its author wrote it.
-- A slot keeps its position (`'0'`). A flattened member is walked under no name
-  (`flattened_place`), as a slot of an untagged variant is (`member_place` names none there), and
-  an `Option` adds no segment.
+  and a helper (`validate_{field}_value`, `validate_{variant}_{index}_value`) name the member as
+  its author wrote it, a slot by its place among the ones declared.
+- A read hook that answers a brand's refusal under a name (`named_refusal`, from
+  `read_unjudged_below` and `named_read_hook`) is handed `MemberPlace::reported`, so a read and
+  `validate()` name one path. An `Option` adds no step.
+- `tests/check_tests/places.rs`, a module of `models.rs`, holds one type per row of the table,
+  with a bound on the member and a model held in it. `tests/check_tests/table.rs` holds
+  `validate()` to `PLACES`, and `tests/generic_types_tests/declarations.rs` parses each payload
+  under node and holds the Zod schema to the same text.
 - The index and the key are written by the nested walk alone. `walk_wraps` binds one index per
   list level (`index_binding`) and one entry per map level (`entry_binding`), `held_at` lists
   them after the member's key as `PlaceStep`s, innermost last, and `named_at` writes the name.
@@ -666,7 +703,8 @@ message names" section is the consumer's view; this is what a change has to keep
   ends on no declared type is `None` and adds no token: a primitive, one of the item's own
   parameters and a set of either are none.
 - A slot of a tuple struct and of a tagged variant is walked as a named member is
-  (`slot_nested_validate_body`), read and reported through `member_place`, under its position.
+  (`slot_nested_validate_body`), read and reported through `member_place`, under the steps serde
+  writes on the way to it.
 - A named member, a flattened one and an untagged variant's slot fall back on
   `reachable_nested_shape` (`member_held_shape`), the walk they had before a map and a tuple were
   read. A set, a deque and a heap are described as a declared type is, so a field written
@@ -734,8 +772,9 @@ has to keep.
   with a local `Unjudged` newtype whose `Deserialize` calls the leaf's
   `model_schema_read_unjudged`, behind the local `ReadUnjudged` trait. An inherent function is
   found ahead of a trait's, so a type with no unjudged read of its own is read as serde reads
-  it. A refusal a brand below raises is answered under the field's key (`named_refusal`) where
-  `named_below` says the named reader did so, and an outermost `Option` under a key is given
+  it. A refusal a brand below raises is answered under the name `validate()` reports the field
+  under (`named_refusal`) where `named_below` says the named reader did so, and an outermost
+  `Option` under a key is given
   `#[serde(default)]` by the rule of `needs_injected_default`, the container writing none.
 - `named_read_hook` stays for a named field `reachable_nested_shape` walks and `reached` does
   not, a declared type in an `Arc` and in a fixed array among them. A model there, in a tuple
@@ -1235,12 +1274,14 @@ sections are the consumer's view; this is what a change to the emitter has to ke
   holds the two to one type.
 - **A field's bound is the walker's to list.** `generate_field_validation` records each validator
   it publishes under the `Validator` gate (`record_field_validator`, by schema module and helper
-  stem, with the name the validator writes in front of a violation), `walked_field` reads it back
-  (`recorded_validator`, into `FieldValidator::named`), and `Walker::bounded` writes one
-  `{source}_bound` call beside the read of each value the bound reaches: the validator run on
+  stem, with the name the validator writes in front of a violation, an `Option`), `walked_field`
+  reads it back (`recorded_validator`, into `FieldValidator::named`), and `Walker::bounded` writes
+  one `{source}_bound` call beside the read of each value the bound reaches: the validator run on
   what serde read, one `Invalid` per violation, that name taken off the sentence. The name is
-  the key serde writes the field under, read from the registry and computed nowhere else, so
-  the two cannot drift. `recovering_bound_check` builds the closure from the walk's own type at
+  the steps serde writes on the way to the field, read from the registry and computed nowhere
+  else, so the two cannot drift, and the validator of a value serde writes itself, the one slot
+  of a struct and of a variant under a tag alone, writes none: its sentence is listed as it is.
+  `recovering_bound_check` builds the closure from the walk's own type at
   that position. A list is that position: the arm
   that walks its items hands them no validator, and holds the list read whole (`read_as_a_list`)
   to its count, one `Invalid` at the list. The registry is cleared per item at `exec_model_schema`, and holds nothing in a
@@ -1249,7 +1290,7 @@ sections are the consumer's view; this is what a change to the emitter has to ke
   `decode_with_check_messages(&self)` in an `impl` of its own beside the walkers, under the bounds
   the type's author wrote (`RecoveringDecode::check_messages`, `checks::type_impl`): the members'
   messages, the type's own, then those of every model it holds, each under the place serde writes
-  it (`parse_written_renames`, and the variant's key or the content key by `Tagging`). A held type
+  it (`member_steps` and `variant_steps`, the two functions `validate()` names a member by). A held type
   is asked through the block-local `Unchecked` trait, so one with no such method answers nothing,
   and a map's key is written through `WrittenKey`. The checks are read back from the registry
   `record_item_checks` and `record_member_checks` write, by schema module and helper stem.

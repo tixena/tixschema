@@ -7,17 +7,18 @@
 
 pub mod read_bounds;
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(feature = "serde")]
+use crate::field_type::is_plain_enum;
+#[cfg(feature = "serde")]
 use crate::rename_rule::resolve_rename_rule;
 use crate::utils::written_type;
 #[cfg(feature = "serde")]
 use proc_macro2::{Delimiter, TokenTree};
 use proc_macro2::{Group, Span};
-#[cfg(feature = "serde")]
 use syn::ext::IdentExt as _;
 use syn::meta::ParseNestedMeta;
 use syn::token::Paren;
-use syn::{Attribute, Field, Fields, Ident, ItemStruct, LitStr, Token, Type};
+use syn::{Attribute, Field, Fields, Ident, ItemEnum, ItemStruct, LitStr, Token, Type, Variant};
 #[cfg(feature = "serde")]
 use syn::{Error, Meta};
 
@@ -116,6 +117,51 @@ pub struct DirectedRenames {
     pub rename: Option<String>,
     pub rename_all: Option<String>,
     pub rename_all_fields: Option<String>,
+}
+
+/// Where serde's attributes put one member among those of its container.
+struct Placed {
+    /// Whether the member's own members join its container's, under no key of its own.
+    flattened: bool,
+    /// The key a named member is written under. `None` for a slot.
+    key: Option<String>,
+    /// Whether serde reads the member, which is what gives a slot a position.
+    read: bool,
+}
+
+/// The form serde writes an enum in, read off its attributes as the schema surfaces read them.
+#[cfg(feature = "serde")]
+pub enum Tagging {
+    Adjacent {
+        content: String,
+        tag: String,
+    },
+    External,
+    Internal {
+        tag: String,
+    },
+    /// No attribute, and no variant holding a value: the variant's name, as text.
+    Plain,
+    Untagged,
+}
+
+#[cfg(feature = "serde")]
+impl Tagging {
+    pub fn of(item_enum: &ItemEnum) -> Self {
+        let container = parse_serde_type_attributes(&item_enum.attrs);
+        if container.untagged {
+            return Self::Untagged;
+        }
+        match (container.tag, container.content) {
+            (None, None) if is_plain_enum(item_enum) => Self::Plain,
+            (None, None) => Self::External,
+            (Some(tag), None) => Self::Internal { tag },
+            (tag, Some(content)) => Self::Adjacent {
+                content,
+                tag: tag.unwrap_or_else(|| "type".to_owned()),
+            },
+        }
+    }
 }
 
 /// Walks the serde attributes for exactly the keys [`SerdeKeyOmission`] names, ignoring every
@@ -351,6 +397,98 @@ pub fn brand_field(item_struct: &ItemStruct) -> Option<&Field> {
         Fields::Unnamed(slots) if slots.unnamed.len() == 1 => slots.unnamed.first(),
         Fields::Unnamed(_) | Fields::Unit => None,
     }
+}
+
+/// Where serde's attributes put `field`, whose name `rename_all` cases where it has no `rename` of
+/// its own.
+#[cfg(feature = "serde")]
+fn placed(field: &Field, rename_all: Option<&str>) -> Placed {
+    let key = field.ident.as_ref().map(|ident| {
+        parse_written_renames(&field.attrs)
+            .rename
+            .unwrap_or_else(|| {
+                resolve_rename_rule(rename_all).apply_to_field(&ident.unraw().to_string())
+            })
+    });
+    Placed {
+        flattened: parse_serde_field_attributes(&field.attrs).flatten,
+        key,
+        read: !parse_serde_key_omission(&field.attrs).skips_deserializing,
+    }
+}
+
+/// Without `serde` no attribute is read: a member is written as it is declared.
+#[cfg(not(feature = "serde"))]
+fn placed(field: &Field, _rename_all: Option<&str>) -> Placed {
+    Placed {
+        flattened: false,
+        key: field.ident.as_ref().map(|ident| ident.unraw().to_string()),
+        read: true,
+    }
+}
+
+/// The steps serde writes on the way to each member of `fields`, below `prefix`, each beside its
+/// place among the ones declared: a named member under its key, a flattened one under none, the
+/// only slot under none where `lone_is_the_value`, and any other slot under its position among
+/// the slots serde reads. A slot serde does not read has no position.
+pub fn member_steps<'item>(
+    fields: &'item Fields,
+    prefix: &[String],
+    rename_all: Option<&str>,
+    lone_is_the_value: bool,
+) -> Vec<(&'item Field, usize, Vec<String>)> {
+    let mut position = 0_usize;
+    fields
+        .iter()
+        .enumerate()
+        .map(|(index, field)| {
+            let written = placed(field, rename_all);
+            let mut steps = prefix.to_vec();
+            if let Some(key) = written.key {
+                if !written.flattened {
+                    steps.push(key);
+                }
+            } else if written.read && !lone_is_the_value {
+                steps.push(position.to_string());
+            } else {
+                // The slot is the value serde writes, or one it never does.
+            }
+            if written.read {
+                position = position.saturating_add(1);
+            }
+            (field, index, steps)
+        })
+        .collect()
+}
+
+/// What serde writes ahead of the members of `variant`: the variant's written name with no tag
+/// attribute, the content key under a tag and a content key, and nothing under a tag alone and
+/// for an untagged enum.
+#[cfg(feature = "serde")]
+pub fn variant_steps(item_enum: &ItemEnum, variant: &Variant) -> Vec<String> {
+    let tagging = Tagging::of(item_enum);
+    if matches!(tagging, Tagging::External) {
+        let container = parse_written_renames(&item_enum.attrs);
+        vec![
+            parse_written_renames(&variant.attrs)
+                .rename
+                .unwrap_or_else(|| {
+                    resolve_rename_rule(container.rename_all.as_deref())
+                        .apply_to_variant(&variant.ident.unraw().to_string())
+                }),
+        ]
+    } else if let Tagging::Adjacent { content, tag: _tag } = tagging {
+        vec![content]
+    } else {
+        // serde writes what the variant holds beside the tag, or as the value itself.
+        Vec::new()
+    }
+}
+
+/// Without `serde` no attribute is read: a variant is written under its own name.
+#[cfg(not(feature = "serde"))]
+pub fn variant_steps(_item_enum: &ItemEnum, variant: &Variant) -> Vec<String> {
+    vec![variant.ident.unraw().to_string()]
 }
 
 /// The field serde's derive reads a `#[serde(transparent)]` struct as the value of, named or a
@@ -744,6 +882,9 @@ pub fn get_final_field_name(
 
 #[cfg(test)]
 mod key_omission_tests;
+
+#[cfg(test)]
+mod steps_tests;
 
 #[cfg(test)]
 #[cfg(feature = "serde")]

@@ -243,6 +243,11 @@ pub enum DispatchUntagged {
     Carried(#[model_schema_prop(check = ["knownCarrier"])] String),
 }
 
+/// A struct of one slot, which serde writes as the slot's value.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Sticker(#[model_schema_prop(check = ["knownCarrier"])] pub String);
+
 /// The members a holder writes into its own object.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -379,12 +384,22 @@ fn several_checks_run_in_the_order_written_and_none_stops_another() {
     );
 }
 
+/// serde writes a variant under its name, and under the content key where the enum names one.
+/// Without `serde` no attribute is read, and every variant is under its own name.
 #[test]
 fn a_member_of_a_variant_is_reported_as_a_bound_of_it_is() {
     #[cfg(feature = "serde")]
-    let stops = "'roadStops.2': c is one code too many";
+    let (stops, held_stops, held) = (
+        "'ByRoad.roadStops.2': c is one code too many",
+        "'detail.roadStops.2': c is one code too many",
+        "'detail': a carrier is known",
+    );
     #[cfg(not(feature = "serde"))]
-    let stops = "'road_stops.2': c is one code too many";
+    let (stops, held_stops, held) = (
+        "'ByRoad.road_stops.2': c is one code too many",
+        "'ByRoad.road_stops.2': c is one code too many",
+        "'Carried': a carrier is known",
+    );
     let by_road = Dispatch::ByRoad {
         road_stops: texts(&["a", "b", "c"]),
     };
@@ -393,13 +408,16 @@ fn a_member_of_a_variant_is_reported_as_a_bound_of_it_is() {
         Dispatch::BySea("unknown".to_owned(), texts(&["a", "b", "c"]))
             .validate()
             .unwrap_err(),
-        ["'0': a carrier is known", "'1.2': c is one code too many"]
+        [
+            "'BySea.0': a carrier is known",
+            "'BySea.1.2': c is one code too many"
+        ]
     );
     assert_eq!(
         Dispatch::Carried("unknown".to_owned())
             .validate()
             .unwrap_err(),
-        ["'0': a carrier is known"]
+        ["'Carried': a carrier is known"]
     );
     assert_eq!(Dispatch::Held.validate(), Ok(()));
     assert_eq!(Dispatch::Carried("north".to_owned()).validate(), Ok(()));
@@ -407,13 +425,23 @@ fn a_member_of_a_variant_is_reported_as_a_bound_of_it_is() {
     let adjacent = DispatchAdjacent::ByRoad {
         road_stops: texts(&["a", "b", "c"]),
     };
-    assert_eq!(adjacent.validate().unwrap_err(), [stops]);
+    assert_eq!(adjacent.validate().unwrap_err(), [held_stops]);
     assert_eq!(
         DispatchAdjacent::Carried("unknown".to_owned())
             .validate()
             .unwrap_err(),
-        ["'0': a carrier is known"]
+        [held]
     );
+}
+
+/// The one slot of a struct is the value serde writes for the struct, in every build.
+#[test]
+fn the_one_slot_of_a_struct_is_reported_under_no_name() {
+    assert_eq!(
+        Sticker("unknown".to_owned()).validate().unwrap_err(),
+        ["a carrier is known"]
+    );
+    assert_eq!(Sticker("north".to_owned()).validate(), Ok(()));
 }
 
 /// The lone slot of an untagged variant is the value serde writes, so it has no name.
@@ -435,22 +463,22 @@ fn the_lone_slot_of_an_untagged_variant_is_reported_under_no_name() {
     );
 }
 
-/// Without `serde` the attribute that leaves the tag out is not read, and the slot has a place.
+/// Without `serde` the attribute that leaves the tag out is not read, and the variant has a name.
 #[cfg(not(feature = "serde"))]
 #[test]
-fn a_variants_slot_is_reported_under_its_position_without_serde() {
+fn a_variants_slot_is_reported_under_the_variants_name_without_serde() {
     assert_eq!(
         DispatchUntagged::Carried("unknown".to_owned())
             .validate()
             .unwrap_err(),
-        ["'0': a carrier is known"]
+        ["'Carried': a carrier is known"]
     );
     let by_road = DispatchUntagged::ByRoad {
         road_stops: texts(&["a", "b", "c"]),
     };
     assert_eq!(
         by_road.validate().unwrap_err(),
-        ["'road_stops.2': c is one code too many"]
+        ["'ByRoad.road_stops.2': c is one code too many"]
     );
 }
 

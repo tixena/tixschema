@@ -119,6 +119,40 @@ enum CheckedUntagged {
     },
 }
 
+/// A parcel whose check refuses the label `x`, and a holder of it in each place serde writes a
+/// slot at.
+#[model_schema(decode_with, check = ["noX"])]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PlacedParcel {
+    item_label: String,
+}
+
+#[model_schema(decode_with)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+struct PlacedSealed(PlacedParcel);
+
+#[model_schema(decode_with)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+enum PlacedFreight {
+    Boxed(PlacedParcel),
+    Split(String, PlacedParcel),
+}
+
+#[model_schema(decode_with)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+enum PlacedLift {
+    Boxed(PlacedParcel),
+}
+
+fn no_x(value: &PlacedParcel) -> Result<(), Vec<String>> {
+    if value.item_label == "x" {
+        return Err(vec!["'itemLabel': x is no label".to_owned()]);
+    }
+    Ok(())
+}
+
 fn without_duplicates(value: &[String]) -> Result<(), Vec<String>> {
     for (index, code) in value.iter().enumerate() {
         if value[..index].contains(code) {
@@ -573,5 +607,59 @@ fn a_bound_and_a_check_of_one_value_are_two_issues() {
             "fragileItemCodes[0]: invalid: expected Unknown, found String(\"y\"): y is outside of \
              itemCodeList",
         ]
+    );
+}
+
+/// A model held in a slot is named at one place by the checks the recovering decode lists and
+/// by `validate()`: the place serde writes it at. With no schema surface on, a holder that
+/// names no check publishes no `validate()`.
+#[test]
+fn a_model_held_in_a_slot_is_named_where_serde_writes_it() {
+    let x = || PlacedParcel {
+        item_label: "x".to_owned(),
+    };
+    let sealed = PlacedSealed(x());
+    let boxed = PlacedFreight::Boxed(x());
+    let split = PlacedFreight::Split("a".to_owned(), x());
+    let lifted = PlacedLift::Boxed(x());
+    assert_eq!(
+        [
+            serde_json::to_value(&sealed).unwrap(),
+            serde_json::to_value(&boxed).unwrap(),
+            serde_json::to_value(&split).unwrap(),
+            serde_json::to_value(&lifted).unwrap(),
+        ],
+        [
+            json!({ "itemLabel": "x" }),
+            json!({ "Boxed": { "itemLabel": "x" } }),
+            json!({ "Split": ["a", { "itemLabel": "x" }] }),
+            json!({ "kind": "Boxed", "itemLabel": "x" }),
+        ]
+    );
+    let messages = [
+        sealed.decode_with_check_messages(),
+        boxed.decode_with_check_messages(),
+        split.decode_with_check_messages(),
+        lifted.decode_with_check_messages(),
+    ];
+    assert_eq!(
+        messages,
+        [
+            ["'itemLabel': x is no label"],
+            ["'Boxed.itemLabel': x is no label"],
+            ["'Split.1.itemLabel': x is no label"],
+            ["'itemLabel': x is no label"],
+        ]
+    );
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    assert_eq!(
+        [
+            sealed.validate(),
+            boxed.validate(),
+            split.validate(),
+            lifted.validate(),
+        ]
+        .map(Result::unwrap_err),
+        messages
     );
 }

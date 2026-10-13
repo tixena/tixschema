@@ -14,6 +14,43 @@ const PAYLOADS: [&str; 6] = [
     r#"{"parcel":{"label":"A","itemCodeList":["x"],"fragileItemCodes":["x","y"]}}"#,
 ];
 
+/// The payload serde writes for each place that is refused, in the order of `PLACES`.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+const WRITTEN: &str = r#"Package, unlabelled: {"itemLabel":""}
+Docket, empty and numbered zero: ["",0]
+Bundle, unnamed and unlabelled: ["",{"itemLabel":""}]
+Measured, unnamed and unlabelled after a skipped slot: ["",{"itemLabel":""}]
+Lone, empty: ""
+Strapped, an unlabelled parcel: {"itemLabel":""}
+Crane, an unlabelled strapped load: {"strappedLoad":{"itemLabel":""}}
+Hoist, an empty code: {"code":""}
+Freight, boxed unlabelled: {"Boxed":{"itemLabel":""}}
+Freight, crated unlabelled: {"Crated":{"cratedParcel":{"itemLabel":""}}}
+Freight, loose and unlabelled: {"Loose":{"freightLabel":""}}
+Freight, split unnamed and unlabelled: {"Split":["",{"itemLabel":""}]}
+Freight, stacked with one unlabelled: {"Stacked":[{"itemLabel":"A"},{"itemLabel":""}]}
+Freight, stacked three high: {"Stacked":[{"itemLabel":"A"},{"itemLabel":"A"},{"itemLabel":"A"}]}
+Seal, stamped with nothing: {"Stamped":""}
+Seal, signed by no one: {"Signed":{"signedBy":""}}
+Haul, boxed unlabelled: {"kind":"Boxed","held":{"itemLabel":""}}
+Haul, crated unlabelled: {"kind":"Crated","held":{"cratedParcel":{"itemLabel":""}}}
+Haul, loose and unlabelled: {"kind":"Loose","held":{"haulLabel":""}}
+Haul, split unnamed and unlabelled: {"kind":"Split","held":["",{"itemLabel":""}]}
+Haul, stamped with nothing: {"kind":"Stamped","held":""}
+Lift, boxed unlabelled: {"kind":"Boxed","itemLabel":""}
+Lift, crated unlabelled: {"kind":"Crated","cratedParcel":{"itemLabel":""}}
+Lift, loose and unlabelled: {"kind":"Loose","liftLabel":""}
+Load, labelled with nothing: {"loadLabel":"","loadParcels":[{"itemLabel":"A"},{"itemLabel":""}]}
+Load, an empty text: ""
+Load, an unlabelled whole: {"itemLabel":""}
+Mooring, anchored with no code: {"atAnchor":{"anchorCode":""}}
+Mooring, an unlabelled parcel in dry dock: {"dry_dock":{"itemLabel":""}}
+Departure, by road from an unnamed origin: {"ByRoad":{"originName":""}}
+"#;
+
 /// serde writes a parcel's keys in the order of its members, so the two are compared as values.
 #[test]
 fn each_value_is_the_one_its_payload_describes() {
@@ -86,7 +123,37 @@ case 5: refused
     );
 }
 
+/// Without `serde` the tag a variant's members are written beside is not read, and a member is
+/// under the variant's own name.
 #[test]
 fn every_shape_runs_its_checks() {
-    assert_eq!(report(&shape_cases()), SHAPES);
+    #[cfg(feature = "serde")]
+    let shapes = SHAPES;
+    #[cfg(not(feature = "serde"))]
+    let shapes = SHAPES.replace(
+        "    'stops': duplicate item code a",
+        "    'Air.stops': duplicate item code a",
+    );
+    assert_eq!(report(&shape_cases()), shapes);
+}
+
+/// A message names a value by the steps serde writes on the way to it: a key, a position among
+/// several slots, the variant's name or the content key, and nothing for the value itself.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn every_place_is_named_as_the_payload_holds_it() {
+    use core::fmt::Write as _;
+
+    use super::models::places::{PLACES, place_cases};
+
+    let cases = place_cases();
+    let mut written = String::new();
+    for held in cases.iter().filter(|held| held.answered.is_err()) {
+        writeln!(written, "{}: {}", held.name, held.payload).unwrap();
+    }
+    assert_eq!(written, WRITTEN);
+    assert_eq!(report(&cases), PLACES);
 }

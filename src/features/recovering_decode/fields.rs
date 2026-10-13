@@ -11,13 +11,13 @@ use syn::{
 };
 
 use super::aliases::PRIMITIVES;
-use super::enums::{TagArm, Tagging, WrittenVariant, tag_arms, written_variants};
+use super::enums::{TagArm, WrittenVariant, tag_arms, written_variants};
 use super::{
     Step, TypedPaths, bound_parameters, hooked_leaf, starts_at_a_parameter, type_arguments,
     unclaimed, unclaimed_parameter, value_slot, written_names,
 };
 use crate::features::serde::{
-    has_serde_skip_serializing, parse_serde_field_attributes, parse_serde_field_hooks,
+    Tagging, has_serde_skip_serializing, parse_serde_field_attributes, parse_serde_field_hooks,
     parse_serde_key_omission, parse_written_renames,
 };
 use crate::field_type::{

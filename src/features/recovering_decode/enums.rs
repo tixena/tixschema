@@ -20,46 +20,13 @@ use super::{
 };
 use crate::features::serde::read_bounds::read_bounds;
 use crate::features::serde::{
-    has_serde_skip_serializing, parse_read_renames, parse_serde_field_attributes,
-    parse_serde_key_omission, parse_serde_type_attributes, parse_written_renames,
+    Tagging, has_serde_skip_serializing, parse_read_renames, parse_serde_field_attributes,
+    parse_serde_key_omission, parse_written_renames,
 };
-use crate::field_type::{get_field_def, is_plain_enum};
+use crate::field_type::get_field_def;
 use crate::model_schema::judged_read::listed_read;
 use crate::rename_rule::resolve_rename_rule;
 use crate::utils::{ident_schema_module_name, to_snake_case, type_parameters_in_scope};
-
-/// The form serde writes an enum in, read off its attributes as the schema surfaces read them.
-pub enum Tagging {
-    Adjacent {
-        content: String,
-        tag: String,
-    },
-    External,
-    Internal {
-        tag: String,
-    },
-    /// No attribute, and no variant holding a value: the variant's name, as text.
-    Plain,
-    Untagged,
-}
-
-impl Tagging {
-    pub fn of(item_enum: &ItemEnum) -> Self {
-        let container = parse_serde_type_attributes(&item_enum.attrs);
-        if container.untagged {
-            return Self::Untagged;
-        }
-        match (container.tag, container.content) {
-            (None, None) if is_plain_enum(item_enum) => Self::Plain,
-            (None, None) => Self::External,
-            (Some(tag), None) => Self::Internal { tag },
-            (tag, Some(content)) => Self::Adjacent {
-                content,
-                tag: tag.unwrap_or_else(|| "type".to_owned()),
-            },
-        }
-    }
-}
 
 /// One arm of an enum serde writes under a tag key, as its arm function names it.
 pub struct TagArm<'item> {
