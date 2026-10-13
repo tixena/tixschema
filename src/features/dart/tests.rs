@@ -34,6 +34,7 @@ fn plain_args() -> DartTypeArgs<'static> {
         min_length: None,
         name_override: None,
         pattern: None,
+        preprocess: &[],
     }
 }
 

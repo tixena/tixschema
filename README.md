@@ -4283,7 +4283,7 @@ Terminal with no spareParcel key, all good: read
 
 #### What stays yours
 
-- **`validate()` is for a value built in code**, before it is sent, and for a value changed after it was read: [`fromJson` judges what it reads](#the-dart-read-refuses-what-validate-refuses). [`preprocess`](#preprocessing-preprocess) is not called in Dart.
+- **`validate()` is for a value built in code**, before it is sent, and for a value changed after it was read: [`fromJson` judges what it reads](#the-dart-read-refuses-what-validate-refuses). It calls no [`preprocess`](#a-preprocess-in-the-dart-client): a read does, ahead of it.
 - **A class of your own that a model holds** declares `List<String> validate()` and the constructor `fromJsonUnjudged` as the emitted ones do: a holder reads it and calls it with no knowledge of what the held type declares, whether that type is declared above the holder or below it. [`ObjectId`](#mongodb-objectid-support) is the one exception, read through its `fromJson` and asked nothing.
 - **A field named `validate`** is the member `validate_`, and keeps its key, as [a reserved word does](#a-member-named-after-a-word-the-client-language-reserves).
 - **Every build writes the same Dart.** The Dart `validate()` holds each bound and calls each check with a schema surface on and with none. One declaration differs: a brand's own `minLength`, `maxLength` or `pattern` is refused by a build with no `typescript`, `zod` or `jsonschema`, so no wrapper carries one there.
@@ -4670,7 +4670,7 @@ beside `preprocess`; the two have no defined order.
 
 ### Preprocessing (`preprocess`)
 
-`preprocess = ["name", ...]` names functions of your own that correct a payload before a value is read from it: a label written with spaces at its ends, a key an older writer left out. It is written on a type, in `#[model_schema(...)]`, and on a field, in `#[model_schema_prop(...)]`. A name is written once, and every read calls a function under it: Rust the snake case of the name, `withoutFragile` as `without_fragile`, and the Zod schema the name as written.
+`preprocess = ["name", ...]` names functions of your own that correct a payload before a value is read from it: a label written with spaces at its ends, a key an older writer left out. It is written on a type, in `#[model_schema(...)]`, and on a field, in `#[model_schema_prop(...)]`. A name is written once, and every read calls a function under it: Rust the snake case of the name, `withoutFragile` as `without_fragile`, and the Zod schema and [the Dart client](#a-preprocess-in-the-dart-client) the name as written.
 
 **The key is a last resort.** A function of yours runs on every read of the type, on a payload no schema describes. Reach for it where the payload cannot be corrected where it is written, and where a serde `default`, an `Option` or an `alias` does not say what you mean.
 
@@ -4832,7 +4832,9 @@ A type that holds another reads it through that type's functions wherever it hol
 
 **In the Zod schema**, as one `z.preprocess(name, ...)` per name.
 
-**Nowhere else.** Writing calls no function, `Serialize` being serde's derive, and neither does `validate()`: a value built in code is never read, so nothing corrects it. The JSON Schema describes the value the type is read to and calls no function. The Dart, Swift and Kotlin types read the key and are written as they are without it.
+**In [the Dart client](#a-preprocess-in-the-dart-client)**, in the read of every type `dart_definition()` writes, under the `dart` feature.
+
+**Nowhere else.** Writing calls no function, `Serialize` being serde's derive, and neither does `validate()`: a value built in code is never read, so nothing corrects it. The JSON Schema describes the value the type is read to and calls no function. The Swift and Kotlin types read the key and are written as they are without it.
 
 #### A key the payload does not hold
 
@@ -4900,6 +4902,56 @@ error[E0425]: cannot find function `without_fragile` in this scope
 What resolves the error is a function `without_fragile` in scope where `Parcel` is declared.
 
 **What the macro writes.** The type's `Deserialize` is written as [that of a type that publishes `validate()`](#a-read-refuses-what-validate-refuses) is: serde's derive runs on a private copy of the item inside `model_schema_read_unjudged`, and a field's functions are called by a function local to that read, hung on the copy's member. A type that names a `preprocess` on itself gains `model_schema_read_corrected` as well, the read of a payload its functions have already corrected, and one declared with `decode_with` gains `decode_with_read_corrected`, `decode_with_value_corrected` and the walk of a corrected value under `decode_with_value_corrected_issues`, `_named` and `_fields`, with the `bson` twin of each under the `bson` feature. Each is a name of the type's own: a function of yours under one of them on the same type is a duplicate definition (E0592).
+
+#### A `preprocess` in the Dart client
+
+With the `dart` feature, `fromJsonUnjudged` of every type `dart_definition()` writes calls the functions the type and its members name, each under the name the attribute writes. [`fromJson` is that read followed by `validate()`](#the-dart-read-refuses-what-validate-refuses), so both reads correct the payload, in [the order of a Rust read](#the-order-of-one-read): the type's functions, each member's as it is read, the value, then `validate()`. The parcel of the example is read by:
+
+```dart
+factory Parcel.fromJsonUnjudged(Map<String, dynamic> payload) {
+  final json = withoutFragile(payload) as Map<String, dynamic>;
+  return Parcel(
+    label: (json.containsKey('label') ? trimmed(json['label']) : null) as String,
+    item_code_list: (json['itemCodeList'] as List<dynamic>).map((e) => e as String).toList(),
+    fragile_item_codes: (json['fragileItemCodes'] as List<dynamic>).map((e) => e as String).toList(),
+  );
+}
+```
+
+The functions are yours, in scope in the file the emitted definitions are written into. Each takes a payload and answers the payload the value is read from:
+
+| | Dart |
+|---|---|
+| A field's function | `dynamic trimmed(dynamic payload)` |
+| A type's function | `dynamic withoutFragile(dynamic payload)` |
+
+```dart
+dynamic trimmed(dynamic payload) => payload is String ? payload.trim() : payload;
+
+dynamic withoutFragile(dynamic payload) =>
+    payload is Map<String, dynamic> ? {'fragileItemCodes': <dynamic>[], ...payload} : payload;
+```
+
+With those two functions, `Parcel.fromJson` and `Manifest.fromJson` answer for the rows of [the table above](#preprocessing-preprocess) what the Rust read answers. Row 4 is a BSON document, which no Dart client reads:
+
+| # | A Dart read |
+|---|---|
+| 1 | read; `label` is `"A"` |
+| 2 | refused with a `FormatException`: `'label': too short: minimum length is 1, got 0` |
+| 3 | read; `fragile_item_codes` is `[]` |
+| 5 | read; `parcel.label` is `"A"` |
+
+- **The key stays a last resort.** Each name is one more function you write and keep in step, in every language you emit.
+- **The payload is what `jsonDecode` holds**: a `Map<String, dynamic>`, a `List<dynamic>`, a `String`, a number, a `bool` or `null`. A function answers `dynamic`, and the read casts what it answers.
+- **A field's function is called where the payload holds the key**, a `null` it holds included. A key the payload does not hold calls no function and is read as it was: `{"itemCodeList":["x"],"fragileItemCodes":["x"]}` is refused with `type 'Null' is not a subtype of type 'String' in type cast`, where the Rust read answers ``missing field `label` ``. A slot's function is called with what its position holds.
+- **Several functions run in the order written**, each over the answer of the one before: `preprocess = ["unwrapped", "withoutFragile"]` calls `withoutFragile(unwrapped(payload))`. One read calls each function once.
+- **A type's function takes the payload its read takes**, typed as the read types it: the object of a class and of an enum under a tag key, the text of a plain enum, and the payload as it is for a brand, a tuple struct and any other enum. A payload of another kind does not reach it: a text handed to the read of a class is refused with a `TypeError` ahead of the function, where the Rust read hands the function any payload.
+- **A type that holds another reads it through that type's own read**, so it is corrected wherever it is held: in a field, an optional, a list, a map's value, a variant and a `#[serde(flatten)]` member. A holder that names no function and flattens no member is written as it was.
+- **A flattened member is read from the keys the members beside it do not take**, as serde hands them: `Tagged.fromJsonUnjudged(({...json}..remove('dock')))`. A function it names, and a function of the type it holds, is handed those keys. Under a tag key, a type flattened into a variant and the function of a variant's one slot are handed the object without the tag as well. A type that one slot holds is read from the object with its tag, where the Rust read hands its function the object without it.
+- **A sealed enum calls its functions in its base**, once, ahead of the dispatch on the tag, and an `#[serde(untagged)]` one ahead of every attempt. A plain enum calls them on the text, in `fromJsonUnjudged`.
+- **The service clients read a reply through `fromJson`**, so a reply is corrected as any other payload is.
+- **A name with no function does not compile**, and the Dart compiler reports the call: `Error: Method not found: 'trimmed'.`
+- **A member of the type hides a function of its name** inside the class, as it hides a [check](#the-functions-you-write-in-dart): a `preprocess` named `label` on a type with a field `label` is reported as a name with no function. The names a read declares itself hide none: `json`, `payload`, `map`, `tag`, `read` and the converter it takes for a type parameter, `codeTypeFromJson`, are numbered where a function is called under one, `json2`.
 
 ### Optional TypeScript Keys (`ts_optional`)
 
@@ -6787,7 +6839,7 @@ The crate uses optional features to control code generation and dependencies. Ea
 | `bson` | No | BSON support: `from_bson_with` and `from_bson_piped` on types that opt in with [`decode_with`](#recovering-decode-decode_with); turns on `serde` |
 | `chrono` | No | Chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`) |
 | `indexmap` | No | `indexmap` type support: `IndexMap` as a map and `IndexSet` as a list. See [The order of a map's keys](#the-order-of-a-maps-keys) |
-| `dart` | No | Dart type generation via `dart_definition()`, with a JSON `fromJson`/`toJson` codec whose read [refuses what `validate()` refuses](#the-dart-read-refuses-what-validate-refuses), and a [`validate()`](#validate-in-dart) on every type |
+| `dart` | No | Dart type generation via `dart_definition()`, with a JSON `fromJson`/`toJson` codec whose read [calls each `preprocess`](#a-preprocess-in-the-dart-client) and [refuses what `validate()` refuses](#the-dart-read-refuses-what-validate-refuses), and a [`validate()`](#validate-in-dart) on every type |
 | `swift` | No | Swift type generation with a `Codable` codec, and a [`validate()`](#validate-in-the-swift-client) on every type |
 | `kotlin` | No | Kotlin type generation via `kotlin_definition()`, with `kotlinx.serialization` annotations and a [`validate()`](#validate-in-the-kotlin-client) on every type. A consuming Kotlin build declares two runtime dependencies the emitted code names -- `org.jetbrains.kotlinx:kotlinx-serialization-json` for the JSON codec and `org.jetbrains.kotlinx:kotlinx-coroutines-core` for the transport's own reply correlation and heartbeat -- plus the Kotlin Gradle plugin `kotlin("plugin.serialization")` |
 
