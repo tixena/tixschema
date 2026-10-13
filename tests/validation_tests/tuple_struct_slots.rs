@@ -36,6 +36,13 @@ mod a_check_on_a_slot {
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Lone(#[model_schema_prop(minLength = 1)] pub String);
 
+    /// A field typed with a struct of one slot.
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Serialize)]
+    pub struct Coded {
+        pub code: Lone,
+    }
+
     #[model_schema()]
     #[derive(Debug, Deserialize, Serialize)]
     pub struct Wrapped(
@@ -141,12 +148,30 @@ mod a_check_on_a_slot {
         assert_eq!(serde_json::from_str::<Pair>(r#"["a",1]"#).unwrap(), kept);
     }
 
+    /// serde writes a struct of one slot as the slot's value, so its bound is reported under no
+    /// name, and under the key of a field that holds the struct.
     #[test]
-    fn the_one_slot_of_a_struct_is_checked_under_its_position() {
+    fn the_one_slot_of_a_struct_is_checked_under_no_name() {
         assert_eq!(
             Lone(String::new()).validate().unwrap_err(),
-            vec!["'0': too short: minimum length is 1, got 0".to_owned()]
+            vec!["too short: minimum length is 1, got 0".to_owned()]
         );
+        let held = Coded {
+            code: Lone(String::new()),
+        };
+        assert_eq!(serde_json::to_string(&held).unwrap(), r#"{"code":""}"#);
+        assert_eq!(
+            held.validate().unwrap_err(),
+            vec!["'code': too short: minimum length is 1, got 0".to_owned()]
+        );
+        let readme = include_str!("../../README.md");
+        for shown in [
+            r#"`{"code":""}`"#,
+            "`'code': too short: minimum length is 1, got 0`",
+            "a `Lone(String)` held to `minLength = 1` answers `too short: minimum length is 1, got 0`",
+        ] {
+            assert!(readme.contains(shown), "the README no longer shows {shown}");
+        }
         assert_eq!(Lone("a".to_owned()).validate(), Ok(()));
         assert_eq!(
             serde_json::from_str::<Lone>(r#""""#)

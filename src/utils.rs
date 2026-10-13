@@ -644,9 +644,9 @@ thread_local! {
 #[cfg(feature = "serde")]
 thread_local! {
     /// The fields a validator was published for, by schema module and helper stem, each with the
-    /// name its validator writes in front of a violation: those of the item being expanded, read
-    /// by the recovering decode of that same item.
-    static FIELD_VALIDATORS: RefCell<HashMap<(String, String), String>> =
+    /// name its validator writes in front of a violation, where it writes one: those of the item
+    /// being expanded, read by the recovering decode of that same item.
+    static FIELD_VALIDATORS: RefCell<HashMap<(String, String), Option<String>>> =
         RefCell::new(HashMap::new());
 }
 
@@ -725,23 +725,37 @@ pub fn member_checks(module: &str, stem: &str) -> Vec<FunctionName> {
     })
 }
 
-/// The name `validate_{stem}_value` of `module` reports its field under: the key serde writes it
-/// under, or a slot's position. `None` where `module` holds no such validator.
+/// The name `validate_{stem}_value` of `module` reports its field under: the steps serde writes
+/// on the way to it. `None` for a field serde writes as the value of what holds it, whose
+/// validator writes no name.
 #[cfg(feature = "serde")]
 pub fn field_validator_name(module: &str, stem: &str) -> Option<String> {
     FIELD_VALIDATORS.with(|held| {
         held.borrow()
             .get(&(module.to_owned(), stem.to_owned()))
             .cloned()
+            .flatten()
     })
 }
 
-/// Records that `module` holds `validate_{stem}_value`, which reports its field under `named`.
+/// Whether `module` holds `validate_{stem}_value`.
 #[cfg(feature = "serde")]
-pub fn record_field_validator(module: &str, stem: &str, named: &str) {
+pub fn holds_field_validator(module: &str, stem: &str) -> bool {
     FIELD_VALIDATORS.with(|held| {
-        held.borrow_mut()
-            .insert((module.to_owned(), stem.to_owned()), named.to_owned());
+        held.borrow()
+            .contains_key(&(module.to_owned(), stem.to_owned()))
+    })
+}
+
+/// Records that `module` holds `validate_{stem}_value`, which reports its field under `named`,
+/// or under no name.
+#[cfg(feature = "serde")]
+pub fn record_field_validator(module: &str, stem: &str, named: Option<&str>) {
+    FIELD_VALIDATORS.with(|held| {
+        held.borrow_mut().insert(
+            (module.to_owned(), stem.to_owned()),
+            named.map(str::to_owned),
+        );
     });
 }
 

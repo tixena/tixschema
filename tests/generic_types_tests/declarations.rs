@@ -227,6 +227,12 @@ export function shortList(value: Array<string>, ctx: ParsePayload<Array<string>>
   if (value.length > 2) {
     ctx.issues.push({ code: "custom", message: `${value[2]} is one code too many`, path: [2], input: value });
   }
+}
+
+export function stackedLow(value: Array<Package>, ctx: ParsePayload<Array<Package>>): void {
+  if (value.length > 2) {
+    ctx.issues.push({ code: "custom", message: "a stack is at most two parcels high", path: [], input: value });
+  }
 }"#;
 
 /// Loads the compiled bundle, parses the payload of each case through the schema its type
@@ -252,6 +258,21 @@ const schemas = {
   "Batch<String>": lib.Batch$SchemaDefault,
   "Batch<u32>": lib.Batch$SchemaFactory(z.number().int()),
   Pallet: lib.Pallet$Schema,
+  Package: lib.Package$Schema,
+  Docket: lib.Docket$Schema,
+  Bundle: lib.Bundle$Schema,
+  Lone: lib.Lone$Schema,
+  Strapped: lib.Strapped$Schema,
+  Crane: lib.Crane$Schema,
+  Hoist: lib.Hoist$Schema,
+  Freight: lib.Freight$Schema,
+  Seal: lib.Seal$Schema,
+  Haul: lib.Haul$Schema,
+  Lift: lib.Lift$Schema,
+  Load: lib.Load$Schema,
+  Mooring: lib.Mooring$Schema,
+  Measured: lib.Measured$Schema,
+  Departure: lib.Departure$Schema,
 };
 const printed = [];
 for (const [name, schema, payload] of CASES) {
@@ -895,6 +916,38 @@ fn checks() -> Vec<String> {
         checked::Batch::<String>::zod_schema(),
         checked::Pallet::ts_definition(),
         checked::Pallet::zod_schema(),
+        checked::places::Package::ts_definition(),
+        checked::places::Package::zod_schema(),
+        checked::places::Docket::ts_definition(),
+        checked::places::Docket::zod_schema(),
+        checked::places::Bundle::ts_definition(),
+        checked::places::Bundle::zod_schema(),
+        checked::places::Lone::ts_definition(),
+        checked::places::Lone::zod_schema(),
+        checked::places::Strapped::ts_definition(),
+        checked::places::Strapped::zod_schema(),
+        checked::places::Crane::ts_definition(),
+        checked::places::Crane::zod_schema(),
+        checked::places::Hoist::ts_definition(),
+        checked::places::Hoist::zod_schema(),
+        checked::places::Freight::ts_definition(),
+        checked::places::Freight::zod_schema(),
+        checked::places::Seal::ts_definition(),
+        checked::places::Seal::zod_schema(),
+        checked::places::Haul::ts_definition(),
+        checked::places::Haul::zod_schema(),
+        checked::places::Lift::ts_definition(),
+        checked::places::Lift::zod_schema(),
+        checked::places::Load::ts_definition(),
+        checked::places::Load::zod_schema(),
+        checked::places::Mooring::ts_definition(),
+        checked::places::Mooring::zod_schema(),
+        checked::places::Measured::ts_definition(),
+        checked::places::Measured::zod_schema(),
+        checked::places::Origin::ts_definition(),
+        checked::places::Origin::zod_schema(),
+        checked::places::Departure::ts_definition(),
+        checked::places::Departure::zod_schema(),
         CHECKS.to_owned(),
     ]
 }
@@ -1165,15 +1218,24 @@ fn type_check_a_date_refuses_what_is_no_date_in_every_position_that_holds_one() 
     );
 }
 
-/// Each case of the shared table and of the shapes is parsed by the schema its type publishes,
-/// and the two sides are compared as one text.
+/// Each case of the shared table, of the shapes and of the places serde writes a member at is
+/// parsed by the schema its type publishes, and the two sides are compared as one text.
 #[test]
 fn type_check_a_check_answers_under_zod_what_validate_answers() {
     let mut table = checked::parcel_cases();
     table.push(checked::manifest_case());
-    let shapes = checked::shape_cases();
+    let mut shapes = checked::shape_cases();
+    shapes.extend(checked::places::place_cases());
     let answered = format!("{}{}", checked::report(&table), checked::report(&shapes));
-    assert_eq!(answered, format!("{}{}", checked::TABLE, checked::SHAPES));
+    assert_eq!(
+        answered,
+        format!(
+            "{}{}{}",
+            checked::TABLE,
+            checked::SHAPES,
+            checked::places::PLACES
+        )
+    );
 
     let of_the_table = table.iter().map(|case| {
         let schema = if case.name == "case 6" {

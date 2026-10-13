@@ -865,7 +865,7 @@ mod a_check_the_enum_declares {
     }
 
     #[test]
-    fn test_an_enums_check_is_reported_under_the_fields_name_and_the_slots_position() {
+    fn test_an_enums_check_is_reported_where_serde_writes_the_member() {
         let short = "too short: minimum length is 1, got 0";
         let long = "too long: maximum length is 5, got 6";
         let (empty, six) = (String::new(), "abcdef".to_owned());
@@ -876,19 +876,19 @@ mod a_check_the_enum_declares {
             }
             .validate()
             .unwrap_err(),
-            vec![format!("'label': {short}")]
+            vec![format!("'Named.label': {short}")]
         );
         assert_eq!(
             Held::Named { label: six.clone() }.validate().unwrap_err(),
-            vec![format!("'label': {long}")]
+            vec![format!("'Named.label': {long}")]
         );
         assert_eq!(
             Held::Slot(empty.clone()).validate().unwrap_err(),
-            vec![format!("'0': {short}")]
+            vec![format!("'Slot': {short}")]
         );
         assert_eq!(
             Held::Pair(six.clone(), 0).validate().unwrap_err(),
-            vec![format!("'0': {long}")]
+            vec![format!("'Pair.0': {long}")]
         );
         assert_eq!(
             Held::Maybe {
@@ -896,7 +896,7 @@ mod a_check_the_enum_declares {
             }
             .validate()
             .unwrap_err(),
-            vec![format!("'note': {short}")]
+            vec![format!("'Maybe.note': {short}")]
         );
         assert_eq!(
             HeldInternal::Named { label: six.clone() }
@@ -910,15 +910,15 @@ mod a_check_the_enum_declares {
             }
             .validate()
             .unwrap_err(),
-            vec![format!("'label': {short}")]
+            vec![format!("'data.label': {short}")]
         );
         assert_eq!(
             HeldAdjacent::Slot(six).validate().unwrap_err(),
-            vec![format!("'0': {long}")]
+            vec![format!("'data': {long}")]
         );
         assert_eq!(
             HeldAdjacent::Pair(empty, 0).validate().unwrap_err(),
-            vec![format!("'0': {short}")]
+            vec![format!("'data.0': {short}")]
         );
 
         Held::Maybe { note: None }.validate().unwrap();
@@ -932,7 +932,7 @@ mod a_check_the_enum_declares {
         HeldAdjacent::Bare.validate().unwrap();
         assert_eq!(
             held_schema::validate_slot_0_value("").unwrap_err(),
-            vec![format!("'0': {short}")]
+            vec![format!("'Slot': {short}")]
         );
     }
 
@@ -944,26 +944,29 @@ mod a_check_the_enum_declares {
                 Wrapped::Boxed {
                     text: "abcd".into(),
                 },
-                format!("'text': {long}"),
+                format!("'Boxed.text': {long}"),
             ),
             (
                 Wrapped::Cowed {
                     text: Cow::Borrowed("abcd"),
                 },
-                format!("'text': {long}"),
+                format!("'Cowed.text': {long}"),
             ),
-            (Wrapped::Maybe(Some("abcd".into())), format!("'0': {long}")),
+            (
+                Wrapped::Maybe(Some("abcd".into())),
+                format!("'Maybe': {long}"),
+            ),
             (
                 Wrapped::Path {
                     at: PathBuf::from("/tmp"),
                 },
-                format!("'at': {long}"),
+                format!("'Path.at': {long}"),
             ),
             (
                 Wrapped::Shared {
                     text: Arc::from("abcd"),
                 },
-                format!("'text': {long}"),
+                format!("'Shared.text': {long}"),
             ),
         ] {
             assert_eq!(held.validate().unwrap_err(), vec![reported]);
@@ -994,7 +997,7 @@ mod a_check_the_enum_declares {
             }
             .validate()
             .unwrap_err(),
-            vec!["'label': too short: minimum length is 2, got 1"]
+            vec!["'Branded.label': too short: minimum length is 2, got 1"]
         );
         Held::Counted { count: 0 }.validate().unwrap();
 
@@ -1009,30 +1012,38 @@ mod a_check_the_enum_declares {
             }
             .validate()
             .unwrap_err(),
-            vec!["'value': too long: maximum length is 5, got 8"]
+            vec!["'Text.value': too long: maximum length is 5, got 8"]
         );
     }
 
     #[test]
     fn test_a_field_with_a_check_of_its_own_under_its_enums_is_held_to_both() {
         for (label, refused) in [
-            ("ab", Some("'label': too short: minimum length is 3, got 2")),
-            (
-                "abcdef",
-                Some("'label': too long: maximum length is 5, got 6"),
-            ),
+            ("ab", Some("too short: minimum length is 3, got 2")),
+            ("abcdef", Some("too long: maximum length is 5, got 6")),
             ("abc", None),
             ("abcde", None),
         ] {
-            let reported: Vec<String> = refused.into_iter().map(str::to_owned).collect();
+            let under = |named: &str| -> Vec<String> {
+                refused
+                    .into_iter()
+                    .map(|sentence| format!("'{named}': {sentence}"))
+                    .collect()
+            };
             let external = Held::Own {
                 label: label.to_owned(),
             };
             let internal = HeldInternal::Own {
                 label: label.to_owned(),
             };
-            assert_eq!(external.validate().err().unwrap_or_default(), reported);
-            assert_eq!(internal.validate().err().unwrap_or_default(), reported);
+            assert_eq!(
+                external.validate().err().unwrap_or_default(),
+                under("Own.label")
+            );
+            assert_eq!(
+                internal.validate().err().unwrap_or_default(),
+                under("label")
+            );
         }
 
         let (own, of_the_enum) = (
@@ -3255,14 +3266,14 @@ fn test_every_tagged_flavor_publishes_validate_for_its_constrained_members() {
         },
     }
 
-    let expected = vec!["'slug': too short: minimum length is 2, got 1".to_owned()];
+    let under = |named: &str| vec![format!("'{named}': too short: minimum length is 2, got 1")];
     assert_eq!(
         External::One {
             slug: "A".to_owned()
         }
         .validate()
         .unwrap_err(),
-        expected
+        under("One.slug")
     );
     assert_eq!(
         Internal::One {
@@ -3270,7 +3281,7 @@ fn test_every_tagged_flavor_publishes_validate_for_its_constrained_members() {
         }
         .validate()
         .unwrap_err(),
-        expected
+        under("slug")
     );
     assert_eq!(
         Adjacent::One {
@@ -3278,7 +3289,7 @@ fn test_every_tagged_flavor_publishes_validate_for_its_constrained_members() {
         }
         .validate()
         .unwrap_err(),
-        expected
+        under("data.slug")
     );
 }
 
@@ -3523,7 +3534,7 @@ fn test_every_variant_shape_reaches_the_accessor() {
         }
         .validate()
         .unwrap_err(),
-        vec!["'slug': too short: minimum length is 2, got 1".to_owned()]
+        vec!["'Named.slug': too short: minimum length is 2, got 1".to_owned()]
     );
     EveryShape::Bare {
         note: "A".to_owned(),
@@ -3542,7 +3553,7 @@ fn test_every_variant_shape_reaches_the_accessor() {
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
 ))]
 #[test]
-fn test_a_tagged_tuple_variants_slot_is_checked_under_its_position() {
+fn test_a_tagged_tuple_variants_slot_is_checked_where_serde_writes_it() {
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug)]
     pub enum SlotExternal {
@@ -3564,55 +3575,58 @@ fn test_a_tagged_tuple_variants_slot_is_checked_under_its_position() {
         ),
     }
 
-    let code = vec!["'0': does not match pattern '^[A-Z]{3}$'".to_owned()];
+    // serde writes a variant under its name, or under the content key the enum names.
+    let code = |held: &str| vec![format!("'{held}': does not match pattern '^[A-Z]{{3}}$'")];
     assert_eq!(
         SlotExternal::Code("abc".to_owned()).validate().unwrap_err(),
-        code
+        code("Code")
     );
     assert_eq!(
         SlotAdjacent::Code("abc".to_owned()).validate().unwrap_err(),
-        code
+        code("data")
     );
     SlotExternal::Code("ABC".to_owned()).validate().unwrap();
     SlotAdjacent::Code("ABC".to_owned()).validate().unwrap();
 
-    let pair = vec![
-        "'0': too short: minimum length is 2, got 1".to_owned(),
-        "'1': too small: minimum is 1, got 0".to_owned(),
-    ];
+    let pair = |held: &str| {
+        vec![
+            format!("'{held}.0': too short: minimum length is 2, got 1"),
+            format!("'{held}.1': too small: minimum is 1, got 0"),
+        ]
+    };
     assert_eq!(
         SlotExternal::Pair("a".to_owned(), 0)
             .validate()
             .unwrap_err(),
-        pair
+        pair("Pair")
     );
     assert_eq!(
         SlotAdjacent::Pair("a".to_owned(), 0)
             .validate()
             .unwrap_err(),
-        pair
+        pair("data")
     );
     assert_eq!(
         SlotExternal::Pair("ab".to_owned(), 0)
             .validate()
             .unwrap_err(),
-        pair[1..]
+        pair("Pair")[1..]
     );
     assert_eq!(
         SlotAdjacent::Pair("a".to_owned(), 1)
             .validate()
             .unwrap_err(),
-        pair[..1]
+        pair("data")[..1]
     );
     SlotExternal::Pair("ab".to_owned(), 1).validate().unwrap();
 
     assert_eq!(
         slot_external_schema::validate_code_0_value("abc").unwrap_err(),
-        code
+        code("Code")
     );
     assert_eq!(
         slot_adjacent_schema::validate_pair_1_value(&0).unwrap_err(),
-        pair[1..]
+        pair("data")[1..]
     );
 }
 
@@ -3815,14 +3829,14 @@ fn test_a_tagged_slot_is_reached_through_its_wrappers() {
         SlotWrapped::Tags(vec!["long enough".to_owned()])
             .validate()
             .unwrap_err(),
-        vec!["'0': too short: minimum length is 2, got 1".to_owned()],
+        vec!["'Tags': too short: minimum length is 2, got 1".to_owned()],
         "a slot typed as a list is counted, as a named member is"
     );
     assert_eq!(
         SlotWrapped::Note(Some("e".to_owned()))
             .validate()
             .unwrap_err(),
-        vec!["'0': too short: minimum length is 2, got 1".to_owned()]
+        vec!["'Note': too short: minimum length is 2, got 1".to_owned()]
     );
     SlotWrapped::Note(None).validate().unwrap();
 }
