@@ -714,7 +714,7 @@ mod a_read_refuses_what_validate_refuses {
             serde_json::from_str::<Crane>(r#"{"loadCode":"a"}"#)
                 .unwrap_err()
                 .to_string(),
-            "'loadCode': too short: minimum length is 2, got 1 at line 1 column 16"
+            "'loadCode': too short: minimum length is 2, got 1"
         );
         let read: Crane = serde_json::from_str(r#"{"loadCode":"ab"}"#).unwrap();
         assert_eq!(read.load_code, Code("ab".to_owned()));

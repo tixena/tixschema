@@ -7785,17 +7785,31 @@ fn decode_with_reads_a_constrained_brand_with_the_brands_own_reader() {
         "#[derive(Deserialize)] #[serde(transparent)] pub struct DecodeCode(pub String);",
     );
     for emitted in [
-        "# [serde (deserialize_with = \"decode_code_schema::deserialize_value\")] pub String",
-        "pub fn deserialize_value < 'de , D > (deserializer : D)",
         "decode_code_schema :: value_leaf (found , Self :: decode_with_read_unjudged , \
          | read | serde_json :: to_value (read) . ok () , path . to_vec () , \
          & [(\"String\" , & [] , 0)] , issue)",
-        // A brand has no unjudged read of its own, so the one it is listed from is its own reader.
-        "trait ReadUnjudged < 'de > : serde :: Deserialize < 'de >",
+        // The read a brand is listed from is its unjudged read, held to the brand's own bound.
+        "let read = < Self > :: model_schema_read_unjudged (deserializer) ? ; read . \
+         model_schema_validate_bound () . map_err (",
+        "pub fn model_schema_validate_bound (& self) -> :: core :: result :: Result < () , :: \
+         std :: vec :: Vec < :: std :: string :: String >> { decode_code_schema :: \
+         validate_value (& self . 0 . to_string ()) }",
+        "pub fn model_schema_read_unjudged < 'de , D > (deserializer : D)",
     ] {
         assert!(
             expanded.contains(emitted),
             "missing `{emitted}`, got: {expanded}"
+        );
+    }
+    // The slot carries no hook, and the brand's own read is the one the macro writes.
+    assert!(
+        expanded.starts_with("pub struct DecodeCode (pub String) ;"),
+        "got: {expanded}"
+    );
+    for unwritten in ["deserialize_value", "deserialize_with"] {
+        assert!(
+            !expanded.contains(unwritten),
+            "found `{unwritten}` in: {expanded}"
         );
     }
     assert_eq!(expanded.matches("pub mod decode_code_schema {").count(), 1);
@@ -9762,21 +9776,15 @@ fn constrained_brand_inner_spanned_tokens(source: &str, inner: &str) -> (usize, 
     let validation =
         super::build_branded_validation(&args, &[], item.fields.iter().next().unwrap()).unwrap();
     let module_ident = syn::Ident::new("slug_id_schema", proc_macro2::Span::call_site());
-    let (_, _, validate_method) = super::inject_branded_serde_attrs(
-        item,
-        Some(&validation),
-        false,
-        &[],
-        "slug_id_schema",
-        &module_ident,
-    );
+    let bound = super::BrandBound::of(Some(&validation), &module_ident);
+    let validate_method = super::with_branded_checks(bound.held.as_ref(), &[]);
     let count = |tokens| {
         located_source_texts(tokens)
             .iter()
             .filter(|text| text.as_str() == inner)
             .count()
     };
-    (count(&validation.deserialize_fn), count(&validate_method))
+    (count(&bound.alone), count(&validate_method))
 }
 
 #[cfg(all(
@@ -9785,11 +9793,11 @@ fn constrained_brand_inner_spanned_tokens(source: &str, inner: &str) -> (usize, 
 ))]
 #[test]
 fn constrained_to_string_calls_carry_the_inner_fields_location() {
-    let (deserializer, validate_method) =
+    let (bound_alone, validate_method) =
         constrained_brand_inner_spanned_tokens("pub struct SlugId(pub Tags);", "Tags");
     assert_eq!(
-        deserializer, 5,
-        "two interpolated type names plus the three respanned to_string() tokens"
+        bound_alone, 3,
+        "the three respanned to_string() tokens alone"
     );
     assert_eq!(
         validate_method, 3,
@@ -9798,7 +9806,8 @@ fn constrained_to_string_calls_carry_the_inner_fields_location() {
 }
 
 /// A constrained brand's emitted text for an inner spelled `inner`, as the three streams it is made
-/// of: the validator, the deserializer, and the `validate()` method that calls into the first.
+/// of: the validator, the method that answers for the bound alone, and the `validate()` method,
+/// each of which calls into the first.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -9825,23 +9834,17 @@ fn brand_emission_under(
     let validation =
         super::build_branded_validation(&args, &[], item.fields.iter().next().unwrap()).unwrap();
     let module_ident = syn::Ident::new(module, proc_macro2::Span::call_site());
-    let (_, _, validate_method) = super::inject_branded_serde_attrs(
-        item,
-        Some(&validation),
-        false,
-        &[],
-        module,
-        &module_ident,
-    );
+    let bound = super::BrandBound::of(Some(&validation), &module_ident);
+    let validate_method = super::with_branded_checks(bound.held.as_ref(), &[]);
     (
-        validation.validate_fn.to_string(),
-        validation.deserialize_fn.to_string(),
+        bound.module_items.to_string(),
+        bound.alone.to_string(),
         validate_method.to_string(),
     )
 }
 
-/// A brand over a list is counted by the validator and the hook a list field gets, under the
-/// brand's own names and reporting under no field.
+/// A brand over a list is counted by the validator a list field gets, under the brand's own name
+/// and reporting under no field.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -9849,25 +9852,33 @@ fn brand_emission_under(
 #[test]
 fn a_brand_over_a_list_counts_its_items_where_a_string_brand_measures_its_text() {
     let lengths = || quote::quote! { minLength = 1, maxLength = 3 };
-    let (validate_fn, deserialize_fn, validate_method) =
+    let (validate_fn, bound_alone, validate_method) =
         brand_emission_under("Vec<Part>", "name_config_schema", lengths());
+    let field_module = emitted_list_module("Vec<Part>");
     assert_eq!(
-        format!("{validate_fn} {deserialize_fn}"),
-        emitted_list_module("Vec<Part>")
+        validate_fn,
+        field_module[..field_module.find(" pub fn deserialize_field").unwrap()]
             .replace("validate_field_value", "validate_value")
-            .replace("deserialize_field", "deserialize_value")
             .replace("\"'{}': {}, got {}\" , \"field\" ,", "\"{}, got {}\" ,")
+    );
+    assert!(
+        bound_alone.contains(
+            "pub fn model_schema_validate_bound (& self) -> :: core :: result :: Result < () , :: \
+             std :: vec :: Vec < :: std :: string :: String >> { name_config_schema :: \
+             validate_value (& self . 0) }"
+        ),
+        "got: {bound_alone}"
     );
     assert!(
         validate_method.contains("name_config_schema :: validate_value (& self . 0)"),
         "got: {validate_method}"
     );
 
-    let (_, boxed_hook, boxed_method) =
+    let (_, boxed_bound, boxed_method) =
         brand_emission_under("Box<[String]>", "name_config_schema", lengths());
     assert!(
-        boxed_hook.contains("H0 : :: core :: ops :: Deref < Target = L >"),
-        "got: {boxed_hook}"
+        boxed_bound.contains("{ name_config_schema :: validate_value (& * self . 0) }"),
+        "got: {boxed_bound}"
     );
     assert!(
         boxed_method.contains("name_config_schema :: validate_value (& * self . 0)"),
@@ -9883,7 +9894,7 @@ fn a_brand_over_a_list_counts_its_items_where_a_string_brand_measures_its_text()
 #[test]
 fn the_constrained_path_renders_the_same_to_string_calls_it_always_has() {
     for spelling in ["String", "Option<PathBuf>", "Slug"] {
-        let (validate_fn, deserialize_fn, validate_method) =
+        let (validate_fn, bound_alone, validate_method) =
             constrained_brand_emission(spelling, "slug_id_schema");
         assert!(
             validate_fn.starts_with(
@@ -9893,8 +9904,9 @@ fn the_constrained_path_renders_the_same_to_string_calls_it_always_has() {
             "for {spelling}, got: {validate_fn}"
         );
         assert!(
-            deserialize_fn.contains("validate_value (& v . to_string ())"),
-            "for {spelling}, got: {deserialize_fn}"
+            bound_alone
+                .contains("{ slug_id_schema :: validate_value (& self . 0 . to_string ()) }"),
+            "for {spelling}, got: {bound_alone}"
         );
         assert!(
             validate_method
@@ -9919,7 +9931,7 @@ fn a_path_brand_is_checked_through_its_lossy_rendering() {
         "Rc<std::path::Path>",
         "Box<Arc<Path>>",
     ] {
-        let (validate_fn, deserialize_fn, validate_method) =
+        let (validate_fn, bound_alone, validate_method) =
             constrained_brand_emission(spelling, "asset_path_schema");
         assert!(
             validate_fn.starts_with(
@@ -9930,8 +9942,8 @@ fn a_path_brand_is_checked_through_its_lossy_rendering() {
             "for {spelling}, got: {validate_fn}"
         );
         assert!(
-            deserialize_fn.contains("validate_value (& v)"),
-            "for {spelling}, got: {deserialize_fn}"
+            bound_alone.contains("{ asset_path_schema :: validate_value (& self . 0) }"),
+            "for {spelling}, got: {bound_alone}"
         );
         assert!(
             validate_method.contains("asset_path_schema :: validate_value (& self . 0)"),
@@ -15166,7 +15178,7 @@ fn validate_is_written_once_in_the_types_own_impl() {
 
 /// A generic brand's `validate()` hands the value to the function that reads it as its declared
 /// default, under no bound the brand's author did not write, and no function answers a reference
-/// to that default. The read keeps the bound its hook renders the value under.
+/// to that default. The read asks of the parameter what serde's derive asks, and no `Display`.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -15191,12 +15203,26 @@ fn a_generic_brands_checks_are_run_by_the_function_that_asks_which_filling_it_is
          to_string ()) } else { :: core :: result :: Result :: Ok (()) } }",
         "if let :: core :: result :: Result :: Err (reported) = asked_code_schema :: \
          validate_at_declared_default (& self . 0) { errors . extend (reported) ; }",
-        "bound (deserialize = \"CodeType: serde::de::DeserializeOwned + std::fmt::Display\")",
-        "T : serde :: Deserialize < 'de > + :: std :: fmt :: Display",
+        "pub fn model_schema_read_unjudged < 'de , D > (deserializer : D) -> :: core :: result \
+         :: Result < Self , D :: Error > where D : serde :: Deserializer < 'de > , CodeType : \
+         serde :: Deserialize < 'de > , {",
+        "# [serde (remote = \"AskedCode\")] # [serde (bound (deserialize = \"CodeType : serde :: \
+         Deserialize < 'de >\"))] # [serde (transparent)] struct ModelSchemaRemote < CodeType > \
+         (CodeType) ;",
     ] {
         assert!(generic.contains(written), "no `{written}` in: {generic}");
     }
-    assert!(!generic.contains("Option < & String >"), "got: {generic}");
+    for unwritten in [
+        "Option < & String >",
+        "DeserializeOwned",
+        "deserialize_value",
+        "deserialize_with",
+    ] {
+        assert!(
+            !generic.contains(unwritten),
+            "found `{unwritten}` in: {generic}"
+        );
+    }
 
     for (args, source) in [
         (
@@ -15221,7 +15247,8 @@ fn a_generic_brands_checks_are_run_by_the_function_that_asks_which_filling_it_is
 }
 
 /// A declared default that writes a lifetime is compared and read at the lifetime of the borrow,
-/// so a value is never read at a lifetime longer than its own. The read hook compares as it did.
+/// so a value is never read at a lifetime longer than its own. Nothing else asks which filling
+/// the brand holds.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -15238,17 +15265,15 @@ fn a_default_that_writes_a_lifetime_is_read_at_the_borrows_own() {
     )
     .to_string();
     assert!(!rendered.contains("compile_error"), "got: {rendered}");
-    for written in [
-        "pub fn validate_at_declared_default < 'held , T > (held : & 'held T) -> :: core :: \
-         result :: Result < () , :: std :: vec :: Vec < :: std :: string :: String >> { if \
-         type_identity :: < T > () == type_identity :: < & 'held str > () { let held = unsafe { \
-         & * :: core :: ptr :: from_ref (held) . cast :: < & 'held str > () } ; validate_value \
-         (& held . to_string ()) } else { :: core :: result :: Result :: Ok (()) } }",
-        "if type_identity :: < T > () == type_identity :: < & 'static str > () { validate_value \
-         (& v . to_string ())",
-    ] {
-        assert!(rendered.contains(written), "no `{written}` in: {rendered}");
-    }
+    let written = "pub fn validate_at_declared_default < 'held , T > (held : & 'held T) -> :: \
+                   core :: result :: Result < () , :: std :: vec :: Vec < :: std :: string :: \
+                   String >> { if type_identity :: < T > () == type_identity :: < & 'held str > \
+                   () { let held = unsafe { & * :: core :: ptr :: from_ref (held) . cast :: < & \
+                   'held str > () } ; validate_value (& held . to_string ()) } else { :: core :: \
+                   result :: Result :: Ok (()) } }";
+    assert!(rendered.contains(written), "no `{written}` in: {rendered}");
+    assert_eq!(rendered.matches("== type_identity ::").count(), 1);
+    assert!(!rendered.contains("deserialize_value"), "got: {rendered}");
 }
 
 /// Every lifetime a type writes is replaced, and one a `for<...>` or a signature binds is not.
@@ -15354,4 +15379,59 @@ fn a_parenthesis_inside_a_quoted_text_does_not_end_a_map() {
         viewed,
         "z.record(z.string().meta({ description: \"a ) b\" }), Pair$SchemaSelf(left, right))"
     );
+}
+
+/// A brand that carries no bound and names no function keeps the read serde's derive writes it:
+/// its item is emitted as it was written, and nothing beside it is a read of the macro's.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn a_brand_with_no_rule_gains_no_read_of_the_macros() {
+    for (args, source, emitted) in [
+        (
+            "",
+            "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct UnruledBrand(pub \
+             String);",
+            "# [derive (Serialize , Deserialize)] # [serde (transparent)] pub struct UnruledBrand \
+             (pub String) ;",
+        ),
+        (
+            "no_display",
+            "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct UnruledNamed { pub \
+             rows: Vec<String> }",
+            "# [derive (Serialize , Deserialize)] # [serde (transparent)] pub struct UnruledNamed \
+             { pub rows : Vec < String > }",
+        ),
+        (
+            "default_types(IdType = String)",
+            "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct \
+             UnruledGeneric<IdType>(pub IdType);",
+            "# [derive (Serialize , Deserialize)] # [serde (transparent)] pub struct \
+             UnruledGeneric < IdType > (pub IdType) ;",
+        ),
+        (
+            "decode_with",
+            "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct UnruledDecoded(pub \
+             String);",
+            "# [derive (Serialize , Deserialize)] # [serde (transparent)] pub struct \
+             UnruledDecoded (pub String) ;",
+        ),
+    ] {
+        let expanded = expansion_under(args, source);
+        assert!(
+            expanded.starts_with(emitted),
+            "for {source}, got: {expanded}"
+        );
+        for unwritten in [
+            "pub fn model_schema_read_unjudged",
+            "model_schema_validate_bound",
+            "ModelSchemaRemote",
+            "deserialize_with",
+            "validate_value",
+        ] {
+            assert!(
+                !expanded.contains(unwritten),
+                "for {source}, found `{unwritten}` in: {expanded}"
+            );
+        }
+    }
 }

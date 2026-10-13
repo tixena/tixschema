@@ -191,6 +191,20 @@ pub mod a_message_annotated_with_a_constraint {
         pub label: Label,
     }
 
+    /// A brand that names a check alone, which a schema surface hangs no hook for.
+    #[model_schema(check = ["bayInUpperCase"])]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(transparent)]
+    pub struct Bay(pub String);
+
+    /// A message that holds two brands, each with a rule of its own.
+    #[model_schema()]
+    #[derive(Deserialize, Serialize)]
+    pub struct DockRequest {
+        pub bay: Bay,
+        pub slug: Slug,
+    }
+
     /// Records every message that reached it, which is how a test says an invalid one did not.
     pub struct GateBackEnd {
         reached: Mutex<Vec<String>>,
@@ -213,6 +227,8 @@ pub mod a_message_annotated_with_a_constraint {
     #[service_schema(transports = ["amqp_rpc"])]
     pub trait GateService<Ctx> {
         async fn admit(&self, ctx: &Ctx, req: GateRequest) -> Result<Admitted, GateError>;
+
+        async fn dock(&self, ctx: &Ctx, req: DockRequest) -> Result<Admitted, GateError>;
 
         async fn enrol(&self, ctx: &Ctx, req: EnrolRequest) -> Result<Admitted, GateError>;
 
@@ -244,6 +260,15 @@ pub mod a_message_annotated_with_a_constraint {
         async fn admit(&self, _ctx: &(), req: GateRequest) -> Result<Admitted, GateError> {
             ready(()).await;
             self.reached.lock().unwrap().push(req.organization_id);
+            Ok(Admitted { admitted: true })
+        }
+
+        async fn dock(&self, _ctx: &(), req: DockRequest) -> Result<Admitted, GateError> {
+            ready(()).await;
+            self.reached
+                .lock()
+                .unwrap()
+                .push(format!("{}:{}", req.bay.0, req.slug.0));
             Ok(Admitted { admitted: true })
         }
 
@@ -368,6 +393,13 @@ pub mod a_message_annotated_with_a_constraint {
         fn settled(&self) -> Vec<String> {
             self.settled.lock().unwrap().clone()
         }
+    }
+
+    fn bay_in_upper_case(value: &Bay) -> Result<(), Vec<String>> {
+        if value.0.chars().any(char::is_lowercase) {
+            return Err(vec!["a bay is upper case".to_owned()]);
+        }
+        Ok(())
     }
 
     /// Refuses a short ledger id as the payload is read, in the words a generated validator would
@@ -627,6 +659,29 @@ pub mod a_message_annotated_with_a_constraint {
         ))
         .unwrap();
         (service.reached(), reply.faults())
+    }
+
+    /// Each brand a request holds is the validator's to report, so one fault holds what a brand's
+    /// check and another brand's bound refuse.
+    #[test]
+    fn a_request_is_refused_with_every_message_of_the_brands_it_holds() {
+        let (reached, reported) = dispatched("dock", br#"{"bay":"north","slug":"ab"}"#);
+        assert!(reached.is_empty(), "got: {reached:?}");
+        assert_eq!(
+            reported[0].kind(),
+            gate_service_schema::ServiceFaultKind::FailedValidation,
+            "got detail: {}",
+            reported[0].detail()
+        );
+        assert_eq!(
+            reported[0].detail(),
+            "'bay': a bay is upper case; 'slug': too short: minimum length is 3, got 2"
+        );
+        assert_eq!(reported[0].field(), Some("bay"));
+        assert_eq!(
+            dispatched("dock", br#"{"bay":"NORTH","slug":"abc"}"#).0,
+            vec!["NORTH:abc".to_owned()]
+        );
     }
 
     #[test]

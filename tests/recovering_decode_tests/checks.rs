@@ -46,6 +46,22 @@ struct CheckedDepot {
 #[serde(transparent)]
 struct CheckedCode(String);
 
+/// A brand held to a bound and to a check. A brand's bound is read with its schema surface, and
+/// the declaration is refused in a build with none.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[model_schema(decode_with, minLength = 3, check = ["sealInUpperCase"])]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+struct CheckedSeal(String);
+
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[model_schema(decode_with)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+struct CheckedSealed {
+    seal: CheckedSeal,
+    seals: Vec<CheckedSeal>,
+}
+
 #[model_schema(decode_with)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct CheckedLabelled {
@@ -155,6 +171,14 @@ fn upper_case(value: &CheckedCode) -> Result<(), Vec<String>> {
 fn with_a_route(value: &CheckedRoute) -> Result<(), Vec<String>> {
     if value.stops.is_empty() {
         return Err(vec!["'stops': a route makes at least one stop".to_owned()]);
+    }
+    Ok(())
+}
+
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+fn seal_in_upper_case(value: &CheckedSeal) -> Result<(), Vec<String>> {
+    if value.0.chars().any(char::is_lowercase) {
+        return Err(vec!["a seal is upper case".to_owned()]);
     }
     Ok(())
 }
@@ -435,6 +459,55 @@ fn a_message_with_no_lead_is_at_the_root() {
         [
             "code: invalid: expected Unknown, found String(\"ab\"): a code is upper case",
             "stops: invalid: expected Unknown, found Array []: a route makes at least one stop",
+        ]
+    );
+}
+
+/// The type that holds a brand reads it with no judgement of its own, so one report lists what
+/// the brand's bound refuses and what its check refuses.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn a_brands_bound_and_its_check_are_listed_in_one_read_of_the_type_that_holds_it() {
+    let held =
+        CheckedSealed::from_value_with(json!({ "seal": "ab", "seals": ["ABC", "a"] }), |_, _| {
+            checked_sealed_schema::Verdict::Reject
+        });
+    assert_eq!(
+        lines(&held.unwrap_err()),
+        [
+            "seal: invalid: expected String, found String(\"ab\"): too short: minimum length is \
+             3, got 2",
+            "seals[1]: invalid: expected String, found String(\"a\"): too short: minimum length \
+             is 3, got 1",
+            "seal: invalid: expected Unknown, found String(\"ab\"): a seal is upper case",
+            "seals[1]: invalid: expected Unknown, found String(\"a\"): a seal is upper case",
+        ]
+    );
+    let kept = CheckedSealed::from_value_with(json!({ "seal": "ABC", "seals": [] }), |_, _| {
+        checked_sealed_schema::Verdict::Reject
+    });
+    assert_eq!(
+        kept,
+        Ok(CheckedSealed {
+            seal: CheckedSeal("ABC".to_owned()),
+            seals: Vec::new(),
+        })
+    );
+    let upper =
+        CheckedSeal::from_value_with(json!("AB"), |_, _| checked_seal_schema::Verdict::Reject);
+    assert_eq!(
+        lines(&upper.unwrap_err()),
+        [
+            "the value itself: invalid: expected String, found String(\"AB\"): too short: minimum \
+             length is 3, got 2"
+        ]
+    );
+    let lower =
+        CheckedSeal::from_value_with(json!("abc"), |_, _| checked_seal_schema::Verdict::Reject);
+    assert_eq!(
+        lines(&lower.unwrap_err()),
+        [
+            "the value itself: invalid: expected Unknown, found String(\"abc\"): a seal is upper case"
         ]
     );
 }

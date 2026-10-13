@@ -1461,11 +1461,11 @@ use serde::{Deserialize, Serialize};
 pub struct Tags(pub Vec<String>);
 ```
 
-A generic brand carries the requirement as a `Display` bound on its `Display` impl, and on its read where it carries string checks, so a non-`Display` type argument (e.g. `DocumentId<Vec<String>>`) is rejected where the brand is displayed or read rather than where it is declared.
+A generic brand carries the requirement as a `Display` bound on its `Display` impl, so a non-`Display` type argument (e.g. `DocumentId<Vec<String>>`) is rejected where the brand is displayed rather than where it is declared.
 
 #### Branded Newtype Validation Constraints
 
-You can add `pattern`, `minLength`, and `maxLength` constraints directly on the `#[model_schema()]` attribute for branded newtypes. Constraints are enforced in three places: the generated Zod schema, serde deserialization, and a `validate()` method on the type. A brand refuses in a read of its own, through a hook on its slot: its read stops at the first value that breaks one of its checks, where the read of a struct or an enum [judges the whole value once it is read](#a-read-refuses-what-validate-refuses).
+You can add `pattern`, `minLength`, and `maxLength` constraints directly on the `#[model_schema()]` attribute for branded newtypes. Constraints are enforced in three places: the generated Zod schema, serde deserialization, and a `validate()` method on the type. A brand is read as a struct or an enum is: its own read, then `validate()`, so a read [refuses what `validate()` refuses](#a-read-refuses-what-validate-refuses), with every message, and a type that holds the brand reads it with no judgement of its own and names it at its full path.
 
 The three checks are written on a branded newtype, and on [an enum](#a-check-written-on-the-enum), which holds every string it carries to them. On a struct that is no brand and on a type alias they are refused at expansion, and a check on a field is written in `#[model_schema_prop(...)]`.
 
@@ -1524,7 +1524,7 @@ export const DocumentId$SchemaDefault = DocumentId$SchemaFactory(
 
 `validate()` is written in the brand's own `impl<IdType> DocumentId<IdType>`, beside the schema delegates and under no bound the declaration does not write, so every filling has it and a type that holds the brand at any filling runs it. The string checks run where the filling is the declared default and at no other: the method asks which filling it holds. A `validate` of your own on one filling [does not build](#a-type-that-declares-a-parameter).
 
-The serde read follows the same rule: the generated `deserialize_with` hook runs the checks only when the filling being read is the declared default, and reads any other filling unconstrained, the same as `$SchemaFactory`. The `Display` the hook renders the value through is asked by the read alone, so the brand itself is a type at a filling that has none, and a holder's parameter needs no bound to hold it:
+The serde read follows the same rule, being the brand's own read followed by `validate()`: it refuses a value of the declared default that breaks a check, and reads any other filling as it is, the same as `$SchemaFactory`. Neither asks `Display` of the parameter, so the brand is a type, and is read, at a filling that has none, and a holder's parameter needs no bound of the brand's to hold it:
 
 ```rust
 #[model_schema(minLength = 2, default_types(CodeType = String))]
@@ -1534,7 +1534,6 @@ pub struct Code<CodeType>(pub CodeType);
 
 #[model_schema(default_types(CodeType = String))]
 #[derive(Serialize, Deserialize)]
-#[serde(bound(deserialize = "CodeType: serde::de::DeserializeOwned + std::fmt::Display"))]
 pub struct Bin<CodeType> {
     pub code: Code<CodeType>,
     pub codes: Vec<Code<CodeType>>,
@@ -2165,7 +2164,7 @@ Which kind a refused payload is reported under is `serde_json`'s own classificat
 
 The TypeScript dispatcher raises only the second of the two, and that is the same line rather than a different one: it is handed a payload somebody already read out of the bytes, so by the time it runs the bytes *were* a document and the only thing left to be wrong is what the document said. Bytes that are no document at all fail before it, in whatever turns them into the value it takes. So one defect reaches a call site under one kind whichever language served it.
 
-The field is named wherever the refusal named one: a validator's report names it in single quotes, and serde names it in backticks for a missing or unknown key. A bound declared on a field's *type* rather than on the field -- a constrained brand -- is checked as the value is read, and the brand's own report names nothing, the brand being the value rather than a member of anything; the field holding it writes its own wire key into the refusal, so `'organizationId': too short: minimum length is 3, got 2` is what a caller reads, one quoted run holding the whole name. A type mismatch is the one refusal left carrying no field: serde says what it expected and not where, and inventing a name for it would send a caller to the wrong key.
+The field is named wherever the refusal named one: a validator's report names it in single quotes, and serde names it in backticks for a missing or unknown key. A bound declared on a field's *type* rather than on the field -- a constrained brand -- is the validator's to report as every other is: the brand's own report names nothing, the brand being the value rather than a member of anything, and the message holding it writes the field's wire key into the report, so `'organizationId': too short: minimum length is 3, got 2` is what a caller reads, one quoted run holding the whole name, beside every other message of the request. A type mismatch is the one refusal left carrying no field: serde says what it expected and not where, and inventing a name for it would send a caller to the wrong key.
 
 #### What a Service Generates
 
@@ -3662,6 +3661,41 @@ The messages come in the order `validate()` reports them: member by member as de
 | in a field read through a `deserialize_with` or a `with` of your own | by whatever that function calls |
 | by a type with no `#[model_schema()]` | by itself, as it is read: two broken parcels in a `Vec<Parcel>` of such a type answer the first one's messages, `... at line 1 column 58` |
 
+**A branded newtype is read the same way.** A [brand](#branded-newtypes) that carries a `pattern`, a `minLength` or a `maxLength`, or names a [check](#checks-check), publishes `validate()`, and its read is its own read followed by `validate()`. A type that holds the brand reads it with no judgement, in the places of the table above, and names each broken one at its full path:
+
+```rust
+#[model_schema(minLength = 2, check = ["labelInUpperCase"])]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Label(pub String);
+
+fn label_in_upper_case(value: &Label) -> Result<(), Vec<String>> {
+    if value.0.chars().any(char::is_lowercase) {
+        return Err(vec!["a label is upper case".to_owned()]);
+    }
+    Ok(())
+}
+
+#[model_schema(no_display, minLength = 3)]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Dir(pub PathBuf);
+
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+pub struct Listing {
+    pub listed: Vec<Dir>,
+}
+
+serde_json::from_str::<Label>(r#""a""#);
+// Err: too short: minimum length is 2, got 1; a label is upper case
+
+serde_json::from_str::<Listing>(r#"{"listed":["/a","/etc","/b"]}"#);
+// Err: 'listed.0': too short: minimum length is 3, got 2; 'listed.2': too short: minimum length is 3, got 2
+```
+
+A brand that carries no bound and names no check publishes no `validate()`, and keeps the `Deserialize` serde's derive writes it. One position reads a brand held to its bound while the members are still being read: [a member of an `#[serde(untagged)]` enum](#what-is-checked-while-the-members-are-read).
+
 **What `validate()` is for.** A value built in code, and a value changed after it was read:
 
 ```rust
@@ -3674,6 +3708,7 @@ parcel.validate();
 **What the macro writes.** `#[derive(Deserialize)]` is taken off the item, and serde's derive runs on a private copy of it, declared inside a function the type gains: `model_schema_read_unjudged`, the read alone, public so that a holder in another module can call it. The `Deserialize` of the type calls it and then `validate()`. The copy keeps the item's `serde` and `cfg` attributes and no other, so an attribute of another macro written on the item or on a member is not on the copy.
 
 - `model_schema_read_unjudged` is a name of the type's own: a function of yours under that name on the same type is a duplicate definition (E0592). A type declared with [`decode_with`](#recovering-decode-decode_with) gains `decode_with_read_unjudged` beside it.
+- A brand that carries a `pattern`, a `minLength` or a `maxLength` gains `model_schema_validate_bound` beside `validate()`: what the bound alone answers of the value, the checks the brand names apart. A member of an `#[serde(untagged)]` enum is held to it as it is read, and the recovering decode lists the brand from a read held to it. It is a name of the type's own as well.
 - The `Deserialize` is written under the bounds serde's derive writes. A container `#[serde(bound = ...)]` is used as written. Without one, each type parameter a read field names is asked `Deserialize<'de>`, a parameter used only in `PhantomData`, in a skipped field or in a field read through `with` or `deserialize_with` is asked nothing to read, a `default` asks `Default` of what it builds, and `'de` outlives each lifetime serde borrows for: a `&'a str`, a `&'a [u8]`, and what a `#[serde(borrow)]` names. A type that borrows for `'static` is read at `'static`.
 - A unit struct with a check gains the `validate()` call in the `Deserialize` the macro already writes for it.
 - `#[serde(remote = ...)]`, `from`, `try_from` and `into` on a type that publishes `validate()` and derives `Deserialize` are refused, the macro having no place to put a judgement behind a conversion it does not write:
@@ -3687,7 +3722,7 @@ error: model_schema: type `Sealed`: `#[serde(try_from = ...)]` puts a conversion
 A field still generates both helpers into its schema module: `validate_{field}_value()`, which `validate()` calls, and `deserialize_{field}`, a serde hook an author may hang on a field of their own accord. A borrowed `&str` field and a borrowed list generate the validator alone. Two positions are checked while the members are read, ahead of the type's `validate()`, and both have to be:
 
 - **A member of an `#[serde(untagged)]` enum**, a struct variant's named member and a newtype variant's slot alike, where whether the member is admissible is what chooses which variant the payload is. The check is part of reading the value rather than part of judging it -- exactly as it is under `anyOf` and `z.union` on the two schema surfaces the same type publishes -- and `validate()` cannot stand in for it, since by the time it runs the variant has already been chosen. A wrapped member's hook deserializes the member's own declared type and then runs the same walk `validate()` runs over it; the two differ in that `validate()` answers with every violation in the instance while a `Deserializer` answers with one line, so the read stops at the first value that broke a bound and hands serde that value's violations joined by `; `. A borrowed `&str` member and a borrowed list are the constrained members that choose no variant: each is read as it is with no bound written, the first variant whose shape fits taking the payload, and the enum's read then refuses the value where it breaks the bound.
-- **A constrained brand**, where the same reasoning applies wherever the brand is used as an untagged member. The hook is on the brand's type rather than on the field, so it is one hook covering every position the brand appears in.
+- **A constrained brand held by a member of an `#[serde(untagged)]` enum**, where the same reasoning applies: the member is held to the brand's `pattern`, `minLength` and `maxLength` as it is read, so a value the brand's bound refuses takes that variant out of the running. A [check](#checks-check) the brand names chooses no variant, as no check does: the variant is chosen first, and the enum's read then refuses the value with the check's messages. Held anywhere else, a brand is read with no judgement, as a model is, and the holder's `validate()` judges it.
 
 The [recovering decode](#recovering-decode-decode_with) lists what a plain read refuses. `from_value_with` and `from_value_piped`, `from_bson_with` and `from_bson_piped` read with the type's read alone, run each field's validator on the value serde read, and the validator of each slot of a tuple struct and of a tagged tuple variant, and list every violation as an issue of its own, which is what lets a callback or a resolver repair a stored value. The [MongoDB reads](#rows-that-do-not-read-as-the-type) of a flagged type read each row the same way, so a row that breaks a bound is refused until a resolver repairs it. See [What each shape reports](#what-each-shape-reports). A [service's dispatcher](#service-validation) reads a request with the read alone as well and calls `validate()` next, so a broken bound is a `failed-validation` fault with its field.
 
@@ -3771,7 +3806,7 @@ The walk goes on below each of the three as it does below a field: through an `O
 
 `validate()` is written under the bounds the type declares, so a key typed with one of the type's own parameters is written only where the type declares `Serialize` for it. `struct Rack<Key: Ord + Serialize>` over a `by_key: BTreeMap<Key, Parcel>` answers `'byKey.north.itemLabel': ...`, and `struct Shelf<Key: Ord>` runs each parcel as well and names the field alone, `'byKey.itemLabel': ...`.
 
-The brand's read-time hook stands unchanged beside this: a brand refuses in its own read, at the first value that breaks its bound, and a holder's read answers that refusal with the field's key in front. A nested `#[model_schema()]` type's bound is the holder's `validate()` to report. The holder reads the nested type with no judgement of its own, and its read then runs `validate()` over the whole value, which is also what refuses a message built in Rust, where no read ever ran, as every outbound message a generated client sends is.
+A brand's rules and a nested `#[model_schema()]` type's bound are both the holder's `validate()` to report. The holder reads each with no judgement of its own, and its read then runs `validate()` over the whole value, which is also what refuses a message built in Rust, where no read ever ran, as every outbound message a generated client sends is.
 
 ### Checks (`check`)
 
@@ -4888,7 +4923,7 @@ Read as a struct holding `name: String` and `versions: Vec<Version>`, `{ "name":
 
 **A tuple struct and a tuple field** are walked by position, each position a `Segment::Index`. Read as `struct Pair(String, u32)`, `["a", "x"]` lists `Invalid` at `[1]`, expected `U32`, and `["a"]` lists `Missing` at `[1]`. A position the type does not declare is `Unknown`: serde refuses a JSON array longer than the tuple, so `["a", 1, true]` lists `Unknown` at `[2]` beside an `Undescribed`, and serde reads past the position in a BSON list, where the `Unknown` is the only issue. A field `spot: (String, u32)` holding `[5, 1]` lists `Invalid` at `spot[0]`, expected `String`.
 
-**A brand and a single-slot tuple struct** are read as the one value they hold, at the path they sit at, and the issue names what they hold. With `id` a brand over `String`, a struct holding `"id": 5` lists `Invalid` at `id`, expected `String`. The brand is read with its own reader, so a check written on it runs wherever a schema surface hangs it: a brand declared `minLength = 3` lists `"ab"` as `Invalid`. Over another flagged type it is walked as that type, whatever shape that type has: with `pinned` a brand over `Version`, `"pinned": { "number": "3" }` lists `Invalid` at `pinned.number`, and with `owner` a brand over a brand over `String`, `"owner": 5` lists `Invalid` at `owner`, expected `String`.
+**A brand and a single-slot tuple struct** are read as the one value they hold, at the path they sit at, and the issue names what they hold. With `id` a brand over `String`, a struct holding `"id": 5` lists `Invalid` at `id`, expected `String`. The read a brand is listed from holds the value to the brand's own bound, wherever a schema surface writes one: a brand declared `minLength = 3` lists `"ab"` as `Invalid`, and a [check](#checks-check) the brand names is listed beside it, from the value read. Over another flagged type it is walked as that type, whatever shape that type has: with `pinned` a brand over `Version`, `"pinned": { "number": "3" }` lists `Invalid` at `pinned.number`, and with `owner` a brand over a brand over `String`, `"owner": 5` lists `Invalid` at `owner`, expected `String`.
 
 **A unit struct** is the `{}` tixschema makes it write, in which no key is its own: read as `struct Ping;`, `{ "x": 1 }` lists `Unknown` at `x`.
 

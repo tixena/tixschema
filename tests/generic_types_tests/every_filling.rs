@@ -121,7 +121,6 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
 
     #[model_schema(default_types(CodeType = String))]
     #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(bound(deserialize = "CodeType: serde::de::DeserializeOwned + core::fmt::Display"))]
     pub struct Bin<CodeType> {
         pub code: Code<CodeType>,
         pub codes: Vec<Code<CodeType>>,
@@ -129,7 +128,6 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
 
     #[model_schema(default_types(CodeType = String))]
     #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(bound(deserialize = "CodeType: serde::de::DeserializeOwned + core::fmt::Display"))]
     pub struct Rack<CodeType> {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub spare: Option<Code<CodeType>>,

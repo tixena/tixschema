@@ -116,7 +116,7 @@ use crate::features::serde::{brand_field, has_serde_default, parse_serde_key_omi
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
 ))]
-use crate::features::recovering_decode::reading_the_authors_scope;
+use crate::features::recovering_decode::{brand_recovering_decode, reading_the_authors_scope};
 #[cfg(feature = "serde")]
 use crate::features::recovering_decode::{
     enums::{enum_recovering_decode, tag_arm_refusals},
@@ -343,6 +343,10 @@ type StructFieldData = (
 /// Borrowed pieces needed to assemble the final token stream for a branded newtype.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 struct BrandedNewtypeOutput<'parts> {
+    /// `model_schema_validate_bound`, where the brand carries a bound.
+    bound_alone: &'parts proc_macro2::TokenStream,
+    /// `model_schema_bound_text`, read off the brand as its author wrote it.
+    bound_text_method: &'parts proc_macro2::TokenStream,
     decode_with: &'parts DecodeWithParts,
     delegate_impl_items: &'parts [proc_macro2::TokenStream],
     display_tokens: &'parts proc_macro2::TokenStream,
@@ -355,6 +359,18 @@ struct BrandedNewtypeOutput<'parts> {
     validation_tokens: &'parts proc_macro2::TokenStream,
 }
 
+/// What a brand's own bound adds to it: the functions of its schema module, and what holds a
+/// value of the brand to the bound. Nothing for a brand that carries none.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[derive(Default)]
+struct BrandBound {
+    /// `model_schema_validate_bound`, the method that answers for the bound alone.
+    alone: proc_macro2::TokenStream,
+    /// What `validate()` runs: the validator, on the value `self` holds.
+    held: Option<proc_macro2::TokenStream>,
+    module_items: proc_macro2::TokenStream,
+}
+
 /// A constrained brand's generated validation: the schema-module functions, and the expression
 /// through which `validate()` reaches the inner value it hands `validator`.
 #[cfg(all(
@@ -363,9 +379,7 @@ struct BrandedNewtypeOutput<'parts> {
 ))]
 struct BrandedValidation {
     checked_inner: proc_macro2::TokenStream,
-    deserialize_fn: proc_macro2::TokenStream,
-    /// Whether the checks read the inner through `Display`, which a list's count does not.
-    displayed: bool,
+    /// The validator, and beside it what a brand that declares a parameter asks its filling with.
     validate_fn: proc_macro2::TokenStream,
     /// The schema-module function `validate()` calls: `validate_value`, or for a brand that
     /// declares a parameter the one that runs it where the filling is the declared default.
@@ -524,6 +538,30 @@ struct HeldShape {
     end: HeldEnd,
     /// The wrappers the walk reads through to its end, outermost first.
     wraps: Vec<ConstraintWrap>,
+}
+
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+impl BrandBound {
+    fn of(validation: Option<&BrandedValidation>, module_ident: &Ident) -> Self {
+        validation.map_or_else(Self::default, |held_to| {
+            let (validator, checked_inner) = (&held_to.validator, &held_to.checked_inner);
+            let bound_alone =
+                proc_macro2::Ident::new(judged_read::BOUND_ALONE, proc_macro2::Span::call_site());
+            Self {
+                alone: quote! {
+                    /// What the brand's own bound answers of the value, the checks it names apart.
+                    pub fn #bound_alone(&self) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
+                        #module_ident::#validator(#checked_inner)
+                    }
+                },
+                held: Some(branded_bound_call(held_to, module_ident)),
+                module_items: held_to.validate_fn.clone(),
+            }
+        })
+    }
 }
 
 #[cfg(feature = "serde")]
@@ -6186,9 +6224,9 @@ fn process_tuple_struct(
     )
 }
 
-/// Builds the `validate_value`/`deserialize_value` functions for a constrained branded newtype, or
-/// `None` when it has no string constraints. A path inner is measured by the string serde writes
-/// for it; every other inner is reached through `ToString`.
+/// Builds the `validate_value` function for a constrained branded newtype, or `None` when it has
+/// no string constraints. A path inner is measured by the string serde writes for it; every other
+/// inner is reached through `ToString`.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -6210,7 +6248,6 @@ fn build_branded_validation(
         // `resolved_at` keeps the inner field's location while giving the token the macro's own
         // hygiene, so a consumer's lints judge it as generated.
         let to_string_span = inner_ty.span().resolved_at(proc_macro2::Span::call_site());
-        let checked_v = branded_checked_value(measures_path, to_string_span, &quote! { v });
         // A brand is the value rather than a member of anything, so its report names no field:
         // whatever holds it writes the name, on both languages' side of the wire.
         let measured = quote! { value.len() };
@@ -6246,8 +6283,9 @@ fn build_branded_validation(
             }
         };
 
-        let refusal = refusal_from_violations();
-        let deserialize_fn = if is_generic {
+        // A generic brand's checks are its declared default's, so its `validate()` hands the value
+        // over as it is and asks nothing of the parameter.
+        if is_generic {
             let default_ty =
                 substitute_declared_defaults(inner_ty, generic_params, &args.default_types);
             let type_identity = embedded_type_identity();
@@ -6255,61 +6293,36 @@ fn build_branded_validation(
                 &default_ty,
                 &branded_checked_value(measures_path, to_string_span, &quote! { held }),
             );
-            quote! {
-                #type_identity
+            return BrandedValidation {
+                checked_inner: quote! { &self.#held },
+                validate_fn: quote! {
+                    #validate_fn
 
-                #at_the_default
+                    #type_identity
 
-                pub fn deserialize_value<'de, D, T>(deserializer: D) -> ::core::result::Result<T, D::Error>
-                where
-                    D: serde::Deserializer<'de>,
-                    T: serde::Deserialize<'de> + ::std::fmt::Display,
-                {
-                    use serde::Deserialize;
-                    let v = T::deserialize(deserializer)?;
-                    if type_identity::<T>() == type_identity::<#default_ty>() {
-                        validate_value(#checked_v).map_err(#refusal)?;
-                    }
-                    ::core::result::Result::Ok(v)
-                }
-            }
-        } else {
-            quote! {
-                pub fn deserialize_value<'de, D>(deserializer: D) -> ::core::result::Result<#inner_ty, D::Error>
-                where
-                    D: serde::Deserializer<'de>,
-                {
-                    use serde::Deserialize;
-                    let v = <#inner_ty>::deserialize(deserializer)?;
-                    validate_value(#checked_v).map_err(#refusal)?;
-                    ::core::result::Result::Ok(v)
-                }
-            }
-        };
-
-        // A generic brand's checks are its declared default's, so its `validate()` hands the value
-        // over as it is and asks nothing of the parameter.
-        let (validator, checked_inner) = if is_generic {
-            ("validate_at_declared_default", quote! { &self.#held })
-        } else {
-            (
-                "validate_value",
-                branded_checked_value(measures_path, to_string_span, &quote! { self.#held }),
-            )
-        };
+                    #at_the_default
+                },
+                validator: proc_macro2::Ident::new(
+                    "validate_at_declared_default",
+                    proc_macro2::Span::call_site(),
+                ),
+            };
+        }
 
         BrandedValidation {
-            checked_inner,
-            deserialize_fn,
-            displayed: true,
+            checked_inner: branded_checked_value(
+                measures_path,
+                to_string_span,
+                &quote! { self.#held },
+            ),
             validate_fn,
-            validator: proc_macro2::Ident::new(validator, proc_macro2::Span::call_site()),
+            validator: proc_macro2::Ident::new("validate_value", proc_macro2::Span::call_site()),
         }
     })
 }
 
 /// [`build_branded_validation`] for a brand over a list, whose two lengths count its items: the
-/// validator and the hook a list field gets, under the brand's own names.
+/// validator a list field gets, under the brand's own name.
 #[cfg(all(
     feature = "serde",
     any(feature = "typescript", feature = "zod", feature = "jsonschema")
@@ -6323,13 +6336,10 @@ fn branded_list_validation(
     }
     let wraps = constrained_shape(&inner_field.ty)?.wraps;
     let validator = proc_macro2::Ident::new("validate_value", proc_macro2::Span::call_site());
-    let deserializer = proc_macro2::Ident::new("deserialize_value", proc_macro2::Span::call_site());
     let held = brand_member(inner_field);
     let through = wraps.iter().map(|_| quote! { * });
     Some(BrandedValidation {
         checked_inner: quote! { &#(#through)* self.#held },
-        deserialize_fn: list_deserializer(&deserializer, &validator, &wraps),
-        displayed: false,
         validate_fn: list_validator(&validator, args.min_length, args.max_length, None),
         validator,
     })
@@ -7454,79 +7464,6 @@ fn build_branded_schema_example(
     .unwrap_or_default()
 }
 
-/// Injects serde `deserialize_with`/`bound` attributes onto a constrained branded newtype and
-/// builds its `validation_tokens` and `validate()` method. Returns the (possibly mutated) struct
-/// together with empty token streams when the newtype has no constraints.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "typescript", feature = "zod", feature = "jsonschema")
-))]
-fn inject_branded_serde_attrs(
-    mut owned_struct: syn::ItemStruct,
-    branded_validation: Option<&BrandedValidation>,
-    is_generic: bool,
-    generic_params: &[String],
-    module_name: &str,
-    module_ident: &Ident,
-) -> (
-    syn::ItemStruct,
-    proc_macro2::TokenStream,
-    proc_macro2::TokenStream,
-) {
-    let Some(validation) = branded_validation else {
-        return (owned_struct, quote! {}, quote! {});
-    };
-
-    // serde infers no bound for a field read through a hook, so the read's own is written here.
-    // The type itself takes none: `validate()` is under the bounds its author declared.
-    if is_generic {
-        let displayed = if validation.displayed {
-            " + std::fmt::Display"
-        } else {
-            ""
-        };
-        let bounds: Vec<String> = generic_params
-            .iter()
-            .map(|p| format!("{p}: serde::de::DeserializeOwned{displayed}"))
-            .collect();
-        let bound_str = bounds.join(", ");
-        let bound_lit = syn::LitStr::new(&bound_str, proc_macro2::Span::call_site());
-        let bound_attr: syn::Attribute = syn::parse_quote! {
-            #[serde(bound(deserialize = #bound_lit))]
-        };
-        owned_struct.attrs.push(bound_attr);
-    }
-
-    let deserialize_with_path = format!("{module_name}::deserialize_value");
-    let path_lit = syn::LitStr::new(&deserialize_with_path, proc_macro2::Span::call_site());
-    let serde_attr: syn::Attribute = syn::parse_quote! {
-        #[serde(deserialize_with = #path_lit)]
-    };
-    if let Some(at) = brand_field(&owned_struct).map(brand_member) {
-        let held = owned_struct
-            .fields
-            .iter_mut()
-            .enumerate()
-            .find(|(index, field)| match &at {
-                syn::Member::Named(name) => field.ident.as_ref() == Some(name),
-                syn::Member::Unnamed(slot) => usize::try_from(slot.index) == Ok(*index),
-            });
-        if let Some((_, field)) = held {
-            field.attrs.push(serde_attr);
-        }
-    }
-
-    let validate_fn = &validation.validate_fn;
-    let deserialize_fn = &validation.deserialize_fn;
-    let validation_tokens = quote! {
-        #validate_fn
-        #deserialize_fn
-    };
-    let validate_method =
-        branded_validate_method(Some(&branded_bound_call(validation, module_ident)), &[]);
-    (owned_struct, validation_tokens, validate_method)
-}
-
 /// What a brand's own string checks add to its `validate()`: the validator of its schema module,
 /// run on the value the brand holds.
 #[cfg(all(
@@ -7545,11 +7482,10 @@ fn branded_bound_call(
     }
 }
 
-/// `bound_validate`, the `validate()` a brand's own string checks earn it, with the checks the
-/// brand names run after them, or as it stands for a brand that names none.
+/// The `validate()` a brand earns: `bound`, what its own string checks run, then the checks it
+/// names. Nothing for a brand that carries neither.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn with_branded_checks(
-    bound_validate: proc_macro2::TokenStream,
     bound: Option<&proc_macro2::TokenStream>,
     named: &[FunctionName],
 ) -> proc_macro2::TokenStream {
@@ -7558,11 +7494,10 @@ fn with_branded_checks(
         own: named,
     }
     .own_calls(VALIDATE_SINK);
-    if own.is_empty() {
-        bound_validate
-    } else {
-        branded_validate_method(bound, &own)
+    if bound.is_none() && own.is_empty() {
+        return proc_macro2::TokenStream::new();
     }
+    branded_validate_method(bound, &own)
 }
 
 /// A brand's `validate()`: its own string checks, then the checks it names, each on the brand
@@ -7597,7 +7532,8 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
     let delegate_impl_items = parts.delegate_impl_items;
     let schema_example_tokens = parts.schema_example_tokens;
     let validate_method = parts.validate_method;
-    let bound_text_method = branded_bound_text_method(item_struct);
+    let bound_alone = parts.bound_alone;
+    let bound_text_method = parts.bound_text_method;
 
     let module_items = schema_module_items(
         quote! {
@@ -7629,6 +7565,7 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
             #(#delegate_impl_items)*
             #schema_example_tokens
             #validate_method
+            #bound_alone
             #bound_text_method
         }
 
@@ -7757,7 +7694,12 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
     );
 
     #[cfg(feature = "serde")]
-    let branded_validation = build_branded_validation(args, &generic_params, inner_field);
+    let bound = BrandBound::of(
+        build_branded_validation(args, &generic_params, inner_field).as_ref(),
+        &module_ident,
+    );
+    #[cfg(not(feature = "serde"))]
+    let bound = BrandBound::default();
 
     #[cfg(feature = "jsonschema")]
     let json_schema_method = build_branded_json_schema_method(
@@ -7792,29 +7734,21 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
     let display_tokens =
         build_branded_display_tokens(&item_struct.generics, &name, inner_field, args);
 
-    #[cfg(feature = "serde")]
-    let (output_struct, validation_tokens, bound_validate) = inject_branded_serde_attrs(
+    let validate_method = with_branded_checks(bound.held.as_ref(), &args.check);
+
+    // The brand as it is emitted keeps no serde attribute where it derives `Deserialize` alone.
+    let bound_text_method = branded_bound_text_method(&item_struct);
+
+    let (decode_with, read_struct) = branded_read(
         item_struct,
-        branded_validation.as_ref(),
-        !generic_params.is_empty(),
-        &generic_params,
-        &module_name,
-        &module_ident,
+        args,
+        !validate_method.is_empty(),
+        bound.held.is_some(),
     );
-    #[cfg(not(feature = "serde"))]
-    let (output_struct, validation_tokens, bound_validate) = (item_struct, quote! {}, quote! {});
-
-    #[cfg(feature = "serde")]
-    let bound_call = branded_validation
-        .as_ref()
-        .map(|validation| branded_bound_call(validation, &module_ident));
-    #[cfg(not(feature = "serde"))]
-    let bound_call: Option<proc_macro2::TokenStream> = None;
-    let validate_method = with_branded_checks(bound_validate, bound_call.as_ref(), &args.check);
-
-    let (decode_with, read_struct) = branded_read(output_struct, args, !validate_method.is_empty());
 
     assemble_branded_output(&BrandedNewtypeOutput {
+        bound_alone: &bound.alone,
+        bound_text_method: &bound_text_method,
         decode_with: &decode_with,
         delegate_impl_items: &delegate_impl_items,
         display_tokens: &display_tokens,
@@ -7824,27 +7758,61 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
         schema_example_tokens: &schema_example_tokens,
         schema_impl_items: &schema_impl_items,
         validate_method: &validate_method,
-        validation_tokens: &validation_tokens,
+        validation_tokens: &bound.module_items,
     })
 }
 
 /// What is written beside a brand after its own `impl`, and the brand as it is emitted: what
-/// `decode_with` adds, and the read the macro writes for a brand that names a `preprocess`, each
-/// function called on the payload, then the brand's own read, then its `validate()` where it
-/// `publishes_validate`. A brand that names none keeps the read serde's derive writes it.
+/// `decode_with` adds, and the read the macro writes for a brand that `publishes_validate` or
+/// names a `preprocess`, each function called on the payload, then the brand's own read, then its
+/// `validate()`. A brand with neither keeps the read serde's derive writes it. `bounded` says
+/// whether the brand carries a bound of its own.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn branded_read(
     mut brand: syn::ItemStruct,
     args: &ModelSchemaArgs,
     publishes_validate: bool,
+    bounded: bool,
 ) -> (DecodeWithParts, syn::ItemStruct) {
-    // Read off the struct as it is emitted: the hook a constrained brand reads through is hung.
-    let mut beside = struct_decode_with(&brand, args);
-    if preprocess::named().any() {
-        let judged = judged_read::of_struct(&mut brand, publishes_validate);
-        beside.type_impl.extend(judged);
-    }
+    let mut beside = brand_decode_with(&brand, args, bounded);
+    let judged = judged_read::of_struct(&mut brand, publishes_validate);
+    beside.type_impl.extend(judged);
     (beside, brand)
+}
+
+/// [`struct_decode_with`] for a brand. Where the brand is `bounded`, the read its issues are
+/// listed from holds the value to the brand's own bound, which no walk lists.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn brand_decode_with(
+    brand: &syn::ItemStruct,
+    args: &ModelSchemaArgs,
+    bounded: bool,
+) -> DecodeWithParts {
+    if !(bounded && args.decode_with) {
+        return struct_decode_with(brand, args);
+    }
+    let added = brand_recovering_decode(brand);
+    let (walkers, checks) = (added.type_impl, added.check_messages);
+    DecodeWithParts {
+        schema_module: added.schema_module,
+        type_impl: quote! { #walkers #checks },
+    }
+}
+
+/// Nothing, where no `serde` feature reads the attributes a walker is written from.
+#[cfg(all(
+    not(feature = "serde"),
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+fn brand_decode_with(
+    _brand: &syn::ItemStruct,
+    _args: &ModelSchemaArgs,
+    _bounded: bool,
+) -> DecodeWithParts {
+    DecodeWithParts::default()
 }
 
 /// `model_schema_bound_text`: the text a bound written on a field of this brand's type is measured
@@ -10527,8 +10495,9 @@ const fn untagged_variant_context<'ctx>(
 
 /// Gives a member of an untagged variant the hook that reads the models it holds unjudged. The
 /// variant is then chosen as it was before a model judged itself as it was read, and the enum's
-/// own read judges what the member holds. A member its own bound reads, the last one `walked`
-/// holds attributes for, is read by that hook alone.
+/// own read judges what the member holds. A brand the member holds is held to its own bound
+/// there, so that bound still chooses the variant. A member its own bound reads, the last one
+/// `walked` holds attributes for, is read by that hook alone.
 #[cfg(feature = "serde")]
 fn read_untagged_member_unjudged(
     ctx: &FieldContext<'_>,
@@ -10547,6 +10516,7 @@ fn read_untagged_member_unjudged(
         field,
         &shape,
         &judged_read::HookPlace {
+            choosing: true,
             container_defaulted: ctx.container_defaulted,
             index,
             renamed_under: None,
@@ -15428,6 +15398,7 @@ fn read_unjudged_below(
         field,
         &shape,
         &judged_read::HookPlace {
+            choosing: false,
             container_defaulted: ctx.container_defaulted,
             index,
             renamed_under: named_below(field, field_def, ctx).map(|_| wire_name),

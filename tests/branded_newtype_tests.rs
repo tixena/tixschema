@@ -15,6 +15,10 @@ mod list_bound;
 mod named_field;
 
 #[cfg(test)]
+#[path = "branded_newtype_tests/read.rs"]
+mod read;
+
+#[cfg(test)]
 #[path = "branded_newtype_tests/tests.rs"]
 mod tests;
 

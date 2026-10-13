@@ -38,6 +38,8 @@ use crate::field_type::{
     FieldDefType, get_field_def, is_map_wrapper, is_refused_sequence_wrapper, is_sequence_wrapper,
     is_transparent_wrapper,
 };
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+use crate::model_schema::judged_read::bounded_listed_read;
 use crate::model_schema::judged_read::{listed_read, listed_reader};
 use crate::model_schema::preprocess;
 use crate::model_schema::{helper_name_stem, recovering_bound_check};
@@ -2168,6 +2170,24 @@ pub fn reading_the_authors_scope(tokens: TokenStream) -> TokenStream {
 /// The recovering decode of a struct, read off the item as it is emitted, so a read hook tixschema
 /// hangs on a field is one the walker reads through.
 pub fn struct_recovering_decode(item_struct: &ItemStruct) -> RecoveringDecode {
+    listed_from(
+        item_struct,
+        listed_read(&DeriveInput::from(item_struct.clone())),
+    )
+}
+
+/// [`struct_recovering_decode`] of a brand that carries a bound: the read its issues are listed
+/// from refuses a value that breaks the bound.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+pub fn brand_recovering_decode(item_struct: &ItemStruct) -> RecoveringDecode {
+    listed_from(
+        item_struct,
+        bounded_listed_read(&DeriveInput::from(item_struct.clone())),
+    )
+}
+
+/// The recovering decode of a struct whose issues are listed from `read`.
+fn listed_from(item_struct: &ItemStruct, read: TokenStream) -> RecoveringDecode {
     let module_name = ident_schema_module_name(&item_struct.ident.to_string());
     let parameters = type_parameters_in_scope(&item_struct.generics);
     let mut reach = Reach::new(&module_name);
@@ -2188,7 +2208,7 @@ pub fn struct_recovering_decode(item_struct: &ItemStruct) -> RecoveringDecode {
             check_messages: checks::struct_check_messages(item_struct, &module_name, &parameters),
             names,
             reach: &reach,
-            read: listed_read(&DeriveInput::from(item_struct.clone())),
+            read,
             read_predicates: read_bounds(&DeriveInput::from(item_struct.clone())).predicates,
         },
         &paths,
