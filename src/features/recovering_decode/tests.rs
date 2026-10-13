@@ -2459,6 +2459,48 @@ fn a_tuple_in_a_fields_type_is_walked_by_position_wherever_it_is_held() {
     }
 }
 
+/// A bound serde's derive is told to ask of a parameter is written once where the source asks it
+/// too, in whatever path, and what it asks beyond that is written once beside it.
+#[test]
+fn a_deserialize_bound_the_source_already_asks_is_written_once() {
+    let header_of = |bound: &str, at: usize| {
+        added_impls(&format!(
+            "#[serde(bound(deserialize = \"{bound}\"))] \
+             pub struct Crate<CodeType: Display> {{ pub code: CodeType }}"
+        ))
+        .into_iter()
+        .nth(at)
+        .map(|(header, _)| header)
+    };
+    let asked_once = "impl < CodeType : Display + serde :: de :: DeserializeOwned > \
+                      Crate < CodeType > where Self : serde :: de :: DeserializeOwned";
+    for written in [
+        "CodeType: serde::de::DeserializeOwned",
+        "CodeType: DeserializeOwned",
+        "CodeType: serde::Deserialize<'de>",
+    ] {
+        assert_eq!(
+            header_of(written, 0).as_deref(),
+            Some(asked_once),
+            "for `{written}`"
+        );
+    }
+    assert_eq!(
+        header_of("CodeType: serde::de::DeserializeOwned + Clone", 0),
+        Some(format!("{asked_once} , CodeType : Clone"))
+    );
+    if cfg!(feature = "bson") {
+        assert_eq!(
+            header_of("CodeType: serde::de::DeserializeOwned", 1).as_deref(),
+            Some(
+                "impl < CodeType : Display + serde :: de :: DeserializeOwned + serde :: Serialize > \
+                 Crate < CodeType > \
+                 where Self : serde :: de :: DeserializeOwned + serde :: Serialize"
+            )
+        );
+    }
+}
+
 #[test]
 fn a_generic_type_gets_one_impl_per_source_under_that_sources_bounds() {
     let added = added_impls(
