@@ -66,6 +66,10 @@ Batch<String>, empty: refused
 Batch<u32>, empty: refused
     a batch holds at least one code
 Batch<u32>: passes
+Ledger<String>, no entry: refused
+    'entries': a ledger holds at least one entry
+Ledger<String>: passes
+Ledger<u32>: passes
 ";
 
 /// The 13 lines of the shared table, in a build that holds `label` to its bound and runs a held
@@ -213,6 +217,15 @@ pub struct Crate<CodeType> {
 #[serde(transparent)]
 pub struct Batch<CodeType>(pub Vec<CodeType>);
 
+/// A type with a parameter that holds a value of the parameter itself, in a key of its own.
+#[model_schema(default_types(IdType = String), check = ["withEntries"])]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Ledger<IdType> {
+    pub entries: Vec<String>,
+    pub owner_id: IdType,
+}
+
 fn without_duplicates(value: &[String]) -> Result<(), Vec<String>> {
     for (index, code) in value.iter().enumerate() {
         if value[..index].contains(code) {
@@ -343,6 +356,15 @@ fn with_a_code<CodeType>(value: &Crate<CodeType>) -> Result<(), Vec<String>> {
 fn holding_a_code<CodeType>(value: &Batch<CodeType>) -> Result<(), Vec<String>> {
     if value.0.is_empty() {
         return Err(vec!["a batch holds at least one code".to_owned()]);
+    }
+    Ok(())
+}
+
+fn with_entries<IdType>(value: &Ledger<IdType>) -> Result<(), Vec<String>> {
+    if value.entries.is_empty() {
+        return Err(vec![
+            "'entries': a ledger holds at least one entry".to_owned(),
+        ]);
     }
     Ok(())
 }
@@ -506,6 +528,10 @@ fn brand_and_generic_cases() -> Vec<Case> {
         codes,
         label: "c".to_owned(),
     };
+    let owned = |entries: Vec<String>| Ledger {
+        entries,
+        owner_id: "o".to_owned(),
+    };
     vec![
         case(
             "Code, in lower case",
@@ -547,6 +573,28 @@ fn brand_and_generic_cases() -> Vec<Case> {
             "Batch<u32>",
             &Batch(vec![7_u32]),
             Batch(vec![7_u32]).validate(),
+        ),
+        case(
+            "Ledger<String>, no entry",
+            &owned(Vec::new()),
+            owned(Vec::new()).validate(),
+        ),
+        case(
+            "Ledger<String>",
+            &owned(texts(&["a"])),
+            owned(texts(&["a"])).validate(),
+        ),
+        case(
+            "Ledger<u32>",
+            &Ledger {
+                entries: texts(&["a"]),
+                owner_id: 7_u32,
+            },
+            Ledger {
+                entries: texts(&["a"]),
+                owner_id: 7_u32,
+            }
+            .validate(),
         ),
     ]
 }
