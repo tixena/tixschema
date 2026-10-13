@@ -1461,7 +1461,7 @@ use serde::{Deserialize, Serialize};
 pub struct Tags(pub Vec<String>);
 ```
 
-A generic brand carries the requirement as a `Display` bound on each type parameter, so a non-`Display` type argument (e.g. `DocumentId<Vec<String>>`) is rejected where the brand is used rather than where it is declared.
+A generic brand carries the requirement as a `Display` bound on its `Display` impl, and on its read where it carries string checks, so a non-`Display` type argument (e.g. `DocumentId<Vec<String>>`) is rejected where the brand is displayed or read rather than where it is declared.
 
 #### Branded Newtype Validation Constraints
 
@@ -1522,9 +1522,45 @@ export const DocumentId$SchemaDefault = DocumentId$SchemaFactory(
 );
 ```
 
-`validate()` itself is emitted only at that same declared default — `impl DocumentId<String> { pub fn validate(&self) -> Result<(), Vec<String>> { … } }`, never a blanket `impl<IdType> DocumentId<IdType>` — because Rust inherent impls do not specialize: a blanket one would make a downstream `impl DocumentId<ObjectId> { pub fn validate(&self) -> … }` a duplicate-definition error. Pinning `validate()` to the default leaves that door open for an author who wants their own validation on another instantiation; the schema delegates (`ts_definition()`, `zod_schema()`, `json_schema()`, …) are unaffected and stay on the type's own generic `impl<IdType> DocumentId<IdType>`, since they do not depend on the constraints.
+`validate()` is written in the brand's own `impl<IdType> DocumentId<IdType>`, beside the schema delegates and under no bound the declaration does not write, so every filling has it and a type that holds the brand at any filling runs it. The string checks run where the filling is the declared default and at no other: the method asks which filling it holds. A `validate` of your own on one filling [does not build](#a-type-that-declares-a-parameter).
 
-The serde read follows the same rule: the generated `deserialize_with` hook runs the checks only when the filling being read is the declared default, and reads any other filling unconstrained, the same as `$SchemaFactory`.
+The serde read follows the same rule: the generated `deserialize_with` hook runs the checks only when the filling being read is the declared default, and reads any other filling unconstrained, the same as `$SchemaFactory`. The `Display` the hook renders the value through is asked by the read alone, so the brand itself is a type at a filling that has none, and a holder's parameter needs no bound to hold it:
+
+```rust
+#[model_schema(minLength = 2, default_types(CodeType = String))]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Code<CodeType>(pub CodeType);
+
+#[model_schema(default_types(CodeType = String))]
+#[derive(Serialize, Deserialize)]
+#[serde(bound(deserialize = "CodeType: serde::de::DeserializeOwned + std::fmt::Display"))]
+pub struct Bin<CodeType> {
+    pub code: Code<CodeType>,
+    pub codes: Vec<Code<CodeType>>,
+}
+
+// A holder written by hand, over a parameter with no bound.
+pub struct Plain<Held> {
+    pub held: Code<Held>,
+}
+
+impl<Held> Plain<Held> {
+    pub fn validate(&self) -> Result<(), Vec<String>> {
+        self.held.validate()
+    }
+}
+```
+
+```text
+Code<String>("a").validate():                 Err(["too short: minimum length is 2, got 1"])
+Code<String>("ab").validate():                Ok(())
+Code<u32>(7).validate():                      Ok(())
+Bin<String> { code: "a", codes: ["ab", "b"] }: Err(["'code': too short: minimum length is 2, got 1", "'codes.1': too short: minimum length is 2, got 1"])
+Bin<u32> { code: 7, codes: [1] }:              Ok(())
+Plain<&str> { held: "a" }:                    Ok(())
+Plain<String> { held: "a" }:                  Err(["too short: minimum length is 2, got 1"])
+```
 
 An entry `default_types` leaves out falls back to `String`, the same fallback a parameter with no declared filling gets everywhere else the declaration is read — so a constrained bare-parameter brand with no `default_types` at all still compiles. Only the `jsonschema` feature actually requires a declared entry for every parameter, through the unrelated requirement in the table above.
 
@@ -3364,6 +3400,56 @@ assert!(Action::Upload { note: "abc".to_string() }.validate().is_ok());
 ```
 
 Parity with structs runs both ways: an enum no member of which carries a constraint publishes no `validate()`, exactly as a constraint-free struct publishes none.
+
+#### A type that declares a parameter
+
+`validate()` is written in the type's own `impl`, so a struct, a tuple struct and an enum that declare a type parameter have it at every filling, and a type that holds one at any filling runs it:
+
+```rust
+#[model_schema(default_types(CodeType = String))]
+#[derive(Serialize, Deserialize)]
+pub struct Crate<CodeType> {
+    pub codes: Vec<CodeType>,
+    #[model_schema_prop(minLength = 1)]
+    pub label: String,
+}
+
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+pub struct Depot {
+    pub numbered: Crate<u32>,
+    pub named: Crate<String>,
+}
+
+Crate::<u32> { codes: vec![], label: String::new() }.validate();
+// Err(["'label': too short: minimum length is 1, got 0"])
+
+Depot {
+    numbered: Crate { codes: vec![], label: String::new() },
+    named: Crate { codes: vec![], label: String::new() },
+}
+.validate();
+// Err(["'numbered.label': too short: minimum length is 1, got 0", "'named.label': too short: minimum length is 1, got 0"])
+```
+
+A [branded newtype](#branded-newtype-validation-constraints) that declares a parameter has `validate()` at every filling as well, and runs its string checks where the filling is its declared default.
+
+**A `validate` of your own on one filling does not build.** A type has one inherent function under a name, and the generated one is there at every filling:
+
+```rust,compile_fail
+impl Crate<u32> {
+    pub fn validate(&self) -> Result<(), Vec<String>> {
+        if self.codes.contains(&0) {
+            return Err(vec!["'codes': no code is zero".to_owned()]);
+        }
+        Ok(())
+    }
+}
+```
+
+```text
+error[E0592]: duplicate definitions with name `validate`
+```
 
 #### The path a message names
 

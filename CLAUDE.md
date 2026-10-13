@@ -592,16 +592,31 @@ The macro also generates into the type's schema module:
 - `deserialize_{variant}_{field}(D) -> Result<FieldType, E>` — serde hook that calls the static validator, generated only for a member of an untagged enum, the one position where the check runs on the read
 - A tuple variant's slot writes its declaration index where a named member writes `{field}`: `validate_other_0_value` and `deserialize_other_0` for the lone slot of `Other`
 
-For a generic type (one with type parameters), `validate()` is emitted only at the declared default
-instantiation — `impl DocumentId<String> { pub fn validate(&self) -> Result<(), Vec<String>> { … } }`,
-never a blanket `impl<IdType> DocumentId<IdType>` — because the constraints it checks (`minLength`,
-`pattern`, …) belong to that one concrete filling, the same one `X$SchemaDefault` enforces. Rust
-inherent impls do not specialize, so a blanket impl would make a downstream `impl
-DocumentId<ObjectId> { pub fn validate(&self) -> … }` a duplicate-definition error; pinning to the
-default leaves that door open for an author who wants their own validation on another instantiation.
-The schema delegates (`ts_definition()`, `zod_schema()`, `json_schema()`, …) are unaffected and stay
-on the type's own generic `impl<IdType> DocumentId<IdType>`, since they do not depend on the
-constraints.
+`validate()` is written in the type's own `impl`, beside the schema delegates
+(`assemble_schema_output`, `assemble_branded_output`), so a type that declares a parameter has it
+at every filling. `README.md`'s "A type that declares a parameter" section is the consumer's view;
+this is what a change has to keep.
+
+- A holder's `value.validate()` finds the method whatever fills the type it holds. The block-local
+  fallback (`unpublished_validate_fallback`) answers only for a type that publishes none, and it
+  answers `Ok(())` without a word: a `validate()` moved to an `impl` of one filling, or under a
+  bound the holder's parameter lacks, is a check lost in every generic holder.
+- A struct's and an enum's body builds under the type's own bounds: a bound is written on a
+  string, a number, a list counted whole or a named type, and one on a bare parameter is refused.
+- A generic brand's string checks are its declared default's. Its `validate()` hands the value
+  to `validate_at_declared_default`, which `embedded_validate_at_declared_default` emits beside
+  `type_identity`: where the two types are one it reads the value as the declared default
+  through a pointer cast and runs `validate_value`, and at any other filling it answers `Ok(())`,
+  so nothing asks `Display` of the parameter. `TypeId` does not tell two lifetimes apart, so the
+  function declares `'held` for its borrow and `at_one_lifetime` writes the default with every
+  lifetime it writes replaced by that one: the value outlives the borrow, and is never read at
+  a lifetime longer than its own. It answers the result and no reference. A brand over a list
+  counts its items at every filling and takes no such function.
+- The macro adds no bound to a brand's declaration. The `Display` the read hook renders the value
+  through stays on the hook and in the `#[serde(bound(deserialize = ...))]`
+  `inject_branded_serde_attrs` writes.
+- A consumer's own `validate` on one filling is a duplicate definition (E0592).
+  `struct_validate_method`'s doc comment holds the run.
 
 ### 8. Branded Newtypes
 
@@ -912,6 +927,9 @@ substituted in (`substitute_declared_defaults`, reading `declared_default_syn_ty
 runs the checks when they are equal, so the read reaches the same one filling `$SchemaDefault` and
 `validate()` do. `type_identity` is emitted into the schema module by `embedded_type_identity`, a
 copy of `typeid::of` (see `THIRD-PARTY-NOTICES`), so a consumer adds no dependency for it.
+`validate()` is at every filling and asks the same question: `validate_at_declared_default`, this
+crate's own beside `type_identity`, runs the checks on the value read as the declared default
+where the two types are one (section 7, "Generated `validate()` method").
 
 ### Recovering Decode
 

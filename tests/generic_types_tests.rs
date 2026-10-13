@@ -11,6 +11,10 @@ extern crate alloc;
 mod declarations;
 
 #[cfg(test)]
+#[path = "generic_types_tests/every_filling.rs"]
+mod every_filling;
+
+#[cfg(test)]
 #[path = "generic_types_tests/tests.rs"]
 mod tests;
 

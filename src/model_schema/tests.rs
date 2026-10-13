@@ -14724,6 +14724,229 @@ fn a_constrained_generic_brand_defines_its_own_type_identity() {
     assert!(!concrete.contains("type_identity"), "got: {concrete}");
 }
 
+/// `validate()` is written once, in the `impl` that holds the type's delegates, under the
+/// generics the type declares: a type with a parameter gets no second `impl` at one filling.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn validate_is_written_once_in_the_types_own_impl() {
+    for (args, source, own_impl) in [
+        (
+            "",
+            "#[derive(Serialize, Deserialize)]
+            pub struct FixedCrate {
+                #[model_schema_prop(minLength = 1)]
+                pub label: String,
+            }",
+            "impl FixedCrate {",
+        ),
+        (
+            "default_types(CodeType = String)",
+            "#[derive(Serialize, Deserialize)]
+            pub struct FilledCrate<CodeType> {
+                pub codes: Vec<CodeType>,
+                #[model_schema_prop(minLength = 1)]
+                pub label: String,
+            }",
+            "impl < CodeType > FilledCrate < CodeType > {",
+        ),
+        (
+            "default_types(CodeType = String)",
+            "#[derive(Serialize, Deserialize)]
+            pub struct FilledSack<CodeType>(
+                #[model_schema_prop(minLength = 1)] pub String,
+                pub CodeType,
+            );",
+            "impl < CodeType > FilledSack < CodeType > {",
+        ),
+        (
+            "default_types(CodeType = String)",
+            "#[derive(Serialize, Deserialize)]
+            #[serde(tag = \"kind\")]
+            pub enum FilledLoad<CodeType> {
+                Packed {
+                    codes: Vec<CodeType>,
+                    #[model_schema_prop(minLength = 1)]
+                    label: String,
+                },
+                Unpacked,
+            }",
+            "impl < CodeType > FilledLoad < CodeType > {",
+        ),
+        (
+            "minLength = 2",
+            "#[derive(Serialize, Deserialize)]
+            #[serde(transparent)]
+            pub struct FixedCode(pub String);",
+            "impl FixedCode {",
+        ),
+        (
+            "minLength = 2, default_types(CodeType = String)",
+            "#[derive(Serialize, Deserialize)]
+            #[serde(transparent)]
+            pub struct FilledCode<CodeType>(pub CodeType);",
+            "impl < CodeType > FilledCode < CodeType > {",
+        ),
+        (
+            "no_display, minLength = 1, default_types(T = String)",
+            "#[derive(Serialize, Deserialize)]
+            #[serde(transparent)]
+            pub struct FilledCodes<T>(pub Vec<T>);",
+            "impl < T > FilledCodes < T > {",
+        ),
+    ] {
+        let rendered = expansion_with_args_over(args, source).to_string();
+        assert!(!rendered.contains("compile_error"), "got: {rendered}");
+        assert!(
+            rendered.contains(own_impl),
+            "no `{own_impl}` in: {rendered}"
+        );
+        let (_, held) = rendered.split_once(own_impl).unwrap();
+        assert!(held.contains("pub fn validate (& self)"), "got: {rendered}");
+        assert_eq!(
+            rendered.matches("pub fn validate (& self)").count(),
+            1,
+            "got: {rendered}"
+        );
+        assert!(
+            !rendered.contains("< String > { pub fn validate"),
+            "got: {rendered}"
+        );
+    }
+}
+
+/// A generic brand's `validate()` hands the value to the function that reads it as its declared
+/// default, under no bound the brand's author did not write, and no function answers a reference
+/// to that default. The read keeps the bound its hook renders the value under.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn a_generic_brands_checks_are_run_by_the_function_that_asks_which_filling_it_is() {
+    let generic = expansion_with_args_over(
+        "minLength = 2, default_types(CodeType = String)",
+        "
+        #[derive(Serialize, Deserialize)]
+        #[serde(transparent)]
+        pub struct AskedCode<CodeType>(pub CodeType);
+        ",
+    )
+    .to_string();
+    for written in [
+        "pub struct AskedCode < CodeType > (",
+        "pub fn validate_at_declared_default < 'held , T > (held : & 'held T) -> :: core :: \
+         result :: Result < () , :: std :: vec :: Vec < :: std :: string :: String >> { if \
+         type_identity :: < T > () == type_identity :: < String > () { let held = unsafe { & * :: \
+         core :: ptr :: from_ref (held) . cast :: < String > () } ; validate_value (& held . \
+         to_string ()) } else { :: core :: result :: Result :: Ok (()) } }",
+        "if let :: core :: result :: Result :: Err (reported) = asked_code_schema :: \
+         validate_at_declared_default (& self . 0) { errors . extend (reported) ; }",
+        "bound (deserialize = \"CodeType: serde::de::DeserializeOwned + std::fmt::Display\")",
+        "T : serde :: Deserialize < 'de > + :: std :: fmt :: Display",
+    ] {
+        assert!(generic.contains(written), "no `{written}` in: {generic}");
+    }
+    assert!(!generic.contains("Option < & String >"), "got: {generic}");
+
+    for (args, source) in [
+        (
+            "minLength = 2",
+            "#[derive(Serialize, Deserialize)]
+            #[serde(transparent)]
+            pub struct UnaskedCode(pub String);",
+        ),
+        (
+            "no_display, minLength = 1, default_types(T = String)",
+            "#[derive(Serialize, Deserialize)]
+            #[serde(transparent)]
+            pub struct UnaskedCodes<T>(pub Vec<T>);",
+        ),
+    ] {
+        let rendered = expansion_with_args_over(args, source).to_string();
+        assert!(
+            !rendered.contains("validate_at_declared_default"),
+            "got: {rendered}"
+        );
+    }
+}
+
+/// A declared default that writes a lifetime is compared and read at the lifetime of the borrow,
+/// so a value is never read at a lifetime longer than its own. The read hook compares as it did.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn a_default_that_writes_a_lifetime_is_read_at_the_borrows_own() {
+    let rendered = expansion_with_args_over(
+        "minLength = 2, default_types(Text = &'static str)",
+        "
+        #[derive(Serialize)]
+        #[serde(transparent)]
+        pub struct BorrowedStamp<Text>(pub Text);
+        ",
+    )
+    .to_string();
+    assert!(!rendered.contains("compile_error"), "got: {rendered}");
+    for written in [
+        "pub fn validate_at_declared_default < 'held , T > (held : & 'held T) -> :: core :: \
+         result :: Result < () , :: std :: vec :: Vec < :: std :: string :: String >> { if \
+         type_identity :: < T > () == type_identity :: < & 'held str > () { let held = unsafe { \
+         & * :: core :: ptr :: from_ref (held) . cast :: < & 'held str > () } ; validate_value \
+         (& held . to_string ()) } else { :: core :: result :: Result :: Ok (()) } }",
+        "if type_identity :: < T > () == type_identity :: < & 'static str > () { validate_value \
+         (& v . to_string ())",
+    ] {
+        assert!(rendered.contains(written), "no `{written}` in: {rendered}");
+    }
+}
+
+/// Every lifetime a type writes is replaced, and one a `for<...>` or a signature binds is not.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn a_type_is_written_at_one_lifetime() {
+    for (written, at_one) in [
+        ("String", "String"),
+        ("&str", "& 'held str"),
+        ("&'static str", "& 'held str"),
+        ("&'_ mut str", "& 'held mut str"),
+        ("Cow<'static, str>", "Cow < 'held , str >"),
+        ("Tag<'_>", "Tag < 'held >"),
+        (
+            "(&'text str, Box<&str>, [&str; 2], *const &str)",
+            "(& 'held str , Box < & 'held str > , [& 'held str ; 2] , * const & 'held str)",
+        ),
+        (
+            "<&'static str as ToOwned>::Owned",
+            "< & 'held str as ToOwned > :: Owned",
+        ),
+        (
+            "Box<dyn Iterator<Item = &'static str> + 'static>",
+            "Box < dyn Iterator < Item = & 'held str > + 'held >",
+        ),
+        ("fn(&str) -> &str", "fn (& str) -> & str"),
+        ("fn(&'_ str, &'static str)", "fn (& '_ str , & 'held str)"),
+        (
+            "for<'each> fn(&'each str, &'text str)",
+            "for < 'each > fn (& 'each str , & 'held str)",
+        ),
+        (
+            "Box<dyn for<'each> Fn(&'each str, &str) -> Tag<'static> + 'text>",
+            "Box < dyn for < 'each > Fn (& 'each str , & str) -> Tag < 'held > + 'held >",
+        ),
+    ] {
+        let ty: syn::Type = syn::parse_str(written).unwrap();
+        let read = super::at_one_lifetime(&ty, &syn::parse_quote!('held));
+        assert_eq!(quote::quote!(#read).to_string(), at_one, "for `{written}`");
+    }
+}
+
 /// The arguments a two-parameter `Pair` binds.
 #[cfg(all(feature = "zod", feature = "typescript"))]
 fn pair_parameters() -> Vec<String> {
