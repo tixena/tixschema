@@ -31,6 +31,14 @@ pub const JAVA_VAR: &str = "TIXSCHEMA_JAVA";
 #[cfg(feature = "kotlin")]
 pub const KOTLIN_LIBS_VAR: &str = "TIXSCHEMA_KOTLIN_LIBS";
 
+/// What one run answered: whether it succeeded, and what it wrote to each stream.
+#[cfg(feature = "swift")]
+pub struct Judged {
+    pub stderr: String,
+    pub stdout: String,
+    pub succeeded: bool,
+}
+
 /// What [`kotlin_toolchain`] found: the compiler and runtime [`ran_kotlin`] invokes, the plugin
 /// jar, and the classpath the three library jars join into.
 #[cfg(feature = "kotlin")]
@@ -108,6 +116,44 @@ pub fn ran(
 ) -> Option<String> {
     let at = workspace(named);
     run_in(var, fallback, entry, source, &at)
+}
+
+/// Writes `entry` into a workspace of its own and runs it under the named runtime with `flags`
+/// ahead of it. A run that fails is the caller's to judge. `None` and a runtime named in `var` that
+/// cannot be started are what they are to [`run_in`].
+#[cfg(feature = "swift")]
+pub fn judged(
+    named: &str,
+    var: &str,
+    fallback: &'static str,
+    flags: &[&str],
+    entry: &str,
+    source: &str,
+) -> Option<Judged> {
+    let at = workspace(named);
+    let chosen = env::var(var).ok();
+    let runtime = chosen.clone().unwrap_or_else(|| fallback.to_owned());
+    fs::write(at.join(entry), source).unwrap();
+    let run = Command::new(&runtime)
+        .args(flags)
+        .arg(entry)
+        .current_dir(&at)
+        .output();
+    fs::remove_dir_all(&at).unwrap();
+    let Ok(reported) = run else {
+        assert!(
+            chosen.is_none(),
+            "{var} names `{runtime}`, and no runtime could be started there: {}",
+            run.unwrap_err()
+        );
+        stand_down(var, fallback);
+        return None;
+    };
+    Some(Judged {
+        stderr: String::from_utf8_lossy(&reported.stderr).into_owned(),
+        stdout: String::from_utf8_lossy(&reported.stdout).into_owned(),
+        succeeded: reported.status.success(),
+    })
 }
 
 /// Like [`ran`], but first symlinks `<workspace>/node_modules` to `modules` (as returned by

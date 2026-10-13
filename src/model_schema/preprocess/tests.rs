@@ -100,7 +100,13 @@ fn the_read_calls_the_functions_of_the_type_and_then_those_of_each_member() {
     ] {
         assert!(rendered.contains(written), "no `{written}` in: {rendered}");
     }
-    for unwritten in ["allow", "expect", "doc (hidden)", "impl Trait", "validate"] {
+    for unwritten in [
+        "allow",
+        "expect",
+        "doc (hidden)",
+        "impl Trait",
+        "validate (",
+    ] {
         assert!(
             !rendered.contains(unwritten),
             "found `{unwritten}` in: {rendered}"

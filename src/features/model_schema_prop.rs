@@ -201,7 +201,12 @@ pub struct ModelSchemaPropMeta {
     pub check: Vec<FunctionName>,
     /// The `pattern` of the enum the field's variant belongs to, where the field writes one of its
     /// own in [`Self::pattern`]: the value is held to both.
-    #[cfg(any(feature = "serde", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(
+        feature = "serde",
+        feature = "zod",
+        feature = "jsonschema",
+        feature = "swift"
+    ))]
     pub enum_pattern: Option<String>,
     pub literal: Option<LiteralValue>,
     /// `maxLength` written on a list, whose items it counts: moved here from [`Self::max_length`]
@@ -225,7 +230,7 @@ pub struct ModelSchemaPropMeta {
     pub ts_optional: bool,
 }
 
-#[cfg(any(feature = "serde", feature = "zod"))]
+#[cfg(any(feature = "serde", feature = "zod", feature = "swift"))]
 impl ModelSchemaPropMeta {
     /// Every pattern the value is held to: the field's own, then its enum's where both are written.
     pub fn patterns(&self) -> impl Iterator<Item = &str> {

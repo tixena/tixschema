@@ -99,6 +99,15 @@ mod run_swift;
 #[path = "service_schema_emitted_client_tests/run_swift_ws_headers.rs"]
 mod run_swift_ws_headers;
 
+/// The emitted `validate()` of each shape, run and compared with the Rust one.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_validate.rs"]
+mod run_swift_validate;
+
+#[cfg(all(test, feature = "swift"))]
+#[path = "service_schema_emitted_client_tests/swift_validate_models.rs"]
+mod swift_validate_models;
+
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin.rs"]
 mod run_kotlin;

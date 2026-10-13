@@ -598,12 +598,12 @@ fn a_member_named_after_a_reserved_word_is_written_between_backticks() {
         reserved_members_swift::swift_definition(),
         "public struct ReservedMembers: Codable, Sendable { public let `class`: String; public \
          let `in`: String; public let type: String; enum CodingKeys: String, CodingKey { case \
-         `class`; case `in`; case type;  };  }; "
+         `class`; case `in`; case type;  }; public func validate() -> [String] { [] } }; "
     );
     assert_eq!(
         reserved_member_swift::swift_definition(),
         "public enum ReservedMember: String, Codable, Sendable { case `default` = \"Default\"; \
-         case `in` = \"In\"; case other = \"Other\";  }"
+         case `in` = \"In\"; case other = \"Other\"; public func validate() -> [String] { [] } }"
     );
     assert_eq!(
         serde_json::to_value(ReservedMembers {
