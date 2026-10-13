@@ -974,9 +974,10 @@ pub fn model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 /// itself, and so do a holder's read at any depth, the recovering decode of a type declared with
 /// `decode_with`, a MongoDB operation that reads a row and a service's dispatcher. The Zod schema
 /// writes `z.preprocess(name, ...)` around the field's schema and around the type's own
-/// expression, the first name outermost. The JSON Schema calls no function, the Dart, Swift and
-/// Kotlin types are written as they are without the key, and a value built in code is never
-/// read, so nothing corrects it.
+/// expression, the first name outermost. The read of each Dart type calls a function under the
+/// name as written, `dynamic trimmed(dynamic payload)`. The JSON Schema calls no function, the
+/// Swift and Kotlin types are written as they are without the key, and a value built in code is
+/// never read, so nothing corrects it.
 ///
 /// A key the payload does not hold is read as serde reads an absent key, a `default` or an
 /// `Option` answering for it and `missing field` otherwise, and the field's function is not

@@ -1,11 +1,19 @@
 //! Unit tests of the Kotlin emitter: a unit struct renders as an `object`, a braced empty struct as
-//! a class, and what `validate()` writes for the shapes no integration test can declare.
+//! a class, and what `validate()` and the two serializers of a type write for the shapes no
+//! integration test can declare.
 
 use proc_macro2::{Span, TokenTree};
 
 use super::validate::jvm_pattern;
 use super::*;
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
+
+/// What a type that names a place writes a message under it with.
+const UNDER: &str = "private fun kotlinSchemaUnder(place: String, violation: String): String { \
+     val end = violation.indexOf('\\'', 1); \
+     return if (violation.startsWith(\"'\") && end > 0) { \
+     \"'$place.${violation.substring(1, end)}'${violation.substring(end + 1)}\" \
+     } else { \"'$place': $violation\" } }";
 
 /// The Kotlin source the tokens of an item publish: the first string literal they hold.
 fn definition(tokens: TokenStream) -> String {
@@ -19,6 +27,61 @@ fn definition(tokens: TokenStream) -> String {
         })
     }
     first_literal(tokens).unwrap()
+}
+
+/// The serializer that reads `named` with no judgement where the plugin writes it.
+fn generated(named: &str) -> String {
+    format!(
+        "@OptIn(ExperimentalSerializationApi::class) object {named}Unjudged : \
+         KSerializer<{named}> by {named}.generatedSerializer()"
+    )
+}
+
+/// The serializer of `named`, a type with no parameter: its unjudged read, then `validate()`.
+fn judged(named: &str) -> String {
+    format!(
+        "object {named}Serializer : KSerializer<{named}> {{ override val descriptor: \
+         SerialDescriptor = {named}Unjudged.descriptor; override fun serialize(encoder: Encoder, \
+         value: {named}) = {named}Unjudged.serialize(encoder, value); override fun \
+         deserialize(decoder: Decoder): {named} {{ val read = \
+         {named}Unjudged.deserialize(decoder); val violations = read.validate(); if \
+         (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \")); \
+         return read }} }}"
+    )
+}
+
+/// The serializer of `named`, a type with the one parameter `parameter`, which `bound` follows.
+fn judged_over(named: &str, parameter: &str, bound: &str, handed: &str) -> String {
+    format!(
+        "class {named}Serializer<{parameter}{bound}>({handed}: KSerializer<{parameter}>) : \
+         KSerializer<{named}<{parameter}>> {{ private val kotlinSchemaUnjudged = \
+         {named}Unjudged({handed}); override val descriptor: SerialDescriptor = \
+         kotlinSchemaUnjudged.descriptor; override fun serialize(encoder: Encoder, value: \
+         {named}<{parameter}>) = kotlinSchemaUnjudged.serialize(encoder, value); override fun \
+         deserialize(decoder: Decoder): {named}<{parameter}> {{ val read = \
+         kotlinSchemaUnjudged.deserialize(decoder); val violations = read.validate(); if \
+         (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \")); \
+         return read }} }}"
+    )
+}
+
+/// The annotations of a type the plugin reads, which keeps the plugin's serializer.
+fn kept(named: &str) -> String {
+    format!(
+        "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
+         {named}Serializer::class) @KeepGeneratedSerializer"
+    )
+}
+
+/// A parcel with one bound, written so that a type declared after it finds it written.
+fn labelled_parcel() -> String {
+    let item: ItemStruct = syn::parse_quote! {
+        struct Parcel {
+            #[model_schema_prop(minLength = 1)]
+            label: String,
+        }
+    };
+    plain(&item)
 }
 
 /// The Kotlin source of a struct that writes no argument.
@@ -56,8 +119,11 @@ fn a_braced_empty_struct_still_renders_as_a_class() {
         struct BracedEmpty {}
     };
     let rendered = struct_kotlin_tokens(&item, &plain_args()).to_string();
-    assert!(rendered.contains("class BracedEmpty"), "got: {rendered}");
-    assert!(!rendered.contains("object BracedEmpty"), "got: {rendered}");
+    assert!(rendered.contains("class BracedEmpty {"), "got: {rendered}");
+    assert!(
+        !rendered.contains("object BracedEmpty {"),
+        "got: {rendered}"
+    );
 }
 
 #[test]
@@ -246,13 +312,13 @@ fn a_brand_with_a_parameter_is_bounded_at_its_declared_default() {
         ))
     };
     let parameter = Ident::new("IdType", Span::call_site());
+    let held = "{ val violations = mutableListOf<String>(); if (value is String) { if \
+                (value.codePointCount(0, value.length) < 3) violations.add(\"too short: minimum \
+                length is 3, got ${value.codePointCount(0, value.length)}\") }; return violations }";
     assert!(
-        bounded(&[]).contains(
-            "{ fun validate(): List<String> { val violations = mutableListOf<String>(); if (value \
-             is String) { if (value.codePointCount(0, value.length) < 3) violations.add(\"too \
-             short: minimum length is 3, got ${value.codePointCount(0, value.length)}\") }; \
-             return violations } }"
-        ),
+        bounded(&[]).contains(&format!(
+            "{{ fun validate(): List<String> {held}; fun kotlinSchemaBound(): List<String> {held} }}"
+        )),
         "a parameter with no declared type is bounded as a string"
     );
     let branded = bounded(&[(parameter.clone(), syn::parse_quote!(Slug))]);
@@ -292,7 +358,12 @@ fn a_types_own_check_is_called_on_the_whole_value() {
     };
     assert_eq!(
         definition(struct_kotlin_tokens(&closed, &args)),
-        format!("@Serializable object ClosedDock {{ {called} }}")
+        format!(
+            "{} object ClosedDock {{ {called} }} {} {}",
+            kept("ClosedDock"),
+            generated("ClosedDock"),
+            judged("ClosedDock")
+        )
     );
 }
 
@@ -329,7 +400,8 @@ fn the_readme_shows_what_the_parcel_of_the_documents_emits() {
         plain(&manifest),
     ];
     let readme = include_str!("../../../README.md");
-    let opens = "```kotlin\n@Serializable data class Parcel(val label";
+    let opens = "```kotlin\n@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
+                 ParcelSerializer::class)";
     let block = readme
         .find(opens)
         .and_then(|start| readme.get(start + "```kotlin\n".len()..))
@@ -347,4 +419,460 @@ fn the_readme_shows_what_the_parcel_of_the_documents_emits() {
         })
         .collect();
     assert_eq!(shown, emitted);
+}
+
+/// A type with a parameter writes both serializers as classes over one serializer per parameter,
+/// and the plugin's serializer is the one the unjudged read hands on.
+#[test]
+fn a_type_with_a_parameter_takes_one_serializer_per_parameter() {
+    let item: ItemStruct = syn::parse_quote! {
+        struct Crate<CodeType> {
+            codes: Vec<CodeType>,
+            #[model_schema_prop(minLength = 1)]
+            label: String,
+        }
+    };
+    assert_eq!(
+        plain(&item),
+        format!(
+            "{} data class Crate<CodeType>(val codes: List<CodeType>, val label: String) {{ fun \
+             validate(): List<String> {{ val violations = mutableListOf<String>(); if \
+             (label.codePointCount(0, label.length) < 1) violations.add(\"'label': too short: \
+             minimum length is 1, got ${{label.codePointCount(0, label.length)}}\"); return \
+             violations }} }} @OptIn(ExperimentalSerializationApi::class) class \
+             CrateUnjudged<CodeType>(codeTypeSerializer: KSerializer<CodeType>) : \
+             KSerializer<Crate<CodeType>> by Crate.generatedSerializer(codeTypeSerializer) {}",
+            kept("Crate"),
+            judged_over("Crate", "CodeType", "", "codeTypeSerializer")
+        )
+    );
+}
+
+/// A holder names the unjudged serializer of each model `validate()` walks, where it is written:
+/// on the property, and on the type inside a list, a nullable and a map's values.
+#[test]
+fn a_holder_reads_each_model_it_walks_with_no_judgement() {
+    let crated: ItemStruct = syn::parse_quote! {
+        struct Crate<CodeType> { codes: Vec<CodeType> }
+    };
+    let coded: ItemStruct = syn::parse_quote! {
+        #[serde(transparent)]
+        struct Code(String);
+    };
+    let holder: ItemStruct = syn::parse_quote! {
+        struct Depot {
+            by_dock: BTreeMap<String, Parcel>,
+            code: Code,
+            crated: Crate<Parcel>,
+            first: Parcel,
+            grid: Vec<Vec<Option<Parcel>>>,
+            listed: Vec<Parcel>,
+            lists_by_dock: BTreeMap<String, Vec<Parcel>>,
+            pair: (String, Parcel),
+            spare: Option<Parcel>,
+            #[model_schema_prop(minLength = 3)]
+            stamped: Code,
+            trailing: Trailer,
+        }
+    };
+    let written = [labelled_parcel(), plain(&crated), plain(&coded)];
+    assert_eq!(written.len(), 3);
+    let kotlin = plain(&holder);
+    let unjudged = "@Serializable(with = ParcelUnjudged::class)";
+    assert!(
+        kotlin.contains(&format!(
+            "data class Depot(@SerialName(\"by_dock\") val byDock: Map<String, {unjudged} \
+             Parcel>, @Serializable(with = CodeUnjudged::class) val code: Code, \
+             @Serializable(with = CrateUnjudged::class) val crated: Crate<Parcel>, {unjudged} val \
+             first: Parcel, val grid: List<List<{unjudged} Parcel?>>, val listed: \
+             List<{unjudged} Parcel>, @SerialName(\"lists_by_dock\") val listsByDock: \
+             Map<String, List<{unjudged} Parcel>>, val pair: KotlinTuple1, {unjudged} val spare: \
+             Parcel? = null, val stamped: Code, val trailing: Trailer) {{"
+        )),
+        "got: {kotlin}"
+    );
+    assert!(
+        kotlin.contains(
+            "return KotlinTuple1(input.json.decodeFromJsonElement(serializer<String>(), \
+             array[0]), input.json.decodeFromJsonElement(ParcelUnjudged, array[1]))"
+        ),
+        "the wrapper of a tuple the holder walks reads a model in a position unjudged. got: \
+         {kotlin}"
+    );
+    assert!(
+        kotlin.ends_with(&format!("{} {}", generated("Depot"), judged("Depot"))),
+        "got: {kotlin}"
+    );
+}
+
+/// A brand's value class keeps the plugin's serializer, and answers what its bounds alone hold
+/// the value to beside `validate()`, which calls its checks as well.
+#[test]
+fn a_brand_is_judged_by_its_own_serializer_and_answers_its_bounds_alone() {
+    let item: ItemStruct = syn::parse_quote! {
+        #[serde(transparent)]
+        struct Code(String);
+    };
+    let check = [FunctionName {
+        name: "unreserved".to_owned(),
+        written_at: Span::call_site(),
+    }];
+    let args = KotlinArgs {
+        check: &check,
+        min_length: Some(2),
+        ..plain_args()
+    };
+    let bound = "if (value.codePointCount(0, value.length) < 2) violations.add(\"too short: \
+                 minimum length is 2, got ${value.codePointCount(0, value.length)}\")";
+    assert_eq!(
+        definition(struct_kotlin_tokens(&item, &args)),
+        format!(
+            "@OptIn(ExperimentalSerializationApi::class) @JvmInline @Serializable(with = \
+             CodeSerializer::class) @KeepGeneratedSerializer value class Code(val value: String) \
+             {{ fun kotlinSchemaText(): String = value; fun validate(): List<String> {{ val \
+             violations = mutableListOf<String>(); {bound}; violations.addAll(unreserved(this)); \
+             return violations }}; fun kotlinSchemaBound(): List<String> {{ val violations = \
+             mutableListOf<String>(); {bound}; return violations }} }} {} {}",
+            generated("Code"),
+            judged("Code")
+        )
+    );
+    let unbounded = plain(&item);
+    assert!(!unbounded.contains("kotlinSchemaBound"), "got: {unbounded}");
+}
+
+/// A brand with a parameter writes its serializers over the parameter's own.
+#[test]
+fn a_brand_with_a_parameter_takes_the_serializer_of_what_it_holds() {
+    let item: ItemStruct = syn::parse_quote! {
+        #[serde(transparent)]
+        struct UserId<IdType>(IdType);
+    };
+    let kotlin = plain(&item);
+    assert_eq!(
+        kotlin,
+        format!(
+            "@OptIn(ExperimentalSerializationApi::class) @JvmInline @Serializable(with = \
+             UserIdSerializer::class) @KeepGeneratedSerializer value class UserId<IdType>(val \
+             value: IdType) {{ fun validate(): List<String> = emptyList() }} \
+             @OptIn(ExperimentalSerializationApi::class) class \
+             UserIdUnjudged<IdType>(idTypeSerializer: KSerializer<IdType>) : \
+             KSerializer<UserId<IdType>> by UserId.generatedSerializer(idTypeSerializer) {}",
+            judged_over("UserId", "IdType", "", "idTypeSerializer")
+        )
+    );
+}
+
+/// The serializer the emitter writes for a tuple struct is its unjudged read, a model in a slot
+/// read unjudged there, and the struct's own serializer judges what it read.
+#[test]
+fn a_tuple_struct_reads_its_slots_unjudged_and_judges_the_whole() {
+    let item: ItemStruct = syn::parse_quote! {
+        struct Consignment(Vec<String>, Parcel);
+    };
+    let parcel = labelled_parcel();
+    assert!(parcel.ends_with(&judged("Parcel")), "got: {parcel}");
+    assert_eq!(
+        plain(&item),
+        format!(
+            "@Serializable(with = ConsignmentSerializer::class) data class Consignment(val \
+             slot0: List<String>, val slot1: Parcel) {{ fun validate(): List<String> {{ val \
+             violations = mutableListOf<String>(); violations.addAll(slot1.validate().map {{ \
+             kotlinSchemaUnder(\"1\", it) }}); return violations }}; {UNDER} }} object \
+             ConsignmentUnjudged : KSerializer<Consignment> {{ override val descriptor: \
+             SerialDescriptor = buildClassSerialDescriptor(\"Consignment\"); override fun \
+             serialize(encoder: Encoder, value: Consignment) {{ val output = encoder as \
+             JsonEncoder; output.encodeJsonElement(buildJsonArray {{ \
+             add(output.json.encodeToJsonElement(serializer<List<String>>(), value.slot0)); \
+             add(output.json.encodeToJsonElement(ParcelUnjudged, value.slot1)) }}) }}; override \
+             fun deserialize(decoder: Decoder): Consignment {{ val input = decoder as \
+             JsonDecoder; val array = input.decodeJsonElement().jsonArray; return \
+             Consignment(input.json.decodeFromJsonElement(serializer<List<String>>(), array[0]), \
+             input.json.decodeFromJsonElement(ParcelUnjudged, array[1])) }} }} {}",
+            judged("Consignment")
+        )
+    );
+}
+
+/// A tuple struct of one slot is read from an array, where serde writes the slot's value: the two
+/// serializers are written over that read.
+#[test]
+fn a_tuple_struct_of_one_slot_keeps_the_array_it_was_read_from() {
+    let item: ItemStruct = syn::parse_quote! {
+        struct Sealed(#[model_schema_prop(minLength = 1)] String);
+    };
+    let kotlin = plain(&item);
+    assert!(
+        kotlin.contains(
+            "object SealedUnjudged : KSerializer<Sealed> { override val descriptor: \
+             SerialDescriptor = buildClassSerialDescriptor(\"Sealed\"); override fun \
+             serialize(encoder: Encoder, value: Sealed) { val output = encoder as JsonEncoder; \
+             output.encodeJsonElement(buildJsonArray { \
+             add(output.json.encodeToJsonElement(serializer<String>(), value.slot0)) }) }; \
+             override fun deserialize(decoder: Decoder): Sealed { val input = decoder as \
+             JsonDecoder; val array = input.decodeJsonElement().jsonArray; return \
+             Sealed(input.json.decodeFromJsonElement(serializer<String>(), array[0])) } }"
+        ),
+        "got: {kotlin}"
+    );
+    assert!(kotlin.ends_with(&judged("Sealed")), "got: {kotlin}");
+}
+
+/// A struct with a flattened member reads the model it merges, and the values of the map it
+/// merges, unjudged, and its own serializer judges the whole.
+#[cfg(feature = "serde")]
+#[test]
+fn a_struct_with_a_flattened_member_reads_what_it_merges_unjudged() {
+    let base: ItemStruct = syn::parse_quote! {
+        struct Base { name: String }
+    };
+    let item: ItemStruct = syn::parse_quote! {
+        struct Yard {
+            #[serde(flatten)]
+            base: Base,
+            #[serde(flatten)]
+            by_dock: BTreeMap<String, Parcel>,
+            gate: String,
+        }
+    };
+    let written = [labelled_parcel(), plain(&base)];
+    assert_eq!(written.len(), 2);
+    let kotlin = plain(&item);
+    for held in [
+        "@Serializable(with = YardSerializer::class) data class Yard(val base: Base, \
+         @SerialName(\"by_dock\") val byDock: Map<String, Parcel>, val gate: String) {",
+        "} object YardUnjudged : KSerializer<Yard> { override val descriptor: SerialDescriptor = \
+         buildClassSerialDescriptor(\"Yard\"); private val lenient = Json { ignoreUnknownKeys = \
+         true }; override fun serialize(",
+        "output.json.encodeToJsonElement(BaseUnjudged, value.base).jsonObject.forEach { (k, v) \
+         -> put(k, v) }",
+        "value.byDock.forEach { (k, v) -> put(k, output.json.encodeToJsonElement(ParcelUnjudged, \
+         v)) }",
+        "val baseKeys = (BaseUnjudged).descriptor.elementNames.toSet(); val base = \
+         lenient.decodeFromJsonElement(BaseUnjudged, obj)",
+        "mapValues { (_, v) -> input.json.decodeFromJsonElement(ParcelUnjudged, v) }",
+    ] {
+        assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
+    }
+    assert!(kotlin.ends_with(&judged("Yard")), "got: {kotlin}");
+}
+
+/// An enum under a tag alone is read by a serializer the emitter writes: it takes the tag off
+/// the object and reads the rest as the variant, and writes the variant with the tag ahead of it.
+/// A newtype variant is written under the `value` key its own serializer writes.
+#[cfg(feature = "serde")]
+#[test]
+fn an_enum_under_a_tag_alone_is_read_and_written_by_hand_over_its_variants() {
+    let item: ItemEnum = syn::parse_quote! {
+        #[serde(tag = "kind")]
+        enum Lift {
+            Boxed(Parcel),
+            Held,
+            Loose {
+                #[model_schema_prop(maxLength = 3)]
+                label: String,
+            },
+        }
+    };
+    let parcel = labelled_parcel();
+    assert!(parcel.ends_with(&judged("Parcel")), "got: {parcel}");
+    let merged = |variant: &str| {
+        format!(
+            "is Lift{variant} -> buildJsonObject {{ put(\"kind\", \"{variant}\"); \
+             output.json.encodeToJsonElement(serializer<Lift{variant}>(), \
+             value).jsonObject.forEach {{ (k, v) -> put(k, v) }} }}"
+        )
+    };
+    let rest = |variant: &str| {
+        format!(
+            "\"{variant}\" -> input.json.decodeFromJsonElement(serializer<Lift{variant}>(), \
+             JsonObject(obj - \"kind\"))"
+        )
+    };
+    assert_eq!(
+        definition(enum_kotlin_tokens(&item, &plain_args())),
+        format!(
+            "@Serializable(with = LiftSerializer::class) sealed interface Lift {{ fun validate(): \
+             List<String> }} @SerialName(\"Boxed\") @Serializable data class \
+             LiftBoxed(@Serializable(with = ParcelUnjudged::class) val value: Parcel) : Lift {{ \
+             override fun validate(): List<String> {{ val violations = mutableListOf<String>(); \
+             violations.addAll(value.validate()); return violations }} }} @SerialName(\"Held\") \
+             @Serializable data object LiftHeld : Lift {{ override fun validate(): List<String> = \
+             emptyList() }} @SerialName(\"Loose\") @Serializable data class LiftLoose(val label: \
+             String) : Lift {{ override fun validate(): List<String> {{ val violations = \
+             mutableListOf<String>(); if \
+             (label.codePointCount(0, label.length) > 3) violations.add(\"'label': too long: \
+             maximum length is 3, got ${{label.codePointCount(0, label.length)}}\"); return \
+             violations }} }} object LiftUnjudged : KSerializer<Lift> {{ override val descriptor: \
+             SerialDescriptor = buildClassSerialDescriptor(\"Lift\"); override fun \
+             serialize(encoder: Encoder, value: Lift) {{ val output = encoder as JsonEncoder; \
+             output.encodeJsonElement(when (value) {{ {}; is LiftHeld -> buildJsonObject {{ \
+             put(\"kind\", \"Held\") }}; {} }}) }}; override fun deserialize(decoder: Decoder): \
+             Lift {{ val input = decoder as JsonDecoder; val obj = \
+             input.decodeJsonElement().jsonObject; val tag = (obj[\"kind\"] as? \
+             JsonPrimitive)?.content; return when (tag) {{ {}; \"Held\" -> LiftHeld; {} else -> \
+             throw SerializationException(\"unknown tag \" + tag) }} }} }} {}",
+            merged("Boxed"),
+            merged("Loose"),
+            rest("Boxed"),
+            rest("Loose"),
+            judged("Lift")
+        )
+    );
+}
+
+/// An enum under serde's own tagging reads the model a variant holds unjudged, in its one slot and
+/// in a list there, and its own serializer judges the variant it read.
+#[test]
+fn an_enum_under_its_variants_names_reads_what_a_variant_holds_unjudged() {
+    let item: ItemEnum = syn::parse_quote! {
+        enum Freight {
+            Boxed(Parcel),
+            Held,
+            Many(Vec<Parcel>),
+        }
+    };
+    let parcel = labelled_parcel();
+    assert!(parcel.ends_with(&judged("Parcel")), "got: {parcel}");
+    let kotlin = definition(enum_kotlin_tokens(&item, &plain_args()));
+    for held in [
+        "@Serializable(with = FreightSerializer::class) sealed interface Freight { fun \
+         validate(): List<String> } @Serializable data class FreightBoxed(@Serializable(with = \
+         ParcelUnjudged::class) val value: Parcel) : Freight {",
+        "@Serializable data class FreightMany(val value: List<@Serializable(with = \
+         ParcelUnjudged::class) Parcel>) : Freight {",
+        "} object FreightUnjudged : KSerializer<Freight> { override val descriptor: \
+         SerialDescriptor = buildClassSerialDescriptor(\"Freight\"); override fun \
+         serialize(encoder: Encoder, value: Freight) { val output = encoder as JsonEncoder; \
+         output.encodeJsonElement(when (value) { is FreightBoxed -> buildJsonObject { \
+         put(\"Boxed\", output.json.encodeToJsonElement(ParcelUnjudged, value.value)) }; is \
+         FreightHeld -> JsonPrimitive(\"Held\"); is FreightMany -> buildJsonObject { \
+         put(\"Many\", output.json.encodeToJsonElement(ListSerializer(ParcelUnjudged), \
+         value.value)) } }) };",
+        "return when (tag) { \"Boxed\" -> \
+         FreightBoxed(input.json.decodeFromJsonElement(ParcelUnjudged, data)); \"Held\" -> \
+         FreightHeld; \"Many\" -> \
+         FreightMany(input.json.decodeFromJsonElement(ListSerializer(ParcelUnjudged), data)) \
+         else -> error(\"unknown tag \" + tag) } } }",
+    ] {
+        assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
+    }
+    assert!(kotlin.ends_with(&judged("Freight")), "got: {kotlin}");
+}
+
+/// An untagged enum takes the first variant whose payload decodes and whose bounds hold: each
+/// member's own, and those of each brand it holds. A check and what a held model reports choose
+/// none, so a variant that holds no bound is taken as it decodes.
+#[cfg(feature = "serde")]
+#[test]
+fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
+    let coded: ItemStruct = syn::parse_quote! {
+        #[serde(transparent)]
+        struct Code(String);
+    };
+    let item: ItemEnum = syn::parse_quote! {
+        #[serde(untagged)]
+        enum Reference {
+            Boxed(Parcel),
+            Coded(Code),
+            Named {
+                #[model_schema_prop(minLength = 1)]
+                name: String,
+            },
+            Text(String),
+            Trailing(Trailer),
+        }
+    };
+    let bounded = KotlinArgs {
+        min_length: Some(2),
+        ..plain_args()
+    };
+    let written = [
+        labelled_parcel(),
+        definition(struct_kotlin_tokens(&coded, &bounded)),
+    ];
+    assert_eq!(written.len(), 2);
+    let kotlin = definition(enum_kotlin_tokens(&item, &plain_args()));
+    let opens = "val violations = mutableListOf<String>();";
+    let named = "if (name.codePointCount(0, name.length) < 1) violations.add(\"'name': too \
+                 short: minimum length is 1, got ${name.codePointCount(0, name.length)}\")";
+    let asked = format!(
+        "{{ override fun validate(): List<String> {{ {opens} violations.addAll(value.validate()); \
+         return violations }}; fun kotlinSchemaBound(): List<String> {{ {opens} \
+         violations.addAll(value.kotlinSchemaBound()); return violations }}"
+    );
+    for held in [
+        format!(
+            "value class ReferenceBoxed(@Serializable(with = ParcelUnjudged::class) val value: \
+             Parcel) : Reference {{ override fun validate(): List<String> {{ {opens} \
+             violations.addAll(value.validate()); return violations }} }} @JvmInline"
+        ),
+        format!(
+            "value class ReferenceCoded(@Serializable(with = CodeUnjudged::class) val value: \
+             Code) : Reference {asked} }} @Serializable"
+        ),
+        format!(
+            "data class ReferenceNamed(val name: String) : Reference {{ override fun validate(): \
+             List<String> {{ {opens} {named}; return violations }}; fun kotlinSchemaBound(): \
+             List<String> {{ {opens} {named}; return violations }} }} @JvmInline"
+        ),
+        "value class ReferenceText(val value: String) : Reference { override fun validate(): \
+         List<String> = emptyList() } @JvmInline"
+            .to_owned(),
+        format!(
+            "value class ReferenceTrailing(val value: Trailer) : Reference {asked}; private fun \
+             Any?.validate(): List<String> = emptyList(); private fun Any?.kotlinSchemaBound(): \
+             List<String> = emptyList() }} object ReferenceUnjudged : KSerializer<Reference> {{"
+        ),
+    ] {
+        assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
+    }
+    let taken = |variant: &str| {
+        format!(
+            ".recoverCatching {{ \
+             input.json.decodeFromJsonElement(serializer<Reference{variant}>(), element) as \
+             Reference }}"
+        )
+    };
+    let held_to_its_bounds = |variant: &str| {
+        format!(
+            ".recoverCatching {{ \
+             input.json.decodeFromJsonElement(serializer<Reference{variant}>(), element).also {{ \
+             chosen -> if (chosen.kotlinSchemaBound().isNotEmpty()) error(\"a bound of \
+             Reference{variant} is broken\") }} as Reference }}"
+        )
+    };
+    assert!(
+        kotlin.contains(&format!(
+            "return runCatching {{ error(\"unreachable\") as Nothing }}{}{}{}{}{}.getOrElse {{ \
+             error(\"No variant of Reference matched\") }} }} }} {}",
+            taken("Boxed"),
+            held_to_its_bounds("Coded"),
+            held_to_its_bounds("Named"),
+            taken("Text"),
+            held_to_its_bounds("Trailing"),
+            judged("Reference")
+        )),
+        "got: {kotlin}"
+    );
+}
+
+/// A type that holds itself reads each of its own unjudged, and judges the whole once.
+#[test]
+fn a_type_that_holds_itself_reads_itself_unjudged() {
+    let item: ItemStruct = syn::parse_quote! {
+        struct Node {
+            children: Vec<Node>,
+            #[model_schema_prop(minLength = 1)]
+            label: String,
+        }
+    };
+    let kotlin = plain(&item);
+    assert!(
+        kotlin.contains(
+            "data class Node(val children: List<@Serializable(with = NodeUnjudged::class) Node>, \
+             val label: String) {"
+        ),
+        "got: {kotlin}"
+    );
 }

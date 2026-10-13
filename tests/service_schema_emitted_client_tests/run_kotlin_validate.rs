@@ -1,6 +1,9 @@
 //! `validate()` of the emitted Kotlin types, compiled with `-Werror` and run. A row whose name is
 //! a named field's, a list's index or a map's key is held to what Rust's `validate()` answers of
 //! the same value. A row of a slot or of a variant's member is held to the text written here.
+//!
+//! A row's value is read by `{Type}Unjudged`, the read alone. The type's own serializer reads the
+//! same payload in a run of its own, and is held to throwing what `validate()` answered.
 
 #![cfg(feature = "kotlin")]
 
@@ -75,6 +78,20 @@ fun report(name: String, violations: List<String>) {
 }
 "#;
 
+/// What the driver of the reads prints a row with: whether the type's own serializer handed the
+/// value back, and each message of what it threw.
+const JUDGED: &str = r#"
+fun judged(name: String, read: () -> Any?) {
+    try {
+        read()
+        println("$name: read")
+    } catch (refused: SerializationException) {
+        println("$name: refused")
+        (refused.message ?: "").split("; ").forEach { println("    $it") }
+    }
+}
+"#;
+
 /// The 13 lines of the shared table, for a parcel whose members are declared in the order of
 /// their names.
 const TABLE: &str = "\
@@ -93,12 +110,21 @@ case 6: refused
     'parcel.fragileItemCodes.1': y is outside of itemCodeList
 ";
 
+/// The read of a row's payload by the type's own serializer: the Kotlin expression, and the
+/// messages it throws, none where it hands the value back.
+struct Read {
+    kotlin: String,
+    refused: Vec<String>,
+}
+
 /// One row of a run: the Kotlin expression of the value, and the messages `validate()` is held
 /// to for it.
 struct Row {
     expected: Vec<String>,
     kotlin: String,
     name: &'static str,
+    /// `None` for a value built in Kotlin.
+    read: Option<Read>,
 }
 
 /// The parcel of the shared table.
@@ -503,15 +529,37 @@ fn kotlin_string(text: &str) -> String {
     )
 }
 
-/// The Kotlin expression that reads the payload serde writes for `value` as `read_as`.
-fn decoded<T>(read_as: &str, value: &T) -> String
+/// The serializer that reads `read_as` with no judgement: `{Type}Unjudged`, over the serializer
+/// of its argument where the type is written with one.
+fn unjudged(read_as: &str) -> String {
+    read_as.split_once('<').map_or_else(
+        || format!("{read_as}Unjudged"),
+        |(named, argument)| {
+            format!(
+                "{named}Unjudged(serializer<{}>())",
+                argument.strip_suffix('>').unwrap_or(argument)
+            )
+        },
+    )
+}
+
+/// A row over the payload serde writes for `value`: the value `{Type}Unjudged` reads from it, and
+/// the read of it by the type's own serializer, held to throwing what `validate()` answers.
+fn read_row<T>(name: &'static str, read_as: &str, value: &T, expected: Vec<String>) -> Row
 where
     T: Serialize,
 {
-    format!(
-        "Json.decodeFromString(serializer<{read_as}>(), {})",
-        kotlin_string(&serde_json::to_string(value).unwrap())
-    )
+    let payload = kotlin_string(&serde_json::to_string(value).unwrap());
+    let read = Read {
+        kotlin: format!("Json.decodeFromString(serializer<{read_as}>(), {payload})"),
+        refused: expected.clone(),
+    };
+    Row {
+        expected,
+        kotlin: format!("Json.decodeFromString({}, {payload})", unjudged(read_as)),
+        name,
+        read: Some(read),
+    }
 }
 
 /// A row held to what Rust's `validate()` answered of `value`.
@@ -519,11 +567,7 @@ fn row<T>(name: &'static str, read_as: &str, value: &T, answered: Result<(), Vec
 where
     T: Serialize,
 {
-    Row {
-        expected: answered.err().unwrap_or_default(),
-        kotlin: decoded(read_as, value),
-        name,
-    }
+    read_row(name, read_as, value, answered.err().unwrap_or_default())
 }
 
 /// A row of a slot or of a variant's member, held to the names written here.
@@ -531,20 +575,43 @@ fn pinned<T>(name: &'static str, read_as: &str, value: &T, expected: &[&str]) ->
 where
     T: Serialize,
 {
+    read_row(name, read_as, value, texts(expected))
+}
+
+/// A row of a plain enum, which keeps the plugin's serializer: it is read by it, and the read
+/// hands back a value `validate()` refuses.
+fn plain_enum_row<T>(
+    name: &'static str,
+    read_as: &str,
+    value: &T,
+    answered: Result<(), Vec<String>>,
+) -> Row
+where
+    T: Serialize,
+{
+    let read = format!(
+        "Json.decodeFromString(serializer<{read_as}>(), {})",
+        kotlin_string(&serde_json::to_string(value).unwrap())
+    );
     Row {
-        expected: texts(expected),
-        kotlin: decoded(read_as, value),
+        expected: answered.err().unwrap_or_default(),
+        kotlin: read.clone(),
         name,
+        read: Some(Read {
+            kotlin: read,
+            refused: Vec::new(),
+        }),
     }
 }
 
 /// A row whose value is built in Kotlin, where the emitted serializer does not read what serde
-/// writes for the shape.
+/// writes for the shape, or reads no variant of an untagged enum from it.
 fn built(name: &'static str, kotlin: &str, expected: &[&str]) -> Row {
     Row {
         expected: texts(expected),
         kotlin: kotlin.to_owned(),
         name,
+        read: None,
     }
 }
 
@@ -584,6 +651,48 @@ fn module(definitions: Vec<String>, written_by_hand: &[&str], rows: &[Row]) -> S
     parts.extend(written_by_hand.iter().map(|&part| part.to_owned()));
     parts.push(REPORT.to_owned());
     parts.push(driver(rows));
+    parts.join("\n\n")
+}
+
+/// What the driver of the reads prints for `rows` where each read answers what its row expects.
+fn read_report(rows: &[Row]) -> String {
+    let mut text = String::new();
+    for (held, read) in rows
+        .iter()
+        .filter_map(|held| held.read.as_ref().map(|read| (held, read)))
+    {
+        if read.refused.is_empty() {
+            let _ = writeln!(text, "{}: read", held.name);
+        } else {
+            let _ = writeln!(text, "{}: refused", held.name);
+            for line in &read.refused {
+                let _ = writeln!(text, "    {line}");
+            }
+        }
+    }
+    text
+}
+
+/// The module that reads each row's payload with the type's own serializer.
+fn read_module(definitions: Vec<String>, written_by_hand: &[&str], rows: &[Row]) -> String {
+    let mut main = String::from("fun main() {\n");
+    for (held, read) in rows
+        .iter()
+        .filter_map(|held| held.read.as_ref().map(|read| (held, read)))
+    {
+        let _ = writeln!(
+            main,
+            "    judged({}) {{ {} }}",
+            kotlin_string(held.name),
+            read.kotlin
+        );
+    }
+    main.push_str("}\n");
+    let mut parts = vec![KOTLIN_IMPORTS.to_owned()];
+    parts.extend(definitions);
+    parts.extend(written_by_hand.iter().map(|&part| part.to_owned()));
+    parts.push(JUDGED.to_owned());
+    parts.push(main);
     parts.join("\n\n")
 }
 
@@ -848,6 +957,12 @@ fn struct_rows() -> Vec<Row> {
         validate: String::new(),
         violations: 0,
     };
+    let labelled = Probe {
+        later: Later {
+            label: "a".to_owned(),
+        },
+        ..probe.clone()
+    };
     vec![
         row(
             "ClosedDock",
@@ -855,13 +970,13 @@ fn struct_rows() -> Vec<Row> {
             &ClosedDock,
             ClosedDock.validate(),
         ),
-        row(
+        plain_enum_row(
             "Grade, unrated",
             "Grade",
             &Grade::Unrated,
             Grade::Unrated.validate(),
         ),
-        row(
+        plain_enum_row(
             "Grade, express",
             "Grade",
             &Grade::Express,
@@ -869,7 +984,20 @@ fn struct_rows() -> Vec<Row> {
         ),
         row("Crate<String>", "Crate<String>", &named, named.validate()),
         row("Crate<UInt>", "Crate<UInt>", &numbered, numbered.validate()),
-        row("Probe", "Probe", &probe, probe.validate()),
+        // `Later` is declared below `Probe`, which reads it by its own serializer: a probe that
+        // holds one that breaks its bound is built, and its read is another run's.
+        Row {
+            expected: probe.validate().err().unwrap_or_default(),
+            kotlin: "Probe(Later(\"\"), Crate<UInt>(emptyList(), \"\"), \"\", 0u)".to_owned(),
+            name: "Probe",
+            read: None,
+        },
+        row(
+            "Probe, the member typed with a type declared below held",
+            "Probe",
+            &labelled,
+            labelled.validate(),
+        ),
     ]
 }
 
@@ -989,18 +1117,14 @@ fn bare_variant_rows() -> Vec<Row> {
             "LiftBoxed(Parcel(listOf(\"x\"), listOf(\"x\"), \"\"))",
             &["'label': too short: minimum length is 1, got 0"],
         ),
-        pinned(
+        built(
             "Reference, a named member",
-            "Reference",
-            &Reference::Named {
-                name: String::new(),
-            },
+            "ReferenceNamed(\"\")",
             &["'name': too short: minimum length is 1, got 0"],
         ),
-        pinned(
+        built(
             "Reference, the one slot",
-            "Reference",
-            &Reference::Numbered(0),
+            "ReferenceNumbered(0u)",
             &["too small: minimum is 1, got 0"],
         ),
         pinned(
@@ -1010,6 +1134,20 @@ fn bare_variant_rows() -> Vec<Row> {
             &["a reference is not 7"],
         ),
     ]
+}
+
+/// The rows of the shared table, then those of every shape.
+fn every_row() -> Vec<Row> {
+    let mut rows = table_rows();
+    rows.extend(bound_rows());
+    rows.extend(code_point_rows());
+    rows.extend(holder_rows());
+    rows.extend(brand_rows());
+    rows.extend(struct_rows());
+    rows.extend(slot_rows());
+    rows.extend(wrapped_variant_rows());
+    rows.extend(bare_variant_rows());
+    rows
 }
 
 fn shape_definitions() -> Vec<String> {
@@ -1075,6 +1213,40 @@ fn every_shape_runs_its_bounds_and_its_checks() {
         return;
     };
     assert_eq!(printed, report(&rows));
+}
+
+/// The type's own serializer reads the payload of each row and throws what `validate()` answers
+/// of the value, each message at its full place, joined by `; `. A plain enum is read as it was.
+#[test]
+fn the_read_of_every_shape_throws_what_validate_answers() {
+    let rows = every_row();
+    let Some(printed) = ran_kotlin(&read_module(
+        shape_definitions(),
+        &[TABLE_CHECKS, SHAPE_CHECKS],
+        &rows,
+    )) else {
+        return;
+    };
+    assert_eq!(printed, read_report(&rows));
+}
+
+/// The one row whose read is not held to `validate()`: a plain enum keeps the plugin's
+/// serializer, and is handed back.
+#[test]
+fn the_one_row_whose_read_is_not_what_validate_answers_is_a_plain_enums() {
+    let rows = every_row();
+    let differing: Vec<(&str, Vec<String>)> = rows
+        .iter()
+        .filter_map(|held| {
+            let read = held.read.as_ref()?;
+            (read.refused != held.expected).then(|| (held.name, read.refused.clone()))
+        })
+        .collect();
+    assert_eq!(differing, [("Grade, unrated", Vec::new())]);
+    // serde reads no variant from a payload that breaks the bound of each, so the two rows of
+    // such a value are built in Kotlin.
+    serde_json::from_str::<Reference>("{\"name\":\"\"}").unwrap_err();
+    serde_json::from_str::<Reference>("0").unwrap_err();
 }
 
 /// What Rust answers for the rows held to it, written out: a broken bound in each place of a

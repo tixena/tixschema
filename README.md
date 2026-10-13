@@ -102,7 +102,7 @@ serde_json::from_str::<Ping>("{}").unwrap();
 serde_json::from_str::<Ping>("null").unwrap_err();
 ```
 
-TypeScript, Zod and JSON Schema describe it exactly as a braced empty struct already does: `Record<string, never>`, `z.strictObject({})`, `{"type": "object", "additionalProperties": false, "properties": {}, "required": []}`. Dart, Swift and Kotlin each publish their own no-data type -- Dart a `const` class, Swift an empty `Codable` struct, and Kotlin `@Serializable object Ping` rather than a `class` (a braced `struct Ping {}` still publishes a `class`, since it is a different shape). Declared above a service as an operation's success, `Result<Ping, E>`, a unit struct reads like a `()` success on every client -- the limit is a registry's own: the struct must be declared in the same crate, above the service, or the client sees the field-position type instead (and the call still succeeds, since both sides still agree the wire is `{}`).
+TypeScript, Zod and JSON Schema describe it exactly as a braced empty struct already does: `Record<string, never>`, `z.strictObject({})`, `{"type": "object", "additionalProperties": false, "properties": {}, "required": []}`. Dart, Swift and Kotlin each publish their own no-data type -- Dart a `const` class, Swift an empty `Codable` struct, and Kotlin a serializable `object Ping` rather than a `class` (a braced `struct Ping {}` still publishes a `class`, since it is a different shape). Declared above a service as an operation's success, `Result<Ping, E>`, a unit struct reads like a `()` success on every client -- the limit is a registry's own: the struct must be declared in the same crate, above the service, or the client sees the field-position type instead (and the call still succeeds, since both sides still agree the wire is `{}`).
 
 ### Published Names (`name`)
 
@@ -3997,7 +3997,7 @@ A field's check is written on the schema of the value the Rust function takes: a
 
 **In the Dart `validate()`** every emitted Dart type has, under the name as written. See [`validate()` in Dart](#validate-in-dart).
 
-**In the `validate()` of the Kotlin client.** Every Kotlin type carries one, which runs the bounds and calls each check under the name written. See [`validate()` in the Kotlin client](#validate-in-the-kotlin-client).
+**In the `validate()` of the Kotlin client.** Every Kotlin type carries one, which runs the bounds and calls each check under the name written, and the serializer of the type calls it on the value it read. See [`validate()` in the Kotlin client](#validate-in-the-kotlin-client) and [The read in the Kotlin client](#the-read-in-the-kotlin-client).
 
 **In the Swift client**, in the [`validate()`](#validate-in-the-swift-client) every emitted type has: a member's checks after its bounds and after what the value it holds reports, the type's own last, each a call of the Swift function of that name.
 
@@ -4283,7 +4283,7 @@ Terminal with no spareParcel key, all good: read
 
 #### What stays yours
 
-- **`validate()` is for a value built in code**, before it is sent, and for a value changed after it was read: [`fromJson` judges what it reads](#the-dart-read-refuses-what-validate-refuses). [`preprocess`](#preprocessing-preprocess) is not called in Dart.
+- **`validate()` is for a value built in code**, before it is sent, and for a value changed after it was read: [`fromJson` judges what it reads](#the-dart-read-refuses-what-validate-refuses). It calls no [`preprocess`](#a-preprocess-in-the-dart-client): a read does, ahead of it.
 - **A class of your own that a model holds** declares `List<String> validate()` and the constructor `fromJsonUnjudged` as the emitted ones do: a holder reads it and calls it with no knowledge of what the held type declares, whether that type is declared above the holder or below it. [`ObjectId`](#mongodb-objectid-support) is the one exception, read through its `fromJson` and asked nothing.
 - **A field named `validate`** is the member `validate_`, and keeps its key, as [a reserved word does](#a-member-named-after-a-word-the-client-language-reserves).
 - **Every build writes the same Dart.** The Dart `validate()` holds each bound and calls each check with a schema surface on and with none. One declaration differs: a brand's own `minLength`, `maxLength` or `pattern` is refused by a build with no `typescript`, `zod` or `jsonschema`, so no wrapper carries one there.
@@ -4292,12 +4292,13 @@ Terminal with no spareParcel key, all good: read
 
 Every type `kotlin_definition()` writes carries `fun validate(): List<String>`: a data class, the `object` of a unit struct, the value class of a brand, a tuple struct, a sealed interface with each of its variants, and a plain enum. It answers the messages Rust's [`validate()`](#the-validate-method) answers for the same value, in the same order, and an empty list for a value that keeps every rule. A type with no rule answers `emptyList()`.
 
-`validate()` is a method you call. The serializer of each type is written as it was, and reading a payload calls nothing.
+The serializer of a type calls it on the value it read: [the read refuses what `validate()` refuses](#the-read-in-the-kotlin-client). You call it yourself on a value built in code, and on one changed after it was read.
 
 This is what the `Parcel` and the `Manifest` of [Checks](#checks-check) emit. The emitter writes each type on one line, and each line break below stands for one space of it:
 
 ```kotlin
-@Serializable data class Parcel(val label: String, val itemCodeList: List<String>, val fragileItemCodes: List<String>) {
+@OptIn(ExperimentalSerializationApi::class) @Serializable(with = ParcelSerializer::class) @KeepGeneratedSerializer
+data class Parcel(val label: String, val itemCodeList: List<String>, val fragileItemCodes: List<String>) {
   fun validate(): List<String> {
     val violations = mutableListOf<String>();
     if (label.codePointCount(0, label.length) < 1) violations.add("'label': too short: minimum length is 1, got ${label.codePointCount(0, label.length)}");
@@ -4310,8 +4311,20 @@ This is what the `Parcel` and the `Manifest` of [Checks](#checks-check) emit. Th
     return if (violation.startsWith("'") && end > 0) { "'$place.${violation.substring(1, end)}'${violation.substring(end + 1)}" } else { "'$place': $violation" }
   }
 }
+@OptIn(ExperimentalSerializationApi::class) object ParcelUnjudged : KSerializer<Parcel> by Parcel.generatedSerializer()
+object ParcelSerializer : KSerializer<Parcel> {
+  override val descriptor: SerialDescriptor = ParcelUnjudged.descriptor;
+  override fun serialize(encoder: Encoder, value: Parcel) = ParcelUnjudged.serialize(encoder, value);
+  override fun deserialize(decoder: Decoder): Parcel {
+    val read = ParcelUnjudged.deserialize(decoder);
+    val violations = read.validate();
+    if (violations.isNotEmpty()) throw SerializationException(violations.joinToString("; "));
+    return read
+  }
+}
 
-@Serializable data class Manifest(val parcel: Parcel) {
+@OptIn(ExperimentalSerializationApi::class) @Serializable(with = ManifestSerializer::class) @KeepGeneratedSerializer
+data class Manifest(@Serializable(with = ParcelUnjudged::class) val parcel: Parcel) {
   fun validate(): List<String> {
     val violations = mutableListOf<String>();
     violations.addAll(parcel.validate().map { kotlinSchemaUnder("parcel", it) });
@@ -4322,9 +4335,20 @@ This is what the `Parcel` and the `Manifest` of [Checks](#checks-check) emit. Th
     return if (violation.startsWith("'") && end > 0) { "'$place.${violation.substring(1, end)}'${violation.substring(end + 1)}" } else { "'$place': $violation" }
   }
 }
+@OptIn(ExperimentalSerializationApi::class) object ManifestUnjudged : KSerializer<Manifest> by Manifest.generatedSerializer()
+object ManifestSerializer : KSerializer<Manifest> {
+  override val descriptor: SerialDescriptor = ManifestUnjudged.descriptor;
+  override fun serialize(encoder: Encoder, value: Manifest) = ManifestUnjudged.serialize(encoder, value);
+  override fun deserialize(decoder: Decoder): Manifest {
+    val read = ManifestUnjudged.deserialize(decoder);
+    val violations = read.validate();
+    if (violations.isNotEmpty()) throw SerializationException(violations.joinToString("; "));
+    return read
+  }
+}
 ```
 
-A parcel read from `{"label":"","itemCodeList":["x","x"],"fragileItemCodes":["y"]}` answers the three lines Rust answers, and a manifest that holds a parcel with `"y"` outside its codes answers the fourth:
+The `validate()` of the parcel `{"label":"","itemCodeList":["x","x"],"fragileItemCodes":["y"]}` answers the three lines Rust answers, and that of a manifest that holds a parcel with `"y"` outside its codes answers the fourth:
 
 ```text
 'label': too short: minimum length is 1, got 0
@@ -4335,7 +4359,7 @@ A parcel read from `{"label":"","itemCodeList":["x","x"],"fragileItemCodes":["y"
 
 - **The order is Rust's.** Each member in the order declared: its bounds, then what the value it holds reports, then the checks it names. The type's own checks run last. Every rule runs, and none stops another.
 - **A member with a bound of its own** is not asked for what its type declares, a list apart: a list runs its count and then each item, as in Rust.
-- **Every function a type calls is in the type's own body.** `kotlinSchemaUnder` writes a holder's key into a message, and is written into each type that names a place. The emitted types are joined into one file, so nothing is written beside a type, and tixschema ships no runtime library.
+- **Every function a type calls is in the type's own body.** `kotlinSchemaUnder` writes a holder's key into a message, and is written into each type that names a place. The emitted types are joined into one file, so no function is written beside a type, and tixschema ships no runtime library. The two serializers of a type are the only declarations beside it, each under the type's own name.
 - **A member named `validate` builds and keeps its key**, a property and a method being two names to Kotlin. A member named `violations` is read as `this.violations`.
 - **Every build with the `kotlin` feature writes the same `validate()`.** The emitter reads the declaration itself, so a build with no schema surface, where Rust holds no bound, still writes each bound a field declares into the Kotlin client.
 
@@ -4386,7 +4410,7 @@ Rust writes no text for a brand over a brand, and refuses a string bound on a fi
 
 #### A brand
 
-The value class of a brand runs the brand's own `minLength`, `maxLength` and `pattern` over `value`, then the checks the brand names, and names no place: `too short: minimum length is 2, got 1`. A brand over a list counts its items.
+The value class of a brand runs the brand's own `minLength`, `maxLength` and `pattern` over `value`, then the checks the brand names, and names no place: `too short: minimum length is 2, got 1`. A brand over a list counts its items. A brand with such a bound carries `fun kotlinSchemaBound(): List<String>` beside `validate()`: what the bounds alone answer, the checks apart, which is what [an untagged enum chooses a variant by](#the-read-in-the-kotlin-client).
 
 A brand that holds one of its type parameters bare runs its bounds where the value is of the type declared for the parameter, and at no other filling: `if (value is String) { ... }`. Where the declared type is itself written with arguments, `default_types(WrapType = StrictDocumentId<String>)`, the JVM keeps no argument to tell the filling by, and the value class runs no bound.
 
@@ -4441,6 +4465,108 @@ A field's check names no path, and `validate()` writes its messages under the fi
 
 ```text
 error: unresolved reference 'withinParcel'.
+```
+
+#### The read in the Kotlin client
+
+The serializer of a type throws for a payload whose value breaks a bound or a check, and hands no object back. `Json.decodeFromString<Parcel>(payload)`, `serializer<Parcel>()` and a property typed `Parcel` in a class of your own all read through `ParcelSerializer`, the type's own serializer: it reads the value and calls `validate()` on it. What it throws is `SerializationException`, the exception of `kotlinx.serialization`, and its message is what `validate()` answers of the value read, every message, joined by `; `:
+
+```kotlin
+Json.decodeFromString<Parcel>("""{"label":"","itemCodeList":["x"],"fragileItemCodes":["x","y"]}""")
+// SerializationException: 'label': too short: minimum length is 1, got 0; 'fragileItemCodes.1': y is outside of itemCodeList
+```
+
+**Every type has two serializers**, a plain enum apart:
+
+| | What it reads | Who names it |
+|---|---|---|
+| `{Type}Unjudged` | the payload, with no judgement | a holder, for each model it holds, and you, to read a value that breaks a rule |
+| `{Type}Serializer` | through the first, and then throws what `validate()` answers | the type: `@Serializable(with = ParcelSerializer::class)` |
+
+Both write the same payload, and writing judges nothing: a broken value built in code is written as it is. A type with parameters writes the two as classes over one serializer per parameter, `CrateUnjudged(serializer<String>())`.
+
+- **A class, the `object` of a unit struct and the value class of a brand keep the serializer the plugin writes**, with `@KeepGeneratedSerializer`, and `{Type}Unjudged` is that serializer under a name: `object ParcelUnjudged : KSerializer<Parcel> by Parcel.generatedSerializer()`. The annotation is an experimental one of `kotlinx.serialization`, so each such type carries `@OptIn(ExperimentalSerializationApi::class)`. This repository compiles the emitted source with `kotlinx.serialization` 1.11.0, the version `just kotlin-libs` installs.
+- **A struct with a `#[serde(flatten)]` member, a tuple struct and an enum under every tagging** have a serializer tixschema writes, and it is the unjudged one.
+- **An enum under a tag alone is read by a serializer tixschema writes as well.** The plugin refuses `@KeepGeneratedSerializer` on a sealed interface, so the enum carries no `@JsonClassDiscriminator`: its unjudged serializer reads the tag key, takes it off the object and reads the rest as the variant, and writes the variant with the tag ahead of its members. A tag no variant has, and a payload with no tag, throw `SerializationException`.
+- **A plain enum keeps the one serializer the plugin writes**, and its read judges nothing. One that names a check is refused by the read of a type that holds it, and by your own call of `validate()`.
+- **A refusal the decoder raises itself is its own, unchanged**: a missing key, a value of another type. No value was read for `validate()` to judge.
+
+**The file the definitions are written into imports what they name.** The two serializers of every type name `KSerializer` and `SerializationException` of `kotlinx.serialization`, `SerialDescriptor` of its `descriptors` package, and `Encoder` and `Decoder` of its `encoding` package. A serializer tixschema writes names the `json` package as well, and `builtins` where it composes the serializer of a list, a map or a nullable:
+
+```kotlin
+import kotlinx.serialization.*
+import kotlinx.serialization.builtins.*
+import kotlinx.serialization.descriptors.*
+import kotlinx.serialization.encoding.*
+import kotlinx.serialization.json.*
+```
+
+**A holder reads what it holds unjudged, and the whole value is judged once**, by the type the read was asked for. It names the unjudged serializer of each model where the model is written, on the property and inside a list, a nullable and a map:
+
+```kotlin
+data class Manifest(
+  @Serializable(with = ParcelUnjudged::class) val firstParcel: Parcel,
+  val parcelList: List<@Serializable(with = ParcelUnjudged::class) Parcel>,
+  val parcelsByDock: Map<String, @Serializable(with = ParcelUnjudged::class) Parcel>,
+  @Serializable(with = ParcelUnjudged::class) val spareParcel: Parcel? = null,
+)
+```
+
+A manifest that holds a broken parcel in each of the four places is refused once, with every message at its full place. The message is one line, broken here after each `; `, and it is the text the [Rust read](#a-read-refuses-what-validate-refuses) answers of the same payload:
+
+```text
+'firstParcel.label': too short: minimum length is 1, got 0;
+'parcelList.1.fragileItemCodes.1': y is outside of itemCodeList;
+'parcelsByDock.north.label': too short: minimum length is 1, got 0;
+'spareParcel.fragileItemCodes.1': y is outside of itemCodeList
+```
+
+A model is read unjudged where the holder's `validate()` asks it for what it reports, and nowhere else. Held any other way it is read by its own serializer and judges itself as it is read: the payload is refused there too, by the first broken model, with that model's own messages and no place in front of them.
+
+| Held | Judged |
+|---|---|
+| in a field, a nullable, a list, a map's values, a tuple written as a field's type, a `#[serde(flatten)]` member, a slot of a tuple struct or of a variant | once, with its holder, each message at its full place |
+| behind one of the holder's own type parameters | by itself: `Crate<Parcel>` with a broken parcel answers `'fragileItemCodes.1': y is outside of itemCodeList` |
+| by a brand, and by a member that writes a length or a pattern of its own on a brand | by itself: `too short: minimum length is 2, got 1`, where Rust writes the member's key in front, `'code': too short: ...` |
+| where its type is declared below its holder, is an alias, or is a type of your own | by itself: the emitter has written no `{Type}Unjudged` under that name when it writes the holder |
+
+Rust reads a model declared below its holder unjudged, so the two differ there: a holder that breaks a bound of its own and holds such a model that breaks one answers both messages in Rust, and the model's alone in Kotlin. Declare the model above the type that holds it, and the two answer the same text.
+
+**An `#[serde(untagged)]` enum takes the variant serde takes.** Its unjudged serializer tries each variant in the order declared and takes the first whose payload decodes and whose bounds hold: each member's own, and the `minLength`, `maxLength` and `pattern` of each brand the variant holds. A [check](#checks-check) and what a held model reports choose no variant: the variant is chosen first, and the enum's own serializer then refuses the value. A variant with such a bound, and the value class of a brand with one, carry `fun kotlinSchemaBound(): List<String>` for that: what the bounds alone answer.
+
+```rust
+#[model_schema(pattern = "^[A-Z]+$", check = ["unreserved"])]
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Tag(pub String);
+
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Mark {
+    Brief(#[model_schema_prop(maxLength = 3)] String),
+    Coded(Tag),
+    Plain(String),
+}
+```
+
+| Payload | Read |
+|---|---|
+| `"ab"` | `MarkBrief` |
+| `"ABCD"` | `MarkCoded`: past the bound of the first variant |
+| `"abcd"` | `MarkPlain`: past that bound, and outside the pattern of the brand |
+| `"NONE"` | refused with `a tag is not NONE`: `MarkCoded` is chosen, and the check of the brand refuses it |
+
+A payload no variant takes throws `IllegalStateException: No variant of Mark matched`.
+
+**The generated clients answer their fault for a reply that breaks a rule**, with the messages in the fault's detail: `undeserializable-payload` from the `http_rest` client, and `failed-validation` from the `ws_rpc` one.
+
+**To read a value that breaks a rule**, name the unjudged serializer, and call `validate()` for what is wrong with it:
+
+```kotlin
+val parcel = Json.decodeFromString(ParcelUnjudged, payload)
+parcel.validate()
+// ['label': too short: minimum length is 1, got 0, 'fragileItemCodes.1': y is outside of itemCodeList]
 ```
 
 
@@ -4750,7 +4876,7 @@ beside `preprocess`; the two have no defined order.
 
 ### Preprocessing (`preprocess`)
 
-`preprocess = ["name", ...]` names functions of your own that correct a payload before a value is read from it: a label written with spaces at its ends, a key an older writer left out. It is written on a type, in `#[model_schema(...)]`, and on a field, in `#[model_schema_prop(...)]`. A name is written once, and every read calls a function under it: Rust the snake case of the name, `withoutFragile` as `without_fragile`, and the Zod schema and the Swift client the name as written.
+`preprocess = ["name", ...]` names functions of your own that correct a payload before a value is read from it: a label written with spaces at its ends, a key an older writer left out. It is written on a type, in `#[model_schema(...)]`, and on a field, in `#[model_schema_prop(...)]`. A name is written once, and every read calls a function under it: Rust the snake case of the name, `withoutFragile` as `without_fragile`, and the Zod schema, [the Dart client](#a-preprocess-in-the-dart-client) and [the Swift client](#preprocess-in-the-swift-client) the name as written.
 
 **The key is a last resort.** A function of yours runs on every read of the type, on a payload no schema describes. Reach for it where the payload cannot be corrected where it is written, and where a serde `default`, an `Option` or an `alias` does not say what you mean.
 
@@ -4912,9 +5038,11 @@ A type that holds another reads it through that type's functions wherever it hol
 
 **In the Zod schema**, as one `z.preprocess(name, ...)` per name.
 
+**In [the Dart client](#a-preprocess-in-the-dart-client)**, in the read of every type `dart_definition()` writes, under the `dart` feature.
+
 **In the Swift client**, in every read of a type `swift_definition()` writes: [`preprocess` in the Swift client](#preprocess-in-the-swift-client) is what it calls and what it is handed.
 
-**Nowhere else.** Writing calls no function, `Serialize` being serde's derive, and neither does `validate()`: a value built in code is never read, so nothing corrects it. The JSON Schema describes the value the type is read to and calls no function. The Dart and Kotlin types read the key and are written as they are without it.
+**Nowhere else.** Writing calls no function, `Serialize` being serde's derive, and neither does `validate()`: a value built in code is never read, so nothing corrects it. The JSON Schema describes the value the type is read to and calls no function. The Kotlin types read the key and are written as they are without it.
 
 #### A key the payload does not hold
 
@@ -4982,6 +5110,56 @@ error[E0425]: cannot find function `without_fragile` in this scope
 What resolves the error is a function `without_fragile` in scope where `Parcel` is declared.
 
 **What the macro writes.** The type's `Deserialize` is written as [that of a type that publishes `validate()`](#a-read-refuses-what-validate-refuses) is: serde's derive runs on a private copy of the item inside `model_schema_read_unjudged`, and a field's functions are called by a function local to that read, hung on the copy's member. A type that names a `preprocess` on itself gains `model_schema_read_corrected` as well, the read of a payload its functions have already corrected, and one declared with `decode_with` gains `decode_with_read_corrected`, `decode_with_value_corrected` and the walk of a corrected value under `decode_with_value_corrected_issues`, `_named` and `_fields`, with the `bson` twin of each under the `bson` feature. Each is a name of the type's own: a function of yours under one of them on the same type is a duplicate definition (E0592).
+
+#### A `preprocess` in the Dart client
+
+With the `dart` feature, `fromJsonUnjudged` of every type `dart_definition()` writes calls the functions the type and its members name, each under the name the attribute writes. [`fromJson` is that read followed by `validate()`](#the-dart-read-refuses-what-validate-refuses), so both reads correct the payload, in [the order of a Rust read](#the-order-of-one-read): the type's functions, each member's as it is read, the value, then `validate()`. The parcel of the example is read by:
+
+```dart
+factory Parcel.fromJsonUnjudged(Map<String, dynamic> payload) {
+  final json = withoutFragile(payload) as Map<String, dynamic>;
+  return Parcel(
+    label: (json.containsKey('label') ? trimmed(json['label']) : null) as String,
+    item_code_list: (json['itemCodeList'] as List<dynamic>).map((e) => e as String).toList(),
+    fragile_item_codes: (json['fragileItemCodes'] as List<dynamic>).map((e) => e as String).toList(),
+  );
+}
+```
+
+The functions are yours, in scope in the file the emitted definitions are written into. Each takes a payload and answers the payload the value is read from:
+
+| | Dart |
+|---|---|
+| A field's function | `dynamic trimmed(dynamic payload)` |
+| A type's function | `dynamic withoutFragile(dynamic payload)` |
+
+```dart
+dynamic trimmed(dynamic payload) => payload is String ? payload.trim() : payload;
+
+dynamic withoutFragile(dynamic payload) =>
+    payload is Map<String, dynamic> ? {'fragileItemCodes': <dynamic>[], ...payload} : payload;
+```
+
+With those two functions, `Parcel.fromJson` and `Manifest.fromJson` answer for the rows of [the table above](#preprocessing-preprocess) what the Rust read answers. Row 4 is a BSON document, which no Dart client reads:
+
+| # | A Dart read |
+|---|---|
+| 1 | read; `label` is `"A"` |
+| 2 | refused with a `FormatException`: `'label': too short: minimum length is 1, got 0` |
+| 3 | read; `fragile_item_codes` is `[]` |
+| 5 | read; `parcel.label` is `"A"` |
+
+- **The key stays a last resort.** Each name is one more function you write and keep in step, in every language you emit.
+- **The payload is what `jsonDecode` holds**: a `Map<String, dynamic>`, a `List<dynamic>`, a `String`, a number, a `bool` or `null`. A function answers `dynamic`, and the read casts what it answers.
+- **A field's function is called where the payload holds the key**, a `null` it holds included. A key the payload does not hold calls no function and is read as it was: `{"itemCodeList":["x"],"fragileItemCodes":["x"]}` is refused with `type 'Null' is not a subtype of type 'String' in type cast`, where the Rust read answers ``missing field `label` ``. A slot's function is called with what its position holds.
+- **Several functions run in the order written**, each over the answer of the one before: `preprocess = ["unwrapped", "withoutFragile"]` calls `withoutFragile(unwrapped(payload))`. One read calls each function once.
+- **A type's function takes the payload its read takes**, typed as the read types it: the object of a class and of an enum under a tag key, the text of a plain enum, and the payload as it is for a brand, a tuple struct and any other enum. A payload of another kind does not reach it: a text handed to the read of a class is refused with a `TypeError` ahead of the function, where the Rust read hands the function any payload.
+- **A type that holds another reads it through that type's own read**, so it is corrected wherever it is held: in a field, an optional, a list, a map's value, a variant and a `#[serde(flatten)]` member. A holder that names no function and flattens no member is written as it was.
+- **A flattened member is read from the keys the members beside it do not take**, as serde hands them: `Tagged.fromJsonUnjudged(({...json}..remove('dock')))`. A function it names, and a function of the type it holds, is handed those keys. Under a tag key, a type flattened into a variant and the function of a variant's one slot are handed the object without the tag as well. A type that one slot holds is read from the object with its tag, where the Rust read hands its function the object without it.
+- **A sealed enum calls its functions in its base**, once, ahead of the dispatch on the tag, and an `#[serde(untagged)]` one ahead of every attempt. A plain enum calls them on the text, in `fromJsonUnjudged`.
+- **The service clients read a reply through `fromJson`**, so a reply is corrected as any other payload is.
+- **A name with no function does not compile**, and the Dart compiler reports the call: `Error: Method not found: 'trimmed'.`
+- **A member of the type hides a function of its name** inside the class, as it hides a [check](#the-functions-you-write-in-dart): a `preprocess` named `label` on a type with a field `label` is reported as a name with no function. The names a read declares itself hide none: `json`, `payload`, `map`, `tag`, `read` and the converter it takes for a type parameter, `codeTypeFromJson`, are numbered where a function is called under one, `json2`.
 
 #### `preprocess` in the Swift client
 
@@ -6944,9 +7122,9 @@ The crate uses optional features to control code generation and dependencies. Ea
 | `bson` | No | BSON support: `from_bson_with` and `from_bson_piped` on types that opt in with [`decode_with`](#recovering-decode-decode_with); turns on `serde` |
 | `chrono` | No | Chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`) |
 | `indexmap` | No | `indexmap` type support: `IndexMap` as a map and `IndexSet` as a list. See [The order of a map's keys](#the-order-of-a-maps-keys) |
-| `dart` | No | Dart type generation via `dart_definition()`, with a JSON `fromJson`/`toJson` codec whose read [refuses what `validate()` refuses](#the-dart-read-refuses-what-validate-refuses), and a [`validate()`](#validate-in-dart) on every type |
+| `dart` | No | Dart type generation via `dart_definition()`, with a JSON `fromJson`/`toJson` codec whose read [calls each `preprocess`](#a-preprocess-in-the-dart-client) and [refuses what `validate()` refuses](#the-dart-read-refuses-what-validate-refuses), and a [`validate()`](#validate-in-dart) on every type |
 | `swift` | No | Swift type generation with a `Codable` codec, and a [`validate()`](#validate-in-the-swift-client) on every type, which [the read of each calls](#a-swift-read-refuses-what-validate-refuses) |
-| `kotlin` | No | Kotlin type generation via `kotlin_definition()`, with `kotlinx.serialization` annotations and a [`validate()`](#validate-in-the-kotlin-client) on every type. A consuming Kotlin build declares two runtime dependencies the emitted code names -- `org.jetbrains.kotlinx:kotlinx-serialization-json` for the JSON codec and `org.jetbrains.kotlinx:kotlinx-coroutines-core` for the transport's own reply correlation and heartbeat -- plus the Kotlin Gradle plugin `kotlin("plugin.serialization")` |
+| `kotlin` | No | Kotlin type generation via `kotlin_definition()`, with `kotlinx.serialization` annotations, a [`validate()`](#validate-in-the-kotlin-client) on every type and [a read that refuses what it refuses](#the-read-in-the-kotlin-client). A consuming Kotlin build declares two runtime dependencies the emitted code names -- `org.jetbrains.kotlinx:kotlinx-serialization-json` for the JSON codec and `org.jetbrains.kotlinx:kotlinx-coroutines-core` for the transport's own reply correlation and heartbeat -- plus the Kotlin Gradle plugin `kotlin("plugin.serialization")` |
 
 Common configurations:
 

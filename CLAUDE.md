@@ -197,9 +197,9 @@ The crate uses optional features for minimal dependencies:
 - `typescript`: Enables TypeScript type generation
 - `chrono`: Enables chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`)
 - `indexmap`: Enables indexmap type support: `IndexMap` as a map, `IndexSet` as a list. It adds no dependency: the generated code names the types of the crate that declares them. With the feature off a type written `IndexMap<_, _>` or `IndexSet<_>` is refused at `exec_model_schema` with the feature named (`indexmap_feature_errors`), unless the crate declared a type of its own under the name above
-- `dart`: Enables Dart type generation with a JSON codec whose read refuses what `validate()` refuses, a `validate()` on every type, and the Dart HTTP client
+- `dart`: Enables Dart type generation with a JSON codec whose read calls each `preprocess` and refuses what `validate()` refuses, a `validate()` on every type, and the Dart HTTP client
 - `swift`: Enables Swift type generation with a `Codable` codec, and `validate()` on every emitted type: the bounds and the checks, run as the Rust `validate()` runs them. `init(from:)` of each type calls it on the value it read and refuses what it refuses. The read of a type calls the functions a `preprocess` names, on the type and on a member, ahead of the value it builds
-- `kotlin`: Enables Kotlin type generation with `kotlinx.serialization` annotations, and a `validate()` on every type that runs the bounds and calls the checks. A consuming Kotlin build declares two dependencies: the runtime library `org.jetbrains.kotlinx:kotlinx-serialization-json` and the Kotlin Gradle plugin `kotlin("plugin.serialization")`
+- `kotlin`: Enables Kotlin type generation with `kotlinx.serialization` annotations, a `validate()` on every type that runs the bounds and calls the checks, and a serializer of each type that throws what `validate()` answers of the value it read. A consuming Kotlin build declares two dependencies: the runtime library `org.jetbrains.kotlinx:kotlinx-serialization-json` and the Kotlin Gradle plugin `kotlin("plugin.serialization")`
 
 **Feature sets**: `web` (the default: `serde`, `zod`, `jsonschema`, `typescript`), `mobile` (`serde`, `dart`, `swift`, `kotlin`) and `mongo` (`mongodb`, `chrono`, `indexmap`). CI tests the powerset of the sets (`just test-sets`); `just test` runs the powerset of the plain features locally
 
@@ -317,7 +317,7 @@ unaffected at every position: a stringified key describes as `{"type": "object",
 - `Vec<T>` → `Array<T>`
 - `HashMap<String, T>` → `Partial<Record<string, T>>`
 - Custom types → Reference by the name the referenced type publishes (its ident, or its `name` override)
-- A unit struct (`pub struct Ping;`, no braces) → `Record<string, never>` (unchanged); the wire is `{}` both ways: the macro replaces the author's own `Serialize`/`Deserialize` derive with impls writing and reading `{}` (serde's own derive writes and reads `null`, refusing `{}`). Kotlin renders `@Serializable object Ping` rather than a `class`; Dart and Swift render their own no-data type. Declared above a service as `Result<Ping, E>`, it reads like a `()` success on every client — a braced `struct Ping {}` is a different shape and is unaffected
+- A unit struct (`pub struct Ping;`, no braces) → `Record<string, never>` (unchanged); the wire is `{}` both ways: the macro replaces the author's own `Serialize`/`Deserialize` derive with impls writing and reading `{}` (serde's own derive writes and reads `null`, refusing `{}`). Kotlin renders a serializable `object Ping` rather than a `class`; Dart and Swift render their own no-data type. Declared above a service as `Result<Ping, E>`, it reads like a `()` success on every client — a braced `struct Ping {}` is a different shape and is unaffected
 - `ObjectId` → `ObjectId` (with $oid validation)
 - `DateTime<Tz>` → `Date` (Zod `z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date())`, which refuses `null` and booleans that `z.coerce.date()` alone reads as 1970, ahead of the `null` arm and the boolean member a union lists after the date; `type_check_a_date_refuses_what_is_no_date_in_every_position_that_holds_one` in `tests/generic_types_tests/declarations.rs` loads the schema under `node` and holds each input to it); with `#[model_schema_prop(as_number)]` → `number` (inline epoch-ms coercer)
 - `NaiveTime` → `string` (Zod `z.iso.time()` wrapped in an inline preprocessor that also accepts millis-since-start-of-day)
@@ -773,9 +773,10 @@ section is the consumer's view; this is what a change has to keep.
   alias that answers one answers through it. A holder writes `held.kotlinSchemaText()`
   (`text_read`): a member is found ahead of the holder's own extension of `String`, so a brand
   declared above or below the holder and an alias of a string all build, and no expansion is
-  refused. `NOTED` is read for two things alone: whether the declared type a brand holds was
-  written above and answers its text, and whether a held type is known to carry `validate()`,
-  which spares its holder the fallback.
+  refused. `NOTED` is read for four things alone: whether the declared type a brand holds was
+  written above and answers its text, whether a held type is known to carry `validate()`,
+  which spares its holder the fallback, and the two the read asks: whether the type has an
+  unjudged serializer a holder can name, and whether it carries `kotlinSchemaBound()`.
 - **A slot and a variant's member are named by the steps serde writes** (`Tagging`,
   `variant_body`, `slot_rules`): the variant's wire name where no tag is written, the content key
   under a tag and a content key, and nothing under a tag alone and under no tag; a slot's position
@@ -794,6 +795,64 @@ section is the consumer's view; this is what a change has to keep.
   with `-Werror`, runs them, and holds each row to what Rust's `validate()` answers, or, for a
   slot and a variant's member, to the name written in the row. `src/features/kotlin/tests.rs`
   holds the README's block to what the emitter writes for the documents' parcel.
+
+#### The Kotlin client's read
+
+The serializer of a Kotlin type throws for a payload whose value breaks a bound or a check.
+`src/features/kotlin/read.rs` writes it. `README.md`'s "The read in the Kotlin client" section is
+the consumer's view; this is what a change has to keep.
+
+- **A type has two serializers, a plain enum apart.** `{Type}Unjudged` reads and writes the type
+  and judges nothing. `{Type}Serializer` (`judged`) is the type's own, named by
+  `@Serializable(with = ...)`: it reads through the first and throws
+  `SerializationException(validate().joinToString("; "))`. A type with parameters writes both as
+  classes over one serializer per parameter.
+- **The plugin's serializer is kept where the plugin takes the annotation.** A class, a unit
+  struct's `object` and a brand's value class carry `@KeepGeneratedSerializer` (`kept`,
+  `kept_inline`), and their `{Type}Unjudged` delegates to `generatedSerializer()` (`generated`).
+  The serializer the emitter writes for a struct with a flattened member, a tuple struct and an
+  enum is the unjudged one, under `written_head`.
+- **An enum under a tag alone is written by hand as well.** The plugin refuses
+  `@KeepGeneratedSerializer` on a sealed interface, so `dispatched_tagged_enum_kotlin_source`
+  writes all three taggings, `Tagging::Unwrapped` being the tag alone there: the tag is taken off
+  the object and the rest is read as the variant's own subclass, a lone slot under the `value` key
+  that subclass writes. The subclass carries its tag in `@SerialName`, and a tag no variant has
+  throws `SerializationException`.
+- **A model is read unjudged exactly where `validate()` asks it, and nowhere else.** A model read
+  unjudged where no `validate()` reaches it is a broken value handed back. `validate::asks_the_held`
+  is the condition `Rules::member` walks under, asked of a scratch `Rules`, and
+  `holds_an_unjudged` follows the walk of `held_statements`. `plugin_read` writes the annotation
+  where the plugin reads, on the property and on the type inside a list, a nullable and a map,
+  and `member_serializer` composes the serializer where the emitter writes the read. What a brand
+  holds, a type argument and a member with a bound of its own on a brand are read by the type's
+  own serializer.
+- **A holder names only a serializer the emitter has written.** `reads_unjudged` answers for a
+  type written above. A type declared below its holder, an alias and a type of the consumer's are
+  read by their own serializer and judge themselves as they are read: an annotation names a class,
+  and no fallback stands in for one. Rust reads a model declared below unjudged, so the two differ
+  there, and `run_kotlin_read.rs` pins the Kotlin text.
+- **A tuple a `validate()` walks reads its positions unjudged.** `tuple_wrapper_typename` takes
+  `walked`: `annotated_base` asks for the wrapper of a walked member, and `kotlin_base` for every
+  other. Each call still queues one wrapper, so `plugin_read` asks a type's name once where
+  `property_declaration` asked it once.
+- **An untagged enum takes the first variant whose bounds hold.** `Rules::choosing` collects, per
+  variant, each member's own bound and `kotlinSchemaBound()` of each brand it holds
+  (`Asked::Bound`), and writes them into the variant's own `kotlinSchemaBound()`, which the chain
+  of `untagged_enum_kotlin_source` asks after the variant decodes. `Rules::brand` writes the
+  method on a brand with a bound. A check and what a held model reports choose nothing: the
+  enum's own serializer refuses them after the choice, as serde's read does. `Helper::Unbounded`
+  answers for a type the emitter has not written.
+- **A serializer the emitter writes binds a parameter to `Any`** (`COMPOSED`), which
+  `KSerializer<T>.nullable` requires, and one that delegates to the plugin's binds none. So
+  `unjudged_serializer` composes a model written with a nullable argument through its own
+  serializer.
+- **The tests.** `src/features/kotlin/tests.rs` pins the text of each shape, a type written above
+  and one written below in one test: the registries are thread-local, and a unit test has its
+  own. `tests/kotlin_tests/read.rs` pins what the macro's own path writes, in every build with
+  `kotlin`. `run_kotlin_validate.rs` reads each row with `{Type}Unjudged` and, in a run of its
+  own, with the type's serializer, held to what `validate()` answered.
+  `run_kotlin_read.rs` holds the README's rows to what the Rust read answers of the same payload,
+  and both clients to their fault.
 
 #### A read refuses what `validate()` refuses
 
@@ -887,9 +946,10 @@ has to keep.
 A `preprocess = ["name", ...]` names functions of the consumer's own, on a field and, in
 `#[model_schema(...)]`, on a type: each takes a payload and answers the payload the value is read
 from. Rust calls the snake case of the name, `fn trimmed(payload: serde_json::Value) ->
-serde_json::Value`, and the Zod schema the name as written, `function trimmed(payload: unknown):
-unknown`. The documents call the key a last resort, and a change keeps them saying so: a function
-runs on every read, on a payload no schema describes. `README.md`'s "Preprocessing" section is
+serde_json::Value`, the Zod schema the name as written, `function trimmed(payload: unknown):
+unknown`, and the Dart read the name as written, `dynamic trimmed(dynamic payload)` ("A
+`preprocess` in the Dart read", below). The documents call the key a last resort, and a change
+keeps them saying so: a function runs on every read, on a payload no schema describes. `README.md`'s "Preprocessing" section is
 the consumer's view; this is what a change has to keep.
 
 - **One reader, the one of `check`.** `function_names` reads the key for both attributes, in
@@ -1105,6 +1165,65 @@ consumer's view; this is what a change has to keep.
   SDK: the sample beside what the Rust read answers, every case of `run_dart_validate.rs` read
   with `fromJson` and held to what its `validate()` answers, an untagged enum beside the variant
   serde takes, a reply that breaks a rule through both clients, and the README's section.
+
+#### A `preprocess` in the Dart read
+
+`fromJsonUnjudged` of every type `src/features/dart.rs` writes calls the functions the type and
+its members name, under the names the attribute writes, each a function of the consumer's own:
+`dynamic trimmed(dynamic payload)`. `fromJson` calls that read, so both correct the payload, and
+`validate()` judges what the functions answered. The order of one read is Rust's: the type's
+functions, each member's as it is read, the value, then `validate()`. `README.md`'s "A
+`preprocess` in the Dart client" section is the consumer's view, which calls the key a last
+resort; this is what a change has to keep.
+
+- **The dispatch is handed the type's functions** in `DartTypeArgs::preprocess`, and a member's
+  are in the meta `member_meta` answers. A type that names none, on itself or on a member, is
+  written as it was, a holder of a flattened member apart (below).
+- **A type's functions are called by `unjudged_read`**, the one writer of the body of every
+  unjudged read: a class, a wrapper (a brand, a tuple struct), the base of a sealed enum and a
+  plain enum. Where the type names functions the read takes its payload as `payload` and holds
+  what they answer as `json`, cast as the read types it (`final json = withoutFragile(payload)
+  as Map<String, dynamic>;`), and a read of no member holds it under no name. `read_pair` writes
+  `fromJson` as it was: it calls no function. A sealed enum calls them in its base alone
+  (`Corrects::of_a_variant`), and a plain enum that names one and no check delegates `fromJson`
+  to `fromJsonUnjudged`.
+- **A member's functions are called by `member_decode`**, around the payload its own read is
+  written over: `constructor_arguments` for a named member, the tuple arm of `dart_decode_at` for
+  a slot, and the arm of a variant that holds one value. `corrected` folds the calls, the first
+  name innermost, so it is the first one called.
+- **No function is called for a key the payload does not hold.** A named member and a slot
+  under a content key are read from `json.containsKey('key') ? f(json['key']) : null`, so an
+  absent key is read as it was, and a `null` the payload holds is handed over. A slot of a tuple
+  and the value under a variant's name are held by every payload that is read.
+- **One read calls each function once.** A read that names its payload more than once, an
+  optional and a tuple, holds the corrected payload under `corrected`, the variable of a `switch`
+  of one arm; any other read is written around the call itself.
+- **A flattened member is read from the keys serde hands it** (`without`): the object without
+  the keys of the members beside it, and without the tag where the holder is a variant under a
+  tag key (`constructor_arguments`' `tag_key`). A function the member names, and one the type it
+  holds names, is handed those keys. A holder with no member of its own hands on `json` as it
+  was. A struct's own tag is not taken out: serde hands it on too. The slot of a variant under a
+  tag key is read from the object without the tag where the slot names a function, and from
+  `json` as it was where it names none, so a type such a slot holds is handed the tag, where
+  Rust hands it none.
+- **Every name a read declares is its own.** `dart_schema_dispatch` records the name of each
+  function the item's reads call (`called_by`, `DART_CALLED`), and `declared` numbers a name
+  where one is called under it (`json2`): `json`, `payload`, `map`, `tag` and `read`, which
+  `Corrects` holds, and the converter of a type parameter (`from_json_argument`), in the
+  signature of both reads and where a value behind the parameter is read. A member of the type
+  still hides a function of its name, as it hides a check's, and the documents say so.
+- **The payload a type's function takes is typed as its read types it**: a
+  `Map<String, dynamic>` for a class and an enum under a tag key, a `String` for a plain enum,
+  `dynamic` for a wrapper and any other enum. A payload of another kind is refused ahead of the
+  function, where Rust hands it over.
+- **The tests.** `tests/dart_tests/preprocess.rs` pins the text of each shape.
+  `tests/service_schema_emitted_client_tests/run_dart_preprocess.rs` compiles the models of
+  `tests/pattern_preprocess_tests/models.rs` and runs them under the Dart SDK: the sample and the
+  shared table of positions print what the Rust read prints, two rows apart (`NOT_READ`), with
+  the keys a flattened type is handed, the calls of one read counted, a function named after a
+  name of the read, a reply through both clients, and the README's section. Its module is
+  declared last in the binary: its models take names the modules above it declare, and an
+  expansion reads a type by its name.
 
 ### 8. Branded Newtypes
 
@@ -2291,7 +2410,7 @@ tixschema/
 ├── tests/
 │   ├── basic_tests.rs
 │   ├── pattern_preprocess_tests.rs       # pattern and preprocess: the Zod text, and every read of a preprocess
-│   ├── pattern_preprocess_tests/         # The models, the reads, the chained hooks, the Zod text, the README
+│   ├── pattern_preprocess_tests/         # The models, the reads, the chained hooks, the Zod text, the README; the Dart run compiles the models
 │   ├── check_tests.rs                    # check, as validate() runs it
 │   ├── check_tests/                      # The models, the shared table, the members, the README
 │   ├── collection_tests.rs

@@ -2,10 +2,14 @@
 //! `#[model_schema]` item in a `{snake}_kotlin` module, dispatched from `exec_model_schema` the way
 //! the Dart backend is. Unlike Dart, Kotlin has no built-in JSON codec — the compiler plugin
 //! `kotlinx.serialization` reads the annotations this module writes and generates the encoder and
-//! decoder itself, so most shapes carry nothing beyond `@Serializable`/`@SerialName`. The four
-//! shapes the plugin cannot express declaratively (an adjacently- or externally-tagged enum, an
-//! untagged enum, and a tuple) carry a small generated `KSerializer` beside them instead.
+//! decoder of a class itself. The shapes the plugin cannot express declaratively (an enum under
+//! any tagging, a struct with a flattened member, and a tuple) carry a `KSerializer` this module
+//! writes instead.
+//!
+//! Every type but a plain enum has two serializers, which `read` writes: `{Type}Unjudged`, the
+//! plugin's or the written one, and `{Type}Serializer`, which reads through it and judges.
 
+mod read;
 mod validate;
 
 use core::cell::{Cell, RefCell};
@@ -146,13 +150,14 @@ struct FlattenPlan {
 /// over variants is the only thing that changes per call.
 struct DispatchedTaggedContext<'ctx> {
     args: &'ctx KotlinArgs<'ctx>,
-    content_key: Option<&'ctx str>,
     export_name: &'ctx str,
     field_rule: RenameRule,
     generic_params: &'ctx str,
     nothing_generic_args: &'ctx str,
     serializable: &'ctx [String],
     tag_key: &'ctx str,
+    /// [`Tagging::Unwrapped`] is a tag alone here: an untagged enum is written elsewhere.
+    tagging: Tagging<'ctx>,
     type_parameters: &'ctx [String],
     variant_rule: RenameRule,
 }
@@ -432,7 +437,7 @@ fn kotlin_base(field: &FieldDef) -> String {
     let scalar = match &field.field_type {
         FieldDefType::Unknown => "JsonElement".to_owned(),
         FieldDefType::TypeParam(name) => name.clone(),
-        FieldDefType::Tuple(elements) => tuple_wrapper_typename(elements),
+        FieldDefType::Tuple(elements) => tuple_wrapper_typename(elements, false),
         FieldDefType::SiblingType(name, generics) => {
             if let [element] = generics.as_slice()
                 && is_sequence_wrapper(name)
@@ -552,8 +557,8 @@ fn field_reaches_type_parameter(field: &FieldDef, type_parameters: &[String]) ->
     }
 }
 
-/// `{lowerCamel(parameter)}Serializer` — the constructor property [`serializer_declaration`]
-/// binds one type parameter's own `KSerializer` argument to, and the identifier every reference to
+/// `{lowerCamel(parameter)}Serializer` — the constructor parameter a serializer with type
+/// parameters binds one parameter's own `KSerializer` to, and the identifier every reference to
 /// that parameter's serializer reads back.
 fn kotlin_serializer_param_name(parameter: &str) -> String {
     format!(
@@ -654,37 +659,11 @@ fn kotlin_subclass_serializer_expr(subclass_name: &str, type_parameters: &[Strin
     }
 }
 
-/// The Kotlin head of an item's `KSerializer`: `object {Name}Serializer` for a non-generic item,
-/// unchanged; `class {Name}Serializer<T : Any>(private val tSerializer: KSerializer<T>)` for a
-/// generic one — bound to `Any` since `KSerializer<T>.nullable` requires it, for an `Option<T>` field.
-fn serializer_declaration(export_name: &str, type_parameters: &[String]) -> String {
-    let serializer_name = format!("{export_name}Serializer");
-    if type_parameters.is_empty() {
-        format!("object {serializer_name}")
-    } else {
-        let generic_list = type_parameters
-            .iter()
-            .map(|parameter| format!("{parameter}: Any"))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let ctor_params = type_parameters
-            .iter()
-            .map(|parameter| {
-                format!(
-                    "private val {}: KSerializer<{parameter}>",
-                    kotlin_serializer_param_name(parameter)
-                )
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
-        format!("class {serializer_name}<{generic_list}>({ctor_params})")
-    }
-}
-
 /// The Kotlin type name for a Tuple-shaped field: queues a wrapper `data class` plus the
 /// `KSerializer` that reads and writes it as a JSON array. Monotonically numbered so two fields
-/// named alike in two different items never collide.
-fn tuple_wrapper_typename(elements: &[FieldDef]) -> String {
+/// named alike in two different items never collide. `walked` says the tuple is held where a
+/// `validate()` walks its positions, so a model in one is read unjudged.
+fn tuple_wrapper_typename(elements: &[FieldDef], walked: bool) -> String {
     let index = KOTLIN_TUPLE_COUNTER.with(|counter| {
         let next = counter.get() + 1;
         counter.set(next);
@@ -698,13 +677,20 @@ fn tuple_wrapper_typename(elements: &[FieldDef]) -> String {
         .map(|(slot, element)| format!("val slot{slot}: {}", kotlin_typename(element)))
         .collect::<Vec<_>>()
         .join(", ");
+    let read_by = |element: &FieldDef| {
+        if walked {
+            read::position_serializer(element)
+        } else {
+            kotlin_serializer_expr(element, &[])
+        }
+    };
     let encode_entries = elements
         .iter()
         .enumerate()
         .map(|(slot, element)| {
             format!(
                 "add(output.json.encodeToJsonElement({}, value.slot{slot}))",
-                kotlin_serializer_expr(element, &[])
+                read_by(element)
             )
         })
         .collect::<Vec<_>>()
@@ -715,7 +701,7 @@ fn tuple_wrapper_typename(elements: &[FieldDef]) -> String {
         .map(|(slot, element)| {
             format!(
                 "input.json.decodeFromJsonElement({}, array[{slot}])",
-                kotlin_serializer_expr(element, &[])
+                read_by(element)
             )
         })
         .collect::<Vec<_>>()
@@ -905,27 +891,33 @@ fn kotlin_nothing_generic_args(generics: &syn::Generics) -> String {
 /// One property declaration inside a constructor's parameter list: `@SerialName("...")` only where
 /// the wire spelling differs from the Kotlin property, then `val name: Type`, then `= null` for a
 /// field whose key may be absent — a bare `Option<T>` without `#[model_schema_prop(nullable)]`.
-fn property_declaration(field: &KotlinField) -> String {
+/// `read_by_the_plugin` says the plugin writes the class's serializer, which reads a model the
+/// member holds by the serializer the property names for it.
+fn property_declaration(field: &KotlinField, read_by_the_plugin: bool) -> String {
     let prop_name = kotlin_property_name(&field.rust_name);
     let annotation = if kotlin_bare(&prop_name) == field.wire_name {
         String::new()
     } else {
         format!("@SerialName(\"{}\") ", field.wire_name)
     };
-    let ty = kotlin_typename(&field.field_def);
+    let (unjudged, ty) = if read_by_the_plugin {
+        read::plugin_read(&field.field_def)
+    } else {
+        (String::new(), kotlin_typename(&field.field_def))
+    };
     let default = if field.field_def.is_optional() && !is_nullable_flag(&field.field_def) {
         " = null"
     } else {
         ""
     };
-    format!("{annotation}val {prop_name}: {ty}{default}")
+    format!("{annotation}{unjudged}val {prop_name}: {ty}{default}")
 }
 
 /// The constructor parameter list a set of [`KotlinField`]s earns, joined by `, `.
-fn data_class_params(fields: &[KotlinField]) -> String {
+fn data_class_params(fields: &[KotlinField], read_by_the_plugin: bool) -> String {
     fields
         .iter()
-        .map(property_declaration)
+        .map(|field| property_declaration(field, read_by_the_plugin))
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -945,7 +937,7 @@ fn own_field_plan(
     prop: &str,
     type_parameters: &[String],
 ) -> (String, String, String) {
-    let field_serializer = kotlin_serializer_expr(&field.field_def, type_parameters);
+    let field_serializer = read::member_serializer(&field.field_def, type_parameters);
     let serialize = format!(
         "put(\"{}\", output.json.encodeToJsonElement({field_serializer}, value.{prop}))",
         field.wire_name
@@ -977,7 +969,7 @@ fn flatten_struct_field_plan(
     type_parameters: &[String],
 ) -> (String, String, String) {
     let base = flatten_base_field(&field.field_def);
-    let inner_serializer = kotlin_serializer_expr(&base, type_parameters);
+    let inner_serializer = read::member_serializer(&base, type_parameters);
     let serialize = if field.field_def.is_optional() {
         format!(
             "value.{prop}?.let {{ flattened -> output.json.encodeToJsonElement({inner_serializer}, flattened).jsonObject.forEach {{ (k, v) -> put(k, v) }} }}"
@@ -1037,7 +1029,8 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
             plan.deserialize_stmts.push(decode);
             own_wire_keys.push(wire_key);
         } else if let FieldDefType::Map(_, map_value) = &field.field_def.field_type {
-            map_field = Some((field, kotlin_serializer_expr(map_value, type_parameters)));
+            let read_by = read::held_serializer(&field.field_def, map_value, type_parameters);
+            map_field = Some((field, read_by));
             continue;
         } else {
             plan.needs_lenient = true;
@@ -1073,7 +1066,7 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
     plan
 }
 
-/// The generated `KSerializer` a struct with one or more `#[serde(flatten)]` fields earns, since
+/// The unjudged `KSerializer` a struct with one or more `#[serde(flatten)]` fields earns, since
 /// `kotlinx.serialization` has no annotation for flatten: it merges each flattened value's own
 /// keys into the enclosing object, tolerant of the other fields' own keys on decode.
 fn flatten_merging_serializer(
@@ -1084,7 +1077,7 @@ fn flatten_merging_serializer(
     own_tag: Option<&(String, String)>,
 ) -> String {
     let self_type = format!("{export_name}{generic_params}");
-    let serializer_head = serializer_declaration(export_name, type_parameters);
+    let serializer_head = read::written_head(export_name, type_parameters);
     let mut plan = flatten_plan(fields, type_parameters);
     // A struct's own tag is written ahead of everything merged into the object.
     if let Some((key, named)) = own_tag {
@@ -1117,10 +1110,11 @@ fn flatten_merging_serializer(
     )
 }
 
-/// The Kotlin tokens a named-field struct earns: a `data class` with its `validate()`, plus a
-/// `typealias` under its own Rust ident when `name = "..."` moved its published name elsewhere. A
-/// struct carrying one or more `#[serde(flatten)]` fields also earns a generated merging
-/// [`KSerializer`](flatten_merging_serializer).
+/// The Kotlin tokens a named-field struct earns: a `data class` with its `validate()` and its two
+/// serializers, plus a `typealias` under its own Rust ident when `name = "..."` moved its
+/// published name elsewhere. The plugin's serializer is the unjudged one, and a struct carrying
+/// one or more `#[serde(flatten)]` fields earns [a merging one](flatten_merging_serializer) in
+/// its place.
 fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> TokenStream {
     let type_parameters = type_parameters_in_scope(&item_struct.generics);
     if let Some(held) = brand_field(item_struct) {
@@ -1139,6 +1133,7 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
     let fields = collect_kotlin_fields(&item_struct.fields, rule, &type_parameters, args);
     let generic_params = kotlin_generic_params(&item_struct.generics);
     let alias = ident_typealias(&rust_ident, &export_name, &generic_params);
+    let flattened = fields.iter().any(|field| field.flatten);
     let body = if matches!(item_struct.fields, Fields::Unit) {
         // A unit struct is Kotlin's own no-data type: `object`, not `class` below.
         format!("object {export_name}{generic_params}")
@@ -1147,7 +1142,7 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
     } else {
         format!(
             "data class {export_name}{generic_params}({})",
-            data_class_params(&fields)
+            data_class_params(&fields, !flattened)
         )
     };
     let serializable = serialized_parameters(&item_struct.generics);
@@ -1156,8 +1151,8 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
     rules.own(args.check);
     let validated = rules.written("");
     let own_tag = struct_tag(item_struct);
-    let kotlin_source = if fields.iter().any(|field| field.flatten) {
-        let serializer = flatten_merging_serializer(
+    let kotlin_source = if flattened {
+        let unjudged = flatten_merging_serializer(
             &export_name,
             &generic_params,
             &type_parameters,
@@ -1166,18 +1161,23 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
         );
         format!(
             "@Serializable(with = {export_name}Serializer::class) {body} {{ {validated} }} \
-             {serializer}{alias}"
-        )
-    } else if let Some((key, named)) = own_tag {
-        // A struct's own tag: a property outside the constructor, always written and holding the
-        // struct's name unless a payload says otherwise, as serde writes it and reads past it.
-        format!(
-            "@OptIn(ExperimentalSerializationApi::class) @Serializable {body} {{ \
-             @SerialName(\"{key}\") @EncodeDefault val kotlinSchemaTag: String = \"{named}\"; \
-             {validated} }}{alias}"
+             {unjudged} {}{alias}",
+            read::judged(&export_name, &generic_params, &type_parameters, true)
         )
     } else {
-        format!("@Serializable {body} {{ {validated} }}{alias}")
+        // A struct's own tag: a property outside the constructor, always written and holding the
+        // struct's name unless a payload says otherwise, as serde writes it and reads past it.
+        let tag = own_tag.map_or_else(String::new, |(key, named)| {
+            format!(
+                "@SerialName(\"{key}\") @EncodeDefault val kotlinSchemaTag: String = \"{named}\"; "
+            )
+        });
+        format!(
+            "{} {body} {{ {tag}{validated} }} {} {}{alias}",
+            read::kept(&export_name),
+            read::generated(&export_name, &generic_params, &type_parameters),
+            read::judged(&export_name, &generic_params, &type_parameters, false)
+        )
     };
 
     kotlin_module_tokens(&rust_ident, item_struct.ident.span(), &kotlin_source)
@@ -1205,7 +1205,7 @@ fn declared_default(value_field: &FieldDef, args: &KotlinArgs<'_>) -> Option<Fie
 
 /// The Kotlin tokens for a brand, which carries no shape of its own on the wire beyond the one
 /// value it holds: a `@JvmInline value class`, serialized identically to that value alone, whose
-/// `validate()` runs the brand's own bounds and checks.
+/// `validate()` runs the brand's own bounds and checks, and its two serializers.
 fn value_class_tokens(
     item_struct: &ItemStruct,
     held: &Field,
@@ -1232,20 +1232,24 @@ fn value_class_tokens(
     );
     rules.own(args.check);
     let text = rules.text_member(&value_field);
-    validate::note_brand(&rust_ident, text.is_some());
+    validate::note_brand(&rust_ident, text.is_some(), rules.bounded());
     let answered = text.map_or_else(String::new, |member| format!("{member}; "));
     let validated = rules.written("");
     let kotlin_source = format!(
-        "@JvmInline @Serializable value class {export_name}{generic_params}(val value: \
-         {value_type}) {{ {answered}{validated} }}{alias}"
+        "{} value class {export_name}{generic_params}(val value: {value_type}) {{ \
+         {answered}{validated} }} {} {}{alias}",
+        read::kept_inline(&export_name),
+        read::generated(&export_name, &generic_params, &type_parameters),
+        read::judged(&export_name, &generic_params, &type_parameters, false)
     );
 
     kotlin_module_tokens(&rust_ident, item_struct.ident.span(), &kotlin_source)
 }
 
 /// The Kotlin tokens for a non-branded tuple struct: a `data class` over one property per slot,
-/// with the same generated array `KSerializer` a Tuple-shaped field earns — the struct's own name
-/// stands in for what [`tuple_wrapper_typename`] would otherwise synthesize.
+/// read unjudged by the array `KSerializer` a Tuple-shaped field earns — the struct's own name
+/// stands in for what [`tuple_wrapper_typename`] would otherwise synthesize — and judged by its
+/// own.
 fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> TokenStream {
     let type_parameters = type_parameters_in_scope(&item_struct.generics);
     let Fields::Unnamed(unnamed) = &item_struct.fields else {
@@ -1269,7 +1273,7 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
 
     let generic_params = kotlin_generic_params(&item_struct.generics);
     let serializer_name = format!("{export_name}Serializer");
-    let serializer_head = serializer_declaration(&export_name, &type_parameters);
+    let serializer_head = read::written_head(&export_name, &type_parameters);
     let params = slots
         .iter()
         .enumerate()
@@ -1282,7 +1286,7 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
         .map(|(slot, element)| {
             format!(
                 "add(output.json.encodeToJsonElement({}, value.slot{slot}))",
-                kotlin_serializer_expr(element, &type_parameters)
+                read::member_serializer(element, &type_parameters)
             )
         })
         .collect::<Vec<_>>()
@@ -1293,7 +1297,7 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
         .map(|(slot, element)| {
             format!(
                 "input.json.decodeFromJsonElement({}, array[{slot}])",
-                kotlin_serializer_expr(element, &type_parameters)
+                read::member_serializer(element, &type_parameters)
             )
         })
         .collect::<Vec<_>>()
@@ -1314,7 +1318,8 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
          output.encodeJsonElement(buildJsonArray {{ {encode_entries} }}) }}; \
          override fun deserialize(decoder: Decoder): {export_name}{generic_params} {{ \
          val input = decoder as JsonDecoder; val array = input.decodeJsonElement().jsonArray; \
-         return {export_name}({decode_entries}) }} }}{alias}"
+         return {export_name}({decode_entries}) }} }} {}{alias}",
+        read::judged(&export_name, &generic_params, &type_parameters, true)
     );
 
     kotlin_module_tokens(&rust_ident, item_struct.ident.span(), &kotlin_source)
@@ -1347,24 +1352,24 @@ fn enum_kotlin_tokens(item_enum: &ItemEnum, args: &KotlinArgs<'_>) -> TokenStrea
     let rust_ident = item_enum.ident.to_string();
     let export_name = compute_item_export_name(&rust_ident, args.name_override);
     register_kotlin_name(&rust_ident, &export_name);
-    validate::note_model(&rust_ident);
     let tag_attrs = enum_tag_attrs(&item_enum.attrs);
     let writes_bare_variant_names =
         tag_attrs.tag.is_none() && tag_attrs.content.is_none() && !tag_attrs.untagged;
     let kotlin_source = if is_plain_enum(item_enum) && writes_bare_variant_names {
+        validate::note_plain_enum(&rust_ident);
         plain_enum_kotlin_source(item_enum, &export_name, args)
-    } else if tag_attrs.untagged {
-        untagged_enum_kotlin_source(item_enum, &export_name, &tag_attrs, args)
-    } else if tag_attrs.tag.is_some() && tag_attrs.content.is_none() {
-        internal_tagged_enum_kotlin_source(item_enum, &export_name, &tag_attrs, args)
     } else {
-        dispatched_tagged_enum_kotlin_source(item_enum, &export_name, &tag_attrs, args)
+        validate::note_model(&rust_ident);
+        if tag_attrs.untagged {
+            untagged_enum_kotlin_source(item_enum, &export_name, &tag_attrs, args)
+        } else {
+            dispatched_tagged_enum_kotlin_source(item_enum, &export_name, &tag_attrs, args)
+        }
     };
     kotlin_module_tokens(&rust_ident, item_enum.ident.span(), &kotlin_source)
 }
 
-/// The body of a variant's own subclass: `validate()` over the members of its payload, each
-/// under the steps serde writes on the way to it, then the enum's own checks.
+/// The body of a variant's own subclass: what [`variant_rules`] writes for it.
 fn variant_body(
     payload: &VariantPayload,
     tagging: Tagging<'_>,
@@ -1372,18 +1377,31 @@ fn variant_body(
     serializable: &[String],
     args: &KotlinArgs<'_>,
 ) -> String {
+    let mut rules = Rules::of(serializable);
+    variant_rules(&mut rules, payload, tagging, wire_tag, args);
+    format!("{{ {} }}", rules.written("override "))
+}
+
+/// What a variant adds to `rules`: the members of its payload, each under the steps serde writes
+/// on the way to it, then the enum's own checks.
+fn variant_rules(
+    rules: &mut Rules<'_>,
+    payload: &VariantPayload,
+    tagging: Tagging<'_>,
+    wire_tag: &str,
+    args: &KotlinArgs<'_>,
+) {
     let under = match tagging {
         Tagging::Adjacent(content) => Some(content),
         Tagging::External => Some(wire_tag),
         Tagging::Unwrapped => None,
     };
-    let mut rules = Rules::of(serializable);
     match payload {
         VariantPayload::Unit => {}
-        VariantPayload::Named(fields) => named_member_rules(&mut rules, fields, under),
+        VariantPayload::Named(fields) => named_member_rules(rules, fields, under),
         VariantPayload::Value(field_def) => {
             if let FieldDefType::Tuple(slots) = &field_def.field_type {
-                slot_rules(&mut rules, slots, "value.", under);
+                slot_rules(rules, slots, "value.", under);
             } else {
                 rules.member(&Member {
                     def: field_def,
@@ -1394,7 +1412,6 @@ fn variant_body(
         }
     }
     rules.own(args.check);
-    format!("{{ {} }}", rules.written("override "))
 }
 
 /// One tagged/untagged variant's payload — see [`VariantPayload`]. A `TupleMultiple` payload is
@@ -1454,7 +1471,8 @@ fn variant_payload(
 
 /// One variant's own subclass declaration, implementing `export_name`. `bare_value` selects a
 /// `@JvmInline value class` for a scalar `Value` payload — the bare wire form an untagged member
-/// needs — while a tagged form wraps it in an ordinary `data class` property instead.
+/// needs — while a tagged form wraps it in an ordinary `data class` property instead. The plugin
+/// writes the subclass's serializer, which reads a model the variant holds unjudged.
 fn variant_subclass(
     export_name: &str,
     subclass_name: &str,
@@ -1475,70 +1493,21 @@ fn variant_subclass(
         VariantPayload::Named(fields) => {
             format!(
                 "{annotation}@Serializable data class {subclass_name}{generic_params}({}) : {export_name}{generic_params}",
-                data_class_params(fields)
-            )
-        }
-        VariantPayload::Value(field_def) if bare_value => {
-            format!(
-                "{annotation}@JvmInline @Serializable value class {subclass_name}{generic_params}(val value: {}) : {export_name}{generic_params}",
-                kotlin_typename(field_def)
+                data_class_params(fields, true)
             )
         }
         VariantPayload::Value(field_def) => {
+            let (unjudged, held) = read::plugin_read(field_def);
+            let class = if bare_value {
+                "@JvmInline @Serializable value class"
+            } else {
+                "@Serializable data class"
+            };
             format!(
-                "{annotation}@Serializable data class {subclass_name}{generic_params}(val value: {}) : {export_name}{generic_params}",
-                kotlin_typename(field_def)
+                "{annotation}{class} {subclass_name}{generic_params}({unjudged}val value: {held}) : {export_name}{generic_params}"
             )
         }
     }
-}
-
-/// The Kotlin tokens an internally-tagged enum (`tag = "..."`, no `content`) earns: a
-/// `@JsonClassDiscriminator`-annotated `sealed interface`, one subclass per variant, each always
-/// carrying `@SerialName` since the subclass name never coincides with the wire tag.
-fn internal_tagged_enum_kotlin_source(
-    item_enum: &ItemEnum,
-    export_name: &str,
-    tag_attrs: &EnumTagAttrs,
-    args: &KotlinArgs<'_>,
-) -> String {
-    let tag_key = tag_attrs.tag.as_deref().unwrap_or("type");
-    let variant_rule = resolve_rename_rule(tag_attrs.rename_all.as_deref());
-    let field_rule = resolve_rename_rule(tag_attrs.rename_all_fields.as_deref());
-    let type_parameters = type_parameters_in_scope(&item_enum.generics);
-    let generic_params = kotlin_generic_params(&item_enum.generics);
-    let nothing_generic_args = kotlin_nothing_generic_args(&item_enum.generics);
-    let serializable = serialized_parameters(&item_enum.generics);
-
-    let subclasses: Vec<String> = item_enum
-        .variants
-        .iter()
-        .map(|variant| {
-            let variant_rust_name = variant.ident.to_string();
-            let wire_tag = rename_override(&variant.attrs)
-                .unwrap_or_else(|| variant_rule.apply_to_variant(&variant_rust_name));
-            let subclass_name = format!("{export_name}{variant_rust_name}");
-            let payload = variant_payload(variant, field_rule, &type_parameters, args);
-            let subclass = variant_subclass(
-                export_name,
-                &subclass_name,
-                &generic_params,
-                &nothing_generic_args,
-                Some(&wire_tag),
-                false,
-                &payload,
-            );
-            let body = variant_body(&payload, Tagging::Unwrapped, &wire_tag, &serializable, args);
-            format!("{subclass} {body}")
-        })
-        .collect();
-
-    let base = format!(
-        "@OptIn(ExperimentalSerializationApi::class) @Serializable @JsonClassDiscriminator(\"{tag_key}\") \
-         sealed interface {export_name}{} {VALIDATE_DECLARED}",
-        kotlin_out_generic_params(&item_enum.generics)
-    );
-    format!("{base} {}", subclasses.join(" "))
 }
 
 /// One variant's own subclass, `serialize` arm and `deserialize` arm, for
@@ -1553,7 +1522,7 @@ fn dispatched_tagged_variant(
         .unwrap_or_else(|| ctx.variant_rule.apply_to_variant(&variant_rust_name));
     let subclass_name = format!("{}{variant_rust_name}", ctx.export_name);
     let payload = variant_payload(variant, ctx.field_rule, ctx.type_parameters, ctx.args);
-    let tagging = ctx.content_key.map_or(Tagging::External, Tagging::Adjacent);
+    let beside_the_tag = matches!(ctx.tagging, Tagging::Unwrapped);
     let subclass = format!(
         "{} {}",
         variant_subclass(
@@ -1561,66 +1530,70 @@ fn dispatched_tagged_variant(
             &subclass_name,
             ctx.generic_params,
             ctx.nothing_generic_args,
-            None,
+            // Under a tag alone the subclass is named by its tag.
+            beside_the_tag.then_some(wire_tag.as_str()),
             false,
             &payload,
         ),
-        variant_body(&payload, tagging, &wire_tag, ctx.serializable, ctx.args)
+        variant_body(&payload, ctx.tagging, &wire_tag, ctx.serializable, ctx.args)
     );
 
-    let content_expr = match &payload {
-        VariantPayload::Unit => None,
-        VariantPayload::Named(_) => Some(format!(
-            "output.json.encodeToJsonElement({}, value)",
-            kotlin_subclass_serializer_expr(&subclass_name, ctx.type_parameters)
-        )),
-        VariantPayload::Value(field_def) => Some(format!(
-            "output.json.encodeToJsonElement({}, value.value)",
-            kotlin_serializer_expr(field_def, ctx.type_parameters)
-        )),
+    let tag_key = ctx.tag_key;
+    // Under a tag and a content key the content is read out of a `Map` index, which is nullable
+    // in Kotlin; under a tag alone it is the object without the tag; with no tag attribute the
+    // object's one entry is destructured, already non-null.
+    let data = match ctx.tagging {
+        Tagging::Adjacent(_) => "data!!".to_owned(),
+        Tagging::External => "data".to_owned(),
+        Tagging::Unwrapped => format!("JsonObject(obj - \"{tag_key}\")"),
     };
-    // Adjacent tagging reads its content out of a `Map` index, which is nullable in Kotlin;
-    // external tagging destructures the object's one entry, already non-null.
-    let data_ref = if ctx.content_key.is_some() {
-        "data!!"
-    } else {
-        "data"
-    };
-    let decode_expr = match &payload {
-        VariantPayload::Unit => subclass_name.clone(),
-        VariantPayload::Named(_) => format!(
-            "input.json.decodeFromJsonElement({}, {data_ref})",
-            kotlin_subclass_serializer_expr(&subclass_name, ctx.type_parameters)
+    let own = || kotlin_subclass_serializer_expr(&subclass_name, ctx.type_parameters);
+    let (content_expr, decode_expr) = match &payload {
+        VariantPayload::Unit => (None, subclass_name.clone()),
+        VariantPayload::Value(field_def) if !beside_the_tag => (
+            Some(format!(
+                "output.json.encodeToJsonElement({}, value.value)",
+                read::member_serializer(field_def, ctx.type_parameters)
+            )),
+            format!(
+                "{subclass_name}(input.json.decodeFromJsonElement({}, {data}))",
+                read::member_serializer(field_def, ctx.type_parameters)
+            ),
         ),
-        VariantPayload::Value(field_def) => format!(
-            "{subclass_name}(input.json.decodeFromJsonElement({}, {data_ref}))",
-            kotlin_serializer_expr(field_def, ctx.type_parameters)
+        // Under a tag alone a variant is its subclass's own object, a lone slot included.
+        VariantPayload::Named(_) | VariantPayload::Value(_) => (
+            Some(format!("output.json.encodeToJsonElement({}, value)", own())),
+            format!("input.json.decodeFromJsonElement({}, {data})", own()),
         ),
     };
 
-    let tag_key = ctx.tag_key;
-    let serialize_arm = match (&ctx.content_key, &content_expr) {
-        (Some(content), Some(expr)) => format!(
+    let serialize_arm = match (ctx.tagging, &content_expr) {
+        (Tagging::Adjacent(content), Some(expr)) => format!(
             "is {subclass_name} -> buildJsonObject {{ put(\"{tag_key}\", \"{wire_tag}\"); put(\"{content}\", {expr}) }}"
         ),
-        (None, Some(expr)) => {
+        (Tagging::External, Some(expr)) => {
             format!("is {subclass_name} -> buildJsonObject {{ put(\"{wire_tag}\", {expr}) }}")
         }
-        (Some(_), None) => {
+        (Tagging::Unwrapped, Some(expr)) => format!(
+            "is {subclass_name} -> buildJsonObject {{ put(\"{tag_key}\", \"{wire_tag}\"); \
+             {expr}.jsonObject.forEach {{ (k, v) -> put(k, v) }} }}"
+        ),
+        (Tagging::Adjacent(_) | Tagging::Unwrapped, None) => {
             format!(
                 "is {subclass_name} -> buildJsonObject {{ put(\"{tag_key}\", \"{wire_tag}\") }}"
             )
         }
-        (None, None) => format!("is {subclass_name} -> JsonPrimitive(\"{wire_tag}\")"),
+        (Tagging::External, None) => format!("is {subclass_name} -> JsonPrimitive(\"{wire_tag}\")"),
     };
     let deserialize_arm = format!("\"{wire_tag}\" -> {decode_expr}");
 
     (subclass, serialize_arm, deserialize_arm)
 }
 
-/// The Kotlin tokens an adjacently-tagged (`tag = "...", content = "..."`) or externally-tagged
-/// (serde's own default) enum earns: a plain `sealed interface`, one subclass per variant, and a
-/// generated `KSerializer` that reads and writes the tag and content object by hand.
+/// The Kotlin tokens a tagged enum earns, under a tag alone (`tag = "..."`), under a tag and a
+/// content key (`tag = "...", content = "..."`) and under serde's own default: a plain `sealed
+/// interface`, one subclass per variant, the unjudged `KSerializer` that reads and writes the tag
+/// by hand over the variants' own serializers, and the enum's own, which judges.
 fn dispatched_tagged_enum_kotlin_source(
     item_enum: &ItemEnum,
     export_name: &str,
@@ -1632,19 +1605,23 @@ fn dispatched_tagged_enum_kotlin_source(
     let type_parameters = type_parameters_in_scope(&item_enum.generics);
     let generic_params = kotlin_generic_params(&item_enum.generics);
     let nothing_generic_args = kotlin_nothing_generic_args(&item_enum.generics);
-    let content_key = tag_attrs.content.as_deref();
     let tag_key = tag_attrs.tag.as_deref().unwrap_or("type");
+    let tagging = match (tag_attrs.content.as_deref(), tag_attrs.tag.as_deref()) {
+        (Some(content), _) => Tagging::Adjacent(content),
+        (None, Some(_)) => Tagging::Unwrapped,
+        (None, None) => Tagging::External,
+    };
     let serializable = serialized_parameters(&item_enum.generics);
 
     let ctx = DispatchedTaggedContext {
         args,
-        content_key,
         export_name,
         field_rule,
         generic_params: &generic_params,
         nothing_generic_args: &nothing_generic_args,
         serializable: &serializable,
         tag_key,
+        tagging,
         type_parameters: &type_parameters,
         variant_rule,
     };
@@ -1663,26 +1640,28 @@ fn dispatched_tagged_enum_kotlin_source(
             },
         );
 
-    let deserialize_body = content_key.map_or_else(
-        || {
-            format!(
-                "val element = input.decodeJsonElement(); \
-                 val (tag, data) = if (element is JsonPrimitive) element.content to JsonNull \
-                 else element.jsonObject.entries.single().let {{ it.key to it.value }}; \
-                 return when (tag) {{ {} else -> error(\"unknown tag \" + tag) }}",
-                deserialize_arms.join("; "),
-            )
-        },
-        |content| {
-            format!(
-                "val obj = input.decodeJsonElement().jsonObject; \
-                 val tag = obj.getValue(\"{tag_key}\").jsonPrimitive.content; \
-                 val data = obj[\"{content}\"]; \
-                 return when (tag) {{ {} else -> error(\"unknown tag \" + tag) }}",
-                deserialize_arms.join("; "),
-            )
-        },
-    );
+    let arms = deserialize_arms.join("; ");
+    let deserialize_body = match tagging {
+        Tagging::Adjacent(content) => format!(
+            "val obj = input.decodeJsonElement().jsonObject; \
+             val tag = obj.getValue(\"{tag_key}\").jsonPrimitive.content; \
+             val data = obj[\"{content}\"]; \
+             return when (tag) {{ {arms} else -> error(\"unknown tag \" + tag) }}"
+        ),
+        Tagging::External => format!(
+            "val element = input.decodeJsonElement(); \
+             val (tag, data) = if (element is JsonPrimitive) element.content to JsonNull \
+             else element.jsonObject.entries.single().let {{ it.key to it.value }}; \
+             return when (tag) {{ {arms} else -> error(\"unknown tag \" + tag) }}"
+        ),
+        // A tag no variant has is refused with the decoder's own exception.
+        Tagging::Unwrapped => format!(
+            "val obj = input.decodeJsonElement().jsonObject; \
+             val tag = (obj[\"{tag_key}\"] as? JsonPrimitive)?.content; \
+             return when (tag) {{ {arms} else -> throw SerializationException(\"unknown tag \" + \
+             tag) }}"
+        ),
+    };
 
     let serializer_name = format!("{export_name}Serializer");
     let base = format!(
@@ -1690,7 +1669,7 @@ fn dispatched_tagged_enum_kotlin_source(
          {VALIDATE_DECLARED}",
         kotlin_out_generic_params(&item_enum.generics)
     );
-    let serializer_head = serializer_declaration(export_name, &type_parameters);
+    let serializer_head = read::written_head(export_name, &type_parameters);
     let serializer_object = format!(
         "{serializer_head} : KSerializer<{export_name}{generic_params}> {{ \
          override val descriptor: SerialDescriptor = buildClassSerialDescriptor(\"{export_name}\"); \
@@ -1702,12 +1681,16 @@ fn dispatched_tagged_enum_kotlin_source(
         serialize_arms.join("; "),
     );
 
-    format!("{base} {} {serializer_object}", subclasses.join(" "))
+    format!(
+        "{base} {} {serializer_object} {}",
+        subclasses.join(" "),
+        read::judged(export_name, &generic_params, &type_parameters, true)
+    )
 }
 
-/// The Kotlin tokens a `#[serde(untagged)]` enum earns: a plain `sealed interface` and a generated
-/// `KSerializer` that tries each variant's own serializer in turn, returning the first that decodes
-/// — mirroring Dart's own try-each-variant fallback.
+/// The Kotlin tokens a `#[serde(untagged)]` enum earns: a plain `sealed interface`, the unjudged
+/// `KSerializer` that tries each variant's own serializer in turn and takes the first that decodes
+/// and whose bounds hold, as serde's read of the enum does, and the enum's own, which judges.
 fn untagged_enum_kotlin_source(
     item_enum: &ItemEnum,
     export_name: &str,
@@ -1728,8 +1711,19 @@ fn untagged_enum_kotlin_source(
         let subclass_name = format!("{export_name}{variant_rust_name}");
         let payload = variant_payload(variant, field_rule, &type_parameters, args);
         let bare_value = matches!(payload, VariantPayload::Value(_));
+        let mut rules = Rules::choosing(&serializable);
+        variant_rules(&mut rules, &payload, Tagging::Unwrapped, "", args);
+        // A check and what a held model reports choose no variant: the enum's own read judges.
+        let held_to_its_bounds = if rules.bounded() {
+            format!(
+                ".also {{ chosen -> if (chosen.kotlinSchemaBound().isNotEmpty()) error(\"a bound \
+                 of {subclass_name} is broken\") }}"
+            )
+        } else {
+            String::new()
+        };
         subclasses.push(format!(
-            "{} {}",
+            "{} {{ {} }}",
             variant_subclass(
                 export_name,
                 &subclass_name,
@@ -1739,14 +1733,14 @@ fn untagged_enum_kotlin_source(
                 bare_value,
                 &payload,
             ),
-            variant_body(&payload, Tagging::Unwrapped, "", &serializable, args)
+            rules.written("override ")
         ));
         let subclass_serializer = kotlin_subclass_serializer_expr(&subclass_name, &type_parameters);
         serialize_arms.push(format!(
             "is {subclass_name} -> output.json.encodeToJsonElement({subclass_serializer}, value)"
         ));
         deserialize_chain = format!(
-            "{deserialize_chain}.recoverCatching {{ input.json.decodeFromJsonElement({subclass_serializer}, element) as {export_name}{generic_params} }}"
+            "{deserialize_chain}.recoverCatching {{ input.json.decodeFromJsonElement({subclass_serializer}, element){held_to_its_bounds} as {export_name}{generic_params} }}"
         );
     }
 
@@ -1756,7 +1750,7 @@ fn untagged_enum_kotlin_source(
          {VALIDATE_DECLARED}",
         kotlin_out_generic_params(&item_enum.generics)
     );
-    let serializer_head = serializer_declaration(export_name, &type_parameters);
+    let serializer_head = read::written_head(export_name, &type_parameters);
     let serializer_object = format!(
         "{serializer_head} : KSerializer<{export_name}{generic_params}> {{ \
          override val descriptor: SerialDescriptor = buildClassSerialDescriptor(\"{export_name}\"); \
@@ -1769,7 +1763,11 @@ fn untagged_enum_kotlin_source(
         serialize_arms.join("; "),
     );
 
-    format!("{base} {} {serializer_object}", subclasses.join(" "))
+    format!(
+        "{base} {} {serializer_object} {}",
+        subclasses.join(" "),
+        read::judged(export_name, &generic_params, &type_parameters, true)
+    )
 }
 
 /// One plain-enum variant's Kotlin member name (its Rust ident, verbatim — Kotlin enum constants

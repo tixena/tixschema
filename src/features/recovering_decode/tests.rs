@@ -2501,6 +2501,98 @@ fn a_deserialize_bound_the_source_already_asks_is_written_once() {
     }
 }
 
+/// A serde bound a parameter declares, on its name or in its `where` predicate and in whatever
+/// path, is written once in each header that asks it of every parameter.
+#[test]
+fn a_bound_a_parameter_declares_is_joined_once() {
+    let headers_of = |declaration: &str| -> Vec<String> {
+        added_impls(declaration)
+            .into_iter()
+            .map(|(header, _)| header)
+            .collect()
+    };
+    let mut on_its_name = vec![
+        "impl < CodeType : Display + Serialize + serde :: de :: DeserializeOwned > \
+         Crate < CodeType > where Self : serde :: de :: DeserializeOwned",
+    ];
+    let mut read_declared = vec![
+        "impl < CodeType : Display + DeserializeOwned > Crate < CodeType > \
+         where Self : serde :: de :: DeserializeOwned",
+    ];
+    let mut in_where = vec![
+        "impl < CodeType > Crate < CodeType > \
+         where CodeType : Display + serde :: Serialize + serde :: de :: DeserializeOwned , \
+         Self : serde :: de :: DeserializeOwned",
+    ];
+    let mut in_both = vec![
+        "impl < CodeType > Crate < CodeType > \
+         where CodeType : Display + Serialize + serde :: de :: DeserializeOwned , \
+         Self : serde :: de :: DeserializeOwned",
+    ];
+    if cfg!(feature = "bson") {
+        on_its_name.push(
+            "impl < CodeType : Display + Serialize + serde :: de :: DeserializeOwned > \
+             Crate < CodeType > \
+             where Self : serde :: de :: DeserializeOwned + serde :: Serialize",
+        );
+        read_declared.push(
+            "impl < CodeType : Display + DeserializeOwned + serde :: Serialize > \
+             Crate < CodeType > \
+             where Self : serde :: de :: DeserializeOwned + serde :: Serialize",
+        );
+        in_where.push(
+            "impl < CodeType > Crate < CodeType > \
+             where CodeType : Display + serde :: Serialize + serde :: de :: DeserializeOwned , \
+             Self : serde :: de :: DeserializeOwned + serde :: Serialize",
+        );
+        in_both.push(
+            "impl < CodeType > Crate < CodeType > \
+             where CodeType : Display + Serialize + serde :: de :: DeserializeOwned , \
+             Self : serde :: de :: DeserializeOwned + serde :: Serialize",
+        );
+    }
+    if cfg!(feature = "mongodb") {
+        on_its_name.push(
+            "impl < CodeType : Display + Serialize > Crate < CodeType > \
+             where Self : :: serde :: Serialize",
+        );
+        read_declared.push(
+            "impl < CodeType : Display + DeserializeOwned + :: serde :: Serialize > \
+             Crate < CodeType > where Self : :: serde :: Serialize",
+        );
+        in_where.push(
+            "impl < CodeType > Crate < CodeType > \
+             where CodeType : Display + serde :: Serialize , Self : :: serde :: Serialize",
+        );
+        in_both.push(
+            "impl < CodeType > Crate < CodeType > \
+             where CodeType : Display + Serialize , Self : :: serde :: Serialize",
+        );
+    }
+    assert_eq!(
+        headers_of("pub struct Crate<CodeType: Display + Serialize> { pub code: CodeType }"),
+        on_its_name
+    );
+    assert_eq!(
+        headers_of("pub struct Crate<CodeType: Display + DeserializeOwned> { pub code: CodeType }"),
+        read_declared
+    );
+    assert_eq!(
+        headers_of(
+            "pub struct Crate<CodeType> where CodeType: Display + serde::Serialize \
+             { pub code: CodeType }"
+        ),
+        in_where
+    );
+    assert_eq!(
+        headers_of(
+            "pub struct Crate<CodeType: Serialize> where CodeType: Display + Serialize \
+             { pub code: CodeType }"
+        ),
+        in_both
+    );
+}
+
 #[test]
 fn a_generic_type_gets_one_impl_per_source_under_that_sources_bounds() {
     let added = added_impls(

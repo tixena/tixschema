@@ -152,7 +152,6 @@ struct TagShape<'shape> {
 /// plain join) and `tagged_variant_tokens` (which wraps [`Self::to_json_map`] under a tag key
 /// instead, for a `Named` payload under adjacent or external tagging).
 struct ClassBodyParts {
-    ctor_args: String,
     ctor_params: String,
     field_decls: String,
     /// The `{ 'a': a, 'b': b }` map literal a plain `toJson()` returns, apart from the signature so
@@ -171,7 +170,8 @@ impl ClassBodyParts {
 }
 
 /// What the Dart backend reads of an item's `#[model_schema(...)]`: the name it publishes under,
-/// its checks, the string check of a brand or of an enum, and how a member's own bounds are read.
+/// its checks, its `preprocess`, the string check of a brand or of an enum, and how a member's
+/// own keys are read.
 pub struct DartTypeArgs<'args> {
     /// The functions `check` names, in the order written.
     pub check: &'args [FunctionName],
@@ -184,6 +184,8 @@ pub struct DartTypeArgs<'args> {
     pub min_length: Option<usize>,
     pub name_override: Option<&'args str>,
     pub pattern: Option<&'args str>,
+    /// The functions `preprocess` names on the type, in the order written.
+    pub preprocess: &'args [FunctionName],
 }
 
 /// The bounds one value is held to, as `validate()` reports them: a length, then each pattern,
@@ -297,6 +299,64 @@ struct VariantClass<'variant> {
     wire_tag: &'variant str,
 }
 
+/// What an unjudged read answers with.
+enum Answer {
+    /// Statements, the last of which returns or throws.
+    Statements(String),
+    /// One expression.
+    Value(String),
+}
+
+/// What an unjudged read calls of the functions `preprocess` names on its type, and the names
+/// it declares, each as [`declared`] writes it.
+struct Corrects<'item> {
+    /// What holds the payload the members are read from.
+    json: String,
+    /// What holds the payload of an enum serde writes under its variant's name.
+    map: String,
+    /// The functions the type names, in the order written.
+    own: &'item [FunctionName],
+    /// What holds the payload as it is taken, where the type names a function.
+    payload: String,
+    /// What holds the variant of an untagged enum whose bounds are asked.
+    read: String,
+    /// What holds the tag of an enum.
+    tag: String,
+}
+
+impl<'item> Corrects<'item> {
+    /// The read of a type that names `own`.
+    fn of(own: &'item [FunctionName]) -> Self {
+        Self {
+            json: declared("json"),
+            map: declared("map"),
+            own,
+            payload: declared("payload"),
+            read: declared("read"),
+            tag: declared("tag"),
+        }
+    }
+
+    /// The read of a variant of the type: the same names, and no function of the type's own,
+    /// which its base has called.
+    fn of_a_variant(&self) -> Corrects<'static> {
+        Corrects {
+            json: self.json.clone(),
+            map: self.map.clone(),
+            own: &[],
+            payload: self.payload.clone(),
+            read: self.read.clone(),
+            tag: self.tag.clone(),
+        }
+    }
+}
+
+/// The unjudged read of a type: the name it takes its payload under, and its body.
+struct Unjudged {
+    body: String,
+    taken_as: String,
+}
+
 thread_local! {
     /// The Dart class/enum name each Rust ident publishes — the one thing a reference to a sibling
     /// item needs, since the reference's own field carries the type arguments (real Dart generics
@@ -309,6 +369,10 @@ thread_local! {
     /// The fields of each struct a class has been emitted for, by their Rust names: what a
     /// client reading one member off a declared message needs to name it as the class does.
     static DART_FIELDS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
+
+    /// The name of each function the reads of the item being emitted call: what its `preprocess`
+    /// names, and that of each of its members.
+    static DART_CALLED: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
 }
 
 /// The Dart tokens `item` earns, given what `args` reads of its `#[model_schema(...)]`, handed
@@ -316,7 +380,8 @@ thread_local! {
 /// own shape; an item this module has nothing to say about (anything but a struct, an enum or a
 /// type alias) earns nothing.
 pub fn dart_schema_dispatch(item: &Item, args: &DartTypeArgs<'_>) -> TokenStream {
-    if let Item::Struct(item_struct) = item {
+    record_called(called_by(item, args));
+    let tokens = if let Item::Struct(item_struct) = item {
         struct_dart_tokens(item_struct, args)
     } else if let Item::Enum(item_enum) = item {
         enum_dart_tokens(item_enum, args)
@@ -324,7 +389,60 @@ pub fn dart_schema_dispatch(item: &Item, args: &DartTypeArgs<'_>) -> TokenStream
         alias_dart_tokens(item_type, args.name_override)
     } else {
         TokenStream::new()
-    }
+    };
+    record_called(Vec::new());
+    tokens
+}
+
+/// The name of each function the reads of `item` call: what the `preprocess` of the type names,
+/// and that of each member.
+fn called_by(item: &Item, args: &DartTypeArgs<'_>) -> Vec<String> {
+    let members: Vec<&Field> = if let Item::Struct(item_struct) = item {
+        item_struct.fields.iter().collect()
+    } else if let Item::Enum(item_enum) = item {
+        item_enum
+            .variants
+            .iter()
+            .flat_map(|variant| variant.fields.iter())
+            .collect()
+    } else {
+        Vec::new()
+    };
+    args.preprocess
+        .iter()
+        .map(|function| function.name.clone())
+        .chain(members.into_iter().flat_map(|member| {
+            (args.member_meta)(member)
+                .preprocess
+                .into_iter()
+                .map(|function| function.name)
+        }))
+        .collect()
+}
+
+/// Records `called`, the name of each function the reads of the item being emitted call.
+fn record_called(called: Vec<String>) {
+    DART_CALLED.with(|held| *held.borrow_mut() = called);
+}
+
+/// `word` as a name a read of the item being emitted declares: itself, or numbered where the
+/// item calls a function under it, which the name would hide.
+fn declared(word: &str) -> String {
+    DART_CALLED.with(|held| {
+        let called = held.borrow();
+        let mut named = word.to_owned();
+        let mut tried: usize = 1;
+        while called.contains(&named) {
+            tried = tried.saturating_add(1);
+            named = format!("{word}{tried}");
+        }
+        named
+    })
+}
+
+/// The name a read takes the converter of the type parameter `parameter` under.
+fn from_json_argument(parameter: &str) -> String {
+    declared(&dart_from_json_argument(parameter))
 }
 
 /// The Dart name registered for `rust_ident`, or `None` for a type declared below the one asking —
@@ -824,15 +942,16 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
     }
     match &field.field_type {
         FieldDefType::Unknown => expr.to_owned(),
-        FieldDefType::TypeParam(name) => format!("{}({expr})", dart_from_json_argument(name)),
+        FieldDefType::TypeParam(name) => format!("{}({expr})", from_json_argument(name)),
         FieldDefType::Tuple(elements) => {
             let rendered = elements
                 .iter()
                 .enumerate()
                 .map(|(index, element)| {
-                    dart_decode_expr(
+                    member_decode(
                         element,
                         &format!("({expr} as List<dynamic>)[{index}]"),
+                        None,
                         read.of_member(element),
                     )
                 })
@@ -908,6 +1027,62 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
             }
         }
     }
+}
+
+/// `payload` as `functions` correct it: each called on the answer of the one before, in the order
+/// written, under the name the attribute writes.
+fn corrected(functions: &[FunctionName], payload: &str) -> String {
+    functions.iter().fold(payload.to_owned(), |held, function| {
+        format!("{}({held})", function.name)
+    })
+}
+
+/// The functions the `preprocess` of the member `field` names, in the order written.
+fn member_functions(field: &FieldDef) -> &[FunctionName] {
+    field
+        .model_schema_prop_meta
+        .as_ref()
+        .map_or(&[], |meta| meta.preprocess.as_slice())
+}
+
+/// The read of the member `field` from `source`, which each function its `preprocess` names
+/// corrects first. `held` is the test that the payload holds the member's key, where it may not:
+/// no function is called for a key it does not hold. A read that names its payload more than
+/// once holds the corrected one under a name, so each function is called once.
+fn member_decode(field: &FieldDef, source: &str, held: Option<&str>, read: Read) -> String {
+    let functions = member_functions(field);
+    if functions.is_empty() {
+        return dart_decode_expr(field, source, read);
+    }
+    let answered = corrected(functions, source);
+    let (payload, inline) = held.map_or_else(
+        || (answered.clone(), answered.clone()),
+        |holds| {
+            let chosen = format!("{holds} ? {answered} : null");
+            (chosen.clone(), format!("({chosen})"))
+        },
+    );
+    let decode = dart_decode_expr(field, &inline, read);
+    if decode.matches(inline.as_str()).count() == 1 {
+        return decode;
+    }
+    format!(
+        "switch ({payload}) {{ final corrected => {} }}",
+        dart_decode_expr(field, "corrected", read)
+    )
+}
+
+/// The object `json` names without the keys `taken`: what serde hands a member that is read
+/// from the keys the others leave.
+fn without(json: &str, taken: &[&str]) -> String {
+    if taken.is_empty() {
+        return json.to_owned();
+    }
+    let removed = taken.iter().fold(String::new(), |mut acc, key| {
+        write!(acc, "..remove('{key}')").unwrap();
+        acc
+    });
+    format!("({{...{json}}}{removed})")
 }
 
 /// The expression that encodes `field`'s Dart value `expr` into a `jsonEncode`-safe value (`null`,
@@ -1685,15 +1860,50 @@ fn judged_body(unjudged: &str) -> String {
     )
 }
 
-/// The two reads of the class `named`, each taking `parameters`: `fromJson`, which judges what
-/// `fromJsonUnjudged` answers when handed `arguments`, and `fromJsonUnjudged`, whose body is
-/// `unjudged`.
-fn read_pair(named: &str, parameters: &str, arguments: &str, unjudged: &str) -> String {
+/// The two reads of the class `named`, each taking its payload as a `kind` and then the
+/// converters of `codec`: `fromJson`, which judges what `fromJsonUnjudged` answers, and
+/// `fromJsonUnjudged`, which is `unjudged`.
+fn read_pair(named: &str, kind: &str, codec: &GenericCodec, unjudged: &Unjudged) -> String {
     format!(
-        "factory {named}.fromJson({parameters}) {} factory \
-         {named}.fromJsonUnjudged({parameters}) {unjudged}",
-        judged_body(&format!("{named}.fromJsonUnjudged({arguments})"))
+        "factory {named}.fromJson({kind} json{parameters}) {} factory \
+         {named}.fromJsonUnjudged({kind} {taken_as}{parameters}) {body}",
+        judged_body(&format!(
+            "{named}.fromJsonUnjudged(json{})",
+            codec.from_json_args
+        )),
+        parameters = codec.from_json_params,
+        taken_as = unjudged.taken_as,
+        body = unjudged.body,
     )
+}
+
+/// The unjudged read that answers `answer` from the payload it takes. Where the type names
+/// functions, they take that payload first, in the order written, and `answer` reads what they
+/// answer, held as `held_as` casts it, under no name where `reads` says `answer` reads nothing.
+fn unjudged_read(corrects: &Corrects<'_>, held_as: &str, reads: bool, answer: &Answer) -> Unjudged {
+    if corrects.own.is_empty() {
+        return Unjudged {
+            body: match answer {
+                Answer::Statements(statements) => format!("{{ {statements} }}"),
+                Answer::Value(value) => format!("=> {value};"),
+            },
+            taken_as: corrects.json.clone(),
+        };
+    }
+    let answered = corrected(corrects.own, &corrects.payload);
+    let held = if reads {
+        format!("final {} = {answered}{held_as};", corrects.json)
+    } else {
+        format!("{answered}{held_as};")
+    };
+    let rest = match answer {
+        Answer::Statements(statements) => statements.clone(),
+        Answer::Value(value) => format!("return {value};"),
+    };
+    Unjudged {
+        body: format!("{{ {held} {rest} }}"),
+        taken_as: corrects.payload.clone(),
+    }
 }
 
 fn generic_codec(parameters: &[String]) -> GenericCodec {
@@ -1701,13 +1911,13 @@ fn generic_codec(parameters: &[String]) -> GenericCodec {
         write!(
             acc,
             ", {parameter} Function(dynamic) {}",
-            dart_from_json_argument(parameter)
+            from_json_argument(parameter)
         )
         .unwrap();
         acc
     });
     let from_json_args = parameters.iter().fold(String::new(), |mut acc, parameter| {
-        write!(acc, ", {}", dart_from_json_argument(parameter)).unwrap();
+        write!(acc, ", {}", from_json_argument(parameter)).unwrap();
         acc
     });
     let to_json_params = parameters
@@ -1727,10 +1937,44 @@ fn generic_codec(parameters: &[String]) -> GenericCodec {
     }
 }
 
-/// The constructor, field declarations, and `fromJsonUnjudged`/`toJson` bodies for a set of
-/// [`DartField`]s — shared by a named-field struct and a struct-shaped (`Named`) enum variant.
-/// `extra_to_json` entries are written into the `toJson` map ahead of the fields (a discriminant
-/// key, say).
+/// The arguments the constructor of a class is read with from the object `json` names: each
+/// member from its key, where the payload holds it for a member that names a function, and a
+/// flattened one from the keys neither `tag_key` nor another member takes.
+fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>) -> String {
+    let taken: Vec<&str> = tag_key
+        .into_iter()
+        .chain(
+            fields
+                .iter()
+                .filter(|field| !field.flatten)
+                .map(|field| field.wire_name.as_str()),
+        )
+        .collect();
+    fields.iter().fold(String::new(), |mut acc, field| {
+        let decode = if field.flatten {
+            // A flattened member is walked whatever it writes.
+            member_decode(
+                &field.field_def,
+                &without(json, &taken),
+                None,
+                Read::Unjudged,
+            )
+        } else {
+            member_decode(
+                &field.field_def,
+                &format!("{json}['{}']", field.wire_name),
+                Some(&format!("{json}.containsKey('{}')", field.wire_name)),
+                Read::Unjudged.of_member(&field.field_def),
+            )
+        };
+        write!(acc, "{}: {decode},", field.member).unwrap();
+        acc
+    })
+}
+
+/// The constructor, field declarations, and `toJson` body for a set of [`DartField`]s — shared
+/// by a named-field struct and a struct-shaped (`Named`) enum variant. `extra_to_json` entries
+/// are written into the `toJson` map ahead of the fields (a discriminant key, say).
 fn class_body_parts(fields: &[DartField], extra_to_json: &[String]) -> ClassBodyParts {
     let ctor_params: String = fields
         .iter()
@@ -1750,22 +1994,6 @@ fn class_body_parts(fields: &[DartField], extra_to_json: &[String]) -> ClassBody
             field.member
         )
         .unwrap();
-        acc
-    });
-    let ctor_args = fields.iter().fold(String::new(), |mut acc, field| {
-        let source = if field.flatten {
-            "json".to_owned()
-        } else {
-            format!("json['{}']", field.wire_name)
-        };
-        // A flattened member is walked whatever it writes.
-        let read = if field.flatten {
-            Read::Unjudged
-        } else {
-            Read::Unjudged.of_member(&field.field_def)
-        };
-        let decode = dart_decode_expr(&field.field_def, &source, read);
-        write!(acc, "{}: {decode},", field.member).unwrap();
         acc
     });
     let to_json_entries: String = fields
@@ -1793,30 +2021,44 @@ fn class_body_parts(fields: &[DartField], extra_to_json: &[String]) -> ClassBody
         .collect();
     let extra: String = extra_to_json.join(" ");
     ClassBodyParts {
-        ctor_args,
         ctor_params,
         field_decls,
         to_json_map: format!("{{ {extra}{to_json_entries} }}"),
     }
 }
 
+/// The two reads of the class `class_name` over `fields`: the unjudged one calls what `corrects`
+/// names on the object it takes, and reads each member from what they answer. `tag_key` is the
+/// key that object holds its variant's tag under.
+fn class_reads(
+    class_name: &str,
+    fields: &[DartField],
+    tag_key: Option<&str>,
+    codec: &GenericCodec,
+    corrects: &Corrects<'_>,
+) -> String {
+    let arguments = constructor_arguments(fields, &corrects.json, tag_key);
+    let unjudged = unjudged_read(
+        corrects,
+        " as Map<String, dynamic>",
+        !fields.is_empty(),
+        &Answer::Value(format!("{class_name}({arguments})")),
+    );
+    read_pair(class_name, "Map<String, dynamic>", codec, &unjudged)
+}
+
 /// The Dart class body, everything a class's own braces hold, for a set of [`DartField`]s: shared
 /// by a named-field struct and a `Named` enum variant under internal tagging, whose tag key merges
-/// into this map through `extra_to_json`.
+/// into this map through `extra_to_json`. `reads` is what [`class_reads`] answers for it.
 fn class_body_content(
     class_name: &str,
     fields: &[DartField],
     extra_to_json: &[String],
     codec: &GenericCodec,
+    reads: &str,
     validate: &str,
 ) -> String {
     let parts = class_body_parts(fields, extra_to_json);
-    let reads = read_pair(
-        class_name,
-        &format!("Map<String, dynamic> json{}", codec.from_json_params),
-        &format!("json{}", codec.from_json_args),
-        &format!("=> {class_name}({});", parts.ctor_args),
-    );
     format!(
         "const {class_name}({ctor_group}); {field_decls} {reads} \
          Map<String, dynamic> toJson({tp}) => {to_json_map}; {validate}",
@@ -1836,9 +2078,10 @@ fn class_body(
     fields: &[DartField],
     extra_to_json: &[String],
     codec: &GenericCodec,
+    reads: &str,
     validate: &str,
 ) -> String {
-    let content = class_body_content(class_name, fields, extra_to_json, codec, validate);
+    let content = class_body_content(class_name, fields, extra_to_json, codec, reads, validate);
     format!("class {class_name}{generic_params} {{ {content} }}")
 }
 
@@ -1855,6 +2098,7 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
             args.name_override,
             &value_field,
             Read::Judged,
+            &Corrects::of(args.preprocess),
             &brand_validate(&value_field, args),
         );
     }
@@ -1887,12 +2131,14 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
     let mut helpers = Helpers::default();
     let mut rules = field_elements(&fields, &[], Asked::Rules, &mut helpers);
     rules.extend(own_check_elements(args.check));
+    let corrects = Corrects::of(args.preprocess);
     let body = class_body(
         &export_name,
         &generic_params,
         &fields,
         &own_tag,
         &codec,
+        &class_reads(&export_name, &fields, None, &codec, &corrects),
         &validate_members(&rules, &helpers, false),
     );
     let typedef = ident_typedef(&rust_ident, &export_name, &generic_params);
@@ -1916,13 +2162,14 @@ fn brand_value_field(
 /// single-slot tuple struct, or a type alias. Each publishes a class wrapping `value`, whose
 /// reads and `toJson` delegate to `value_field`'s own, and whose `validate()` is `validate`.
 /// `read` is how a declared type the value holds is read, which is unjudged where `validate`
-/// runs it.
+/// runs it. The unjudged read calls what `corrects` names on the payload it takes.
 fn value_wrapper_tokens(
     ident: &Ident,
     generics: &syn::Generics,
     name_override: Option<&str>,
     value_field: &FieldDef,
     read: Read,
+    corrects: &Corrects<'_>,
     validate: &str,
 ) -> TokenStream {
     let rust_ident = ident.to_string();
@@ -1932,15 +2179,16 @@ fn value_wrapper_tokens(
     let generic_params = dart_generic_params(generics);
     let parameters = type_parameters_in_scope(generics);
     let codec = generic_codec(&parameters);
-    let decode = dart_decode_expr(value_field, "json", read);
+    let decode = dart_decode_expr(value_field, &corrects.json, read);
     let encode = dart_encode_expr(value_field, "value", false);
     let value_ty = dart_typename(value_field);
-    let reads = read_pair(
-        &export_name,
-        &format!("dynamic json{}", codec.from_json_params),
-        &format!("json{}", codec.from_json_args),
-        &format!("=> {export_name}({decode});"),
+    let unjudged = unjudged_read(
+        corrects,
+        "",
+        decode.contains(corrects.json.as_str()),
+        &Answer::Value(format!("{export_name}({decode})")),
     );
+    let reads = read_pair(&export_name, "dynamic", &codec, &unjudged);
     let body = format!(
         "class {export_name}{generic_params} {{ const {export_name}(this.value); final {value_ty} value; \
          {reads} dynamic toJson({tp}) => {encode}; {validate} }}",
@@ -1997,6 +2245,7 @@ fn tuple_struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -
         args.name_override,
         &tuple_field,
         Read::Unjudged,
+        &Corrects::of(args.preprocess),
         &validate_members(&rules, &helpers, false),
     )
 }
@@ -2023,6 +2272,8 @@ fn alias_dart_tokens(item_type: &ItemType, name_override: Option<&str>) -> Token
         Some(&export_name),
         &target,
         if named { Read::Unjudged } else { Read::Judged },
+        // An alias is refused a `preprocess`: it has no read of its own.
+        &Corrects::of(&[]),
         &validate_members(&rules, &Helpers::default(), false),
     )
 }
@@ -2038,7 +2289,7 @@ fn enum_dart_tokens(item_enum: &ItemEnum, args: &DartTypeArgs<'_>) -> TokenStrea
     let writes_bare_variant_names =
         tag_attrs.tag.is_none() && tag_attrs.content.is_none() && !tag_attrs.untagged;
     let dart_source = if is_plain_enum(item_enum) && writes_bare_variant_names {
-        plain_enum_dart_source(item_enum, &rust_ident, &export_name, args.check)
+        plain_enum_dart_source(item_enum, &rust_ident, &export_name, args)
     } else if tag_attrs.untagged {
         untagged_enum_dart_source(item_enum, &rust_ident, &export_name, &tag_attrs, args)
     } else {
@@ -2106,17 +2357,28 @@ fn variant_payload(
 /// under external tagging, the `map` the base class's own dispatch already bound): the content key
 /// under adjacent tagging, `json` itself under internal tagging (whose object merges the tag beside
 /// the payload's own fields), or `map['{wire_tag}']` under external tagging, whose dispatch has
-/// already read the wire tag as the object's one key.
-fn tagged_payload_json_expr(wire_tag: &str, shape: &TagShape<'_>) -> String {
+/// already read the wire tag as the object's one key. Beside it, the test that the payload holds
+/// the slot, where it may not: a content key.
+fn tagged_payload_json_expr(
+    wire_tag: &str,
+    shape: &TagShape<'_>,
+    corrects: &Corrects<'_>,
+) -> (String, Option<String>) {
+    let (json, map) = (&corrects.json, &corrects.map);
     shape.content_key.map_or_else(
         || {
             if shape.merge_tag_into_object {
-                "json".to_owned()
+                (json.clone(), None)
             } else {
-                format!("map['{wire_tag}']")
+                (format!("{map}['{wire_tag}']"), None)
             }
         },
-        |content| format!("json['{content}']"),
+        |content| {
+            (
+                format!("{json}['{content}']"),
+                Some(format!("{json}.containsKey('{content}')")),
+            )
+        },
     )
 }
 
@@ -2157,13 +2419,15 @@ fn tagged_variant_steps(wire_tag: &str, shape: &TagShape<'_>) -> Vec<Step> {
 }
 
 /// The Dart tokens for one tagged-union variant: the subclass definition, and the arm of the
-/// base's unjudged dispatch (everything after `case '{wire_tag}':`).
+/// base's unjudged dispatch (everything after `case '{wire_tag}':`). `corrects` holds the names
+/// the base's read declares, which the read of a variant with named members declares too.
 fn tagged_variant_tokens(
     export_name: &str,
     generic_params: &str,
     codec: &GenericCodec,
     variant: &VariantClass<'_>,
     shape: &TagShape<'_>,
+    corrects: &Corrects<'_>,
 ) -> (String, String) {
     let VariantClass {
         payload,
@@ -2171,7 +2435,7 @@ fn tagged_variant_tokens(
         validate,
         wire_tag,
     } = *variant;
-    let payload_expr = tagged_payload_json_expr(wire_tag, shape);
+    let (payload_expr, held) = tagged_payload_json_expr(wire_tag, shape, corrects);
     let extends = format!("extends {export_name}{generic_params}");
     match payload {
         VariantPayload::Unit => {
@@ -2188,21 +2452,20 @@ fn tagged_variant_tokens(
             (class_text, format!("{subclass_name}{generic_params}()"))
         }
         VariantPayload::Named(fields) => {
+            let own = corrects.of_a_variant();
             let class_text = if shape.merge_tag_into_object {
                 let extra = vec![format!("'{}': '{wire_tag}',", shape.tag_key)];
-                let content = class_body_content(subclass_name, fields, &extra, codec, validate);
+                // serde hands a variant the object without its tag.
+                let reads = class_reads(subclass_name, fields, Some(shape.tag_key), codec, &own);
+                let content =
+                    class_body_content(subclass_name, fields, &extra, codec, &reads, validate);
                 format!("class {subclass_name}{generic_params} {extends} {{ {content} }}")
             } else {
                 // Adjacent or external tagging: the variant's field map carries no tag, so `toJson`
                 // wraps it under the tag (and the content key).
                 let parts = class_body_parts(fields, &[]);
                 let wrapped = tagged_wrap_encode(shape, wire_tag, Some(&parts.to_json_map));
-                let reads = read_pair(
-                    subclass_name,
-                    &format!("Map<String, dynamic> json{}", codec.from_json_params),
-                    &format!("json{}", codec.from_json_args),
-                    &format!("=> {subclass_name}({});", parts.ctor_args),
-                );
+                let reads = class_reads(subclass_name, fields, None, codec, &own);
                 format!(
                     "class {subclass_name}{generic_params} {extends} {{ const {subclass_name}({ctor_group}); \
                      {field_decls} {reads} @override dynamic toJson({tp}) => {wrapped}; \
@@ -2219,9 +2482,16 @@ fn tagged_variant_tokens(
             (class_text, from_json)
         }
         VariantPayload::Value(field_def) => {
-            let decode = dart_decode_expr(
+            // serde hands a slot beside its tag the object without the tag.
+            let source = if shape.merge_tag_into_object && !member_functions(field_def).is_empty() {
+                without(&payload_expr, &[shape.tag_key])
+            } else {
+                payload_expr
+            };
+            let decode = member_decode(
                 field_def,
-                &payload_expr,
+                &source,
+                held.as_deref(),
                 Read::Unjudged.of_member(field_def),
             );
             let own_encode = dart_encode_expr(field_def, "value", false);
@@ -2270,6 +2540,7 @@ fn tagged_enum_dart_source(
     let type_parameters = type_parameters_in_scope(&item_enum.generics);
     let generic_params = dart_generic_params(&item_enum.generics);
     let codec = generic_codec(&type_parameters);
+    let corrects = Corrects::of(args.preprocess);
 
     let mut subclasses = Vec::new();
     let mut is_string_dispatch_arms = Vec::new();
@@ -2299,6 +2570,7 @@ fn tagged_enum_dart_source(
                 wire_tag: &wire_tag,
             },
             &shape,
+            &corrects,
         );
         subclasses.push(class_text);
         if is_external && matches!(payload, VariantPayload::Unit) {
@@ -2308,14 +2580,17 @@ fn tagged_enum_dart_source(
         }
     }
 
-    let (payload_ty, dispatch) = if is_external {
+    let (json, map, tag) = (&corrects.json, &corrects.map, &corrects.tag);
+    let (payload_ty, held_as, dispatch) = if is_external {
         (
             "dynamic",
+            "",
             format!(
-                "{{ if (json is String) {{ switch (json) \
-                 {{ {} default: throw ArgumentError('Unknown {export_name}: ' + json); }} }} \
-                 final map = json as Map<String, dynamic>; final tag = map.keys.first; switch (tag) \
-                 {{ {} default: throw ArgumentError('Unknown {export_name}: ' + tag); }} }}",
+                "if ({json} is String) {{ switch ({json}) \
+                 {{ {} default: throw ArgumentError('Unknown {export_name}: ' + {json}); }} }} \
+                 final {map} = {json} as Map<String, dynamic>; final {tag} = {map}.keys.first; \
+                 switch ({tag}) \
+                 {{ {} default: throw ArgumentError('Unknown {export_name}: ' + {tag}); }}",
                 is_string_dispatch_arms.join(" "),
                 map_dispatch_arms.join(" "),
             ),
@@ -2323,19 +2598,16 @@ fn tagged_enum_dart_source(
     } else {
         (
             "Map<String, dynamic>",
+            " as Map<String, dynamic>",
             format!(
-                "{{ final tag = json['{tag_key}'] as String; switch (tag) {{ {} default: throw \
-                 ArgumentError('Unknown {export_name}: ' + tag); }} }}",
+                "final {tag} = {json}['{tag_key}'] as String; switch ({tag}) {{ {} default: \
+                 throw ArgumentError('Unknown {export_name}: ' + {tag}); }}",
                 map_dispatch_arms.join(" "),
             ),
         )
     };
-    let reads = read_pair(
-        export_name,
-        &format!("{payload_ty} json{}", codec.from_json_params),
-        &format!("json{}", codec.from_json_args),
-        &dispatch,
-    );
+    let unjudged = unjudged_read(&corrects, held_as, true, &Answer::Statements(dispatch));
+    let reads = read_pair(export_name, payload_ty, &codec, &unjudged);
 
     let base = format!(
         "sealed class {export_name}{generic_params} {{ const {export_name}(); {reads} \
@@ -2362,6 +2634,8 @@ fn untagged_enum_dart_source(
     let generic_params = dart_generic_params(&item_enum.generics);
     let codec = generic_codec(&type_parameters);
     let extends = format!("extends {export_name}{generic_params}");
+    let corrects = Corrects::of(args.preprocess);
+    let (json, read) = (&corrects.json, &corrects.read);
 
     let mut subclasses = Vec::new();
     let mut attempts = Vec::new();
@@ -2378,18 +2652,26 @@ fn untagged_enum_dart_source(
         );
         let (class_text, from_json) = match &payload {
             VariantPayload::Named(fields) => {
-                let content = class_body_content(&subclass_name, fields, &[], &codec, &validate);
+                let reads = class_reads(
+                    &subclass_name,
+                    fields,
+                    None,
+                    &codec,
+                    &corrects.of_a_variant(),
+                );
+                let content =
+                    class_body_content(&subclass_name, fields, &[], &codec, &reads, &validate);
                 (
                     format!("class {subclass_name}{generic_params} {extends} {{ {content} }}"),
                     format!(
-                        "{subclass_name}{generic_params}.fromJsonUnjudged(json as Map<String, dynamic>{fa})",
+                        "{subclass_name}{generic_params}.fromJsonUnjudged({json} as Map<String, dynamic>{fa})",
                         fa = codec.from_json_args,
                     ),
                 )
             }
             VariantPayload::Value(field_def) => {
                 let decode =
-                    dart_decode_expr(field_def, "json", Read::Unjudged.of_member(field_def));
+                    member_decode(field_def, json, None, Read::Unjudged.of_member(field_def));
                 let encode = dart_encode_expr(field_def, "value", false);
                 (
                     format!(
@@ -2417,7 +2699,7 @@ fn untagged_enum_dart_source(
         subclasses.push(class_text);
         attempts.push(if bounds.is_some() {
             format!(
-                "try {{ final read = {from_json}; if (read._bounds().isEmpty) return read; }} \
+                "try {{ final {read} = {from_json}; if ({read}._bounds().isEmpty) return {read}; }} \
                  catch (_) {{}}"
             )
         } else {
@@ -2425,15 +2707,16 @@ fn untagged_enum_dart_source(
         });
     }
 
-    let reads = read_pair(
-        export_name,
-        &format!("dynamic json{}", codec.from_json_params),
-        &format!("json{}", codec.from_json_args),
-        &format!(
-            "{{ {} throw ArgumentError('No variant of {export_name} matched'); }}",
+    let unjudged = unjudged_read(
+        &corrects,
+        "",
+        true,
+        &Answer::Statements(format!(
+            "{} throw ArgumentError('No variant of {export_name} matched');",
             attempts.join(" ")
-        ),
+        )),
     );
+    let reads = read_pair(export_name, "dynamic", &codec, &unjudged);
     let base = format!(
         "sealed class {export_name}{generic_params} {{ const {export_name}(); {reads} \
          dynamic toJson({tp}); {VALIDATE_DECLARED} }}",
@@ -2457,14 +2740,18 @@ fn plain_enum_member(variant: &Variant, rule: RenameRule, written: &[String]) ->
 }
 
 /// The Dart tokens a plain (all-unit, string-wire) enum earns: a `String`-backed enhanced enum,
-/// whose `validate()` runs the `checks` the enum names, and whose `fromJson` judges where it
-/// names one. `fromJsonUnjudged` is what a holder reads it by.
+/// whose `validate()` runs the checks the enum names, and whose `fromJson` judges where it
+/// names one. `fromJsonUnjudged` is what a holder reads it by, and calls the functions the
+/// enum's `preprocess` names on the text it takes.
 fn plain_enum_dart_source(
     item_enum: &ItemEnum,
     rust_ident: &str,
     export_name: &str,
-    checks: &[FunctionName],
+    args: &DartTypeArgs<'_>,
 ) -> String {
+    let checks = args.check;
+    let corrects = Corrects::of(args.preprocess);
+    let json = &corrects.json;
     let rule = container_rename_rule(&item_enum.attrs);
     let written: Vec<String> = item_enum
         .variants
@@ -2486,21 +2773,33 @@ fn plain_enum_dart_source(
         acc
     });
     let validate = validate_members(&own_check_elements(checks), &Helpers::default(), false);
-    let matched = format!(
-        "=> switch (json) {{ {match_arms} _ => throw ArgumentError('Unknown {export_name}: ' + \
-         json) }};"
+    let unjudged = unjudged_read(
+        &corrects,
+        " as String",
+        true,
+        &Answer::Value(format!(
+            "switch ({json}) {{ {match_arms} _ => throw ArgumentError('Unknown {export_name}: ' \
+             + {json}) }}"
+        )),
     );
-    // An enum that names no check has nothing to refuse, and reads as it did.
-    let reads = if checks.is_empty() {
+    let (matched, taken_as) = (&unjudged.body, &unjudged.taken_as);
+    // An enum that names no check has nothing to refuse, and one that names no function either
+    // reads as it did.
+    let reads = if !checks.is_empty() {
+        format!(
+            "static {export_name} fromJson(String json) {} static {export_name} \
+             fromJsonUnjudged(String {taken_as}) {matched}",
+            judged_body(&format!("{export_name}.fromJsonUnjudged(json)"))
+        )
+    } else if corrects.own.is_empty() {
         format!(
             "static {export_name} fromJson(String json) {matched} static {export_name} \
              fromJsonUnjudged(String json) => fromJson(json);"
         )
     } else {
         format!(
-            "static {export_name} fromJson(String json) {} static {export_name} \
-             fromJsonUnjudged(String json) {matched}",
-            judged_body(&format!("{export_name}.fromJsonUnjudged(json)"))
+            "static {export_name} fromJson(String json) => fromJsonUnjudged(json); static \
+             {export_name} fromJsonUnjudged(String {taken_as}) {matched}"
         )
     };
     let body = format!(
