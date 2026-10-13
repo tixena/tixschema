@@ -72,6 +72,24 @@ fn idents_named(tokens: TokenStream, name: &str) -> Vec<proc_macro2::Ident> {
     found
 }
 
+/// `tokens` without what the module of the Kotlin definition holds: that text is Kotlin's, where
+/// every type carries a `validate()` of its own.
+fn without_the_kotlin_definition(tokens: TokenStream) -> TokenStream {
+    let mut kept = Vec::new();
+    let mut names_the_module = false;
+    for tree in tokens {
+        let holds_the_definition = names_the_module && matches!(tree, TokenTree::Group(_));
+        names_the_module = matches!(
+            &tree,
+            TokenTree::Ident(ident) if ident.to_string().ends_with("_kotlin")
+        );
+        if !holds_the_definition {
+            kept.push(tree);
+        }
+    }
+    kept.into_iter().collect()
+}
+
 /// The type's functions are called on the whole payload, ahead of the read of its members, and a
 /// member's inside the function that member is read through.
 #[test]
@@ -100,10 +118,11 @@ fn the_read_calls_the_functions_of_the_type_and_then_those_of_each_member() {
     ] {
         assert!(rendered.contains(written), "no `{written}` in: {rendered}");
     }
+    let written_in_rust = without_the_kotlin_definition(tokens).to_string();
     for unwritten in ["allow", "expect", "doc (hidden)", "impl Trait", "validate"] {
         assert!(
-            !rendered.contains(unwritten),
-            "found `{unwritten}` in: {rendered}"
+            !written_in_rust.contains(unwritten),
+            "found `{unwritten}` in: {written_in_rust}"
         );
     }
 }

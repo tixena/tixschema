@@ -201,7 +201,8 @@ mod on_a_mobile_surface {
             tagged_mobile_kotlin::kotlin_definition(),
             "@OptIn(ExperimentalSerializationApi::class) @Serializable data class \
              TaggedMobile(val name: String) { @SerialName(\"kind\") @EncodeDefault val \
-             kotlinSchemaTag: String = \"TaggedMobile\" }"
+             kotlinSchemaTag: String = \"TaggedMobile\"; fun validate(): List<String> = \
+             emptyList() }"
         );
     }
 }

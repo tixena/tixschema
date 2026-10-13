@@ -107,6 +107,11 @@ mod run_kotlin;
 #[path = "service_schema_emitted_client_tests/run_kotlin_ws_headers.rs"]
 mod run_kotlin_ws_headers;
 
+/// `validate()` of the emitted Kotlin types, run and held to what Rust's answers.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_validate.rs"]
+mod run_kotlin_validate;
+
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/runtime.rs"]
 mod runtime;

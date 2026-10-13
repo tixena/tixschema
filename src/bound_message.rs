@@ -1,5 +1,7 @@
 //! The sentence one violated bound is reported in, built once and handed to both emitters.
 
+#[cfg(feature = "kotlin")]
+use crate::features::kotlin::kotlin_template_text;
 #[cfg(feature = "zod")]
 use crate::utils::escape_js_double_quoted;
 #[cfg(feature = "serde")]
@@ -18,7 +20,7 @@ pub const VIOLATION_STEMS: [&str; 5] = [
 
 /// A bound a declaration can carry, at the one value it was written with. `MaxItems` and
 /// `MinItems` are `maxLength` and `minLength` written on a list, whose items they count.
-#[cfg(any(feature = "serde", feature = "zod"))]
+#[cfg(any(feature = "serde", feature = "zod", feature = "kotlin"))]
 #[derive(Clone, Copy)]
 pub enum Bound<'pattern> {
     MaxItems(usize),
@@ -31,7 +33,7 @@ pub enum Bound<'pattern> {
 }
 
 /// How a sentence measures the value that broke the bound, for the bounds that quote one back.
-#[cfg(any(feature = "serde", feature = "zod"))]
+#[cfg(any(feature = "serde", feature = "zod", feature = "kotlin"))]
 #[derive(Clone, Copy)]
 enum Observed {
     Count,
@@ -39,7 +41,7 @@ enum Observed {
     Value,
 }
 
-#[cfg(any(feature = "serde", feature = "zod"))]
+#[cfg(any(feature = "serde", feature = "zod", feature = "kotlin"))]
 impl Bound<'_> {
     /// What the sentence quotes back, or `None` for a bound whose report names only itself.
     const fn observed(self) -> Option<Observed> {
@@ -106,6 +108,20 @@ pub fn rust_violation(
         (None, None) => quote! {
             #stated.to_owned()
         },
+    }
+}
+
+/// The Kotlin string a generated `validate()` reports `bound` with: the sentence
+/// [`rust_violation`] writes. `place` is the name the value is reported under, already written as
+/// the text of a Kotlin string, and `observed` the Kotlin expression the sentence quotes back.
+#[cfg(feature = "kotlin")]
+pub fn kotlin_violation(bound: Bound<'_>, place: Option<&str>, observed: &str) -> String {
+    let stated = kotlin_template_text(&bound.stated());
+    let lead = place.map_or_else(String::new, |named| format!("'{named}': "));
+    if bound.observed().is_some() {
+        format!("\"{lead}{stated}, got ${{{observed}}}\"")
+    } else {
+        format!("\"{lead}{stated}\"")
     }
 }
 

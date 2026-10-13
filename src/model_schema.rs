@@ -166,7 +166,7 @@ use crate::features::dart::dart_schema_dispatch;
 use crate::features::swift::{refuses_swift, swift_schema_dispatch};
 
 #[cfg(feature = "kotlin")]
-use crate::features::kotlin::{kotlin_refused_width, kotlin_schema_dispatch};
+use crate::features::kotlin::{KotlinArgs, kotlin_refused_width, kotlin_schema_dispatch};
 
 #[cfg(any(
     feature = "typescript",
@@ -1449,7 +1449,7 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     let swift_tokens = swift_suffix_tokens(&item, parsed_args.name_override.as_deref());
     let swift_refusals = swift_width_refusals(&item);
     // Same independence as the Dart and Swift tokens above.
-    let kotlin_tokens = kotlin_suffix_tokens(&item, parsed_args.name_override.as_deref());
+    let kotlin_tokens = kotlin_suffix_tokens(&item, &parsed_args);
     let expanded = process_item(item, &parsed_args);
     let deferred = with_prefixed_tokens(expanded, &deferred_shape_refusals(registering.as_ref()));
     let bound = with_prefixed_tokens(deferred, &filling_bound_checks);
@@ -1504,14 +1504,28 @@ fn swift_suffix_tokens(_item: &Item, _name_override: Option<&str>) -> TokenStrea
 }
 
 /// The Kotlin tokens `item` earns, or nothing without the `kotlin` feature — the same always-
-/// callable shape as [`dart_suffix_tokens`].
+/// callable shape as [`dart_suffix_tokens`]. The emitter is handed the arguments it reads, and a
+/// member's bounds as every surface reads them: an enum's own string check is each reached
+/// member's as well.
 #[cfg(feature = "kotlin")]
-fn kotlin_suffix_tokens(item: &Item, name_override: Option<&str>) -> TokenStream {
-    kotlin_schema_dispatch(item, name_override)
+fn kotlin_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
+    let enum_args = matches!(item, Item::Enum(_)).then_some(args);
+    kotlin_schema_dispatch(
+        item,
+        &KotlinArgs {
+            check: &args.check,
+            default_types: &args.default_types,
+            max_length: args.max_length,
+            member_meta: &|member| member_prop_meta(member, enum_args),
+            min_length: args.min_length,
+            name_override: args.name_override.as_deref(),
+            pattern: args.pattern.as_deref(),
+        },
+    )
 }
 
 #[cfg(not(feature = "kotlin"))]
-fn kotlin_suffix_tokens(_item: &Item, _name_override: Option<&str>) -> TokenStream {
+fn kotlin_suffix_tokens(_item: &Item, _args: &ModelSchemaArgs) -> TokenStream {
     TokenStream::new()
 }
 
