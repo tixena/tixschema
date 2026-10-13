@@ -656,14 +656,14 @@ fn plain_serde_refuses_what_breaks_a_bound() {
     }
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
     {
-        let read = read.unwrap();
-        assert_eq!(read, broken_group());
+        let admitted = read.unwrap();
+        assert_eq!(admitted, broken_group());
         let mut calls = 0_u32;
         let walked = BoundedGroup::from_bson_with(broken(), |_raw, _found| {
             calls += 1;
             bounded_group_schema::Verdict::Reject
         });
-        assert_eq!(walked.unwrap(), read);
+        assert_eq!(walked.unwrap(), admitted);
         assert_eq!(calls, 0);
     }
 }

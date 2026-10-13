@@ -795,10 +795,10 @@ fn plain_serde_refuses_what_breaks_a_bound() {
     );
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
     {
-        let read = read.unwrap();
-        assert_eq!(read, broken_group());
+        let admitted = read.unwrap();
+        assert_eq!(admitted, broken_group());
         let (walked, calls) = rejected(broken());
-        assert_eq!(walked.unwrap(), read);
+        assert_eq!(walked.unwrap(), admitted);
         assert_eq!(calls, 0);
     }
 }
