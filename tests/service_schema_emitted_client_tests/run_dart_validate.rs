@@ -1,9 +1,9 @@
 //! The `validate()` the Dart backend emits, run by the Dart VM.
 //!
-//! A value held under a named field, in a list, in a map or in an optional is read in Dart from
-//! the payload serde writes for it, and what Dart answers is compared with what Rust's
-//! `validate()` answers of the same value. A slot and a member of a variant are named by the
-//! steps serde writes on the way to them, and their messages are written out here.
+//! A value held under a named field, in a list, in a map or in an optional is read in Dart, with
+//! `fromJsonUnjudged`, from the payload serde writes for it, and what Dart answers is compared
+//! with what Rust's `validate()` answers of the same value. A slot and a member of a variant are
+//! named by the steps serde writes on the way to them, and their messages are written out here.
 
 #![cfg(feature = "dart")]
 
@@ -23,7 +23,7 @@ const RUNTIME_VAR: &str = "TIXSCHEMA_DART";
 
 /// The functions the checks of the shared table's model name, written by hand as a consumer
 /// writes them, and as the README shows them.
-const CHECKS: &str = r#"
+pub const CHECKS: &str = r#"
 List<String> withoutDuplicates(List<String> value) {
   final seen = <String>{};
   for (final code in value) {
@@ -53,7 +53,7 @@ void report(String name, List<String> violations) {
 ";
 
 /// The functions the checks of the shapes name.
-const SHAPE_FUNCTIONS: &str = r#"
+pub const SHAPE_FUNCTIONS: &str = r#"
 List<String> upperCase(Code value) =>
     value.value.toUpperCase() == value.value ? const [] : const ['a code is upper case'];
 
@@ -94,10 +94,10 @@ case 6: refused
 
 /// One value: the Dart expression that builds it, and what `validate()` answers of it.
 #[derive(Clone)]
-struct Case {
-    answered: Vec<String>,
-    built: String,
-    name: &'static str,
+pub struct Case {
+    pub answered: Vec<String>,
+    pub built: String,
+    pub name: &'static str,
 }
 
 /// The model of the shared table: a bound, a field's check and the type's check.
@@ -436,11 +436,11 @@ fn known_parcels(value: &[Parcel]) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn texts(written: &[&str]) -> Vec<String> {
+pub fn texts(written: &[&str]) -> Vec<String> {
     written.iter().map(|&text| text.to_owned()).collect()
 }
 
-fn parcel(label: &str, item_code_list: &[&str], fragile_item_codes: &[&str]) -> Parcel {
+pub fn parcel(label: &str, item_code_list: &[&str], fragile_item_codes: &[&str]) -> Parcel {
     Parcel {
         fragile_item_codes: texts(fragile_item_codes),
         item_code_list: texts(item_code_list),
@@ -449,17 +449,17 @@ fn parcel(label: &str, item_code_list: &[&str], fragile_item_codes: &[&str]) -> 
 }
 
 /// A parcel that keeps every rule.
-fn sound() -> Parcel {
+pub fn sound() -> Parcel {
     parcel("A", &["x"], &["x"])
 }
 
 /// A parcel with no label.
-fn unlabelled() -> Parcel {
+pub fn unlabelled() -> Parcel {
     parcel("", &["x"], &["x"])
 }
 
 /// A parcel whose second fragile code is none of its codes.
-fn outside() -> Parcel {
+pub fn outside() -> Parcel {
     parcel("A", &["x"], &["x", "y"])
 }
 
@@ -476,7 +476,7 @@ where
 
 /// A case Dart reads from the payload serde writes for `value`, with what Rust's `validate()`
 /// answers of that value.
-fn compared<T>(
+pub fn compared<T>(
     name: &'static str,
     value: &T,
     answered: Result<(), Vec<String>>,
@@ -493,7 +493,7 @@ where
 }
 
 /// A case Dart reads from the payload serde writes for `value`, with its messages written out.
-fn pinned<T>(name: &'static str, value: &T, answered: &[&str], reader: &str) -> Case
+pub fn pinned<T>(name: &'static str, value: &T, answered: &[&str], reader: &str) -> Case
 where
     T: Serialize,
 {
@@ -537,7 +537,7 @@ fn driver(cases: &[Case]) -> String {
 }
 
 /// One Dart library: the emitted `definitions`, the functions their checks name, and `entry`.
-fn module(definitions: &[String], functions: &[&str], entry: &str) -> String {
+pub fn module(definitions: &[String], functions: &[&str], entry: &str) -> String {
     let mut parts = vec!["import 'dart:convert';".to_owned()];
     parts.extend(definitions.iter().cloned());
     parts.extend(functions.iter().map(|&written| written.to_owned()));
@@ -556,7 +556,7 @@ fn table_definitions() -> Vec<String> {
 /// The emitted definitions of every shape the analyzer passes whole. `Docket`, `Lift`, `Pair`
 /// and `Terminal` are in [`shape_definitions`] alone: the codec of each casts a value whose type
 /// the analyzer already knows.
-fn analyzed_definitions() -> Vec<String> {
+pub fn analyzed_definitions() -> Vec<String> {
     let mut definitions = table_definitions();
     definitions.extend([
         code_dart::dart_definition(),
@@ -584,7 +584,7 @@ fn analyzed_definitions() -> Vec<String> {
 }
 
 /// The emitted definitions of every shape.
-fn shape_definitions() -> Vec<String> {
+pub fn shape_definitions() -> Vec<String> {
     let mut definitions = analyzed_definitions();
     definitions.extend([
         docket_dart::dart_definition(),
@@ -613,7 +613,7 @@ fn printed(named: &str, cases: &[Case]) -> Option<String> {
 /// Runs `dart` with `arguments` over `source`, in a directory of its own, and answers whether it
 /// succeeded with everything it wrote. `None` where no runtime was reachable, which the probe has
 /// then said.
-fn dart(named: &str, arguments: &[&str], source: &str) -> Option<(bool, String)> {
+pub fn dart(named: &str, arguments: &[&str], source: &str) -> Option<(bool, String)> {
     ran(
         "dart",
         RUNTIME_VAR,
@@ -646,7 +646,7 @@ fn dart(named: &str, arguments: &[&str], source: &str) -> Option<(bool, String)>
 }
 
 /// The six cases of the shared table, each with what Rust's `validate()` answers of it.
-fn table_cases() -> Vec<Case> {
+pub fn table_cases() -> Vec<Case> {
     let parcels = [
         sound(),
         unlabelled(),
@@ -657,14 +657,14 @@ fn table_cases() -> Vec<Case> {
     let mut cases: Vec<Case> = ["case 1", "case 2", "case 3", "case 4", "case 5"]
         .into_iter()
         .zip(parcels)
-        .map(|(name, held)| compared(name, &held, held.validate(), "Parcel.fromJson(@)"))
+        .map(|(name, held)| compared(name, &held, held.validate(), "Parcel.fromJsonUnjudged(@)"))
         .collect();
     let manifest = Manifest { parcel: outside() };
     cases.push(compared(
         "case 6",
         &manifest,
         manifest.validate(),
-        "Manifest.fromJson(@)",
+        "Manifest.fromJsonUnjudged(@)",
     ));
     cases
 }
@@ -760,9 +760,19 @@ fn each_bound_prints_the_sentence_rust_prints() {
     let above = gauge(&["a", "b", "c", "d"], 121, "abcdefghi", None, Some(10), 4.0);
     let held = gauge(&["a"], 1, "ab", None, None, 3.0);
     let cases = [
-        compared("below", &below, below.validate(), "Gauge.fromJson(@)"),
-        compared("above", &above, above.validate(), "Gauge.fromJson(@)"),
-        compared("held", &held, held.validate(), "Gauge.fromJson(@)"),
+        compared(
+            "below",
+            &below,
+            below.validate(),
+            "Gauge.fromJsonUnjudged(@)",
+        ),
+        compared(
+            "above",
+            &above,
+            above.validate(),
+            "Gauge.fromJsonUnjudged(@)",
+        ),
+        compared("held", &held, held.validate(), "Gauge.fromJsonUnjudged(@)"),
     ];
     assert_eq!(
         report(&cases),
@@ -803,25 +813,25 @@ fn a_length_counts_code_points() {
             "a letter with an accent",
             &initial("\u{e9}"),
             &[],
-            "Initial.fromJson(@)",
+            "Initial.fromJsonUnjudged(@)",
         ),
         pinned(
             "a character outside the plane",
             &initial("\u{1f600}"),
             &[],
-            "Initial.fromJson(@)",
+            "Initial.fromJsonUnjudged(@)",
         ),
         pinned(
             "two letters",
             &initial("ab"),
             &["'letter': too long: maximum length is 1, got 2"],
-            "Initial.fromJson(@)",
+            "Initial.fromJsonUnjudged(@)",
         ),
         pinned(
             "two characters outside the plane",
             &initial("\u{1f600}\u{1f600}"),
             &["'letter': too long: maximum length is 1, got 2"],
-            "Initial.fromJson(@)",
+            "Initial.fromJsonUnjudged(@)",
         ),
     ];
     let Some(wrote) = printed("code_points.dart", &cases) else {
@@ -855,13 +865,13 @@ fn a_holder_reports_what_it_holds_at_the_place_rust_names() {
             "four broken parcels",
             &terminal,
             terminal.validate(),
-            "Terminal.fromJson(@)",
+            "Terminal.fromJsonUnjudged(@)",
         ),
         compared(
             "nothing held",
             &empty,
             empty.validate(),
-            "Terminal.fromJson(@)",
+            "Terminal.fromJsonUnjudged(@)",
         ),
     ];
     assert_eq!(
@@ -905,8 +915,13 @@ fn a_nested_place_and_a_members_order_are_rusts() {
         spares: vec![None],
     };
     let cases = [
-        compared("a yard", &yard, yard.validate(), "Yard.fromJson(@)"),
-        compared("a bare yard", &bare, bare.validate(), "Yard.fromJson(@)"),
+        compared("a yard", &yard, yard.validate(), "Yard.fromJsonUnjudged(@)"),
+        compared(
+            "a bare yard",
+            &bare,
+            bare.validate(),
+            "Yard.fromJsonUnjudged(@)",
+        ),
     ];
     assert_eq!(
         report(&cases),
@@ -932,20 +947,20 @@ a bare yard: passes
 
 /// The brands, each with what Rust's `validate()` answers of it: a string check and a check of
 /// its own, a parameter at its declared default and at another filling, and a list.
-fn brand_cases() -> Vec<Case> {
-    let tagged = "Tag<String>.fromJson(@, (e) => e as String)";
+pub fn brand_cases() -> Vec<Case> {
+    let tagged = "Tag<String>.fromJsonUnjudged(@, (e) => e as String)";
     vec![
         compared(
             "Code, short and in lower case",
             &Code("a".to_owned()),
             Code("a".to_owned()).validate(),
-            "Code.fromJson(@)",
+            "Code.fromJsonUnjudged(@)",
         ),
         compared(
             "Code",
             &Code("AB".to_owned()),
             Code("AB".to_owned()).validate(),
-            "Code.fromJson(@)",
+            "Code.fromJsonUnjudged(@)",
         ),
         compared(
             "Tag<String>, short",
@@ -963,26 +978,26 @@ fn brand_cases() -> Vec<Case> {
             "Tag<int>, at no default",
             &Tag(7_u32),
             Tag(7_u32).validate(),
-            "Tag<int>.fromJson(@, (e) => e as int)",
+            "Tag<int>.fromJsonUnjudged(@, (e) => e as int)",
         ),
         compared(
             "Batch, empty",
             &Batch(Vec::new()),
             Batch(Vec::new()).validate(),
-            "Batch.fromJson(@)",
+            "Batch.fromJsonUnjudged(@)",
         ),
         compared(
             "Batch, three codes",
             &Batch(texts(&["a", "b", "c"])),
             Batch(texts(&["a", "b", "c"])).validate(),
-            "Batch.fromJson(@)",
+            "Batch.fromJsonUnjudged(@)",
         ),
     ]
 }
 
 /// A type with a parameter at two fillings, a unit struct, a plain enum, a member serde writes no
 /// key for and an alias, each with what Rust's `validate()` answers of it.
-fn named_shape_cases() -> Vec<Case> {
+pub fn named_shape_cases() -> Vec<Case> {
     let filled = |codes: &[&str], label: &str| Crate {
         codes: texts(codes),
         label: label.to_owned(),
@@ -996,7 +1011,7 @@ fn named_shape_cases() -> Vec<Case> {
         held_parcel: unlabelled(),
     };
     let consignment: Consignment = unlabelled();
-    let text_filled = "Crate<String>.fromJson(@, (e) => e as String)";
+    let text_filled = "Crate<String>.fromJsonUnjudged(@, (e) => e as String)";
     vec![
         compared(
             "Crate<String>, empty and unlabelled",
@@ -1014,37 +1029,37 @@ fn named_shape_cases() -> Vec<Case> {
             "Crate<int>, empty",
             &counted,
             counted.validate(),
-            "Crate<int>.fromJson(@, (e) => e as int)",
+            "Crate<int>.fromJsonUnjudged(@, (e) => e as int)",
         ),
         compared(
             "ClosedDock",
             &ClosedDock,
             ClosedDock.validate(),
-            "ClosedDock.fromJson(@)",
+            "ClosedDock.fromJsonUnjudged(@)",
         ),
         compared(
             "Rating, unrated",
             &Rating::Unrated,
             Rating::Unrated.validate(),
-            "Rating.fromJson(@)",
+            "Rating.fromJsonUnjudged(@)",
         ),
         compared(
             "Rating, express",
             &Rating::Express,
             Rating::Express.validate(),
-            "Rating.fromJson(@)",
+            "Rating.fromJsonUnjudged(@)",
         ),
         compared(
             "Docket, a parcel written beside its code",
             &docket,
             docket.validate(),
-            "Docket.fromJson(@)",
+            "Docket.fromJsonUnjudged(@)",
         ),
         compared(
             "Consignment",
             &consignment,
             consignment.validate(),
-            "Consignment.fromJson(@)",
+            "Consignment.fromJsonUnjudged(@)",
         ),
     ]
 }
@@ -1092,7 +1107,7 @@ Consignment: refused
         "Dock, which names no check",
         &Dock::North,
         &[],
-        "Dock.fromJson(@)",
+        "Dock.fromJsonUnjudged(@)",
     ));
     let Some(wrote) = printed("shapes.dart", &cases) else {
         return;
@@ -1122,13 +1137,13 @@ fn a_slot_is_named_by_the_step_serde_writes() {
                 "'1': too small: minimum is 1, got 0",
                 "'2.label': too short: minimum length is 1, got 0",
             ],
-            "Pair.fromJson(@)",
+            "Pair.fromJsonUnjudged(@)",
         ),
         pinned(
             "Pair",
             &Pair("a".to_owned(), 1, sound()),
             &[],
-            "Pair.fromJson(@)",
+            "Pair.fromJsonUnjudged(@)",
         ),
         Case {
             answered: texts(&["too short: minimum length is 1, got 0"]),
@@ -1144,7 +1159,7 @@ fn a_slot_is_named_by_the_step_serde_writes() {
             "Deck, a tuple in a field",
             &deck,
             &["'deckPair.1.label': too short: minimum length is 1, got 0"],
-            "Deck.fromJson(@)",
+            "Deck.fromJsonUnjudged(@)",
         ),
     ];
     let Some(wrote) = printed("slots.dart", &cases) else {
@@ -1154,25 +1169,25 @@ fn a_slot_is_named_by_the_step_serde_writes() {
 }
 
 /// The variants of an enum serde writes under the variant's name, each message written out.
-fn named_variant_cases() -> Vec<Case> {
+pub fn named_variant_cases() -> Vec<Case> {
     vec![
         pinned(
             "no tag, a model in the one slot",
             &Freight::Boxed(unlabelled()),
             &["'Boxed.label': too short: minimum length is 1, got 0"],
-            "Freight.fromJson(@)",
+            "Freight.fromJsonUnjudged(@)",
         ),
         pinned(
             "no tag, a renamed variant",
             &Freight::Crated(unlabelled()),
             &["'crated.label': too short: minimum length is 1, got 0"],
-            "Freight.fromJson(@)",
+            "Freight.fromJsonUnjudged(@)",
         ),
         pinned(
             "no tag, no value",
             &Freight::Held,
             &["a held freight has no route"],
-            "Freight.fromJson(@)",
+            "Freight.fromJsonUnjudged(@)",
         ),
         pinned(
             "no tag, a named member",
@@ -1180,13 +1195,13 @@ fn named_variant_cases() -> Vec<Case> {
                 freight_label: String::new(),
             },
             &["'Loose.freightLabel': too short: minimum length is 1, got 0"],
-            "Freight.fromJson(@)",
+            "Freight.fromJsonUnjudged(@)",
         ),
         pinned(
             "no tag, the one slot",
             &Freight::Sealed(String::new()),
             &["'Sealed': too short: minimum length is 1, got 0"],
-            "Freight.fromJson(@)",
+            "Freight.fromJsonUnjudged(@)",
         ),
         pinned(
             "no tag, a slot of several",
@@ -1195,13 +1210,13 @@ fn named_variant_cases() -> Vec<Case> {
                 "'Split.0': too short: minimum length is 1, got 0",
                 "'Split.1': too small: minimum is 1, got 0",
             ],
-            "Freight.fromJson(@)",
+            "Freight.fromJsonUnjudged(@)",
         ),
         pinned(
             "no tag, held",
             &Freight::Split("a".to_owned(), 1),
             &[],
-            "Freight.fromJson(@)",
+            "Freight.fromJsonUnjudged(@)",
         ),
         pinned(
             "no tag, a variant in lower case",
@@ -1209,20 +1224,21 @@ fn named_variant_cases() -> Vec<Case> {
                 road: String::new(),
             },
             &["'byroad.road': too short: minimum length is 1, got 0"],
-            "Dispatch.fromJson(@)",
+            "Dispatch.fromJsonUnjudged(@)",
         ),
     ]
 }
 
 /// The variants of an enum under a tag, and of one serde writes as the variant's value, each
-/// message written out.
-fn tagged_and_untagged_variant_cases() -> Vec<Case> {
+/// message written out. A value of the latter that breaks a bound is built in code: no read
+/// takes the variant for it.
+pub fn tagged_and_untagged_variant_cases() -> Vec<Case> {
     vec![
         pinned(
             "tag and content, the one slot",
             &Haul::Boxed(String::new()),
             &["'held': too short: minimum length is 1, got 0"],
-            "Haul.fromJson(@)",
+            "Haul.fromJsonUnjudged(@)",
         ),
         pinned(
             "tag and content, a named member",
@@ -1230,19 +1246,19 @@ fn tagged_and_untagged_variant_cases() -> Vec<Case> {
                 haul_label: String::new(),
             },
             &["'held.haulLabel': too short: minimum length is 1, got 0"],
-            "Haul.fromJson(@)",
+            "Haul.fromJsonUnjudged(@)",
         ),
         pinned(
             "tag and content, a slot of several",
             &Haul::Split("a".to_owned(), 0),
             &["'held.1': too small: minimum is 1, got 0"],
-            "Haul.fromJson(@)",
+            "Haul.fromJsonUnjudged(@)",
         ),
         pinned(
             "tag alone, the one slot",
             &Lift::Boxed(unlabelled()),
             &["'label': too short: minimum length is 1, got 0"],
-            "Lift.fromJson(@)",
+            "Lift.fromJsonUnjudged(@)",
         ),
         pinned(
             "tag alone, a named member",
@@ -1250,27 +1266,23 @@ fn tagged_and_untagged_variant_cases() -> Vec<Case> {
                 lift_label: String::new(),
             },
             &["'liftLabel': too short: minimum length is 1, got 0"],
-            "Lift.fromJson(@)",
+            "Lift.fromJsonUnjudged(@)",
         ),
-        pinned(
-            "untagged, a named member",
-            &Reference::Named {
-                name: String::new(),
-            },
-            &["'name': too short: minimum length is 1, got 0"],
-            "Reference.fromJson(@)",
-        ),
-        pinned(
-            "untagged, the one slot",
-            &Reference::Numbered(0),
-            &["too small: minimum is 1, got 0"],
-            "Reference.fromJson(@)",
-        ),
+        Case {
+            answered: texts(&["'name': too short: minimum length is 1, got 0"]),
+            built: "ReferenceNamed(name: '')".to_owned(),
+            name: "untagged, a named member",
+        },
+        Case {
+            answered: texts(&["too small: minimum is 1, got 0"]),
+            built: "ReferenceNumbered(0)".to_owned(),
+            name: "untagged, the one slot",
+        },
         pinned(
             "untagged, held",
             &Reference::Numbered(1),
             &[],
-            "Reference.fromJson(@)",
+            "Reference.fromJsonUnjudged(@)",
         ),
     ]
 }
@@ -1304,7 +1316,7 @@ fn an_enums_string_check_reaches_the_fields_it_reaches_in_rust() {
                 "'ink': too short: minimum length is 2, got 1",
                 "'ink': does not match pattern '[aeiou]'",
             ],
-            "Stamp.fromJson(@)",
+            "Stamp.fromJsonUnjudged(@)",
         ),
         pinned(
             "a long ink in upper case",
@@ -1314,16 +1326,16 @@ fn an_enums_string_check_reaches_the_fields_it_reaches_in_rust() {
                 "'ink': does not match pattern '[aeiou]'",
                 "'ink': does not match pattern '^[a-z]+$'",
             ],
-            "Stamp.fromJson(@)",
+            "Stamp.fromJsonUnjudged(@)",
         ),
-        pinned("an ink", &inked("blue"), &[], "Stamp.fromJson(@)"),
+        pinned("an ink", &inked("blue"), &[], "Stamp.fromJsonUnjudged(@)"),
         pinned(
             "a short seal",
             &Stamp::Pressed {
                 seal: "w".to_owned(),
             },
             &["'seal': too short: minimum length is 2, got 1"],
-            "Stamp.fromJson(@)",
+            "Stamp.fromJsonUnjudged(@)",
         ),
     ];
     let Some(wrote) = printed("stamps.dart", &cases) else {
@@ -1357,7 +1369,7 @@ fn a_field_named_validate_builds_and_keeps_its_key() {
 }
 
 /// What `text` holds from `opens` up to `closes`.
-fn from_until<'text>(text: &'text str, opens: &str, closes: &str) -> &'text str {
+pub fn from_until<'text>(text: &'text str, opens: &str, closes: &str) -> &'text str {
     let rest = text
         .find(opens)
         .and_then(|start| text.get(start..))
