@@ -110,7 +110,9 @@ use crate::features::serde::{
     NAMED_READ_HOOK_PREFIX, SerdeFieldMeta, SerdeTypeMeta, derives_deserialize,
     has_serde_read_hook, parse_read_renames, parse_written_renames, struct_tag,
 };
-use crate::features::serde::{brand_field, has_serde_default, parse_serde_key_omission};
+use crate::features::serde::{
+    brand_field, has_serde_default, member_steps, parse_serde_key_omission, variant_steps,
+};
 
 #[cfg(all(
     feature = "serde",
@@ -475,8 +477,8 @@ enum MemberAccess {
 pub struct MemberPlace {
     /// The expression the member is read from.
     pub checked: proc_macro2::TokenStream,
-    /// The key serde writes a named member under, or a slot's position. `None` for a member
-    /// reported under no name.
+    /// The steps serde writes on the way to the member, joined by dots. `None` for a member
+    /// serde writes as the value of what holds it.
     pub reported: Option<String>,
 }
 
@@ -487,8 +489,8 @@ struct CheckedMember {
     checked: proc_macro2::TokenStream,
     /// The member's ident as a guard message names it, empty for a slot.
     label: String,
-    /// The name each violation is reported under: the key serde writes a named member under, or a
-    /// slot's position. `None` for a member reported under none.
+    /// The name each violation is reported under: the steps serde writes on the way to the
+    /// member, joined by dots. `None` for a member reported under none.
     reported: Option<String>,
     /// What `validate_{stem}_value` and `deserialize_{stem}` are named from.
     stem: String,
@@ -845,12 +847,22 @@ struct FieldContext<'ctx> {
     /// The arguments of the enum the field's variant belongs to: a string check written there is
     /// the field's own as well, where it reaches the field.
     enum_args: Option<&'ctx ModelSchemaArgs>,
+    /// The steps serde writes on the way to each member of the container, by its place among the
+    /// ones declared.
+    member_steps: &'ctx [Vec<String>],
     rename_all: Option<&'ctx str>,
     schema_module_name: Option<&'ctx str>,
     type_name: &'ctx str,
     type_parameters: &'ctx [String],
     /// The variant this field belongs to, or `None` for a struct's own field.
     variant_ident: Option<&'ctx str>,
+}
+
+impl FieldContext<'_> {
+    /// The steps serde writes on the way to the member declared at `index`.
+    fn steps(&self, index: usize) -> &[String] {
+        self.member_steps.get(index).map_or(&[], Vec::as_slice)
+    }
 }
 
 /// Mutable output buffers shared by the discriminated-enum variant writers. Bundled so each writer
@@ -4662,6 +4674,7 @@ fn collect_struct_fields(
     let mut validate_bodies: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut guard_errors: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut deferred_attrs: Vec<Vec<syn::Attribute>> = Vec::new();
+    let steps = steps_of_members(fields, &[], rename_all);
 
     for (index, field) in fields.iter_mut().enumerate() {
         // Read before the field is processed, which strips the attributes the declaration carried.
@@ -4680,35 +4693,32 @@ fn collect_struct_fields(
             guard_errors.extend(flatten_edge_guard_error(field, type_name));
         }
 
-        let (f_def, validation_fn, validate_body, field_guard_errors) = process_field(
-            &FieldContext {
-                container_defaulted,
-                container_read_back,
-                enum_args: None,
-                rename_all,
-                schema_module_name: module_name_opt,
-                type_name,
-                type_parameters: &type_parameters,
-                variant_ident: None,
-            },
-            field,
-            index,
-            &mut deferred_attrs,
-        );
+        let ctx = FieldContext {
+            container_defaulted,
+            container_read_back,
+            enum_args: None,
+            member_steps: &steps,
+            rename_all,
+            schema_module_name: module_name_opt,
+            type_name,
+            type_parameters: &type_parameters,
+            variant_ident: None,
+        };
+        let (f_def, validation_fn, validate_body, field_guard_errors) =
+            process_field(&ctx, field, index, &mut deferred_attrs);
 
         guard_errors.extend(field_guard_errors);
 
         if is_flatten {
             let _: (&_, &_) = (&validation_fn, &validate_body);
             // The walk is rebuilt here, the body above being discarded with the rest of a flattened
-            // field's. It is rebuilt under no name: the hop writes no key.
+            // field's. The hop writes no key of its own.
+            let place = member_place(field, index, false, ctx.steps(index));
             #[cfg(feature = "serde")]
-            if let Some(body) =
-                nested_validate_body(field, &f_def, &flattened_place(field, index, false))
-            {
+            if let Some(body) = nested_validate_body(field, &f_def, &place) {
                 validate_bodies.push(body);
             }
-            validate_bodies.extend(flattened_member_checks(field, &f_def, index, false));
+            validate_bodies.extend(held_member_checks(field, &f_def, &place));
             flattened_fields.push(f_def);
             continue;
         }
@@ -5694,6 +5704,7 @@ fn collect_tuple_slots(
     let mut validate_bodies: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut guard_errors: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut deferred_attrs: Vec<Vec<syn::Attribute>> = Vec::new();
+    let steps = steps_of_members(fields, &[], rename_all);
     for (index, field) in fields.iter_mut().enumerate() {
         let omission = parse_serde_key_omission(&field.attrs);
         if let Err(rejection) =
@@ -5706,6 +5717,7 @@ fn collect_tuple_slots(
                 container_defaulted,
                 container_read_back,
                 enum_args: None,
+                member_steps: &steps,
                 rename_all,
                 schema_module_name: Some(module_name),
                 type_name,
@@ -8814,8 +8826,9 @@ fn collect_discriminated_variants(
     let mut deferred_attrs: Vec<Vec<syn::Attribute>> = Vec::new();
     let enum_type_name = item_enum.ident.to_string();
     let enum_read_back = container_is_read_back(&item_enum.attrs);
+    let steps_by_variant = steps_of_variants(item_enum, casing.variant_fields);
 
-    for item in &mut item_enum.variants {
+    for (item, steps) in item_enum.variants.iter_mut().zip(&steps_by_variant) {
         let (field_rename, variant_rename_all) =
             variant_serde_names(&item.attrs, casing.variant_fields);
         let variant_ident = item.ident.to_string();
@@ -8833,6 +8846,7 @@ fn collect_discriminated_variants(
             container_defaulted: variant_defaulted,
             container_read_back: enum_read_back,
             enum_args: Some(args),
+            member_steps: steps,
             rename_all: variant_rename_all.as_deref(),
             schema_module_name: enum_module_name_opt,
             type_name: &enum_type_name,
@@ -8870,8 +8884,8 @@ fn collect_discriminated_variants(
 
             if is_flatten {
                 let _: (&_, &_) = (&validation_fn, &validate_body);
-                // Rebuilt under no name, as a struct's flattened field is — see there.
-                flattened_member_walk(field, &f_def, index, &mut bound, &mut checks);
+                // Rebuilt, as a struct's flattened field is — see there.
+                flattened_member_walk(&member_ctx, field, &f_def, index, &mut bound, &mut checks);
                 flattened_fields.push(f_def);
                 continue;
             }
@@ -10524,6 +10538,7 @@ const fn untagged_variant_context<'ctx>(
     enum_type_name: &'ctx str,
     type_parameters: &'ctx [String],
     variant_name: &'ctx str,
+    member_steps: &'ctx [Vec<String>],
 ) -> FieldContext<'ctx> {
     FieldContext {
         container_defaulted: variant_defaulted,
@@ -10532,6 +10547,7 @@ const fn untagged_variant_context<'ctx>(
         container_read_back: false,
         // That walk holds the member to its enum's check as well, ahead of this context.
         enum_args: None,
+        member_steps,
         rename_all,
         schema_module_name,
         type_name: enum_type_name,
@@ -10614,6 +10630,7 @@ fn untagged_member_field_def(
 /// Collects each untagged variant's union-member parts: the TypeScript member type, the Zod
 /// member schema, the JSON-schema value token, and the `compile_error!` tokens for any
 /// field-level guard violations. The first three are always returned regardless of features.
+/// `steps` holds the steps serde writes on the way to each member of the variant.
 #[cfg(feature = "serde")]
 fn collect_untagged_variant_members(
     variant: &mut syn::Variant,
@@ -10622,6 +10639,7 @@ fn collect_untagged_variant_members(
     type_parameters: &[String],
     rename_all_fields: Option<&str>,
     args: &ModelSchemaArgs,
+    steps: &[Vec<String>],
 ) -> UntaggedVariantMembers {
     let variant_name = variant.ident.to_string();
     let variant_defaulted = has_serde_default(&variant.attrs);
@@ -10669,6 +10687,7 @@ fn collect_untagged_variant_members(
             enum_type_name,
             type_parameters,
             &variant_name,
+            steps,
         );
         // The wire key: field-level rename wins outright, otherwise the variant's own rename_all
         // cases the Rust ident — the same resolution `process_field` runs for a struct field.
@@ -10685,7 +10704,6 @@ fn collect_untagged_variant_members(
                 &member_ctx,
                 field,
                 index,
-                &wire_name,
                 &prop_meta,
                 // The one position where the read is also the gate: an untagged union picks the
                 // variant by which one accepts the payload.
@@ -10711,13 +10729,10 @@ fn collect_untagged_variant_members(
         );
         walked.guard_errors.extend(member_guard_errors);
         // Read once the member's def exists, since that is what says whether the member names a
-        // type that could publish a validator. A slot of an untagged variant is reported under
-        // no name.
-        let place = member_place(field, index, true, false, &wire_name);
+        // type that could publish a validator.
+        let place = member_place(field, index, true, member_ctx.steps(index));
         let declared = match (is_flatten, field.ident.is_some()) {
-            (true, _) => {
-                nested_validate_body(field, &member_def, &flattened_place(field, index, true))
-            }
+            (true, _) => nested_validate_body(field, &member_def, &place),
             (false, true) => named_member_validate_body(validate_body, field, &member_def, &place),
             (false, false) => slot_validate_body(
                 validate_body,
@@ -10725,7 +10740,7 @@ fn collect_untagged_variant_members(
             ),
         };
         read_untagged_member_unjudged(&member_ctx, field, &member_def, index, &walked);
-        let named = untagged_member_checks(field, &member_def, index, is_flatten, &wire_name);
+        let named = held_member_checks(field, &member_def, &place);
         if let Some(body) = then_checks(declared, named) {
             walked.bound.push(bound_member(field, index));
             walked.checks.push(body);
@@ -10765,8 +10780,9 @@ fn collect_untagged_members(
     let mut per_variant_checks: Vec<(proc_macro2::TokenStream, Vec<proc_macro2::TokenStream>)> =
         Vec::new();
     let mut deferred_attrs: Vec<Vec<syn::Attribute>> = Vec::new();
+    let steps_by_variant = steps_of_variants(item_enum, rename_all_fields.as_deref());
 
-    for variant in &mut item_enum.variants {
+    for (variant, steps) in item_enum.variants.iter_mut().zip(&steps_by_variant) {
         let declared_kind = classify_variant(variant);
         let kind = variant_wire_kind(variant);
         let total_fields = variant.fields.len();
@@ -10777,6 +10793,7 @@ fn collect_untagged_members(
             &type_parameters,
             rename_all_fields.as_deref(),
             args,
+            steps,
         );
         guard_errors.append(&mut walked.guard_errors);
         validation_fns.append(&mut walked.validation_fns);
@@ -13493,12 +13510,13 @@ fn build_wrapped_deserializer(
 }
 
 /// The closure a recovering read lists a field's broken bound with: `validator` run on every
-/// value the bound reaches inside one of type `ty`, answering each violation without the field's
-/// name, which the issue's path already carries. `None` where the bound reaches nothing of `ty`.
+/// value the bound reaches inside one of type `ty`, answering each violation without
+/// `field_name`, the name the validator writes, which the issue's path already carries. `None`
+/// where the bound reaches nothing of `ty`.
 #[cfg(feature = "serde")]
 pub fn recovering_bound_check(
     validator: &proc_macro2::TokenStream,
-    field_name: &str,
+    field_name: Option<&str>,
     ty: &syn::Type,
 ) -> Option<proc_macro2::TokenStream> {
     let shape = constrained_shape(ty)?;
@@ -13510,15 +13528,24 @@ pub fn recovering_bound_check(
         }
     };
     let walk = walk_wraps(&shape.wraps, &head, 1, &leaf);
-    let named = format!("'{field_name}': ");
+    // A validator that writes no name answers the sentence as the read lists it.
+    let listed = field_name.map_or_else(
+        || quote! { errors },
+        |written| {
+            let named = format!("'{written}': ");
+            quote! {
+                errors
+                    .iter()
+                    .map(|violation| violation.strip_prefix(#named).unwrap_or(violation).to_owned())
+                    .collect()
+            }
+        },
+    );
     Some(quote! {
         |#head: &#ty| -> ::std::vec::Vec<::std::string::String> {
             let mut errors: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
             #walk
-            errors
-                .iter()
-                .map(|violation| violation.strip_prefix(#named).unwrap_or(violation).to_owned())
-                .collect()
+            #listed
         }
     })
 }
@@ -15231,6 +15258,7 @@ fn process_field(
 
     let final_name =
         get_final_field_name(&raw_field_ident, field_rename.as_deref(), ctx.rename_all);
+    let place = member_place(field, index, ctx.variant_ident.is_some(), ctx.steps(index));
 
     // Generate validation code and hold back the serde attribute it hangs on the field
     #[cfg(feature = "serde")]
@@ -15239,7 +15267,6 @@ fn process_field(
             ctx,
             field,
             index,
-            &final_name,
             &model_schema_prop_meta,
             // A struct's field, or a tagged variant's: the shape of the payload says which type it
             // is, so a constraint here decides only whether the value is admissible.
@@ -15253,7 +15280,7 @@ fn process_field(
         Option<proc_macro2::TokenStream>,
     ) = (None, None);
     #[cfg(not(feature = "serde"))]
-    let _: &_ = &(ctx.schema_module_name, ctx.variant_ident, index);
+    let _: &_ = &ctx.schema_module_name;
 
     field.attrs = new_attrs;
 
@@ -15305,12 +15332,11 @@ fn process_field(
         serde_guard_errors,
     );
 
-    let own_checks = placed_member_checks(
-        ctx,
-        field,
-        index,
-        &final_name,
+    let own_checks = checks::member_calls(
+        &place,
+        &field.ty,
         &model_schema_prop_meta.check,
+        VALIDATE_SINK,
     );
 
     apply_model_schema_prop_meta(&mut field_def, model_schema_prop_meta, &final_name);
@@ -15318,9 +15344,14 @@ fn process_field(
     // The read-time half of the reach `validate()` has below: what the field's own type turns
     // away before `validate()` is ever asked.
     #[cfg(feature = "serde")]
-    if let Some((hook, attrs)) =
-        member_read_hook(ctx, field, &field_def, index, validate_body.as_ref())
-    {
+    if let Some((hook, attrs)) = member_read_hook(
+        ctx,
+        field,
+        &field_def,
+        index,
+        validate_body.as_ref(),
+        place.reported.as_deref(),
+    ) {
         validation_fn = Some(match validation_fn {
             Some(already) => quote! { #already #hook },
             None => hook,
@@ -15329,12 +15360,7 @@ fn process_field(
     }
 
     #[cfg(feature = "serde")]
-    let declared = named_member_validate_body(
-        validate_body,
-        field,
-        &field_def,
-        &member_place(field, index, ctx.variant_ident.is_some(), true, &final_name),
-    );
+    let declared = named_member_validate_body(validate_body, field, &field_def, &place);
     #[cfg(not(feature = "serde"))]
     let declared = validate_body;
     let body = then_checks(declared, own_checks);
@@ -15378,7 +15404,7 @@ fn member_held_shape(field: &Field, field_def: &FieldDef) -> Option<HeldShape> {
 /// The `validate()` contribution of what a member's *own type* declares — a constrained brand, or
 /// a nested `#[model_schema()]` type, held itself, in a list, as a map's value or in a tuple — or
 /// `None` where there is nothing below it to run. `place` is where the member is read and the name
-/// it is reported under, which is none for a flattened member and for an untagged variant's slot.
+/// it is reported under, which is none for a member serde writes as the value of what holds it.
 #[cfg(feature = "serde")]
 fn nested_validate_body(
     field: &Field,
@@ -15424,14 +15450,14 @@ fn named_below(
 
 /// Gives a member of a struct, or of a tagged variant, the hook that reads the models it holds
 /// unjudged, where the item is read back and `validate()` walks what the member holds. Answers
-/// whether it was given one.
+/// whether it was given one. `reported` is the name `validate()` reports the member under.
 #[cfg(feature = "serde")]
 fn read_unjudged_below(
     ctx: &FieldContext<'_>,
     field: &Field,
     field_def: &FieldDef,
     index: usize,
-    wire_name: &str,
+    reported: Option<&str>,
 ) -> bool {
     if !ctx.container_read_back {
         return false;
@@ -15450,7 +15476,7 @@ fn read_unjudged_below(
         &judged_read::HookPlace {
             container_defaulted: ctx.container_defaulted,
             index,
-            renamed_under: named_below(field, field_def, ctx).map(|_| wire_name),
+            renamed_under: named_below(field, field_def, ctx).and(reported),
             type_parameters: ctx.type_parameters,
             variant: ctx.variant_ident,
             written_under_a_key: field.ident.is_some() && !is_flattened_field(field),
@@ -15469,28 +15495,28 @@ fn member_read_hook(
     field_def: &FieldDef,
     index: usize,
     own_bound: Option<&proc_macro2::TokenStream>,
+    reported: Option<&str>,
 ) -> Option<(proc_macro2::TokenStream, Vec<syn::Attribute>)> {
-    // The def is named by the key serde writes the member under.
-    let wire_name = field_def.name.as_str();
     // A member's own bound stands in for what its type declares, a list's count apart, and a
     // flattened member is walked whatever it writes.
     let walked_below = own_bound.is_none() || field_def.is_list() || is_flattened_field(field);
-    if walked_below && read_unjudged_below(ctx, field, field_def, index, wire_name) {
+    if walked_below && read_unjudged_below(ctx, field, field_def, index, reported) {
         return None;
     }
-    named_read_hook(field, field_def, ctx, &field_ident_string(field), wire_name)
+    named_read_hook(field, field_def, ctx, &field_ident_string(field), reported?)
 }
 
 /// The read-time hook for a named field whose *own type* carries the bound — a constrained brand,
 /// or a nested `#[model_schema()]` type holding one — together with the serde attributes that hang
-/// it on the field. `None` for every field no hook may be hung on.
+/// it on the field. `None` for every field no hook may be hung on. `reported` is the name
+/// `validate()` reports the field under.
 #[cfg(feature = "serde")]
 fn named_read_hook(
     field: &Field,
     field_def: &FieldDef,
     ctx: &FieldContext<'_>,
     raw_field_ident: &str,
-    wire_name: &str,
+    reported: &str,
 ) -> Option<(proc_macro2::TokenStream, Vec<syn::Attribute>)> {
     let module_name = ctx.schema_module_name?;
     let wraps = named_below(field, field_def, ctx)?;
@@ -15513,21 +15539,21 @@ fn named_read_hook(
         attrs.push(syn::parse_quote! { #[serde(default)] });
     }
     Some((
-        build_named_read_hook(&hook_ident, &field.ty, wire_name),
+        build_named_read_hook(&hook_ident, &field.ty, reported),
         attrs,
     ))
 }
 
 /// The hook itself: read the field's declared type, and where the refusal is one of this crate's
-/// own bound sentences, answer it again with the holding field's name written into every violation
-/// it carries.
+/// own bound sentences, answer it again with `reported`, the holding field's name, written into
+/// every violation it carries.
 #[cfg(feature = "serde")]
 fn build_named_read_hook(
     hook_ident: &proc_macro2::Ident,
     field_ty: &syn::Type,
-    wire_name: &str,
+    reported: &str,
 ) -> proc_macro2::TokenStream {
-    let renaming = judged_read::named_refusal(wire_name);
+    let renaming = judged_read::named_refusal(reported);
     quote! {
         pub fn #hook_ident<'de, D>(deserializer: D) -> ::core::result::Result<#field_ty, D::Error>
         where
@@ -15582,8 +15608,7 @@ fn names_what_the_module_cannot_repeat(ty: &syn::Type, type_parameters: &[String
 
 /// What a member contributes to `validate()`: its own check, or the one its type declares where
 /// it writes none. A list runs both: its own check counts it, and its items' type holds each item.
-/// `place` is where the member is read and the name it is reported under: the key serde writes a
-/// named member under, and a slot's position.
+/// `place` is where the member is read and the name it is reported under.
 #[cfg(feature = "serde")]
 fn named_member_validate_body(
     own: Option<proc_macro2::TokenStream>,
@@ -15614,90 +15639,38 @@ fn then_checks(
     }
 }
 
-/// What the checks a struct's member names add to `validate()`, or a tagged variant's: such a
-/// member has a key or a position to be reported under.
-fn placed_member_checks(
-    ctx: &FieldContext<'_>,
-    field: &Field,
-    index: usize,
-    wire_name: &str,
-    named: &[FunctionName],
-) -> Option<proc_macro2::TokenStream> {
-    checks::member_calls(
-        &member_place(field, index, ctx.variant_ident.is_some(), true, wire_name),
-        &field.ty,
-        named,
-        VALIDATE_SINK,
-    )
-}
-
 /// What a flattened variant member keeps of `validate()`, bound under the name the arm will match
-/// it by: the walk of what its type declares and the checks it names, both under no name, the hop
-/// writing no key of its own.
+/// it by: the walk of what its type declares and the checks it names, the hop writing no key of
+/// its own.
 fn flattened_member_walk(
+    ctx: &FieldContext<'_>,
     field: &Field,
     field_def: &FieldDef,
     index: usize,
     bound: &mut Vec<BoundMember>,
     checks: &mut Vec<proc_macro2::TokenStream>,
 ) {
+    let place = member_place(field, index, true, ctx.steps(index));
     #[cfg(feature = "serde")]
-    let declared = nested_validate_body(field, field_def, &flattened_place(field, index, true));
+    let declared = nested_validate_body(field, field_def, &place);
     #[cfg(not(feature = "serde"))]
     let declared: Option<proc_macro2::TokenStream> = None;
-    let named = flattened_member_checks(field, field_def, index, true);
+    let named = held_member_checks(field, field_def, &place);
     if let Some(body) = then_checks(declared, named) {
         bound.push(bound_member(field, index));
         checks.push(body);
     }
 }
 
-/// What a flattened member's checks add to `validate()`, under no name: the member writes no key
-/// of its own.
-fn flattened_member_checks(
+/// What the checks a member's def holds add to `validate()`, read and reported at `place`: those
+/// of a flattened member, and of a member of an untagged variant.
+fn held_member_checks(
     field: &Field,
     field_def: &FieldDef,
-    index: usize,
-    in_variant: bool,
+    place: &MemberPlace,
 ) -> Option<proc_macro2::TokenStream> {
     let named = &field_def.model_schema_prop_meta.as_ref()?.check;
-    checks::member_calls(
-        &flattened_place(field, index, in_variant),
-        &field.ty,
-        named,
-        VALIDATE_SINK,
-    )
-}
-
-/// Where a flattened member is read, under no name: the member writes no key of its own.
-fn flattened_place(field: &Field, index: usize, in_variant: bool) -> MemberPlace {
-    MemberPlace {
-        reported: None,
-        ..member_place(field, index, in_variant, false, "")
-    }
-}
-
-/// What the checks a member of an untagged variant names add to `validate()`. The variant's lone
-/// slot is the value serde writes for the variant, so it is reported under no name, as a
-/// flattened member is.
-#[cfg(feature = "serde")]
-fn untagged_member_checks(
-    field: &Field,
-    field_def: &FieldDef,
-    index: usize,
-    flattened: bool,
-    wire_name: &str,
-) -> Option<proc_macro2::TokenStream> {
-    if flattened {
-        return flattened_member_checks(field, field_def, index, true);
-    }
-    let named = &field_def.model_schema_prop_meta.as_ref()?.check;
-    checks::member_calls(
-        &member_place(field, index, true, false, wire_name),
-        &field.ty,
-        named,
-        VALIDATE_SINK,
-    )
+    checks::member_calls(place, &field.ty, named, VALIDATE_SINK)
 }
 
 /// What an untagged slot's arm runs: the slot's own check, then the one its type declares.
@@ -15749,54 +15722,73 @@ fn needs_injected_default(wraps: &[ConstraintWrap], has_default: bool) -> bool {
     matches!(first_opaque, Some(ConstraintWrap::Optional)) && !has_default
 }
 
+/// The steps serde writes on the way to each member of `fields`, below `prefix`, in the order the
+/// members are declared. The only slot of a struct, and of a variant, is the value serde writes
+/// for it.
+fn steps_of_members(
+    fields: &syn::Fields,
+    prefix: &[String],
+    rename_all: Option<&str>,
+) -> Vec<Vec<String>> {
+    let lone = matches!(fields, syn::Fields::Unnamed(slots) if slots.unnamed.len() == 1);
+    member_steps(fields, prefix, rename_all, lone)
+        .into_iter()
+        .map(|(_, _, steps)| steps)
+        .collect()
+}
+
+/// [`steps_of_members`] for each variant of `item_enum`, below what serde writes ahead of the
+/// variant's members. `rename_all_fields` cases the members of a variant that names no casing of
+/// its own.
+fn steps_of_variants(
+    item_enum: &syn::ItemEnum,
+    rename_all_fields: Option<&str>,
+) -> Vec<Vec<Vec<String>>> {
+    item_enum
+        .variants
+        .iter()
+        .map(|variant| {
+            let (_, rename_all) = variant_serde_names(&variant.attrs, rename_all_fields);
+            steps_of_members(
+                &variant.fields,
+                &variant_steps(item_enum, variant),
+                rename_all.as_deref(),
+            )
+        })
+        .collect()
+}
+
 /// Where `validate()` reads a member, and the name it reports it under: the one seam a bound and
-/// a check of the member are both written from. A named member goes by `wire_name`, the key serde
-/// writes it under. A slot goes by its position where `names_a_slot` says it has one, and by no
-/// name where it is the value serde writes for the whole variant.
-fn member_place(
-    field: &Field,
-    index: usize,
-    in_variant: bool,
-    names_a_slot: bool,
-    wire_name: &str,
-) -> MemberPlace {
+/// a check of the member are both written from. The name is the steps serde writes on the way to
+/// the member, joined by dots, and none where serde writes the value itself.
+fn member_place(field: &Field, index: usize, in_variant: bool, steps: &[String]) -> MemberPlace {
     // A variant's member is bound by its arm, a struct's is read off `self`.
     let access = if in_variant {
         MemberAccess::VariantBinding
     } else {
         MemberAccess::SelfField
     };
-    field.ident.as_ref().map_or_else(
-        || MemberPlace {
-            checked: slot_access_expr(access, index),
-            reported: names_a_slot.then(|| index.to_string()),
-        },
-        |member| MemberPlace {
-            checked: member_access_expr(access, member),
-            reported: Some(wire_name.to_owned()),
-        },
-    )
+    let checked = field.ident.as_ref().map_or_else(
+        || slot_access_expr(access, index),
+        |member| member_access_expr(access, member),
+    );
+    MemberPlace {
+        checked,
+        reported: (!steps.is_empty()).then(|| steps.join(".")),
+    }
 }
 
-/// How a constrained member's helpers name and reach it. A named member is reported under
-/// `wire_name`, the key serde writes it under, and its helpers keep its Rust name. A slot goes by
-/// its position, and the lone slot of an untagged member is reported under no name, as what its
-/// own type reports is.
+/// How a constrained member's helpers name and reach it. It is reported under `steps`, the ones
+/// serde writes on the way to it, and its helpers keep its Rust name, or a slot's place among the
+/// ones declared.
 #[cfg(feature = "serde")]
 fn checked_member(
     field: &Field,
     index: usize,
     variant_ident: Option<&str>,
-    gate: ConstraintGate,
-    wire_name: &str,
+    steps: &[String],
 ) -> CheckedMember {
-    let place = member_place(
-        field,
-        index,
-        variant_ident.is_some(),
-        gate == ConstraintGate::Validator,
-        wire_name,
-    );
+    let place = member_place(field, index, variant_ident.is_some(), steps);
     let label = field
         .ident
         .as_ref()
@@ -15843,14 +15835,13 @@ fn interior_mutability_constraint_guard_error(
 /// Generates per-field serde validation code — the static validator and the `deserialize_with`
 /// hook, both published into the schema module either way — and, where `gate` says the read is
 /// also a gate, collects the `#[serde(deserialize_with = ...)]` attribute into `injected_attrs`,
-/// plus the `#[serde(default)]` that keeps an optional key optional under one. `wire_name` is the
-/// key serde writes the field under, which is the name each violation is reported under.
+/// plus the `#[serde(default)]` that keeps an optional key optional under one. Each violation is
+/// reported under the steps serde writes on the way to the field.
 #[cfg(feature = "serde")]
 fn generate_field_validation(
     ctx: &FieldContext<'_>,
     field: &Field,
     index: usize,
-    wire_name: &str,
     model_schema_prop_meta: &ModelSchemaPropMeta,
     gate: ConstraintGate,
     injected_attrs: &mut Vec<syn::Attribute>,
@@ -15865,7 +15856,7 @@ fn generate_field_validation(
     let has_numeric_constraints =
         model_schema_prop_meta.minimum.is_some() || model_schema_prop_meta.maximum.is_some();
 
-    let member = checked_member(field, index, ctx.variant_ident, gate, wire_name);
+    let member = checked_member(field, index, ctx.variant_ident, ctx.steps(index));
     // Recorded under the stem the member's helpers are named from, for the recovering decode.
     record_member_checks(
         &ident_schema_module_name(ctx.type_name),
@@ -15916,10 +15907,8 @@ fn generate_field_validation(
     };
 
     let helper_stem = &member.stem;
-    if gate == ConstraintGate::Validator
-        && let Some(named) = &member.reported
-    {
-        record_field_validator(module_name, helper_stem, named);
+    if gate == ConstraintGate::Validator {
+        record_field_validator(module_name, helper_stem, member.reported.as_deref());
     }
     // A borrow publishes no hook, so nothing is hung on one: its bound is the validator's alone,
     // an untagged member included.
@@ -16687,11 +16676,11 @@ fn zod_published_binding(
     // On the type's own expression, so every binding of it carries them: the one schema of a
     // type with no parameter, and each schema its builder builds for a type with one. A
     // `preprocess` is written around the checked expression: it corrects what the checks judge.
-    let checked = zod_preprocess_wrap(
-        zod_check_wrap(expression.to_owned(), published.checks),
-        published.preprocess,
-    );
     if parameters.is_empty() {
+        let checked = zod_preprocess_wrap(
+            zod_check_wrap(expression.to_owned(), published.checks),
+            published.preprocess,
+        );
         zod_const_block(
             item_name,
             preamble,
@@ -16706,10 +16695,62 @@ fn zod_published_binding(
             constrained: None,
             default_types: published.default_types,
         };
-        zod_factory_block(
-            item_name, rust_ident, parameters, &defaults, preamble, &checked, reexport,
-        )
+        let (run_ahead, built) =
+            zod_checked_in_a_builder(item_name, parameters, expression, published.checks);
+        let factory = zod_factory_block(
+            item_name,
+            rust_ident,
+            parameters,
+            &defaults,
+            preamble,
+            &zod_preprocess_wrap(built, published.preprocess),
+            reexport,
+        );
+        format!("{run_ahead}{factory}")
     }
+}
+
+/// The checks of a type that declares parameters, as its builder runs them: the function that
+/// runs them, written ahead of the builder, and the builder's expression handed to it. Inside the
+/// builder Zod cannot say a member written from a parameter is required, so the value a check is
+/// handed there is not the published type. The function's overload hands the schema back as it
+/// is, and its implementation takes a schema of the published type at any filling.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+fn zod_checked_in_a_builder(
+    item_name: &str,
+    parameters: &[String],
+    expression: &str,
+    checks: &[FunctionName],
+) -> (String, String) {
+    if checks.is_empty() {
+        return (String::new(), expression.to_owned());
+    }
+    let any_filling = parameters
+        .iter()
+        .map(|_| "ZodType[\"_zod\"][\"output\"]")
+        .collect::<Vec<_>>()
+        .join(", ");
+    let run = zod_check_wrap("built".to_owned(), checks);
+    (
+        format!(
+            "function {item_name}$Checked<Built extends ZodType>(built: Built): Built;\nfunction \
+             {item_name}$Checked(built: ZodType<{item_name}<{any_filling}>>): ZodType {{\n  \
+             return {run};\n}}\n\n"
+        ),
+        format!("{item_name}$Checked({expression})"),
+    )
+}
+
+/// Without a TypeScript type to state what a check is handed, the checks are written on the
+/// builder's expression itself.
+#[cfg(all(feature = "zod", not(feature = "typescript")))]
+fn zod_checked_in_a_builder(
+    _item_name: &str,
+    _parameters: &[String],
+    expression: &str,
+    checks: &[FunctionName],
+) -> (String, String) {
+    (String::new(), zod_check_wrap(expression.to_owned(), checks))
 }
 
 /// The list a type's `.meta` holds its examples in: each block's value where the type writes one,

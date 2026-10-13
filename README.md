@@ -677,7 +677,7 @@ The enum's check is the same check written in `#[model_schema_prop(...)]` on eac
 - **A member of an untagged enum** is checked by the read, which is what chooses the variant, and by `validate()`, the Zod schema and the JSON Schema.
 - **A member of a tagged enum** is checked by `validate()`, which the enum's own read runs on the value it read, and by the Zod schema, the JSON Schema and the [recovering decode](#recovering-decode-decode_with). See [Where a constraint is checked](#where-a-constraint-is-checked).
 
-`validate()` reports a named member under its name, a tagged variant's slot under its position and an untagged newtype variant's slot under no name, as it does for [a check written on the member](#a-slot-of-a-tuple-variant). A validator is published only where a schema surface is on (`typescript`, `zod` or `jsonschema`), so in a build with none the enum's check holds a field to nothing, as the field's own does there.
+`validate()` reports a field at [the path serde writes it at](#the-path-a-message-names), as it does for [a check written on the member](#a-slot-of-a-tuple-variant): below the variant's name or the content key where serde writes one, and under no name for an untagged newtype variant's slot. A validator is published only where a schema surface is on (`typescript`, `zod` or `jsonschema`), so in a build with none the enum's check holds a field to nothing, as the field's own does there.
 
 A field that writes a check of its own under the enum's is held to both. `minLength` is the larger of the two and `maxLength` the smaller. Two patterns are both checked: the Zod schema writes two `.check(z.regex(...))`, the JSON Schema states both in an `allOf`, and `validate()` reports each one the value fails.
 
@@ -3453,12 +3453,24 @@ error[E0592]: duplicate definitions with name `validate`
 
 #### The path a message names
 
-Each message opens with where the broken value sits in the payload, in single quotes: the key serde writes for each member on the way to the value, the index of each item of a list and the key of each entry of a map, joined by dots. The keys are the ones the Zod schema of the same declaration writes, and the ones an issue of the [recovering decode](#recovering-decode-decode_with) holds in its path.
+Each message opens with where the broken value sits in the payload, in single quotes: every step serde writes on the way to the value, joined by dots. A step is the key of a member, the name or the content key serde writes a variant under, a position in an array, the index of an item of a list or the key of an entry of a map. Where serde writes the value itself, there is no step. The path is the one an issue of the Zod schema of the same declaration holds, and the one an issue of the [recovering decode](#recovering-decode-decode_with) holds.
 
 - **A member** is named by the key serde writes it under. `rename_all` on a struct, `rename_all_fields` on an enum and a variant's own `rename_all` each move the name, and a field's own `rename` wins over the three. A type that renames nothing names each field as it was declared.
 - **An item of a list** is named by its index, counted from zero, at each level of the list. A `grid: Vec<Vec<Package>>` answers `'grid.0.1.itemLabel': too short: minimum length is 1, got 0`, and a `code_list: Vec<Code>` answers `'codeList.1': too short: minimum length is 2, got 1`. A count written on the list itself is reported at the list, with no index: a `parcel_list` under `minLength = 1` answers `'parcelList': too short: minimum length is 1, got 0` when it is empty.
 - **An entry of a map** is named by its key, as serde writes it. A `parcels_by_dock: BTreeMap<String, Parcel>` answers `'parcelsByDock.north.itemLabel': too short: minimum length is 1, got 0`. A key that is no string is the text serde writes for it: `'byNumber.7.itemLabel'` for a `u32`, `'byFlag.true.itemLabel'` for a `bool`, and for a plain enum the name serde writes the variant under, `'byDock.north.itemLabel'`. A map of lists and a list of maps name the key and the index in the order the payload nests them: `'listsByDock.north.1.itemLabel'` and `'docksInOrder.1.north.itemLabel'`. See [A model held in a map, in a slot or in a tuple](#a-model-held-in-a-map-in-a-slot-or-in-a-tuple).
-- **A slot** is named by its position, `'0'`, and so is a position of a tuple written as a field's type: `'deckPair.1.itemLabel'`. A `#[serde(flatten)]` member, an `Option` and the lone slot of an `#[serde(untagged)]` variant write no key and add no segment.
+- **A slot among several** is named by its position in the array serde writes, `'0'`, and so is a position of a tuple written as a field's type: `'deckPair.1.itemLabel'`. A slot under `#[serde(skip)]` is in no array, so the slots after it move up.
+- **The one slot of a struct** is the value serde writes for the struct, and adds no step. `Sealed(Parcel)` answers `'itemLabel': too short: minimum length is 1, got 0` for the payload `{"itemLabel":""}`, a field `sealed_load: Sealed` answers `'sealedLoad.itemLabel': ...`, and a field `code: Lone`, over a `Lone(String)` held to `minLength = 1`, answers `'code': too short: minimum length is 1, got 0` for the payload `{"code":""}`.
+- **A member of a variant** is named below what serde writes ahead of it:
+
+  | The enum is written | serde writes | A named member | The one slot | A slot among several |
+  |---|---|---|---|---|
+  | with no tag attribute | `{"Loose":{"freightLabel":""}}` | `'Loose.freightLabel'` | `'Boxed.itemLabel'` | `'Split.1.itemLabel'` |
+  | under `tag = "kind", content = "held"` | `{"kind":"Loose","held":{"haulLabel":""}}` | `'held.haulLabel'` | `'held.itemLabel'` | `'held.1.itemLabel'` |
+  | under `tag = "kind"` | `{"kind":"Loose","liftLabel":""}` | `'liftLabel'` | `'itemLabel'` | |
+  | under `untagged` | `{"loadLabel":"","loadParcels":[]}` | `'loadLabel'` | `'itemLabel'` | |
+
+  The one slot holds a `Parcel` in each row, and the variant's step is the name serde writes it under: the variant's own `rename`, or the enum's `rename_all`. A slot that holds a string is named by the variant alone, `'Stamped': too short: minimum length is 1, got 0` for the payload `{"Stamped":""}`.
+- **A `#[serde(flatten)]` member and an `Option`** write no key and add no step.
 
 ```rust
 #[model_schema(minLength = 2)]
@@ -3537,7 +3549,7 @@ A slot of a tuple variant takes the five constraints as a named member of the va
 | The slot of | The read | `validate()` reports a violation |
 |---|---|---|
 | a newtype variant of an `#[serde(untagged)]` enum, such as the `Other(String)` arm of [`MimeType`](#untagged-enums-serdeuntagged) | checks it, which is what chooses the variant | under no name: `too short: minimum length is 1, got 0` |
-| a tuple variant of a tagged enum | reads it, and the enum's read refuses the value once it is whole | under the slot's position: `'0': ...`, and `'1': ...` for a second slot |
+| a tuple variant of a tagged enum | reads it, and the enum's read refuses the value once it is whole | at [the path serde writes the slot at](#the-path-a-message-names): `'Code': ...` for the one slot of a variant, and `'Pair.0': ...` and `'Pair.1': ...` for two slots |
 
 ```rust
 #[model_schema()]
@@ -3551,18 +3563,18 @@ pub enum Entry {
 }
 
 Entry::Code("abc".to_string()).validate();
-// Err(["'0': does not match pattern '^[A-Z]{3}$'"])
+// Err(["'Code': does not match pattern '^[A-Z]{3}$'"])
 Entry::Pair("a".to_string(), 0).validate();
-// Err(["'0': too short: minimum length is 2, got 1", "'1': too small: minimum is 1, got 0"])
+// Err(["'Pair.0': too short: minimum length is 2, got 1", "'Pair.1': too small: minimum is 1, got 0"])
 MimeType::Other(String::new()).validate();
 // Err(["too short: minimum length is 1, got 0", "does not match pattern '^[a-z]+/[a-z0-9.+-]+$'"])
 ```
 
-serde refuses `{"Code":"abc"}` and `{"Pair":["a",0]}` with those messages, the two of the pair joined by `; `. It reads `{"Code":"ABC"}` and `{"Pair":["ab",1]}` as it did, and `Entry::Code("ABC".to_string())` still writes `{"Code":"ABC"}`. The helpers are named by the slot's position in its variant, `validate_{variant}_{index}_value` and `deserialize_{variant}_{index}`: `validate_code_0_value` and `validate_pair_1_value` here, `validate_other_0_value` and `deserialize_other_0` for `MimeType`. An untagged slot whose type is a brand that declares a bound of its own runs both, the slot's check first.
+serde refuses `{"Code":"abc"}` and `{"Pair":["a",0]}` with those messages, the two of the pair joined by `; `. It reads `{"Code":"ABC"}` and `{"Pair":["ab",1]}` as it did, and `Entry::Code("ABC".to_string())` still writes `{"Code":"ABC"}`. The helpers are named by the slot's place among the ones its variant declares, `validate_{variant}_{index}_value` and `deserialize_{variant}_{index}`: `validate_code_0_value` and `validate_pair_1_value` here, `validate_other_0_value` and `deserialize_other_0` for `MimeType`. An untagged slot whose type is a brand that declares a bound of its own runs both, the slot's check first.
 
 #### A slot of a tuple struct
 
-A slot of a tuple struct takes the five constraints as a named field of a struct does, and the struct's wire and TypeScript type do not change. `validate()` reports a violation under the slot's position, the struct's read refuses the value with it, and the Zod schema and the JSON Schema write the checks on the slot's member of the tuple:
+A slot of a tuple struct takes the five constraints as a named field of a struct does, and the struct's wire and TypeScript type do not change. `validate()` reports a violation under the slot's position in the array serde writes, the struct's read refuses the value with it, and the Zod schema and the JSON Schema write the checks on the slot's member of the tuple:
 
 ```rust
 #[model_schema()]
@@ -3576,9 +3588,9 @@ Pair(String::new(), 0).validate();
 // Err(["'0': too short: minimum length is 1, got 0", "'1': too small: minimum is 1, got 0"])
 ```
 
-serde refuses `["",0]` with those two messages joined by `; `, reads `["a",1]` as it did, and `Pair("a".to_string(), 1)` still writes `["a",1]`. The Zod schema is `z.tuple([z.string().min(1, { error: ... }), z.number().int().min(1, { error: ... })])`, the JSON Schema writes `{ "type": "string", "minLength": 1 }` and `{ "type": "integer", "minimum": 1.0 }` under `prefixItems`, and the TypeScript type stays `[string, number]`. The helpers are named by the slot's position alone, `validate_{index}_value` and `deserialize_{index}`: `validate_0_value` and `validate_1_value` here. A slot typed as a list is [counted](#list-length-minlength-maxlength), as a field is.
+serde refuses `["",0]` with those two messages joined by `; `, reads `["a",1]` as it did, and `Pair("a".to_string(), 1)` still writes `["a",1]`. The Zod schema is `z.tuple([z.string().min(1, { error: ... }), z.number().int().min(1, { error: ... })])`, the JSON Schema writes `{ "type": "string", "minLength": 1 }` and `{ "type": "integer", "minimum": 1.0 }` under `prefixItems`, and the TypeScript type stays `[string, number]`. The helpers are named by the slot's place among the ones declared, `validate_{index}_value` and `deserialize_{index}`: `validate_0_value` and `validate_1_value` here. A slot typed as a list is [counted](#list-length-minlength-maxlength), as a field is.
 
-A struct of one slot is written as that slot's value, and its check is reported under `'0'` as well. A `#[serde(transparent)]` struct of one slot is a [branded newtype](#branded-newtype-validation-constraints), whose checks are written on the type: a `#[model_schema_prop]` on its slot is refused.
+A struct of one slot is written as that slot's value, so its check is reported under no name: a `Lone(String)` held to `minLength = 1` answers `too short: minimum length is 1, got 0`, and under the key of a field that holds it. A `#[serde(transparent)]` struct of one slot is a [branded newtype](#branded-newtype-validation-constraints), whose checks are written on the type: a `#[model_schema_prop]` on its slot is refused.
 
 #### Constraints under `Option` and wrappers
 
@@ -3728,7 +3740,7 @@ This reaches through `Option`, `Box`/`Cow`/`Rc`/`Arc` and every level of a list,
 | Held | Reported under |
 |---|---|
 | as a value of a `HashMap`, of a `BTreeMap` and, under the [`indexmap` feature](#feature-flags), of an `IndexMap` | the entry's key, as serde writes it |
-| in a slot of a tuple struct, and of a tuple variant of a tagged enum | the slot's position, as the check [written on the slot itself](#a-slot-of-a-tuple-struct) is |
+| in a slot of a tuple struct, and of a tuple variant of a tagged enum | [the path serde writes the slot at](#the-path-a-message-names), as the check [written on the slot itself](#a-slot-of-a-tuple-struct) is: its position among several slots, nothing for the one slot of a struct, and the variant's name or the content key ahead of either |
 | in a tuple written as a field's type, `(String, Parcel)` | its position in the tuple |
 
 ```rust
@@ -3771,7 +3783,7 @@ The walk goes on below each of the three as it does below a field: through an `O
 
 `validate()` is written under the bounds the type declares, so a key typed with one of the type's own parameters is written only where the type declares `Serialize` for it. `struct Rack<Key: Ord + Serialize>` over a `by_key: BTreeMap<Key, Parcel>` answers `'byKey.north.itemLabel': ...`, and `struct Shelf<Key: Ord>` runs each parcel as well and names the field alone, `'byKey.itemLabel': ...`.
 
-The brand's read-time hook stands unchanged beside this: a brand refuses in its own read, at the first value that breaks its bound, and a holder's read answers that refusal with the field's key in front. A nested `#[model_schema()]` type's bound is the holder's `validate()` to report. The holder reads the nested type with no judgement of its own, and its read then runs `validate()` over the whole value, which is also what refuses a message built in Rust, where no read ever ran, as every outbound message a generated client sends is.
+The brand's read-time hook stands unchanged beside this: a brand refuses in its own read, at the first value that breaks its bound, and a holder's read answers that refusal with the field's path in front. A nested `#[model_schema()]` type's bound is the holder's `validate()` to report. The holder reads the nested type with no judgement of its own, and its read then runs `validate()` over the whole value, which is also what refuses a message built in Rust, where no read ever ran, as every outbound message a generated client sends is.
 
 ### Checks (`check`)
 
@@ -3923,14 +3935,14 @@ export function withinParcel(value: Parcel, ctx: ParsePayload<Parcel>): void {
 
 Rust answers `Err` with one message per broken rule, and TypeScript pushes one issue per broken rule to `ctx.issues`: `{ code: "custom", message, path, input: value }`.
 
-- **A field's check names no path.** `validate()` writes each message under the name a bound of that field is reported under: [the key serde writes](#the-path-a-message-names), a slot's position, and nothing for a `#[serde(flatten)]` member and for the lone slot of an `#[serde(untagged)]` variant. A message that leads with a path below the field's value is written into that name: a check of `item_code_list` answering `'1': ...` is reported as `'itemCodeList.1': ...`. In TypeScript the issue's `path` is `[]`, or the path below the field's value, `[1]`, and zod writes the field's own key ahead of it.
+- **A field's check names no path.** `validate()` writes each message under the name a bound of that field is reported under, [the path serde writes the field at](#the-path-a-message-names): its key, a slot's position among several, the variant's name or the content key ahead of a variant's member, and nothing for a `#[serde(flatten)]` member and for a slot serde writes as the value itself. A message that leads with a path below the field's value is written into that name: a check of `item_code_list` answering `'1': ...` is reported as `'itemCodeList.1': ...`. In TypeScript the issue's `path` is `[]`, or the path below the field's value, `[1]`, and zod writes the field's own key ahead of it.
 - **A type's check leads each message with the path of what it refuses**, in single quotes, written with the keys of the payload and the index of each item, joined by dots: `'fragileItemCodes.1': y is outside of itemCodeList`. In TypeScript that is `path: ["fragileItemCodes", 1]`. tixschema cannot check a path you write: a key under `rename_all` is the renamed one, as in every generated message. A message with no lead is about the value itself.
 
 #### Where a check runs
 
 **In `validate()`, in every build.** A type that names a check, on itself or on a field, publishes [`validate()`](#the-validate-method) whether or not a field of it carries a bound, with the `serde` feature off and with no schema surface on as well: a function you wrote is called wherever the type is declared. Each member's bounds run first and its checks after them, member by member in the order declared, and the type's checks run last. Several checks of one key run in the order written, and every one runs: none stops another, and none is stopped by a broken bound.
 
-Every shape runs its checks: a struct with named fields, a tuple struct (a slot's check where [a slot's bound](#a-slot-of-a-tuple-struct) is, reported under its position), a unit struct, an enum under every tagging and a plain one (a member's check runs for the variant the value holds, the enum's own after it), a branded newtype (after the brand's own string checks, with no path), and a type with a parameter at every filling. A type that holds another runs the `validate()` of what it holds, as it does [for a bound](#a-bound-the-fields-own-type-declares), so `Manifest` reports `'parcel.fragileItemCodes.1': y is outside of itemCodeList`.
+Every shape runs its checks: a struct with named fields, a tuple struct (a slot's check where [a slot's bound](#a-slot-of-a-tuple-struct) is, reported where that bound is), a unit struct, an enum under every tagging and a plain one (a member's check runs for the variant the value holds, the enum's own after it), a branded newtype (after the brand's own string checks, with no path), and a type with a parameter at every filling. A type that holds another runs the `validate()` of what it holds, as it does [for a bound](#a-bound-the-fields-own-type-declares), so `Manifest` reports `'parcel.fragileItemCodes.1': y is outside of itemCodeList`.
 
 **In the Zod schema**, as one `.check(...)` per name:
 

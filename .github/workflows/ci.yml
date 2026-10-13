@@ -1,5 +1,7 @@
 name: CI Pipeline
 
+# The gate a change is held to: every feature on, one lint, one build, one test run. The feature
+# sets, the emitted clients' own run and the audit are in `full.yml`.
 on:
   push:
     branches: [ master ]
@@ -24,10 +26,10 @@ jobs:
         toolchain: stable
         components: clippy, rustfmt
 
-    - name: Install just, cargo-hack and cargo-audit
+    - name: Install just
       uses: taiki-e/install-action@v2
       with:
-        tool: just,cargo-hack,cargo-audit
+        tool: just
 
     - name: Cache cargo registry
       uses: actions/cache@v3
@@ -69,57 +71,23 @@ jobs:
         kotlinc -version
         java -version
 
-    - name: Build project
+    - name: Lint with every feature on
+      id: lint
+      run: |
+        echo "🧹 Linting with every feature on..."
+        cargo clippy --all-targets --all-features -- -D warnings
+
+    - name: Build with every feature on
       id: build
       run: |
-        echo "🏗️ Building project..."
-        cargo build --verbose
+        echo "🏗️ Building with every feature on..."
+        cargo build --all-features
 
-    - name: Run code checks
-      id: check
+    - name: Test with every feature on
+      id: test
       run: |
-        echo "🔍 Running code checks..."
-        just check
-
-    - name: Run lint across all feature combinations
-      id: lint-all
-      run: |
-        echo "🧹 Linting every combination of the feature sets..."
-        just lint-sets
-
-    - name: Run basic tests
-      id: test-basic
-      run: |
-        echo "🧪 Running basic tests..."
-        cargo test --verbose
-
-    - name: Run extensive tests
-      id: test-extensive
-      env:
-        RUSTFLAGS: ""
-      run: |
-        echo "🚀 Testing every combination of the feature sets..."
-        just test-sets
-
-    - name: Type-check the emitted TypeScript
-      id: typecheck-ts
-      run: |
-        echo "🔎 Type-checking the emitted TypeScript with tsc..."
-        just typecheck-ts
-
-    - name: Run the emitted clients under their own toolchains
-      id: test-emitted
-      run: |
-        echo "🌐 Running the emitted Node, Dart, Swift and Kotlin clients..."
-        just test-emitted
-
-    - name: Run security audit
-      id: audit
-      # No Cargo.lock is committed (library crate), so the recipe generates one to scan for each
-      # of the two packages, this one and `bson3/`.
-      run: |
-        echo "🛡️ Running security audit..."
-        just audit
+        echo "🧪 Testing with every feature on..."
+        cargo test --all-features
 
     - name: Send Discord notification
       if: always()
@@ -140,14 +108,9 @@ jobs:
         SERVER_URL: ${{ github.server_url }}
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         TIMESTAMP: ${{ github.event.head_commit.timestamp }}
+        LINT: ${{ steps.lint.outcome }}
         BLD: ${{ steps.build.outcome }}
-        CHK: ${{ steps.check.outcome }}
-        LALL: ${{ steps.lint-all.outcome }}
-        TBASIC: ${{ steps.test-basic.outcome }}
-        TEXT: ${{ steps.test-extensive.outcome }}
-        TSC: ${{ steps.typecheck-ts.outcome }}
-        EMIT: ${{ steps.test-emitted.outcome }}
-        AUDIT: ${{ steps.audit.outcome }}
+        TEST: ${{ steps.test.outcome }}
       run: |
         # Validate repository to prevent forks from sending notifications
         if [[ "$REPO" != "eburgos/tixschema" && "$REPO" != "tixena/tixschema" ]]; then
@@ -158,19 +121,14 @@ jobs:
         # Overall status + which step failed
         JOB_STATUS="success"
         FAILED_STEP="None"
-        if [[ "$BLD" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Build (cargo build)";
-        elif [[ "$CHK" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Code checks (just check)";
-        elif [[ "$LALL" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Lint the feature sets (just lint-sets)";
-        elif [[ "$TBASIC" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Basic tests (cargo test)";
-        elif [[ "$TEXT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Feature-set tests (just test-sets)";
-        elif [[ "$TSC" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Emitted TypeScript type check (just typecheck-ts)";
-        elif [[ "$EMIT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Emitted clients (just test-emitted)";
-        elif [[ "$AUDIT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Security audit (cargo audit)";
+        if [[ "$LINT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Lint (cargo clippy --all-features)";
+        elif [[ "$BLD" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Build (cargo build --all-features)";
+        elif [[ "$TEST" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Tests (cargo test --all-features)";
         fi
 
         icon() { case "$1" in success) printf '✅';; failure) printf '❌';; *) printf '⏭️';; esac; }
-        STATUS_VALUE=$(printf '🏗️ Build: %s\n🔍 Check: %s\n🧹 Lint (all features): %s\n🧪 Basic Tests: %s\n🚀 Extensive Tests: %s\n🔎 Emitted TypeScript: %s\n🌐 Emitted Clients: %s\n🛡️ Audit: %s' \
-          "$(icon "$BLD")" "$(icon "$CHK")" "$(icon "$LALL")" "$(icon "$TBASIC")" "$(icon "$TEXT")" "$(icon "$TSC")" "$(icon "$EMIT")" "$(icon "$AUDIT")")
+        STATUS_VALUE=$(printf '🧹 Lint: %s\n🏗️ Build: %s\n🧪 Tests: %s' \
+          "$(icon "$LINT")" "$(icon "$BLD")" "$(icon "$TEST")")
 
         # Per-event details: commit message / author / PR link
         if [[ "$EVENT_NAME" == "pull_request" ]]; then
