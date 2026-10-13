@@ -707,6 +707,14 @@ export const Document$Schema: ZodType<Document> = Document$RawSchema.meta({
 /// A `#[serde(transparent)]` struct with a *named* field is no brand, and its field attributes are
 /// read as any other named field's are.
 ///
+/// ## Checks
+///
+/// `check = ["withinParcel"]` names functions of the consumer's own that judge the whole value,
+/// beside the same key on a field. The type's generated `validate()` calls the snake case of each
+/// name, `within_parcel(self)`, the Zod schema carries one `.check(...)` per name, and the
+/// recovering decode lists what a check refuses as an issue. `model_schema_prop` documents the key
+/// under "Checks".
+///
 #[proc_macro_attribute]
 pub fn model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     exec_model_schema(args.into(), input.into()).into()
@@ -834,6 +842,8 @@ pub fn model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 /// it at every filling, and a type that holds one at any filling runs it. A `validate` of the
 /// consumer's own on one filling is therefore a duplicate definition (`E0592`).
 ///
+/// A type that names a [check](#checks), on itself or on a field, gets the method in every build.
+///
 /// ```rust
 /// use tixschema::{model_schema, model_schema_prop};
 /// use serde::{Deserialize, Serialize};
@@ -911,6 +921,57 @@ pub fn model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     pub name: String,
 /// }
 /// ```
+///
+/// ## Checks
+///
+/// - `check = ["name", ...]` — functions of the consumer's own that judge the field's value, each
+///   named once and called under that name in every language
+///
+/// The same key on the type, `#[model_schema(check = ["name"])]`, names functions that judge the
+/// whole value. Rust calls the snake case of each name, in scope where the type is declared, and
+/// the Zod schema calls the name as written:
+///
+/// ```text
+/// fn without_duplicates(value: &[String]) -> Result<(), Vec<String>>   // a field's check
+/// fn within_parcel(value: &Parcel) -> Result<(), Vec<String>>          // a type's check
+///
+/// function withoutDuplicates(value: Array<string>, ctx: z.core.ParsePayload<Array<string>>): void
+/// function withinParcel(value: Parcel, ctx: z.core.ParsePayload<Parcel>): void
+/// ```
+///
+/// A field's check takes the field's own value, read as a bound reads it: under `Option` it is
+/// called only where a value is held, under `Box`, `Rc`, `Arc`, `Cow` and a reference it takes
+/// what they hold, and a list or a map is taken whole. Its messages name no path: `validate()`
+/// writes each under the name a bound of that field is reported under. A type's check leads each
+/// message with the path of what it refuses, in single quotes, written with the keys of the
+/// payload: `'fragileItemCodes.1': y is outside of itemCodeList`. A TypeScript function pushes
+/// `{ code: "custom", message, path, input }` to `ctx.issues`, the path empty for a field's
+/// check. The check of a branded newtype takes the brand in Rust and, in TypeScript, the value
+/// the brand is written over, the check being written ahead of `.brand()`.
+///
+/// A type that names a check, on itself or on a field, has `validate()` in every build. Each
+/// member's bounds run first and its checks after them, in the order written, the type's checks
+/// last, and every one runs. A type with a parameter runs them at every filling, so its function
+/// is written once, over every filling. The Zod schema carries one `.check(...)` per name, on the
+/// schema of the value the Rust function takes, and a type declared with `decode_with` lists each
+/// message as an `Issue::Invalid`, `expected: Unknown`, at the path the message leads with. A
+/// serde read runs no check, the JSON Schema calls no function, and the Dart, Swift and Kotlin
+/// types are written as they are without the key.
+///
+#[cfg_attr(
+    all(
+        feature = "serde",
+        any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    ),
+    doc = include_str!("check_example.md")
+)]
+///
+/// The key is refused where it is not an array of string literals, where a name is no identifier
+/// (ASCII letters, digits and `_`, not led by a digit), where it names no function and where it
+/// names one twice, each spanned on what was written. It is refused on a type alias, which has no
+/// `impl` to call a function from, and on the slot of a branded newtype, whose checks are written
+/// on the type. A name with no function in scope is `E0425` at the string literal, and a function
+/// that asks more of a type parameter than the type declares is `E0277` there.
 ///
 /// ## Flags
 ///

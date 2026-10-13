@@ -1,6 +1,7 @@
 //! The recovering decode `#[model_schema(decode_with)]` turns on.
 
 mod aliases;
+mod checks;
 pub mod enums;
 #[cfg(feature = "mongodb")]
 mod fields;
@@ -369,6 +370,9 @@ impl Lookup<'_> {
 
 /// What the flag adds to a type.
 pub struct RecoveringDecode {
+    /// The `impl` holding `decode_with_check_messages`, under the bounds the type's author wrote:
+    /// the entry points of every source run it on the value serde built.
+    pub check_messages: TokenStream,
     /// The items added to the `{type}_schema` module a schema surface writes, or that module whole
     /// in a build where none writes one.
     pub schema_module: TokenStream,
@@ -790,6 +794,8 @@ struct Whole {
 
 /// What a type's item writes, as the walker's methods are written from it.
 struct Written<'reach> {
+    /// `decode_with_check_messages`, written from the checks the item and its members name.
+    check_messages: TokenStream,
     names: Vec<String>,
     reach: &'reach Reach,
 }
@@ -2017,6 +2023,7 @@ pub fn struct_recovering_decode(item_struct: &ItemStruct) -> RecoveringDecode {
         &module_name,
         &parameters,
         &Written {
+            check_messages: checks::struct_check_messages(item_struct, &module_name, &parameters),
             names,
             reach: &reach,
         },
@@ -2108,6 +2115,7 @@ where
     type_impl.extend(paths.beside.clone());
     type_impl.extend(written.reach.guards());
     RecoveringDecode {
+        check_messages: checks::type_impl(name, generics, &module, &written.check_messages),
         schema_module: placed_in_schema_module(&module, &items),
         type_impl,
     }
@@ -2360,7 +2368,8 @@ fn bson_entry_methods(module: &Ident, written: &[String]) -> TokenStream {
         let mut whole = bson::Bson::Document(document);
         let found = match <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(whole.clone())) {
             ::core::result::Result::Ok(decoded) => {
-                let found = Self::decode_with_bson_report(&whole, ::core::option::Option::None);
+                let mut found = Self::decode_with_bson_report(&whole, ::core::option::Option::None);
+                found.extend(Self::decode_with_bson_check_issues(&whole, &decoded.decode_with_check_messages()));
                 if found.is_empty() {
                     return ::core::result::Result::Ok(decoded);
                 }
@@ -2375,7 +2384,10 @@ fn bson_entry_methods(module: &Ident, written: &[String]) -> TokenStream {
     };
     let second_read = quote! {
         let read = <Self as serde::Deserialize>::deserialize(bson::Deserializer::new(whole.clone()));
-        let again = Self::decode_with_bson_report(&whole, read.as_ref().err().map(::std::string::ToString::to_string));
+        let mut again = Self::decode_with_bson_report(&whole, read.as_ref().err().map(::std::string::ToString::to_string));
+        if let ::core::result::Result::Ok(decoded) = &read {
+            again.extend(Self::decode_with_bson_check_issues(&whole, &decoded.decode_with_check_messages()));
+        }
         match read {
             ::core::result::Result::Ok(decoded) if again.is_empty() => ::core::result::Result::Ok(decoded),
             _ => ::core::result::Result::Err(#module::Unrecovered { issues: again }),
@@ -2689,10 +2701,12 @@ fn callback_items() -> TokenStream {
 /// said of the value, so each decode reads the value with serde once. Both entry points open
 /// with the same read and close with the same one.
 fn entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
+    // A check takes the value serde built, so each read serde accepts is followed by the checks.
     let first_read = quote! {
         let found = match <Self as serde::Deserialize>::deserialize(&value) {
             ::core::result::Result::Ok(decoded) => {
-                let found = Self::decode_with_value_report(&value, ::core::option::Option::None);
+                let mut found = Self::decode_with_value_report(&value, ::core::option::Option::None);
+                found.extend(Self::decode_with_value_check_issues(&value, &decoded.decode_with_check_messages()));
                 if found.is_empty() {
                     return ::core::result::Result::Ok(decoded);
                 }
@@ -2703,7 +2717,10 @@ fn entry_methods(module: &Ident, decider: &Ident) -> TokenStream {
     };
     let second_read = quote! {
         let read = <Self as serde::Deserialize>::deserialize(&value);
-        let again = Self::decode_with_value_report(&value, read.as_ref().err().map(::std::string::ToString::to_string));
+        let mut again = Self::decode_with_value_report(&value, read.as_ref().err().map(::std::string::ToString::to_string));
+        if let ::core::result::Result::Ok(decoded) = &read {
+            again.extend(Self::decode_with_value_check_issues(&value, &decoded.decode_with_check_messages()));
+        }
         match read {
             ::core::result::Result::Ok(decoded) if again.is_empty() => ::core::result::Result::Ok(decoded),
             _ => ::core::result::Result::Err(#module::Unrecovered { issues: again }),

@@ -170,7 +170,7 @@ fn a_misspelled_length_constraint_key_is_refused_by_the_name_as_written() {
 
 #[test]
 fn no_key_the_parser_reads_is_rejected() {
-    let attrs: [Attribute; 11] = [
+    let attrs: [Attribute; 12] = [
         parse_quote! { #[model_schema_prop(as = String)] },
         parse_quote! { #[model_schema_prop(literal = "Tixena")] },
         parse_quote! { #[model_schema_prop(minLength = 1)] },
@@ -179,6 +179,7 @@ fn no_key_the_parser_reads_is_rejected() {
         parse_quote! { #[model_schema_prop(maximum = 1.5)] },
         parse_quote! { #[model_schema_prop(pattern = "^[a-z]+$")] },
         parse_quote! { #[model_schema_prop(preprocess = ["trim"])] },
+        parse_quote! { #[model_schema_prop(check = ["withinParcel"])] },
         parse_quote! { #[model_schema_prop(ts_optional)] },
         parse_quote! { #[model_schema_prop(as_number)] },
         parse_quote! { #[model_schema_prop(nullable)] },
@@ -221,4 +222,53 @@ fn a_refusal_keeps_what_the_parser_had_already_read() {
     }]);
     assert_eq!(meta.min_length, Some(3));
     assert!(meta.attr_rejection.is_some());
+}
+
+#[test]
+fn a_check_names_its_functions_in_the_order_written() {
+    let meta = parse_model_schema_prop_attributes(&[parse_quote! {
+        #[model_schema_prop(check = ["withoutDuplicates", "short_list", "_sealed9"])]
+    }]);
+    assert!(meta.attr_rejection.is_none());
+    let named: Vec<&str> = meta.check.iter().map(|check| check.name.as_str()).collect();
+    assert_eq!(named, ["withoutDuplicates", "short_list", "_sealed9"]);
+}
+
+#[test]
+fn a_check_that_names_no_function_by_an_identifier_is_refused() {
+    for (attr, said) in [
+        (
+            parse_quote! { #[model_schema_prop(check = "withinParcel")] },
+            "`model_schema_prop` key `check` takes an array of string literals, each naming a \
+             function: `check = [\"withinParcel\"]`",
+        ),
+        (
+            parse_quote! { #[model_schema_prop(check)] },
+            "`model_schema_prop` key `check` takes an array of string literals, each naming a \
+             function: `check = [\"withinParcel\"]`",
+        ),
+        (
+            parse_quote! { #[model_schema_prop(check = [withinParcel])] },
+            "`model_schema_prop` key `check` takes string literals: each element is a string \
+             literal that names a function",
+        ),
+        (
+            parse_quote! { #[model_schema_prop(check = ["within-parcel"])] },
+            "`model_schema_prop` key `check` names `within-parcel`, and a name is an identifier: \
+             ASCII letters, digits and `_`, not led by a digit. The name is written as a \
+             function's name in every language",
+        ),
+        (
+            parse_quote! { #[model_schema_prop(check = [])] },
+            "`model_schema_prop` key `check` names no function: write one name at least, or drop \
+             the key",
+        ),
+        (
+            parse_quote! { #[model_schema_prop(check = ["a", "a"])] },
+            "`model_schema_prop` key `check` names `a` twice: the name is written twice, and a \
+             function runs once",
+        ),
+    ] {
+        assert_eq!(attr_rejection(attr).as_deref(), Some(said));
+    }
 }

@@ -556,9 +556,18 @@ fn every_added_method_but_the_entry_point_carries_the_flags_name() {
     let item: syn::ItemStruct =
         syn::parse_str("pub struct Named { pub title: String, pub versions: Vec<Version> }")
             .unwrap();
-    let added: syn::ItemImpl = syn::parse2(struct_recovering_decode(&item).type_impl).unwrap();
-    let methods: Vec<String> = added.items.iter().filter_map(member_name).collect();
-    assert_eq!(methods.len(), added.items.len());
+    let emitted = struct_recovering_decode(&item);
+    let added: syn::ItemImpl = syn::parse2(emitted.type_impl).unwrap();
+    // What every source's entry points run on the value serde built is in an `impl` of its own,
+    // under the bounds the type's author wrote.
+    let checked: syn::ItemImpl = syn::parse2(emitted.check_messages).unwrap();
+    let methods: Vec<String> = added
+        .items
+        .iter()
+        .chain(&checked.items)
+        .filter_map(member_name)
+        .collect();
+    assert_eq!(methods.len(), added.items.len() + checked.items.len());
     let mut named = vec![
         "from_value_with",
         "from_value_piped",
@@ -582,6 +591,13 @@ fn every_added_method_but_the_entry_point_carries_the_flags_name() {
     // The typed paths carry the name of the feature that adds them.
     if cfg!(feature = "mongodb") {
         named.push("MONGO_FIELDS");
+    }
+    named.extend([
+        "decode_with_check_messages",
+        "decode_with_value_check_issues",
+    ]);
+    if cfg!(feature = "bson") {
+        named.push("decode_with_bson_check_issues");
     }
     assert_eq!(methods, named);
 }

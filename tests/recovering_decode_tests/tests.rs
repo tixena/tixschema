@@ -31,6 +31,7 @@ mod as_text {
 }
 mod aliased;
 mod bounds;
+mod checks;
 mod enum_shapes;
 mod flattened;
 mod flattened_shapes;
