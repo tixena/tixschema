@@ -14,3 +14,8 @@ mod validate;
 #[cfg(all(feature = "swift", feature = "serde"))]
 #[path = "swift_tests/read.rs"]
 mod read;
+
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "swift_tests/preprocess.rs"]
+mod preprocess;

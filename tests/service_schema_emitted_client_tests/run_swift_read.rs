@@ -294,7 +294,7 @@ fn plain(held: &Value) -> Value {
 }
 
 /// `printed` with the value after each `built ` and `read ` written as [`plain`] writes it.
-fn normalized(printed: &str) -> String {
+pub fn normalized(printed: &str) -> String {
     let mut lines = String::new();
     for line in printed.lines() {
         let split = [": read ", ", unjudged: built "]
