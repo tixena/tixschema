@@ -162,13 +162,13 @@ use crate::features::jsonschema::{
 use crate::utils::json_argument_binding;
 
 #[cfg(feature = "dart")]
-use crate::features::dart::dart_schema_dispatch;
+use crate::features::dart::{DartTypeArgs, dart_schema_dispatch};
 
 #[cfg(feature = "swift")]
-use crate::features::swift::{refuses_swift, swift_schema_dispatch};
+use crate::features::swift::{SwiftTypeArgs, refuses_swift, swift_schema_dispatch};
 
 #[cfg(feature = "kotlin")]
-use crate::features::kotlin::{kotlin_refused_width, kotlin_schema_dispatch};
+use crate::features::kotlin::{KotlinArgs, kotlin_refused_width, kotlin_schema_dispatch};
 
 #[cfg(any(
     feature = "typescript",
@@ -1493,13 +1493,13 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     let registering = item_schema_ident(&item).cloned();
     // Independent of the dispatch below: it reads its own borrow of `item` ahead of the move, and
     // needs none of the machinery the other surfaces share.
-    let dart_tokens = dart_suffix_tokens(&item, parsed_args.name_override.as_deref());
+    let dart_tokens = dart_suffix_tokens(&item, &parsed_args);
     // Same independence as the Dart tokens above; the refusal walks the item's own fields ahead
     // of the move too, since it names each one by its declared type.
-    let swift_tokens = swift_suffix_tokens(&item, parsed_args.name_override.as_deref());
+    let swift_tokens = swift_suffix_tokens(&item, &parsed_args);
     let swift_refusals = swift_width_refusals(&item);
     // Same independence as the Dart and Swift tokens above.
-    let kotlin_tokens = kotlin_suffix_tokens(&item, parsed_args.name_override.as_deref());
+    let kotlin_tokens = kotlin_suffix_tokens(&item, &parsed_args);
     let expanded = process_item(item, &parsed_args);
     let deferred = with_prefixed_tokens(expanded, &deferred_shape_refusals(registering.as_ref()));
     let bound = with_prefixed_tokens(deferred, &filling_bound_checks);
@@ -1531,37 +1531,79 @@ fn process_item(item: Item, args: &ModelSchemaArgs) -> TokenStream {
 
 /// The Dart tokens `item` earns, or nothing without the `dart` feature — always callable, so the
 /// tokens that follow the item's own expansion never need a `#[cfg]`-gated `let` of their own.
+/// The backend is handed what it reads of `args`: the name, the checks, the string check of a
+/// brand or of an enum, and each member's bounds as [`member_prop_meta`] holds them.
 #[cfg(feature = "dart")]
-fn dart_suffix_tokens(item: &Item, name_override: Option<&str>) -> TokenStream {
-    dart_schema_dispatch(item, name_override)
+fn dart_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
+    // An enum's own string check is the one that reaches its members.
+    let reaching = matches!(item, Item::Enum(_)).then_some(args);
+    dart_schema_dispatch(
+        item,
+        &DartTypeArgs {
+            check: &args.check,
+            default_types: &args.default_types,
+            max_length: args.max_length,
+            member_meta: &|member| member_prop_meta(member, reaching),
+            min_length: args.min_length,
+            name_override: args.name_override.as_deref(),
+            pattern: args.pattern.as_deref(),
+        },
+    )
 }
 
 #[cfg(not(feature = "dart"))]
-fn dart_suffix_tokens(_item: &Item, _name_override: Option<&str>) -> TokenStream {
+fn dart_suffix_tokens(_item: &Item, _args: &ModelSchemaArgs) -> TokenStream {
     TokenStream::new()
 }
 
 /// The Swift tokens `item` earns, or nothing without the `swift` feature — the same always-
-/// callable shape as [`dart_suffix_tokens`].
+/// callable shape as [`dart_suffix_tokens`]. The emitter is handed the arguments it reads: the
+/// name, the checks, a brand's or an enum's string check, and each member's own bounds.
 #[cfg(feature = "swift")]
-fn swift_suffix_tokens(item: &Item, name_override: Option<&str>) -> TokenStream {
-    swift_schema_dispatch(item, name_override)
+fn swift_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
+    let enum_args = matches!(item, Item::Enum(_)).then_some(args);
+    swift_schema_dispatch(
+        item,
+        &SwiftTypeArgs {
+            check: &args.check,
+            default_types: &args.default_types,
+            max_length: args.max_length,
+            member_meta: &|member| member_prop_meta(member, enum_args),
+            min_length: args.min_length,
+            name_override: args.name_override.as_deref(),
+            pattern: args.pattern.as_deref(),
+        },
+    )
 }
 
 #[cfg(not(feature = "swift"))]
-fn swift_suffix_tokens(_item: &Item, _name_override: Option<&str>) -> TokenStream {
+fn swift_suffix_tokens(_item: &Item, _args: &ModelSchemaArgs) -> TokenStream {
     TokenStream::new()
 }
 
 /// The Kotlin tokens `item` earns, or nothing without the `kotlin` feature — the same always-
-/// callable shape as [`dart_suffix_tokens`].
+/// callable shape as [`dart_suffix_tokens`]. The emitter is handed the arguments it reads, and a
+/// member's bounds as every surface reads them: an enum's own string check is each reached
+/// member's as well.
 #[cfg(feature = "kotlin")]
-fn kotlin_suffix_tokens(item: &Item, name_override: Option<&str>) -> TokenStream {
-    kotlin_schema_dispatch(item, name_override)
+fn kotlin_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
+    let enum_args = matches!(item, Item::Enum(_)).then_some(args);
+    kotlin_schema_dispatch(
+        item,
+        &KotlinArgs {
+            check: &args.check,
+            default_types: &args.default_types,
+            max_length: args.max_length,
+            member_meta: &|member| member_prop_meta(member, enum_args),
+            min_length: args.min_length,
+            name_override: args.name_override.as_deref(),
+            pattern: args.pattern.as_deref(),
+        },
+    )
 }
 
 #[cfg(not(feature = "kotlin"))]
-fn kotlin_suffix_tokens(_item: &Item, _name_override: Option<&str>) -> TokenStream {
+fn kotlin_suffix_tokens(_item: &Item, _args: &ModelSchemaArgs) -> TokenStream {
     TokenStream::new()
 }
 
@@ -15165,7 +15207,13 @@ fn member_prop_meta(field: &Field, enum_args: Option<&ModelSchemaArgs>) -> Model
     if meta.pattern.is_none() {
         meta.pattern.clone_from(&args.pattern);
     }
-    #[cfg(any(feature = "serde", feature = "zod", feature = "jsonschema"))]
+    #[cfg(any(
+        feature = "serde",
+        feature = "zod",
+        feature = "jsonschema",
+        feature = "dart",
+        feature = "swift"
+    ))]
     if meta.pattern != args.pattern {
         meta.enum_pattern.clone_from(&args.pattern);
     }

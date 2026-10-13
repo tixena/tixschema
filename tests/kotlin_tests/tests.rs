@@ -982,11 +982,12 @@ fn a_member_named_after_a_hard_keyword_is_written_between_backticks() {
     assert_eq!(
         reserved_members_kotlin::kotlin_definition(),
         "@Serializable data class ReservedMembers(val `class`: String, val `in`: String, val \
-         type: String)"
+         type: String) { fun validate(): List<String> = emptyList() }"
     );
     assert_eq!(
         reserved_member_kotlin::kotlin_definition(),
-        "@Serializable enum class ReservedMember { Default, In, Other }"
+        "@Serializable enum class ReservedMember { Default, In, Other; fun validate(): \
+         List<String> = emptyList() }"
     );
     assert_eq!(
         serde_json::to_value(ReservedMembers {

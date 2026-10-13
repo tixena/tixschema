@@ -9,6 +9,8 @@ use std::io::Write as _;
 use std::io::stderr;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
+#[cfg(feature = "kotlin")]
+use std::process::Output;
 use std::process::{Command, id};
 use std::sync::Mutex;
 
@@ -30,6 +32,14 @@ pub const KOTLINC_VAR: &str = "TIXSCHEMA_KOTLINC";
 pub const JAVA_VAR: &str = "TIXSCHEMA_JAVA";
 #[cfg(feature = "kotlin")]
 pub const KOTLIN_LIBS_VAR: &str = "TIXSCHEMA_KOTLIN_LIBS";
+
+/// What one run answered: whether it succeeded, and what it wrote to each stream.
+#[cfg(feature = "swift")]
+pub struct Judged {
+    pub stderr: String,
+    pub stdout: String,
+    pub succeeded: bool,
+}
 
 /// What [`kotlin_toolchain`] found: the compiler and runtime [`ran_kotlin`] invokes, the plugin
 /// jar, and the classpath the three library jars join into.
@@ -108,6 +118,44 @@ pub fn ran(
 ) -> Option<String> {
     let at = workspace(named);
     run_in(var, fallback, entry, source, &at)
+}
+
+/// Writes `entry` into a workspace of its own and runs it under the named runtime with `flags`
+/// ahead of it. A run that fails is the caller's to judge. `None` and a runtime named in `var` that
+/// cannot be started are what they are to [`run_in`].
+#[cfg(feature = "swift")]
+pub fn judged(
+    named: &str,
+    var: &str,
+    fallback: &'static str,
+    flags: &[&str],
+    entry: &str,
+    source: &str,
+) -> Option<Judged> {
+    let at = workspace(named);
+    let chosen = env::var(var).ok();
+    let runtime = chosen.clone().unwrap_or_else(|| fallback.to_owned());
+    fs::write(at.join(entry), source).unwrap();
+    let run = Command::new(&runtime)
+        .args(flags)
+        .arg(entry)
+        .current_dir(&at)
+        .output();
+    fs::remove_dir_all(&at).unwrap();
+    let Ok(reported) = run else {
+        assert!(
+            chosen.is_none(),
+            "{var} names `{runtime}`, and no runtime could be started there: {}",
+            run.unwrap_err()
+        );
+        stand_down(var, fallback);
+        return None;
+    };
+    Some(Judged {
+        stderr: String::from_utf8_lossy(&reported.stderr).into_owned(),
+        stdout: String::from_utf8_lossy(&reported.stdout).into_owned(),
+        succeeded: reported.status.success(),
+    })
 }
 
 /// Like [`ran`], but first symlinks `<workspace>/node_modules` to `modules` (as returned by
@@ -240,14 +288,12 @@ fn kotlin_toolchain() -> Option<KotlinToolchain> {
     })
 }
 
-/// Compiles `source` as `main.kt` against the three library jars, with `-Werror` so an emitted
-/// warning fails the build, and runs the resulting jar under `java`. `None` says no toolchain
-/// piece was reachable; a piece named explicitly that still fails to start is a failure instead,
+/// Writes `source` as `main.kt` into `at` and compiles it against the three library jars, with
+/// `-Werror` so an emitted warning fails the build. `None` says no compiler was reachable, and the
+/// workspace is gone; a compiler named explicitly that cannot be started is a failure instead,
 /// matching [`run_in`]'s rule.
 #[cfg(feature = "kotlin")]
-pub fn ran_kotlin(source: &str) -> Option<String> {
-    let toolchain = kotlin_toolchain()?;
-    let at = workspace("kotlin");
+fn kotlin_compiled(toolchain: &KotlinToolchain, at: &Path, source: &str) -> Option<Output> {
     fs::write(at.join("main.kt"), source).unwrap();
 
     let named_kotlinc = env::var(KOTLINC_VAR).ok();
@@ -262,7 +308,7 @@ pub fn ran_kotlin(source: &str) -> Option<String> {
             "-d",
             "main.jar",
         ])
-        .current_dir(&at)
+        .current_dir(at)
         .output();
     let Ok(compiled) = compile else {
         let error = compile.unwrap_err();
@@ -276,9 +322,40 @@ pub fn ran_kotlin(source: &str) -> Option<String> {
              `kotlinc` on PATH, or name one in {KOTLINC_VAR}, and run `just test-emitted`, which \
              refuses to stand down.\n\n"
         ));
-        fs::remove_dir_all(&at).unwrap();
+        fs::remove_dir_all(at).unwrap();
         return None;
     };
+    Some(compiled)
+}
+
+/// What the compiler says of a `source` it refuses, compiled as [`ran_kotlin`] compiles one.
+/// `None` says no toolchain piece was reachable.
+#[cfg(feature = "kotlin")]
+pub fn refused_by_kotlinc(source: &str) -> Option<String> {
+    let toolchain = kotlin_toolchain()?;
+    let at = workspace("kotlin");
+    let compiled = kotlin_compiled(&toolchain, &at, source)?;
+    fs::remove_dir_all(&at).unwrap();
+    assert!(
+        !compiled.status.success(),
+        "`{} main.kt` compiled a source it was expected to refuse.\n--- source ---\n{source}",
+        toolchain.kotlinc
+    );
+    Some(format!(
+        "{}{}",
+        String::from_utf8_lossy(&compiled.stdout),
+        String::from_utf8_lossy(&compiled.stderr)
+    ))
+}
+
+/// Compiles `source` as `main.kt` and runs the resulting jar under `java`. `None` says no
+/// toolchain piece was reachable; a piece named explicitly that still fails to start is a failure
+/// instead, matching [`run_in`]'s rule.
+#[cfg(feature = "kotlin")]
+pub fn ran_kotlin(source: &str) -> Option<String> {
+    let toolchain = kotlin_toolchain()?;
+    let at = workspace("kotlin");
+    let compiled = kotlin_compiled(&toolchain, &at, source)?;
     assert!(
         compiled.status.success(),
         "`{} main.kt` failed to compile.\n--- stdout ---\n{}\n--- stderr ---\n{}\n--- source ---\n{source}",

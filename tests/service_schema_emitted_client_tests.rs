@@ -85,6 +85,11 @@ mod run_dart_ws;
 #[path = "service_schema_emitted_client_tests/run_dart_ws_headers.rs"]
 mod run_dart_ws_headers;
 
+/// The `validate()` of each emitted Dart type, run beside Rust's own.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_validate.rs"]
+mod run_dart_validate;
+
 /// A service named after reserved words, called through each mobile client and read by the Rust
 /// dispatcher.
 #[cfg(test)]
@@ -99,6 +104,15 @@ mod run_swift;
 #[path = "service_schema_emitted_client_tests/run_swift_ws_headers.rs"]
 mod run_swift_ws_headers;
 
+/// The emitted `validate()` of each shape, run and compared with the Rust one.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_validate.rs"]
+mod run_swift_validate;
+
+#[cfg(all(test, feature = "swift"))]
+#[path = "service_schema_emitted_client_tests/swift_validate_models.rs"]
+mod swift_validate_models;
+
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin.rs"]
 mod run_kotlin;
@@ -106,6 +120,11 @@ mod run_kotlin;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_ws_headers.rs"]
 mod run_kotlin_ws_headers;
+
+/// `validate()` of the emitted Kotlin types, run and held to what Rust's answers.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_validate.rs"]
+mod run_kotlin_validate;
 
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/runtime.rs"]

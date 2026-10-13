@@ -4,3 +4,8 @@
 #[cfg(feature = "swift")]
 #[path = "swift_tests/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "swift_tests/validate.rs"]
+mod validate;
