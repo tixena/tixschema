@@ -197,7 +197,7 @@ The crate uses optional features for minimal dependencies:
 - `typescript`: Enables TypeScript type generation
 - `chrono`: Enables chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`)
 - `indexmap`: Enables indexmap type support: `IndexMap` as a map, `IndexSet` as a list. It adds no dependency: the generated code names the types of the crate that declares them. With the feature off a type written `IndexMap<_, _>` or `IndexSet<_>` is refused at `exec_model_schema` with the feature named (`indexmap_feature_errors`), unless the crate declared a type of its own under the name above
-- `dart`: Enables Dart type generation with a JSON codec and a `validate()` on every type, and the Dart HTTP client
+- `dart`: Enables Dart type generation with a JSON codec whose read refuses what `validate()` refuses, a `validate()` on every type, and the Dart HTTP client
 - `swift`: Enables Swift type generation with a `Codable` codec, and `validate()` on every emitted type: the bounds and the checks, run as the Rust `validate()` runs them. `init(from:)` of each type calls it on the value it read and refuses what it refuses
 - `kotlin`: Enables Kotlin type generation with `kotlinx.serialization` annotations, and a `validate()` on every type that runs the bounds and calls the checks. A consuming Kotlin build declares two dependencies: the runtime library `org.jetbrains.kotlinx:kotlinx-serialization-json` and the Kotlin Gradle plugin `kotlin("plugin.serialization")`
 
@@ -1042,9 +1042,10 @@ consumer's view; this is what a change has to keep.
   `variant_validate` writes each variant's override, the enum's checks last, each handed `this`.
   A plain enum runs its checks.
 - **`validate` is a taken name** in `DART_FIELD_NAMES_TAKEN` and `DART_ENUM_NAMES_TAKEN`.
-- **The codec is untouched.** `validate()` is written after `toJson` in each class, and `fromJson`
-  calls nothing. `the_codec_of_each_type_is_the_text_it_was` in `tests/dart_tests/validate.rs`
-  holds every piece of the codec's text, in its order.
+- **`toJson` is untouched.** `validate()` is the last member of each class, after its codec.
+  `the_codec_of_each_type_is_the_text_it_was` in `tests/dart_tests/validate.rs` holds every piece
+  of the codec's text, in its order: the two reads, and `toJson` as it was before any type had
+  `validate()`.
 - **The tests.** `tests/dart_tests/validate.rs` pins the text of each shape and calls no Rust
   `validate()`, so it holds in a build with no schema surface. `tests/dart_tests/bounded_brands.rs`
   pins a brand's string check, which such a build refuses.
@@ -1052,7 +1053,58 @@ consumer's view; this is what a change has to keep.
   the Dart SDK: a value under a named field, in a list, in a map and in an optional is compared
   with what Rust's `validate()` answers of it, a slot and a variant's member are written out, and
   the README's section is held to the text. `dart analyze` passes every shape whose codec it
-  passed before.
+  passed before. Each value is read with `fromJsonUnjudged`: `fromJson` refuses a broken one.
+
+#### The Dart read refuses what `validate()` refuses
+
+`fromJson` of every type `src/features/dart.rs` writes is its own unjudged read followed by its
+`validate()`, and throws a `FormatException` whose message is the list joined by `; `, as the Rust
+read joins it. `README.md`'s "The Dart read refuses what `validate()` refuses" section is the
+consumer's view; this is what a change has to keep.
+
+- **One writer of the pair.** `read_pair` writes `fromJson` over `fromJsonUnjudged` for a class, a
+  wrapper (a brand, a tuple struct, an alias), a variant with named members and the base of a
+  sealed enum. `judged_body` writes the judgement, which the static `fromJson` of a plain enum
+  takes too. A generic type takes its converters in both reads.
+- **A declared type is read unjudged exactly where the holder's `validate()` runs it.** `Read` is
+  threaded through `dart_decode_expr` and `dart_decode_at`, and `Read::of_member` asks
+  `walks_what_it_holds`, the question `member_elements` asks: a member's own bound stands in for
+  what its type declares, a list's count apart. A value read unjudged where no `validate()`
+  walks is a rule no read runs, so each of these is read judged and ends the read with its own
+  messages: a converter handed for a type argument, the key of a map (`dart_map_key_decode`),
+  what a brand wraps, an alias of anything but a declared type itself, and a member under a
+  bound of its own. A flattened member is read unjudged whatever it writes, as `field_elements`
+  walks it.
+- **`dart_json_decode` stays judged**, so the clients' text is what it was: a reply is read
+  through `fromJson` inside the `try` each client already writes. The HTTP client answers
+  `undeserializablePayload` and the WebSocket client `failedValidation`, the fault each answers
+  for a reply it cannot read.
+- **A tagged enum** dispatches in the base's unjudged read: to `fromJsonUnjudged` of a variant
+  with named members, and to the constructor of a variant that holds a value or none, its
+  payload read as a member is.
+- **An untagged enum takes the variant serde takes.** `variant_bounds` writes `_bounds()` ahead
+  of a variant's `validate()`, and the attempt takes the variant where it answers nothing.
+  `Asked` is what one walk is asked: `Rules` for `validate()`, and `Bound` for the member's own
+  bounds under no place, then `_heldBound(...)` of each declared type the walk reaches, with no
+  check. `_heldBound` calls `validateBound()` through `dynamic` and answers nothing for a value
+  with no such method. `brand_validate` writes that method on a brand that carries a bound: the
+  bound alone. So a brand's bound chooses a variant whether the brand is declared above the
+  enum, below it or in another file, and nothing a check or a model reports does. A variant
+  with nothing to ask keeps `try { return ...; } catch (_) {}`.
+- **A plain enum** keeps its `fromJson` as it was where it names no check, and judges where it
+  names one. Both carry `fromJsonUnjudged`, the name a holder reads every declared type by.
+- **`validate()` stays the last member of a class**: `validateBound()` and `_bounds()` are
+  written ahead of it.
+- **`fromJsonUnjudged` is a taken name of a plain enum** (`DART_ENUM_NAMES_TAKEN`), which holds
+  it as a static function. It is not in `DART_FIELD_NAMES_TAKEN`: Dart takes a field and a
+  constructor under one name, so such a field is emitted as it was.
+- **The tests.** `tests/dart_tests/read.rs` pins the text of each read, and
+  `src/features/dart/tests.rs` that of a field named `fromJsonUnjudged`, which no integration
+  test can declare, the name being no snake case.
+  `tests/service_schema_emitted_client_tests/run_dart_read.rs` runs the reads under the Dart
+  SDK: the sample beside what the Rust read answers, every case of `run_dart_validate.rs` read
+  with `fromJson` and held to what its `validate()` answers, an untagged enum beside the variant
+  serde takes, a reply that breaks a rule through both clients, and the README's section.
 
 ### 8. Branded Newtypes
 

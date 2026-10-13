@@ -7,7 +7,8 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-/// The codec of each type below but `Audit`, as it was written before any type had `validate()`.
+/// The codec of each type below but `Audit`: its two reads, and `toJson` as it was written before
+/// any type had `validate()`.
 const CODEC: &str = include_str!("codec_before_validate.txt");
 
 /// The helper a type that names a place carries, as it is written into the type.
@@ -434,7 +435,11 @@ fn the_parcel_of_the_shared_table_is_written_with_its_bound_and_its_checks() {
             "class Parcel {{ const Parcel({{required this.fragile_item_codes,required \
              this.item_code_list,required this.label,}}); final List<String> \
              fragile_item_codes;final List<String> item_code_list;final String label; factory \
-             Parcel.fromJson(Map<String, dynamic> json) => Parcel(fragile_item_codes: \
+             Parcel.fromJson(Map<String, dynamic> json) {{ final read = \
+             Parcel.fromJsonUnjudged(json); final violations = read.validate(); if \
+             (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; \
+             }} factory Parcel.fromJsonUnjudged(Map<String, dynamic> json) => \
+             Parcel(fragile_item_codes: \
              (json['fragileItemCodes'] as List<dynamic>).map((e) => e as \
              String).toList(),item_code_list: (json['itemCodeList'] as List<dynamic>).map((e) => e \
              as String).toList(),label: json['label'] as String,); Map<String, dynamic> toJson() \
@@ -658,8 +663,11 @@ fn a_field_named_validate_moves_and_keeps_its_key() {
     assert_eq!(
         audit_dart::dart_definition(),
         "class Audit { const Audit({required this.validate_,}); final bool validate_; factory \
-         Audit.fromJson(Map<String, dynamic> json) => Audit(validate_: json['validate'] as \
-         bool,); Map<String, dynamic> toJson() => { 'validate': validate_, }; List<String> \
+         Audit.fromJson(Map<String, dynamic> json) { final read = Audit.fromJsonUnjudged(json); \
+         final violations = read.validate(); if (violations.isNotEmpty) throw \
+         FormatException(violations.join('; ')); return read; } factory \
+         Audit.fromJsonUnjudged(Map<String, dynamic> json) => Audit(validate_: json['validate'] \
+         as bool,); Map<String, dynamic> toJson() => { 'validate': validate_, }; List<String> \
          validate() => const []; }"
     );
     assert_eq!(
@@ -696,8 +704,8 @@ fn a_types_own_check_is_called_on_the_whole_value() {
     );
 }
 
-/// `validate()` is written at the end of each class, after its codec, so every piece of the text
-/// each type was written as before is still there, in its order.
+/// `validate()` is written at the end of each class, after its codec, so every piece of the
+/// codec is there, in its order.
 #[test]
 fn the_codec_of_each_type_is_the_text_it_was() {
     let written = definitions();

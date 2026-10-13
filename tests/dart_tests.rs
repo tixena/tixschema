@@ -18,3 +18,8 @@ mod bounded_brands;
 #[cfg(all(feature = "dart", feature = "serde"))]
 #[path = "dart_tests/validate.rs"]
 mod validate;
+
+#[cfg(test)]
+#[cfg(all(feature = "dart", feature = "serde"))]
+#[path = "dart_tests/read.rs"]
+mod read;

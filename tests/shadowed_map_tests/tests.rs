@@ -91,7 +91,7 @@ fn the_paths_of_the_type_declared_here_are_reached_through_the_field() {
 fn dart_reads_the_field_through_the_type_declared_here() {
     let dart = holder_dart::dart_definition();
     assert!(
-        dart.contains("held: Map.fromJson(json['held'], "),
+        dart.contains("held: Map.fromJsonUnjudged(json['held'], "),
         "got: {dart}"
     );
 }

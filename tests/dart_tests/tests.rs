@@ -425,8 +425,8 @@ fn test_struct_fromjson_and_tojson_round_trip_shape() {
 fn test_nested_type_reference_calls_its_own_fromjson_and_tojson() {
     let dart = warehouse_dart::dart_definition();
     assert!(
-        dart.contains("address: Address.fromJson(json['address']),"),
-        "a nested type reference should decode via its own fromJson. Got: {dart}"
+        dart.contains("address: Address.fromJsonUnjudged(json['address']),"),
+        "a nested type reference should decode via its own fromJsonUnjudged. Got: {dart}"
     );
     assert!(
         dart.contains("'address': (address).toJson(),"),
@@ -626,7 +626,7 @@ fn test_branded_newtype_wraps_the_inner_value() {
     assert!(dart.contains("class Sku {"));
     assert!(dart.contains("const Sku(this.value);"));
     assert!(dart.contains("final String value;"));
-    assert!(dart.contains("factory Sku.fromJson(dynamic json) => Sku(json as String);"));
+    assert!(dart.contains("factory Sku.fromJsonUnjudged(dynamic json) => Sku(json as String);"));
     assert!(dart.contains("dynamic toJson() => value;"));
 }
 
@@ -754,7 +754,7 @@ fn test_a_reference_to_a_renamed_type_uses_its_published_name() {
         dart.contains("final Customer customer;"),
         "a field referencing a renamed type should use the published name. Got: {dart}"
     );
-    assert!(dart.contains("customer: Customer.fromJson(json['customer']),"));
+    assert!(dart.contains("customer: Customer.fromJsonUnjudged(json['customer']),"));
 }
 
 #[test]
@@ -765,9 +765,9 @@ fn test_alias_publishes_a_wrapper_class_with_its_own_codec() {
         "an alias with no name override takes the Type suffix, like TypeScript's. Got: {dart}"
     );
     assert!(dart.contains("final String value;"));
-    assert!(
-        dart.contains("factory BarcodeType.fromJson(dynamic json) => BarcodeType(json as String);")
-    );
+    assert!(dart.contains(
+        "factory BarcodeType.fromJsonUnjudged(dynamic json) => BarcodeType(json as String);"
+    ));
     assert!(
         dart.contains("typedef Barcode = BarcodeType;"),
         "the Rust ident should resolve through a typedef. Got: {dart}"
@@ -881,10 +881,13 @@ fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
         reserved_members_dart::dart_definition(),
         "class ReservedMembers { const ReservedMembers({required this.class_,required \
          this.in_,required this.type,}); final String class_;final String in_;final String type; \
-         factory ReservedMembers.fromJson(Map<String, dynamic> json) => ReservedMembers(class_: \
-         json['class'] as String,in_: json['in'] as String,type: json['type'] as String,); \
-         Map<String, dynamic> toJson() => { 'class': class_,'in': in_,'type': type, }; \
-         List<String> validate() => const []; }"
+         factory ReservedMembers.fromJson(Map<String, dynamic> json) { final read = \
+         ReservedMembers.fromJsonUnjudged(json); final violations = read.validate(); if \
+         (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; } \
+         factory ReservedMembers.fromJsonUnjudged(Map<String, dynamic> json) => \
+         ReservedMembers(class_: json['class'] as String,in_: json['in'] as String,type: \
+         json['type'] as String,); Map<String, dynamic> toJson() => { 'class': class_,'in': \
+         in_,'type': type, }; List<String> validate() => const []; }"
     );
     assert_eq!(
         reserved_member_dart::dart_definition(),
@@ -892,8 +895,8 @@ fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
          ReservedMember(this.wireValue); final String wireValue; static ReservedMember \
          fromJson(String json) => switch (json) { 'Default' => ReservedMember.default_,'In' => \
          ReservedMember.in_,'Other' => ReservedMember.other, _ => throw ArgumentError('Unknown \
-         ReservedMember: ' + json) }; String toJson() => wireValue; List<String> validate() => \
-         const []; }"
+         ReservedMember: ' + json) }; static ReservedMember fromJsonUnjudged(String json) => \
+         fromJson(json); String toJson() => wireValue; List<String> validate() => const []; }"
     );
     assert_eq!(
         serde_json::to_value(ReservedMembers {

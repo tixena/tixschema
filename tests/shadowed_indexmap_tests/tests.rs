@@ -165,8 +165,8 @@ fn the_paths_of_the_types_declared_here_are_reached_through_the_fields() {
 fn dart_reads_the_fields_through_the_types_declared_here() {
     let dart = holder_dart::dart_definition();
     for read in [
-        "held: IndexMap.fromJson(json['held'], ",
-        "listed: IndexSet.fromJson(json['listed'], ",
+        "held: IndexMap.fromJsonUnjudged(json['held'], ",
+        "listed: IndexSet.fromJsonUnjudged(json['listed'], ",
     ] {
         assert!(dart.contains(read), "missing `{read}` in: {dart}");
     }
