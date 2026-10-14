@@ -1702,20 +1702,23 @@ has to keep.
   does. Dart's and Kotlin's `variant_payload` and Swift's `named_payload` hand a variant's fields
   the enum's defaults for that variant.
 - **No placeholder reaches the text of another item.** It is replaced only by the function that
-  answers the item's own text, so `zod_union_members` records no text of an untagged variant's
-  member that holds one (`holds_a_placeholder`): a holder, flattening the enum or holding it,
-  joins it by its published binding, as it joins a type that names a `preprocess`
-  (`ZOD_PREPROCESSED`).
+  answers the item's own text. `FieldDef::zod_read_whole` asks `holds_a_placeholder` of the
+  spellings `zod_union_members` and `flatten_variants` record, and `flattened_zod_branches` and
+  `zod_member_leaves` ask it where they ask `zod_names_a_preprocess`: a holder, flattening the
+  enum or holding it, joins it by its published binding, as it joins a type that names a
+  `preprocess` (`ZOD_PREPROCESSED`). The registry still records the members, so the refusal of a
+  flattened member that is no object reads them as before.
 - **A variant's member with no JSON is refused.** `default_refusals`, beside `of_enum` and written
-  from the same exclusions so the two cannot drift, answers one error per member under a
+  from the same `reach` `of_enum` reads so the two cannot drift, answers one error per member under a
   field-level `default` that no surface but Rust can read as serde does, spanned on the field and
   opened by ``model_schema: type `{enum}`: variant `{variant}`, field `{field}`:``: a type that
   names a parameter of the enum, a lifetime or `Self` (`names_any`), other than a list, a set or a
   map under the bare `default` with no `serialize_with` or `with` (`empty_collection`); a flattened
   member; a member under `skip_serializing` or `skip_serializing_if` that is not an `Option`; and
   every such member of an enum that derives `Deserialize` and not `Serialize`, or names `into` or
-  `remote`. The refusals are raised at `exec_model_schema` through `guard_failure_output`, every
-  one of the item in one expansion, gated as `rename_direction_guard_errors` is: `serde` with any
+  `remote`. `serde_attribute_guard_errors` joins them to `rename_direction_guard_errors`, and
+  `exec_model_schema` raises the two through one `guard_failure_output`, every refusal of the item
+  in one expansion, under the rename guard's gate: `serde` with any
   of `typescript`, `zod`, `jsonschema`, `dart`, `swift` and `kotlin`. An `Option`, a member under
   `skip` or `skip_deserializing`, and an enum that derives no `Deserialize` or reads itself
   through `from` or `try_from` are refused nothing: no surface reads them otherwise than serde

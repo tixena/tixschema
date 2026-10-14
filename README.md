@@ -294,6 +294,8 @@ A named member of a variant under `#[serde(default)]` or `#[serde(default = "pat
 | It is under `skip_serializing` or `skip_serializing_if`, and it is not an `Option` | Each surface reads its key as optional, and answers no value where serde reads the default | `` `#[serde(default)]` beside `skip_serializing_if` is read only by Rust on a field that is not an `Option`. Make the field an `Option`, or remove one of the two. `` |
 | The enum derives `Deserialize` and not `Serialize`, or names `into` or `remote` | The JSON of the default is written with serde, through the type the surfaces describe, and this enum gives no such type | `` `#[serde(default)]` needs the enum to derive `Serialize`, with no `into` or `remote`, so the default can be written for the other targets. `` |
 
+The first message names what the type names: a const parameter, whose default has one JSON for each value that fills it; a lifetime, or `Self`, which name nothing where the JSON of the default is built, and for `Self` the fix is to write the enum's name in its place. The third names the key the member is written under, `skip_serializing` or `skip_serializing_if`.
+
 These build as they did, since no surface reads the member otherwise than serde does:
 
 - **An `Option`.** Every surface reads the missing key as absent, which is serde's default, `None`.
