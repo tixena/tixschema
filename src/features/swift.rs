@@ -408,6 +408,11 @@ fn bounded_generic_params(parameters: &[String]) -> String {
     }
 }
 
+/// `name` at the parameters `generic_params` declares: the spelling of a type position.
+fn held_at(name: &str, generic_params: &str) -> String {
+    format!("{name}{}", bare_generic_params(generic_params))
+}
+
 /// A member's name without the backticks [`swift_member`] may have put around it: what a longer
 /// identifier is built from, and what the wire name is compared with.
 fn swift_bare(member: &str) -> &str {
@@ -470,19 +475,38 @@ fn arrayed(field: FieldDef) -> FieldDef {
     field
 }
 
-/// Whether `def` is, or holds at any depth, the type parameter `parameter`.
-fn names_parameter(def: &FieldDef, parameter: &str) -> bool {
+/// Every type parameter `defs` hold at any depth, once each, in the order a walk first reaches
+/// them.
+fn parameters_reached(defs: &[&FieldDef]) -> Vec<String> {
+    let mut reached = Vec::new();
+    for def in defs {
+        reach_parameters(def, &mut reached);
+    }
+    reached
+}
+
+/// Adds to `reached` each type parameter `def` holds that it does not list yet.
+fn reach_parameters(def: &FieldDef, reached: &mut Vec<String>) {
     match &def.field_type {
-        FieldDefType::TypeParam(name) => name == parameter,
-        FieldDefType::SiblingType(_, arguments) => arguments
-            .iter()
-            .any(|argument| names_parameter(argument, parameter)),
-        FieldDefType::Map(key, value) => {
-            names_parameter(key, parameter) || names_parameter(value, parameter)
+        FieldDefType::TypeParam(name) => {
+            if !reached.contains(name) {
+                reached.push(name.clone());
+            }
         }
-        FieldDefType::Tuple(elements) => elements
-            .iter()
-            .any(|element| names_parameter(element, parameter)),
+        FieldDefType::SiblingType(_, arguments) => {
+            for argument in arguments {
+                reach_parameters(argument, reached);
+            }
+        }
+        FieldDefType::Map(key, value) => {
+            reach_parameters(key, reached);
+            reach_parameters(value, reached);
+        }
+        FieldDefType::Tuple(elements) => {
+            for element in elements {
+                reach_parameters(element, reached);
+            }
+        }
         FieldDefType::Unknown
         | FieldDefType::StringLiteral(_)
         | FieldDefType::BooleanLiteral(_)
@@ -501,14 +525,14 @@ fn names_parameter(def: &FieldDef, parameter: &str) -> bool {
         | FieldDefType::Usize
         | FieldDefType::Isize
         | FieldDefType::F32
-        | FieldDefType::F64 => false,
+        | FieldDefType::F64 => {}
         #[cfg(feature = "mongodb")]
-        FieldDefType::ObjectId => false,
+        FieldDefType::ObjectId => {}
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate
         | FieldDefType::NaiveTime
         | FieldDefType::NaiveDateTime
-        | FieldDefType::DateTime => false,
+        | FieldDefType::DateTime => {}
     }
 }
 
@@ -686,6 +710,7 @@ fn swift_map_key_codec(key: &FieldDef) -> (String, String) {
 /// two different fields' wrappers never collide even when their generated text is concatenated.
 fn map_key_wrapper_struct(
     wrapper_name: &str,
+    generic_params: &str,
     key_type: &str,
     value_type: &str,
     key: &FieldDef,
@@ -716,7 +741,7 @@ fn map_key_wrapper_struct(
     #[cfg(not(feature = "chrono"))]
     let formatter_decl = "";
     format!(
-        "public struct {wrapper_name}: Codable, Sendable {{ \
+        "public struct {wrapper_name}{generic_params}: Codable, Sendable {{ \
          var storage: [{key_type}: {value_type}]; \
          {formatter_decl} \
          private struct DynamicCodingKey: CodingKey {{ \
@@ -861,7 +886,8 @@ fn datetime_shape(field: &FieldDef) -> SwiftFieldShape {
 }
 
 /// A `Tuple` leaf: the aux struct is both the real and the wire type, so no conversion runs — the
-/// struct's own `Codable` already speaks the array serde writes.
+/// struct's own `Codable` already speaks the array serde writes. The struct declares the
+/// parameters its slots reach.
 fn tuple_shape(elements: &[FieldDef], name_hint: &str, aux: &mut Vec<String>) -> SwiftFieldShape {
     let struct_name = format!("{name_hint}Tuple");
     let mut locals = read::Locals::default();
@@ -903,15 +929,17 @@ fn tuple_shape(elements: &[FieldDef], name_hint: &str, aux: &mut Vec<String>) ->
         })
         .collect();
     let rules = validate::slot_rules(&struct_name, elements);
+    let generic_params =
+        bounded_generic_params(&parameters_reached(&elements.iter().collect::<Vec<_>>()));
     aux.push(tuple_struct(
         &struct_name,
-        "",
+        &generic_params,
         &rendered,
         &reads,
         twins,
         &validate::method(&rules),
     ));
-    direct_shape(struct_name)
+    direct_shape(held_at(&struct_name, &generic_params))
 }
 
 /// A `SiblingType` leaf: the referenced item's own published name, with generic arguments rendered
@@ -970,6 +998,15 @@ fn map_keys(key: &FieldDef) -> MapKeys {
     }
 }
 
+/// The wrapper a map under `key` and over `value` is read through, written for `name_hint`: its
+/// name, and the parameters it declares, those its key and value reach.
+fn keyed_map_wrapper(name_hint: &str, key: &FieldDef, value: &FieldDef) -> (String, String) {
+    (
+        format!("{name_hint}KeyedMap"),
+        bounded_generic_params(&parameters_reached(&[key, value])),
+    )
+}
+
 /// A `Map` leaf: a string-shaped key stays a plain `[String: Value]` (or `[Int: Value]`, both
 /// natively `Codable`); any other key earns a wrapper struct.
 fn map_shape(
@@ -986,7 +1023,7 @@ fn map_shape(
         MapKeys::Wrapped => {}
     }
     let key_type = swift_map_key_scalar(key);
-    let wrapper_name = format!("{name_hint}KeyedMap");
+    let (wrapper_name, generic_params) = keyed_map_wrapper(name_hint, key, value);
     let unjudged = validate::reaches(value).then(|| {
         let source = read::Source::Keyed {
             container: "container".to_owned(),
@@ -1003,15 +1040,17 @@ fn map_shape(
     });
     aux.push(map_key_wrapper_struct(
         &wrapper_name,
+        &generic_params,
         &key_type,
         &value_type,
         key,
         unjudged.as_deref(),
     ));
+    let wrapper = held_at(&wrapper_name, &generic_params);
     SwiftFieldShape {
-        leaf_conversion: LeafConversion::MapWrapper(wrapper_name.clone()),
+        leaf_conversion: LeafConversion::MapWrapper(wrapper.clone()),
         real_leaf: format!("[{key_type}: {value_type}]"),
-        wire_leaf: wrapper_name,
+        wire_leaf: wrapper,
     }
 }
 
@@ -2046,14 +2085,16 @@ fn named_payload(
         &|field| shape.defaults.at(Some(&variant_name), field),
     );
     let members = field_rules(&struct_name, &fields);
+    let reached = parameters_reached(
+        &fields
+            .iter()
+            .map(|field| &field.field_def)
+            .collect::<Vec<_>>(),
+    );
     let named_parameters: Vec<String> = shape
         .type_parameters
         .iter()
-        .filter(|parameter| {
-            fields
-                .iter()
-                .any(|field| names_parameter(&field.field_def, parameter))
-        })
+        .filter(|parameter| reached.contains(parameter))
         .cloned()
         .collect();
     let generic_params = bounded_generic_params(&named_parameters);
@@ -2077,10 +2118,7 @@ fn named_payload(
     VariantPayload {
         bound,
         corrected: None,
-        held: Some(format!(
-            "{struct_name}{}",
-            bare_generic_params(&generic_params)
-        )),
+        held: Some(held_at(&struct_name, &generic_params)),
         rules: validate::payload_rules(export_name, step, !members.is_empty()),
         takes_keys,
         walked: None,

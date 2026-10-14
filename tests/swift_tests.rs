@@ -31,3 +31,8 @@ mod sequences;
 #[cfg(all(feature = "swift", feature = "serde"))]
 #[path = "swift_tests/generic_variants.rs"]
 mod generic_variants;
+
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "swift_tests/generic_helpers.rs"]
+mod generic_helpers;

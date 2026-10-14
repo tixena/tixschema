@@ -205,6 +205,12 @@ mod run_swift_sequences;
 #[path = "service_schema_emitted_client_tests/run_kotlin_serde_default.rs"]
 mod run_kotlin_serde_default;
 
+/// A tuple and a map under a key Swift wraps, held by a type that declares a parameter, read and
+/// written by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_generic_helpers.rs"]
+mod run_swift_generic_helpers;
+
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
 #[cfg(all(test, feature = "dart"))]
