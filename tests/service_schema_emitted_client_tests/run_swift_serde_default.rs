@@ -7,7 +7,7 @@
 use super::run_swift_read::normalized;
 use super::runtime::judged;
 #[cfg(feature = "indexmap")]
-use super::serde_default_models::indexed_logbook_swift;
+use super::serde_default_models::{indexed_fleet_swift, indexed_logbook_swift};
 use super::serde_default_models::{
     Bollard, CASES, Harbour, Marina, PREPROCESSED, PREPROCESSED_REPORT, REPORT, REQUIRED,
     REQUIRED_REPORT, VARIANT_CASES, VARIANT_REPORT, adjacent_berthing_swift, basin_swift,
@@ -45,10 +45,6 @@ func row<Read: Codable>(_ name: String, _ type: Read.Type, _ payload: String) {
   }
 }
 "#;
-
-/// The structs whose sets, heap and deque this client reads as their element type, whether the
-/// payload holds the key or not: left out of the run, `Vec` being read by `Config` and `Basin`.
-const READ_AS_AN_ELEMENT: [&str; 2] = ["Fleet", "IndexedFleet"];
 
 /// The enums whose named variant names the enum's parameter: this client writes the struct of the
 /// variant's members with no parameter, which does not compile. Left out of the run.
@@ -214,9 +210,7 @@ fn each_payload_of_a_struct_that_declares_a_parameter_reads_in_swift_as_serde_re
     let read: Vec<_> = filled_cases()
         .into_iter()
         .zip(expected.lines())
-        .filter(|((_, read_as, _), _)| {
-            !READ_AS_AN_ELEMENT.contains(read_as) && !VARIANT_OF_A_PARAMETER.contains(read_as)
-        })
+        .filter(|((_, read_as, _), _)| !VARIANT_OF_A_PARAMETER.contains(read_as))
         .collect();
     let filled = read.iter().map(|&((name, read_as, payload), _)| {
         format!("row(\"{name}\", {read_as}<String>.self, #\"{payload}\"#)")
@@ -229,8 +223,11 @@ fn each_payload_of_a_struct_that_declares_a_parameter_reads_in_swift_as_serde_re
         link_swift::swift_definition(),
         basin_swift::swift_definition(),
         config_swift::swift_definition(),
+        fleet_swift::swift_definition(),
         logbook_swift::swift_definition(),
         harbour_swift::swift_definition(),
+        #[cfg(feature = "indexmap")]
+        indexed_fleet_swift::swift_definition(),
         #[cfg(feature = "indexmap")]
         indexed_logbook_swift::swift_definition(),
     ];

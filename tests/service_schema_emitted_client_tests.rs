@@ -195,6 +195,11 @@ mod run_dart_serde_default;
 #[path = "service_schema_emitted_client_tests/run_swift_serde_default.rs"]
 mod run_swift_serde_default;
 
+/// A std sequence other than `Vec`, read and written by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_sequences.rs"]
+mod run_swift_sequences;
+
 /// A key under `#[serde(default)]` the payload leaves out, read by the emitted Kotlin types.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_serde_default.rs"]

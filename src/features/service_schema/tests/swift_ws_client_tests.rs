@@ -6,8 +6,8 @@
 //! Swift toolchain, against an in-memory socket, separately from this file's own assertions.
 
 use super::{
-    MIXED_SERVICE, RESERVED_WORD_SERVICE, SHADOWED_LOCAL_SERVICE, SWIFT_UNIT_SUCCESS_SERVICE,
-    SWIFT_WS_HEADERS_SERVICE, SWIFT_WS_SERVICE, swift_ws_client_of,
+    MIXED_SERVICE, RESERVED_WORD_SERVICE, SHADOWED_LOCAL_SERVICE, SWIFT_SEQUENCE_SERVICE,
+    SWIFT_UNIT_SUCCESS_SERVICE, SWIFT_WS_HEADERS_SERVICE, SWIFT_WS_SERVICE, swift_ws_client_of,
 };
 
 /// The body of one declaration, from its own start marker through the closing brace that ends
@@ -369,6 +369,20 @@ fn a_unit_success_answers_the_void_result_with_no_value_decode() {
         !written.contains("PingClientServiceWsValueEnvelope<Void>"),
         "`Void` is not `Decodable`; a unit success is never decoded through the value envelope. \
          Got: {written}"
+    );
+}
+
+#[test]
+fn a_sequence_message_and_success_are_the_arrays_serde_writes() {
+    let written = swift_ws_client_of(SWIFT_SEQUENCE_SERVICE);
+    let method = body_from(&written, "public func roster(");
+    assert!(
+        method.contains("public func roster(_ req: [String]) async"),
+        "got: {method}"
+    );
+    assert!(
+        method.contains("JSONDecoder().decode(RosterClientServiceWsValueEnvelope<[String]>.self,"),
+        "got: {method}"
     );
 }
 
