@@ -387,11 +387,15 @@ fn bare_generic_params(generic_params: &str) -> String {
     format!("<{}>", names.join(", "))
 }
 
-/// `<T: Codable & Sendable>` for the type parameters `generics` declares, or the empty string for
-/// none — every parameter bound to `Codable & Sendable` since `Codable`'s own synthesis, and the
-/// `Sendable` conformance this module always declares, both need it.
+/// [`bounded_generic_params`] for the type parameters `generics` declares.
 fn swift_generic_params(generics: &syn::Generics) -> String {
-    let parameters = type_parameters_in_scope(generics);
+    bounded_generic_params(&type_parameters_in_scope(generics))
+}
+
+/// `<T: Codable & Sendable>` for `parameters`, or the empty string for none — every parameter
+/// bound to `Codable & Sendable` since `Codable`'s own synthesis, and the `Sendable` conformance
+/// this module always declares, both need it.
+fn bounded_generic_params(parameters: &[String]) -> String {
     if parameters.is_empty() {
         String::new()
     } else {
@@ -464,6 +468,48 @@ fn arrayed(field: FieldDef) -> FieldDef {
         return arrayed(field.collection_element_field(element));
     }
     field
+}
+
+/// Whether `def` is, or holds at any depth, the type parameter `parameter`.
+fn names_parameter(def: &FieldDef, parameter: &str) -> bool {
+    match &def.field_type {
+        FieldDefType::TypeParam(name) => name == parameter,
+        FieldDefType::SiblingType(_, arguments) => arguments
+            .iter()
+            .any(|argument| names_parameter(argument, parameter)),
+        FieldDefType::Map(key, value) => {
+            names_parameter(key, parameter) || names_parameter(value, parameter)
+        }
+        FieldDefType::Tuple(elements) => elements
+            .iter()
+            .any(|element| names_parameter(element, parameter)),
+        FieldDefType::Unknown
+        | FieldDefType::StringLiteral(_)
+        | FieldDefType::BooleanLiteral(_)
+        | FieldDefType::NumberLiteral(_)
+        | FieldDefType::Boolean
+        | FieldDefType::Char
+        | FieldDefType::String
+        | FieldDefType::U8
+        | FieldDefType::U16
+        | FieldDefType::U32
+        | FieldDefType::U64
+        | FieldDefType::I8
+        | FieldDefType::I16
+        | FieldDefType::I32
+        | FieldDefType::I64
+        | FieldDefType::Usize
+        | FieldDefType::Isize
+        | FieldDefType::F32
+        | FieldDefType::F64 => false,
+        #[cfg(feature = "mongodb")]
+        FieldDefType::ObjectId => false,
+        #[cfg(feature = "chrono")]
+        FieldDefType::NaiveDate
+        | FieldDefType::NaiveTime
+        | FieldDefType::NaiveDateTime
+        | FieldDefType::DateTime => false,
+    }
 }
 
 /// The `#[serde(rename = "...")]` a field or variant earns, honored only where the `serde`
@@ -1978,7 +2024,8 @@ fn resolve_variant_payload(
 }
 
 /// The payload of a variant with named members: the struct written for them, each member read as
-/// the default the enum's defaults hold for it in this variant.
+/// the default the enum's defaults hold for it in this variant. The struct declares the enum's
+/// parameters its members name, and the case holds it at those parameters.
 fn named_payload(
     shape: &EnumShape<'_>,
     variant: &Variant,
@@ -1999,7 +2046,18 @@ fn named_payload(
         &|field| shape.defaults.at(Some(&variant_name), field),
     );
     let members = field_rules(&struct_name, &fields);
-    let declared = struct_declaration(&struct_name, "", &fields, None, &members, &[]);
+    let named_parameters: Vec<String> = shape
+        .type_parameters
+        .iter()
+        .filter(|parameter| {
+            fields
+                .iter()
+                .any(|field| names_parameter(&field.field_def, parameter))
+        })
+        .cloned()
+        .collect();
+    let generic_params = bounded_generic_params(&named_parameters);
+    let declared = struct_declaration(&struct_name, &generic_params, &fields, None, &members, &[]);
     let takes_keys = read::takes_keys(&declared);
     aux.push(declared);
     let bound = fields
@@ -2019,7 +2077,10 @@ fn named_payload(
     VariantPayload {
         bound,
         corrected: None,
-        held: Some(struct_name),
+        held: Some(format!(
+            "{struct_name}{}",
+            bare_generic_params(&generic_params)
+        )),
         rules: validate::payload_rules(export_name, step, !members.is_empty()),
         takes_keys,
         walked: None,

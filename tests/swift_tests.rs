@@ -26,3 +26,8 @@ mod preprocess;
 #[cfg(all(feature = "swift", feature = "serde"))]
 #[path = "swift_tests/sequences.rs"]
 mod sequences;
+
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "swift_tests/generic_variants.rs"]
+mod generic_variants;
