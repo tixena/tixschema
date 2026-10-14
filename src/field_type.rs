@@ -22,7 +22,7 @@ use crate::utils::{MapKeyWire, is_declared_ident, lookup_alias_info, written_typ
 #[cfg(feature = "zod")]
 use crate::bound_message::{Bound, zod_error_arg};
 #[cfg(feature = "zod")]
-use crate::features::serde::defaults::placeholder;
+use crate::features::serde::defaults::{holds_a_placeholder, placeholder};
 #[cfg(feature = "zod")]
 use crate::utils::{
     ZodUnionMember, escape_js_regex_literal, names_a_zod_preprocess, publishes_zod_factory,
@@ -1458,6 +1458,26 @@ impl FieldDef {
             return schema;
         };
         zod_preprocess_wrap(schema, &meta.preprocess)
+    }
+
+    /// Whether the type this field names is written by its own Zod binding alone, with no member
+    /// of it written in its place: the binding calls a `preprocess` of the type's own, or a
+    /// member's text holds the default of a member, which only the binding's own text replaces.
+    #[cfg(feature = "zod")]
+    pub fn zod_read_whole(&self) -> bool {
+        #[cfg(feature = "serde")]
+        let flattened = self
+            .flatten_variants()
+            .iter()
+            .any(|variant| holds_a_placeholder(&variant.zod));
+        #[cfg(not(feature = "serde"))]
+        let flattened = false;
+        flattened
+            || self.zod_names_a_preprocess()
+            || self
+                .zod_union_members()
+                .iter()
+                .any(|member| holds_a_placeholder(&member.spelling))
     }
 
     /// The Zod schema for a value in a slot that cannot be dropped — a tuple element, a map entry,

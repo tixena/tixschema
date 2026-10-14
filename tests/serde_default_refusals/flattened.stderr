@@ -1,0 +1,5 @@
+error: model_schema: type `Berthing`: variant `Docked`, field `mooring`: `#[serde(default)]` on a flattened field is read only by Rust. Remove the default, or the flatten.
+  --> tests/serde_default_refusals/flattened.rs:17:9
+   |
+17 |         mooring: Mooring,
+   |         ^^^^^^^

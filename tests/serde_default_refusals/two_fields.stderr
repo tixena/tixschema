@@ -1,0 +1,11 @@
+error: model_schema: type `Berthing`: variant `Docked`, field `extra`: `#[serde(default)]` is read only by Rust here: the type names the type parameter `T`, whose default has one JSON for each type that fills it. Give the field a type that names no parameter, or remove the default.
+  --> tests/serde_default_refusals/two_fields.rs:12:9
+   |
+12 |         extra: T,
+   |         ^^^^^
+
+error: model_schema: type `Berthing`: variant `Moored`, field `dock`: `#[serde(default)]` beside `skip_serializing_if` is read only by Rust on a field that is not an `Option`. Make the field an `Option`, or remove one of the two.
+  --> tests/serde_default_refusals/two_fields.rs:17:9
+   |
+17 |         dock: String,
+   |         ^^^^

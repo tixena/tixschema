@@ -454,6 +454,33 @@ for (const [name, schema, payload] of CASES) {
 console.log(printed.join("\n"));
 "#;
 
+/// Parses the payload of each case of the variant table through the schema its type publishes,
+/// and prints what a serde read prints for the same case.
+const VARIANTS_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+
+const schemas = {
+  Berthing: lib.Berthing$Schema,
+  ExternalBerthing: lib.ExternalBerthing$Schema,
+  AdjacentBerthing: lib.AdjacentBerthing$Schema,
+  UntaggedBerthing: lib.UntaggedBerthing$Schema,
+  Quay: lib.Quay$Schema,
+};
+const printed = [];
+for (const [name, schema, payload] of CASES) {
+  const read = schemas[schema].safeParse(JSON.parse(payload));
+  if (read.success) {
+    printed.push(`${name}: read ${JSON.stringify(read.data)}`);
+    continue;
+  }
+  printed.push(`${name}: refused`);
+  for (const issue of read.error.issues) {
+    const lead = issue.path.length > 0 ? `'${issue.path.join(".")}': ` : "";
+    printed.push(`    ${lead}${issue.message}`);
+  }
+}
+console.log(printed.join("\n"));
+"#;
+
 /// Parses each payload of a struct that declares a parameter through the schema of its declared
 /// default, and each payload of `Harbour` that leaves out a key it requires.
 const FILLED_DRIVER: &str = r#"import * as lib from "./lib/index.js";
@@ -1133,6 +1160,18 @@ fn defaults() -> String {
         defaulted::Fleet::<String>::zod_schema(),
         defaulted::Logbook::<String>::ts_definition(),
         defaulted::Logbook::<String>::zod_schema(),
+        defaulted::Manifest::<String>::ts_definition(),
+        defaulted::Manifest::<String>::zod_schema(),
+        defaulted::Berthing::ts_definition(),
+        defaulted::Berthing::zod_schema(),
+        defaulted::ExternalBerthing::ts_definition(),
+        defaulted::ExternalBerthing::zod_schema(),
+        defaulted::AdjacentBerthing::ts_definition(),
+        defaulted::AdjacentBerthing::zod_schema(),
+        defaulted::UntaggedBerthing::ts_definition(),
+        defaulted::UntaggedBerthing::zod_schema(),
+        defaulted::Quay::ts_definition(),
+        defaulted::Quay::zod_schema(),
         #[cfg(feature = "indexmap")]
         defaulted::IndexedFleet::<String>::ts_definition(),
         #[cfg(feature = "indexmap")]
@@ -1456,6 +1495,26 @@ fn type_check_a_default_answers_under_zod_what_a_serde_read_answers() {
     assert_eq!(
         printed,
         defaulted::REPORT.trim_end(),
+        "the schemas do not read what a serde read reads:\n{failed}"
+    );
+}
+
+/// A member of a variant the payload leaves out is parsed under each tagging as the default serde
+/// reads, held to the member's checks as a payload is, and a key the payload holds is read as
+/// before. A struct that holds the untagged enum reads its member's default too.
+#[test]
+fn type_check_a_default_of_a_variant_answers_under_zod_what_a_serde_read_answers() {
+    assert_eq!(defaulted::variant_report(), defaulted::VARIANT_REPORT);
+    let driver = VARIANTS_DRIVER.replace(
+        "CASES",
+        &serde_json::to_string(&defaulted::VARIANT_CASES).unwrap(),
+    );
+    let Some((printed, failed)) = loaded_from("variants", &defaults(), &driver) else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        defaulted::VARIANT_REPORT.trim_end(),
         "the schemas do not read what a serde read reads:\n{failed}"
     );
 }

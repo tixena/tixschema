@@ -132,6 +132,8 @@ pub struct SwiftTypeArgs<'args> {
 /// What every tagging of an enum is written from.
 struct EnumShape<'item> {
     args: &'item SwiftTypeArgs<'item>,
+    /// The defaults of the members of the enum's variants.
+    defaults: &'item SerdeDefaults,
     export_name: &'item str,
     generic_params: &'item str,
     item_enum: &'item ItemEnum,
@@ -1406,7 +1408,7 @@ fn collect_swift_fields(
     name_hint: &str,
     args: &SwiftTypeArgs<'_>,
     aux: &mut Vec<String>,
-    defaults: &SerdeDefaults,
+    default_at: &dyn Fn(&str) -> Option<String>,
 ) -> Vec<SwiftField> {
     let Fields::Named(named) = fields else {
         return Vec::new();
@@ -1431,7 +1433,7 @@ fn collect_swift_fields(
         let field_hint = format!("{name_hint}{}", swift_upper_camel(&swift_name));
         let (real_type, shape) = swift_resolve(&field_def, &field_hint, aux);
         collected.push(SwiftField {
-            default_at: defaults.at(&rust_name),
+            default_at: default_at(&rust_name),
             field_def,
             flatten: field_is_flatten(&field.attrs),
             hint: field_hint,
@@ -1683,7 +1685,7 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
         &export_name,
         args,
         &mut aux,
-        &defaults,
+        &|field| defaults.at(None, field),
     );
     let own_tag = struct_tag(item_struct);
     let mut rules = field_rules(&export_name, &fields);
@@ -1972,7 +1974,8 @@ fn resolve_variant_payload(
     }
 }
 
-/// The payload of a variant with named members: the struct written for them.
+/// The payload of a variant with named members: the struct written for them, each member read as
+/// the default the enum's defaults hold for it in this variant.
 fn named_payload(
     shape: &EnumShape<'_>,
     variant: &Variant,
@@ -1982,6 +1985,7 @@ fn named_payload(
 ) -> VariantPayload {
     let export_name = shape.export_name;
     let struct_name = format!("{export_name}{}Payload", variant.ident);
+    let variant_name = variant.ident.to_string();
     let fields = collect_swift_fields(
         &variant.fields,
         field_rule,
@@ -1989,7 +1993,7 @@ fn named_payload(
         &struct_name,
         shape.args,
         aux,
-        &SerdeDefaults::none(),
+        &|field| shape.defaults.at(Some(&variant_name), field),
     );
     let members = field_rules(&struct_name, &fields);
     let declared = struct_declaration(&struct_name, "", &fields, None, &members, &[]);
@@ -2191,6 +2195,7 @@ fn plain_enum_swift_source(
 fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> String {
     let &EnumShape {
         args,
+        defaults: _defaults,
         export_name,
         generic_params,
         item_enum,
@@ -2289,6 +2294,7 @@ fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
 fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> String {
     let &EnumShape {
         args,
+        defaults: _defaults,
         export_name,
         generic_params,
         item_enum,
@@ -2376,6 +2382,7 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
 fn adjacent_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> String {
     let &EnumShape {
         args,
+        defaults: _defaults,
         export_name,
         generic_params,
         item_enum,
@@ -2468,6 +2475,7 @@ fn adjacent_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
 fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> String {
     let &EnumShape {
         args,
+        defaults: _defaults,
         export_name,
         generic_params,
         item_enum,
@@ -2609,8 +2617,10 @@ fn enum_swift_tokens(item_enum: &ItemEnum, args: &SwiftTypeArgs<'_>) -> TokenStr
         tag_attrs.tag.is_none() && tag_attrs.content.is_none() && !tag_attrs.untagged;
     let type_parameters = type_parameters_in_scope(&item_enum.generics);
     let generic_params = swift_generic_params(&item_enum.generics);
+    let defaults = SerdeDefaults::of_enum(item_enum);
     let shape = EnumShape {
         args,
+        defaults: &defaults,
         export_name: &export_name,
         generic_params: &generic_params,
         item_enum,
@@ -2636,10 +2646,5 @@ fn enum_swift_tokens(item_enum: &ItemEnum, args: &SwiftTypeArgs<'_>) -> TokenStr
     } else {
         format!("{} {swift_source}", aux.join(" "))
     };
-    swift_module_tokens(
-        &rust_ident,
-        item_enum.ident.span(),
-        &full_source,
-        &SerdeDefaults::none(),
-    )
+    swift_module_tokens(&rust_ident, item_enum.ident.span(), &full_source, &defaults)
 }

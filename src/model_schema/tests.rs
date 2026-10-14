@@ -14491,19 +14491,29 @@ fn an_optional_flattened_variant_field_is_accepted() {
     assert!(refusals.is_empty(), "got: {refusals:?}");
 }
 
+/// What the walk of the members of `variant` collects, the variant of an untagged enum named
+/// `Probe` with no casing, no parameter and no default.
+#[cfg(feature = "serde")]
+fn walked_untagged_variant(variant: &mut syn::Variant) -> super::UntaggedVariantMembers {
+    super::collect_untagged_variant_members(
+        variant,
+        &super::UntaggedEnum {
+            args: &super::ModelSchemaArgs::default(),
+            name: "Probe",
+            rename_all_fields: None,
+            schema_module_name: UNTAGGED_MODULE,
+            serde_default: &|_, _| None,
+            type_parameters: &[],
+        },
+        &[],
+    )
+}
+
 /// The members one untagged variant collected, beside the ones it flattens.
 #[cfg(feature = "serde")]
 fn collected_untagged_variant_fields(mut item: syn::ItemEnum) -> (Vec<String>, Vec<String>) {
     let variant = item.variants.first_mut().unwrap();
-    let walked = super::collect_untagged_variant_members(
-        variant,
-        "Probe",
-        UNTAGGED_MODULE,
-        &[],
-        None,
-        &super::ModelSchemaArgs::default(),
-        &[],
-    );
+    let walked = walked_untagged_variant(variant);
     (
         walked.field_defs.iter().map(|f| f.name.clone()).collect(),
         walked
@@ -14543,15 +14553,7 @@ fn a_flattening_untagged_member_proves_no_key_list() {
         }
     };
     let variant = item.variants.first_mut().unwrap();
-    let walked = super::collect_untagged_variant_members(
-        variant,
-        "Probe",
-        UNTAGGED_MODULE,
-        &[],
-        None,
-        &super::ModelSchemaArgs::default(),
-        &[],
-    );
+    let walked = walked_untagged_variant(variant);
     assert_eq!(
         super::untagged_member_keys(
             &VariantKind::Named,

@@ -668,7 +668,7 @@ fn collect_dart_fields(
     rule: RenameRule,
     type_parameters: &[String],
     args: &DartTypeArgs<'_>,
-    defaults: &SerdeDefaults,
+    default_at: &dyn Fn(&str) -> Option<String>,
 ) -> Vec<DartField> {
     let Fields::Named(named) = fields else {
         return Vec::new();
@@ -697,7 +697,7 @@ fn collect_dart_fields(
             field_def.nullable_levels.push(field_def.array_depth);
         }
         collected.push(DartField {
-            default_at: defaults.at(&rust_name),
+            default_at: default_at(&rust_name),
             required: !omission.omits_key,
             flatten: field_is_flatten(&field.attrs),
             field_def,
@@ -2169,7 +2169,13 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
 
     let rule = container_rename_rule(&item_struct.attrs);
     let defaults = SerdeDefaults::of(item_struct);
-    let fields = collect_dart_fields(&item_struct.fields, rule, &type_parameters, args, &defaults);
+    let fields = collect_dart_fields(
+        &item_struct.fields,
+        rule,
+        &type_parameters,
+        args,
+        &|field| defaults.at(None, field),
+    );
     let generic_params = dart_generic_params(&item_struct.generics);
     let codec = generic_codec(&type_parameters);
     // A struct's own tag is written ahead of its fields and read past, as serde does both.
@@ -2349,30 +2355,47 @@ fn enum_dart_tokens(item_enum: &ItemEnum, args: &DartTypeArgs<'_>) -> TokenStrea
     let tag_attrs = enum_tag_attrs(&item_enum.attrs);
     let writes_bare_variant_names =
         tag_attrs.tag.is_none() && tag_attrs.content.is_none() && !tag_attrs.untagged;
+    let defaults = SerdeDefaults::of_enum(item_enum);
     let dart_source = if is_plain_enum(item_enum) && writes_bare_variant_names {
         plain_enum_dart_source(item_enum, &rust_ident, &export_name, args)
     } else if tag_attrs.untagged {
-        untagged_enum_dart_source(item_enum, &rust_ident, &export_name, &tag_attrs, args)
+        untagged_enum_dart_source(
+            item_enum,
+            &rust_ident,
+            &export_name,
+            &tag_attrs,
+            args,
+            &defaults,
+        )
     } else {
-        tagged_enum_dart_source(item_enum, &rust_ident, &export_name, &tag_attrs, args)
+        tagged_enum_dart_source(
+            item_enum,
+            &rust_ident,
+            &export_name,
+            &tag_attrs,
+            args,
+            &defaults,
+        )
     };
     dart_module_tokens(
         &rust_ident,
         item_enum.ident.span(),
         &dart_source,
-        &SerdeDefaults::none(),
+        &defaults,
     )
 }
 
 /// One tagged/untagged variant's payload — see [`VariantPayload`]. A `TupleMultiple` payload is
 /// folded into one `Tuple` [`FieldDef`], matching how a slot list renders everywhere else in this
-/// module.
+/// module. A member is read as the default `defaults` holds for it in this variant.
 fn variant_payload(
     variant: &Variant,
     field_rule: RenameRule,
     type_parameters: &[String],
     args: &DartTypeArgs<'_>,
+    defaults: &SerdeDefaults,
 ) -> VariantPayload {
+    let variant_name = variant.ident.to_string();
     match classify_variant(variant) {
         VariantKind::Unit => VariantPayload::Unit,
         VariantKind::Named => VariantPayload::Named(collect_dart_fields(
@@ -2380,7 +2403,7 @@ fn variant_payload(
             field_rule,
             type_parameters,
             args,
-            &SerdeDefaults::none(),
+            &|field| defaults.at(Some(&variant_name), field),
         )),
         VariantKind::TupleSingle => {
             let slot = variant.fields.iter().next();
@@ -2597,6 +2620,7 @@ fn tagged_enum_dart_source(
     export_name: &str,
     tag_attrs: &EnumTagAttrs,
     args: &DartTypeArgs<'_>,
+    defaults: &SerdeDefaults,
 ) -> String {
     let tag_key = tag_attrs.tag.as_deref().unwrap_or("type");
     let shape = TagShape {
@@ -2622,7 +2646,7 @@ fn tagged_enum_dart_source(
         let wire_tag = rename_override(&variant.attrs)
             .unwrap_or_else(|| variant_rule.apply_to_variant(&variant_rust_name));
         let subclass_name = format!("{export_name}{variant_rust_name}");
-        let payload = variant_payload(variant, field_rule, &type_parameters, args);
+        let payload = variant_payload(variant, field_rule, &type_parameters, args, defaults);
         let validate = variant_validate(
             &payload,
             &tagged_variant_steps(&wire_tag, &shape),
@@ -2697,6 +2721,7 @@ fn untagged_enum_dart_source(
     export_name: &str,
     tag_attrs: &EnumTagAttrs,
     args: &DartTypeArgs<'_>,
+    defaults: &SerdeDefaults,
 ) -> String {
     let field_rule = resolve_rename_rule(tag_attrs.rename_all_fields.as_deref());
     let type_parameters = type_parameters_in_scope(&item_enum.generics);
@@ -2711,7 +2736,7 @@ fn untagged_enum_dart_source(
     for variant in &item_enum.variants {
         let variant_rust_name = variant.ident.to_string();
         let subclass_name = format!("{export_name}{variant_rust_name}");
-        let payload = variant_payload(variant, field_rule, &type_parameters, args);
+        let payload = variant_payload(variant, field_rule, &type_parameters, args, defaults);
         let bounds = variant_bounds(&payload);
         // serde writes an untagged variant as its value, so no step leads to its members.
         let validate = format!(

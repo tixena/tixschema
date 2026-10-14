@@ -1,0 +1,5 @@
+error: model_schema: type `Berthing`: variant `Docked`, field `dock`: `#[serde(default)]` beside `skip_serializing_if` is read only by Rust on a field that is not an `Option`. Make the field an `Option`, or remove one of the two.
+  --> tests/serde_default_refusals/skip_serializing_if.rs:12:9
+   |
+12 |         dock: String,
+   |         ^^^^

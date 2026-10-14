@@ -6,14 +6,16 @@
 use core::fmt::Write as _;
 
 use super::run_dart_validate::{dart, module};
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-use super::serde_default_models::report;
 use super::serde_default_models::{
     Bollard, CASES, Harbour, Marina, PREPROCESSED, PREPROCESSED_REPORT, REPORT, REQUIRED,
-    REQUIRED_REPORT, basin_dart, bollard_dart, config_dart, filled_cases, filled_expected,
+    REQUIRED_REPORT, VARIANT_CASES, VARIANT_REPORT, adjacent_berthing_dart, basin_dart,
+    berthing_dart, bollard_dart, config_dart, external_berthing_dart, filled_cases, filled_expected,
     filled_report, fleet_dart, gangway_dart, harbour_dart, jetty_dart, link_dart, logbook_dart,
-    marina_dart, pontoon_dart, preprocessed_values, read_values, unwritten_defaults, wharf_dart,
+    manifest_dart, marina_dart, pontoon_dart, preprocessed_values, quay_dart, read_values,
+    untagged_berthing_dart, unwritten_defaults, wharf_dart,
 };
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+use super::serde_default_models::{report, variant_report};
 #[cfg(feature = "indexmap")]
 use super::serde_default_models::{indexed_fleet_dart, indexed_logbook_dart};
 
@@ -188,6 +190,7 @@ fn filled_source(analyzed: bool) -> String {
         ("Fleet", fleet_dart::dart_definition()),
         ("Logbook", logbook_dart::dart_definition()),
         ("Harbour", harbour_dart::dart_definition()),
+        ("Manifest", manifest_dart::dart_definition()),
         #[cfg(feature = "indexmap")]
         ("IndexedFleet", indexed_fleet_dart::dart_definition()),
         #[cfg(feature = "indexmap")]
@@ -234,6 +237,61 @@ fn the_read_of_an_empty_collection_of_a_parameter_has_no_issue() {
         "serde-default-filled-analyze",
         &["analyze"],
         &filled_source(true),
+    ) else {
+        return;
+    };
+    assert!(clean, "{said}");
+    assert!(said.contains("No issues found!"), "{said}");
+}
+
+/// The emitted enums whose variants hold a member read as its default, under each tagging, the
+/// struct that holds the untagged one, the row printer, and a `main` that reads each payload with
+/// the `fromJson` of the type the table names.
+fn variant_source() -> String {
+    let rows = VARIANT_CASES.iter().fold(
+        String::new(),
+        |mut written, &(name, read_as, payload)| {
+            let _ = writeln!(
+                written,
+                "  row('{name}', () => {read_as}.fromJson(jsonDecode(r'{payload}')).toJson());"
+            );
+            written
+        },
+    );
+    module(
+        &[
+            berthing_dart::dart_definition(),
+            external_berthing_dart::dart_definition(),
+            adjacent_berthing_dart::dart_definition(),
+            untagged_berthing_dart::dart_definition(),
+            quay_dart::dart_definition(),
+        ],
+        &[ROW],
+        &format!("void main() {{\n{rows}}}\n"),
+    )
+}
+
+/// Every row of the variant table, under each tagging: a member of a variant left out is read as
+/// the default serde reads, a member held as it was, and a default that breaks its bound is
+/// refused with its member named.
+#[test]
+fn each_variant_payload_reads_in_dart_as_the_serde_read_reads_it() {
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    assert_eq!(variant_report(), VARIANT_REPORT, "what the serde read answers");
+    let Some((ran, printed)) = dart("serde-default-variants", &[], &variant_source()) else {
+        return;
+    };
+    assert!(ran, "{printed}");
+    assert_eq!(printed, VARIANT_REPORT);
+}
+
+/// The analyzer passes the emitted read of a default of a member of a variant.
+#[test]
+fn the_read_of_a_default_of_a_variant_has_no_issue() {
+    let Some((clean, said)) = dart(
+        "serde-default-variants-analyze",
+        &["analyze"],
+        &variant_source(),
     ) else {
         return;
     };

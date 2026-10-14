@@ -8,15 +8,16 @@ use super::run_swift_read::normalized;
 use super::runtime::judged;
 #[cfg(feature = "indexmap")]
 use super::serde_default_models::indexed_logbook_swift;
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-use super::serde_default_models::report;
 use super::serde_default_models::{
     Bollard, CASES, Harbour, Marina, PREPROCESSED, PREPROCESSED_REPORT, REPORT, REQUIRED,
-    REQUIRED_REPORT, basin_swift, bollard_swift, config_swift, filled_cases, filled_expected,
-    filled_report, fleet_swift, gangway_swift, harbour_swift, jetty_swift, link_swift,
-    logbook_swift, marina_swift, pontoon_swift, preprocessed_values, read_values,
-    unwritten_defaults, wharf_swift,
+    REQUIRED_REPORT, VARIANT_CASES, VARIANT_REPORT, adjacent_berthing_swift, basin_swift,
+    berthing_swift, bollard_swift, config_swift, external_berthing_swift, filled_cases,
+    filled_expected, filled_report, fleet_swift, gangway_swift, harbour_swift, jetty_swift,
+    link_swift, logbook_swift, marina_swift, pontoon_swift, preprocessed_values, quay_swift,
+    read_values, untagged_berthing_swift, unwritten_defaults, wharf_swift,
 };
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+use super::serde_default_models::{report, variant_report};
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
 const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
@@ -48,6 +49,10 @@ func row<Read: Codable>(_ name: String, _ type: Read.Type, _ payload: String) {
 /// The structs whose sets, heap and deque this client reads as their element type, whether the
 /// payload holds the key or not: left out of the run, `Vec` being read by `Config` and `Basin`.
 const READ_AS_AN_ELEMENT: [&str; 2] = ["Fleet", "IndexedFleet"];
+
+/// The enums whose named variant names the enum's parameter: this client writes the struct of the
+/// variant's members with no parameter, which does not compile. Left out of the run.
+const VARIANT_OF_A_PARAMETER: [&str; 1] = ["Manifest"];
 
 /// What prints a row of a key the type requires: whether the read answered or threw.
 const REQUIRES: &str = r#"
@@ -209,7 +214,9 @@ fn each_payload_of_a_struct_that_declares_a_parameter_reads_in_swift_as_serde_re
     let read: Vec<_> = filled_cases()
         .into_iter()
         .zip(expected.lines())
-        .filter(|((_, read_as, _), _)| !READ_AS_AN_ELEMENT.contains(read_as))
+        .filter(|((_, read_as, _), _)| {
+            !READ_AS_AN_ELEMENT.contains(read_as) && !VARIANT_OF_A_PARAMETER.contains(read_as)
+        })
         .collect();
     let filled = read.iter().map(|&((name, read_as, payload), _)| {
         format!("row(\"{name}\", {read_as}<String>.self, #\"{payload}\"#)")
@@ -260,4 +267,44 @@ fn each_payload_of_a_struct_that_declares_a_parameter_reads_in_swift_as_serde_re
             })
         ))
     );
+}
+
+/// Every row of the variant table, under each tagging: a member of a variant left out is read as
+/// the default serde reads, a member held as it was, and a default that breaks its bound is
+/// refused with its member named.
+#[test]
+fn each_variant_payload_reads_in_swift_as_the_serde_read_reads_it() {
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    assert_eq!(variant_report(), VARIANT_REPORT, "what the serde read answers");
+    let rows: Vec<String> = VARIANT_CASES
+        .iter()
+        .map(|(name, read_as, payload)| format!("row(\"{name}\", {read_as}.self, #\"{payload}\"#)"))
+        .collect();
+    let source = [
+        "import Foundation".to_owned(),
+        berthing_swift::swift_definition(),
+        external_berthing_swift::swift_definition(),
+        adjacent_berthing_swift::swift_definition(),
+        untagged_berthing_swift::swift_definition(),
+        quay_swift::swift_definition(),
+        HARNESS.to_owned(),
+        rows.join("\n"),
+    ]
+    .join("\n\n");
+    let Some(run) = judged(
+        "swift-serde-default-variants",
+        RUNTIME_VAR,
+        "swift",
+        &["-warnings-as-errors"],
+        "main.swift",
+        &source,
+    ) else {
+        return;
+    };
+    assert!(
+        run.succeeded,
+        "`swift -warnings-as-errors main.swift` failed.\n--- stdout ---\n{}\n--- stderr ---\n{}\n--- source ---\n{source}",
+        run.stdout, run.stderr
+    );
+    assert_eq!(normalized(&run.stdout), normalized(VARIANT_REPORT));
 }

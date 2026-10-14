@@ -338,7 +338,7 @@ unaffected at every position: a stringified key describes as `{"type": "object",
 - `NaiveTime` → `string` (Zod `z.iso.time()` wrapped in an inline preprocessor that also accepts millis-since-start-of-day)
 - `#[serde(flatten)]` field → TypeScript intersection (`A & B`), Zod `.and(...)`. A source writing more than one key set — a registered choice, or one reached through an `Option` — multiplies instead: `zod_merged_joins` builds one `.and(...)` chain per key set, `zod_merged_statements` binds the object to `{Type}$OwnSchema` and joins the copies where the object is a struct's own published binding, and `zod_merged_object` writes the object out once per copy where it is an enum variant's fragment of a larger literal. Either way the item contributes exactly one member to whatever union encloses it
 - `#[serde(untagged)]` enum → TypeScript union (`A | B`), Zod `z.union([...])`, JSON Schema `anyOf`
-- A member of a struct under `#[serde(default)]` → the TypeScript member unchanged, Zod `T.prefault(<json>)`, JSON Schema `"default": <json>` with the key left out of `required`, and each client reading the JSON of the default where the key is left out (section 13)
+- A member of a struct or of an enum's variant under `#[serde(default)]` → the TypeScript member unchanged, Zod `T.prefault(<json>)`, JSON Schema `"default": <json>` with the key left out of `required`, and each client reading the JSON of the default where the key is left out (section 13)
 - Type parameter → TypeScript parameter (`X<IdType>`), Zod `X$SchemaFactory(idType)` (memoized, one cache level per parameter) plus `X$SchemaDefault` — that same factory called at the item's own declared `default_types`, checks included — JSON Schema the document of whatever fills it — `default_types(...)` where the type stands alone, the reference site's arguments where a field embeds it. A lifetime is dropped on every surface, a borrowed value writing what its owned form writes; a const renders as an array length only, and is refused where it is handed to a written type as an argument
 
 ### 5. Zod v4 Requirements
@@ -1669,9 +1669,10 @@ change to the emitter has to keep.
 
 ### 13. A Key Read as Its Default
 
-A key under `#[serde(default)]`, written on the field, with a function, or on the struct, that the
-payload leaves out is read as its default on every surface. The value of a default is known to
-Rust alone, so each function that answers a text writes it with serde when it builds the text.
+A key under `#[serde(default)]`, written on a field of a struct or of an enum's variant, with a
+function, or on the struct, that the payload leaves out is read as its default on every surface.
+The value of a default is known to Rust alone, so each function that answers a text writes it with
+serde when it builds the text.
 `README.md`'s "A Key Read as Its Default" section is the consumer's view; this is what a change
 has to keep.
 
@@ -1681,21 +1682,53 @@ has to keep.
   names, or the member of the struct's own default, written through the field's
   `serialize_with`, its `with` or the hook `as_number` hangs on it. It reads the attributes serde's
   derive reads, so it answers the same before `process_struct` walks the fields and after.
-- **What has no JSON**, and keeps its key required on every surface but Rust: a struct that does
-  not derive both `Serialize` and `Deserialize`, or names `from`, `try_from`, `into` or `remote`;
-  a `transparent` struct; a member under `skip`, `skip_serializing`, `skip_serializing_if` or
-  `skip_deserializing`; a flattened member; an `Option`, which keeps what it had; a type that
-  names a parameter of the struct, a lifetime or `Self`; the struct's own default on a struct
-  that declares a parameter; and a member of an enum's variant. A list, a set or a map under
-  the bare `default` is read as its default whatever its type names, unless it names a
+- **What has no JSON** on a struct, which keeps its key required on every surface but Rust and
+  builds: a struct that does not derive both `Serialize` and `Deserialize`, or names `from`,
+  `try_from`, `into` or `remote`; a `transparent` struct; a member under `skip`,
+  `skip_serializing`, `skip_serializing_if` or `skip_deserializing`; a flattened member; an
+  `Option`, which keeps what it had; a type that names a parameter of the struct, a lifetime or
+  `Self`; and the struct's own default on a struct that declares a parameter. A list, a set or a
+  map under the bare `default` is read as its default whatever its type names, unless it names a
   `serialize_with` or a `with`: `empty_collection` writes `[]` or `{}` for a type whose last name
   `is_sequence_wrapper` or `is_map_wrapper` accepts, a literal `literals()` builds with no
   parameter in scope.
-- **The value is built where the struct is declared.** Each module that answers a text declares
+- **An enum.** `SerdeDefaults::of_enum` answers the same for each variant with named fields,
+  keyed by variant and member, with the exclusions `of` makes for a struct's. The index runs
+  across the whole enum, so each placeholder is unique within the item, and `SerdeDefaults::at`
+  and `index` take the variant, `None` for a struct. A variant has no container default: serde
+  reads `default` on a variant's field alone. Each enum processor sets `FieldDef::serde_default`
+  on a variant's member from it, as `collect_struct_fields` does for a struct's, and the enum's
+  schema module declares the holder and the `values_impl`, as `struct_output_with_unit_impls`
+  does. Dart's and Kotlin's `variant_payload` and Swift's `named_payload` hand a variant's fields
+  the enum's defaults for that variant.
+- **No placeholder reaches the text of another item.** It is replaced only by the function that
+  answers the item's own text. `FieldDef::zod_read_whole` asks `holds_a_placeholder` of the
+  spellings `zod_union_members` and `flatten_variants` record, and `flattened_zod_branches` and
+  `zod_member_leaves` ask it where they ask `zod_names_a_preprocess`: a holder, flattening the
+  enum or holding it, joins it by its published binding, as it joins a type that names a
+  `preprocess` (`ZOD_PREPROCESSED`). The registry still records the members, so the refusal of a
+  flattened member that is no object reads them as before.
+- **A variant's member with no JSON is refused.** `default_refusals`, beside `of_enum` and written
+  from the same `reach` `of_enum` reads so the two cannot drift, answers one error per member under a
+  field-level `default` that no surface but Rust can read as serde does, spanned on the field and
+  opened by ``model_schema: type `{enum}`: variant `{variant}`, field `{field}`:``: a type that
+  names a parameter of the enum, a lifetime or `Self` (`names_any`), other than a list, a set or a
+  map under the bare `default` with no `serialize_with` or `with` (`empty_collection`); a flattened
+  member; a member under `skip_serializing` or `skip_serializing_if` that is not an `Option`; and
+  every such member of an enum that derives `Deserialize` and not `Serialize`, or names `into` or
+  `remote`. `serde_attribute_guard_errors` joins them to `rename_direction_guard_errors`, and
+  `exec_model_schema` raises the two through one `guard_failure_output`, every refusal of the item
+  in one expansion, under the rename guard's gate: `serde` with any
+  of `typescript`, `zod`, `jsonschema`, `dart`, `swift` and `kotlin`. An `Option`, a member under
+  `skip` or `skip_deserializing`, and an enum that derives no `Deserialize` or reads itself
+  through `from` or `try_from` are refused nothing: no surface reads them otherwise than serde
+  does. A struct is refused none of the four: its key stays as "What has no JSON" says, and it
+  builds. `README.md`'s "What does not build on a variant's member" holds the four messages.
+- **The value is built where the type is declared.** Each module that answers a text declares
   `SerdeDefaults` (`SerdeDefaults::holder`), and `values_impl` writes
-  `impl {module}::SerdeDefaults { pub fn literals() }` beside the struct, where every name its
-  author wrote resolves, inside a function body too: no path from the module reaches a struct
-  declared in one, and an `impl` written beside the struct reaches the module.
+  `impl {module}::SerdeDefaults { pub fn literals() }` beside the struct or the enum, where every
+  name its author wrote resolves, inside a function body too: no path from the module reaches a
+  type declared in one, and an `impl` written beside the type reaches the module.
 - **The text holds a placeholder** (`placeholder`), which `substituted` replaces with the JSON
   when the function that answers the text runs, escaped for the literal it sits in: a Dart
   `'…'`, a Swift or Kotlin `"…"`. Zod writes the JSON as an expression, and the JSON Schema puts
@@ -1726,6 +1759,10 @@ has to keep.
   `run_swift_serde_default.rs` and `run_kotlin_serde_default.rs` run the tables under each
   client's toolchain. The Swift run leaves out `Fleet` and `IndexedFleet`
   (`READ_AS_AN_ELEMENT`): that client reads a set, a heap and a deque as their element type.
+  `Berthing` under each of the four taggings is read in the same places, with the key and
+  without it, beside a holder of its untagged form whose Zod text holds no placeholder. Each
+  refusal of a variant's member is a `trybuild` case whose `.stderr` holds its message spanned on
+  the field, and an enum with two refused members reports both.
 
 ### Generic Types and Zod Factories
 
