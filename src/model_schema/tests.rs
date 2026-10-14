@@ -32,6 +32,8 @@ use super::{WireLeaf, flatten_edge_guard_error, record_wire_leaves, record_zod_u
 
 #[cfg(feature = "zod")]
 use super::{MergedOperand, SourceAbsence};
+#[cfg(feature = "serde")]
+use crate::foundation::{exec_decode_with_foundation, exec_mongodb_foundation};
 
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use super::maps_of_itself_through_the_self_view;
@@ -151,36 +153,48 @@ const SLOT_PROP_KEYS: [&str; 9] = [
 /// the arguments it is declared under.
 #[cfg(feature = "serde")]
 const DECODE_WITH_STRUCT_SHAPES: [(&str, &str); 11] = [
-    ("decode_with", "pub struct DecodePair(pub String, pub u32);"),
-    ("decode_with", "pub struct DecodeWrapper(pub String);"),
-    ("decode_with", "pub struct DecodeTags(pub Vec<String>);"),
     (
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
+        "pub struct DecodePair(pub String, pub u32);",
+    ),
+    (
+        "enable = [\"decode_with\", \"mongodb\"]",
+        "pub struct DecodeWrapper(pub String);",
+    ),
+    (
+        "enable = [\"decode_with\", \"mongodb\"]",
+        "pub struct DecodeTags(pub Vec<String>);",
+    ),
+    (
+        "enable = [\"decode_with\", \"mongodb\"]",
         "#[serde(transparent)] pub struct DecodeBrand(pub String);",
     ),
     (
-        "decode_with, no_display",
+        "enable = [\"decode_with\", \"mongodb\"], no_display",
         "#[serde(transparent)] pub struct DecodePinned(pub DecodeInner);",
     ),
-    ("decode_with", "pub struct DecodeUnit;"),
     (
-        "decode_with, default_types(T = String)",
+        "enable = [\"decode_with\", \"mongodb\"]",
+        "pub struct DecodeUnit;",
+    ),
+    (
+        "enable = [\"decode_with\", \"mongodb\"], default_types(T = String)",
         "pub struct DecodePage<T> { pub items: Vec<T>, pub total: u32 }",
     ),
     (
-        "decode_with, default_types(T = String)",
+        "enable = [\"decode_with\", \"mongodb\"], default_types(T = String)",
         "#[serde(transparent)] pub struct DecodeWrapped<T>(pub T);",
     ),
     (
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
         "#[serde(transparent)] pub struct DecodeHolder { pub inner: String }",
     ),
     (
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
         "#[serde(transparent)] pub struct DecodeCurrent { pub inner: DecodeInner }",
     ),
     (
-        "decode_with, default_types(T = String)",
+        "enable = [\"decode_with\", \"mongodb\"], default_types(T = String)",
         "#[serde(transparent)] pub struct DecodeSleeve<T> { pub inner: T }",
     ),
 ];
@@ -190,12 +204,10 @@ const DECODE_WITH_STRUCT_SHAPES: [(&str, &str); 11] = [
 #[cfg(feature = "serde")]
 const TYPED_PATHS: [&str; 2] = ["pub struct MongoFields <", "pub const MONGO_FIELDS :"];
 
-/// What `mongodb` adds for a flagged type's operations: in its module the error and the read they
-/// answer, and on the type the reads, the count and the writes.
+/// What `mongodb` adds for the operations of a type that lists "mongodb": on the type the reads,
+/// the count and the writes. The error and the read they answer are the crate's library's.
 #[cfg(feature = "serde")]
-const OPERATIONS: [&str; 14] = [
-    "pub enum OperationError {",
-    "pub struct Read < 'c , T , O > {",
+const OPERATIONS: [&str; 12] = [
     "pub fn find_one <",
     "pub fn find_one_with < 'c ,",
     "pub fn find <",
@@ -214,41 +226,44 @@ const OPERATIONS: [&str; 14] = [
 /// are never read, each with the arguments it is declared under.
 #[cfg(feature = "serde")]
 const DECODE_WITH_ENUM_FORMS: [(&str, &str); 10] = [
-    ("decode_with", "pub enum DecodeStatus { Draft, Published }"),
     (
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
+        "pub enum DecodeStatus { Draft, Published }",
+    ),
+    (
+        "enable = [\"decode_with\", \"mongodb\"]",
         "pub enum DecodeOutline { Circle { radius: f64 }, Empty, Label(String), To(i32, i32) }",
     ),
     (
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
         "#[serde(tag = \"kind\")] pub enum DecodeFill { Clear, Solid { color: String }, Versioned(DecodeInner) }",
     ),
     (
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
         "#[serde(tag = \"kind\", content = \"data\")] pub enum DecodeStroke { Dashed { gap: u32 }, Hairline, Width(u32) }",
     ),
     (
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
         "#[derive(Deserialize)] #[serde(untagged)] pub enum DecodeContact { Email { address: String }, Versioned(DecodeInner) }",
     ),
     (
-        "decode_with, default_types(T = String)",
+        "enable = [\"decode_with\", \"mongodb\"], default_types(T = String)",
         "pub enum DecodeAnswer<T> { Empty, Value(T) }",
     ),
     (
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
         "pub enum DecodeContour { #[serde(alias = \"Round\")] Circle { radius: f64 }, #[serde(alias = \"Blank\")] Empty, #[serde(skip)] Lost }",
     ),
     (
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
         "#[serde(tag = \"kind\")] pub enum DecodeCoating { #[serde(alias = \"Blank\")] Clear, #[serde(skip_deserializing)] Retired, Solid { color: String } }",
     ),
     (
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
         "#[serde(tag = \"kind\", content = \"data\")] pub enum DecodeDash { #[serde(alias = \"Dotted\")] Dashed { gap: u32 }, #[serde(skip_deserializing)] Faded(u32), Hairline }",
     ),
     (
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
         "#[derive(Deserialize)] #[serde(untagged)] pub enum DecodeChannel { Email { address: String }, #[serde(skip_deserializing)] Pager { number: i32 } }",
     ),
 ];
@@ -258,33 +273,33 @@ const DECODE_WITH_ENUM_FORMS: [(&str, &str); 10] = [
 #[cfg(feature = "serde")]
 const DECODE_WITH_FLATTEN_FORMS: [(&str, &str); 7] = [
     (
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
         "pub struct DecodeFlatEntry { #[serde(flatten)] pub audit: DecodeAudit, \
          #[serde(flatten, default, skip_serializing_if = \"Option::is_none\")] pub extra: Option<DecodeExtra>, \
          #[serde(flatten)] pub fill: DecodeFill, pub title: String }",
     ),
     (
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
         "pub struct DecodeFlatBag { #[serde(flatten)] pub extra: HashMap<String, i32>, pub title: String }",
     ),
     (
-        "decode_with, default_types(T = DecodeBody)",
+        "enable = [\"decode_with\", \"mongodb\"], default_types(T = DecodeBody)",
         "pub struct DecodeFlatEnvelope<T> { #[serde(flatten)] pub body: T, pub id: String }",
     ),
     (
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
         "pub enum DecodeFlatOutline { Made { #[serde(flatten)] audit: DecodeAudit, title: String }, Gone }",
     ),
     (
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
         "#[serde(tag = \"kind\")] pub enum DecodeFlatFill { Made { #[serde(flatten)] audit: DecodeAudit }, Gone }",
     ),
     (
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
         "#[serde(tag = \"kind\", content = \"data\")] pub enum DecodeFlatStroke { Made { #[serde(flatten)] audit: DecodeAudit }, Gone }",
     ),
     (
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
         "#[derive(Deserialize)] #[serde(untagged)] pub enum DecodeFlatContact { Made { #[serde(flatten)] audit: DecodeAudit }, Gone { at: u32 } }",
     ),
 ];
@@ -7078,7 +7093,7 @@ fn no_argument_the_parser_reads_is_rejected() {
         quote::quote! { maxLength = 50 },
         quote::quote! { no_display },
         quote::quote! { default_types(IdType = String) },
-        quote::quote! { decode_with },
+        quote::quote! { enable = ["decode_with"] },
         quote::quote! { check = ["withinParcel"] },
         quote::quote! { preprocess = ["withoutFragile"] },
     ];
@@ -7094,20 +7109,179 @@ fn no_argument_the_parser_reads_is_rejected() {
     }
 }
 
-/// `decode_with` reads as a flag: written alone, or with the boolean that says which way it is set.
+/// `enable` turns on each entry it lists, in any order, and nothing where it is not written.
 #[test]
-fn decode_with_is_read_as_a_flag() {
-    for (written, set) in [
-        ("decode_with", true),
-        ("decode_with = true", true),
-        ("decode_with = false", false),
-        ("", false),
+fn enable_turns_on_the_entries_it_lists() {
+    for (written, decode_with, mongodb) in [
+        ("", false, false),
+        ("enable = [\"decode_with\"]", true, false),
+        ("enable = [\"decode_with\", \"mongodb\"]", true, true),
+        ("enable = [\"mongodb\", \"decode_with\"]", true, true),
+        ("enable = [\"decode_with\",]", true, false),
+        (
+            "name = \"Renamed\", enable = [\"decode_with\"]",
+            true,
+            false,
+        ),
     ] {
         let args = super::parse_model_schema_args(syn::parse_str(written).unwrap());
         assert!(args.arg_rejection.is_none(), "for {written}");
-        assert_eq!(args.decode_with, set, "for {written}");
+        assert_eq!(args.enable.decode_with, decode_with, "for {written}");
+        assert_eq!(args.enable.mongodb, mongodb, "for {written}");
     }
-    assert!(args_rejection(quote::quote! { decode_with = 3 }).is_some());
+}
+
+/// The refusal `written` earns, with the text it is spanned on.
+fn enable_refusal(written: &str) -> (String, String) {
+    let rejection = super::parse_model_schema_args(syn::parse_str(written).unwrap())
+        .arg_rejection
+        .unwrap();
+    (
+        rejection.to_string(),
+        rejection.span().source_text().unwrap_or_default(),
+    )
+}
+
+/// The bare flag is refused, however it is written, with the line that replaces it.
+#[test]
+fn the_bare_decode_with_flag_is_refused_with_the_enable_list_it_moved_to() {
+    for written in ["decode_with", "decode_with = true", "decode_with = false"] {
+        assert_eq!(
+            enable_refusal(written),
+            (
+                "tixschema: `decode_with` is now an entry of the `enable` list: write \
+                 `#[model_schema(enable = [\"decode_with\"])]`"
+                    .to_owned(),
+                written.to_owned(),
+            ),
+            "for {written}"
+        );
+    }
+}
+
+/// `"mongodb"` alone is refused, spanned on the entry, with the list that is meant.
+#[test]
+fn enable_refuses_mongodb_without_decode_with() {
+    assert_eq!(
+        enable_refusal("enable = [\"mongodb\"]"),
+        (
+            "tixschema: `\"mongodb\"` requires `\"decode_with\"`: write `enable = \
+             [\"decode_with\", \"mongodb\"]`"
+                .to_owned(),
+            "\"mongodb\"".to_owned(),
+        )
+    );
+}
+
+/// An entry the list does not read is refused, spanned on it, with the two it reads.
+#[test]
+fn enable_refuses_an_unknown_entry() {
+    for (written, entry) in [
+        ("enable = [\"decode_wth\"]", "\"decode_wth\""),
+        ("enable = [\"decode_with\", \"bson\"]", "\"bson\""),
+        ("enable = [\"decode_with\", \"Mongodb\"]", "\"Mongodb\""),
+    ] {
+        assert_eq!(
+            enable_refusal(written),
+            (
+                format!(
+                    "tixschema: unknown entry `{entry}`; the entries are `\"decode_with\"` and \
+                     `\"mongodb\"`"
+                ),
+                entry.to_owned(),
+            ),
+            "for {written}"
+        );
+    }
+}
+
+/// An entry written twice is refused, spanned on the second.
+#[test]
+fn enable_refuses_an_entry_written_twice() {
+    for (written, entry) in [
+        ("enable = [\"decode_with\", \"decode_with\"]", "decode_with"),
+        (
+            "enable = [\"decode_with\", \"mongodb\", \"mongodb\"]",
+            "mongodb",
+        ),
+    ] {
+        let rejection = super::parse_model_schema_args(syn::parse_str(written).unwrap())
+            .arg_rejection
+            .unwrap();
+        let quoted = format!("\"{entry}\"");
+        assert_eq!(
+            rejection.to_string(),
+            format!("tixschema: `{quoted}` is written twice"),
+            "for {written}"
+        );
+        assert_eq!(
+            rejection.span().start().column,
+            written.rfind(&quoted).unwrap(),
+            "for {written}"
+        );
+    }
+}
+
+/// An empty list is refused, spanned on it.
+#[test]
+fn enable_refuses_an_empty_list() {
+    assert_eq!(
+        enable_refusal("enable = []"),
+        (
+            "tixschema: the list is empty; remove `enable`".to_owned(),
+            "[]".to_owned()
+        )
+    );
+}
+
+/// `enable` written in any form but a list of string literals is refused with the form it takes.
+#[test]
+fn enable_refuses_what_is_no_list_of_string_literals() {
+    for (written, spanned) in [
+        ("enable", "enable"),
+        ("enable(decode_with)", "enable(decode_with)"),
+        ("enable = \"decode_with\"", "\"decode_with\""),
+        ("enable = [decode_with]", "decode_with"),
+        ("enable = [\"decode_with\", 3]", "3"),
+    ] {
+        assert_eq!(
+            enable_refusal(written),
+            (
+                "`model_schema` argument `enable` takes a list of string literals, written \
+                 `enable = [\"decode_with\"]` or `enable = [\"decode_with\", \"mongodb\"]`"
+                    .to_owned(),
+                spanned.to_owned(),
+            ),
+            "for {written}"
+        );
+    }
+}
+
+/// A refusal of `enable` refuses the item before it is expanded: no method is written for it.
+#[test]
+fn a_refused_enable_list_writes_nothing_of_the_recovering_decode() {
+    for args in [
+        "decode_with",
+        "enable = [\"mongodb\"]",
+        "enable = [\"decode_wth\"]",
+        "enable = [\"decode_with\", \"decode_with\"]",
+        "enable = []",
+    ] {
+        let expanded = expansion_under(args, "pub struct InvoiceLookup { pub number: String }");
+        assert!(expanded.contains("compile_error"), "for {args}: {expanded}");
+        assert!(
+            !expanded.contains("from_value_with"),
+            "for {args}: {expanded}"
+        );
+    }
+}
+
+/// What the two initializers write in this build, as text.
+#[cfg(feature = "serde")]
+fn both_libraries() -> String {
+    let mut written = exec_decode_with_foundation(&quote::quote! {});
+    written.extend(exec_mongodb_foundation(&quote::quote! {}));
+    written.to_string()
 }
 
 /// The whole expansion of `source` under `#[model_schema(...)]` written with `args`.
@@ -7548,7 +7722,7 @@ fn a_string_check_on_a_brand_is_refused_where_no_schema_surface_is_on() {
 #[test]
 fn decode_with_walks_a_transparent_struct_with_a_named_field_as_the_value_of_its_field() {
     let expanded = expansion_under(
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
         "#[serde(transparent)] pub struct DecodeHolder { pub inner: String }",
     );
     assert!(!expanded.contains("compile_error"), "got: {expanded}");
@@ -7597,9 +7771,7 @@ fn decode_with_is_generated_on_every_enum_form_serde_writes() {
             "pub fn decode_with_value_issues < I > (",
             "pub fn decode_with_value_named (",
             "pub fn decode_with_value_fields < 'a , I > (",
-            "pub enum Issue < V > {",
-            "pub enum Resolution {",
-            "pub fn value_leaf < 'a , T , I , R , W > (",
+            "pub use crate :: __tixschema_decode_with :: {",
         ] {
             assert!(
                 expanded.contains(emitted),
@@ -7613,6 +7785,11 @@ fn decode_with_is_generated_on_every_enum_form_serde_writes() {
         );
         assert_eq!(
             expanded.contains("pub fn from_bson_piped ("),
+            cfg!(feature = "bson"),
+            "for {source}, got: {expanded}"
+        );
+        assert_eq!(
+            expanded.contains("pub use crate :: __tixschema_mongodb :: {"),
             cfg!(feature = "bson"),
             "for {source}, got: {expanded}"
         );
@@ -7648,7 +7825,7 @@ fn decode_with_is_generated_on_every_enum_form_serde_writes() {
 #[test]
 fn decode_with_reads_an_untagged_enums_constrained_member_through_its_hook() {
     let expanded = expansion_under(
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
         "#[derive(Deserialize)] #[serde(untagged)] pub enum DecodeReach { \
          Email { #[model_schema_prop(minLength = 3)] address: String }, Phone { digits: String } }",
     );
@@ -7683,9 +7860,7 @@ fn decode_with_is_generated_on_every_struct_shape_serde_writes() {
             "pub fn decode_with_value_issues < I > (",
             "pub fn decode_with_value_named (",
             "pub fn decode_with_value_fields < 'a , I > (",
-            "pub enum Issue < V > {",
-            "pub enum Resolution {",
-            "pub fn value_leaf < 'a , T , I , R , W > (",
+            "pub use crate :: __tixschema_decode_with :: {",
         ] {
             assert!(
                 expanded.contains(emitted),
@@ -7699,6 +7874,11 @@ fn decode_with_is_generated_on_every_struct_shape_serde_writes() {
         );
         assert_eq!(
             expanded.contains("pub fn from_bson_piped ("),
+            cfg!(feature = "bson"),
+            "for {source}, got: {expanded}"
+        );
+        assert_eq!(
+            expanded.contains("pub use crate :: __tixschema_mongodb :: {"),
             cfg!(feature = "bson"),
             "for {source}, got: {expanded}"
         );
@@ -7724,15 +7904,24 @@ fn decode_with_is_generated_on_every_struct_shape_serde_writes() {
 
 #[cfg(feature = "serde")]
 #[test]
-fn a_type_without_decode_with_gets_no_typed_path_and_no_operation() {
-    for (args, source) in DECODE_WITH_STRUCT_SHAPES
+fn a_type_that_lists_no_mongodb_gets_no_bson_read_no_typed_path_and_no_operation() {
+    for ((args, source), listed) in DECODE_WITH_STRUCT_SHAPES
         .iter()
         .chain(&DECODE_WITH_ENUM_FORMS)
+        .flat_map(|shape| [(shape, false), (shape, true)])
     {
-        let unflagged = args
-            .trim_start_matches("decode_with")
+        let others = args
+            .trim_start_matches("enable = [\"decode_with\", \"mongodb\"]")
             .trim_start_matches(", ");
-        let expanded = expansion_under(unflagged, source);
+        // Unflagged, or listing "decode_with" alone.
+        let written = if listed && others.is_empty() {
+            "enable = [\"decode_with\"]".to_owned()
+        } else if listed {
+            format!("enable = [\"decode_with\"], {others}")
+        } else {
+            others.to_owned()
+        };
+        let expanded = expansion_under(&written, source);
         for added in [
             "MongoFields",
             "MONGO_FIELDS",
@@ -7750,6 +7939,9 @@ fn a_type_without_decode_with_gets_no_typed_path_and_no_operation() {
             "delete_many",
             "mongo_read_row",
             "mongo_written_row",
+            "from_bson_with",
+            "decode_with_bson",
+            "__tixschema_mongodb",
         ] {
             assert!(
                 !expanded.contains(added),
@@ -7797,12 +7989,15 @@ fn an_item_is_recorded_as_one_value_where_serde_writes_it_as_one() {
 #[test]
 fn a_type_declared_above_is_held_by_how_serde_writes_it() {
     let _brand = expansion_under(
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
         "#[serde(transparent)] pub struct HeldBrand(pub String);",
     );
-    let _keyed = expansion_under("decode_with", "pub struct HeldKeyed { pub held: String }");
+    let _keyed = expansion_under(
+        "enable = [\"decode_with\", \"mongodb\"]",
+        "pub struct HeldKeyed { pub held: String }",
+    );
     let expanded = expansion_under(
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
         "pub struct HeldBy { pub brand: HeldBrand, pub brands: Vec<HeldBrand>, \
          pub keyed: HeldKeyed, pub keyeds: Vec<HeldKeyed> }",
     );
@@ -7826,7 +8021,7 @@ fn a_type_declared_above_is_held_by_how_serde_writes_it() {
 #[test]
 fn decode_with_reads_a_constrained_brand_with_the_brands_own_reader() {
     let expanded = expansion_under(
-        "decode_with, minLength = 3",
+        "enable = [\"decode_with\", \"mongodb\"], minLength = 3",
         "#[derive(Deserialize)] #[serde(transparent)] pub struct DecodeCode(pub String);",
     );
     for emitted in [
@@ -7868,7 +8063,10 @@ fn decode_with_reads_a_constrained_brand_with_the_brands_own_reader() {
 #[test]
 fn decode_with_bounds_its_own_impls_and_nothing_else_of_a_generic_type() {
     let source = "pub struct DecodeEnvelope<T> { pub items: Vec<T> }";
-    let expanded = expansion_under("decode_with, default_types(T = String)", source);
+    let expanded = expansion_under(
+        "enable = [\"decode_with\", \"mongodb\"], default_types(T = String)",
+        source,
+    );
     assert!(
         expanded.starts_with("pub struct DecodeEnvelope < T > {"),
         "got: {expanded}"
@@ -7934,15 +8132,15 @@ fn decode_with_is_generated_on_a_type_with_a_flattened_field() {
 #[test]
 fn decode_with_is_refused_for_good_on_a_type_alias() {
     let expanded = expansion_under(
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
         "pub type DecodeVersions = Vec<DecodeVersion>;",
     );
     assert!(
         expanded.contains(
-            "model_schema: type `DecodeVersions`: `#[model_schema(decode_with)]` cannot be written \
+            "model_schema: type `DecodeVersions`: `enable = [\\\"decode_with\\\"]` cannot be written \
              on a type alias: `DecodeVersions` is another name for `Vec<DecodeVersion>`, and the \
-             methods would have to be added to that type. Write the flag on the model types the \
-             alias reaches."
+             methods would have to be added to that type. List it on the model types the alias \
+             reaches."
         ),
         "got: {expanded}"
     );
@@ -7954,10 +8152,10 @@ fn decode_with_is_refused_for_good_on_a_type_that_borrows() {
         "pub struct DecodeNamed<'a> { pub name: &'a str }",
         "pub enum DecodeNamed<'a> { Named(&'a str), Unnamed }",
     ] {
-        let expanded = expansion_under("decode_with", source);
+        let expanded = expansion_under("enable = [\"decode_with\", \"mongodb\"]", source);
         assert!(
             expanded.contains(
-                "model_schema: type `DecodeNamed`: `#[model_schema(decode_with)]` cannot be \
+                "model_schema: type `DecodeNamed`: `enable = [\\\"decode_with\\\"]` cannot be \
                  written on a type that borrows: `from_value_with` owns the value it reads, so \
                  the decoded `DecodeNamed<'a>` cannot borrow from it for `'a`."
             ),
@@ -7969,7 +8167,7 @@ fn decode_with_is_refused_for_good_on_a_type_that_borrows() {
 /// The message a field that borrows is refused with, as it reads on `DecodeLabelled`.
 fn borrowing_field_refusal(field: &str, written: &str) -> String {
     format!(
-        "model_schema: type `DecodeLabelled`: `#[model_schema(decode_with)]` cannot be written on \
+        "model_schema: type `DecodeLabelled`: `enable = [\\\"decode_with\\\"]` cannot be written on \
          a type with a field that borrows: `{field}` is `{written}`, and `from_value_with` owns \
          the value it reads, so nothing decoded from it can be borrowed for `'static`. Write the \
          field as an owned type."
@@ -7996,7 +8194,7 @@ fn decode_with_is_refused_for_good_on_a_field_that_borrows() {
             "Vec<&'static [u8]>",
         ),
     ] {
-        let expanded = expansion_under("decode_with", source);
+        let expanded = expansion_under("enable = [\"decode_with\", \"mongodb\"]", source);
         assert!(
             expanded.contains(&borrowing_field_refusal(field, written)),
             "for {source}, got: {expanded}"
@@ -8030,7 +8228,7 @@ fn decode_with_is_refused_on_a_borrowing_field_whatever_shape_declares_it() {
             "Named.label",
         ),
     ] {
-        let expanded = expansion_under("decode_with", source);
+        let expanded = expansion_under("enable = [\"decode_with\", \"mongodb\"]", source);
         assert!(
             expanded.contains(&borrowing_field_refusal(field, "&'static str")),
             "for {source}, got: {expanded}"
@@ -8049,7 +8247,7 @@ fn decode_with_is_not_refused_on_a_field_that_borrows_nothing_from_the_value() {
         "pub struct DecodeLettered { #[serde(skip)] pub label: &'static str, pub name: String }",
         "pub struct DecodeLettered { #[serde(skip_deserializing)] pub label: &'static str }",
     ] {
-        let expanded = expansion_under("decode_with", source);
+        let expanded = expansion_under("enable = [\"decode_with\", \"mongodb\"]", source);
         assert!(
             !expanded.contains("a field that borrows"),
             "for {source}, got: {expanded}"
@@ -8097,7 +8295,7 @@ fn enums_with_one_name_for_two_functions() -> [(&'static str, &'static str); 3] 
 #[test]
 fn decode_with_is_refused_where_two_functions_of_an_enums_paths_would_take_one_name() {
     for (source, refusal) in enums_with_one_name_for_two_functions() {
-        let expanded = expansion_under("decode_with", source);
+        let expanded = expansion_under("enable = [\"decode_with\", \"mongodb\"]", source);
         assert!(expanded.contains(refusal), "for {source}, got: {expanded}");
         assert!(
             !expanded.contains("fn from_value_with"),
@@ -8121,7 +8319,9 @@ fn each_refusal_of_a_name_two_functions_would_take_is_spanned_on_its_variant() {
         "_Parcel",
     ]) {
         let item: syn::Item = syn::parse_str(source).unwrap();
-        let args = super::parse_model_schema_args(syn::parse_str("decode_with").unwrap());
+        let args = super::parse_model_schema_args(
+            syn::parse_str("enable = [\"decode_with\", \"mongodb\"]").unwrap(),
+        );
         let located: Vec<String> = super::decode_with_guard_errors(&item, &args)
             .iter()
             .flat_map(located_source_texts)
@@ -8163,15 +8363,17 @@ fn an_item_without_decode_with_expands_as_it_did() {
         "pub type DecodePlainAlias = String;",
     ] {
         let unflagged = expansion_under("", source);
-        assert_eq!(
-            expansion_under("decode_with = false", source),
-            unflagged,
-            "for {source}"
-        );
-        assert!(
-            !unflagged.contains("decode_with") && !unflagged.contains("from_value_with"),
-            "for {source}, got: {unflagged}"
-        );
+        for added in [
+            "decode_with",
+            "from_value_with",
+            "__tixschema",
+            "Foundation",
+        ] {
+            assert!(
+                !unflagged.contains(added),
+                "for {source}, found `{added}` in: {unflagged}"
+            );
+        }
     }
 }
 
@@ -8179,16 +8381,30 @@ fn an_item_without_decode_with_expands_as_it_did() {
 #[test]
 fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
     let source = "pub struct DecodeFlagged { pub name: String }";
-    let flagged = expansion_under("decode_with", source);
-    assert_eq!(expansion_under("decode_with = true", source), flagged);
+    let flagged = expansion_under("enable = [\"decode_with\", \"mongodb\"]", source);
     for emitted in [
         "pub mod decode_flagged_schema {",
+        "pub use crate :: __tixschema_decode_with :: {",
         "pub fn from_value_with < F > (",
         "pub fn from_value_piped (",
         "fn decode_with_value_report (",
         "pub fn decode_with_value_issues < I > (",
         "pub fn decode_with_value_named (",
         "pub fn decode_with_value_fields < 'a , I > (",
+    ] {
+        assert!(
+            flagged.contains(emitted),
+            "missing `{emitted}`, got: {flagged}"
+        );
+    }
+    assert_eq!(
+        flagged.contains("pub use crate :: __tixschema_mongodb :: {"),
+        cfg!(feature = "bson"),
+        "got: {flagged}"
+    );
+    // The callback's types are the crate's, written once by the initializers.
+    let library = both_libraries();
+    for declared in [
         "pub enum Segment {",
         "pub struct Path (pub :: std :: vec :: Vec < Segment >) ;",
         "pub enum Expected {",
@@ -8204,8 +8420,12 @@ fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
         "pub fn value_leaf < 'a , T , I , R , W > (",
     ] {
         assert!(
-            flagged.contains(emitted),
-            "missing `{emitted}`, got: {flagged}"
+            library.contains(declared),
+            "missing `{declared}`, got: {library}"
+        );
+        assert!(
+            !flagged.contains(declared),
+            "found `{declared}` in: {flagged}"
         );
     }
     for under_mongodb in [
@@ -8228,18 +8448,24 @@ fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
         "pub struct Nested < Root , N : ? :: core :: marker :: Sized > {",
     ] {
         assert_eq!(
-            flagged.contains(under_mongodb),
+            library.contains(under_mongodb),
             cfg!(feature = "mongodb"),
-            "for `{under_mongodb}`, got: {flagged}"
+            "for `{under_mongodb}`, got: {library}"
+        );
+        assert!(
+            !flagged.contains(under_mongodb),
+            "found `{under_mongodb}` in: {flagged}"
         );
     }
 }
 
+/// The two exceptions are the `clippy::pub_use` each re-export of a support library expects, and
+/// the `doc(hidden)` on each library's module.
 #[cfg(feature = "serde")]
 #[test]
-fn nothing_decode_with_emits_suppresses_a_lint() {
+fn nothing_decode_with_emits_suppresses_a_lint_but_the_two_exceptions() {
     let named_fields = (
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
         "pub struct DecodeQuiet { pub name: String, pub spot: (String, u32), pub tags: Vec<String> }",
     );
     for (args, source) in DECODE_WITH_STRUCT_SHAPES
@@ -8249,13 +8475,44 @@ fn nothing_decode_with_emits_suppresses_a_lint() {
         .chain(DECODE_WITH_FLATTEN_FORMS)
     {
         let flagged = expansion_under(args, source);
-        for suppression in ["allow", "expect", "hidden", "cfg_attr"] {
+        for suppression in ["allow", "hidden", "cfg_attr"] {
             assert!(
                 !flagged.contains(&format!("# [{suppression}"))
                     && !flagged.contains(&format!("({suppression})")),
                 "for {source}, found `{suppression}`, got: {flagged}"
             );
         }
+        assert!(
+            !flagged.contains("(expect)"),
+            "for {source}, got: {flagged}"
+        );
+        let reexports = flagged.matches("pub use crate :: __tixschema_").count();
+        assert!(reexports > 0, "for {source}, got: {flagged}");
+        for expectation in ["# [expect", "# [expect (clippy :: pub_use , reason = \""] {
+            assert_eq!(
+                flagged.matches(expectation).count(),
+                reexports,
+                "for {source}, got: {flagged}"
+            );
+        }
+    }
+    let library = both_libraries();
+    let hidden_modules = library.matches("# [doc (hidden)] mod __tixschema_").count();
+    assert_eq!(
+        hidden_modules,
+        if cfg!(feature = "bson") { 2 } else { 1 },
+        "got: {library}"
+    );
+    assert_eq!(
+        library.matches("hidden").count(),
+        hidden_modules,
+        "got: {library}"
+    );
+    for suppression in ["allow", "expect", "cfg_attr"] {
+        assert!(
+            !library.contains(&format!("# [{suppression}")),
+            "found `{suppression}`, got: {library}"
+        );
     }
 }
 
@@ -8263,9 +8520,57 @@ fn nothing_decode_with_emits_suppresses_a_lint() {
 #[test]
 fn what_decode_with_emits_is_written_for_the_lints_a_consumer_denies() {
     let named_fields = (
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
         "pub struct DecodeLinted { pub name: String }",
     );
+    let library = both_libraries();
+    assert!(!library.contains(": impl "), "got: {library}");
+    for declared in [
+        "pub enum Segment {",
+        "pub struct Path (",
+        "pub enum Expected {",
+        "pub enum Issue < V > {",
+        "pub enum Verdict {",
+        "pub enum Resolution {",
+        "pub struct Unrecovered < V > {",
+        "pub struct Asked {",
+        "pub struct TakenProbe < 'asked > (",
+        #[cfg(feature = "mongodb")]
+        "pub enum OperationError {",
+        #[cfg(feature = "mongodb")]
+        "pub struct Read < 'c , T , O > {",
+        #[cfg(feature = "mongodb")]
+        "pub struct MongoPath {",
+        #[cfg(feature = "mongodb")]
+        "pub struct Filter < Root > {",
+        #[cfg(feature = "mongodb")]
+        "pub struct Update < Root > {",
+        #[cfg(feature = "mongodb")]
+        "pub struct AsFilter ;",
+        #[cfg(feature = "mongodb")]
+        "pub struct AsUpdate ;",
+        #[cfg(feature = "mongodb")]
+        "pub struct Field < Root , V , N : ? :: core :: marker :: Sized = V > {",
+        #[cfg(feature = "mongodb")]
+        "pub struct OptionalField < Root , V , N : ? :: core :: marker :: Sized = V > {",
+        #[cfg(feature = "mongodb")]
+        "pub struct Element < V > {",
+        #[cfg(feature = "mongodb")]
+        "pub struct ListField < Root , V , N : ? :: core :: marker :: Sized = V > {",
+        #[cfg(feature = "mongodb")]
+        "pub struct Model < Root , M , N : ? :: core :: marker :: Sized = M > {",
+        #[cfg(feature = "mongodb")]
+        "pub struct OptionalModel < Root , M , N : ? :: core :: marker :: Sized = M > {",
+        #[cfg(feature = "mongodb")]
+        "pub struct ModelList < Root , M , N : ? :: core :: marker :: Sized = M > {",
+        #[cfg(feature = "mongodb")]
+        "pub struct Nested < Root , N : ? :: core :: marker :: Sized > {",
+    ] {
+        assert!(
+            library.contains(&format!("# [non_exhaustive] {declared}")),
+            "missing `{declared}`, got: {library}"
+        );
+    }
     for (args, source) in DECODE_WITH_STRUCT_SHAPES
         .into_iter()
         .chain([named_fields])
@@ -8273,52 +8578,6 @@ fn what_decode_with_emits_is_written_for_the_lints_a_consumer_denies() {
         .chain(DECODE_WITH_FLATTEN_FORMS)
     {
         let flagged = expansion_under(args, source);
-        for declared in [
-            "pub enum Segment {",
-            "pub struct Path (",
-            "pub enum Expected {",
-            "pub enum Issue < V > {",
-            "pub enum Verdict {",
-            "pub enum Resolution {",
-            "pub struct Unrecovered < V > {",
-            "pub struct Asked {",
-            "pub struct TakenProbe < 'asked > (",
-            #[cfg(feature = "mongodb")]
-            "pub enum OperationError {",
-            #[cfg(feature = "mongodb")]
-            "pub struct Read < 'c , T , O > {",
-            #[cfg(feature = "mongodb")]
-            "pub struct MongoPath {",
-            #[cfg(feature = "mongodb")]
-            "pub struct Filter < Root > {",
-            #[cfg(feature = "mongodb")]
-            "pub struct Update < Root > {",
-            #[cfg(feature = "mongodb")]
-            "pub struct AsFilter ;",
-            #[cfg(feature = "mongodb")]
-            "pub struct AsUpdate ;",
-            #[cfg(feature = "mongodb")]
-            "pub struct Field < Root , V , N : ? :: core :: marker :: Sized = V > {",
-            #[cfg(feature = "mongodb")]
-            "pub struct OptionalField < Root , V , N : ? :: core :: marker :: Sized = V > {",
-            #[cfg(feature = "mongodb")]
-            "pub struct Element < V > {",
-            #[cfg(feature = "mongodb")]
-            "pub struct ListField < Root , V , N : ? :: core :: marker :: Sized = V > {",
-            #[cfg(feature = "mongodb")]
-            "pub struct Model < Root , M , N : ? :: core :: marker :: Sized = M > {",
-            #[cfg(feature = "mongodb")]
-            "pub struct OptionalModel < Root , M , N : ? :: core :: marker :: Sized = M > {",
-            #[cfg(feature = "mongodb")]
-            "pub struct ModelList < Root , M , N : ? :: core :: marker :: Sized = M > {",
-            #[cfg(feature = "mongodb")]
-            "pub struct Nested < Root , N : ? :: core :: marker :: Sized > {",
-        ] {
-            assert!(
-                flagged.contains(&format!("# [non_exhaustive] {declared}")),
-                "for {source}, missing `{declared}`, got: {flagged}"
-            );
-        }
         assert!(!flagged.contains(": impl "), "for {source}, got: {flagged}");
         assert!(
             flagged.contains(
@@ -8334,7 +8593,7 @@ fn what_decode_with_emits_is_written_for_the_lints_a_consumer_denies() {
 #[test]
 fn a_flagged_type_names_the_type_it_reaches_and_never_its_module() {
     let flagged = expansion_under(
-        "decode_with",
+        "enable = [\"decode_with\", \"mongodb\"]",
         "pub struct DecodeOuter { pub inner: DecodeInner, pub many: Vec<DecodeInner> }",
     );
     let walker = flagged
@@ -8360,7 +8619,7 @@ fn what_a_schema_module_already_held_reads_the_authors_scope_past_the_added_name
     // A model in an `Arc` and in a fixed array is one the type's unjudged read does not reach, so
     // its reader stays in the schema module.
     let source = "#[derive(Deserialize)] pub struct DecodeTicket { pub issue: Arc<Issue>, pub trail: [Segment; 2] }";
-    let flagged = expansion_under("decode_with", source);
+    let flagged = expansion_under("enable = [\"decode_with\", \"mongodb\"]", source);
     for scoped in [
         "Result < Arc < super :: Issue > , D :: Error >",
         "< Arc < super :: Issue > > :: deserialize (deserializer)",
@@ -15463,7 +15722,7 @@ fn a_brand_with_no_rule_gains_no_read_of_the_macros() {
              UnruledGeneric < IdType > (pub IdType) ;",
         ),
         (
-            "decode_with",
+            "enable = [\"decode_with\", \"mongodb\"]",
             "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct UnruledDecoded(pub \
              String);",
             "# [derive (Serialize , Deserialize)] # [serde (transparent)] pub struct \

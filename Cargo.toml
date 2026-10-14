@@ -51,12 +51,33 @@ futures = ">=0.3.33"
 # as `lapin` above.
 axum = { version = "0.8.9", features = ["ws"] }
 tokio-tungstenite = "0.30.0"
+# Holds each crate of `tests/foundation_refusals/` to the errors rustc prints for it. An exact
+# version, the lock file being untracked: a release at least two weeks old when it was added.
+trybuild = "=1.0.121"
+# Two crates apart from the test binaries, each writing its own support libraries: one declares a
+# stored type a test binary's type holds, and one lists neither `bson` nor `mongodb`.
+stored_customers = { path = "tests/crates_apart/stored_customers" }
+invoice_lookups = { path = "tests/crates_apart/invoice_lookups" }
 
 # Transitive dep floors — pinned to fix known vulnerabilities:
 # - bytes >=1.11.1: RUSTSEC-2026-0007 (integer overflow in BytesMut::reserve)
 # - time >=0.3.47: RUSTSEC-2026-0009 (DoS via stack exhaustion)
 bytes = ">=1.11.1"
 time = ">=0.3.47"
+
+# A strict consumer, linted under this package's own table: a library with models in a public
+# module and in a private one, and a binary with models of its own, each writing both support
+# libraries.
+[[example]]
+name = "strict_consumer_models"
+path = "examples/strict_consumer_models/lib.rs"
+crate-type = ["lib"]
+required-features = ["mongodb"]
+
+[[example]]
+name = "strict_consumer_app"
+path = "examples/strict_consumer_app.rs"
+required-features = ["mongodb"]
 
 
 [features]

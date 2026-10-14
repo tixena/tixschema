@@ -20,7 +20,7 @@ thread_local! {
 }
 
 /// A parcel whose functions count their calls.
-#[model_schema(decode_with, preprocess = ["countedParcel"])]
+#[model_schema(enable = ["decode_with"], preprocess = ["countedParcel"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct CountedParcel {
     #[model_schema_prop(preprocess = ["countedLabel"])]
@@ -28,7 +28,7 @@ struct CountedParcel {
 }
 
 /// A parcel flattened into the object of its holder.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct StoredCrated {
     dock: String,
@@ -37,14 +37,14 @@ struct StoredCrated {
 }
 
 /// The type that holds the parcel under a key.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct StoredManifest {
     parcel: StoredParcel,
 }
 
 /// The parcel of the documents, read by the recovering read.
-#[model_schema(decode_with, preprocess = ["withoutFragile"])]
+#[model_schema(enable = ["decode_with", "mongodb"], preprocess = ["withoutFragile"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct StoredParcel {
@@ -55,7 +55,7 @@ struct StoredParcel {
 }
 
 /// An enum whose function takes its value out of an envelope.
-#[model_schema(decode_with, preprocess = ["unwrapped"])]
+#[model_schema(enable = ["decode_with"], preprocess = ["unwrapped"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum StoredShipment {

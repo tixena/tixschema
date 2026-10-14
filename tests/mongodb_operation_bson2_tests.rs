@@ -1,9 +1,12 @@
-//! The operations `#[model_schema(decode_with)]` adds under `mongodb`: the reads, `count`,
-//! `insert_one`, the updates and the deletes, with the `Read` the first answer and the
-//! `OperationError` they all fail with, built against version 2 of the `bson` library, which this
-//! package's MongoDB driver is built for.
+//! The operations `#[model_schema(enable = ["decode_with", "mongodb"])]` adds under the `mongodb`
+//! feature: the reads, `count`, `insert_one`, the updates and the deletes, with the `Read` the
+//! first answer and the `OperationError` they all fail with, built against version 2 of the
+//! `bson` library, which this package's MongoDB driver is built for.
 
 extern crate bson2 as bson;
+
+tixschema::decode_with_foundation!();
+tixschema::mongodb_foundation!();
 
 #[cfg(test)]
 #[cfg(feature = "mongodb")]

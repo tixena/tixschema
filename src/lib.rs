@@ -1,16 +1,19 @@
-//! The tixschema proc macros: `model_schema`, `model_schema_prop`, `service_schema` and
-//! `service_schema_op`. Each hands its input to the module that expands it.
+//! The tixschema proc macros: `model_schema`, `model_schema_prop`, `service_schema`,
+//! `service_schema_op`, `decode_with_foundation` and `mongodb_foundation`. Each hands its input to
+//! the module that expands it.
 
 mod bound_message;
 #[cfg(test)]
 mod emitted_names_tests;
 mod features;
 mod field_type;
+mod foundation;
 mod model_schema;
 mod rename_rule;
 mod service_schema;
 mod utils;
 
+use foundation::{exec_decode_with_foundation, exec_mongodb_foundation};
 use model_schema::exec_model_schema;
 use proc_macro::TokenStream;
 use service_schema::exec_service_schema;
@@ -557,6 +560,37 @@ export const Document$Schema: ZodType<Document> = Document$RawSchema.meta({
 #[proc_macro_attribute]
 pub fn model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     exec_model_schema(args.into(), input.into()).into()
+}
+
+/// # `decode_with_foundation`
+///
+/// Writes, once per crate, the support library every `#[model_schema(enable = ["decode_with"])]`
+/// type of the crate re-exports from its `{type}_schema` module: `Issue`, `Verdict`, `Path`,
+/// `Resolver` and what the walkers hand each other. Write it at the crate root, on its own line:
+/// `tixschema::decode_with_foundation!();`. Within one crate every `{type}_schema::Issue` is one
+/// type, and so is each other name of the library.
+///
+/// It takes no arguments, and writes nothing in a build without the `serde` feature.
+///
+#[cfg_attr(feature = "serde", doc = include_str!("decode_with_example.md"))]
+#[proc_macro]
+pub fn decode_with_foundation(input: TokenStream) -> TokenStream {
+    exec_decode_with_foundation(&input.into()).into()
+}
+
+/// # `mongodb_foundation`
+///
+/// Writes, once per crate, the support library every
+/// `#[model_schema(enable = ["decode_with", "mongodb"])]` type of the crate re-exports: what reads
+/// a BSON value, and under the `mongodb` feature `Filter`, `Update`, the typed paths and
+/// `OperationError`. Write it at the crate root beside `tixschema::decode_with_foundation!();`:
+/// `tixschema::mongodb_foundation!();`.
+///
+/// It takes no arguments, and writes nothing in a build without the `bson` feature, so the call
+/// stays in a crate whatever it builds with.
+#[proc_macro]
+pub fn mongodb_foundation(input: TokenStream) -> TokenStream {
+    exec_mongodb_foundation(&input.into()).into()
 }
 
 /// # `model_schema_prop`

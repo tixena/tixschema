@@ -87,7 +87,7 @@ const DECLARED_IMPORT: &str = "use record_schema::{Expected, Issue, Verdict};";
 /// `Record` as the README declares it: what stands above its members, then each member in the
 /// README's order.
 const DECLARED_RECORD: [&str; 6] = [
-    r#"#[model_schema(decode_with)]
+    r#"#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Record {"#,
@@ -101,7 +101,7 @@ pub struct Record {"#,
 ];
 
 /// The inner type the README declares, character for character.
-const DECLARED_VERSION: &str = r#"#[model_schema(decode_with)]
+const DECLARED_VERSION: &str = r#"#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Version {
@@ -126,7 +126,7 @@ const SHOWN_RESULT: [&str; 5] = [
     "| `note` | `None` |",
 ];
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Record {
@@ -139,7 +139,7 @@ pub struct Record {
     pub versions: Vec<Version>,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Version {

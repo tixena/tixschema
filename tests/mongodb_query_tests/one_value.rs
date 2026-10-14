@@ -11,17 +11,17 @@ use super::shown;
 use super::stored::looked_up;
 
 /// A brand over a number.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 struct Score(u32);
 
 /// A tuple struct of one slot, which serde writes as the value it holds with no attribute.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Nickname(String);
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 enum Rank {
@@ -30,13 +30,13 @@ enum Rank {
 }
 
 /// A brand over whatever fills it.
-#[model_schema(decode_with, default_types(T = String))]
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(T = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 struct Sealed<T>(T);
 
 /// Holds each of the four above bare or under an `Option`, and in a list.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Game {
@@ -52,7 +52,7 @@ struct Game {
 }
 
 /// Holds a tuple struct of one slot of text, bare.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Pilot {
     callsign: Nickname,
@@ -253,7 +253,7 @@ fn each_path_is_found_in_what_serde_stores_for_the_row() {
 
 #[test]
 fn a_plain_enum_declared_inside_a_function_builds() {
-    #[model_schema(decode_with)]
+    #[model_schema(enable = ["decode_with", "mongodb"])]
     #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "kebab-case")]
     enum Standing {
@@ -273,7 +273,7 @@ fn a_plain_enum_declared_inside_a_function_builds() {
 
 #[test]
 fn a_brand_declared_inside_a_function_builds() {
-    #[model_schema(decode_with)]
+    #[model_schema(enable = ["decode_with", "mongodb"])]
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(transparent)]
     struct Callsign(String);
@@ -294,7 +294,7 @@ fn a_brand_declared_inside_a_function_builds() {
 
 #[test]
 fn a_tuple_struct_of_one_slot_declared_inside_a_function_builds() {
-    #[model_schema(decode_with)]
+    #[model_schema(enable = ["decode_with", "mongodb"])]
     #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
     struct Altitude(u32);
 
@@ -306,7 +306,7 @@ fn a_tuple_struct_of_one_slot_declared_inside_a_function_builds() {
 
 #[test]
 fn a_unit_struct_declared_inside_a_function_builds() {
-    #[model_schema(decode_with)]
+    #[model_schema(enable = ["decode_with", "mongodb"])]
     #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
     struct Grounded;
 

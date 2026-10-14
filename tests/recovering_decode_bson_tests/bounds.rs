@@ -7,7 +7,7 @@ use bson::{Bson, Document, doc};
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct BoundedGroup {
@@ -32,22 +32,22 @@ struct BoundedGroup {
 /// A brand's rule is read with its schema surface, so a build with none writes none.
 #[cfg_attr(
     any(feature = "typescript", feature = "zod", feature = "jsonschema"),
-    model_schema(decode_with, minLength = 2)
+    model_schema(enable = ["decode_with", "mongodb"], minLength = 2)
 )]
 #[cfg_attr(
     not(any(feature = "typescript", feature = "zod", feature = "jsonschema")),
-    model_schema(decode_with)
+    model_schema(enable = ["decode_with", "mongodb"])
 )]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct BoundedLabel(String);
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct BoundedPath(String);
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum BoundedSlots {
     Code(#[model_schema_prop(pattern = "^[A-Z]{3}$")] String),
@@ -58,7 +58,7 @@ enum BoundedSlots {
     ),
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "data")]
 enum BoundedSlotsAdjacent {
@@ -70,7 +70,7 @@ enum BoundedSlotsAdjacent {
 }
 
 /// An untagged member that is a list, which the read counts to choose the variant.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum BoundedChoice {
@@ -78,13 +78,13 @@ enum BoundedChoice {
     Text(String),
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct BoundedChooser {
     choice: BoundedChoice,
 }
 
-#[model_schema(decode_with, minLength = 1, maxLength = 5)]
+#[model_schema(enable = ["decode_with", "mongodb"], minLength = 1, maxLength = 5)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum BoundedByEnum {
     Label { text: String },
@@ -92,7 +92,7 @@ enum BoundedByEnum {
     Tags { tags: Vec<String> },
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct BoundedPair(
     #[model_schema_prop(minLength = 2)] String,
@@ -100,11 +100,11 @@ struct BoundedPair(
 );
 
 /// A struct of one slot, which serde writes as the slot's value.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct BoundedLone(#[model_schema_prop(minLength = 2)] String);
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct BoundedHolder {
     lone: BoundedLone,
@@ -112,7 +112,7 @@ struct BoundedHolder {
 }
 
 /// A parcel whose fields serde writes under other names than their own.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct BoundedParcel {
@@ -123,7 +123,7 @@ struct BoundedParcel {
     item_label: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all_fields = "camelCase")]
 enum BoundedDispatch {

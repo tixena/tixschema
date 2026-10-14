@@ -1,4 +1,6 @@
-//! The MongoDB operations `#[model_schema(decode_with)]` adds under `mongodb`.
+//! The MongoDB operations, under the `mongodb` feature: what they answer and fail with, which
+//! `mongodb_foundation!()` writes once per crate, and the operations themselves, which only a type
+//! that lists `"mongodb"` in `enable` gets.
 
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
@@ -168,7 +170,10 @@ fn read_futures() -> TokenStream {
 ///
 /// use invoice_schema::OperationError;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub number: String,
@@ -269,13 +274,16 @@ pub fn read_items() -> TokenStream {
 ///
 /// use invoice_schema::OperationError;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Customer {
 ///     pub name: String,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub customer: Customer,
@@ -455,7 +463,10 @@ fn sent(option: &str) -> TokenStream {
 ///
 /// use invoice_schema::OperationError;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub number: String,
@@ -491,7 +502,10 @@ fn sent(option: &str) -> TokenStream {
 ///
 /// use invoice_schema::OperationError;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub number: String,
@@ -512,51 +526,139 @@ fn sent(option: &str) -> TokenStream {
 /// ```
 ///
 /// ```text
-/// error[E0277]: the trait bound `invoice_schema::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied
-///   --> tests/zz_probe.rs:21:9
+/// error[E0277]: the trait bound `__tixschema_mongodb::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied
+///   --> tests/zz_probe.rs:24:9
 ///    |
-/// 19 |     Invoice::update_one(
+/// 22 |     Invoice::update_one(
 ///    |     ------------------- required by a bound introduced by this call
-/// 20 |         invoices,
-/// 21 |         paths.paid().set(true)?,
+/// 23 |         invoices,
+/// 24 |         paths.paid().set(true)?,
 ///    |         ^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
 ///    |
-/// help: the trait `AsRef<PhantomData<Invoice>>` is not implemented for `invoice_schema::Update<Invoice>`
+/// help: the trait `AsRef<PhantomData<Invoice>>` is not implemented for `__tixschema_mongodb::Update<Invoice>`
 ///       but trait `AsRef<PhantomData<fn(Invoice) -> Invoice>>` is implemented for it
-///   --> tests/zz_probe.rs:10:1
+///   --> tests/zz_probe.rs:11:1
 ///    |
-/// 10 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/// 11 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ///    = help: for that trait implementation, expected `fn(Invoice) -> Invoice`, found `Invoice`
 /// note: required by a bound in `Invoice::update_one`
-///   --> tests/zz_probe.rs:10:1
+///   --> tests/zz_probe.rs:13:1
 ///    |
-/// 10 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Invoice::update_one`
-///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+/// 13 | #[model_schema(enable = ["decode_with", "mongodb"])]
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Invoice::update_one`
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` which comes from the expansion of the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
-/// error[E0277]: the trait bound `invoice_schema::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied
-///   --> tests/zz_probe.rs:22:9
+/// error[E0277]: the trait bound `__tixschema_mongodb::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied
+///   --> tests/zz_probe.rs:25:9
 ///    |
-/// 19 |     Invoice::update_one(
+/// 22 |     Invoice::update_one(
 ///    |     ------------------- required by a bound introduced by this call
 /// ...
-/// 22 |         paths.number().eq("INV-0042".to_owned())?,
+/// 25 |         paths.number().eq("INV-0042".to_owned())?,
 ///    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
 ///    |
-/// help: the trait `AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not implemented for `invoice_schema::Filter<Invoice>`
+/// help: the trait `AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not implemented for `__tixschema_mongodb::Filter<Invoice>`
 ///       but trait `AsRef<PhantomData<Invoice>>` is implemented for it
-///   --> tests/zz_probe.rs:10:1
+///   --> tests/zz_probe.rs:11:1
 ///    |
-/// 10 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/// 11 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ///    = help: for that trait implementation, expected `Invoice`, found `fn(Invoice) -> Invoice`
 /// note: required by a bound in `Invoice::update_one`
-///   --> tests/zz_probe.rs:10:1
+///   --> tests/zz_probe.rs:13:1
 ///    |
-/// 10 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Invoice::update_one`
-///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+/// 13 | #[model_schema(enable = ["decode_with", "mongodb"])]
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Invoice::update_one`
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` which comes from the expansion of the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///
+/// error[E0277]: the trait bound `__tixschema_mongodb::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied
+///   --> tests/zz_probe.rs:22:5
+///    |
+/// 22 | /     Invoice::update_one(
+/// 23 | |         invoices,
+/// 24 | |         paths.paid().set(true)?,
+/// 25 | |         paths.number().eq("INV-0042".to_owned())?,
+/// 26 | |     )
+///    | |_____^ unsatisfied trait bound
+///    |
+/// help: the trait `AsRef<PhantomData<Invoice>>` is not implemented for `__tixschema_mongodb::Update<Invoice>`
+///       but trait `AsRef<PhantomData<fn(Invoice) -> Invoice>>` is implemented for it
+///   --> tests/zz_probe.rs:11:1
+///    |
+/// 11 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///    = help: for that trait implementation, expected `fn(Invoice) -> Invoice`, found `Invoice`
+/// note: required by a bound in `Invoice::update_one`
+///   --> tests/zz_probe.rs:13:1
+///    |
+/// 13 | #[model_schema(enable = ["decode_with", "mongodb"])]
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Invoice::update_one`
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` which comes from the expansion of the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///
+/// error[E0277]: the trait bound `__tixschema_mongodb::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied
+///   --> tests/zz_probe.rs:22:5
+///    |
+/// 22 | /     Invoice::update_one(
+/// 23 | |         invoices,
+/// 24 | |         paths.paid().set(true)?,
+/// 25 | |         paths.number().eq("INV-0042".to_owned())?,
+/// 26 | |     )
+///    | |_____^ unsatisfied trait bound
+///    |
+/// help: the trait `AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not implemented for `__tixschema_mongodb::Filter<Invoice>`
+///       but trait `AsRef<PhantomData<Invoice>>` is implemented for it
+///   --> tests/zz_probe.rs:11:1
+///    |
+/// 11 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///    = help: for that trait implementation, expected `Invoice`, found `fn(Invoice) -> Invoice`
+/// note: required by a bound in `Invoice::update_one`
+///   --> tests/zz_probe.rs:13:1
+///    |
+/// 13 | #[model_schema(enable = ["decode_with", "mongodb"])]
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Invoice::update_one`
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` which comes from the expansion of the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///
+/// error[E0277]: the trait bound `__tixschema_mongodb::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied
+///   --> tests/zz_probe.rs:27:6
+///    |
+/// 27 |     .await
+///    |      ^^^^^ unsatisfied trait bound
+///    |
+/// help: the trait `AsRef<PhantomData<Invoice>>` is not implemented for `__tixschema_mongodb::Update<Invoice>`
+///       but trait `AsRef<PhantomData<fn(Invoice) -> Invoice>>` is implemented for it
+///   --> tests/zz_probe.rs:11:1
+///    |
+/// 11 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///    = help: for that trait implementation, expected `fn(Invoice) -> Invoice`, found `Invoice`
+/// note: required by a bound in `Invoice::update_one`
+///   --> tests/zz_probe.rs:13:1
+///    |
+/// 13 | #[model_schema(enable = ["decode_with", "mongodb"])]
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Invoice::update_one`
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` which comes from the expansion of the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///
+/// error[E0277]: the trait bound `__tixschema_mongodb::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied
+///   --> tests/zz_probe.rs:27:6
+///    |
+/// 27 |     .await
+///    |      ^^^^^ unsatisfied trait bound
+///    |
+/// help: the trait `AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not implemented for `__tixschema_mongodb::Filter<Invoice>`
+///       but trait `AsRef<PhantomData<Invoice>>` is implemented for it
+///   --> tests/zz_probe.rs:11:1
+///    |
+/// 11 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///    = help: for that trait implementation, expected `Invoice`, found `fn(Invoice) -> Invoice`
+/// note: required by a bound in `Invoice::update_one`
+///   --> tests/zz_probe.rs:13:1
+///    |
+/// 13 | #[model_schema(enable = ["decode_with", "mongodb"])]
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Invoice::update_one`
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` which comes from the expansion of the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 6 previous errors
 /// ```

@@ -9,6 +9,9 @@
 // With `bson` on, what a flagged type expands to names the `bson` library.
 extern crate bson2 as bson;
 
+tixschema::decode_with_foundation!();
+tixschema::mongodb_foundation!();
+
 #[cfg(test)]
 #[path = "shadowed_indexmap_tests/tests.rs"]
 mod tests;

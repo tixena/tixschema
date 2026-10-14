@@ -67,7 +67,7 @@ macro_rules! tried {
     };
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Audit {
@@ -75,7 +75,7 @@ struct Audit {
     revision: i32,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Extra {
     note: String,
@@ -83,7 +83,7 @@ struct Extra {
 }
 
 /// One flattened struct beside a key of the type's own.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Note {
     #[serde(flatten)]
@@ -92,7 +92,7 @@ struct Note {
 }
 
 /// Internally tagged: `{"kind": "Solid", "color": "red"}`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Paint {
@@ -101,7 +101,7 @@ enum Paint {
 }
 
 /// Externally tagged: `{"Curved": {"radius": 1.5}}`, `"Straight"`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum Edge {
     Curved { radius: f64 },
@@ -109,7 +109,7 @@ enum Edge {
 }
 
 /// Adjacently tagged: `{"kind": "Dotted", "data": {"gap": 2}}`, `{"kind": "Solid"}`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "data")]
 enum Trim {
@@ -118,7 +118,7 @@ enum Trim {
 }
 
 /// An externally tagged enum and an adjacently tagged one, each flattened.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Framed {
     #[serde(flatten)]
@@ -129,7 +129,7 @@ struct Framed {
 }
 
 /// A struct, an optional struct and a tagged enum, each flattened beside a key of the type's own.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Sheet {
     #[serde(flatten)]
@@ -142,7 +142,7 @@ struct Sheet {
 }
 
 /// A type that flattens one that flattens others.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Binder {
     #[serde(flatten)]
@@ -151,20 +151,20 @@ struct Binder {
 }
 
 /// A type that flattens fields, held under a key.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Cabinet {
     top: Sheet,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Stamp {
     version: Version,
 }
 
 /// An optional flattened type that holds a model type of its own.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Proof {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
@@ -172,14 +172,14 @@ struct Proof {
     title: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Origin {
     source: String,
 }
 
 /// Two flattened structs.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Filed {
     #[serde(flatten)]
@@ -189,20 +189,20 @@ struct Filed {
     title: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct ByMail {
     address: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct ByPhone {
     digits: String,
 }
 
 /// Untagged, every variant an object: two model types and a variant with a field of its own.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Channel {
@@ -211,7 +211,7 @@ enum Channel {
     Phone(ByPhone),
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Notice {
     #[serde(flatten)]
@@ -220,7 +220,7 @@ struct Notice {
 }
 
 /// A flattened map of plain values.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Counts {
     #[serde(flatten)]
@@ -229,7 +229,7 @@ struct Counts {
 }
 
 /// A flattened map of model types, beside a flattened struct.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Releases {
     #[serde(flatten)]
@@ -246,7 +246,7 @@ struct Body {
 }
 
 /// A flattened type parameter.
-#[model_schema(decode_with, default_types(T = Body))]
+#[model_schema(enable = ["decode_with"], default_types(T = Body))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Letter<T> {
     #[serde(flatten)]
@@ -255,7 +255,7 @@ struct Letter<T> {
 }
 
 /// A flattened type parameter, then a flattened map: two fields that each take the rest.
-#[model_schema(decode_with, default_types(T = Body))]
+#[model_schema(enable = ["decode_with"], default_types(T = Body))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Packet<T> {
     #[serde(flatten)]
@@ -266,7 +266,7 @@ struct Packet<T> {
 }
 
 /// Externally tagged, with a struct variant that flattens a field.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum Logged {
     Gone,
@@ -278,7 +278,7 @@ enum Logged {
 }
 
 /// Internally tagged, with a struct variant that flattens a field.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Posted {
@@ -291,7 +291,7 @@ enum Posted {
 }
 
 /// Adjacently tagged, with a struct variant that flattens a field.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "data")]
 enum Queued {
@@ -304,7 +304,7 @@ enum Queued {
 }
 
 /// Untagged, with a struct variant that flattens a field.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Seen {
@@ -319,7 +319,7 @@ enum Seen {
 }
 
 /// An optional flattened map, which no walk reaches.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Spare {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
@@ -329,7 +329,7 @@ struct Spare {
 
 /// A flattened map of numbers beside a flattened tagged enum, whose text tag serde hands to the
 /// map as well.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Mixed {
     #[serde(flatten)]
@@ -339,7 +339,7 @@ struct Mixed {
 }
 
 /// A flattened map read by a hook named like what the walk of a flattened type keeps its keys as.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Marked {
     #[serde(flatten)]
@@ -349,7 +349,7 @@ struct Marked {
 }
 
 /// Untagged, with a variant that has no field to walk: serde neither writes nor reads its one.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Trace {
@@ -363,7 +363,7 @@ enum Trace {
     },
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Traced {
     title: String,
@@ -372,7 +372,7 @@ struct Traced {
 }
 
 /// A type that flattens one that flattens a map, which takes every key it is handed.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Report {
     #[serde(flatten)]
@@ -380,14 +380,14 @@ struct Report {
     id: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Captioned {
     name: String,
 }
 
 /// Untagged, with a map among its variants, which takes every key the enum is handed.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Scores {
@@ -395,7 +395,7 @@ enum Scores {
     Tallied(HashMap<String, i32>),
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Scoreboard {
     id: String,
@@ -404,14 +404,14 @@ struct Scoreboard {
 }
 
 /// Declares a key the type that flattens it declares too.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Part {
     #[serde(default)]
     title: i32,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Whole {
     #[serde(flatten)]
@@ -420,7 +420,7 @@ struct Whole {
 }
 
 /// Internally tagged, with a struct variant that flattens a type that takes every key.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Tabled {
@@ -433,7 +433,7 @@ enum Tabled {
 }
 
 /// An optional flattened enum, internally tagged.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Painted {
     own: String,
@@ -442,7 +442,7 @@ struct Painted {
 }
 
 /// An optional flattened enum, untagged.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Reached {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
@@ -451,7 +451,7 @@ struct Reached {
 }
 
 /// Two optional flattened enums, internally tagged and untagged, beside a flattened struct.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Layered {
     #[serde(flatten)]
@@ -464,7 +464,7 @@ struct Layered {
 }
 
 /// Internally tagged, with a variant that holds a model type under a key.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Finish {
@@ -472,7 +472,7 @@ enum Finish {
     Coated { version: Version },
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Finished {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
@@ -481,7 +481,7 @@ struct Finished {
 }
 
 /// An optional flattened enum, externally tagged.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Edged {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
@@ -490,7 +490,7 @@ struct Edged {
 }
 
 /// An optional flattened enum, adjacently tagged.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Trimmed {
     own: String,

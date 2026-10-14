@@ -12,7 +12,7 @@ use super::shown;
 use crate::{date_hook, optional_date_hook};
 
 /// Holds the depot above it behind a hook of its own, in an `Option` of a `Box`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Depot {
     code: String,
@@ -21,7 +21,7 @@ struct Depot {
 }
 
 /// Holds itself in a variant's field, behind a hook of its own.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 enum Load {
@@ -36,7 +36,7 @@ enum Load {
 }
 
 /// Holds itself in a list, behind a hook of its own.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Node {
     #[serde(with = "in_a_list")]
@@ -45,7 +45,7 @@ struct Node {
 }
 
 /// A variant's field stored through a hook of its own.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 enum Opening {
@@ -57,7 +57,7 @@ enum Opening {
     },
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PublishWindow {
@@ -75,7 +75,7 @@ struct PublishWindow {
 
 /// A hooked field on a type whose own bound names `Self`: [`Tracked`], which the type meets and
 /// its struct of paths does not.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Scan
@@ -88,7 +88,7 @@ where
 
 /// Dates stored as the milliseconds since the epoch, through the hook `as_number` hangs on a
 /// field: over a date, and over an `Option` of one.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Stamped {
@@ -99,7 +99,7 @@ struct Stamped {
     seen_at: Option<DateTime<Utc>>,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Template {
@@ -275,7 +275,7 @@ fn a_hooked_field_of_a_variant_is_written_as_a_bson_date() {
 /// The function of a hooked path calls one of the type's own, and is written beside the type.
 #[test]
 fn a_type_with_a_hooked_field_declared_inside_a_function_builds() {
-    #[model_schema(decode_with)]
+    #[model_schema(enable = ["decode_with", "mongodb"])]
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Stamp {

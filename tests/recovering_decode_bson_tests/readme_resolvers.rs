@@ -12,7 +12,7 @@ use invoice_schema::{Expected, Issue, Resolution};
 use crate::BSON_MAJOR;
 
 /// The inner type the README declares, character for character.
-const DECLARED_CUSTOMER: &str = r#"#[model_schema(decode_with)]
+const DECLARED_CUSTOMER: &str = r#"#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Customer {
@@ -24,12 +24,12 @@ pub struct Customer {
 const DECLARED_IMPORT: &str = "use invoice_schema::{Expected, Issue, Resolution};";
 
 /// The outer type the README declares, character for character.
-const DECLARED_INVOICE: &str = "#[model_schema(decode_with)]
+const DECLARED_INVOICE: &str = r#"#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Invoice {
     pub customer: Customer,
     pub number: String,
-}";
+}"#;
 
 /// The README's two resolvers, the rows it stores and the read it makes of each, character for
 /// character.
@@ -135,7 +135,7 @@ const SHOWN_UNDER_3: [&str; 2] = [
     r#"refused: customer.openInvoices: invalid: expected U32, found String("3"): BSON error. Kind: A deserialization-related error occurred. Message: invalid type: string "3", expected u32."#,
 ];
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Customer {
@@ -143,7 +143,7 @@ pub struct Customer {
     pub open_invoices: u32,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Invoice {
     pub customer: Customer,

@@ -61,7 +61,7 @@ enum Count {
 }
 
 /// A read hook named like what the walker binds the value of a key as.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Named {
     #[serde(deserialize_with = "held")]
@@ -70,7 +70,7 @@ struct Named {
 
 /// One field per name the walker gives a value of its own, each read by the hook of that name.
 /// `stored` is bound where a key has an alias, and `read` is what a writer is handed.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Bound {
     #[serde(deserialize_with = "found")]
@@ -94,7 +94,7 @@ struct Bound {
 }
 
 /// A tuple struct's walker binds the value as `found`, and its positions as `items`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Placed(
     #[serde(deserialize_with = "found")] String,
@@ -102,7 +102,7 @@ struct Placed(
 );
 
 /// Internally tagged: the tag is bound as `tag` where the variant's fields are walked.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Internal {
@@ -117,7 +117,7 @@ enum Internal {
 }
 
 /// Adjacently tagged: what the variant holds is bound as `content`, and its object as `inner`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "body")]
 enum Adjacent {
@@ -132,7 +132,7 @@ enum Adjacent {
 }
 
 /// Externally tagged, its variant under an alias: the key it is found under is bound as `tag`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum External {
     #[serde(alias = "Memo")]

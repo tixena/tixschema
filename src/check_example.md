@@ -1,10 +1,11 @@
 ```rust
-# extern crate bson2 as bson;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tixschema::{model_schema, model_schema_prop};
 
-#[model_schema(decode_with, check = ["withinParcel"])]
+tixschema::decode_with_foundation!();
+
+#[model_schema(enable = ["decode_with"], check = ["withinParcel"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Parcel {
@@ -15,7 +16,7 @@ pub struct Parcel {
     pub fragile_item_codes: Vec<String>,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Manifest {
     pub parcel: Parcel,

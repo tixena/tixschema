@@ -13,13 +13,13 @@ use super::shown;
 const BY_COURIER: shipping_schema::ArmFilter<Shipping, Courier> =
     Shipping::MONGO_FIELDS.type__by_courier();
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Wagon {
     number: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type")]
 enum Shipping {
@@ -36,7 +36,7 @@ enum Shipping {
 
 /// Declared below `Shipping`: tixschema has not seen it where the enum is expanded, as it has
 /// seen no model of another crate.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Courier {
     name: String,
@@ -44,7 +44,7 @@ struct Courier {
 }
 
 /// Flattens the enum: its tag and what an arm holds sit among the row's own keys.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Waybill {
@@ -54,21 +54,21 @@ struct Waybill {
 }
 
 /// Holds the enum under a key, and a list of it.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Manifest {
     legs: Vec<Shipping>,
     shipping: Shipping,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Notice {
     code: String,
 }
 
 /// Adjacently tagged: what an arm holds is under the content key.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "docType", content = "body", rename_all = "kebab-case")]
 enum Paper {
@@ -77,7 +77,7 @@ enum Paper {
 }
 
 /// A model written with an argument where an arm holds it.
-#[model_schema(decode_with, default_types(T = String))]
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(T = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Pallet<T> {
     label: String,
@@ -85,7 +85,7 @@ struct Pallet<T> {
 }
 
 /// An arm over a model written with an argument.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type")]
 enum Cargo {
@@ -94,7 +94,7 @@ enum Cargo {
 }
 
 /// A generic enum: an arm holds a model written with the enum's own parameter.
-#[model_schema(decode_with, default_types(T = String))]
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(T = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind")]
 enum Slot<T> {
@@ -103,7 +103,7 @@ enum Slot<T> {
 }
 
 /// An arm that holds the enum itself.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", content = "next")]
 enum Route {
@@ -410,7 +410,7 @@ fn an_arm_update_turns_into_the_update_of_its_enums_module() {
 /// it.
 #[test]
 fn an_enum_declared_inside_a_function_has_its_arms() {
-    #[model_schema(decode_with)]
+    #[model_schema(enable = ["decode_with", "mongodb"])]
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(tag = "kind")]
     enum Signal {

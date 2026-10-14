@@ -1,4 +1,6 @@
-//! The query types `#[model_schema(decode_with)]` adds under `mongodb`.
+//! The query types of the BSON and MongoDB library: `mongodb_foundation!()` writes them once per
+//! crate under the `mongodb` feature, and each type that lists `"mongodb"` in `enable` re-exports
+//! them from its `{type}_schema` module.
 
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
@@ -58,14 +60,17 @@ pub fn query_items() -> TokenStream {
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Courier {
 ///     pub name: String,
 ///     pub region: String,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// #[serde(tag = "type")]
 /// pub enum Transport {
@@ -105,14 +110,17 @@ pub fn query_items() -> TokenStream {
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Courier {
 ///     pub name: String,
 ///     pub region: String,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// #[serde(tag = "type")]
 /// pub enum Transport {
@@ -121,7 +129,7 @@ pub fn query_items() -> TokenStream {
 ///     Collected,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Wagon {
 ///     pub number: String,
@@ -137,27 +145,27 @@ pub fn query_items() -> TokenStream {
 /// ```
 ///
 /// ```text
-/// error[E0277]: the trait bound `wagon_schema::Filter<Wagon>: AsRef<PhantomData<Courier>>` is not satisfied
-///   --> tests/zz_probe.rs:31:28
+/// error[E0277]: the trait bound `__tixschema_mongodb::Filter<Wagon>: AsRef<PhantomData<Courier>>` is not satisfied
+///   --> tests/zz_probe.rs:34:28
 ///    |
-/// 31 |     let _ = BY_COURIER.and(Wagon::MONGO_FIELDS.number().eq("W-9".to_owned())?);
+/// 34 |     let _ = BY_COURIER.and(Wagon::MONGO_FIELDS.number().eq("W-9".to_owned())?);
 ///    |                        --- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
 ///    |                        |
 ///    |                        required by a bound introduced by this call
 ///    |
-/// help: the trait `AsRef<PhantomData<Courier>>` is not implemented for `wagon_schema::Filter<Wagon>`
+/// help: the trait `AsRef<PhantomData<Courier>>` is not implemented for `__tixschema_mongodb::Filter<Wagon>`
 ///       but trait `AsRef<PhantomData<Wagon>>` is implemented for it
-///   --> tests/zz_probe.rs:21:1
+///   --> tests/zz_probe.rs:6:1
 ///    |
-/// 21 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///  6 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ///    = help: for that trait implementation, expected `Wagon`, found `Courier`
-/// note: required by a bound in `transport_schema::ArmFilter::<Root, M>::and`
-///   --> tests/zz_probe.rs:12:1
+/// note: required by a bound in `ArmFilter::<Root, M>::and`
+///   --> tests/zz_probe.rs:6:1
 ///    |
-/// 12 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `ArmFilter::<Root, M>::and`
-///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///  6 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `ArmFilter::<Root, M>::and`
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
@@ -278,14 +286,17 @@ fn arm_filter_items() -> TokenStream {
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Courier {
 ///     pub name: String,
 ///     pub region: String,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// #[serde(tag = "type")]
 /// pub enum Transport {
@@ -324,14 +335,17 @@ fn arm_filter_items() -> TokenStream {
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Courier {
 ///     pub name: String,
 ///     pub region: String,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// #[serde(tag = "type")]
 /// pub enum Transport {
@@ -350,27 +364,27 @@ fn arm_filter_items() -> TokenStream {
 /// ```
 ///
 /// ```text
-/// error[E0277]: the trait bound `courier_schema::Filter<Courier>: AsRef<PhantomData<fn(Courier) -> Courier>>` is not satisfied
-///   --> tests/zz_probe.rs:25:31
+/// error[E0277]: the trait bound `__tixschema_mongodb::Filter<Courier>: AsRef<PhantomData<fn(Courier) -> Courier>>` is not satisfied
+///   --> tests/zz_probe.rs:28:31
 ///    |
-/// 25 |     let _ = BY_COURIER.update(Courier::MONGO_FIELDS.name().eq("Acme".to_owned())?);
+/// 28 |     let _ = BY_COURIER.update(Courier::MONGO_FIELDS.name().eq("Acme".to_owned())?);
 ///    |                        ------ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
 ///    |                        |
 ///    |                        required by a bound introduced by this call
 ///    |
-/// help: the trait `AsRef<PhantomData<fn(Courier) -> Courier>>` is not implemented for `courier_schema::Filter<Courier>`
+/// help: the trait `AsRef<PhantomData<fn(Courier) -> Courier>>` is not implemented for `__tixschema_mongodb::Filter<Courier>`
 ///       but trait `AsRef<PhantomData<Courier>>` is implemented for it
-///   --> tests/zz_probe.rs:5:1
+///   --> tests/zz_probe.rs:6:1
 ///    |
-///  5 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///  6 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ///    = help: for that trait implementation, expected `Courier`, found `fn(Courier) -> Courier`
-/// note: required by a bound in `transport_schema::ArmFilter::<Root, M>::update`
-///   --> tests/zz_probe.rs:12:1
+/// note: required by a bound in `ArmFilter::<Root, M>::update`
+///   --> tests/zz_probe.rs:6:1
 ///    |
-/// 12 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `ArmFilter::<Root, M>::update`
-///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///  6 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `ArmFilter::<Root, M>::update`
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
@@ -382,14 +396,17 @@ fn arm_filter_items() -> TokenStream {
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Courier {
 ///     pub name: String,
 ///     pub region: String,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// #[serde(tag = "type")]
 /// pub enum Transport {
@@ -398,7 +415,7 @@ fn arm_filter_items() -> TokenStream {
 ///     Collected,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Wagon {
 ///     pub number: String,
@@ -414,26 +431,26 @@ fn arm_filter_items() -> TokenStream {
 /// ```
 ///
 /// ```text
-/// error[E0277]: the trait bound `wagon_schema::Update<Wagon>: AsRef<PhantomData<fn(Courier) -> Courier>>` is not satisfied
-///   --> tests/zz_probe.rs:31:31
+/// error[E0277]: the trait bound `__tixschema_mongodb::Update<Wagon>: AsRef<PhantomData<fn(Courier) -> Courier>>` is not satisfied
+///   --> tests/zz_probe.rs:34:31
 ///    |
-/// 31 |     let _ = BY_COURIER.update(Wagon::MONGO_FIELDS.number().set("W-1".to_owned())?);
+/// 34 |     let _ = BY_COURIER.update(Wagon::MONGO_FIELDS.number().set("W-1".to_owned())?);
 ///    |                        ------ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
 ///    |                        |
 ///    |                        required by a bound introduced by this call
 ///    |
-/// help: the trait `AsRef<PhantomData<fn(Courier) -> Courier>>` is not implemented for `wagon_schema::Update<Wagon>`
+/// help: the trait `AsRef<PhantomData<fn(Courier) -> Courier>>` is not implemented for `__tixschema_mongodb::Update<Wagon>`
 ///       but trait `AsRef<PhantomData<fn(Wagon) -> Wagon>>` is implemented for it
-///   --> tests/zz_probe.rs:21:1
+///   --> tests/zz_probe.rs:6:1
 ///    |
-/// 21 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/// note: required by a bound in `transport_schema::ArmFilter::<Root, M>::update`
-///   --> tests/zz_probe.rs:12:1
+///  6 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/// note: required by a bound in `ArmFilter::<Root, M>::update`
+///   --> tests/zz_probe.rs:6:1
 ///    |
-/// 12 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `ArmFilter::<Root, M>::update`
-///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///  6 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `ArmFilter::<Root, M>::update`
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
@@ -548,7 +565,10 @@ fn element_items() -> TokenStream {
 ///
 /// use invoice_schema::{Field, MongoPath, OptionalField, WriteError};
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// #[serde(rename_all = "kebab-case")]
 /// pub enum InvoiceStatus {
@@ -556,7 +576,7 @@ fn element_items() -> TokenStream {
 ///     PastDue,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// #[serde(rename_all = "camelCase")]
 /// pub struct Invoice {
@@ -596,7 +616,10 @@ fn element_items() -> TokenStream {
 ///
 /// use invoice_schema::{Field, MongoPath};
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub number: String,
@@ -610,21 +633,21 @@ fn element_items() -> TokenStream {
 /// ```
 ///
 /// ```text
-/// error[E0599]: no method named `unset` found for struct `invoice_schema::Field<Root, V, N>` in the current scope
-///   --> tests/zz_probe.rs:16:20
+/// error[E0599]: no method named `unset` found for struct `__tixschema_mongodb::Field<Root, V, N>` in the current scope
+///   --> tests/zz_probe.rs:19:20
 ///    |
-///  7 | #[model_schema(decode_with)]
-///    | ---------------------------- method `unset` not found for this struct
+///  8 | tixschema::mongodb_foundation!();
+///    | -------------------------------- method `unset` not found for this struct
 /// ...
-/// 16 |     let _ = NUMBER.unset();
+/// 19 |     let _ = NUMBER.unset();
 ///    |                    ^^^^^
 ///    |
 /// help: there is a method `set` with a similar name, but with different arguments
-///   --> tests/zz_probe.rs:7:1
+///   --> tests/zz_probe.rs:8:1
 ///    |
-///  7 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///  8 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
@@ -638,7 +661,10 @@ fn element_items() -> TokenStream {
 ///
 /// use invoice_schema::{Field, MongoPath};
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// #[serde(rename_all = "kebab-case")]
 /// pub enum InvoiceStatus {
@@ -646,7 +672,7 @@ fn element_items() -> TokenStream {
 ///     PastDue,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub status: InvoiceStatus,
@@ -661,19 +687,19 @@ fn element_items() -> TokenStream {
 ///
 /// ```text
 /// error[E0308]: mismatched types
-///   --> tests/zz_probe.rs:24:23
+///   --> tests/zz_probe.rs:27:23
 ///    |
-/// 24 |     let _ = STATUS.eq("past-due");
+/// 27 |     let _ = STATUS.eq("past-due");
 ///    |                    -- ^^^^^^^^^^ expected `InvoiceStatus`, found `&str`
 ///    |                    |
 ///    |                    arguments to this method are incorrect
 ///    |
 /// note: method defined here
-///   --> tests/zz_probe.rs:15:1
+///   --> tests/zz_probe.rs:8:1
 ///    |
-/// 15 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///  8 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
@@ -687,7 +713,10 @@ fn element_items() -> TokenStream {
 ///
 /// use invoice_schema::{Field, MongoPath};
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// #[serde(rename_all = "camelCase")]
 /// pub struct Invoice {
@@ -703,19 +732,19 @@ fn element_items() -> TokenStream {
 ///
 /// ```text
 /// error[E0308]: mismatched types
-///   --> tests/zz_probe.rs:17:31
+///   --> tests/zz_probe.rs:20:31
 ///    |
-/// 17 |     let _ = OPEN_INVOICES.lte("3");
+/// 20 |     let _ = OPEN_INVOICES.lte("3");
 ///    |                           --- ^^^ expected `u32`, found `&str`
 ///    |                           |
 ///    |                           arguments to this method are incorrect
 ///    |
 /// note: method defined here
-///   --> tests/zz_probe.rs:7:1
+///   --> tests/zz_probe.rs:8:1
 ///    |
-///  7 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///  8 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
@@ -729,7 +758,10 @@ fn element_items() -> TokenStream {
 ///
 /// use invoice_schema::{Field, MongoPath};
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub total: f64,
@@ -744,19 +776,19 @@ fn element_items() -> TokenStream {
 ///
 /// ```text
 /// error[E0308]: mismatched types
-///   --> tests/zz_probe.rs:16:22
+///   --> tests/zz_probe.rs:19:22
 ///    |
-/// 16 |     let _ = TOTAL.gt("1000");
+/// 19 |     let _ = TOTAL.gt("1000");
 ///    |                   -- ^^^^^^ expected `f64`, found `&str`
 ///    |                   |
 ///    |                   arguments to this method are incorrect
 ///    |
 /// note: method defined here
-///   --> tests/zz_probe.rs:7:1
+///   --> tests/zz_probe.rs:8:1
 ///    |
-///  7 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///  8 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
@@ -791,6 +823,11 @@ fn field_items() -> TokenStream {
             #[must_use]
             pub const fn hooked(path: MongoPath, write: fn(V) -> ::core::result::Result<bson::Bson, WriteError>) -> Self {
                 Self { path, write, of: ::core::marker::PhantomData }
+            }
+
+            /// The key, which the typed paths a type of the crate writes read.
+            pub(crate) const fn held_path(&self) -> MongoPath {
+                self.path
             }
 
             fn compared(&self, operator: &str, value: V) -> ::core::result::Result<Filter<Root>, WriteError> {
@@ -884,13 +921,16 @@ fn field_operators() -> TokenStream {
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub total: f64,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Order {
 ///     pub placed: bool,
@@ -922,13 +962,16 @@ fn field_operators() -> TokenStream {
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub total: f64,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Order {
 ///     pub placed: bool,
@@ -946,27 +989,27 @@ fn field_operators() -> TokenStream {
 /// ```
 ///
 /// ```text
-/// error[E0277]: the trait bound `order_schema::Filter<Order>: AsRef<PhantomData<Invoice>>` is not satisfied
-///   --> tests/zz_probe.rs:23:35
+/// error[E0277]: the trait bound `__tixschema_mongodb::Filter<Order>: AsRef<PhantomData<Invoice>>` is not satisfied
+///   --> tests/zz_probe.rs:26:35
 ///    |
-/// 23 |     let _ = TOTAL.gt(1000.0)?.and(PLACED.eq(true)?);
+/// 26 |     let _ = TOTAL.gt(1000.0)?.and(PLACED.eq(true)?);
 ///    |                               --- ^^^^^^^^^^^^^^^^ unsatisfied trait bound
 ///    |                               |
 ///    |                               required by a bound introduced by this call
 ///    |
-/// help: the trait `AsRef<PhantomData<Invoice>>` is not implemented for `order_schema::Filter<Order>`
+/// help: the trait `AsRef<PhantomData<Invoice>>` is not implemented for `__tixschema_mongodb::Filter<Order>`
 ///       but trait `AsRef<PhantomData<Order>>` is implemented for it
-///   --> tests/zz_probe.rs:11:1
+///   --> tests/zz_probe.rs:6:1
 ///    |
-/// 11 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///  6 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ///    = help: for that trait implementation, expected `Order`, found `Invoice`
-/// note: required by a bound in `invoice_schema::Filter::<Root>::and`
-///   --> tests/zz_probe.rs:5:1
+/// note: required by a bound in `__tixschema_mongodb::Filter::<Root>::and`
+///   --> tests/zz_probe.rs:6:1
 ///    |
-///  5 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Filter::<Root>::and`
-///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///  6 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Filter::<Root>::and`
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
@@ -979,7 +1022,10 @@ fn field_operators() -> TokenStream {
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub total: f64,
@@ -996,19 +1042,19 @@ fn field_operators() -> TokenStream {
 ///
 /// ```text
 /// error[E0277]: the trait bound `bson::Document: AsRef<PhantomData<Invoice>>` is not satisfied
-///   --> tests/zz_probe.rs:16:35
+///   --> tests/zz_probe.rs:19:35
 ///    |
-/// 16 |     let _ = TOTAL.gt(1000.0)?.and(doc! { "details.po": "7781" });
+/// 19 |     let _ = TOTAL.gt(1000.0)?.and(doc! { "details.po": "7781" });
 ///    |                               --- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `AsRef<PhantomData<Invoice>>` is not implemented for `bson::Document`
 ///    |                               |
 ///    |                               required by a bound introduced by this call
 ///    |
-/// note: required by a bound in `invoice_schema::Filter::<Root>::and`
-///   --> tests/zz_probe.rs:6:1
+/// note: required by a bound in `__tixschema_mongodb::Filter::<Root>::and`
+///   --> tests/zz_probe.rs:7:1
 ///    |
-///  6 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Filter::<Root>::and`
-///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///  7 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Filter::<Root>::and`
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
@@ -1020,7 +1066,10 @@ fn field_operators() -> TokenStream {
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub total: f64,
@@ -1036,27 +1085,27 @@ fn field_operators() -> TokenStream {
 /// ```
 ///
 /// ```text
-/// error[E0277]: the trait bound `invoice_schema::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied
-///   --> tests/zz_probe.rs:15:35
+/// error[E0277]: the trait bound `__tixschema_mongodb::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied
+///   --> tests/zz_probe.rs:18:35
 ///    |
-/// 15 |     let _ = TOTAL.gt(1000.0)?.and(TOTAL.set(0.0)?);
+/// 18 |     let _ = TOTAL.gt(1000.0)?.and(TOTAL.set(0.0)?);
 ///    |                               --- ^^^^^^^^^^^^^^^ unsatisfied trait bound
 ///    |                               |
 ///    |                               required by a bound introduced by this call
 ///    |
-/// help: the trait `AsRef<PhantomData<Invoice>>` is not implemented for `invoice_schema::Update<Invoice>`
+/// help: the trait `AsRef<PhantomData<Invoice>>` is not implemented for `__tixschema_mongodb::Update<Invoice>`
 ///       but trait `AsRef<PhantomData<fn(Invoice) -> Invoice>>` is implemented for it
-///   --> tests/zz_probe.rs:5:1
+///   --> tests/zz_probe.rs:6:1
 ///    |
-///  5 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///  6 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ///    = help: for that trait implementation, expected `fn(Invoice) -> Invoice`, found `Invoice`
-/// note: required by a bound in `invoice_schema::Filter::<Root>::and`
-///   --> tests/zz_probe.rs:5:1
+/// note: required by a bound in `__tixschema_mongodb::Filter::<Root>::and`
+///   --> tests/zz_probe.rs:6:1
 ///    |
-///  5 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Filter::<Root>::and`
-///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///  6 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Filter::<Root>::and`
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
@@ -1077,7 +1126,9 @@ fn filter_items() -> TokenStream {
                 Self { document, root: ::core::marker::PhantomData }
             }
 
-            fn held(key: &str, operator: &str, value: bson::Bson) -> Self {
+            /// `{ key: { operator: value } }`, which the typed paths a type of the crate writes
+            /// build an arm's filter with.
+            pub(crate) fn held(key: &str, operator: &str, value: bson::Bson) -> Self {
                 let mut condition = bson::Document::new();
                 condition.insert(operator, value);
                 let mut document = bson::Document::new();
@@ -1160,7 +1211,10 @@ fn filter_items() -> TokenStream {
 ///
 /// use invoice_schema::{ListField, MongoPath, WriteError};
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub tags: Vec<String>,
@@ -1187,7 +1241,10 @@ fn filter_items() -> TokenStream {
 ///
 /// use invoice_schema::{ListField, MongoPath, WriteError};
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub tags: Vec<String>,
@@ -1203,18 +1260,22 @@ fn filter_items() -> TokenStream {
 ///
 /// ```text
 /// error[E0599]: `ListField<Invoice, std::string::String>` is not an iterator
-///   --> tests/zz_probe.rs:16:18
+///   --> tests/zz_probe.rs:19:18
 ///    |
-///  7 | #[model_schema(decode_with)]
-///    | ---------------------------- method `gt` not found for this struct because it doesn't satisfy `ListField<Invoice, std::string::String>: Iterator`
+///  8 | tixschema::mongodb_foundation!();
+///    | -------------------------------- method `gt` not found for this struct because it doesn't satisfy `ListField<Invoice, std::string::String>: Iterator`
 /// ...
-/// 16 |     let _ = TAGS.gt("export".to_owned())?;
+/// 19 |     let _ = TAGS.gt("export".to_owned())?;
 ///    |                  ^^ `ListField<Invoice, std::string::String>` is not an iterator
 ///    |
 ///    = note: the following trait bounds were not satisfied:
 ///            `ListField<Invoice, std::string::String>: Iterator`
 ///            which is required by `&mut ListField<Invoice, std::string::String>: Iterator`
-/// ...
+/// note: the trait `Iterator` must be implemented
+///   --> $RUST/core/src/iter/traits/iterator.rs:42:1
+///    |
+/// 42 | pub const trait Iterator {
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^
 ///    = help: items from traits can only be used if the trait is implemented and in scope
 ///    = note: the following traits define an item `gt`, perhaps you need to implement one of them:
 ///            candidate #1: `Iterator`
@@ -1424,13 +1485,16 @@ fn model_items() -> TokenStream {
 ///
 /// use invoice_schema::{ModelList, MongoPath, WriteError};
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct LineItem {
 ///     pub quantity: u32,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub items: Vec<LineItem>,
@@ -1458,13 +1522,16 @@ fn model_items() -> TokenStream {
 ///
 /// use invoice_schema::{ModelList, MongoPath, WriteError};
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct LineItem {
 ///     pub quantity: u32,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub items: Vec<LineItem>,
@@ -1481,27 +1548,27 @@ fn model_items() -> TokenStream {
 /// ```
 ///
 /// ```text
-/// error[E0277]: the trait bound `line_item_schema::Update<LineItem>: AsRef<PhantomData<LineItem>>` is not satisfied
-///   --> tests/zz_probe.rs:24:30
+/// error[E0277]: the trait bound `__tixschema_mongodb::Update<LineItem>: AsRef<PhantomData<LineItem>>` is not satisfied
+///   --> tests/zz_probe.rs:27:30
 ///    |
-/// 24 |     let _ = ITEMS.elem_match(QUANTITY.set(2)?);
+/// 27 |     let _ = ITEMS.elem_match(QUANTITY.set(2)?);
 ///    |                   ---------- ^^^^^^^^^^^^^^^^ unsatisfied trait bound
 ///    |                   |
 ///    |                   required by a bound introduced by this call
 ///    |
-/// help: the trait `AsRef<PhantomData<LineItem>>` is not implemented for `line_item_schema::Update<LineItem>`
+/// help: the trait `AsRef<PhantomData<LineItem>>` is not implemented for `__tixschema_mongodb::Update<LineItem>`
 ///       but trait `AsRef<PhantomData<fn(LineItem) -> LineItem>>` is implemented for it
-///   --> tests/zz_probe.rs:7:1
+///   --> tests/zz_probe.rs:8:1
 ///    |
-///  7 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///  8 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ///    = help: for that trait implementation, expected `fn(LineItem) -> LineItem`, found `LineItem`
-/// note: required by a bound in `invoice_schema::ModelList::<Root, M, N>::elem_match`
-///   --> tests/zz_probe.rs:13:1
+/// note: required by a bound in `ModelList::<Root, M, N>::elem_match`
+///   --> tests/zz_probe.rs:8:1
 ///    |
-/// 13 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `ModelList::<Root, M, N>::elem_match`
-///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///  8 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `ModelList::<Root, M, N>::elem_match`
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
@@ -1633,13 +1700,16 @@ fn nested_items() -> TokenStream {
 ///
 /// use invoice_schema::{Filter, Update, WriteError};
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Customer {
 ///     pub name: String,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub customer: Customer,
@@ -1677,19 +1747,22 @@ fn nested_items() -> TokenStream {
 ///
 /// use invoice_schema::WriteError;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Customer {
 ///     pub name: String,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub customer: Customer,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Order {
 ///     pub placed: bool,
@@ -1704,25 +1777,25 @@ fn nested_items() -> TokenStream {
 /// ```
 ///
 /// ```text
-/// error[E0277]: the trait bound `order_schema::Filter<Order>: invoice_schema::Nests<Invoice, Customer, _>` is not satisfied
-///   --> tests/zz_probe.rs:28:15
+/// error[E0277]: the trait bound `__tixschema_mongodb::Filter<Order>: Nests<Invoice, Customer, _>` is not satisfied
+///   --> tests/zz_probe.rs:31:15
 ///    |
-/// 28 |         .nest(Order::MONGO_FIELDS.placed().eq(true)?);
+/// 31 |         .nest(Order::MONGO_FIELDS.placed().eq(true)?);
 ///    |          ---- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
 ///    |          |
 ///    |          required by a bound introduced by this call
 ///    |
-/// help: the trait `invoice_schema::Nests<Invoice, Customer, _>` is not implemented for `order_schema::Filter<Order>`
-///   --> tests/zz_probe.rs:19:1
+/// help: the trait `Nests<Invoice, Customer, _>` is not implemented for `__tixschema_mongodb::Filter<Order>`
+///   --> tests/zz_probe.rs:8:1
 ///    |
-/// 19 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/// note: required by a bound in `invoice_schema::Model::<Root, M, N>::nest`
-///   --> tests/zz_probe.rs:13:1
+///  8 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/// note: required by a bound in `Model::<Root, M, N>::nest`
+///   --> tests/zz_probe.rs:8:1
 ///    |
-/// 13 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Model::<Root, M, N>::nest`
-///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///  8 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Model::<Root, M, N>::nest`
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
@@ -1950,7 +2023,10 @@ fn optional_model_items() -> TokenStream {
 ///
 /// use invoice_schema::MongoPath;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub total: f64,
@@ -2015,7 +2091,10 @@ fn path_items() -> TokenStream {
 ///
 /// use invoice_schema::{Field, MongoPath, WriteError};
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub total: f64,
@@ -2041,7 +2120,10 @@ fn path_items() -> TokenStream {
 ///
 /// use invoice_schema::{Field, MongoPath, WriteError};
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub total: f64,
@@ -2056,27 +2138,27 @@ fn path_items() -> TokenStream {
 /// ```
 ///
 /// ```text
-/// error[E0277]: the trait bound `invoice_schema::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied
-///   --> tests/zz_probe.rs:16:33
+/// error[E0277]: the trait bound `__tixschema_mongodb::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied
+///   --> tests/zz_probe.rs:19:33
 ///    |
-/// 16 |     let _ = TOTAL.set(0.0)?.and(TOTAL.gt(1000.0)?);
+/// 19 |     let _ = TOTAL.set(0.0)?.and(TOTAL.gt(1000.0)?);
 ///    |                             --- ^^^^^^^^^^^^^^^^^ unsatisfied trait bound
 ///    |                             |
 ///    |                             required by a bound introduced by this call
 ///    |
-/// help: the trait `AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not implemented for `invoice_schema::Filter<Invoice>`
+/// help: the trait `AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not implemented for `__tixschema_mongodb::Filter<Invoice>`
 ///       but trait `AsRef<PhantomData<Invoice>>` is implemented for it
-///   --> tests/zz_probe.rs:7:1
+///   --> tests/zz_probe.rs:8:1
 ///    |
-///  7 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///  8 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ///    = help: for that trait implementation, expected `Invoice`, found `fn(Invoice) -> Invoice`
-/// note: required by a bound in `invoice_schema::Update::<Root>::and`
-///   --> tests/zz_probe.rs:7:1
+/// note: required by a bound in `__tixschema_mongodb::Update::<Root>::and`
+///   --> tests/zz_probe.rs:8:1
 ///    |
-///  7 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Update::<Root>::and`
-///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///  8 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Update::<Root>::and`
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```

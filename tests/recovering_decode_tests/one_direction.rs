@@ -32,7 +32,7 @@ macro_rules! read_counting {
 }
 
 /// A field renamed for both directions apart, and one renamed for reading alone.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct ReadRenamed {
     #[serde(rename(serialize = "written", deserialize = "read_too"))]
@@ -44,7 +44,7 @@ struct ReadRenamed {
 
 /// The rule cases every field for reading alone. One field is renamed for writing alone, and one
 /// is written and never read.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all(deserialize = "camelCase"))]
 struct ReadCased {
@@ -57,7 +57,7 @@ struct ReadCased {
 
 /// Named by a tag: a variant renamed for reading, the rule of the variants and of their fields
 /// written for reading alone, and a variant with a rule of its own.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(
     tag = "mode",
@@ -79,7 +79,7 @@ enum Haulage {
 }
 
 /// Named by the key each variant is under.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all(deserialize = "kebab-case"))]
 enum Relay {
@@ -91,7 +91,7 @@ enum Relay {
     NotSent,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Dispatch {
     relay: Relay,

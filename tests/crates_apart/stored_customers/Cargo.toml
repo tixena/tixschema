@@ -1,0 +1,14 @@
+[package]
+name = "stored_customers"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+# No feature of its own: the build that compiles this crate decides tixschema's.
+tixschema = { path = "../../..", default-features = false }
+# What a type that lists "mongodb" expands to names, as tixschema's own manifest lists them.
+bson = { version = "2.15", features = ["chrono-0_4"] }
+mongodb = ">=3.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

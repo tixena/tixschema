@@ -12,56 +12,56 @@ use tixschema::model_schema;
 
 use super::shown;
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct Arm {
     name: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct ArmFilter {
     name: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct AsFilter {
     name: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct AsUpdate {
     name: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct Element {
     name: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct Field {
     name: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct Filter {
     name: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct Model {
     name: String,
 }
 
 /// An enum under a tag whose arms hold a type named as each thing the flag adds for an arm.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 enum Limb {
@@ -70,7 +70,7 @@ enum Limb {
 }
 
 /// Holds a type named as each thing `nest` is declared with.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct Marked {
     as_filter: AsFilter,
@@ -79,20 +79,20 @@ struct Marked {
     nests: Nests,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct Nested {
     name: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct Nests {
     name: String,
 }
 
 /// An enum whose parameter is named as the filter its `is_{variant}` methods answer.
-#[model_schema(decode_with, default_types(Filter = String))]
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(Filter = String))]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 enum Kept<Filter> {
@@ -101,14 +101,14 @@ enum Kept<Filter> {
 }
 
 /// A type whose parameters are named as two of the path kinds its members are.
-#[model_schema(decode_with, default_types(Field = String, Model = String))]
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(Field = String, Model = String))]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct Paged<Field, Model> {
     items: Vec<Model>,
     lead: Field,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct Search {
     element: Element,
@@ -118,7 +118,7 @@ struct Search {
     update: Update,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct Update {
     name: String,

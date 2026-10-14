@@ -31,7 +31,7 @@ macro_rules! read_counting {
     };
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct I {
     number: i32,
@@ -51,26 +51,26 @@ impl I {
     }
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct F {
     label: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Holder {
     inner: I,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Framed {
     frame: F,
 }
 
 /// `I` under a map, a list, an `Option` and a tuple.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Collected {
     keyed: HashMap<String, I>,
@@ -81,7 +81,7 @@ struct Collected {
 }
 
 /// Externally tagged, each variant holding `I` in another form.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum Carried {
     Alone(I),
@@ -89,7 +89,7 @@ enum Carried {
     Paired(I, i32),
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Alternate {
@@ -98,7 +98,7 @@ enum Alternate {
 }
 
 /// `I` is named by the hook alone, which is text and no type of the field.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Scored {
     #[serde(deserialize_with = "I::positive")]

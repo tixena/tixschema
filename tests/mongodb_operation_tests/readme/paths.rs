@@ -65,13 +65,13 @@ macro_rules! written {
 /// The models the README declares for the arms of an enum under a tag, the `const` that holds one
 /// arm filter and the functions that nest it and its update, character for character.
 const DECLARED_ARMS: [&str; 6] = [
-    "#[model_schema(decode_with)]
+    r#"#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Courier {
     pub name: String,
     pub region: String,
-}",
-    r#"#[model_schema(decode_with)]
+}"#,
+    r#"#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "type")]
 pub enum Transport {
@@ -79,7 +79,7 @@ pub enum Transport {
     ByCourier(Courier),
     Collected,
 }"#,
-    r#"#[model_schema(decode_with)]
+    r#"#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Booking {
@@ -178,17 +178,17 @@ const DECLARED_IMPORT: &str = "use invoice_schema::{Filter, Update, WriteError};
 /// The two types the README declares one below the other, and the function that nests a filter
 /// under the one tixschema has not seen, character for character.
 const DECLARED_UNSEEN: [&str; 3] = [
-    "#[model_schema(decode_with)]
+    r#"#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Shipment {
     pub carrier: Carrier,
     pub code: String,
-}",
-    "#[model_schema(decode_with)]
+}"#,
+    r#"#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Carrier {
     pub name: String,
-}",
+}"#,
     r#"/// Shipments of one carrier. `Carrier` is declared below `Shipment`, so `carrier` is one whole
 /// value there, and `nest` reaches the paths below it as it does below any model.
 fn carried_by(name: &str) -> Result<shipment_schema::Filter<Shipment>, WriteError> {
@@ -213,14 +213,14 @@ const BY_COURIER: transport_schema::ArmFilter<Transport, Courier> =
 
 const TOTAL: invoice_schema::Field<Invoice, f64> = Invoice::MONGO_FIELDS.total();
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Courier {
     pub name: String,
     pub region: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "type")]
 pub enum Transport {
@@ -229,7 +229,7 @@ pub enum Transport {
     Collected,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Booking {
@@ -239,7 +239,7 @@ pub struct Booking {
 }
 
 /// What an arm of [`Paper`] holds.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Notice {
     pub code: String,
@@ -247,7 +247,7 @@ pub struct Notice {
 
 /// What the README's tables of arms say beside its own example, held by the compiler: an enum
 /// under a tag key of two words, and an arm whose model is behind a wrapper.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "docType", content = "body", rename_all = "kebab-case")]
 pub enum Paper {
@@ -255,14 +255,14 @@ pub enum Paper {
     PastDue(Notice),
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Shipment {
     pub carrier: Carrier,
     pub code: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Carrier {
     pub name: String,

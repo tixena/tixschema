@@ -13,14 +13,14 @@ use self::declared::{ranked_entries_schema, ranked_labels_schema, ranked_scores_
 use super::lines;
 use ranking_schema::{Expected, Issue, Resolution};
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Tracked {
     number: i32,
 }
 
 /// Model types and plain values in an `IndexMap`, and plain values in an `IndexSet`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Ranking {
@@ -32,7 +32,7 @@ struct Ranking {
 }
 
 /// The same types behind aliases seen above.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct AliasedRanking {
     entries: RankedEntries,

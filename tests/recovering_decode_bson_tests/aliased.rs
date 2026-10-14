@@ -77,7 +77,7 @@ pub type Properties = bson::Document;
 pub type PropertiesData = HashMap<String, String>;
 
 /// A document behind a plain alias, flattened: it takes every key nothing else declares.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Block {
     name: String,
@@ -85,19 +85,19 @@ struct Block {
     properties: Properties,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Page {
     properties: Properties,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Stock {
     all: Versions,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct Tally {
     counts: Counts,

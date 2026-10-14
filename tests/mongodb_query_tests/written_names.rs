@@ -9,7 +9,7 @@ use tixschema::model_schema;
 use super::stored::looked_up;
 
 /// Every renaming of a struct in its list form, the two directions agreeing.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
 struct Parcel {
@@ -19,7 +19,7 @@ struct Parcel {
 }
 
 /// Every renaming of an enum in its list form, the two directions agreeing.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(
     tag = "mode",

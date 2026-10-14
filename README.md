@@ -3788,7 +3788,7 @@ parcel.validate();
 
 **What the macro writes.** `#[derive(Deserialize)]` is taken off the item, and serde's derive runs on a private copy of it, declared inside a function the type gains: `model_schema_read_unjudged`, the read alone, public so that a holder in another module can call it. The `Deserialize` of the type calls it and then `validate()`. The copy keeps the item's `serde` and `cfg` attributes and no other, so an attribute of another macro written on the item or on a member is not on the copy.
 
-- `model_schema_read_unjudged` is a name of the type's own: a function of yours under that name on the same type is a duplicate definition (E0592). A type declared with [`decode_with`](#recovering-decode-decode_with) gains `decode_with_read_unjudged` beside it.
+- `model_schema_read_unjudged` is a name of the type's own: a function of yours under that name on the same type is a duplicate definition (E0592). A type whose [`enable` list](#opting-in) holds `"decode_with"` gains `decode_with_read_unjudged` beside it.
 - A brand that carries a `pattern`, a `minLength` or a `maxLength` gains `model_schema_validate_bound` beside `validate()`: what the bound alone answers of the value, the checks the brand names apart. A member of an `#[serde(untagged)]` enum is held to it as it is read, and the recovering decode lists the brand from a read held to it. It is a name of the type's own as well.
 - The `Deserialize` is written under the bounds serde's derive writes. A container `#[serde(bound = ...)]` is used as written. Without one, each type parameter a read field names is asked `Deserialize<'de>`, a parameter used only in `PhantomData`, in a skipped field or in a field read through `with` or `deserialize_with` is asked nothing to read, a `default` asks `Default` of what it builds, and `'de` outlives each lifetime serde borrows for: a `&'a str`, a `&'a [u8]`, and what a `#[serde(borrow)]` names. A type that borrows for `'static` is read at `'static`.
 - A unit struct with a check gains the `validate()` call in the `Deserialize` the macro already writes for it.
@@ -3805,7 +3805,7 @@ A field still generates both helpers into its schema module: `validate_{field}_v
 - **A member of an `#[serde(untagged)]` enum**, a struct variant's named member and a newtype variant's slot alike, where whether the member is admissible is what chooses which variant the payload is. The check is part of reading the value rather than part of judging it -- exactly as it is under `anyOf` and `z.union` on the two schema surfaces the same type publishes -- and `validate()` cannot stand in for it, since by the time it runs the variant has already been chosen. A wrapped member's hook deserializes the member's own declared type and then runs the same walk `validate()` runs over it; the two differ in that `validate()` answers with every violation in the instance while a `Deserializer` answers with one line, so the read stops at the first value that broke a bound and hands serde that value's violations joined by `; `. A borrowed `&str` member and a borrowed list are the constrained members that choose no variant: each is read as it is with no bound written, the first variant whose shape fits taking the payload, and the enum's read then refuses the value where it breaks the bound.
 - **A constrained brand held by a member of an `#[serde(untagged)]` enum**, where the same reasoning applies: the member is held to the brand's `pattern`, `minLength` and `maxLength` as it is read, so a value the brand's bound refuses takes that variant out of the running. A [check](#checks-check) the brand names chooses no variant, as no check does: the variant is chosen first, and the enum's read then refuses the value with the check's messages. Held anywhere else, a brand is read with no judgement, as a model is, and the holder's `validate()` judges it.
 
-The [recovering decode](#recovering-decode-decode_with) lists what a plain read refuses. `from_value_with` and `from_value_piped`, `from_bson_with` and `from_bson_piped` read with the type's read alone, run each field's validator on the value serde read, and the validator of each slot of a tuple struct and of a tagged tuple variant, and list every violation as an issue of its own, which is what lets a callback or a resolver repair a stored value. The [MongoDB reads](#rows-that-do-not-read-as-the-type) of a flagged type read each row the same way, so a row that breaks a bound is refused until a resolver repairs it. See [What each shape reports](#what-each-shape-reports). A [service's dispatcher](#service-validation) reads a request with the read alone as well and calls `validate()` next, so a broken bound is a `failed-validation` fault with its field.
+The [recovering decode](#recovering-decode-decode_with) lists what a plain read refuses. `from_value_with` and `from_value_piped`, `from_bson_with` and `from_bson_piped` read with the type's read alone, run each field's validator on the value serde read, and the validator of each slot of a tuple struct and of a tagged tuple variant, and list every violation as an issue of its own, which is what lets a callback or a resolver repair a stored value. The [MongoDB reads](#rows-that-do-not-read-as-the-type) of a type that lists `"mongodb"` read each row the same way, so a row that breaks a bound is refused until a resolver repairs it. See [What each shape reports](#what-each-shape-reports). A [service's dispatcher](#service-validation) reads a request with the read alone as well and calls `validate()` next, so a broken bound is a `failed-validation` fault with its field.
 
 A field whose key may be left out keeps that reading. Where a member is read through a hook -- an untagged variant's, and a member whose model is read unjudged -- an `Option` written outermost (under any number of transparent wrappers) is given `#[serde(default)]` alongside it, since a `deserialize_with` otherwise turns a missing key into an error; a field that writes its own `default` keeps the one it wrote. Off the hook there is nothing to put back and no `default` is written, so a required key that goes missing is still the error it always was.
 
@@ -4020,7 +4020,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tixschema::{model_schema, model_schema_prop};
 
-#[model_schema(decode_with, check = ["withinParcel"])]
+tixschema::decode_with_foundation!();
+
+#[model_schema(enable = ["decode_with"], check = ["withinParcel"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Parcel {
@@ -4031,7 +4033,7 @@ pub struct Parcel {
     pub fragile_item_codes: Vec<String>,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Manifest {
     pub parcel: Parcel,
@@ -4182,7 +4184,7 @@ Every shape runs its checks: a struct with named fields, a tuple struct (a slot'
 
 A field's check is written on the schema of the value the Rust function takes: after the field's bounds, inside the union an `Option` writes, on the array of a list after its count, and inside a `z.preprocess` wrap. A type's check is written on the type's own expression, ahead of `.brand()` on a brand and of the `.meta({ ... })` every binding carries, and inside the builder of a type with a parameter, so every filling of its factory carries it. Each issue is copied with `continue: true`: zod skips a later check once an issue without that flag is listed, and the Rust side runs every one.
 
-**In the [recovering decode](#recovering-decode-decode_with)** of a type declared with `decode_with`. serde builds the value, the checks run on it, and each message is one `Issue::Invalid` of the read: `path` is what the message leads with, read against the raw value, `expected` is `Unknown`, `found` is the raw value at that path, and `reason` is the text after the lead. See [What each shape reports](#what-each-shape-reports). A check of a model a holder holds is listed at its full path, the holder's place in front, and so it is below a generic holder and a recursive one: a `Truck<CodeType>` holding `load: Crate<CodeType>` lists a broken check of the crate at `load.fragileItemCodes[1]`, and a `Carton` holding `cartons: Vec<Self>` lists one of its first inner carton at `cartons[0].fragileItemCodes[1]`.
+**In the [recovering decode](#recovering-decode-decode_with)** of a type whose `enable` list holds `"decode_with"`. serde builds the value, the checks run on it, and each message is one `Issue::Invalid` of the read: `path` is what the message leads with, read against the raw value, `expected` is `Unknown`, `found` is the raw value at that path, and `reason` is the text after the lead. See [What each shape reports](#what-each-shape-reports). A check of a model a holder holds is listed at its full path, the holder's place in front, and so it is below a generic holder and a recursive one: a `Truck<CodeType>` holding `load: Crate<CodeType>` lists a broken check of the crate at `load.fragileItemCodes[1]`, and a `Carton` holding `cartons: Vec<Self>` lists one of its first inner carton at `cartons[0].fragileItemCodes[1]`.
 
 **In a serde read** of a type that derives `Deserialize`. The read runs `validate()` on the value it read, checks included, and [refuses the payload](#a-read-refuses-what-validate-refuses) with what it answers. The hook an `#[serde(untagged)]` member is read through runs no check: a check chooses no variant.
 
@@ -5303,7 +5305,7 @@ Several names nest in the order written, the first outermost, so it is the first
 
 A type that holds another reads it through that type's functions wherever it holds it: in a field, an `Option`, a list, a map's value, a `#[serde(flatten)]` member, and in a variant under every tagging. A type that reaches itself is corrected at every level. A function of a flattened type is handed the keys the holder's own members do not take, where the Zod schema hands it the holder's whole object.
 
-**In the [recovering decode](#recovering-decode-decode_with)** of a type declared with `decode_with`. `from_value_with`, `from_value_piped`, `from_bson_with` and `from_bson_piped` call the type's functions once, on the value as they take it, so the callback and the resolvers are handed the corrected value, the one their repairs are read from, and no issue is listed for what a function corrected. A type held by another is corrected where it is walked. A field that names a function is read whole through it by the read and by the listing of issues, each calling it once: a payload the read refuses once corrected is one `Invalid` at the field, and so is a bound the corrected value breaks. The value the callback is handed holds the field as it was written.
+**In the [recovering decode](#recovering-decode-decode_with)** of a type whose `enable` list holds `"decode_with"`. `from_value_with`, `from_value_piped`, `from_bson_with` and `from_bson_piped` call the type's functions once, on the value as they take it, so the callback and the resolvers are handed the corrected value, the one their repairs are read from, and no issue is listed for what a function corrected. A type held by another is corrected where it is walked. A field that names a function is read whole through it by the read and by the listing of issues, each calling it once: a payload the read refuses once corrected is one `Invalid` at the field, and so is a bound the corrected value breaks. The value the callback is handed holds the field as it was written.
 
 **In a [MongoDB operation](#mongodb-operations-and-typed-filters)** that reads a row, each row being read through `from_bson_piped`, and in a [service's dispatcher](#service-validation), which reads a request through the functions of its message.
 
@@ -5889,15 +5891,52 @@ Chrono types also work in collections (`Vec<NaiveDate>` generates `z.array(z.iso
 
 ## Recovering Decode (`decode_with`)
 
-A type that opts in gets methods that read a value the caller already holds: `from_value_with` and `from_value_piped` read a `serde_json::Value`, and `from_bson_with` and `from_bson_piped` read a `bson::Document`. Serde reads the value with the type's read alone, ahead of the `validate()` [a plain read of the type ends on](#a-read-refuses-what-validate-refuses), so a broken bound and a broken check are issues to list and never a refusal that hides them. When serde reads it, the value is held in the form the type writes and it breaks no bound a field declares, the decoded value comes back and nothing else happens. When serde refuses it, when it carries a key the type does not declare, when a value reads but is held in another form than its field writes, or when a value reads but breaks a bound its field declares, the raw value and every issue found in it are handed over, once. A `with` method hands them to a callback supplied with that call, which rejects the record or fixes the raw value. A `piped` method hands them to [resolvers](#resolvers) supplied with that call, small functions that each answer one issue at a time. Either way serde then gets one more read, the same way.
+A type that opts in gets methods that read a value the caller already holds: `from_value_with` and `from_value_piped` read a `serde_json::Value`, and, on a type that also lists `"mongodb"`, `from_bson_with` and `from_bson_piped` read a `bson::Document`. Serde reads the value with the type's read alone, ahead of the `validate()` [a plain read of the type ends on](#a-read-refuses-what-validate-refuses), so a broken bound and a broken check are issues to list and never a refusal that hides them. When serde reads it, the value is held in the form the type writes and it breaks no bound a field declares, the decoded value comes back and nothing else happens. When serde refuses it, when it carries a key the type does not declare, when a value reads but is held in another form than its field writes, or when a value reads but breaks a bound its field declares, the raw value and every issue found in it are handed over, once. A `with` method hands them to a callback supplied with that call, which rejects the record or fixes the raw value. A `piped` method hands them to [resolvers](#resolvers) supplied with that call, small functions that each answer one issue at a time. Either way serde then gets one more read, the same way.
 
-The flag adds these methods and the types the callback and the resolvers work with. A generated dispatcher reads a request with the read alone and then calls `validate()`, as [Service Validation](#service-validation) says, and in a build without the `mongodb` feature nothing tixschema generates calls them. With `mongodb` on, a flagged type also reads and writes its own rows in a collection, and those reads go through `from_bson_piped`: see [MongoDB Operations and Typed Filters](#mongodb-operations-and-typed-filters).
+The entry `"decode_with"` adds these methods. The types the callback and the resolvers work with are the crate's [support library](#the-support-libraries), which the crate writes once, at its root, and every flagged type's module re-exports. A generated dispatcher reads a request with the read alone and then calls `validate()`, as [Service Validation](#service-validation) says, and in a build without the `mongodb` feature nothing tixschema generates calls them. With `mongodb` on, a type that lists `"mongodb"` also reads and writes its own rows in a collection, and those reads go through `from_bson_piped`: see [MongoDB Operations and Typed Filters](#mongodb-operations-and-typed-filters).
 
 ### Opting in
 
-Write the flag among the type's `#[model_schema(...)]` arguments: `#[model_schema(decode_with)]`. `decode_with = true` reads the same, and `decode_with = false` is the flag not written. A type without the flag gains nothing: its expansion is what it was, with no method and no type added.
+Write the `enable` list among the type's `#[model_schema(...)]` arguments. It takes two entries, `"decode_with"` and `"mongodb"`:
 
-On a type `Record`, the flag generates these methods:
+- `#[model_schema(enable = ["decode_with"])]` gives the type the recovering decode of a JSON value. A type read from a request and never stored lists this.
+- `#[model_schema(enable = ["decode_with", "mongodb"])]` gives it the BSON decode as well, and, under tixschema's `mongodb` feature, the [MongoDB layer](#mongodb-operations-and-typed-filters). A type that is stored lists both.
+
+A type without the list gains nothing: its expansion is what it was, with no method and no type added. This section calls a type that lists `"decode_with"` a flagged type, and the entry the flag. The crate that declares a flagged type writes [the initializers](#the-support-libraries) once, at its root.
+
+```rust
+use serde::{Deserialize, Serialize};
+use tixschema::model_schema;
+
+/// Stored: the BSON decode and the MongoDB layer.
+#[model_schema(enable = ["decode_with", "mongodb"])]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Customer {
+    pub name: String,
+    pub open_invoices: u32,
+}
+
+/// Read from a request and never stored: no BSON and no MongoDB code at all.
+#[model_schema(enable = ["decode_with"])]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvoiceLookup {
+    pub number: String,
+}
+```
+
+What each entry generates on a type, by the features tixschema is built with:
+
+| Entry | tixschema built with | Generates, per type |
+|-------|----------------------|---------------------|
+| `"decode_with"` | `serde` | `from_value_with`, `from_value_piped` and their walkers, the type's own items in its `{type}_schema` module, and the re-export of the `decode_with` library there. Under `bson`, `mongo_listed`, a method that answers that the type is not stored, which the check of a held type reads, as "Nested types" below says |
+| `"mongodb"` | `bson`, without `mongodb` | `from_bson_with`, `from_bson_piped` and the BSON walkers, the re-export of the BSON pieces of the second library, and `mongo_listed`, answering that the type is stored. No operation, no `MONGO_FIELDS` and no typed path |
+| `"mongodb"` | `mongodb` | The row above, and the operations `find_one`, `find_one_with`, `find`, `find_with`, `count`, `insert_one`, `update_one`, `update_many`, `delete_one` and `delete_many`, `MONGO_FIELDS`, `MongoFields`, the typed paths, and the re-export of the query types and of what the operations answer |
+
+A type without `"mongodb"` gets none of the last two rows, under any feature. The entry `"mongodb"` is the one that turns on the BSON decode as well: there is no entry for the BSON decode alone, so a type read from a BSON document lists `"mongodb"`, and in a build with `bson` and without the `mongodb` feature it gains the BSON decode and no operation.
+
+On a type `Record` that lists both entries, in a build with `bson` on, the list generates these methods:
 
 ```rust
 impl Record {
@@ -5933,12 +5972,25 @@ impl Record {
 
 - The callback is the method's own type parameter, named `F` unless the type's declaration already writes that name, with its bound in a `where` clause. It is an `FnOnce`, so the compiler holds it to one run per read.
 - The resolvers of a `piped` method are a slice, in the order they are to run: `&[&first, &second]`. An empty slice, `&[]`, is a read any issue refuses.
-- `record_schema` is the module tixschema writes for `Record`. The callback's types and the resolvers' are generated into it, once per flagged type.
-- `from_value_with` and `from_value_piped` are generated in a build with tixschema's `serde` feature on, and `from_bson_with` and `from_bson_piped` in a build with its `bson` feature on, which `mongodb` turns on.
+- `record_schema` is the module tixschema writes for `Record`. The callback's types and the resolvers' are the crate's support library, which `record_schema` re-exports name by name: `record_schema::Verdict` and `record_schema::Issue` are the crate's one `Verdict` and one `Issue` ([One library per crate](#one-library-per-crate)).
+- `from_value_with` and `from_value_piped` are generated in a build with tixschema's `serde` feature on, and `from_bson_with` and `from_bson_piped` on a type that lists `"mongodb"`, in a build with its `bson` feature on, which `mongodb` turns on.
+
+The list is read in every build. Each of these is refused, spanned on what is written, with a message that says what to write instead. The error opens with the type it is written on, ``model_schema: type `Record`:``, and goes on with the message:
+
+| Written | The message |
+|---------|-------------|
+| `decode_with`, `decode_with = true` or `decode_with = false`, the flag as it was written before the list | ``tixschema: `decode_with` is now an entry of the `enable` list: write `#[model_schema(enable = ["decode_with"])]` `` |
+| `enable = ["mongodb"]` | ``tixschema: `"mongodb"` requires `"decode_with"`: write `enable = ["decode_with", "mongodb"]` `` |
+| `enable = ["decode_wth"]`, an entry the list does not read | ``tixschema: unknown entry `"decode_wth"`; the entries are `"decode_with"` and `"mongodb"` `` |
+| `enable = ["decode_with", "decode_with"]` | ``tixschema: `"decode_with"` is written twice`` |
+| `enable = []` | ``tixschema: the list is empty; remove `enable` `` |
+| `enable = "decode_with"`, `enable = [decode_with]`, or any other form but a list of string literals | `` `model_schema` argument `enable` takes a list of string literals, written `enable = ["decode_with"]` or `enable = ["decode_with", "mongodb"]` `` |
+
+`"mongodb"` without `"decode_with"` is refused because the MongoDB layer reads every row through the recovering decode, which the first entry generates.
 
 ### What your crate lists
 
-The generated code names `serde_json` and, for `from_bson_with`, the `bson` library, so the crate that declares a flagged type lists them in its own manifest beside `serde`:
+The generated code names `serde_json`, and, for `from_bson_with`, the code of a type that lists `"mongodb"` and the library `mongodb_foundation!()` writes name the `bson` library. So the crate that declares a flagged type lists `serde_json` in its own manifest beside `serde`, and a crate where a type lists `"mongodb"` lists `bson` too:
 
 ```toml
 serde_json = "1"
@@ -5948,7 +6000,91 @@ bson = "2.15"
 
 List the `bson` library at the major version your MongoDB driver uses, so the `Document` the driver hands you is the `bson::Document` the method takes. The generated code calls only what both major versions of the library have, and this repository's own tests build it against each, beside a MongoDB driver built for that version: `bson = "2.15"` in the crate's own `tests/`, and `bson = { version = "3.1", features = ["serde"] }`, with version 3's `serde` feature turned on, in `bson3/`, a package of its own.
 
-With tixschema's `mongodb` feature on, the generated code names the `mongodb` driver too, in every crate that declares a flagged type, for the operations the type gains. [The driver your crate lists](#the-driver-your-crate-lists) has the lines for each major version of `bson`.
+With tixschema's `mongodb` feature on, the generated code names the `mongodb` driver too, in every crate where a type lists `"mongodb"`, for the operations the type gains. [The driver your crate lists](#the-driver-your-crate-lists) has the lines for each major version of `bson`.
+
+A crate whose types list `"decode_with"` alone, and that writes `decode_with_foundation!()` alone, names neither `bson` nor `mongodb`, and lists neither, whatever features tixschema is built with. That holds in a workspace where another crate turns tixschema's `mongodb` feature on, which Cargo then turns on for every crate of the build.
+
+### The support libraries
+
+What a callback, a resolver and a walker work with is the same for every flagged type, so a crate holds it once. Two initializers, each called once at the crate root, write it:
+
+- `tixschema::decode_with_foundation!();` writes the module `__tixschema_decode_with`: `Issue`, `Expected`, `Path` and `Segment`, `Verdict`, `Resolution`, `Resolver`, `Unrecovered`, `unsettled`, and what one type's walker hands another's. It names no `bson` path in any build, and it writes nothing in a build without tixschema's `serde` feature.
+- `tixschema::mongodb_foundation!();` writes the module `__tixschema_mongodb`. Under `bson` it holds what reads a BSON value and the helpers `set_in_document` and `remove_from_document` of `Path`, and under `mongodb` the query types (`Filter`, `Update`, `ArmFilter`, `ArmUpdate`, the path kinds) and what the operations answer (`Read`, `OperationError`, `WriteError`) beside them. It reads the names of the first library, so it is written beside `decode_with_foundation!()`. In a build without `bson` it writes nothing, so the call stays in a crate whatever features the crate builds with.
+
+A crate whose types list `"decode_with"` writes the first, and a crate where one lists `"mongodb"` writes both. Each is written once per crate, at the crate root (`src/lib.rs` or `src/main.rs`), on its own line, anywhere outside a function, after the `mod` lines as well as before them:
+
+```rust
+// src/lib.rs
+tixschema::decode_with_foundation!();
+tixschema::mongodb_foundation!();
+
+pub mod billing;
+```
+
+- **Neither takes an argument.** Anything written between the parentheses is refused: ``tixschema: `decode_with_foundation!` takes no arguments: write `tixschema::decode_with_foundation!();` at the crate root``, and the same for `mongodb_foundation!`.
+- **Each is written once.** Written twice, an initializer declares its module and its marker twice, which rustc refuses (`E0428`, `` the name `__tixschema_decode_with` is defined multiple times ``).
+- **Each crate has its own.** A library, a binary, each test binary, each example and each doctest is a crate, and writes the initializers at its own root. A doctest has a root of its own only where it writes its own `fn main`: one that does not is wrapped in a `fn main`, and an initializer inside a function writes no module at the crate root.
+- **Every `{type}_schema` module re-exports its crate's libraries, name by name**: the `decode_with` library always, and the BSON and MongoDB library where the type lists `"mongodb"`. So every path written against a type's module resolves, `record_schema::Verdict::Reject`, `invoice_schema::Issue`, `invoice_schema::Filter<Invoice>`, from the crate and from another one. A name written out shadows the one the module reads from your scope: in a module of yours that writes `use std::path::Path;` or declares a struct `Filter` of its own beside a flagged type, `Path` and `Filter` stay yours, and `record_schema::Path` and `invoice_schema::Filter` are the library's.
+
+Nothing tixschema emits into your crate carries `#[allow]`, `#[expect]` or `#[doc(hidden)]`, so your lint levels reach all of it, with two exceptions, both on the libraries:
+
+- **Each re-export in a `{type}_schema` module carries `#[expect(clippy::pub_use, reason = "...")]`.** The re-export is a `pub use`, which clippy's `pub_use`, a lint of its restriction group, reports wherever that group is denied. It is what keeps every `{type}_schema::Name` path reachable from your crate and from another, so tixschema writes the expectation, with its reason, rather than leaving the lint to fire at every flagged type. Neither `pub_use` nor an unmet expectation is reported, in `cargo build`, in clippy at the lint's default level, or in clippy with the restriction group denied.
+- **Each library module, `__tixschema_decode_with` and `__tixschema_mongodb`, carries `#[doc(hidden)]`**, so the library is not published in your crate's documentation as a module of its own. Its items are documented where you name them, under each `{type}_schema` module that re-exports them.
+
+### A crate without its initializer
+
+Each flagged type checks that its crate wrote the libraries it re-exports. In a crate that did not, the build fails at each such type with an error that names the line to add and where to add it. With no `decode_with_foundation!()`, beside rustc's own error for the re-export it cannot resolve (`E0432`, `` could not find `__tixschema_decode_with` in the crate root ``), each flagged type reports an `E0277` whose message, label and note are:
+
+```text
+message: tixschema: this crate has `#[model_schema(enable = ["decode_with"])]` types but no `tixschema::decode_with_foundation!();`
+label:   this type needs the decode_with support library, which `tixschema::decode_with_foundation!();` writes once per crate
+note:    Fix: add the line `tixschema::decode_with_foundation!();` at the crate root (src/lib.rs or src/main.rs), on its own line, anywhere outside a function. Add it once per crate; nothing else is needed.
+```
+
+With `decode_with_foundation!()` and no `mongodb_foundation!()`, in a build with `bson` on, each type that lists `"mongodb"` reports:
+
+```text
+message: tixschema: this crate has `#[model_schema(enable = ["decode_with", "mongodb"])]` types but no `tixschema::mongodb_foundation!();`
+label:   this type needs the MongoDB support library, which `tixschema::mongodb_foundation!();` writes once per crate
+note:    Fix: add the line `tixschema::mongodb_foundation!();` at the crate root (src/lib.rs or src/main.rs), on its own line, anywhere outside a function. Add it once per crate; nothing else is needed.
+```
+
+The fix is the line the note gives. The check is the same wherever the initializer is written at the crate root, so a crate whose `mod` lines come first and whose initializers come last builds.
+
+### One library per crate
+
+A crate holds its libraries once, and every flagged type of it shares them:
+
+- **Every path written against a type's module compiles**: `invoice_schema::Verdict::Reject`, `invoice_schema::Issue`, `invoice_schema::OperationError`.
+- **Within one crate, `invoice_schema::Issue` and `customer_schema::Issue` are one type**, and so is every other name of the libraries: `Verdict`, `Resolution`, `Resolver` and `OperationError` among them. A type of another crate has its own crate's.
+- **One resolver serves every flagged type of its crate.** A resolver written against `invoice_schema::Issue` is handed to the `piped` read of any flagged type the crate declares, and to `find_one_with` and `find_with` of any that lists `"mongodb"`.
+- **Two impls written for two modules' types are one impl written twice**, which rustc refuses. Keep one of them:
+
+```rust
+// two impls of one crate, each written for one module's `OperationError`
+impl From<invoice_schema::OperationError> for StoreError {
+    fn from(failed: invoice_schema::OperationError) -> Self { Self::Stored(failed.to_string()) }
+}
+impl From<customer_schema::OperationError> for StoreError {
+    fn from(failed: customer_schema::OperationError) -> Self { Self::Stored(failed.to_string()) }
+}
+// error[E0119]: conflicting implementations of trait `From<OperationError>` for type `StoreError`
+```
+
+- **A crate with no stored type names neither `bson` nor `mongodb`.** Its types list `"decode_with"` alone, it writes `decode_with_foundation!()` alone, and its manifest lists neither library:
+
+```rust
+// src/lib.rs of a crate whose Cargo.toml lists tixschema, serde and serde_json, and no bson
+tixschema::decode_with_foundation!();
+
+#[tixschema::model_schema(enable = ["decode_with"])]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct InvoiceLookup {
+    pub number: String,
+}
+```
+
+- **A doctest that declares a flagged type writes its own `fn main`**, with the initializers at its crate root beside it.
 
 ### One call, one chance
 
@@ -5964,7 +6100,7 @@ The result is the decoded value or the failure. Nothing reports whether the call
 
 ### The issues
 
-The callback's types and the resolvers' live in the flagged type's own module, `record_schema` for `Record`. An `Issue<V>` is generic over the raw value: `serde_json::Value` from `from_value_with` and `from_value_piped`, `bson::Bson` from `from_bson_with` and `from_bson_piped`. One callback receives every issue in the whole record as the outer type's own `Issue`, an issue inside a nested type included, at its full path, and so does each resolver, one issue at a time.
+The callback's types and the resolvers' are named through the flagged type's own module, `record_schema` for `Record`, which re-exports them from the crate's [support library](#the-support-libraries). An `Issue<V>` is generic over the raw value: `serde_json::Value` from `from_value_with` and `from_value_piped`, `bson::Bson` from `from_bson_with` and `from_bson_piped`. One callback receives every issue in the whole record as the outer type's own `Issue`, an issue inside a nested type included, at its full path, and so does each resolver, one issue at a time.
 
 | `Issue` member | What it says | Example |
 |----------------|--------------|---------|
@@ -6054,16 +6190,18 @@ Read as a struct holding `name: String` and `versions: Vec<Version>`, `{ "name":
 
 ### Nested types
 
-Every model type a flagged type's fields reach carries the flag too, whatever its shape. Where the model type is declared above the flagged one and has no flag, the build fails: the flagged type's walker calls the nested type's walker, so the error names the method the flag would have generated:
+Every model type a flagged type's fields reach lists `"decode_with"` too, whatever its shape, and every one a type that lists `"mongodb"` reaches lists `"mongodb"` too. Where the model type is declared above the flagged one and has no flag, the build fails: the flagged type's walker calls the nested type's walker, so the error names the method the flag would have generated:
 
 ```rust
+tixschema::decode_with_foundation!();
+
 #[model_schema()]
 #[derive(Deserialize, Serialize)]
 pub struct Version {
     pub number: i32,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Deserialize, Serialize)]
 pub struct Record {
     pub versions: Vec<Version>,
@@ -6074,33 +6212,43 @@ pub struct Record {
 error[E0599]: no associated function or constant named `decode_with_value_issues` found for struct `Version` in the current scope
 ```
 
-The error is reported at the `#[model_schema(decode_with)]` of the type that names the unflagged one. A type flattened without the flag earns the same error twice, naming `decode_with_value_named` and `decode_with_value_fields`, and a build with `bson` on earns each a second time, for `decode_with_bson_issues`, `decode_with_bson_named` and `decode_with_bson_fields`.
+The error is reported at the `#[model_schema(...)]` of the type that names the unflagged one. A type flattened without the flag earns the same error twice, naming `decode_with_value_named` and `decode_with_value_fields`, and a holder that lists `"mongodb"`, in a build with `bson` on, earns each a second time, for `decode_with_bson_issues`, `decode_with_bson_named` and `decode_with_bson_fields`.
+
+**A model type held by a type that lists `"mongodb"` lists `"mongodb"` too.** The holder's BSON walker calls the held type's own, and its typed paths nest the held type's. So, in a build with `bson` on, a held type that lists `"decode_with"` alone is refused, whether it is declared above the holder, below it or in another crate. With `Invoice` listing both entries and holding `customer: Customer`, and `Customer` listing `"decode_with"` alone, the build fails with an `E0277` that names both types, whose message, label and note are:
+
+```text
+message: tixschema: `Invoice` lists "mongodb" in `enable`, but its field type `Customer` does not
+label:   `Invoice` reads and writes `Customer` in MongoDB, so `Customer` needs the MongoDB code too
+note:    Fix: add "mongodb" to the `enable` list of `#[model_schema]` on `Customer`, so it reads `enable = ["decode_with", "mongodb"]`.
+```
+
+Where the held type is declared above the holder, the holder's call of its BSON walker fails too, so rustc prints first an `E0599` naming `decode_with_bson_issues`, as for a type with no flag. The fix is the one the note gives, and it ends both errors. The check reads the type each field's BSON walk reaches, through `Option`, a list, a map's values and the transparent wrappers such as `Box`: `Customer` for a field `Vec<Option<Customer>>`. It reads `mongo_listed`, the method each flagged type answers with whether it lists `"mongodb"`. A type with no `#[model_schema]`, a plain serde type or one of another crate, has no such method and passes, and the walk reads it whole, as the last point below says. A field of a plain value is not checked, a `String`, a number, or an `Option`, a list or a map of those, and neither is a field whose type names one of the holder's own parameters.
 
 - **A model type filling a type parameter needs no flag.** It is read as one value, so `Page<Plain>` reads with no flag on `Plain`.
 - **A field typed with an alias of a flagged model type is walked**, the alias being that type: with `#[model_schema()] type EntryAlias = Entry;`, a field `featured: EntryAlias` lists an issue at `featured.name`.
 - **A field typed with an alias of a list or a map is walked as that list or map**, where `#[model_schema]` is written on the alias and the alias is declared above the type that names it. With `#[model_schema()] pub type Versions = Vec<Version>;` and a field `all: Versions`, `{ "all": [{ "number": 1 }, { "number": "2" }] }` lists `Invalid` at `all[1].number`, and with `#[model_schema()] pub type Counts = HashMap<String, i32>;` and a field `counts: Counts`, `{ "counts": { "a": "x", "b": 2 } }` lists `Invalid` at `counts.a`, expected `I32`. The field publishes under the alias's name on every schema surface, as it does without the flag. The alias may be declared in another module: what it holds is reached from the field's own type, so nothing the alias is written with has to be in scope beside the field. An alias that takes a type parameter, and one declared below the type that names it, are read whole, as the next point says.
-- **A field of a type tixschema has not seen is read whole.** A name `#[model_schema]` was not written on above the flagged type may be a `type` alias with no `#[model_schema]`, a type from another crate, or a model type declared below, and tixschema cannot tell which. So the walker asks the type for its walker, and where the type has none it reads the value whole, with the type's own `Deserialize`: a value serde refuses is one `Invalid` at the field, expected `Unknown`, and flattened, the field takes every key nothing else declares. With `pub type Properties = serde_json::Map<String, Value>;` and a field `properties: Properties`, any object reads with no issue and `{ "properties": 5 }` lists `Invalid` at `properties`. A flagged model type declared below is walked by its own walker all the same. An unflagged one declared below is read whole, where one declared above fails the build. A field `timeout: Duration`, `Duration` being `std::time::Duration`, is read whole too; the `duration_schema` error the same field earns wherever a schema surface is on is no part of the flag and is unchanged.
+- **A field of a type tixschema has not seen is read whole.** A name `#[model_schema]` was not written on above the flagged type may be a `type` alias with no `#[model_schema]`, a type from another crate, or a model type declared below, and tixschema cannot tell which. So the walker asks the type for its walker, and where the type has none it reads the value whole, with the type's own `Deserialize`: a value serde refuses is one `Invalid` at the field, expected `Unknown`, and flattened, the field takes every key nothing else declares. With `pub type Properties = serde_json::Map<String, Value>;` and a field `properties: Properties`, any object reads with no issue and `{ "properties": 5 }` lists `Invalid` at `properties`. A flagged model type declared below is walked by its own walker all the same, and, held by a type that lists `"mongodb"`, is held to list `"mongodb"` too, as the check above says. An unflagged one declared below is read whole, where one declared above fails the build. A field `timeout: Duration`, `Duration` being `std::time::Duration`, is read whole too; the `duration_schema` error the same field earns wherever a schema surface is on is no part of the flag and is unchanged.
 
 ### What is refused
 
-The flag is refused where the methods cannot be written, with a `compile_error!`, in every feature combination. No other shape is refused.
+The entry `"decode_with"` is refused where the methods cannot be written, with a `compile_error!`, in every feature combination. No other shape is refused. What the `enable` list itself refuses is in [Opting in](#opting-in).
 
 **On a type alias.** An alias is another name for a type that already exists, so the methods would be that type's. For `pub type DecodeVersions = Vec<DecodeVersion>;`:
 
 ```text
-model_schema: type `DecodeVersions`: `#[model_schema(decode_with)]` cannot be written on a type alias: `DecodeVersions` is another name for `Vec<DecodeVersion>`, and the methods would have to be added to that type. Write the flag on the model types the alias reaches.
+model_schema: type `DecodeVersions`: `enable = ["decode_with"]` cannot be written on a type alias: `DecodeVersions` is another name for `Vec<DecodeVersion>`, and the methods would have to be added to that type. List it on the model types the alias reaches.
 ```
 
 **On a type that declares a lifetime.** The methods own the value they read, and a decoded value cannot borrow from it. For `pub struct DecodeNamed<'a> { pub name: &'a str }`, and for an enum declaring `'a` alike:
 
 ```text
-model_schema: type `DecodeNamed`: `#[model_schema(decode_with)]` cannot be written on a type that borrows: `from_value_with` owns the value it reads, so the decoded `DecodeNamed<'a>` cannot borrow from it for `'a`.
+model_schema: type `DecodeNamed`: `enable = ["decode_with"]` cannot be written on a type that borrows: `from_value_with` owns the value it reads, so the decoded `DecodeNamed<'a>` cannot borrow from it for `'a`.
 ```
 
 **On a type with a field that borrows.** A reference written in a field borrows from the owned value as a declared lifetime does. For `pub struct DecodeLabelled { pub label: &'static str }`:
 
 ```text
-model_schema: type `DecodeLabelled`: `#[model_schema(decode_with)]` cannot be written on a type with a field that borrows: `label` is `&'static str`, and `from_value_with` owns the value it reads, so nothing decoded from it can be borrowed for `'static`. Write the field as an owned type.
+model_schema: type `DecodeLabelled`: `enable = ["decode_with"]` cannot be written on a type with a field that borrows: `label` is `&'static str`, and `from_value_with` owns the value it reads, so nothing decoded from it can be borrowed for `'static`. Write the field as an owned type.
 ```
 
 The message names the first such field serde reads, a reference held inside an `Option` or a `Vec` included, a tuple position by its number and an enum's field behind its variant: `Named.label`. A field that names a lifetime and borrows nothing from the value is not refused: a `Cow<'static, str>`, which serde reads as an owned value, and a reference in a field serde never reads, under `skip` or `skip_deserializing`.
@@ -6113,7 +6261,7 @@ The message names the first such field serde reads, a reference held inside an `
 - **A reader on an older model** sends every record a newer model wrote with an added field to the callback, the added key being one its type does not declare.
 - **The `reason` of an issue is serde's refusal or a bound's sentence.** For a value serde refuses it is the `bson` library's own wording, which differs between its two major versions. For a value that breaks a bound it is the bound's own sentence, the same under both. A callback or a resolver matches on the member, the path, `expected` and `found`, never on `reason`.
 - **A value that breaks two bounds is two `Invalid` issues at one path**, alike in `expected` and `found` and apart in `reason` alone. Nothing a callback or a resolver matches on tells the two apart, and nothing has to: one repair of the value at that path answers both. A callback finds both in its list and repairs the value once. Where the value sits in an array, as a slot of a tuple variant does, a removal run once for each of the two takes the next item as well, the second one finding at that index the item that moved into it. A resolver is handed the two in turn, each holding in `found` the value as it was stored, the second one after its own repair is in the raw value. It answers each `Settled`: one it leaves `NotTouched` fails the read, although the value at that path was repaired.
-- **With tixschema's `mongodb` feature on, a flagged type reads its own rows from a collection**, each through `from_bson_piped`: [MongoDB Operations and Typed Filters](#mongodb-operations-and-typed-filters).
+- **With tixschema's `mongodb` feature on, a type that lists `"mongodb"` reads its own rows from a collection**, each through `from_bson_piped`: [MongoDB Operations and Typed Filters](#mongodb-operations-and-typed-filters).
 
 ### Cost
 
@@ -6127,7 +6275,7 @@ A type that flattens another flagged type beside keys of its own copies the entr
 
 ### A complete callback
 
-A `Record` with an inner `Version`, read from the MongoDB rows older writers left. Every type a flagged type reaches carries the flag. The example needs tixschema's `mongodb` and `chrono` features.
+A `Record` with an inner `Version`, read from the MongoDB rows older writers left. Both list `"decode_with"` and `"mongodb"`, the entry `from_bson_with` is generated for, and the crate that declares them writes both [initializers](#the-support-libraries) at its root. The example needs tixschema's `mongodb` and `chrono` features.
 
 ```rust
 use bson::oid::ObjectId;
@@ -6136,14 +6284,14 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Version {
     pub number: i32,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Record {
@@ -6271,16 +6419,16 @@ It answers `Fixed`, the second read finds no issue, and the call returns this `R
 
 `from_bson_piped` and `from_value_piped` take resolvers where `from_bson_with` and `from_value_with` take one callback. A resolver is a function over the raw value and one issue, and it answers that issue alone: `Settled`, `Rejected` or `NotTouched`. Each resolver knows one repair, so a read is handed the ones its rows need, in the order they are to run.
 
-A resolver is written against one type's own `Issue`, and serves that type: `invoice_schema::Issue` and `order_schema::Issue` are two types, each flagged type's module holding its own copy of everything the flag adds. An issue inside a nested type reaches the outer type's resolvers as the outer type's own `Issue`, at its full path, so a resolver for `Invoice` repairs what is wrong inside its `Customer`.
+A resolver is written against `Issue`, which a crate holds once: within one crate, `invoice_schema::Issue` and `order_schema::Issue` are one type, so one resolver serves the reads of every flagged type the crate declares ([One library per crate](#one-library-per-crate)). A type of another crate has its own crate's `Issue`. An issue inside a nested type reaches the outer type's resolvers as the outer type's `Issue`, at its full path, so a resolver for `Invoice` repairs what is wrong inside its `Customer`.
 
-An `Invoice` that holds a `Customer`, both read from the rows older writers left. The example needs tixschema's `bson` feature.
+An `Invoice` that holds a `Customer`, both read from the rows older writers left. Both list `"decode_with"` and `"mongodb"`, the entry `from_bson_piped` is generated for. The example needs tixschema's `bson` feature.
 
 ```rust
 use bson::{Bson, Document, doc};
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Customer {
@@ -6288,7 +6436,7 @@ pub struct Customer {
     pub open_invoices: u32,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Invoice {
     pub customer: Customer,
@@ -6430,20 +6578,20 @@ What the pipe holds every read to:
 
 ## MongoDB Operations and Typed Filters
 
-With tixschema's `mongodb` feature on, a type declared with [`#[model_schema(decode_with)]`](#recovering-decode-decode_with) reads and writes its own rows in a MongoDB collection, and names its own fields in the filters and updates it does so with:
+With tixschema's `mongodb` feature on, a type declared with [`#[model_schema(enable = ["decode_with", "mongodb"])]`](#opting-in) reads and writes its own rows in a MongoDB collection, and names its own fields in the filters and updates it does so with:
 
 - **Typed paths.** `MONGO_FIELDS`, a const on the type, answers one path per key serde writes for it, each from a function named after the field. A path builds a filter or an update from a value of its field's own type, so a field that does not exist and a value of another type are compile errors. `nest` writes what is asked of a nested model's own paths under the key that holds the model.
 - **Operations.** `find_one`, `find`, `count`, `insert_one`, `update_one`, `update_many`, `delete_one` and `delete_many`, over a `mongodb::Collection<bson::Document>`. Every row a read is handed goes through the recovering decode, so a row that does not read as the type is reported by its `_id` and its issues, and `find_one_with` and `find_with` take the [resolvers](#resolvers) that repair one.
 
-The flag is what turns both on. A type without `decode_with` gains nothing in any build, and a flagged type in a build without `mongodb` has the recovering decode alone.
+The entry `"mongodb"` is what turns both on, and it needs `"decode_with"` beside it. A type whose list holds `"decode_with"` alone has neither in any build, and no BSON decode either. A type that lists `"mongodb"`, in a build with `bson` and without the `mongodb` feature, has the recovering decode from JSON and from BSON, and no operation, no `MONGO_FIELDS` and no typed path. A type that is never stored lists `"decode_with"` alone, and none of this section's code is generated for it.
 
-Everything is generated into the flagged type's own `<type>_schema` module, beside the issue types: `invoice_schema::Filter`, `invoice_schema::OperationError` and `invoice_schema::Read` are `Invoice`'s own, and `customer_schema` holds a copy of each for `Customer`. Two flagged types share no declaration. So a filter, an update, a resolver and an `OperationError` each belong to one type. Two modules meet in one place: `nest` takes a filter or an update built from a nested model's own paths, and answers one over the outer type's rows ([Filters and updates](#filters-and-updates)).
+The query types and what the operations answer are the crate's BSON and MongoDB [support library](#the-support-libraries), which `mongodb_foundation!()` writes once, and which the `<type>_schema` module of every type that lists `"mongodb"` re-exports name by name, beside the issue types. So `invoice_schema::Filter`, `invoice_schema::OperationError` and `invoice_schema::Read` are the crate's one `Filter`, `OperationError` and `Read`, and `customer_schema` names the same three. A compiler error names such a type where the library declares it, `__tixschema_mongodb::Filter<Invoice>`. What each type writes for itself is its typed paths, `MongoFields` in its own module and `MONGO_FIELDS` on the type, and its operations, on the type. A filter and an update still belong to the rows of one type, which their first parameter names: a `Filter<Invoice>` is over the rows of `Invoice`, and is refused where a filter over the rows of `Customer` is asked. `nest` takes a filter or an update built from a nested model's own paths, and answers one over the outer type's rows ([Filters and updates](#filters-and-updates)).
 
 No line of this section is the answer of a MongoDB server. A document shown is the one a call writes, as `bson::Document` displays it, and an answer is the driver's own result type.
 
 ### The driver your crate lists
 
-The code generated for a flagged type names the `mongodb` driver, so a crate that declares one lists the driver beside `bson`, `serde` and `serde_json`, whether or not it calls an operation. Without it the build fails at the type's `#[model_schema(decode_with)]`, with ``error[E0433]: cannot find module or crate `mongodb` in this scope``.
+The code generated for a type that lists `"mongodb"`, and the library `mongodb_foundation!()` writes, name the `mongodb` driver, so a crate that declares such a type lists the driver beside `bson`, `serde` and `serde_json`, whether or not it calls an operation. Without it the build fails with ``error[E0433]: cannot find module or crate `mongodb` in this scope``. A crate whose types list `"decode_with"` alone lists neither the driver nor `bson`.
 
 The crate's `bson` is the major version its driver is built for. The driver's default features build it for version 2 of the `bson` library:
 
@@ -6461,14 +6609,14 @@ bson = { version = "3.1", features = ["serde"] }
 
 `compat-3-3-0`, `rustls-tls` and `dns-resolver` are part of the driver's defaults, written out because turning the defaults off turns them off too. The crate's own `tests/` build against the driver at its default features and `bson` 2.15, and `bson3/`, this repository's package for version 3, against the second pair.
 
-A `bson` of the other major version fails the build at each flagged type, the generated operations handing the driver a `Document` it does not take:
+A `bson` of the other major version fails the build at each type that lists `"mongodb"`, the generated operations handing the driver a `Document` it does not take:
 
 ```text
 error[E0308]: mismatched types
  --> src/lib.rs:8:1
   |
-8 | #[model_schema(decode_with)]
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+8 | #[model_schema(enable = ["decode_with", "mongodb"])]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   | |
   | expected `mongodb::bson::Document`, found `bson::Document`
   | arguments to this method are incorrect
@@ -6480,7 +6628,7 @@ The note goes on to name the two versions, each at its place in the Cargo regist
 
 ### The model of the examples
 
-The examples of this section share one model: an `Invoice`, and the types it holds. Every one of them carries the flag, and each is declared above the type that holds it.
+The examples of this section share one model: an `Invoice`, and the types it holds. Every one of them lists `"decode_with"` and `"mongodb"`, and each is declared above the type that holds it.
 
 ```rust
 use std::collections::HashMap;
@@ -6489,7 +6637,10 @@ use bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-#[model_schema(decode_with)]
+tixschema::decode_with_foundation!();
+tixschema::mongodb_foundation!();
+
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Address {
@@ -6497,7 +6648,7 @@ pub struct Address {
     pub postal_code: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Customer {
@@ -6506,7 +6657,7 @@ pub struct Customer {
     pub open_invoices: u32,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum InvoiceStatus {
@@ -6515,7 +6666,7 @@ pub enum InvoiceStatus {
     PastDue,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct LineItem {
     pub price: f64,
@@ -6523,7 +6674,7 @@ pub struct LineItem {
     pub sku: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Payment {
@@ -6531,7 +6682,7 @@ pub enum Payment {
     Cash,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Invoice {
@@ -6645,7 +6796,7 @@ Every operator, once, with the document it writes. `paths` is `Invoice::MONGO_FI
 | `paths.paid_at().unset()` | `{ "$unset": { "paidAt": "" } }` |
 | `paths.paid_at().lt("2026-10-01".to_owned())?` | `{ "paidAt": { "$lt": "2026-10-01" } }` |
 
-`unset` is on a path a row may leave out and on no other: `paths.number().unset()` is ``error[E0599]: no method named `unset` found for struct `invoice_schema::Field<Root, V, N>` in the current scope``.
+`unset` is on a path a row may leave out and on no other: `paths.number().unset()` is ``error[E0599]: no method named `unset` found for struct `__tixschema_mongodb::Field<Root, V, N>` in the current scope``.
 
 **A type serde writes as one value**, here the plain enum `InvoiceStatus`. Held by another type it is a `Field`, with every operator of one:
 
@@ -6738,14 +6889,14 @@ fn bolts() -> LineItem {
 **The arms of an enum under a tag.** `<tag>__<value>()` is a function of the enum's own paths, one per variant serde writes, and it answers the rows of that arm. Its name is the tag key, `__`, and the value serde writes for the variant, each in snake case. What it answers is an arm filter, an `ArmFilter<Root, M>`: a filter over the rows of the enum that holds the arm's tag from the start, and whose `and` takes a filter over the rows of `M`, the model the arm holds, and over no other. So a field of an arm is asked only together with that arm's tag, and a row of another arm that writes the same key is not matched. The function is a `const fn`, so a `const` item holds an arm filter, and each use of the `const` is a new value:
 
 ```rust
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Courier {
     pub name: String,
     pub region: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "type")]
 pub enum Transport {
@@ -6754,7 +6905,7 @@ pub enum Transport {
     Collected,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Booking {
@@ -6816,7 +6967,7 @@ The snake case of a tag key and of a value is its words in lower case, joined by
 | `paths.payment().nest(payment.kind__cash())` | `{ "payment.kind": { "$eq": "cash" } }` |
 | `payment.card().last4().eq("4242".to_owned())?.and(payment.kind__card())` | `{ "$and": [{ "last4": { "$eq": "4242" } }, { "kind": { "$eq": "card" } }] }` |
 
-**`and` on an arm filter refuses a filter over another type.** With `Wagon` a flagged struct that declares a `number`, `BY_COURIER.and(Wagon::MONGO_FIELDS.number().eq("W-9".to_owned())?)` is ``error[E0277]: the trait bound `wagon_schema::Filter<Wagon>: AsRef<PhantomData<Courier>>` is not satisfied``.
+**`and` on an arm filter refuses a filter over another type.** With `Wagon` a flagged struct that declares a `number`, `BY_COURIER.and(Wagon::MONGO_FIELDS.number().eq("W-9".to_owned())?)` is ``error[E0277]: the trait bound `__tixschema_mongodb::Filter<Wagon>: AsRef<PhantomData<Courier>>` is not satisfied``.
 
 **An arm takes an update of the model it holds.** `update` on an arm filter takes an update of the rows of `M`, the model the arm holds, and of no other, and answers an arm update, an `ArmUpdate<Root, M>`: an update of the rows of the enum, with each key of the model written where the arm holds it. `and` on an arm update merges one more update of `M`, as `and` on an update does. `tag_on_insert` adds the arm's tag to `$setOnInsert`, which an upsert writes where it inserts the row. The tag is written only where it is asked for: an update of a row that is there needs none.
 
@@ -6856,7 +7007,7 @@ The tag is written at the enum's own level under either tagging, and what the ar
 | `payment.kind__cash().tag_on_insert()` | `{ "$setOnInsert": { "kind": "cash" } }` |
 | `payment.card().last4().set("4242".to_owned())?.and(payment.kind__card().tag_on_insert())` | `{ "$set": { "last4": "4242" }, "$setOnInsert": { "kind": "card" } }` |
 
-**`update` on an arm filter takes an update of the arm's model and nothing else.** Handed a filter over the rows of that model, `BY_COURIER.update(Courier::MONGO_FIELDS.name().eq("Acme".to_owned())?)` is ``error[E0277]: the trait bound `courier_schema::Filter<Courier>: AsRef<PhantomData<fn(Courier) -> Courier>>` is not satisfied``. Handed an update of another type, with `Wagon` a flagged struct that declares a `number`, `BY_COURIER.update(Wagon::MONGO_FIELDS.number().set("W-1".to_owned())?)` is ``error[E0277]: the trait bound `wagon_schema::Update<Wagon>: AsRef<PhantomData<fn(Courier) -> Courier>>` is not satisfied``. An arm update is no filter: it carries an update's marker and no other, so `BY_COURIER.and(BY_COURIER.tag_on_insert())` does not compile (`E0277`).
+**`update` on an arm filter takes an update of the arm's model and nothing else.** Handed a filter over the rows of that model, `BY_COURIER.update(Courier::MONGO_FIELDS.name().eq("Acme".to_owned())?)` is ``error[E0277]: the trait bound `__tixschema_mongodb::Filter<Courier>: AsRef<PhantomData<fn(Courier) -> Courier>>` is not satisfied``. Handed an update of another type, with `Wagon` a flagged struct that declares a `number`, `BY_COURIER.update(Wagon::MONGO_FIELDS.number().set("W-1".to_owned())?)` is ``error[E0277]: the trait bound `__tixschema_mongodb::Update<Wagon>: AsRef<PhantomData<fn(Courier) -> Courier>>` is not satisfied``. An arm update is no filter: it carries an update's marker and no other, so `BY_COURIER.and(BY_COURIER.tag_on_insert())` does not compile (`E0277`).
 
 ### Filters and updates
 
@@ -6877,8 +7028,8 @@ The tag is written at the enum's own level under either tagging, and what the ar
 - **A filter joins a filter over the same rows, whichever module it comes from.** What `and` and `or` ask of their argument is that it turn into a `bson::Document` and carry the row type, which every module's `Filter` does through two standard traits, `Into<bson::Document>` and `AsRef<PhantomData<Root>>`. `nest` asks the same of what it is handed, over the nested model. The answer is of the type `and` was called on.
 - **An arm filter goes where a filter over its enum goes.** A `transport_schema::ArmFilter<Transport, Courier>` turns into a `bson::Document` and carries the row type `Transport` through the same two traits, so `nest` on a path that holds a `Transport` takes one, and so do `and`, `or`, `elem_match` on a list of the enum, and every operation. It is no `Filter` itself: `transport_schema::Filter::from(arm)` makes it the module's own `Filter<Transport>`, which starts a join and has `negated`. Its own `and` asks the two traits of its argument over the model the arm holds ([The arms of an enum under a tag](#operators)).
 - **An arm update goes where an update of its enum goes.** A `transport_schema::ArmUpdate<Transport, Courier>` turns into a `bson::Document` and carries `AsRef<PhantomData<fn(Transport) -> Transport>>`, an update's marker over the rows of the enum, and no other. So `nest` on a path that holds a `Transport` takes one, and so do `and` on an update of the enum, `update_one` and `update_many`, and nothing that asks for a filter does. `transport_schema::Update::from(arm)` makes it the module's own `Update<Transport>`. Its own `and`, and `update` on the arm filter, ask the two traits of their argument over the model the arm holds ([The arms of an enum under a tag](#operators)).
-- **A filter over another type's rows is refused.** Handed `Order::MONGO_FIELDS.placed().eq(true)?`, `and` on a filter over `Invoice` is ``error[E0277]: the trait bound `order_schema::Filter<Order>: AsRef<PhantomData<Invoice>>` is not satisfied``, and `nest` on `paths.customer()`, which holds a `Customer`, is ``error[E0277]: the trait bound `order_schema::Filter<Order>: invoice_schema::Nests<Invoice, Customer, _>` is not satisfied``.
-- **An update is refused where a filter is asked, and a filter where an update is.** An update carries `AsRef<PhantomData<fn(Root) -> Root>>` in place of a filter's marker. `paths.total().gt(1000.0)?.and(paths.total().set(0.0)?)` is ``error[E0277]: the trait bound `invoice_schema::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied``, and `paths.total().set(0.0)?.and(paths.total().gt(1000.0)?)` is ``error[E0277]: the trait bound `invoice_schema::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied``.
+- **A filter over another type's rows is refused.** Handed `Order::MONGO_FIELDS.placed().eq(true)?`, `and` on a filter over `Invoice` is ``error[E0277]: the trait bound `__tixschema_mongodb::Filter<Order>: AsRef<PhantomData<Invoice>>` is not satisfied``, and `nest` on `paths.customer()`, which holds a `Customer`, is ``error[E0277]: the trait bound `__tixschema_mongodb::Filter<Order>: Nests<Invoice, Customer, _>` is not satisfied``.
+- **An update is refused where a filter is asked, and a filter where an update is.** An update carries `AsRef<PhantomData<fn(Root) -> Root>>` in place of a filter's marker. `paths.total().gt(1000.0)?.and(paths.total().set(0.0)?)` is ``error[E0277]: the trait bound `__tixschema_mongodb::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied``, and `paths.total().set(0.0)?.and(paths.total().gt(1000.0)?)` is ``error[E0277]: the trait bound `__tixschema_mongodb::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied``.
 - **A document is not a filter until `Filter::raw` makes it one.** `and` handed a `doc! { .. }` as it stands is ``error[E0277]: the trait bound `bson::Document: AsRef<PhantomData<Invoice>>` is not satisfied``. `raw` gives the document the row type of what it joins, and nothing checks what it holds: its keys and its values are the caller's.
 - **`into_document()` hands over the document** of a filter or an update, and so does `bson::Document::from`, for a call made on the driver itself.
 
@@ -6918,7 +7069,7 @@ A function is there for every key serde writes, and the kind it answers follows 
 | A plain value `T` | `Field<Root, T>` |
 | `Option<T>` | `OptionalField<Root, T>` |
 | `Vec<T>`, `VecDeque<T>`, `HashSet<T>`, `BTreeSet<T>`, `BinaryHeap<T>`, `LinkedList<T>`, `[T; N]`, `[T]`, and `IndexSet<T>` under the `indexmap` feature | `ListField<Root, T>` |
-| A struct or an enum `M` declared with `#[model_schema(decode_with)]` above the type, which serde writes under keys | `Model<Root, M>`, whose `nest` reaches `M`'s own paths |
+| A struct or an enum `M` declared with `#[model_schema(enable = ["decode_with", "mongodb"])]` above the type, which serde writes under keys | `Model<Root, M>`, whose `nest` reaches `M`'s own paths |
 | `Option<M>` | `OptionalModel<Root, M>` |
 | A list of `M` | `ModelList<Root, M>` |
 | A flagged type serde writes as one value: a brand, a plain enum, a unit struct | `Field<Root, M>`, and `OptionalField<Root, M>` in an `Option`. A list of one is a `ListField<Root, M>` |
@@ -6952,7 +7103,7 @@ What a flagged type's own paths are follows from the shape serde writes the type
 - **A function of an enum is named after its variant, in snake case**: a variant `OverLand` is the function `over_land()` and the method `is_over_land()`. A variant serde never writes has neither.
 - **`is_<variant>()` keeps its name.** With variants `Card` and `IsCard`, `is_card()` asks for `Card` and `is_is_card()` for `IsCard`, and what `IsCard` holds is reached through `is_card2()`: the function of a variant that meets a taken name is numbered, as those of two variants with one snake-case name are.
 - **An arm function is named `<tag>__<value>()`**: the tag key and the value serde writes for the variant, each in snake case, with `__` between them. An enum serde writes under a tag key has one per variant serde writes, whatever the variant holds. An externally tagged, an untagged and a plain enum have none, since they store no tag key. Beside the functions, the schema module of the enum declares `Arm`, an enum with one unit arm per variant that has a function: `transport_schema::Arm::ByCourier`.
-- **No two functions of an enum's paths take one name.** `__` is in the name of an arm function and of no other, and what would break that is refused where `decode_with` is read, with `mongodb` on and off. A variant whose Rust name holds `__` is ``model_schema: type `Transport`: variant `By__Courier` holds `__` in its name. Under a tag and `decode_with`, `__` parts the tag from the value in the function of each arm, `type__<value>()`. Rename the variant``. Two values that read as one in snake case are ``model_schema: type `Transport`: variants `ByCourier` and `Couriered` are written `by-courier` and `by_courier` under the tag `type`, and both read `by_courier` in snake case, so `type__by_courier()` would answer for both. Rename one of the two values``. An arm function that meets an `is_<variant>()`, which takes a tag key that reads `is` and a variant whose name starts with `_`, is ``model_schema: type `Transport`: the arm function `is__parcel()` of variant `Parcel` and `is__parcel()`, which asks for variant `_Parcel`, would be one function. Rename the variant `_Parcel` ``. An enum without `decode_with` has no arm function, and is refused none of the three.
+- **No two functions of an enum's paths take one name.** `__` is in the name of an arm function and of no other, and what would break that is refused where the `enable` list is read, whether the enum lists `"mongodb"` or not, with the `mongodb` feature on and off. A variant whose Rust name holds `__` is ``model_schema: type `Transport`: variant `By__Courier` holds `__` in its name. Under a tag and `decode_with`, `__` parts the tag from the value in the function of each arm, `type__<value>()`. Rename the variant``. Two values that read as one in snake case are ``model_schema: type `Transport`: variants `ByCourier` and `Couriered` are written `by-courier` and `by_courier` under the tag `type`, and both read `by_courier` in snake case, so `type__by_courier()` would answer for both. Rename one of the two values``. An arm function that meets an `is_<variant>()`, which takes a tag key that reads `is` and a variant whose name starts with `_`, is ``model_schema: type `Transport`: the arm function `is__parcel()` of variant `Parcel` and `is__parcel()`, which asks for variant `_Parcel`, would be one function. Rename the variant `_Parcel` ``. An enum that lists `"decode_with"` alone has no arm function and is refused all the same, and an enum with no `enable` list is refused none of the three.
 - **A generic type has its paths at each filling**: with `Wrapper<T>` declaring `inner: T` and `label: String`, `Wrapper::<u32>::MONGO_FIELDS.inner()` is a `Field<Wrapper<u32>, u32>`. The arms of a generic enum are at each filling too.
 
 **A field with a serde hook is compared the way it is stored.** A `chrono` date writes text, so a date kept as a BSON date carries the `bson` library's hook, and a filter on it has to write a BSON date too. The path writes its values through the field's own hook, here bound as `date_hook`:
@@ -6967,7 +7118,7 @@ use bson::serde_helpers::datetime::FromChrono04DateTime as date_hook;
 ```rust
 use window_schema::{Filter, WriteError};
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Window {
@@ -6997,19 +7148,19 @@ Each hook lives behind the `bson` library's `chrono-0_4` feature. The path of th
 
 ### A type tixschema has not seen
 
-A field typed with a flagged model is a `Model`, an `OptionalModel` or a `ModelList` only where tixschema has already expanded the model: a struct or an enum `#[model_schema]` is written on **above** the type that holds it, in the same crate. A type of another crate, one declared below, a plain `type` alias and the type itself are held as one whole value, a `Field`, an `OptionalField` or a `ListField` over the type, with the operators of that kind over the whole value. This is the reason every model of the section's examples is declared above `Invoice`.
+A field typed with a model that lists `"mongodb"` is a `Model`, an `OptionalModel` or a `ModelList` only where tixschema has already expanded the model: a struct or an enum `#[model_schema]` is written on **above** the type that holds it, in the same crate. A type of another crate, one declared below, a plain `type` alias and the type itself are held as one whole value, a `Field`, an `OptionalField` or a `ListField` over the type, with the operators of that kind over the whole value. This is the reason every model of the section's examples is declared above `Invoice`.
 
 `nest` reaches the paths below such a member as it does below a model: a `Field` and a `ListField` have it too.
 
 ```rust
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Shipment {
     pub carrier: Carrier,
     pub code: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Carrier {
     pub name: String,
@@ -7039,7 +7190,7 @@ fn carried_by(name: &str) -> Result<shipment_schema::Filter<Shipment>, WriteErro
 
 ### The operations
 
-Each operation is a function on the flagged type, over a `mongodb::Collection<bson::Document>`. The collection is one of documents, never of the type: a row is read through the recovering decode and written through the type's own `Serialize`, not by the driver's serde.
+Each operation is a function on a type that lists `"mongodb"`, over a `mongodb::Collection<bson::Document>`. The collection is one of documents, never of the type: a row is read through the recovering decode and written through the type's own `Serialize`, not by the driver's serde.
 
 | Operation | What it sends | What it answers |
 |-----------|---------------|-----------------|
@@ -7054,7 +7205,7 @@ Each operation is a function on the flagged type, over a `mongodb::Collection<bs
 | `Invoice::delete_one(collection, filter)` | The driver's `delete_one` | The driver's `mongodb::results::DeleteResult` |
 | `Invoice::delete_many(collection, filter)` | The driver's `delete_many` | The same |
 
-Every one of them fails with the type's own [`OperationError`](#operationerror). Each bound to what it answers, in a function that compiles:
+Every one of them fails with the crate's one [`OperationError`](#operationerror). Each bound to what it answers, in a function that compiles:
 
 ```rust
 use bson::{Bson, Document, doc};
@@ -7093,7 +7244,7 @@ async fn every_operation(
 `whole_number_as_text` is the resolver of [Resolvers](#resolvers), written there against another `Invoice` and here against this one: the same text, over `invoice_schema::Issue`.
 
 - **A filter is any filter over the type's rows**, whichever module's `Filter` it is. A filter over another type's rows and an update are refused, by the bound a filter joins another under.
-- **A filter and an update cannot change places.** `Invoice::update_one(invoices, paths.status().set(InvoiceStatus::Paid)?, paths.number().eq("INV-0042".to_owned())?)` does not compile: ``error[E0277]: the trait bound `invoice_schema::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied`` for the update handed as the filter, and ``error[E0277]: the trait bound `invoice_schema::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied`` for the filter handed as the update.
+- **A filter and an update cannot change places.** `Invoice::update_one(invoices, paths.status().set(InvoiceStatus::Paid)?, paths.number().eq("INV-0042".to_owned())?)` does not compile: ``error[E0277]: the trait bound `__tixschema_mongodb::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied`` for the update handed as the filter, and ``error[E0277]: the trait bound `__tixschema_mongodb::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied`` for the filter handed as the update.
 - **A read of many rows fails as a whole.** The rows are read one at a time as the driver hands them over, and the first that does not read ends the read with that row's `_id` and its issues. No row is answered.
 - **`insert_one` writes the row when it is called**, before anything is awaited. A value BSON cannot hold, and a type serde writes as anything but a document, a plain enum or a brand, answer `OperationError::Unwritable` without MongoDB being asked anything. What is awaited holds no borrow of the value.
 - **The updates and the deletes answer what the driver answers**: `UpdateResult` with its `matched_count`, `modified_count` and `upserted_id`, `DeleteResult` with its `deleted_count`, and `InsertOneResult` with the `inserted_id` of the row.
@@ -7150,8 +7301,8 @@ fn page(invoices: &Collection<Document>, at: u64) -> Read<'_, Invoice, Vec<Invoi
 - **A sort is a document written by hand**, its keys the ones serde writes. There is no projection: a read answers the whole type.
 - **What `unpaid` hands `nest` in `largest_unpaid` is a `customer_schema::Filter<Customer>`**, a filter over a customer. What `nest` answers is an `invoice_schema::Filter<Invoice>`, which `find_with` and `count` take.
 - **An option is handed to the driver as it is given.** What a collation folds, and which hint MongoDB takes or refuses, are MongoDB's own to answer.
-- **A read is `#[must_use]`.** One that is never awaited asks nothing, and the compiler says so: ``unused `invoice_schema::Read` that must be used``, with the note `a read asks nothing of MongoDB until it is awaited`.
-- **A read is turned into a future by `.await`**, and is not one before. It implements `IntoFuture`, not `Future`, so something that takes a future is handed `.into_future()`, and a read handed over as it stands is ``error[E0277]: `invoice_schema::Read<'_, Invoice, Vec<Invoice>>` is not a future``:
+- **A read is `#[must_use]`.** One that is never awaited asks nothing, and the compiler says so: ``unused `__tixschema_mongodb::Read` that must be used``, with the note `a read asks nothing of MongoDB until it is awaited`.
+- **A read is turned into a future by `.await`**, and is not one before. It implements `IntoFuture`, not `Future`, so something that takes a future is handed `.into_future()`, and a read handed over as it stands is ``error[E0277]: `__tixschema_mongodb::Read<'_, Invoice, Vec<Invoice>>` is not a future``:
 
 ```rust
 /// A count handed to something that takes a future, which a read is not until it is turned
@@ -7231,7 +7382,7 @@ Customer { address: Address { city: "Moca", postal_code: "56000" }, name: "Acme"
 
 ### `OperationError`
 
-Every operation fails with `<type>_schema::OperationError`, the type's own:
+Every operation fails with `OperationError`, which the crate's BSON and MongoDB [support library](#the-support-libraries) declares once and the `<type>_schema` module of every type that lists `"mongodb"` re-exports:
 
 | Member | When | It displays as |
 |--------|------|----------------|
@@ -7249,7 +7400,7 @@ Every operation fails with `<type>_schema::OperationError`, the type's own:
 | the number `3` | `3` |
 | no `_id` | `without an _id` |
 
-- **`issues` holds the issues no resolver settled**, as the type's own `Issue<bson::Bson>`, in the order they were found. The line of a value serde refuses ends in the `bson` library's own wording, which differs between its major versions, and the line of a value that breaks a bound ends in the bound's own sentence, the same under both: match on the member, the path, `expected` and `found`.
+- **`issues` holds the issues no resolver settled**, as the crate's `Issue<bson::Bson>`, in the order they were found. The line of a value serde refuses ends in the `bson` library's own wording, which differs between its major versions, and the line of a value that breaks a bound ends in the bound's own sentence, the same under both: match on the member, the path, `expected` and `found`.
 - **`?` turns a `WriteError` into `OperationError`**, so a filter or an update is built with `?` inside a function that answers `OperationError`, as every example of this section does.
 - **`?` does not turn the driver's own error into it.** A call made on the driver itself is turned by name, `.map_err(OperationError::Database)`; with `?` alone it is ``error[E0277]: `?` couldn't convert the error``.
 - **It is an error like any other**: `Debug`, `Display`, `std::error::Error`, `Send`, `Sync` and `'static`. `source()` is the driver's error for `Database` and the `bson` library's for `Unwritable`, and `Unreadable` has none. It is `#[non_exhaustive]`, as each type the flag adds is.
@@ -7261,7 +7412,7 @@ A row is written by the type's own `Serialize`, and a value of a filter or an up
 **A member whose serde form depends on the format has two stored forms.** The generated reads and writes go through `bson::Serializer::new()` and `bson::Deserializer::new(..)`, which call themselves human-readable. A typed `Collection<T>` of the driver writes through the `bson` library's raw serializer, which does not. `std::net::IpAddr` is such a member: no schema surface describes it, so the example is one of a build with tixschema's `mongo` features alone.
 
 ```rust
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Host {
     pub address: IpAddr,
@@ -7286,7 +7437,7 @@ the row without an _id does not read as expected: address: invalid: expected Unk
 **A map whose key is not text is neither written nor read as BSON.** tixschema takes a map keyed by a number, a `bool`, a `char` or a `chrono` date, because serde writes such a key as text into JSON. The `bson` library does not:
 
 ```rust
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Roster {
@@ -7315,14 +7466,14 @@ Nothing says so where the type is declared.
 The operations cover a filter, an update and the five read options. An aggregation, an upsert, a find-one-and-update and a projection are calls on the driver itself, on the same `Collection<bson::Document>`:
 
 - a typed filter or update is handed to the driver as a document, through `into_document()`;
-- each row the driver answers is read with `from_bson_piped` or `from_bson_with`, into a flagged type;
+- each row the driver answers is read with `from_bson_piped` or `from_bson_with`, into a type that lists `"mongodb"`;
 - a row is read as the driver's cursor hands it over, with `advance` and `deserialize_current`, so reading many rows asks no `futures` crate of the caller, as the generated `find` asks none.
 
-An aggregation answers rows that are no rows of `Invoice`, so they are read as a flagged type of their own:
+An aggregation answers rows that are no rows of `Invoice`, so they are read as a type of their own, which lists `"mongodb"`:
 
 ```rust
 /// What one customer was billed: no row of `Invoice`, so no read of `Invoice` answers it.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Billed {
     #[serde(rename = "_id")]
@@ -7364,12 +7515,12 @@ async fn billed(
 }
 ```
 
-The function fails with `Billed`'s own `OperationError`, built as the generated reads build it: `Database` by name for each call on the driver, and `Unreadable` from the row's `_id` and the issues of the refused read.
+The function fails with `billed_schema::OperationError`, the crate's one `OperationError`, built as the generated reads build it: `Database` by name for each call on the driver, and `Unreadable` from the row's `_id` and the issues of the refused read.
 
 ### Limits
 
-- **Two flagged types declared in one function body, one holding the other, do not build under `mongodb`.** A module written inside a function reaches none of that function's items, and the outer type's struct of paths names the inner type: ``error[E0425]: cannot find type `Inner` in module `super` ``. A flagged type alone in a function body builds, a struct of standard types and a type serde writes as one value alike. Declare the inner type at module level, as [Function-Local Types](#function-local-types) says for the schema surfaces.
-- **An operation is a function of the type itself, under its own name.** A flagged type that already has a function of its own called `find_one`, `find_one_with`, `find`, `find_with`, `count`, `insert_one`, `update_one`, `update_many`, `delete_one` or `delete_many` builds without `mongodb` and stops building with it. For a type with a `count` of its own: ``error[E0592]: duplicate definitions with name `count` ``.
+- **Two types that list `"mongodb"` declared in one function body, one holding the other, do not build under the `mongodb` feature.** A module written inside a function reaches none of that function's items, and the outer type's struct of paths names the inner type: ``error[E0425]: cannot find type `Inner` in module `super` ``. A flagged type alone in a function body builds, a struct of standard types and a type serde writes as one value alike. Declare the inner type at module level, as [Function-Local Types](#function-local-types) says for the schema surfaces.
+- **An operation is a function of the type itself, under its own name.** A type that lists `"mongodb"` and already has a function of its own called `find_one`, `find_one_with`, `find`, `find_with`, `count`, `insert_one`, `update_one`, `update_many`, `delete_one` or `delete_many` builds without the `mongodb` feature and stops building with it. For a type with a `count` of its own: ``error[E0592]: duplicate definitions with name `count` ``.
 - **A slot of a tuple struct under `skip_serializing_if` moves the positions after it.** The paths are written for a value that holds every slot. With `pair` a field typed with `Pair`, a tuple struct of an `Option<u32>` under `skip_serializing_if` and then a `String`, `Pair::MONGO_FIELDS.1` nested under `paths.pair()` writes the key `pair.1`, and a value whose first slot is `None` is stored as `{ "pair": ["x"] }`, its text at position `0`.
 
 ### This repository's checks against a server
@@ -7391,8 +7542,8 @@ The crate uses optional features to control code generation and dependencies. Ea
 | `zod` | Yes | Zod v4 schema generation alongside TypeScript types |
 | `jsonschema` | Yes | JSON Schema generation via `json_schema()` method |
 | `typescript` | Yes | TypeScript type generation via `ts_definition()` method |
-| `mongodb` | No | MongoDB support: the ObjectId type, with validation, and on types that opt in with [`decode_with`](#recovering-decode-decode_with) the [typed field paths, filters, updates and operations](#mongodb-operations-and-typed-filters) over a collection of their rows; turns on `bson` |
-| `bson` | No | BSON support: `from_bson_with` and `from_bson_piped` on types that opt in with [`decode_with`](#recovering-decode-decode_with); turns on `serde` |
+| `mongodb` | No | MongoDB support: the ObjectId type, with validation, and on types whose [`enable` list](#opting-in) holds `"mongodb"` the [typed field paths, filters, updates and operations](#mongodb-operations-and-typed-filters) over a collection of their rows; turns on `bson` |
+| `bson` | No | BSON support: `from_bson_with` and `from_bson_piped` on types whose [`enable` list](#opting-in) holds `"mongodb"`, the one entry that turns on the BSON decode; turns on `serde` |
 | `chrono` | No | Chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`) |
 | `indexmap` | No | `indexmap` type support: `IndexMap` as a map and `IndexSet` as a list. See [The order of a map's keys](#the-order-of-a-maps-keys) |
 | `dart` | No | Dart type generation via `dart_definition()`, with a JSON `fromJson`/`toJson` codec whose read [calls each `preprocess`](#a-preprocess-in-the-dart-client) and [refuses what `validate()` refuses](#the-dart-read-refuses-what-validate-refuses), and a [`validate()`](#validate-in-dart) on every type |
@@ -7416,6 +7567,8 @@ tixschema = { default-features = false, features = ["serde", "zod", "typescript"
 ```
 
 CI tests every combination of the feature sets (`web`, `mobile`, `mongo`) via `cargo-hack`; `just test` runs every combination of the plain features locally.
+
+The features say what tixschema can generate, and a type's [`enable` list](#opting-in) says what it generates for that type: the recovering decode for `"decode_with"`, and the BSON decode and, under `mongodb`, the MongoDB layer for `"mongodb"`. A crate whose types write the list writes [the initializers](#the-support-libraries) at its root, `tixschema::decode_with_foundation!();`, and `tixschema::mongodb_foundation!();` where a type lists `"mongodb"`. `mongodb_foundation!()` writes nothing in a build without `bson`, and `decode_with_foundation!()` nothing in a build without `serde`, so both calls stay whatever features the crate builds with.
 
 ### A member named after a word the client language reserves
 
@@ -7892,7 +8045,7 @@ fn builds_the_schema() {
 }
 ```
 
-With the `mongodb` feature on, two `#[model_schema(decode_with)]` types declared in one function body, one holding the other, fail to build as well, and in a build with no schema surface too: [Limits](#limits) has the two errors.
+With the `mongodb` feature on, two `#[model_schema(enable = ["decode_with", "mongodb"])]` types declared in one function body, one holding the other, fail to build as well, and in a build with no schema surface too: [Limits](#limits) has the two errors.
 
 #### Missing Derives
 
@@ -7935,7 +8088,7 @@ pub mod record {
 
 rustc's help line suggests `cargo add version_schema`; there is no such crate. The module is generated next to `Version`, in the module that declares it.
 
-With the `mongodb` feature on, a `#[model_schema(decode_with)]` type asks for the same import in every build, `jsonschema` or not, for each flagged type one of its fields is typed with: its typed MongoDB paths name that type's own. The error is then ``cannot find `version_schema` in `super` `` (`E0433`), reported at the field's type, and the same import resolves it. [Limits](#limits) has it beside the other limits of the paths.
+With the `mongodb` feature on, a `#[model_schema(enable = ["decode_with", "mongodb"])]` type asks for the same import in every build, `jsonschema` or not, for each type that lists `"mongodb"` one of its fields is typed with: its typed MongoDB paths name that type's own. The error is then ``cannot find `version_schema` in `super` `` (`E0433`), reported at the field's type, and the same import resolves it. [Limits](#limits) has it beside the other limits of the paths.
 
 #### A Renaming That Names Two Keys
 

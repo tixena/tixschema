@@ -14,7 +14,7 @@ use super::{
 };
 
 /// The element of the list of models a [`Hamper`] holds.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Treat {
     weight: u32,
@@ -22,7 +22,7 @@ struct Treat {
 
 /// A list of plain values, a list of models and a value a row may leave out: one member per
 /// update operator that takes one.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Hamper {
     items: Vec<Treat>,
@@ -32,7 +32,7 @@ struct Hamper {
 }
 
 /// Holds [`Hamper`] one type down.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Consignment {
     hamper: Hamper,

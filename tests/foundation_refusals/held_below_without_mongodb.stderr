@@ -1,0 +1,19 @@
+error[E0277]: tixschema: `Invoice` lists "mongodb" in `enable`, but its field type `Customer` does not
+  --> tests/foundation_refusals/held_below_without_mongodb.rs:11:1
+   |
+11 | #[model_schema(enable = ["decode_with", "mongodb"])]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Invoice` reads and writes `Customer` in MongoDB, so `Customer` needs the MongoDB code too
+   |
+   = help: the trait `_::Enabled` is not implemented for `PhantomData<()>`
+   = note: Fix: add "mongodb" to the `enable` list of `#[model_schema]` on `Customer`, so it reads `enable = ["decode_with", "mongodb"]`.
+help: the trait `_::Enabled` is implemented for `()`
+  --> tests/foundation_refusals/held_below_without_mongodb.rs:11:1
+   |
+11 | #[model_schema(enable = ["decode_with", "mongodb"])]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+note: required by a bound in `_::need`
+  --> tests/foundation_refusals/held_below_without_mongodb.rs:11:1
+   |
+11 | #[model_schema(enable = ["decode_with", "mongodb"])]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `need`
+   = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -56,7 +56,7 @@ type Pairs<T> = HashMap<String, T>;
 pub type PropertiesData = HashMap<String, String>;
 
 /// A map behind a plain alias, flattened: it takes every key nothing else declares.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Block {
     name: String,
@@ -65,7 +65,7 @@ struct Block {
 }
 
 /// Fields typed with what is declared below this type: tixschema has seen none of it yet.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Early {
     counts: LaterCounts,
@@ -77,7 +77,7 @@ struct Early {
 #[model_schema()]
 type LaterCounts = HashMap<String, i32>;
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct LaterFlagged {
     number: i32,
@@ -89,19 +89,19 @@ struct LaterPlain {
     number: i32,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Page {
     properties: Properties,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Stock {
     all: Versions,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct Tally {
     counts: Counts,
@@ -111,7 +111,7 @@ struct Tally {
 /// A type of another crate. A schema surface refuses the field for a reason of its own, so the
 /// type is declared where the build has none.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Timed {
     timeout: Duration,

@@ -14,7 +14,7 @@ use tixschema::model_schema;
 use super::version_schema;
 use super::{Version, lines};
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Record {
@@ -28,7 +28,7 @@ struct Record {
 }
 
 /// Ids and numbers held one by one, in a list, a map and an optional field.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct CatalogByItem {
     counts: Vec<i32>,
@@ -39,18 +39,18 @@ struct CatalogByItem {
 }
 
 /// A brand over an id: serde writes it as the id it holds.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct OwnerId(ObjectId);
 
 /// A generic brand, which holds whatever fills its parameter.
-#[model_schema(decode_with, default_types(T = String))]
+#[model_schema(enable = ["decode_with"], default_types(T = String))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Tagged<T>(T);
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Owned {
     owner: OwnerId,

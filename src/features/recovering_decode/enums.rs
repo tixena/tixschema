@@ -15,7 +15,7 @@ use super::aliases::Reach;
 use super::checks::enum_check_messages;
 use super::{
     Arm, Casing, FieldValidator, Handed, Keyed, Lookup, RecoveringDecode, Shape, Step, TypedPaths,
-    Walk, Walker, Written, added_to, binding, flattened_walker_call, not_the_shape,
+    Walk, Walker, Written, added_to, binding, flattened_walker_call, held_probes, not_the_shape,
     path_expression, slot_validator, unclaimed, written_names,
 };
 use crate::features::serde::read_bounds::read_bounds;
@@ -684,8 +684,9 @@ impl EnumWalker<'_> {
 }
 
 /// The recovering decode of an enum, read off the item as it is emitted, so a read hook tixschema
-/// hangs on a variant's field is one the walker reads through.
-pub fn enum_recovering_decode(item_enum: &ItemEnum) -> RecoveringDecode {
+/// hangs on a variant's field is one the walker reads through. `mongodb` says whether the enum
+/// lists "mongodb" in `enable`.
+pub fn enum_recovering_decode(item_enum: &ItemEnum, mongodb: bool) -> RecoveringDecode {
     let module_name = ident_schema_module_name(&item_enum.ident.to_string());
     let parameters = type_parameters_in_scope(&item_enum.generics);
     let mut reach = Reach::new(&module_name);
@@ -699,7 +700,15 @@ pub fn enum_recovering_decode(item_enum: &ItemEnum) -> RecoveringDecode {
             .into_iter()
             .partition(|variant| variant.never_read);
     let names = written_names(item_enum.to_token_stream());
-    let paths = enum_paths(item_enum, &names);
+    let paths = if mongodb {
+        enum_paths(item_enum, &names)
+    } else {
+        TypedPaths::default()
+    };
+    let mut reached = Vec::new();
+    for variant in &variants {
+        variant.content.reached_models(&mut reached);
+    }
     added_to(
         &item_enum.ident,
         &item_enum.generics,
@@ -707,6 +716,8 @@ pub fn enum_recovering_decode(item_enum: &ItemEnum) -> RecoveringDecode {
         &parameters,
         &Written {
             check_messages: enum_check_messages(item_enum, &module_name, &parameters),
+            held_probes: held_probes(&item_enum.ident, &reached, &parameters, mongodb),
+            mongodb,
             names,
             reach: &reach,
             read: listed_read(&DeriveInput::from(item_enum.clone())),

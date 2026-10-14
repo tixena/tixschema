@@ -29,27 +29,27 @@ use tixschema::model_schema;
 const QUOTED_ERRORS: [(&str, &str); 15] = [
     (
         QUERY_EMITTER,
-        "error[E0599]: no method named `unset` found for struct `invoice_schema::Field<Root, V, N>` in the current scope",
+        "error[E0599]: no method named `unset` found for struct `__tixschema_mongodb::Field<Root, V, N>` in the current scope",
     ),
     (
         QUERY_EMITTER,
-        "error[E0277]: the trait bound `wagon_schema::Filter<Wagon>: AsRef<PhantomData<Courier>>` is not satisfied",
+        "error[E0277]: the trait bound `__tixschema_mongodb::Filter<Wagon>: AsRef<PhantomData<Courier>>` is not satisfied",
     ),
     (
         QUERY_EMITTER,
-        "error[E0277]: the trait bound `courier_schema::Filter<Courier>: AsRef<PhantomData<fn(Courier) -> Courier>>` is not satisfied",
+        "error[E0277]: the trait bound `__tixschema_mongodb::Filter<Courier>: AsRef<PhantomData<fn(Courier) -> Courier>>` is not satisfied",
     ),
     (
         QUERY_EMITTER,
-        "error[E0277]: the trait bound `wagon_schema::Update<Wagon>: AsRef<PhantomData<fn(Courier) -> Courier>>` is not satisfied",
+        "error[E0277]: the trait bound `__tixschema_mongodb::Update<Wagon>: AsRef<PhantomData<fn(Courier) -> Courier>>` is not satisfied",
     ),
     (
         QUERY_EMITTER,
-        "error[E0277]: the trait bound `order_schema::Filter<Order>: AsRef<PhantomData<Invoice>>` is not satisfied",
+        "error[E0277]: the trait bound `__tixschema_mongodb::Filter<Order>: AsRef<PhantomData<Invoice>>` is not satisfied",
     ),
     (
         QUERY_EMITTER,
-        "error[E0277]: the trait bound `order_schema::Filter<Order>: invoice_schema::Nests<Invoice, Customer, _>` is not satisfied",
+        "error[E0277]: the trait bound `__tixschema_mongodb::Filter<Order>: Nests<Invoice, Customer, _>` is not satisfied",
     ),
     (
         QUERY_EMITTER,
@@ -57,11 +57,11 @@ const QUOTED_ERRORS: [(&str, &str); 15] = [
     ),
     (
         QUERY_EMITTER,
-        "error[E0277]: the trait bound `invoice_schema::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied",
+        "error[E0277]: the trait bound `__tixschema_mongodb::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied",
     ),
     (
         QUERY_EMITTER,
-        "error[E0277]: the trait bound `invoice_schema::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied",
+        "error[E0277]: the trait bound `__tixschema_mongodb::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied",
     ),
     (
         PATHS_EMITTER,
@@ -75,11 +75,11 @@ const QUOTED_ERRORS: [(&str, &str); 15] = [
     (PATHS_EMITTER, "expected `InvoiceStatus`, found `&str`"),
     (
         OPERATIONS_EMITTER,
-        "error[E0277]: the trait bound `invoice_schema::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied",
+        "error[E0277]: the trait bound `__tixschema_mongodb::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied",
     ),
     (
         OPERATIONS_EMITTER,
-        "error[E0277]: the trait bound `invoice_schema::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied",
+        "error[E0277]: the trait bound `__tixschema_mongodb::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied",
     ),
 ];
 
@@ -94,7 +94,7 @@ const QUERY_EMITTER: &str = include_str!("../../src/features/recovering_decode/q
 /// `Invoice` as the README declares it: what stands above its members, then each member in the
 /// README's order.
 const DECLARED_INVOICE: [&str; 12] = [
-    r#"#[model_schema(decode_with)]
+    r#"#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Invoice {"#,
@@ -116,14 +116,14 @@ pub struct Invoice {"#,
 
 /// The models `Invoice` holds, as the README declares them above it, character for character.
 const DECLARED_MODELS: [&str; 5] = [
-    r#"#[model_schema(decode_with)]
+    r#"#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Address {
     pub city: String,
     pub postal_code: String,
 }"#,
-    r#"#[model_schema(decode_with)]
+    r#"#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Customer {
@@ -131,7 +131,7 @@ pub struct Customer {
     pub name: String,
     pub open_invoices: u32,
 }"#,
-    r#"#[model_schema(decode_with)]
+    r#"#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum InvoiceStatus {
@@ -139,14 +139,14 @@ pub enum InvoiceStatus {
     Paid,
     PastDue,
 }"#,
-    "#[model_schema(decode_with)]
+    r#"#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct LineItem {
     pub price: f64,
     pub quantity: u32,
     pub sku: String,
-}",
-    r#"#[model_schema(decode_with)]
+}"#,
+    r#"#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Payment {
@@ -155,7 +155,7 @@ pub enum Payment {
 }"#,
 ];
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Address {
@@ -163,7 +163,7 @@ pub struct Address {
     pub postal_code: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Customer {
@@ -172,7 +172,7 @@ pub struct Customer {
     pub open_invoices: u32,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum InvoiceStatus {
@@ -181,7 +181,7 @@ pub enum InvoiceStatus {
     PastDue,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct LineItem {
     pub price: f64,
@@ -189,7 +189,7 @@ pub struct LineItem {
     pub sku: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Payment {
@@ -199,7 +199,7 @@ pub enum Payment {
 
 // Below every model it holds: a field typed with a model declared above is a `Model`, and one
 // typed with a model declared below is one whole value.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Invoice {

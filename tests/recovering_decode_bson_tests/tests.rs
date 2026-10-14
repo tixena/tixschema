@@ -29,6 +29,7 @@ mod as_text {
         serializer.collect_str(value)
     }
 }
+mod across_modules;
 mod aliased;
 mod bounds;
 mod checks;
@@ -188,14 +189,14 @@ macro_rules! read_hooks {
 /// One issue less its `reason`: its kind, its path, its expected type, and the value it holds.
 type Told = (&'static str, String, String, Option<Bson>);
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Version {
     number: i32,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Record {
@@ -209,7 +210,7 @@ struct Record {
 }
 
 /// Ids and numbers held one by one, in a list, a map and an optional field.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct CatalogByItem {
     counts: Vec<i32>,
@@ -220,7 +221,7 @@ struct CatalogByItem {
 }
 
 /// One field per read hook, and one carrying a constraint, which hangs none.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Hooked {
@@ -237,7 +238,7 @@ struct Hooked {
 }
 
 /// A model type and a plain value, each stored under its name or an alias.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Aliased {
@@ -248,7 +249,7 @@ struct Aliased {
 }
 
 /// Model types reached through a map, an `Option`, a `Box` and a map of lists.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Bundle {
@@ -260,7 +261,7 @@ struct Bundle {
 }
 
 /// Plain values in a list of lists, an optional list and a map.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Tally {
     grid: Vec<Vec<i32>>,
@@ -270,7 +271,7 @@ struct Tally {
 }
 
 /// No field serde reads: the walker has no value to read, and declares the one key written.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Derived {
     #[serde(skip_deserializing)]
@@ -278,7 +279,7 @@ struct Derived {
 }
 
 /// A type whose own `Deserialize` reads nothing, which no walk can see into.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, PartialEq, Serialize)]
 struct Sealed {
     label: String,
@@ -294,7 +295,7 @@ impl<'de> Deserialize<'de> for Sealed {
 }
 
 /// A field serde writes wherever a predicate lets it be, and never reads.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Kept {
     id: String,
@@ -302,7 +303,7 @@ struct Kept {
     note: Option<String>,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct KeptText {
     id: String,
@@ -311,7 +312,7 @@ struct KeptText {
 }
 
 /// Two fields serde neither writes nor reads: one under `skip`, one under its two halves.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Shelved {
     #[serde(skip)]
@@ -321,18 +322,18 @@ struct Shelved {
     local: u8,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Envelope {
     sealed: Sealed,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Pair(String, u32);
 
 /// A tuple struct, and a tuple as a field and in a list.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Placement {
     pair: Pair,
@@ -341,63 +342,63 @@ struct Placement {
 }
 
 /// A brand over an id: serde writes it as the id it holds.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct OwnerId(ObjectId);
 
 /// A single-slot tuple struct with no `transparent`: serde writes it as a brand is written.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Wrapper(String);
 
 /// A brand whose own reader refuses text shorter than three characters. Only a schema surface
 /// hangs that check, and the declaration is refused in a build with none.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-#[model_schema(decode_with, minLength = 3)]
+#[model_schema(enable = ["decode_with", "mongodb"], minLength = 3)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Code(String);
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Coded {
     code: Code,
 }
 
 /// A brand over a model type.
-#[model_schema(decode_with, no_display)]
+#[model_schema(enable = ["decode_with", "mongodb"], no_display)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Pinned(Version);
 
 /// A brand over text.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct RecordId(String);
 
 /// A brand over another brand: serde writes it as the text the inner one holds.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct OwnerRef(RecordId);
 
 /// A brand over a tuple struct: serde writes it as the list the tuple struct is.
-#[model_schema(decode_with, no_display)]
+#[model_schema(enable = ["decode_with", "mongodb"], no_display)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct PairRef(Pair);
 
 /// A brand over a plain enum: serde writes it as the variant's name.
-#[model_schema(decode_with, no_display)]
+#[model_schema(enable = ["decode_with", "mongodb"], no_display)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct StatusRef(Status);
 
 /// A brand over another brand, over a tuple struct and over a plain enum, each under a key.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Referenced {
     owner: OwnerRef,
@@ -408,7 +409,7 @@ struct Referenced {
 /// A flattened brand over text, which serde refuses to flatten at every read. A schema surface
 /// refuses the declaration.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Carded {
     #[serde(flatten)]
@@ -417,7 +418,7 @@ struct Carded {
 }
 
 /// A `transparent` struct with a named field over an id: serde writes it as the id it holds.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Owner {
@@ -425,14 +426,14 @@ struct Owner {
 }
 
 /// A `transparent` struct with a named field over a model type.
-#[model_schema(decode_with, no_display)]
+#[model_schema(enable = ["decode_with", "mongodb"], no_display)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Current {
     version: Version,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Assigned {
     current: Current,
@@ -440,24 +441,24 @@ struct Assigned {
 }
 
 /// A `transparent` tuple struct beside whose value is a slot serde neither writes nor reads.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Tags(Vec<String>, #[serde(skip)] u8);
 
 /// A `transparent` tuple struct whose value is its second slot, over an id.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Keeper(#[serde(skip)] u8, ObjectId);
 
 /// A `transparent` tuple struct with a slot serde never reads, over a model type.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Stamped(Version, #[serde(skip)] u8);
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Filing {
     keeper: Keeper,
@@ -465,11 +466,11 @@ struct Filing {
     tags: Tags,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Ping;
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Labelled {
     owner: OwnerId,
@@ -478,7 +479,7 @@ struct Labelled {
     wrapper: Wrapper,
 }
 
-#[model_schema(decode_with, default_types(T = String))]
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(T = String))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Page<T> {
     items: Vec<T>,
@@ -493,12 +494,12 @@ struct Plain {
 }
 
 /// A generic brand.
-#[model_schema(decode_with, default_types(T = String))]
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(T = String))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Tagged<T>(T);
 
-#[model_schema(decode_with, default_types(A = String, B = i32))]
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(A = String, B = i32))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Pairing<A, B> {
     left: A,
@@ -506,7 +507,7 @@ struct Pairing<A, B> {
 }
 
 /// serde's derive asks `Default` of the parameter here, beyond `Deserialize`.
-#[model_schema(decode_with, default_types(T = String))]
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(T = String))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Lenient<T> {
     #[serde(default)]
@@ -515,7 +516,7 @@ struct Lenient<T> {
 }
 
 /// Parameters named as the methods the flag adds name their own.
-#[model_schema(decode_with, default_types(I = String, F = String))]
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(I = String, F = String))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Keyed<I, F> {
     format: F,
@@ -523,20 +524,20 @@ struct Keyed<I, F> {
 }
 
 /// A type called what the methods the flag adds call a type parameter of their own.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct I {
     number: i32,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Holder {
     inner: I,
 }
 
 /// A type with no parameter, naming generic types filled with a model type and with an id.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Listing {
     page: Page<Version>,
@@ -547,14 +548,14 @@ struct Listing {
 type RecordAlias = Record;
 
 /// A field typed with an alias of a flagged model type.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Shelf {
     featured: RecordAlias,
 }
 
 /// A plain enum: serde writes the variant's name.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum Status {
     Draft,
@@ -562,7 +563,7 @@ enum Status {
 }
 
 /// Externally tagged: `"Empty"`, `{"Label": "x"}`, `{"Circle": {"radius": 1.0}}`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum Outline {
     Circle { radius: f64 },
@@ -572,7 +573,7 @@ enum Outline {
 }
 
 /// Internally tagged: `{"kind": "Solid", "color": "red"}`, `{"kind": "Versioned", "number": 3}`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Fill {
@@ -582,7 +583,7 @@ enum Fill {
 }
 
 /// Adjacently tagged: `{"kind": "Dashed", "data": {"gap": 2}}`, `{"kind": "Hairline"}`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "data")]
 enum Stroke {
@@ -594,7 +595,7 @@ enum Stroke {
 }
 
 /// One enum of each tagged form.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Drawing {
     fill: Fill,
@@ -603,7 +604,7 @@ struct Drawing {
 }
 
 /// Untagged, with a member whose own check takes its variant out. Only a schema surface hangs it.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Contact {
@@ -619,14 +620,14 @@ enum Contact {
 }
 
 /// A variant holding two values.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum Move {
     Stay,
     To(i32, i32),
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Route {
     contact: Contact,
@@ -636,7 +637,7 @@ struct Route {
 
 /// Every renaming serde reads off an enum: of its variants, of one variant, of every variant's
 /// fields, and of one variant's fields.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(
     tag = "type",
@@ -656,7 +657,7 @@ enum Shipment {
 }
 
 /// A tag naming no variant that serde reads all the same, as the variant marked `other`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Signal {
@@ -668,7 +669,7 @@ enum Signal {
 }
 
 /// A generic enum: a `T` is read whole where it sits.
-#[model_schema(decode_with, default_types(T = String))]
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(T = String))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum Answer<T> {
     Empty,
@@ -676,7 +677,7 @@ enum Answer<T> {
 }
 
 /// Internally tagged, with a variant serde also reads under an alias and one it never reads.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Coating {
@@ -690,7 +691,7 @@ enum Coating {
 }
 
 /// Externally tagged, each variant also read under an alias.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum Contour {
     #[serde(alias = "Round")]
@@ -700,7 +701,7 @@ enum Contour {
 }
 
 /// Adjacently tagged, with a variant serde also reads under an alias.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "data")]
 enum Dash {
@@ -712,7 +713,7 @@ enum Dash {
 }
 
 /// Untagged, with a variant serde never reads.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Reach {
@@ -730,7 +731,7 @@ enum Reach {
 }
 
 /// One enum of each form a variant's name is stored in: under a tag, and as text.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Sketch {
     coating: Coating,
@@ -746,7 +747,7 @@ enum Count {
 }
 
 /// A read hook named like what the walker binds the value of a key as.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Named {
     #[serde(deserialize_with = "held")]
@@ -755,7 +756,7 @@ struct Named {
 
 /// One field per name the walker gives a value of its own, each read by the hook of that name.
 /// `stored` is bound where a key has an alias, and `read` is what a writer is handed.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Bound {
     #[serde(deserialize_with = "found")]
@@ -780,7 +781,7 @@ struct Bound {
 
 /// Adjacently tagged: the tag is bound as `tag`, what the variant holds as `content`, and its
 /// document as `inner`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "body")]
 enum Adjacent {

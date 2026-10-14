@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 /// A JSON object held as `serde_json`'s own map.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Dossier {
     raw: serde_json::Map<String, serde_json::Value>,

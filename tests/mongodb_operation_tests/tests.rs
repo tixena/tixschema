@@ -1,6 +1,6 @@
-//! The operations `#[model_schema(decode_with)]` adds under `mongodb`. Two binaries compile this
-//! module, each with the name `bson` bound to one major version of the library and a MongoDB
-//! driver built for it, so every check is compiled against both.
+//! The operations `#[model_schema(enable = ["decode_with", "mongodb"])]` adds under the `mongodb`
+//! feature. Two binaries compile this module, each with the name `bson` bound to one major version
+//! of the library and a MongoDB driver built for it, so every check is compiled against both.
 
 mod live;
 mod offline;
@@ -19,7 +19,7 @@ use invoice_schema::{Expected, Filter, Issue, OperationError, Path, Resolution, 
 const SEEDED_ID: &str = "6a7cc592ca0574e6efdfe217";
 
 /// A nested model that declares no `_id` of its own.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Customer {
@@ -29,7 +29,7 @@ struct Customer {
 }
 
 /// A row, with the `_id` MongoDB stores every row under.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 struct Invoice {
     customer: Customer,
@@ -42,7 +42,7 @@ struct Invoice {
     total: u32,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 enum InvoiceStatus {
     Draft,

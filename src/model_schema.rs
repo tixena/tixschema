@@ -240,10 +240,14 @@ const KNOWN_ARGS: &[&str] = &[
     "maxLength",
     "no_display",
     "default_types",
-    "decode_with",
+    "enable",
     "check",
     "preprocess",
 ];
+
+/// What `enable` takes, as a refusal of anything else says it.
+const ENABLE_TAKES: &str = "a list of string literals, written `enable = [\"decode_with\"]` or \
+                            `enable = [\"decode_with\", \"mongodb\"]`";
 
 /// What a refusal of a `check` written in `#[model_schema(...)]` opens with.
 const TYPE_CHECK: &str = "`model_schema` argument `check`";
@@ -717,6 +721,16 @@ struct DecodeWithParts {
     type_impl: TokenStream,
 }
 
+/// What an `enable = [...]` list turns on for a type.
+#[derive(Clone, Copy, Default)]
+pub struct Enabled {
+    /// `"decode_with"`: `from_value_with`, `from_value_piped` and their walkers.
+    pub decode_with: bool,
+    /// `"mongodb"`: the BSON decode, and under the `mongodb` feature the operations and the typed
+    /// paths.
+    pub mongodb: bool,
+}
+
 /// One `default_types(IdType = String)` entry as written: the parameter it names, and the type
 /// declared for that parameter.
 struct DefaultTypeEntry {
@@ -732,11 +746,11 @@ struct ModelSchemaArgs {
     arg_rejection: Option<syn::Error>,
     /// The functions `check` names, in the order written: each takes the whole value.
     check: Vec<FunctionName>,
-    /// `decode_with`: the type gets `from_value_with` and `from_bson_with`, and their walkers.
-    decode_with: bool,
     /// The default type declared per type parameter, in written order: `default_types(IdType =
     /// String, DateType = f64)`.
     default_types: Vec<(syn::Ident, syn::Type)>,
+    /// What `enable = [...]` turns on.
+    enable: Enabled,
     max_length: Option<usize>,
     min_length: Option<usize>,
     name_override: Option<String>,
@@ -1202,8 +1216,14 @@ fn apply_arg(result: &mut ModelSchemaArgs, meta: &Meta) -> syn::Result<()> {
         result.no_display = flag_arg(meta, "no_display")?;
     } else if path.is_ident("default_types") {
         result.default_types = default_types_arg(meta)?;
+    } else if path.is_ident("enable") {
+        result.enable = enable_arg(meta)?;
     } else if path.is_ident("decode_with") {
-        result.decode_with = flag_arg(meta, "decode_with")?;
+        return Err(syn::Error::new_spanned(
+            meta,
+            "tixschema: `decode_with` is now an entry of the `enable` list: write \
+             `#[model_schema(enable = [\"decode_with\"])]`",
+        ));
     } else if path.is_ident("check") {
         result.check = functions_arg(meta, TYPE_CHECK, CHECK_TAKES)?;
     } else if path.is_ident("preprocess") {
@@ -1221,6 +1241,67 @@ fn functions_arg(meta: &Meta, subject: &str, takes: &str) -> syn::Result<Vec<Fun
         return Err(syn::Error::new_spanned(meta, format!("{subject} {takes}")));
     };
     function_names(&written.value, subject, takes)
+}
+
+/// What an `enable = [...]` argument turns on: each entry once, `"mongodb"` only beside
+/// `"decode_with"`, and the list never empty.
+fn enable_arg(meta: &Meta) -> syn::Result<Enabled> {
+    let Meta::NameValue(written) = meta else {
+        return Err(arg_rejection(meta, "enable", ENABLE_TAKES));
+    };
+    let syn::Expr::Array(list) = &written.value else {
+        return Err(arg_rejection(&written.value, "enable", ENABLE_TAKES));
+    };
+    if list.elems.is_empty() {
+        return Err(syn::Error::new_spanned(
+            list,
+            "tixschema: the list is empty; remove `enable`",
+        ));
+    }
+    let mut enabled = Enabled::default();
+    let mut mongodb_entry = None;
+    for element in &list.elems {
+        let syn::Expr::Lit(expr_lit) = element else {
+            return Err(arg_rejection(element, "enable", ENABLE_TAKES));
+        };
+        let syn::Lit::Str(entry) = &expr_lit.lit else {
+            return Err(arg_rejection(element, "enable", ENABLE_TAKES));
+        };
+        let entry_text = entry.value();
+        let turned_on = match entry_text.as_str() {
+            "decode_with" => &mut enabled.decode_with,
+            "mongodb" => {
+                mongodb_entry = Some(entry);
+                &mut enabled.mongodb
+            }
+            _ => {
+                return Err(syn::Error::new_spanned(
+                    entry,
+                    format!(
+                        "tixschema: unknown entry `{entry_text:?}`; the entries are \
+                         `\"decode_with\"` and `\"mongodb\"`"
+                    ),
+                ));
+            }
+        };
+        if *turned_on {
+            return Err(syn::Error::new_spanned(
+                entry,
+                format!("tixschema: `{entry_text:?}` is written twice"),
+            ));
+        }
+        *turned_on = true;
+    }
+    if let Some(entry) = mongodb_entry
+        && !enabled.decode_with
+    {
+        return Err(syn::Error::new_spanned(
+            entry,
+            "tixschema: `\"mongodb\"` requires `\"decode_with\"`: write `enable = \
+             [\"decode_with\", \"mongodb\"]`",
+        ));
+    }
+    Ok(enabled)
 }
 
 /// The literal an argument's value was written as — every valued `model_schema` argument reaches
@@ -2758,7 +2839,7 @@ const fn decode_with_arm_refusals(_item: &Item) -> Vec<syn::Error> {
 /// The `compile_error!` tokens `decode_with` earns where it cannot be written: on an alias, on a
 /// type that borrows, and on an enum under a tag two of whose arms would take one name.
 fn decode_with_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2::TokenStream> {
-    if !args.decode_with {
+    if !args.enable.decode_with {
         return Vec::new();
     }
     let borrowed = item_generics(item).and_then(|generics| generics.lifetimes().next());
@@ -2811,9 +2892,9 @@ fn decode_with_alias_refusal(alias: &ItemType) -> syn::Error {
     syn::Error::new_spanned(
         &alias.ty,
         format!(
-            "`#[model_schema(decode_with)]` cannot be written on a type alias: `{name}` is another \
-             name for `{target}`, and the methods would have to be added to that type. Write the \
-             flag on the model types the alias reaches."
+            "`enable = [\"decode_with\"]` cannot be written on a type alias: `{name}` is another \
+             name for `{target}`, and the methods would have to be added to that type. List it on \
+             the model types the alias reaches."
         ),
     )
 }
@@ -2823,7 +2904,7 @@ fn decode_with_borrow_refusal(ident: &syn::Ident, lifetime: &syn::LifetimeParam)
     syn::Error::new_spanned(
         lifetime,
         format!(
-            "`#[model_schema(decode_with)]` cannot be written on a type that borrows: \
+            "`enable = [\"decode_with\"]` cannot be written on a type that borrows: \
              `from_value_with` owns the value it reads, so the decoded `{ident}<{borrowed}>` cannot \
              borrow from it for `{borrowed}`."
         ),
@@ -2843,7 +2924,7 @@ fn decode_with_reference_refusal(
     syn::Error::new_spanned(
         reference,
         format!(
-            "`#[model_schema(decode_with)]` cannot be written on a type with a field that borrows: \
+            "`enable = [\"decode_with\"]` cannot be written on a type with a field that borrows: \
              `{field_name}` is `{written}`, and `from_value_with` owns the value it reads, so \
              nothing decoded from it can be borrowed for {lifetime}. Write the field as an owned \
              type."
@@ -5525,14 +5606,14 @@ const fn record_declaration(_item: &Item) {}
 /// flag.
 #[cfg(feature = "serde")]
 fn struct_decode_with(item_struct: &syn::ItemStruct, args: &ModelSchemaArgs) -> DecodeWithParts {
-    if !args.decode_with {
+    if !args.enable.decode_with {
         return DecodeWithParts::default();
     }
-    let added = struct_recovering_decode(item_struct);
-    let (walkers, checks) = (added.type_impl, added.check_messages);
+    let added = struct_recovering_decode(item_struct, args.enable.mongodb);
+    let (walkers, checks, probes) = (added.type_impl, added.check_messages, added.probes);
     DecodeWithParts {
         schema_module: added.schema_module,
-        type_impl: quote! { #walkers #checks },
+        type_impl: quote! { #walkers #checks #probes },
     }
 }
 
@@ -5545,14 +5626,14 @@ fn struct_decode_with(_item_struct: &syn::ItemStruct, _args: &ModelSchemaArgs) -
 /// What `decode_with` adds to an enum, read off the enum as it is emitted. Empty without the flag.
 #[cfg(feature = "serde")]
 fn enum_decode_with(item_enum: &syn::ItemEnum, args: &ModelSchemaArgs) -> DecodeWithParts {
-    if !args.decode_with {
+    if !args.enable.decode_with {
         return DecodeWithParts::default();
     }
-    let added = enum_recovering_decode(item_enum);
-    let (walkers, checks) = (added.type_impl, added.check_messages);
+    let added = enum_recovering_decode(item_enum, args.enable.mongodb);
+    let (walkers, checks, probes) = (added.type_impl, added.check_messages, added.probes);
     DecodeWithParts {
         schema_module: added.schema_module,
-        type_impl: quote! { #walkers #checks },
+        type_impl: quote! { #walkers #checks #probes },
     }
 }
 
@@ -7907,14 +7988,14 @@ fn brand_decode_with(
     args: &ModelSchemaArgs,
     bounded: bool,
 ) -> DecodeWithParts {
-    if !(bounded && args.decode_with) {
+    if !(bounded && args.enable.decode_with) {
         return struct_decode_with(brand, args);
     }
-    let added = brand_recovering_decode(brand);
-    let (walkers, checks) = (added.type_impl, added.check_messages);
+    let added = brand_recovering_decode(brand, args.enable.mongodb);
+    let (walkers, checks, probes) = (added.type_impl, added.check_messages, added.probes);
     DecodeWithParts {
         schema_module: added.schema_module,
-        type_impl: quote! { #walkers #checks },
+        type_impl: quote! { #walkers #checks #probes },
     }
 }
 
