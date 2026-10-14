@@ -2,12 +2,17 @@
 //! each surface says of it. The runs of each client are in the emitted-client groups, and the run
 //! of the Zod schemas under node in `generic_types_tests`.
 
+#[cfg(any(feature = "zod", feature = "jsonschema"))]
+use super::models::{Basin, Config, Fleet, Logbook};
 use super::models::{
-    Basin, Bollard, CASES, Jetty, Marina, PREPROCESSED, PREPROCESSED_REPORT, Pontoon, REPORT,
-    Wharf, preprocessed_values, read_values, unwritten_defaults,
+    Bollard, CASES, FILLED, FILLED_REPORT, Harbour, Jetty, Marina, PREPROCESSED,
+    PREPROCESSED_REPORT, Pontoon, REPORT, REQUIRED, REQUIRED_REPORT, Wharf, filled_expected,
+    filled_report, preprocessed_values, read_values, unwritten_defaults,
 };
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use super::models::{Gangway, report};
+#[cfg(all(feature = "indexmap", any(feature = "zod", feature = "jsonschema")))]
+use super::models::{IndexedFleet, IndexedLogbook};
 
 /// The table prints one row for each payload, a refusal followed by its messages.
 #[test]
@@ -64,12 +69,33 @@ fn no_function_is_called_for_a_default() {
 /// surfaces keep the key required.
 #[test]
 fn serde_reads_the_default_of_a_member_whose_default_has_no_json() {
-    let (marina, basin) = unwritten_defaults();
+    let (marina, harbours) = unwritten_defaults();
     assert_eq!(
         serde_json::from_str::<Marina>(r#"{"label":"m"}"#).unwrap(),
         marina
     );
-    assert_eq!(serde_json::from_str::<Basin<String>>("{}").unwrap(), basin);
+    for ((name, payload), harbour) in REQUIRED.iter().zip(harbours) {
+        assert_eq!(
+            serde_json::from_str::<Harbour<String>>(payload).unwrap(),
+            harbour,
+            "{name}"
+        );
+    }
+    assert_eq!(REQUIRED_REPORT.lines().count(), REQUIRED.len());
+    for (row, &(name, _)) in REQUIRED_REPORT.lines().zip(&REQUIRED) {
+        assert_eq!(row, format!("{name}: refused"));
+    }
+}
+
+/// The table of the structs that declare a parameter prints one row for each payload, each one
+/// what serde reads: a list, a set or a map left out is read as its empty collection.
+#[test]
+fn serde_reads_each_payload_of_a_struct_that_declares_a_parameter_as_the_table_says() {
+    assert_eq!(FILLED_REPORT.lines().count(), FILLED.len());
+    for (row, &(name, _, _)) in FILLED_REPORT.lines().zip(&FILLED) {
+        assert!(row.starts_with(&format!("{name}: read ")), "{row}");
+    }
+    assert_eq!(filled_report(), filled_expected());
 }
 
 /// `validate()` and the read that refuses judge a default as they judge a payload: the default
@@ -188,8 +214,7 @@ fn the_json_schema_states_each_default_and_requires_no_key_it_answers() {
 }
 
 /// A default with no JSON keeps its key required on the two validating surfaces: `Marina` writes
-/// no `Serialize`, and the `moored` of `Basin` names its parameter. The `dock` of `Basin` names
-/// none.
+/// no `Serialize`, and each member of `Harbour` names its parameter outside a list read as empty.
 #[cfg(feature = "jsonschema")]
 #[test]
 fn the_json_schema_requires_a_key_whose_default_has_no_json() {
@@ -199,16 +224,17 @@ fn the_json_schema_requires_a_key_whose_default_has_no_json() {
         marina["properties"]["dock"].get("default").is_none(),
         "{marina}"
     );
-    let basin = Basin::<String>::json_schema();
-    assert_eq!(basin["required"], serde_json::json!(["moored"]));
+    let harbour = Harbour::<String>::json_schema();
     assert_eq!(
-        basin["properties"]["dock"]["default"],
-        serde_json::json!("")
+        harbour["required"],
+        serde_json::json!(["berths", "flagship", "slips"])
     );
-    assert!(
-        basin["properties"]["moored"].get("default").is_none(),
-        "{basin}"
-    );
+    for key in ["berths", "flagship", "slips"] {
+        assert!(
+            harbour["properties"][key].get("default").is_none(),
+            "{harbour}"
+        );
+    }
 }
 
 #[cfg(feature = "zod")]
@@ -216,12 +242,168 @@ fn the_json_schema_requires_a_key_whose_default_has_no_json() {
 fn the_zod_schema_requires_a_key_whose_default_has_no_json() {
     let marina = Marina::zod_schema();
     assert!(marina.contains("  dock: z.string(),\n"), "{marina}");
+    let harbour = Harbour::<String>::zod_schema();
+    for member in [
+        "  berths: z.array(moored),\n",
+        "  flagship: moored,\n",
+        "  slips: z.array(moored),\n",
+    ] {
+        assert!(harbour.contains(member), "{harbour}");
+    }
+    assert!(!harbour.contains(".prefault("), "{harbour}");
+}
+
+/// A list of the struct's parameter is read as the empty list at every filling, and the member
+/// beside it that names no parameter as before.
+#[cfg(feature = "jsonschema")]
+#[test]
+fn the_json_schema_states_the_empty_list_of_a_parameter() {
+    let basin = Basin::<String>::json_schema();
+    assert_eq!(basin["required"], serde_json::json!([]));
+    assert_eq!(
+        basin["properties"]["dock"]["default"],
+        serde_json::json!("")
+    );
+    assert_eq!(
+        basin["properties"]["moored"]["default"],
+        serde_json::json!([])
+    );
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn the_zod_schema_parses_the_empty_list_of_a_parameter() {
     let basin = Basin::<String>::zod_schema();
     assert!(
         basin.contains("  dock: z.string().prefault(\"\"),\n"),
         "{basin}"
     );
-    assert!(basin.contains("  moored: z.array(moored),\n"), "{basin}");
+    assert!(
+        basin.contains("  moored: z.array(moored).prefault([]),\n"),
+        "{basin}"
+    );
+}
+
+/// A list of a model filled with the parameter is read as `[]`, as the list beside it that names
+/// no parameter is.
+#[cfg(feature = "jsonschema")]
+#[test]
+fn the_json_schema_states_the_empty_list_of_a_model_filled_with_a_parameter() {
+    let config = Config::<String>::json_schema();
+    assert_eq!(config["required"], serde_json::json!([]));
+    for key in ["dataLinks", "sequences"] {
+        assert_eq!(
+            config["properties"][key]["default"],
+            serde_json::json!([]),
+            "{config}"
+        );
+    }
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn the_zod_schema_parses_the_empty_list_of_a_model_filled_with_a_parameter() {
+    let config = Config::<String>::zod_schema();
+    for member in [
+        "  dataLinks: z.array(Link$SchemaFactory(idType)).prefault([]),\n",
+        "  sequences: z.array(z.string()).prefault([]),\n",
+    ] {
+        assert!(config.contains(member), "{config}");
+    }
+}
+
+/// Each list and set is read as `[]`, and each map as `{}`.
+#[cfg(feature = "jsonschema")]
+#[test]
+fn the_json_schema_states_the_empty_collection_of_each_list_set_and_map() {
+    let held = [
+        (
+            Fleet::<String>::json_schema(),
+            "binary_heap",
+            serde_json::json!([]),
+        ),
+        (
+            Fleet::<String>::json_schema(),
+            "btree_set",
+            serde_json::json!([]),
+        ),
+        (
+            Fleet::<String>::json_schema(),
+            "hash_set",
+            serde_json::json!([]),
+        ),
+        (Fleet::<String>::json_schema(), "vec", serde_json::json!([])),
+        (
+            Fleet::<String>::json_schema(),
+            "vec_deque",
+            serde_json::json!([]),
+        ),
+        (
+            Logbook::<String>::json_schema(),
+            "btree_map",
+            serde_json::json!({}),
+        ),
+        (
+            Logbook::<String>::json_schema(),
+            "hash_map",
+            serde_json::json!({}),
+        ),
+        #[cfg(feature = "indexmap")]
+        (
+            IndexedFleet::<String>::json_schema(),
+            "index_set",
+            serde_json::json!([]),
+        ),
+        #[cfg(feature = "indexmap")]
+        (
+            IndexedLogbook::<String>::json_schema(),
+            "index_map",
+            serde_json::json!({}),
+        ),
+    ];
+    for (schema, key, empty) in held {
+        assert_eq!(schema["required"], serde_json::json!([]), "{schema}");
+        assert_eq!(schema["properties"][key]["default"], empty, "{schema}");
+    }
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn the_zod_schema_parses_the_empty_collection_of_each_list_set_and_map() {
+    let held: &[(String, &[&str])] = &[
+        (
+            Fleet::<String>::zod_schema(),
+            &[
+                "  binary_heap: z.array(Link$SchemaFactory(idType)).prefault([]),\n",
+                "  btree_set: z.array(Link$SchemaFactory(idType)).prefault([]),\n",
+                "  hash_set: z.array(Link$SchemaFactory(idType)).prefault([]),\n",
+                "  vec: z.array(Link$SchemaFactory(idType)).prefault([]),\n",
+                "  vec_deque: z.array(Link$SchemaFactory(idType)).prefault([]),\n",
+            ],
+        ),
+        (
+            Logbook::<String>::zod_schema(),
+            &[
+                "  btree_map: z.record(z.string(), Link$SchemaFactory(idType)).prefault({}),\n",
+                "  hash_map: z.record(z.string(), Link$SchemaFactory(idType)).prefault({}),\n",
+            ],
+        ),
+        #[cfg(feature = "indexmap")]
+        (
+            IndexedFleet::<String>::zod_schema(),
+            &["  index_set: z.array(Link$SchemaFactory(idType)).prefault([]),\n"],
+        ),
+        #[cfg(feature = "indexmap")]
+        (
+            IndexedLogbook::<String>::zod_schema(),
+            &["  index_map: z.record(z.string(), Link$SchemaFactory(idType)).prefault({}),\n"],
+        ),
+    ];
+    for (schema, members) in held {
+        for member in *members {
+            assert!(schema.contains(member), "{schema}");
+        }
+    }
 }
 
 /// A type with no `#[serde(default)]` writes on every surface the text it wrote before a default

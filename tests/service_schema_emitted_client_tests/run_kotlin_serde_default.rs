@@ -10,10 +10,14 @@ use super::runtime::ran_kotlin;
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use super::serde_default_models::report;
 use super::serde_default_models::{
-    Basin, Bollard, CASES, Jetty, Marina, PREPROCESSED, PREPROCESSED_REPORT, REPORT, basin_kotlin,
-    bollard_kotlin, gangway_kotlin, jetty_kotlin, marina_kotlin, pontoon_kotlin,
-    preprocessed_values, read_values, unwritten_defaults, wharf_kotlin,
+    Bollard, CASES, Harbour, Jetty, Marina, PREPROCESSED, PREPROCESSED_REPORT, REPORT, REQUIRED,
+    REQUIRED_REPORT, basin_kotlin, bollard_kotlin, config_kotlin, filled_cases, filled_expected,
+    filled_report, fleet_kotlin, gangway_kotlin, harbour_kotlin, jetty_kotlin, link_kotlin,
+    logbook_kotlin, marina_kotlin, pontoon_kotlin, preprocessed_values, read_values,
+    unwritten_defaults, wharf_kotlin,
 };
+#[cfg(feature = "indexmap")]
+use super::serde_default_models::{indexed_fleet_kotlin, indexed_logbook_kotlin};
 
 const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
      import kotlinx.serialization.json.*\n\
@@ -36,6 +40,18 @@ fun told(name: String, read: () -> String) {
     } catch (refused: SerializationException) {
         println("$name: refused")
         (refused.message ?: "").split("; ").forEach { println("    $it") }
+    }
+}
+"#;
+
+/// What prints a row of a key the type requires: whether the read answered or threw.
+const REQUIRES: &str = r#"
+fun requires(name: String, read: () -> Any) {
+    try {
+        read()
+        println("$name: read")
+    } catch (refused: SerializationException) {
+        println("$name: refused")
     }
 }
 "#;
@@ -140,31 +156,127 @@ fn the_default_json_leaves_out_a_member_whose_value_is_its_default() {
     assert_eq!(printed, WRITTEN);
 }
 
-/// A default with no JSON keeps its key required: `Marina` derives no `Serialize`, and the
-/// `moored` of `Basin` names its parameter. The `dock` of `Basin` names none, and is read as its
-/// default.
+/// A default with no JSON keeps its key required: `Marina` derives no `Serialize`, and each
+/// member of `Harbour` names its parameter outside a list read as empty.
 #[test]
 fn a_default_with_no_json_keeps_its_key_required() {
-    let (read_marina, read_basin) = unwritten_defaults();
+    let (read_marina, _) = unwritten_defaults();
     assert_eq!(
         serde_json::from_str::<Marina>(r#"{"label":"m"}"#).unwrap(),
         read_marina
-    );
-    assert_eq!(
-        serde_json::from_str::<Basin<String>>(r#"{"moored":[]}"#).unwrap(),
-        read_basin
     );
     let marina = marina_kotlin::kotlin_definition();
     assert!(
         marina.contains("data class Marina(val dock: String, val label: String)"),
         "{marina}"
     );
+    let harbour = harbour_kotlin::kotlin_definition();
+    assert!(
+        harbour.contains(
+            "data class Harbour<Moored>(val berths: List<Moored>, val flagship: Moored, val \
+             slips: List<Moored>)"
+        ),
+        "{harbour}"
+    );
+}
+
+/// A list, a set or a map whose type names a parameter of the class is the empty collection
+/// where the key is left out: a property's initializer has no serializer of the parameter to read
+/// `[]` with. A member whose type names none reads the JSON of its default as before.
+#[test]
+fn an_empty_collection_of_a_parameter_is_the_default_of_its_property() {
     let basin = basin_kotlin::kotlin_definition();
     assert!(
         basin.contains(
             "data class Basin<Moored>(val dock: String = Json.decodeFromString(serializer<String>(), \
-             \"\\\"\\\"\"), val moored: List<Moored>)"
+             \"\\\"\\\"\"), val moored: List<Moored> = emptyList())"
         ),
         "{basin}"
     );
+    let config = config_kotlin::kotlin_definition();
+    assert!(
+        config.contains(
+            "data class Config<IdType>(val dataLinks: List<@Serializable(with = \
+             LinkUnjudged::class) Link<IdType>> = emptyList(), val sequences: List<String> = \
+             Json.decodeFromString(serializer<List<String>>(), \"[]\"))"
+        ),
+        "{config}"
+    );
+    let fleet = fleet_kotlin::kotlin_definition();
+    assert!(
+        fleet.contains(
+            "val vecDeque: List<@Serializable(with = LinkUnjudged::class) Link<IdType>> = \
+             emptyList()"
+        ),
+        "{fleet}"
+    );
+    let logbook = logbook_kotlin::kotlin_definition();
+    assert!(
+        logbook.contains(
+            "val btreeMap: Map<String, @Serializable(with = LinkUnjudged::class) Link<IdType>> = \
+             emptyMap()"
+        ),
+        "{logbook}"
+    );
+}
+
+/// Each payload of a struct that declares a parameter reads at `String` as serde reads it, and a
+/// payload that leaves out a key `Harbour` requires is refused.
+#[test]
+fn each_payload_of_a_struct_that_declares_a_parameter_reads_in_kotlin_as_serde_reads_it() {
+    assert_eq!(
+        filled_report(),
+        filled_expected(),
+        "what the serde read answers"
+    );
+    let (_, harbours) = unwritten_defaults();
+    for ((_, payload), harbour) in REQUIRED.iter().zip(harbours) {
+        assert_eq!(
+            serde_json::from_str::<Harbour<String>>(payload).unwrap(),
+            harbour
+        );
+    }
+    let filled = filled_cases().into_iter().map(|(name, read_as, payload)| {
+        format!(
+            "told({}) {{ everyMember.encodeToString(serializer<{read_as}<String>>(), \
+             Json.decodeFromString(serializer<{read_as}<String>>(), {})) }}",
+            kotlin_string(name),
+            kotlin_string(payload)
+        )
+    });
+    let required = REQUIRED.iter().map(|&(name, payload)| {
+        format!(
+            "requires({}) {{ Json.decodeFromString(serializer<Harbour<String>>(), {}) }}",
+            kotlin_string(name),
+            kotlin_string(payload)
+        )
+    });
+    let mut main = String::from("fun main() {\n");
+    for statement in filled.chain(required) {
+        let _ = writeln!(main, "    {statement}");
+    }
+    main.push_str("}\n");
+    let definitions = [
+        link_kotlin::kotlin_definition(),
+        basin_kotlin::kotlin_definition(),
+        config_kotlin::kotlin_definition(),
+        fleet_kotlin::kotlin_definition(),
+        logbook_kotlin::kotlin_definition(),
+        harbour_kotlin::kotlin_definition(),
+        #[cfg(feature = "indexmap")]
+        indexed_fleet_kotlin::kotlin_definition(),
+        #[cfg(feature = "indexmap")]
+        indexed_logbook_kotlin::kotlin_definition(),
+    ];
+    let source = [
+        &[KOTLIN_IMPORTS.to_owned()],
+        definitions.as_slice(),
+        &[TOLD.to_owned(), REQUIRES.to_owned(), main],
+    ]
+    .concat()
+    .join("\n\n");
+    let Some(printed) = ran_kotlin(&source) else {
+        return;
+    };
+    assert_eq!(printed, format!("{}{REQUIRED_REPORT}", filled_expected()));
 }

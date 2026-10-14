@@ -14,7 +14,7 @@ use {
         serde_conversion,
     },
     crate::features::model_schema_prop::parse_model_schema_prop_attributes,
-    crate::field_type::get_field_def,
+    crate::field_type::{get_field_def, is_map_wrapper, is_sequence_wrapper},
     proc_macro2::TokenTree,
     quote::ToTokens as _,
     syn::ext::IdentExt as _,
@@ -33,7 +33,8 @@ enum Written {
 /// of a type that does not derive both `Serialize` and `Deserialize`, one whose key serde leaves
 /// out of what it writes, a flattened one, an `Option`, one whose type names a parameter of the
 /// struct, a lifetime or `Self`, and one under the container's default where the struct has a
-/// parameter.
+/// parameter. A list, a set or a map under the bare `default` is among them whatever its type
+/// names: its default is the empty collection at every filling, `[]` or `{}`.
 pub struct SerdeDefaults {
     container: Option<TokenStream>,
     /// Each member read as its default, by the name serde reads, and the expression that builds
@@ -121,13 +122,20 @@ impl SerdeDefaults {
             if omission.omits_key
                 || omission.skips_deserializing
                 || parse_serde_field_attributes(&field.attrs).flatten
-                || names_any(field.ty.to_token_stream(), &declared)
                 || get_field_def(&name, &field.ty, "").is_optional()
             {
                 continue;
             }
+            let named_parameter = names_any(field.ty.to_token_stream(), &declared);
             let ty = &field.ty;
             let held = match written_default(&field.attrs) {
+                Some(Written::Bare) if named_parameter => {
+                    if let Some(empty) = empty_collection(ty, &field.attrs) {
+                        members.push((name, empty));
+                    }
+                    continue;
+                }
+                _ if named_parameter => continue,
                 Some(Written::Bare) => quote! { &<#ty as ::core::default::Default>::default() },
                 Some(Written::Function(path)) => {
                     quote! { &{ let serde_default_value: #ty = #path(); serde_default_value } }
@@ -174,6 +182,29 @@ impl SerdeDefaults {
                 }
             }
         }
+    }
+}
+
+/// The JSON of the empty collection a field of type `ty` defaults to, for a list, a set or a map
+/// written as such: the same at every filling of the struct's parameters. `None` for any other
+/// type, and for a field serde writes through a function of its own, whose JSON of the empty
+/// value only that function knows.
+#[cfg(feature = "serde")]
+fn empty_collection(ty: &syn::Type, attrs: &[Attribute]) -> Option<TokenStream> {
+    let hooks = parse_serde_field_hooks(attrs);
+    if hooks.serialize_with.is_some() || hooks.with.is_some() {
+        return None;
+    }
+    let syn::Type::Path(path) = ty else {
+        return None;
+    };
+    let last = path.path.segments.last()?.ident.to_string();
+    if is_sequence_wrapper(&last) {
+        Some(quote! { ::serde_json::Value::Array(::std::vec::Vec::new()) })
+    } else if is_map_wrapper(&last) {
+        Some(quote! { ::serde_json::Value::Object(::serde_json::Map::new()) })
+    } else {
+        None
     }
 }
 

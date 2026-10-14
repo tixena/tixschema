@@ -454,6 +454,26 @@ for (const [name, schema, payload] of CASES) {
 console.log(printed.join("\n"));
 "#;
 
+/// Parses each payload of a struct that declares a parameter through the schema of its declared
+/// default, and each payload of `Harbour` that leaves out a key it requires.
+const FILLED_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+
+const printed = [];
+for (const [name, schema, payload] of FILLED) {
+  const read = lib[`${schema}$SchemaDefault`].safeParse(JSON.parse(payload));
+  printed.push(
+    read.success
+      ? `${name}: read ${JSON.stringify(read.data)}`
+      : `${name}: refused ${JSON.stringify(read.error.issues)}`,
+  );
+}
+for (const [name, payload] of REQUIRED) {
+  const read = lib.Harbour$SchemaDefault.safeParse(JSON.parse(payload));
+  printed.push(read.success ? `${name}: read ${JSON.stringify(read.data)}` : `${name}: refused`);
+}
+console.log(printed.join("\n"));
+"#;
+
 /// What the examples driver prints: the list each schema's `.meta` holds, empty where the type
 /// writes no block and one value per block where it writes some.
 const EXAMPLES: &str = "{\"plain\":[],\"exampled\":[{\"value\":1},{\"value\":2}],\"brand\":[],\
@@ -1071,7 +1091,7 @@ fn corrections() -> String {
 /// The types a key under `#[serde(default)]` is written on: a bundle of its own, compiled with
 /// `tsc --strict` before it is loaded.
 fn defaults() -> String {
-    [
+    let written = [
         PREAMBLE.to_owned(),
         defaulted::Gangway::ts_definition(),
         defaulted::Gangway::zod_schema(),
@@ -1085,8 +1105,26 @@ fn defaults() -> String {
         defaulted::Marina::zod_schema(),
         defaulted::Basin::<String>::ts_definition(),
         defaulted::Basin::<String>::zod_schema(),
-    ]
-    .join("\n\n")
+        defaulted::Harbour::<String>::ts_definition(),
+        defaulted::Harbour::<String>::zod_schema(),
+        defaulted::Link::<String>::ts_definition(),
+        defaulted::Link::<String>::zod_schema(),
+        defaulted::Config::<String>::ts_definition(),
+        defaulted::Config::<String>::zod_schema(),
+        defaulted::Fleet::<String>::ts_definition(),
+        defaulted::Fleet::<String>::zod_schema(),
+        defaulted::Logbook::<String>::ts_definition(),
+        defaulted::Logbook::<String>::zod_schema(),
+        #[cfg(feature = "indexmap")]
+        defaulted::IndexedFleet::<String>::ts_definition(),
+        #[cfg(feature = "indexmap")]
+        defaulted::IndexedFleet::<String>::zod_schema(),
+        #[cfg(feature = "indexmap")]
+        defaulted::IndexedLogbook::<String>::ts_definition(),
+        #[cfg(feature = "indexmap")]
+        defaulted::IndexedLogbook::<String>::zod_schema(),
+    ];
+    written.join("\n\n")
 }
 
 /// The types that hold a date, which the bundle declares where `chrono` is on.
@@ -1387,14 +1425,10 @@ fn type_check_a_default_answers_under_zod_what_a_serde_read_answers() {
         let line = format!("{name}: read {}\n", read.unwrap());
         assert!(defaulted::REPORT.contains(&line), "{line}");
     }
-    let (marina, basin) = defaulted::unwritten_defaults();
+    let (marina, _) = defaulted::unwritten_defaults();
     assert_eq!(
         serde_json::from_str::<defaulted::Marina>(r#"{"label":"m"}"#).unwrap(),
         marina
-    );
-    assert_eq!(
-        serde_json::from_str::<defaulted::Basin<String>>(r#"{"moored":[]}"#).unwrap(),
-        basin
     );
     let driver =
         DEFAULTS_DRIVER.replace("CASES", &serde_json::to_string(&defaulted::CASES).unwrap());
@@ -1404,6 +1438,43 @@ fn type_check_a_default_answers_under_zod_what_a_serde_read_answers() {
     assert_eq!(
         printed,
         defaulted::REPORT.trim_end(),
+        "the schemas do not read what a serde read reads:\n{failed}"
+    );
+}
+
+/// A list, a set or a map of a struct that declares a parameter, left out of the payload, is
+/// parsed at the declared default as the empty collection serde reads, and a key held is read as
+/// before. A key whose default has no JSON stays required.
+#[test]
+fn type_check_an_empty_collection_answers_under_zod_what_a_serde_read_answers() {
+    assert_eq!(defaulted::filled_report(), defaulted::filled_expected());
+    let (_, harbours) = defaulted::unwritten_defaults();
+    for ((name, payload), harbour) in defaulted::REQUIRED.iter().zip(harbours) {
+        assert_eq!(
+            serde_json::from_str::<defaulted::Harbour<String>>(payload).unwrap(),
+            harbour,
+            "{name}"
+        );
+    }
+    let driver = FILLED_DRIVER
+        .replace(
+            "FILLED",
+            &serde_json::to_string(&defaulted::filled_cases()).unwrap(),
+        )
+        .replace(
+            "REQUIRED",
+            &serde_json::to_string(&defaulted::REQUIRED).unwrap(),
+        );
+    let Some((printed, failed)) = loaded_from("filled", &defaults(), &driver) else {
+        return;
+    };
+    assert_eq!(
+        format!("{printed}\n"),
+        format!(
+            "{}{}",
+            defaulted::filled_expected(),
+            defaulted::REQUIRED_REPORT
+        ),
         "the schemas do not read what a serde read reads:\n{failed}"
     );
 }
