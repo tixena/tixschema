@@ -36,3 +36,8 @@ mod generic_variants;
 #[cfg(all(feature = "swift", feature = "serde"))]
 #[path = "swift_tests/generic_helpers.rs"]
 mod generic_helpers;
+
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde", feature = "chrono"))]
+#[path = "swift_tests/generic_dates.rs"]
+mod generic_dates;

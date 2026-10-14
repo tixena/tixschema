@@ -1438,15 +1438,21 @@ fn encode_statement(field: &SwiftField, container: &str) -> String {
     }
 }
 
-/// The per-struct static helpers a `DateTime` field's decode/encode calls into — one shared
-/// formatter with fractional seconds, so the emitted round trip is byte-for-byte the ISO 8601
-/// text chrono wrote.
+/// The per-struct static helpers a `DateTime` field's decode/encode calls into — a formatter with
+/// fractional seconds, so the emitted round trip is byte-for-byte the ISO 8601 text chrono wrote.
+/// Swift refuses a static stored property in a generic type, so a type that declares a parameter
+/// builds its formatter on each call, and any other shares one.
 #[cfg(feature = "chrono")]
-fn datetime_helpers(export_name: &str) -> String {
+fn datetime_helpers(export_name: &str, declares_a_parameter: bool) -> String {
+    let formatter = if declares_a_parameter {
+        "private static var swiftSchemaIso8601Formatter: ISO8601DateFormatter { \
+         let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f };"
+    } else {
+        "private static let swiftSchemaIso8601Formatter: ISO8601DateFormatter = { \
+         let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f }();"
+    };
     format!(
-        "extension {export_name} {{ \
-         private static let swiftSchemaIso8601Formatter: ISO8601DateFormatter = {{ \
-         let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f }}(); \
+        "extension {export_name} {{ {formatter} \
          private static func swiftSchemaParseIso8601Date(_ text: String, codingPath: [CodingKey]) throws -> Date {{ \
          guard let date = swiftSchemaIso8601Formatter.date(from: text) else {{ \
          throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: codingPath, debugDescription: \"bad ISO8601 date: \\(text)\")) }}; \
@@ -1473,16 +1479,20 @@ fn fields_need_datetime_helpers(fields: &[SwiftField]) -> bool {
 }
 
 #[cfg(feature = "chrono")]
-fn datetime_helpers_for(export_name: &str, fields: &[SwiftField]) -> String {
+fn datetime_helpers_for(export_name: &str, generic_params: &str, fields: &[SwiftField]) -> String {
     if fields_need_datetime_helpers(fields) {
-        datetime_helpers(export_name)
+        datetime_helpers(export_name, !generic_params.is_empty())
     } else {
         String::new()
     }
 }
 
 #[cfg(not(feature = "chrono"))]
-const fn datetime_helpers_for(_export_name: &str, _fields: &[SwiftField]) -> String {
+const fn datetime_helpers_for(
+    _export_name: &str,
+    _generic_params: &str,
+    _fields: &[SwiftField],
+) -> String {
     String::new()
 }
 
@@ -1726,7 +1736,7 @@ fn struct_declaration(
         export_name,
         corrects,
     );
-    let helpers = datetime_helpers_for(export_name, fields);
+    let helpers = datetime_helpers_for(export_name, generic_params, fields);
     format!(
         "public struct {export_name}{generic_params}: Codable, Sendable {{ {content} }}; {helpers}"
     )
@@ -1883,6 +1893,7 @@ fn value_wrapper_tokens(
     };
     let helpers = datetime_helpers_for(
         &export_name,
+        &generic_params,
         &[SwiftField {
             default_at: None,
             field_def: value_field.clone(),
