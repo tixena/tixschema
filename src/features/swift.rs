@@ -451,7 +451,19 @@ fn swift_upper_camel(parameter: &str) -> String {
 fn member_def(args: &SwiftTypeArgs<'_>, name: &str, member: &Field) -> FieldDef {
     let mut field_def = get_field_def(name, &member.ty, "");
     field_def.model_schema_prop_meta = Some((args.member_meta)(member));
-    field_def
+    arrayed(field_def)
+}
+
+/// `field` with a std sequence read as the array level serde writes for it, through a sequence of
+/// sequences: `HashSet<T>` is `[T]`, as `Vec<T>` is.
+fn arrayed(field: FieldDef) -> FieldDef {
+    if let FieldDefType::SiblingType(name, arguments) = &field.field_type
+        && let [element] = arguments.as_slice()
+        && is_sequence_wrapper(name)
+    {
+        return arrayed(field.collection_element_field(element));
+    }
+    field
 }
 
 /// The `#[serde(rename = "...")]` a field or variant earns, honored only where the `serde`
@@ -746,7 +758,7 @@ fn swift_field_shape(field: &FieldDef, name_hint: &str, aux: &mut Vec<String>) -
         FieldDefType::Unknown => direct_shape("String".to_owned()),
         FieldDefType::TypeParam(name) => direct_shape(name.clone()),
         FieldDefType::Tuple(elements) => tuple_shape(elements, name_hint, aux),
-        FieldDefType::SiblingType(name, generics) => sibling_shape(field, name, generics, aux),
+        FieldDefType::SiblingType(name, generics) => sibling_shape(name, generics, aux),
         FieldDefType::Map(key, value) => map_shape(key, value, name_hint, aux),
         FieldDefType::Boolean | FieldDefType::BooleanLiteral(_) => direct_shape("Bool".to_owned()),
         FieldDefType::Char | FieldDefType::String | FieldDefType::StringLiteral(_) => {
@@ -856,21 +868,9 @@ fn tuple_shape(elements: &[FieldDef], name_hint: &str, aux: &mut Vec<String>) ->
     direct_shape(struct_name)
 }
 
-/// A `SiblingType` leaf: a sequence wrapper (`Vec`, `HashSet`, …) re-enters as the arrayed field
-/// it stands for; otherwise the referenced item's own published name, with generic arguments
-/// rendered the same way a field's own type is.
-fn sibling_shape(
-    field: &FieldDef,
-    name: &str,
-    generics: &[FieldDef],
-    aux: &mut Vec<String>,
-) -> SwiftFieldShape {
-    if let [element] = generics
-        && is_sequence_wrapper(name)
-    {
-        let combined = field.collection_element_field(element);
-        return swift_field_shape(&combined, "Element", aux);
-    }
+/// A `SiblingType` leaf: the referenced item's own published name, with generic arguments rendered
+/// the same way a field's own type is.
+fn sibling_shape(name: &str, generics: &[FieldDef], aux: &mut Vec<String>) -> SwiftFieldShape {
     let class_name = lookup_swift_name(name).unwrap_or_else(|| name.to_owned());
     if generics.is_empty() {
         return direct_shape(class_name);
@@ -971,12 +971,15 @@ fn map_shape(
 
 /// `field`'s shape together with its full public Swift type: [`swift_field_shape`]'s real leaf,
 /// wrapped in one `[...]` per array level, then the field's own outer `?`. The one seam that
-/// pushes a field's auxiliary declarations, so every caller needing both calls this once.
+/// pushes a field's auxiliary declarations, so every caller needing both calls this once. `written`
+/// is [`arrayed`] first, for what no member is collected into: a type argument, a map's value, a
+/// tuple's position and a service's message.
 fn swift_resolve(
-    field: &FieldDef,
+    written: &FieldDef,
     name_hint: &str,
     aux: &mut Vec<String>,
 ) -> (String, SwiftFieldShape) {
+    let field = &arrayed(written.clone());
     let shape = swift_field_shape(field, name_hint, aux);
     let wrapped = wrap_array_levels(field, &shape.real_leaf);
     let real_type = if field.is_optional() {
@@ -1914,7 +1917,7 @@ fn alias_swift_tokens(item_type: &ItemType, name_override: Option<&str>) -> Toke
     let export_name = compute_alias_export_name(&item_type.ident.to_string(), name_override);
     register_swift_name(&item_type.ident.to_string(), &export_name);
     let type_parameters = type_parameters_in_scope(&item_type.generics);
-    let mut target = get_field_def(&export_name, &item_type.ty, "");
+    let mut target = arrayed(get_field_def(&export_name, &item_type.ty, ""));
     target.erase_type_parameters(&type_parameters);
     validate::note(
         &item_type.ident.to_string(),

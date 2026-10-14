@@ -1,5 +1,7 @@
 //! The test binary of `swift_tests/`.
 
+extern crate alloc;
+
 #[cfg(test)]
 #[cfg(feature = "swift")]
 #[path = "swift_tests/tests.rs"]
@@ -19,3 +21,8 @@ mod read;
 #[cfg(all(feature = "swift", feature = "serde"))]
 #[path = "swift_tests/preprocess.rs"]
 mod preprocess;
+
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "swift_tests/sequences.rs"]
+mod sequences;

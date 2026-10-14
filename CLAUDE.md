@@ -1585,6 +1585,14 @@ to keep.
 - **A name the emitter has not written is read as a model**, as `validate()` calls it: a type
   declared below its holder, and a type of the consumer's own, which declares
   `init(swiftSchemaUnjudged:)` beside `validate()`.
+- **A std sequence is the array serde writes.** `arrayed` in `src/features/swift.rs` reads a
+  `VecDeque`, a `BinaryHeap`, a `HashSet`, a `BTreeSet` and an `IndexSet` as one array level, as
+  `Vec` is read, through a sequence of sequences. `member_def` and the target of an alias call
+  it, so the declaration, the read, the write and `validate()` read one def, and `swift_resolve`
+  calls it for what no member is collected into: a type argument, a map's value, a tuple's
+  position and a service's message. `tests/swift_tests/sequences.rs` holds the text of each
+  shape to the text of its twin written with `Vec`, and `run_swift_sequences.rs` reads and writes
+  each under the toolchain.
 - **The tests.** `src/features/swift/read/tests.rs` holds each `Source` and `Presence`, and the
   README's block to what the emitter writes for the documents' parcel;
   `tests/swift_tests/read.rs` pins the text of each shape;
@@ -1757,8 +1765,7 @@ has to keep.
   writes too; `tests/generic_types_tests/declarations.rs` compiles the Zod schemas with
   `tsc --strict` and parses the tables under node; `run_dart_serde_default.rs`,
   `run_swift_serde_default.rs` and `run_kotlin_serde_default.rs` run the tables under each
-  client's toolchain. The Swift run leaves out `Fleet` and `IndexedFleet`
-  (`READ_AS_AN_ELEMENT`): that client reads a set, a heap and a deque as their element type.
+  client's toolchain, `Fleet` and `IndexedFleet` among them.
   `Berthing` under each of the four taggings is read in the same places, with the key and
   without it, beside a holder of its untagged form whose Zod text holds no placeholder. Each
   refusal of a variant's member is a `trybuild` case whose `.stderr` holds its message spanned on

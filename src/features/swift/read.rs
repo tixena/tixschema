@@ -410,7 +410,7 @@ pub(super) fn unjudged(
             let items = arguments
                 .first()
                 .map_or_else(|| def.clone(), |item| def.collection_element_field(item));
-            unjudged(&items, "Element", source, sink, locals)
+            unjudged(&items, hint, source, sink, locals)
         }
         FieldDefType::SiblingType(named, _) => {
             let read_as = written_type(def, hint);

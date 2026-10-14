@@ -1134,6 +1134,19 @@ const SWIFT_UNIT_SUCCESS_SERVICE: &str = "
     }
 ";
 
+/// A reply operation whose message and success are std sequences other than `Vec`.
+#[cfg(feature = "swift")]
+const SWIFT_SEQUENCE_SERVICE: &str = "
+    pub trait RosterClientService<Ctx> {
+        #[service_schema_op(http(method = \"POST\", path = \"/v1/roster\"))]
+        async fn roster(
+            &self,
+            ctx: &Ctx,
+            req: HashSet<String>,
+        ) -> Result<BTreeSet<String>, RosterError>;
+    }
+";
+
 /// Headers both ways over `ws_rpc`: `stamp` binds two `header_in`s and answers a `header_out` and
 /// an `error_header_out` tuple; `mark` is one-way, with a `header_in` of its own.
 #[cfg(feature = "swift")]
