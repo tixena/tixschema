@@ -201,7 +201,7 @@ export type UserWithOptionals = {
 
 ### A Key Read as Its Default (`#[serde(default)]`)
 
-serde reads a key the payload leaves out as a default where the field writes `#[serde(default)]` or `#[serde(default = "path")]`, or where the struct writes either one on itself. Every surface reads that key as the same default. The value of a default is known to Rust alone: the `Default` of the field's type, the value the named function answers, or the member of the struct's own default. So `zod_schema()`, `json_schema()`, `dart_definition()`, `swift_definition()` and `kotlin_definition()` write each default with serde when they build their text, and write the JSON into the text. The field's `serialize_with` or `with` writes the default where the field names one, as serde writes the field. A crate that declares such a type lists `serde_json`, as [Rust Dependencies](#rust-dependencies) shows.
+serde reads a key the payload leaves out as a default where a field of a struct, or a named member of an enum's variant, writes `#[serde(default)]` or `#[serde(default = "path")]`, or where the struct writes either one on itself. Every surface reads that key as the same default. The value of a default is known to Rust alone: the `Default` of the field's type, the value the named function answers, or the member of the struct's own default. So `zod_schema()`, `json_schema()`, `dart_definition()`, `swift_definition()` and `kotlin_definition()` write each default with serde when they build their text, and write the JSON into the text. The field's `serialize_with` or `with` writes the default where the field names one, as serde writes the field. A crate that declares such a type lists `serde_json`, as [Rust Dependencies](#rust-dependencies) shows.
 
 ```rust
 pub fn north_dock() -> String {
@@ -241,16 +241,67 @@ pub struct Wharf {
 - **An `Option` keeps what it had.** `#[serde(default)]` on an `Option` changes nothing on any surface: [Optional Fields](#optional-fields) describes it.
 - **A member whose key serde leaves out of what it writes keeps the reading [Optional Fields](#optional-fields) describes.** That is a member under `skip_serializing` or `skip_serializing_if`: each surface already reads its key as optional.
 
-**A default with no JSON keeps the key required.** serde still reads such a key as its default, but no surface other than Rust is handed the default, so each one requires the key as it did before. That is the case where:
+**On a struct, a default with no JSON keeps the key required, and the struct builds.** serde still reads such a key as its default, but no surface other than Rust is handed the default, so each one requires the key as it did before. That is the case where:
 
 - the struct does not derive both `Serialize` and `Deserialize`, or reads or writes itself through `from`, `try_from`, `into` or `remote`;
 - the type of the field names a type parameter of the struct, a lifetime or `Self`, and the field is not a list, a set or a map under the bare `#[serde(default)]`. The default of `T`, and the `Vec<T>` a function answers, hold one value for each type that fills `T`, so the text has no one value to write. A field of the same struct whose type names no parameter is read as its default;
 - the field is a list, a set or a map whose type names a parameter, and serde writes it through a `serialize_with` or a `with` of the field's: only that function knows the JSON of the empty collection. Without one, a list, a set or a map under the bare `#[serde(default)]` is read as its default on every surface: the default is the empty collection at every filling, so `Vec<T>`, `VecDeque<T>`, `BinaryHeap<T>`, `HashSet<T>` and `BTreeSet<T>` are read as `[]`, and `HashMap<K, T>` and `BTreeMap<K, T>` as `{}` (`IndexSet` and `IndexMap` too, under the [`indexmap` feature](#feature-flags)). The Kotlin client writes that default as `emptyList()` or `emptyMap()`, a property's initializer having no serializer of the parameter to read `[]` with;
 - the default is the struct's own, and the struct declares a parameter;
-- the field is `#[serde(flatten)]`;
-- the member is a member of a variant of an enum.
+- the field is `#[serde(flatten)]`.
 
 A `Serialize` that refuses to write a default makes the function that builds the text panic, as a refused example makes `schema_examples()` panic.
+
+#### A member of an enum's variant
+
+A named member of a variant under `#[serde(default)]` or `#[serde(default = "path")]` is read as its default on every surface, as a struct's member is, whatever the enum's tagging: no tag attribute, `tag`, `tag` with `content`, or `untagged`. A variant has no default of its own: serde reads `default` on a variant's field alone.
+
+```rust
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "kind")]
+pub enum Berthing {
+    Docked {
+        #[serde(default)]
+        dock: String,
+        pier: u32,
+    },
+    Adrift,
+}
+```
+
+serde reads `{"kind":"Docked","pier":3}` as `{"kind":"Docked","dock":"","pier":3}`, and so does each surface. Each tagging writes the payload that leaves `dock` out in its own form, and each surface reads `dock` as `""` in every one of them:
+
+| The enum writes | A payload that leaves `dock` out |
+|-----------------|----------------------------------|
+| no tag attribute | `{"Docked":{"pier":3}}` |
+| `#[serde(tag = "kind")]` | `{"kind":"Docked","pier":3}` |
+| `#[serde(tag = "kind", content = "data")]` | `{"kind":"Docked","data":{"pier":3}}` |
+| `#[serde(untagged)]` | `{"pier":3}` |
+
+- **Each surface writes the member as it writes a struct's**, in the variant's own object: the Zod member takes `.prefault("")`, the JSON Schema leaves the key out of the variant's `required` and states `"default": ""`, and the Dart, Swift and Kotlin clients read the default where the payload leaves the key out.
+- **A key the payload holds is read as it was**, on every surface.
+- **A default is judged as a payload is.** A default that breaks a bound of the member is refused with the member named, on every surface.
+- **A type that holds or flattens an untagged enum with such a member joins the enum's own schema in its Zod text.** The enum's schema is the one text the default is written into.
+
+#### What does not build on a variant's member
+
+A named member of a variant under `#[serde(default)]` or `#[serde(default = "path")]` that the other surfaces cannot read as serde reads it is refused where the enum is declared, and the build stops. No key of a variant is kept required in silence. The refusal points at the member, and its message opens with the enum, the variant and the member, ``model_schema: type `Berthing`: variant `Docked`, field `dock`:``, followed by the reason. Every refused member of the enum is reported in one build. It is raised in every build that describes the type, a mobile client included: the `serde` feature with any of `typescript`, `zod`, `jsonschema`, `dart`, `swift` and `kotlin`.
+
+| The member | Why no surface but Rust can read the default | The message, after its opening |
+|------------|-----------------------------------------------|--------------------------------|
+| Its type names a type parameter of the enum, a lifetime or `Self`, and it is not a list, a set or a map under the bare `#[serde(default)]` with no `serialize_with` or `with` | The default holds one value for each type that fills the parameter, so the text has no one JSON to write | `` `#[serde(default)]` is read only by Rust here: the type names the type parameter `T`, whose default has one JSON for each type that fills it. Give the field a type that names no parameter, or remove the default. `` |
+| It is `#[serde(flatten)]` | serde reads each missing key of the flattened type from that type's own default, which no other surface describes | `` `#[serde(default)]` on a flattened field is read only by Rust. Remove the default, or the flatten. `` |
+| It is under `skip_serializing` or `skip_serializing_if`, and it is not an `Option` | Each surface reads its key as optional, and answers no value where serde reads the default | `` `#[serde(default)]` beside `skip_serializing_if` is read only by Rust on a field that is not an `Option`. Make the field an `Option`, or remove one of the two. `` |
+| The enum derives `Deserialize` and not `Serialize`, or names `into` or `remote` | The JSON of the default is written with serde, through the type the surfaces describe, and this enum gives no such type | `` `#[serde(default)]` needs the enum to derive `Serialize`, with no `into` or `remote`, so the default can be written for the other targets. `` |
+
+These build as they did, since no surface reads the member otherwise than serde does:
+
+- **An `Option`.** Every surface reads the missing key as absent, which is serde's default, `None`.
+- **A member under `skip` or `skip_deserializing`.** serde never reads its key, so no missing key is read as the default.
+- **An enum that derives no `Deserialize`, or reads itself through `from` or `try_from`.** serde never reads the fields of the enum.
+- **A list, a set or a map under the bare `#[serde(default)]` whose type names a parameter**, with no `serialize_with` or `with`: it is read as `[]` or `{}` on every surface, as a struct's is.
+
+**A struct's member keeps the struct's rules.** On a struct, the same four cases build, and each surface reads the key as the section says above: required, or optional under `skip_serializing` or `skip_serializing_if`.
 
 ### Collections and Maps
 
