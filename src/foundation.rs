@@ -12,8 +12,8 @@ pub fn exec_decode_with_foundation(input: &TokenStream) -> TokenStream {
     refused_arguments(input, "decode_with_foundation").unwrap_or_else(decode_with_library)
 }
 
-/// What `mongodb_foundation!()` writes: the BSON and MongoDB library and its marker under `bson`,
-/// and nothing without it.
+/// What `mongodb_foundation!()` writes: the MongoDB library and its marker under `mongodb`, and
+/// nothing without it.
 pub fn exec_mongodb_foundation(input: &TokenStream) -> TokenStream {
     refused_arguments(input, "mongodb_foundation").unwrap_or_else(mongodb_library)
 }

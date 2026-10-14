@@ -1,6 +1,6 @@
-//! A crate apart from the test binaries whose types list "decode_with" alone: its manifest lists
-//! neither `bson` nor `mongodb`, and it builds with every warning denied in a build where
-//! tixschema has `mongodb` on.
+//! A crate apart from the test binaries whose types list "decode_with" alone: its manifest lists no
+//! `mongodb`, and names `bson`, which its types and its library name where tixschema has `bson` on.
+//! It builds with every warning denied in a build where tixschema has `mongodb` on.
 
 #![deny(warnings)]
 

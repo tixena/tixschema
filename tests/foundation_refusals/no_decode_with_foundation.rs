@@ -1,5 +1,7 @@
 //! A type that lists "decode_with", in a crate that has not written the `decode_with` library.
 
+extern crate bson2 as bson;
+
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 

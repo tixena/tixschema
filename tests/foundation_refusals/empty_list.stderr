@@ -1,5 +1,5 @@
 error: model_schema: type `InvoiceLookup`: tixschema: the list is empty; remove `enable`
- --> tests/foundation_refusals/empty_list.rs:8:25
-  |
-8 | #[model_schema(enable = [])]
-  |                         ^^
+  --> tests/foundation_refusals/empty_list.rs:10:25
+   |
+10 | #[model_schema(enable = [])]
+   |                         ^^

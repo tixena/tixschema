@@ -9,7 +9,7 @@ use super::{
     DECODE_WITH_LIBRARY_NAMES, RecoveringDecode, decode_with_foundation, decode_with_library,
     written_names,
 };
-#[cfg(feature = "bson")]
+#[cfg(feature = "mongodb")]
 use super::{MONGODB_LIBRARY_NAMES, mongodb_foundation, mongodb_library};
 use crate::features::model_schema_prop::FunctionName;
 use crate::model_schema::preprocess;
@@ -100,7 +100,7 @@ fn enum_recovering_decode(item: &syn::ItemEnum) -> RecoveringDecode {
 /// The items of both support libraries, as one module would hold them.
 fn module_items() -> proc_macro2::TokenStream {
     let mut items = decode_with_library();
-    #[cfg(feature = "bson")]
+    #[cfg(feature = "mongodb")]
     items.extend(mongodb_library());
     items
 }
@@ -668,10 +668,73 @@ fn every_added_method_but_the_entry_point_carries_the_flags_name() {
         "decode_with_value_check_issues",
     ]);
     if cfg!(feature = "bson") {
-        // The marker a holder that lists "mongodb" asks a type it reaches for.
-        named.extend(["decode_with_bson_check_issues", "mongo_listed"]);
+        named.push("decode_with_bson_check_issues");
     }
     assert_eq!(methods, named);
+}
+
+/// Under `mongodb` a type that lists `"decode_with"` alone is read from BSON, and gets no
+/// operation, no typed path and nothing of the MongoDB library.
+#[cfg(feature = "mongodb")]
+#[test]
+fn a_type_that_lists_decode_with_alone_is_read_from_bson_and_gets_no_mongodb_layer() {
+    let item: syn::ItemStruct =
+        syn::parse_str("pub struct Version { pub number: u32, pub held: Inner }").unwrap();
+    seen_as_models(item.to_token_stream());
+    let added = super::struct_recovering_decode(&item, false);
+    let members: Vec<String> = impls_in(added.type_impl.clone())
+        .into_iter()
+        .chain(impls_in(added.check_messages.clone()))
+        .flat_map(|(_header, members)| members)
+        .collect();
+    assert_eq!(
+        members,
+        [
+            "from_value_with",
+            "from_value_piped",
+            "decode_with_value_report",
+            "decode_with_value_issues",
+            "decode_with_value_named",
+            "decode_with_value_fields",
+            LISTED_READ,
+            "from_bson_with",
+            "from_bson_piped",
+            "decode_with_bson_report",
+            "decode_with_bson_issues",
+            "decode_with_bson_named",
+            "decode_with_bson_fields",
+            "decode_with_check_messages",
+            "decode_with_value_check_issues",
+            "decode_with_bson_check_issues",
+        ]
+    );
+    let enum_item: syn::ItemEnum = syn::parse_str(INTERNAL).unwrap();
+    seen_as_models(enum_item.to_token_stream());
+    let enum_added = super::enums::enum_recovering_decode(&enum_item, false);
+    let enum_impl = enum_added.type_impl.to_string();
+    for bson_read in ["pub fn from_bson_with", "pub fn from_bson_piped"] {
+        assert!(
+            enum_impl.contains(bson_read),
+            "missing `{bson_read}` in: {enum_impl}"
+        );
+    }
+    for emitted in [added, enum_added] {
+        let everything = [
+            emitted.schema_module.to_string(),
+            emitted.type_impl.to_string(),
+            emitted.probes.to_string(),
+            emitted.check_messages.to_string(),
+        ]
+        .concat();
+        let operations = OPERATIONS.map(|operation| format!("fn {operation} "));
+        let typed_paths = ["MONGO_FIELDS", "MongoFields", "__tixschema_mongodb"];
+        for name in operations.iter().map(String::as_str).chain(typed_paths) {
+            assert!(
+                !everything.contains(name),
+                "found `{name}` in: {everything}"
+            );
+        }
+    }
 }
 
 /// A type that names a `preprocess` on itself keeps each walk under its name, over a value its
@@ -2099,7 +2162,7 @@ fn every_type_the_flag_adds_is_a_name_read_past() {
     // re-export, beside the types written for it alone.
     let library_types = declared_types(module_items());
     let mut reexported = DECODE_WITH_LIBRARY_NAMES.to_vec();
-    #[cfg(feature = "bson")]
+    #[cfg(feature = "mongodb")]
     reexported.extend(MONGODB_LIBRARY_NAMES);
     for library_type in &library_types {
         assert!(
@@ -2156,9 +2219,9 @@ fn the_decode_with_library_names_are_every_name_it_makes_public() {
     assert_eq!(private, ["expected_from_tokens"]);
 }
 
-/// The module of a type that lists "mongodb" re-exports every name the BSON and MongoDB library
-/// makes public in this build.
-#[cfg(feature = "bson")]
+/// The module of a type that lists "mongodb" re-exports every name the MongoDB library makes
+/// public.
+#[cfg(feature = "mongodb")]
 #[test]
 fn the_mongodb_library_names_are_every_name_it_makes_public() {
     let mut listed = MONGODB_LIBRARY_NAMES.to_vec();
@@ -2168,21 +2231,19 @@ fn the_mongodb_library_names_are_every_name_it_makes_public() {
         .into_iter()
         .filter_map(|(name, public)| (!public).then_some(name))
         .collect();
-    let read_by_the_library_alone: &[&str] = if cfg!(feature = "mongodb") {
-        &[
+    assert_eq!(
+        private,
+        [
             "write_plain",
             "nested_key",
             "nested_filter",
             "nested_update",
         ]
-    } else {
-        &[]
-    };
-    assert_eq!(private, read_by_the_library_alone);
+    );
 }
 
 /// The two libraries share no name: a module of a type that lists "mongodb" re-exports both.
-#[cfg(feature = "bson")]
+#[cfg(feature = "mongodb")]
 #[test]
 fn the_two_libraries_share_no_name() {
     for name in MONGODB_LIBRARY_NAMES {
@@ -2190,12 +2251,50 @@ fn the_two_libraries_share_no_name() {
     }
 }
 
-/// The `decode_with` library names no `bson` path in any build, so a crate whose types list
-/// `"decode_with"` alone needs no `bson`.
+/// The `decode_with` library names no `bson` path in a build without `bson`, so a crate whose
+/// types list `"decode_with"` alone needs no `bson` there.
+#[cfg(not(feature = "bson"))]
 #[test]
-fn the_decode_with_library_names_no_bson_path() {
+fn without_bson_the_decode_with_library_names_no_bson_path() {
     let written = decode_with_foundation().to_string();
     assert!(!written.contains("bson"), "got: {written}");
+}
+
+/// Under `bson` the `decode_with` library holds what reads a BSON value: what holds a BSON value
+/// to a bound, the leaf and its helpers, and the BSON helpers of `Path`. It holds nothing of the
+/// MongoDB layer.
+#[cfg(feature = "bson")]
+#[test]
+fn under_bson_the_decode_with_library_holds_what_reads_a_bson_value() {
+    for name in [
+        "bson_bound",
+        "bson_leaf",
+        "bson_remaining",
+        "same_bracket",
+    ] {
+        assert!(DECODE_WITH_LIBRARY_NAMES.contains(&name), "{name}");
+    }
+    let written = decode_with_library().to_string();
+    for declared in [
+        "pub fn bson_bound <",
+        "pub fn same_bracket (",
+        "pub fn bson_leaf <",
+        "pub fn bson_remaining <",
+        "pub fn set_in_document (",
+        "pub fn remove_from_document (",
+    ] {
+        assert!(
+            written.contains(declared),
+            "missing `{declared}` in: {written}"
+        );
+    }
+    for absent in ["Filter", "Update", "OperationError", "Read", "MongoPath"] {
+        assert!(
+            !written.contains(&format!("pub struct {absent}"))
+                && !written.contains(&format!("pub enum {absent}")),
+            "found `{absent}` in: {written}"
+        );
+    }
 }
 
 /// The attributes on each item an initializer writes at the crate root, as text, by the item's
@@ -2247,7 +2346,7 @@ fn each_initializer_writes_its_module_and_its_marker() {
         crate_root_attributes(&written),
         ["# [doc (hidden)]", "", ""]
     );
-    #[cfg(feature = "bson")]
+    #[cfg(feature = "mongodb")]
     {
         let second: syn::File = syn::parse2(mongodb_foundation()).unwrap();
         assert_eq!(
@@ -2268,40 +2367,17 @@ fn each_initializer_writes_its_module_and_its_marker() {
     }
 }
 
-/// Under `bson` without `mongodb` the second library holds the three BSON pieces and nothing
-/// else: what holds a BSON value to a bound, the leaf and its helpers, and the BSON helpers of
-/// `Path`.
-#[cfg(all(feature = "bson", not(feature = "mongodb")))]
+/// A build without `mongodb` writes no MongoDB library, so the call writes nothing.
+#[cfg(not(feature = "mongodb"))]
 #[test]
-fn without_mongodb_the_second_library_holds_the_bson_pieces_alone() {
-    assert_eq!(
-        MONGODB_LIBRARY_NAMES,
-        ["bson_bound", "bson_leaf", "bson_remaining", "same_bracket"]
-    );
-    let written = mongodb_library().to_string();
-    assert!(
-        written.contains("impl crate :: __tixschema_decode_with :: Path {"),
-        "got: {written}"
-    );
-    for absent in ["Filter", "Update", "OperationError", "Read"] {
-        assert!(
-            !written.contains(&format!("pub struct {absent}"))
-                && !written.contains(&format!("pub enum {absent}")),
-            "found `{absent}` in: {written}"
-        );
-    }
-}
-
-/// A build without `bson` writes no BSON and MongoDB library, so the call writes nothing.
-#[cfg(not(feature = "bson"))]
-#[test]
-fn the_mongodb_initializer_writes_nothing_without_bson() {
+fn the_mongodb_initializer_writes_nothing_without_mongodb() {
     assert!(super::mongodb_foundation().is_empty());
 }
 
-/// A type re-exports the `decode_with` library by name, and the BSON and MongoDB one only where it
-/// lists "mongodb"; it carries no copy of either. Each re-export expects `clippy::pub_use`, and
-/// nothing else the type adds carries an `allow`, an `expect` or a `doc(hidden)`.
+/// A type re-exports the `decode_with` library by name, and the MongoDB one only where it lists
+/// "mongodb", under `mongodb`; it carries no copy of either. Each re-export expects
+/// `clippy::pub_use`, and nothing else the type adds carries an `allow`, an `expect` or a
+/// `doc(hidden)`.
 #[test]
 fn a_type_reexports_its_crates_libraries_by_name() {
     let item: syn::ItemStruct = syn::parse_str("pub struct Lookup { pub number: String }").unwrap();
@@ -2320,7 +2396,7 @@ fn a_type_reexports_its_crates_libraries_by_name() {
             )),
             "got: {module}"
         );
-        #[cfg(feature = "bson")]
+        #[cfg(feature = "mongodb")]
         assert_eq!(
             module.contains(&format!(
                 "{expected} pub use crate :: __tixschema_mongodb :: {{ {} }} ;",
@@ -2332,7 +2408,7 @@ fn a_type_reexports_its_crates_libraries_by_name() {
         for copied in ["pub enum Issue", "pub struct Path", "pub fn value_leaf"] {
             assert!(!module.contains(copied), "found `{copied}` in: {module}");
         }
-        let reexports = if mongodb && cfg!(feature = "bson") {
+        let reexports = if mongodb && cfg!(feature = "mongodb") {
             2
         } else {
             1
@@ -2363,13 +2439,13 @@ fn a_type_reexports_its_crates_libraries_by_name() {
         assert_eq!(everything.matches("# [expect").count(), reexports);
         assert_eq!(
             added.type_impl.to_string().contains("fn from_bson_with"),
-            mongodb && cfg!(feature = "bson"),
+            cfg!(feature = "bson"),
         );
     }
 }
 
 /// Every type re-exports the `decode_with` library and probes for it; a type that lists "mongodb"
-/// probes for the second library as well, under `bson`.
+/// probes for the MongoDB library as well, under `mongodb`.
 #[test]
 fn a_type_probes_for_the_libraries_it_reexports() {
     let item: syn::ItemStruct = syn::parse_str("pub struct Lookup { pub number: String }").unwrap();
@@ -2381,7 +2457,7 @@ fn a_type_probes_for_the_libraries_it_reexports() {
             written
                 .matches("const _ : () = { use crate :: * ; struct Missing ;")
                 .count(),
-            if mongodb && cfg!(feature = "bson") {
+            if mongodb && cfg!(feature = "mongodb") {
                 2
             } else {
                 1
@@ -2407,145 +2483,10 @@ fn a_type_probes_for_the_libraries_it_reexports() {
         );
         assert_eq!(
             written.contains("need ((& ()) . __tixschema_mongodb_foundation ()) ;"),
-            mongodb && cfg!(feature = "bson"),
+            mongodb && cfg!(feature = "mongodb"),
             "got: {written}"
         );
     }
-}
-
-/// The types `probes` asks for `mongo_listed`, in the order written, each as its tokens.
-fn probed_types(probes: &proc_macro2::TokenStream) -> Vec<String> {
-    probes
-        .to_string()
-        .split("fn probe (held : & ")
-        .skip(1)
-        .map(|rest| rest.split_once(") {").unwrap().0.to_owned())
-        .collect()
-}
-
-/// Under `bson` every type that lists `"decode_with"` carries `mongo_listed`, beside its checks and
-/// under the bounds its author wrote: `()` where it lists "mongodb", `PhantomData<()>` where not.
-#[cfg(feature = "bson")]
-#[test]
-fn each_type_carries_a_marker_that_says_whether_it_lists_mongodb() {
-    let item: syn::ItemStruct =
-        syn::parse_str("pub struct Wrapper<T: Clone> { pub held: T }").unwrap();
-    for (mongodb, marker) in [
-        (true, "pub const fn mongo_listed (& self) { }"),
-        (
-            false,
-            "pub const fn mongo_listed (& self) -> :: core :: marker :: PhantomData < () > { :: \
-             core :: marker :: PhantomData }",
-        ),
-    ] {
-        let checked = super::struct_recovering_decode(&item, mongodb).check_messages;
-        let block: syn::ItemImpl = syn::parse2(checked.clone()).unwrap();
-        assert_eq!(
-            block.generics.to_token_stream().to_string(),
-            "< T : Clone >"
-        );
-        assert_eq!(block.self_ty.to_token_stream().to_string(), "Wrapper < T >");
-        assert!(checked.to_string().contains(marker), "got: {checked}");
-    }
-}
-
-/// A build without `bson` reads no BSON value: no type carries the marker, and none is probed.
-#[cfg(not(feature = "bson"))]
-#[test]
-fn no_type_carries_a_marker_without_bson() {
-    let item: syn::ItemStruct =
-        syn::parse_str("pub struct Invoice { pub customer: Customer }").unwrap();
-    let added = struct_recovering_decode(&item);
-    assert!(
-        !added.check_messages.to_string().contains("mongo_listed"),
-        "got: {}",
-        added.check_messages
-    );
-    assert_eq!(probed_types(&added.probes), Vec::<String>::new());
-}
-
-/// A holder that lists "mongodb" probes each type its BSON walk calls a walker of, once: through
-/// `Option`, a list, a map's values, a transparent wrapper and a tuple, and a flattened one. No
-/// leaf is probed.
-#[cfg(feature = "bson")]
-#[test]
-fn a_holder_that_lists_mongodb_probes_each_type_its_walk_reaches() {
-    let item: syn::ItemStruct = syn::parse_str(
-        "pub struct Invoice { pub customer: Customer, pub listed: Vec<Option<Customer>>, \
-         pub keyed: HashMap<String, Box<Parcel>>, pub pair: (Customer, Wrapper<String>), \
-         pub wrapped: Wrapper<String>, pub count: u32, pub details: HashMap<String, String>, \
-         #[serde(default, skip_serializing_if = \"Option::is_none\")] pub memo: Option<String>, \
-         pub number: String, pub tags: Vec<String>, #[serde(flatten)] pub lookup: InvoiceLookup }",
-    )
-    .unwrap();
-    let probes = struct_recovering_decode(&item).probes;
-    assert_eq!(
-        probed_types(&probes),
-        ["Customer", "Parcel", "Wrapper < String >", "InvoiceLookup"]
-    );
-    assert!(
-        probes.to_string().contains(
-            "# [diagnostic :: on_unimplemented (message = \"tixschema: `Invoice` lists \
-             \\\"mongodb\\\" in `enable`, but its field type `Customer` does not\" , label = \
-             \"`Invoice` reads and writes `Customer` in MongoDB, so `Customer` needs the MongoDB \
-             code too\" , note = \"Fix: add \\\"mongodb\\\" to the `enable` list of \
-             `#[model_schema]` on `Customer`, so it reads `enable = [\\\"decode_with\\\", \
-             \\\"mongodb\\\"]`.\")]"
-        ),
-        "got: {probes}"
-    );
-    // A type written with arguments is named by its own name.
-    assert!(
-        probes
-            .to_string()
-            .contains("but its field type `Wrapper` does not"),
-        "got: {probes}"
-    );
-}
-
-/// Nothing a holder reaches through one of its own parameters, and nothing that is the holder
-/// itself, is probed: the holder lists "mongodb" by being one.
-#[cfg(feature = "bson")]
-#[test]
-fn a_holder_probes_nothing_it_reaches_through_its_parameters_or_itself() {
-    for source in [
-        "pub struct Node<T> { pub children: Vec<Node<T>>, pub held: T, \
-         pub wrapped: Wrapper<T>, pub parent: Option<Box<Self>> }",
-        "pub struct Tree { pub children: Vec<Tree>, pub parent: Option<Box<Self>> }",
-    ] {
-        let item: syn::ItemStruct = syn::parse_str(source).unwrap();
-        let probes = struct_recovering_decode(&item).probes;
-        assert_eq!(probed_types(&probes), Vec::<String>::new(), "for {source}");
-    }
-    // A type that holds the holder is probed, the holder written by its name.
-    let item: syn::ItemStruct =
-        syn::parse_str("pub struct Tree { pub wrapped: Wrapper<Self> }").unwrap();
-    let probes = struct_recovering_decode(&item).probes;
-    assert_eq!(probed_types(&probes), ["Wrapper < Tree >"]);
-}
-
-/// A type that lists `"decode_with"` alone is read from no BSON value, so it probes nothing.
-#[cfg(feature = "bson")]
-#[test]
-fn a_type_that_lists_decode_with_alone_probes_nothing_it_holds() {
-    let item: syn::ItemStruct =
-        syn::parse_str("pub struct InvoiceLookup { pub customer: Customer }").unwrap();
-    seen_as_models(item.to_token_stream());
-    let probes = super::struct_recovering_decode(&item, false).probes;
-    assert_eq!(probed_types(&probes), Vec::<String>::new());
-}
-
-/// An enum probes what each variant serde reads holds, and nothing of a variant it never reads.
-#[cfg(feature = "bson")]
-#[test]
-fn an_enum_probes_what_its_variants_hold() {
-    let item: syn::ItemEnum = syn::parse_str(
-        "pub enum Payment { Card(Customer), Cash, Split { first: Customer, second: Wrapper<String> }, \
-         #[serde(skip_deserializing)] Lost(Parcel) }",
-    )
-    .unwrap();
-    let probes = enum_recovering_decode(&item).probes;
-    assert_eq!(probed_types(&probes), ["Customer", "Wrapper < String >"]);
 }
 
 #[test]

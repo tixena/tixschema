@@ -1,6 +1,6 @@
 //! What a type that lists `"mongodb"` has and a type that lists `"decode_with"` alone has not, by the
 //! features tixschema is built with, and what a stored type may hold: a stored model in every
-//! position, a generic one, leaves, and a type that carries no marker, read whole.
+//! position, a generic one, leaves, and a type with no walker of its own, read whole.
 
 #[cfg(all(
     feature = "mongodb",
@@ -8,7 +8,6 @@
 ))]
 mod plain;
 
-use core::marker::PhantomData;
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
@@ -50,7 +49,7 @@ struct Wrapper<T> {
     held: T,
 }
 
-/// Stored: what it holds lists "mongodb" too, or is a leaf, or carries no marker.
+/// Stored: what it holds is a stored model, a leaf, or a type with no walker of its own.
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -75,8 +74,8 @@ struct InvoiceLookup {
     number: String,
 }
 
-/// No `enable`, and declared below the stored type that holds it: it carries no marker, and the
-/// stored type reads it whole.
+/// No `enable`, and declared below the stored type that holds it: it has no walker, and the stored
+/// type reads it whole.
 #[model_schema()]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct ShelfTag {
@@ -128,37 +127,37 @@ fn stored_with(key: &str, value: bson::Bson) -> bson::Document {
 }
 
 #[test]
-fn a_lookup_has_no_bson_read_and_no_mongodb_layer_in_any_build() {
-    fallback!([MONGO_FIELDS] [decode_with_bson_issues, find_one, from_bson_piped, from_bson_with] []);
+fn a_lookup_has_no_mongodb_layer_in_any_build() {
+    fallback!([MONGO_FIELDS] [find_one, insert_one] []);
     assert_eq!(InvoiceLookup::MONGO_FIELDS, Absent);
     assert_eq!(InvoiceLookup::find_one(), Absent);
-    assert_eq!(InvoiceLookup::from_bson_with(), Absent);
-    assert_eq!(InvoiceLookup::from_bson_piped(), Absent);
-    assert_eq!(InvoiceLookup::decode_with_bson_issues(), Absent);
+    assert_eq!(InvoiceLookup::insert_one(), Absent);
 }
 
-/// The build with neither `bson` nor `mongodb`: no type has a BSON read, a MongoDB layer or the
-/// marker, the stored one included.
+/// The build with `bson`: a lookup reads from BSON, as every flagged type does.
+#[cfg(feature = "bson")]
+#[test]
+fn under_bson_a_lookup_reads_from_bson() {
+    assert_eq!(
+        InvoiceLookup::from_bson_piped(bson::doc! { "number": "INV-1" }, &[]),
+        Ok(InvoiceLookup {
+            number: "INV-1".to_owned()
+        })
+    );
+}
+
+/// The build with neither `bson` nor `mongodb`: no type has a BSON read or a MongoDB layer, the
+/// stored one included.
 #[cfg(not(feature = "bson"))]
 #[test]
-fn without_bson_a_stored_type_has_no_bson_read_and_no_marker() {
-    fallback!([MONGO_FIELDS] [find_one, from_bson_piped, from_bson_with] [mongo_listed]);
+fn without_bson_no_type_has_a_bson_read_or_a_mongodb_layer() {
+    fallback!([MONGO_FIELDS] [decode_with_bson_issues, find_one, from_bson_piped, from_bson_with] []);
     assert_eq!(Invoice::MONGO_FIELDS, Absent);
     assert_eq!(Invoice::find_one(), Absent);
     assert_eq!(Invoice::from_bson_with(), Absent);
     assert_eq!(Invoice::from_bson_piped(), Absent);
-    let lookup = InvoiceLookup {
-        number: "INV-1".to_owned(),
-    };
-    assert_eq!(lookup.mongo_listed(), Absent);
-    assert_eq!(
-        Customer {
-            name: "Ada".to_owned(),
-            open_invoices: 1
-        }
-        .mongo_listed(),
-        Absent
-    );
+    assert_eq!(InvoiceLookup::from_bson_with(), Absent);
+    assert_eq!(InvoiceLookup::decode_with_bson_issues(), Absent);
 }
 
 /// The build with `bson` and not `mongodb`: a stored type reads from BSON, and has no operation and
@@ -201,22 +200,11 @@ fn under_mongodb_a_stored_type_has_the_operations_and_the_typed_paths() {
     );
 }
 
-/// Under `bson` each type answers the marker a stored holder asks it for.
+/// An issue inside a flagged model is at its full path, and a value of a type with no walker of
+/// its own is read whole, one issue at its field.
 #[cfg(feature = "bson")]
 #[test]
-fn each_type_answers_whether_it_lists_mongodb() {
-    let lookup = InvoiceLookup {
-        number: "INV-1".to_owned(),
-    };
-    assert_eq!(lookup.mongo_listed(), PhantomData::<()>);
-    invoice().mongo_listed();
-}
-
-/// An issue inside a stored model is at its full path, and a value of a type with no marker is
-/// read whole, one issue at its field.
-#[cfg(feature = "bson")]
-#[test]
-fn a_stored_type_walks_what_lists_mongodb_and_reads_the_rest_whole() {
+fn a_stored_type_walks_each_flagged_type_and_reads_the_rest_whole() {
     let mut handed: Vec<(String, bool)> = Vec::new();
     let mut stored = stored_with("shelf", bson::Bson::Int32(7));
     stored.insert("wrapped", bson::doc! { "held": 3_i32 });

@@ -5917,7 +5917,7 @@ pub struct Customer {
     pub open_invoices: u32,
 }
 
-/// Read from a request and never stored: no BSON and no MongoDB code at all.
+/// Read and never stored: the recovering decode, from BSON as well under `bson`, and no MongoDB code.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -6074,7 +6074,8 @@ impl From<customer_schema::OperationError> for StoreError {
 - **A crate with no stored type names neither `bson` nor `mongodb`.** Its types list `"decode_with"` alone, it writes `decode_with_foundation!()` alone, and its manifest lists neither library:
 
 ```rust
-// src/lib.rs of a crate whose Cargo.toml lists tixschema, serde and serde_json, and no bson
+// src/lib.rs of a crate whose Cargo.toml lists tixschema, serde, serde_json, bson where tixschema
+// has `bson` on, and no mongodb
 tixschema::decode_with_foundation!();
 
 #[tixschema::model_schema(enable = ["decode_with"])]

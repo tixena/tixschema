@@ -1,6 +1,7 @@
 //! Types of two crates apart from this one, held and read here: `stored_customers` declares a
-//! stored `Customer` this crate's `Invoice` holds, and `invoice_lookups` lists neither `bson` nor
-//! `mongodb` in its manifest. Each crate writes its own support libraries.
+//! stored `Customer` this crate's `Invoice` holds, and `invoice_lookups`, whose manifest lists no
+//! `mongodb`, declares types that are never stored, one of which a stored type here holds. Each
+//! crate writes its own support libraries.
 
 #![cfg(feature = "bson")]
 
