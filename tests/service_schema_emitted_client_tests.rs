@@ -177,6 +177,27 @@ mod run_dart_preprocess;
 #[path = "service_schema_emitted_client_tests/run_kotlin_preprocess.rs"]
 mod run_kotlin_preprocess;
 
+/// The models a key under `#[serde(default)]` is written on, and what a serde read prints for
+/// each payload of the table every surface is held to.
+#[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
+#[path = "serde_default_tests/models.rs"]
+mod serde_default_models;
+
+/// A key under `#[serde(default)]` the payload leaves out, read by the emitted Dart types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_serde_default.rs"]
+mod run_dart_serde_default;
+
+/// A key under `#[serde(default)]` the payload leaves out, read by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_serde_default.rs"]
+mod run_swift_serde_default;
+
+/// A key under `#[serde(default)]` the payload leaves out, read by the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_serde_default.rs"]
+mod run_kotlin_serde_default;
+
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
 #[cfg(all(test, feature = "dart"))]

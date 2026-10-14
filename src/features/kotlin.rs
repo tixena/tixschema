@@ -31,6 +31,7 @@ use syn::{
 use self::preprocess::Plugin;
 use self::validate::{Member, Rules};
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
+use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{brand_field, parse_serde_key_omission, struct_tag};
 use crate::field_type::{
     FieldDef, FieldDefType, VariantKind, classify_variant, get_field_def, is_plain_enum,
@@ -103,6 +104,8 @@ pub struct KotlinArgs<'args> {
 /// Kotlin property spelling by [`kotlin_property_name`]), its wire name, whether it is a
 /// `#[serde(flatten)]` source, and the [`FieldDef`] describing its type.
 struct KotlinField {
+    /// Where the JSON of the default serde reads for an absent key is written.
+    default_at: Option<String>,
     field_def: FieldDef,
     flatten: bool,
     rust_name: String,
@@ -406,6 +409,7 @@ fn collect_kotlin_fields(
     rule: RenameRule,
     type_parameters: &[String],
     args: &KotlinArgs<'_>,
+    defaults: &SerdeDefaults,
 ) -> Vec<KotlinField> {
     let Fields::Named(named) = fields else {
         return Vec::new();
@@ -427,6 +431,7 @@ fn collect_kotlin_fields(
             field_def.nullable_levels.push(field_def.array_depth);
         }
         collected.push(KotlinField {
+            default_at: defaults.at(&rust_name),
             field_def,
             flatten: field_is_flatten(&field.attrs),
             rust_name,
@@ -737,10 +742,15 @@ fn kotlin_module_ident(rust_ident: &str, span: proc_macro2::Span) -> Ident {
 /// `impl {ident}`, since a Rust type alias resolves to its target under the orphan/coherence rules.
 /// The one choke point every dispatch path returns through, so it also drains [`KOTLIN_TUPLE_AUX`]
 /// ahead of the source, and after it the serializers its preprocessed members are read through.
+///
+/// Where a member is read as a default, the module also declares what is handed the JSON of the
+/// defaults, which `kotlin_definition()` writes in place of each placeholder, between the quotes
+/// of a Kotlin string.
 fn kotlin_module_tokens(
     rust_ident: &str,
     span: proc_macro2::Span,
     kotlin_source: &str,
+    defaults: &SerdeDefaults,
 ) -> TokenStream {
     let full_source = KOTLIN_TUPLE_AUX
         .with(RefCell::take)
@@ -750,12 +760,35 @@ fn kotlin_module_tokens(
         .collect::<Vec<_>>()
         .join(" ");
     let module_ident = kotlin_module_ident(rust_ident, span);
+    let holder = defaults.holder();
+    if holder.is_empty() {
+        return quote! {
+            pub mod #module_ident {
+                pub fn kotlin_definition() -> ::std::string::String {
+                    #full_source.to_owned()
+                }
+            }
+        };
+    }
+    let written = proc_macro2::Ident::new("written", proc_macro2::Span::call_site());
+    let replaced = substituted(
+        &quote! { SerdeDefaults },
+        &written,
+        &[('\\', "\\\\"), ('"', "\\\""), ('$', "\\$")],
+    );
+    let values = defaults.values_impl(&module_ident);
     quote! {
         pub mod #module_ident {
+            #holder
+
             pub fn kotlin_definition() -> ::std::string::String {
-                #full_source.to_owned()
+                let mut #written = ::std::string::String::from(#full_source);
+                #replaced
+                #written
             }
         }
+
+        #values
     }
 }
 
@@ -914,11 +947,22 @@ fn property_declaration(field: &KotlinField, plugin: Option<&Plugin<'_>>) -> Str
         || (String::new(), kotlin_typename(&field.field_def)),
         |reader| reader.declared(&field.rust_name, &field.field_def),
     );
-    let default = if field.field_def.is_optional() && !is_nullable_flag(&field.field_def) {
-        " = null"
-    } else {
-        ""
-    };
+    let default = field.default_at.as_ref().map_or_else(
+        || {
+            if field.field_def.is_optional() && !is_nullable_flag(&field.field_def) {
+                " = null".to_owned()
+            } else {
+                String::new()
+            }
+        },
+        // The plugin calls this for an absent key: the default, read as a payload is.
+        |at| {
+            format!(
+                " = Json.decodeFromString({}, \"{at}\")",
+                read::member_serializer(&field.field_def, &[])
+            )
+        },
+    );
     format!("{annotation}{unjudged}val {prop_name}: {ty}{default}")
 }
 
@@ -952,6 +996,13 @@ fn own_field_plan(field: &KotlinField, prop: &str, type_parameters: &[String]) -
     let decode_expr = if field.field_def.is_optional() {
         format!(
             "obj[\"{}\"]?.let {{ input.json.decodeFromJsonElement({field_serializer}, {}) }}",
+            field.wire_name,
+            preprocess::corrected(functions, "it")
+        )
+    } else if let Some(at) = &field.default_at {
+        format!(
+            "obj[\"{}\"]?.let {{ input.json.decodeFromJsonElement({field_serializer}, {}) }} \
+             ?: input.json.decodeFromString({field_serializer}, \"{at}\")",
             field.wire_name,
             preprocess::corrected(functions, "it")
         )
@@ -1184,7 +1235,9 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
     validate::note_model(&rust_ident);
 
     let rule = container_rename_rule(&item_struct.attrs);
-    let fields = collect_kotlin_fields(&item_struct.fields, rule, &type_parameters, args);
+    let defaults = SerdeDefaults::of(item_struct);
+    let fields =
+        collect_kotlin_fields(&item_struct.fields, rule, &type_parameters, args, &defaults);
     let generic_params = kotlin_generic_params(&item_struct.generics);
     let alias = ident_typealias(&rust_ident, &export_name, &generic_params);
     let flattened = fields.iter().any(|field| field.flatten);
@@ -1249,7 +1302,12 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
         )
     };
 
-    kotlin_module_tokens(&rust_ident, item_struct.ident.span(), &kotlin_source)
+    kotlin_module_tokens(
+        &rust_ident,
+        item_struct.ident.span(),
+        &kotlin_source,
+        &defaults,
+    )
 }
 
 /// The type a brand that holds one of its own parameters bare declares for it, as the bounds of
@@ -1323,7 +1381,12 @@ fn value_class_tokens(
         read::judged(&export_name, &generic_params, &type_parameters, false)
     );
 
-    kotlin_module_tokens(&rust_ident, item_struct.ident.span(), &kotlin_source)
+    kotlin_module_tokens(
+        &rust_ident,
+        item_struct.ident.span(),
+        &kotlin_source,
+        &SerdeDefaults::none(),
+    )
 }
 
 /// The Kotlin tokens for a non-branded tuple struct: a `data class` over one property per slot,
@@ -1404,7 +1467,12 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
         read::judged(&export_name, &generic_params, &type_parameters, true)
     );
 
-    kotlin_module_tokens(&rust_ident, item_struct.ident.span(), &kotlin_source)
+    kotlin_module_tokens(
+        &rust_ident,
+        item_struct.ident.span(),
+        &kotlin_source,
+        &SerdeDefaults::none(),
+    )
 }
 
 /// The Kotlin tokens a `type X = ...;` alias earns: a `typealias` pointing at the target's own
@@ -1424,7 +1492,12 @@ fn alias_kotlin_tokens(item_type: &ItemType, name_override: Option<&str>) -> Tok
     let alias = ident_typealias(&rust_ident, &export_name, &generic_params);
     let kotlin_source = format!("typealias {export_name}{generic_params} = {target_type};{alias}");
 
-    kotlin_module_tokens(&rust_ident, item_type.ident.span(), &kotlin_source)
+    kotlin_module_tokens(
+        &rust_ident,
+        item_type.ident.span(),
+        &kotlin_source,
+        &SerdeDefaults::none(),
+    )
 }
 
 /// The Kotlin tokens an enum earns: an `enum class` for an all-unit, untagged-by-default
@@ -1449,7 +1522,12 @@ fn enum_kotlin_tokens(item_enum: &ItemEnum, args: &KotlinArgs<'_>) -> TokenStrea
             dispatched_tagged_enum_kotlin_source(item_enum, &export_name, &tag_attrs, args)
         }
     };
-    kotlin_module_tokens(&rust_ident, item_enum.ident.span(), &kotlin_source)
+    kotlin_module_tokens(
+        &rust_ident,
+        item_enum.ident.span(),
+        &kotlin_source,
+        &SerdeDefaults::none(),
+    )
 }
 
 /// The body of a variant's own subclass: what [`variant_rules`] writes for it.
@@ -1513,6 +1591,7 @@ fn variant_payload(
             field_rule,
             type_parameters,
             args,
+            &SerdeDefaults::none(),
         )),
         VariantKind::TupleSingle => {
             let slot = variant.fields.iter().next();
@@ -1545,6 +1624,8 @@ fn variant_payload(
                 name: "value".to_owned(),
                 nullable_levels: Vec::new(),
                 omits_value: false,
+                #[cfg(any(feature = "zod", feature = "jsonschema"))]
+                serde_default: None,
                 #[cfg(feature = "jsonschema")]
                 type_span: proc_macro2::Span::call_site(),
             }))

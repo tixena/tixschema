@@ -25,6 +25,8 @@ fn field(field_type: FieldDefType) -> FieldDef {
         name: "items".to_owned(),
         absent_from_wire: false,
         omits_value: false,
+        #[cfg(any(feature = "zod", feature = "jsonschema"))]
+        serde_default: None,
         #[cfg(feature = "jsonschema")]
         type_span: proc_macro2::Span::call_site(),
     }

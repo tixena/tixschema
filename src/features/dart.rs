@@ -11,6 +11,7 @@ use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 
 use crate::bound_message::{Bound, dart_violation};
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
+use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{brand_field, parse_serde_key_omission, struct_tag};
 use crate::field_type::{
     FieldDef, FieldDefType, VariantKind, classify_variant, dart_from_json_argument,
@@ -94,6 +95,8 @@ const VALIDATE_DECLARED: &str = "List<String> validate();";
 /// the key always reaches the wire, whether it is a `#[serde(flatten)]` source, and the `FieldDef`
 /// describing its type.
 struct DartField {
+    /// Where the JSON of the default serde reads for an absent key is written.
+    default_at: Option<String>,
     field_def: FieldDef,
     flatten: bool,
     member: String,
@@ -464,14 +467,46 @@ fn register_dart_name(rust_ident: &str, export_name: &str) {
 /// The module `{ident}_dart` publishes `dart_definition()` from, never an inherent `impl {ident}`:
 /// an alias's `impl` is its target's, which collides with the target's own or is refused for a
 /// foreign or primitive type.
-fn dart_module_tokens(rust_ident: &str, span: proc_macro2::Span, dart_source: &str) -> TokenStream {
+///
+/// Where a member is read as a default, the module also declares what is handed the JSON of the
+/// defaults, which `dart_definition()` writes in place of each placeholder, between the quotes of
+/// a Dart string.
+fn dart_module_tokens(
+    rust_ident: &str,
+    span: proc_macro2::Span,
+    dart_source: &str,
+    defaults: &SerdeDefaults,
+) -> TokenStream {
     let module_ident = dart_module_ident(rust_ident, span);
+    let holder = defaults.holder();
+    if holder.is_empty() {
+        return quote! {
+            pub mod #module_ident {
+                pub fn dart_definition() -> ::std::string::String {
+                    #dart_source.to_owned()
+                }
+            }
+        };
+    }
+    let written = Ident::new("written", proc_macro2::Span::call_site());
+    let replaced = substituted(
+        &quote! { SerdeDefaults },
+        &written,
+        &[('\\', "\\\\"), ('\'', "\\'"), ('$', "\\$")],
+    );
+    let values = defaults.values_impl(&module_ident);
     quote! {
         pub mod #module_ident {
+            #holder
+
             pub fn dart_definition() -> ::std::string::String {
-                #dart_source.to_owned()
+                let mut #written = ::std::string::String::from(#dart_source);
+                #replaced
+                #written
             }
         }
+
+        #values
     }
 }
 
@@ -633,6 +668,7 @@ fn collect_dart_fields(
     rule: RenameRule,
     type_parameters: &[String],
     args: &DartTypeArgs<'_>,
+    defaults: &SerdeDefaults,
 ) -> Vec<DartField> {
     let Fields::Named(named) = fields else {
         return Vec::new();
@@ -661,6 +697,7 @@ fn collect_dart_fields(
             field_def.nullable_levels.push(field_def.array_depth);
         }
         collected.push(DartField {
+            default_at: defaults.at(&rust_name),
             required: !omission.omits_key,
             flatten: field_is_flatten(&field.attrs),
             field_def,
@@ -1960,12 +1997,23 @@ fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>
                 Read::Unjudged,
             )
         } else {
-            member_decode(
+            let read = Read::Unjudged.of_member(&field.field_def);
+            let held = format!("{json}.containsKey('{}')", field.wire_name);
+            let present = member_decode(
                 &field.field_def,
                 &format!("{json}['{}']", field.wire_name),
-                Some(&format!("{json}.containsKey('{}')", field.wire_name)),
-                Read::Unjudged.of_member(&field.field_def),
-            )
+                Some(&held),
+                read,
+            );
+            // The default is read as a payload is, and no function is called for it.
+            match &field.default_at {
+                Some(at) => {
+                    let absent =
+                        dart_decode_expr(&field.field_def, &format!("jsonDecode('{at}')"), read);
+                    format!("{held} ? ({present}) : ({absent})")
+                }
+                None => present,
+            }
         };
         write!(acc, "{}: {decode},", field.member).unwrap();
         acc
@@ -2120,7 +2168,8 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
     );
 
     let rule = container_rename_rule(&item_struct.attrs);
-    let fields = collect_dart_fields(&item_struct.fields, rule, &type_parameters, args);
+    let defaults = SerdeDefaults::of(item_struct);
+    let fields = collect_dart_fields(&item_struct.fields, rule, &type_parameters, args, &defaults);
     let generic_params = dart_generic_params(&item_struct.generics);
     let codec = generic_codec(&type_parameters);
     // A struct's own tag is written ahead of its fields and read past, as serde does both.
@@ -2144,7 +2193,12 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
     let typedef = ident_typedef(&rust_ident, &export_name, &generic_params);
     let dart_source = format!("{body}{typedef}");
 
-    dart_module_tokens(&rust_ident, item_struct.ident.span(), &dart_source)
+    dart_module_tokens(
+        &rust_ident,
+        item_struct.ident.span(),
+        &dart_source,
+        &defaults,
+    )
 }
 
 /// The `FieldDef` of the field a brand is the value of, its type parameters already erased.
@@ -2197,7 +2251,12 @@ fn value_wrapper_tokens(
     let typedef = ident_typedef(&rust_ident, &export_name, &generic_params);
     let dart_source = format!("{body}{typedef}");
 
-    dart_module_tokens(&rust_ident, ident.span(), &dart_source)
+    dart_module_tokens(
+        &rust_ident,
+        ident.span(),
+        &dart_source,
+        &SerdeDefaults::none(),
+    )
 }
 
 /// The Dart tokens for a non-branded tuple struct: the single-slot ("bare value") shape shares
@@ -2236,6 +2295,8 @@ fn tuple_struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -
         name: "value".to_owned(),
         nullable_levels: Vec::new(),
         omits_value: false,
+        #[cfg(any(feature = "zod", feature = "jsonschema"))]
+        serde_default: None,
         #[cfg(feature = "jsonschema")]
         type_span: proc_macro2::Span::call_site(),
     };
@@ -2295,7 +2356,12 @@ fn enum_dart_tokens(item_enum: &ItemEnum, args: &DartTypeArgs<'_>) -> TokenStrea
     } else {
         tagged_enum_dart_source(item_enum, &rust_ident, &export_name, &tag_attrs, args)
     };
-    dart_module_tokens(&rust_ident, item_enum.ident.span(), &dart_source)
+    dart_module_tokens(
+        &rust_ident,
+        item_enum.ident.span(),
+        &dart_source,
+        &SerdeDefaults::none(),
+    )
 }
 
 /// One tagged/untagged variant's payload — see [`VariantPayload`]. A `TupleMultiple` payload is
@@ -2314,6 +2380,7 @@ fn variant_payload(
             field_rule,
             type_parameters,
             args,
+            &SerdeDefaults::none(),
         )),
         VariantKind::TupleSingle => {
             let slot = variant.fields.iter().next();
@@ -2346,6 +2413,8 @@ fn variant_payload(
                 name: "value".to_owned(),
                 nullable_levels: Vec::new(),
                 omits_value: false,
+                #[cfg(any(feature = "zod", feature = "jsonschema"))]
+                serde_default: None,
                 #[cfg(feature = "jsonschema")]
                 type_span: proc_macro2::Span::call_site(),
             }))

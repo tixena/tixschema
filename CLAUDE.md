@@ -323,6 +323,7 @@ unaffected at every position: a stringified key describes as `{"type": "object",
 - `NaiveTime` → `string` (Zod `z.iso.time()` wrapped in an inline preprocessor that also accepts millis-since-start-of-day)
 - `#[serde(flatten)]` field → TypeScript intersection (`A & B`), Zod `.and(...)`. A source writing more than one key set — a registered choice, or one reached through an `Option` — multiplies instead: `zod_merged_joins` builds one `.and(...)` chain per key set, `zod_merged_statements` binds the object to `{Type}$OwnSchema` and joins the copies where the object is a struct's own published binding, and `zod_merged_object` writes the object out once per copy where it is an enum variant's fragment of a larger literal. Either way the item contributes exactly one member to whatever union encloses it
 - `#[serde(untagged)]` enum → TypeScript union (`A | B`), Zod `z.union([...])`, JSON Schema `anyOf`
+- A member of a struct under `#[serde(default)]` → the TypeScript member unchanged, Zod `T.prefault(<json>)`, JSON Schema `"default": <json>` with the key left out of `required`, and each client reading the JSON of the default where the key is left out (section 13)
 - Type parameter → TypeScript parameter (`X<IdType>`), Zod `X$SchemaFactory(idType)` (memoized, one cache level per parameter) plus `X$SchemaDefault` — that same factory called at the item's own declared `default_types`, checks included — JSON Schema the document of whatever fills it — `default_types(...)` where the type stands alone, the reference site's arguments where a field embeds it. A lifetime is dropped on every surface, a borrowed value writing what its owned form writes; a const renders as an array length only, and is refused where it is handed to a written type as an argument
 
 ### 5. Zod v4 Requirements
@@ -1532,7 +1533,9 @@ to keep.
   `_ = try container.decodeNil(forKey:)` ahead of the read of a held type. `Nil` is an optional
   member's: `contains`, then `decodeNil`. `decode_statement` is told whether Swift synthesized the
   read before one was written (`synthesized`): a synthesized read took the absent key of every
-  optional member as `nil`, a `nullable` one included, and a written one refused that key.
+  optional member as `nil`, a `nullable` one included, and a written one refused that key. A
+  member under `#[serde(default)]` is read as its default where `contains` answers no key
+  (section 13).
 - **Every struct writes its memberwise initializer**, public, the struct written for a tuple
   included: Swift synthesizes none beside a written `init(from:)`.
 - **`encode(to:)` does not move.** `struct_body_content` writes it where it wrote it before
@@ -1634,6 +1637,57 @@ change to the emitter has to keep.
   with `-warnings-as-errors` and holds what they read to `SAMPLE` and `POSITIONS` of
   `tests/pattern_preprocess_tests/models.rs`, the table the Rust read and the Zod schemas are
   held to, to the Rust read of each payload of its own models, and each client to its reply.
+
+### 13. A Key Read as Its Default
+
+A key under `#[serde(default)]`, written on the field, with a function, or on the struct, that the
+payload leaves out is read as its default on every surface. The value of a default is known to
+Rust alone, so each function that answers a text writes it with serde when it builds the text.
+`README.md`'s "A Key Read as Its Default" section is the consumer's view; this is what a change
+has to keep.
+
+- **One seam.** `SerdeDefaults::of` in `src/features/serde/defaults.rs` answers, for a struct
+  with named fields, which members serde reads as a default, in the order of the fields, and the
+  tokens that build the JSON of each: `<T as Default>::default()`, the function `default = "…"`
+  names, or the member of the struct's own default, written through the field's
+  `serialize_with`, its `with` or the hook `as_number` hangs on it. It reads the attributes serde's
+  derive reads, so it answers the same before `process_struct` walks the fields and after.
+- **What has no JSON**, and keeps its key required on every surface but Rust: a struct that does
+  not derive both `Serialize` and `Deserialize`, or names `from`, `try_from`, `into` or `remote`;
+  a `transparent` struct; a member under `skip`, `skip_serializing`, `skip_serializing_if` or
+  `skip_deserializing`; a flattened member; an `Option`, which keeps what it had; a type that
+  names a parameter of the struct, a lifetime or `Self`; the struct's own default on a struct
+  that declares a parameter; and a member of an enum's variant.
+- **The value is built where the struct is declared.** Each module that answers a text declares
+  `SerdeDefaults` (`SerdeDefaults::holder`), and `values_impl` writes
+  `impl {module}::SerdeDefaults { pub fn literals() }` beside the struct, where every name its
+  author wrote resolves, inside a function body too: no path from the module reaches a struct
+  declared in one, and an `impl` written beside the struct reaches the module.
+- **The text holds a placeholder** (`placeholder`), which `substituted` replaces with the JSON
+  when the function that answers the text runs, escaped for the literal it sits in: a Dart
+  `'…'`, a Swift or Kotlin `"…"`. Zod writes the JSON as an expression, and the JSON Schema puts
+  the value itself into the member's object.
+- **Each surface.** Zod: `FieldDef::serde_default`, which `zod_type` writes as
+  `.prefault(<json>)` around the whole member schema, and `generate_zod_schema_method`, whose
+  `zod_schema()` replaces the placeholder. JSON Schema: `build_field_schema`, `key_is_required`.
+  TypeScript writes nothing new. Dart: `DartField::default_at`, `constructor_arguments`. Swift:
+  `SwiftField::default_at`, `decode_statement` and `default_statement`, with
+  `preprocess::defaulted` reading the JSON through `SwiftSchemaPayload` with the read the member
+  has. Kotlin: `KotlinField::default_at`, `property_declaration`, which writes
+  `= Json.decodeFromString(<member_serializer>, "…")`, and `own_field_plan` for a struct with a
+  flattened member. A default is read with the member's own read, unjudged where `validate()`
+  walks it, so `validate()` judges it as it judges a payload.
+- **A type with no default is emitted token for token as before**: each module keeps
+  `#source.to_owned()`, and no `SerdeDefaults` is declared.
+- **No function a `preprocess` names is called for a default**, but by Zod, where `.prefault`
+  hands the default to the whole member schema.
+- **The tests.** `tests/serde_default_tests/` holds the models, the table every surface is held
+  to (`CASES`, `REPORT`), a member that names a `preprocess` (`PREPROCESSED`), the JSON Schema, the
+  Zod text, the README's section, and the text of a type with no default on every surface, which
+  the emitter before defaults were read writes too; `tests/generic_types_tests/declarations.rs`
+  compiles the Zod schemas with `tsc --strict` and parses both tables under node;
+  `run_dart_serde_default.rs`, `run_swift_serde_default.rs` and `run_kotlin_serde_default.rs` run
+  both tables under each client's toolchain.
 
 ### Generic Types and Zod Factories
 
@@ -2482,6 +2536,7 @@ tixschema/
 │   │   ├── mod.rs                # Feature detection
 │   │   ├── serde.rs              # Serde attribute parsing
 │   │   ├── serde/
+│   │   │   ├── defaults.rs       # The members read as their default, and the JSON of each default
 │   │   │   └── read_bounds.rs    # The bounds serde's derive writes on a Deserialize impl
 │   │   ├── zod.rs                # Zod schema generation
 │   │   ├── jsonschema.rs         # JSON schema generation
@@ -2511,6 +2566,8 @@ tixschema/
 │   ├── check_tests/                      # The models, the shared table, the members, the README
 │   ├── preprocess_and_check_tests.rs     # The README's section that states the two keys for the five languages
 │   ├── preprocess_and_check_tests/       # The parcel the section declares, and the section held to the test of each language
+│   ├── serde_default_tests.rs            # A key under #[serde(default)]: the serde read, the text of every surface
+│   ├── serde_default_tests/              # The models and the table every surface is held to
 │   ├── collection_tests.rs
 │   ├── enum_tests.rs
 │   ├── serde_tests.rs

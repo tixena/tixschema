@@ -15,6 +15,7 @@ use syn::ext::IdentExt as _;
 use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
+use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{brand_field, parse_serde_key_omission, struct_tag};
 use crate::field_type::{
     FieldDef, FieldDefType, VariantKind, classify_variant, get_field_def, is_plain_enum,
@@ -90,6 +91,8 @@ const SWIFT_RESERVED: [&str; 51] = [
 /// reaches the wire, whether it is a `#[serde(flatten)]` source, and the shape that drives its
 /// decode/encode statements.
 struct SwiftField {
+    /// Where the JSON of the default serde reads for an absent key is written.
+    default_at: Option<String>,
     field_def: FieldDef,
     flatten: bool,
     /// What the types written for the field are named from.
@@ -307,18 +310,46 @@ fn register_swift_name(rust_ident: &str, export_name: &str) {
 /// The module `{ident}_swift` publishes `swift_definition()` from — never a direct inherent
 /// `impl {ident}`, for the same reason `dart::dart_module_tokens` gives: a Rust type alias is not
 /// a new type, and a module name is never collapsed through one the way an impl target is.
+///
+/// Where a member is read as a default, the module also declares what is handed the JSON of the
+/// defaults, which `swift_definition()` writes in place of each placeholder, between the quotes of
+/// a Swift string.
 fn swift_module_tokens(
     rust_ident: &str,
     span: proc_macro2::Span,
     swift_source: &str,
+    defaults: &SerdeDefaults,
 ) -> TokenStream {
     let module_ident = swift_module_ident(rust_ident, span);
+    let holder = defaults.holder();
+    if holder.is_empty() {
+        return quote! {
+            pub mod #module_ident {
+                pub fn swift_definition() -> ::std::string::String {
+                    #swift_source.to_owned()
+                }
+            }
+        };
+    }
+    let written = Ident::new("written", proc_macro2::Span::call_site());
+    let replaced = substituted(
+        &quote! { SerdeDefaults },
+        &written,
+        &[('\\', "\\\\"), ('"', "\\\"")],
+    );
+    let values = defaults.values_impl(&module_ident);
     quote! {
         pub mod #module_ident {
+            #holder
+
             pub fn swift_definition() -> ::std::string::String {
-                #swift_source.to_owned()
+                let mut #written = ::std::string::String::from(#swift_source);
+                #replaced
+                #written
             }
         }
+
+        #values
     }
 }
 
@@ -1081,14 +1112,35 @@ fn decode_statement(
             },
         }
     };
+    let present = present_statement(field, &source, absent_is_nil, container, locals, twins);
+    match &field.default_at {
+        Some(at) => format!(
+            "if {container}.contains(.{name}) {{ {present} }} else {{ {} }}",
+            default_statement(field, at, container, twins),
+            name = field.swift_name,
+        ),
+        None => present,
+    }
+}
+
+/// The statements that read `field` from `source`, where the payload holds its key or it has no
+/// default.
+fn present_statement(
+    field: &SwiftField,
+    source: &read::Source,
+    absent_is_nil: bool,
+    container: &str,
+    locals: &mut read::Locals,
+    twins: &mut Vec<String>,
+) -> String {
     let member = |held: &str| format!("self.{} = {held}", field.swift_name);
     let walked = validate::walks(&field.field_def, false);
     let functions = preprocess::functions(&field.field_def);
     if !functions.is_empty() {
-        return corrected_field(field, functions, walked, &source, twins);
+        return corrected_field(field, functions, walked, source, twins);
     }
     if walked || (field.flatten && preprocess::beside(&field.field_def)) {
-        return read::unjudged(&field.field_def, &field.hint, &source, &member, locals);
+        return read::unjudged(&field.field_def, &field.hint, source, &member, locals);
     }
     if field.flatten {
         return format!(
@@ -1098,6 +1150,43 @@ fn decode_statement(
         );
     }
     keyed_read(field, container, absent_is_nil)
+}
+
+/// The statements that read `field` from the JSON of its default, written at `at`: as it is read
+/// from a payload under its key, with no function called for it.
+fn default_statement(
+    field: &SwiftField,
+    at: &str,
+    container: &str,
+    twins: &mut Vec<String>,
+) -> String {
+    let wire = swift_wire_array_type(&field.field_def, &field.shape);
+    let convert = |local: &str| converted(field, local);
+    let plain = if matches!(field.shape.leaf_conversion, LeafConversion::None) {
+        preprocess::Plain::Declared
+    } else {
+        preprocess::Plain::Wire {
+            convert: &convert,
+            wire: &wire,
+        }
+    };
+    let stem = format!("{}Default", swift_bare(&field.swift_name));
+    preprocess::defaulted(
+        &preprocess::Member {
+            def: &field.field_def,
+            functions: &[],
+            hint: &field.hint,
+            keys: "CodingKeys",
+            plain,
+            real_type: &field.real_type,
+            stem: &stem,
+            walked: validate::walks(&field.field_def, false),
+        },
+        at,
+        &format!("{container}.codingPath + [CodingKeys.{}]", field.swift_name),
+        &|held| format!("self.{} = {held}", field.swift_name),
+        twins,
+    )
 }
 
 /// The statements that read from `source` a field that names `functions`, from what they answer:
@@ -1317,6 +1406,7 @@ fn collect_swift_fields(
     name_hint: &str,
     args: &SwiftTypeArgs<'_>,
     aux: &mut Vec<String>,
+    defaults: &SerdeDefaults,
 ) -> Vec<SwiftField> {
     let Fields::Named(named) = fields else {
         return Vec::new();
@@ -1341,6 +1431,7 @@ fn collect_swift_fields(
         let field_hint = format!("{name_hint}{}", swift_upper_camel(&swift_name));
         let (real_type, shape) = swift_resolve(&field_def, &field_hint, aux);
         collected.push(SwiftField {
+            default_at: defaults.at(&rust_name),
             field_def,
             flatten: field_is_flatten(&field.attrs),
             hint: field_hint,
@@ -1584,6 +1675,7 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
     let rule = container_rename_rule(&item_struct.attrs);
     let generic_params = swift_generic_params(&item_struct.generics);
     let mut aux = Vec::new();
+    let defaults = SerdeDefaults::of(item_struct);
     let fields = collect_swift_fields(
         &item_struct.fields,
         rule,
@@ -1591,6 +1683,7 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
         &export_name,
         args,
         &mut aux,
+        &defaults,
     );
     let own_tag = struct_tag(item_struct);
     let mut rules = field_rules(&export_name, &fields);
@@ -1612,7 +1705,12 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
         format!("{} {body}{typealias}", aux.join(" "))
     };
 
-    swift_module_tokens(&rust_ident, item_struct.ident.span(), &swift_source)
+    swift_module_tokens(
+        &rust_ident,
+        item_struct.ident.span(),
+        &swift_source,
+        &defaults,
+    )
 }
 
 /// The `FieldDef` of the field a brand is the value of, its type parameters already erased.
@@ -1696,6 +1794,7 @@ fn value_wrapper_tokens(
     let helpers = datetime_helpers_for(
         &export_name,
         &[SwiftField {
+            default_at: None,
             field_def: value_field.clone(),
             flatten: false,
             hint: export_name.clone(),
@@ -1730,7 +1829,12 @@ fn value_wrapper_tokens(
         format!("{} {body}{typealias}", aux.join(" "))
     };
 
-    swift_module_tokens(&rust_ident, ident.span(), &swift_source)
+    swift_module_tokens(
+        &rust_ident,
+        ident.span(),
+        &swift_source,
+        &SerdeDefaults::none(),
+    )
 }
 
 /// The statements of the own read of a struct of one `value`: a tuple struct reads its tuple
@@ -1788,6 +1892,8 @@ fn tuple_struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>)
         name: "value".to_owned(),
         nullable_levels: Vec::new(),
         omits_value: false,
+        #[cfg(any(feature = "zod", feature = "jsonschema"))]
+        serde_default: None,
         #[cfg(feature = "jsonschema")]
         type_span: proc_macro2::Span::call_site(),
     };
@@ -1831,7 +1937,12 @@ fn alias_swift_tokens(item_type: &ItemType, name_override: Option<&str>) -> Toke
     } else {
         format!("{} {body}{typealias}", aux.join(" "))
     };
-    swift_module_tokens(&rust_ident, item_type.ident.span(), &swift_source)
+    swift_module_tokens(
+        &rust_ident,
+        item_type.ident.span(),
+        &swift_source,
+        &SerdeDefaults::none(),
+    )
 }
 
 /// One variant's own payload, resolved to at most one associated value: none for a `Unit`
@@ -1878,6 +1989,7 @@ fn named_payload(
         &struct_name,
         shape.args,
         aux,
+        &SerdeDefaults::none(),
     );
     let members = field_rules(&struct_name, &fields);
     let declared = struct_declaration(&struct_name, "", &fields, None, &members, &[]);
@@ -1994,6 +2106,8 @@ fn slots_payload(
         name: "value".to_owned(),
         nullable_levels: Vec::new(),
         omits_value: false,
+        #[cfg(any(feature = "zod", feature = "jsonschema"))]
+        serde_default: None,
         #[cfg(feature = "jsonschema")]
         type_span: proc_macro2::Span::call_site(),
     };
@@ -2522,5 +2636,10 @@ fn enum_swift_tokens(item_enum: &ItemEnum, args: &SwiftTypeArgs<'_>) -> TokenStr
     } else {
         format!("{} {swift_source}", aux.join(" "))
     };
-    swift_module_tokens(&rust_ident, item_enum.ident.span(), &full_source)
+    swift_module_tokens(
+        &rust_ident,
+        item_enum.ident.span(),
+        &full_source,
+        &SerdeDefaults::none(),
+    )
 }
