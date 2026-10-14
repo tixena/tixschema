@@ -1,0 +1,5 @@
+error: model_schema: type `Berthing`: variant `Docked`, field `dock`: `#[serde(default)]` needs the enum to derive `Serialize`, with no `into` or `remote`, so the default can be written for the other targets.
+  --> tests/serde_default_refusals/deserialize_alone.rs:12:9
+   |
+12 |         dock: String,
+   |         ^^^^

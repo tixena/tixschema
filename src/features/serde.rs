@@ -12,7 +12,8 @@ pub mod read_bounds;
     feature = "jsonschema",
     feature = "dart",
     feature = "swift",
-    feature = "kotlin"
+    feature = "kotlin",
+    all(feature = "serde", feature = "typescript")
 ))]
 pub mod defaults;
 

@@ -162,6 +162,8 @@ struct FlattenPlan {
 /// over variants is the only thing that changes per call.
 struct DispatchedTaggedContext<'ctx> {
     args: &'ctx KotlinArgs<'ctx>,
+    /// The defaults of the members of the enum's variants.
+    defaults: &'ctx SerdeDefaults,
     export_name: &'ctx str,
     field_rule: RenameRule,
     generic_params: &'ctx str,
@@ -412,7 +414,7 @@ fn collect_kotlin_fields(
     rule: RenameRule,
     type_parameters: &[String],
     args: &KotlinArgs<'_>,
-    defaults: &SerdeDefaults,
+    default_at: &dyn Fn(&str) -> Option<String>,
 ) -> Vec<KotlinField> {
     let Fields::Named(named) = fields else {
         return Vec::new();
@@ -433,11 +435,11 @@ fn collect_kotlin_fields(
         if omission.omits_key && !field_def.is_optional() {
             field_def.nullable_levels.push(field_def.array_depth);
         }
-        let default_at = defaults.at(&rust_name);
+        let defaulted = default_at(&rust_name);
         collected.push(KotlinField {
-            empty_default: default_at.is_some()
+            empty_default: defaulted.is_some()
                 && field_reaches_type_parameter(&field_def, type_parameters),
-            default_at,
+            default_at: defaulted,
             field_def,
             flatten: field_is_flatten(&field.attrs),
             rust_name,
@@ -1255,7 +1257,9 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
     let rule = container_rename_rule(&item_struct.attrs);
     let defaults = SerdeDefaults::of(item_struct);
     let fields =
-        collect_kotlin_fields(&item_struct.fields, rule, &type_parameters, args, &defaults);
+        collect_kotlin_fields(&item_struct.fields, rule, &type_parameters, args, &|field| {
+            defaults.at(None, field)
+        });
     let generic_params = kotlin_generic_params(&item_struct.generics);
     let alias = ident_typealias(&rust_ident, &export_name, &generic_params);
     let flattened = fields.iter().any(|field| field.flatten);
@@ -1528,6 +1532,7 @@ fn enum_kotlin_tokens(item_enum: &ItemEnum, args: &KotlinArgs<'_>) -> TokenStrea
     let tag_attrs = enum_tag_attrs(&item_enum.attrs);
     let writes_bare_variant_names =
         tag_attrs.tag.is_none() && tag_attrs.content.is_none() && !tag_attrs.untagged;
+    let defaults = SerdeDefaults::of_enum(item_enum);
     let kotlin_source = if is_plain_enum(item_enum) && writes_bare_variant_names {
         validate::note_plain_enum(&rust_ident);
         plain_enum_kotlin_source(item_enum, &export_name, args)
@@ -1535,16 +1540,22 @@ fn enum_kotlin_tokens(item_enum: &ItemEnum, args: &KotlinArgs<'_>) -> TokenStrea
         validate::note_model(&rust_ident);
         preprocess::note(&rust_ident, !args.preprocess.is_empty());
         if tag_attrs.untagged {
-            untagged_enum_kotlin_source(item_enum, &export_name, &tag_attrs, args)
+            untagged_enum_kotlin_source(item_enum, &export_name, &tag_attrs, args, &defaults)
         } else {
-            dispatched_tagged_enum_kotlin_source(item_enum, &export_name, &tag_attrs, args)
+            dispatched_tagged_enum_kotlin_source(
+                item_enum,
+                &export_name,
+                &tag_attrs,
+                args,
+                &defaults,
+            )
         }
     };
     kotlin_module_tokens(
         &rust_ident,
         item_enum.ident.span(),
         &kotlin_source,
-        &SerdeDefaults::none(),
+        &defaults,
     )
 }
 
@@ -1595,13 +1606,15 @@ fn variant_rules(
 
 /// One tagged/untagged variant's payload — see [`VariantPayload`]. A `TupleMultiple` payload is
 /// folded into one `Tuple` [`FieldDef`], matching how a slot list renders everywhere else in this
-/// module.
+/// module. A member is read as the default `defaults` holds for it in this variant.
 fn variant_payload(
     variant: &Variant,
     field_rule: RenameRule,
     type_parameters: &[String],
     args: &KotlinArgs<'_>,
+    defaults: &SerdeDefaults,
 ) -> VariantPayload {
+    let variant_name = variant.ident.to_string();
     match classify_variant(variant) {
         VariantKind::Unit => VariantPayload::Unit,
         VariantKind::Named => VariantPayload::Named(collect_kotlin_fields(
@@ -1609,7 +1622,7 @@ fn variant_payload(
             field_rule,
             type_parameters,
             args,
-            &SerdeDefaults::none(),
+            &|field| defaults.at(Some(&variant_name), field),
         )),
         VariantKind::TupleSingle => {
             let slot = variant.fields.iter().next();
@@ -1725,7 +1738,13 @@ fn dispatched_tagged_variant(
     let wire_tag = rename_override(&variant.attrs)
         .unwrap_or_else(|| ctx.variant_rule.apply_to_variant(&variant_rust_name));
     let subclass_name = format!("{}{variant_rust_name}", ctx.export_name);
-    let payload = variant_payload(variant, ctx.field_rule, ctx.type_parameters, ctx.args);
+    let payload = variant_payload(
+        variant,
+        ctx.field_rule,
+        ctx.type_parameters,
+        ctx.args,
+        ctx.defaults,
+    );
     let beside_the_tag = matches!(ctx.tagging, Tagging::Unwrapped);
     let plugin = Plugin {
         owner: &subclass_name,
@@ -1812,6 +1831,7 @@ fn dispatched_tagged_enum_kotlin_source(
     export_name: &str,
     tag_attrs: &EnumTagAttrs,
     args: &KotlinArgs<'_>,
+    defaults: &SerdeDefaults,
 ) -> String {
     let variant_rule = resolve_rename_rule(tag_attrs.rename_all.as_deref());
     let field_rule = resolve_rename_rule(tag_attrs.rename_all_fields.as_deref());
@@ -1828,6 +1848,7 @@ fn dispatched_tagged_enum_kotlin_source(
 
     let ctx = DispatchedTaggedContext {
         args,
+        defaults,
         export_name,
         field_rule,
         generic_params: &generic_params,
@@ -1910,6 +1931,7 @@ fn untagged_enum_kotlin_source(
     export_name: &str,
     tag_attrs: &EnumTagAttrs,
     args: &KotlinArgs<'_>,
+    defaults: &SerdeDefaults,
 ) -> String {
     let field_rule = resolve_rename_rule(tag_attrs.rename_all_fields.as_deref());
     let type_parameters = type_parameters_in_scope(&item_enum.generics);
@@ -1923,7 +1945,7 @@ fn untagged_enum_kotlin_source(
     for variant in &item_enum.variants {
         let variant_rust_name = variant.ident.to_string();
         let subclass_name = format!("{export_name}{variant_rust_name}");
-        let payload = variant_payload(variant, field_rule, &type_parameters, args);
+        let payload = variant_payload(variant, field_rule, &type_parameters, args, defaults);
         let bare_value = matches!(payload, VariantPayload::Value(_));
         let mut rules = Rules::choosing(&serializable);
         variant_rules(&mut rules, &payload, Tagging::Unwrapped, "", args);

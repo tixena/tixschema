@@ -129,6 +129,18 @@ use crate::features::recovering_decode::{
 use crate::features::serde::SerdeKeyOmission;
 #[cfg(any(feature = "zod", feature = "jsonschema"))]
 use crate::features::serde::defaults::SerdeDefaults;
+#[cfg(all(
+    feature = "serde",
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
+))]
+use crate::features::serde::defaults::default_refusals;
 #[cfg(feature = "zod")]
 use crate::features::serde::defaults::{holds_a_placeholder, substituted};
 
@@ -883,6 +895,23 @@ struct UntaggedVariantMembers {
     validation_fns: Vec<proc_macro2::TokenStream>,
 }
 
+/// Where the default serde reads for the absent key of a member of an enum's variant sits among the
+/// enum's, by variant and member.
+type VariantDefaultAt = dyn Fn(&str, &str) -> Option<usize>;
+
+/// What an untagged enum hands the walk of each of its variants' members.
+#[cfg(feature = "serde")]
+struct UntaggedEnum<'walk> {
+    args: &'walk ModelSchemaArgs,
+    name: &'walk str,
+    rename_all_fields: Option<&'walk str>,
+    schema_module_name: Option<&'walk str>,
+    /// Where the default serde reads for the absent key of a member, by variant and member, sits
+    /// among the enum's.
+    serde_default: &'walk VariantDefaultAt,
+    type_parameters: &'walk [String],
+}
+
 /// The two casing rules an enum's container declares, which reach two different things: `variants`
 /// renames the variant names, `variant_fields` the members inside every struct variant. Bundled
 /// because two loose `Option<&str>` neighbours meaning different things transpose silently.
@@ -1498,10 +1527,12 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     }
     // A list-form serde rename whose two directions name two keys is refused here, at the one seam
     // a container, a variant and a member are all reachable from.
+    // A default of a variant's member that no target but Rust reads as serde does is refused
+    // beside it, every such member of the item at once.
     if let Some(output) = guard_failure_output(
         &item,
         item_schema_ident(&item),
-        &rename_direction_guard_errors(&item),
+        &serde_attribute_guard_errors(&item),
     ) {
         return output;
     }
@@ -2454,8 +2485,9 @@ const fn flattened_name_offers_absence(_fld: &FieldDef) -> bool {
 /// contributes one key set and is joined as the one operand it is.
 #[cfg(all(feature = "serde", feature = "zod"))]
 fn flattened_zod_branches(fld: &FieldDef) -> Vec<String> {
-    // The binding of a type that names a `preprocess` is the one schema that calls it.
-    if fld.zod_names_a_preprocess() {
+    // The binding of a type that names a `preprocess` is the one schema that calls it, and the
+    // one text that replaces the placeholder of a member's default.
+    if fld.zod_read_whole() {
         return Vec::new();
     }
     let members = fld.zod_union_members();
@@ -2472,7 +2504,7 @@ fn flattened_zod_branches(fld: &FieldDef) -> Vec<String> {
 /// an absence there.
 #[cfg(all(feature = "zod", not(feature = "serde")))]
 fn flattened_zod_branches(fld: &FieldDef) -> Vec<String> {
-    if fld.zod_names_a_preprocess() {
+    if fld.zod_read_whole() {
         return Vec::new();
     }
     fld.zod_union_members()
@@ -3252,6 +3284,53 @@ fn rename_direction_guard_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
     )
 )))]
 const fn rename_direction_guard_errors(_item: &Item) -> Vec<proc_macro2::TokenStream> {
+    Vec::new()
+}
+
+/// The `compile_error!` tokens of every serde attribute of `item` no target but Rust reads as serde
+/// does: a list-form rename whose two directions name two keys, and the `default` of a member of a
+/// variant whose JSON no target is handed.
+fn serde_attribute_guard_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
+    let mut refused = rename_direction_guard_errors(item);
+    refused.extend(variant_default_refusals(item));
+    refused
+}
+
+/// The `compile_error!` tokens of every member of a variant of `item` under a `default` of its own
+/// that no target but Rust reads as serde does.
+#[cfg(all(
+    feature = "serde",
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
+))]
+fn variant_default_refusals(item: &Item) -> Vec<proc_macro2::TokenStream> {
+    if let Item::Enum(item_enum) = item {
+        default_refusals(item_enum)
+    } else {
+        Vec::new()
+    }
+}
+
+/// Nothing, where no target but Rust reads a default: without the `serde` feature no attribute is
+/// read, and with no schema feature and no client feature nothing describes the type.
+#[cfg(not(all(
+    feature = "serde",
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
+)))]
+const fn variant_default_refusals(_item: &Item) -> Vec<proc_macro2::TokenStream> {
     Vec::new()
 }
 
@@ -5332,7 +5411,7 @@ fn struct_members(
     #[cfg(any(feature = "zod", feature = "jsonschema"))]
     let serde_defaults = SerdeDefaults::of(item_struct);
     #[cfg(any(feature = "zod", feature = "jsonschema"))]
-    let serde_default = |field: &str| serde_defaults.index(field);
+    let serde_default = |field: &str| serde_defaults.index(None, field);
     #[cfg(not(any(feature = "zod", feature = "jsonschema")))]
     let serde_default = |_: &str| None;
     let from_fields = collect_struct_fields(
@@ -5651,12 +5730,36 @@ fn enum_output_with_decode(
 ) -> TokenStream {
     let mut read = parts.item.clone();
     let judged = judged_read::of_enum(&mut read, parts.validate_method.is_some());
-    let base = assemble_schema_output(&parts.of(&read), &decode_with.schema_module);
+    // The defaults are read off the attributes serde's derive reads, which the walk left on.
+    #[cfg(any(feature = "zod", feature = "jsonschema"))]
+    let serde_defaults = SerdeDefaults::of_enum(parts.item);
+    #[cfg(any(feature = "zod", feature = "jsonschema"))]
+    let module_items: Vec<proc_macro2::TokenStream> = parts
+        .validation_fns
+        .iter()
+        .cloned()
+        .chain([serde_defaults.holder()])
+        .collect();
+    #[cfg(any(feature = "zod", feature = "jsonschema"))]
+    let values = serde_defaults.values_impl(parts.module_ident);
+    #[cfg(not(any(feature = "zod", feature = "jsonschema")))]
+    let (module_items, values) = (
+        parts.validation_fns.to_vec(),
+        proc_macro2::TokenStream::new(),
+    );
+    let base = assemble_schema_output(
+        &SchemaOutputParts {
+            validation_fns: &module_items,
+            ..parts.of(&read)
+        },
+        &decode_with.schema_module,
+    );
     let decode_with_impl = &decode_with.type_impl;
     quote! {
         #base
         #judged
         #decode_with_impl
+        #values
     }
 }
 
@@ -8946,6 +9049,30 @@ fn variant_flatten_guard_errors(
     named.into_iter().chain(edges).flatten().collect()
 }
 
+/// Where the default serde reads for the absent key of a member, by variant and member, sits among
+/// those of the variants of `item_enum`, read off its attributes as written.
+#[cfg(any(feature = "zod", feature = "jsonschema"))]
+fn variant_serde_defaults(item_enum: &syn::ItemEnum) -> Box<VariantDefaultAt> {
+    let defaults = SerdeDefaults::of_enum(item_enum);
+    Box::new(move |variant, field| defaults.index(Some(variant), field))
+}
+
+/// No member is read as its default where no surface writes one.
+#[cfg(not(any(feature = "zod", feature = "jsonschema")))]
+fn variant_serde_defaults(_item_enum: &syn::ItemEnum) -> Box<VariantDefaultAt> {
+    Box::new(|_, _| None)
+}
+
+/// Hands `field_def` where the default serde reads for its absent key sits among its type's.
+#[cfg(any(feature = "zod", feature = "jsonschema"))]
+const fn hand_serde_default(field_def: &mut FieldDef, at: Option<usize>) {
+    field_def.serde_default = at;
+}
+
+/// Nothing holds a default where no surface writes one.
+#[cfg(not(any(feature = "zod", feature = "jsonschema")))]
+const fn hand_serde_default(_field_def: &mut FieldDef, _at: Option<usize>) {}
+
 /// Processes each variant of a discriminated enum, returning per-variant field defs, doc strings,
 /// and variant kinds in declaration order, plus the collected serde validation functions and the
 /// `validate()` arms those functions are run from.
@@ -8965,6 +9092,8 @@ fn collect_discriminated_variants(
     let enum_type_name = item_enum.ident.to_string();
     let enum_read_back = container_is_read_back(&item_enum.attrs);
     let steps_by_variant = steps_of_variants(item_enum, casing.variant_fields);
+    // Read before the walk, as a struct's are.
+    let default_at = variant_serde_defaults(item_enum);
 
     for (item, steps) in item_enum.variants.iter_mut().zip(&steps_by_variant) {
         let (field_rename, variant_rename_all) =
@@ -9016,9 +9145,10 @@ fn collect_discriminated_variants(
                 guard_errors.extend(variant_flatten_guard_errors(field, &enum_type_name));
             }
 
-            let (f_def, validation_fn, validate_body, field_guard_errors) =
+            let (mut f_def, validation_fn, validate_body, field_guard_errors) =
                 process_field(&member_ctx, field, index, &mut deferred_attrs);
             guard_errors.extend(field_guard_errors);
+            hand_serde_default(&mut f_def, default_at(&variant_ident, &field_ident_string(field)));
 
             if is_flatten {
                 let _: (&_, &_) = (&validation_fn, &validate_body);
@@ -9028,9 +9158,7 @@ fn collect_discriminated_variants(
                 continue;
             }
 
-            if let Some(vfn) = validation_fn {
-                enum_validation_fns.push(vfn);
-            }
+            enum_validation_fns.extend(validation_fn);
             if let Some(body) = validate_body {
                 bound.push(bound_member(field, index));
                 checks.push(body);
@@ -10469,9 +10597,11 @@ fn untagged_named_json_value(
         } else {
             quote! {}
         };
+        let default_insert = default_json_insert(fld);
         quote! {
             properties.insert(#name_str.to_string(), #value);
             #required_insert
+            #default_insert
         }
     });
     let object = quote! {
@@ -10773,11 +10903,14 @@ fn untagged_member_field_def(
 #[cfg(feature = "serde")]
 fn collect_untagged_variant_members(
     variant: &mut syn::Variant,
-    enum_type_name: &str,
-    schema_module_name: Option<&str>,
-    type_parameters: &[String],
-    rename_all_fields: Option<&str>,
-    args: &ModelSchemaArgs,
+    &UntaggedEnum {
+        args,
+        name: enum_type_name,
+        rename_all_fields,
+        schema_module_name,
+        serde_default,
+        type_parameters,
+    }: &UntaggedEnum<'_>,
     steps: &[Vec<String>],
 ) -> UntaggedVariantMembers {
     let variant_name = variant.ident.to_string();
@@ -10857,7 +10990,7 @@ fn collect_untagged_variant_members(
             walked.validation_fns.extend(validation_fn);
         }
 
-        let (member_def, member_guard_errors) = untagged_member_field_def(
+        let (mut member_def, member_guard_errors) = untagged_member_field_def(
             &member_ctx,
             field,
             &field_name,
@@ -10867,6 +11000,7 @@ fn collect_untagged_variant_members(
             field_validation_guard_error,
         );
         walked.guard_errors.extend(member_guard_errors);
+        hand_serde_default(&mut member_def, serde_default(&variant_name, &field_name));
         // Read once the member's def exists, since that is what says whether the member names a
         // type that could publish a validator.
         let place = member_place(field, index, true, member_ctx.steps(index));
@@ -10920,20 +11054,22 @@ fn collect_untagged_members(
         Vec::new();
     let mut deferred_attrs: Vec<Vec<syn::Attribute>> = Vec::new();
     let steps_by_variant = steps_of_variants(item_enum, rename_all_fields.as_deref());
+    // Read before the walk, as a struct's are.
+    let serde_default = variant_serde_defaults(item_enum);
+    let walk = UntaggedEnum {
+        args,
+        name: &enum_type_name,
+        rename_all_fields: rename_all_fields.as_deref(),
+        schema_module_name,
+        serde_default: &*serde_default,
+        type_parameters: &type_parameters,
+    };
 
     for (variant, steps) in item_enum.variants.iter_mut().zip(&steps_by_variant) {
         let declared_kind = classify_variant(variant);
         let kind = variant_wire_kind(variant);
         let total_fields = variant.fields.len();
-        let mut walked = collect_untagged_variant_members(
-            variant,
-            &enum_type_name,
-            schema_module_name,
-            &type_parameters,
-            rename_all_fields.as_deref(),
-            args,
-            steps,
-        );
+        let mut walked = collect_untagged_variant_members(variant, &walk, steps);
         guard_errors.append(&mut walked.guard_errors);
         validation_fns.append(&mut walked.validation_fns);
         deferred_attrs.append(&mut walked.deferred_attrs);
@@ -11045,9 +11181,10 @@ fn zod_merge_branches(
 /// and the absence's.
 #[cfg(all(feature = "serde", feature = "zod"))]
 fn zod_member_leaves(fld: &FieldDef, rendered: &str) -> Vec<ZodUnionMember> {
-    // The binding of a type that names a `preprocess` is the one schema that calls it, so no
-    // member of it is written in its place.
-    let nested = if fld.zod_names_a_preprocess() {
+    // The binding of a type that names a `preprocess` is the one schema that calls it, and the
+    // one text that replaces the placeholder of a member's default, so no member of it is written
+    // in its place.
+    let nested = if fld.zod_read_whole() {
         Vec::new()
     } else {
         fld.zod_union_members()
@@ -13098,7 +13235,21 @@ fn build_field_schema(fld: &FieldDef) -> proc_macro2::TokenStream {
     } else {
         quote! {}
     };
-    let default_code = fld.serde_default.map(|at| {
+    let default_code = default_json_insert(fld);
+
+    quote! {
+        #schema_code
+        #required_code
+        #default_code
+    }
+}
+
+/// The statements that state, in the member `fld` the local `properties` holds, the default serde
+/// reads for its absent key, and nothing for a member read with no default.
+#[cfg(feature = "jsonschema")]
+fn default_json_insert(fld: &FieldDef) -> Option<proc_macro2::TokenStream> {
+    let field_name_str = &fld.name;
+    fld.serde_default.map(|at| {
         let index = proc_macro2::Literal::usize_unsuffixed(at);
         quote! {
             if let ::core::option::Option::Some(serde_json::Value::Object(described)) =
@@ -13110,13 +13261,7 @@ fn build_field_schema(fld: &FieldDef) -> proc_macro2::TokenStream {
                 );
             }
         }
-    });
-
-    quote! {
-        #schema_code
-        #required_code
-        #default_code
-    }
+    })
 }
 
 /// Writes the TypeScript type and conditionally Zod schema for a field to the provided buffers.
@@ -17305,9 +17450,20 @@ fn generate_discriminated_enum_zod_schema_method(
             schema_code,
             &reexport,
         );
+        if !holds_a_placeholder(&schema_str) {
+            return quote::quote! {
+                pub fn zod_schema() -> ::std::string::String {
+                    #schema_str.to_owned()
+                }
+            };
+        }
+        let written = Ident::new("written", proc_macro2::Span::call_site());
+        let replaced = substituted(&quote::quote! { SerdeDefaults }, &written, &[]);
         quote::quote! {
             pub fn zod_schema() -> ::std::string::String {
-                #schema_str.to_owned()
+                let mut #written = ::std::string::String::from(#schema_str);
+                #replaced
+                #written
             }
         }
     }

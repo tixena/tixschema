@@ -14,3 +14,7 @@ mod readme;
 #[cfg(test)]
 #[path = "serde_default_tests/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "serde_default_tests/variants.rs"]
+mod variants;

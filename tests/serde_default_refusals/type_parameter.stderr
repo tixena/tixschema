@@ -1,0 +1,5 @@
+error: model_schema: type `Berthing`: variant `Docked`, field `extra`: `#[serde(default)]` is read only by Rust here: the type names the type parameter `T`, whose default has one JSON for each type that fills it. Give the field a type that names no parameter, or remove the default.
+  --> tests/serde_default_refusals/type_parameter.rs:13:9
+   |
+13 |         extra: T,
+   |         ^^^^^

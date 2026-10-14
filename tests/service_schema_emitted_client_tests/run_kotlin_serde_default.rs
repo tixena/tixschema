@@ -7,15 +7,17 @@
 use core::fmt::Write as _;
 
 use super::runtime::ran_kotlin;
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-use super::serde_default_models::report;
 use super::serde_default_models::{
     Bollard, CASES, Harbour, Jetty, Marina, PREPROCESSED, PREPROCESSED_REPORT, REPORT, REQUIRED,
-    REQUIRED_REPORT, basin_kotlin, bollard_kotlin, config_kotlin, filled_cases, filled_expected,
-    filled_report, fleet_kotlin, gangway_kotlin, harbour_kotlin, jetty_kotlin, link_kotlin,
-    logbook_kotlin, marina_kotlin, pontoon_kotlin, preprocessed_values, read_values,
-    unwritten_defaults, wharf_kotlin,
+    REQUIRED_REPORT, VARIANT_CASES, VARIANT_REPORT, adjacent_berthing_kotlin, basin_kotlin,
+    berthing_kotlin, bollard_kotlin, config_kotlin, external_berthing_kotlin, filled_cases,
+    filled_expected, filled_report, fleet_kotlin, gangway_kotlin, harbour_kotlin, jetty_kotlin,
+    link_kotlin, logbook_kotlin, manifest_kotlin, marina_kotlin, pontoon_kotlin,
+    preprocessed_values, quay_kotlin, read_values, untagged_berthing_kotlin, unwritten_defaults,
+    wharf_kotlin,
 };
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+use super::serde_default_models::{report, variant_report};
 #[cfg(feature = "indexmap")]
 use super::serde_default_models::{indexed_fleet_kotlin, indexed_logbook_kotlin};
 
@@ -263,6 +265,7 @@ fn each_payload_of_a_struct_that_declares_a_parameter_reads_in_kotlin_as_serde_r
         fleet_kotlin::kotlin_definition(),
         logbook_kotlin::kotlin_definition(),
         harbour_kotlin::kotlin_definition(),
+        manifest_kotlin::kotlin_definition(),
         #[cfg(feature = "indexmap")]
         indexed_fleet_kotlin::kotlin_definition(),
         #[cfg(feature = "indexmap")]
@@ -279,4 +282,39 @@ fn each_payload_of_a_struct_that_declares_a_parameter_reads_in_kotlin_as_serde_r
         return;
     };
     assert_eq!(printed, format!("{}{REQUIRED_REPORT}", filled_expected()));
+}
+
+/// Every row of the variant table, under each tagging: a member of a variant left out is read as
+/// the default serde reads, a member held as it was, and a default that breaks its bound is
+/// refused with its member named.
+#[test]
+fn each_variant_payload_reads_in_kotlin_as_the_serde_read_reads_it() {
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+    assert_eq!(variant_report(), VARIANT_REPORT, "what the serde read answers");
+    let mut main = String::from("fun main() {\n");
+    for &(name, read_as, payload) in &VARIANT_CASES {
+        let _ = writeln!(
+            main,
+            "    told({}) {{ everyMember.encodeToString(serializer<{read_as}>(), \
+             Json.decodeFromString(serializer<{read_as}>(), {})) }}",
+            kotlin_string(name),
+            kotlin_string(payload)
+        );
+    }
+    main.push_str("}\n");
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        berthing_kotlin::kotlin_definition(),
+        external_berthing_kotlin::kotlin_definition(),
+        adjacent_berthing_kotlin::kotlin_definition(),
+        untagged_berthing_kotlin::kotlin_definition(),
+        quay_kotlin::kotlin_definition(),
+        TOLD.to_owned(),
+        main,
+    ]
+    .join("\n\n");
+    let Some(printed) = ran_kotlin(&source) else {
+        return;
+    };
+    assert_eq!(printed, VARIANT_REPORT);
 }

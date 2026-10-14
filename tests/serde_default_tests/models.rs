@@ -10,9 +10,9 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize, Serializer};
 use tixschema::model_schema;
 
-/// Each payload of a struct that declares a parameter, read at the filling `String`: its name,
-/// the type that reads it, and the payload.
-pub const FILLED: [(&str, &str, &str); 9] = [
+/// Each payload of a type that declares a parameter, read at the filling `String`: its name, the
+/// type that reads it, and the payload.
+pub const FILLED: [(&str, &str, &str); 11] = [
     ("row 1: no dataLinks", "Config", "{}"),
     (
         "row 9: dataLinks held",
@@ -42,6 +42,16 @@ pub const FILLED: [(&str, &str, &str); 9] = [
         "Harbour",
         r#"{"berths":["b"],"flagship":"f","slips":["s"]}"#,
     ),
+    (
+        "a list of the parameter in a variant left out",
+        "Manifest",
+        r#"{"kind":"Listed","pier":3}"#,
+    ),
+    (
+        "a list of the parameter in a variant held",
+        "Manifest",
+        r#"{"kind":"Listed","moored":["m"],"pier":3}"#,
+    ),
 ];
 
 /// What every surface prints for [`FILLED`], as the serde read prints it.
@@ -55,6 +65,8 @@ row 3: every map held: read {\"btree_map\":{\"k\":{\"id\":\"a\"}},\"hash_map\":{
 a list of the parameter left out: read {\"dock\":\"\",\"moored\":[]}
 a list of the parameter held: read {\"dock\":\"d\",\"moored\":[\"m\"]}
 rows 4 to 6: every key held: read {\"berths\":[\"b\"],\"flagship\":\"f\",\"slips\":[\"s\"]}
+a list of the parameter in a variant left out: read {\"kind\":\"Listed\",\"moored\":[],\"pier\":3}
+a list of the parameter in a variant held: read {\"kind\":\"Listed\",\"moored\":[\"m\"],\"pier\":3}
 ";
 
 /// Each payload of the `indexmap` set and map, read at the filling `String`.
@@ -160,6 +172,127 @@ row 5: a default that breaks a bound: refused
 row 5: the key held: read {\"dock\":\"d\",\"label\":\"p\"}
 ";
 
+/// Each payload of an enum a member of whose variant is written under `#[serde(default)]`, under
+/// each of the four taggings, and of a struct that holds the untagged one: its name, the type that
+/// reads it, and the payload. An untagged enum takes no payload whose default breaks a bound: the
+/// bound chooses its variant.
+pub const VARIANT_CASES: [(&str, &str, &str); 21] = [
+    ("tag: no dock", "Berthing", r#"{"kind":"Docked","pier":3}"#),
+    (
+        "tag: dock held",
+        "Berthing",
+        r#"{"kind":"Docked","dock":"d","pier":3}"#,
+    ),
+    (
+        "tag: no dock, read from a function",
+        "Berthing",
+        r#"{"kind":"Moored","line":"l"}"#,
+    ),
+    (
+        "tag: a default that breaks a bound",
+        "Berthing",
+        r#"{"kind":"Moored","dock":"d"}"#,
+    ),
+    ("tag: a unit variant", "Berthing", r#"{"kind":"Adrift"}"#),
+    ("no tag: no dock", "ExternalBerthing", r#"{"Docked":{"pier":3}}"#),
+    (
+        "no tag: dock held",
+        "ExternalBerthing",
+        r#"{"Docked":{"dock":"d","pier":3}}"#,
+    ),
+    (
+        "no tag: no dock, read from a function",
+        "ExternalBerthing",
+        r#"{"Moored":{"line":"l"}}"#,
+    ),
+    (
+        "no tag: a default that breaks a bound",
+        "ExternalBerthing",
+        r#"{"Moored":{"dock":"d"}}"#,
+    ),
+    ("no tag: a unit variant", "ExternalBerthing", r#""Adrift""#),
+    (
+        "tag and content: no dock",
+        "AdjacentBerthing",
+        r#"{"kind":"Docked","data":{"pier":3}}"#,
+    ),
+    (
+        "tag and content: dock held",
+        "AdjacentBerthing",
+        r#"{"kind":"Docked","data":{"dock":"d","pier":3}}"#,
+    ),
+    (
+        "tag and content: no dock, read from a function",
+        "AdjacentBerthing",
+        r#"{"kind":"Moored","data":{"line":"l"}}"#,
+    ),
+    (
+        "tag and content: a default that breaks a bound",
+        "AdjacentBerthing",
+        r#"{"kind":"Moored","data":{"dock":"d"}}"#,
+    ),
+    (
+        "tag and content: a unit variant",
+        "AdjacentBerthing",
+        r#"{"kind":"Adrift"}"#,
+    ),
+    ("untagged: no dock", "UntaggedBerthing", r#"{"pier":3}"#),
+    (
+        "untagged: dock held",
+        "UntaggedBerthing",
+        r#"{"dock":"d","pier":3}"#,
+    ),
+    (
+        "untagged: no dock, read from a function",
+        "UntaggedBerthing",
+        r#"{"line":"l"}"#,
+    ),
+    (
+        "untagged: every key held",
+        "UntaggedBerthing",
+        r#"{"dock":"d","line":"l"}"#,
+    ),
+    (
+        "a holder of the untagged enum: no dock",
+        "Quay",
+        r#"{"berth":{"pier":3},"label":"q"}"#,
+    ),
+    (
+        "a holder of the untagged enum: dock held",
+        "Quay",
+        r#"{"berth":{"dock":"d","pier":3},"label":"q"}"#,
+    ),
+];
+
+/// What every surface prints for [`VARIANT_CASES`], as the serde read prints it where a schema
+/// surface is on: a build with none holds `line` to no bound in Rust.
+pub const VARIANT_REPORT: &str = "\
+tag: no dock: read {\"kind\":\"Docked\",\"dock\":\"\",\"pier\":3}
+tag: dock held: read {\"kind\":\"Docked\",\"dock\":\"d\",\"pier\":3}
+tag: no dock, read from a function: read {\"kind\":\"Moored\",\"dock\":\"north\",\"line\":\"l\"}
+tag: a default that breaks a bound: refused
+    'line': too short: minimum length is 1, got 0
+tag: a unit variant: read {\"kind\":\"Adrift\"}
+no tag: no dock: read {\"Docked\":{\"dock\":\"\",\"pier\":3}}
+no tag: dock held: read {\"Docked\":{\"dock\":\"d\",\"pier\":3}}
+no tag: no dock, read from a function: read {\"Moored\":{\"dock\":\"north\",\"line\":\"l\"}}
+no tag: a default that breaks a bound: refused
+    'Moored.line': too short: minimum length is 1, got 0
+no tag: a unit variant: read \"Adrift\"
+tag and content: no dock: read {\"kind\":\"Docked\",\"data\":{\"dock\":\"\",\"pier\":3}}
+tag and content: dock held: read {\"kind\":\"Docked\",\"data\":{\"dock\":\"d\",\"pier\":3}}
+tag and content: no dock, read from a function: read {\"kind\":\"Moored\",\"data\":{\"dock\":\"north\",\"line\":\"l\"}}
+tag and content: a default that breaks a bound: refused
+    'data.line': too short: minimum length is 1, got 0
+tag and content: a unit variant: read {\"kind\":\"Adrift\"}
+untagged: no dock: read {\"dock\":\"\",\"pier\":3}
+untagged: dock held: read {\"dock\":\"d\",\"pier\":3}
+untagged: no dock, read from a function: read {\"dock\":\"north\",\"line\":\"l\"}
+untagged: every key held: read {\"dock\":\"d\",\"line\":\"l\"}
+a holder of the untagged enum: no dock: read {\"berth\":{\"dock\":\"\",\"pier\":3},\"label\":\"q\"}
+a holder of the untagged enum: dock held: read {\"berth\":{\"dock\":\"d\",\"pier\":3},\"label\":\"q\"}
+";
+
 /// Each payload of `Bollard` every client reads, by name.
 pub const PREPROCESSED: [(&str, &str); 2] = [
     ("a default no function is called for", "{}"),
@@ -172,6 +305,107 @@ pub const PREPROCESSED_REPORT: &str = "\
 a default no function is called for: read {\"dock\":\"  spare  \"}
 a key its function corrects: read {\"dock\":\"east\"}
 ";
+
+/// A member of a variant read as its default under a tag: `dock` as the `Default` of its type in
+/// one variant and as what a function answers in another, beside a member whose default breaks
+/// its bound.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind")]
+pub enum Berthing {
+    Adrift,
+    Docked {
+        #[serde(default)]
+        dock: String,
+        pier: u32,
+    },
+    Moored {
+        #[serde(default = "north_dock")]
+        dock: String,
+        #[model_schema_prop(minLength = 1)]
+        #[serde(default)]
+        line: String,
+    },
+}
+
+/// [`Berthing`] under no tag attribute.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub enum ExternalBerthing {
+    Adrift,
+    Docked {
+        #[serde(default)]
+        dock: String,
+        pier: u32,
+    },
+    Moored {
+        #[serde(default = "north_dock")]
+        dock: String,
+        #[model_schema_prop(minLength = 1)]
+        #[serde(default)]
+        line: String,
+    },
+}
+
+/// [`Berthing`] under a tag and a content key.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", content = "data")]
+pub enum AdjacentBerthing {
+    Adrift,
+    Docked {
+        #[serde(default)]
+        dock: String,
+        pier: u32,
+    },
+    Moored {
+        #[serde(default = "north_dock")]
+        dock: String,
+        #[model_schema_prop(minLength = 1)]
+        #[serde(default)]
+        line: String,
+    },
+}
+
+/// [`Berthing`] untagged, with no unit variant, which an untagged enum takes none of.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum UntaggedBerthing {
+    Docked {
+        #[serde(default)]
+        dock: String,
+        pier: u32,
+    },
+    Moored {
+        #[serde(default = "north_dock")]
+        dock: String,
+        #[model_schema_prop(minLength = 1)]
+        #[serde(default)]
+        line: String,
+    },
+}
+
+/// A struct that holds the untagged enum under a key of its own.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct Quay {
+    pub berth: UntaggedBerthing,
+    pub label: String,
+}
+
+/// A list of the enum's parameter in a variant, read as the empty list at every filling.
+#[model_schema(default_types(Moored = String))]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind")]
+pub enum Manifest<Moored> {
+    Cleared,
+    Listed {
+        #[serde(default)]
+        moored: Vec<Moored>,
+        pier: u32,
+    },
+}
 
 /// A gangway, a type of the consumer's own with a `Default` of its own.
 #[model_schema()]
@@ -457,6 +691,7 @@ pub fn filled_report() -> String {
             #[cfg(feature = "indexmap")]
             "IndexedLogbook" => printed::<IndexedLogbook<String>>(name, payload),
             "Logbook" => printed::<Logbook<String>>(name, payload),
+            "Manifest" => printed::<Manifest<String>>(name, payload),
             _ => printed::<Harbour<String>>(name, payload),
         })
         .collect()
@@ -471,6 +706,20 @@ pub fn report() -> String {
             "Wharf" => printed::<Wharf>(name, payload),
             "Jetty" => printed::<Jetty>(name, payload),
             _ => printed::<Pontoon>(name, payload),
+        })
+        .collect()
+}
+
+/// What a serde read prints for each payload of [`VARIANT_CASES`].
+pub fn variant_report() -> String {
+    VARIANT_CASES
+        .iter()
+        .map(|&(name, read_as, payload)| match read_as {
+            "Berthing" => printed::<Berthing>(name, payload),
+            "ExternalBerthing" => printed::<ExternalBerthing>(name, payload),
+            "AdjacentBerthing" => printed::<AdjacentBerthing>(name, payload),
+            "UntaggedBerthing" => printed::<UntaggedBerthing>(name, payload),
+            _ => printed::<Quay>(name, payload),
         })
         .collect()
 }
