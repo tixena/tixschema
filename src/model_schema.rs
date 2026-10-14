@@ -16181,15 +16181,11 @@ fn generate_ts_definition_method(
         }
     };
 
-    #[cfg(feature = "jsonschema")]
-    let json_docs_gen = bind_item_jsdoc_local(docs, true);
-
-    #[cfg(not(feature = "jsonschema"))]
-    let json_docs_gen = bind_item_jsdoc_local(docs, false);
+    let item_docs_gen = bind_item_jsdoc_local(docs);
 
     quote::quote! {
         pub fn ts_definition() -> ::std::string::String {
-            #json_docs_gen
+            #item_docs_gen
             #typescript_type_gen
         }
     }
@@ -16955,29 +16951,13 @@ fn generate_zod_schema_method(
     }
 }
 
-/// Binds the `docs` local an item's `ts_definition()` opens with: the item's `JSDoc` block, its
-/// body enriched with the item's JSON schema where the caller says this build can produce one, and
-/// a trailing newline, so what the block documents is the line straight beneath it.
+/// Binds the `docs` local an item's `ts_definition()` opens with: the item's `JSDoc` block and a
+/// trailing newline, so what the block documents is the line straight beneath it.
 #[cfg(feature = "typescript")]
-fn bind_item_jsdoc_local(docs: &str, with_json_schema: bool) -> proc_macro2::TokenStream {
-    if with_json_schema {
-        quote::quote! {
-            let prettified = serde_json::to_string_pretty(&Self::json_schema()).unwrap().lines().map(|l| format!(" * {l}")).collect::<::std::vec::Vec<_>>().join("\n");
-            let docs = format!("/**\n{}\n * JSON Schema:\n{}\n */\n", #docs, prettified);
-        }
-    } else {
-        quote::quote! {
-            let docs = format!("/**\n{}\n */\n", #docs);
-        }
+fn bind_item_jsdoc_local(docs: &str) -> proc_macro2::TokenStream {
+    quote::quote! {
+        let docs = format!("/**\n{}\n */\n", #docs);
     }
-}
-
-/// Binds the `docs` local an enum's `ts_definition()` renders, enriched with the JSON schema when
-/// this build of tixschema can produce one. The enrichment reads `Self::json_schema()`, so it may
-/// only be emitted when tixschema's own features put that method in the schema module.
-#[cfg(feature = "typescript")]
-fn generate_enum_json_docs_part(docs: &str) -> proc_macro2::TokenStream {
-    bind_item_jsdoc_local(docs, cfg!(all(feature = "jsonschema", feature = "zod")))
 }
 
 #[cfg(feature = "jsonschema")]
@@ -17013,7 +16993,7 @@ fn generate_plain_enum_ts_definition_method(
 ) -> proc_macro2::TokenStream {
     #[cfg(feature = "typescript")]
     {
-        let json_docs_gen = generate_enum_json_docs_part(docs);
+        let item_docs_gen = bind_item_jsdoc_local(docs);
         let reexport = ident_reexport_ts(rust_ident, item_name, ts_generics);
 
         let typescript_type_gen = quote::quote! {
@@ -17022,7 +17002,7 @@ fn generate_plain_enum_ts_definition_method(
 
         quote::quote! {
             pub fn ts_definition() -> ::std::string::String {
-                #json_docs_gen
+                #item_docs_gen
                 #typescript_type_gen
             }
         }
@@ -17114,12 +17094,12 @@ fn generate_discriminated_enum_ts_definition_method(
 ) -> proc_macro2::TokenStream {
     #[cfg(feature = "typescript")]
     {
-        let json_docs_gen = generate_enum_json_docs_part(docs);
+        let item_docs_gen = bind_item_jsdoc_local(docs);
         let reexport = ident_reexport_ts(rust_ident, item_name, ts_generics);
 
         quote::quote! {
             pub fn ts_definition() -> ::std::string::String {
-                #json_docs_gen
+                #item_docs_gen
                 let bundled_docs = docs;
                 format!(r#"{bundled_docs}export type {}{} = {};{}
 
