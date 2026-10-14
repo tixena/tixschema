@@ -125,7 +125,7 @@ just test          # tests over every combination of the plain features
    - `zod.rs`: Generates Zod v4 schema strings (`z.string()`, `z.union()`, etc.), embeds examples in `.meta()`
    - `jsonschema.rs`: Generates JSON schema objects
    - `object_id.rs`: MongoDB ObjectId type detection and schema generation
-   - `recovering_decode.rs`: Generates what `#[model_schema(enable = ["decode_with"])]` adds to a type: `from_value_with` and `from_value_piped`, `from_bson_with` and `from_bson_piped` under `bson` on a type that also lists `"mongodb"`, and the walker of each. It also writes the two support libraries the initializers put at a crate root, `__tixschema_decode_with` (the callback's and the resolvers' types, and what one walker hands another) and `__tixschema_mongodb` (the BSON pieces, and under `mongodb` the query types and what the operations answer), and the re-export of both, name by name, in each `{type}_schema`. `recovering_decode/enums.rs` holds the walkers of an enum, and the names its typed paths read a variant by (`written_variants`, `tag_arms`). Under `mongodb` three more files emit, for a type that lists `"mongodb"`: `recovering_decode/query.rs` the query types into the BSON and MongoDB library (`Filter`, `ArmFilter`, `Update`, `ArmUpdate`, the path kinds, `nest`), `recovering_decode/fields.rs` the type's own typed paths into its module and onto the type (`MongoFields`, `MONGO_FIELDS`, one function per field, and one per arm of an enum under a tag), and `recovering_decode/operations.rs` the operations onto the type (`find_one`, `find`, `count`, `insert_one`, the updates and the deletes) and `Read` and `OperationError` into the library
+   - `recovering_decode.rs`: Generates what `#[model_schema(enable = ["decode_with"])]` adds to a type: `from_value_with` and `from_value_piped`, `from_bson_with` and `from_bson_piped` under `bson`, and the walker of each. It also writes the two support libraries the initializers put at a crate root, `__tixschema_decode_with` (the callback's and the resolvers' types, what one walker hands another, and under `bson` the BSON pieces) and `__tixschema_mongodb` (under `mongodb`, the query types and what the operations answer), and the re-export of both, name by name, in each `{type}_schema`. `recovering_decode/enums.rs` holds the walkers of an enum, and the names its typed paths read a variant by (`written_variants`, `tag_arms`). Under `mongodb` three more files emit, for a type that lists `"mongodb"`: `recovering_decode/query.rs` the query types into the MongoDB library (`Filter`, `ArmFilter`, `Update`, `ArmUpdate`, the path kinds, `nest`), `recovering_decode/fields.rs` the type's own typed paths into its module and onto the type (`MongoFields`, `MONGO_FIELDS`, one function per field, and one per arm of an enum under a tag), and `recovering_decode/operations.rs` the operations onto the type (`find_one`, `find`, `count`, `insert_one`, the updates and the deletes) and `Read` and `OperationError` into the library
    - `model_schema_prop.rs`: Parses field-level customization attributes (`pattern`, `minLength`, `maxLength`, `minimum`, `maximum`, `literal`, `as`, `preprocess`, `check`)
 
 5. **Code Generation** ([generation/](src/generation/))
@@ -194,7 +194,7 @@ The crate uses optional features for minimal dependencies:
 - `zod`: Enables Zod schema generation (v4 syntax)
 - `jsonschema`: Enables `json_schema()` method generation
 - `mongodb`: Enables MongoDB ObjectId type support; turns on `bson`. On a type that lists `"mongodb"` in `enable = ["decode_with", "mongodb"]` it also generates the typed field paths (`MONGO_FIELDS`, one function per field, `nest` below a nested type, and `<tag>__<value>()` for each arm of an enum under a tag), the filters and updates they build, and the operations over a `mongodb::Collection<bson::Document>` of the type's rows. A consuming crate that declares such a type lists the `mongodb` driver, built for the major version of `bson` it lists, and writes `tixschema::mongodb_foundation!();` at its root beside `tixschema::decode_with_foundation!();`
-- `bson`: BSON support, turned on by `mongodb`; turns on `serde`. Generates `from_bson_with` and `from_bson_piped` on types that list `"mongodb"`, the one entry of `enable` that turns on the BSON decode. A type that lists `"decode_with"` alone names no `bson` path under any feature
+- `bson`: BSON support, turned on by `mongodb`; turns on `serde`. Generates `from_bson_with` and `from_bson_piped` on every type that lists `"decode_with"`, whether it lists `"mongodb"` or not, and the BSON pieces of the `decode_with` library. A crate that declares a flagged type names `bson`, and lists it, in every build with this feature on; it needs no `mongodb` unless a type lists `"mongodb"`
 - `typescript`: Enables TypeScript type generation
 - `chrono`: Enables chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`)
 - `indexmap`: Enables indexmap type support: `IndexMap` as a map, `IndexSet` as a list. It adds no dependency: the generated code names the types of the crate that declares them. With the feature off a type written `IndexMap<_, _>` or `IndexSet<_>` is refused at `exec_model_schema` with the feature named (`indexmap_feature_errors`), unless the crate declared a type of its own under the name above
@@ -1906,14 +1906,14 @@ two types are one, so the read and `validate()` reach the same one filling `$Sch
 
 ### Recovering Decode
 
-`#[model_schema(enable = ["decode_with"])]` gives a type `from_value_with`, and
-`enable = ["decode_with", "mongodb"]` gives it `from_bson_with` as well, under `bson`: serde reads
-the value with the type's read alone, a walker lists every issue in it, and a callback supplied
-with the call rejects the record or fixes it once. `from_value_piped` and `from_bson_piped` are
-the same reads over resolvers run in order, each answering one issue. Under `mongodb` a type that
-lists `"mongodb"` also gets its typed MongoDB paths, the filters and updates they build, and the
-operations that read and write its rows. What every flagged type shares is a support library its
-crate writes once. `README.md`'s "Recovering Decode" and "MongoDB Operations and Typed Filters"
+`#[model_schema(enable = ["decode_with"])]` gives a type `from_value_with`, and `from_bson_with`
+as well under `bson`: serde reads the value with the type's read alone, a walker lists every issue
+in it, and a callback supplied with the call rejects the record or fixes it once.
+`from_value_piped` and `from_bson_piped` are the same reads over resolvers run in order, each
+answering one issue. `enable = ["decode_with", "mongodb"]` adds, under `mongodb`, the type's typed
+MongoDB paths, the filters and updates they build, and the operations that read and write its
+rows; without the `mongodb` feature the entry adds nothing. What every flagged type shares is a
+support library its crate writes once. `README.md`'s "Recovering Decode" and "MongoDB Operations and Typed Filters"
 sections are the consumer's view; this is what a change to the emitter has to keep. "The flag"
 below is the entry `"decode_with"`, and a flagged type is one that lists it.
 
@@ -1927,37 +1927,44 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   `{name}`:``, and the item expands with nothing of the recovering decode.
   `the_bare_decode_with_flag_is_refused_with_the_enable_list_it_moved_to` and the `enable_refuses_*`
   tests in `src/model_schema/tests.rs` hold each message.
-- **What each entry generates, and under which feature.** `"decode_with"` is the JSON decode:
-  `from_value_with`, `from_value_piped`, their walkers, the type's own module items and the
-  re-export of the `decode_with` library. `"mongodb"` adds, under `bson`, the BSON source
-  (`Source::read_by`, which answers `Source::GENERATED` for a type that lists it and the JSON source
-  alone for any other), the BSON check issues, the re-export of the second library and its probe,
-  and, under `mongodb`, the typed paths (`struct_paths` and `enum_paths` are called only for such a
-  type, `TypedPaths::default()` otherwise) and the operations, which `bson_entry_methods` writes.
-  `Written::mongodb` carries the entry through the walk. There is no entry for the BSON decode
-  alone, and the documents say so.
-  `a_type_that_lists_no_mongodb_gets_no_bson_read_no_typed_path_and_no_operation` holds a type
-  without the entry to none of it.
+- **What each entry generates, and under which feature.** `"decode_with"` is the recovering
+  decode: `from_value_with`, `from_value_piped`, their walkers, the type's own module items and the
+  re-export of the `decode_with` library, and under `bson` the BSON source as well.
+  `Source::read_by()` takes no argument and answers `Source::GENERATED`, which holds `Bson` under
+  `bson` alone, so every flagged type is walked from BSON in a build with `bson`, and
+  `bson_issue_method` writes its BSON check issues. `"mongodb"` adds, under `mongodb` and nothing
+  without it, the typed paths (`struct_paths` and `enum_paths` are called only for such a type,
+  `TypedPaths::default()` otherwise), the operations, which `bson_entry_methods` writes only where
+  `Source::entry_methods` hands it `written.mongodb`, and the re-export of the MongoDB library and
+  its probe. `Written::mongodb` carries the entry through the walk. The expansion test in
+  `recovering_decode/tests.rs` holds a type that lists `"decode_with"` alone, under `mongodb`, to
+  `from_bson_with`, `from_bson_piped` and the BSON walkers, and to no name of `OPERATIONS`, no
+  `MONGO_FIELDS` and no `MongoFields`.
 - **The two initializers write the support libraries, once per crate.** `src/foundation.rs` refuses
   any argument (`refused_arguments`) and hands each macro to `decode_with_foundation` and
   `mongodb_foundation` in `recovering_decode.rs`. The first writes the module
   `__tixschema_decode_with` (`DECODE_WITH_LIBRARY`): `decode_with_library`, which is `path_items`,
-  `callback_items`, `handoff_items`, `taken_items` and `bound_items`, and names no `bson` path in
-  any build. The second writes `__tixschema_mongodb` (`MONGODB_LIBRARY`) under `bson`:
-  `mongodb_library`, the three BSON pieces (`bson_bound_items`, `bson_leaf_items`, and
-  `bson_path_helpers` as an inherent `impl crate::__tixschema_decode_with::Path`, which may stand in
-  any module of the crate that declares `Path`), and under `mongodb` `query_items` and
-  `operation_items`. It reads the first library through `use crate::__tixschema_decode_with::*;`, so
-  it is written beside it. Without `bson` it writes nothing, and the first writes nothing without
-  `serde`, so a call stays in a crate whatever it builds with. Each writes beside its module a
-  private marker trait implemented for `()`, `__TixschemaDecodeWithFoundation` and
-  `__TixschemaMongodbFoundation`, whose one method the probes look for.
-  `each_initializer_writes_its_module_and_its_marker`,
-  `the_mongodb_initializer_writes_nothing_without_bson`,
-  `the_decode_with_library_names_no_bson_path` and `the_two_libraries_share_no_name` hold them.
+  `callback_items`, `handoff_items`, `taken_items` and `bound_items`, and under
+  `#[cfg(feature = "bson")]` the three BSON pieces (`bson_bound_items`, `bson_leaf_items`, and
+  `bson_path_helpers` as an inherent `impl crate::__tixschema_decode_with::Path`). It names no
+  `bson` path in a build without `bson`. So a crate whose types list `"decode_with"` alone names
+  `bson`, and lists it, wherever tixschema's `bson` feature is on, and never needs `mongodb`. The
+  second writes `__tixschema_mongodb` (`MONGODB_LIBRARY`) under `mongodb`: `mongodb_library`, which
+  is `query_items` and `operation_items`. It reads the first library through
+  `use crate::__tixschema_decode_with::*;`, so it is written beside it. `MONGODB_LIBRARY`,
+  `MONGODB_LIBRARY_NAMES`, `mongodb_reexport`, `mongodb_foundation_probe` and the
+  `mongodb_foundation` that writes the module are under `#[cfg(feature = "mongodb")]`, and the
+  empty `mongodb_foundation` answers every build without it. The first writes nothing without
+  `serde`, so each call stays in a crate whatever it builds with, and no consumer writes a line
+  for the BSON pieces. Each writes beside its module a private marker trait implemented for `()`,
+  `__TixschemaDecodeWithFoundation` and `__TixschemaMongodbFoundation`, whose one method the probes
+  look for. `each_initializer_writes_its_module_and_its_marker` and
+  `the_two_libraries_share_no_name` hold them.
 - **Each `{type}_schema` module re-exports the libraries, name by name.** `library_reexport`
-  writes `pub use crate::__tixschema_decode_with::{...};` from `DECODE_WITH_LIBRARY_NAMES`, and,
-  for a type that lists `"mongodb"`, the same from `MONGODB_LIBRARY_NAMES`. A glob does not
+  writes `pub use crate::__tixschema_decode_with::{...};` from `DECODE_WITH_LIBRARY_NAMES`, whose
+  four BSON pieces (`bson_bound`, `bson_leaf`, `bson_remaining`, `same_bracket`) are each under
+  `#[cfg(feature = "bson")]`, and, for a type that lists `"mongodb"`, the same from
+  `MONGODB_LIBRARY_NAMES` under `mongodb`. A glob does not
   serve: the module reads the author's scope through `use super::*`, and a second glob holding a
   name the first holds makes it ambiguous (E0659), where a name written out shadows the glob as an
   item the module declares does. So every `{type}_schema::Name` path a consumer writes resolves,
@@ -1967,7 +1974,7 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   `a_type_reexports_its_crates_libraries_by_name` holds it.
 - **A crate without its initializer fails with the line to add.** `foundation_probes` writes, beside
   each flagged type, one `foundation_probe` for the `decode_with` library and, for a type that lists
-  `"mongodb"` under `bson`, one for the second. A probe is an anonymous `const` that brings
+  `"mongodb"` under `mongodb`, one for the second. A probe is an anonymous `const` that brings
   `crate::*` into scope and calls the marker's method on `&()`: with the initializer, the crate
   root's marker answers `()`, which the block-local `FoundationWritten` is implemented for; without
   it, the block-local `Fallback` on `&()` answers `Missing`, and the
@@ -2013,45 +2020,26 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   and the trait's methods in use where the type answers itself; without it a consumer that denies
   warnings fails on `unused_imports` and `dead_code`. The trait is added to the module only where
   a walker asks for it, and answers for the sources the type's own walkers read.
-- **A model type held by a type that lists `"mongodb"` lists `"mongodb"` too, in any order.** The
-  holder's BSON walker calls the held type's, and its typed paths nest the held type's, so under
-  `bson` every flagged type carries `mongo_listed(&self)`, a `pub const fn` on
-  `impl<...> Type<...>` with the type's own generics, whose answer says whether it lists
-  `"mongodb"`: `()` where it does, `::core::marker::PhantomData<()>` where it lists
-  `"decode_with"` alone. A type that lists `"mongodb"` writes, for the type each field's BSON walk
-  reaches (through `Option`, the lists, a map's values and the transparent wrappers: `Customer` for
-  `Vec<Option<Customer>>`), a probe in an anonymous `const`: a block-local `Fallback` trait,
-  implemented for every type, whose `mongo_listed` answers `()`, and a block-local trait under
-  `#[diagnostic::on_unimplemented]` implemented for `()` alone, which the answer is held to. The
-  inherent method wins where it exists, so the probe answers three ways: a type that lists
-  `"mongodb"` passes, a type that lists `"decode_with"` alone is refused with the message naming
-  both types and the fix, and a type with no `#[model_schema]` (a plain serde type, another
-  crate's type) passes through the fallback and is read whole, as before. It is written whatever
-  the registry has seen of the held type, declared above the holder, below it, in another crate
-  or behind an alias: a fallback answering a refusal would refuse a plain serde type, and a probe
-  written only where `walks_itself` answers would miss a model declared below, which `ReadWhole`
-  would then read whole with no error. No probe is written for a leaf (a `String`, a number, an
-  `Option`, a list or a map of those) nor for a field whose type names one of the holder's
-  parameters (`names_a_parameter`). A held type declared above the holder also fails the holder's
-  call of its BSON walker, so rustc prints an `E0599` naming `decode_with_bson_issues` ahead of the
-  probe's `E0277`.
+- **A type that lists `"mongodb"` may hold one that lists `"decode_with"` alone.** Under `bson`
+  every flagged type has the BSON walker its holder calls, and the holder's typed paths name no
+  held type's module, so nothing asks what a held type lists and nothing is refused for it.
 - **What holds the libraries as a consumer meets them.**
   - `tests/foundation_refusals.rs` is the `trybuild` harness. Each file of
     `tests/foundation_refusals/` is a crate of its own, held to the `.stderr` beside it, written in
     the build with every plain feature on, the one the harness is gated on: a missing initializer,
-    each refusal of the `enable` list, an initializer written twice or handed an argument, and a
-    held type that lists `"decode_with"` alone, declared above its holder, below it, generic, and
-    in another crate.
+    each refusal of the `enable` list, and an initializer written twice or handed an argument.
   - `tests/crates_apart/` holds two crates, path dev-dependencies of this package, each writing its
-    own libraries: `stored_customers` declares a stored `Customer`, and `invoice_lookups` lists
-    neither `bson` nor `mongodb` in its manifest and builds under `deny(warnings)` where tixschema
-    has `mongodb` on. `tests/crates_apart_tests.rs` reads a `Customer` inside a type of its own and
-    lists an issue in it at its full path, from JSON and from BSON, and reads the types of
-    `invoice_lookups` through that crate's library. A `trybuild` case reaches `invoice_lookups` as
-    a dev-dependency.
+    own libraries: `stored_customers` declares a stored `Customer`, and `invoice_lookups`, whose
+    types list `"decode_with"` alone, lists no `mongodb` in its manifest and builds under
+    `deny(warnings)` where tixschema has `mongodb` on. `tests/crates_apart_tests.rs` reads a
+    `Customer` inside a type of its own and lists an issue in it at its full path, from JSON and
+    from BSON, and reads the types of `invoice_lookups` through that crate's library.
   - `tests/support_library_tests.rs` holds one library per crate: three types re-exporting it and
     one resolver serving the reads of all three, what a type that lists `"mongodb"` gains under each
-    feature and a type that lists `"decode_with"` alone does not, the marker each answers, and the
+    feature and a type that lists `"decode_with"` alone does not, the BSON decode of a type that
+    lists `"decode_with"` alone (`a_type_that_lists_decode_with_alone_decodes_bson`), the issue of
+    such a type held by one that lists `"mongodb"`, at its full path
+    (`a_stored_holder_lists_the_issue_of_a_held_type_that_lists_decode_with_alone`), and the
     author's own `Path` and `Filter` beside the library's.
   - `examples/strict_consumer_models`, a library with models in a public and a private module, and
     `examples/strict_consumer_app`, a binary with models of its own, each write both initializers
@@ -2087,9 +2075,10 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   nothing, and a map's key is written through `WrittenKey`. The checks are read back from the
   registry `record_item_checks` and `record_member_checks` write, by schema module and helper stem.
   `entry_methods` and `bson_entry_methods` splice the call after each read serde accepts, in the two
-  shared fragments, and `decode_with_value_check_issues` and, for a type that lists `"mongodb"`,
-  `decode_with_bson_check_issues` turn each message into an `Invalid`, `expected: Unknown`, at the
-  message's lead read against the raw value. The three names are in the list
+  shared fragments, and `decode_with_value_check_issues` and, under `bson`,
+  `decode_with_bson_check_issues`, which `bson_issue_method` writes for every flagged type, turn
+  each message into an `Invalid`, `expected: Unknown`, at the message's lead read against the raw
+  value. The three names are in the list
   `every_added_method_but_the_entry_point_carries_the_flags_name` pins.
 - **Every name the flag adds is its own.** Each walker method carries the flag's name
   (`decode_with_value_issues`, `decode_with_bson_fields`, `decode_with_value_named`), and a
@@ -2098,13 +2087,11 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   of paths declares beside the type's own are named the same way: `Root`, and `Whole` and `Value`
   on a type serde writes as one value. An entry point and an operation are the name they are
   called by (`from_bson_piped`, `find_one`), and the typed paths carry the feature's
-  (`MONGO_FIELDS`, `mongo_write_{field}`, `mongo_read_row`, and `mongo_listed`, the marker every
-  flagged type carries under `bson`).
-  `every_added_method_but_the_entry_point_carries_the_flags_name` pins the whole list in order,
-  `mongo_listed` among them: a function of the author's own under one of those names is a
-  duplicate definition (E0592). The libraries' modules and markers are named for tixschema
-  (`__tixschema_decode_with`, `__TixschemaDecodeWithFoundation`), and a probe's names are local to
-  its anonymous `const`.
+  (`MONGO_FIELDS`, `mongo_write_{field}`, `mongo_read_row`).
+  `every_added_method_but_the_entry_point_carries_the_flags_name` pins the whole list in order:
+  a function of the author's own under one of those names is a duplicate definition (E0592). The
+  libraries' modules and markers are named for tixschema (`__tixschema_decode_with`,
+  `__TixschemaDecodeWithFoundation`), and a probe's names are local to its anonymous `const`.
 - **Both entry points of a source share its two reads.** `entry_methods` and `bson_entry_methods`
   build the first read and the second read once, as token fragments, and splice them into the
   callback entry point and into the piped one, so neither read can change for one and not the other.
@@ -2114,18 +2101,19 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   reports at every flagged type of a consumer that denies it.
 - **What `mongodb` adds is emitted under `#[cfg(feature = "mongodb")]`, for a type that lists
   `"mongodb"`, and nothing of it in any other build or for any other type.** `query.rs` writes the
-  query types into the BSON and MongoDB library (`query_items`, spliced by `mongodb_library`).
+  query types into the MongoDB library (`query_items`, spliced by `mongodb_library`).
   `fields.rs` writes `MongoFields` into the type's own module with one function per field, and
   onto the type `MONGO_FIELDS` and one `mongo_write_{field}` per hooked field (`struct_paths`,
   `enum_paths`, called only where `Written::mongodb` holds). `operations.rs` writes
   `OperationError` and `Read` into the library (`error_items`, `read_items`, through
   `operation_items`) and the operations onto the type, beside the BSON entry points and under
-  their bounds (`methods`, called from `bson_entry_methods`). Each is reached through a `cfg`'d
-  pair in `recovering_decode.rs`, whose other half answers nothing, so a type without the flag
-  expands as before, a type that lists `"decode_with"` alone gains no BSON read, no operation and
-  no path under any feature, and a type that lists `"mongodb"` in a build with `bson` and without
-  `mongodb` gains the BSON read alone. The query types' items the typed paths of a type call
-  across modules are `pub(crate)` (`Field::held_path`, `Filter::held`).
+  their bounds (`methods`, which `bson_entry_methods` calls only where it is handed the entry).
+  Each is reached through a `cfg`'d pair in `recovering_decode.rs`, whose other half answers
+  nothing, so a type without the flag expands as before, a type that lists `"decode_with"` alone
+  gains no operation and no path under any feature, and a type that lists `"mongodb"` in a build
+  without `mongodb` gains nothing more than the BSON read every flagged type has under `bson`.
+  The query types' items the typed paths of a type call across modules are `pub(crate)`
+  (`Field::held_path`, `Filter::held`).
 - **A type's paths hold its own keys, and nothing of another type's.** `MongoFields` holds a
   marker and no path. Each named member is a `const fn` of it (`of_functions`) that answers one
   path kind at a key written as a literal, relative to the type: `"total"`, and `"list.0"` where
@@ -2139,8 +2127,8 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   path kind carries the model `nest` reaches as its last parameter, `N`: the field's type read
   through `Option`, the list and the wrappers `through_wrappers` reads, which `reached_through`
   writes only where it is not the value an operator takes. `nest` takes a filter over the rows
-  of `N` or an update of them by the bound `Nests<Root, N, Kind>`, which the BSON and MongoDB
-  library implements twice over the two markers a filter and an update carry (`AsFilter`,
+  of `N` or an update of them by the bound `Nests<Root, N, Kind>`, which the MongoDB library
+  implements twice over the two markers a filter and an update carry (`AsFilter`,
   `AsUpdate`), and writes
   each key under the path's own (`nested_filter`, `nested_update`, `nested_key`). No expansion
   names another type's module: a flattened model and a variant that holds one at the enum's own
@@ -2182,7 +2170,7 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
     type**, as a hooked path's function is, so the model an arm holds is named as its author
     wrote it and an enum declared inside a function builds. `Own::naming_itself` writes `Self`
     as the enum there. Each is a `const fn` that answers `ArmFilter<Root, M>`.
-  - `ArmFilter` (`query.rs`, in the BSON and MongoDB library) holds the tag, the value, the arm's
+  - `ArmFilter` (`query.rs`, in the MongoDB library) holds the tag, the value, the arm's
     place and the conditions, and no document until it is turned into one. The place is
     `MongoPath::ROOT` under a tag written beside the fields and the content key under
     `content`. Its `and` takes a filter over the rows of `M` by the two standard traits and
@@ -2243,9 +2231,9 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   `insert_one` writes the row when it is called and answers a boxed `Send` future too: an
   `async fn` over `&self` is `Send` only where the type is `Sync`.
 - **The lists of what the flag adds are pinned.** `DECODE_WITH_LIBRARY_NAMES` is every name the
-  `decode_with` library makes public, and `MONGODB_LIBRARY_NAMES` every name the BSON and MongoDB
-  library makes public in the build, the ones `mongodb` adds under their own `cfg`: each is what a
-  `{type}_schema` module re-exports, and
+  `decode_with` library makes public in the build, the four BSON pieces under their own `cfg`, and
+  `MONGODB_LIBRARY_NAMES`, under `mongodb`, every name the MongoDB library makes public: each is
+  what a `{type}_schema` module re-exports, and
   `the_decode_with_library_names_are_every_name_it_makes_public` and
   `the_mongodb_library_names_are_every_name_it_makes_public` hold each list to the items its library
   declares. `ADDED_TYPE_NAMES`, with `ADDED_TYPE_COUNT`, is every type name the schema module of a
@@ -2254,7 +2242,7 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   `every_type_the_flag_adds_is_a_name_read_past` holds the list to the libraries and to what the
   module of a struct and that of an enum under a tag declare.
   `every_added_method_but_the_entry_point_carries_the_flags_name` is every method the flag adds to
-  the type, `mongo_listed` included, and `OPERATIONS` in `recovering_decode/tests.rs` is what
+  the type, and `OPERATIONS` in `recovering_decode/tests.rs` is what
   `mongodb` adds to it. A name a library, a module or a type gains joins its list in the same
   change.
 - **The emitted code names only what both major versions of the `bson` library have.** Every BSON
@@ -2714,7 +2702,7 @@ tixschema/
 │   │   │   ├── enums.rs          # The walkers of an enum
 │   │   │   ├── aliases.rs        # A field typed with an alias, walked as the type it names
 │   │   │   ├── checks.rs         # decode_with_check_messages, and its messages as issues
-│   │   │   ├── query.rs          # mongodb: Filter, Update and the path kinds, in the BSON and MongoDB library
+│   │   │   ├── query.rs          # mongodb: Filter, Update and the path kinds, in the MongoDB library
 │   │   │   ├── fields.rs         # mongodb: MongoFields, MONGO_FIELDS, one function per field
 │   │   │   └── operations.rs     # mongodb: the operations, and OperationError and Read in the library
 │   │   ├── swift.rs              # Swift types and their Codable codec
