@@ -53,54 +53,15 @@ use service_schema::exec_service_schema;
 /// ```
 ///
 /// Each output block below is a run of the declaration above it under the default features, pasted
-/// verbatim. The two methods answer separately -- `ts_definition()` returns the TypeScript alone,
-/// `zod_schema()` the Zod alone -- and the JSON Schema carried by each leading `JSDoc` block is
-/// written only while the `jsonschema` feature is on.
+/// verbatim. The two methods answer separately: `ts_definition()` returns the TypeScript alone,
+/// `zod_schema()` the Zod alone.
 ///
 /// `User::ts_definition()`:
 ///
-#[doc = r#"```typescript
+#[doc = "```typescript
 /**
  * User
  * 
- * JSON Schema:
- * {
- *   "type": "object",
- *   "additionalProperties": false,
- *   "properties": {
- *     "age": {
- *       "anyOf": [
- *         {
- *           "type": "integer"
- *         },
- *         {
- *           "type": "null"
- *         }
- *       ]
- *     },
- *     "firstName": {
- *       "type": "string"
- *     },
- *     "id": {
- *       "type": "string"
- *     },
- *     "lastName": {
- *       "type": "string"
- *     },
- *     "roles": {
- *       "type": "array",
- *       "items": {
- *         "type": "string"
- *       }
- *     }
- *   },
- *   "required": [
- *     "firstName",
- *     "id",
- *     "lastName",
- *     "roles"
- *   ]
- * }
  */
 export type User = {
   /**
@@ -129,7 +90,7 @@ export type User = {
    */
   roles: Array<string>;
 };
-```"#]
+```"]
 ///
 /// `User::zod_schema()`:
 ///
@@ -170,15 +131,6 @@ export const User$Schema: ZodType<User> = User$RawSchema.meta({
 /**
  * Status
  * 
- * JSON Schema:
- * {
- *   "type": "string",
- *   "enum": [
- *     "active",
- *     "inactive",
- *     "pending"
- *   ]
- * }
  */
 export type Status =
   | "active"
@@ -236,58 +188,6 @@ export const Status$Schema: ZodType<Status> = Status$RawSchema;
 /**
  * Event
  * 
- * JSON Schema:
- * {
- *   "type": "object",
- *   "oneOf": [
- *     {
- *       "additionalProperties": false,
- *       "properties": {
- *         "type": {
- *           "type": "string",
- *           "const": "userCreated"
- *         },
- *         "timestamp": {
- *           "type": "string"
- *         },
- *         "user_id": {
- *           "type": "string"
- *         }
- *       },
- *       "required": [
- *         "type",
- *         "timestamp",
- *         "user_id"
- *       ]
- *     },
- *     {
- *       "additionalProperties": false,
- *       "properties": {
- *         "type": {
- *           "type": "string",
- *           "const": "userDeleted"
- *         },
- *         "reason": {
- *           "anyOf": [
- *             {
- *               "type": "string"
- *             },
- *             {
- *               "type": "null"
- *             }
- *           ]
- *         },
- *         "user_id": {
- *           "type": "string"
- *         }
- *       },
- *       "required": [
- *         "type",
- *         "user_id"
- *       ]
- *     }
- *   ]
- * }
  */
 export type Event = {
   /**
@@ -387,101 +287,6 @@ pub struct Document {
 /**
  * Document
  * 
- * JSON Schema:
- * {
- *   "type": "object",
- *   "additionalProperties": false,
- *   "properties": {
- *     "author_id": {
- *       "type": "object",
- *       "properties": {
- *         "$oid": {
- *           "type": "string",
- *           "pattern": "^[a-f0-9]{24}$"
- *         }
- *       },
- *       "required": [
- *         "$oid"
- *       ],
- *       "additionalProperties": false
- *     },
- *     "id": {
- *       "type": "object",
- *       "properties": {
- *         "$oid": {
- *           "type": "string",
- *           "pattern": "^[a-f0-9]{24}$"
- *         }
- *       },
- *       "required": [
- *         "$oid"
- *       ],
- *       "additionalProperties": false
- *     },
- *     "metadata": {
- *       "type": "object",
- *       "additionalProperties": {
- *         "type": "object",
- *         "properties": {
- *           "$oid": {
- *             "type": "string",
- *             "pattern": "^[a-f0-9]{24}$"
- *           }
- *         },
- *         "required": [
- *           "$oid"
- *         ],
- *         "additionalProperties": false
- *       }
- *     },
- *     "parent_id": {
- *       "anyOf": [
- *         {
- *           "type": "object",
- *           "properties": {
- *             "$oid": {
- *               "type": "string",
- *               "pattern": "^[a-f0-9]{24}$"
- *             }
- *           },
- *           "required": [
- *             "$oid"
- *           ],
- *           "additionalProperties": false
- *         },
- *         {
- *           "type": "null"
- *         }
- *       ]
- *     },
- *     "tags": {
- *       "type": "array",
- *       "items": {
- *         "type": "object",
- *         "properties": {
- *           "$oid": {
- *             "type": "string",
- *             "pattern": "^[a-f0-9]{24}$"
- *           }
- *         },
- *         "required": [
- *           "$oid"
- *         ],
- *         "additionalProperties": false
- *       }
- *     },
- *     "title": {
- *       "type": "string"
- *     }
- *   },
- *   "required": [
- *     "author_id",
- *     "id",
- *     "metadata",
- *     "tags",
- *     "title"
- *   ]
- * }
  */
 export type Document = {
   /**

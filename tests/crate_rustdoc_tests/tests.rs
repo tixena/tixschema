@@ -3,38 +3,16 @@
 //! answers with has to still appear in `src/lib.rs` verbatim, field and variant order included,
 //! since every surface writes in declaration order. Drift fails here rather than on the docs page.
 
-#[cfg(all(
-    feature = "jsonschema",
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod"
-))]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 use serde::{Deserialize, Serialize};
-#[cfg(all(
-    feature = "jsonschema",
-    feature = "mongodb",
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod"
-))]
+#[cfg(all(feature = "mongodb", feature = "serde", feature = "typescript"))]
 use std::collections::HashMap;
-#[cfg(all(
-    feature = "jsonschema",
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod"
-))]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 use tixschema::model_schema;
 
-/// The JSON Schema each emission carries in its leading `JSDoc` block is written only while
-/// `jsonschema` is on, so every pin here reads the rustdoc under the feature set the shown blocks
-/// were taken from.
-#[cfg(all(
-    feature = "jsonschema",
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod"
-))]
+/// Each pin runs under the features its block's output needs: `serde` and `typescript` for a
+/// `ts_definition()`, and `zod` beside them for a `zod_schema()`.
+#[cfg(all(feature = "serde", feature = "typescript"))]
 fn assert_rustdoc_shows(surface: &str) {
     let rustdoc = include_str!("../../src/lib.rs");
     assert!(
@@ -43,12 +21,7 @@ fn assert_rustdoc_shows(surface: &str) {
     );
 }
 
-#[cfg(all(
-    feature = "jsonschema",
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod"
-))]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn test_usage_section_shows_what_the_struct_emits() {
     #[derive(Serialize, Deserialize)]
@@ -64,15 +37,11 @@ fn test_usage_section_shows_what_the_struct_emits() {
     }
 
     assert_rustdoc_shows(&User::ts_definition());
+    #[cfg(feature = "zod")]
     assert_rustdoc_shows(&User::zod_schema());
 }
 
-#[cfg(all(
-    feature = "jsonschema",
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod"
-))]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn test_enum_section_shows_what_the_enum_emits() {
     #[derive(Serialize, Deserialize)]
@@ -85,15 +54,11 @@ fn test_enum_section_shows_what_the_enum_emits() {
     }
 
     assert_rustdoc_shows(&Status::ts_definition());
+    #[cfg(feature = "zod")]
     assert_rustdoc_shows(&Status::zod_schema());
 }
 
-#[cfg(all(
-    feature = "jsonschema",
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod"
-))]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn test_tagged_union_section_shows_what_the_tagged_enum_emits() {
     #[derive(Serialize, Deserialize)]
@@ -112,16 +77,11 @@ fn test_tagged_union_section_shows_what_the_tagged_enum_emits() {
     }
 
     assert_rustdoc_shows(&Event::ts_definition());
+    #[cfg(feature = "zod")]
     assert_rustdoc_shows(&Event::zod_schema());
 }
 
-#[cfg(all(
-    feature = "jsonschema",
-    feature = "mongodb",
-    feature = "serde",
-    feature = "typescript",
-    feature = "zod"
-))]
+#[cfg(all(feature = "mongodb", feature = "serde", feature = "typescript"))]
 #[test]
 fn test_object_id_section_shows_what_the_object_id_struct_emits() {
     /// A stand-in `ObjectId`: a newtype over the hex text.
@@ -141,5 +101,6 @@ fn test_object_id_section_shows_what_the_object_id_struct_emits() {
     }
 
     assert_rustdoc_shows(&Document::ts_definition());
+    #[cfg(feature = "zod")]
     assert_rustdoc_shows(&Document::zod_schema());
 }
