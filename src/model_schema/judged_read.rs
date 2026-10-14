@@ -128,7 +128,8 @@ struct Corrects {
 
 /// The hook one member of the item being expanded reads the models it holds through. It is held
 /// as text: the item's read is written after its members are walked, and a token outlives no
-/// expansion.
+/// expansion. Each text writes `Self` where the member does: the item's name is written out as the
+/// hook is.
 #[cfg(feature = "serde")]
 struct MemberHook {
     /// The member's value, built back from `held_0`, what `read_as` was read into.
@@ -164,10 +165,59 @@ pub(super) struct HookPlace<'item> {
     /// The key a refusal raised below the member is answered under, where it is answered under
     /// one.
     pub renamed_under: Option<&'item str>,
-    pub type_parameters: &'item [String],
     pub variant: Option<&'item str>,
     /// Whether serde reads the member under a key of its own, so that a missing one has a meaning.
     pub written_under_a_key: bool,
+}
+
+/// One bound the item, or its read, holds a type to: `bounded: bound`, under the `for<..>` the
+/// predicate binds, with `Self` written out.
+#[cfg(feature = "serde")]
+struct Predicate {
+    binder: TokenStream,
+    /// Whether it names a lifetime the item declares, which no hook declares.
+    borrows: bool,
+    bound: TokenStream,
+    bounded: TokenStream,
+    /// The item's type parameters it names.
+    names: Vec<String>,
+}
+
+/// What a hook of the item being expanded is written with, beside its member: the item's name
+/// where a member writes `Self`, its parameters, and the bounds the item and its read declare.
+#[cfg(feature = "serde")]
+struct HookScope {
+    /// Whether the item is read at `'static`, which no hook generic over `'de` reads at.
+    at_static: bool,
+    /// The item's const parameters, which no hook declares.
+    consts: Vec<String>,
+    declared: Vec<Predicate>,
+    named: TokenStream,
+    /// The item's type parameters, in the order it declares them.
+    parameters: Vec<Ident>,
+    /// The names of `parameters`, as a type writes them.
+    parameters_written: Vec<String>,
+    read: Vec<Predicate>,
+}
+
+/// One hook as it is written: the member's texts with `Self` written out, and the parameters and
+/// bounds of the hook and of the type it reads the model as.
+#[cfg(feature = "serde")]
+struct HookWritten {
+    back: TokenStream,
+    held_as: Ident,
+    leaf: TokenStream,
+    /// The predicates the type the model is read as is declared under.
+    leaf_bounds: Vec<TokenStream>,
+    /// `<IdType>` where the model names parameters of the item, and nothing where it names none.
+    leaf_generics: TokenStream,
+    leaf_parameters: Vec<Ident>,
+    /// The predicates its `Deserialize` is written under.
+    leaf_predicates: Vec<TokenStream>,
+    parameters: Vec<Ident>,
+    predicates: Vec<TokenStream>,
+    read_as: TokenStream,
+    ty: TokenStream,
 }
 
 /// The read of a member's type with every model it holds read unjudged.
@@ -228,62 +278,79 @@ impl Corrects {
 impl MemberHook {
     /// The function the member is read through: its type with each model it holds read through
     /// that model's `unjudged` read, from the payload the member's own functions corrected where
-    /// it names any.
-    fn function(&self, unjudged: &Ident, reader: &Ident, corrects: &Corrects) -> TokenStream {
+    /// it names any. Generic over the item's parameters the member's type names, and `None` where
+    /// `scope` keeps the hook from being written.
+    fn function(
+        &self,
+        unjudged: &Ident,
+        reader: &Ident,
+        corrects: &Corrects,
+        scope: &HookScope,
+    ) -> Option<TokenStream> {
         let name = corrects.hook_name(&self.name);
-        let held_as = Ident::new(&self.held_as, Span::call_site());
-        let [ty, leaf, read_as, back] = [&self.ty, &self.leaf, &self.read_as, &self.back]
-            .map(|written| written.parse::<TokenStream>().unwrap_or_default());
+        let HookWritten {
+            back,
+            held_as,
+            leaf,
+            leaf_bounds,
+            leaf_generics,
+            leaf_parameters,
+            leaf_predicates,
+            parameters,
+            predicates,
+            read_as,
+            ty,
+        } = scope.written(self)?;
         let held_leaf = self.held_leaf(&leaf, &held_as, unjudged);
         let renamed = self.renamed_under.as_deref().map(|key| {
             let renaming = named_refusal(key);
             quote! { .map_err(#renaming) }
         });
+        let leaf_where = (!leaf_bounds.is_empty()).then(|| quote! { where #(#leaf_bounds),* });
+        let leaf_read_where =
+            (!leaf_predicates.is_empty()).then(|| quote! { where #(#leaf_predicates),* });
+        let held = quote! {
+            struct #held_as #leaf_generics (#leaf) #leaf_where;
+            impl<'de #(, #leaf_parameters)*> serde::Deserialize<'de> for #held_as #leaf_generics #leaf_read_where {
+                fn deserialize<#reader>(deserializer: #reader) -> ::core::result::Result<Self, #reader::Error>
+                where
+                    #reader: serde::Deserializer<'de>,
+                {
+                    #held_leaf
+                }
+            }
+        };
         let functions = corrects
             .named
             .of_member(self.variant.as_deref(), self.index);
         if functions.is_empty() {
-            return quote! {
-                fn #name<'de, #reader>(deserializer: #reader) -> ::core::result::Result<#ty, #reader::Error>
+            return Some(quote! {
+                fn #name<'de, #(#parameters,)* #reader>(deserializer: #reader) -> ::core::result::Result<#ty, #reader::Error>
                 where
                     #reader: serde::Deserializer<'de>,
+                    #(#predicates,)*
                 {
-                    struct #held_as(#leaf);
-                    impl<'de> serde::Deserialize<'de> for #held_as {
-                        fn deserialize<#reader>(deserializer: #reader) -> ::core::result::Result<Self, #reader::Error>
-                        where
-                            #reader: serde::Deserializer<'de>,
-                        {
-                            #held_leaf
-                        }
-                    }
+                    #held
                     let held_0 = <#read_as as serde::Deserialize>::deserialize(deserializer) #renamed ?;
                     ::core::result::Result::Ok(#back)
                 }
-            };
+            });
         }
         let (deserializer, corrected) = (&corrects.deserializer, &corrects.corrected);
         let correction = corrects.statements(functions);
         let told = told_by(reader);
-        quote! {
-            fn #name<'de, #reader>(#deserializer: #reader) -> ::core::result::Result<#ty, #reader::Error>
+        Some(quote! {
+            fn #name<'de, #(#parameters,)* #reader>(#deserializer: #reader) -> ::core::result::Result<#ty, #reader::Error>
             where
                 #reader: serde::Deserializer<'de>,
+                #(#predicates,)*
             {
-                struct #held_as(#leaf);
-                impl<'de> serde::Deserialize<'de> for #held_as {
-                    fn deserialize<#reader>(deserializer: #reader) -> ::core::result::Result<Self, #reader::Error>
-                    where
-                        #reader: serde::Deserializer<'de>,
-                    {
-                        #held_leaf
-                    }
-                }
+                #held
                 #correction
                 let held_0 = <#read_as as serde::Deserialize>::deserialize(#corrected) #told #renamed ?;
                 ::core::result::Result::Ok(#back)
             }
-        }
+        })
     }
 
     /// What answers `leaf`, the model the member holds, as `held_as`: its `unjudged` read, held
@@ -301,6 +368,311 @@ impl MemberHook {
             ::core::result::Result::Ok(#held_as(held))
         }
     }
+}
+
+#[cfg(feature = "serde")]
+impl Predicate {
+    /// `bounded: bound` under `binder`, `written` in that order, with `named` written where they
+    /// write `Self`. `parameters` and `lifetimes` are the item's.
+    fn of(
+        written: [TokenStream; 3],
+        named: &TokenStream,
+        parameters: &[String],
+        lifetimes: &[String],
+    ) -> Self {
+        let [binder, bounded, bound] = written.map(|tokens| naming_the_type(tokens, named));
+        let whole = quote! { #binder #bounded : #bound };
+        let mut parameters_named = Vec::new();
+        parameters_in(whole.clone(), parameters, &mut parameters_named);
+        let mut named_lifetimes = Vec::new();
+        lifetimes_in(whole, &mut named_lifetimes);
+        Self {
+            binder,
+            borrows: named_lifetimes
+                .iter()
+                .any(|lifetime| lifetimes.contains(lifetime)),
+            bound,
+            bounded,
+            names: parameters_named,
+        }
+    }
+
+    /// One per bound of `predicate`, a predicate of a `where` clause.
+    fn split(
+        predicate: &syn::WherePredicate,
+        named: &TokenStream,
+        parameters: &[String],
+        lifetimes: &[String],
+    ) -> Vec<Self> {
+        let syn::WherePredicate::Type(typed) = predicate else {
+            return Vec::new();
+        };
+        let (binder, bounded) = (
+            typed.lifetimes.to_token_stream(),
+            typed.bounded_ty.to_token_stream(),
+        );
+        typed
+            .bounds
+            .iter()
+            .map(|bound| {
+                Self::of(
+                    [binder.clone(), bounded.clone(), bound.to_token_stream()],
+                    named,
+                    parameters,
+                    lifetimes,
+                )
+            })
+            .collect()
+    }
+
+    /// Whether it names a parameter of the item, and every one it names is among `within`.
+    fn within(&self, within: &[String]) -> bool {
+        !self.names.is_empty() && self.names.iter().all(|named| within.contains(named))
+    }
+}
+
+#[cfg(feature = "serde")]
+impl HookScope {
+    /// The item's own idents of the parameters `named`.
+    fn idents_of(&self, named: &[String]) -> Vec<Ident> {
+        self.parameters
+            .iter()
+            .zip(&self.parameters_written)
+            .filter(|(_, written)| named.contains(written))
+            .map(|(declared, _)| declared.clone())
+            .collect()
+    }
+
+    /// The item's type parameters `ty` names, in the order the item declares them, or `None`
+    /// where it names one serde's call of the hook cannot infer, behind a path or as a qualified
+    /// type, or a const parameter.
+    fn named_by(&self, ty: &TokenStream) -> Option<Vec<String>> {
+        let mut named = Vec::new();
+        if !parameters_in(ty.clone(), &self.parameters_written, &mut named) {
+            return None;
+        }
+        let mut consts = Vec::new();
+        parameters_in(ty.clone(), &self.consts, &mut consts);
+        if !consts.is_empty() {
+            return None;
+        }
+        Some(
+            self.parameters_written
+                .iter()
+                .filter(|declared| named.contains(declared))
+                .cloned()
+                .collect(),
+        )
+    }
+
+    /// What the hooks of `input` are written with, beside the bounds of its read.
+    fn of(input: &DeriveInput, bounds: &ReadBounds) -> Self {
+        let generics = &input.generics;
+        let name = &input.ident;
+        let (_, type_generics, _) = generics.split_for_impl();
+        let named = quote! { #name #type_generics };
+        let parameters: Vec<Ident> = generics
+            .type_params()
+            .map(|declared| declared.ident.clone())
+            .collect();
+        let parameters_written: Vec<String> = parameters.iter().map(ToString::to_string).collect();
+        let lifetimes: Vec<String> = generics
+            .lifetimes()
+            .map(|declared| declared.lifetime.ident.to_string())
+            .collect();
+        let inline = generics.type_params().flat_map(|declared| {
+            let ident = &declared.ident;
+            declared.bounds.iter().map(move |bound| {
+                [
+                    TokenStream::new(),
+                    quote! { #ident },
+                    bound.to_token_stream(),
+                ]
+            })
+        });
+        let mut declared: Vec<Predicate> = inline
+            .map(|written| Predicate::of(written, &named, &parameters_written, &lifetimes))
+            .collect();
+        for predicate in generics
+            .where_clause
+            .iter()
+            .flat_map(|clause| &clause.predicates)
+        {
+            declared.extend(Predicate::split(
+                predicate,
+                &named,
+                &parameters_written,
+                &lifetimes,
+            ));
+        }
+        let read = bounds
+            .predicates
+            .iter()
+            .flat_map(|predicate| {
+                Predicate::split(predicate, &named, &parameters_written, &lifetimes)
+            })
+            .collect();
+        Self {
+            at_static: bounds.borrowed.is_none(),
+            consts: generics
+                .const_params()
+                .map(|constant| constant.ident.to_string())
+                .collect(),
+            declared,
+            named,
+            parameters,
+            parameters_written,
+            read,
+        }
+    }
+
+    /// `hook` as it is written for the item, or `None` where a bound of the item or of its read
+    /// ties a parameter the member names to one it does not, or to a lifetime of the item, or
+    /// where the item is read at `'static`: the member is then read by its own `Deserialize`.
+    fn written(&self, hook: &MemberHook) -> Option<HookWritten> {
+        let [ty, leaf, back] = [&hook.ty, &hook.leaf, &hook.back].map(|written| {
+            naming_the_type(
+                written.parse::<TokenStream>().unwrap_or_default(),
+                &self.named,
+            )
+        });
+        let parameters = self.named_by(&ty)?;
+        if !parameters.is_empty() && self.at_static {
+            return None;
+        }
+        let every = || self.declared.iter().chain(&self.read);
+        let tied = every().any(|predicate| {
+            predicate
+                .names
+                .iter()
+                .any(|named| parameters.contains(named))
+                && (predicate.borrows || !predicate.within(&parameters))
+        });
+        if tied {
+            return None;
+        }
+        let leaf_parameters = self.named_by(&leaf)?;
+        // The member's type is written beside the type the hook reads the model as.
+        let held_as = unclaimed_parameter(HELD, &written_names(ty.clone()));
+        let leaf_idents = self.idents_of(&leaf_parameters);
+        let leaf_generics = if leaf_idents.is_empty() {
+            TokenStream::new()
+        } else {
+            quote! { <#(#leaf_idents),*> }
+        };
+        let read_as = naming_the_type(
+            word_written_as(
+                hook.read_as.parse::<TokenStream>().unwrap_or_default(),
+                &hook.held_as,
+                &quote! { #held_as #leaf_generics },
+            ),
+            &self.named,
+        );
+        Some(HookWritten {
+            back,
+            held_as,
+            leaf,
+            leaf_bounds: merged(
+                self.declared
+                    .iter()
+                    .filter(|predicate| predicate.within(&leaf_parameters)),
+            ),
+            leaf_generics,
+            leaf_parameters: leaf_idents,
+            leaf_predicates: merged(every().filter(|predicate| predicate.within(&leaf_parameters))),
+            parameters: self.idents_of(&parameters),
+            predicates: merged(every().filter(|predicate| predicate.within(&parameters))),
+            read_as,
+            ty,
+        })
+    }
+}
+
+/// Collects into `named` each of `declared` that `tokens` writes as a type, once, and answers
+/// whether each is written where a type is inferred from it: not as the start of a longer path,
+/// and not as a qualified type.
+#[cfg(feature = "serde")]
+fn parameters_in(tokens: TokenStream, declared: &[String], named: &mut Vec<String>) -> bool {
+    let written: Vec<TokenTree> = tokens.into_iter().collect();
+    let mut inferred = true;
+    for (at, token) in written.iter().enumerate() {
+        let word = match token {
+            TokenTree::Group(group) => {
+                inferred &= parameters_in(group.stream(), declared, named);
+                continue;
+            }
+            TokenTree::Ident(word) => word.to_string(),
+            TokenTree::Punct(_) | TokenTree::Literal(_) => continue,
+        };
+        let after_a_path = at
+            .checked_sub(1)
+            .and_then(|before| written.get(before))
+            .is_some_and(
+                |before| matches!(before, TokenTree::Punct(mark) if mark.as_char() == ':'),
+            );
+        if after_a_path || !declared.contains(&word) {
+            continue;
+        }
+        inferred &= !written
+            .get(at.saturating_add(1))
+            .is_some_and(|after| match after {
+                TokenTree::Punct(mark) => mark.as_char() == ':',
+                TokenTree::Ident(next) => next == "as",
+                TokenTree::Group(_) | TokenTree::Literal(_) => false,
+            });
+        if !named.contains(&word) {
+            named.push(word);
+        }
+    }
+    inferred
+}
+
+/// Collects into `named` the name of each lifetime `tokens` writes.
+#[cfg(feature = "serde")]
+fn lifetimes_in(tokens: TokenStream, named: &mut Vec<String>) {
+    let mut quoted = false;
+    for token in tokens {
+        match token {
+            TokenTree::Group(group) => lifetimes_in(group.stream(), named),
+            TokenTree::Punct(mark) => {
+                quoted = mark.as_char() == '\'';
+                continue;
+            }
+            TokenTree::Ident(word) if quoted => named.push(word.to_string()),
+            TokenTree::Ident(_) | TokenTree::Literal(_) => {}
+        }
+        quoted = false;
+    }
+}
+
+/// `predicates` written one per bounded type, each bound once: a bound written twice, or a type
+/// bounded in two predicates, is one clippy reports in the consumer's crate.
+#[cfg(feature = "serde")]
+fn merged<'item>(predicates: impl Iterator<Item = &'item Predicate>) -> Vec<TokenStream> {
+    let mut grouped: Vec<(TokenStream, Vec<&TokenStream>)> = Vec::new();
+    for predicate in predicates {
+        let (binder, bounded, bound) = (&predicate.binder, &predicate.bounded, &predicate.bound);
+        let head = quote! { #binder #bounded };
+        let key = head.to_string();
+        match grouped
+            .iter_mut()
+            .find(|(written, _)| written.to_string() == key)
+        {
+            Some((_, listed)) => {
+                if !listed
+                    .iter()
+                    .any(|held| held.to_string() == bound.to_string())
+                {
+                    listed.push(bound);
+                }
+            }
+            None => grouped.push((head, vec![bound])),
+        }
+    }
+    grouped
+        .into_iter()
+        .map(|(head, listed)| quote! { #head: #(#listed)+* })
+        .collect()
 }
 
 /// Forgets every hook recorded: an item's read holds only that item's own.
@@ -442,12 +814,13 @@ pub fn named_refusal(named: &str) -> TokenStream {
 /// item being expanded: the member's type is read with each model under `Option`, `Vec`, `Box`
 /// and a map's values read through its unjudged read. `shape` is the walk `validate()` makes of
 /// the same member, which is what judges what the hook leaves unjudged. Answers whether the
-/// member was given one.
+/// member was given one. The read writes it generic over the item's parameters the member names,
+/// or leaves the member to its own `Deserialize` where the item's bounds keep it from one.
 #[cfg(feature = "serde")]
 pub(super) fn hook_member(field: &Field, shape: &super::HeldShape, place: &HookPlace<'_>) -> bool {
     if parse_serde_key_omission(&field.attrs).skips_deserializing
         || has_serde_read_hook(&field.attrs)
-        || names_what_the_module_cannot_repeat(&field.ty, place.type_parameters)
+        || field.ty.to_token_stream().to_string().contains('\'')
         || !matches!(shape.end, HeldEnd::Declared)
     {
         return false;
@@ -579,16 +952,23 @@ fn generated(tokens: TokenStream) -> TokenStream {
 /// `tokens` with `named` written wherever they write `Self`, which a copy of the item would read
 /// as itself.
 fn naming_the_type(tokens: TokenStream, named: &TokenStream) -> TokenStream {
+    word_written_as(tokens, "Self", named)
+}
+
+/// `tokens` with `written` wherever they write the word `word`.
+fn word_written_as(tokens: TokenStream, word: &str, written: &TokenStream) -> TokenStream {
     tokens
         .into_iter()
         .flat_map(|token| match token {
             TokenTree::Group(group) => {
-                let mut inner =
-                    Group::new(group.delimiter(), naming_the_type(group.stream(), named));
+                let mut inner = Group::new(
+                    group.delimiter(),
+                    word_written_as(group.stream(), word, written),
+                );
                 inner.set_span(group.span());
                 TokenStream::from(TokenTree::Group(inner))
             }
-            TokenTree::Ident(ident) if ident == "Self" => named.clone(),
+            TokenTree::Ident(ident) if ident == word => written.clone(),
             other @ (TokenTree::Ident(_) | TokenTree::Literal(_) | TokenTree::Punct(_)) => {
                 TokenStream::from(other)
             }
@@ -745,9 +1125,12 @@ fn reader_parameter(input: &DeriveInput) -> Ident {
 }
 
 /// What the hooks recorded for the item being expanded add to its read, each model read through
-/// its own `unjudged` read, from the payload the member's own functions corrected.
+/// its own `unjudged` read, from the payload the member's own functions corrected. A hook the
+/// item's `bounds` keep from being written is left out, and its member read as serde reads it.
 #[cfg(feature = "serde")]
 fn unjudged_hooks(
+    input: &DeriveInput,
+    bounds: &ReadBounds,
     unjudged: &Ident,
     reader: &Ident,
     written: &[String],
@@ -758,19 +1141,28 @@ fn unjudged_hooks(
         if hooks.is_empty() {
             return Hooked::default();
         }
+        let scope = HookScope::of(input, bounds);
+        let functions: Vec<(&MemberHook, TokenStream)> = hooks
+            .iter()
+            .filter_map(|hook| {
+                hook.function(unjudged, reader, corrects, &scope)
+                    .map(|function| (hook, function))
+            })
+            .collect();
+        if functions.is_empty() {
+            return Hooked::default();
+        }
         let fallback = held_fallback(&unclaimed_parameter(FALLBACK, written), unjudged);
-        let chosen = hooks
+        let chosen = functions
             .iter()
-            .any(|hook| hook.choosing)
+            .any(|(hook, _)| hook.choosing)
             .then(|| chosen_by_shape(&unclaimed_parameter(CHOSEN_BY_SHAPE, written)));
-        let functions = hooks
-            .iter()
-            .map(|hook| hook.function(unjudged, reader, corrects));
+        let written_functions = functions.iter().map(|(_, function)| function);
         Hooked {
-            functions: quote! { #fallback #chosen #(#functions)* },
-            hung: hooks
+            functions: quote! { #fallback #chosen #(#written_functions)* },
+            hung: functions
                 .iter()
-                .map(|hook| HungOn {
+                .map(|(hook, _)| HungOn {
                     attrs: hook_attrs(&corrects.hook_name(&hook.name), hook.defaulted),
                     index: hook.index,
                     replaces: false,
@@ -784,6 +1176,8 @@ fn unjudged_hooks(
 /// No hook is recorded in a build that reads no serde attribute: a model below judges itself.
 #[cfg(not(feature = "serde"))]
 fn unjudged_hooks(
+    _input: &DeriveInput,
+    _bounds: &ReadBounds,
     _unjudged: &Ident,
     _reader: &Ident,
     _written: &[String],
@@ -962,12 +1356,13 @@ fn corrected_hook(
 /// functions corrected.
 fn hooked(
     input: &DeriveInput,
+    bounds: &ReadBounds,
     unjudged: &Ident,
     reader: &Ident,
     written: &[String],
     corrects: &Corrects,
 ) -> Hooked {
-    let mut hooked = unjudged_hooks(unjudged, reader, written, corrects);
+    let mut hooked = unjudged_hooks(input, bounds, unjudged, reader, written, corrects);
     let container_defaulted = has_serde_default(&input.attrs);
     for (variant, index, field) in members_of(input) {
         let functions = corrects.named.of_member(variant.as_deref(), index);
@@ -1028,7 +1423,7 @@ fn unjudged_read(
     let written = written_names(input.to_token_stream());
     let reader = unclaimed_parameter("D", &written);
     let corrects = Corrects::of(&written);
-    let Hooked { functions, hung } = hooked(input, unjudged, &reader, &written, &corrects);
+    let Hooked { functions, hung } = hooked(input, &bounds, unjudged, &reader, &written, &corrects);
     let remote_name = unclaimed_parameter(REMOTE, &written);
     let remote = remote_definition(input, &remote_name, &hung, &bounds, derive);
     let (_, type_generics, _) = input.generics.split_for_impl();

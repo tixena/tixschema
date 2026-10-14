@@ -33,6 +33,7 @@ mod aliased;
 mod bounds;
 mod checks;
 mod flattened;
+mod generic_holders;
 // A build that describes a type refuses a renaming whose two directions name two keys.
 #[cfg(not(any(
     feature = "typescript",

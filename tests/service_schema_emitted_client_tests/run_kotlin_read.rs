@@ -84,6 +84,8 @@ Crate<Int>, its label and its seal broken: refused
     'label': too short: minimum length is 1, got 0
     'seal': too short: minimum length is 2, got 1
 Crate<Int>, held: read Crate
+Stack<Int>, a crate that breaks its bound: refused
+    'crates.1.label': too short: minimum length is 1, got 0
 Shipment by air, three stops: refused
     'stops': too long: maximum length is 2, got 3
 Shipment by ground: read ShipmentGround
@@ -112,9 +114,7 @@ Slip, a rating its check refuses: refused
 /// What the read answers where it is not the text of the Rust read. A model judges itself as it
 /// is read behind a type parameter, under a bound a member writes of its own on a brand, and
 /// where its type is declared below its holder: the first broken one ends the read with its own
-/// messages, under no place. A plain enum keeps the plugin's serializer, and is handed back. A
-/// type with a parameter held at the holder's own parameter is read unjudged, and named at its
-/// full place, where Rust reads it by itself.
+/// messages, under no place. A plain enum keeps the plugin's serializer, and is handed back.
 const APART_FROM_RUST: &str = "\
 Crate<Parcel>, the second code broken: refused
     'fragileItemCodes.1': y is outside of itemCodeList
@@ -125,8 +125,6 @@ Docket, a code that breaks its own bound: refused
 Hitch, its own bound and the trailer's broken: refused
     'plate': too short: minimum length is 1, got 0
 Rating, one its check refuses: read Rating
-Stack<Int>, a crate that breaks its bound: refused
-    'crates.1.label': too short: minimum length is 1, got 0
 ";
 
 /// What `{Type}Unjudged` answers of a payload the type's own serializer refuses: the value.
@@ -697,6 +695,12 @@ fn judged_rows() -> Vec<Sample> {
             &sealed_crate(vec![1_i32], "A", "ab"),
             |_| "Crate",
         ),
+        sample(
+            "Stack<Int>, a crate that breaks its bound",
+            "Stack<Int>",
+            &stack(),
+            |_| "Stack",
+        ),
     ];
     rows.extend(enum_rows());
     rows
@@ -817,12 +821,6 @@ fn apart_rows() -> Vec<Sample> {
             "serializer<Rating>()",
             &Rating::Unrated,
             Ok("Rating"),
-        ),
-        pinned(
-            "Stack<Int>, a crate that breaks its bound",
-            "serializer<Stack<Int>>()",
-            &stack(),
-            Err(&["'crates.1.label': too short: minimum length is 1, got 0"]),
         ),
     ]
 }
@@ -1013,8 +1011,7 @@ fn where_the_read_is_not_the_rust_reads_text_it_is_this() {
     // What the Rust read answers of the same payloads. A model that judges itself is told at its
     // position in the text, and a brand under its member's key. A model declared below its holder
     // is read unjudged, so the holder's own message is answered too, and the trailer's at its
-    // place. The plain enum is refused, where Kotlin hands it back. A type with a parameter held
-    // at the holder's own judges itself.
+    // place. The plain enum is refused, where Kotlin hands it back.
     assert_eq!(
         [
             refused_by_rust(&sealed_crate(vec![held(), outside()], "A", "ab")),
@@ -1026,7 +1023,6 @@ fn where_the_read_is_not_the_rust_reads_text_it_is_this() {
             refused_by_rust(&docket()),
             refused_by_rust(&hitch()),
             refused_by_rust(&Rating::Unrated),
-            refused_by_rust(&stack()),
         ],
         [
             "'fragileItemCodes.1': y is outside of itemCodeList at line 1 column 134",
@@ -1035,7 +1031,6 @@ fn where_the_read_is_not_the_rust_reads_text_it_is_this() {
             "'hook': too short: minimum length is 1, got 0; 'trailer.plate': too short: minimum \
              length is 1, got 0",
             "a slip is rated",
-            "'label': too short: minimum length is 1, got 0 at line 1 column 86",
         ]
     );
     let body: Vec<String> = rows.iter().map(|row| row.kotlin.clone()).collect();

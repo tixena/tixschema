@@ -287,3 +287,153 @@ fn a_member_that_chooses_a_variant_is_held_to_the_bound_of_a_brand() {
         assert!(!held.contains(unwritten), "found `{unwritten}` in: {held}");
     }
 }
+
+/// A member that names one of the item's type parameters is read through a hook generic over
+/// exactly the parameters it names, every bound in its `where` clause, each once, and the type the
+/// model is read as declares only the parameters the model names.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn a_member_that_names_a_type_parameter_is_read_through_a_hook_generic_over_it() {
+    let read = expansion_under(
+        "default_types(IdType = String, Held = String)",
+        "#[derive(Deserialize)] #[serde(bound(deserialize = \"IdType: \
+         serde::de::DeserializeOwned, Held: serde::de::DeserializeOwned\"))] pub struct \
+         HookedLedger<IdType: Display + Eq + Hash, Held> where IdType: Display { pub by_id: \
+         HashMap<IdType, HookedTag>, pub entries: Vec<HookedEntry<IdType>>, pub held: Vec<Held> }",
+    );
+    for written in [
+        "fn read_unjudged_entries < 'de , IdType , D > (deserializer : D) -> :: core :: result :: \
+         Result < Vec < HookedEntry < IdType > > , D :: Error > where D : serde :: Deserializer < \
+         'de > , IdType : Display + Eq + Hash + serde :: de :: DeserializeOwned , { struct \
+         Unjudged < IdType > (HookedEntry < IdType >) where IdType : Display + Eq + Hash ; impl < \
+         'de , IdType > serde :: Deserialize < 'de > for Unjudged < IdType > where IdType : \
+         Display + Eq + Hash + serde :: de :: DeserializeOwned {",
+        "let held_0 = < Vec < Unjudged < IdType > > as serde :: Deserialize > :: deserialize \
+         (deserializer) ? ;",
+        "fn read_unjudged_by_id < 'de , IdType , D > (deserializer : D) -> :: core :: result :: \
+         Result < HashMap < IdType , HookedTag > , D :: Error > where D : serde :: Deserializer < \
+         'de > , IdType : Display + Eq + Hash + serde :: de :: DeserializeOwned , { struct \
+         Unjudged (HookedTag) ; impl < 'de > serde :: Deserialize < 'de > for Unjudged {",
+        "# [serde (deserialize_with = \"read_unjudged_entries\")] entries : Vec < HookedEntry < \
+         IdType > >",
+    ] {
+        assert!(read.contains(written), "missing `{written}` in: {read}");
+    }
+    assert!(!read.contains("read_unjudged_held"), "got: {read}");
+}
+
+/// `Self` is written as the item where a hook writes the member's type and the model it holds.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn a_member_written_with_self_is_read_through_a_hook_that_names_the_item() {
+    let node = expansion_under(
+        "check = [\"countedNode\"]",
+        "#[derive(Deserialize)] pub struct HookedNode { pub children: Vec<Self> }",
+    );
+    for written in [
+        "fn read_unjudged_children < 'de , D > (deserializer : D) -> :: core :: result :: Result \
+         < Vec < HookedNode > , D :: Error > where D : serde :: Deserializer < 'de > , { struct \
+         Unjudged (HookedNode) ; impl < 'de > serde :: Deserialize < 'de > for Unjudged {",
+        "< HookedNode > :: model_schema_read_unjudged (deserializer) . map (Unjudged)",
+        ". collect :: < Vec < HookedNode > > ()",
+    ] {
+        assert!(node.contains(written), "missing `{written}` in: {node}");
+    }
+
+    let tree = expansion_under(
+        "default_types(IdType = String), check = [\"countedTree\"]",
+        "#[derive(Deserialize)] pub struct HookedTree<IdType> { pub children: Vec<Self>, pub id: \
+         IdType }",
+    );
+    let generic = "fn read_unjudged_children < 'de , IdType , D > (deserializer : D) -> :: core \
+                   :: result :: Result < Vec < HookedTree < IdType > > , D :: Error > where D : \
+                   serde :: Deserializer < 'de > , IdType : serde :: Deserialize < 'de > , { \
+                   struct Unjudged < IdType > (HookedTree < IdType >) ;";
+    assert!(tree.contains(generic), "missing `{generic}` in: {tree}");
+
+    // The type the model is read as is named after none of the names the item writes.
+    let named_alike = expansion_under(
+        "check = [\"countedUnjudged\"]",
+        "#[derive(Deserialize)] pub struct Unjudged { pub children: Vec<Self> }",
+    );
+    let renamed = "struct Unjudged2 (Unjudged) ;";
+    assert!(
+        named_alike.contains(renamed),
+        "missing `{renamed}` in: {named_alike}"
+    );
+}
+
+/// A bound that ties the parameter a member names to another, or to a lifetime of the item, and
+/// a read at `'static`, leave the member to its own `Deserialize`.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+#[test]
+fn a_member_the_items_bounds_keep_from_a_hook_is_read_with_none() {
+    for (args, source) in [
+        (
+            "default_types(IdType = String, Held = String)",
+            "#[derive(Deserialize)] pub struct TiedLedger<IdType, Held> where IdType: From<Held> \
+             { pub entries: Vec<HookedEntry<IdType>>, pub held: Vec<Held> }",
+        ),
+        (
+            "default_types(IdType = String)",
+            "#[derive(Deserialize)] pub struct LentLedger<'text, IdType: 'text> { pub entries: \
+             Vec<HookedEntry<IdType>>, pub label: &'text str }",
+        ),
+        (
+            "default_types(IdType = String)",
+            "#[derive(Deserialize)] pub struct FixedLedger<IdType> { pub entries: \
+             Vec<HookedEntry<IdType>>, pub label: &'static str }",
+        ),
+    ] {
+        let read = expansion_under(args, source);
+        assert!(
+            read.contains("model_schema_read_unjudged"),
+            "for {source}: {read}"
+        );
+        // No hook is written, and no trait a hook would call is left unused.
+        for unwritten in ["read_unjudged_entries", "ReadUnjudged"] {
+            assert!(
+                !read.contains(unwritten),
+                "found `{unwritten}` for {source}: {read}"
+            );
+        }
+    }
+}
+
+/// The parameters a member's type names, in the order the item declares them, and `None` where
+/// serde's call of a hook could not infer one, or where it names a const parameter.
+#[cfg(feature = "serde")]
+#[test]
+fn a_hook_declares_the_parameters_its_members_type_names_where_they_are_inferred() {
+    let input: syn::DeriveInput = syn::parse_str(
+        "pub struct Scoped<IdType, Held, const N: usize> { pub held: Held, pub id: IdType }",
+    )
+    .unwrap();
+    let scope = super::HookScope::of(&input, &super::read_bounds(&input));
+    for (ty, named) in [
+        ("Vec<Entry<IdType>>", Some(vec!["IdType"])),
+        ("HashMap<IdType, Tag>", Some(vec!["IdType"])),
+        ("Pair<Held, IdType>", Some(vec!["IdType", "Held"])),
+        ("Vec<other::IdType>", Some(vec![])),
+        ("Vec<IdType::Out>", None),
+        ("Vec<<IdType as Trait>::Out>", None),
+        ("Vec<Grid<N>>", None),
+        ("[Entry<IdType>; N]", None),
+    ] {
+        let written: syn::Type = syn::parse_str(ty).unwrap();
+        assert_eq!(
+            scope.named_by(&written.to_token_stream()),
+            named.map(|listed| listed.into_iter().map(str::to_owned).collect::<Vec<_>>()),
+            "for {ty}"
+        );
+    }
+}
