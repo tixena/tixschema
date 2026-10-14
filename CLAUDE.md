@@ -49,6 +49,9 @@ cargo test <TEST_NAME>
 # Run the emitted clients under their own toolchains; refuses to stand down
 just test-emitted
 
+# Lint, then run, the tests that wait on a real clock, through test-emitted
+just test-slow
+
 # Install the Kotlin jars test-emitted compiles against, into ~/.local/share/tixschema/kotlin-libs
 just kotlin-libs
 
@@ -95,7 +98,18 @@ just all-named     # both packages: default and all-features lints, the format c
 just lint-sets     # clippy over every combination of the feature sets
 just test-sets     # tests over every combination of the feature sets
 just test          # tests over every combination of the plain features
+just test-slow     # the tests that wait on a real clock, with the emitted clients
 ```
+
+No test the gate runs waits on a real clock: no sleep, no real timer, no wall-clock window. A
+test that must compiles only under `cfg(slow_tests)`, which `unexpected_cfgs` declares in both
+manifests and only `just test-slow` sets (`--config 'build.rustflags=["--cfg", "slow_tests"]'`);
+a compiler cfg, so `--all-features` never turns it on. Every such test is a WebSocket run of the
+emitted clients (heartbeats, fixed waits, and polls with a deadline), and the helpers and
+imports only they use carry the same cfg. A wait for an event the script itself observes resolves
+on that event and holds no deadline, as the attachment runs of `run_node_ws_headers.rs` and
+`run_dart_ws_headers.rs` do: a script whose event never comes ends with no output, and the test
+fails.
 
 ## Code Architecture
 
@@ -2578,13 +2592,13 @@ The full run, [.github/workflows/full.yml](.github/workflows/full.yml), is start
 4. `cargo test --verbose` (basic tests)
 5. `just test-sets` (every combination of the `web`, `mobile` and `mongo` feature sets via cargo-hack, in this package and in `bson3/`)
 6. `just typecheck-ts` (the emitted TypeScript through a real `tsc --strict`, and a second package compiled against the declarations emitted for it)
-7. `just test-emitted` (the emitted Node, Dart, Swift and Kotlin clients run under their own toolchains)
+7. `just test-slow` (the emitted Node, Dart, Swift and Kotlin clients run under their own toolchains, through `test-emitted`, with the tests that wait on a real clock)
 8. `just audit` (`cargo audit` over a lock file generated for each package, this one and `bson3/`)
 9. Discord notification with build status
 
 The gate builds one feature selection of one package. What only the full run builds: a build with `serde` and no schema surface (the `mobile` and `mongo` sets), a build without `serde`, and `bson3/`, the package that tests against version 3 of the `bson` library. A break there is found at the next full run.
 
-Both workflows install every toolchain the emitted-client groups need: Node with `zod`, `ws` and `typescript`, Dart, and the Kotlin jars; Swift, Kotlin and a JRE come with the runner image. Inside a plain `cargo test` those groups stand down and pass when their toolchain is missing, so only `just typecheck-ts` and `just test-emitted` prove anything: both refuse to stand down, and both are in the full run.
+Both workflows install every toolchain the emitted-client groups need: Node with `zod`, `ws` and `typescript`, Dart, and the Kotlin jars; Swift, Kotlin and a JRE come with the runner image. Inside a plain `cargo test` those groups stand down and pass when their toolchain is missing, so only `just typecheck-ts` and `just test-emitted` prove anything: both refuse to stand down, and both are in the full run, `test-emitted` through `test-slow`.
 
 The MongoDB operations' live checks stand down the same way where `TIXSCHEMA_MONGODB_URI` names no server, and CI names none: `just test-mongodb` is the recipe that refuses to, and no step of either workflow runs it.
 

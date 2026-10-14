@@ -5,7 +5,9 @@
 
 use super::runtime::ran;
 use super::stamp_client_service_schema::CallError;
-use super::stamp_ws_rpc_client::{FrameSession, FrameWriter, StampClientServiceClient, ping_frame};
+#[cfg(slow_tests)]
+use super::stamp_ws_rpc_client::ping_frame;
+use super::stamp_ws_rpc_client::{FrameSession, FrameWriter, StampClientServiceClient};
 use super::stamp_ws_rpc_transport;
 use super::tests::{
     StampBackEnd, StampClientServiceSchema, StampError, StampReceipt, stamp_error_dart,
@@ -128,9 +130,15 @@ void main() async {
   final written = <Map<String, dynamic>>[];
   final marked = <String>[];
   final faults = <String>[];
+  final settled = Completer<void>();
+  void answered() {
+    if (written.length == EXPECTED_REPLIES && faults.length == 2 && !settled.isCompleted) {
+      settled.complete();
+    }
+  }
   final served = StreamController<Map<String, dynamic>>();
   final detach = attachStampClientServiceWsDispatcher<void>(
-    (inbound: served.stream, send: written.add),
+    (inbound: served.stream, send: (reply) { written.add(reply); answered(); }),
     null,
     StampClientServiceHandlers<void>(
       stamp: (ctx, label, tenant, trace) async {
@@ -147,12 +155,12 @@ void main() async {
         marked.add('$label $tenant');
       },
     ),
-    onFault: (fault) => faults.add(fault.kind.name),
+    onFault: (fault) { faults.add(fault.kind.name); answered(); },
   );
   for (final frame in FRAMES) {
     served.add(jsonDecode(frame as String) as Map<String, dynamic>);
   }
-  await until(() => written.length == EXPECTED_REPLIES && faults.length == 2);
+  await settled.future;
   detach();
   print(jsonEncode(<String, dynamic>{
     'written': written.map((reply) => jsonEncode(reply)).toList(),
@@ -424,6 +432,7 @@ fn the_dart_attachment_answers_the_rust_client_the_way_the_rust_dispatcher_does(
     );
 }
 
+#[cfg(slow_tests)]
 #[test]
 fn the_dart_transport_s_heartbeat_probe_is_the_rust_client_s_own() {
     let Some(written) = run(

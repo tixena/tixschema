@@ -69,6 +69,7 @@ print(String(data: try! JSONEncoder().encode(sent), encoding: .utf8)!)
 
 /// Group 3's own driver: five scenarios against an in-memory socket fed captured frames, printed
 /// as one JSON report.
+#[cfg(slow_tests)]
 const WS_DRIVER: &str = r#"
 final class InMemorySocket: ConversationClientServiceWsSocket, @unchecked Sendable {
   private let lock = NSLock()
@@ -195,6 +196,7 @@ print(String(data: try! JSONEncoder().encode(report), encoding: .utf8)!)
 /// Swift emits no dispatcher, so the burst is the replies: 2,000 `window` calls left waiting,
 /// their replies handed to the socket in one loop with no suspension, and the answered calls
 /// counted.
+#[cfg(slow_tests)]
 const BURST_DRIVER: &str = r#"
 final class RecordingSocket: ConversationClientServiceWsSocket, @unchecked Sendable {
   private let lock = NSLock()
@@ -265,6 +267,7 @@ let answered = tally.count
 await transport.close()
 for call in calls { await call.value }
 
+#[cfg(slow_tests)]
 struct BurstReport: Encodable {
   let allSent: Bool
   let allInTime: Bool
@@ -769,6 +772,7 @@ fn a_scalar_message_is_still_the_whole_segment() {
 }
 
 /// What the driver's own `Report` printed, or `None` where no runtime was reachable.
+#[cfg(slow_tests)]
 fn driven_ws() -> Option<serde_json::Value> {
     let written = ran(
         "swift",
@@ -780,6 +784,7 @@ fn driven_ws() -> Option<serde_json::Value> {
     Some(serde_json::from_str(written.trim()).unwrap())
 }
 
+#[cfg(slow_tests)]
 #[test]
 fn an_inbound_ping_is_answered_with_one_pong() {
     let Some(written) = driven_ws() else {
@@ -788,6 +793,7 @@ fn an_inbound_ping_is_answered_with_one_pong() {
     assert_eq!(written["pong"], true, "got: {written:#?}");
 }
 
+#[cfg(slow_tests)]
 #[test]
 fn a_silent_socket_closes_between_the_heartbeat_interval_and_its_timeout() {
     let Some(written) = driven_ws() else {
@@ -801,6 +807,7 @@ fn a_silent_socket_closes_between_the_heartbeat_interval_and_its_timeout() {
     );
 }
 
+#[cfg(slow_tests)]
 #[test]
 fn a_reply_that_fails_the_declared_decode_answers_a_failed_validation_fault() {
     let Some(written) = driven_ws() else {
@@ -812,6 +819,7 @@ fn a_reply_that_fails_the_declared_decode_answers_a_failed_validation_fault() {
     );
 }
 
+#[cfg(slow_tests)]
 #[test]
 fn closing_with_a_request_pending_answers_a_transport_failure_fault() {
     let Some(written) = driven_ws() else {
@@ -823,6 +831,7 @@ fn closing_with_a_request_pending_answers_a_transport_failure_fault() {
     );
 }
 
+#[cfg(slow_tests)]
 #[test]
 fn a_frame_for_another_service_is_dropped_and_the_genuine_reply_still_resolves() {
     let Some(written) = driven_ws() else {
@@ -831,6 +840,7 @@ fn a_frame_for_another_service_is_dropped_and_the_genuine_reply_still_resolves()
     assert_eq!(written["foreignResolvedOk"], true, "got: {written:#?}");
 }
 
+#[cfg(slow_tests)]
 #[test]
 fn a_burst_of_reply_frames_answers_every_waiting_call() {
     let Some(wrote) = ran(

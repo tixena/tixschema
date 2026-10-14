@@ -1084,6 +1084,7 @@ pub struct StampBackEnd {
 }
 
 impl StampBackEnd {
+    #[cfg(slow_tests)]
     pub fn marked(&self) -> Vec<String> {
         self.marked.lock().unwrap().clone()
     }

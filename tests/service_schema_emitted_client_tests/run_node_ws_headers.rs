@@ -53,6 +53,7 @@ const CALLS = [["a", "acme", 7], ["b", "acme", undefined], ["refuse", "acme", 3]
 
 /// Every call the client groups make, in order: the four `stamp` calls of `CALLS`, then `mark`;
 /// and the first heartbeat probe a second transport writes.
+#[cfg(slow_tests)]
 const WRITES_FRAMES_DRIVER: &str = r#"
 async function main() {
   const sent = [];
@@ -76,6 +77,7 @@ main().catch((error) => { console.error(error); process.exit(1); });
 "#;
 
 /// `REPLIES`, keyed by frame id, is written above this by the Rust side.
+#[cfg(slow_tests)]
 const READS_REPLIES_DRIVER: &str = "
 async function main() {
   const socket = fakeSocket((text) => {
@@ -100,7 +102,12 @@ async function main() {
   const written = [];
   const marked = [];
   const faults = [];
-  const socket = fakeSocket((text) => written.push(text));
+  let settle;
+  const settled = new Promise((resolve) => { settle = resolve; });
+  const answered = () => {
+    if (written.length === EXPECTED_REPLIES && marked.length === 1 && faults.length === 1) settle();
+  };
+  const socket = fakeSocket((text) => { written.push(text); answered(); });
   attachStampClientServiceWsDispatcher(socket, {}, {
     async stamp(ctx, label, tenant, trace) {
       if (label === "refuse") {
@@ -110,10 +117,11 @@ async function main() {
     },
     async mark(ctx, label, tenant) {
       marked.push(`${label} ${tenant}`);
+      answered();
     },
-  }, (fault) => faults.push(fault));
+  }, (fault) => { faults.push(fault); answered(); });
   for (const frame of FRAMES) socket.deliver(frame);
-  await until(() => written.length === EXPECTED_REPLIES && marked.length === 1 && faults.length === 1);
+  await settled;
   console.log(JSON.stringify({ written, marked, faults }));
   process.exit(0);
 }
@@ -229,11 +237,13 @@ fn without_fault_detail(mut reply: Value) -> Value {
 }
 
 /// The frames the TypeScript client writes for `CALLS` and `mark`, and its heartbeat probe.
+#[cfg(slow_tests)]
 fn typescript_client_frames() -> Option<(Vec<String>, String)> {
     run("ws-headers-writes", "", WRITES_FRAMES_DRIVER).map(|written| frames_of(&written))
 }
 
 /// What [`WRITES_FRAMES_DRIVER`] printed, read back: the frames it sent, and the probe.
+#[cfg(slow_tests)]
 fn frames_of(written: &Value) -> (Vec<String>, String) {
     let sent = written["sent"]
         .as_array()
@@ -244,6 +254,7 @@ fn frames_of(written: &Value) -> (Vec<String>, String) {
     (sent, written["ping"].as_str().unwrap().to_owned())
 }
 
+#[cfg(slow_tests)]
 #[test]
 fn the_typescript_client_writes_the_frames_the_rust_client_writes() {
     let Some((written, ping)) = typescript_client_frames() else {
@@ -293,6 +304,7 @@ fn the_typescript_client_writes_the_frames_the_rust_client_writes() {
     client.transport().close("the run is over");
 }
 
+#[cfg(slow_tests)]
 #[test]
 fn the_typescript_client_reads_the_replies_the_rust_dispatcher_writes() {
     let Some((frames, _ping)) = typescript_client_frames() else {
@@ -539,4 +551,13 @@ fn the_generic_client_reads_a_stub_amqp_transport_s_headers() {
             "{called}"
         );
     }
+}
+
+/// The two Rust twins agree on the heartbeat: the dispatcher answers the client's probe with its pong.
+#[test]
+fn the_rust_dispatcher_answers_the_rust_client_s_heartbeat_probe_with_its_pong() {
+    assert_eq!(
+        rust_answer(&StampBackEnd::default(), &ping_frame()),
+        Some(stamp_ws_rpc_transport::pong_frame())
+    );
 }

@@ -177,6 +177,7 @@ for (name, body) in replies {
 
 /// A socket that hands the transport one reply for the request it sent, and what a call's answer
 /// is printed as.
+#[cfg(slow_tests)]
 const WS_DRIVER: &str = r#"
 final class InMemorySocket: TrackingClientServiceWsSocket, @unchecked Sendable {
   private let lock = NSLock()
@@ -1144,6 +1145,7 @@ fn the_http_client_answers_its_fault_for_a_reply_that_breaks_a_rule() {
 
 /// The `ws_rpc` client answers the fault it answers for any reply that will not become the
 /// declared success: `failed-validation`, with the read's messages in its detail.
+#[cfg(slow_tests)]
 #[test]
 fn the_ws_client_answers_its_fault_for_a_reply_that_breaks_a_rule() {
     assert_eq!(

@@ -6,10 +6,9 @@
 //! test-emitted` resolves it up front and refuses to stand down.
 
 use super::runtime::{node_modules, ran_with_modules, stand_down_modules};
-use super::tests::{
-    ConversationClientServiceSchema, ConversationId, WatchClientServiceSchema, WatchError,
-    WatchRequest, WindowError, WindowPage,
-};
+#[cfg(slow_tests)]
+use super::tests::{ConversationClientServiceSchema, ConversationId, WindowError, WindowPage};
+use super::tests::{WatchClientServiceSchema, WatchError, WatchRequest};
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
 const RUNTIME_VAR: &str = "TIXSCHEMA_NODE";
@@ -41,6 +40,7 @@ async function until(predicate, timeoutMs = 2000) {
 
 /// `window` answers the two-field page every scenario reads; a `conversationId` of `"slow-4"` holds
 /// the handler open past the client's close.
+#[cfg(slow_tests)]
 const IMPL_AND_MAKE_SERVER: &str = r#"
 let lastHandlerSawAborted;
 let handlerReturned;
@@ -70,6 +70,7 @@ function makeServer(overrides = {}) {
 
 /// Scenario 1: the real emitted client calls `window()` and `purgeConversation()` over the real
 /// emitted transport, and the connection is counted while open and dropped once the client closes.
+#[cfg(slow_tests)]
 const SCENARIO_1_DRIVER: &str = r#"
 async function main() {
   const server = makeServer();
@@ -97,6 +98,7 @@ main().catch((error) => { console.error(error); process.exit(1); });
 "#;
 
 /// Scenario 2: a bare `{"kind":"ping"}` frame draws exactly one `{"kind":"pong"}`.
+#[cfg(slow_tests)]
 const SCENARIO_2_DRIVER: &str = r#"
 async function main() {
   const server = makeServer();
@@ -122,6 +124,7 @@ main().catch((error) => { console.error(error); process.exit(1); });
 
 /// Scenario 3: a peer sending nothing is pinged once at the idle interval and closed after the
 /// pong timeout; a peer sending a frame every 50 ms for 650 ms is never probed.
+#[cfg(slow_tests)]
 const SCENARIO_3_DRIVER: &str = r#"
 async function main() {
   const server = makeServer({ heartbeat: { intervalMs: 150, timeoutMs: 100 } });
@@ -170,6 +173,7 @@ main().catch((error) => { console.error(error); process.exit(1); });
 
 /// Scenario 4: a client closing 100 ms into an in-flight handler leaves the connection's signal
 /// aborted, the handler observes it, and the raw socket's `send` is never called again afterward.
+#[cfg(slow_tests)]
 const SCENARIO_4_DRIVER: &str = r#"
 async function main() {
   let capturedConnection;
@@ -212,6 +216,7 @@ main().catch((error) => { console.error(error); process.exit(1); });
 
 /// Scenario 5: two accepted connections are counted, and `closeAll()` empties the set and closes
 /// both client sockets.
+#[cfg(slow_tests)]
 const SCENARIO_5_DRIVER: &str = r#"
 async function main() {
   const server = makeServer();
@@ -240,6 +245,7 @@ main().catch((error) => { console.error(error); process.exit(1); });
 
 /// Scenario 6: an `error` event emitted on an accepted `ws` socket does not throw, is reported
 /// once through `onSocketError`, and drops the connection.
+#[cfg(slow_tests)]
 const SCENARIO_6_DRIVER: &str = r#"
 async function main() {
   let capturedSocket;
@@ -276,6 +282,7 @@ main().catch((error) => { console.error(error); process.exit(1); });
 
 /// Scenario 7: the per-connection cost, measured with in-memory stand-in sockets rather than real
 /// `ws` connections.
+#[cfg(slow_tests)]
 const SCENARIO_7_DRIVER: &str = r#"
 function stubSocket() {
   const listeners = {};
@@ -316,6 +323,7 @@ main();
 
 /// 2,000 `window` requests handed to the listener the dispatcher registered on a stand-in socket,
 /// in one loop with no `await`, and the `ok` replies written to the socket counted.
+#[cfg(slow_tests)]
 const BURST_DRIVER: &str = r#"
 async function main() {
   let replies = 0;
@@ -352,6 +360,7 @@ main().catch((error) => { console.error(error); process.exit(1); });
 
 /// A second service reached through `connection.share()` answers only its own frames, and closing
 /// the connection detaches it.
+#[cfg(slow_tests)]
 const SHARE_DRIVER: &str = r#"
 let sharedDetached = false;
 function attachInventoryServiceStub(socket) {
@@ -464,6 +473,7 @@ main().catch((error) => { console.error(error); process.exit(1); });
 
 /// The service's own emitted surface: every message, the service's types, the implementable
 /// interface, the client, and the three `ws_rpc` artifacts a connection-accepting server needs.
+#[cfg(slow_tests)]
 fn emitted() -> String {
     [
         "import { z } from \"zod\";".to_owned(),
@@ -486,6 +496,7 @@ fn emitted() -> String {
 
 /// Runs one scenario's driver against `server.mts`, or stands down (naming
 /// `TIXSCHEMA_NODE_MODULES`) when `ws` or `zod` is not reachable through it.
+#[cfg(slow_tests)]
 fn run_scenario(named: &str, driver: &str) -> Option<serde_json::Value> {
     let Some(modules) = node_modules(REQUIRED_PACKAGES) else {
         stand_down_modules(REQUIRED_PACKAGES, "the emitted WebSocket server");
@@ -501,6 +512,7 @@ fn run_scenario(named: &str, driver: &str) -> Option<serde_json::Value> {
 
 /// Scenario 8 alone, in its own entry — the design ran it in a second process, and it needs a
 /// clean connection set.
+#[cfg(slow_tests)]
 fn run_share_scenario() -> Option<serde_json::Value> {
     let Some(modules) = node_modules(REQUIRED_PACKAGES) else {
         stand_down_modules(REQUIRED_PACKAGES, "the emitted WebSocket server");
@@ -557,6 +569,7 @@ fn run_unit_success_scenario() -> Option<serde_json::Value> {
     Some(serde_json::from_str(wrote.trim()).unwrap())
 }
 
+#[cfg(slow_tests)]
 #[test]
 fn the_emitted_client_is_served_and_the_connection_is_counted() {
     let Some(result) = run_scenario("ws-server-served", SCENARIO_1_DRIVER) else {
@@ -571,6 +584,7 @@ fn the_emitted_client_is_served_and_the_connection_is_counted() {
     assert_eq!(result["connectionsAfterClose"], 0_i32, "got: {result:#?}");
 }
 
+#[cfg(slow_tests)]
 #[test]
 fn a_ping_frame_draws_exactly_one_pong() {
     let Some(result) = run_scenario("ws-server-ping", SCENARIO_2_DRIVER) else {
@@ -583,6 +597,7 @@ fn a_ping_frame_draws_exactly_one_pong() {
     );
 }
 
+#[cfg(slow_tests)]
 #[test]
 fn a_silent_peer_is_probed_and_closed_and_a_busy_one_never_is() {
     let Some(result) = run_scenario("ws-server-heartbeat", SCENARIO_3_DRIVER) else {
@@ -604,6 +619,7 @@ fn a_silent_peer_is_probed_and_closed_and_a_busy_one_never_is() {
     assert_eq!(result["busyStillOpen"], true, "got: {result:#?}");
 }
 
+#[cfg(slow_tests)]
 #[test]
 fn an_in_flight_call_observes_cancellation_and_writes_nothing_after_close() {
     let Some(result) = run_scenario("ws-server-cancel", SCENARIO_4_DRIVER) else {
@@ -614,6 +630,7 @@ fn an_in_flight_call_observes_cancellation_and_writes_nothing_after_close() {
     assert_eq!(result["sendCallsAfterAbort"], 0_i32, "got: {result:#?}");
 }
 
+#[cfg(slow_tests)]
 #[test]
 fn close_all_empties_the_connection_set() {
     let Some(result) = run_scenario("ws-server-closeall", SCENARIO_5_DRIVER) else {
@@ -623,6 +640,7 @@ fn close_all_empties_the_connection_set() {
     assert_eq!(result["connectionsAfter"], 0_i32, "got: {result:#?}");
 }
 
+#[cfg(slow_tests)]
 #[test]
 fn a_socket_error_is_reported_and_closes_the_connection() {
     let Some(result) = run_scenario("ws-server-error", SCENARIO_6_DRIVER) else {
@@ -633,6 +651,7 @@ fn a_socket_error_is_reported_and_closes_the_connection() {
     assert_eq!(result["connectionsAfter"], 0_i32, "got: {result:#?}");
 }
 
+#[cfg(slow_tests)]
 #[test]
 fn ten_thousand_connections_cost_what_the_design_measured() {
     let Some(result) = run_scenario("ws-server-cost", SCENARIO_7_DRIVER) else {
@@ -650,6 +669,7 @@ fn ten_thousand_connections_cost_what_the_design_measured() {
     );
 }
 
+#[cfg(slow_tests)]
 #[test]
 fn a_burst_of_request_frames_is_answered_whole() {
     let Some(result) = run_scenario("ws-server-burst", BURST_DRIVER) else {
@@ -662,6 +682,7 @@ fn a_burst_of_request_frames_is_answered_whole() {
     );
 }
 
+#[cfg(slow_tests)]
 #[test]
 fn two_services_share_one_socket_through_the_connection() {
     let Some(result) = run_share_scenario() else {

@@ -200,6 +200,7 @@ for (name, body) in replies {
 
 /// A socket that hands the transport one reply for the request it sent, and what a call's answer
 /// is printed as.
+#[cfg(slow_tests)]
 const WS_DRIVER: &str = r#"
 final class InMemorySocket: ShippingClientServiceWsSocket, @unchecked Sendable {
   private let lock = NSLock()
@@ -1026,6 +1027,7 @@ fn the_http_client_reads_a_reply_through_its_functions() {
 }
 
 /// The `ws_rpc` client reads a reply through the functions of its type.
+#[cfg(slow_tests)]
 #[test]
 fn the_ws_client_reads_a_reply_through_its_functions() {
     assert_eq!(

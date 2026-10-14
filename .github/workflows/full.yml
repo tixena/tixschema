@@ -108,11 +108,11 @@ jobs:
         echo "🔎 Type-checking the emitted TypeScript with tsc..."
         just typecheck-ts
 
-    - name: Run the emitted clients under their own toolchains
+    - name: Run the emitted clients under their own toolchains, the tests on a real clock included
       id: test-emitted
       run: |
-        echo "🌐 Running the emitted Node, Dart, Swift and Kotlin clients..."
-        just test-emitted
+        echo "🌐 Running the emitted Node, Dart, Swift and Kotlin clients, and the tests that wait on a real clock..."
+        just test-slow
 
     - name: Run security audit
       id: audit
@@ -165,7 +165,7 @@ jobs:
         elif [[ "$TBASIC" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Basic tests (cargo test)";
         elif [[ "$TEXT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Feature-set tests (just test-sets)";
         elif [[ "$TSC" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Emitted TypeScript type check (just typecheck-ts)";
-        elif [[ "$EMIT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Emitted clients (just test-emitted)";
+        elif [[ "$EMIT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Emitted clients and the tests on a real clock (just test-slow)";
         elif [[ "$AUDIT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Security audit (cargo audit)";
         fi
 

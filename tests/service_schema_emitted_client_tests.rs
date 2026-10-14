@@ -106,6 +106,7 @@ mod run_reserved;
 mod run_swift;
 
 #[cfg(test)]
+#[cfg(slow_tests)]
 #[path = "service_schema_emitted_client_tests/run_swift_ws_headers.rs"]
 mod run_swift_ws_headers;
 
@@ -132,6 +133,7 @@ mod swift_read_models;
 mod run_kotlin;
 
 #[cfg(test)]
+#[cfg(slow_tests)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_ws_headers.rs"]
 mod run_kotlin_ws_headers;
 

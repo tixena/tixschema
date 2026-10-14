@@ -107,6 +107,7 @@ void main() async {
 
 /// 2,000 `window` requests added to the transport's stream in one loop with no `await`, the
 /// dispatcher attached to its `frames`, and the `ok` replies written to the sink counted.
+#[cfg(slow_tests)]
 const BURST_DRIVER: &str = "
 Future<bool> until(bool Function() predicate, {int timeoutMs = 2000}) async {
   final deadline = DateTime.now().add(Duration(milliseconds: timeoutMs));
@@ -339,6 +340,7 @@ fn a_request_still_waiting_when_the_transport_closes_answers_the_fault_member() 
     );
 }
 
+#[cfg(slow_tests)]
 #[test]
 fn a_burst_of_request_frames_is_answered_whole() {
     let Some(wrote) = ran(

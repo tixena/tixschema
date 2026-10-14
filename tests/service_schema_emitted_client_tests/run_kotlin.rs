@@ -18,6 +18,7 @@ use super::tests::echo_client_service_schema::{
 use super::tests::media_client_service_schema::{
     media_client_service_fault_fields_kotlin, media_client_service_fault_kind_kotlin,
 };
+#[cfg(slow_tests)]
 use super::tests::pulse_client_service_schema::{
     pulse_client_service_fault_fields_kotlin, pulse_client_service_fault_kind_kotlin,
 };
@@ -39,13 +40,16 @@ use super::tests::thumbnail_client_service_schema::{
 };
 use super::tests::{
     ContentClientServiceSchema, ConversationClientServiceSchema, EchoClientServiceSchema,
-    MediaClientServiceSchema, PulseClientServiceSchema, STREAMED_CONTENT_TYPE,
-    StampClientServiceSchema, ThumbnailClientServiceSchema, content_error_kotlin,
-    content_range_error_kotlin, conversation_id_kotlin, echo_range_error_kotlin,
-    echo_range_response_kotlin, media_error_kotlin, media_id_kotlin, media_upload_kotlin,
-    pulse_error_kotlin, pulse_request_kotlin, pulse_response_kotlin, stamp_error_kotlin,
+    MediaClientServiceSchema, STREAMED_CONTENT_TYPE, StampClientServiceSchema,
+    ThumbnailClientServiceSchema, content_error_kotlin, content_range_error_kotlin,
+    conversation_id_kotlin, echo_range_error_kotlin, echo_range_response_kotlin,
+    media_error_kotlin, media_id_kotlin, media_upload_kotlin, stamp_error_kotlin,
     stamp_receipt_kotlin, thumbnail_error_kotlin, window_error_kotlin, window_page_kotlin,
     window_request_kotlin,
+};
+#[cfg(slow_tests)]
+use super::tests::{
+    PulseClientServiceSchema, pulse_error_kotlin, pulse_request_kotlin, pulse_response_kotlin,
 };
 use std::collections::HashMap;
 
@@ -175,6 +179,7 @@ fun main() = runBlocking {
 
 /// The one fake socket every `ws_rpc` group drives: `deliver` stands in for an inbound frame
 /// arriving (group 3, unpaired), `peer` stands in for a live connection (group 4, paired).
+#[cfg(slow_tests)]
 const FAKE_SOCKET: &str = r#"
 class FakeSocket(private val scope: CoroutineScope) : ConversationClientServiceWsSocket {
     var peer: FakeSocket? = null
@@ -213,6 +218,7 @@ fun requestId(sent: String?): String? {
 
 /// Five scenarios against a fake socket fed by hand: a ping answered, a missed pong, a reply that
 /// fails validation, a request settled on close, another service's frame dropped.
+#[cfg(slow_tests)]
 const WS_CLIENT_DRIVER: &str = r#"
 fun main() = runBlocking {
     val pingSocket = FakeSocket(this)
@@ -277,6 +283,7 @@ fun main() = runBlocking {
 
 /// What both mini-server drivers stand on: a connected socket pair, the handlers of the two
 /// services, and `until`, which polls a predicate and answers whether it held in time.
+#[cfg(slow_tests)]
 const MINI_SERVER_FIXTURE: &str = r#"
 fun connectedPair(scope: CoroutineScope): Pair<FakeSocket, FakeSocket> {
     val a = FakeSocket(scope)
@@ -310,6 +317,7 @@ suspend fun until(timeoutMs: Long = 2000, predicate: () -> Boolean): Boolean {
 
 /// A frame handed to the socket on the line after `attach`, and one on the line after `share`,
 /// with the dispatchers on `main`'s own thread: nothing they launch runs before `main` suspends.
+#[cfg(slow_tests)]
 const ATTACH_THEN_SEND_DRIVER: &str = r#"
 fun main() = runBlocking {
     val socket = FakeSocket(this)
@@ -344,6 +352,7 @@ fun main() = runBlocking {
 
 /// 2,000 `window` requests handed to a socket that counts what is written to it, in one loop with
 /// no suspension: once with the dispatcher on `main`'s own thread, once on the transport's scope.
+#[cfg(slow_tests)]
 const BURST_DRIVER: &str = r#"
 class CountingSocket : ConversationClientServiceWsSocket {
     val replies = java.util.concurrent.atomic.AtomicInteger(0)
@@ -384,6 +393,7 @@ fun main() = runBlocking {
 
 /// The mini server against a connected fake-socket pair: every frame with an id answered, a
 /// declared error, a bad-payload notify, a shared socket, `share()` after detach.
+#[cfg(slow_tests)]
 const MINI_SERVER_DRIVER: &str = r#"
 fun main() = runBlocking {
     val (clientSocket, serverSocket) = connectedPair(this)
@@ -576,6 +586,7 @@ fn client_definitions() -> Vec<String> {
 
 /// `PulseClientService`'s own declared types, its fault pair, and both of its clients — the
 /// mini-server group's second, sharing service.
+#[cfg(slow_tests)]
 fn pulse_definitions() -> Vec<String> {
     vec![
         pulse_request_kotlin::kotlin_definition(),
@@ -651,6 +662,7 @@ fn thumbnail_module(driver: &str) -> String {
 
 /// Like [`client_module`], with `PulseClientService`'s own text alongside — the mini-server
 /// group's only user.
+#[cfg(slow_tests)]
 fn mini_server_module(driver: &str) -> String {
     let mut parts = vec![KOTLIN_IMPORTS.to_owned()];
     parts.extend(client_definitions());
@@ -881,6 +893,7 @@ fn a_lone_placeholder_sends_the_field_it_names_and_the_rest_as_a_query() {
 }
 
 /// What the driver's own report printed, or `None` where no toolchain was reachable.
+#[cfg(slow_tests)]
 fn driven_ws_client() -> Option<serde_json::Value> {
     let written = ran_kotlin(&client_module(&format!(
         "{FAKE_SOCKET}\n\n{WS_CLIENT_DRIVER}"
@@ -888,6 +901,7 @@ fn driven_ws_client() -> Option<serde_json::Value> {
     Some(serde_json::from_str(written.trim()).unwrap())
 }
 
+#[cfg(slow_tests)]
 #[test]
 fn the_ws_client_probes_answers_checks_and_settles() {
     let Some(written) = driven_ws_client() else {
@@ -911,6 +925,7 @@ fn the_ws_client_probes_answers_checks_and_settles() {
     assert_eq!(written["foreignResolvedOk"], true, "got: {written:#?}");
 }
 
+#[cfg(slow_tests)]
 #[test]
 fn a_frame_that_arrives_right_after_attach_or_share_is_dispatched() {
     let Some(written) = ran_kotlin(&mini_server_module(&format!(
@@ -928,6 +943,7 @@ fn a_frame_that_arrives_right_after_attach_or_share_is_dispatched() {
     }
 }
 
+#[cfg(slow_tests)]
 #[test]
 fn a_burst_of_request_frames_is_answered_whole_on_the_callers_thread_and_on_the_transports_scope() {
     let Some(written) = ran_kotlin(&mini_server_module(&format!(
@@ -948,6 +964,7 @@ fn a_burst_of_request_frames_is_answered_whole_on_the_callers_thread_and_on_the_
     );
 }
 
+#[cfg(slow_tests)]
 #[test]
 fn the_mini_server_answers_every_frame_with_an_id_and_shares_the_socket() {
     let Some(written) = ran_kotlin(&mini_server_module(&format!(
