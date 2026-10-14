@@ -211,6 +211,12 @@ mod run_kotlin_serde_default;
 #[path = "service_schema_emitted_client_tests/run_swift_generic_helpers.rs"]
 mod run_swift_generic_helpers;
 
+/// A date held by a type that declares a parameter, read and written by the emitted Swift types.
+#[cfg(test)]
+#[cfg(feature = "chrono")]
+#[path = "service_schema_emitted_client_tests/run_swift_generic_dates.rs"]
+mod run_swift_generic_dates;
+
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
 #[cfg(all(test, feature = "dart"))]
