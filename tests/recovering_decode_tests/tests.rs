@@ -35,6 +35,7 @@ mod checks;
 mod enum_shapes;
 mod flattened;
 mod flattened_shapes;
+mod generic_holders;
 mod generic_types;
 mod hook_names;
 mod method_parameter_names;
