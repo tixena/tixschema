@@ -15,7 +15,7 @@ use super::aliases::Reach;
 use super::checks::enum_check_messages;
 use super::{
     Arm, Casing, FieldValidator, Handed, Keyed, Lookup, RecoveringDecode, Shape, Step, TypedPaths,
-    Walk, Walker, Written, added_to, binding, flattened_walker_call, not_the_shape,
+    Walk, Walker, Written, added_to, binding, flattened_walker_call, held_probes, not_the_shape,
     path_expression, slot_validator, unclaimed, written_names,
 };
 use crate::features::serde::read_bounds::read_bounds;
@@ -705,6 +705,10 @@ pub fn enum_recovering_decode(item_enum: &ItemEnum, mongodb: bool) -> Recovering
     } else {
         TypedPaths::default()
     };
+    let mut reached = Vec::new();
+    for variant in &variants {
+        variant.content.reached_models(&mut reached);
+    }
     added_to(
         &item_enum.ident,
         &item_enum.generics,
@@ -712,6 +716,7 @@ pub fn enum_recovering_decode(item_enum: &ItemEnum, mongodb: bool) -> Recovering
         &parameters,
         &Written {
             check_messages: enum_check_messages(item_enum, &module_name, &parameters),
+            held_probes: held_probes(&item_enum.ident, &reached, &parameters, mongodb),
             mongodb,
             names,
             reach: &reach,

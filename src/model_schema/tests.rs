@@ -8137,10 +8137,10 @@ fn decode_with_is_refused_for_good_on_a_type_alias() {
     );
     assert!(
         expanded.contains(
-            "model_schema: type `DecodeVersions`: `#[model_schema(decode_with)]` cannot be written \
+            "model_schema: type `DecodeVersions`: `enable = [\\\"decode_with\\\"]` cannot be written \
              on a type alias: `DecodeVersions` is another name for `Vec<DecodeVersion>`, and the \
-             methods would have to be added to that type. Write the flag on the model types the \
-             alias reaches."
+             methods would have to be added to that type. List it on the model types the alias \
+             reaches."
         ),
         "got: {expanded}"
     );
@@ -8155,7 +8155,7 @@ fn decode_with_is_refused_for_good_on_a_type_that_borrows() {
         let expanded = expansion_under("enable = [\"decode_with\", \"mongodb\"]", source);
         assert!(
             expanded.contains(
-                "model_schema: type `DecodeNamed`: `#[model_schema(decode_with)]` cannot be \
+                "model_schema: type `DecodeNamed`: `enable = [\\\"decode_with\\\"]` cannot be \
                  written on a type that borrows: `from_value_with` owns the value it reads, so \
                  the decoded `DecodeNamed<'a>` cannot borrow from it for `'a`."
             ),
@@ -8167,7 +8167,7 @@ fn decode_with_is_refused_for_good_on_a_type_that_borrows() {
 /// The message a field that borrows is refused with, as it reads on `DecodeLabelled`.
 fn borrowing_field_refusal(field: &str, written: &str) -> String {
     format!(
-        "model_schema: type `DecodeLabelled`: `#[model_schema(decode_with)]` cannot be written on \
+        "model_schema: type `DecodeLabelled`: `enable = [\\\"decode_with\\\"]` cannot be written on \
          a type with a field that borrows: `{field}` is `{written}`, and `from_value_with` owns \
          the value it reads, so nothing decoded from it can be borrowed for `'static`. Write the \
          field as an owned type."

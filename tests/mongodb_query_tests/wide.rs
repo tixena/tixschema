@@ -9,7 +9,7 @@
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 struct Leaf {
     last: String,
@@ -20,7 +20,7 @@ struct Leaf {
     text_4: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 struct Branch {
     last: Vec<Leaf>,
@@ -31,7 +31,7 @@ struct Branch {
     leaf_4: Vec<Leaf>,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 struct Trunk {
     branch_0: Vec<Branch>,
@@ -42,7 +42,7 @@ struct Trunk {
     last: Vec<Branch>,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 struct Root {
     last: Vec<Trunk>,
@@ -54,7 +54,7 @@ struct Root {
 }
 
 /// serde writes the list of a variant under `list`, beside the tag.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", content = "list")]
 enum Listed {
@@ -67,7 +67,7 @@ enum Listed {
 }
 
 /// serde writes the list of a variant under its field's own key, beside the tag.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind")]
 enum Keyed {

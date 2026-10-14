@@ -9,7 +9,7 @@ use tixschema::model_schema;
 use super::shown;
 
 /// One field per name a path kind keeps for itself, or builds and reads a path with.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Named {
     built: String,
@@ -26,7 +26,7 @@ struct Named {
 }
 
 /// Holds [`Named`] every way a path kind wraps a nested model.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Holder {
     many: Vec<Named>,

@@ -165,15 +165,15 @@ fn matched(per_variant: Vec<(TokenStream, Vec<TokenStream>)>) -> TokenStream {
     }
 }
 
-/// The `impl` that holds `method`, which is `decode_with_check_messages`, and what turns its
-/// messages into issues, from BSON as well where the type lists "mongodb". It is under the bounds
-/// the type's author wrote and no other, so the checks of a type with a parameter run at every
-/// filling of it.
+/// The `impl` that holds `method` and `marker`, which are `decode_with_check_messages` and
+/// `mongo_listed`, and what turns the messages into issues, from BSON as well where the type lists
+/// "mongodb". It is under the bounds the type's author wrote and no other, so the checks of a type
+/// with a parameter run at every filling of it.
 pub fn type_impl(
     name: &Ident,
     generics: &syn::Generics,
     module: &Ident,
-    method: &TokenStream,
+    [method, marker]: &[TokenStream; 2],
     mongodb: bool,
 ) -> TokenStream {
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
@@ -182,6 +182,7 @@ pub fn type_impl(
         impl #impl_generics #name #type_generics #where_clause {
             #method
             #issues
+            #marker
         }
     }
 }

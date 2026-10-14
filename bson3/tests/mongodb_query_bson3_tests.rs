@@ -1,6 +1,9 @@
-//! The query types `#[model_schema(decode_with)]` adds under `mongodb`: `Filter`, `Update`, and
-//! the typed paths that build them, built against version 3 of the `bson` library, in the package
-//! whose MongoDB driver is built for it.
+//! The query types `#[model_schema(enable = ["decode_with", "mongodb"])]` adds under the
+//! `mongodb` feature: `Filter`, `Update`, and the typed paths that build them, built against
+//! version 3 of the `bson` library, in the package whose MongoDB driver is built for it.
+
+tixschema::decode_with_foundation!();
+tixschema::mongodb_foundation!();
 
 /// Version 3's hook that stores a chrono date as a BSON date, over an `Option` of one. The
 /// library reads that form through `serde_with`, which this package does not depend on, so it is

@@ -951,7 +951,7 @@ fn generated(tokens: TokenStream) -> TokenStream {
 
 /// `tokens` with `named` written wherever they write `Self`, which a copy of the item would read
 /// as itself.
-fn naming_the_type(tokens: TokenStream, named: &TokenStream) -> TokenStream {
+pub fn naming_the_type(tokens: TokenStream, named: &TokenStream) -> TokenStream {
     word_written_as(tokens, "Self", named)
 }
 

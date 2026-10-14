@@ -13,7 +13,7 @@ use tixschema::model_schema;
 use super::{Address, Customer, Invoice, shown};
 
 /// Flattened into the row that holds it: its keys sit among that row's own.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Audit {
@@ -22,7 +22,7 @@ pub struct Audit {
 }
 
 /// Adjacently tagged: the variant's name under `t`, what it holds under `c`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "t", content = "c", rename_all = "camelCase")]
 pub enum Delivery {
@@ -33,7 +33,7 @@ pub enum Delivery {
 
 /// Externally tagged: a variant with no data is its name as text, any other is an object with
 /// one key, its name.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Rebate {
@@ -43,14 +43,14 @@ pub enum Rebate {
 }
 
 /// What an internally tagged variant holds as a model of its own.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct WireDetails {
     pub iban: String,
 }
 
 /// Internally tagged: the variant's name under `kind`, its fields beside it.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Payment {
@@ -64,7 +64,7 @@ pub enum Payment {
 }
 
 /// Untagged: whatever the variant holds, with nothing naming the variant.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum Reference {
@@ -73,7 +73,7 @@ pub enum Reference {
 }
 
 /// A generic model: a member typed by the parameter is one whole value of what fills it.
-#[model_schema(decode_with, default_types(T = String))]
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(T = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Wrapper<T> {
@@ -83,7 +83,7 @@ pub struct Wrapper<T> {
 }
 
 /// A model the shapes below hold.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Stop {
@@ -93,7 +93,7 @@ struct Stop {
 
 /// The shapes one path kind does not cover: a list a row may leave out, a list of lists, a tuple,
 /// a map of models, and a list of models behind a wrapper.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Assorted {
@@ -107,7 +107,7 @@ struct Assorted {
 
 /// The order-keeping types, held to their std twins: a set is a list, and a map has no path.
 #[cfg(feature = "indexmap")]
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Catalogued {
@@ -120,7 +120,7 @@ struct Catalogued {
 
 /// A variant holding several values, written as an array under the variant's name: here a name
 /// of the variant's own.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 enum Leg {
@@ -131,7 +131,7 @@ enum Leg {
 
 /// A variant holding a model under a key of its own, and one holding several values: adjacently,
 /// both at the content key.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "via", content = "at", rename_all = "camelCase")]
 enum Drop {
@@ -140,7 +140,7 @@ enum Drop {
 }
 
 /// An enum flattened into the row that holds it, and a model flattened in an `Option`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Journey {
@@ -155,7 +155,7 @@ struct Journey {
 
 /// A variant named as an operator of the path that holds the enum, and two whose `is_{variant}`
 /// and whose own function would take one name.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 enum Movement {
@@ -166,7 +166,7 @@ enum Movement {
 }
 
 /// Holds [`Movement`] under a key of its own.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Transit {
     movement: Movement,

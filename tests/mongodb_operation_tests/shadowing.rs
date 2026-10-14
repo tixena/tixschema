@@ -10,7 +10,7 @@ use tixschema::model_schema;
 
 use super::seeded_id;
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 struct Attempt {
     failed_with: OperationError,
@@ -19,13 +19,13 @@ struct Attempt {
     last: Read,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 struct OperationError {
     code: u32,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 struct Read {
     rows: u32,

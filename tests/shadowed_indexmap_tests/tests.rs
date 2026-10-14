@@ -6,14 +6,14 @@ use tixschema::model_schema;
 
 const WRITTEN: &str = r#"{"held":{"key":"k","value":7},"listed":{"only":"x"}}"#;
 
-#[model_schema(decode_with, default_types(K = String, V = u32))]
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(K = String, V = u32))]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct IndexMap<K, V> {
     pub key: K,
     pub value: V,
 }
 
-#[model_schema(decode_with, default_types(T = String))]
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(T = String))]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct IndexSet<T> {
     pub only: T,
@@ -26,7 +26,7 @@ pub struct Holder {
     pub listed: IndexSet<String>,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Walked {
     pub held: IndexMap<String, u32>,
@@ -39,7 +39,7 @@ pub type Counts = IndexMap<String, u32>;
 #[model_schema()]
 pub type Names = IndexSet<String>;
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Aliased {
     pub counts: Counts,

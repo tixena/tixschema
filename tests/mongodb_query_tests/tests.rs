@@ -1,6 +1,7 @@
-//! The query types `#[model_schema(decode_with)]` adds under `mongodb`: `Filter`, `Update`, and
-//! the typed paths that build them. Two binaries compile this module, each with the name `bson`
-//! bound to one major version of the library, so every case runs against both.
+//! The query types `#[model_schema(enable = ["decode_with", "mongodb"])]` adds under the
+//! `mongodb` feature: `Filter`, `Update`, and the typed paths that build them. Two binaries compile
+//! this module, each with the name `bson` bound to one major version of the library, so every case
+//! runs against both.
 
 mod arms;
 mod hooked;
@@ -40,7 +41,7 @@ use self::shapes::{
 };
 
 /// Third level of the nested chain: `Invoice` -> `Customer` -> `Address`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Address {
@@ -49,7 +50,7 @@ struct Address {
 }
 
 /// Second level of the nested chain, held by both [`Invoice`] and [`Order`].
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Customer {
@@ -59,12 +60,12 @@ struct Customer {
 }
 
 /// A brand over an `ObjectId`: serde writes it as the id it holds.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct InvoiceId(ObjectId);
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 enum InvoiceStatus {
@@ -74,7 +75,7 @@ enum InvoiceStatus {
 }
 
 /// The element of a list of models.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LineItem {
@@ -87,7 +88,7 @@ struct LineItem {
 }
 
 /// serde writes a tuple struct as an array, so each slot's path is its position.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Point(f64, f64);
 
@@ -95,7 +96,7 @@ struct Point(f64, f64);
 /// a list of plain values, a map, and a nested model held bare, in an `Option`, in a list and
 /// flattened, as a struct, as a tuple struct, as a generic struct and as an enum in each form
 /// serde writes one.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Invoice {
@@ -124,7 +125,7 @@ struct Invoice {
 }
 
 /// A second row type that holds [`Customer`], as [`Invoice`] does.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Order {

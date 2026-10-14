@@ -1,4 +1,4 @@
-//! Unit tests of what `#[model_schema(decode_with)]` emits, read off the expansion: the names it
+//! Unit tests of what `#[model_schema(enable = [...])]` emits, read off the expansion: the names it
 //! adds, the entry points, the walkers and the MongoDB operations.
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
@@ -668,7 +668,8 @@ fn every_added_method_but_the_entry_point_carries_the_flags_name() {
         "decode_with_value_check_issues",
     ]);
     if cfg!(feature = "bson") {
-        named.push("decode_with_bson_check_issues");
+        // The marker a holder that lists "mongodb" asks a type it reaches for.
+        named.extend(["decode_with_bson_check_issues", "mongo_listed"]);
     }
     assert_eq!(methods, named);
 }
@@ -2267,6 +2268,30 @@ fn each_initializer_writes_its_module_and_its_marker() {
     }
 }
 
+/// Under `bson` without `mongodb` the second library holds the three BSON pieces and nothing
+/// else: what holds a BSON value to a bound, the leaf and its helpers, and the BSON helpers of
+/// `Path`.
+#[cfg(all(feature = "bson", not(feature = "mongodb")))]
+#[test]
+fn without_mongodb_the_second_library_holds_the_bson_pieces_alone() {
+    assert_eq!(
+        MONGODB_LIBRARY_NAMES,
+        ["bson_bound", "bson_leaf", "bson_remaining", "same_bracket"]
+    );
+    let written = mongodb_library().to_string();
+    assert!(
+        written.contains("impl crate :: __tixschema_decode_with :: Path {"),
+        "got: {written}"
+    );
+    for absent in ["Filter", "Update", "OperationError", "Read"] {
+        assert!(
+            !written.contains(&format!("pub struct {absent}"))
+                && !written.contains(&format!("pub enum {absent}")),
+            "found `{absent}` in: {written}"
+        );
+    }
+}
+
 /// A build without `bson` writes no BSON and MongoDB library, so the call writes nothing.
 #[cfg(not(feature = "bson"))]
 #[test]
@@ -2386,6 +2411,141 @@ fn a_type_probes_for_the_libraries_it_reexports() {
             "got: {written}"
         );
     }
+}
+
+/// The types `probes` asks for `mongo_listed`, in the order written, each as its tokens.
+fn probed_types(probes: &proc_macro2::TokenStream) -> Vec<String> {
+    probes
+        .to_string()
+        .split("fn probe (held : & ")
+        .skip(1)
+        .map(|rest| rest.split_once(") {").unwrap().0.to_owned())
+        .collect()
+}
+
+/// Under `bson` every type that lists `"decode_with"` carries `mongo_listed`, beside its checks and
+/// under the bounds its author wrote: `()` where it lists "mongodb", `PhantomData<()>` where not.
+#[cfg(feature = "bson")]
+#[test]
+fn each_type_carries_a_marker_that_says_whether_it_lists_mongodb() {
+    let item: syn::ItemStruct =
+        syn::parse_str("pub struct Wrapper<T: Clone> { pub held: T }").unwrap();
+    for (mongodb, marker) in [
+        (true, "pub const fn mongo_listed (& self) { }"),
+        (
+            false,
+            "pub const fn mongo_listed (& self) -> :: core :: marker :: PhantomData < () > { :: \
+             core :: marker :: PhantomData }",
+        ),
+    ] {
+        let checked = super::struct_recovering_decode(&item, mongodb).check_messages;
+        let block: syn::ItemImpl = syn::parse2(checked.clone()).unwrap();
+        assert_eq!(
+            block.generics.to_token_stream().to_string(),
+            "< T : Clone >"
+        );
+        assert_eq!(block.self_ty.to_token_stream().to_string(), "Wrapper < T >");
+        assert!(checked.to_string().contains(marker), "got: {checked}");
+    }
+}
+
+/// A build without `bson` reads no BSON value: no type carries the marker, and none is probed.
+#[cfg(not(feature = "bson"))]
+#[test]
+fn no_type_carries_a_marker_without_bson() {
+    let item: syn::ItemStruct =
+        syn::parse_str("pub struct Invoice { pub customer: Customer }").unwrap();
+    let added = struct_recovering_decode(&item);
+    assert!(
+        !added.check_messages.to_string().contains("mongo_listed"),
+        "got: {}",
+        added.check_messages
+    );
+    assert_eq!(probed_types(&added.probes), Vec::<String>::new());
+}
+
+/// A holder that lists "mongodb" probes each type its BSON walk calls a walker of, once: through
+/// `Option`, a list, a map's values, a transparent wrapper and a tuple, and a flattened one. No
+/// leaf is probed.
+#[cfg(feature = "bson")]
+#[test]
+fn a_holder_that_lists_mongodb_probes_each_type_its_walk_reaches() {
+    let item: syn::ItemStruct = syn::parse_str(
+        "pub struct Invoice { pub customer: Customer, pub listed: Vec<Option<Customer>>, \
+         pub keyed: HashMap<String, Box<Parcel>>, pub pair: (Customer, Wrapper<String>), \
+         pub wrapped: Wrapper<String>, pub count: u32, pub details: HashMap<String, String>, \
+         #[serde(default, skip_serializing_if = \"Option::is_none\")] pub memo: Option<String>, \
+         pub number: String, pub tags: Vec<String>, #[serde(flatten)] pub lookup: InvoiceLookup }",
+    )
+    .unwrap();
+    let probes = struct_recovering_decode(&item).probes;
+    assert_eq!(
+        probed_types(&probes),
+        ["Customer", "Parcel", "Wrapper < String >", "InvoiceLookup"]
+    );
+    assert!(
+        probes.to_string().contains(
+            "# [diagnostic :: on_unimplemented (message = \"tixschema: `Invoice` lists \
+             \\\"mongodb\\\" in `enable`, but its field type `Customer` does not\" , label = \
+             \"`Invoice` reads and writes `Customer` in MongoDB, so `Customer` needs the MongoDB \
+             code too\" , note = \"Fix: add \\\"mongodb\\\" to the `enable` list of \
+             `#[model_schema]` on `Customer`, so it reads `enable = [\\\"decode_with\\\", \
+             \\\"mongodb\\\"]`.\")]"
+        ),
+        "got: {probes}"
+    );
+    // A type written with arguments is named by its own name.
+    assert!(
+        probes
+            .to_string()
+            .contains("but its field type `Wrapper` does not"),
+        "got: {probes}"
+    );
+}
+
+/// Nothing a holder reaches through one of its own parameters, and nothing that is the holder
+/// itself, is probed: the holder lists "mongodb" by being one.
+#[cfg(feature = "bson")]
+#[test]
+fn a_holder_probes_nothing_it_reaches_through_its_parameters_or_itself() {
+    for source in [
+        "pub struct Node<T> { pub children: Vec<Node<T>>, pub held: T, \
+         pub wrapped: Wrapper<T>, pub parent: Option<Box<Self>> }",
+        "pub struct Tree { pub children: Vec<Tree>, pub parent: Option<Box<Self>> }",
+    ] {
+        let item: syn::ItemStruct = syn::parse_str(source).unwrap();
+        let probes = struct_recovering_decode(&item).probes;
+        assert_eq!(probed_types(&probes), Vec::<String>::new(), "for {source}");
+    }
+    // A type that holds the holder is probed, the holder written by its name.
+    let item: syn::ItemStruct =
+        syn::parse_str("pub struct Tree { pub wrapped: Wrapper<Self> }").unwrap();
+    let probes = struct_recovering_decode(&item).probes;
+    assert_eq!(probed_types(&probes), ["Wrapper < Tree >"]);
+}
+
+/// A type that lists `"decode_with"` alone is read from no BSON value, so it probes nothing.
+#[cfg(feature = "bson")]
+#[test]
+fn a_type_that_lists_decode_with_alone_probes_nothing_it_holds() {
+    let item: syn::ItemStruct =
+        syn::parse_str("pub struct InvoiceLookup { pub customer: Customer }").unwrap();
+    seen_as_models(item.to_token_stream());
+    let probes = super::struct_recovering_decode(&item, false).probes;
+    assert_eq!(probed_types(&probes), Vec::<String>::new());
+}
+
+/// An enum probes what each variant serde reads holds, and nothing of a variant it never reads.
+#[cfg(feature = "bson")]
+#[test]
+fn an_enum_probes_what_its_variants_hold() {
+    let item: syn::ItemEnum = syn::parse_str(
+        "pub enum Payment { Card(Customer), Cash, Split { first: Customer, second: Wrapper<String> }, \
+         #[serde(skip_deserializing)] Lost(Parcel) }",
+    )
+    .unwrap();
+    let probes = enum_recovering_decode(&item).probes;
+    assert_eq!(probed_types(&probes), ["Customer", "Wrapper < String >"]);
 }
 
 #[test]

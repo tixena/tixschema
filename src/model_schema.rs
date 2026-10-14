@@ -2892,9 +2892,9 @@ fn decode_with_alias_refusal(alias: &ItemType) -> syn::Error {
     syn::Error::new_spanned(
         &alias.ty,
         format!(
-            "`#[model_schema(decode_with)]` cannot be written on a type alias: `{name}` is another \
-             name for `{target}`, and the methods would have to be added to that type. Write the \
-             flag on the model types the alias reaches."
+            "`enable = [\"decode_with\"]` cannot be written on a type alias: `{name}` is another \
+             name for `{target}`, and the methods would have to be added to that type. List it on \
+             the model types the alias reaches."
         ),
     )
 }
@@ -2904,7 +2904,7 @@ fn decode_with_borrow_refusal(ident: &syn::Ident, lifetime: &syn::LifetimeParam)
     syn::Error::new_spanned(
         lifetime,
         format!(
-            "`#[model_schema(decode_with)]` cannot be written on a type that borrows: \
+            "`enable = [\"decode_with\"]` cannot be written on a type that borrows: \
              `from_value_with` owns the value it reads, so the decoded `{ident}<{borrowed}>` cannot \
              borrow from it for `{borrowed}`."
         ),
@@ -2924,7 +2924,7 @@ fn decode_with_reference_refusal(
     syn::Error::new_spanned(
         reference,
         format!(
-            "`#[model_schema(decode_with)]` cannot be written on a type with a field that borrows: \
+            "`enable = [\"decode_with\"]` cannot be written on a type with a field that borrows: \
              `{field_name}` is `{written}`, and `from_value_with` owns the value it reads, so \
              nothing decoded from it can be borrowed for {lifetime}. Write the field as an owned \
              type."

@@ -1,4 +1,5 @@
-//! The recovering decode `#[model_schema(decode_with)]` turns on.
+//! The recovering decode `#[model_schema(enable = ["decode_with"])]` turns on, and the BSON
+//! decode and the MongoDB layer `"mongodb"` adds to it.
 
 mod aliases;
 mod checks;
@@ -40,6 +41,8 @@ use crate::field_type::{
 };
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use crate::model_schema::judged_read::bounded_listed_read;
+#[cfg(feature = "bson")]
+use crate::model_schema::judged_read::naming_the_type;
 use crate::model_schema::judged_read::{listed_read, listed_reader};
 use crate::model_schema::preprocess;
 use crate::model_schema::{helper_name_stem, recovering_bound_check};
@@ -618,6 +621,37 @@ impl<'item> Shape<'item> {
             }
         }
     }
+
+    /// Adds to `reached` each type whose own walker the walk of this shape calls: through
+    /// `Option`, the lists, a map's values, a tuple's positions and the transparent wrappers, and
+    /// each flattened type.
+    fn reached_models(&self, reached: &mut Vec<&'item Type>) {
+        match self {
+            Self::Fields(keyed) => {
+                for walk in keyed.fields.iter().filter_map(|field| field.walk.as_ref()) {
+                    walk.reached_models(reached);
+                }
+                for flattened in &keyed.flattened {
+                    match flattened {
+                        Flattened::Entries(walk) | Flattened::Whole(walk) => {
+                            walk.reached_models(reached);
+                        }
+                        Flattened::Model(model) | Flattened::Optional(model, _) => {
+                            reached.push(model);
+                        }
+                        Flattened::Unwalked(_) => {}
+                    }
+                }
+            }
+            Self::Held(walk) => walk.reached_models(reached),
+            Self::Nothing => {}
+            Self::Slots(slots) => {
+                for slot in slots {
+                    slot.walk.reached_models(reached);
+                }
+            }
+        }
+    }
 }
 
 /// One position of a tuple as its walker reads it.
@@ -885,10 +919,26 @@ struct Walk<'ty> {
     ty: &'ty Type,
 }
 
-impl Walk<'_> {
+impl<'ty> Walk<'ty> {
     /// A value of a parameter's type, which is one value whatever holds it.
     const fn is_of_a_parameter(&self) -> bool {
         matches!(&self.step, Step::Leaf(whole) if whole.parameterized)
+    }
+
+    /// [`Shape::reached_models`] of one value.
+    fn reached_models(&self, reached: &mut Vec<&'ty Type>) {
+        match &self.step {
+            Step::Entries(inner) | Step::Items(inner) | Step::Present(inner) => {
+                inner.reached_models(reached);
+            }
+            Step::Leaf(_) => {}
+            Step::Model => reached.push(self.ty),
+            Step::Positions(slots) => {
+                for slot in slots {
+                    slot.walk.reached_models(reached);
+                }
+            }
+        }
     }
 
     const fn reads_whole(&self) -> bool {
@@ -934,6 +984,9 @@ struct Whole {
 struct Written<'reach> {
     /// `decode_with_check_messages`, written from the checks the item and its members name.
     check_messages: TokenStream,
+    /// What refuses a type the item's BSON walk reaches that does not list "mongodb", written
+    /// beside the item.
+    held_probes: TokenStream,
     /// The item lists "mongodb" in `enable`: it is read from BSON, and stored.
     mongodb: bool,
     names: Vec<String>,
@@ -2310,6 +2363,8 @@ fn listed_from(item_struct: &ItemStruct, read: TokenStream, mongodb: bool) -> Re
     } else {
         TypedPaths::default()
     };
+    let mut reached = Vec::new();
+    shape.reached_models(&mut reached);
     added_to(
         &item_struct.ident,
         &item_struct.generics,
@@ -2317,6 +2372,7 @@ fn listed_from(item_struct: &ItemStruct, read: TokenStream, mongodb: bool) -> Re
         &parameters,
         &Written {
             check_messages: checks::struct_check_messages(item_struct, &module_name, &parameters),
+            held_probes: held_probes(&item_struct.ident, &reached, &parameters, mongodb),
             mongodb,
             names,
             reach: &reach,
@@ -2420,18 +2476,128 @@ where
     items.extend(written.reach.module_items());
     type_impl.extend(paths.beside.clone());
     type_impl.extend(written.reach.guards());
+    let mut probes = foundation_probes(written.mongodb);
+    probes.extend(written.held_probes.clone());
     RecoveringDecode {
         check_messages: checks::type_impl(
             name,
             generics,
             &module,
-            &written.check_messages,
+            &[
+                written.check_messages.clone(),
+                mongo_marker(written.mongodb),
+            ],
             written.mongodb,
         ),
-        probes: foundation_probes(written.mongodb),
+        probes,
         schema_module: placed_in_schema_module(&module, &items),
         type_impl,
     }
+}
+
+/// `mongo_listed`, the marker a holder that lists "mongodb" asks each type its BSON walk reaches
+/// for: `()` where the type lists "mongodb", `PhantomData<()>` where it lists `"decode_with"`
+/// alone.
+#[cfg(feature = "bson")]
+fn mongo_marker(mongodb: bool) -> TokenStream {
+    if mongodb {
+        quote! {
+            /// Whether this type lists "mongodb" in `enable`: it does.
+            pub const fn mongo_listed(&self) {}
+        }
+    } else {
+        quote! {
+            /// Whether this type lists "mongodb" in `enable`: it does not.
+            pub const fn mongo_listed(&self) -> ::core::marker::PhantomData<()> {
+                ::core::marker::PhantomData
+            }
+        }
+    }
+}
+
+/// A build without `bson` reads no BSON value, so no holder asks.
+#[cfg(not(feature = "bson"))]
+fn mongo_marker(_mongodb: bool) -> TokenStream {
+    TokenStream::new()
+}
+
+/// What refuses, beside `holder`, each type of `reached` that does not list "mongodb": the types
+/// the BSON walk of a holder that lists it calls a walker of. A leaf is never reached, and a type
+/// that names one of the holder's `parameters` or the holder itself is not probed. A type with no
+/// marker answers the fallback's `()`: it is read whole, as before.
+#[cfg(feature = "bson")]
+fn held_probes(
+    holder: &Ident,
+    reached: &[&Type],
+    parameters: &[String],
+    mongodb: bool,
+) -> TokenStream {
+    if !mongodb {
+        return TokenStream::new();
+    }
+    let mut seen: Vec<String> = Vec::new();
+    let mut probes = TokenStream::new();
+    for &held in reached {
+        let Type::Path(named) = written_type(held) else {
+            continue;
+        };
+        let (Some(first), Some(last)) = (named.path.segments.first(), named.path.segments.last())
+        else {
+            continue;
+        };
+        // A holder with no parameter is the one type its `Self` names.
+        let asked = naming_the_type(held.to_token_stream(), &quote! { #holder });
+        let written = asked.to_string();
+        if first.ident == "Self"
+            || (named.path.segments.len() == 1 && last.ident == *holder)
+            || names_a_parameter(held, parameters)
+            || seen.contains(&written)
+        {
+            continue;
+        }
+        seen.push(written);
+        let field_type = last.ident.unraw().to_string();
+        let message = format!(
+            "tixschema: `{holder}` lists \"mongodb\" in `enable`, but its field type \
+             `{field_type}` does not"
+        );
+        let label = format!(
+            "`{holder}` reads and writes `{field_type}` in MongoDB, so `{field_type}` needs the \
+             MongoDB code too"
+        );
+        let note = format!(
+            "Fix: add \"mongodb\" to the `enable` list of `#[model_schema]` on `{field_type}`, so \
+             it reads `enable = [\"decode_with\", \"mongodb\"]`."
+        );
+        probes.extend(quote! {
+            const _: () = {
+                #[diagnostic::on_unimplemented(message = #message, label = #label, note = #note)]
+                trait Enabled {}
+                impl Enabled for () {}
+                trait Fallback {
+                    fn mongo_listed(&self) {}
+                }
+                impl<T: ?::core::marker::Sized> Fallback for T {}
+                fn need<T: Enabled>(_: T) {}
+                fn probe(held: &#asked) {
+                    need(held.mongo_listed());
+                }
+                let _ = probe;
+            };
+        });
+    }
+    probes
+}
+
+/// A build without `bson` reads no BSON value, so nothing is probed.
+#[cfg(not(feature = "bson"))]
+fn held_probes(
+    _holder: &Ident,
+    _reached: &[&Type],
+    _parameters: &[String],
+    _mongodb: bool,
+) -> TokenStream {
+    TokenStream::new()
 }
 
 /// What a `{type}_schema` module holds of its crate's support libraries: every name each one makes
@@ -3431,17 +3597,18 @@ fn entry_methods(module: &Ident, decider: &Ident, corrects_own: bool) -> TokenSt
 /// walker lists nothing and returns no key, and the read carries serde's refusal. This builds:
 ///
 /// ```rust
-/// # extern crate bson2 as bson;
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+///
+/// #[model_schema(enable = ["decode_with"])]
 /// #[derive(Deserialize, Serialize)]
 /// pub struct Audit {
 ///     pub revision: i32,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with"])]
 /// #[derive(Deserialize, Serialize)]
 /// pub struct Note {
 ///     #[serde(flatten)]
@@ -3455,9 +3622,10 @@ fn entry_methods(module: &Ident, decider: &Ident, corrects_own: bool) -> TokenSt
 /// The run below is that one with the flag taken off `Audit`, and nothing else changed:
 ///
 /// ```rust,compile_fail
-/// # extern crate bson2 as bson;
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
+///
+/// tixschema::decode_with_foundation!();
 ///
 /// #[model_schema()]
 /// #[derive(Deserialize, Serialize)]
@@ -3465,7 +3633,7 @@ fn entry_methods(module: &Ident, decider: &Ident, corrects_own: bool) -> TokenSt
 ///     pub revision: i32,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with"])]
 /// #[derive(Deserialize, Serialize)]
 /// pub struct Note {
 ///     #[serde(flatten)]
@@ -3482,32 +3650,32 @@ fn entry_methods(module: &Ident, decider: &Ident, corrects_own: bool) -> TokenSt
 ///
 /// ```text
 /// error[E0599]: no associated function or constant named `decode_with_value_named` found for struct `Audit` in the current scope
-///   --> tests/zz_probe.rs:10:1
+///   --> tests/zz_probe.rs:12:1
 ///    |
-///  6 | pub struct Audit {
+///  8 | pub struct Audit {
 ///    | ---------------- associated function or constant `decode_with_value_named` not found for this struct
 /// ...
-/// 10 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ associated function or constant not found in `Audit`
+/// 12 | #[model_schema(enable = ["decode_with"])]
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ associated function or constant not found in `Audit`
 ///    |
 ///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error[E0599]: no associated function or constant named `decode_with_value_fields` found for struct `Audit` in the current scope
-///   --> tests/zz_probe.rs:10:1
+///   --> tests/zz_probe.rs:12:1
 ///    |
-///  6 | pub struct Audit {
+///  8 | pub struct Audit {
 ///    | ---------------- associated function or constant `decode_with_value_fields` not found for this struct
 /// ...
-/// 10 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ associated function or constant not found in `Audit`
+/// 12 | #[model_schema(enable = ["decode_with"])]
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ associated function or constant not found in `Audit`
 ///    |
 ///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 2 previous errors
 /// ```
 ///
-/// A build with `bson` on earns each a second time, naming `decode_with_bson_named` and
-/// `decode_with_bson_fields`.
+/// Where `Note` lists `"mongodb"` too, under `bson`, it earns each a second time, naming
+/// `decode_with_bson_named` and `decode_with_bson_fields`.
 fn flattened_walker_call(
     source: Source,
     model: &Type,
@@ -3805,17 +3973,18 @@ fn member_walk<'item>(
 /// Every type a flagged type's fields reach carries the flag too. This builds:
 ///
 /// ```rust
-/// # extern crate bson2 as bson;
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+///
+/// #[model_schema(enable = ["decode_with"])]
 /// #[derive(Deserialize, Serialize)]
 /// pub struct Version {
 ///     pub number: i32,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with"])]
 /// #[derive(Deserialize, Serialize)]
 /// pub struct Record {
 ///     pub versions: Vec<Version>,
@@ -3827,9 +3996,10 @@ fn member_walk<'item>(
 /// The run below is that one with the flag taken off `Version`, and nothing else changed:
 ///
 /// ```rust,compile_fail
-/// # extern crate bson2 as bson;
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
+///
+/// tixschema::decode_with_foundation!();
 ///
 /// #[model_schema()]
 /// #[derive(Deserialize, Serialize)]
@@ -3837,7 +4007,7 @@ fn member_walk<'item>(
 ///     pub number: i32,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with"])]
 /// #[derive(Deserialize, Serialize)]
 /// pub struct Record {
 ///     pub versions: Vec<Version>,
@@ -3851,31 +4021,33 @@ fn member_walk<'item>(
 ///
 /// ```text
 /// error[E0599]: no associated function or constant named `decode_with_value_issues` found for struct `Version` in the current scope
-///   --> tests/zz_probe.rs:10:1
+///   --> tests/zz_probe.rs:12:1
 ///    |
-///  6 | pub struct Version {
+///  8 | pub struct Version {
 ///    | ------------------ associated function or constant `decode_with_value_issues` not found for this struct
 /// ...
-/// 10 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ associated function or constant not found in `Version`
+/// 12 | #[model_schema(enable = ["decode_with"])]
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ associated function or constant not found in `Version`
 ///    |
 ///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
 ///
-/// A build with `bson` on earns the same error a second time, naming `decode_with_bson_issues`.
+/// Where `Record` lists `"mongodb"` too, under `bson`, it earns the same error a second time,
+/// naming `decode_with_bson_issues`.
 ///
 /// An alias is the type it stands for. A field typed with an alias of a flagged model type calls
 /// that type's walker. One typed with an alias of a list or a map that `#[model_schema]` was
 /// written on above is walked as the list or the map (see `aliases`), so this builds:
 ///
 /// ```rust
-/// # extern crate bson2 as bson;
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+///
+/// #[model_schema(enable = ["decode_with"])]
 /// #[derive(Deserialize, Serialize)]
 /// pub struct Version {
 ///     pub number: i32,
@@ -3884,7 +4056,7 @@ fn member_walk<'item>(
 /// #[model_schema()]
 /// pub type Versions = Vec<Version>;
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with"])]
 /// #[derive(Deserialize, Serialize)]
 /// pub struct Stock {
 ///     pub all: Versions,

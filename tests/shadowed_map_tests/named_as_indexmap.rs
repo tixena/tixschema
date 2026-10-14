@@ -5,20 +5,20 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tixschema::model_schema;
 
-#[model_schema(decode_with, default_types(K = String, V = u32))]
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(K = String, V = u32))]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct IndexMap<K, V> {
     pub key: K,
     pub value: V,
 }
 
-#[model_schema(decode_with, default_types(T = String))]
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(T = String))]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct IndexSet<T> {
     pub only: T,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Indexed {
     pub held: IndexMap<String, u32>,

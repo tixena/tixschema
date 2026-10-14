@@ -4019,7 +4019,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tixschema::{model_schema, model_schema_prop};
 
-#[model_schema(decode_with, check = ["withinParcel"])]
+tixschema::decode_with_foundation!();
+
+#[model_schema(enable = ["decode_with"], check = ["withinParcel"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Parcel {
@@ -4030,7 +4032,7 @@ pub struct Parcel {
     pub fragile_item_codes: Vec<String>,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Manifest {
     pub parcel: Parcel,
@@ -6056,13 +6058,15 @@ Read as a struct holding `name: String` and `versions: Vec<Version>`, `{ "name":
 Every model type a flagged type's fields reach carries the flag too, whatever its shape. Where the model type is declared above the flagged one and has no flag, the build fails: the flagged type's walker calls the nested type's walker, so the error names the method the flag would have generated:
 
 ```rust
+tixschema::decode_with_foundation!();
+
 #[model_schema()]
 #[derive(Deserialize, Serialize)]
 pub struct Version {
     pub number: i32,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Deserialize, Serialize)]
 pub struct Record {
     pub versions: Vec<Version>,
@@ -6087,19 +6091,19 @@ The flag is refused where the methods cannot be written, with a `compile_error!`
 **On a type alias.** An alias is another name for a type that already exists, so the methods would be that type's. For `pub type DecodeVersions = Vec<DecodeVersion>;`:
 
 ```text
-model_schema: type `DecodeVersions`: `#[model_schema(decode_with)]` cannot be written on a type alias: `DecodeVersions` is another name for `Vec<DecodeVersion>`, and the methods would have to be added to that type. Write the flag on the model types the alias reaches.
+model_schema: type `DecodeVersions`: `enable = ["decode_with"]` cannot be written on a type alias: `DecodeVersions` is another name for `Vec<DecodeVersion>`, and the methods would have to be added to that type. List it on the model types the alias reaches.
 ```
 
 **On a type that declares a lifetime.** The methods own the value they read, and a decoded value cannot borrow from it. For `pub struct DecodeNamed<'a> { pub name: &'a str }`, and for an enum declaring `'a` alike:
 
 ```text
-model_schema: type `DecodeNamed`: `#[model_schema(decode_with)]` cannot be written on a type that borrows: `from_value_with` owns the value it reads, so the decoded `DecodeNamed<'a>` cannot borrow from it for `'a`.
+model_schema: type `DecodeNamed`: `enable = ["decode_with"]` cannot be written on a type that borrows: `from_value_with` owns the value it reads, so the decoded `DecodeNamed<'a>` cannot borrow from it for `'a`.
 ```
 
 **On a type with a field that borrows.** A reference written in a field borrows from the owned value as a declared lifetime does. For `pub struct DecodeLabelled { pub label: &'static str }`:
 
 ```text
-model_schema: type `DecodeLabelled`: `#[model_schema(decode_with)]` cannot be written on a type with a field that borrows: `label` is `&'static str`, and `from_value_with` owns the value it reads, so nothing decoded from it can be borrowed for `'static`. Write the field as an owned type.
+model_schema: type `DecodeLabelled`: `enable = ["decode_with"]` cannot be written on a type with a field that borrows: `label` is `&'static str`, and `from_value_with` owns the value it reads, so nothing decoded from it can be borrowed for `'static`. Write the field as an owned type.
 ```
 
 The message names the first such field serde reads, a reference held inside an `Option` or a `Vec` included, a tuple position by its number and an enum's field behind its variant: `Named.label`. A field that names a lifetime and borrows nothing from the value is not refused: a `Cow<'static, str>`, which serde reads as an owned value, and a reference in a field serde never reads, under `skip` or `skip_deserializing`.
@@ -6466,8 +6470,8 @@ A `bson` of the other major version fails the build at each flagged type, the ge
 error[E0308]: mismatched types
  --> src/lib.rs:8:1
   |
-8 | #[model_schema(decode_with)]
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+8 | #[model_schema(enable = ["decode_with", "mongodb"])]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   | |
   | expected `mongodb::bson::Document`, found `bson::Document`
   | arguments to this method are incorrect
@@ -6488,7 +6492,10 @@ use bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-#[model_schema(decode_with)]
+tixschema::decode_with_foundation!();
+tixschema::mongodb_foundation!();
+
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Address {
@@ -6496,7 +6503,7 @@ pub struct Address {
     pub postal_code: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Customer {
@@ -6505,7 +6512,7 @@ pub struct Customer {
     pub open_invoices: u32,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum InvoiceStatus {
@@ -6514,7 +6521,7 @@ pub enum InvoiceStatus {
     PastDue,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct LineItem {
     pub price: f64,
@@ -6522,7 +6529,7 @@ pub struct LineItem {
     pub sku: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Payment {
@@ -6530,7 +6537,7 @@ pub enum Payment {
     Cash,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Invoice {
@@ -6644,7 +6651,7 @@ Every operator, once, with the document it writes. `paths` is `Invoice::MONGO_FI
 | `paths.paid_at().unset()` | `{ "$unset": { "paidAt": "" } }` |
 | `paths.paid_at().lt("2026-10-01".to_owned())?` | `{ "paidAt": { "$lt": "2026-10-01" } }` |
 
-`unset` is on a path a row may leave out and on no other: `paths.number().unset()` is ``error[E0599]: no method named `unset` found for struct `invoice_schema::Field<Root, V, N>` in the current scope``.
+`unset` is on a path a row may leave out and on no other: `paths.number().unset()` is ``error[E0599]: no method named `unset` found for struct `__tixschema_mongodb::Field<Root, V, N>` in the current scope``.
 
 **A type serde writes as one value**, here the plain enum `InvoiceStatus`. Held by another type it is a `Field`, with every operator of one:
 
@@ -6737,14 +6744,14 @@ fn bolts() -> LineItem {
 **The arms of an enum under a tag.** `<tag>__<value>()` is a function of the enum's own paths, one per variant serde writes, and it answers the rows of that arm. Its name is the tag key, `__`, and the value serde writes for the variant, each in snake case. What it answers is an arm filter, an `ArmFilter<Root, M>`: a filter over the rows of the enum that holds the arm's tag from the start, and whose `and` takes a filter over the rows of `M`, the model the arm holds, and over no other. So a field of an arm is asked only together with that arm's tag, and a row of another arm that writes the same key is not matched. The function is a `const fn`, so a `const` item holds an arm filter, and each use of the `const` is a new value:
 
 ```rust
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Courier {
     pub name: String,
     pub region: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "type")]
 pub enum Transport {
@@ -6753,7 +6760,7 @@ pub enum Transport {
     Collected,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Booking {
@@ -6815,7 +6822,7 @@ The snake case of a tag key and of a value is its words in lower case, joined by
 | `paths.payment().nest(payment.kind__cash())` | `{ "payment.kind": { "$eq": "cash" } }` |
 | `payment.card().last4().eq("4242".to_owned())?.and(payment.kind__card())` | `{ "$and": [{ "last4": { "$eq": "4242" } }, { "kind": { "$eq": "card" } }] }` |
 
-**`and` on an arm filter refuses a filter over another type.** With `Wagon` a flagged struct that declares a `number`, `BY_COURIER.and(Wagon::MONGO_FIELDS.number().eq("W-9".to_owned())?)` is ``error[E0277]: the trait bound `wagon_schema::Filter<Wagon>: AsRef<PhantomData<Courier>>` is not satisfied``.
+**`and` on an arm filter refuses a filter over another type.** With `Wagon` a flagged struct that declares a `number`, `BY_COURIER.and(Wagon::MONGO_FIELDS.number().eq("W-9".to_owned())?)` is ``error[E0277]: the trait bound `__tixschema_mongodb::Filter<Wagon>: AsRef<PhantomData<Courier>>` is not satisfied``.
 
 **An arm takes an update of the model it holds.** `update` on an arm filter takes an update of the rows of `M`, the model the arm holds, and of no other, and answers an arm update, an `ArmUpdate<Root, M>`: an update of the rows of the enum, with each key of the model written where the arm holds it. `and` on an arm update merges one more update of `M`, as `and` on an update does. `tag_on_insert` adds the arm's tag to `$setOnInsert`, which an upsert writes where it inserts the row. The tag is written only where it is asked for: an update of a row that is there needs none.
 
@@ -6855,7 +6862,7 @@ The tag is written at the enum's own level under either tagging, and what the ar
 | `payment.kind__cash().tag_on_insert()` | `{ "$setOnInsert": { "kind": "cash" } }` |
 | `payment.card().last4().set("4242".to_owned())?.and(payment.kind__card().tag_on_insert())` | `{ "$set": { "last4": "4242" }, "$setOnInsert": { "kind": "card" } }` |
 
-**`update` on an arm filter takes an update of the arm's model and nothing else.** Handed a filter over the rows of that model, `BY_COURIER.update(Courier::MONGO_FIELDS.name().eq("Acme".to_owned())?)` is ``error[E0277]: the trait bound `courier_schema::Filter<Courier>: AsRef<PhantomData<fn(Courier) -> Courier>>` is not satisfied``. Handed an update of another type, with `Wagon` a flagged struct that declares a `number`, `BY_COURIER.update(Wagon::MONGO_FIELDS.number().set("W-1".to_owned())?)` is ``error[E0277]: the trait bound `wagon_schema::Update<Wagon>: AsRef<PhantomData<fn(Courier) -> Courier>>` is not satisfied``. An arm update is no filter: it carries an update's marker and no other, so `BY_COURIER.and(BY_COURIER.tag_on_insert())` does not compile (`E0277`).
+**`update` on an arm filter takes an update of the arm's model and nothing else.** Handed a filter over the rows of that model, `BY_COURIER.update(Courier::MONGO_FIELDS.name().eq("Acme".to_owned())?)` is ``error[E0277]: the trait bound `__tixschema_mongodb::Filter<Courier>: AsRef<PhantomData<fn(Courier) -> Courier>>` is not satisfied``. Handed an update of another type, with `Wagon` a flagged struct that declares a `number`, `BY_COURIER.update(Wagon::MONGO_FIELDS.number().set("W-1".to_owned())?)` is ``error[E0277]: the trait bound `__tixschema_mongodb::Update<Wagon>: AsRef<PhantomData<fn(Courier) -> Courier>>` is not satisfied``. An arm update is no filter: it carries an update's marker and no other, so `BY_COURIER.and(BY_COURIER.tag_on_insert())` does not compile (`E0277`).
 
 ### Filters and updates
 
@@ -6876,8 +6883,8 @@ The tag is written at the enum's own level under either tagging, and what the ar
 - **A filter joins a filter over the same rows, whichever module it comes from.** What `and` and `or` ask of their argument is that it turn into a `bson::Document` and carry the row type, which every module's `Filter` does through two standard traits, `Into<bson::Document>` and `AsRef<PhantomData<Root>>`. `nest` asks the same of what it is handed, over the nested model. The answer is of the type `and` was called on.
 - **An arm filter goes where a filter over its enum goes.** A `transport_schema::ArmFilter<Transport, Courier>` turns into a `bson::Document` and carries the row type `Transport` through the same two traits, so `nest` on a path that holds a `Transport` takes one, and so do `and`, `or`, `elem_match` on a list of the enum, and every operation. It is no `Filter` itself: `transport_schema::Filter::from(arm)` makes it the module's own `Filter<Transport>`, which starts a join and has `negated`. Its own `and` asks the two traits of its argument over the model the arm holds ([The arms of an enum under a tag](#operators)).
 - **An arm update goes where an update of its enum goes.** A `transport_schema::ArmUpdate<Transport, Courier>` turns into a `bson::Document` and carries `AsRef<PhantomData<fn(Transport) -> Transport>>`, an update's marker over the rows of the enum, and no other. So `nest` on a path that holds a `Transport` takes one, and so do `and` on an update of the enum, `update_one` and `update_many`, and nothing that asks for a filter does. `transport_schema::Update::from(arm)` makes it the module's own `Update<Transport>`. Its own `and`, and `update` on the arm filter, ask the two traits of their argument over the model the arm holds ([The arms of an enum under a tag](#operators)).
-- **A filter over another type's rows is refused.** Handed `Order::MONGO_FIELDS.placed().eq(true)?`, `and` on a filter over `Invoice` is ``error[E0277]: the trait bound `order_schema::Filter<Order>: AsRef<PhantomData<Invoice>>` is not satisfied``, and `nest` on `paths.customer()`, which holds a `Customer`, is ``error[E0277]: the trait bound `order_schema::Filter<Order>: invoice_schema::Nests<Invoice, Customer, _>` is not satisfied``.
-- **An update is refused where a filter is asked, and a filter where an update is.** An update carries `AsRef<PhantomData<fn(Root) -> Root>>` in place of a filter's marker. `paths.total().gt(1000.0)?.and(paths.total().set(0.0)?)` is ``error[E0277]: the trait bound `invoice_schema::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied``, and `paths.total().set(0.0)?.and(paths.total().gt(1000.0)?)` is ``error[E0277]: the trait bound `invoice_schema::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied``.
+- **A filter over another type's rows is refused.** Handed `Order::MONGO_FIELDS.placed().eq(true)?`, `and` on a filter over `Invoice` is ``error[E0277]: the trait bound `__tixschema_mongodb::Filter<Order>: AsRef<PhantomData<Invoice>>` is not satisfied``, and `nest` on `paths.customer()`, which holds a `Customer`, is ``error[E0277]: the trait bound `__tixschema_mongodb::Filter<Order>: Nests<Invoice, Customer, _>` is not satisfied``.
+- **An update is refused where a filter is asked, and a filter where an update is.** An update carries `AsRef<PhantomData<fn(Root) -> Root>>` in place of a filter's marker. `paths.total().gt(1000.0)?.and(paths.total().set(0.0)?)` is ``error[E0277]: the trait bound `__tixschema_mongodb::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied``, and `paths.total().set(0.0)?.and(paths.total().gt(1000.0)?)` is ``error[E0277]: the trait bound `__tixschema_mongodb::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied``.
 - **A document is not a filter until `Filter::raw` makes it one.** `and` handed a `doc! { .. }` as it stands is ``error[E0277]: the trait bound `bson::Document: AsRef<PhantomData<Invoice>>` is not satisfied``. `raw` gives the document the row type of what it joins, and nothing checks what it holds: its keys and its values are the caller's.
 - **`into_document()` hands over the document** of a filter or an update, and so does `bson::Document::from`, for a call made on the driver itself.
 
@@ -6966,7 +6973,7 @@ use bson::serde_helpers::datetime::FromChrono04DateTime as date_hook;
 ```rust
 use window_schema::{Filter, WriteError};
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Window {
@@ -7001,14 +7008,14 @@ A field typed with a flagged model is a `Model`, an `OptionalModel` or a `ModelL
 `nest` reaches the paths below such a member as it does below a model: a `Field` and a `ListField` have it too.
 
 ```rust
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Shipment {
     pub carrier: Carrier,
     pub code: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Carrier {
     pub name: String,
@@ -7092,7 +7099,7 @@ async fn every_operation(
 `whole_number_as_text` is the resolver of [Resolvers](#resolvers), written there against another `Invoice` and here against this one: the same text, over `invoice_schema::Issue`.
 
 - **A filter is any filter over the type's rows**, whichever module's `Filter` it is. A filter over another type's rows and an update are refused, by the bound a filter joins another under.
-- **A filter and an update cannot change places.** `Invoice::update_one(invoices, paths.status().set(InvoiceStatus::Paid)?, paths.number().eq("INV-0042".to_owned())?)` does not compile: ``error[E0277]: the trait bound `invoice_schema::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied`` for the update handed as the filter, and ``error[E0277]: the trait bound `invoice_schema::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied`` for the filter handed as the update.
+- **A filter and an update cannot change places.** `Invoice::update_one(invoices, paths.status().set(InvoiceStatus::Paid)?, paths.number().eq("INV-0042".to_owned())?)` does not compile: ``error[E0277]: the trait bound `__tixschema_mongodb::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied`` for the update handed as the filter, and ``error[E0277]: the trait bound `__tixschema_mongodb::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied`` for the filter handed as the update.
 - **A read of many rows fails as a whole.** The rows are read one at a time as the driver hands them over, and the first that does not read ends the read with that row's `_id` and its issues. No row is answered.
 - **`insert_one` writes the row when it is called**, before anything is awaited. A value BSON cannot hold, and a type serde writes as anything but a document, a plain enum or a brand, answer `OperationError::Unwritable` without MongoDB being asked anything. What is awaited holds no borrow of the value.
 - **The updates and the deletes answer what the driver answers**: `UpdateResult` with its `matched_count`, `modified_count` and `upserted_id`, `DeleteResult` with its `deleted_count`, and `InsertOneResult` with the `inserted_id` of the row.
@@ -7260,7 +7267,7 @@ A row is written by the type's own `Serialize`, and a value of a filter or an up
 **A member whose serde form depends on the format has two stored forms.** The generated reads and writes go through `bson::Serializer::new()` and `bson::Deserializer::new(..)`, which call themselves human-readable. A typed `Collection<T>` of the driver writes through the `bson` library's raw serializer, which does not. `std::net::IpAddr` is such a member: no schema surface describes it, so the example is one of a build with tixschema's `mongo` features alone.
 
 ```rust
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Host {
     pub address: IpAddr,
@@ -7285,7 +7292,7 @@ the row without an _id does not read as expected: address: invalid: expected Unk
 **A map whose key is not text is neither written nor read as BSON.** tixschema takes a map keyed by a number, a `bool`, a `char` or a `chrono` date, because serde writes such a key as text into JSON. The `bson` library does not:
 
 ```rust
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Roster {
@@ -7321,7 +7328,7 @@ An aggregation answers rows that are no rows of `Invoice`, so they are read as a
 
 ```rust
 /// What one customer was billed: no row of `Invoice`, so no read of `Invoice` answers it.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Billed {
     #[serde(rename = "_id")]

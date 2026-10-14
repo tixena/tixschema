@@ -14,7 +14,7 @@ use super::shown;
 type Label = Tag;
 
 /// Holds itself, in a list and in an `Option`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Category {
     children: Vec<Self>,
@@ -24,7 +24,7 @@ struct Category {
 }
 
 /// Holds [`Tag`], declared below it, and the same type behind a plain alias.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Post {
     label: Label,
@@ -32,7 +32,7 @@ struct Post {
     title: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Tag {
     name: String,
@@ -40,7 +40,7 @@ struct Tag {
 
 /// Holds [`Reply`], which holds it back: the first of the two is expanded before the second is
 /// seen.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Thread {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -48,7 +48,7 @@ struct Thread {
     subject: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Reply {
     body: String,

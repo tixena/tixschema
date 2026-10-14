@@ -34,7 +34,7 @@ const DECLARED_HOOKS: [&str; 2] = [
 const DECLARED_IMPORT: &str = "use window_schema::{Filter, WriteError};";
 
 /// The type the README declares, character for character.
-const DECLARED_WINDOW: &str = r#"#[model_schema(decode_with)]
+const DECLARED_WINDOW: &str = r#"#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Window {
@@ -49,7 +49,7 @@ const SHOWN_FILTERS: [&str; 2] = [
     r#"{ "opensAt": { "$lt": "2026-10-07T17:40:00Z" } }"#,
 ];
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Window {

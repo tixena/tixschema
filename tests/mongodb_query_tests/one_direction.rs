@@ -14,7 +14,7 @@ use super::written_names::{pairs, stored};
 
 /// A field renamed for both directions apart, one for writing alone, one for reading alone,
 /// and one the rule cases, which is written for writing alone.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all(serialize = "camelCase"))]
 struct Carton {
@@ -29,7 +29,7 @@ struct Carton {
 
 /// Named by a tag: a variant renamed for writing, the rule of the variants and of their
 /// fields written for writing alone, and a variant with a rule of its own.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(
     tag = "mode",
@@ -51,7 +51,7 @@ enum Haulage {
 }
 
 /// Named by the key each variant is under.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all(serialize = "kebab-case"))]
 enum Relay {
@@ -63,7 +63,7 @@ enum Relay {
     NotSent,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Dispatch {
     relay: Relay,

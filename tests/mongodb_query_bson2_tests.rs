@@ -1,7 +1,11 @@
-//! The query types `#[model_schema(decode_with)]` adds under `mongodb`: `Filter`, `Update`, and
-//! the typed paths that build them, built against version 2 of the `bson` library.
+//! The query types `#[model_schema(enable = ["decode_with", "mongodb"])]` adds under the
+//! `mongodb` feature: `Filter`, `Update`, and the typed paths that build them, built against
+//! version 2 of the `bson` library.
 
 extern crate bson2 as bson;
+
+tixschema::decode_with_foundation!();
+tixschema::mongodb_foundation!();
 
 #[cfg(test)]
 #[cfg(all(feature = "chrono", feature = "mongodb"))]

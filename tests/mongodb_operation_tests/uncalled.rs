@@ -7,7 +7,7 @@ use bson::doc;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 struct Receipt {
     number: String,

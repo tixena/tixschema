@@ -571,6 +571,8 @@ pub fn model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 /// type, and so is each other name of the library.
 ///
 /// It takes no arguments, and writes nothing in a build without the `serde` feature.
+///
+#[cfg_attr(feature = "serde", doc = include_str!("decode_with_example.md"))]
 #[proc_macro]
 pub fn decode_with_foundation(input: TokenStream) -> TokenStream {
     exec_decode_with_foundation(&input.into()).into()

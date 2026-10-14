@@ -1,4 +1,6 @@
-//! The typed MongoDB paths `#[model_schema(decode_with)]` adds under `mongodb`.
+//! The typed MongoDB paths a type that lists `"mongodb"` in `enable` gets under the `mongodb`
+//! feature: `MongoFields`, `MONGO_FIELDS` and one function per field. A type that lists
+//! `"decode_with"` alone gets none.
 
 use core::iter::{once, repeat_with};
 
@@ -1079,12 +1081,15 @@ impl Own<'_> {
     /// use serde::{Deserialize, Serialize};
     /// use tixschema::model_schema;
     ///
-    /// #[model_schema(decode_with)]
+    /// tixschema::decode_with_foundation!();
+    /// tixschema::mongodb_foundation!();
+    ///
+    /// #[model_schema(enable = ["decode_with", "mongodb"])]
     /// #[derive(Debug, Deserialize, Serialize)]
     /// #[serde(transparent)]
     /// pub struct Score(pub u32);
     ///
-    /// #[model_schema(decode_with)]
+    /// #[model_schema(enable = ["decode_with", "mongodb"])]
     /// #[derive(Debug, Deserialize, Serialize)]
     /// pub struct Game {
     ///     pub best: Score,
@@ -1110,12 +1115,15 @@ impl Own<'_> {
     /// use serde::{Deserialize, Serialize};
     /// use tixschema::model_schema;
     ///
-    /// #[model_schema(decode_with)]
+    /// tixschema::decode_with_foundation!();
+    /// tixschema::mongodb_foundation!();
+    ///
+    /// #[model_schema(enable = ["decode_with", "mongodb"])]
     /// #[derive(Debug, Deserialize, Serialize)]
     /// #[serde(transparent)]
     /// pub struct Score(pub u32);
     ///
-    /// #[model_schema(decode_with)]
+    /// #[model_schema(enable = ["decode_with", "mongodb"])]
     /// #[derive(Debug, Deserialize, Serialize)]
     /// pub struct Game {
     ///     pub best: Score,
@@ -1132,14 +1140,14 @@ impl Own<'_> {
     ///
     /// ```text
     /// error[E0308]: `?` operator has incompatible types
-    ///   --> tests/zz_probe.rs:20:35
+    ///   --> tests/zz_probe.rs:23:35
     ///    |
-    /// 20 |     let _ = f.scores().elem_match(Score::MONGO_FIELDS.gt(Score(5))?);
+    /// 23 |     let _ = f.scores().elem_match(Score::MONGO_FIELDS.gt(Score(5))?);
     ///    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Element<Score>`, found `Filter<Score>`
     ///    |
-    ///    = note: `?` operator cannot convert from `score_schema::Filter<Score>` to `game_schema::Element<Score>`
-    ///    = note: expected struct `game_schema::Element<Score>`
-    ///               found struct `score_schema::Filter<Score>`
+    ///    = note: `?` operator cannot convert from `__tixschema_mongodb::Filter<Score>` to `__tixschema_mongodb::Element<Score>`
+    ///    = note: expected struct `__tixschema_mongodb::Element<Score>`
+    ///               found struct `__tixschema_mongodb::Filter<Score>`
     ///
     /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
     /// ```
@@ -1383,7 +1391,10 @@ impl Shown {
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// #[serde(rename_all = "kebab-case")]
 /// pub enum InvoiceStatus {
@@ -1391,7 +1402,7 @@ impl Shown {
 ///     PastDue,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub status: InvoiceStatus,
@@ -1404,19 +1415,19 @@ impl Shown {
 ///
 /// ```text
 /// error[E0308]: mismatched types
-///   --> tests/zz_probe.rs:20:47
+///   --> tests/zz_probe.rs:23:47
 ///    |
-/// 20 |     let _ = Invoice::MONGO_FIELDS.status().eq("past-due");
+/// 23 |     let _ = Invoice::MONGO_FIELDS.status().eq("past-due");
 ///    |                                            -- ^^^^^^^^^^ expected `InvoiceStatus`, found `&str`
 ///    |                                            |
 ///    |                                            arguments to this method are incorrect
 ///    |
 /// note: method defined here
-///   --> tests/zz_probe.rs:13:1
+///   --> tests/zz_probe.rs:6:1
 ///    |
-/// 13 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///  6 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
@@ -1494,7 +1505,10 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// #[serde(rename_all = "camelCase")]
 /// pub struct Address {
@@ -1502,7 +1516,7 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 ///     pub postal_code: String,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// #[serde(rename_all = "camelCase")]
 /// pub struct Customer {
@@ -1510,7 +1524,7 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 ///     pub open_invoices: u32,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// #[serde(rename_all = "kebab-case")]
 /// pub enum InvoiceStatus {
@@ -1518,7 +1532,7 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 ///     PastDue,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// #[serde(rename_all = "camelCase")]
 /// pub struct Invoice {
@@ -1565,13 +1579,16 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Customer {
 ///     pub name: String,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub customer: Customer,
@@ -1585,12 +1602,12 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 ///
 /// ```text
 /// error[E0599]: no method named `amount` found for struct `invoice_schema::MongoFields<Root>` in the current scope
-///   --> tests/zz_probe.rs:19:35
+///   --> tests/zz_probe.rs:22:35
 ///    |
-/// 11 | #[model_schema(decode_with)]
-///    | ---------------------------- method `amount` not found for this struct
+/// 14 | #[model_schema(enable = ["decode_with", "mongodb"])]
+///    | ---------------------------------------------------- method `amount` not found for this struct
 /// ...
-/// 19 |     let _ = Invoice::MONGO_FIELDS.amount().gt(1000.0);
+/// 22 |     let _ = Invoice::MONGO_FIELDS.amount().gt(1000.0);
 ///    |                                   ^^^^^^ method not found in `invoice_schema::MongoFields<Invoice>`
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
@@ -1603,7 +1620,10 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub number: String,
@@ -1615,21 +1635,21 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 /// ```
 ///
 /// ```text
-/// error[E0599]: no method named `unset` found for struct `invoice_schema::Field<Root, V, N>` in the current scope
-///   --> tests/zz_probe.rs:12:44
+/// error[E0599]: no method named `unset` found for struct `__tixschema_mongodb::Field<Root, V, N>` in the current scope
+///   --> tests/zz_probe.rs:15:44
 ///    |
-///  5 | #[model_schema(decode_with)]
-///    | ---------------------------- method `unset` not found for this struct
+///  6 | tixschema::mongodb_foundation!();
+///    | -------------------------------- method `unset` not found for this struct
 /// ...
-/// 12 |     let _ = Invoice::MONGO_FIELDS.number().unset();
+/// 15 |     let _ = Invoice::MONGO_FIELDS.number().unset();
 ///    |                                            ^^^^^
 ///    |
 /// help: there is a method `set` with a similar name, but with different arguments
-///   --> tests/zz_probe.rs:5:1
+///   --> tests/zz_probe.rs:6:1
 ///    |
-///  5 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///  6 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
@@ -1641,7 +1661,10 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// #[serde(rename_all = "camelCase")]
 /// pub struct Invoice {
@@ -1655,19 +1678,19 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 ///
 /// ```text
 /// error[E0308]: mismatched types
-///   --> tests/zz_probe.rs:13:55
+///   --> tests/zz_probe.rs:16:55
 ///    |
-/// 13 |     let _ = Invoice::MONGO_FIELDS.open_invoices().lte("3");
+/// 16 |     let _ = Invoice::MONGO_FIELDS.open_invoices().lte("3");
 ///    |                                                   --- ^^^ expected `u32`, found `&str`
 ///    |                                                   |
 ///    |                                                   arguments to this method are incorrect
 ///    |
 /// note: method defined here
-///   --> tests/zz_probe.rs:5:1
+///   --> tests/zz_probe.rs:6:1
 ///    |
-///  5 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///  6 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
@@ -1679,7 +1702,10 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub total: f64,
@@ -1692,19 +1718,19 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 ///
 /// ```text
 /// error[E0308]: mismatched types
-///   --> tests/zz_probe.rs:12:46
+///   --> tests/zz_probe.rs:15:46
 ///    |
-/// 12 |     let _ = Invoice::MONGO_FIELDS.total().gt("1000");
+/// 15 |     let _ = Invoice::MONGO_FIELDS.total().gt("1000");
 ///    |                                           -- ^^^^^^ expected `f64`, found `&str`
 ///    |                                           |
 ///    |                                           arguments to this method are incorrect
 ///    |
 /// note: method defined here
-///   --> tests/zz_probe.rs:5:1
+///   --> tests/zz_probe.rs:6:1
 ///    |
-///  5 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///  6 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
@@ -1718,7 +1744,10 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub tags: Vec<String>,
@@ -1732,18 +1761,22 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 ///
 /// ```text
 /// error[E0599]: `ListField<Invoice, std::string::String>` is not an iterator
-///   --> tests/zz_probe.rs:12:42
+///   --> tests/zz_probe.rs:15:42
 ///    |
-///  5 | #[model_schema(decode_with)]
-///    | ---------------------------- method `gt` not found for this struct because it doesn't satisfy `ListField<Invoice, std::string::String>: Iterator`
+///  6 | tixschema::mongodb_foundation!();
+///    | -------------------------------- method `gt` not found for this struct because it doesn't satisfy `ListField<Invoice, std::string::String>: Iterator`
 /// ...
-/// 12 |     let _ = Invoice::MONGO_FIELDS.tags().gt("export".to_owned())?;
+/// 15 |     let _ = Invoice::MONGO_FIELDS.tags().gt("export".to_owned())?;
 ///    |                                          ^^ `ListField<Invoice, std::string::String>` is not an iterator
 ///    |
 ///    = note: the following trait bounds were not satisfied:
 ///            `ListField<Invoice, std::string::String>: Iterator`
 ///            which is required by `&mut ListField<Invoice, std::string::String>: Iterator`
-/// ...
+/// note: the trait `Iterator` must be implemented
+///   --> $RUST/core/src/iter/traits/iterator.rs:42:1
+///    |
+/// 42 | pub const trait Iterator {
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^
 ///    = help: items from traits can only be used if the trait is implemented and in scope
 ///    = note: the following traits define an item `gt`, perhaps you need to implement one of them:
 ///            candidate #1: `Iterator`
@@ -1759,13 +1792,16 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
-/// #[model_schema(decode_with)]
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Invoice {
 ///     pub total: f64,
 /// }
 ///
-/// #[model_schema(decode_with)]
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
 /// #[derive(Debug, Deserialize, Serialize)]
 /// pub struct Order {
 ///     pub placed: bool,
@@ -1779,27 +1815,27 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 /// ```
 ///
 /// ```text
-/// error[E0277]: the trait bound `order_schema::Filter<Order>: AsRef<PhantomData<Invoice>>` is not satisfied
-///   --> tests/zz_probe.rs:19:45
+/// error[E0277]: the trait bound `__tixschema_mongodb::Filter<Order>: AsRef<PhantomData<Invoice>>` is not satisfied
+///   --> tests/zz_probe.rs:22:45
 ///    |
-/// 19 |     let _ = invoice.total().gt(1000.0)?.and(Order::MONGO_FIELDS.placed().eq(true)?);
+/// 22 |     let _ = invoice.total().gt(1000.0)?.and(Order::MONGO_FIELDS.placed().eq(true)?);
 ///    |                                         --- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
 ///    |                                         |
 ///    |                                         required by a bound introduced by this call
 ///    |
-/// help: the trait `AsRef<PhantomData<Invoice>>` is not implemented for `order_schema::Filter<Order>`
+/// help: the trait `AsRef<PhantomData<Invoice>>` is not implemented for `__tixschema_mongodb::Filter<Order>`
 ///       but trait `AsRef<PhantomData<Order>>` is implemented for it
-///   --> tests/zz_probe.rs:11:1
+///   --> tests/zz_probe.rs:6:1
 ///    |
-/// 11 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///  6 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ///    = help: for that trait implementation, expected `Order`, found `Invoice`
-/// note: required by a bound in `invoice_schema::Filter::<Root>::and`
-///   --> tests/zz_probe.rs:5:1
+/// note: required by a bound in `__tixschema_mongodb::Filter::<Root>::and`
+///   --> tests/zz_probe.rs:6:1
 ///    |
-///  5 | #[model_schema(decode_with)]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Filter::<Root>::and`
-///    = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+///  6 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Filter::<Root>::and`
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```

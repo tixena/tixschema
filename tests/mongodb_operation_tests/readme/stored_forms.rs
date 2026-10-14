@@ -11,11 +11,11 @@ use super::{assert_declared_and_documented, assert_documented};
 use crate::BSON_MAJOR;
 
 /// The type the README declares, character for character.
-const DECLARED_HOST: &str = "#[model_schema(decode_with)]
+const DECLARED_HOST: &str = r#"#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Host {
     pub address: IpAddr,
-}";
+}"#;
 
 /// What the README shows the generated write storing for a host.
 const SHOWN_STORED: &str = r#"{ "address": "127.0.0.1" }"#;
@@ -27,7 +27,7 @@ const SHOWN_UNREADABLE: [&str; 2] = [
     r#"the row without an _id does not read as expected: address: invalid: expected Unknown, found Document({"V4": Array([Int32(127), Int32(0), Int32(0), Int32(1)])}): BSON error. Kind: A deserialization-related error occurred. Message: invalid type: map, expected IP address."#,
 ];
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Host {
     pub address: IpAddr,

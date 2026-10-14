@@ -25,7 +25,7 @@ const BY_COURIER: shipping_schema::ArmFilter<Shipping, Courier> =
 
 /// A row whose total is of whatever type fills `T`: an unsigned one can hold more than BSON has
 /// a number for.
-#[model_schema(decode_with, default_types(T = u32))]
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(T = u32))]
 #[derive(Debug, Deserialize, Serialize)]
 struct Ledger<T> {
     total: T,
@@ -33,7 +33,7 @@ struct Ledger<T> {
 
 /// A row that crosses threads and that no two threads share: what it has seen is kept in a
 /// `Cell`, off the wire.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Default, Deserialize, Serialize)]
 struct Tally {
     #[serde(skip)]
@@ -41,14 +41,14 @@ struct Tally {
     total: u32,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 struct Wagon {
     number: String,
 }
 
 /// An enum under a tag: each arm of its paths answers a filter over its rows.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "type")]
 enum Shipping {
@@ -64,7 +64,7 @@ enum Shipping {
 }
 
 /// Declared below `Shipping`, which has not seen it where it is expanded.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 struct Courier {
     name: String,
@@ -72,7 +72,7 @@ struct Courier {
 }
 
 /// A row whose type and whose number each name a function that corrects what is stored.
-#[model_schema(decode_with, preprocess = ["withATotal"])]
+#[model_schema(enable = ["decode_with", "mongodb"], preprocess = ["withATotal"])]
 #[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub(super) struct Receipt {
     #[serde(rename = "_id")]
@@ -262,7 +262,7 @@ fn a_type_with_no_id_refuses_a_stored_row_until_a_resolver_settles_it() {
 
 #[tokio::test]
 async fn a_row_declared_inside_a_function_reads_and_writes_itself() {
-    #[model_schema(decode_with)]
+    #[model_schema(enable = ["decode_with", "mongodb"])]
     #[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
     struct Note {
         text: String,

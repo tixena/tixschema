@@ -27,7 +27,7 @@ use invoice_schema::{Expected, Filter, Issue, OperationError, Read, Resolution, 
 /// driver, character for character.
 const DECLARED_DIRECT: [&str; 2] = [
     r#"/// What one customer was billed: no row of `Invoice`, so no read of `Invoice` answers it.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Billed {
     #[serde(rename = "_id")]
@@ -196,7 +196,7 @@ fn whole_number_as_text(raw: &mut Document, issue: &Issue<Bson>) -> Resolution {
 }";
 
 /// The type the README declares with a map whose keys are numbers, character for character.
-const DECLARED_ROSTER: &str = r#"#[model_schema(decode_with)]
+const DECLARED_ROSTER: &str = r#"#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Roster {
@@ -250,7 +250,7 @@ const SHOWN_UNREADABLE: [&str; 2] = [
 ];
 
 /// What one customer was billed: no row of `Invoice`, so no read of `Invoice` answers it.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Billed {
     #[serde(rename = "_id")]
@@ -258,7 +258,7 @@ pub struct Billed {
     pub total: f64,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Roster {
