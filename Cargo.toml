@@ -105,6 +105,10 @@ dart = [] # Dart type generation and a JSON fromJson/toJson codec, beside the Ty
 swift = [] # Swift type generation with a Codable codec
 kotlin = [] # Kotlin type generation with kotlinx.serialization annotations
 
+[lints.rust]
+# `slow_tests` gates the tests that wait on a real clock; `just test-slow` sets it.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(slow_tests)"] }
+
 [lints.clippy]
 all = { level = "deny", priority = -1 }
 pedantic = { level = "deny", priority = -1 }

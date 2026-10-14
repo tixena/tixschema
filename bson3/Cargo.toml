@@ -50,6 +50,10 @@ time = ">=0.3.47"
 
 # tixschema's own table, entry for entry: the shared sources are linted at one level wherever they
 # are compiled. `tests/mirrored_manifest_tests.rs` holds the two tables together.
+[lints.rust]
+# `slow_tests` gates the tests that wait on a real clock; `just test-slow` sets it.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(slow_tests)"] }
+
 [lints.clippy]
 all = { level = "deny", priority = -1 }
 pedantic = { level = "deny", priority = -1 }
