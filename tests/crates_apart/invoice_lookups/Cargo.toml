@@ -1,0 +1,12 @@
+[package]
+name = "invoice_lookups"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Neither `bson` nor `mongodb`: its types list "decode_with" alone, whose library names neither.
+[dependencies]
+# No feature of its own: the build that compiles this crate decides tixschema's.
+tixschema = { path = "../../..", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

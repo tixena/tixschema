@@ -1,0 +1,5 @@
+error: model_schema: type `InvoiceLookup`: tixschema: `decode_with` is now an entry of the `enable` list: write `#[model_schema(enable = ["decode_with"])]`
+ --> tests/foundation_refusals/bare_decode_with.rs:8:16
+  |
+8 | #[model_schema(decode_with)]
+  |                ^^^^^^^^^^^

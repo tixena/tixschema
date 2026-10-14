@@ -1,0 +1,5 @@
+error: tixschema: `decode_with_foundation!` takes no arguments: write `tixschema::decode_with_foundation!();` at the crate root
+ --> tests/foundation_refusals/decode_with_foundation_argument.rs:3:36
+  |
+3 | tixschema::decode_with_foundation!(InvoiceLookup);
+  |                                    ^^^^^^^^^^^^^
