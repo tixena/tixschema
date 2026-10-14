@@ -1,13 +1,110 @@
 //! The models a key under `#[serde(default)]` is written on, and what a serde read prints for each
 //! payload of the table every surface is held to.
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+use alloc::collections::{BTreeMap, BTreeSet, BinaryHeap, VecDeque};
 use core::fmt::Write as _;
+use core::hash::Hash;
+use std::collections::{HashMap, HashSet};
 
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use tixschema::model_schema;
+
+/// Each payload of a struct that declares a parameter, read at the filling `String`: its name,
+/// the type that reads it, and the payload.
+pub const FILLED: [(&str, &str, &str); 9] = [
+    ("row 1: no dataLinks", "Config", "{}"),
+    (
+        "row 9: dataLinks held",
+        "Config",
+        r#"{"dataLinks":[{"id":"a"}]}"#,
+    ),
+    ("row 2: every list and set left out", "Fleet", "{}"),
+    (
+        "row 2: every list and set held",
+        "Fleet",
+        r#"{"binary_heap":[{"id":"a"}],"btree_set":[{"id":"b"}],"hash_set":[{"id":"c"}],"vec":[{"id":"d"}],"vec_deque":[{"id":"e"}]}"#,
+    ),
+    ("row 3: every map left out", "Logbook", "{}"),
+    (
+        "row 3: every map held",
+        "Logbook",
+        r#"{"btree_map":{"k":{"id":"a"}},"hash_map":{"k":{"id":"b"}}}"#,
+    ),
+    ("a list of the parameter left out", "Basin", "{}"),
+    (
+        "a list of the parameter held",
+        "Basin",
+        r#"{"dock":"d","moored":["m"]}"#,
+    ),
+    (
+        "rows 4 to 6: every key held",
+        "Harbour",
+        r#"{"berths":["b"],"flagship":"f","slips":["s"]}"#,
+    ),
+];
+
+/// What every surface prints for [`FILLED`], as the serde read prints it.
+pub const FILLED_REPORT: &str = "\
+row 1: no dataLinks: read {\"dataLinks\":[],\"sequences\":[]}
+row 9: dataLinks held: read {\"dataLinks\":[{\"id\":\"a\"}],\"sequences\":[]}
+row 2: every list and set left out: read {\"binary_heap\":[],\"btree_set\":[],\"hash_set\":[],\"vec\":[],\"vec_deque\":[]}
+row 2: every list and set held: read {\"binary_heap\":[{\"id\":\"a\"}],\"btree_set\":[{\"id\":\"b\"}],\"hash_set\":[{\"id\":\"c\"}],\"vec\":[{\"id\":\"d\"}],\"vec_deque\":[{\"id\":\"e\"}]}
+row 3: every map left out: read {\"btree_map\":{},\"hash_map\":{}}
+row 3: every map held: read {\"btree_map\":{\"k\":{\"id\":\"a\"}},\"hash_map\":{\"k\":{\"id\":\"b\"}}}
+a list of the parameter left out: read {\"dock\":\"\",\"moored\":[]}
+a list of the parameter held: read {\"dock\":\"d\",\"moored\":[\"m\"]}
+rows 4 to 6: every key held: read {\"berths\":[\"b\"],\"flagship\":\"f\",\"slips\":[\"s\"]}
+";
+
+/// Each payload of the `indexmap` set and map, read at the filling `String`.
+#[cfg(feature = "indexmap")]
+pub const INDEXED: &[(&str, &str, &str)] = &[
+    ("row 2: an IndexSet left out", "IndexedFleet", "{}"),
+    (
+        "row 2: an IndexSet held",
+        "IndexedFleet",
+        r#"{"index_set":[{"id":"a"}]}"#,
+    ),
+    ("row 3: an IndexMap left out", "IndexedLogbook", "{}"),
+    (
+        "row 3: an IndexMap held",
+        "IndexedLogbook",
+        r#"{"index_map":{"k":{"id":"b"}}}"#,
+    ),
+];
+
+/// What every surface prints for [`INDEXED`], as the serde read prints it.
+#[cfg(feature = "indexmap")]
+pub const INDEXED_REPORT: &str = "\
+row 2: an IndexSet left out: read {\"index_set\":[]}
+row 2: an IndexSet held: read {\"index_set\":[{\"id\":\"a\"}]}
+row 3: an IndexMap left out: read {\"index_map\":{}}
+row 3: an IndexMap held: read {\"index_map\":{\"k\":{\"id\":\"b\"}}}
+";
+
+/// No `indexmap` payload where the feature is off.
+#[cfg(not(feature = "indexmap"))]
+pub const INDEXED: &[(&str, &str, &str)] = &[];
+
+/// Nothing printed for [`INDEXED`] where the feature is off.
+#[cfg(not(feature = "indexmap"))]
+pub const INDEXED_REPORT: &str = "";
+
+/// Each payload of `Harbour` that leaves out a key whose default has no JSON: serde reads it as
+/// the default, and every other surface requires the key.
+pub const REQUIRED: [(&str, &str); 3] = [
+    ("row 4: no flagship", r#"{"berths":["b"],"slips":["s"]}"#),
+    ("row 5: no berths", r#"{"flagship":"f","slips":["s"]}"#),
+    ("row 6: no slips", r#"{"berths":["b"],"flagship":"f"}"#),
+];
+
+/// What every surface but Rust prints for [`REQUIRED`].
+pub const REQUIRED_REPORT: &str = "\
+row 4: no flagship: refused
+row 5: no berths: refused
+row 6: no slips: refused
+";
 
 /// Each payload every surface reads: its name, the type that reads it, and the payload.
 pub const CASES: [(&str, &str, &str); 10] = [
@@ -136,7 +233,8 @@ pub struct Marina {
     pub label: String,
 }
 
-/// A default whose type names a parameter has no JSON, and one whose type names none has.
+/// A list of the struct's parameter, whose default is the empty list at every filling, beside a
+/// member whose type names no parameter.
 #[model_schema(default_types(Moored = String))]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Basin<Moored> {
@@ -144,6 +242,83 @@ pub struct Basin<Moored> {
     pub dock: String,
     #[serde(default)]
     pub moored: Vec<Moored>,
+}
+
+/// Defaults whose JSON depends on the filling, or that a function of the author's writes.
+#[model_schema(default_types(Moored = String))]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct Harbour<Moored> {
+    #[serde(default = "two_berths")]
+    pub berths: Vec<Moored>,
+    #[serde(default)]
+    pub flagship: Moored,
+    #[serde(default, serialize_with = "listed_slips")]
+    pub slips: Vec<Moored>,
+}
+
+/// A model a holder fills with its own type parameter.
+#[model_schema(default_types(IdType = String))]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+pub struct Link<IdType> {
+    pub id: IdType,
+}
+
+/// A list of a model filled with the struct's parameter, read as empty where the payload leaves
+/// its key out, beside a list of a type that names no parameter.
+#[model_schema(default_types(IdType = String))]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Config<IdType> {
+    #[serde(default)]
+    pub data_links: Vec<Link<IdType>>,
+    #[serde(default)]
+    pub sequences: Vec<String>,
+}
+
+/// Every list and set of a model filled with the struct's parameter, each read as `[]` where the
+/// payload leaves its key out.
+#[model_schema(default_types(IdType = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Fleet<IdType: Hash + Ord> {
+    #[serde(default)]
+    pub binary_heap: BinaryHeap<Link<IdType>>,
+    #[serde(default)]
+    pub btree_set: BTreeSet<Link<IdType>>,
+    #[serde(default)]
+    pub hash_set: HashSet<Link<IdType>>,
+    #[serde(default)]
+    pub vec: Vec<Link<IdType>>,
+    #[serde(default)]
+    pub vec_deque: VecDeque<Link<IdType>>,
+}
+
+/// Every map of a model filled with the struct's parameter, each read as `{}` where the payload
+/// leaves its key out.
+#[model_schema(default_types(IdType = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Logbook<IdType> {
+    #[serde(default)]
+    pub btree_map: BTreeMap<String, Link<IdType>>,
+    #[serde(default)]
+    pub hash_map: HashMap<String, Link<IdType>>,
+}
+
+/// The `indexmap` set of a model filled with the struct's parameter.
+#[cfg(feature = "indexmap")]
+#[model_schema(default_types(IdType = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct IndexedFleet<IdType: Hash + Eq> {
+    #[serde(default)]
+    pub index_set: indexmap::IndexSet<Link<IdType>>,
+}
+
+/// The `indexmap` map of a model filled with the struct's parameter.
+#[cfg(feature = "indexmap")]
+#[model_schema(default_types(IdType = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct IndexedLogbook<IdType> {
+    #[serde(default)]
+    pub index_map: indexmap::IndexMap<String, Link<IdType>>,
 }
 
 impl Default for Gangway {
@@ -165,9 +340,27 @@ impl Default for Jetty {
     }
 }
 
+/// What `Harbour` writes its slips with: a function of the author's own.
+pub fn listed_slips<Moored, S>(slips: &[Moored], serializer: S) -> Result<S::Ok, S::Error>
+where
+    Moored: Serialize,
+    S: Serializer,
+{
+    serializer.collect_seq(slips)
+}
+
 /// What `gate` is read as where the payload leaves its key out.
 pub fn north_dock() -> String {
     "north".to_owned()
+}
+
+/// What `Harbour` reads its berths as where the payload leaves their key out: one value for each
+/// filling.
+pub fn two_berths<Moored>() -> Vec<Moored>
+where
+    Moored: Default,
+{
+    vec![Moored::default(), Moored::default()]
 }
 
 /// What `Bollard` reads where the payload leaves `dock` out.
@@ -211,19 +404,62 @@ pub fn read_values() -> (Wharf, Pontoon) {
     )
 }
 
-/// What serde reads of a `Marina` that holds `label` alone and of a `Basin` that holds no key:
-/// each member its default, though no surface is handed the default of `Marina` or of `moored`.
-pub fn unwritten_defaults() -> (Marina, Basin<String>) {
+/// What serde reads of a `Marina` that holds `label` alone, and of each payload of [`REQUIRED`]:
+/// each member left out its default, though no surface is handed the default of `Marina` or of
+/// `Harbour`.
+pub fn unwritten_defaults() -> (Marina, [Harbour<String>; 3]) {
+    let held = |text: &str| vec![text.to_owned()];
     (
         Marina {
             dock: String::new(),
             label: "m".to_owned(),
         },
-        Basin {
-            dock: String::new(),
-            moored: Vec::new(),
-        },
+        [
+            Harbour {
+                berths: held("b"),
+                flagship: String::new(),
+                slips: held("s"),
+            },
+            Harbour {
+                berths: two_berths(),
+                flagship: "f".to_owned(),
+                slips: held("s"),
+            },
+            Harbour {
+                berths: held("b"),
+                flagship: "f".to_owned(),
+                slips: Vec::new(),
+            },
+        ],
     )
+}
+
+/// Every payload of [`FILLED`], then of [`INDEXED`].
+pub fn filled_cases() -> Vec<(&'static str, &'static str, &'static str)> {
+    FILLED.iter().chain(INDEXED).copied().collect()
+}
+
+/// What every surface prints for [`filled_cases`].
+pub fn filled_expected() -> String {
+    format!("{FILLED_REPORT}{INDEXED_REPORT}")
+}
+
+/// What a serde read prints for each payload of [`filled_cases`].
+pub fn filled_report() -> String {
+    filled_cases()
+        .into_iter()
+        .map(|(name, read_as, payload)| match read_as {
+            "Basin" => printed::<Basin<String>>(name, payload),
+            "Config" => printed::<Config<String>>(name, payload),
+            "Fleet" => printed::<Fleet<String>>(name, payload),
+            #[cfg(feature = "indexmap")]
+            "IndexedFleet" => printed::<IndexedFleet<String>>(name, payload),
+            #[cfg(feature = "indexmap")]
+            "IndexedLogbook" => printed::<IndexedLogbook<String>>(name, payload),
+            "Logbook" => printed::<Logbook<String>>(name, payload),
+            _ => printed::<Harbour<String>>(name, payload),
+        })
+        .collect()
 }
 
 /// What a serde read prints for each payload of [`CASES`].
@@ -241,7 +477,6 @@ pub fn report() -> String {
 
 /// What a serde read of `payload` as a `T` prints under `name`: the value written back, or each
 /// message of the refusal on a line of its own.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn printed<T>(name: &str, payload: &str) -> String
 where
     T: DeserializeOwned + Serialize,

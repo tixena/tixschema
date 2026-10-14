@@ -244,7 +244,8 @@ pub struct Wharf {
 **A default with no JSON keeps the key required.** serde still reads such a key as its default, but no surface other than Rust is handed the default, so each one requires the key as it did before. That is the case where:
 
 - the struct does not derive both `Serialize` and `Deserialize`, or reads or writes itself through `from`, `try_from`, `into` or `remote`;
-- the type of the field names a type parameter of the struct, a lifetime or `Self`. The default of `Vec<T>` holds one value for each type that fills `T`, so the text has no one value to write. A field of the same struct whose type names no parameter is read as its default;
+- the type of the field names a type parameter of the struct, a lifetime or `Self`, and the field is not a list, a set or a map under the bare `#[serde(default)]`. The default of `T`, and the `Vec<T>` a function answers, hold one value for each type that fills `T`, so the text has no one value to write. A field of the same struct whose type names no parameter is read as its default;
+- the field is a list, a set or a map whose type names a parameter, and serde writes it through a `serialize_with` or a `with` of the field's: only that function knows the JSON of the empty collection. Without one, a list, a set or a map under the bare `#[serde(default)]` is read as its default on every surface: the default is the empty collection at every filling, so `Vec<T>`, `VecDeque<T>`, `BinaryHeap<T>`, `HashSet<T>` and `BTreeSet<T>` are read as `[]`, and `HashMap<K, T>` and `BTreeMap<K, T>` as `{}` (`IndexSet` and `IndexMap` too, under the [`indexmap` feature](#feature-flags)). The Kotlin client writes that default as `emptyList()` or `emptyMap()`, a property's initializer having no serializer of the parameter to read `[]` with;
 - the default is the struct's own, and the struct declares a parameter;
 - the field is `#[serde(flatten)]`;
 - the member is a member of a variant of an enum.

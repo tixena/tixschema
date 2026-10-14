@@ -106,6 +106,9 @@ pub struct KotlinArgs<'args> {
 struct KotlinField {
     /// Where the JSON of the default serde reads for an absent key is written.
     default_at: Option<String>,
+    /// Whether that default is of a member whose type names a parameter of the class: the empty
+    /// collection, the one default `SerdeDefaults` keeps for such a member.
+    empty_default: bool,
     field_def: FieldDef,
     flatten: bool,
     rust_name: String,
@@ -430,8 +433,11 @@ fn collect_kotlin_fields(
         if omission.omits_key && !field_def.is_optional() {
             field_def.nullable_levels.push(field_def.array_depth);
         }
+        let default_at = defaults.at(&rust_name);
         collected.push(KotlinField {
-            default_at: defaults.at(&rust_name),
+            empty_default: default_at.is_some()
+                && field_reaches_type_parameter(&field_def, type_parameters),
+            default_at,
             field_def,
             flatten: field_is_flatten(&field.attrs),
             rust_name,
@@ -957,10 +963,22 @@ fn property_declaration(field: &KotlinField, plugin: Option<&Plugin<'_>>) -> Str
         },
         // The plugin calls this for an absent key: the default, read as a payload is.
         |at| {
-            format!(
-                " = Json.decodeFromString({}, \"{at}\")",
-                read::member_serializer(&field.field_def, &[])
-            )
+            if field.empty_default {
+                // An initializer reaches no serializer of the class's parameters to read `[]` with.
+                let empty = if field.field_def.array_depth == 0
+                    && matches!(field.field_def.field_type, FieldDefType::Map(..))
+                {
+                    "emptyMap()"
+                } else {
+                    "emptyList()"
+                };
+                format!(" = {empty}")
+            } else {
+                format!(
+                    " = Json.decodeFromString({}, \"{at}\")",
+                    read::member_serializer(&field.field_def, &[])
+                )
+            }
         },
     );
     format!("{annotation}{unjudged}val {prop_name}: {ty}{default}")
