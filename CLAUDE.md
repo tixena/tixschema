@@ -989,7 +989,20 @@ has to keep.
   under `Option`, `Vec`, `Box` and a map's value, in any nesting. A hook is recorded only where
   `validate()` walks the same wrappers (`held_shape`), which is what judges what the hook leaves
   unjudged, and never for a member serde does not read, one read through a hook of its
-  author's, or a type that names a lifetime, `Self` or one of the item's parameters.
+  author's, or a type that names a lifetime.
+- A member written with `Self` or with the item's own type parameters (`Vec<Entry<IdType>>`) is
+  hooked as any other: a model filled with the holder's parameter is judged once, with its
+  holder, and what fills a parameter itself (`Vec<Held>`) is no model `validate()` walks.
+  `HookScope::written` writes `Self` as the item (`naming_the_type`) and makes the hook generic
+  over exactly the item's parameters the member's type names, in the order declared, each
+  inferred at serde's call from the return type. Every bound sits in its `where` clause, one
+  predicate per bounded type and each bound once (`merged`): the item's own bounds and the
+  read's predicates (`ReadBounds::predicates`) whose parameters are all the hook's. The type the
+  model is read as declares only the parameters the model names, under the item's own bounds on
+  them. A bound that ties such a parameter to another of the item's or to one of its lifetimes,
+  a read at `'static`, a const parameter, and a parameter named behind a path
+  (`IdType::Out`, `<IdType as Trait>`) leave the member to its own `Deserialize`: the hook is
+  not written, and `unjudged_hooks` hangs nothing on the member.
 - The hooks are functions local to `model_schema_read_unjudged`: `read_unjudged_{stem}`, each
   with a local `Unjudged` newtype whose `Deserialize` calls the leaf's
   `model_schema_read_unjudged`, behind the local `ReadUnjudged` trait. An inherent function is
@@ -1015,7 +1028,7 @@ has to keep.
   value. A check a brand names chooses no variant: the enum's `validate()` refuses with it.
 - `named_read_hook` stays for a named field `reachable_nested_shape` walks and `reached` does
   not, a declared type in an `Arc` and in a fixed array among them. A model or a brand there,
-  in a tuple and under a type parameter judges itself as it is read, and ends the read at the
+  in a tuple and filling a type parameter judges itself as it is read, and ends the read at the
   first one that breaks a rule.
 - A unit struct's `Deserialize` is the macro's already (`unit_struct_serde_impls`), and
   `unit_struct_read` gives it `model_schema_read_unjudged` and the `validate()` call where the
@@ -1034,7 +1047,8 @@ has to keep.
   sample; `tests/branded_newtype_tests/read.rs` a brand under each inner, held in each place and
   in an untagged enum; `tests/check_tests/read.rs` the read of a type that names a check, in
   every build; `tests/recovering_decode_bson_tests/refused_read.rs` a BSON value under each
-  major.
+  major; `tests/judged_once_tests/` a model held under the holder's own parameter or `Self`, in
+  each wrapper and beside each bound, its checks counted on the thread that runs them.
 
 #### A payload corrected before it is read
 

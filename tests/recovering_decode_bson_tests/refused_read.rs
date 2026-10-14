@@ -2,6 +2,7 @@
 //! `validate()` answers of the value: through each major's own read of a document, and through
 //! `bson::Deserializer`.
 
+use core::cell::Cell;
 use core::fmt::Debug;
 use std::collections::HashMap;
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
@@ -112,6 +113,40 @@ struct DockedShelf {
     spare_label: Option<DockLabel>,
 }
 
+thread_local! {
+    /// How many times the checks of `DockedEntry` and of `DockedNode` have run on this thread.
+    static DOCKED_CHECKS: [Cell<usize>; 2] = const { [Cell::new(0), Cell::new(0)] };
+}
+
+/// A checked model a holder fills with its own type parameter.
+#[model_schema(default_types(IdType = String), check = ["countedDockedEntry"])]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+struct DockedEntry<IdType> {
+    id: IdType,
+    label: String,
+}
+
+/// Holds its entries under its own type parameter.
+#[model_schema(default_types(IdType = String))]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+struct DockedLedger<IdType> {
+    entries: Vec<DockedEntry<IdType>>,
+}
+
+/// A holder of holders, one level up.
+#[model_schema(default_types(IdType = String))]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+struct DockedBook<IdType> {
+    ledgers: Vec<DockedLedger<IdType>>,
+}
+
+/// A checked type that holds itself, written as `Self`.
+#[model_schema(check = ["countedDockedNode"])]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+struct DockedNode {
+    children: Vec<Self>,
+}
+
 fn within_docked_parcel(value: &DockedParcel) -> Result<(), Vec<String>> {
     let outside: Vec<String> = value
         .fragile_item_codes
@@ -199,6 +234,47 @@ fn shelf_of(held: &DockLabel) -> DockedShelf {
         labels_by_dock: HashMap::from([("north".to_owned(), held.clone())]),
         spare_label: Some(held.clone()),
     }
+}
+
+fn counted_docked(check: usize) {
+    DOCKED_CHECKS.with(|counts| {
+        if let Some(count) = counts.get(check) {
+            count.set(count.get() + 1);
+        }
+    });
+}
+
+fn counted_docked_entry<IdType>(value: &DockedEntry<IdType>) -> Result<(), Vec<String>> {
+    counted_docked(0);
+    if value.label.is_empty() {
+        return Err(vec!["'label': an entry has a label".to_owned()]);
+    }
+    Ok(())
+}
+
+fn counted_docked_node(value: &DockedNode) -> Result<(), Vec<String>> {
+    counted_docked(1);
+    if value.children.len() > 2 {
+        return Err(vec![
+            "'children': a node holds at most two children".to_owned(),
+        ]);
+    }
+    Ok(())
+}
+
+/// The checks of `DockedEntry` and of `DockedNode` run on this thread since the last call.
+fn docked_checks_taken() -> [usize; 2] {
+    DOCKED_CHECKS.with(|counts| counts.each_ref().map(|count| count.replace(0)))
+}
+
+/// A ledger whose entries are labelled `labels`.
+fn docked_ledger(labels: &[&str]) -> bson::Document {
+    let entries: Vec<bson::Document> = labels
+        .iter()
+        .enumerate()
+        .map(|(index, &label)| doc! { "id": index.to_string(), "label": label })
+        .collect();
+    doc! { "entries": entries }
 }
 
 /// What this major's own read of a document says of a refusal whose text is `refused`.
@@ -416,4 +492,36 @@ fn a_document_names_every_broken_brand_it_holds_at_its_full_path() {
     );
     let sound = shelf_of(&DockLabel("AB".to_owned()));
     assert_eq!(read_document::<DockedShelf>(written(&sound)), Ok(sound));
+}
+
+#[test]
+fn a_document_judges_a_model_held_under_the_holders_type_parameter_once() {
+    docked_checks_taken();
+    read_document::<DockedLedger<String>>(docked_ledger(&["x", "y"])).unwrap();
+    assert_eq!(docked_checks_taken(), [2, 0], "each entry is judged once");
+    read_document::<DockedBook<String>>(doc! { "ledgers": [docked_ledger(&["x", "y"])] }).unwrap();
+    assert_eq!(docked_checks_taken(), [2, 0], "a level up, still once");
+}
+
+#[test]
+fn a_document_judges_a_model_held_under_self_once() {
+    docked_checks_taken();
+    read_document::<DockedNode>(doc! { "children": [{ "children": [{ "children": [] }] }] })
+        .unwrap();
+    assert_eq!(
+        docked_checks_taken(),
+        [0, 3],
+        "each node of the chain is judged once"
+    );
+}
+
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn a_document_names_every_broken_model_held_under_the_holders_type_parameter_at_its_full_path() {
+    assert_eq!(
+        read_document::<DockedLedger<String>>(docked_ledger(&["x", "", ""])),
+        Err(told_by_this_major(
+            "'entries.1.label': an entry has a label; 'entries.2.label': an entry has a label"
+        ))
+    );
 }

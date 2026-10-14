@@ -3729,13 +3729,15 @@ The messages come in the order `validate()` reports them: member by member as de
 - **A payload that keeps every rule** is read to the value it was read to before, and written back to the same text. Writing judges nothing: `Serialize` is still serde's derive, and a broken value built in code is written as it is.
 - **A type that publishes no `validate()`** is left as it was written, with serde's own `Deserialize`, unless it names a [`preprocess`](#preprocessing-preprocess), on itself or on a member: its `Deserialize` is written too, and calls each function ahead of the read. A type that derives `Serialize` alone is left as it was written.
 
-**Where a held model is judged.** A holder reads a model unjudged where `validate()` walks it: held itself, or under `Option`, `Vec`, `Box` and as a map's value, in any nesting of those, in a named field, a slot or a `#[serde(flatten)]` member. A model held any other way judges itself as it is read, and the payload is refused there too, with that model's own messages, the first broken model ending the read:
+**Where a held model is judged.** A holder reads a model unjudged where `validate()` walks it: held itself, or under `Option`, `Vec`, `Box` and as a map's value, in any nesting of those, in a named field, a slot or a `#[serde(flatten)]` member. That holds where the member's type is written with the holder's own type parameters, `entries: Vec<Entry<IdType>>` in a `Ledger<IdType>`, and where it is written with `Self`, `children: Vec<Self>`. A model held any other way judges itself as it is read, and the payload is refused there too, with that model's own messages, the first broken model ending the read:
 
 | Held | Judged |
 |---|---|
-| in a field, an `Option`, a `Vec`, a `Box`, a map's value | once, with its holder, each message at its full path |
+| in a field, an `Option`, a `Vec`, a `Box`, a map's value, whether its type is written with a concrete filling, with the holder's own type parameter (`Vec<Entry<IdType>>`) or as `Self` | once, with its holder, each message at its full path |
 | in a tuple, a fixed array, a set, an `Rc`, an `Arc` | by itself, as it is read |
-| under one of the holder's own type parameters | by itself, as it is read |
+| filling one of the holder's own type parameters, as what fills `Held` in `held: Vec<Held>` | by itself, as it is read |
+| in a member whose type names a lifetime | by itself, as it is read |
+| in a member written with a type parameter that a bound of the holder ties to another of its parameters or to a lifetime (`where IdType: From<Held>`), or with one of a holder read at `'static` | by itself, as it is read |
 | in a field read through a `deserialize_with` or a `with` of your own | by whatever that function calls |
 | by a type with no `#[model_schema()]` | by itself, as it is read: two broken parcels in a `Vec<Parcel>` of such a type answer the first one's messages, `... at line 1 column 58` |
 
@@ -4179,7 +4181,7 @@ Every shape runs its checks: a struct with named fields, a tuple struct (a slot'
 
 A field's check is written on the schema of the value the Rust function takes: after the field's bounds, inside the union an `Option` writes, on the array of a list after its count, and inside a `z.preprocess` wrap. A type's check is written on the type's own expression, ahead of `.brand()` on a brand and of the `.meta({ ... })` every binding carries, and inside the builder of a type with a parameter, so every filling of its factory carries it. Each issue is copied with `continue: true`: zod skips a later check once an issue without that flag is listed, and the Rust side runs every one.
 
-**In the [recovering decode](#recovering-decode-decode_with)** of a type declared with `decode_with`. serde builds the value, the checks run on it, and each message is one `Issue::Invalid` of the read: `path` is what the message leads with, read against the raw value, `expected` is `Unknown`, `found` is the raw value at that path, and `reason` is the text after the lead. See [What each shape reports](#what-each-shape-reports).
+**In the [recovering decode](#recovering-decode-decode_with)** of a type declared with `decode_with`. serde builds the value, the checks run on it, and each message is one `Issue::Invalid` of the read: `path` is what the message leads with, read against the raw value, `expected` is `Unknown`, `found` is the raw value at that path, and `reason` is the text after the lead. See [What each shape reports](#what-each-shape-reports). A check of a model a holder holds is listed at its full path, the holder's place in front, and so it is below a generic holder and a recursive one: a `Truck<CodeType>` holding `load: Crate<CodeType>` lists a broken check of the crate at `load.fragileItemCodes[1]`, and a `Carton` holding `cartons: Vec<Self>` lists one of its first inner carton at `cartons[0].fragileItemCodes[1]`.
 
 **In a serde read** of a type that derives `Deserialize`. The read runs `validate()` on the value it read, checks included, and [refuses the payload](#a-read-refuses-what-validate-refuses) with what it answers. The hook an `#[serde(untagged)]` member is read through runs no check: a check chooses no variant.
 
