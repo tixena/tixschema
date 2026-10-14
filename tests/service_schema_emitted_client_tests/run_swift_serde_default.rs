@@ -13,8 +13,8 @@ use super::serde_default_models::{
     REQUIRED_REPORT, VARIANT_CASES, VARIANT_REPORT, adjacent_berthing_swift, basin_swift,
     berthing_swift, bollard_swift, config_swift, external_berthing_swift, filled_cases,
     filled_expected, filled_report, fleet_swift, gangway_swift, harbour_swift, jetty_swift,
-    link_swift, logbook_swift, marina_swift, pontoon_swift, preprocessed_values, quay_swift,
-    read_values, untagged_berthing_swift, unwritten_defaults, wharf_swift,
+    link_swift, logbook_swift, manifest_swift, marina_swift, pontoon_swift, preprocessed_values,
+    quay_swift, read_values, untagged_berthing_swift, unwritten_defaults, wharf_swift,
 };
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use super::serde_default_models::{report, variant_report};
@@ -45,10 +45,6 @@ func row<Read: Codable>(_ name: String, _ type: Read.Type, _ payload: String) {
   }
 }
 "#;
-
-/// The enums whose named variant names the enum's parameter: this client writes the struct of the
-/// variant's members with no parameter, which does not compile. Left out of the run.
-const VARIANT_OF_A_PARAMETER: [&str; 1] = ["Manifest"];
 
 /// What prints a row of a key the type requires: whether the read answered or threw.
 const REQUIRES: &str = r#"
@@ -206,13 +202,7 @@ fn each_payload_of_a_struct_that_declares_a_parameter_reads_in_swift_as_serde_re
             harbour
         );
     }
-    let expected = filled_expected();
-    let read: Vec<_> = filled_cases()
-        .into_iter()
-        .zip(expected.lines())
-        .filter(|((_, read_as, _), _)| !VARIANT_OF_A_PARAMETER.contains(read_as))
-        .collect();
-    let filled = read.iter().map(|&((name, read_as, payload), _)| {
+    let filled = filled_cases().into_iter().map(|(name, read_as, payload)| {
         format!("row(\"{name}\", {read_as}<String>.self, #\"{payload}\"#)")
     });
     let required = REQUIRED.iter().map(|(name, payload)| {
@@ -226,6 +216,7 @@ fn each_payload_of_a_struct_that_declares_a_parameter_reads_in_swift_as_serde_re
         fleet_swift::swift_definition(),
         logbook_swift::swift_definition(),
         harbour_swift::swift_definition(),
+        manifest_swift::swift_definition(),
         #[cfg(feature = "indexmap")]
         indexed_fleet_swift::swift_definition(),
         #[cfg(feature = "indexmap")]
@@ -255,14 +246,7 @@ fn each_payload_of_a_struct_that_declares_a_parameter_reads_in_swift_as_serde_re
     );
     assert_eq!(
         normalized(&run.stdout),
-        normalized(&format!(
-            "{}{REQUIRED_REPORT}",
-            read.iter().fold(String::new(), |mut lines, &(_, line)| {
-                lines.push_str(line);
-                lines.push('\n');
-                lines
-            })
-        ))
+        normalized(&format!("{}{REQUIRED_REPORT}", filled_expected()))
     );
 }
 
