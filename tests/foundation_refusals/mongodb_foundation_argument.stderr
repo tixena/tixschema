@@ -1,0 +1,5 @@
+error: tixschema: `mongodb_foundation!` takes no arguments: write `tixschema::mongodb_foundation!();` at the crate root
+ --> tests/foundation_refusals/mongodb_foundation_argument.rs:3:32
+  |
+3 | tixschema::mongodb_foundation!(Customer);
+  |                                ^^^^^^^^

@@ -1,0 +1,5 @@
+error: model_schema: type `InvoiceLookup`: tixschema: `"mongodb"` requires `"decode_with"`: write `enable = ["decode_with", "mongodb"]`
+ --> tests/foundation_refusals/mongodb_without_decode_with.rs:8:26
+  |
+8 | #[model_schema(enable = ["mongodb"])]
+  |                          ^^^^^^^^^
