@@ -78,6 +78,17 @@ fn the_swift_line_of_the_table_is_what_swift_writes() {
     );
 }
 
+/// The section's empty collection of a parameter is what the Kotlin client writes for `Basin`.
+#[cfg(feature = "kotlin")]
+#[test]
+fn the_kotlin_empty_collection_is_what_kotlin_writes() {
+    assert!(section().contains("`emptyList()` or `emptyMap()`"));
+    assert!(
+        super::models::basin_kotlin::kotlin_definition()
+            .contains("val moored: List<Moored> = emptyList()")
+    );
+}
+
 #[cfg(feature = "kotlin")]
 #[test]
 fn the_kotlin_line_of_the_table_is_what_kotlin_writes() {

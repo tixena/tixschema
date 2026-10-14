@@ -1672,7 +1672,11 @@ has to keep.
   a `transparent` struct; a member under `skip`, `skip_serializing`, `skip_serializing_if` or
   `skip_deserializing`; a flattened member; an `Option`, which keeps what it had; a type that
   names a parameter of the struct, a lifetime or `Self`; the struct's own default on a struct
-  that declares a parameter; and a member of an enum's variant.
+  that declares a parameter; and a member of an enum's variant. A list, a set or a map under
+  the bare `default` is read as its default whatever its type names, unless it names a
+  `serialize_with` or a `with`: `empty_collection` writes `[]` or `{}` for a type whose last name
+  `is_sequence_wrapper` or `is_map_wrapper` accepts, a literal `literals()` builds with no
+  parameter in scope.
 - **The value is built where the struct is declared.** Each module that answers a text declares
   `SerdeDefaults` (`SerdeDefaults::holder`), and `values_impl` writes
   `impl {module}::SerdeDefaults { pub fn literals() }` beside the struct, where every name its
@@ -1691,18 +1695,23 @@ has to keep.
   has. Kotlin: `KotlinField::default_at`, `property_declaration`, which writes
   `= Json.decodeFromString(<member_serializer>, "…")`, and `own_field_plan` for a struct with a
   flattened member. A default is read with the member's own read, unjudged where `validate()`
-  walks it, so `validate()` judges it as it judges a payload.
+  walks it, so `validate()` judges it as it judges a payload. A member whose type names a
+  parameter of the class (`KotlinField::empty_default`) is `= emptyList()` or `= emptyMap()`
+  instead: an initializer reaches no serializer of the class's parameters.
 - **A type with no default is emitted token for token as before**: each module keeps
   `#source.to_owned()`, and no `SerdeDefaults` is declared.
 - **No function a `preprocess` names is called for a default**, but by Zod, where `.prefault`
   hands the default to the whole member schema.
 - **The tests.** `tests/serde_default_tests/` holds the models, the table every surface is held
-  to (`CASES`, `REPORT`), a member that names a `preprocess` (`PREPROCESSED`), the JSON Schema, the
-  Zod text, the README's section, and the text of a type with no default on every surface, which
-  the emitter before defaults were read writes too; `tests/generic_types_tests/declarations.rs`
-  compiles the Zod schemas with `tsc --strict` and parses both tables under node;
-  `run_dart_serde_default.rs`, `run_swift_serde_default.rs` and `run_kotlin_serde_default.rs` run
-  both tables under each client's toolchain.
+  to (`CASES`, `REPORT`), the structs that declare a parameter, read at `String` (`FILLED`,
+  `INDEXED` under `indexmap`) and refused a key they require (`REQUIRED`), a member that names a
+  `preprocess` (`PREPROCESSED`), the JSON Schema, the Zod text, the README's section, and the
+  text of a type with no default on every surface, which the emitter before defaults were read
+  writes too; `tests/generic_types_tests/declarations.rs` compiles the Zod schemas with
+  `tsc --strict` and parses the tables under node; `run_dart_serde_default.rs`,
+  `run_swift_serde_default.rs` and `run_kotlin_serde_default.rs` run the tables under each
+  client's toolchain. The Swift run leaves out `Fleet` and `IndexedFleet`
+  (`READ_AS_AN_ELEMENT`): that client reads a set, a heap and a deque as their element type.
 
 ### Generic Types and Zod Factories
 

@@ -6,12 +6,16 @@
 
 use super::run_swift_read::normalized;
 use super::runtime::judged;
+#[cfg(feature = "indexmap")]
+use super::serde_default_models::indexed_logbook_swift;
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use super::serde_default_models::report;
 use super::serde_default_models::{
-    Basin, Bollard, CASES, Marina, PREPROCESSED, PREPROCESSED_REPORT, REPORT, basin_swift,
-    bollard_swift, gangway_swift, jetty_swift, marina_swift, pontoon_swift, preprocessed_values,
-    read_values, unwritten_defaults, wharf_swift,
+    Bollard, CASES, Harbour, Marina, PREPROCESSED, PREPROCESSED_REPORT, REPORT, REQUIRED,
+    REQUIRED_REPORT, basin_swift, bollard_swift, config_swift, filled_cases, filled_expected,
+    filled_report, fleet_swift, gangway_swift, harbour_swift, jetty_swift, link_swift,
+    logbook_swift, marina_swift, pontoon_swift, preprocessed_values, read_values,
+    unwritten_defaults, wharf_swift,
 };
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -37,6 +41,22 @@ func row<Read: Codable>(_ name: String, _ type: Read.Type, _ payload: String) {
     for line in context.debugDescription.components(separatedBy: "; ") { print("    \(line)") }
   } catch {
     print("\(name): \(error)")
+  }
+}
+"#;
+
+/// The structs whose sets, heap and deque this client reads as their element type, whether the
+/// payload holds the key or not: left out of the run, `Vec` being read by `Config` and `Basin`.
+const READ_AS_AN_ELEMENT: [&str; 2] = ["Fleet", "IndexedFleet"];
+
+/// What prints a row of a key the type requires: whether the read answered or threw.
+const REQUIRES: &str = r#"
+func requires<Read: Codable>(_ name: String, _ type: Read.Type, _ payload: String) {
+  do {
+    _ = try JSONDecoder().decode(type, from: Data(payload.utf8))
+    print("\(name): read")
+  } catch {
+    print("\(name): refused")
   }
 }
 "#;
@@ -97,19 +117,14 @@ fn each_payload_reads_in_swift_as_the_serde_read_reads_it() {
     );
 }
 
-/// A default with no JSON keeps its key required: `Marina` derives no `Serialize`, and the
-/// `moored` of `Basin` names its parameter. The `dock` of `Basin` names none, and is read as its
-/// default.
+/// A default with no JSON keeps its key required: `Marina` derives no `Serialize`, and each
+/// member of `Harbour` names its parameter outside a list read as empty.
 #[test]
 fn a_default_with_no_json_keeps_its_key_required() {
-    let (read_marina, read_basin) = unwritten_defaults();
+    let (read_marina, _) = unwritten_defaults();
     assert_eq!(
         serde_json::from_str::<Marina>(r#"{"label":"m"}"#).unwrap(),
         read_marina
-    );
-    assert_eq!(
-        serde_json::from_str::<Basin<String>>(r#"{"moored":[]}"#).unwrap(),
-        read_basin
     );
     let marina = marina_swift::swift_definition();
     assert!(
@@ -120,16 +135,129 @@ fn a_default_with_no_json_keeps_its_key_required() {
         ),
         "{marina}"
     );
+    let harbour = harbour_swift::swift_definition();
+    assert!(
+        harbour.contains(
+            "let container = try decoder.container(keyedBy: CodingKeys.self); self.berths = try \
+             container.decode([Moored].self, forKey: .berths); self.flagship = try \
+             container.decode(Moored.self, forKey: .flagship); self.slips = try \
+             container.decode([Moored].self, forKey: .slips) }"
+        ),
+        "{harbour}"
+    );
+}
+
+/// A list of the parameter is read from the JSON of its default, `[]`, through the read it has.
+#[test]
+fn an_empty_collection_of_a_parameter_is_read_from_its_json() {
     let basin = basin_swift::swift_definition();
     assert!(
         basin.contains(
-            "if container.contains(.dock) { self.dock = try container.decode(String.self, \
-             forKey: .dock) } else { let dockDefaultPayload = try \
-             JSONSerialization.jsonObject(with: Data(\"\\\"\\\"\".utf8), options: \
-             [.fragmentsAllowed]); self.dock = try SwiftSchemaPayload.read(String.self, from: \
-             dockDefaultPayload, at: container.codingPath + [CodingKeys.dock]) }; \
-             self.moored = try container.decode([Moored].self, forKey: .moored) }"
+            "if container.contains(.moored) { self.moored = try container.decode([Moored].self, \
+             forKey: .moored) } else { let mooredDefaultPayload = try \
+             JSONSerialization.jsonObject(with: Data(\"[]\".utf8), options: \
+             [.fragmentsAllowed]); self.moored = try SwiftSchemaPayload.read([Moored].self, \
+             from: mooredDefaultPayload, at: container.codingPath + [CodingKeys.moored]) }"
         ),
         "{basin}"
+    );
+}
+
+/// Each list and map of a model filled with the parameter is read from `[]` or `{}` through the
+/// read it has.
+#[test]
+fn an_empty_collection_of_a_model_filled_with_a_parameter_is_read_from_its_json() {
+    let fleet = fleet_swift::swift_definition();
+    assert!(
+        fleet.contains(
+            "else { let vecDefaultPayload = try JSONSerialization.jsonObject(with: \
+             Data(\"[]\".utf8), options: [.fragmentsAllowed]); self.vec = try \
+             SwiftSchemaPayload.read([Link<IdType>].self, from: vecDefaultPayload, at: \
+             container.codingPath + [CodingKeys.vec]) }"
+        ),
+        "{fleet}"
+    );
+    let logbook = logbook_swift::swift_definition();
+    assert!(
+        logbook.contains(
+            "else { let hashMapDefaultPayload = try JSONSerialization.jsonObject(with: \
+             Data(\"{}\".utf8), options: [.fragmentsAllowed]); self.hashMap = try \
+             SwiftSchemaPayload.read([String: Link<IdType>].self, from: hashMapDefaultPayload, \
+             at: container.codingPath + [CodingKeys.hashMap]) }"
+        ),
+        "{logbook}"
+    );
+}
+
+/// Each payload of a struct that declares a parameter reads at `String` as serde reads it, and a
+/// payload that leaves out a key `Harbour` requires is refused.
+#[test]
+fn each_payload_of_a_struct_that_declares_a_parameter_reads_in_swift_as_serde_reads_it() {
+    assert_eq!(
+        filled_report(),
+        filled_expected(),
+        "what the serde read answers"
+    );
+    let (_, harbours) = unwritten_defaults();
+    for ((_, payload), harbour) in REQUIRED.iter().zip(harbours) {
+        assert_eq!(
+            serde_json::from_str::<Harbour<String>>(payload).unwrap(),
+            harbour
+        );
+    }
+    let expected = filled_expected();
+    let read: Vec<_> = filled_cases()
+        .into_iter()
+        .zip(expected.lines())
+        .filter(|((_, read_as, _), _)| !READ_AS_AN_ELEMENT.contains(read_as))
+        .collect();
+    let filled = read.iter().map(|&((name, read_as, payload), _)| {
+        format!("row(\"{name}\", {read_as}<String>.self, #\"{payload}\"#)")
+    });
+    let required = REQUIRED.iter().map(|(name, payload)| {
+        format!("requires(\"{name}\", Harbour<String>.self, #\"{payload}\"#)")
+    });
+    let rows: Vec<String> = filled.chain(required).collect();
+    let definitions = [
+        link_swift::swift_definition(),
+        basin_swift::swift_definition(),
+        config_swift::swift_definition(),
+        logbook_swift::swift_definition(),
+        harbour_swift::swift_definition(),
+        #[cfg(feature = "indexmap")]
+        indexed_logbook_swift::swift_definition(),
+    ];
+    let source = [
+        &["import Foundation".to_owned()],
+        definitions.as_slice(),
+        &[HARNESS.to_owned(), REQUIRES.to_owned(), rows.join("\n")],
+    ]
+    .concat()
+    .join("\n\n");
+    let Some(run) = judged(
+        "swift-serde-default-filled",
+        RUNTIME_VAR,
+        "swift",
+        &["-warnings-as-errors"],
+        "main.swift",
+        &source,
+    ) else {
+        return;
+    };
+    assert!(
+        run.succeeded,
+        "`swift -warnings-as-errors main.swift` failed.\n--- stdout ---\n{}\n--- stderr ---\n{}\n--- source ---\n{source}",
+        run.stdout, run.stderr
+    );
+    assert_eq!(
+        normalized(&run.stdout),
+        normalized(&format!(
+            "{}{REQUIRED_REPORT}",
+            read.iter().fold(String::new(), |mut lines, &(_, line)| {
+                lines.push_str(line);
+                lines.push('\n');
+                lines
+            })
+        ))
     );
 }
