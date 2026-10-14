@@ -162,13 +162,49 @@ pub(super) fn member(
     sink: &dyn Fn(&str) -> String,
     twins: &mut Vec<String>,
 ) -> String {
+    let (handed, path) = source.payload(member.stem, member.keys);
+    let read_where_held = format!("{handed}{}", value(member, &path, sink, twins));
+    match source.absent_as_nil() {
+        Some(holds_key) => format!(
+            "if {holds_key} {{ {read_where_held} }} else {{ {} }}",
+            sink("nil")
+        ),
+        None => read_where_held,
+    }
+}
+
+/// The statements that read `member` from the JSON of its default, written between the quotes
+/// at `literal`, at the coding path `path`: as it is read from a payload, with no function
+/// called for it.
+pub(super) fn defaulted(
+    member: &Member<'_>,
+    literal: &str,
+    path: &str,
+    sink: &dyn Fn(&str) -> String,
+    twins: &mut Vec<String>,
+) -> String {
+    format!(
+        "let {}Payload = try JSONSerialization.jsonObject(with: Data(\"{literal}\".utf8), \
+         options: [.fragmentsAllowed]); {}",
+        member.stem,
+        value(member, path, sink, twins)
+    )
+}
+
+/// The statements that read `member` from `{stem}Payload`, which sits at the coding path `path`,
+/// through its functions, and hand the value to `sink`.
+fn value(
+    member: &Member<'_>,
+    path: &str,
+    sink: &dyn Fn(&str) -> String,
+    twins: &mut Vec<String>,
+) -> String {
     let stem = member.stem;
-    let (handed, path) = source.payload(stem, member.keys);
     let corrected = called(member.functions, &format!("{stem}Payload"));
     let read = |read_as: &str| {
         format!("try SwiftSchemaPayload.read({read_as}.self, from: {corrected}, at: {path})")
     };
-    let value = if member.walked {
+    if member.walked {
         let twin = format!("SwiftSchemaRead{}", swift_upper_camel(stem));
         let statements = unjudged(
             member.def,
@@ -191,14 +227,6 @@ pub(super) fn member(
                 format!("let {local} = {}; {}", read(wire), sink(&convert(&local)))
             }
         }
-    };
-    let read_where_held = format!("{handed}{value}");
-    match source.absent_as_nil() {
-        Some(holds_key) => format!(
-            "if {holds_key} {{ {read_where_held} }} else {{ {} }}",
-            sink("nil")
-        ),
-        None => read_where_held,
     }
 }
 

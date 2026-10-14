@@ -7,6 +7,15 @@
 
 pub mod read_bounds;
 
+#[cfg(any(
+    feature = "zod",
+    feature = "jsonschema",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
+))]
+pub mod defaults;
+
 #[cfg(feature = "serde")]
 use crate::field_type::is_plain_enum;
 #[cfg(feature = "serde")]

@@ -199,6 +199,58 @@ export type UserWithOptionals = {
 };
 ```
 
+### A Key Read as Its Default (`#[serde(default)]`)
+
+serde reads a key the payload leaves out as a default where the field writes `#[serde(default)]` or `#[serde(default = "path")]`, or where the struct writes either one on itself. Every surface reads that key as the same default. The value of a default is known to Rust alone: the `Default` of the field's type, the value the named function answers, or the member of the struct's own default. So `zod_schema()`, `json_schema()`, `dart_definition()`, `swift_definition()` and `kotlin_definition()` write each default with serde when they build their text, and write the JSON into the text. The field's `serialize_with` or `with` writes the default where the field names one, as serde writes the field. A crate that declares such a type lists `serde_json`, as [Rust Dependencies](#rust-dependencies) shows.
+
+```rust
+pub fn north_dock() -> String {
+    "north".to_owned()
+}
+
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct Wharf {
+    #[serde(default)]
+    pub dock: String,
+    #[serde(default)]
+    pub gangway: Gangway,
+    #[serde(default = "north_dock")]
+    pub gate: String,
+    pub label: String,
+}
+```
+
+`Gangway` is a `#[model_schema()]` struct of the crate's own, whose `Default` is `{"label":"main","width":2}`. serde reads `{"label":"w"}` as `{"dock":"","gangway":{"label":"main","width":2},"gate":"north","label":"w"}`, and so does each surface:
+
+| Surface | What reads a key the payload leaves out |
+|---------|-----------------------------------------|
+| Zod | `dock: z.string().prefault("")`: the parse is handed the default as a payload, so the checks of the member judge it |
+| TypeScript | nothing changes: the type a parse answers holds every member, `dock: string;` |
+| JSON Schema | the key is not in `required`, and the member states `"default": ""` |
+| Rust | serde's own read, then `validate()` |
+| Dart | `json.containsKey('dock') ? (json['dock'] as String) : (jsonDecode('""') as String)`, in the read the member already has |
+| Swift | `if container.contains(.dock) { ... } else { ... }`: the default is read from the JSON with the read the member already has |
+| Kotlin | `val dock: String = Json.decodeFromString(serializer<String>(), "\"\"")`: the plugin evaluates the default of the property for a key the payload leaves out |
+
+- **A key the payload holds is read as it was**, on every surface.
+- **A default is judged as a payload is.** The default is read with the read of the member, and then `validate()` judges the value. So a default that breaks a bound of the member is refused with the member named, on every surface: `#[model_schema_prop(minLength = 1)] #[serde(default)] pub dock: String` refuses `{"label":"p"}` with `'dock': too short: minimum length is 1, got 0`.
+- **A function a `preprocess` names is not called for a default**, in Rust, Dart, Swift and Kotlin. The Zod schema calls it with the default: `.prefault` is written around the whole schema of the member, so the function is handed the default.
+- **The Dart file imports `dart:convert`**, for `jsonDecode`. **The Swift file imports `Foundation`**, for `JSONSerialization`. The Kotlin file imports the `json` package, as [the read in the Kotlin client](#the-read-in-the-kotlin-client) shows.
+- **The Kotlin client writes a member with a default only where its value is another.** `kotlinx.serialization` with the default `Json` (`encodeDefaults = false`) writes `Jetty()` as `{}`, which serde reads as the same value. A `Json { encodeDefaults = true }` writes each member, as serde writes it.
+- **An `Option` keeps what it had.** `#[serde(default)]` on an `Option` changes nothing on any surface: [Optional Fields](#optional-fields) describes it.
+- **A member whose key serde leaves out of what it writes keeps the reading [Optional Fields](#optional-fields) describes.** That is a member under `skip_serializing` or `skip_serializing_if`: each surface already reads its key as optional.
+
+**A default with no JSON keeps the key required.** serde still reads such a key as its default, but no surface other than Rust is handed the default, so each one requires the key as it did before. That is the case where:
+
+- the struct does not derive both `Serialize` and `Deserialize`, or reads or writes itself through `from`, `try_from`, `into` or `remote`;
+- the type of the field names a type parameter of the struct, a lifetime or `Self`. The default of `Vec<T>` holds one value for each type that fills `T`, so the text has no one value to write. A field of the same struct whose type names no parameter is read as its default;
+- the default is the struct's own, and the struct declares a parameter;
+- the field is `#[serde(flatten)]`;
+- the member is a member of a variant of an enum.
+
+A `Serialize` that refuses to write a default makes the function that builds the text panic, as a refused example makes `schema_examples()` panic.
+
 ### Collections and Maps
 
 `Vec<T>` becomes `Array<T>`, and so does every other std wrapper serde writes as a JSON array of its element: `VecDeque<T>`, `BinaryHeap<T>`, `HashSet<T>`, and `BTreeSet<T>`. Under the [`indexmap` feature](#feature-flags), `indexmap::IndexSet<T>` is one more. Each is that array on the wire, so each is typed and validated as that array — the element decides what the array holds. Nesting is kept at whatever depth it is written: a `Vec<Vec<T>>` (or `HashSet<Vec<T>>`, or any other mix of those wrappers) writes an array of arrays, so it becomes `Array<Array<T>>`, `z.array(z.array(...))`, and a JSON schema whose `items` is itself an array.
@@ -3933,7 +3985,7 @@ Rust, Dart, Swift and Kotlin print them from the `validate()` of each value, and
 - **The order of one read is the same.** The type's `preprocess` functions on the whole payload, each field's as that field is read, then the value is built, then its bounds and its checks judge it. A bound and a check judge what the functions answered.
 - **Several functions of one key run in the order written.** Each `preprocess` function is called over the answer of the one before, and every `check` runs: none stops another, and none is stopped by a broken bound.
 - **A message is led by the path of the value in the payload**, in single quotes: the keys serde writes and the index of each item, joined by dots, `'parcel.fragileItemCodes.1'`. A field's `check` names no path, and its messages are written under the field. A type's `check` leads each message with the path of what it refuses.
-- **A `preprocess` is not called for a key the payload does not hold**, in Rust, Dart, Swift and Kotlin. The Zod schema calls the field's function for such a key, with `undefined`. A `null` the payload holds is a payload, and every language hands it to the function.
+- **A `preprocess` is not called for a key the payload does not hold**, in Rust, Dart, Swift and Kotlin. The Zod schema calls the field's function for such a key, with `undefined`, or with the default of a key under `#[serde(default)]` ([A Key Read as Its Default](#a-key-read-as-its-default-serdedefault)). A `null` the payload holds is a payload, and every language hands it to the function.
 - **`validate()` is on every type the Dart, Swift and Kotlin emitters write.** In Rust a type has it where a field carries a bound, where the type or a field names a `check`, and where it holds a type that has one. It judges a value built or changed in code.
 - **A read refuses what `validate()` refuses**, in Rust, Dart, Swift and Kotlin: the read of a type is its own read alone, followed by its `validate()`, and no value is handed back for a payload that breaks a rule. The refusal holds every message, joined by `; `.
 - **The whole value is judged once.** A type that holds another reads it with no judgement, and the type the read was asked for judges the whole value, each message at its full path. A value behind a type parameter is not reached by the `validate()` of its holder: it judges itself as it is read, with its own messages.
@@ -4958,7 +5010,7 @@ if container.contains(.spareParcel), try !container.decodeNil(forKey: .spareParc
 | in a field that carries a bound of its own, a list apart | by itself, as it is read: the field's bound stands in place of what its type declares in `validate()`, so the holder judges nothing of the type |
 | as the value a brand wraps | by itself, as it is read |
 
-- **An absent key and a `null` are read as they were.** A key a struct requires is still `keyNotFound` where it is absent, which is what the first statement above is for: `superDecoder(forKey:)` answers a decoder over `null` for an absent key. An optional member is still `nil` for an absent key and for a `null`.
+- **An absent key and a `null` are read as they were.** A key a struct requires is still `keyNotFound` where it is absent, which is what the first statement above is for: `superDecoder(forKey:)` answers a decoder over `null` for an absent key. An optional member is still `nil` for an absent key and for a `null`. A key under `#[serde(default)]` is read as its default where it is absent ([A Key Read as Its Default](#a-key-read-as-its-default-serdedefault)).
 - **An `#[serde(untagged)]` enum takes the variant serde takes.** Its `init(swiftSchemaUnjudged:)` takes the first variant whose payload reads and whose own bounds hold: a bound written on a member, and the `pattern`, `minLength` and `maxLength` of a [brand](#branded-newtypes) the member holds, which the brand's wrapper answers for alone with `swiftSchemaValidateBound()`. A check and a model the variant holds choose nothing: the variant is taken, and `init(from:)` then refuses the value. A brand declared below the enum is not known to carry a bound where the enum is written, and chooses nothing either: declare it above the enum.
 - **The service clients answer the fault they had** for a reply that breaks a rule, the thrown error reaching the handling they have for a reply that does not read: `swift_http_client()` answers `undeserializable-payload` and `swift_ws_client()` answers `failed-validation`, each with the messages in its `detail`.
 
@@ -5266,7 +5318,7 @@ A type that holds another reads it through that type's functions wherever it hol
 
 #### A key the payload does not hold
 
-A Rust read answers a key the payload does not hold as serde does, and calls no function for it: a `#[serde(default)]` or an `Option` supplies the value, and any other field is refused with ``missing field `label` ``. The Zod schema calls the field's function for such a key, with `undefined`.
+A Rust read answers a key the payload does not hold as serde does, and calls no function for it: a `#[serde(default)]` or an `Option` supplies the value, and any other field is refused with ``missing field `label` ``. The Zod schema calls the field's function for such a key, with `undefined`, or with the default of a key under `#[serde(default)]` ([A Key Read as Its Default](#a-key-read-as-its-default-serdedefault)).
 
 So a field's function that turns `undefined` into a value makes the Zod schema read a payload the Rust read refuses. Where a key may be left out, say so on the field, with `#[serde(default)]` or an `Option`, or give the payload the key in the type's function, which both sides call on the whole payload, as `withoutFragile` does. A `null` the payload holds is a payload: both sides hand it to the field's function.
 
@@ -5371,7 +5423,7 @@ With those two functions, `Parcel.fromJson` and `Manifest.fromJson` answer for t
 
 - **The key stays a last resort.** Each name is one more function you write and keep in step, in every language you emit.
 - **The payload is what `jsonDecode` holds**: a `Map<String, dynamic>`, a `List<dynamic>`, a `String`, a number, a `bool` or `null`. A function answers `dynamic`, and the read casts what it answers.
-- **A field's function is called where the payload holds the key**, a `null` it holds included. A key the payload does not hold calls no function and is read as it was: `{"itemCodeList":["x"],"fragileItemCodes":["x"]}` is refused with `type 'Null' is not a subtype of type 'String' in type cast`, where the Rust read answers ``missing field `label` ``. A slot's function is called with what its position holds.
+- **A field's function is called where the payload holds the key**, a `null` it holds included. A key the payload does not hold calls no function and is read as it was: `{"itemCodeList":["x"],"fragileItemCodes":["x"]}` is refused with `type 'Null' is not a subtype of type 'String' in type cast`, where the Rust read answers ``missing field `label` ``. A key under `#[serde(default)]` that the payload does not hold is read as its default, and no function is called for it. A slot's function is called with what its position holds.
 - **Several functions run in the order written**, each over the answer of the one before: `preprocess = ["unwrapped", "withoutFragile"]` calls `withoutFragile(unwrapped(payload))`. One read calls each function once.
 - **A type's function takes the payload its read takes**, typed as the read types it: the object of a class and of an enum under a tag key, the text of a plain enum, and the payload as it is for a brand, a tuple struct and any other enum. A payload of another kind does not reach it: a text handed to the read of a class is refused with a `TypeError` ahead of the function, where the Rust read hands the function any payload.
 - **A type that holds another reads it through that type's own read**, so it is corrected wherever it is held: in a field, an optional, a list, a map's value, a variant and a `#[serde(flatten)]` member. A holder that names no function and flattens no member is written as it was.
@@ -5415,7 +5467,7 @@ error: cannot find 'trimmed' in scope
 
 - **The payload arrives as the Swift values of a JSON value**: an object as a `[String: Any]`, a list as an `[Any]`, a text as a `String`, `true` and `false` as a `Bool`, a number an `Int64` holds as an `Int64`, any other number as a `Double`, and `null` as an `NSNull`. `5`, `2.0` and `1e3` are each an `Int64`. It is untyped, as in Rust: `{"label": 5}` reaches `trimmed` as the `Int64` it is.
 - **A function answers a payload in the same values**, and answers a payload it has nothing to correct in as it is. An answer that is no JSON value, a `Date` or a value of a type of your own, is thrown as `DecodingError.dataCorrupted`, `a preprocess answered a value that is not JSON`.
-- **A function is not called for a key the payload does not hold.** The key is read as it is with no function named: `keyNotFound` for a member the type requires, `nil` for an optional one. A `null` the payload holds is a payload, and the function is handed an `NSNull`.
+- **A function is not called for a key the payload does not hold.** The key is read as it is with no function named: `keyNotFound` for a member the type requires, the default for a member under `#[serde(default)]`, `nil` for an optional one. A `null` the payload holds is a payload, and the function is handed an `NSNull`.
 - **Several functions run in the order written**, each over the answer of the one before: `preprocess = ["unwrapped", "withoutFragile"]` calls `withoutFragile(unwrapped(payload))`.
 - **A type with a parameter writes its function once**, the payload having no type.
 - **The order of one read is [the Rust read's](#the-order-of-one-read)**: the type's functions on the whole payload, each member's as that member is read, then the value is built, and `init(from:)` calls `validate()` on it. A bound and a check judge what the functions answered.
@@ -7550,6 +7602,7 @@ Supported Serde attributes:
 - `#[serde(skip)]` -- the key is written into no payload and read out of none, so no surface describes the member at all: no TypeScript member, no Zod key, and neither a `properties` nor a `required` entry. On a tuple-struct or tuple-variant slot it takes the slot out of the described tuple, which shortens the arity -- and a variant declaring one slot becomes a unit variant, which is what serde writes for it
 - `#[serde(skip_serializing)]` -- the write half of `skip`: the key is left out of every payload while a supplied one is still read, and every surface answers as it does for `skip_serializing_if`
 - `#[serde(skip_deserializing)]` -- the read half: the key is written into every payload while a supplied one is discarded, so the member keeps a required key
+- `#[serde(default)]` and `#[serde(default = "...")]`, on a field or on the struct -- a key the payload leaves out is read as the default on every surface, which is handed the default as JSON: see [A Key Read as Its Default](#a-key-read-as-its-default-serdedefault)
 - `#[serde(alias = "...")]` -- read by the [recovering decode](#recovering-decode-decode_with) only: a key stored under an alias counts as its field, and a tag stored as one names its variant. No schema surface describes an alias
 - `#[serde(deserialize_with = "...")]`, `#[serde(serialize_with = "...")]` and `#[serde(with = "...")]` -- the field's own functions, which the [recovering decode](#recovering-decode-decode_with) reads a value through and writes it back through, as serde's derive does
 

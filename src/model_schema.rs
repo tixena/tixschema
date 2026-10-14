@@ -127,6 +127,10 @@ use crate::features::recovering_decode::{
 // The type is named where a positional slot's own omission is read: the tuple-struct walk, which
 // only a describing build performs, and the variant walk, which every build performs.
 use crate::features::serde::SerdeKeyOmission;
+#[cfg(any(feature = "zod", feature = "jsonschema"))]
+use crate::features::serde::defaults::SerdeDefaults;
+#[cfg(feature = "zod")]
+use crate::features::serde::defaults::{holds_a_placeholder, substituted};
 
 #[cfg(feature = "serde")]
 use crate::field_type::{parse_serde_field_attributes, parse_serde_type_attributes};
@@ -988,6 +992,15 @@ struct SchemaOutputParts<'parts, T> {
     /// The type's `validate()`, written beside its delegates so every filling has it.
     validate_method: &'parts Option<proc_macro2::TokenStream>,
     validation_fns: &'parts [proc_macro2::TokenStream],
+}
+
+/// What a struct's container says of the members collected under it: whether it answers a missing
+/// key with its own `default`, whether it is read back at all, and where the default serde reads
+/// for a member's absent key sits among those written as JSON.
+struct StructContainer<'container> {
+    defaulted: bool,
+    read_back: bool,
+    serde_default: &'container dyn Fn(&str) -> Option<usize>,
 }
 
 #[cfg(any(feature = "zod", feature = "typescript", feature = "jsonschema"))]
@@ -4734,8 +4747,7 @@ fn collect_struct_fields(
     module_name_opt: Option<&str>,
     type_name: &str,
     generics: &syn::Generics,
-    container_defaulted: bool,
-    container_read_back: bool,
+    container: &StructContainer<'_>,
 ) -> StructFieldData {
     let type_parameters = type_parameters_in_scope(generics);
     let mut field_defs = Vec::new();
@@ -4764,8 +4776,8 @@ fn collect_struct_fields(
         }
 
         let ctx = FieldContext {
-            container_defaulted,
-            container_read_back,
+            container_defaulted: container.defaulted,
+            container_read_back: container.read_back,
             enum_args: None,
             member_steps: &steps,
             rename_all,
@@ -4774,8 +4786,18 @@ fn collect_struct_fields(
             type_parameters: &type_parameters,
             variant_ident: None,
         };
-        let (f_def, validation_fn, validate_body, field_guard_errors) =
+        let (mut f_def, validation_fn, validate_body, field_guard_errors) =
             process_field(&ctx, field, index, &mut deferred_attrs);
+        let rust_name = field
+            .ident
+            .as_ref()
+            .map(|ident| ident.unraw().to_string())
+            .unwrap_or_default();
+        let serde_default = (container.serde_default)(&rust_name);
+        #[cfg(any(feature = "zod", feature = "jsonschema"))]
+        f_def.serde_default.clone_from(&serde_default);
+        #[cfg(not(any(feature = "zod", feature = "jsonschema")))]
+        let _: (&mut FieldDef, Option<usize>) = (&mut f_def, serde_default);
 
         guard_errors.extend(field_guard_errors);
 
@@ -5224,14 +5246,25 @@ fn struct_members(
     module_name_opt: Option<&str>,
     container_defaulted: bool,
 ) -> StructFieldData {
+    // Read before the walk: the attributes it leaves on the item are the ones the read is
+    // derived from, which this reads as well.
+    #[cfg(any(feature = "zod", feature = "jsonschema"))]
+    let serde_defaults = SerdeDefaults::of(item_struct);
+    #[cfg(any(feature = "zod", feature = "jsonschema"))]
+    let serde_default = |field: &str| serde_defaults.index(field);
+    #[cfg(not(any(feature = "zod", feature = "jsonschema")))]
+    let serde_default = |_: &str| None;
     let from_fields = collect_struct_fields(
         &mut item_struct.fields,
         rename_all,
         module_name_opt,
         &item_struct.ident.to_string(),
         &item_struct.generics,
-        container_defaulted,
-        container_is_read_back(&item_struct.attrs),
+        &StructContainer {
+            defaulted: container_defaulted,
+            read_back: container_is_read_back(&item_struct.attrs),
+            serde_default: &serde_default,
+        },
     );
     #[cfg(feature = "serde")]
     {
@@ -5389,13 +5422,37 @@ fn struct_output_with_unit_impls(
 ) -> TokenStream {
     let mut read = parts.item.clone();
     let judged = judged_read::of_struct(&mut read, parts.validate_method.is_some());
-    let base = assemble_schema_output(&parts.of(&read), &decode_with.schema_module);
+    // The defaults are read off the attributes serde's derive reads, which the walk left on.
+    #[cfg(any(feature = "zod", feature = "jsonschema"))]
+    let serde_defaults = SerdeDefaults::of(parts.item);
+    #[cfg(any(feature = "zod", feature = "jsonschema"))]
+    let module_items: Vec<proc_macro2::TokenStream> = parts
+        .validation_fns
+        .iter()
+        .cloned()
+        .chain([serde_defaults.holder()])
+        .collect();
+    #[cfg(any(feature = "zod", feature = "jsonschema"))]
+    let values = serde_defaults.values_impl(parts.module_ident);
+    #[cfg(not(any(feature = "zod", feature = "jsonschema")))]
+    let (module_items, values) = (
+        parts.validation_fns.to_vec(),
+        proc_macro2::TokenStream::new(),
+    );
+    let base = assemble_schema_output(
+        &SchemaOutputParts {
+            validation_fns: &module_items,
+            ..parts.of(&read)
+        },
+        &decode_with.schema_module,
+    );
     let decode_with_impl = &decode_with.type_impl;
     quote! {
         #base
         #unit_struct_impls
         #judged
         #decode_with_impl
+        #values
     }
 }
 
@@ -12960,10 +13017,24 @@ fn build_field_schema(fld: &FieldDef) -> proc_macro2::TokenStream {
     } else {
         quote! {}
     };
+    let default_code = fld.serde_default.map(|at| {
+        let index = proc_macro2::Literal::usize_unsuffixed(at);
+        quote! {
+            if let ::core::option::Option::Some(serde_json::Value::Object(described)) =
+                properties.get_mut(#field_name_str)
+            {
+                described.insert(
+                    "default".to_string(),
+                    SerdeDefaults::literals()[#index].1.clone(),
+                );
+            }
+        }
+    });
 
     quote! {
         #schema_code
         #required_code
+        #default_code
     }
 }
 
@@ -16925,9 +16996,20 @@ fn generate_zod_schema_method(
             &reexport,
         );
 
+        if !holds_a_placeholder(&body) {
+            return quote::quote! {
+                pub fn zod_schema() -> ::std::string::String {
+                    #body.to_owned()
+                }
+            };
+        }
+        let written = Ident::new("written", proc_macro2::Span::call_site());
+        let replaced = substituted(&quote::quote! { SerdeDefaults }, &written, &[]);
         quote::quote! {
             pub fn zod_schema() -> ::std::string::String {
-                #body.to_owned()
+                let mut #written = ::std::string::String::from(#body);
+                #replaced
+                #written
             }
         }
     }

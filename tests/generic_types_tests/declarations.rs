@@ -11,6 +11,11 @@ mod checked;
 #[path = "../pattern_preprocess_tests/models.rs"]
 mod corrected;
 
+/// The models a key under `#[serde(default)]` is written on, and what a serde read prints for
+/// each payload of their table.
+#[path = "../serde_default_tests/models.rs"]
+mod defaulted;
+
 #[cfg(feature = "chrono")]
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -391,6 +396,47 @@ const schemas = {
   Wrapped: lib.Wrapped$Schema,
   Weighed: lib.Weighed$Schema,
   Unnamed: lib.Unnamed$Schema,
+};
+const printed = [];
+for (const [name, schema, payload] of CASES) {
+  const read = schemas[schema].safeParse(JSON.parse(payload));
+  if (read.success) {
+    printed.push(`${name}: read ${JSON.stringify(read.data)}`);
+    continue;
+  }
+  printed.push(`${name}: refused`);
+  for (const issue of read.error.issues) {
+    const lead = issue.path.length > 0 ? `'${issue.path.join(".")}': ` : "";
+    printed.push(`    ${lead}${issue.message}`);
+  }
+}
+console.log(printed.join("\n"));
+"#;
+
+/// The function `Bollard` names, as a consumer writes it in TypeScript.
+const DOCKED: &str = r#"export function trimmedDock(payload: unknown): unknown {
+  return typeof payload === "string" ? payload.trim() : payload;
+}"#;
+
+/// Parses each payload of the `preprocess` table through `Bollard`.
+const DOCKED_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+
+const printed = [];
+for (const [name, payload] of CASES) {
+  printed.push(`${name}: read ${JSON.stringify(lib.Bollard$Schema.parse(JSON.parse(payload)))}`);
+}
+console.log(printed.join("\n"));
+"#;
+
+/// Loads the compiled bundle of the models a key under `#[serde(default)]` is written on, parses
+/// the payload of each case through the schema its type publishes, and prints what a serde read
+/// prints for the same case.
+const DEFAULTS_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+
+const schemas = {
+  Wharf: lib.Wharf$Schema,
+  Jetty: lib.Jetty$Schema,
+  Pontoon: lib.Pontoon$Schema,
 };
 const printed = [];
 for (const [name, schema, payload] of CASES) {
@@ -1022,6 +1068,27 @@ fn corrections() -> String {
     .join("\n\n")
 }
 
+/// The types a key under `#[serde(default)]` is written on: a bundle of its own, compiled with
+/// `tsc --strict` before it is loaded.
+fn defaults() -> String {
+    [
+        PREAMBLE.to_owned(),
+        defaulted::Gangway::ts_definition(),
+        defaulted::Gangway::zod_schema(),
+        defaulted::Wharf::ts_definition(),
+        defaulted::Wharf::zod_schema(),
+        defaulted::Jetty::ts_definition(),
+        defaulted::Jetty::zod_schema(),
+        defaulted::Pontoon::ts_definition(),
+        defaulted::Pontoon::zod_schema(),
+        defaulted::Marina::ts_definition(),
+        defaulted::Marina::zod_schema(),
+        defaulted::Basin::<String>::ts_definition(),
+        defaulted::Basin::<String>::zod_schema(),
+    ]
+    .join("\n\n")
+}
+
 /// The types that hold a date, which the bundle declares where `chrono` is on.
 #[cfg(feature = "chrono")]
 fn dated() -> Vec<String> {
@@ -1301,6 +1368,77 @@ fn type_check_a_preprocess_answers_under_zod_what_a_rust_read_answers() {
         printed,
         format!("{sample}{read}").trim_end(),
         "the schemas do not read what a Rust read reads:\n{failed}"
+    );
+}
+
+/// A key under `#[serde(default)]` the payload leaves out is parsed as the default serde reads,
+/// held to the member's checks as a payload is, and a key the payload holds is read as before.
+#[test]
+fn type_check_a_default_answers_under_zod_what_a_serde_read_answers() {
+    assert_eq!(defaulted::report(), defaulted::REPORT);
+    let (every_default, both_held) = defaulted::read_values();
+    for (name, read) in [
+        (
+            "every default at once",
+            serde_json::to_string(&every_default),
+        ),
+        ("row 5: the key held", serde_json::to_string(&both_held)),
+    ] {
+        let line = format!("{name}: read {}\n", read.unwrap());
+        assert!(defaulted::REPORT.contains(&line), "{line}");
+    }
+    let (marina, basin) = defaulted::unwritten_defaults();
+    assert_eq!(
+        serde_json::from_str::<defaulted::Marina>(r#"{"label":"m"}"#).unwrap(),
+        marina
+    );
+    assert_eq!(
+        serde_json::from_str::<defaulted::Basin<String>>(r#"{"moored":[]}"#).unwrap(),
+        basin
+    );
+    let driver =
+        DEFAULTS_DRIVER.replace("CASES", &serde_json::to_string(&defaulted::CASES).unwrap());
+    let Some((printed, failed)) = loaded_from("defaults", &defaults(), &driver) else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        defaulted::REPORT.trim_end(),
+        "the schemas do not read what a serde read reads:\n{failed}"
+    );
+}
+
+/// Zod hands the function of a member the default of its key, where a serde read calls no
+/// function for a key the payload leaves out: the two answer `"spare"` and `"  spare  "`.
+#[test]
+fn type_check_a_default_is_handed_to_the_function_of_its_member_under_zod() {
+    for ((_, payload), read) in defaulted::PREPROCESSED
+        .iter()
+        .zip(defaulted::preprocessed_values())
+    {
+        assert_eq!(
+            serde_json::from_str::<defaulted::Bollard>(payload).unwrap(),
+            read
+        );
+    }
+    let source = [
+        PREAMBLE.to_owned(),
+        DOCKED.to_owned(),
+        defaulted::Bollard::ts_definition(),
+        defaulted::Bollard::zod_schema(),
+    ]
+    .join("\n\n");
+    let driver = DOCKED_DRIVER.replace(
+        "CASES",
+        &serde_json::to_string(&defaulted::PREPROCESSED).unwrap(),
+    );
+    let Some((printed, failed)) = loaded_from("docked", &source, &driver) else {
+        return;
+    };
+    assert_eq!(
+        format!("{printed}\n"),
+        defaulted::PREPROCESSED_REPORT.replace("\"  spare  \"", "\"spare\""),
+        "the bundle does not load and parse under node:\n{failed}"
     );
 }
 

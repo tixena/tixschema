@@ -2922,8 +2922,11 @@ fn a_refused_pattern_leaves_no_hook_naming_the_dropped_module() {
         Some("probe_caret_schema"),
         "ProbeCaret",
         &syn::Generics::default(),
-        false,
-        false,
+        &super::StructContainer {
+            defaulted: false,
+            read_back: false,
+            serde_default: &|_| None,
+        },
     )
     .4;
     assert_eq!(errors.len(), 1, "got: {errors:?}");
@@ -2951,8 +2954,11 @@ fn a_constraint_refused_its_placement_leaves_no_hook_naming_the_dropped_module()
         Some("guarded_schema"),
         "Guarded",
         &syn::Generics::default(),
-        false,
-        false,
+        &super::StructContainer {
+            defaulted: false,
+            read_back: false,
+            serde_default: &|_| None,
+        },
     )
     .4;
     assert_eq!(errors.len(), 1, "got: {errors:?}");
@@ -2986,8 +2992,11 @@ fn a_renamed_field_is_refused_by_its_rust_name_and_reported_under_its_key() {
         Some("guarded_schema"),
         "Guarded",
         &syn::Generics::default(),
-        false,
-        false,
+        &super::StructContainer {
+            defaulted: false,
+            read_back: false,
+            serde_default: &|_| None,
+        },
     );
     assert_eq!(collected.4.len(), 1, "got: {:?}", collected.4);
     let refusal = collected.4[0].to_string();
@@ -3059,8 +3068,11 @@ fn a_struct_field_that_clears_the_guards_is_hung_with_no_hook() {
         Some("report_schema"),
         "Report",
         &syn::Generics::default(),
-        false,
-        false,
+        &super::StructContainer {
+            defaulted: false,
+            read_back: false,
+            serde_default: &|_| None,
+        },
     );
     assert!(collected.4.is_empty(), "got: {:?}", collected.4);
 
@@ -3099,8 +3111,11 @@ fn a_field_whose_type_could_publish_a_validator_contributes_a_body_that_runs_it(
         Some("enrolment_schema"),
         "Enrolment",
         &syn::Generics::default(),
-        false,
-        false,
+        &super::StructContainer {
+            defaulted: false,
+            read_back: false,
+            serde_default: &|_| None,
+        },
     );
     assert!(collected.4.is_empty(), "got: {:?}", collected.4);
     assert!(
@@ -3196,8 +3211,11 @@ fn a_nested_report_is_placed_under_its_key_and_the_index_of_each_list_level() {
         Some("enrolment_schema"),
         "Enrolment",
         &syn::Generics::default(),
-        false,
-        false,
+        &super::StructContainer {
+            defaulted: false,
+            read_back: false,
+            serde_default: &|_| None,
+        },
     )
     .3
     .iter()
@@ -3222,8 +3240,11 @@ fn walked_bodies(item: &mut syn::ItemStruct) -> String {
         Some("terminal_schema"),
         "Terminal",
         &generics,
-        false,
-        false,
+        &super::StructContainer {
+            defaulted: false,
+            read_back: false,
+            serde_default: &|_| None,
+        },
     )
     .3
     .iter()
@@ -3445,8 +3466,11 @@ fn a_map_and_a_tuple_of_declared_types_are_hung_with_no_reader() {
         Some("terminal_schema"),
         "Terminal",
         &syn::Generics::default(),
-        false,
-        true,
+        &super::StructContainer {
+            defaulted: false,
+            read_back: true,
+            serde_default: &|_| None,
+        },
     );
     assert!(collected.4.is_empty(), "got: {:?}", collected.4);
     assert_eq!(walked_field_attrs(item.fields.iter()), "");
@@ -3477,8 +3501,11 @@ fn a_field_holding_a_declared_type_is_read_through_one_that_names_the_field() {
         Some("enrolment_schema"),
         "Enrolment",
         &syn::Generics::default(),
-        false,
-        true,
+        &super::StructContainer {
+            defaulted: false,
+            read_back: true,
+            serde_default: &|_| None,
+        },
     );
     assert!(collected.4.is_empty(), "got: {:?}", collected.4);
     // The reader is one of the item's own read, hung on the copy serde's derive reads.
@@ -3525,8 +3552,11 @@ fn the_names_a_read_declares_are_never_names_the_item_writes() {
         Some("enrolment_schema"),
         "Enrolment",
         &syn::Generics::default(),
-        false,
-        true,
+        &super::StructContainer {
+            defaulted: false,
+            read_back: true,
+            serde_default: &|_| None,
+        },
     );
     assert!(collected.4.is_empty(), "got: {:?}", collected.4);
     let read = super::judged_read::of_struct(&mut item, true).to_string();
@@ -3559,8 +3589,11 @@ fn a_field_the_unjudged_read_does_not_reach_keeps_a_reader_in_the_schema_module(
         Some("enrolment_schema"),
         "Enrolment",
         &syn::Generics::default(),
-        false,
-        true,
+        &super::StructContainer {
+            defaulted: false,
+            read_back: true,
+            serde_default: &|_| None,
+        },
     );
     assert!(collected.4.is_empty(), "got: {:?}", collected.4);
 
@@ -3612,8 +3645,11 @@ fn a_field_the_reader_would_displace_is_left_to_read_itself() {
         Some("enrolment_schema"),
         "Enrolment",
         &syn::Generics::default(),
-        false,
-        true,
+        &super::StructContainer {
+            defaulted: false,
+            read_back: true,
+            serde_default: &|_| None,
+        },
     );
     let rendered = walked_field_attrs(item.fields.iter());
     assert!(
@@ -3647,8 +3683,11 @@ fn a_container_that_is_not_read_back_publishes_no_reader() {
         Some("enrolment_schema"),
         "Enrolment",
         &syn::Generics::default(),
-        false,
-        super::derives_deserialize(&item.attrs),
+        &super::StructContainer {
+            defaulted: false,
+            read_back: super::derives_deserialize(&item.attrs),
+            serde_default: &|_| None,
+        },
     );
     assert!(
         collected.2.is_empty(),
@@ -3678,8 +3717,11 @@ fn a_field_the_crate_renders_itself_contributes_no_body_to_reach_into() {
         Some("plain_schema"),
         "Plain",
         &syn::Generics::default(),
-        false,
-        false,
+        &super::StructContainer {
+            defaulted: false,
+            read_back: false,
+            serde_default: &|_| None,
+        },
     );
     assert!(collected.4.is_empty(), "got: {:?}", collected.4);
     assert!(
@@ -3709,8 +3751,11 @@ fn an_optional_struct_field_is_hung_with_neither_the_hook_nor_the_default_it_ans
         Some("report_schema"),
         "Report",
         &syn::Generics::default(),
-        false,
-        false,
+        &super::StructContainer {
+            defaulted: false,
+            read_back: false,
+            serde_default: &|_| None,
+        },
     );
     assert!(collected.4.is_empty(), "got: {:?}", collected.4);
     let rendered = walked_field_attrs(item.fields.iter());
@@ -11139,6 +11184,8 @@ fn wrapped_u32_value(wrapper: &str) -> super::FieldDef {
         name: "items".to_owned(),
         absent_from_wire: false,
         omits_value: false,
+        #[cfg(any(feature = "zod", feature = "jsonschema"))]
+        serde_default: None,
         type_span: proc_macro2::Span::call_site(),
     }
 }
@@ -14983,8 +15030,11 @@ fn a_field_bottoming_out_in_a_declared_type_is_walked_and_a_primitive_one_is_not
         Some("envelope_schema"),
         "Envelope",
         &syn::Generics::default(),
-        false,
-        false,
+        &super::StructContainer {
+            defaulted: false,
+            read_back: false,
+            serde_default: &|_| None,
+        },
     );
     assert!(collected.4.is_empty(), "got: {:?}", collected.4);
 

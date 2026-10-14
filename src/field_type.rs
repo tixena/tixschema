@@ -22,6 +22,8 @@ use crate::utils::{MapKeyWire, is_declared_ident, lookup_alias_info, written_typ
 #[cfg(feature = "zod")]
 use crate::bound_message::{Bound, zod_error_arg};
 #[cfg(feature = "zod")]
+use crate::features::serde::defaults::placeholder;
+#[cfg(feature = "zod")]
 use crate::utils::{
     ZodUnionMember, escape_js_regex_literal, names_a_zod_preprocess, publishes_zod_factory,
     zod_factory_argument,
@@ -182,6 +184,10 @@ pub struct FieldDef {
     pub name: String,
     pub nullable_levels: Vec<u8>,
     pub omits_value: bool,
+    /// Where the default serde reads for an absent key sits among its struct's, for a member
+    /// whose default is written as JSON.
+    #[cfg(any(feature = "zod", feature = "jsonschema"))]
+    pub serde_default: Option<usize>,
     #[cfg(feature = "jsonschema")]
     pub type_span: Span,
 }
@@ -574,13 +580,14 @@ impl FieldDef {
     /// Whether every payload serde writes carries a key for this field — what the JSON surface's
     /// `required` names, and the one question there that a field's `Option`-ness alone cannot
     /// answer. A `nullable` `Option<T>` is the one case where both hold at once: the key is always
-    /// written and `null` is its empty value.
+    /// written and `null` is its empty value. A key serde reads as a default it can write as JSON
+    /// is not required either.
     #[cfg(feature = "jsonschema")]
     pub fn key_is_required(&self) -> bool {
         if self.is_optional() {
             self.has_nullable()
         } else {
-            !self.omits_value
+            !self.omits_value && self.serde_default.is_none()
         }
     }
 
@@ -906,6 +913,8 @@ impl FieldDef {
                         nullable_levels: Vec::new(),
                         absent_from_wire: false,
                         omits_value: false,
+                        #[cfg(any(feature = "zod", feature = "jsonschema"))]
+                        serde_default: None,
                         #[cfg(feature = "jsonschema")]
                         type_span: Span::call_site(),
                     }));
@@ -1513,6 +1522,9 @@ impl FieldDef {
             let pre_result = self.zod_base();
             if self.key_may_be_absent() {
                 format!("{pre_result}.optional()")
+            } else if let Some(index) = self.serde_default {
+                // Parsed as a payload is, so the default is held to the member's checks.
+                format!("{pre_result}.prefault({})", placeholder(index))
             } else {
                 pre_result
             }
@@ -1778,6 +1790,8 @@ fn get_field_def_from_type_path(
             nullable_levels: Vec::new(),
             absent_from_wire: false,
             omits_value: false,
+            #[cfg(any(feature = "zod", feature = "jsonschema"))]
+            serde_default: None,
             #[cfg(feature = "jsonschema")]
             type_span: type_path.span(),
         };
@@ -1794,6 +1808,8 @@ fn get_field_def_from_type_path(
             nullable_levels: Vec::new(),
             absent_from_wire: false,
             omits_value: false,
+            #[cfg(any(feature = "zod", feature = "jsonschema"))]
+            serde_default: None,
             // The name segment, not the whole path: it is what a generated module is named after,
             // so a reference the module cannot resolve is blamed on the name it was built from.
             #[cfg(feature = "jsonschema")]
@@ -1813,6 +1829,8 @@ fn get_field_def_from_type_path(
             nullable_levels: Vec::new(),
             absent_from_wire: false,
             omits_value: false,
+            #[cfg(any(feature = "zod", feature = "jsonschema"))]
+            serde_default: None,
             #[cfg(feature = "jsonschema")]
             type_span: segment.ident.span(),
         },
@@ -1857,6 +1875,8 @@ fn get_field_def_from_generic_type(
             nullable_levels: Vec::new(),
             absent_from_wire: false,
             omits_value: false,
+            #[cfg(any(feature = "zod", feature = "jsonschema"))]
+            serde_default: None,
             #[cfg(feature = "jsonschema")]
             type_span: type_ident.span(),
         }
@@ -1883,6 +1903,8 @@ fn get_field_def_from_generic_type(
             nullable_levels: Vec::new(),
             absent_from_wire: false,
             omits_value: false,
+            #[cfg(any(feature = "zod", feature = "jsonschema"))]
+            serde_default: None,
             #[cfg(feature = "jsonschema")]
             type_span: type_ident.span(),
         }
@@ -1898,6 +1920,8 @@ fn get_field_def_from_generic_type(
             nullable_levels: Vec::new(),
             absent_from_wire: false,
             omits_value: false,
+            #[cfg(any(feature = "zod", feature = "jsonschema"))]
+            serde_default: None,
             #[cfg(feature = "jsonschema")]
             type_span: type_ident.span(),
         }
@@ -1913,6 +1937,8 @@ fn get_field_def_from_generic_type(
             nullable_levels: Vec::new(),
             absent_from_wire: false,
             omits_value: false,
+            #[cfg(any(feature = "zod", feature = "jsonschema"))]
+            serde_default: None,
             #[cfg(feature = "jsonschema")]
             type_span: type_ident.span(),
         }
@@ -1994,6 +2020,8 @@ pub fn get_field_def(name: &str, ty: &Type, field_docs: &str) -> FieldDef {
             nullable_levels: Vec::new(),
             absent_from_wire: false,
             omits_value: false,
+            #[cfg(any(feature = "zod", feature = "jsonschema"))]
+            serde_default: None,
             #[cfg(feature = "jsonschema")]
             type_span: written.span(),
         }
@@ -2008,6 +2036,8 @@ pub fn get_field_def(name: &str, ty: &Type, field_docs: &str) -> FieldDef {
             nullable_levels: Vec::new(),
             absent_from_wire: false,
             omits_value: false,
+            #[cfg(any(feature = "zod", feature = "jsonschema"))]
+            serde_default: None,
             #[cfg(feature = "jsonschema")]
             type_span: written.span(),
         }
