@@ -2032,7 +2032,31 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   written only where `walks_itself` answers would miss a model declared below, which `ReadWhole`
   would then read whole with no error. No probe is written for a leaf (a `String`, a number, an
   `Option`, a list or a map of those) nor for a field whose type names one of the holder's
-  parameters (`names_a_parameter`).
+  parameters (`names_a_parameter`). A held type declared above the holder also fails the holder's
+  call of its BSON walker, so rustc prints an `E0599` naming `decode_with_bson_issues` ahead of the
+  probe's `E0277`.
+- **What holds the libraries as a consumer meets them.**
+  - `tests/foundation_refusals.rs` is the `trybuild` harness. Each file of
+    `tests/foundation_refusals/` is a crate of its own, held to the `.stderr` beside it, written in
+    the build with every plain feature on, the one the harness is gated on: a missing initializer,
+    each refusal of the `enable` list, an initializer written twice or handed an argument, and a
+    held type that lists `"decode_with"` alone, declared above its holder, below it, generic, and
+    in another crate.
+  - `tests/crates_apart/` holds two crates, path dev-dependencies of this package, each writing its
+    own libraries: `stored_customers` declares a stored `Customer`, and `invoice_lookups` lists
+    neither `bson` nor `mongodb` in its manifest and builds under `deny(warnings)` where tixschema
+    has `mongodb` on. `tests/crates_apart_tests.rs` reads a `Customer` inside a type of its own and
+    lists an issue in it at its full path, from JSON and from BSON, and reads the types of
+    `invoice_lookups` through that crate's library. A `trybuild` case reaches `invoice_lookups` as
+    a dev-dependency.
+  - `tests/support_library_tests.rs` holds one library per crate: three types re-exporting it and
+    one resolver serving the reads of all three, what a type that lists `"mongodb"` gains under each
+    feature and a type that lists `"decode_with"` alone does not, the marker each answers, and the
+    author's own `Path` and `Filter` beside the library's.
+  - `examples/strict_consumer_models`, a library with models in a public and a private module, and
+    `examples/strict_consumer_app`, a binary with models of its own, each write both initializers
+    and are linted by this package's own clippy table, pedantic and restriction included. Both
+    require the `mongodb` feature.
 - **An alias seen above is walked as the type it names.** `aliases::Reach` writes the field's type
   out again in a clone of the item the walker is then run on: a standard type by its full path,
   and every other type under an alias in `{type}_schema::decode_with_at{N}` that reaches it from
@@ -2724,6 +2748,14 @@ tixschema/
 │   ├── mongodb_query_tests/              # The query suite both majors compile
 │   ├── mongodb_operation_bson2_tests.rs  # The operations, against bson 2
 │   ├── mongodb_operation_tests/          # The operation suite both majors compile: offline, live, readme
+│   ├── support_library_tests.rs          # One library per crate, what "mongodb" adds per feature, the author's scope
+│   ├── support_library_tests/            # The three parts: one library, stored types, the author's own names
+│   ├── foundation_refusals.rs            # The trybuild harness: each case below fails with its .stderr
+│   ├── foundation_refusals/              # The cases: a missing initializer, the enable refusals, a held type missing "mongodb"
+│   ├── crates_apart_tests.rs             # Types of the two crates apart, held and read from here
+│   ├── crates_apart/
+│   │   ├── stored_customers/             # A crate apart: a stored Customer, both initializers
+│   │   └── invoice_lookups/              # A crate apart that lists no bson and no mongodb: "decode_with" types alone
 │   ├── edge_cases_tests.rs
 │   ├── semantic_types_tests.rs
 │   └── ...
@@ -2735,6 +2767,9 @@ tixschema/
 │       ├── mongodb_operation_bson3_tests.rs  # The operations, against bson 3
 │       ├── mongodb_query_bson3_tests.rs      # The typed paths, filters and updates, against bson 3
 │       └── recovering_decode_bson3_tests.rs  # from_bson_with, from_bson_piped, against bson 3
+├── examples/                     # A strict consumer, linted by this package's own clippy table
+│   ├── strict_consumer_models/   # A library: models in a public and a private module, both initializers
+│   └── strict_consumer_app.rs    # A binary: models of its own, both initializers
 ├── justfile                      # Task runner (commands)
 ├── Cargo.toml                    # Dependencies, features
 └── README.md                     # User documentation

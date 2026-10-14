@@ -6222,7 +6222,7 @@ label:   `Invoice` reads and writes `Customer` in MongoDB, so `Customer` needs t
 note:    Fix: add "mongodb" to the `enable` list of `#[model_schema]` on `Customer`, so it reads `enable = ["decode_with", "mongodb"]`.
 ```
 
-The fix is the one the note gives. The check reads the type each field's BSON walk reaches, through `Option`, a list, a map's values and the transparent wrappers such as `Box`: `Customer` for a field `Vec<Option<Customer>>`. It reads `mongo_listed`, the method each flagged type answers with whether it lists `"mongodb"`. A type with no `#[model_schema]`, a plain serde type or one of another crate, has no such method and passes, and the walk reads it whole, as the last point below says. A field of a plain value is not checked, a `String`, a number, or an `Option`, a list or a map of those, and neither is a field whose type names one of the holder's own parameters.
+Where the held type is declared above the holder, the holder's call of its BSON walker fails too, so rustc prints first an `E0599` naming `decode_with_bson_issues`, as for a type with no flag. The fix is the one the note gives, and it ends both errors. The check reads the type each field's BSON walk reaches, through `Option`, a list, a map's values and the transparent wrappers such as `Box`: `Customer` for a field `Vec<Option<Customer>>`. It reads `mongo_listed`, the method each flagged type answers with whether it lists `"mongodb"`. A type with no `#[model_schema]`, a plain serde type or one of another crate, has no such method and passes, and the walk reads it whole, as the last point below says. A field of a plain value is not checked, a `String`, a number, or an `Option`, a list or a map of those, and neither is a field whose type names one of the holder's own parameters.
 
 - **A model type filling a type parameter needs no flag.** It is read as one value, so `Page<Plain>` reads with no flag on `Plain`.
 - **A field typed with an alias of a flagged model type is walked**, the alias being that type: with `#[model_schema()] type EntryAlias = Entry;`, a field `featured: EntryAlias` lists an issue at `featured.name`.
@@ -7301,8 +7301,8 @@ fn page(invoices: &Collection<Document>, at: u64) -> Read<'_, Invoice, Vec<Invoi
 - **A sort is a document written by hand**, its keys the ones serde writes. There is no projection: a read answers the whole type.
 - **What `unpaid` hands `nest` in `largest_unpaid` is a `customer_schema::Filter<Customer>`**, a filter over a customer. What `nest` answers is an `invoice_schema::Filter<Invoice>`, which `find_with` and `count` take.
 - **An option is handed to the driver as it is given.** What a collation folds, and which hint MongoDB takes or refuses, are MongoDB's own to answer.
-- **A read is `#[must_use]`.** One that is never awaited asks nothing, and the compiler says so: ``unused `invoice_schema::Read` that must be used``, with the note `a read asks nothing of MongoDB until it is awaited`.
-- **A read is turned into a future by `.await`**, and is not one before. It implements `IntoFuture`, not `Future`, so something that takes a future is handed `.into_future()`, and a read handed over as it stands is ``error[E0277]: `invoice_schema::Read<'_, Invoice, Vec<Invoice>>` is not a future``:
+- **A read is `#[must_use]`.** One that is never awaited asks nothing, and the compiler says so: ``unused `__tixschema_mongodb::Read` that must be used``, with the note `a read asks nothing of MongoDB until it is awaited`.
+- **A read is turned into a future by `.await`**, and is not one before. It implements `IntoFuture`, not `Future`, so something that takes a future is handed `.into_future()`, and a read handed over as it stands is ``error[E0277]: `__tixschema_mongodb::Read<'_, Invoice, Vec<Invoice>>` is not a future``:
 
 ```rust
 /// A count handed to something that takes a future, which a read is not until it is turned

@@ -1,0 +1,38 @@
+error[E0599]: no associated function or constant named `decode_with_bson_issues` found for struct `Wrapper<T>` in the current scope
+  --> tests/foundation_refusals/generic_held_without_mongodb.rs:17:1
+   |
+13 | pub struct Wrapper<T> {
+   | --------------------- associated function or constant `decode_with_bson_issues` not found for this struct
+...
+17 | #[model_schema(enable = ["decode_with", "mongodb"])]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ associated function or constant not found in `Wrapper<std::string::String>`
+   |
+note: if you're trying to build a new `Wrapper<std::string::String>` consider using one of the following associated functions:
+      Wrapper::<T>::from_value_with
+      Wrapper::<T>::from_value_piped
+      Wrapper::<T>::decode_with_read_unjudged
+  --> tests/foundation_refusals/generic_held_without_mongodb.rs:11:1
+   |
+11 | #[model_schema(enable = ["decode_with"], default_types(T = String))]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: tixschema: `Invoice` lists "mongodb" in `enable`, but its field type `Wrapper` does not
+  --> tests/foundation_refusals/generic_held_without_mongodb.rs:17:1
+   |
+17 | #[model_schema(enable = ["decode_with", "mongodb"])]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Invoice` reads and writes `Wrapper` in MongoDB, so `Wrapper` needs the MongoDB code too
+   |
+   = help: the trait `_::Enabled` is not implemented for `PhantomData<()>`
+   = note: Fix: add "mongodb" to the `enable` list of `#[model_schema]` on `Wrapper`, so it reads `enable = ["decode_with", "mongodb"]`.
+help: the trait `_::Enabled` is implemented for `()`
+  --> tests/foundation_refusals/generic_held_without_mongodb.rs:17:1
+   |
+17 | #[model_schema(enable = ["decode_with", "mongodb"])]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+note: required by a bound in `_::need`
+  --> tests/foundation_refusals/generic_held_without_mongodb.rs:17:1
+   |
+17 | #[model_schema(enable = ["decode_with", "mongodb"])]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `need`
+   = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
