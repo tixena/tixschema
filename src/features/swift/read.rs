@@ -4,7 +4,7 @@
 
 use super::preprocess::{self, PAYLOAD, Written};
 use super::validate::{item_of, under_option};
-use super::{MapKeys, map_keys, swift_full_real_type};
+use super::{MapKeys, held_at, keyed_map_wrapper, map_keys, swift_full_real_type};
 use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
 
 /// The read of a type alone, where it has one that takes the keys the types around it took.
@@ -373,8 +373,9 @@ pub(super) fn unjudged(
     match &def.field_type {
         FieldDefType::Map(key, value) => match map_keys(key) {
             MapKeys::Wrapped => {
-                let wrapper = format!("{hint}KeyedMap");
-                held(source, &wrapper, &|read| sink(&format!("{read}.storage")))
+                let (wrapper, generic_params) = keyed_map_wrapper(hint, key, value);
+                let read_as = held_at(&wrapper, &generic_params);
+                held(source, &read_as, &|read| sink(&format!("{read}.storage")))
             }
             keys @ (MapKeys::Text | MapKeys::Whole) => {
                 let [keyed, entries, entry, number] = locals.next_map();
