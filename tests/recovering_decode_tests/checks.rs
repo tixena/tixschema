@@ -9,7 +9,7 @@ use tixschema::model_schema;
 
 use super::lines;
 
-#[model_schema(decode_with, check = ["withinParcel"])]
+#[model_schema(enable = ["decode_with"], check = ["withinParcel"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CheckedParcel {
@@ -20,14 +20,14 @@ struct CheckedParcel {
     label: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct CheckedManifest {
     parcel: CheckedParcel,
 }
 
 /// A parcel held in a list, in an `Option`, in a map and behind a `Box`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CheckedDepot {
@@ -41,7 +41,7 @@ struct CheckedDepot {
     spare_parcel: Option<CheckedParcel>,
 }
 
-#[model_schema(decode_with, check = ["upperCase"])]
+#[model_schema(enable = ["decode_with"], check = ["upperCase"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct CheckedCode(String);
@@ -49,20 +49,20 @@ struct CheckedCode(String);
 /// A brand held to a bound and to a check. A brand's bound is read with its schema surface, and
 /// the declaration is refused in a build with none.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-#[model_schema(decode_with, minLength = 3, check = ["sealInUpperCase"])]
+#[model_schema(enable = ["decode_with"], minLength = 3, check = ["sealInUpperCase"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct CheckedSeal(String);
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct CheckedSealed {
     seal: CheckedSeal,
     seals: Vec<CheckedSeal>,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct CheckedLabelled {
     code: CheckedCode,
@@ -70,20 +70,20 @@ struct CheckedLabelled {
     route: CheckedRoute,
 }
 
-#[model_schema(decode_with, check = ["withARoute"])]
+#[model_schema(enable = ["decode_with"], check = ["withARoute"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct CheckedRoute {
     stops: Vec<String>,
 }
 
-#[model_schema(decode_with, default_types(CodeType = String), check = ["withACode"])]
+#[model_schema(enable = ["decode_with"], default_types(CodeType = String), check = ["withACode"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct CheckedCrate<CodeType> {
     codes: Vec<CodeType>,
     label: String,
 }
 
-#[model_schema(decode_with, check = ["withAStop"])]
+#[model_schema(enable = ["decode_with"], check = ["withAStop"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all_fields = "camelCase")]
 enum CheckedExternal {
@@ -100,7 +100,7 @@ enum CheckedExternal {
     Whole(CheckedRoute),
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all_fields = "camelCase")]
 enum CheckedInternal {
@@ -112,7 +112,7 @@ enum CheckedInternal {
     Whole(CheckedRoute),
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "detail", rename_all_fields = "camelCase")]
 enum CheckedAdjacent {
@@ -124,7 +124,7 @@ enum CheckedAdjacent {
     Whole(CheckedRoute),
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged, rename_all_fields = "camelCase")]
 enum CheckedUntagged {
@@ -137,25 +137,25 @@ enum CheckedUntagged {
 
 /// A parcel whose check refuses the label `x`, and a holder of it in each place serde writes a
 /// slot at.
-#[model_schema(decode_with, check = ["noX"])]
+#[model_schema(enable = ["decode_with"], check = ["noX"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PlacedParcel {
     item_label: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct PlacedSealed(PlacedParcel);
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 enum PlacedFreight {
     Boxed(PlacedParcel),
     Split(String, PlacedParcel),
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum PlacedLift {

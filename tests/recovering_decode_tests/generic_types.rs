@@ -13,7 +13,7 @@ use tixschema::model_schema;
 use super::version_schema;
 use super::{Version, lines};
 
-#[model_schema(decode_with, default_types(T = String))]
+#[model_schema(enable = ["decode_with"], default_types(T = String))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Page<T> {
     items: Vec<T>,
@@ -28,20 +28,20 @@ struct Plain {
 }
 
 /// A generic brand.
-#[model_schema(decode_with, default_types(T = String))]
+#[model_schema(enable = ["decode_with"], default_types(T = String))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Wrapped<T>(T);
 
 /// A generic `transparent` struct with a named field.
-#[model_schema(decode_with, default_types(T = String))]
+#[model_schema(enable = ["decode_with"], default_types(T = String))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Sleeve<T> {
     held: T,
 }
 
-#[model_schema(decode_with, default_types(A = String, B = i32))]
+#[model_schema(enable = ["decode_with"], default_types(A = String, B = i32))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Pairing<A, B> {
     left: A,
@@ -49,7 +49,7 @@ struct Pairing<A, B> {
 }
 
 /// serde's derive asks `Default` of the parameter here, beyond `Deserialize`.
-#[model_schema(decode_with, default_types(T = String))]
+#[model_schema(enable = ["decode_with"], default_types(T = String))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Lenient<T> {
     #[serde(default)]
@@ -59,7 +59,7 @@ struct Lenient<T> {
 
 /// A parameter's value under a map, an `Option` and a tuple, a generic type naming another with
 /// its own parameter, and itself.
-#[model_schema(decode_with, default_types(T = String))]
+#[model_schema(enable = ["decode_with"], default_types(T = String))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Parcel<T> {
     both: (T, u32),
@@ -71,7 +71,7 @@ struct Parcel<T> {
 }
 
 /// Parameters named as the methods the flag adds name their own.
-#[model_schema(decode_with, default_types(I = String, F = String))]
+#[model_schema(enable = ["decode_with"], default_types(I = String, F = String))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Keyed<I, F> {
     format: F,
@@ -79,7 +79,7 @@ struct Keyed<I, F> {
 }
 
 /// A type with no parameter, naming generic types filled with a model type and with text.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Listing {
     page: Page<Version>,

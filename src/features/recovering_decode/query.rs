@@ -793,6 +793,11 @@ fn field_items() -> TokenStream {
                 Self { path, write, of: ::core::marker::PhantomData }
             }
 
+            /// The key, which the typed paths a type of the crate writes read.
+            pub(crate) const fn held_path(&self) -> MongoPath {
+                self.path
+            }
+
             fn compared(&self, operator: &str, value: V) -> ::core::result::Result<Filter<Root>, WriteError> {
                 ::core::result::Result::Ok(Filter::held(self.path.key(), operator, (self.write)(value)?))
             }
@@ -1077,7 +1082,9 @@ fn filter_items() -> TokenStream {
                 Self { document, root: ::core::marker::PhantomData }
             }
 
-            fn held(key: &str, operator: &str, value: bson::Bson) -> Self {
+            /// `{ key: { operator: value } }`, which the typed paths a type of the crate writes
+            /// build an arm's filter with.
+            pub(crate) fn held(key: &str, operator: &str, value: bson::Bson) -> Self {
                 let mut condition = bson::Document::new();
                 condition.insert(operator, value);
                 let mut document = bson::Document::new();

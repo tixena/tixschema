@@ -6135,14 +6135,14 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Version {
     pub number: i32,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Record {
@@ -6279,7 +6279,7 @@ use bson::{Bson, Document, doc};
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Customer {
@@ -6287,7 +6287,7 @@ pub struct Customer {
     pub open_invoices: u32,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Invoice {
     pub customer: Customer,

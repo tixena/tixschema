@@ -6,19 +6,19 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tixschema::model_schema;
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Issue {
     title: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Path {
     segments: Vec<String>,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Ticket {
     issue: Issue,

@@ -2,8 +2,7 @@
 //! value: a value serde reads in the form its type writes never reaches the callback, and every
 //! other one reaches it once, with each issue at its own path.
 //!
-//! An issue list is asserted through `Unrecovered`'s own `Display`, one line per issue, since each
-//! flagged type has its own `Issue` and no helper here could name them all.
+//! An issue list is asserted through `Unrecovered`'s own `Display`, one line per issue.
 
 /// The `with` module of [`Hooked::count`]: a number written as text.
 mod as_text {
@@ -29,6 +28,7 @@ mod as_text {
         serializer.collect_str(value)
     }
 }
+mod across_modules;
 mod aliased;
 mod bounds;
 mod checks;
@@ -72,14 +72,14 @@ use tixschema::model_schema;
 /// How many times [`counted`] has run. One test reads [`Counted`], and nothing else runs it.
 static NUMBER_READS: AtomicUsize = AtomicUsize::new(0);
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Version {
     number: i32,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Ledger {
@@ -90,7 +90,7 @@ struct Ledger {
 }
 
 /// One field per read hook, and one carrying a constraint, which hangs none.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Hooked {
@@ -104,7 +104,7 @@ struct Hooked {
     port: u16,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Aliased {
@@ -113,7 +113,7 @@ struct Aliased {
 }
 
 /// A list and an optional model type, each stored under its name or its alias.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AliasedParts {
@@ -124,7 +124,7 @@ struct AliasedParts {
 }
 
 /// A field serde writes wherever a predicate lets it be, and never reads.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Kept {
     id: String,
@@ -132,7 +132,7 @@ struct Kept {
     note: Option<String>,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct KeptText {
     id: String,
@@ -141,7 +141,7 @@ struct KeptText {
 }
 
 /// Two fields serde neither writes nor reads: one under `skip`, one under its two halves.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Shelved {
     #[serde(skip)]
@@ -152,7 +152,7 @@ struct Shelved {
 }
 
 /// A variant's field serde writes wherever a predicate lets it be, and never reads.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum Memo {
     Noted {
@@ -166,7 +166,7 @@ enum Memo {
 /// A slot serde writes wherever a predicate lets it be, and never reads. A schema surface refuses
 /// the declaration.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Duo(
     String,
@@ -174,7 +174,7 @@ struct Duo(
 );
 
 /// Every way serde reads a field whose key is not there.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Sparse {
     #[serde(skip_deserializing)]
@@ -188,7 +188,7 @@ struct Sparse {
     required: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(default)]
 struct Defaulted {
@@ -197,7 +197,7 @@ struct Defaulted {
 }
 
 /// A type whose own `Deserialize` reads nothing, which no walk can see into.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, PartialEq, Serialize)]
 struct Sealed {
     label: String,
@@ -212,13 +212,13 @@ impl<'de> Deserialize<'de> for Sealed {
     }
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Envelope {
     sealed: Sealed,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Strict {
@@ -226,7 +226,7 @@ struct Strict {
 }
 
 /// Model types reached through a map, an `Option`, a `Box` and a list of lists.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Bundle {
@@ -238,7 +238,7 @@ struct Bundle {
 }
 
 /// Plain values in a list, a map, a list of lists and an optional list.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Tally {
     counts: Vec<i32>,
@@ -248,14 +248,14 @@ struct Tally {
     scores: HashMap<String, i32>,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Shelf {
     payload: Value,
     title: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Node {
     children: Vec<Self>,
@@ -263,7 +263,7 @@ struct Node {
 }
 
 /// No field serde reads: the walker has no value to read, and declares the one key written.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Derived {
     #[serde(skip_deserializing)]
@@ -271,14 +271,14 @@ struct Derived {
 }
 
 /// Flagged and never read: what the flag generates for it is never called.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Unread {
     label: String,
 }
 
 /// One field read through a hook that counts its own runs.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Counted {
     #[serde(deserialize_with = "counted")]
@@ -287,7 +287,7 @@ struct Counted {
 
 /// Two fields that name `'static` and borrow nothing from the value read: a `Cow`, which serde
 /// reads as an owned value, and a reference serde never reads.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Lettered {
     label: Cow<'static, str>,
@@ -296,7 +296,7 @@ struct Lettered {
 }
 
 #[cfg(feature = "chrono")]
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Stamped {
     #[model_schema_prop(as_number)]

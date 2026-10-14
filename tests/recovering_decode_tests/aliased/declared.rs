@@ -14,7 +14,7 @@ use super::super::version_schema;
 #[model_schema()]
 pub type Counts = HashMap<String, i32>;
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Mark {
     pub weight: i32,

@@ -144,7 +144,7 @@ trait Flagged: Sized {
     fn read(row: Document, json: serde_json::Value) -> (Option<Self>, Option<Self>, u32);
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Audit {
@@ -152,7 +152,7 @@ struct Audit {
     revision: i32,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Extra {
     note: String,
@@ -160,7 +160,7 @@ struct Extra {
 }
 
 /// Internally tagged: `{"kind": "Solid", "color": "red"}`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Paint {
@@ -169,7 +169,7 @@ enum Paint {
 }
 
 /// Externally tagged: `{"Curved": {"radius": 1.5}}`, `"Straight"`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum Edge {
     Curved { radius: f64 },
@@ -177,7 +177,7 @@ enum Edge {
 }
 
 /// Adjacently tagged: `{"kind": "Dotted", "data": {"gap": 2}}`, `{"kind": "Solid"}`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "data")]
 enum Trim {
@@ -186,7 +186,7 @@ enum Trim {
 }
 
 /// An externally tagged enum and an adjacently tagged one, each flattened.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Framed {
     #[serde(flatten)]
@@ -197,7 +197,7 @@ struct Framed {
 }
 
 /// A struct, an optional struct and a tagged enum, each flattened beside a key of the type's own.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Sheet {
     #[serde(flatten)]
@@ -210,7 +210,7 @@ struct Sheet {
 }
 
 /// A type that flattens one that flattens others.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Binder {
     #[serde(flatten)]
@@ -219,20 +219,20 @@ struct Binder {
 }
 
 /// A type that flattens fields, held under a key.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Cabinet {
     top: Sheet,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Stamp {
     version: Version,
 }
 
 /// An optional flattened type that holds a model type of its own.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Proof {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
@@ -240,7 +240,7 @@ struct Proof {
     title: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Origin {
     owner: ObjectId,
@@ -248,7 +248,7 @@ struct Origin {
 }
 
 /// Two flattened structs, one holding an id.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Filed {
     #[serde(flatten)]
@@ -258,20 +258,20 @@ struct Filed {
     title: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct ByMail {
     address: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct ByPhone {
     digits: String,
 }
 
 /// Untagged, every variant a document: two model types and a variant with a field of its own.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Channel {
@@ -280,7 +280,7 @@ enum Channel {
     Phone(ByPhone),
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Notice {
     #[serde(flatten)]
@@ -289,7 +289,7 @@ struct Notice {
 }
 
 /// A flattened map of plain values.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Counts {
     #[serde(flatten)]
@@ -298,7 +298,7 @@ struct Counts {
 }
 
 /// A flattened map of ids.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Owners {
     #[serde(flatten)]
@@ -307,7 +307,7 @@ struct Owners {
 }
 
 /// A flattened map of model types, beside a flattened struct.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Releases {
     #[serde(flatten)]
@@ -324,7 +324,7 @@ struct Body {
 }
 
 /// A flattened type parameter.
-#[model_schema(decode_with, default_types(T = Body))]
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(T = Body))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Letter<T> {
     #[serde(flatten)]
@@ -333,7 +333,7 @@ struct Letter<T> {
 }
 
 /// A flattened type parameter, then a flattened map: two fields that each take the rest.
-#[model_schema(decode_with, default_types(T = Body))]
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(T = Body))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Packet<T> {
     #[serde(flatten)]
@@ -344,7 +344,7 @@ struct Packet<T> {
 }
 
 /// Externally tagged, with a struct variant that flattens a field.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum Logged {
     Gone,
@@ -356,7 +356,7 @@ enum Logged {
 }
 
 /// Internally tagged, with a struct variant that flattens a field.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Posted {
@@ -369,7 +369,7 @@ enum Posted {
 }
 
 /// Adjacently tagged, with a struct variant that flattens a field.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "data")]
 enum Queued {
@@ -382,7 +382,7 @@ enum Queued {
 }
 
 /// Untagged, with a struct variant that flattens a field.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Seen {
@@ -397,7 +397,7 @@ enum Seen {
 }
 
 /// An optional flattened map, which no walk reaches.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Spare {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
@@ -407,7 +407,7 @@ struct Spare {
 
 /// A flattened map of numbers beside a flattened tagged enum, whose text tag serde hands to the
 /// map as well.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Mixed {
     #[serde(flatten)]
@@ -417,7 +417,7 @@ struct Mixed {
 }
 
 /// A type that flattens one that flattens a map, which takes every key it is handed.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Report {
     #[serde(flatten)]
@@ -425,14 +425,14 @@ struct Report {
     id: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Captioned {
     name: String,
 }
 
 /// Untagged, with a map among its variants, which takes every key the enum is handed.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Scores {
@@ -440,7 +440,7 @@ enum Scores {
     Tallied(HashMap<String, i32>),
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Scoreboard {
     id: String,
@@ -449,14 +449,14 @@ struct Scoreboard {
 }
 
 /// Declares a key the type that flattens it declares too.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Part {
     #[serde(default)]
     title: i32,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Whole {
     #[serde(flatten)]
@@ -465,7 +465,7 @@ struct Whole {
 }
 
 /// Internally tagged, with a struct variant that flattens a type that takes every key.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Tabled {
@@ -478,7 +478,7 @@ enum Tabled {
 }
 
 /// An optional flattened enum, internally tagged.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Painted {
     own: String,
@@ -487,7 +487,7 @@ struct Painted {
 }
 
 /// An optional flattened enum, untagged.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Reached {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
@@ -496,7 +496,7 @@ struct Reached {
 }
 
 /// Two optional flattened enums, internally tagged and untagged, beside a flattened struct.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Layered {
     #[serde(flatten)]
@@ -509,7 +509,7 @@ struct Layered {
 }
 
 /// Internally tagged, with a variant that holds a model type under a key.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Finish {
@@ -517,7 +517,7 @@ enum Finish {
     Coated { version: Version },
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Finished {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
@@ -526,7 +526,7 @@ struct Finished {
 }
 
 /// An optional flattened enum, externally tagged.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Edged {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
@@ -535,7 +535,7 @@ struct Edged {
 }
 
 /// An optional flattened enum, adjacently tagged.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Trimmed {
     own: String,
@@ -544,14 +544,14 @@ struct Trimmed {
 }
 
 /// A struct with a named field, held as text so a map of numbers handed its key refuses it.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Rev {
     revision: String,
 }
 
 /// A flattened struct, then a flattened type that takes every key it is handed.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Two {
     #[serde(flatten)]
@@ -562,7 +562,7 @@ struct Two {
 }
 
 /// Internally tagged, with a variant that holds a type that takes every key it is handed.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Filled {
@@ -570,11 +570,11 @@ enum Filled {
 }
 
 /// A single-slot struct over a map, flattened.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Extras(HashMap<String, i32>);
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Bag {
     #[serde(flatten)]
@@ -583,11 +583,11 @@ struct Bag {
 }
 
 /// A single-slot struct over an `Option` of a struct, flattened.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Newest(Option<Version>);
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Paper {
     #[serde(flatten)]
@@ -596,12 +596,12 @@ struct Paper {
 }
 
 /// A generic brand filled with a struct, flattened.
-#[model_schema(decode_with, default_types(T = String))]
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(T = String))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Wrap<T>(T);
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Outer {
     #[serde(flatten)]
@@ -612,7 +612,7 @@ struct Outer {
 /// A plain enum: flattened, serde writes the variant's name as a key holding `null`. It is read
 /// only where it is flattened, which a schema surface refuses.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum Mood {
     Calm,
@@ -621,7 +621,7 @@ enum Mood {
 
 /// A flattened plain enum. A schema surface refuses the declaration.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Moody {
     #[serde(flatten)]
@@ -632,7 +632,7 @@ struct Moody {
 /// Internally tagged, with a variant that holds a plain enum. A schema surface refuses the
 /// declaration.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Slot {
@@ -642,7 +642,7 @@ enum Slot {
 
 /// Internally tagged, with a struct variant that flattens a struct and then a type that takes
 /// every key it is handed.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Booked {
@@ -657,7 +657,7 @@ enum Booked {
 }
 
 /// A flattened struct, then a flattened `Option` of a type that takes every key it is handed.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Optioned {
     #[serde(flatten)]
@@ -668,11 +668,11 @@ struct Optioned {
 }
 
 /// A single-slot struct whose slot a hook reads: serde hands the hook what the struct is handed.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Postmark(#[serde(deserialize_with = "as_written")] Version);
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Franked {
     id: String,
@@ -681,11 +681,11 @@ struct Franked {
 }
 
 /// A single-slot struct over an id, which serde writes as an object and so flattens.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Marker(ObjectId);
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Docket {
     #[serde(flatten)]
@@ -694,7 +694,7 @@ struct Docket {
 }
 
 /// A flattened id, which serde writes as the entry `$oid` of the document that holds it.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct DirectId {
     #[serde(flatten)]
@@ -702,7 +702,7 @@ struct DirectId {
     name: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct MaybeId {
     name: String,
@@ -711,7 +711,7 @@ struct MaybeId {
 }
 
 /// A flattened id read through a hook.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct IdThroughHook {
     name: String,
@@ -720,7 +720,7 @@ struct IdThroughHook {
 }
 
 /// A flattened generic brand filled with an `Option` of a struct.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Pocket {
     #[serde(flatten)]
@@ -729,7 +729,7 @@ struct Pocket {
 }
 
 /// A flattened `Option` read through a hook.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct DirectMaybe {
     id: String,
@@ -743,7 +743,7 @@ struct DirectMaybe {
 }
 
 /// A flattened struct read through a hook.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct ThroughHook {
     id: String,
@@ -752,7 +752,7 @@ struct ThroughHook {
 }
 
 /// A flattened map read through a hook.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct MapThroughHook {
     #[serde(flatten, deserialize_with = "as_written")]
@@ -762,7 +762,7 @@ struct MapThroughHook {
 
 /// A flattened field read through a hook generic over what it reads, then a flattened type that
 /// takes every key it is handed.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct HookAhead {
     #[serde(flatten, deserialize_with = "as_written")]
@@ -773,7 +773,7 @@ struct HookAhead {
 }
 
 /// A flattened field serde writes and never reads.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct NeverRead {
     id: String,
@@ -782,14 +782,14 @@ struct NeverRead {
 }
 
 /// A flagged type with a value of its own to stand where serde reads none.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Default, Deserialize, PartialEq, Serialize)]
 struct Draft {
     pages: i32,
 }
 
 /// A flattened field serde writes and never reads, which takes its type's default.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Unpicked {
     #[serde(flatten, skip_deserializing)]
@@ -798,7 +798,7 @@ struct Unpicked {
 }
 
 /// An optional flattened type parameter.
-#[model_schema(decode_with, default_types(T = Body))]
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(T = Body))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Tucked<T> {
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
@@ -807,7 +807,7 @@ struct Tucked<T> {
 }
 
 /// A flattened JSON value, which holds whatever entries are left.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct OpenEnded {
     id: String,
@@ -815,7 +815,7 @@ struct OpenEnded {
     rest: serde_json::Value,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct MaybeOpenEnded {
     id: String,
@@ -824,7 +824,7 @@ struct MaybeOpenEnded {
 }
 
 /// A flattened `Option` of a map.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct MaybeCounted {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]

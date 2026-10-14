@@ -166,16 +166,18 @@ fn matched(per_variant: Vec<(TokenStream, Vec<TokenStream>)>) -> TokenStream {
 }
 
 /// The `impl` that holds `method`, which is `decode_with_check_messages`, and what turns its
-/// messages into issues. It is under the bounds the type's author wrote and no other, so the
-/// checks of a type with a parameter run at every filling of it.
+/// messages into issues, from BSON as well where the type lists "mongodb". It is under the bounds
+/// the type's author wrote and no other, so the checks of a type with a parameter run at every
+/// filling of it.
 pub fn type_impl(
     name: &Ident,
     generics: &syn::Generics,
     module: &Ident,
     method: &TokenStream,
+    mongodb: bool,
 ) -> TokenStream {
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
-    let issues = issue_methods(module);
+    let issues = issue_methods(module, mongodb);
     quote! {
         impl #impl_generics #name #type_generics #where_clause {
             #method
@@ -206,11 +208,12 @@ fn method(of_members: &TokenStream, module_name: &str, of_held: &TokenStream) ->
     }
 }
 
-/// `decode_with_value_check_issues`, and `decode_with_bson_check_issues` under `bson`: what turns
-/// the messages of a value's checks into the issues of the read that built it. They are written
-/// beside `decode_with_check_messages`, and name the issue's types in `module`.
-fn issue_methods(module: &Ident) -> TokenStream {
-    let of_bson = bson_issue_method(module);
+/// `decode_with_value_check_issues`, and `decode_with_bson_check_issues` under `bson` for a type
+/// that lists "mongodb": what turns the messages of a value's checks into the issues of the read
+/// that built it. They are written beside `decode_with_check_messages`, and name the issue's types
+/// in `module`.
+fn issue_methods(module: &Ident, mongodb: bool) -> TokenStream {
+    let of_bson = mongodb.then(|| bson_issue_method(module));
     let lead = lead_fn();
     quote! {
         /// One `Invalid` per message the checks answered of the value serde built from `whole`.

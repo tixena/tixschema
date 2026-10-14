@@ -17,12 +17,12 @@ use tixschema::model_schema;
 use super::version_schema;
 use super::{Version, lines};
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Pair(String, u32);
 
 /// A tuple struct, and a tuple as a field, in a list and under an `Option`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Placement {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -34,14 +34,14 @@ struct Placement {
 
 /// A map of tuples, which no schema surface describes.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Keyed {
     by_name: HashMap<String, (String, u32)>,
 }
 
 /// A slot serde reads the absence of, one it never reads, and one that holds a model type.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Loose(
     String,
@@ -51,25 +51,25 @@ struct Loose(
 );
 
 /// A brand: serde writes it as the text it holds.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct RecordId(String);
 
 /// A brand over another brand: serde writes it as the text the inner one holds.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct OwnerRef(RecordId);
 
 /// A brand over a tuple struct: serde writes it as the array the tuple struct is.
-#[model_schema(decode_with, no_display)]
+#[model_schema(enable = ["decode_with"], no_display)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct PairRef(Pair);
 
 /// A brand over another brand and one over a tuple struct, each under a key.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Referenced {
     owner: OwnerRef,
@@ -79,7 +79,7 @@ struct Referenced {
 /// A flattened brand over text, which serde refuses to flatten at every read. A schema surface
 /// refuses the declaration.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Carded {
     #[serde(flatten)]
@@ -89,7 +89,7 @@ struct Carded {
 
 /// A flattened tuple struct, which serde refuses to flatten as it refuses a brand over text.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Paired {
     name: String,
@@ -98,42 +98,42 @@ struct Paired {
 }
 
 /// A single-slot tuple struct with no `transparent`: serde writes it as a brand is written.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Wrapper(String);
 
 /// A brand whose own reader refuses text shorter than three characters. Only a schema surface
 /// hangs that check, and the declaration is refused in a build with none.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-#[model_schema(decode_with, minLength = 3)]
+#[model_schema(enable = ["decode_with"], minLength = 3)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Code(String);
 
 /// A brand over a model type.
-#[model_schema(decode_with, no_display)]
+#[model_schema(enable = ["decode_with"], no_display)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Pinned(Version);
 
 /// A single-slot tuple struct over a model type, with no `transparent`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Kept(Version);
 
 /// A brand over a list of model types.
-#[model_schema(decode_with, no_display)]
+#[model_schema(enable = ["decode_with"], no_display)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct History(Vec<Version>);
 
 /// A single-slot tuple struct over an optional model type.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Latest(Option<Version>);
 
 /// A `transparent` struct with a named field: serde writes it as the text the field holds.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Slug {
@@ -141,7 +141,7 @@ struct Slug {
 }
 
 /// A `transparent` struct with a named field over a model type.
-#[model_schema(decode_with, no_display)]
+#[model_schema(enable = ["decode_with"], no_display)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Current {
@@ -149,7 +149,7 @@ struct Current {
 }
 
 /// A `transparent` struct with a named field over a list of model types.
-#[model_schema(decode_with, no_display)]
+#[model_schema(enable = ["decode_with"], no_display)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Revisions {
@@ -157,7 +157,7 @@ struct Revisions {
 }
 
 /// A `transparent` struct beside whose field is one serde neither writes nor reads.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Cached {
@@ -167,7 +167,7 @@ struct Cached {
 }
 
 /// A `transparent` struct whose field is read and written through a hook: a number as text.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Counted {
@@ -179,7 +179,7 @@ struct Counted {
 /// struct is written as: one with a `default`, and a `PhantomData`, which no schema surface
 /// describes.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Etched {
@@ -190,19 +190,19 @@ struct Etched {
 }
 
 /// A `transparent` tuple struct beside whose value is a slot serde neither writes nor reads.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Tags(Vec<String>, #[serde(skip)] u8);
 
 /// A `transparent` tuple struct whose value is its second slot.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Measured(#[serde(skip)] u8, String);
 
 /// A `transparent` tuple struct with a slot serde never reads, over a model type.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Stamped(Version, #[serde(skip)] u8);
@@ -211,7 +211,7 @@ struct Stamped(Version, #[serde(skip)] u8);
 /// tuple struct is written as: one with a `default`, and a `PhantomData`, which no schema surface
 /// describes.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Marked<T>(
@@ -220,7 +220,7 @@ struct Marked<T>(
     #[serde(default, skip_serializing)] u32,
 );
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Filed {
     measured: Measured,
@@ -228,7 +228,7 @@ struct Filed {
     tags: Tags,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Titled {
     cached: Cached,
@@ -238,11 +238,11 @@ struct Titled {
     slug: Slug,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Ping;
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Labelled {
     history: History,
@@ -254,7 +254,7 @@ struct Labelled {
     wrapper: Wrapper,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Entry {
     name: String,
@@ -265,7 +265,7 @@ struct Entry {
 type EntryAlias = Entry;
 
 /// A field typed with an alias of a flagged model type.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Shelf {
     featured: EntryAlias,

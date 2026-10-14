@@ -76,7 +76,7 @@ struct Flat<A, B> {
 }
 
 /// A flattened map of numbers beside a key of text: it takes every key it is handed.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Counts {
     #[serde(flatten)]
@@ -85,14 +85,14 @@ struct Counts {
 }
 
 /// A struct with a named field, held as text so a map of numbers handed its key refuses it.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Rev {
     revision: String,
 }
 
 /// A struct that itself flattens a map.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Notes {
     #[serde(flatten)]
@@ -101,7 +101,7 @@ struct Notes {
 }
 
 /// A plain enum: flattened, serde writes the variant's name as a key holding `null`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum Mood {
     Calm,
@@ -109,7 +109,7 @@ enum Mood {
 }
 
 /// Externally tagged: `{"Curved": {"radius": 1.5}}`, `{"Straight": null}`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum Border {
     Curved { radius: f64 },
@@ -117,7 +117,7 @@ enum Border {
 }
 
 /// Internally tagged: `{"kind": "Solid", "color": "red"}`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Tint {
@@ -126,7 +126,7 @@ enum Tint {
 }
 
 /// Adjacently tagged: `{"rim": "Dotted", "data": {"gap": 2}}`, `{"rim": "Plain"}`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "rim", content = "data")]
 enum Rim {
@@ -135,7 +135,7 @@ enum Rim {
 }
 
 /// Untagged, each variant an object with a key of its own.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Via {
@@ -144,22 +144,22 @@ enum Via {
 }
 
 /// A single-slot struct over a struct.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct RevRef(Rev);
 
 /// A single-slot struct over a map.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Extras(HashMap<String, i32>);
 
 /// A single-slot struct over an `Option` of a struct.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Newest(Option<Version>);
 
 /// A generic brand: serde reads it as whatever fills it.
-#[model_schema(decode_with, default_types(T = String))]
+#[model_schema(enable = ["decode_with"], default_types(T = String))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Wrap<T>(T);
@@ -179,7 +179,7 @@ struct Row(Vec<i32>);
 struct Spot((String, u32));
 
 /// A flattened struct, then a flattened type that takes every key it is handed.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Two {
     #[serde(flatten)]
@@ -190,7 +190,7 @@ struct Two {
 }
 
 /// Internally tagged, with a variant that holds a type that takes every key it is handed.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Filled {
@@ -198,7 +198,7 @@ enum Filled {
 }
 
 /// A flattened single-slot struct over a map.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Bag {
     #[serde(flatten)]
@@ -207,7 +207,7 @@ struct Bag {
 }
 
 /// A flattened single-slot struct over an `Option` of a struct.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Paper {
     #[serde(flatten)]
@@ -216,7 +216,7 @@ struct Paper {
 }
 
 /// A flattened generic brand filled with a struct.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Outer {
     #[serde(flatten)]
@@ -226,7 +226,7 @@ struct Outer {
 
 /// A flattened plain enum. A schema surface refuses the declaration.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Moody {
     #[serde(flatten)]
@@ -237,7 +237,7 @@ struct Moody {
 /// Internally tagged, with a variant that holds a plain enum. A schema surface refuses the
 /// declaration.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Slot {
@@ -246,7 +246,7 @@ enum Slot {
 }
 
 /// A single-slot struct over an `Option` of a struct whose key holds text.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct NewestRev(Option<Rev>);
 
@@ -254,7 +254,7 @@ struct NewestRev(Option<Rev>);
 // reads the two flattened fields in the order declared.
 
 /// `Counts` flattened after a struct with named fields.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct RevFirst {
     #[serde(flatten)]
@@ -265,7 +265,7 @@ struct RevFirst {
 }
 
 /// `Counts` flattened before a struct with named fields.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct RevLast {
     #[serde(flatten)]
@@ -276,7 +276,7 @@ struct RevLast {
 }
 
 /// `Counts` flattened after a struct that itself flattens a map.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct NotesFirst {
     #[serde(flatten)]
@@ -287,7 +287,7 @@ struct NotesFirst {
 }
 
 /// `Counts` flattened before a struct that itself flattens a map.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct NotesLast {
     #[serde(flatten)]
@@ -298,7 +298,7 @@ struct NotesLast {
 }
 
 /// `Counts` flattened after an externally tagged enum.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct BorderFirst {
     #[serde(flatten)]
@@ -309,7 +309,7 @@ struct BorderFirst {
 }
 
 /// `Counts` flattened before an externally tagged enum.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct BorderLast {
     #[serde(flatten)]
@@ -320,7 +320,7 @@ struct BorderLast {
 }
 
 /// `Counts` flattened after an internally tagged enum.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct TintFirst {
     #[serde(flatten)]
@@ -331,7 +331,7 @@ struct TintFirst {
 }
 
 /// `Counts` flattened before an internally tagged enum.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct TintLast {
     #[serde(flatten)]
@@ -342,7 +342,7 @@ struct TintLast {
 }
 
 /// `Counts` flattened after an adjacently tagged enum.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct RimFirst {
     #[serde(flatten)]
@@ -353,7 +353,7 @@ struct RimFirst {
 }
 
 /// `Counts` flattened before an adjacently tagged enum.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct RimLast {
     #[serde(flatten)]
@@ -364,7 +364,7 @@ struct RimLast {
 }
 
 /// `Counts` flattened after an untagged enum.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct ViaFirst {
     #[serde(flatten)]
@@ -375,7 +375,7 @@ struct ViaFirst {
 }
 
 /// `Counts` flattened before an untagged enum.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct ViaLast {
     #[serde(flatten)]
@@ -386,7 +386,7 @@ struct ViaLast {
 }
 
 /// `Counts` flattened after a single-slot struct over a struct.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct RevRefFirst {
     #[serde(flatten)]
@@ -397,7 +397,7 @@ struct RevRefFirst {
 }
 
 /// `Counts` flattened before a single-slot struct over a struct.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct RevRefLast {
     #[serde(flatten)]
@@ -408,7 +408,7 @@ struct RevRefLast {
 }
 
 /// `Counts` flattened after a single-slot struct over a map.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct ExtrasFirst {
     #[serde(flatten)]
@@ -419,7 +419,7 @@ struct ExtrasFirst {
 }
 
 /// `Counts` flattened before a single-slot struct over a map.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct ExtrasLast {
     #[serde(flatten)]
@@ -430,7 +430,7 @@ struct ExtrasLast {
 }
 
 /// `Counts` flattened after a single-slot struct over an `Option` of a struct.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct NewestRevFirst {
     #[serde(flatten)]
@@ -441,7 +441,7 @@ struct NewestRevFirst {
 }
 
 /// `Counts` flattened before a single-slot struct over an `Option` of a struct.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct NewestRevLast {
     #[serde(flatten)]
@@ -452,7 +452,7 @@ struct NewestRevLast {
 }
 
 /// `Counts` flattened after a generic brand filled with a struct.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct WrapFirst {
     #[serde(flatten)]
@@ -463,7 +463,7 @@ struct WrapFirst {
 }
 
 /// `Counts` flattened before a generic brand filled with a struct.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct WrapLast {
     #[serde(flatten)]
@@ -474,7 +474,7 @@ struct WrapLast {
 }
 
 /// `Counts` flattened after an `Option` of a struct.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct MaybeRevFirst {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
@@ -485,7 +485,7 @@ struct MaybeRevFirst {
 }
 
 /// `Counts` flattened before an `Option` of a struct.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct MaybeRevLast {
     #[serde(flatten)]
@@ -496,7 +496,7 @@ struct MaybeRevLast {
 }
 
 /// `Counts` flattened after an `Option` of an internally tagged enum.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct MaybeTintFirst {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
@@ -507,7 +507,7 @@ struct MaybeTintFirst {
 }
 
 /// `Counts` flattened before an `Option` of an internally tagged enum.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct MaybeTintLast {
     #[serde(flatten)]
@@ -519,7 +519,7 @@ struct MaybeTintLast {
 
 /// `Counts` flattened after a plain enum, which a schema surface refuses to see flattened.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct MoodFirst {
     #[serde(flatten)]
@@ -531,7 +531,7 @@ struct MoodFirst {
 
 /// `Counts` flattened before a plain enum, which a schema surface refuses to see flattened.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct MoodLast {
     #[serde(flatten)]
@@ -542,14 +542,14 @@ struct MoodLast {
 }
 
 /// A `#[serde(transparent)]` struct over a type that takes every key it is handed.
-#[model_schema(decode_with, no_display)]
+#[model_schema(enable = ["decode_with"], no_display)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct CountsRef {
     inner: Counts,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Ledgered {
     #[serde(flatten)]
@@ -558,7 +558,7 @@ struct Ledgered {
 }
 
 /// Untagged, with a variant that holds a type that takes every key it is handed.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Tallied {
@@ -566,7 +566,7 @@ enum Tallied {
     Named { name: String },
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Scored {
     id: String,
@@ -577,7 +577,7 @@ struct Scored {
 /// Untagged, with a variant that holds a plain enum. A schema surface refuses the declaration
 /// that flattens it.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Feeling {
@@ -586,7 +586,7 @@ enum Feeling {
 }
 
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Felt {
     #[serde(flatten)]
@@ -596,7 +596,7 @@ struct Felt {
 
 /// Internally tagged, with a struct variant that flattens a struct and then a type that takes
 /// every key it is handed.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Booked {
@@ -611,7 +611,7 @@ enum Booked {
 }
 
 /// Externally tagged, with a variant that holds a type that takes every key it is handed.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum Boxed {
     Counted(Counts),
@@ -619,7 +619,7 @@ enum Boxed {
 }
 
 /// Adjacently tagged, with a variant that holds a type that takes every key it is handed.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "data")]
 enum Crated {
@@ -628,7 +628,7 @@ enum Crated {
 }
 
 /// A flattened struct, then a flattened `Option` of a type that takes every key it is handed.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Optioned {
     #[serde(flatten)]
@@ -639,7 +639,7 @@ struct Optioned {
 }
 
 /// Two flattened structs, neither of which takes every key.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Signed {
     #[serde(flatten)]
@@ -650,11 +650,11 @@ struct Signed {
 }
 
 /// A single-slot struct over an `Option` of a map.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct MaybeExtras(Option<HashMap<String, i32>>);
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Pouch {
     #[serde(flatten)]
@@ -663,11 +663,11 @@ struct Pouch {
 }
 
 /// A single-slot struct over whatever a JSON value holds.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Anything(Value);
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Crate {
     #[serde(flatten)]
@@ -676,7 +676,7 @@ struct Crate {
 }
 
 /// A flattened generic brand filled with a map.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Basket {
     #[serde(flatten)]
@@ -692,7 +692,7 @@ struct Plain {
 }
 
 /// A flattened type parameter, then a flattened type that takes every key it is handed.
-#[model_schema(decode_with, default_types(T = Plain))]
+#[model_schema(enable = ["decode_with"], default_types(T = Plain))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Parcel<T> {
     #[serde(flatten)]
@@ -703,7 +703,7 @@ struct Parcel<T> {
 }
 
 /// A flattened generic brand filled with a struct, then a flattened type that takes every key.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Wrapping {
     #[serde(flatten)]
@@ -714,7 +714,7 @@ struct Wrapping {
 }
 
 /// An optional flattened type parameter, which no walk reaches, then a flattened map.
-#[model_schema(decode_with, default_types(T = Plain))]
+#[model_schema(enable = ["decode_with"], default_types(T = Plain))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Bundle<T> {
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
@@ -725,7 +725,7 @@ struct Bundle<T> {
 }
 
 /// A flattened type parameter beside a key of the type's own.
-#[model_schema(decode_with, default_types(T = Plain))]
+#[model_schema(enable = ["decode_with"], default_types(T = Plain))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Letter<T> {
     #[serde(flatten)]
@@ -734,7 +734,7 @@ struct Letter<T> {
 }
 
 /// A flattened generic brand filled with an `Option` of a struct.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Pocket {
     #[serde(flatten)]
@@ -743,7 +743,7 @@ struct Pocket {
 }
 
 /// A flattened `Option` read through a hook.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct DirectMaybe {
     id: String,
@@ -757,7 +757,7 @@ struct DirectMaybe {
 }
 
 /// A flattened struct read through a hook.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct ThroughHook {
     id: String,
@@ -766,7 +766,7 @@ struct ThroughHook {
 }
 
 /// A flattened map read through a hook.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct MapThroughHook {
     #[serde(flatten, deserialize_with = "as_written")]
@@ -776,7 +776,7 @@ struct MapThroughHook {
 
 /// A flattened field read through a hook generic over what it reads, then a flattened type that
 /// takes every key it is handed.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct HookAhead {
     #[serde(flatten, deserialize_with = "as_written")]
@@ -787,7 +787,7 @@ struct HookAhead {
 }
 
 /// A flattened field serde writes and never reads.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct NeverRead {
     id: String,
@@ -796,14 +796,14 @@ struct NeverRead {
 }
 
 /// A flagged type with a value of its own to stand where serde reads none.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Default, Deserialize, PartialEq, Serialize)]
 struct Draft {
     pages: i32,
 }
 
 /// A flattened field serde writes and never reads, which takes its type's default.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Unpicked {
     #[serde(flatten, skip_deserializing)]
@@ -812,7 +812,7 @@ struct Unpicked {
 }
 
 /// A flattened JSON value, which holds whatever entries are left.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct OpenEnded {
     id: String,
@@ -820,7 +820,7 @@ struct OpenEnded {
     rest: Value,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct MaybeOpenEnded {
     id: String,
@@ -829,7 +829,7 @@ struct MaybeOpenEnded {
 }
 
 /// A flattened `Option` of a map.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct MaybeCounted {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
@@ -839,11 +839,11 @@ struct MaybeCounted {
 
 /// A single-slot struct over an `Option` of an `Option` of a struct, the inner one in a `Box`,
 /// which serde reads through.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Deep(Option<Box<Option<Version>>>);
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Deeper {
     #[serde(flatten)]
@@ -852,11 +852,11 @@ struct Deeper {
 }
 
 /// A single-slot struct whose slot a hook reads: serde hands the hook what the struct is handed.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Postmark(#[serde(deserialize_with = "as_written")] Version);
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Posted {
     id: String,
@@ -865,7 +865,7 @@ struct Posted {
 }
 
 /// The hooked slot, then a flattened type that takes every key it is handed.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct PostedFirst {
     #[serde(flatten)]
@@ -876,11 +876,11 @@ struct PostedFirst {
 }
 
 /// A single-slot struct over a map a hook reads.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Chalk(#[serde(deserialize_with = "as_written")] HashMap<String, i32>);
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Slate {
     #[serde(flatten)]
@@ -889,7 +889,7 @@ struct Slate {
 }
 
 /// A `#[serde(transparent)]` struct whose field a hook reads.
-#[model_schema(decode_with, no_display)]
+#[model_schema(enable = ["decode_with"], no_display)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Wax {
@@ -897,7 +897,7 @@ struct Wax {
     inner: Version,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Waxed {
     id: String,
@@ -906,11 +906,11 @@ struct Waxed {
 }
 
 /// A single-slot struct over an `Option` a hook reads.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Perhaps(#[serde(deserialize_with = "as_written")] Option<Version>);
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Guess {
     id: String,

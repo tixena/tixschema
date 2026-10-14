@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 /// Writes into each type the resolvers its stored rows are read through, in order, as `STORED`.
-/// `whole_number_as_text` reads a whole number an older writer stored as text. A macro because
-/// each type's resolvers name that type's own schema module, which no trait unites.
+/// `whole_number_as_text` reads a whole number an older writer stored as text. Each type's copy
+/// names the issue's types through that type's own schema module.
 macro_rules! shared_resolvers {
     ($($row:ty => $schema:ident),* $(,)?) => {$(
         impl $row {
@@ -40,7 +40,7 @@ macro_rules! shared_resolvers {
     )*};
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Invoice {
@@ -48,7 +48,7 @@ struct Invoice {
     open_lines: u32,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Order {
     lines: u32,

@@ -21,7 +21,7 @@ thread_local! {
 }
 
 /// A row whose type names no function.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct PlainRow {
     #[serde(
@@ -37,14 +37,14 @@ struct PlainRow {
 }
 
 /// A number, under a type that names no function.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct PlainWeight {
     weight: f64,
 }
 
 /// The parcel of the documents, stored as a row.
-#[model_schema(decode_with, preprocess = ["withoutFragile"])]
+#[model_schema(enable = ["decode_with", "mongodb"], preprocess = ["withoutFragile"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct StoredParcel {
@@ -56,7 +56,7 @@ struct StoredParcel {
 
 /// The row of [`PlainRow`] under a type whose function records what it is handed, with an id
 /// and a label that each name a function of their own.
-#[model_schema(decode_with, preprocess = ["asHanded"])]
+#[model_schema(enable = ["decode_with", "mongodb"], preprocess = ["asHanded"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct StoredRow {
     #[serde(
@@ -74,7 +74,7 @@ struct StoredRow {
 }
 
 /// The number of [`PlainWeight`] under a type that names a function.
-#[model_schema(decode_with, preprocess = ["asItIs"])]
+#[model_schema(enable = ["decode_with", "mongodb"], preprocess = ["asItIs"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct StoredWeight {
     weight: f64,

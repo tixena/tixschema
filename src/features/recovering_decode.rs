@@ -122,6 +122,91 @@ const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
     "WriteError",
 ];
 
+/// The crate-root module `decode_with_foundation!()` writes.
+const DECODE_WITH_LIBRARY: &str = "__tixschema_decode_with";
+
+/// The reason the `#[expect(clippy::pub_use)]` on each re-export of a support library gives.
+const REEXPORT_REASON: &str = "tixschema re-exports the crate's support library in each schema \
+                               module by name, so every `{type}_schema::Name` path stays \
+                               reachable from this crate and from another";
+
+/// Every name the `decode_with` library makes public, each of which a `{type}_schema` module
+/// re-exports by name.
+const DECODE_WITH_LIBRARY_NAMES: &[&str] = &[
+    "Asked",
+    "Expected",
+    "ExpectedToken",
+    "Issue",
+    "IssueFromParts",
+    "Path",
+    "Resolution",
+    "Resolver",
+    "Segment",
+    "Taken",
+    "TakenProbe",
+    "Unrecovered",
+    "Verdict",
+    "issue_from_parts",
+    "reads_an_option",
+    "taken_keys",
+    "unsettled",
+    "value_bound",
+    "value_leaf",
+    "value_remaining",
+];
+
+/// The crate-root module `mongodb_foundation!()` writes.
+#[cfg(feature = "bson")]
+const MONGODB_LIBRARY: &str = "__tixschema_mongodb";
+
+/// Every name the BSON and MongoDB library makes public in this build, each of which the
+/// `{type}_schema` module of a type that lists "mongodb" re-exports by name.
+#[cfg(feature = "bson")]
+const MONGODB_LIBRARY_NAMES: &[&str] = &[
+    #[cfg(feature = "mongodb")]
+    "ArmFilter",
+    #[cfg(feature = "mongodb")]
+    "ArmUpdate",
+    #[cfg(feature = "mongodb")]
+    "AsFilter",
+    #[cfg(feature = "mongodb")]
+    "AsUpdate",
+    #[cfg(feature = "mongodb")]
+    "Element",
+    #[cfg(feature = "mongodb")]
+    "Field",
+    #[cfg(feature = "mongodb")]
+    "Filter",
+    #[cfg(feature = "mongodb")]
+    "ListField",
+    #[cfg(feature = "mongodb")]
+    "Model",
+    #[cfg(feature = "mongodb")]
+    "ModelList",
+    #[cfg(feature = "mongodb")]
+    "MongoPath",
+    #[cfg(feature = "mongodb")]
+    "Nested",
+    #[cfg(feature = "mongodb")]
+    "Nests",
+    #[cfg(feature = "mongodb")]
+    "OperationError",
+    #[cfg(feature = "mongodb")]
+    "OptionalField",
+    #[cfg(feature = "mongodb")]
+    "OptionalModel",
+    #[cfg(feature = "mongodb")]
+    "Read",
+    #[cfg(feature = "mongodb")]
+    "Update",
+    #[cfg(feature = "mongodb")]
+    "WriteError",
+    "bson_bound",
+    "bson_leaf",
+    "bson_remaining",
+    "same_bracket",
+];
+
 /// One arm reading a value that is there: the pattern it is held under, and what is listed for it.
 struct Arm {
     body: TokenStream,
@@ -384,6 +469,9 @@ pub struct RecoveringDecode {
     /// The `impl` holding `decode_with_check_messages`, under the bounds the type's author wrote:
     /// the entry points of every source run it on the value serde built.
     pub check_messages: TokenStream,
+    /// What refuses a crate that has not written the support libraries the type re-exports,
+    /// written beside the type.
+    pub probes: TokenStream,
     /// The items added to the `{type}_schema` module a schema surface writes, or that module whole
     /// in a build where none writes one.
     pub schema_module: TokenStream,
@@ -684,6 +772,15 @@ impl Source {
         self.object_from(&quote! { #object.clone() })
     }
 
+    /// The sources a type's walkers read: JSON, and BSON where the type lists "mongodb".
+    const fn read_by(mongodb: bool) -> &'static [Self] {
+        if mongodb {
+            Self::GENERATED
+        } else {
+            &[Self::Json]
+        }
+    }
+
     /// The function answering what remains of an object once serde has read a type flattened
     /// there.
     fn remaining(self) -> Ident {
@@ -837,6 +934,8 @@ struct Whole {
 struct Written<'reach> {
     /// `decode_with_check_messages`, written from the checks the item and its members name.
     check_messages: TokenStream,
+    /// The item lists "mongodb" in `enable`: it is read from BSON, and stored.
+    mongodb: bool,
     names: Vec<String>,
     reach: &'reach Reach,
     /// `decode_with_read_unjudged`, the read every source lists from.
@@ -2071,10 +2170,11 @@ impl Walker<'_> {
 /// A walker method called as `<Type>::decode_with_value_issues(..)` is the type's own where it has
 /// one, and this trait's where it has none and the trait is in scope. So a field typed with a
 /// type the walk cannot see into, such as an alias of a foreign map, builds, and is read whole.
-fn read_whole_items() -> TokenStream {
+/// It answers for each of `sources`, the ones the type's own walkers read.
+fn read_whole_items(sources: &[Source]) -> TokenStream {
     let object = Ident::new("object", Span::call_site());
     let own: Type = parse_quote! { Self };
-    let methods = Source::GENERATED.iter().map(|&source| {
+    let methods = sources.iter().map(|&source| {
         let (issues, named, fields, leaf) = (
             source.method("issues"),
             source.method("named"),
@@ -2116,7 +2216,7 @@ fn read_whole_items() -> TokenStream {
             }
         }
     });
-    let every = Source::GENERATED.iter().map(|&source| {
+    let every = sources.iter().map(|&source| {
         let (issues, named, fields) = (
             source.method("issues"),
             source.method("named"),
@@ -2172,26 +2272,29 @@ pub fn reading_the_authors_scope(tokens: TokenStream) -> TokenStream {
 }
 
 /// The recovering decode of a struct, read off the item as it is emitted, so a read hook tixschema
-/// hangs on a field is one the walker reads through.
-pub fn struct_recovering_decode(item_struct: &ItemStruct) -> RecoveringDecode {
+/// hangs on a field is one the walker reads through. `mongodb` says whether the struct lists
+/// "mongodb" in `enable`.
+pub fn struct_recovering_decode(item_struct: &ItemStruct, mongodb: bool) -> RecoveringDecode {
     listed_from(
         item_struct,
         listed_read(&DeriveInput::from(item_struct.clone())),
+        mongodb,
     )
 }
 
 /// [`struct_recovering_decode`] of a brand that carries a bound: the read its issues are listed
 /// from refuses a value that breaks the bound.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-pub fn brand_recovering_decode(item_struct: &ItemStruct) -> RecoveringDecode {
+pub fn brand_recovering_decode(item_struct: &ItemStruct, mongodb: bool) -> RecoveringDecode {
     listed_from(
         item_struct,
         bounded_listed_read(&DeriveInput::from(item_struct.clone())),
+        mongodb,
     )
 }
 
 /// The recovering decode of a struct whose issues are listed from `read`.
-fn listed_from(item_struct: &ItemStruct, read: TokenStream) -> RecoveringDecode {
+fn listed_from(item_struct: &ItemStruct, read: TokenStream, mongodb: bool) -> RecoveringDecode {
     let module_name = ident_schema_module_name(&item_struct.ident.to_string());
     let parameters = type_parameters_in_scope(&item_struct.generics);
     let mut reach = Reach::new(&module_name);
@@ -2202,7 +2305,11 @@ fn listed_from(item_struct: &ItemStruct, read: TokenStream) -> RecoveringDecode 
         .filter(|only| !parse_serde_key_omission(&only.attrs).skips_deserializing)
         .and_then(|_| slot_validator(&module_name, None, 0));
     let names = written_names(item_struct.to_token_stream());
-    let paths = struct_paths(item_struct, &names);
+    let paths = if mongodb {
+        struct_paths(item_struct, &names)
+    } else {
+        TypedPaths::default()
+    };
     added_to(
         &item_struct.ident,
         &item_struct.generics,
@@ -2210,6 +2317,7 @@ fn listed_from(item_struct: &ItemStruct, read: TokenStream) -> RecoveringDecode 
         &parameters,
         &Written {
             check_messages: checks::struct_check_messages(item_struct, &module_name, &parameters),
+            mongodb,
             names,
             reach: &reach,
             read,
@@ -2268,7 +2376,8 @@ where
     let issue_parameter = unclaimed_parameter("I", &written.names);
     let own_functions = preprocess::named().own;
     let corrects_own = !own_functions.is_empty();
-    let of_sources: Vec<TokenStream> = Source::GENERATED
+    let sources = Source::read_by(written.mongodb);
+    let of_sources: Vec<TokenStream> = sources
         .iter()
         .enumerate()
         .map(|(at, &source)| {
@@ -2297,24 +2406,225 @@ where
         name,
         generics,
         &written.read_predicates,
-        &of_sources,
+        (sources, &of_sources),
         &paths.type_items,
     );
-    let mut items = module_items();
+    let mut items = library_reexport(written.mongodb);
     items.extend(paths.module_items.clone());
     if written_names(type_impl.clone())
         .iter()
         .any(|written_name| written_name == "ReadWhole")
     {
-        items.extend(read_whole_items());
+        items.extend(read_whole_items(sources));
     }
     items.extend(written.reach.module_items());
     type_impl.extend(paths.beside.clone());
     type_impl.extend(written.reach.guards());
     RecoveringDecode {
-        check_messages: checks::type_impl(name, generics, &module, &written.check_messages),
+        check_messages: checks::type_impl(
+            name,
+            generics,
+            &module,
+            &written.check_messages,
+            written.mongodb,
+        ),
+        probes: foundation_probes(written.mongodb),
         schema_module: placed_in_schema_module(&module, &items),
         type_impl,
+    }
+}
+
+/// What a `{type}_schema` module holds of its crate's support libraries: every name each one makes
+/// public, written out, so each shadows a name the module's `use super::*` reads, as an item the
+/// module declares does. The BSON and MongoDB library is held where the type lists "mongodb".
+fn library_reexport(mongodb: bool) -> TokenStream {
+    let mut reexport = reexported(DECODE_WITH_LIBRARY, DECODE_WITH_LIBRARY_NAMES);
+    if mongodb {
+        reexport.extend(mongodb_reexport());
+    }
+    reexport
+}
+
+/// `pub use crate::{library}::{...};`, every one of `names` written out, expecting the
+/// `clippy::pub_use` a consumer who denies the restriction group would otherwise meet on it.
+fn reexported(library: &str, names: &[&str]) -> TokenStream {
+    let module = Ident::new(library, Span::call_site());
+    let each = names.iter().map(|name| Ident::new(name, Span::call_site()));
+    quote! {
+        #[expect(clippy::pub_use, reason = #REEXPORT_REASON)]
+        pub use crate::#module::{#(#each),*};
+    }
+}
+
+/// The BSON and MongoDB library, re-exported by name.
+#[cfg(feature = "bson")]
+fn mongodb_reexport() -> TokenStream {
+    reexported(MONGODB_LIBRARY, MONGODB_LIBRARY_NAMES)
+}
+
+/// A build without `bson` writes no BSON and MongoDB library.
+#[cfg(not(feature = "bson"))]
+fn mongodb_reexport() -> TokenStream {
+    TokenStream::new()
+}
+
+/// What refuses a crate that holds this type and has not written the support libraries it
+/// re-exports: the `decode_with` one always, and the BSON and MongoDB one where the type lists
+/// "mongodb", under `bson`.
+fn foundation_probes(mongodb: bool) -> TokenStream {
+    let mut probes = foundation_probe(
+        "__tixschema_decode_with_foundation",
+        "tixschema: this crate has `#[model_schema(enable = [\"decode_with\"])]` types but no \
+         `tixschema::decode_with_foundation!();`",
+        "this type needs the decode_with support library, which \
+         `tixschema::decode_with_foundation!();` writes once per crate",
+        "Fix: add the line `tixschema::decode_with_foundation!();` at the crate root (src/lib.rs \
+         or src/main.rs), on its own line, anywhere outside a function. Add it once per crate; \
+         nothing else is needed.",
+    );
+    if mongodb {
+        probes.extend(mongodb_foundation_probe());
+    }
+    probes
+}
+
+/// The probe of the BSON and MongoDB library.
+#[cfg(feature = "bson")]
+fn mongodb_foundation_probe() -> TokenStream {
+    foundation_probe(
+        "__tixschema_mongodb_foundation",
+        "tixschema: this crate has `#[model_schema(enable = [\"decode_with\", \"mongodb\"])]` \
+         types but no `tixschema::mongodb_foundation!();`",
+        "this type needs the MongoDB support library, which \
+         `tixschema::mongodb_foundation!();` writes once per crate",
+        "Fix: add the line `tixschema::mongodb_foundation!();` at the crate root (src/lib.rs or \
+         src/main.rs), on its own line, anywhere outside a function. Add it once per crate; \
+         nothing else is needed.",
+    )
+}
+
+/// A build without `bson` writes no BSON and MongoDB library, so nothing asks for it.
+#[cfg(not(feature = "bson"))]
+fn mongodb_foundation_probe() -> TokenStream {
+    TokenStream::new()
+}
+
+/// One probe, in an anonymous const so it adds no name. With the library written, the method
+/// `marker` names is the crate root's marker's, read through `use crate::*`, and answers `()`;
+/// without it, the local fallback answers `Missing`, and `message` is the error.
+fn foundation_probe(marker: &str, message: &str, label: &str, note: &str) -> TokenStream {
+    let method = Ident::new(marker, Span::call_site());
+    quote! {
+        const _: () = {
+            use crate::*;
+            struct Missing;
+            #[diagnostic::on_unimplemented(message = #message, label = #label, note = #note)]
+            trait FoundationWritten {}
+            impl FoundationWritten for () {}
+            trait Fallback {
+                fn #method(&self) -> Missing {
+                    Missing
+                }
+            }
+            impl Fallback for &() {}
+            fn need<T: FoundationWritten>(_: T) {}
+            fn probe() {
+                need((&()).#method());
+            }
+            let _ = probe;
+        };
+    }
+}
+
+/// What `decode_with_foundation!()` writes at a crate root: the `decode_with` library in its
+/// module, kept out of the consumer's documentation, and the marker its probe finds.
+pub fn decode_with_foundation() -> TokenStream {
+    let library = Ident::new(DECODE_WITH_LIBRARY, Span::call_site());
+    let items = decode_with_library();
+    quote! {
+        #[doc(hidden)]
+        mod #library {
+            #items
+        }
+
+        trait __TixschemaDecodeWithFoundation {
+            fn __tixschema_decode_with_foundation(&self) {}
+        }
+
+        impl __TixschemaDecodeWithFoundation for () {}
+    }
+}
+
+/// What `mongodb_foundation!()` writes at a crate root: the BSON and MongoDB library in its
+/// module, which reads the `decode_with` library's names and is kept out of the consumer's
+/// documentation, and the marker its probe finds.
+#[cfg(feature = "bson")]
+pub fn mongodb_foundation() -> TokenStream {
+    let (first, library) = (
+        Ident::new(DECODE_WITH_LIBRARY, Span::call_site()),
+        Ident::new(MONGODB_LIBRARY, Span::call_site()),
+    );
+    let items = mongodb_library();
+    quote! {
+        #[doc(hidden)]
+        mod #library {
+            use crate::#first::*;
+
+            #items
+        }
+
+        trait __TixschemaMongodbFoundation {
+            fn __tixschema_mongodb_foundation(&self) {}
+        }
+
+        impl __TixschemaMongodbFoundation for () {}
+    }
+}
+
+/// A build without `bson` has no BSON and MongoDB library, so the call writes nothing and stays
+/// in a crate whatever it builds with.
+#[cfg(not(feature = "bson"))]
+pub fn mongodb_foundation() -> TokenStream {
+    TokenStream::new()
+}
+
+/// The `decode_with` library: what a callback and a resolver work with, and what one type's walker
+/// hands another's with. It names no `bson` path.
+fn decode_with_library() -> TokenStream {
+    let path = path_items();
+    let callback = callback_items();
+    let handoff = handoff_items();
+    let taken = taken_items();
+    let bound = bound_items();
+    quote! {
+        #path
+        #callback
+        #handoff
+        #taken
+        #bound
+    }
+}
+
+/// The BSON and MongoDB library under `bson`: what reads a BSON value, the BSON helpers of `Path`,
+/// and under `mongodb` the query types and what the operations answer.
+#[cfg(feature = "bson")]
+fn mongodb_library() -> TokenStream {
+    let first = Ident::new(DECODE_WITH_LIBRARY, Span::call_site());
+    let bound = bson_bound_items();
+    let leaf = bson_leaf_items();
+    let path = bson_path_helpers();
+    let query = query_items();
+    let operation = operation_items();
+    quote! {
+        #bound
+        #leaf
+
+        impl crate::#first::Path {
+            #path
+        }
+
+        #query
+        #operation
     }
 }
 
@@ -2334,7 +2644,7 @@ fn asked_items() -> TokenStream {
         /// What a read asks for says of the entries serde takes out for it.
         #[derive(Clone, Copy, Default)]
         #[non_exhaustive]
-        enum Taken {
+        pub enum Taken {
             /// The entries under these keys: a struct with named fields.
             Fields(&'static [&'static str]),
             /// None: a map, and whatever else reads the entries and leaves them.
@@ -2601,9 +2911,8 @@ fn asks_one_of(bound: &TypeParamBound, asked: &[String]) -> bool {
     asked_trait(bound).is_some_and(|of_trait| asked.contains(&of_trait))
 }
 
-/// `value_bound` and `bson_bound`: what holds a value serde read to the bound its field declares.
+/// `value_bound`: what holds a JSON value serde read to the bound its field declares.
 fn bound_items() -> TokenStream {
-    let bson_bound = bson_bound_items();
     quote! {
         /// What a field's bound refuses of one JSON value `read` reads: an issue per violation
         /// `check` answers, and none where the value does not read.
@@ -2627,12 +2936,10 @@ fn bound_items() -> TokenStream {
                 .map(|reason| issue("Invalid", path.clone(), expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::Some(reason), ::std::vec::Vec::new()))
                 .collect()
         }
-
-        #bson_bound
     }
 }
 
-/// `bson_bound`.
+/// `bson_bound`: what holds a BSON value serde read to the bound its field declares.
 #[cfg(feature = "bson")]
 fn bson_bound_items() -> TokenStream {
     quote! {
@@ -2659,12 +2966,6 @@ fn bson_bound_items() -> TokenStream {
                 .collect()
         }
     }
-}
-
-/// A build without `bson` reads no BSON value.
-#[cfg(not(feature = "bson"))]
-fn bson_bound_items() -> TokenStream {
-    TokenStream::new()
 }
 
 /// `from_bson_with`, `from_bson_piped` and the report they run. Every value is read through
@@ -2838,12 +3139,6 @@ fn bson_leaf_items() -> TokenStream {
     }
 }
 
-/// A build without `bson` reads no BSON value.
-#[cfg(not(feature = "bson"))]
-fn bson_leaf_items() -> TokenStream {
-    TokenStream::new()
-}
-
 /// The helpers a callback fixes a BSON document through.
 #[cfg(feature = "bson")]
 fn bson_path_helpers() -> TokenStream {
@@ -2904,12 +3199,6 @@ fn bson_path_helpers() -> TokenStream {
             }
         }
     }
-}
-
-/// A build without `bson` fixes no BSON document.
-#[cfg(not(feature = "bson"))]
-fn bson_path_helpers() -> TokenStream {
-    TokenStream::new()
 }
 
 /// The types a callback works with, and beside its verdict what a resolver answers with.
@@ -3236,7 +3525,6 @@ fn flattened_walker_call(
 
 /// The items one type's walker hands issues to another's with.
 fn handoff_items() -> TokenStream {
-    let bson_leaf = bson_leaf_items();
     quote! {
         /// One member of an `Expected`, written before the members under it: its name, the names
         /// it carries, and how many members follow under it.
@@ -3345,8 +3633,6 @@ fn handoff_items() -> TokenStream {
                 },
             }
         }
-
-        #bson_leaf
     }
 }
 
@@ -3620,26 +3906,6 @@ fn model_walker_call(
     quote! { <#ty>::#issues(#held, &#path, issue, out) }
 }
 
-/// Everything the flag puts into the type's `{type}_schema` module.
-fn module_items() -> TokenStream {
-    let path = path_items();
-    let callback = callback_items();
-    let handoff = handoff_items();
-    let taken = taken_items();
-    let bound = bound_items();
-    let query = query_items();
-    let operation = operation_items();
-    quote! {
-        #path
-        #callback
-        #handoff
-        #taken
-        #bound
-        #query
-        #operation
-    }
-}
-
 /// Whether `ty` names one of the type's own `parameters`, or the type itself where it has any.
 fn names_a_parameter(ty: &Type, parameters: &[String]) -> bool {
     if parameters.is_empty() {
@@ -3693,7 +3959,7 @@ fn operation_items() -> TokenStream {
 }
 
 /// A build without `mongodb` writes no operation, so nothing for one to fail with.
-#[cfg(not(feature = "mongodb"))]
+#[cfg(all(feature = "bson", not(feature = "mongodb")))]
 fn operation_items() -> TokenStream {
     TokenStream::new()
 }
@@ -3755,9 +4021,8 @@ fn path_expression(segments: &[TokenStream]) -> TokenStream {
     quote! { [path, &[#(#segments),*]].concat() }
 }
 
-/// `Segment` and `Path`, with the helpers a callback fixes a value through.
+/// `Segment` and `Path`, with the helpers a callback fixes a JSON value through.
 fn path_items() -> TokenStream {
-    let in_documents = bson_path_helpers();
     quote! {
         #[derive(Clone, Debug, PartialEq, Eq)]
         #[non_exhaustive]
@@ -3822,8 +4087,6 @@ fn path_items() -> TokenStream {
                     _ => false,
                 }
             }
-
-            #in_documents
         }
 
         impl ::core::fmt::Display for Path {
@@ -3920,7 +4183,7 @@ fn query_items() -> TokenStream {
 }
 
 /// A build without `mongodb` writes no filter and no update.
-#[cfg(not(feature = "mongodb"))]
+#[cfg(all(feature = "bson", not(feature = "mongodb")))]
 fn query_items() -> TokenStream {
     TokenStream::new()
 }
@@ -4041,7 +4304,7 @@ fn taken_items() -> TokenStream {
 
         /// The keys among `keys` whose entries serde takes when it reads a type flattened there
         /// through `read`.
-        fn taken_keys<'asked, 'key, T, R, K>(read: R, asked: &'asked Asked, mut keys: K) -> ::std::vec::Vec<&'key str>
+        pub fn taken_keys<'asked, 'key, T, R, K>(read: R, asked: &'asked Asked, mut keys: K) -> ::std::vec::Vec<&'key str>
         where
             R: ::core::ops::FnOnce(TakenProbe<'asked>) -> ::core::result::Result<T, serde::de::value::Error>,
             K: ::core::iter::Iterator<Item = &'key ::std::string::String>,
@@ -4105,15 +4368,15 @@ fn type_arguments(arguments: &PathArguments) -> impl Iterator<Item = &Type> {
         })
 }
 
-/// The `impl`s holding `methods`, which lists what each generated source adds, and `paths`, the
-/// type's typed paths. A type with a type parameter gets one `impl` per source, under the bounds
-/// that source reads and writes a value with, and one for its paths, under the bound a path
-/// writes a value with. Every other type gets one `impl` for them all.
+/// The `impl`s holding `methods`, which lists what each of the type's `sources` adds, and
+/// `paths`, the type's typed paths. A type with a type parameter gets one `impl` per source, under
+/// the bounds that source reads and writes a value with, and one for its paths, under the bound a
+/// path writes a value with. Every other type gets one `impl` for them all.
 fn type_impls(
     name: &Ident,
     generics: &Generics,
     read_predicates: &[WherePredicate],
-    methods: &[TokenStream],
+    (sources, methods): (&[Source], &[TokenStream]),
     paths: &TokenStream,
 ) -> TokenStream {
     if type_parameters_in_scope(generics).is_empty() {
@@ -4125,18 +4388,15 @@ fn type_impls(
             }
         };
     }
-    let impls = Source::GENERATED
-        .iter()
-        .zip(methods)
-        .map(|(source, of_source)| {
-            let bounded = read_under(&source.bounded(generics), read_predicates);
-            let (impl_generics, type_generics, where_clause) = bounded.split_for_impl();
-            quote! {
-                impl #impl_generics #name #type_generics #where_clause {
-                    #of_source
-                }
+    let impls = sources.iter().zip(methods).map(|(source, of_source)| {
+        let bounded = read_under(&source.bounded(generics), read_predicates);
+        let (impl_generics, type_generics, where_clause) = bounded.split_for_impl();
+        quote! {
+            impl #impl_generics #name #type_generics #where_clause {
+                #of_source
             }
-        });
+        }
+    });
     let of_paths = (!paths.is_empty()).then(|| {
         let bounded = bounded_by(generics, &parse_quote!(::serde::Serialize));
         let (impl_generics, type_generics, where_clause) = bounded.split_for_impl();

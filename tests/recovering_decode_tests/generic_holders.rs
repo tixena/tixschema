@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 use tixschema::model_schema;
 
 /// A checked model with a type parameter.
-#[model_schema(decode_with, default_types(CodeType = String), check = ["withinTote"])]
+#[model_schema(enable = ["decode_with"], default_types(CodeType = String), check = ["withinTote"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(bound(deserialize = "CodeType: serde::de::DeserializeOwned"))]
@@ -22,7 +22,7 @@ struct Tote<CodeType: Display> {
 }
 
 /// Holds a tote under its own type parameter, itself, in a map and in an `Option`.
-#[model_schema(decode_with, default_types(CodeType = String))]
+#[model_schema(enable = ["decode_with"], default_types(CodeType = String))]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(bound(deserialize = "CodeType: serde::de::DeserializeOwned"))]
 struct Truck<CodeType: Display> {
@@ -34,14 +34,14 @@ struct Truck<CodeType: Display> {
 }
 
 /// Holds a tote with a concrete filling.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct Van {
     load: Tote<String>,
 }
 
 /// A recursive checked type.
-#[model_schema(decode_with, check = ["withinCarton"])]
+#[model_schema(enable = ["decode_with"], check = ["withinCarton"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Carton {
@@ -52,7 +52,7 @@ struct Carton {
 
 /// A model with a parameter whose member carries a bound, which the walk lists.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-#[model_schema(decode_with, default_types(CodeType = String))]
+#[model_schema(enable = ["decode_with"], default_types(CodeType = String))]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(bound(deserialize = "CodeType: serde::de::DeserializeOwned"))]
 struct SealedTote<CodeType: Display> {
@@ -63,7 +63,7 @@ struct SealedTote<CodeType: Display> {
 }
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-#[model_schema(decode_with, default_types(CodeType = String))]
+#[model_schema(enable = ["decode_with"], default_types(CodeType = String))]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(bound(deserialize = "CodeType: serde::de::DeserializeOwned"))]
 struct SealedTruck<CodeType: Display> {

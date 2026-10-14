@@ -1204,7 +1204,7 @@ impl Own<'_> {
                     /// `$regex` with `$options`: rows whose text at this path matches `pattern`.
                     #[must_use]
                     pub fn regex(&self, pattern: &str, options: &str) -> self::Filter<#root> {
-                        self::Field::<#root, ::std::string::String, ::std::string::String>::plain(self.whole.path)
+                        self::Field::<#root, ::std::string::String, ::std::string::String>::plain(self.whole.held_path())
                             .regex(pattern, options)
                     }
                 }

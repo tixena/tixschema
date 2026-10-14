@@ -63,7 +63,7 @@ macro_rules! tried {
 }
 
 /// A plain enum: serde writes the variant's name.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum Status {
     Draft,
@@ -71,7 +71,7 @@ enum Status {
 }
 
 /// Externally tagged: `"Empty"`, `{"Label": "x"}`, `{"Circle": {"radius": 1.0}}`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum Outline {
     Circle { radius: f64 },
@@ -80,7 +80,7 @@ enum Outline {
 }
 
 /// Internally tagged: `{"kind": "Solid", "color": "red"}`, `{"kind": "Versioned", "number": 3}`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Fill {
@@ -90,7 +90,7 @@ enum Fill {
 }
 
 /// Adjacently tagged: `{"kind": "Dashed", "data": {"gap": 2}}`, `{"kind": "Hairline"}`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "data")]
 enum Stroke {
@@ -100,7 +100,7 @@ enum Stroke {
 }
 
 /// One enum of each tagged form.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Drawing {
     fill: Fill,
@@ -109,7 +109,7 @@ struct Drawing {
 }
 
 /// Untagged, with a member whose own check takes its variant out. Only a schema surface hangs it.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Contact {
@@ -125,7 +125,7 @@ enum Contact {
 }
 
 /// Untagged, over plain values: text, or a list of numbers.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Token {
@@ -134,7 +134,7 @@ enum Token {
 }
 
 /// A variant holding two values, and one holding a list of model types.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum Move {
     Stay,
@@ -143,7 +143,7 @@ enum Move {
 }
 
 /// An adjacently tagged enum whose variants hold an optional value and two values.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "data")]
 enum Gauge {
@@ -152,7 +152,7 @@ enum Gauge {
     Span(u32, u32),
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Route {
     contact: Contact,
@@ -162,13 +162,13 @@ struct Route {
 }
 
 /// A brand over a plain enum: serde writes it as the variant's name.
-#[model_schema(decode_with, no_display)]
+#[model_schema(enable = ["decode_with"], no_display)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 struct StatusRef(Status);
 
 /// A brand over a plain enum, under a key.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Review {
     status: StatusRef,
@@ -176,7 +176,7 @@ struct Review {
 
 /// Every renaming serde reads off an enum: of its variants, of one variant, of every variant's
 /// fields, and of one variant's fields.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(
     tag = "type",
@@ -196,7 +196,7 @@ enum Shipment {
 }
 
 /// The same renamings on an externally tagged enum.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 enum Pace {
@@ -208,7 +208,7 @@ enum Pace {
 }
 
 /// A tag naming no variant that serde reads all the same, as the variant marked `other`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Signal {
@@ -220,7 +220,7 @@ enum Signal {
 }
 
 /// An internally tagged enum under `rename_all`, held in a list.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 enum Shape {
@@ -228,21 +228,21 @@ enum Shape {
     Point,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Canvas {
     shapes: Vec<Shape>,
 }
 
 /// A generic enum under each walker that reads the whole value: a `T` is read whole where it sits.
-#[model_schema(decode_with, default_types(T = String))]
+#[model_schema(enable = ["decode_with"], default_types(T = String))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum Answer<T> {
     Empty,
     Value(T),
 }
 
-#[model_schema(decode_with, default_types(T = String))]
+#[model_schema(enable = ["decode_with"], default_types(T = String))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Reply<T> {
@@ -250,7 +250,7 @@ enum Reply<T> {
     Sent { body: T },
 }
 
-#[model_schema(decode_with, default_types(T = String))]
+#[model_schema(enable = ["decode_with"], default_types(T = String))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Either<T> {
@@ -259,7 +259,7 @@ enum Either<T> {
 }
 
 /// Internally tagged, with a variant serde also reads under an alias and one it never reads.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Coating {
@@ -273,7 +273,7 @@ enum Coating {
 }
 
 /// Externally tagged, each variant also read under an alias.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum Contour {
     #[serde(alias = "Round")]
@@ -284,7 +284,7 @@ enum Contour {
 
 /// Externally tagged: a variant under two aliases, one whose field has an alias of its own, one
 /// serde neither writes nor reads, and one it reads and never writes.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum Trail {
     #[serde(alias = "Hop", alias = "Leap")]
@@ -301,7 +301,7 @@ enum Trail {
 }
 
 /// Adjacently tagged, with a variant serde also reads under two aliases and one it never reads.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "data")]
 enum Dash {
@@ -315,7 +315,7 @@ enum Dash {
 }
 
 /// Untagged, with a variant serde never reads.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Reach {

@@ -8,7 +8,7 @@ use bson::{Bson, Document, doc};
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-#[model_schema(decode_with, check = ["withinParcel"])]
+#[model_schema(enable = ["decode_with", "mongodb"], check = ["withinParcel"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CheckedParcel {
@@ -19,14 +19,14 @@ struct CheckedParcel {
     label: String,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct CheckedManifest {
     parcel: CheckedParcel,
 }
 
 /// A parcel held in a list, in an `Option` and in a map.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CheckedDepot {
@@ -38,7 +38,7 @@ struct CheckedDepot {
     spare_parcel: Option<CheckedParcel>,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all_fields = "camelCase")]
 enum CheckedExternal {
@@ -49,7 +49,7 @@ enum CheckedExternal {
     },
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all_fields = "camelCase")]
 enum CheckedInternal {
@@ -59,7 +59,7 @@ enum CheckedInternal {
     },
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "detail", rename_all_fields = "camelCase")]
 enum CheckedAdjacent {
@@ -70,7 +70,7 @@ enum CheckedAdjacent {
     },
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged, rename_all_fields = "camelCase")]
 enum CheckedUntagged {

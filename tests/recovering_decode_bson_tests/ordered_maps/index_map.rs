@@ -9,7 +9,7 @@ use tixschema::model_schema;
 use super::super::written;
 use ranking_schema::{Expected, Issue, Resolution};
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct Tracked {
     number: i32,
@@ -20,7 +20,7 @@ type RankedScores = IndexMap<String, i32>;
 
 /// Model types and plain values in an `IndexMap`, one behind an alias seen above, and plain
 /// values in an `IndexSet`.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Ranking {

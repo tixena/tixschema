@@ -11,7 +11,7 @@ use tixschema::model_schema;
 use super::lines;
 
 /// A JSON object held as `serde_json`'s own map, under its full path and under its last name.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Dossier {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -24,7 +24,7 @@ struct Dossier {
 type RawObject = serde_json::Map<String, serde_json::Value>;
 
 /// The same map behind an alias seen above.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct AliasedDossier {
     raw: RawObject,

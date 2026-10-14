@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 /// A checked model with a type parameter.
-#[model_schema(decode_with, default_types(CodeType = String), check = ["withinTote"])]
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(CodeType = String), check = ["withinTote"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(bound(deserialize = "CodeType: serde::de::DeserializeOwned"))]
@@ -21,7 +21,7 @@ struct Tote<CodeType: Display> {
 }
 
 /// Holds a tote under its own type parameter.
-#[model_schema(decode_with, default_types(CodeType = String))]
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(CodeType = String))]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(bound(deserialize = "CodeType: serde::de::DeserializeOwned"))]
 struct Truck<CodeType: Display> {
@@ -29,14 +29,14 @@ struct Truck<CodeType: Display> {
 }
 
 /// Holds a tote with a concrete filling.
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct Van {
     load: Tote<String>,
 }
 
 /// A recursive checked type.
-#[model_schema(decode_with, check = ["withinCarton"])]
+#[model_schema(enable = ["decode_with", "mongodb"], check = ["withinCarton"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Carton {

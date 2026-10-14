@@ -10,7 +10,7 @@ use tixschema::model_schema;
 
 use invoice_schema::{Expected, Issue, Path, Resolution, Segment};
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Customer {
@@ -19,7 +19,7 @@ struct Customer {
     open_invoices: u32,
 }
 
-#[model_schema(decode_with)]
+#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Invoice {
     customer: Customer,

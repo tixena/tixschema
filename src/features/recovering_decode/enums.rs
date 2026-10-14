@@ -684,8 +684,9 @@ impl EnumWalker<'_> {
 }
 
 /// The recovering decode of an enum, read off the item as it is emitted, so a read hook tixschema
-/// hangs on a variant's field is one the walker reads through.
-pub fn enum_recovering_decode(item_enum: &ItemEnum) -> RecoveringDecode {
+/// hangs on a variant's field is one the walker reads through. `mongodb` says whether the enum
+/// lists "mongodb" in `enable`.
+pub fn enum_recovering_decode(item_enum: &ItemEnum, mongodb: bool) -> RecoveringDecode {
     let module_name = ident_schema_module_name(&item_enum.ident.to_string());
     let parameters = type_parameters_in_scope(&item_enum.generics);
     let mut reach = Reach::new(&module_name);
@@ -699,7 +700,11 @@ pub fn enum_recovering_decode(item_enum: &ItemEnum) -> RecoveringDecode {
             .into_iter()
             .partition(|variant| variant.never_read);
     let names = written_names(item_enum.to_token_stream());
-    let paths = enum_paths(item_enum, &names);
+    let paths = if mongodb {
+        enum_paths(item_enum, &names)
+    } else {
+        TypedPaths::default()
+    };
     added_to(
         &item_enum.ident,
         &item_enum.generics,
@@ -707,6 +712,7 @@ pub fn enum_recovering_decode(item_enum: &ItemEnum) -> RecoveringDecode {
         &parameters,
         &Written {
             check_messages: enum_check_messages(item_enum, &module_name, &parameters),
+            mongodb,
             names,
             reach: &reach,
             read: listed_read(&DeriveInput::from(item_enum.clone())),
