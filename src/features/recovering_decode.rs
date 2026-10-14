@@ -1,5 +1,5 @@
-//! The recovering decode `#[model_schema(enable = ["decode_with"])]` turns on, and the BSON
-//! decode and the MongoDB layer `"mongodb"` adds to it.
+//! The recovering decode `#[model_schema(enable = ["decode_with"])]` turns on, from JSON and, under
+//! `bson`, from BSON, and the MongoDB layer `"mongodb"` adds to it.
 
 mod aliases;
 mod checks;
@@ -41,8 +41,6 @@ use crate::field_type::{
 };
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use crate::model_schema::judged_read::bounded_listed_read;
-#[cfg(feature = "bson")]
-use crate::model_schema::judged_read::naming_the_type;
 use crate::model_schema::judged_read::{listed_read, listed_reader};
 use crate::model_schema::preprocess;
 use crate::model_schema::{helper_name_stem, recovering_bound_check};
@@ -133,8 +131,8 @@ const REEXPORT_REASON: &str = "tixschema re-exports the crate's support library 
                                module by name, so every `{type}_schema::Name` path stays \
                                reachable from this crate and from another";
 
-/// Every name the `decode_with` library makes public, each of which a `{type}_schema` module
-/// re-exports by name.
+/// Every name the `decode_with` library makes public in this build, each of which a `{type}_schema`
+/// module re-exports by name.
 const DECODE_WITH_LIBRARY_NAMES: &[&str] = &[
     "Asked",
     "Expected",
@@ -149,8 +147,16 @@ const DECODE_WITH_LIBRARY_NAMES: &[&str] = &[
     "TakenProbe",
     "Unrecovered",
     "Verdict",
+    #[cfg(feature = "bson")]
+    "bson_bound",
+    #[cfg(feature = "bson")]
+    "bson_leaf",
+    #[cfg(feature = "bson")]
+    "bson_remaining",
     "issue_from_parts",
     "reads_an_option",
+    #[cfg(feature = "bson")]
+    "same_bracket",
     "taken_keys",
     "unsettled",
     "value_bound",
@@ -159,55 +165,32 @@ const DECODE_WITH_LIBRARY_NAMES: &[&str] = &[
 ];
 
 /// The crate-root module `mongodb_foundation!()` writes.
-#[cfg(feature = "bson")]
+#[cfg(feature = "mongodb")]
 const MONGODB_LIBRARY: &str = "__tixschema_mongodb";
 
-/// Every name the BSON and MongoDB library makes public in this build, each of which the
-/// `{type}_schema` module of a type that lists "mongodb" re-exports by name.
-#[cfg(feature = "bson")]
+/// Every name the MongoDB library makes public, each of which the `{type}_schema` module of a type
+/// that lists "mongodb" re-exports by name.
+#[cfg(feature = "mongodb")]
 const MONGODB_LIBRARY_NAMES: &[&str] = &[
-    #[cfg(feature = "mongodb")]
     "ArmFilter",
-    #[cfg(feature = "mongodb")]
     "ArmUpdate",
-    #[cfg(feature = "mongodb")]
     "AsFilter",
-    #[cfg(feature = "mongodb")]
     "AsUpdate",
-    #[cfg(feature = "mongodb")]
     "Element",
-    #[cfg(feature = "mongodb")]
     "Field",
-    #[cfg(feature = "mongodb")]
     "Filter",
-    #[cfg(feature = "mongodb")]
     "ListField",
-    #[cfg(feature = "mongodb")]
     "Model",
-    #[cfg(feature = "mongodb")]
     "ModelList",
-    #[cfg(feature = "mongodb")]
     "MongoPath",
-    #[cfg(feature = "mongodb")]
     "Nested",
-    #[cfg(feature = "mongodb")]
     "Nests",
-    #[cfg(feature = "mongodb")]
     "OperationError",
-    #[cfg(feature = "mongodb")]
     "OptionalField",
-    #[cfg(feature = "mongodb")]
     "OptionalModel",
-    #[cfg(feature = "mongodb")]
     "Read",
-    #[cfg(feature = "mongodb")]
     "Update",
-    #[cfg(feature = "mongodb")]
     "WriteError",
-    "bson_bound",
-    "bson_leaf",
-    "bson_remaining",
-    "same_bracket",
 ];
 
 /// One arm reading a value that is there: the pattern it is held under, and what is listed for it.
@@ -621,37 +604,6 @@ impl<'item> Shape<'item> {
             }
         }
     }
-
-    /// Adds to `reached` each type whose own walker the walk of this shape calls: through
-    /// `Option`, the lists, a map's values, a tuple's positions and the transparent wrappers, and
-    /// each flattened type.
-    fn reached_models(&self, reached: &mut Vec<&'item Type>) {
-        match self {
-            Self::Fields(keyed) => {
-                for walk in keyed.fields.iter().filter_map(|field| field.walk.as_ref()) {
-                    walk.reached_models(reached);
-                }
-                for flattened in &keyed.flattened {
-                    match flattened {
-                        Flattened::Entries(walk) | Flattened::Whole(walk) => {
-                            walk.reached_models(reached);
-                        }
-                        Flattened::Model(model) | Flattened::Optional(model, _) => {
-                            reached.push(model);
-                        }
-                        Flattened::Unwalked(_) => {}
-                    }
-                }
-            }
-            Self::Held(walk) => walk.reached_models(reached),
-            Self::Nothing => {}
-            Self::Slots(slots) => {
-                for slot in slots {
-                    slot.walk.reached_models(reached);
-                }
-            }
-        }
-    }
 }
 
 /// One position of a tuple as its walker reads it.
@@ -705,13 +657,22 @@ impl Source {
         }
     }
 
-    /// The entry point and the report it runs. `written` holds every name the type's item
+    /// The entry point and the report it runs. `written.names` holds every name the type's item
     /// writes, none of which a method's own type parameter takes.
-    fn entry_methods(self, module: &Ident, written: &[String], corrects_own: bool) -> TokenStream {
+    fn entry_methods(
+        self,
+        module: &Ident,
+        written: &Written<'_>,
+        corrects_own: bool,
+    ) -> TokenStream {
         match self {
             #[cfg(feature = "bson")]
-            Self::Bson => bson_entry_methods(module, written, corrects_own),
-            Self::Json => entry_methods(module, &unclaimed_parameter("F", written), corrects_own),
+            Self::Bson => bson_entry_methods(module, &written.names, corrects_own, written.mongodb),
+            Self::Json => entry_methods(
+                module,
+                &unclaimed_parameter("F", &written.names),
+                corrects_own,
+            ),
         }
     }
 
@@ -806,13 +767,9 @@ impl Source {
         self.object_from(&quote! { #object.clone() })
     }
 
-    /// The sources a type's walkers read: JSON, and BSON where the type lists "mongodb".
-    const fn read_by(mongodb: bool) -> &'static [Self] {
-        if mongodb {
-            Self::GENERATED
-        } else {
-            &[Self::Json]
-        }
+    /// The sources a type's walkers read: every source this build generates.
+    const fn read_by() -> &'static [Self] {
+        Self::GENERATED
     }
 
     /// The function answering what remains of an object once serde has read a type flattened
@@ -919,26 +876,10 @@ struct Walk<'ty> {
     ty: &'ty Type,
 }
 
-impl<'ty> Walk<'ty> {
+impl Walk<'_> {
     /// A value of a parameter's type, which is one value whatever holds it.
     const fn is_of_a_parameter(&self) -> bool {
         matches!(&self.step, Step::Leaf(whole) if whole.parameterized)
-    }
-
-    /// [`Shape::reached_models`] of one value.
-    fn reached_models(&self, reached: &mut Vec<&'ty Type>) {
-        match &self.step {
-            Step::Entries(inner) | Step::Items(inner) | Step::Present(inner) => {
-                inner.reached_models(reached);
-            }
-            Step::Leaf(_) => {}
-            Step::Model => reached.push(self.ty),
-            Step::Positions(slots) => {
-                for slot in slots {
-                    slot.walk.reached_models(reached);
-                }
-            }
-        }
     }
 
     const fn reads_whole(&self) -> bool {
@@ -984,10 +925,8 @@ struct Whole {
 struct Written<'reach> {
     /// `decode_with_check_messages`, written from the checks the item and its members name.
     check_messages: TokenStream,
-    /// What refuses a type the item's BSON walk reaches that does not list "mongodb", written
-    /// beside the item.
-    held_probes: TokenStream,
-    /// The item lists "mongodb" in `enable`: it is read from BSON, and stored.
+    /// The item lists "mongodb" in `enable`: it is stored, and gets the MongoDB layer under
+    /// `mongodb`.
     mongodb: bool,
     names: Vec<String>,
     reach: &'reach Reach,
@@ -2363,8 +2302,6 @@ fn listed_from(item_struct: &ItemStruct, read: TokenStream, mongodb: bool) -> Re
     } else {
         TypedPaths::default()
     };
-    let mut reached = Vec::new();
-    shape.reached_models(&mut reached);
     added_to(
         &item_struct.ident,
         &item_struct.generics,
@@ -2372,7 +2309,6 @@ fn listed_from(item_struct: &ItemStruct, read: TokenStream, mongodb: bool) -> Re
         &parameters,
         &Written {
             check_messages: checks::struct_check_messages(item_struct, &module_name, &parameters),
-            held_probes: held_probes(&item_struct.ident, &reached, &parameters, mongodb),
             mongodb,
             names,
             reach: &reach,
@@ -2432,7 +2368,7 @@ where
     let issue_parameter = unclaimed_parameter("I", &written.names);
     let own_functions = preprocess::named().own;
     let corrects_own = !own_functions.is_empty();
-    let sources = Source::read_by(written.mongodb);
+    let sources = Source::read_by();
     let of_sources: Vec<TokenStream> = sources
         .iter()
         .enumerate()
@@ -2445,7 +2381,7 @@ where
                 parameters,
                 source,
             };
-            let entry = source.entry_methods(&module, &written.names, corrects_own);
+            let entry = source.entry_methods(&module, written, corrects_own);
             let walk_methods = methods(&walker);
             let corrected = corrects_own.then(|| walker.corrected_entries(&own_functions));
             // Every source reads through it, and the first one's bounds are the fewest.
@@ -2476,133 +2412,18 @@ where
     items.extend(written.reach.module_items());
     type_impl.extend(paths.beside.clone());
     type_impl.extend(written.reach.guards());
-    let mut probes = foundation_probes(written.mongodb);
-    probes.extend(written.held_probes.clone());
     RecoveringDecode {
-        check_messages: checks::type_impl(
-            name,
-            generics,
-            &module,
-            &[
-                written.check_messages.clone(),
-                mongo_marker(written.mongodb),
-            ],
-            written.mongodb,
-        ),
-        probes,
+        check_messages: checks::type_impl(name, generics, &module, &written.check_messages),
+        probes: foundation_probes(written.mongodb),
         schema_module: placed_in_schema_module(&module, &items),
         type_impl,
     }
 }
 
-/// `mongo_listed`, the marker a holder that lists "mongodb" asks each type its BSON walk reaches
-/// for: `()` where the type lists "mongodb", `PhantomData<()>` where it lists `"decode_with"`
-/// alone.
-#[cfg(feature = "bson")]
-fn mongo_marker(mongodb: bool) -> TokenStream {
-    if mongodb {
-        quote! {
-            /// Whether this type lists "mongodb" in `enable`: it does.
-            pub const fn mongo_listed(&self) {}
-        }
-    } else {
-        quote! {
-            /// Whether this type lists "mongodb" in `enable`: it does not.
-            pub const fn mongo_listed(&self) -> ::core::marker::PhantomData<()> {
-                ::core::marker::PhantomData
-            }
-        }
-    }
-}
-
-/// A build without `bson` reads no BSON value, so no holder asks.
-#[cfg(not(feature = "bson"))]
-fn mongo_marker(_mongodb: bool) -> TokenStream {
-    TokenStream::new()
-}
-
-/// What refuses, beside `holder`, each type of `reached` that does not list "mongodb": the types
-/// the BSON walk of a holder that lists it calls a walker of. A leaf is never reached, and a type
-/// that names one of the holder's `parameters` or the holder itself is not probed. A type with no
-/// marker answers the fallback's `()`: it is read whole, as before.
-#[cfg(feature = "bson")]
-fn held_probes(
-    holder: &Ident,
-    reached: &[&Type],
-    parameters: &[String],
-    mongodb: bool,
-) -> TokenStream {
-    if !mongodb {
-        return TokenStream::new();
-    }
-    let mut seen: Vec<String> = Vec::new();
-    let mut probes = TokenStream::new();
-    for &held in reached {
-        let Type::Path(named) = written_type(held) else {
-            continue;
-        };
-        let (Some(first), Some(last)) = (named.path.segments.first(), named.path.segments.last())
-        else {
-            continue;
-        };
-        // A holder with no parameter is the one type its `Self` names.
-        let asked = naming_the_type(held.to_token_stream(), &quote! { #holder });
-        let written = asked.to_string();
-        if first.ident == "Self"
-            || (named.path.segments.len() == 1 && last.ident == *holder)
-            || names_a_parameter(held, parameters)
-            || seen.contains(&written)
-        {
-            continue;
-        }
-        seen.push(written);
-        let field_type = last.ident.unraw().to_string();
-        let message = format!(
-            "tixschema: `{holder}` lists \"mongodb\" in `enable`, but its field type \
-             `{field_type}` does not"
-        );
-        let label = format!(
-            "`{holder}` reads and writes `{field_type}` in MongoDB, so `{field_type}` needs the \
-             MongoDB code too"
-        );
-        let note = format!(
-            "Fix: add \"mongodb\" to the `enable` list of `#[model_schema]` on `{field_type}`, so \
-             it reads `enable = [\"decode_with\", \"mongodb\"]`."
-        );
-        probes.extend(quote! {
-            const _: () = {
-                #[diagnostic::on_unimplemented(message = #message, label = #label, note = #note)]
-                trait Enabled {}
-                impl Enabled for () {}
-                trait Fallback {
-                    fn mongo_listed(&self) {}
-                }
-                impl<T: ?::core::marker::Sized> Fallback for T {}
-                fn need<T: Enabled>(_: T) {}
-                fn probe(held: &#asked) {
-                    need(held.mongo_listed());
-                }
-                let _ = probe;
-            };
-        });
-    }
-    probes
-}
-
-/// A build without `bson` reads no BSON value, so nothing is probed.
-#[cfg(not(feature = "bson"))]
-fn held_probes(
-    _holder: &Ident,
-    _reached: &[&Type],
-    _parameters: &[String],
-    _mongodb: bool,
-) -> TokenStream {
-    TokenStream::new()
-}
-
 /// What a `{type}_schema` module holds of its crate's support libraries: every name each one makes
 /// public, written out, so each shadows a name the module's `use super::*` reads, as an item the
-/// module declares does. The BSON and MongoDB library is held where the type lists "mongodb".
+/// module declares does. The MongoDB library is held where the type lists "mongodb", under
+/// `mongodb`.
 fn library_reexport(mongodb: bool) -> TokenStream {
     let mut reexport = reexported(DECODE_WITH_LIBRARY, DECODE_WITH_LIBRARY_NAMES);
     if mongodb {
@@ -2622,21 +2443,21 @@ fn reexported(library: &str, names: &[&str]) -> TokenStream {
     }
 }
 
-/// The BSON and MongoDB library, re-exported by name.
-#[cfg(feature = "bson")]
+/// The MongoDB library, re-exported by name.
+#[cfg(feature = "mongodb")]
 fn mongodb_reexport() -> TokenStream {
     reexported(MONGODB_LIBRARY, MONGODB_LIBRARY_NAMES)
 }
 
-/// A build without `bson` writes no BSON and MongoDB library.
-#[cfg(not(feature = "bson"))]
+/// A build without `mongodb` writes no MongoDB library.
+#[cfg(not(feature = "mongodb"))]
 fn mongodb_reexport() -> TokenStream {
     TokenStream::new()
 }
 
 /// What refuses a crate that holds this type and has not written the support libraries it
-/// re-exports: the `decode_with` one always, and the BSON and MongoDB one where the type lists
-/// "mongodb", under `bson`.
+/// re-exports: the `decode_with` one always, and the MongoDB one where the type lists "mongodb",
+/// under `mongodb`.
 fn foundation_probes(mongodb: bool) -> TokenStream {
     let mut probes = foundation_probe(
         "__tixschema_decode_with_foundation",
@@ -2654,8 +2475,8 @@ fn foundation_probes(mongodb: bool) -> TokenStream {
     probes
 }
 
-/// The probe of the BSON and MongoDB library.
-#[cfg(feature = "bson")]
+/// The probe of the MongoDB library.
+#[cfg(feature = "mongodb")]
 fn mongodb_foundation_probe() -> TokenStream {
     foundation_probe(
         "__tixschema_mongodb_foundation",
@@ -2669,8 +2490,8 @@ fn mongodb_foundation_probe() -> TokenStream {
     )
 }
 
-/// A build without `bson` writes no BSON and MongoDB library, so nothing asks for it.
-#[cfg(not(feature = "bson"))]
+/// A build without `mongodb` writes no MongoDB library, so nothing asks for it.
+#[cfg(not(feature = "mongodb"))]
 fn mongodb_foundation_probe() -> TokenStream {
     TokenStream::new()
 }
@@ -2721,10 +2542,10 @@ pub fn decode_with_foundation() -> TokenStream {
     }
 }
 
-/// What `mongodb_foundation!()` writes at a crate root: the BSON and MongoDB library in its
-/// module, which reads the `decode_with` library's names and is kept out of the consumer's
-/// documentation, and the marker its probe finds.
-#[cfg(feature = "bson")]
+/// What `mongodb_foundation!()` writes at a crate root: the MongoDB library in its module, which
+/// reads the `decode_with` library's names and is kept out of the consumer's documentation, and
+/// the marker its probe finds.
+#[cfg(feature = "mongodb")]
 pub fn mongodb_foundation() -> TokenStream {
     let (first, library) = (
         Ident::new(DECODE_WITH_LIBRARY, Span::call_site()),
@@ -2747,48 +2568,62 @@ pub fn mongodb_foundation() -> TokenStream {
     }
 }
 
-/// A build without `bson` has no BSON and MongoDB library, so the call writes nothing and stays
-/// in a crate whatever it builds with.
-#[cfg(not(feature = "bson"))]
+/// A build without `mongodb` has no MongoDB library, so the call writes nothing and stays in a
+/// crate whatever it builds with.
+#[cfg(not(feature = "mongodb"))]
 pub fn mongodb_foundation() -> TokenStream {
     TokenStream::new()
 }
 
-/// The `decode_with` library: what a callback and a resolver work with, and what one type's walker
-/// hands another's with. It names no `bson` path.
+/// The `decode_with` library: what a callback and a resolver work with, what one type's walker
+/// hands another's with, and under `bson` what reads a BSON value. Without `bson` it names no
+/// `bson` path.
 fn decode_with_library() -> TokenStream {
     let path = path_items();
     let callback = callback_items();
     let handoff = handoff_items();
     let taken = taken_items();
     let bound = bound_items();
+    let bson = bson_library_items();
     quote! {
         #path
         #callback
         #handoff
         #taken
         #bound
+        #bson
     }
 }
 
-/// The BSON and MongoDB library under `bson`: what reads a BSON value, the BSON helpers of `Path`,
-/// and under `mongodb` the query types and what the operations answer.
+/// What reads a BSON value: `bson_bound`, `bson_leaf` and its helpers, and the BSON helpers of
+/// `Path`.
 #[cfg(feature = "bson")]
-fn mongodb_library() -> TokenStream {
-    let first = Ident::new(DECODE_WITH_LIBRARY, Span::call_site());
+fn bson_library_items() -> TokenStream {
     let bound = bson_bound_items();
     let leaf = bson_leaf_items();
     let path = bson_path_helpers();
-    let query = query_items();
-    let operation = operation_items();
     quote! {
         #bound
         #leaf
 
-        impl crate::#first::Path {
+        impl Path {
             #path
         }
+    }
+}
 
+/// A build without `bson` reads no BSON value.
+#[cfg(not(feature = "bson"))]
+fn bson_library_items() -> TokenStream {
+    TokenStream::new()
+}
+
+/// The MongoDB library under `mongodb`: the query types and what the operations answer.
+#[cfg(feature = "mongodb")]
+fn mongodb_library() -> TokenStream {
+    let query = query_items();
+    let operation = operation_items();
+    quote! {
         #query
         #operation
     }
@@ -3138,11 +2973,17 @@ fn bson_bound_items() -> TokenStream {
 /// `bson::Deserializer::new`, which both major versions of the `bson` library have, and which
 /// takes what it reads by value: the document is held as the `bson::Bson` the walker borrows, and
 /// copied once per read by serde. Both entry points open with the same read and close with the
-/// same one. Under `mongodb` the operations that read a stored row through them sit beside them.
+/// same one. Under `mongodb` the operations that read a stored row through them sit beside them,
+/// on a type that lists "mongodb".
 #[cfg(feature = "bson")]
-fn bson_entry_methods(module: &Ident, written: &[String], corrects_own: bool) -> TokenStream {
+fn bson_entry_methods(
+    module: &Ident,
+    written: &[String],
+    corrects_own: bool,
+    mongodb: bool,
+) -> TokenStream {
     let decider = unclaimed_parameter("F", written);
-    let operations = operation_methods(module, written);
+    let operations = mongodb.then(|| operation_methods(module, written));
     let (own_read, walked) = (
         own_read(corrects_own),
         own_walker(Source::Bson, corrects_own),
@@ -3597,6 +3438,7 @@ fn entry_methods(module: &Ident, decider: &Ident, corrects_own: bool) -> TokenSt
 /// walker lists nothing and returns no key, and the read carries serde's refusal. This builds:
 ///
 /// ```rust
+/// # extern crate bson2 as bson;
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
@@ -3622,6 +3464,7 @@ fn entry_methods(module: &Ident, decider: &Ident, corrects_own: bool) -> TokenSt
 /// The run below is that one with the flag taken off `Audit`, and nothing else changed:
 ///
 /// ```rust,compile_fail
+/// # extern crate bson2 as bson;
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
@@ -3674,8 +3517,8 @@ fn entry_methods(module: &Ident, decider: &Ident, corrects_own: bool) -> TokenSt
 /// error: could not compile `tixschema` (test "zz_probe") due to 2 previous errors
 /// ```
 ///
-/// Where `Note` lists `"mongodb"` too, under `bson`, it earns each a second time, naming
-/// `decode_with_bson_named` and `decode_with_bson_fields`.
+/// A build with `bson` on earns each a second time, naming `decode_with_bson_named` and
+/// `decode_with_bson_fields`.
 fn flattened_walker_call(
     source: Source,
     model: &Type,
@@ -3973,6 +3816,7 @@ fn member_walk<'item>(
 /// Every type a flagged type's fields reach carries the flag too. This builds:
 ///
 /// ```rust
+/// # extern crate bson2 as bson;
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
@@ -3996,6 +3840,7 @@ fn member_walk<'item>(
 /// The run below is that one with the flag taken off `Version`, and nothing else changed:
 ///
 /// ```rust,compile_fail
+/// # extern crate bson2 as bson;
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
@@ -4034,14 +3879,14 @@ fn member_walk<'item>(
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
 ///
-/// Where `Record` lists `"mongodb"` too, under `bson`, it earns the same error a second time,
-/// naming `decode_with_bson_issues`.
+/// A build with `bson` on earns the same error a second time, naming `decode_with_bson_issues`.
 ///
 /// An alias is the type it stands for. A field typed with an alias of a flagged model type calls
 /// that type's walker. One typed with an alias of a list or a map that `#[model_schema]` was
 /// written on above is walked as the list or the map (see `aliases`), so this builds:
 ///
 /// ```rust
+/// # extern crate bson2 as bson;
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
@@ -4128,12 +3973,6 @@ fn operation_items() -> TokenStream {
     let mut items = operations::error_items();
     items.extend(operations::read_items());
     items
-}
-
-/// A build without `mongodb` writes no operation, so nothing for one to fail with.
-#[cfg(all(feature = "bson", not(feature = "mongodb")))]
-fn operation_items() -> TokenStream {
-    TokenStream::new()
 }
 
 /// The operations on the type. Each takes its filter and its update as a type parameter of its
@@ -4352,12 +4191,6 @@ fn plain_value<'ty>(ty: &'ty Type, parameters: &[String]) -> Walk<'ty> {
 #[cfg(feature = "mongodb")]
 fn query_items() -> TokenStream {
     query::query_items()
-}
-
-/// A build without `mongodb` writes no filter and no update.
-#[cfg(all(feature = "bson", not(feature = "mongodb")))]
-fn query_items() -> TokenStream {
-    TokenStream::new()
 }
 
 /// Whether serde reads a value walked this way from the entries of an object it is flattened in.

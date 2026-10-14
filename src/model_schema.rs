@@ -724,10 +724,10 @@ struct DecodeWithParts {
 /// What an `enable = [...]` list turns on for a type.
 #[derive(Clone, Copy, Default)]
 pub struct Enabled {
-    /// `"decode_with"`: `from_value_with`, `from_value_piped` and their walkers.
+    /// `"decode_with"`: `from_value_with`, `from_value_piped` and their walkers, and under the
+    /// `bson` feature `from_bson_with`, `from_bson_piped` and theirs.
     pub decode_with: bool,
-    /// `"mongodb"`: the BSON decode, and under the `mongodb` feature the operations and the typed
-    /// paths.
+    /// `"mongodb"`: the MongoDB operations and the typed paths, under the `mongodb` feature.
     pub mongodb: bool,
 }
 

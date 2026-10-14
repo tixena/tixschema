@@ -7790,7 +7790,7 @@ fn decode_with_is_generated_on_every_enum_form_serde_writes() {
         );
         assert_eq!(
             expanded.contains("pub use crate :: __tixschema_mongodb :: {"),
-            cfg!(feature = "bson"),
+            cfg!(feature = "mongodb"),
             "for {source}, got: {expanded}"
         );
         assert_eq!(
@@ -7879,7 +7879,7 @@ fn decode_with_is_generated_on_every_struct_shape_serde_writes() {
         );
         assert_eq!(
             expanded.contains("pub use crate :: __tixschema_mongodb :: {"),
-            cfg!(feature = "bson"),
+            cfg!(feature = "mongodb"),
             "for {source}, got: {expanded}"
         );
         assert_eq!(
@@ -7902,9 +7902,11 @@ fn decode_with_is_generated_on_every_struct_shape_serde_writes() {
     }
 }
 
+/// A type that lists `"decode_with"` alone is read from BSON under `bson`, as every flagged type
+/// is, and gets nothing of the MongoDB layer under any feature. An unflagged one gets neither.
 #[cfg(feature = "serde")]
 #[test]
-fn a_type_that_lists_no_mongodb_gets_no_bson_read_no_typed_path_and_no_operation() {
+fn a_type_that_lists_no_mongodb_gets_no_typed_path_and_no_operation() {
     for ((args, source), listed) in DECODE_WITH_STRUCT_SHAPES
         .iter()
         .chain(&DECODE_WITH_ENUM_FORMS)
@@ -7939,13 +7941,18 @@ fn a_type_that_lists_no_mongodb_gets_no_bson_read_no_typed_path_and_no_operation
             "delete_many",
             "mongo_read_row",
             "mongo_written_row",
-            "from_bson_with",
-            "decode_with_bson",
             "__tixschema_mongodb",
         ] {
             assert!(
                 !expanded.contains(added),
                 "for {source}, found `{added}` in: {expanded}"
+            );
+        }
+        for bson_read in ["pub fn from_bson_with", "pub fn decode_with_bson_issues"] {
+            assert_eq!(
+                expanded.contains(bson_read),
+                listed && cfg!(feature = "bson"),
+                "for {written} {source}, `{bson_read}` in: {expanded}"
             );
         }
     }
@@ -8399,7 +8406,7 @@ fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
     }
     assert_eq!(
         flagged.contains("pub use crate :: __tixschema_mongodb :: {"),
-        cfg!(feature = "bson"),
+        cfg!(feature = "mongodb"),
         "got: {flagged}"
     );
     // The callback's types are the crate's, written once by the initializers.
@@ -8500,7 +8507,7 @@ fn nothing_decode_with_emits_suppresses_a_lint_but_the_two_exceptions() {
     let hidden_modules = library.matches("# [doc (hidden)] mod __tixschema_").count();
     assert_eq!(
         hidden_modules,
-        if cfg!(feature = "bson") { 2 } else { 1 },
+        if cfg!(feature = "mongodb") { 2 } else { 1 },
         "got: {library}"
     );
     assert_eq!(

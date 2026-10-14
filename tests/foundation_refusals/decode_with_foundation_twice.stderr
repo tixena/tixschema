@@ -1,31 +1,31 @@
 error[E0428]: the name `__tixschema_decode_with` is defined multiple times
- --> tests/foundation_refusals/decode_with_foundation_twice.rs:4:1
+ --> tests/foundation_refusals/decode_with_foundation_twice.rs:6:1
   |
-3 | tixschema::decode_with_foundation!();
+5 | tixschema::decode_with_foundation!();
   | ------------------------------------ previous definition of the module `__tixschema_decode_with` here
-4 | tixschema::decode_with_foundation!();
+6 | tixschema::decode_with_foundation!();
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `__tixschema_decode_with` redefined here
   |
   = note: `__tixschema_decode_with` must be defined only once in the type namespace of this module
   = note: this error originates in the macro `tixschema::decode_with_foundation` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0428]: the name `__TixschemaDecodeWithFoundation` is defined multiple times
- --> tests/foundation_refusals/decode_with_foundation_twice.rs:4:1
+ --> tests/foundation_refusals/decode_with_foundation_twice.rs:6:1
   |
-3 | tixschema::decode_with_foundation!();
+5 | tixschema::decode_with_foundation!();
   | ------------------------------------ previous definition of the trait `__TixschemaDecodeWithFoundation` here
-4 | tixschema::decode_with_foundation!();
+6 | tixschema::decode_with_foundation!();
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `__TixschemaDecodeWithFoundation` redefined here
   |
   = note: `__TixschemaDecodeWithFoundation` must be defined only once in the type namespace of this module
   = note: this error originates in the macro `tixschema::decode_with_foundation` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0119]: conflicting implementations of trait `__TixschemaDecodeWithFoundation` for type `()`
- --> tests/foundation_refusals/decode_with_foundation_twice.rs:4:1
+ --> tests/foundation_refusals/decode_with_foundation_twice.rs:6:1
   |
-3 | tixschema::decode_with_foundation!();
+5 | tixschema::decode_with_foundation!();
   | ------------------------------------ first implementation here
-4 | tixschema::decode_with_foundation!();
+6 | tixschema::decode_with_foundation!();
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ conflicting implementation for `()`
   |
   = note: this error originates in the macro `tixschema::decode_with_foundation` (in Nightly builds, run with -Z macro-backtrace for more info)

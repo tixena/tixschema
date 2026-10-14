@@ -566,7 +566,8 @@ pub fn model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// Writes, once per crate, the support library every `#[model_schema(enable = ["decode_with"])]`
 /// type of the crate re-exports from its `{type}_schema` module: `Issue`, `Verdict`, `Path`,
-/// `Resolver` and what the walkers hand each other. Write it at the crate root, on its own line:
+/// `Resolver` and what the walkers hand each other, and under the `bson` feature what reads a
+/// BSON value. Write it at the crate root, on its own line:
 /// `tixschema::decode_with_foundation!();`. Within one crate every `{type}_schema::Issue` is one
 /// type, and so is each other name of the library.
 ///
@@ -581,12 +582,11 @@ pub fn decode_with_foundation(input: TokenStream) -> TokenStream {
 /// # `mongodb_foundation`
 ///
 /// Writes, once per crate, the support library every
-/// `#[model_schema(enable = ["decode_with", "mongodb"])]` type of the crate re-exports: what reads
-/// a BSON value, and under the `mongodb` feature `Filter`, `Update`, the typed paths and
-/// `OperationError`. Write it at the crate root beside `tixschema::decode_with_foundation!();`:
-/// `tixschema::mongodb_foundation!();`.
+/// `#[model_schema(enable = ["decode_with", "mongodb"])]` type of the crate re-exports under the
+/// `mongodb` feature: `Filter`, `Update`, the typed paths and `OperationError`. Write it at the
+/// crate root beside `tixschema::decode_with_foundation!();`: `tixschema::mongodb_foundation!();`.
 ///
-/// It takes no arguments, and writes nothing in a build without the `bson` feature, so the call
+/// It takes no arguments, and writes nothing in a build without the `mongodb` feature, so the call
 /// stays in a crate whatever it builds with.
 #[proc_macro]
 pub fn mongodb_foundation(input: TokenStream) -> TokenStream {

@@ -1,4 +1,4 @@
-//! The query types of the BSON and MongoDB library: `mongodb_foundation!()` writes them once per
+//! The query types of the MongoDB library: `mongodb_foundation!()` writes them once per
 //! crate under the `mongodb` feature, and each type that lists `"mongodb"` in `enable` re-exports
 //! them from its `{type}_schema` module.
 

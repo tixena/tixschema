@@ -1,4 +1,5 @@
 ```rust
+# extern crate bson2 as bson;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tixschema::model_schema;

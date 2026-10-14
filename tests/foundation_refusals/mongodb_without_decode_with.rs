@@ -1,5 +1,7 @@
 //! "mongodb" listed without "decode_with".
 
+extern crate bson2 as bson;
+
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 

@@ -55,7 +55,8 @@ tokio-tungstenite = "0.30.0"
 # version, the lock file being untracked: a release at least two weeks old when it was added.
 trybuild = "=1.0.121"
 # Two crates apart from the test binaries, each writing its own support libraries: one declares a
-# stored type a test binary's type holds, and one lists neither `bson` nor `mongodb`.
+# stored type a test binary's type holds, and one, whose types are never stored, lists no
+# `mongodb`.
 stored_customers = { path = "tests/crates_apart/stored_customers" }
 invoice_lookups = { path = "tests/crates_apart/invoice_lookups" }
 

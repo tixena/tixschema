@@ -1,5 +1,5 @@
 error: model_schema: type `InvoiceLookup`: tixschema: `"decode_with"` is written twice
- --> tests/foundation_refusals/repeated_entry.rs:8:41
-  |
-8 | #[model_schema(enable = ["decode_with", "decode_with"])]
-  |                                         ^^^^^^^^^^^^^
+  --> tests/foundation_refusals/repeated_entry.rs:10:41
+   |
+10 | #[model_schema(enable = ["decode_with", "decode_with"])]
+   |                                         ^^^^^^^^^^^^^

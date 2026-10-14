@@ -1,7 +1,6 @@
 //! What rustc prints for a crate tixschema refuses: a support library not written, an `enable`
-//! list it cannot read, an initializer written twice or handed an argument, and a type that lists
-//! "mongodb" holding one that does not. Each case in `foundation_refusals/` is a crate of its own,
-//! held to the `.stderr` file beside it.
+//! list it cannot read, and an initializer written twice or handed an argument. Each case in
+//! `foundation_refusals/` is a crate of its own, held to the `.stderr` file beside it.
 
 // Every `.stderr` was written with every feature on, the build the gate runs.
 #![cfg(all(
