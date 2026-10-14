@@ -712,6 +712,16 @@ const PACKAGE: &str = r#"{ "type": "module", "private": true }
 const PREAMBLE: &str = "import * as zod from \"zod\";\nimport type { ZodType, $brand } from \
                         \"zod\";\nimport type { SomeType } from \"zod/v4/core\";\n\nconst z = zod;";
 
+/// The function `CodedCrate`'s check names, written once over every filling, as the README writes
+/// the function of a type with a parameter.
+const WITH_ITS_CODE: &str = r#"import type { ParsePayload } from "zod/v4/core";
+
+export function withItsCode<CodeType>(value: CodedCrate<CodeType>, ctx: ParsePayload<CodedCrate<CodeType>>): void {
+  if (value.codes.length === 0) {
+    ctx.issues.push({ code: "custom", message: "a crate holds at least one code", path: ["codes"], input: value });
+  }
+}"#;
+
 /// The first package: the bundle, compiled with declarations into `lib`.
 const PROJECT: &str = r#"{
   "compilerOptions": {
@@ -911,6 +921,14 @@ pub struct DeclaredPlainSlots(pub String, pub Vec<Self>);
 #[model_schema(default_types(IdType = String))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeclaredSlots<IdType>(pub IdType, pub Vec<Self>);
+
+/// A type with a parameter that names a check and holds the parameter itself in a field.
+#[model_schema(default_types(CodeType = String), check = ["withItsCode"])]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct CodedCrate<CodeType> {
+    pub code: CodeType,
+    pub codes: Vec<CodeType>,
+}
 
 fn bundle() -> String {
     [
@@ -1576,4 +1594,26 @@ fn a_map_of_the_type_itself_is_read_through_the_self_view() {
             && !node.contains("$SchemaSelf"),
         "a list of the type itself keeps the factory's own type. Got: {node}"
     );
+}
+
+fn with_its_code<CodeType>(value: &CodedCrate<CodeType>) -> Result<(), Vec<String>> {
+    if value.codes.is_empty() {
+        return Err(vec!["'codes': a crate holds at least one code".to_owned()]);
+    }
+    Ok(())
+}
+
+#[test]
+fn type_check_the_check_of_a_generic_type_that_holds_its_parameter_compiles() {
+    let source = [
+        PREAMBLE.to_owned(),
+        WITH_ITS_CODE.to_owned(),
+        CodedCrate::<String>::ts_definition(),
+        CodedCrate::<String>::zod_schema(),
+    ]
+    .join("\n\n");
+    let Some(at) = built_from("generic-check", &source) else {
+        return;
+    };
+    fs::remove_dir_all(at).unwrap();
 }
