@@ -530,8 +530,7 @@ fn named_input(operation: &OperationDef) -> Option<&Type> {
 fn refusals(source: &str) -> Vec<String> {
     parse_service(&declared(source))
         .err()
-        .map(|refusal| refusal.into_iter().map(|one| one.to_string()).collect())
-        .unwrap_or_default()
+        .map_or_default(|refusal| refusal.into_iter().map(|one| one.to_string()).collect())
 }
 
 fn rendered(source: &str) -> String {

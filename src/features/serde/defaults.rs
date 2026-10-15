@@ -4,20 +4,22 @@
 //! built: a placeholder at expansion, replaced by the run of the function that answers the text.
 //! A member of a variant whose default no target but Rust can read is refused.
 
+#[cfg(feature = "serde")]
+use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::ItemEnum;
+#[cfg(feature = "serde")]
+use syn::ext::IdentExt as _;
 #[cfg(feature = "serde")]
 use {
     super::{
         CONVERSION_KEYS, consume_unread_value, derives_deserialize, derives_serialize,
         parse_serde_field_attributes, parse_serde_field_hooks, parse_serde_key_omission,
     },
-    crate::features::model_schema_prop::parse_model_schema_prop_attributes,
     crate::field_type::{get_field_def, is_map_wrapper, is_sequence_wrapper},
     proc_macro2::TokenTree,
     quote::ToTokens as _,
-    syn::ext::IdentExt as _,
     syn::{Attribute, ExprPath, Field, Generics, LitStr, Path, Variant},
 };
 
@@ -358,8 +360,7 @@ fn field_name(field: &Field) -> String {
     field
         .ident
         .as_ref()
-        .map(|ident| ident.unraw().to_string())
-        .unwrap_or_default()
+        .map_or_default(|ident| ident.unraw().to_string())
 }
 
 /// The first of `Self`, a lifetime other than `'static` and the parameters `declared` that `tokens`
