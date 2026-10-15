@@ -650,19 +650,19 @@ fn swift_map_key_scalar(key: &FieldDef) -> String {
     }
 }
 
-/// The expression reading one map key back from the `String` a wrapper's `DynamicCodingKey`
-/// always carries it as, and the expression writing one back into that `String` — the pair
-/// mirrors `dart::dart_map_key_decode`/`dart_map_key_encode`.
-fn swift_map_key_codec(key: &FieldDef) -> (String, String) {
+/// The expression parsing one map key from the `String` a wrapper's `DynamicCodingKey` always
+/// carries it as, `None` where the key is held as that text itself, and the expression writing one
+/// back into that `String` — the pair mirrors `dart::dart_map_key_decode`/`dart_map_key_encode`.
+fn swift_map_key_codec(key: &FieldDef) -> (Option<String>, String) {
     match &key.field_type {
         FieldDefType::Boolean => (
-            "(wireKey == \"true\" ? true : wireKey == \"false\" ? false : nil)".to_owned(),
+            Some("(wireKey == \"true\" ? true : wireKey == \"false\" ? false : nil)".to_owned()),
             "(key ? \"true\" : \"false\")".to_owned(),
         ),
         FieldDefType::SiblingType(name, _) => {
             let type_name = lookup_swift_name(name).unwrap_or_else(|| name.clone());
             (
-                format!("{type_name}(rawValue: wireKey)"),
+                Some(format!("{type_name}(rawValue: wireKey)")),
                 "key.rawValue".to_owned(),
             )
         }
@@ -675,7 +675,7 @@ fn swift_map_key_codec(key: &FieldDef) -> (String, String) {
         | FieldDefType::I64
         | FieldDefType::Isize => {
             let swift_type = swift_map_key_scalar(key);
-            (format!("{swift_type}(wireKey)"), "String(key)".to_owned())
+            (Some(format!("{swift_type}(wireKey)")), "String(key)".to_owned())
         }
         FieldDefType::Char
         | FieldDefType::String
@@ -689,17 +689,19 @@ fn swift_map_key_codec(key: &FieldDef) -> (String, String) {
         | FieldDefType::U64
         | FieldDefType::F32
         | FieldDefType::F64
-        | FieldDefType::Usize => ("wireKey".to_owned(), "key".to_owned()),
+        | FieldDefType::Usize => (None, "key".to_owned()),
         #[cfg(feature = "mongodb")]
-        FieldDefType::ObjectId => ("wireKey".to_owned(), "key".to_owned()),
+        FieldDefType::ObjectId => (None, "key".to_owned()),
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => {
-            ("wireKey".to_owned(), "key".to_owned())
+            (None, "key".to_owned())
         }
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime => (
-            "(isoFormatterForKeys.date(from: wireKey) ?? Date(timeIntervalSince1970: 0))"
-                .to_owned(),
+            Some(
+                "(isoFormatterForKeys.date(from: wireKey) ?? Date(timeIntervalSince1970: 0))"
+                    .to_owned(),
+            ),
             "isoFormatterForKeys.string(from: key)".to_owned(),
         ),
     }
@@ -717,6 +719,15 @@ fn map_key_wrapper_struct(
     unjudged: Option<&str>,
 ) -> String {
     let (decode_key, encode_key) = swift_map_key_codec(key);
+    let bound_key = decode_key.map_or_else(
+        || "let key = wireKey; ".to_owned(),
+        |parsed| {
+            format!(
+                "guard let key = {parsed} else {{ \
+                 throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, debugDescription: \"bad key \\(wireKey)\") }}; "
+            )
+        },
+    );
     let own_read = unjudged.map_or_else(String::new, |entry| {
         format!(
             "{}{} {{ \
@@ -724,9 +735,7 @@ fn map_key_wrapper_struct(
              var result: [{key_type}: {value_type}] = [:]; \
              for codingKey in container.allKeys {{ \
              let wireKey = codingKey.stringValue; \
-             guard let key = {decode_key} else {{ \
-             throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, debugDescription: \"bad key \\(wireKey)\") }}; \
-             {entry} }}; \
+             {bound_key}{entry} }}; \
              storage = result }}; ",
             read::any_key(entry),
             read::UNJUDGED,
@@ -754,9 +763,7 @@ fn map_key_wrapper_struct(
          var result: [{key_type}: {value_type}] = [:]; \
          for codingKey in container.allKeys {{ \
          let wireKey = codingKey.stringValue; \
-         guard let key = {decode_key} else {{ \
-         throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, debugDescription: \"bad key \\(wireKey)\") }}; \
-         result[key] = try container.decode({value_type}.self, forKey: codingKey) }}; \
+         {bound_key}result[key] = try container.decode({value_type}.self, forKey: codingKey) }}; \
          storage = result }}; \
          public func encode(to encoder: Encoder) throws {{ \
          var container = encoder.container(keyedBy: DynamicCodingKey.self); \

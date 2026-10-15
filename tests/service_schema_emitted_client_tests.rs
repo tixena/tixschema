@@ -224,6 +224,18 @@ mod run_swift_generic_dates;
 #[path = "service_schema_emitted_client_tests/run_swift_brand_reads.rs"]
 mod run_swift_brand_reads;
 
+/// The models a map under a key Swift holds as its text is written on.
+#[cfg(all(test, feature = "swift", feature = "chrono"))]
+#[path = "swift_tests/text_map_keys_models.rs"]
+mod text_map_keys_models;
+
+/// A map under a key Swift holds as the text serde writes for it, read and written by the emitted
+/// Swift types.
+#[cfg(test)]
+#[cfg(feature = "chrono")]
+#[path = "service_schema_emitted_client_tests/run_swift_text_map_keys.rs"]
+mod run_swift_text_map_keys;
+
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
 #[cfg(all(test, feature = "dart"))]
