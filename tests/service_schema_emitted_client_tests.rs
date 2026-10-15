@@ -247,6 +247,17 @@ mod date_map_keys_models;
 #[path = "service_schema_emitted_client_tests/run_swift_date_map_keys.rs"]
 mod run_swift_date_map_keys;
 
+/// The models a type that declares a parameter and publishes under another name is written on.
+#[cfg(all(test, feature = "swift"))]
+#[path = "swift_tests/renamed_generics_models.rs"]
+mod renamed_generics_models;
+
+/// A type that declares a parameter and publishes under another name, read and written by the
+/// emitted Swift types through each of its names.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_renamed_generics.rs"]
+mod run_swift_renamed_generics;
+
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
 #[cfg(all(test, feature = "dart"))]
