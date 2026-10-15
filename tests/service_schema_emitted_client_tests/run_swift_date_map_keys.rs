@@ -39,6 +39,8 @@ func row<Read: Codable>(_ name: String, _ type: Read.Type, _ payload: String) {
   } catch DecodingError.dataCorrupted(let context) {
     print("\(name): refused")
     for line in context.debugDescription.components(separatedBy: "; ") { print("    \(line)") }
+  } catch DecodingError.typeMismatch(let type, let context) {
+    print("\(name): no \(type): \(context.debugDescription)")
   } catch {
     print("\(name): \(error)")
   }
@@ -421,8 +423,7 @@ fn refused_variant_rows() -> Vec<Row> {
                 sailings: HashMap::new(),
             },
             "data did not match any variant of untagged enum UntaggedWatch",
-            "DecodingError.typeMismatch: expected value of type UntaggedWatch. \
-             Debug description: no untagged member matched",
+            "no UntaggedWatch: no untagged member matched",
         ),
         refused_row(
             "a variant under no tag that declares a parameter under a key that is no date",
@@ -463,8 +464,7 @@ fn refused_variant_rows() -> Vec<Row> {
                 counts: HashMap::new(),
             },
             "data did not match any variant of untagged enum UntaggedShift",
-            "DecodingError.typeMismatch: expected value of type UntaggedShift<String>. \
-             Debug description: no untagged member matched",
+            "no UntaggedShift<String>: no untagged member matched",
         ),
     ]
 }

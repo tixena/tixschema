@@ -367,6 +367,6 @@ pub struct Timeline {
 }
 
 /// The payload as it was written: the function [`Pantry`] and [`StowedPantry`] name.
-fn verbatim(payload: Value) -> Value {
+const fn verbatim(payload: Value) -> Value {
     payload
 }
