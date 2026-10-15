@@ -1,6 +1,8 @@
 //! A date held by a type that declares a parameter, read and written by the emitted Swift types
-//! compiled with warnings as errors: each payload the serde read reads prints what it prints. A
-//! map keyed by a date is read by `run_swift_date_map_keys.rs`.
+//! compiled with warnings as errors: each payload the serde read reads prints what it prints, a
+//! date in a tuple, as a map's value and in a variant's slots among them. A map keyed by a date is
+//! read by `run_swift_date_map_keys.rs`, and the models of `swift_tests/held_dates_models.rs` by
+//! `run_swift_held_dates.rs`.
 
 #![cfg(feature = "swift")]
 
@@ -85,14 +87,12 @@ pub struct Clocked<Stowed> {
     pub held: Stowed,
 }
 
-/// A tuple struct of a date and the parameter. Compiled, and not read: Swift reads a date in a
-/// tuple through `Date`'s own coding, a number, where serde writes text.
+/// A tuple struct of a date and the parameter.
 #[model_schema(default_types(Stowed = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Leg<Stowed>(pub DateTime<Utc>, pub Stowed);
 
-/// A date in a tuple and as the value of a map, beside the parameter. Compiled, and not read, as
-/// [`Leg`].
+/// A date in a tuple and as the value of a map, beside the parameter.
 #[model_schema(default_types(Stowed = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Plot<Stowed> {
@@ -102,8 +102,8 @@ pub struct Plot<Stowed> {
     pub paired_by_number: HashMap<u32, (DateTime<Utc>, Stowed)>,
 }
 
-/// A date in a variant with named members that name the parameter and in one whose members name
-/// none, under no tag attribute. `Paired` and `Stamped` are compiled and not read, as [`Leg`].
+/// A date in a variant with named members that name the parameter, in one whose members name none,
+/// in a variant of several slots and in a variant of one, under no tag attribute.
 #[model_schema(default_types(Stowed = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Ebb<Stowed> {
@@ -133,8 +133,7 @@ pub enum AdjacentEbb<Stowed> {
     Stamped(DateTime<Utc>),
 }
 
-/// The variants an untagged enum takes, named members and one slot. `Stamped` is compiled and not
-/// read, as [`Leg`].
+/// The variants an untagged enum takes, named members and one slot.
 #[model_schema(default_types(Stowed = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(untagged)]
@@ -193,8 +192,8 @@ where
     payload_row::<Held>(name, read_as, serde_json::to_string(held).unwrap())
 }
 
-/// Every payload the run reads: a date in a struct and in a variant's struct, each where the type
-/// declares a parameter and where it declares none, and in a brand that declares one.
+/// The payloads of a date in a struct and in a variant's struct, each where the type declares a
+/// parameter and where it declares none, and in a brand that declares one.
 fn rows() -> Vec<Row> {
     let first = at(1_704_164_645_678);
     let second = at(1_709_208_000_100);
@@ -293,11 +292,62 @@ fn rows() -> Vec<Row> {
     ]
 }
 
+/// The payloads of a date in a tuple, as a map's value and in a variant's slots, in a type that
+/// declares a parameter.
+fn held_rows() -> Vec<Row> {
+    let first = at(1_704_164_645_678);
+    let second = at(1_709_208_000_100);
+    let held = || "a".to_owned();
+    vec![
+        read_row(
+            "a tuple struct that declares a parameter",
+            "Leg<String>",
+            &Leg(first, held()),
+        ),
+        read_row(
+            "a date in a tuple and as a map's value",
+            "Plot<String>",
+            &Plot {
+                by_name: HashMap::from([("n".to_owned(), first), ("m".to_owned(), second)]),
+                by_number: HashMap::from([(1, first), (2, second)]),
+                pair: (first, held()),
+                paired_by_number: HashMap::from([(2, (second, "b".to_owned()))]),
+            },
+        ),
+        read_row(
+            "several slots, no tag attribute",
+            "Ebb<String>",
+            &Ebb::Paired(first, held()),
+        ),
+        read_row(
+            "one slot, no tag attribute",
+            "Ebb<String>",
+            &Ebb::<String>::Stamped(second),
+        ),
+        read_row(
+            "several slots, a tag and a content key",
+            "AdjacentEbb<String>",
+            &AdjacentEbb::Paired(first, held()),
+        ),
+        read_row(
+            "one slot, a tag and a content key",
+            "AdjacentEbb<String>",
+            &AdjacentEbb::<String>::Stamped(second),
+        ),
+        read_row(
+            "one slot, untagged",
+            "UntaggedEbb<String>",
+            &UntaggedEbb::<String>::Stamped(second),
+        ),
+    ]
+}
+
 /// The text of every model compiles with warnings as errors, and every payload reads and writes in
 /// Swift as the serde read reads and writes it, each date through the text chrono writes.
 #[test]
 fn each_date_of_a_type_that_declares_a_parameter_reads_and_writes_in_swift_as_serde_does() {
-    let rows = rows();
+    let mut rows = rows();
+    rows.extend(held_rows());
     let expected: String = rows.iter().map(|row| row.expected.as_str()).collect();
     assert!(
         expected.contains(r#""at":"2024-01-02T03:04:05.678Z","held":"a","marks":["#),
@@ -347,54 +397,13 @@ fn each_date_of_a_type_that_declares_a_parameter_reads_and_writes_in_swift_as_se
     assert_eq!(normalized(&run.stdout), normalized(&expected));
 }
 
-/// serde writes a date in a tuple, as a map's value and in a variant's slots as the text of the
-/// date, and one under `as_number` as epoch milliseconds, which is what the members compiled and
-/// not read are left out of the run for.
+/// serde writes a date under `as_number` as epoch milliseconds, which is what the member compiled
+/// and not read is left out of the run for.
 #[test]
 fn a_date_left_out_of_the_run_is_written_as_serde_writes_it() {
-    let first = at(1_704_164_645_678);
-    for (written, expected) in [
-        (
-            serde_json::to_string(&Clocked {
-                at: first,
-                held: "a".to_owned(),
-            }),
-            r#"{"at":1704164645678,"held":"a"}"#,
-        ),
-        (
-            serde_json::to_string(&Leg(first, "a".to_owned())),
-            r#"["2024-01-02T03:04:05.678Z","a"]"#,
-        ),
-        (
-            serde_json::to_string(&Plot {
-                by_name: HashMap::from([("n".to_owned(), first)]),
-                by_number: HashMap::from([(1, first)]),
-                pair: (first, "a".to_owned()),
-                paired_by_number: HashMap::from([(2, (first, "b".to_owned()))]),
-            }),
-            r#"{"by_name":{"n":"2024-01-02T03:04:05.678Z"},"by_number":{"1":"2024-01-02T03:04:05.678Z"},"pair":["2024-01-02T03:04:05.678Z","a"],"paired_by_number":{"2":["2024-01-02T03:04:05.678Z","b"]}}"#,
-        ),
-        (
-            serde_json::to_string(&Ebb::Paired(first, "a".to_owned())),
-            r#"{"Paired":["2024-01-02T03:04:05.678Z","a"]}"#,
-        ),
-        (
-            serde_json::to_string(&Ebb::<String>::Stamped(first)),
-            r#"{"Stamped":"2024-01-02T03:04:05.678Z"}"#,
-        ),
-        (
-            serde_json::to_string(&AdjacentEbb::Paired(first, "a".to_owned())),
-            r#"{"kind":"Paired","held":["2024-01-02T03:04:05.678Z","a"]}"#,
-        ),
-        (
-            serde_json::to_string(&AdjacentEbb::<String>::Stamped(first)),
-            r#"{"kind":"Stamped","held":"2024-01-02T03:04:05.678Z"}"#,
-        ),
-        (
-            serde_json::to_string(&UntaggedEbb::<String>::Stamped(first)),
-            r#""2024-01-02T03:04:05.678Z""#,
-        ),
-    ] {
-        assert_eq!(written.unwrap(), expected);
-    }
+    let written = serde_json::to_string(&Clocked {
+        at: at(1_704_164_645_678),
+        held: "a".to_owned(),
+    });
+    assert_eq!(written.unwrap(), r#"{"at":1704164645678,"held":"a"}"#);
 }
