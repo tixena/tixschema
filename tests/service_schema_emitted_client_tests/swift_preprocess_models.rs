@@ -229,6 +229,21 @@ pub struct Paired(
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Lone(#[model_schema_prop(preprocess = ["trimmed"])] pub String);
 
+/// [`Lone`], which names a function on itself as well.
+#[model_schema(preprocess = ["unwrapped"])]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Ferried(#[model_schema_prop(preprocess = ["trimmed"])] pub String);
+
+/// A struct serde writes as the value of its one slot, which names a function and holds a model.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Barged(#[model_schema_prop(preprocess = ["unwrapped"])] pub Parcel);
+
+/// A struct serde writes as the value of its one slot, which holds a model.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Shouldered(pub Parcel);
+
 /// An enum with no tag attribute whose slot, member and slots name a function.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]

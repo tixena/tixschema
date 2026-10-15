@@ -270,6 +270,17 @@ mod wrapped_maps_models;
 #[path = "service_schema_emitted_client_tests/run_swift_wrapped_maps.rs"]
 mod run_swift_wrapped_maps;
 
+/// The models a tuple struct that declares one slot is written on.
+#[cfg(all(test, feature = "swift"))]
+#[path = "swift_tests/lone_slots_models.rs"]
+mod lone_slots_models;
+
+/// A tuple struct that declares one slot, which serde writes as the slot's value, read and written
+/// by the emitted Swift types wherever it is held.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_lone_slots.rs"]
+mod run_swift_lone_slots;
+
 /// The models a type that declares a parameter and publishes under another name is written on.
 #[cfg(all(test, feature = "swift"))]
 #[path = "swift_tests/renamed_generics_models.rs"]

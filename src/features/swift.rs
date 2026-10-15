@@ -150,7 +150,9 @@ enum Wrapped {
         bounds: Vec<String>,
         text_member: Option<String>,
     },
-    /// The tuple of a tuple struct.
+    /// The one slot of a tuple struct that declares one, which serde writes as the struct.
+    Slot,
+    /// The tuple of a tuple struct of several slots.
     Tuple,
 }
 
@@ -2077,32 +2079,47 @@ fn value_wrapper_tokens(
                 write!(validate, "; {}", validate::bound_member(bounds)).unwrap();
             }
         }
-        Wrapped::Tuple => validate::note(&rust_ident, None, !rules.is_empty()),
+        Wrapped::Slot | Wrapped::Tuple => validate::note(&rust_ident, None, !rules.is_empty()),
     }
 
     let generic_params = swift_generic_params(generics);
     let mut aux = Vec::new();
-    let (real_type, shape) = swift_resolve(value_field, &export_name, &mut aux);
-
-    let decode = if matches!(shape.leaf_conversion, LeafConversion::None) {
-        format!("try container.decode({real_type}.self)")
+    let (real_type, shaped) = if matches!(wrapped, Wrapped::Slot) {
+        slot_resolve(value_field, &export_name, &mut aux)
     } else {
-        format!(
-            "try {{ let wireValue = try container.decode({}.self); return {} }}()",
-            wire_type(value_field, &shape),
-            converted_from(value_field, &shape, "wireValue")
+        let (real_type, shape) = swift_resolve(value_field, &export_name, &mut aux);
+        (
+            real_type,
+            Shaped {
+                def: value_field.clone(),
+                shape,
+            },
         )
     };
-    let encode = format!(
-        "try container.encode({})",
-        written_from(value_field, &shape, "value")
-    );
-    let helpers = datetime_helpers_for(&export_name, &generic_params, &[&shape]);
+
+    let decode = if shaped.converts() {
+        format!(
+            "try {{ let wireValue = try container.decode({}.self); return {} }}()",
+            wire_type(&shaped.def, &shaped.shape),
+            shaped.converted("wireValue")
+        )
+    } else {
+        format!("try container.decode({real_type}.self)")
+    };
+    let encode = format!("try container.encode({})", shaped.written("value"));
+    let helpers = datetime_helpers_for(&export_name, &generic_params, &[&shaped.shape]);
+    let mut twins = Vec::new();
+    let own_read = if matches!(wrapped, Wrapped::Slot) {
+        lone_slot_read(&shaped, &real_type, &export_name, &decode, &mut twins)
+    } else {
+        wrapper_read(wrapped, value_field, &real_type, &decode)
+    };
     let reads = read::both(
-        &wrapper_read(wrapped, value_field, &real_type, &decode),
+        &own_read,
         &preprocess::Written {
             named: &export_name,
             own: args.preprocess,
+            twins,
             ..preprocess::Written::default()
         },
     );
@@ -2130,6 +2147,50 @@ fn value_wrapper_tokens(
     )
 }
 
+/// The statements of the own read of a tuple struct's one slot, read from the decoder itself as
+/// a slot is: unjudged where `validate()` walks what it holds, through its functions where it
+/// names some, a type written for it joining `twins`, and as `decode` reads it otherwise.
+fn lone_slot_read(
+    shaped: &Shaped,
+    real_type: &str,
+    hint: &str,
+    decode: &str,
+    twins: &mut Vec<String>,
+) -> String {
+    let def = &shaped.def;
+    let handed_keys = !def.is_optional() && preprocess::beside(def);
+    let source = if handed_keys {
+        read::Source::Beside(preprocess::taken_with(iter::empty()))
+    } else {
+        read::Source::Decoder
+    };
+    let held = |read: &str| format!("self.value = {read}");
+    let walked = validate::walks(def, false) || handed_keys;
+    let functions = preprocess::functions(def);
+    if !functions.is_empty() {
+        corrected_member(
+            &preprocess::Member {
+                def,
+                functions,
+                hint,
+                keys: "",
+                plain: preprocess::Plain::Declared,
+                real_type,
+                stem: "value",
+                walked,
+            },
+            Some(shaped),
+            &source,
+            &held,
+            twins,
+        )
+    } else if walked {
+        read::unjudged(def, hint, &source, &held, &mut read::Locals::default())
+    } else {
+        format!("let container = try decoder.singleValueContainer(); self.value = {decode}")
+    }
+}
+
 /// The statements of the own read of a struct of one `value`: a tuple struct reads its tuple
 /// alone, and a brand reads its value as `decode` reads it. A value that takes the keys the types
 /// around it took is handed them, and judged there as its own read judges it.
@@ -2154,25 +2215,41 @@ fn wrapper_read(
     format!("let container = try decoder.singleValueContainer(); self.value = {decode}")
 }
 
-/// The Swift tokens for a non-branded tuple struct: the single-slot shape shares
-/// [`value_wrapper_tokens`] with a branded newtype; a wider tuple struct wraps the fixed-size
-/// tuple its slots describe.
+/// The Swift tokens for a non-branded tuple struct. One that declares a single slot is that slot's
+/// value, which serde writes whatever the slot's attributes say; a wider one wraps the tuple of the
+/// slots serde reads.
 fn tuple_struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> TokenStream {
     let type_parameters = type_parameters_in_scope(&item_struct.generics);
     let Fields::Unnamed(unnamed) = &item_struct.fields else {
         return TokenStream::new();
     };
+    let slot_def = |slot: &Field| {
+        let mut field_def = member_def(args, "slot", slot);
+        field_def.erase_type_parameters(&type_parameters);
+        field_def
+    };
+    let export_name = compute_item_export_name(&item_struct.ident.to_string(), args.name_override);
+    if let Some(only) = unnamed.unnamed.first()
+        && unnamed.unnamed.len() == 1
+    {
+        let value_field = slot_def(only);
+        let mut rules = validate::lone_slot_rules(&export_name, &value_field);
+        rules.extend(validate::own_checks(args.check));
+        return value_wrapper_tokens(
+            &item_struct.ident,
+            &item_struct.generics,
+            args,
+            &value_field,
+            &Wrapped::Slot,
+            &rules,
+        );
+    }
     let slots: Vec<FieldDef> = unnamed
         .unnamed
         .iter()
         .filter(|slot| !parse_serde_key_omission(&slot.attrs).absent_from_wire())
-        .map(|slot| {
-            let mut field_def = member_def(args, "slot", slot);
-            field_def.erase_type_parameters(&type_parameters);
-            field_def
-        })
+        .map(slot_def)
         .collect();
-    let export_name = compute_item_export_name(&item_struct.ident.to_string(), args.name_override);
     let mut rules = validate::tuple_struct_rules(&export_name, &slots);
     rules.extend(validate::own_checks(args.check));
     let tuple_field = FieldDef {

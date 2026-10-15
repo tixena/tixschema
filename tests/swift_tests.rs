@@ -101,3 +101,13 @@ mod wrapped_maps_models;
 #[cfg(all(feature = "swift", feature = "serde"))]
 #[path = "swift_tests/wrapped_maps.rs"]
 mod wrapped_maps;
+
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "swift_tests/lone_slots_models.rs"]
+mod lone_slots_models;
+
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "swift_tests/lone_slots.rs"]
+mod lone_slots;

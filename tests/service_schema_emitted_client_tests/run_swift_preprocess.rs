@@ -23,15 +23,16 @@ use super::swift_preprocess_models::shipping_client_service_schema::{
     shipping_client_service_fault_fields_swift, shipping_client_service_fault_kind_swift,
 };
 use super::swift_preprocess_models::{
-    Ahead, Binned, Boxed, Branch, Choice, Chosen, Dated, Docked, Loaded, Lodged, Lone, Loosed,
-    Marked, Moved, Paired, Quayside, Sampled, Sealing, Shifted, ShippingBackEnd,
-    ShippingClientService as _, ShippingClientServiceSchema, ShippingError, Spared, Stamped,
-    Stowed, Strapped, Tallied, Twice, ahead_swift, banded_swift, behind_swift, binned_swift,
-    boxed_swift, branch_swift, choice_swift, chosen_swift, dated_swift, docked_swift,
-    listing_swift, loaded_swift, lodged_swift, lone_swift, loosed_swift, marked_swift, moved_swift,
-    paired_swift, quayside_swift, sampled_swift, sealing_swift, shifted_swift,
-    shipping_error_swift, sided_swift, spared_swift, stamped_swift, stowed_swift, strapped_swift,
-    tallied_calls, tallied_swift, twice_swift,
+    Ahead, Barged, Binned, Boxed, Branch, Choice, Chosen, Dated, Docked, Ferried, Loaded, Lodged,
+    Lone, Loosed, Marked, Moved, Paired, Quayside, Sampled, Sealing, Shifted, ShippingBackEnd,
+    ShippingClientService as _, ShippingClientServiceSchema, ShippingError, Shouldered, Spared,
+    Stamped, Stowed, Strapped, Tallied, Twice, ahead_swift, banded_swift, barged_swift,
+    behind_swift, binned_swift, boxed_swift, branch_swift, choice_swift, chosen_swift, dated_swift,
+    docked_swift, ferried_swift, listing_swift, loaded_swift, lodged_swift, lone_swift,
+    loosed_swift, marked_swift, moved_swift, paired_swift, quayside_swift, sampled_swift,
+    sealing_swift, shifted_swift, shipping_error_swift, shouldered_swift, sided_swift,
+    spared_swift, stamped_swift, stowed_swift, strapped_swift, tallied_calls, tallied_swift,
+    twice_swift,
 };
 #[cfg(feature = "chrono")]
 use super::swift_preprocess_models::{Timed, timed_swift};
@@ -348,6 +349,10 @@ fn definitions() -> Vec<String> {
         ahead_swift::swift_definition(),
         behind_swift::swift_definition(),
         paired_swift::swift_definition(),
+        lone_swift::swift_definition(),
+        ferried_swift::swift_definition(),
+        barged_swift::swift_definition(),
+        shouldered_swift::swift_definition(),
         moved_swift::swift_definition(),
         shifted_swift::swift_definition(),
         loosed_swift::swift_definition(),
@@ -747,6 +752,23 @@ fn member_rows() -> Vec<MemberRow> {
             &loaded("   "),
         ),
         member_row::<Paired>("a tuple struct", "Paired", &paired),
+        member_row::<Lone>("the one slot of a struct", "Lone", r#""  A  ""#),
+        member_row::<Ferried>(
+            "the one slot of a struct that names a function too",
+            "Ferried",
+            r#"{"payload":"  A  "}"#,
+        ),
+        member_row::<Barged>("the one slot of a struct, a model", "Barged", &enveloped(" B ")),
+        member_row::<Barged>(
+            "the one slot of a struct, a model broken",
+            "Barged",
+            &enveloped("   "),
+        ),
+        member_row::<Shouldered>(
+            "the one slot of a struct, a model that names a function",
+            "Shouldered",
+            &unfragile("  C  "),
+        ),
         member_row::<Moved>("a slot under its name", "Moved", r#"{"Rail":"  A  "}"#),
         member_row::<Moved>(
             "a member under its name",
@@ -801,8 +823,9 @@ fn member_rows() -> Vec<MemberRow> {
 
 /// A member's function is called in every position a type reads a member in: a field over a map
 /// Swift reads through a wrapper, over a model, a list, a map and an optional of models, a slot of
-/// a tuple struct and of a variant under each tagging, and a member that holds the type itself.
-/// A model read from a corrected payload is judged once, with its holder.
+/// a tuple struct, the one slot of a struct serde writes as its value, a slot of a variant under
+/// each tagging, and a member that holds the type itself. A model read from a corrected payload is
+/// judged once, with its holder.
 #[test]
 fn a_member_names_a_function_in_every_position_a_type_reads_one_in() {
     let rows = member_rows();
@@ -1081,20 +1104,20 @@ fn the_parcel_of_the_documents_is_written_with_its_two_functions() {
     assert!(!manifest.contains("SwiftSchemaPayload"), "got: {manifest}");
 }
 
-/// A struct of one slot that is no brand is read as an array where serde writes the slot's value,
-/// so its read is not run: the slot's function is in the text of the tuple it wraps.
+/// A struct of one slot that is no brand is read as serde writes it, as the slot's value: the
+/// slot's function is called on the struct's own payload.
 #[test]
-fn the_one_slot_of_a_struct_calls_its_function_in_the_tuple_it_wraps() {
+fn the_one_slot_of_a_struct_calls_its_function_on_the_structs_own_payload() {
     assert_eq!(serde_json::from_str::<Lone>(r#""  A  ""#).unwrap().0, "A");
     let swift = lone_swift::swift_definition();
     let written = concat!(
-        "var container = try decoder.unkeyedContainer(); ",
-        "let slot0Decoder = try container.superDecoder(); ",
-        "let slot0Payload = try SwiftSchemaPayload(from: slot0Decoder).value; ",
-        "slot0 = try SwiftSchemaPayload.read(String.self, from: trimmed(slot0Payload), ",
-        "at: slot0Decoder.codingPath); ",
+        "public init(swiftSchemaUnjudged decoder: Decoder) throws { ",
+        "let valuePayload = try SwiftSchemaPayload(from: decoder).value; ",
+        "self.value = try SwiftSchemaPayload.read(String.self, from: trimmed(valuePayload), ",
+        "at: decoder.codingPath) }; ",
     );
     assert!(swift.contains(written), "{written} is not in: {swift}");
+    assert!(!swift.contains("LoneTuple"), "got: {swift}");
 }
 
 /// The README shows the functions these runs compile, the read they make and what it answers.

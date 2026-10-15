@@ -159,6 +159,21 @@ pub struct Heap(
     pub u32,
 );
 
+/// A tuple struct of one slot that names a function on itself and on its slot.
+#[model_schema(preprocess = ["unwrapped"])]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Hoisted(#[model_schema_prop(preprocess = ["trimmed"])] pub String);
+
+/// A tuple struct of one slot whose slot names a function and holds a carton.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Lugged(#[model_schema_prop(preprocess = ["unwrapped"])] pub Carton);
+
+/// A tuple struct of one slot that holds a carton.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Toted(pub Carton);
+
 /// A brand, with two functions.
 #[model_schema(preprocess = ["unwrapped", "trimmed"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -713,6 +728,63 @@ fn every_struct_shape_calls_its_own_function_on_the_whole_payload() {
                 "self.value = try Carton(swiftSchemaUnjudged: decoder) } }; ",
             ),
         ],
+    );
+}
+
+/// A tuple struct of one slot calls the functions of its slot on its own payload, which serde
+/// writes as the slot's value, after its own, and hands a carton it holds the keys the types
+/// around it took. serde reads each through the same functions.
+#[test]
+fn a_struct_of_one_slot_calls_the_function_of_its_slot_on_its_own_payload() {
+    let hoisted = hoisted_swift::swift_definition();
+    let read = corrected_reads(
+        "Hoisted",
+        "unwrapped(",
+        ")",
+        "let valuePayload = try SwiftSchemaPayload(from: decoder).value; \
+         self.value = try SwiftSchemaPayload.read(String.self, from: trimmed(valuePayload), \
+         at: decoder.codingPath)",
+    );
+    assert!(hoisted.contains(&read), "{read} is not in: {hoisted}");
+    holds(
+        &lugged_swift::swift_definition(),
+        &[
+            concat!(
+                "private struct SwiftSchemaReadValue: Decodable { let value: Carton; ",
+                "init(from decoder: Decoder) throws { ",
+                "self.value = try Carton(swiftSchemaUnjudged: decoder) } }; ",
+            ),
+            concat!(
+                "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws { ",
+                "let valuePayload = try SwiftSchemaPayload(from: decoder, without: taken).value; ",
+                "self.value = try SwiftSchemaPayload.read(SwiftSchemaReadValue.self, ",
+                "from: unwrapped(valuePayload), at: decoder.codingPath).value }; ",
+            ),
+            ALONE,
+        ],
+    );
+    holds(
+        &toted_swift::swift_definition(),
+        &[
+            concat!(
+                "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws { ",
+                "self.value = try Carton(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken) }; ",
+            ),
+            ALONE,
+        ],
+    );
+    let written = json!({ "label": "  A  ", "itemCodeList": ["x"] });
+    assert_eq!(
+        serde_json::from_value::<Hoisted>(json!({ "payload": "  A  " })).unwrap(),
+        Hoisted("A".to_owned())
+    );
+    assert_eq!(
+        serde_json::from_value::<Lugged>(json!({ "payload": written })).unwrap(),
+        Lugged(carton())
+    );
+    assert_eq!(
+        serde_json::from_value::<Toted>(written).unwrap(),
+        Toted(carton())
     );
 }
 
