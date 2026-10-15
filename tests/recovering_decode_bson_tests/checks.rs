@@ -137,8 +137,7 @@ where
     E: ToString,
 {
     read.err()
-        .map(|refused| refused.to_string().lines().map(str::to_owned).collect())
-        .unwrap_or_default()
+        .map_or_default(|refused| refused.to_string().lines().map(str::to_owned).collect())
 }
 
 /// Reads `stored` as a parcel with a callback that rejects, and answers every issue it listed.

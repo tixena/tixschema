@@ -944,21 +944,17 @@ fn parse_operation(operation: &TraitItemFn, context: &Ident) -> Result<Operation
     let directive = OperationDirective::read(&operation.attrs)?;
     // `header_in` and `part` each claim one ordinary argument beside the message, out of the same
     // pool: neither becomes a field on the message [`operation_inputs`] declares one from.
-    let extra_claims: HashSet<String> = directive
-        .http
-        .as_ref()
-        .map(|raw| {
-            raw.header_in
-                .iter()
-                .map(|(_, parameter)| written(parameter))
-                .chain(
-                    raw.multipart_parts
-                        .iter()
-                        .map(|(_, parameter)| written(parameter)),
-                )
-                .collect()
-        })
-        .unwrap_or_default();
+    let extra_claims: HashSet<String> = directive.http.as_ref().map_or_default(|raw| {
+        raw.header_in
+            .iter()
+            .map(|(_, parameter)| written(parameter))
+            .chain(
+                raw.multipart_parts
+                    .iter()
+                    .map(|(_, parameter)| written(parameter)),
+            )
+            .collect()
+    });
     let inputs = operation_inputs(operation, context, &extra_claims)?;
     let outcome = operation_outcome(operation, directive.one_way)?;
     let ident = operation.sig.ident.clone();

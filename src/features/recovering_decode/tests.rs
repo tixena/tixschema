@@ -348,8 +348,7 @@ fn row_parameter(module_items: proc_macro2::TokenStream) -> String {
                 None
             }
         })
-        .map(|row| row.ident.to_string())
-        .unwrap_or_default()
+        .map_or_default(|row| row.ident.to_string())
 }
 
 /// What the typed paths add to every type: under `mongodb`, the const that holds them, and
@@ -1712,7 +1711,7 @@ fn a_write_hands_the_driver_documents_and_an_insert_writes_its_row_first() {
                 "for {source}, got: {body}"
             );
         }
-        let written = body_of(type_impl.clone(), "mongo_written_row");
+        let written = body_of(type_impl, "mongo_written_row");
         assert!(
             written.starts_with(
                 "{ match :: serde :: Serialize :: serialize (self , bson :: Serializer :: new ()) \

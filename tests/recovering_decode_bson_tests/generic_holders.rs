@@ -88,8 +88,7 @@ where
     E: ToString,
 {
     read.err()
-        .map(|refused| refused.to_string().lines().map(str::to_owned).collect())
-        .unwrap_or_default()
+        .map_or_default(|refused| refused.to_string().lines().map(str::to_owned).collect())
 }
 
 #[test]

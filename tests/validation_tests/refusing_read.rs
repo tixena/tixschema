@@ -680,7 +680,7 @@ mod a_read_refuses_what_validate_refuses {
             for stock in [
                 Stock::Keyed(BTreeMap::from([("north".to_owned(), held.clone())])),
                 Stock::Listed(vec![sound(), held.clone()]),
-                Stock::Single(held.clone()),
+                Stock::Single(held),
             ] {
                 read_as_validated(&stock, stock.validate());
             }

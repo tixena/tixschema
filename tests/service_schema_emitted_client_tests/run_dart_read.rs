@@ -279,14 +279,13 @@ where
 {
     serde_json::from_str::<T>(payload)
         .err()
-        .map(|refused| {
+        .map_or_default(|refused| {
             refused
                 .to_string()
                 .split("; ")
                 .map(ToOwned::to_owned)
                 .collect()
         })
-        .unwrap_or_default()
 }
 
 /// A terminal that holds a broken parcel in a field, a list, a map and an optional.
@@ -511,8 +510,7 @@ fn stuck(name: &'static str, payload: &str) -> (Case, String) {
     let answered = taken
         .as_ref()
         .err()
-        .map(|refused| vec![refused.to_string()])
-        .unwrap_or_default();
+        .map_or_default(|refused| vec![refused.to_string()]);
     let line = taken.map_or_else(
         |_| {
             format!(
