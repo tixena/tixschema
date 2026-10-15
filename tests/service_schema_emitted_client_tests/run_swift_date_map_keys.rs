@@ -1,8 +1,9 @@
 //! A map keyed by a date, read and written by the emitted Swift types compiled with warnings as
-//! errors: as a field, as a member of a variant under each tagging and as a brand's value, held by
-//! a type that declares a parameter and by one that declares none. Each payload the serde read
-//! reads prints what it prints, each key in the text chrono writes, and a key that is no date is
-//! refused, as the serde read refuses it.
+//! errors: as a field, as a member of a variant under each tagging and as a brand's value, and in a
+//! list, in a list of optionals, in an optional list and in an optional, held by a type that
+//! declares a parameter and by one that declares none. Each payload the serde read reads prints
+//! what it prints, each key in the text chrono writes, and a key that is no date is refused, as the
+//! serde read refuses it.
 
 #![cfg(feature = "swift")]
 
@@ -13,10 +14,11 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::date_map_keys_models::{
-    AdjacentShift, AdjacentWatch, Chronicle, Daybook, Diary, Sailing, Shift, TaggedShift,
-    TaggedWatch, Tidetable, Timetable, UntaggedShift, UntaggedWatch, Watch, adjacent_shift_swift,
-    adjacent_watch_swift, chronicle_swift, daybook_swift, diary_swift, first, sailing_swift,
-    second, shift_swift, tagged_shift_swift, tagged_watch_swift, tidetable_swift, timetable_swift,
+    AdjacentShift, AdjacentWatch, Chronicle, Daybook, Daybooks, Diary, Logbook, Sailing, Shift,
+    StowedLogbook, TaggedShift, TaggedWatch, Tidetable, Timetable, UntaggedShift, UntaggedWatch,
+    Watch, adjacent_shift_swift, adjacent_watch_swift, chronicle_swift, daybook_swift,
+    daybooks_swift, diary_swift, first, logbook_swift, sailing_swift, second, shift_swift,
+    stowed_logbook_swift, tagged_shift_swift, tagged_watch_swift, tidetable_swift, timetable_swift,
     untagged_shift_swift, untagged_watch_swift, watch_swift,
 };
 use super::run_swift_read::normalized;
@@ -161,6 +163,44 @@ fn struct_and_brand_rows() -> Vec<Row> {
             "Diary<String>",
             &Diary(keyed(&"d".to_owned())),
         ),
+        read_row(
+            "a list, a list of optionals, an optional list and an optional",
+            "Logbook",
+            &Logbook {
+                listed: vec![keyed(&1), HashMap::new()],
+                listed_or_none: vec![Some(keyed(&2)), None],
+                maybe: Some(keyed(&3)),
+                maybe_listed: Some(vec![keyed(&4)]),
+                sailing_lists: vec![keyed(&sailing())],
+            },
+        ),
+        read_row(
+            "a list, a list of optionals, an optional list and an optional, none",
+            "Logbook",
+            &Logbook {
+                listed: Vec::new(),
+                listed_or_none: vec![None],
+                maybe: None,
+                maybe_listed: None,
+                sailing_lists: Vec::new(),
+            },
+        ),
+        read_row(
+            "a list, a list of optionals, an optional list and an optional that declare a \
+             parameter",
+            "StowedLogbook<String>",
+            &StowedLogbook {
+                listed: vec![keyed(&"t".to_owned())],
+                listed_or_none: vec![None, Some(keyed(&"u".to_owned()))],
+                maybe: Some(keyed(&"v".to_owned())),
+                maybe_listed: Some(vec![keyed(&"w".to_owned())]),
+            },
+        ),
+        read_row(
+            "a brand over a list",
+            "Daybooks",
+            &Daybooks(vec![keyed(&"d".to_owned())]),
+        ),
     ]
 }
 
@@ -304,6 +344,38 @@ fn refused_struct_and_brand_rows() -> Vec<Row> {
             "input contains invalid characters at line 1 column 12",
             BAD_KEY,
         ),
+        refused_row(
+            "a list under a key that is no date",
+            "Logbook",
+            &Logbook {
+                listed: vec![once(1)],
+                listed_or_none: Vec::new(),
+                maybe: None,
+                maybe_listed: None,
+                sailing_lists: Vec::new(),
+            },
+            "input contains invalid characters at line 1 column 23",
+            BAD_KEY,
+        ),
+        refused_row(
+            "an optional under a key that is no date",
+            "StowedLogbook<String>",
+            &StowedLogbook {
+                listed: Vec::new(),
+                listed_or_none: Vec::new(),
+                maybe: Some(once("v".to_owned())),
+                maybe_listed: None,
+            },
+            "input contains invalid characters at line 1 column 53",
+            BAD_KEY,
+        ),
+        refused_row(
+            "a brand over a list under a key that is no date",
+            "Daybooks",
+            &Daybooks(vec![once("d".to_owned())]),
+            "input contains invalid characters at line 1 column 13",
+            BAD_KEY,
+        ),
     ]
 }
 
@@ -437,6 +509,9 @@ fn each_map_keyed_by_a_date_reads_and_writes_in_swift_as_serde_does() {
         daybook_swift::swift_definition(),
         chronicle_swift::swift_definition(),
         diary_swift::swift_definition(),
+        logbook_swift::swift_definition(),
+        stowed_logbook_swift::swift_definition(),
+        daybooks_swift::swift_definition(),
         HARNESS.to_owned(),
         calls.join("\n"),
     ]

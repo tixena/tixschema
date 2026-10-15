@@ -368,12 +368,31 @@ fn a_brand_over_an_optional_converted_value_calls_its_closure_with_try() {
         #[serde(transparent)]
         pub struct OptionalHoard(pub Option<HashMap<u32, String>>);
     };
-    let written = emitted(&hoard);
-    let call = concat!(
-        "self.value = try { let wireValue = ",
-        "try container.decode(OptionalHoardKeyedMap?.self); return ",
-    );
-    assert!(written.contains(call), "{call} is not in: {written}");
+    let hoards: Item = syn::parse_quote! {
+        #[serde(transparent)]
+        pub struct OptionalHoards(pub Option<Vec<HashMap<u32, String>>>);
+    };
+    for (item, call) in [
+        (
+            hoard,
+            concat!(
+                "self.value = try { let wireValue = ",
+                "try container.decode(OptionalHoardKeyedMap?.self); ",
+                "return wireValue.map { $0.storage } }() }; ",
+            ),
+        ),
+        (
+            hoards,
+            concat!(
+                "self.value = try { let wireValue = ",
+                "try container.decode([OptionalHoardsKeyedMap]?.self); ",
+                "return wireValue.map { $0.map { $0.storage } } }() }; ",
+            ),
+        ),
+    ] {
+        let written = emitted(&item);
+        assert!(written.contains(call), "{call} is not in: {written}");
+    }
 }
 
 /// [`a_brand_over_an_optional_converted_value_calls_its_closure_with_try`], over a date.

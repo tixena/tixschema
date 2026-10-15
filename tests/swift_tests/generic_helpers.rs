@@ -5,8 +5,8 @@
 //! text it had. `wrapped_maps.rs` pins how a map under a key Swift wraps is read and written in a
 //! tuple's slot, a tuple struct's slot, a variant's slot and another map's value.
 //! `service_schema_emitted_client_tests/run_swift_generic_helpers.rs` compiles these shapes under a
-//! Swift toolchain and reads a payload of each, such a map in a slot included, but a list of maps,
-//! whose Swift text does not compile for reasons of its own, an alias of a tuple, which
+//! Swift toolchain and reads a payload of each, such a map in a slot and a list of such maps
+//! included, but an alias of a tuple, which
 //! `run_swift_renamed_generics.rs` reads, an alias of a map under a key Swift wraps, which that run
 //! compiles and does not read, Swift reading it through its own `Dictionary` coding, a map keyed by
 //! the parameter, which `run_swift_text_map_keys.rs` reads, and a brand, which
@@ -345,7 +345,7 @@ fn every_type_position_names_the_helper_at_its_parameters() {
             "self.cask = try Cask<CaskArgument0Tuple<Stowed>>(swiftSchemaUnjudged: \
              container.superDecoder(forKey: .cask)); ",
             "let wireListed = try container.decode([StackListedKeyedMap<Stowed>].self, \
-             forKey: .listed); ",
+             forKey: .listed); self.listed = wireListed.map { $0.storage }; ",
             "self.pair = try container.decode(StackPairTuple<Stowed>.self, forKey: .pair); ",
             "let wireByCask = StackByCaskKeyedMap<Stowed>(storage: byCask); ",
             "let wireByNumber = StackByNumberKeyedMap<Stowed>(storage: byNumber); ",

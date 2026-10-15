@@ -292,6 +292,18 @@ mod renamed_generics_models;
 #[path = "service_schema_emitted_client_tests/run_swift_renamed_generics.rs"]
 mod run_swift_renamed_generics;
 
+/// The models a map under a key Swift wraps, in a list, in a list of optionals, in an optional list
+/// and in an optional, is written on.
+#[cfg(all(test, feature = "swift"))]
+#[path = "swift_tests/listed_maps_models.rs"]
+mod listed_maps_models;
+
+/// A map under a key Swift wraps, in a list, in a list of optionals, in an optional list and in an
+/// optional, read and written by the emitted Swift types wherever it is held.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_listed_maps.rs"]
+mod run_swift_listed_maps;
+
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
 #[cfg(all(test, feature = "dart"))]
