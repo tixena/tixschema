@@ -828,11 +828,16 @@ fn a_slot_of_a_struct_is_named_by_the_step_serde_writes() {
         ),
         (
             "the one slot of a struct",
-            "Sealed(value: SealedTuple(slot0: \"\"))".to_owned(),
+            read_as("Sealed", &Sealed(String::new())),
         ),
         (
             "the one slot of a struct, held",
-            "Strongbox(seal: Sealed(value: SealedTuple(slot0: \"\")))".to_owned(),
+            read_as(
+                "Strongbox",
+                &Strongbox {
+                    seal: Sealed(String::new()),
+                },
+            ),
         ),
     ];
     let Some(swift) = printed(&driver(&read)) else {

@@ -575,8 +575,9 @@ fn a_brand_has_both_reads_and_answers_for_its_bound_alone() {
     );
 }
 
-/// A tuple struct reads the tuple it wraps unjudged, and the tuple each slot: a model through its
-/// unjudged initializer, handed the next decoder of the array.
+/// A tuple struct of several slots reads the tuple it wraps unjudged, and the tuple each slot: a
+/// model through its unjudged initializer, handed the next decoder of the array. A struct of one
+/// slot reads the slot's value from its own decoder.
 #[test]
 fn a_tuple_struct_reads_its_slots_unjudged() {
     holds(
@@ -594,13 +595,16 @@ fn a_tuple_struct_reads_its_slots_unjudged() {
             ),
         ],
     );
+    let sealed = sealed_swift::swift_definition();
     holds(
-        &sealed_swift::swift_definition(),
-        &[
-            "slot0 = try container.decode(String.self);  }; ",
-            "self.value = try SealedTuple(swiftSchemaUnjudged: decoder) }; ",
-        ],
+        &sealed,
+        &[concat!(
+            "public init(swiftSchemaUnjudged decoder: Decoder) throws { ",
+            "let container = try decoder.singleValueContainer(); ",
+            "self.value = try container.decode(String.self) }; ",
+        )],
     );
+    assert!(!sealed.contains("SealedTuple"), "got: {sealed}");
 }
 
 #[test]

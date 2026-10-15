@@ -339,21 +339,23 @@ pub(super) fn slot_rules(owner: &str, slots: &[FieldDef]) -> Vec<String> {
         .collect()
 }
 
-/// What the slots of a tuple struct add to its `validate()`. A struct of one slot is written as
-/// that slot's value, so the slot is reported under no step. A struct of several runs what the
-/// tuple it wraps reports.
+/// What the one slot of a tuple struct that declares one adds to its `validate()`: serde writes the
+/// slot's value as the struct, so the slot is reported under no step.
+pub(super) fn lone_slot_rules(owner: &str, slot: &FieldDef) -> Vec<String> {
+    member_rules(
+        owner,
+        &Checked {
+            access: "value".to_owned(),
+            def: slot,
+            runs_both: false,
+            step: None,
+        },
+    )
+}
+
+/// What the slots serde reads of a tuple struct that declares several add to its `validate()`:
+/// what the tuple it wraps reports, each slot under its position.
 pub(super) fn tuple_struct_rules(owner: &str, slots: &[FieldDef]) -> Vec<String> {
-    if let [only] = slots {
-        return member_rules(
-            owner,
-            &Checked {
-                access: "value.slot0".to_owned(),
-                def: only,
-                runs_both: false,
-                step: None,
-            },
-        );
-    }
     if slot_rules(owner, slots).is_empty() {
         Vec::new()
     } else {

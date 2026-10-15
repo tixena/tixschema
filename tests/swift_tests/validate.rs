@@ -456,8 +456,8 @@ fn an_enums_string_check_reaches_the_text_its_variants_hold() {
 fn the_one_slot_of_a_struct_is_reported_under_no_step() {
     let swift = sealed_swift::swift_definition();
     let written = concat!(
-        "if value.slot0.unicodeScalars.count < 1 { errors.append(",
-        r#""too short: minimum length is 1, got \(value.slot0.unicodeScalars.count)") }"#,
+        "if value.unicodeScalars.count < 1 { errors.append(",
+        r#""too short: minimum length is 1, got \(value.unicodeScalars.count)") }"#,
     );
     assert!(swift.contains(written), "{written} is not in: {swift}");
 }
