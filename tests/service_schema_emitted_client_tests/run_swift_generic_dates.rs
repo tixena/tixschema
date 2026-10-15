@@ -1,7 +1,6 @@
 //! A date held by a type that declares a parameter, read and written by the emitted Swift types
 //! compiled with warnings as errors: each payload the serde read reads prints what it prints. A
-//! map keyed by a date is left out: its Swift text does not compile for reasons of its own,
-//! whether or not the type declares a parameter.
+//! map keyed by a date is read by `run_swift_date_map_keys.rs`.
 
 #![cfg(feature = "swift")]
 
