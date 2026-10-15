@@ -327,8 +327,7 @@ fn result_interface(named: &str, operation: &OperationDef) -> Option<String> {
         let shape_info = success_shape(&published, &shape, success);
         let aux = shape_info
             .aux_declaration
-            .map(|declared| format!("{declared}\n"))
-            .unwrap_or_default();
+            .map_or_default(|declared| format!("{declared}\n"));
         (
             aux,
             format!(
@@ -340,8 +339,7 @@ fn result_interface(named: &str, operation: &OperationDef) -> Option<String> {
     let error_info = error_shape(&published, &shape, error);
     let error_aux = error_info
         .aux_declaration
-        .map(|declared| format!("{declared}\n"))
-        .unwrap_or_default();
+        .map_or_default(|declared| format!("{declared}\n"));
     let error_ty = error_info.type_name;
     let aux = format!("{ok_aux}{error_aux}");
     Some(format!(

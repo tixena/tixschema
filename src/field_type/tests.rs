@@ -590,7 +590,7 @@ fn test_the_parser_records_the_level_each_option_was_written_at() {
         let ty: syn::Type = syn::parse_str(spelling).unwrap();
         let parsed = super::get_field_def("items", &ty, "");
         assert_eq!(parsed.array_depth, array_depth, "for: {spelling}");
-        let mut recorded = parsed.nullable_levels.clone();
+        let mut recorded = parsed.nullable_levels;
         recorded.sort_unstable();
         assert_eq!(recorded, nullable_levels, "for: {spelling}");
     }

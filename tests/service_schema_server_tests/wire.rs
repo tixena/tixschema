@@ -72,7 +72,7 @@ mod tests {
         ] {
             assert_eq!(
                 reply(&json!({ "ok": false, "error": declared })),
-                ("error", declared.clone()),
+                ("error", declared),
             );
         }
     }

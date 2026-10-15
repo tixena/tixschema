@@ -4951,8 +4951,7 @@ fn collect_struct_fields(
         let rust_name = field
             .ident
             .as_ref()
-            .map(|ident| ident.unraw().to_string())
-            .unwrap_or_default();
+            .map_or_default(|ident| ident.unraw().to_string());
         let serde_default = (container.serde_default)(&rust_name);
         #[cfg(any(feature = "zod", feature = "jsonschema"))]
         f_def.serde_default.clone_from(&serde_default);
@@ -8356,7 +8355,7 @@ fn item_lines_or_name(
     item_name: &str,
     flatten: impl FnOnce(&[String]) -> Vec<String>,
 ) -> Vec<String> {
-    let lines = docs_vec.map(flatten).unwrap_or_default();
+    let lines = docs_vec.map_or_default(flatten);
     if lines.is_empty() {
         vec![item_name.to_owned()]
     } else {
@@ -14835,8 +14834,7 @@ fn field_ident_string(field: &Field) -> String {
     field
         .ident
         .as_ref()
-        .map(|ident| ident.unraw().to_string())
-        .unwrap_or_default()
+        .map_or_default(|ident| ident.unraw().to_string())
 }
 
 /// Hands the field def the two serde facts the object surfaces spend: whether the field's value

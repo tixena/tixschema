@@ -283,16 +283,14 @@ fn deserialize_side(nested: &ParseNestedMeta<'_>) -> syn::Result<Option<LitStr>>
 fn predicates_of(written: &LitStr) -> Vec<WherePredicate> {
     written
         .parse_with(Punctuated::<WherePredicate, Token![,]>::parse_terminated)
-        .map(|listed| listed.into_iter().collect())
-        .unwrap_or_default()
+        .map_or_default(|listed| listed.into_iter().collect())
 }
 
 /// The lifetimes a `borrow = "'a + 'b"` lists.
 fn lifetimes_of(written: &LitStr) -> Vec<Lifetime> {
     written
         .parse_with(Punctuated::<Lifetime, Token![+]>::parse_terminated)
-        .map(|listed| listed.into_iter().collect())
-        .unwrap_or_default()
+        .map_or_default(|listed| listed.into_iter().collect())
 }
 
 /// Every lifetime a type writes that a value of it could borrow for.

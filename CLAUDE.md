@@ -2085,7 +2085,10 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   - `tests/foundation_refusals.rs` is the `trybuild` harness. Each file of
     `tests/foundation_refusals/` is a crate of its own, held to the `.stderr` beside it, written in
     the build with every plain feature on, the one the harness is gated on: a missing initializer,
-    each refusal of the `enable` list, and an initializer written twice or handed an argument.
+    each refusal of the `enable` list, and an initializer handed an argument. The initializer
+    written twice, `tests/foundation_refusals/written_twice/main.rs`, is checked by cargo's JSON
+    messages instead: an `E0428` names each item it writes, and no error but `E0428` and `E0119`
+    is reported. rustc 1.99 reports the second marker's `impl` as `E0119` and 1.100 does not.
   - `tests/crates_apart/` holds two crates, path dev-dependencies of this package, each writing its
     own libraries: `stored_customers` declares a stored `Customer`, and `invoice_lookups`, whose
     types list `"decode_with"` alone, lists no `mongodb` in its manifest and builds under
