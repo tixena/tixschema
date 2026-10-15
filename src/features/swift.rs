@@ -360,20 +360,20 @@ pub fn swift_module_ident(rust_ident: &str, span: proc_macro2::Span) -> Ident {
     Ident::new(&format!("{}_swift", to_snake_case(rust_ident)), span)
 }
 
-/// The `typealias {rust_ident}{generics} = {export_name}{generics}` a renamed item re-publishes
-/// under its own Rust ident — the alias a reference declared above the rename still resolves
-/// through. Empty for an item that already publishes under its own ident.
+/// The `typealias {rust_ident}<T: Codable & Sendable> = {export_name}<T>` a renamed item
+/// re-publishes under its own Rust ident, the bound written again: Swift does not carry it over to
+/// a generic `typealias`. Empty for an item that already publishes under its own ident.
 fn ident_typealias(rust_ident: &str, export_name: &str, generic_params: &str) -> String {
     if rust_ident == export_name {
         String::new()
     } else {
-        let bare = bare_generic_params(generic_params);
-        format!("\n\npublic typealias {rust_ident}{bare} = {export_name}{bare};")
+        let held = held_at(export_name, generic_params);
+        format!("\n\npublic typealias {rust_ident}{generic_params} = {held};")
     }
 }
 
-/// `<T, U>` with every parameter's own conformance stripped — the spelling a `typealias` and a
-/// reference site write, as opposed to a declaration, which writes [`swift_generic_params`].
+/// `<T, U>` with every parameter's own conformance stripped — the spelling a reference site
+/// writes, as opposed to a declaration, which writes [`swift_generic_params`].
 fn bare_generic_params(generic_params: &str) -> String {
     if generic_params.is_empty() {
         return String::new();

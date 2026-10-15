@@ -71,3 +71,13 @@ mod date_map_keys_models;
 #[cfg(all(feature = "swift", feature = "serde", feature = "chrono"))]
 #[path = "swift_tests/date_map_keys.rs"]
 mod date_map_keys;
+
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "swift_tests/renamed_generics_models.rs"]
+mod renamed_generics_models;
+
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "swift_tests/renamed_generics.rs"]
+mod renamed_generics;
