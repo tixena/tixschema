@@ -247,6 +247,18 @@ mod date_map_keys_models;
 #[path = "service_schema_emitted_client_tests/run_swift_date_map_keys.rs"]
 mod run_swift_date_map_keys;
 
+/// The models a date held in a slot, as a map's value and as a type argument is written on.
+#[cfg(all(test, feature = "swift", feature = "chrono"))]
+#[path = "swift_tests/held_dates_models.rs"]
+mod held_dates_models;
+
+/// A date held in a slot, as a map's value and as a type argument, read and written by the emitted
+/// Swift types.
+#[cfg(test)]
+#[cfg(feature = "chrono")]
+#[path = "service_schema_emitted_client_tests/run_swift_held_dates.rs"]
+mod run_swift_held_dates;
+
 /// The models a type that declares a parameter and publishes under another name is written on.
 #[cfg(all(test, feature = "swift"))]
 #[path = "swift_tests/renamed_generics_models.rs"]

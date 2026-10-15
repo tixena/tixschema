@@ -159,6 +159,8 @@ enum Wrapped {
 struct VariantPayload {
     /// What chooses the variant in an untagged enum: the bounds of its own members, on `payload`.
     bound: Vec<String>,
+    /// The one slot of the variant, where it is read and written as the type it is written as.
+    converted: Option<Shaped>,
     /// The one slot of the variant, with what its types are named from, where it names a function.
     corrected: Option<(FieldDef, String)>,
     held: Option<String>,
@@ -200,6 +202,16 @@ enum LeafConversion {
     MapWrapper(String),
     /// The leaf reads and writes exactly as its own Swift type spells it.
     None,
+    /// A map Swift keys natively whose values convert: each value is turned through its own shape.
+    Values(Box<Shaped>),
+}
+
+/// A value read and written through its shape: the value as the emitter declares it, and the shape
+/// that says what turns the type it is written as into its own.
+#[derive(Clone)]
+struct Shaped {
+    def: FieldDef,
+    shape: SwiftFieldShape,
 }
 
 /// How Swift reads the keys of a map.
@@ -224,7 +236,8 @@ struct SwiftFieldShape {
 impl VariantPayload {
     /// The statements that read the payload and hand it to `sink`: a type written for the variant
     /// and a value `validate()` walks unjudged, a slot that names a function from what the
-    /// function answers, and any other as it was. A type written for such a slot joins `twins`.
+    /// function answers, and any other through its shape. A type written for such a slot joins
+    /// `twins`.
     fn read(
         &self,
         from: &VariantRead<'_>,
@@ -241,7 +254,7 @@ impl VariantPayload {
                 .unwrap_or_else(|| read::held(source, held, sink));
         }
         if let Some((def, hint)) = &self.corrected {
-            return preprocess::member(
+            return corrected_member(
                 &preprocess::Member {
                     def,
                     functions: preprocess::functions(def),
@@ -252,17 +265,64 @@ impl VariantPayload {
                     stem: from.stem,
                     walked: self.walked.is_some(),
                 },
+                self.converted.as_ref(),
                 source,
                 sink,
                 twins,
             );
         }
-        match &self.walked {
-            Some((def, hint)) => {
+        match (&self.walked, &self.converted) {
+            (Some((def, hint)), _) => {
                 read::unjudged(def, hint, source, sink, &mut read::Locals::default())
             }
-            None => sink(&format!("try {}", source.plain(held))),
+            (None, Some(slot)) => slot.read(held, from.stem, source, sink),
+            (None, None) => sink(&format!("try {}", source.plain(held))),
         }
+    }
+
+    /// What the enum writes for the payload `payload` names: itself, or the value of the type its
+    /// slot is written as.
+    fn written(&self, payload: &str) -> String {
+        self.converted
+            .as_ref()
+            .map_or_else(|| payload.to_owned(), |slot| slot.written(payload))
+    }
+}
+
+impl Shaped {
+    /// What `local`, the value read as the type it is written as, is turned into.
+    fn converted(&self, local: &str) -> String {
+        converted_from(&self.def, &self.shape, local)
+    }
+
+    /// Whether the value is read and written as a type other than its own.
+    const fn converts(&self) -> bool {
+        !matches!(self.shape.leaf_conversion, LeafConversion::None)
+    }
+
+    /// The statements that read the value from `source` and hand it to `sink`: as `real_type`, its
+    /// own, or as the type it is written as, held in `wire{Stem}` and turned into its own.
+    fn read(
+        &self,
+        real_type: &str,
+        stem: &str,
+        source: &read::Source,
+        sink: &dyn Fn(&str) -> String,
+    ) -> String {
+        if !self.converts() {
+            return sink(&format!("try {}", source.plain(real_type)));
+        }
+        let local = format!("wire{}", swift_upper_camel(stem));
+        format!(
+            "let {local} = try {}; {}",
+            source.plain(&wire_type(&self.def, &self.shape)),
+            sink(&self.converted(&local))
+        )
+    }
+
+    /// What `held`, the value, is written as: the value of the type it is written as.
+    fn written(&self, held: &str) -> String {
+        written_from(&self.def, &self.shape, held)
     }
 }
 
@@ -707,12 +767,14 @@ fn swift_map_key_codec(key: &FieldDef) -> (Option<String>, String) {
 /// The per-field wrapper struct a non-string-keyed map earns: a `Codable` type over its own
 /// `[Key: Value]` `storage`, decoding and encoding through a locally nested `DynamicCodingKey` so
 /// two different fields' wrappers never collide even when their generated text is concatenated.
+/// Each value is read and written through its shape.
 fn map_key_wrapper_struct(
     wrapper_name: &str,
     generic_params: &str,
     key_type: &str,
     value_type: &str,
     key: &FieldDef,
+    value: &Shaped,
     unjudged: Option<&str>,
 ) -> String {
     let (decode_key, encode_key) = swift_map_key_codec(key);
@@ -738,6 +800,17 @@ fn map_key_wrapper_struct(
             read::UNJUDGED,
         )
     });
+    let entry = value.read(
+        value_type,
+        "value",
+        &read::Source::Keyed {
+            container: "container".to_owned(),
+            key: "codingKey".to_owned(),
+            presence: read::Presence::Known,
+        },
+        &|held| format!("result[key] = {held}"),
+    );
+    let written = value.written("value");
     // Static, as the read uses it before `storage` is set, and computed, as a generic type stores
     // no static property and a stored `ISO8601DateFormatter` is not `Sendable`.
     #[cfg(feature = "chrono")]
@@ -762,20 +835,21 @@ fn map_key_wrapper_struct(
          var result: [{key_type}: {value_type}] = [:]; \
          for codingKey in container.allKeys {{ \
          let wireKey = codingKey.stringValue; \
-         {bound_key}result[key] = try container.decode({value_type}.self, forKey: codingKey) }}; \
+         {bound_key}{entry} }}; \
          storage = result }}; \
          public func encode(to encoder: Encoder) throws {{ \
          var container = encoder.container(keyedBy: DynamicCodingKey.self); \
          for (key, value) in storage {{ \
          let wireKey = {encode_key}; \
          guard let codingKey = DynamicCodingKey(stringValue: wireKey) else {{ continue }}; \
-         try container.encode(value, forKey: codingKey) }} }} }};"
+         try container.encode({written}, forKey: codingKey) }} }} }};"
     )
 }
 
 /// The Swift tuple-slot struct a `Tuple` field or a `TupleMultiple` variant payload earns: no
 /// bare Swift tuple conforms to `Codable`, so each occurrence gets its own unkeyed-container
-/// struct, named after the field it belongs to so two occurrences never collide.
+/// struct, named after the field it belongs to so two occurrences never collide. `elements` is
+/// each slot's type, and what the slot is written as.
 fn tuple_struct(
     struct_name: &str,
     generic_params: &str,
@@ -790,24 +864,26 @@ fn tuple_struct(
     let decls = slot_names
         .iter()
         .zip(elements)
-        .fold(String::new(), |mut acc, (slot, (_, ty))| {
+        .fold(String::new(), |mut acc, (slot, (ty, _))| {
             write!(acc, "let {slot}: {ty}; ").unwrap();
             acc
         });
     let ctor_params = slot_names
         .iter()
         .zip(elements)
-        .map(|(slot, (_, ty))| format!("{slot}: {ty}"))
+        .map(|(slot, (ty, _))| format!("{slot}: {ty}"))
         .collect::<Vec<_>>()
         .join(", ");
     let ctor_assigns = slot_names.iter().fold(String::new(), |mut acc, slot| {
         write!(acc, "self.{slot} = {slot}; ").unwrap();
         acc
     });
-    let encode_calls = slot_names.iter().fold(String::new(), |mut acc, slot| {
-        write!(acc, "try container.encode({slot}); ").unwrap();
-        acc
-    });
+    let encode_calls = elements
+        .iter()
+        .fold(String::new(), |mut acc, (_, written)| {
+            write!(acc, "try container.encode({written}); ").unwrap();
+            acc
+        });
     let both = read::both(
         &format!("var container = try decoder.unkeyedContainer(); {reads}"),
         &preprocess::Written {
@@ -892,25 +968,27 @@ fn datetime_shape(field: &FieldDef) -> SwiftFieldShape {
 }
 
 /// A `Tuple` leaf: the aux struct is both the real and the wire type, so no conversion runs — the
-/// struct's own `Codable` already speaks the array serde writes. The struct declares the
-/// parameters its slots reach.
+/// struct's own `Codable` already speaks the array serde writes, each slot read and written
+/// through its shape. The struct declares the parameters its slots reach.
 fn tuple_shape(elements: &[FieldDef], name_hint: &str, aux: &mut Vec<String>) -> SwiftFieldShape {
     let struct_name = format!("{name_hint}Tuple");
     let mut locals = read::Locals::default();
     let mut reads = String::new();
     let mut twins = Vec::new();
+    let mut slots = Vec::new();
     let rendered: Vec<(String, String)> = elements
         .iter()
         .enumerate()
         .map(|(index, element)| {
             let hint = format!("{struct_name}Slot{index}");
-            let element_type = swift_full_real_type(element, &hint, aux);
+            let (element_type, slot) = slot_resolve(element, &hint, aux);
+            let stem = format!("slot{index}");
             let source = read::Source::Listed("container".to_owned());
-            let slot = |held: &str| format!("slot{index} = {held}");
+            let held = |read: &str| format!("{stem} = {read}");
             let walked = validate::walks(element, false);
             let functions = preprocess::functions(element);
             let read = if !functions.is_empty() {
-                preprocess::member(
+                corrected_member(
                     &preprocess::Member {
                         def: element,
                         functions,
@@ -918,20 +996,23 @@ fn tuple_shape(elements: &[FieldDef], name_hint: &str, aux: &mut Vec<String>) ->
                         keys: "",
                         plain: preprocess::Plain::Declared,
                         real_type: &element_type,
-                        stem: &format!("slot{index}"),
+                        stem: &stem,
                         walked,
                     },
+                    Some(&slot),
                     &source,
-                    &slot,
+                    &held,
                     &mut twins,
                 )
             } else if walked {
-                read::unjudged(element, &hint, &source, &slot, &mut locals)
+                read::unjudged(element, &hint, &source, &held, &mut locals)
             } else {
-                slot(&format!("try {}", source.plain(&element_type)))
+                slot.read(&element_type, &stem, &source, &held)
             };
             write!(reads, "{read}; ").unwrap();
-            (element_type.clone(), element_type)
+            let written = slot.written(&stem);
+            slots.push(slot.shape);
+            (element_type, written)
         })
         .collect();
     let rules = validate::slot_rules(&struct_name, elements);
@@ -945,11 +1026,37 @@ fn tuple_shape(elements: &[FieldDef], name_hint: &str, aux: &mut Vec<String>) ->
         twins,
         &validate::method(&rules),
     ));
+    let shapes: Vec<&SwiftFieldShape> = slots.iter().collect();
+    let helpers = datetime_helpers_for(&struct_name, &generic_params, &shapes);
+    if !helpers.is_empty() {
+        aux.push(helpers);
+    }
     direct_shape(held_at(&struct_name, &generic_params))
 }
 
+/// A slot, a value serde writes with no key, as it is declared and read: its Swift type, and its
+/// shape. An `as_number` date is read and written as the `Int64` it is declared as, which is the
+/// number serde writes.
+fn slot_resolve(written: &FieldDef, name_hint: &str, aux: &mut Vec<String>) -> (String, Shaped) {
+    let def = arrayed(written.clone());
+    let (real_type, resolved) = swift_resolve(&def, name_hint, aux);
+    #[cfg(feature = "chrono")]
+    if matches!(resolved.leaf_conversion, LeafConversion::DateTimeAsNumber) {
+        let shape = direct_shape(resolved.real_leaf);
+        return (real_type, Shaped { def, shape });
+    }
+    (
+        real_type,
+        Shaped {
+            def,
+            shape: resolved,
+        },
+    )
+}
+
 /// A `SiblingType` leaf: the referenced item's own published name, with generic arguments rendered
-/// the same way a field's own type is.
+/// the same way a field's own type is. An argument whose read calls the date helpers is held in a
+/// wrapper that carries them, as the type it fills reads it through `Decodable`.
 fn sibling_shape(name: &str, generics: &[FieldDef], aux: &mut Vec<String>) -> SwiftFieldShape {
     let class_name = lookup_swift_name(name).unwrap_or_else(|| name.to_owned());
     if generics.is_empty() {
@@ -959,11 +1066,49 @@ fn sibling_shape(name: &str, generics: &[FieldDef], aux: &mut Vec<String>) -> Sw
         .iter()
         .enumerate()
         .map(|(index, argument)| {
-            swift_full_real_type(argument, &format!("{class_name}Argument{index}"), aux)
+            let hint = format!("{class_name}Argument{index}");
+            let def = arrayed(argument.clone());
+            let (real_type, shape) = swift_resolve(&def, &hint, aux);
+            if reads_a_date(&shape) {
+                dated_argument(&hint, &real_type, &Shaped { def, shape }, aux)
+            } else {
+                real_type
+            }
         })
         .collect::<Vec<_>>()
         .join(", ");
     direct_shape(format!("{class_name}<{arguments}>"))
+}
+
+/// The wrapper `{hint}Date` a type argument of the Swift type `real_type` is held in, pushed into
+/// `aux` with the date helpers its read and its write call: a single value, read and written as
+/// the type `argument` is written as.
+fn dated_argument(hint: &str, real_type: &str, argument: &Shaped, aux: &mut Vec<String>) -> String {
+    let name = format!("{hint}Date");
+    let reads = read::both(
+        &format!(
+            "let container = try decoder.singleValueContainer(); \
+             let wireValue = try container.decode({}.self); self.value = {}",
+            wire_type(&argument.def, &argument.shape),
+            argument.converted("wireValue")
+        ),
+        &preprocess::Written {
+            named: &name,
+            ..preprocess::Written::default()
+        },
+    );
+    aux.push(format!(
+        "public struct {name}: Codable, Sendable {{ \
+         public let value: {real_type}; \
+         public init(value: {real_type}) {{ self.value = value }}; \
+         {reads}\
+         public func encode(to encoder: Encoder) throws {{ \
+         var container = encoder.singleValueContainer(); try container.encode({}) }}; {} }};",
+        argument.written("value"),
+        validate::method(&[])
+    ));
+    aux.push(datetime_helpers_for(&name, "", &[&argument.shape]));
+    name
 }
 
 /// How Swift reads a map under `key`: a string-shaped key and an `isize` are the key of a native
@@ -1014,7 +1159,8 @@ fn keyed_map_wrapper(name_hint: &str, key: &FieldDef, value: &FieldDef) -> (Stri
 }
 
 /// A `Map` leaf: a string-shaped key stays a plain `[String: Value]` (or `[Int: Value]`, both
-/// natively `Codable`); any other key earns a wrapper struct.
+/// natively `Codable`), read as the map of what its values are written as where they convert; any
+/// other key earns a wrapper struct.
 fn map_shape(
     key: &FieldDef,
     value: &FieldDef,
@@ -1022,11 +1168,24 @@ fn map_shape(
     aux: &mut Vec<String>,
 ) -> SwiftFieldShape {
     let value_hint = format!("{name_hint}Value");
-    let value_type = swift_full_real_type(value, &value_hint, aux);
-    match map_keys(key) {
-        MapKeys::Text => return direct_shape(format!("[String: {value_type}]")),
-        MapKeys::Whole => return direct_shape(format!("[Int: {value_type}]")),
-        MapKeys::Wrapped => {}
+    let def = arrayed(value.clone());
+    let (value_type, shape) = swift_resolve(&def, &value_hint, aux);
+    let entry = Shaped { def, shape };
+    let native = match map_keys(key) {
+        MapKeys::Text => Some("String"),
+        MapKeys::Whole => Some("Int"),
+        MapKeys::Wrapped => None,
+    };
+    if let Some(keyed_by) = native {
+        if !entry.converts() {
+            return direct_shape(format!("[{keyed_by}: {value_type}]"));
+        }
+        let wire = wire_type(&entry.def, &entry.shape);
+        return SwiftFieldShape {
+            leaf_conversion: LeafConversion::Values(Box::new(entry)),
+            real_leaf: format!("[{keyed_by}: {value_type}]"),
+            wire_leaf: format!("[{keyed_by}: {wire}]"),
+        };
     }
     let key_type = swift_map_key_scalar(key);
     let (wrapper_name, generic_params) = keyed_map_wrapper(name_hint, key, value);
@@ -1050,8 +1209,13 @@ fn map_shape(
         &key_type,
         &value_type,
         key,
+        &entry,
         unjudged.as_deref(),
     ));
+    let helpers = datetime_helpers_for(&wrapper_name, &generic_params, &[&entry.shape]);
+    if !helpers.is_empty() {
+        aux.push(helpers);
+    }
     let wrapper = held_at(&wrapper_name, &generic_params);
     SwiftFieldShape {
         leaf_conversion: LeafConversion::MapWrapper(wrapper.clone()),
@@ -1130,6 +1294,12 @@ fn decode_leaf(shape: &SwiftFieldShape, expr: &str) -> String {
         LeafConversion::DateTimeAsNumber => format!(
             "try Self.swiftSchemaParseIso8601Millis({expr}, codingPath: decoder.codingPath)"
         ),
+        LeafConversion::Values(value) => {
+            let turned = converted_from(&value.def, &value.shape, "$0");
+            // Swift reads a closure with a `try` in it as one that throws.
+            let tried = if turned.contains("try ") { "try " } else { "" };
+            format!("{tried}{expr}.mapValues {{ {turned} }}")
+        }
     }
 }
 
@@ -1143,6 +1313,10 @@ fn encode_leaf(shape: &SwiftFieldShape, expr: &str) -> String {
         LeafConversion::DateTimePlain => format!("Self.swiftSchemaFormatIso8601Date({expr})"),
         #[cfg(feature = "chrono")]
         LeafConversion::DateTimeAsNumber => format!("Self.swiftSchemaFormatIso8601Millis({expr})"),
+        LeafConversion::Values(value) => format!(
+            "{expr}.mapValues {{ {} }}",
+            written_from(&value.def, &value.shape, "$0")
+        ),
     }
 }
 
@@ -1179,6 +1353,42 @@ fn encode_conversion(field: &FieldDef, shape: &SwiftFieldShape, level: u8, expr:
         format!("{expr}.map {{ $0.map {{ {inner} }} }}")
     } else {
         format!("{expr}.map {{ {inner} }}")
+    }
+}
+
+/// What `local`, a value of `def` read as [`wire_type`], is turned into: a value of its own type.
+fn converted_from(def: &FieldDef, shape: &SwiftFieldShape, local: &str) -> String {
+    if matches!(shape.leaf_conversion, LeafConversion::None) {
+        return local.to_owned();
+    }
+    if def.is_optional() {
+        let inner = decode_conversion(def, shape, def.array_depth, "$0");
+        format!("try {local}.map {{ {inner} }}")
+    } else {
+        decode_conversion(def, shape, def.array_depth, local)
+    }
+}
+
+/// What `held`, a value of `def`, is written as: a value of [`wire_type`].
+fn written_from(def: &FieldDef, shape: &SwiftFieldShape, held: &str) -> String {
+    if matches!(shape.leaf_conversion, LeafConversion::None) {
+        return held.to_owned();
+    }
+    if def.is_optional() {
+        let inner = encode_conversion(def, shape, def.array_depth, "$0");
+        format!("{held}.map {{ {inner} }}")
+    } else {
+        encode_conversion(def, shape, def.array_depth, held)
+    }
+}
+
+/// The type a value of `def` whose shape is `shape` is read and written as, its outer `?` included.
+fn wire_type(def: &FieldDef, shape: &SwiftFieldShape) -> String {
+    let wire = swift_wire_array_type(def, shape);
+    if def.is_optional() {
+        format!("{wire}?")
+    } else {
+        wire
     }
 }
 
@@ -1294,12 +1504,7 @@ fn corrected_field(
     source: &read::Source,
     twins: &mut Vec<String>,
 ) -> String {
-    let wire_array = swift_wire_array_type(&field.field_def, &field.shape);
-    let wire = if field.field_def.is_optional() {
-        format!("{wire_array}?")
-    } else {
-        wire_array
-    };
+    let wire = wire_type(&field.field_def, &field.shape);
     let convert = |local: &str| converted(field, local);
     let plain = if matches!(field.shape.leaf_conversion, LeafConversion::None) {
         preprocess::Plain::Declared
@@ -1326,24 +1531,37 @@ fn corrected_field(
     )
 }
 
+/// [`preprocess::member`] for `member`, a slot: read as it is declared, or as the type it is
+/// written as where `shaped` turns that into its own.
+fn corrected_member(
+    member: &preprocess::Member<'_>,
+    shaped: Option<&Shaped>,
+    source: &read::Source,
+    sink: &dyn Fn(&str) -> String,
+    twins: &mut Vec<String>,
+) -> String {
+    let Some(slot) = shaped.filter(|slot| slot.converts()) else {
+        return preprocess::member(member, source, sink, twins);
+    };
+    let wire = wire_type(&slot.def, &slot.shape);
+    let convert = |local: &str| slot.converted(local);
+    preprocess::member(
+        &preprocess::Member {
+            plain: preprocess::Plain::Wire {
+                convert: &convert,
+                wire: &wire,
+            },
+            ..*member
+        },
+        source,
+        sink,
+        twins,
+    )
+}
+
 /// What `local` holds, a field read as the type it is written as, turned into the field's own.
 fn converted(field: &SwiftField, local: &str) -> String {
-    if field.field_def.is_optional() {
-        let inner = decode_conversion(
-            &field.field_def,
-            &field.shape,
-            field.field_def.array_depth,
-            "$0",
-        );
-        format!("try {local}.map {{ {inner} }}")
-    } else {
-        decode_conversion(
-            &field.field_def,
-            &field.shape,
-            field.field_def.array_depth,
-            local,
-        )
-    }
+    converted_from(&field.field_def, &field.shape, local)
 }
 
 /// The statements that read under its key a field `validate()` walks nothing of: as its own type,
@@ -1402,22 +1620,7 @@ fn encode_statement(field: &SwiftField, container: &str) -> String {
     let source = if matches!(field.shape.leaf_conversion, LeafConversion::None) {
         field.swift_name.clone()
     } else {
-        let convert = if field.field_def.is_optional() {
-            let inner = encode_conversion(
-                &field.field_def,
-                &field.shape,
-                field.field_def.array_depth,
-                "$0",
-            );
-            format!("{}.map {{ {inner} }}", field.swift_name)
-        } else {
-            encode_conversion(
-                &field.field_def,
-                &field.shape,
-                field.field_def.array_depth,
-                &field.swift_name,
-            )
-        };
+        let convert = written_from(&field.field_def, &field.shape, &field.swift_name);
         let local = format!("wire{}", swift_upper_camel(swift_bare(&field.swift_name)));
         return if field.required {
             format!(
@@ -1472,21 +1675,30 @@ fn datetime_helpers(export_name: &str, declares_a_parameter: bool) -> String {
     )
 }
 
-/// Whether any field needs [`datetime_helpers`] — a scalar or array/optional `DateTime<Tz>`
-/// leaf, whose custom decode/encode reads them.
+/// Whether reading a value of `shape` calls [`datetime_helpers`]: a `DateTime<Tz>` leaf under any
+/// list or optional, or one held as the value of a map Swift keys natively.
 #[cfg(feature = "chrono")]
-fn fields_need_datetime_helpers(fields: &[SwiftField]) -> bool {
-    fields.iter().any(|field| {
-        matches!(
-            field.shape.leaf_conversion,
-            LeafConversion::DateTimePlain | LeafConversion::DateTimeAsNumber
-        )
-    })
+fn reads_a_date(shape: &SwiftFieldShape) -> bool {
+    match &shape.leaf_conversion {
+        LeafConversion::DateTimePlain | LeafConversion::DateTimeAsNumber => true,
+        LeafConversion::Values(value) => reads_a_date(&value.shape),
+        LeafConversion::MapWrapper(_) | LeafConversion::None => false,
+    }
 }
 
+#[cfg(not(feature = "chrono"))]
+const fn reads_a_date(_shape: &SwiftFieldShape) -> bool {
+    false
+}
+
+/// [`datetime_helpers`] for `export_name`, where the read of one of `shapes` calls them.
 #[cfg(feature = "chrono")]
-fn datetime_helpers_for(export_name: &str, generic_params: &str, fields: &[SwiftField]) -> String {
-    if fields_need_datetime_helpers(fields) {
+fn datetime_helpers_for(
+    export_name: &str,
+    generic_params: &str,
+    shapes: &[&SwiftFieldShape],
+) -> String {
+    if shapes.iter().any(|shape| reads_a_date(shape)) {
         datetime_helpers(export_name, !generic_params.is_empty())
     } else {
         String::new()
@@ -1497,7 +1709,7 @@ fn datetime_helpers_for(export_name: &str, generic_params: &str, fields: &[Swift
 const fn datetime_helpers_for(
     _export_name: &str,
     _generic_params: &str,
-    _fields: &[SwiftField],
+    _shapes: &[&SwiftFieldShape],
 ) -> String {
     String::new()
 }
@@ -1742,7 +1954,8 @@ fn struct_declaration(
         export_name,
         corrects,
     );
-    let helpers = datetime_helpers_for(export_name, generic_params, fields);
+    let shapes: Vec<&SwiftFieldShape> = fields.iter().map(|field| &field.shape).collect();
+    let helpers = datetime_helpers_for(export_name, generic_params, &shapes);
     format!(
         "public struct {export_name}{generic_params}: Codable, Sendable {{ {content} }}; {helpers}"
     )
@@ -1874,44 +2087,17 @@ fn value_wrapper_tokens(
     let decode = if matches!(shape.leaf_conversion, LeafConversion::None) {
         format!("try container.decode({real_type}.self)")
     } else {
-        let wire_type = swift_wire_array_type(value_field, &shape);
-        let read = if value_field.is_optional() {
-            format!("try container.decode({wire_type}?.self)")
-        } else {
-            format!("try container.decode({wire_type}.self)")
-        };
-        let convert = if value_field.is_optional() {
-            let inner = decode_conversion(value_field, &shape, value_field.array_depth, "$0");
-            format!("try wireValue.map {{ {inner} }}")
-        } else {
-            decode_conversion(value_field, &shape, value_field.array_depth, "wireValue")
-        };
-        format!("try {{ let wireValue = {read}; return {convert} }}()")
+        format!(
+            "try {{ let wireValue = try container.decode({}.self); return {} }}()",
+            wire_type(value_field, &shape),
+            converted_from(value_field, &shape, "wireValue")
+        )
     };
-    let encode = if matches!(shape.leaf_conversion, LeafConversion::None) {
-        "try container.encode(value)".to_owned()
-    } else if value_field.is_optional() {
-        let inner = encode_conversion(value_field, &shape, value_field.array_depth, "$0");
-        format!("try container.encode(value.map {{ {inner} }})")
-    } else {
-        let converted = encode_conversion(value_field, &shape, value_field.array_depth, "value");
-        format!("try container.encode({converted})")
-    };
-    let helpers = datetime_helpers_for(
-        &export_name,
-        &generic_params,
-        &[SwiftField {
-            default_at: None,
-            field_def: value_field.clone(),
-            flatten: false,
-            hint: export_name.clone(),
-            real_type: real_type.clone(),
-            required: true,
-            shape,
-            swift_name: "value".to_owned(),
-            wire_name: "value".to_owned(),
-        }],
+    let encode = format!(
+        "try container.encode({})",
+        written_from(value_field, &shape, "value")
     );
+    let helpers = datetime_helpers_for(&export_name, &generic_params, &[&shape]);
     let reads = read::both(
         &wrapper_read(wrapped, value_field, &real_type, &decode),
         &preprocess::Written {
@@ -2066,6 +2252,7 @@ fn resolve_variant_payload(
     match classify_variant(variant) {
         VariantKind::Unit => VariantPayload {
             bound: Vec::new(),
+            converted: None,
             corrected: None,
             held: None,
             rules: Vec::new(),
@@ -2134,6 +2321,7 @@ fn named_payload(
         .collect();
     VariantPayload {
         bound,
+        converted: None,
         corrected: None,
         held: Some(held_at(&struct_name, &generic_params)),
         rules: validate::payload_rules(export_name, step, !members.is_empty()),
@@ -2157,7 +2345,7 @@ fn slot_payload(
     );
     field_def.erase_type_parameters(shape.type_parameters);
     let hint = format!("{export_name}{}Value", variant.ident);
-    let held = swift_full_real_type(&field_def, &hint, aux);
+    let (held, slot) = slot_resolve(&field_def, &hint, aux);
     let runs_both = shape.tag_attrs.untagged;
     let checked = validate::Checked {
         access: "payload".to_owned(),
@@ -2177,6 +2365,7 @@ fn slot_payload(
         (!preprocess::functions(&field_def).is_empty()).then(|| (field_def.clone(), hint));
     VariantPayload {
         bound,
+        converted: slot.converts().then_some(slot),
         corrected,
         held: Some(held),
         rules,
@@ -2237,6 +2426,7 @@ fn slots_payload(
     let hint = format!("{export_name}{}", variant.ident);
     VariantPayload {
         bound,
+        converted: None,
         corrected: None,
         held: Some(swift_full_real_type(&tuple_field, &hint, aux)),
         rules: validate::payload_rules(export_name, step, checked),
@@ -2329,6 +2519,7 @@ fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
     let mut object_decode_arms = String::new();
     let mut encode_arms = String::new();
     let mut ruled: Vec<(String, Vec<String>)> = Vec::new();
+    let mut slots: Vec<SwiftFieldShape> = Vec::new();
     let mut twins = Vec::new();
     for variant in &item_enum.variants {
         let rust_name = variant.ident.to_string();
@@ -2339,6 +2530,7 @@ fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
             resolve_variant_payload(shape, variant, field_rule, Some(wire_tag.as_str()), aux);
         ruled.push((case_name.clone(), payload.rules.clone()));
         cases.push_str(&variant_case(&case_name, payload.held.as_deref()));
+        slots.extend(payload.converted.as_ref().map(|slot| slot.shape.clone()));
         if payload.held.is_some() {
             let source = read::Source::Keyed {
                 container: "container".to_owned(),
@@ -2359,7 +2551,8 @@ fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
             write!(
                 encode_arms,
                 "case .{case_name}(let payload): var container = encoder.container(keyedBy: SwiftSchemaExternalCodingKey.self); \
-                 try container.encode(payload, forKey: SwiftSchemaExternalCodingKey(stringValue: \"{wire_tag}\")!); "
+                 try container.encode({}, forKey: SwiftSchemaExternalCodingKey(stringValue: \"{wire_tag}\")!); ",
+                payload.written("payload")
             )
             .unwrap();
         } else {
@@ -2404,7 +2597,7 @@ fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
         "public enum {export_name}{generic_params}: Codable, Sendable {{ {cases} {key_type} {reads}{encode_method} {validate} }}"
     );
     let typealias = ident_typealias(rust_ident, export_name, generic_params);
-    format!("{body}{typealias}")
+    format!("{body}{}{typealias}", enum_date_helpers(shape, &slots))
 }
 
 /// The Swift tokens the internally tagged shape earns (`tag = "..."`, no `content`): the tag
@@ -2428,6 +2621,7 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
     let mut decode_arms = String::new();
     let mut encode_arms = String::new();
     let mut ruled: Vec<(String, Vec<String>)> = Vec::new();
+    let mut slots: Vec<SwiftFieldShape> = Vec::new();
     let mut twins = Vec::new();
     // A payload is read from the object the tag is in, and is not handed the tag.
     let source = read::Source::Beside(preprocess::taken_with(iter::once(tag_key)));
@@ -2439,6 +2633,7 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
         let payload = resolve_variant_payload(shape, variant, field_rule, None, aux);
         ruled.push((case_name.clone(), payload.rules.clone()));
         cases.push_str(&variant_case(&case_name, payload.held.as_deref()));
+        slots.extend(payload.converted.as_ref().map(|slot| slot.shape.clone()));
         if payload.held.is_some() {
             let from = VariantRead {
                 keys: "",
@@ -2454,7 +2649,8 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
             write!(
                 encode_arms,
                 "case .{case_name}(let payload): try container.encode(\"{wire_tag}\", forKey: .swiftSchemaTag); \
-                 try payload.encode(to: encoder); "
+                 try {}.encode(to: encoder); ",
+                payload.written("payload")
             )
             .unwrap();
         } else {
@@ -2492,7 +2688,7 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
         "public enum {export_name}{generic_params}: Codable, Sendable {{ {cases} {tag_coding_key} {reads}{encode_method} {validate} }}"
     );
     let typealias = ident_typealias(rust_ident, export_name, generic_params);
-    format!("{body}{typealias}")
+    format!("{body}{}{typealias}", enum_date_helpers(shape, &slots))
 }
 
 /// The Swift tokens the adjacently tagged shape earns (`tag = "...", content = "..."`): the tag
@@ -2517,6 +2713,7 @@ fn adjacent_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
     let mut decode_arms = String::new();
     let mut encode_arms = String::new();
     let mut ruled: Vec<(String, Vec<String>)> = Vec::new();
+    let mut slots: Vec<SwiftFieldShape> = Vec::new();
     let mut twins = Vec::new();
     for variant in &item_enum.variants {
         let rust_name = variant.ident.to_string();
@@ -2526,6 +2723,7 @@ fn adjacent_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
         let payload = resolve_variant_payload(shape, variant, field_rule, Some(content_key), aux);
         ruled.push((case_name.clone(), payload.rules.clone()));
         cases.push_str(&variant_case(&case_name, payload.held.as_deref()));
+        slots.extend(payload.converted.as_ref().map(|slot| slot.shape.clone()));
         if payload.held.is_some() {
             let source = read::Source::Keyed {
                 container: "container".to_owned(),
@@ -2546,7 +2744,8 @@ fn adjacent_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
             write!(
                 encode_arms,
                 "case .{case_name}(let payload): try container.encode(\"{wire_tag}\", forKey: .swiftSchemaTag); \
-                 try container.encode(payload, forKey: .swiftSchemaContent); "
+                 try container.encode({}, forKey: .swiftSchemaContent); ",
+                payload.written("payload")
             )
             .unwrap();
         } else {
@@ -2585,7 +2784,7 @@ fn adjacent_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
         "public enum {export_name}{generic_params}: Codable, Sendable {{ {cases} {tagging_keys} {reads}{encode_method} {validate} }}"
     );
     let typealias = ident_typealias(rust_ident, export_name, generic_params);
-    format!("{body}{typealias}")
+    format!("{body}{}{typealias}", enum_date_helpers(shape, &slots))
 }
 
 /// The Swift tokens a `#[serde(untagged)]` enum earns: its own read takes the first variant whose
@@ -2608,6 +2807,7 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
     let mut decode_attempts = String::new();
     let mut encode_arms = String::new();
     let mut ruled: Vec<(String, Vec<String>)> = Vec::new();
+    let mut slots: Vec<SwiftFieldShape> = Vec::new();
     let mut twins = Vec::new();
     // A payload is read from the decoder of the enum, and is handed the keys the enum is.
     let source = read::Source::Beside(preprocess::taken_with(iter::empty()));
@@ -2617,6 +2817,7 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
         let payload = resolve_variant_payload(shape, variant, field_rule, None, aux);
         ruled.push((case_name.clone(), payload.rules.clone()));
         cases.push_str(&variant_case(&case_name, payload.held.as_deref()));
+        slots.extend(payload.converted.as_ref().map(|slot| slot.shape.clone()));
         if let Some(ty) = &payload.held {
             let named = variant.ident.unraw();
             let from = VariantRead {
@@ -2646,7 +2847,8 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
             .unwrap();
             write!(
                 encode_arms,
-                "case .{case_name}(let value): try value.encode(to: encoder); "
+                "case .{case_name}(let value): try {}.encode(to: encoder); ",
+                payload.written("value")
             )
             .unwrap();
         } else {
@@ -2683,7 +2885,7 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
         "public enum {export_name}{generic_params}: Codable, Sendable {{ {cases} {key_type}{choosers}{reads}{encode_method} {validate}{helpers} }}"
     );
     let typealias = ident_typealias(rust_ident, export_name, generic_params);
-    format!("{body}{typealias}")
+    format!("{body}{}{typealias}", enum_date_helpers(shape, &slots))
 }
 
 /// The expression the untagged enum `owner` tries a variant's payload with, of type `read_as`,
@@ -2714,6 +2916,18 @@ fn tried_read(
     )
     .unwrap();
     format!("{owner}.{reader}(decoder{taken})")
+}
+
+/// The date helpers the read and the write of an enum call where the lone slot of a variant reads a
+/// date, of `slots`, after the separator that ends the enum. Empty where none does.
+fn enum_date_helpers(shape: &EnumShape<'_>, slots: &[SwiftFieldShape]) -> String {
+    let shapes: Vec<&SwiftFieldShape> = slots.iter().collect();
+    let helpers = datetime_helpers_for(shape.export_name, shape.generic_params, &shapes);
+    if helpers.is_empty() {
+        helpers
+    } else {
+        format!("; {helpers}")
+    }
 }
 
 /// An enum's `validate()`: the rules of the case the value holds, then the enum's own checks.

@@ -81,3 +81,13 @@ mod renamed_generics_models;
 #[cfg(all(feature = "swift", feature = "serde"))]
 #[path = "swift_tests/renamed_generics.rs"]
 mod renamed_generics;
+
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde", feature = "chrono"))]
+#[path = "swift_tests/held_dates_models.rs"]
+mod held_dates_models;
+
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde", feature = "chrono"))]
+#[path = "swift_tests/held_dates.rs"]
+mod held_dates;
