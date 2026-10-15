@@ -217,6 +217,13 @@ mod run_swift_generic_helpers;
 #[path = "service_schema_emitted_client_tests/run_swift_generic_dates.rs"]
 mod run_swift_generic_dates;
 
+/// A brand whose value Swift converts, a map under a key Swift wraps or a date, read and written by
+/// the emitted Swift types.
+#[cfg(test)]
+#[cfg(feature = "chrono")]
+#[path = "service_schema_emitted_client_tests/run_swift_brand_reads.rs"]
+mod run_swift_brand_reads;
+
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
 #[cfg(all(test, feature = "dart"))]

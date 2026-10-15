@@ -41,3 +41,13 @@ mod generic_helpers;
 #[cfg(all(feature = "swift", feature = "serde", feature = "chrono"))]
 #[path = "swift_tests/generic_dates.rs"]
 mod generic_dates;
+
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "swift_tests/brand_reads.rs"]
+mod brand_reads;
+
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde", feature = "chrono"))]
+#[path = "swift_tests/brand_date_reads.rs"]
+mod brand_date_reads;

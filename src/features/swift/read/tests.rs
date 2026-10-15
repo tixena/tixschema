@@ -358,3 +358,37 @@ fn a_bounded_brand_declared_above_an_untagged_enum_chooses_its_variant() {
         assert!(!written.contains(unwritten), "got: {written}");
     }
 }
+
+/// A brand over an optional value Swift converts reads it in a closure that throws, called with
+/// `try`. A build with a web surface refuses such a brand, so its text is held here.
+#[cfg(feature = "serde")]
+#[test]
+fn a_brand_over_an_optional_converted_value_calls_its_closure_with_try() {
+    let hoard: Item = syn::parse_quote! {
+        #[serde(transparent)]
+        pub struct OptionalHoard(pub Option<HashMap<u32, String>>);
+    };
+    let written = emitted(&hoard);
+    let call = concat!(
+        "self.value = try { let wireValue = ",
+        "try container.decode(OptionalHoardKeyedMap?.self); return ",
+    );
+    assert!(written.contains(call), "{call} is not in: {written}");
+}
+
+/// [`a_brand_over_an_optional_converted_value_calls_its_closure_with_try`], over a date.
+#[cfg(all(feature = "serde", feature = "chrono"))]
+#[test]
+fn a_brand_over_an_optional_date_calls_its_closure_with_try() {
+    let landfall: Item = syn::parse_quote! {
+        #[serde(transparent)]
+        pub struct OptionalLandfall(pub Option<DateTime<Utc>>);
+    };
+    let written = emitted(&landfall);
+    let call = concat!(
+        "self.value = try { let wireValue = try container.decode(String?.self); ",
+        "return try wireValue.map { try Self.swiftSchemaParseIso8601Date($0, ",
+        "codingPath: decoder.codingPath) } }() }; ",
+    );
+    assert!(written.contains(call), "{call} is not in: {written}");
+}
