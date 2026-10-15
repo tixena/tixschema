@@ -91,3 +91,13 @@ mod held_dates_models;
 #[cfg(all(feature = "swift", feature = "serde", feature = "chrono"))]
 #[path = "swift_tests/held_dates.rs"]
 mod held_dates;
+
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "swift_tests/wrapped_maps_models.rs"]
+mod wrapped_maps_models;
+
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "swift_tests/wrapped_maps.rs"]
+mod wrapped_maps;

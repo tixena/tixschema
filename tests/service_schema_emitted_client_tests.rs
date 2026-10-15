@@ -259,6 +259,17 @@ mod held_dates_models;
 #[path = "service_schema_emitted_client_tests/run_swift_held_dates.rs"]
 mod run_swift_held_dates;
 
+/// The models a map under a key Swift wraps, held in a slot and as a map's value, is written on.
+#[cfg(all(test, feature = "swift"))]
+#[path = "swift_tests/wrapped_maps_models.rs"]
+mod wrapped_maps_models;
+
+/// A map under a key Swift wraps, held in a slot and as a map's value, read and written by the
+/// emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_wrapped_maps.rs"]
+mod run_swift_wrapped_maps;
+
 /// The models a type that declares a parameter and publishes under another name is written on.
 #[cfg(all(test, feature = "swift"))]
 #[path = "swift_tests/renamed_generics_models.rs"]

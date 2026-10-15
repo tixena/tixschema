@@ -1,7 +1,8 @@
 //! A tuple and a map under a key Swift reads through a wrapper, held by a type that declares a
 //! parameter, read and written by the emitted Swift types compiled with warnings as errors: each
-//! payload the serde read reads prints what it prints, and a model such a map holds is judged by
-//! `validate()` as the Rust `validate()` judges it.
+//! payload the serde read reads prints what it prints, a map in a tuple's slot and in a variant's
+//! slot included, and a model such a map holds is judged by `validate()` as the Rust `validate()`
+//! judges it.
 
 #![cfg(feature = "swift")]
 
@@ -68,8 +69,7 @@ pub struct Trove<Stowed> {
     pub paired_by_number: HashMap<u32, (Stowed, u8)>,
 }
 
-/// A map under a key Swift wraps, held in a tuple's slot. Compiled, and not read: Swift reads such
-/// a map through its own `Dictionary` coding, where serde writes an object.
+/// A map under a key Swift wraps, held in a tuple's slot.
 #[model_schema(default_types(Stowed = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Nook<Stowed> {
@@ -81,14 +81,13 @@ pub struct Nook<Stowed> {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Brace<Stowed>(pub (Stowed, u8), pub u32);
 
-/// A tuple struct whose slot is a map under a key Swift wraps. Compiled, and not read, as [`Nook`].
+/// A tuple struct whose slot is a map under a key Swift wraps.
 #[model_schema(default_types(Stowed = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Bunk<Stowed>(pub HashMap<u32, Stowed>, pub u8);
 
 /// Each variant that holds a tuple or a map of the parameter, under no tag attribute. `Keyed` and
-/// `Numbered` hold a map under a key Swift wraps in a slot, and are compiled and not read, as
-/// [`Nook`].
+/// `Numbered` hold a map under a key Swift wraps in a slot.
 #[model_schema(default_types(Stowed = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Parted<Stowed> {
@@ -131,7 +130,7 @@ pub enum AdjacentParted<Stowed> {
 }
 
 /// The variants an untagged enum takes, one slot and named members, each map keyed by a plain enum
-/// as in [`TaggedParted`]. `Hatched` is compiled and not read, as [`Nook`].
+/// as in [`TaggedParted`].
 #[model_schema(default_types(Stowed = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(untagged)]
@@ -215,12 +214,10 @@ where
     }
 }
 
-/// Every payload the run reads: one of each shape that holds a tuple or a map of the parameter.
-fn rows() -> Vec<Row> {
+/// The payloads of a struct and of a tuple struct that hold a tuple or a map of the parameter.
+fn struct_rows() -> Vec<Row> {
     let unlabelled = trove("");
     let by_number = HashMap::from([(1, "a".to_owned())]);
-    let by_hatch = HashMap::from([(Hatch::Fore, "a".to_owned())]);
-    let pair = ("b".to_owned(), 2);
     vec![
         read_row("the fields of a struct", "Trove<String>", &trove("h")),
         refused_row(
@@ -230,14 +227,45 @@ fn rows() -> Vec<Row> {
             unlabelled.validate(),
         ),
         read_row(
+            "a map in a tuple's slot",
+            "Nook<String>",
+            &Nook {
+                numbered_pair: (by_number.clone(), 2),
+            },
+        ),
+        read_row(
             "the tuple of a tuple struct",
             "Brace<String>",
             &Brace(("a".to_owned(), 1), 2),
         ),
         read_row(
+            "a map in a tuple struct's slot",
+            "Bunk<String>",
+            &Bunk(by_number, 2),
+        ),
+    ]
+}
+
+/// The payloads of each variant that holds a tuple or a map of the parameter, under each tagging.
+fn variant_rows() -> Vec<Row> {
+    let by_number = HashMap::from([(1, "a".to_owned())]);
+    let by_hatch = HashMap::from([(Hatch::Fore, "a".to_owned())]);
+    let pair = ("b".to_owned(), 2);
+    vec![
+        read_row(
             "several slots, no tag attribute",
             "Parted<String>",
             &Parted::Halves("a".to_owned(), 1),
+        ),
+        read_row(
+            "several slots that hold a map, no tag attribute",
+            "Parted<String>",
+            &Parted::Keyed(by_number.clone(), 2),
+        ),
+        read_row(
+            "one slot that holds a map, no tag attribute",
+            "Parted<String>",
+            &Parted::Numbered(by_number.clone()),
         ),
         read_row(
             "one slot, no tag attribute",
@@ -266,6 +294,16 @@ fn rows() -> Vec<Row> {
             &AdjacentParted::Halves("a".to_owned(), 1),
         ),
         read_row(
+            "several slots that hold a map, a tag and a content key",
+            "AdjacentParted<String>",
+            &AdjacentParted::Keyed(by_number.clone(), 2),
+        ),
+        read_row(
+            "one slot that holds a map, a tag and a content key",
+            "AdjacentParted<String>",
+            &AdjacentParted::Numbered(by_number.clone()),
+        ),
+        read_row(
             "one slot, a tag and a content key",
             "AdjacentParted<String>",
             &AdjacentParted::Paired(pair.clone()),
@@ -277,6 +315,11 @@ fn rows() -> Vec<Row> {
                 by_number,
                 pair: pair.clone(),
             },
+        ),
+        read_row(
+            "one slot that holds a map, untagged",
+            "UntaggedParted<String>",
+            &UntaggedParted::Hatched(by_hatch.clone()),
         ),
         read_row(
             "one slot, untagged",
@@ -297,13 +340,14 @@ fn rows() -> Vec<Row> {
 /// refused under its place, as the Rust `validate()` reports it.
 #[test]
 fn each_helper_of_a_type_that_declares_a_parameter_reads_and_writes_in_swift_as_serde_does() {
-    let rows = rows();
+    let mut rows = struct_rows();
+    rows.extend(variant_rows());
     let expected: String = rows.iter().map(|row| row.expected.as_str()).collect();
     assert!(
         expected.contains(
             "a model a map holds, unlabelled: refused\n    'by_barrel.2.label': too short"
-        ),
-        "what the Rust `validate()` answers: {expected}"
+        ) && expected.contains(r#"a map in a tuple's slot: read {"numbered_pair":[{"1":"a"},2]}"#),
+        "what the serde read writes and the Rust `validate()` answers: {expected}"
     );
     let calls: Vec<String> = rows
         .iter()
@@ -346,47 +390,4 @@ fn each_helper_of_a_type_that_declares_a_parameter_reads_and_writes_in_swift_as_
         run.stdout, run.stderr
     );
     assert_eq!(normalized(&run.stdout), normalized(&expected));
-}
-
-/// serde writes a map under a key Swift wraps as an object wherever it is held, a tuple's slot and
-/// a variant's one slot included, which is what the members compiled and not read are left out of
-/// the run for.
-#[test]
-fn a_map_in_a_slot_is_written_as_an_object() {
-    let by_number = HashMap::from([(1, "a".to_owned())]);
-    let by_hatch = HashMap::from([(Hatch::Aft, "a".to_owned())]);
-    for (written, expected) in [
-        (
-            serde_json::to_string(&Nook {
-                numbered_pair: (by_number.clone(), 2),
-            }),
-            r#"{"numbered_pair":[{"1":"a"},2]}"#,
-        ),
-        (
-            serde_json::to_string(&Bunk(by_number.clone(), 2)),
-            r#"[{"1":"a"},2]"#,
-        ),
-        (
-            serde_json::to_string(&Parted::Keyed(by_number.clone(), 2)),
-            r#"{"Keyed":[{"1":"a"},2]}"#,
-        ),
-        (
-            serde_json::to_string(&Parted::Numbered(by_number.clone())),
-            r#"{"Numbered":{"1":"a"}}"#,
-        ),
-        (
-            serde_json::to_string(&AdjacentParted::Keyed(by_number.clone(), 2)),
-            r#"{"kind":"Keyed","held":[{"1":"a"},2]}"#,
-        ),
-        (
-            serde_json::to_string(&AdjacentParted::Numbered(by_number)),
-            r#"{"kind":"Numbered","held":{"1":"a"}}"#,
-        ),
-        (
-            serde_json::to_string(&UntaggedParted::Hatched(by_hatch)),
-            r#"{"Aft":"a"}"#,
-        ),
-    ] {
-        assert_eq!(written.unwrap(), expected);
-    }
 }

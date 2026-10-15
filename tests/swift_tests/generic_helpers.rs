@@ -2,9 +2,11 @@
 //! wrapper, where the type holding it declares a parameter: the struct written for the tuple or the
 //! map declares the parameters its members reach, under the bound the type declares them with, and
 //! every type position names it at those parameters. A struct whose members reach none keeps the
-//! text it had. `service_schema_emitted_client_tests/run_swift_generic_helpers.rs` compiles these
-//! shapes under a Swift toolchain and reads a payload of each, but a list of maps, whose Swift text
-//! does not compile for reasons of its own, an alias of a tuple, which
+//! text it had. `wrapped_maps.rs` pins how a map under a key Swift wraps is read and written in a
+//! tuple's slot, a tuple struct's slot, a variant's slot and another map's value.
+//! `service_schema_emitted_client_tests/run_swift_generic_helpers.rs` compiles these shapes under a
+//! Swift toolchain and reads a payload of each, such a map in a slot included, but a list of maps,
+//! whose Swift text does not compile for reasons of its own, an alias of a tuple, which
 //! `run_swift_renamed_generics.rs` reads, an alias of a map under a key Swift wraps, which that run
 //! compiles and does not read, Swift reading it through its own `Dictionary` coding, a map keyed by
 //! the parameter, which `run_swift_text_map_keys.rs` reads, and a brand, which
