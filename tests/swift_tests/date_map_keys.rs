@@ -1,6 +1,8 @@
 //! What the Swift backend writes for a map keyed by a date: the wrapper the map is read through
 //! computes its formatter in a static property, binds each key the formatter reads with `guard`,
 //! and writes each key with the same formatter. A wrapper of any other key is written as it was.
+//! A list or an optional of such maps is read as one of the wrapper and handed on as each
+//! wrapper's storage, with no `try`: the wrapper's own read is what parses a key.
 //! `service_schema_emitted_client_tests/run_swift_date_map_keys.rs` compiles the models of
 //! `date_map_keys_models.rs` under a Swift toolchain and reads a payload of each.
 
@@ -12,9 +14,10 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::date_map_keys_models::{
-    AdjacentShift, AdjacentWatch, Chronicle, Daybook, Diary, Sailing, Shift, TaggedShift,
-    TaggedWatch, Tidetable, Timetable, UntaggedShift, UntaggedWatch, Watch, adjacent_shift_swift,
-    adjacent_watch_swift, chronicle_swift, daybook_swift, diary_swift, first, second, shift_swift,
+    AdjacentShift, AdjacentWatch, Chronicle, Daybook, Daybooks, Diary, Logbook, Sailing, Shift,
+    StowedLogbook, TaggedShift, TaggedWatch, Tidetable, Timetable, UntaggedShift, UntaggedWatch,
+    Watch, adjacent_shift_swift, adjacent_watch_swift, chronicle_swift, daybook_swift,
+    daybooks_swift, diary_swift, first, logbook_swift, second, shift_swift, stowed_logbook_swift,
     tagged_shift_swift, tagged_watch_swift, tidetable_swift, timetable_swift, untagged_shift_swift,
     untagged_watch_swift, watch_swift,
 };
@@ -218,6 +221,9 @@ fn each_wrapper_of_a_date_key_computes_its_formatter_and_reads_an_optional_key()
         (daybook_swift::swift_definition(), 1, 1),
         (chronicle_swift::swift_definition(), 1, 1),
         (diary_swift::swift_definition(), 1, 1),
+        (logbook_swift::swift_definition(), 5, 6),
+        (stowed_logbook_swift::swift_definition(), 4, 4),
+        (daybooks_swift::swift_definition(), 1, 1),
     ] {
         assert_eq!(wrappers(&swift).len(), wrapped, "{swift}");
         assert_eq!(swift.matches(FORMATTER).count(), wrapped, "{swift}");
@@ -439,4 +445,86 @@ fn only_a_wrapper_of_a_date_key_declares_the_formatter() {
         }
     }
     assert_eq!(seen, 21);
+}
+
+/// A list or an optional of maps keyed by a date is read as one of the wrapper, whose own read
+/// parses each key, and handed on as each wrapper's storage, with no `try` around a conversion
+/// that throws nothing.
+#[test]
+fn a_list_or_an_optional_of_maps_keyed_by_a_date_hands_on_each_storage_with_no_try() {
+    let sailing = Sailing {
+        label: "s".to_owned(),
+    };
+    assert_eq!(
+        read_back(&Logbook {
+            listed: vec![once(1)],
+            listed_or_none: vec![None, Some(once(2))],
+            maybe: Some(once(3)),
+            maybe_listed: None,
+            sailing_lists: vec![once(sailing)],
+        }),
+        r#"{"listed":[{"2024-01-02T03:04:05.678Z":1}],"listed_or_none":[null,{"2024-01-02T03:04:05.678Z":2}],"maybe":{"2024-01-02T03:04:05.678Z":3},"sailing_lists":[{"2024-01-02T03:04:05.678Z":{"label":"s"}}]}"#
+    );
+    assert_eq!(
+        read_back(&StowedLogbook {
+            listed: Vec::new(),
+            listed_or_none: Vec::new(),
+            maybe: None,
+            maybe_listed: Some(vec![once("t".to_owned())]),
+        }),
+        r#"{"listed":[],"listed_or_none":[],"maybe_listed":[{"2024-01-02T03:04:05.678Z":"t"}]}"#
+    );
+    assert_eq!(
+        read_back(&Daybooks(vec![once("d".to_owned())])),
+        r#"[{"2024-01-02T03:04:05.678Z":"d"}]"#
+    );
+    for (swift, held, parameter) in [
+        (logbook_swift::swift_definition(), "Logbook", ""),
+        (
+            stowed_logbook_swift::swift_definition(),
+            "StowedLogbook",
+            "<Stowed>",
+        ),
+    ] {
+        holds(
+            &swift,
+            &[
+                &format!(
+                    "let wireListed = try container.decode([{held}ListedKeyedMap{parameter}].self, \
+                     forKey: .listed); self.listed = wireListed.map {{ $0.storage }}; "
+                ),
+                &format!(
+                    "let wireListedOrNone = try \
+                     container.decode([{held}ListedOrNoneKeyedMap{parameter}?].self, \
+                     forKey: .listedOrNone); \
+                     self.listedOrNone = wireListedOrNone.map {{ $0.map {{ $0.storage }} }}; "
+                ),
+                &format!(
+                    "let wireMaybe = try \
+                     container.decodeIfPresent({held}MaybeKeyedMap{parameter}.self, \
+                     forKey: .maybe); self.maybe = wireMaybe.map {{ $0.storage }}; "
+                ),
+                &format!(
+                    "let wireMaybeListed = try \
+                     container.decodeIfPresent([{held}MaybeListedKeyedMap{parameter}].self, \
+                     forKey: .maybeListed); \
+                     self.maybeListed = wireMaybeListed.map {{ $0.map {{ $0.storage }} }}"
+                ),
+            ],
+        );
+    }
+    holds(
+        &logbook_swift::swift_definition(),
+        &[
+            "items.append(try LogbookSailingListsKeyedMap(swiftSchemaUnjudged: \
+             listed.superDecoder()).storage) }; self.sailingLists = items",
+        ],
+    );
+    holds(
+        &daybooks_swift::swift_definition(),
+        &[
+            "self.value = try { let wireValue = try container.decode([DaybooksKeyedMap].self); \
+             return wireValue.map { $0.storage } }() }; ",
+        ],
+    );
 }

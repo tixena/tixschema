@@ -3,8 +3,7 @@
 //! that throws, and the closure is called with `try`. A tuple struct reads its tuple through the
 //! struct written for it, and writes no such closure.
 //! `service_schema_emitted_client_tests/run_swift_brand_reads.rs` compiles each brand under a Swift
-//! toolchain and reads a payload of it, but the brand over a list of maps, whose Swift text does
-//! not compile for a reason of its own.
+//! toolchain and reads a payload of it.
 
 use std::collections::HashMap;
 
@@ -94,17 +93,14 @@ fn a_brand_calls_the_closure_that_reads_a_wrapped_map_with_try() {
             "self.value = try { let wireValue = try container.decode(StashKeyedMap<Stowed>.self); \
              return wireValue.storage }() }; ",
         ),
+        (
+            hoards_swift::swift_definition(),
+            "self.value = try { let wireValue = try container.decode([HoardsKeyedMap].self); \
+             return wireValue.map { $0.storage } }() }; ",
+        ),
     ] {
         holds(&swift, &[written]);
     }
-    // The conversion of a list of maps is left unpinned: it writes a `try` nothing throws in.
-    holds(
-        &hoards_swift::swift_definition(),
-        &[
-            "self.value = try { let wireValue = try container.decode([HoardsKeyedMap].self); \
-             return ",
-        ],
-    );
 }
 
 #[test]

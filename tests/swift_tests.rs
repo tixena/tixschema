@@ -111,3 +111,13 @@ mod lone_slots_models;
 #[cfg(all(feature = "swift", feature = "serde"))]
 #[path = "swift_tests/lone_slots.rs"]
 mod lone_slots;
+
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "swift_tests/listed_maps_models.rs"]
+mod listed_maps_models;
+
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "swift_tests/listed_maps.rs"]
+mod listed_maps;

@@ -1296,12 +1296,32 @@ fn decode_leaf(shape: &SwiftFieldShape, expr: &str) -> String {
         LeafConversion::DateTimeAsNumber => format!(
             "try Self.swiftSchemaParseIso8601Millis({expr}, codingPath: decoder.codingPath)"
         ),
-        LeafConversion::Values(value) => {
-            let turned = converted_from(&value.def, &value.shape, "$0");
-            // Swift reads a closure with a `try` in it as one that throws.
-            let tried = if turned.contains("try ") { "try " } else { "" };
-            format!("{tried}{expr}.mapValues {{ {turned} }}")
-        }
+        LeafConversion::Values(value) => format!(
+            "{}{expr}.mapValues {{ {} }}",
+            tried(shape),
+            converted_from(&value.def, &value.shape, "$0")
+        ),
+    }
+}
+
+/// Whether turning a value through `conversion` throws: the parse of a date does, at any depth of
+/// the values of a map Swift keys natively, and the storage of a map's wrapper does not.
+fn throws(conversion: &LeafConversion) -> bool {
+    match conversion {
+        #[cfg(feature = "chrono")]
+        LeafConversion::DateTimePlain | LeafConversion::DateTimeAsNumber => true,
+        LeafConversion::Values(value) => throws(&value.shape.leaf_conversion),
+        LeafConversion::MapWrapper(_) | LeafConversion::None => false,
+    }
+}
+
+/// `try ` ahead of a conversion of a value of `shape` that throws, and nothing ahead of one that
+/// does not: Swift warns of a `try` over a call that throws nothing.
+fn tried(shape: &SwiftFieldShape) -> &'static str {
+    if throws(&shape.leaf_conversion) {
+        "try "
+    } else {
+        ""
     }
 }
 
@@ -1334,10 +1354,11 @@ fn decode_conversion(field: &FieldDef, shape: &SwiftFieldShape, level: u8, expr:
     }
     let inner_level = level - 1;
     let inner = decode_conversion(field, shape, inner_level, "$0");
+    let marker = tried(shape);
     if field.is_nullable_at(inner_level) {
-        format!("try {expr}.map {{ try $0.map {{ {inner} }} }}")
+        format!("{marker}{expr}.map {{ {marker}$0.map {{ {inner} }} }}")
     } else {
-        format!("try {expr}.map {{ {inner} }}")
+        format!("{marker}{expr}.map {{ {inner} }}")
     }
 }
 
@@ -1365,7 +1386,7 @@ fn converted_from(def: &FieldDef, shape: &SwiftFieldShape, local: &str) -> Strin
     }
     if def.is_optional() {
         let inner = decode_conversion(def, shape, def.array_depth, "$0");
-        format!("try {local}.map {{ {inner} }}")
+        format!("{}{local}.map {{ {inner} }}", tried(shape))
     } else {
         decode_conversion(def, shape, def.array_depth, local)
     }

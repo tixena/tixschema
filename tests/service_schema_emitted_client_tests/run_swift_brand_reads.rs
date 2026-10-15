@@ -1,8 +1,7 @@
 //! A brand whose value Swift reads as one type and converts, a map under a key Swift wraps or a
 //! date, read and written by the emitted Swift types compiled with warnings as errors: each payload
 //! the serde read reads prints what it prints, and a brand that breaks its bound is refused as the
-//! Rust `validate()` reports it. A brand over a list of such maps is left out: its Swift text does
-//! not compile for a reason of its own.
+//! Rust `validate()` reports it.
 
 #![cfg(feature = "swift")]
 
@@ -65,7 +64,7 @@ pub struct Coffer {
 #[serde(transparent)]
 pub struct Stash<Stowed>(pub HashMap<u32, Stowed>);
 
-/// A brand over a list of maps under a key Swift wraps. Written by serde, and left out of the run.
+/// A brand over a list of maps under a key Swift wraps.
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
@@ -222,6 +221,12 @@ fn rows() -> Vec<Row> {
             &Coffer { by_number: held() },
         ),
         read_row("a map of the parameter", "Stash<String>", &Stash(held())),
+        read_row(
+            "a list of maps",
+            "Hoards",
+            &Hoards(vec![held(), HashMap::new()]),
+        ),
+        read_row("an empty list of maps", "Hoards", &Hoards(Vec::new())),
         read_row("a date", "PlainLandfall", &PlainLandfall(first)),
         payload_row::<Ashore>(
             "a date a function answers",
@@ -306,6 +311,7 @@ fn each_brand_whose_value_swift_converts_reads_and_writes_in_swift_as_serde_does
         hoarded_swift::swift_definition(),
         coffer_swift::swift_definition(),
         stash_swift::swift_definition(),
+        hoards_swift::swift_definition(),
         plain_landfall_swift::swift_definition(),
         ashore_swift::swift_definition(),
         landings_swift::swift_definition(),
@@ -335,9 +341,9 @@ fn each_brand_whose_value_swift_converts_reads_and_writes_in_swift_as_serde_does
 }
 
 /// serde writes a brand over a list of maps under a key Swift wraps as a list of objects, which is
-/// what the run would read; it is left out of it.
+/// what the run reads.
 #[test]
-fn a_brand_left_out_of_the_run_is_written_as_serde_writes_it() {
+fn a_brand_over_a_list_of_maps_is_written_as_serde_writes_it() {
     assert_eq!(
         serde_json::to_string(&Hoards(vec![at_one("a".to_owned())])).unwrap(),
         r#"[{"1":"a"}]"#

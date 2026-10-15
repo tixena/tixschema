@@ -1,8 +1,8 @@
 //! A tuple and a map under a key Swift reads through a wrapper, held by a type that declares a
 //! parameter, read and written by the emitted Swift types compiled with warnings as errors: each
-//! payload the serde read reads prints what it prints, a map in a tuple's slot and in a variant's
-//! slot included, and a model such a map holds is judged by `validate()` as the Rust `validate()`
-//! judges it.
+//! payload the serde read reads prints what it prints, a map in a tuple's slot, in a variant's slot
+//! and in a list included, and a model such a map holds is judged by `validate()` as the Rust
+//! `validate()` judges it.
 
 #![cfg(feature = "swift")]
 
@@ -54,9 +54,9 @@ pub struct Barrel<Contents> {
     pub label: String,
 }
 
-/// The parameter in a tuple, as the value of a map under a key Swift wraps, in a model such a map
-/// holds, in a map a tuple holds and in a tuple a model is filled with; beside a tuple and a map
-/// that name none.
+/// The parameter in a tuple, as the value of a map under a key Swift wraps, in a list of such maps,
+/// in a model such a map holds, in a map a tuple holds and in a tuple a model is filled with;
+/// beside a tuple and a map that name none.
 #[model_schema(default_types(Stowed = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Trove<Stowed> {
@@ -64,6 +64,7 @@ pub struct Trove<Stowed> {
     pub by_barrel: HashMap<u32, Barrel<Stowed>>,
     pub by_count: HashMap<u32, u8>,
     pub by_number: HashMap<u32, Stowed>,
+    pub listed: Vec<HashMap<u32, Stowed>>,
     pub marks: (u32, u8),
     pub pair: (Stowed, u32),
     pub paired_by_number: HashMap<u32, (Stowed, u8)>,
@@ -167,6 +168,7 @@ fn trove(label: &str) -> Trove<String> {
         by_barrel: HashMap::from([(2, barrel(label, "d".to_owned()))]),
         by_count: HashMap::from([(3, 4)]),
         by_number: HashMap::from([(5, "e".to_owned())]),
+        listed: vec![HashMap::from([(11, "i".to_owned())]), HashMap::new()],
         marks: (6, 7),
         pair: ("f".to_owned(), 8),
         paired_by_number: HashMap::from([(9, ("g".to_owned(), 10))]),

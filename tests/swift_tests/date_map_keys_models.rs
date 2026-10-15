@@ -1,6 +1,7 @@
 //! The models of `swift_tests/date_map_keys.rs` and of
 //! `service_schema_emitted_client_tests/run_swift_date_map_keys.rs`: a map keyed by a date, as a
-//! field, as a member of a variant under each tagging and as a brand's value.
+//! field, as a member of a variant under each tagging and as a brand's value, and in a list, in a
+//! list of optionals, in an optional list and in an optional.
 
 use std::collections::HashMap;
 
@@ -161,6 +162,38 @@ pub struct Chronicle {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct Diary<Stowed>(pub HashMap<DateTime<Utc>, Stowed>);
+
+/// A map keyed by a date in a list, in a list of optionals, in an optional list and in an
+/// optional, and in a list whose maps hold a model.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Logbook {
+    pub listed: Vec<HashMap<DateTime<Utc>, u8>>,
+    pub listed_or_none: Vec<Option<HashMap<DateTime<Utc>, u8>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub maybe: Option<HashMap<DateTime<Utc>, u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub maybe_listed: Option<Vec<HashMap<DateTime<Utc>, u8>>>,
+    pub sailing_lists: Vec<HashMap<DateTime<Utc>, Sailing>>,
+}
+
+/// [`Logbook`] in a type that declares a parameter.
+#[model_schema(default_types(Stowed = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct StowedLogbook<Stowed> {
+    pub listed: Vec<HashMap<DateTime<Utc>, Stowed>>,
+    pub listed_or_none: Vec<Option<HashMap<DateTime<Utc>, Stowed>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub maybe: Option<HashMap<DateTime<Utc>, Stowed>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub maybe_listed: Option<Vec<HashMap<DateTime<Utc>, Stowed>>>,
+}
+
+/// A brand over a list of maps keyed by a date.
+#[model_schema(no_display)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct Daybooks(pub Vec<HashMap<DateTime<Utc>, String>>);
 
 /// A date with a fraction of whole milliseconds, which chrono writes with three digits.
 pub const fn first() -> DateTime<Utc> {
