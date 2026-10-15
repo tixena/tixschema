@@ -61,3 +61,13 @@ mod text_map_keys_models;
 #[cfg(all(feature = "swift", feature = "serde", feature = "chrono"))]
 #[path = "swift_tests/text_map_keys.rs"]
 mod text_map_keys;
+
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde", feature = "chrono"))]
+#[path = "swift_tests/date_map_keys_models.rs"]
+mod date_map_keys_models;
+
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde", feature = "chrono"))]
+#[path = "swift_tests/date_map_keys.rs"]
+mod date_map_keys;

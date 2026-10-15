@@ -309,7 +309,7 @@ fn a_key_parsed_from_its_text_keeps_its_guard() {
         "UInt32(wireKey)",
         "(wireKey == \"true\" ? true : wireKey == \"false\" ? false : nil)",
         "Int64(wireKey)",
-        "(isoFormatterForKeys.date(from: wireKey) ?? Date(timeIntervalSince1970: 0))",
+        "Self.isoFormatterForKeys.date(from: wireKey)",
     ] {
         holds(&swift, &[&guarded(parsed)]);
     }

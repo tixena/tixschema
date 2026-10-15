@@ -698,11 +698,8 @@ fn swift_map_key_codec(key: &FieldDef) -> (Option<String>, String) {
         }
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime => (
-            Some(
-                "(isoFormatterForKeys.date(from: wireKey) ?? Date(timeIntervalSince1970: 0))"
-                    .to_owned(),
-            ),
-            "isoFormatterForKeys.string(from: key)".to_owned(),
+            Some("Self.isoFormatterForKeys.date(from: wireKey)".to_owned()),
+            "Self.isoFormatterForKeys.string(from: key)".to_owned(),
         ),
     }
 }
@@ -741,9 +738,11 @@ fn map_key_wrapper_struct(
             read::UNJUDGED,
         )
     });
+    // Static, as the read uses it before `storage` is set, and computed, as a generic type stores
+    // no static property and a stored `ISO8601DateFormatter` is not `Sendable`.
     #[cfg(feature = "chrono")]
     let formatter_decl = if matches!(key.field_type, FieldDefType::DateTime) {
-        "private let isoFormatterForKeys: ISO8601DateFormatter = { let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f }();"
+        "private static var isoFormatterForKeys: ISO8601DateFormatter { let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f };"
     } else {
         ""
     };
