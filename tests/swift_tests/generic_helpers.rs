@@ -3,8 +3,9 @@
 //! map declares the parameters its members reach, under the bound the type declares them with, and
 //! every type position names it at those parameters. A struct whose members reach none keeps the
 //! text it had. `service_schema_emitted_client_tests/run_swift_generic_helpers.rs` compiles these
-//! shapes under a Swift toolchain and reads a payload of each, but a brand, an alias, a map keyed by
-//! the parameter and a list of maps, whose Swift text does not compile for reasons of its own.
+//! shapes under a Swift toolchain and reads a payload of each, but an alias, a map keyed by the
+//! parameter and a list of maps, whose Swift text does not compile for reasons of its own, and a
+//! brand, which `run_swift_brand_reads.rs` reads.
 
 use core::hash::Hash;
 use std::collections::HashMap;

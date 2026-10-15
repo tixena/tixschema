@@ -1,10 +1,11 @@
 //! A date held by a type that declares a parameter, read and written by the emitted Swift types
 //! compiled with warnings as errors: each payload the serde read reads prints what it prints. A
-//! brand over a date and a map keyed by a date are left out: their Swift text does not compile for
-//! reasons of its own, whether or not the type declares a parameter.
+//! map keyed by a date is left out: its Swift text does not compile for reasons of its own,
+//! whether or not the type declares a parameter.
 
 #![cfg(feature = "swift")]
 
+use core::marker::PhantomData;
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
@@ -64,6 +65,15 @@ pub struct Sounding<Stowed> {
     #[model_schema_prop(preprocess = ["unwrapped"])]
     pub at: DateTime<Utc>,
     pub held: Stowed,
+}
+
+/// A brand over a date that declares a parameter.
+#[model_schema(default_types(Stowed = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct Landfall<Stowed> {
+    pub at: DateTime<Utc>,
+    pub marker: PhantomData<Stowed>,
 }
 
 /// A date under `as_number`, beside the parameter. Compiled, and not read: serde writes it as
@@ -185,7 +195,7 @@ where
 }
 
 /// Every payload the run reads: a date in a struct and in a variant's struct, each where the type
-/// declares a parameter and where it declares none.
+/// declares a parameter and where it declares none, and in a brand that declares one.
 fn rows() -> Vec<Row> {
     let first = at(1_704_164_645_678);
     let second = at(1_709_208_000_100);
@@ -214,6 +224,14 @@ fn rows() -> Vec<Row> {
                 held: held(),
                 marks: Vec::new(),
                 seen: None,
+            },
+        ),
+        read_row(
+            "a brand that declares a parameter",
+            "Landfall<String>",
+            &Landfall::<String> {
+                at: first,
+                marker: PhantomData,
             },
         ),
         payload_row::<Sounding<String>>(
@@ -300,6 +318,7 @@ fn each_date_of_a_type_that_declares_a_parameter_reads_and_writes_in_swift_as_se
         plotted_swift::swift_definition(),
         reckoning_swift::swift_definition(),
         sounding_swift::swift_definition(),
+        landfall_swift::swift_definition(),
         clocked_swift::swift_definition(),
         leg_swift::swift_definition(),
         plot_swift::swift_definition(),

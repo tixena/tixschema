@@ -1880,7 +1880,7 @@ fn value_wrapper_tokens(
         } else {
             decode_conversion(value_field, &shape, value_field.array_depth, "wireValue")
         };
-        format!("{{ let wireValue = {read}; return {convert} }}()")
+        format!("try {{ let wireValue = {read}; return {convert} }}()")
     };
     let encode = if matches!(shape.leaf_conversion, LeafConversion::None) {
         "try container.encode(value)".to_owned()
