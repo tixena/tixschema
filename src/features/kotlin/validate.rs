@@ -352,6 +352,14 @@ impl<'item> Rules<'item> {
                 found.extend(self.held_statements(position, &slot, Some(&under), depth, asked));
             }
             found
+        } else if let FieldDefType::Range(kind, bound) = &def.field_type {
+            let mut found = Vec::new();
+            for member in kind.members() {
+                let held = format!("{read}.{member}");
+                let under = stepped(place, member);
+                found.extend(self.held_statements(bound, &held, Some(&under), depth, asked));
+            }
+            found
         } else {
             Vec::new()
         }

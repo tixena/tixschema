@@ -499,6 +499,49 @@ pub struct TreeNode {
 }
 ```
 
+### Ranges
+
+`Range<T>`, `RangeInclusive<T>`, `RangeFrom<T>` and `RangeTo<T>` describe as the object serde writes for each: `Range` and `RangeInclusive` as `{"start": T, "end": T}`, `RangeFrom` as `{"start": T}` and `RangeTo` as `{"end": T}`. Every member is required, and an object that holds a key no range writes is refused, as serde refuses it. serde also reads the array `[8, 13]` as a `Range`; the surfaces describe the object it writes.
+
+```rust
+use core::ops::{Range, RangeFrom, RangeInclusive, RangeTo};
+
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Spanned {
+    pub closed: RangeInclusive<u32>,
+    pub from: RangeFrom<u32>,
+    pub span: Range<u32>,
+    pub to: RangeTo<u32>,
+}
+```
+
+```typescript
+export type Spanned = {
+  closed: { start: number; end: number };
+  from: { start: number };
+  span: { start: number; end: number };
+  to: { end: number };
+};
+```
+
+```typescript
+const Spanned$RawSchema = z.strictObject({
+  closed: z.strictObject({ start: z.number().int(), end: z.number().int() }),
+  from: z.strictObject({ start: z.number().int() }),
+  span: z.strictObject({ start: z.number().int(), end: z.number().int() }),
+  to: z.strictObject({ end: z.number().int() }),
+});
+```
+
+The JSON Schema of each range is an object whose `properties` are its members, every one of them `required`, with `additionalProperties: false`. A bound is described as its type is anywhere else: a date, an `ObjectId`, a brand, a model, or one of the type's own parameters, `Range<Bound>` being `{ start: Bound; end: Bound }` and the factory's argument in Zod. A range is that object wherever it is held: in an `Option`, a list, a map's value, a tuple's position and a type argument.
+
+Dart, Swift and Kotlin each read and write the object through a type of their own, written for the field that holds the range: Dart a record with named members, `({int start, int end})`, Swift a struct named after the type and the field, `SpannedSpanRange`, and Kotlin a `@Serializable` data class. Each refuses an object that holds a key the range does not write, as serde does. None of them is the language's own range: Swift's `Range` writes `[8,13]`.
+
+`validate()` walks a range of a type that runs rules, a model or a brand with a bound, and reports each bound under its key: a `span: Range<Waymark>`, `Waymark` a brand under `minLength = 2`, holding `"a".."b"` reports `'span.start': too short: minimum length is 2, got 1` and `'span.end': too short: minimum length is 2, got 1`, in Rust, Dart, Swift and Kotlin. The read reads a model held in a range unjudged, so the whole value is judged once. The [recovering decode](#recovering-decode-decode_with) reads a range as one whole value at its key, and under `mongodb` a range field is a `Field` of that value.
+
+A range is read by its last name. A `#[model_schema()]` type of the crate's own named `Range`, `RangeInclusive`, `RangeFrom` or `RangeTo`, declared above the type that holds it, keeps its name, and `core::ops::Range` or `std::ops::Range` written in full is the std range. A range written by its bare name earns a check beside the type that holds it, which fails the build with `E0308` where the name is another type. A range is refused as a map key, serde writing it as an object, and under `#[serde(flatten)]`, where serde writes its bounds among the members of the object that holds it. `pattern`, `minLength`, `maxLength`, `minimum` and `maximum` are refused on a range field: a bound on what a range holds goes on the type of its bounds, a branded newtype.
+
 ### Enums
 
 #### Plain Enums
@@ -6172,6 +6215,7 @@ The callback's types and the resolvers' are named through the flagged type's own
 - one member per plain category: `Boolean`, `Char`, `String`, `I8` to `I64`, `Isize`, `U8` to `U64`, `Usize`, `F32`, `F64`, `DateTime`, `NaiveDate`, `NaiveDateTime`, `NaiveTime`, `ObjectId`, `Unknown`, and the three literals `BooleanLiteral(bool)`, `NumberLiteral(f64)` and `StringLiteral(&'static str)`;
 - `Model(&'static str)`, a `#[model_schema]` type by its Rust name as the field's type writes it, and `TypeParam(&'static str)`, one of the type's own type parameters by its name;
 - `Array(Box<Expected>)`, `Optional(Box<Expected>)` and `Map(Box<Expected>)`, each carrying what it holds, a map the type of its values, and `Tuple(Vec<Expected>)`, carrying its positions in order: `Array(Model("Version"))`, `Optional(ObjectId)`, `Tuple([String, U32])`;
+- `Range(&'static str, Box<Expected>)`, a std range by the name it is declared under in `core::ops` and the type of its bounds: `Range("RangeInclusive", Box::new(U32))`;
 - `Variants(&'static [&'static str])`, the tag values a tagged enum accepts, for a tag naming none of them.
 
 `Path` is where an issue sits: `Path(pub Vec<Segment>)`, a `Segment` being `Key(String)` or `Index(usize)`. It displays as `versions[1].number`, and the empty path is the value itself. It carries the helpers a callback fixes the raw value through, each answering whether it did so:
@@ -7128,6 +7172,7 @@ A function is there for every key serde writes, and the kind it answers follows 
 | `Option<Vec<T>>` | `OptionalField<Root, Vec<T>>`: one whole list a row may leave out |
 | A list of lists | `ListField<Root, Vec<T>>`: each element is one whole list |
 | A tuple | `Field<Root, (A, B)>`: one whole value |
+| A std range: `Range<T>`, `RangeInclusive<T>`, `RangeFrom<T>`, `RangeTo<T>` | `Field<Root, Range<T>>`: one whole value |
 | A field serde never writes, under `skip` or `skip_serializing` | No function |
 | A field with a hook that writes it: `with`, `serialize_with`, the one `as_number` adds | `Field`, or `OptionalField` for an `Option`, whose values are written through the hook |
 | A field serde writes and never reads back, under `skip_deserializing`, or reads through `deserialize_with` alone | One whole value, of the kind its `Option` or its list is |

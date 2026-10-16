@@ -14,7 +14,7 @@ use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{brand_field, parse_serde_key_omission, struct_tag};
 use crate::field_type::{
-    FieldDef, FieldDefType, VariantKind, classify_variant, dart_from_json_argument,
+    FieldDef, FieldDefType, RangeKind, VariantKind, classify_variant, dart_from_json_argument,
     dart_lower_camel, dart_to_json_argument, get_field_def, is_plain_enum, is_sequence_wrapper,
 };
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
@@ -742,6 +742,16 @@ fn dart_base(field: &FieldDef) -> String {
                 format!("({rendered})")
             }
         }
+        FieldDefType::Range(kind, bound) => {
+            let held = dart_typename(bound);
+            let rendered = kind
+                .members()
+                .iter()
+                .map(|member| format!("{held} {member}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("({{{rendered}}})")
+        }
         FieldDefType::SiblingType(name, generics) => {
             if let [element] = generics.as_slice()
                 && is_sequence_wrapper(name)
@@ -859,6 +869,7 @@ fn dart_map_key_decode(key: &FieldDef, expr: &str) -> String {
             | FieldDefType::NumberLiteral(_)
             | FieldDefType::SiblingType(_, _)
             | FieldDefType::Map(_, _)
+            | FieldDefType::Range(_, _)
             | FieldDefType::Tuple(_)
             | FieldDefType::TypeParam(_)
             | FieldDefType::Unknown => dart_decode_expr(key, expr, Read::Judged),
@@ -906,6 +917,7 @@ fn dart_map_key_encode(key: &FieldDef, expr: &str) -> String {
             | FieldDefType::NumberLiteral(_)
             | FieldDefType::SiblingType(_, _)
             | FieldDefType::Map(_, _)
+            | FieldDefType::Range(_, _)
             | FieldDefType::Tuple(_)
             | FieldDefType::TypeParam(_)
             | FieldDefType::Unknown => {
@@ -1000,6 +1012,7 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
                 format!("({rendered})")
             }
         }
+        FieldDefType::Range(kind, bound) => range_decode(*kind, bound, expr, read),
         FieldDefType::SiblingType(name, generics) => {
             if let [element] = generics.as_slice()
                 && is_sequence_wrapper(name)
@@ -1064,6 +1077,39 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
             }
         }
     }
+}
+
+/// The record of the range of `kind` the object `expr` holds, each bound read as `bound` from the
+/// key serde writes it under. The object is bound once, under a name the read declares, and one
+/// that holds any other key is refused, as serde refuses it.
+fn range_decode(kind: RangeKind, bound: &FieldDef, expr: &str, read: Read) -> String {
+    let object = declared("range");
+    let written = kind
+        .members()
+        .iter()
+        .map(|member| format!("key == '{member}'"))
+        .collect::<Vec<_>>()
+        .join(" || ");
+    let rendered = kind
+        .members()
+        .iter()
+        .map(|member| {
+            let decoded = member_decode(
+                bound,
+                &format!("{object}['{member}']"),
+                None,
+                read.of_member(bound),
+            );
+            format!("{member}: {decoded}")
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "switch ({expr} as Map<String, dynamic>) {{ final {object} when {object}.keys.every((key) \
+         => {written}) => ({rendered}), final {object} => throw ArgumentError('Unknown key of a \
+         {}: ${{{object}.keys}}') }}",
+        kind.name()
+    )
 }
 
 /// `payload` as `functions` correct it: each called on the answer of the one before, in the order
@@ -1162,6 +1208,18 @@ fn dart_encode_at(field: &FieldDef, level: u8, expr: &str) -> String {
                 .collect::<Vec<_>>()
                 .join(", ");
             format!("[{rendered}]")
+        }
+        FieldDefType::Range(kind, bound) => {
+            let rendered = kind
+                .members()
+                .iter()
+                .map(|member| {
+                    let encoded = dart_encode_expr(bound, &format!("({expr}).{member}"), false);
+                    format!("'{member}': {encoded}")
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("<String, dynamic>{{{rendered}}}")
         }
         FieldDefType::SiblingType(name, generics) => {
             if let [element] = generics.as_slice()
@@ -1437,6 +1495,7 @@ fn measured_elements(
         FieldDefType::Boolean
         | FieldDefType::BooleanLiteral(_)
         | FieldDefType::Map(_, _)
+        | FieldDefType::Range(_, _)
         | FieldDefType::Tuple(_)
         | FieldDefType::TypeParam(_)
         | FieldDefType::Unknown => Vec::new(),
@@ -1567,6 +1626,20 @@ fn held_at(
         }
         FieldDefType::Tuple(positions) => {
             slot_elements(positions, expr, place, depth, asked, helpers)
+        }
+        FieldDefType::Range(kind, bound) => {
+            let mut elements = Vec::new();
+            for member in kind.members() {
+                elements.extend(member_elements(
+                    bound,
+                    &format!("{expr}.{member}"),
+                    &stepped(place, Step::Written((*member).to_owned())),
+                    depth,
+                    asked,
+                    helpers,
+                ));
+            }
+            elements
         }
         FieldDefType::Boolean
         | FieldDefType::BooleanLiteral(_)

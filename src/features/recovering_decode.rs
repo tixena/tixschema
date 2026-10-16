@@ -3237,6 +3237,9 @@ fn callback_items() -> TokenStream {
             NumberLiteral(f64),
             ObjectId,
             Optional(::std::boxed::Box<Expected>),
+            /// A std range, by the name it is declared under in `core::ops`, and the type of its
+            /// bounds.
+            Range(&'static str, ::std::boxed::Box<Expected>),
             String,
             StringLiteral(&'static str),
             Tuple(::std::vec::Vec<Expected>),
@@ -3578,6 +3581,7 @@ fn handoff_items() -> TokenStream {
                 "NumberLiteral" => Expected::NumberLiteral(name.parse().unwrap_or_default()),
                 "ObjectId" => Expected::ObjectId,
                 "Optional" => Expected::Optional(first(&mut under)),
+                "Range" => Expected::Range(name, first(&mut under)),
                 "String" => Expected::String,
                 "StringLiteral" => Expected::StringLiteral(name),
                 "Tuple" => Expected::Tuple(under),

@@ -304,6 +304,31 @@ mod listed_maps_models;
 #[path = "service_schema_emitted_client_tests/run_swift_listed_maps.rs"]
 mod run_swift_listed_maps;
 
+/// The models the four std ranges are written on, and the payloads serde writes and refuses.
+#[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
+#[path = "std_range_tests/models.rs"]
+mod range_models;
+
+/// The payloads each client reads a range from, and what the serde read prints of each.
+#[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
+#[path = "service_schema_emitted_client_tests/range_rows.rs"]
+mod range_rows;
+
+/// The four std ranges, read and written by the emitted Dart types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_ranges.rs"]
+mod run_dart_ranges;
+
+/// The four std ranges, read and written by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_ranges.rs"]
+mod run_swift_ranges;
+
+/// The four std ranges, read and written by the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_ranges.rs"]
+mod run_kotlin_ranges;
+
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
 #[cfg(all(test, feature = "dart"))]

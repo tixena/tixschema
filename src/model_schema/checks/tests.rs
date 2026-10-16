@@ -312,7 +312,9 @@ fn the_reach_of_a_check_is_the_reach_of_a_bound() {
                 .map(|wrap| match wrap {
                     ConstraintWrap::Optional => Some(CheckStep::Present),
                     ConstraintWrap::Borrowed | ConstraintWrap::Transparent => Some(CheckStep::Held),
-                    ConstraintWrap::Map | ConstraintWrap::Sequence => None,
+                    ConstraintWrap::Map | ConstraintWrap::Range(_) | ConstraintWrap::Sequence => {
+                        None
+                    }
                 })
                 .collect()
         });
