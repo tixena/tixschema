@@ -47,9 +47,9 @@ use crate::features::serde::read_bounds::{ReadBounds, read_bounds, written_lifet
 use crate::features::serde::{
     derives_deserialize, derives_serialize, has_serde_default, read_hook, serde_conversion,
 };
-#[cfg(feature = "serde")]
-use crate::field_type::is_map_wrapper;
 use crate::field_type::is_ownership_wrapper;
+#[cfg(feature = "serde")]
+use crate::field_type::{RangeKind, is_map_wrapper, written_std_range};
 use crate::utils::{to_snake_case, written_names, written_type};
 
 /// The read the recovering decode of a type lists from, which every type under the flag has.
@@ -749,6 +749,12 @@ fn reached(ty: &syn::Type, depth: usize, held_as: &Ident) -> Option<Reached> {
     let wrapper = last.ident.to_string();
     let (wrap, position, held_type) = if is_map_wrapper(&wrapper) {
         (ConstraintWrap::Map, 1, map_value_argument(arguments)?)
+    } else if let Some(kind) = written_std_range(named) {
+        (
+            ConstraintWrap::Range(kind),
+            0,
+            sole_type_argument(arguments)?,
+        )
     } else {
         let wrap = match wrapper.as_str() {
             "Box" => ConstraintWrap::Transparent,
@@ -767,6 +773,7 @@ fn reached(ty: &syn::Type, depth: usize, held_as: &Ident) -> Option<Reached> {
             quote! { #held.into_iter().map(|(#key, #inner)| (#key, #value)).collect::<#written>() }
         }
         ConstraintWrap::Optional => quote! { #held.map(|#inner| #value) },
+        ConstraintWrap::Range(kind) => range_built_back(kind, &held, &inner, value),
         ConstraintWrap::Sequence => {
             quote! { #held.into_iter().map(|#inner| #value).collect::<#written>() }
         }
@@ -782,6 +789,39 @@ fn reached(ty: &syn::Type, depth: usize, held_as: &Ident) -> Option<Reached> {
         read_as: with_argument(named, position, &below.read_as),
         wraps,
     })
+}
+
+/// The range read as `held`, its bounds each read into `inner`, built back from what `value` makes
+/// of each.
+#[cfg(feature = "serde")]
+fn range_built_back(
+    kind: RangeKind,
+    held: &Ident,
+    inner: &Ident,
+    value: &TokenStream,
+) -> TokenStream {
+    let mapped = quote! { .map(|#inner| #value) };
+    match kind {
+        RangeKind::From => quote! {
+            ::core::ops::RangeFrom { start: { let #inner = #held.start; #value } }
+        },
+        RangeKind::HalfOpen => quote! {
+            {
+                let [start, end] = [#held.start, #held.end] #mapped;
+                ::core::ops::Range { start, end }
+            }
+        },
+        RangeKind::Inclusive => quote! {
+            {
+                let (start, end) = #held.into_inner();
+                let [start, end] = [start, end] #mapped;
+                ::core::ops::RangeInclusive::new(start, end)
+            }
+        },
+        RangeKind::To => quote! {
+            ::core::ops::RangeTo { end: { let #inner = #held.end; #value } }
+        },
+    }
 }
 
 /// What answers a refusal raised below the member with the key `named` written in front of each

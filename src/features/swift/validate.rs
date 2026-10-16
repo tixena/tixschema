@@ -14,7 +14,7 @@ use regex_syntax::ast::{
 use super::{SwiftTypeArgs, swift_full_real_type, swift_member};
 use crate::bound_message::{Bound, swift_literal_text, swift_violation};
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
-use crate::field_type::{FieldDef, FieldDefType, get_field_def, is_sequence_wrapper};
+use crate::field_type::{FieldDef, FieldDefType, RangeKind, get_field_def, is_sequence_wrapper};
 
 /// The helpers a statement of `validate()` calls, each with the text that calls it.
 const HELPERS: [(&str, &str); 2] = [
@@ -333,6 +333,24 @@ pub(super) fn slot_rules(owner: &str, slots: &[FieldDef]) -> Vec<String> {
                     def: slot,
                     runs_both: false,
                     step: Some(position.to_string()),
+                },
+            )
+        })
+        .collect()
+}
+
+/// What the bounds of a range add to its `validate()`, each under the key serde writes it under.
+pub(super) fn range_rules(owner: &str, kind: RangeKind, bound: &FieldDef) -> Vec<String> {
+    kind.members()
+        .iter()
+        .flat_map(|member| {
+            member_rules(
+                owner,
+                &Checked {
+                    access: property_read(member),
+                    def: bound,
+                    runs_both: false,
+                    step: Some((*member).to_owned()),
                 },
             )
         })
@@ -693,6 +711,7 @@ fn number_kind(leaf: &FieldDefType) -> Option<Number> {
         | FieldDefType::Char
         | FieldDefType::Map(_, _)
         | FieldDefType::NumberLiteral(_)
+        | FieldDefType::Range(_, _)
         | FieldDefType::SiblingType(_, _)
         | FieldDefType::String
         | FieldDefType::StringLiteral(_)
@@ -800,6 +819,30 @@ fn held_walk(
     if let FieldDefType::Tuple(slots) = &def.field_type {
         return (matches!(walk, Walk::Rules) && !slot_rules(owner, slots).is_empty())
             .then(|| reporting(owner, place, &format!("{value}.validate()")));
+    }
+    if let FieldDefType::Range(kind, bound) = &def.field_type {
+        if matches!(walk, Walk::Rules) {
+            return (!range_rules(owner, *kind, bound).is_empty())
+                .then(|| reporting(owner, place, &format!("{value}.validate()")));
+        }
+        // What chooses a variant is asked of each bound in place, as Rust's read asks it.
+        let bounds: Vec<String> = kind
+            .members()
+            .iter()
+            .filter_map(|member| {
+                let mut at = place.to_vec();
+                at.push(Step::Written((*member).to_owned()));
+                held_walk(
+                    walk,
+                    owner,
+                    bound,
+                    &format!("{value}.{member}"),
+                    &at,
+                    bindings,
+                )
+            })
+            .collect();
+        return (!bounds.is_empty()).then(|| bounds.join("; "));
     }
     let FieldDefType::SiblingType(named, arguments) = &def.field_type else {
         return None;

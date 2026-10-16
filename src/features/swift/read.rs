@@ -371,40 +371,9 @@ pub(super) fn unjudged(
         );
     }
     match &def.field_type {
-        FieldDefType::Map(key, value) => match map_keys(key) {
-            MapKeys::Wrapped => {
-                let (wrapper, generic_params) = keyed_map_wrapper(hint, key, value);
-                let read_as = held_at(&wrapper, &generic_params);
-                held(source, &read_as, &|read| sink(&format!("{read}.storage")))
-            }
-            keys @ (MapKeys::Text | MapKeys::Whole) => {
-                let [keyed, entries, entry, number] = locals.next_map();
-                let (refusal, named) = if matches!(keys, MapKeys::Whole) {
-                    (whole_key(&keyed, &entry, &number), number)
-                } else {
-                    (String::new(), format!("{entry}.stringValue"))
-                };
-                let under = Source::Keyed {
-                    container: keyed.clone(),
-                    key: entry.clone(),
-                    presence: Presence::Known,
-                };
-                let read = unjudged(
-                    value,
-                    &format!("{hint}Value"),
-                    &under,
-                    &|held| format!("{entries}[{named}] = {held}"),
-                    locals,
-                );
-                format!(
-                    "let {keyed} = try {}; var {entries}: {} = [:]; \
-                     for {entry} in {keyed}.allKeys {{ {refusal}{read} }}; {}",
-                    source.keyed(),
-                    written_type(def, hint),
-                    sink(&entries)
-                )
-            }
-        },
+        FieldDefType::Map(key, value) => {
+            map_unjudged(def, (key, value), hint, source, sink, locals)
+        }
         FieldDefType::SiblingType(named, arguments)
             if arguments.len() == 1 && is_sequence_wrapper(named) =>
         {
@@ -420,7 +389,8 @@ pub(super) fn unjudged(
                 .flatten()
                 .unwrap_or_else(|| held(source, &read_as, sink))
         }
-        FieldDefType::Tuple(_)
+        FieldDefType::Range(_, _)
+        | FieldDefType::Tuple(_)
         | FieldDefType::TypeParam(_)
         | FieldDefType::Unknown
         | FieldDefType::StringLiteral(_)
@@ -449,6 +419,49 @@ pub(super) fn unjudged(
         | FieldDefType::NaiveDateTime
         | FieldDefType::DateTime => held(source, &written_type(def, hint), sink),
     }
+}
+
+/// [`unjudged`] of the map `def` over `key` and `value`: through the wrapper written for it, or
+/// entry by entry where Swift keys it natively.
+fn map_unjudged(
+    def: &FieldDef,
+    (key, value): (&FieldDef, &FieldDef),
+    hint: &str,
+    source: &Source,
+    sink: &dyn Fn(&str) -> String,
+    locals: &mut Locals,
+) -> String {
+    let keys = map_keys(key);
+    if matches!(keys, MapKeys::Wrapped) {
+        let (wrapper, generic_params) = keyed_map_wrapper(hint, key, value);
+        let read_as = held_at(&wrapper, &generic_params);
+        return held(source, &read_as, &|read| sink(&format!("{read}.storage")));
+    }
+    let [keyed, entries, entry, number] = locals.next_map();
+    let (refusal, named) = if matches!(keys, MapKeys::Whole) {
+        (whole_key(&keyed, &entry, &number), number)
+    } else {
+        (String::new(), format!("{entry}.stringValue"))
+    };
+    let under = Source::Keyed {
+        container: keyed.clone(),
+        key: entry.clone(),
+        presence: Presence::Known,
+    };
+    let read = unjudged(
+        value,
+        &format!("{hint}Value"),
+        &under,
+        &|held| format!("{entries}[{named}] = {held}"),
+        locals,
+    );
+    format!(
+        "let {keyed} = try {}; var {entries}: {} = [:]; \
+         for {entry} in {keyed}.allKeys {{ {refusal}{read} }}; {}",
+        source.keyed(),
+        written_type(def, hint),
+        sink(&entries)
+    )
 }
 
 /// `stem`, then `stem1`, `stem2`: the name of the local of a kind written after `nth` others.

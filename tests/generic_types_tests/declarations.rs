@@ -16,8 +16,19 @@ mod corrected;
 #[path = "../serde_default_tests/models.rs"]
 mod defaulted;
 
+/// The models the four std ranges are written on, and the payloads serde writes and refuses.
+#[path = "../std_range_tests/models.rs"]
+mod ranged;
+
+/// What a JSON Schema document admits.
+#[cfg(feature = "jsonschema")]
+#[path = "../std_range_tests/documents.rs"]
+mod documents;
+
 #[cfg(feature = "chrono")]
 use chrono::{DateTime, Utc};
+#[cfg(feature = "jsonschema")]
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
@@ -476,6 +487,47 @@ for (const [name, schema, payload] of CASES) {
   for (const issue of read.error.issues) {
     const lead = issue.path.length > 0 ? `'${issue.path.join(".")}': ` : "";
     printed.push(`    ${lead}${issue.message}`);
+  }
+}
+console.log(printed.join("\n"));
+"#;
+
+/// Parses each payload of the ranges through the schema of the type it is read as, the declared
+/// default of one that declares a parameter, and prints what each read answers.
+const RANGES_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+
+const schemas = {
+  Compass: lib.Compass$Schema,
+  Course: lib.Course$SchemaDefault,
+  Detour: lib.Detour$Schema,
+  Excursion: lib.Excursion$Schema,
+  Waypost: lib.Waypost$Schema,
+  Frontier: lib.Frontier$Schema,
+  Positioned: lib.Positioned$Schema,
+  Rostered: lib.Rostered$Schema,
+  Signposted: lib.Signposted$Schema,
+  Spanned: lib.Spanned$Schema,
+  Stride: lib.Stride$SchemaDefault,
+};
+const sorted = (value) =>
+  Array.isArray(value)
+    ? value.map(sorted)
+    : value !== null && typeof value === "object" && !(value instanceof Date)
+      ? Object.fromEntries(
+          Object.keys(value)
+            .sort()
+            .map((key) => [key, sorted(value[key])]),
+        )
+      : value;
+const printed = [];
+for (const [name, schema, payload] of PAYLOADS) {
+  const read = schemas[schema].safeParse(JSON.parse(payload));
+  if (read.success) {
+    printed.push(`${name}: read ${JSON.stringify(sorted(read.data))}`);
+  } else if (read.error.issues.some((issue) => issue.code === "unrecognized_keys")) {
+    printed.push(`${name}: refused for a key it does not declare`);
+  } else {
+    printed.push(`${name}: refused`);
   }
 }
 console.log(printed.join("\n"));
@@ -957,6 +1009,11 @@ pub struct CodedCrate<CodeType> {
     pub codes: Vec<CodeType>,
 }
 
+/// Each model a payload of the ranges is read as: its name, whether serde reads a JSON as it, and
+/// its JSON Schema.
+#[cfg(feature = "jsonschema")]
+type RangedModel = (&'static str, fn(&str) -> bool, fn() -> serde_json::Value);
+
 fn bundle() -> String {
     [
         PREAMBLE.to_owned(),
@@ -1182,6 +1239,149 @@ fn defaults() -> String {
         defaulted::IndexedLogbook::<String>::zod_schema(),
     ];
     written.join("\n\n")
+}
+
+/// `value` written with the keys of each object in order, as the driver of the ranges writes it.
+#[cfg(feature = "jsonschema")]
+fn sorted_keys(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Object(object) => {
+            let mut keys: Vec<&String> = object.keys().collect();
+            keys.sort();
+            let members: Vec<String> = keys
+                .into_iter()
+                .map(|key| {
+                    format!(
+                        "{}:{}",
+                        serde_json::to_string(key).unwrap(),
+                        sorted_keys(&object[key])
+                    )
+                })
+                .collect();
+            format!("{{{}}}", members.join(","))
+        }
+        serde_json::Value::Array(items) => {
+            let written: Vec<String> = items.iter().map(sorted_keys).collect();
+            format!("[{}]", written.join(","))
+        }
+        serde_json::Value::Null
+        | serde_json::Value::Bool(_)
+        | serde_json::Value::Number(_)
+        | serde_json::Value::String(_) => value.to_string(),
+    }
+}
+
+/// The types the four std ranges are written on: a bundle of its own, compiled with `tsc --strict`
+/// before it is loaded.
+fn ranges() -> String {
+    [
+        PREAMBLE.to_owned(),
+        ranged::Milestone::ts_definition(),
+        ranged::Milestone::zod_schema(),
+        ranged::Waymark::ts_definition(),
+        ranged::Waymark::zod_schema(),
+        ranged::Itinerary::<String>::ts_definition(),
+        ranged::Itinerary::<String>::zod_schema(),
+        ranged::Spanned::ts_definition(),
+        ranged::Spanned::zod_schema(),
+        ranged::Positioned::ts_definition(),
+        ranged::Positioned::zod_schema(),
+        ranged::Detour::ts_definition(),
+        ranged::Detour::zod_schema(),
+        ranged::Course::<u32>::ts_definition(),
+        ranged::Course::<u32>::zod_schema(),
+        ranged::Compass::ts_definition(),
+        ranged::Compass::zod_schema(),
+        ranged::Atlas::ts_definition(),
+        ranged::Atlas::zod_schema(),
+        ranged::Excursion::ts_definition(),
+        ranged::Excursion::zod_schema(),
+        ranged::Waypost::ts_definition(),
+        ranged::Waypost::zod_schema(),
+        ranged::Stride::<u32>::ts_definition(),
+        ranged::Stride::<u32>::zod_schema(),
+        ranged::Signposted::ts_definition(),
+        ranged::Signposted::zod_schema(),
+        ranged::Frontier::ts_definition(),
+        ranged::Frontier::zod_schema(),
+        #[cfg(feature = "chrono")]
+        ranged::Rostered::ts_definition(),
+        #[cfg(feature = "chrono")]
+        ranged::Rostered::zod_schema(),
+    ]
+    .join("\n\n")
+}
+
+/// Whether serde reads `json` as a `T`.
+#[cfg(feature = "jsonschema")]
+fn serde_reads<T>(json: &str) -> bool
+where
+    T: DeserializeOwned,
+{
+    serde_json::from_str::<T>(json).is_ok()
+}
+
+/// The models the payloads of the ranges are read as.
+#[cfg(feature = "jsonschema")]
+fn ranged_models() -> Vec<RangedModel> {
+    vec![
+        (
+            "Compass",
+            serde_reads::<ranged::Compass>,
+            ranged::Compass::json_schema,
+        ),
+        (
+            "Course",
+            serde_reads::<ranged::Course<u32>>,
+            ranged::Course::<u32>::json_schema,
+        ),
+        (
+            "Detour",
+            serde_reads::<ranged::Detour>,
+            ranged::Detour::json_schema,
+        ),
+        (
+            "Excursion",
+            serde_reads::<ranged::Excursion>,
+            ranged::Excursion::json_schema,
+        ),
+        (
+            "Waypost",
+            serde_reads::<ranged::Waypost>,
+            ranged::Waypost::json_schema,
+        ),
+        (
+            "Frontier",
+            serde_reads::<ranged::Frontier>,
+            ranged::Frontier::json_schema,
+        ),
+        (
+            "Positioned",
+            serde_reads::<ranged::Positioned>,
+            ranged::Positioned::json_schema,
+        ),
+        #[cfg(feature = "chrono")]
+        (
+            "Rostered",
+            serde_reads::<ranged::Rostered>,
+            ranged::Rostered::json_schema,
+        ),
+        (
+            "Signposted",
+            serde_reads::<ranged::Signposted>,
+            ranged::Signposted::json_schema,
+        ),
+        (
+            "Spanned",
+            serde_reads::<ranged::Spanned>,
+            ranged::Spanned::json_schema,
+        ),
+        (
+            "Stride",
+            serde_reads::<ranged::Stride<u32>>,
+            ranged::Stride::<u32>::json_schema,
+        ),
+    ]
 }
 
 /// The types that hold a date, which the bundle declares where `chrono` is on.
@@ -1675,4 +1875,52 @@ fn type_check_the_check_of_a_generic_type_that_holds_its_parameter_compiles() {
         return;
     };
     fs::remove_dir_all(at).unwrap();
+}
+
+/// Every payload serde writes of a range is parsed by the Zod schema of its type under `node` and
+/// admitted by the type's JSON Schema, and every payload serde refuses is refused by both: a key
+/// no range writes, a bound left out, a bound of another type, and a bound that breaks its own.
+#[cfg(feature = "jsonschema")]
+#[test]
+fn type_check_a_range_parses_under_zod_what_serde_writes() {
+    let mut payloads = ranged::read_payloads();
+    payloads.extend(ranged::refused_payloads());
+    payloads.extend(ranged::judged_payloads());
+    let mut expected = Vec::new();
+    for payload in &payloads {
+        let (read, document) = ranged_models()
+            .into_iter()
+            .find(|(named, _, _)| *named == payload.read_as)
+            .map(|(_, reads, document)| (reads(&payload.json), document()))
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_str(&payload.json).unwrap();
+        assert_eq!(
+            documents::admits(&document, &value),
+            read,
+            "the JSON Schema of {} and serde disagree on {}: {}",
+            payload.read_as,
+            payload.name,
+            payload.json
+        );
+        expected.push(if read {
+            format!("{}: read {}", payload.name, sorted_keys(&value))
+        } else if payload.undeclared_key {
+            format!("{}: refused for a key it does not declare", payload.name)
+        } else {
+            format!("{}: refused", payload.name)
+        });
+    }
+    let listed: Vec<(&str, &str, &str)> = payloads
+        .iter()
+        .map(|payload| (payload.name, payload.read_as, payload.json.as_str()))
+        .collect();
+    let driver = RANGES_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
+    let Some((printed, failed)) = loaded_from("ranges", &ranges(), &driver) else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        expected.join("\n"),
+        "the schemas do not read what a serde read reads:\n{failed}"
+    );
 }

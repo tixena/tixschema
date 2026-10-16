@@ -18,7 +18,7 @@ use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{brand_field, parse_serde_key_omission, struct_tag};
 use crate::field_type::{
-    FieldDef, FieldDefType, VariantKind, classify_variant, get_field_def, is_plain_enum,
+    FieldDef, FieldDefType, RangeKind, VariantKind, classify_variant, get_field_def, is_plain_enum,
     is_sequence_wrapper,
 };
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
@@ -569,6 +569,7 @@ fn reach_parameters(def: &FieldDef, reached: &mut Vec<String>) {
                 reach_parameters(element, reached);
             }
         }
+        FieldDefType::Range(_, bound) => reach_parameters(bound, reached),
         FieldDefType::Unknown
         | FieldDefType::StringLiteral(_)
         | FieldDefType::BooleanLiteral(_)
@@ -698,6 +699,7 @@ fn swift_map_key_scalar(key: &FieldDef) -> String {
         | FieldDefType::BooleanLiteral(_)
         | FieldDefType::NumberLiteral(_)
         | FieldDefType::Map(_, _)
+        | FieldDefType::Range(_, _)
         | FieldDefType::Tuple(_)
         | FieldDefType::U64
         | FieldDefType::F32
@@ -747,6 +749,7 @@ fn swift_map_key_codec(key: &FieldDef) -> (Option<String>, String) {
         | FieldDefType::BooleanLiteral(_)
         | FieldDefType::NumberLiteral(_)
         | FieldDefType::Map(_, _)
+        | FieldDefType::Range(_, _)
         | FieldDefType::Tuple(_)
         | FieldDefType::U64
         | FieldDefType::F32
@@ -913,7 +916,8 @@ fn swift_field_shape(field: &FieldDef, name_hint: &str, aux: &mut Vec<String>) -
         FieldDefType::Unknown => direct_shape("String".to_owned()),
         FieldDefType::TypeParam(name) => direct_shape(name.clone()),
         FieldDefType::Tuple(elements) => tuple_shape(elements, name_hint, aux),
-        FieldDefType::SiblingType(name, generics) => sibling_shape(name, generics, aux),
+        FieldDefType::Range(kind, bound) => range_shape(*kind, bound, name_hint, aux),
+        FieldDefType::SiblingType(name, generics) => sibling_shape(name, generics, name_hint, aux),
         FieldDefType::Map(key, value) => map_shape(key, value, name_hint, aux),
         FieldDefType::Boolean | FieldDefType::BooleanLiteral(_) => direct_shape("Bool".to_owned()),
         FieldDefType::Char | FieldDefType::String | FieldDefType::StringLiteral(_) => {
@@ -1036,6 +1040,101 @@ fn tuple_shape(elements: &[FieldDef], name_hint: &str, aux: &mut Vec<String>) ->
     direct_shape(held_at(&struct_name, &generic_params))
 }
 
+/// A std range leaf: a struct of its own, `{hint}Range`, holds each bound serde writes under its
+/// key, read and written through the bound's shape, and walked by its `validate()` under that key.
+/// Every key is required, and any other key refused, as serde reads them. The struct declares the
+/// parameters its bound reaches.
+fn range_shape(
+    kind: RangeKind,
+    bound: &FieldDef,
+    name_hint: &str,
+    aux: &mut Vec<String>,
+) -> SwiftFieldShape {
+    let struct_name = format!("{name_hint}Range");
+    let hint = format!("{struct_name}Bound");
+    let (real_type, shape) = swift_resolve(bound, &hint, aux);
+    let fields: Vec<SwiftField> = kind
+        .members()
+        .iter()
+        .map(|member| {
+            let mut field_def = arrayed(bound.clone());
+            (*member).clone_into(&mut field_def.name);
+            SwiftField {
+                default_at: None,
+                field_def,
+                flatten: false,
+                hint: hint.clone(),
+                real_type: real_type.clone(),
+                required: true,
+                shape: shape.clone(),
+                swift_name: (*member).to_owned(),
+                wire_name: (*member).to_owned(),
+            }
+        })
+        .collect();
+    let generic_params = bounded_generic_params(&parameters_reached(&[bound]));
+    let props = fields.iter().fold(String::new(), |mut acc, field| {
+        write!(
+            acc,
+            "public let {}: {}; ",
+            field.swift_name, field.real_type
+        )
+        .unwrap();
+        acc
+    });
+    let mut locals = read::Locals::default();
+    let mut twins = Vec::new();
+    let members = fields
+        .iter()
+        .map(|field| decode_statement(field, "container", false, "", &mut locals, &mut twins))
+        .collect::<Vec<_>>()
+        .join("; ");
+    let written = kind
+        .members()
+        .iter()
+        .map(|member| format!("\"{member}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    // Swift's own read of an enum refuses an object of the wrong keys as a type mismatch.
+    let only_written = format!(
+        "let wireKeys = try decoder.container(keyedBy: SwiftSchemaAnyKey.self); \
+         if wireKeys.allKeys.contains(where: {{ ![{written}].contains($0.stringValue) }}) {{ \
+         throw DecodingError.typeMismatch(Self.self, DecodingError.Context(codingPath: \
+         decoder.codingPath, debugDescription: \"Unknown key of a {}: \\(wireKeys.allKeys.map \
+         {{ $0.stringValue }})\")) }}",
+        kind.name()
+    );
+    let reads = read::both(
+        &format!(
+            "{only_written}; let container = try decoder.container(keyedBy: CodingKeys.self); \
+             {members}"
+        ),
+        &preprocess::Written {
+            named: &struct_name,
+            twins,
+            ..preprocess::Written::default()
+        },
+    );
+    let encodes = fields
+        .iter()
+        .map(|field| encode_statement(field, "container"))
+        .collect::<Vec<_>>()
+        .join("; ");
+    aux.push(format!(
+        "public struct {struct_name}{generic_params}: Codable, Sendable {{ {props}{} {}{reads}\
+         public func encode(to encoder: Encoder) throws {{ \
+         var container = encoder.container(keyedBy: CodingKeys.self); {encodes} }}; {} }};",
+        swift_coding_keys(&fields, &[]),
+        memberwise_initializer(&fields),
+        validate::method(&validate::range_rules(&struct_name, kind, bound)),
+    ));
+    let helpers = datetime_helpers_for(&struct_name, &generic_params, &[&shape]);
+    if !helpers.is_empty() {
+        aux.push(helpers);
+    }
+    direct_shape(held_at(&struct_name, &generic_params))
+}
+
 /// A slot, a value serde writes with no key, as it is declared and read: its Swift type, and its
 /// shape. An `as_number` date is read and written as the `Int64` it is declared as, which is the
 /// number serde writes.
@@ -1058,8 +1157,14 @@ fn slot_resolve(written: &FieldDef, name_hint: &str, aux: &mut Vec<String>) -> (
 
 /// A `SiblingType` leaf: the referenced item's own published name, with generic arguments rendered
 /// the same way a field's own type is. An argument whose read calls the date helpers is held in a
-/// wrapper that carries them, as the type it fills reads it through `Decodable`.
-fn sibling_shape(name: &str, generics: &[FieldDef], aux: &mut Vec<String>) -> SwiftFieldShape {
+/// wrapper that carries them, as the type it fills reads it through `Decodable`. The struct of a
+/// range argument is named from `name_hint`, the holder's field, so no two holders declare one.
+fn sibling_shape(
+    name: &str,
+    generics: &[FieldDef],
+    name_hint: &str,
+    aux: &mut Vec<String>,
+) -> SwiftFieldShape {
     let class_name = lookup_swift_name(name).unwrap_or_else(|| name.to_owned());
     if generics.is_empty() {
         return direct_shape(class_name);
@@ -1068,8 +1173,12 @@ fn sibling_shape(name: &str, generics: &[FieldDef], aux: &mut Vec<String>) -> Sw
         .iter()
         .enumerate()
         .map(|(index, argument)| {
-            let hint = format!("{class_name}Argument{index}");
             let def = arrayed(argument.clone());
+            let hint = if matches!(def.field_type, FieldDefType::Range(..)) {
+                format!("{name_hint}Argument{index}")
+            } else {
+                format!("{class_name}Argument{index}")
+            };
             let (real_type, shape) = swift_resolve(&def, &hint, aux);
             if reads_a_date(&shape) {
                 dated_argument(&hint, &real_type, &Shaped { def, shape }, aux)
@@ -1128,6 +1237,7 @@ fn map_keys(key: &FieldDef) -> MapKeys {
         | FieldDefType::BooleanLiteral(_)
         | FieldDefType::NumberLiteral(_)
         | FieldDefType::Map(_, _)
+        | FieldDefType::Range(_, _)
         | FieldDefType::Tuple(_)
         | FieldDefType::Boolean
         | FieldDefType::U8

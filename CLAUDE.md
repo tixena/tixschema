@@ -190,7 +190,7 @@ item, computed expression) records nothing and describes as an unbounded array.
 
 **FieldDefType** (type categories):
 - Primitives: `Boolean`, `String`, `U8-U64`, `I8-I64`, `F32`, `F64`, `Usize`, `Isize`
-- Complex: `SiblingType` (custom types), `Map` (HashMap), `Tuple`
+- Complex: `SiblingType` (custom types), `Map` (HashMap), `Tuple`, `Range` (a std range, its `RangeKind` and its bound)
 - Special: `ObjectId` (MongoDB, feature-gated), `StringLiteral`, `TypeParam`, `Unknown`
 
 `TypeParam` is one of the enclosing item's own type parameters, which `erase_type_parameters`
@@ -336,6 +336,7 @@ unaffected at every position: a stringified key describes as `{"type": "object",
 - `ObjectId` → `ObjectId` (with $oid validation)
 - `DateTime<Tz>` → `Date` (Zod `z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date())`, which refuses `null` and booleans that `z.coerce.date()` alone reads as 1970, ahead of the `null` arm and the boolean member a union lists after the date; `type_check_a_date_refuses_what_is_no_date_in_every_position_that_holds_one` in `tests/generic_types_tests/declarations.rs` loads the schema under `node` and holds each input to it); with `#[model_schema_prop(as_number)]` → `number` (inline epoch-ms coercer)
 - `NaiveTime` → `string` (Zod `z.iso.time()` wrapped in an inline preprocessor that also accepts millis-since-start-of-day)
+- `Range<T>` and `RangeInclusive<T>` → `{ start: T; end: T }`, `RangeFrom<T>` → `{ start: T }`, `RangeTo<T>` → `{ end: T }` (Zod `z.strictObject({ … })`, JSON Schema an object of those members, each `required`, with `additionalProperties: false`), each bound rendered as its type renders anywhere else. `written_std_range` in `src/field_type.rs` is the one seam that says a path is one: one of the four last names with one type argument, written in full under `core::ops` or `std::ops` (`names_std_ops`), or under any other path but a name `is_declared_ident` holds, a `#[model_schema()]` type of the crate's own declared above. A range written by any path but the full one earns the check `src/model_schema/ranges.rs` writes beside the holder in every build, which hands the std range back as the type the path names and fails with E0308 where that is another type. Each client writes a type of its own per range: a Dart record with named members, a Swift struct `{Holder}{Field}Range` (`{Holder}{Field}Argument{N}Range` in a type argument) that declares the parameters its bound reaches, and a Kotlin `@Serializable` data class over its bound's type, one per kind of range an item writes (`KOTLIN_RANGES`). Each refuses an object that holds a key the range does not write, as serde's own read of a range does: the Dart record's `switch` takes it only where every key is a member, and the Swift struct reads its keys through `SwiftSchemaAnyKey` first and throws `typeMismatch`, as Swift's own read of an enum does. `validate()` walks a range's bounds under their keys (`ConstraintWrap::Range`), the judged read reads a model in one unjudged (`range_built_back`), the recovering decode reads one whole (`Expected::Range`), and under `mongodb` a range field is a `Field`. A range as a map key and a bound key on a range field are refused in every build, and a range under `#[serde(flatten)]` in every build with `serde`
 - `#[serde(flatten)]` field → TypeScript intersection (`A & B`), Zod `.and(...)`. A source writing more than one key set — a registered choice, or one reached through an `Option` — multiplies instead: `zod_merged_joins` builds one `.and(...)` chain per key set, `zod_merged_statements` binds the object to `{Type}$OwnSchema` and joins the copies where the object is a struct's own published binding, and `zod_merged_object` writes the object out once per copy where it is an enum variant's fragment of a larger literal. Either way the item contributes exactly one member to whatever union encloses it
 - `#[serde(untagged)]` enum → TypeScript union (`A | B`), Zod `z.union([...])`, JSON Schema `anyOf`
 - A member of a struct or of an enum's variant under `#[serde(default)]` → the TypeScript member unchanged, Zod `T.prefault(<json>)`, JSON Schema `"default": <json>` with the key left out of `required`, and each client reading the JSON of the default where the key is left out (section 13)
@@ -2744,7 +2745,8 @@ tixschema/
 │   ├── model_schema/
 │   │   ├── checks.rs             # check: the calls validate() makes, the alias refusal
 │   │   ├── judged_read.rs        # The Deserialize of a type that publishes validate() or names a preprocess
-│   │   └── preprocess.rs         # preprocess: what an item names, the calls of a read, the refusals
+│   │   ├── preprocess.rs         # preprocess: what an item names, the calls of a read, the refusals
+│   │   └── ranges.rs             # The identity check of a std range written by its bare name; a flattened range, and a range key where no surface runs, refused
 │   ├── check_example.md          # The check example the rustdoc runs and the README shows
 │   ├── preprocess_example.md     # The preprocess example the rustdoc runs and the README shows
 │   ├── field_type.rs             # Type system (FieldDef, FieldDefType)
@@ -2785,6 +2787,10 @@ tixschema/
 │   ├── preprocess_and_check_tests/       # The parcel the section declares, and the section held to the test of each language
 │   ├── serde_default_tests.rs            # A key under #[serde(default)]: the serde read, the text of every surface
 │   ├── serde_default_tests/              # The models and the table every surface is held to
+│   ├── std_range_tests.rs                # The four std ranges: every surface, validate(), the read, the decode, the README
+│   ├── std_range_tests/                  # The models and payloads every surface and client is held to
+│   ├── declared_range_tests.rs           # A type of the crate's own named Range keeps its name
+│   ├── std_range_refusals.rs             # A range named after another type fails at its identity check, E0308
 │   ├── collection_tests.rs
 │   ├── enum_tests.rs
 │   ├── serde_tests.rs

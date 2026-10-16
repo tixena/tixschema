@@ -1205,6 +1205,7 @@ fn expected_has_exactly_the_members_a_field_category_can_take() {
         Expected::NumberLiteral(214.0),
         Expected::ObjectId,
         Expected::Optional(Box::new(Expected::String)),
+        Expected::Range("Range", Box::new(Expected::U32)),
         Expected::String,
         Expected::StringLiteral("Tixena"),
         Expected::Tuple(vec![Expected::String, Expected::U32]),
@@ -1239,6 +1240,7 @@ fn expected_has_exactly_the_members_a_field_category_can_take() {
             Expected::NumberLiteral(_) => "NumberLiteral",
             Expected::ObjectId => "ObjectId",
             Expected::Optional(_) => "Optional",
+            Expected::Range(_, _) => "Range",
             Expected::String => "String",
             Expected::StringLiteral(_) => "StringLiteral",
             Expected::Tuple(_) => "Tuple",
@@ -1253,7 +1255,7 @@ fn expected_has_exactly_the_members_a_field_category_can_take() {
         };
         assert!(format!("{member:?}").starts_with(name), "for {name}");
     }
-    assert_eq!(members.len(), 31);
+    assert_eq!(members.len(), 32);
 }
 
 #[test]

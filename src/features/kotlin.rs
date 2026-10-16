@@ -34,7 +34,7 @@ use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{brand_field, parse_serde_key_omission, struct_tag};
 use crate::field_type::{
-    FieldDef, FieldDefType, VariantKind, classify_variant, get_field_def, is_plain_enum,
+    FieldDef, FieldDefType, RangeKind, VariantKind, classify_variant, get_field_def, is_plain_enum,
     is_sequence_wrapper,
 };
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
@@ -186,6 +186,10 @@ thread_local! {
     /// invocations — never reset, since every tuple wrapper this module ever writes lands in the
     /// same consuming file and must not collide with any other item's.
     static KOTLIN_TUPLE_COUNTER: Cell<u32> = const { Cell::new(0) };
+    /// The class each kind of range the item being expanded writes is declared as, by the members
+    /// it declares, so every range of one kind names one class. Cleared with
+    /// [`KOTLIN_TUPLE_AUX`].
+    static KOTLIN_RANGES: RefCell<Vec<(String, String)>> = const { RefCell::new(Vec::new()) };
 }
 
 /// The Kotlin tokens `item` earns, given what `#[model_schema(...)]` wrote on it. Dispatches on
@@ -213,6 +217,7 @@ pub fn kotlin_refused_width(field: &FieldDef) -> Option<&'static str> {
             kotlin_refused_width(key).or_else(|| kotlin_refused_width(value))
         }
         FieldDefType::Tuple(elements) => elements.iter().find_map(kotlin_refused_width),
+        FieldDefType::Range(_, bound) => kotlin_refused_width(bound),
         FieldDefType::TypeParam(_)
         | FieldDefType::Unknown
         | FieldDefType::StringLiteral(_)
@@ -457,6 +462,7 @@ fn kotlin_base(field: &FieldDef) -> String {
         FieldDefType::Unknown => "JsonElement".to_owned(),
         FieldDefType::TypeParam(name) => name.clone(),
         FieldDefType::Tuple(elements) => tuple_wrapper_typename(elements, false),
+        FieldDefType::Range(kind, bound) => range_typename(*kind, &kotlin_typename(bound)),
         FieldDefType::SiblingType(name, generics) => {
             if let [element] = generics.as_slice()
                 && is_sequence_wrapper(name)
@@ -546,6 +552,7 @@ fn field_reaches_type_parameter(field: &FieldDef, type_parameters: &[String]) ->
             field_reaches_type_parameter(key, type_parameters)
                 || field_reaches_type_parameter(value, type_parameters)
         }
+        FieldDefType::Range(_, bound) => field_reaches_type_parameter(bound, type_parameters),
         FieldDefType::Tuple(_)
         | FieldDefType::Unknown
         | FieldDefType::StringLiteral(_)
@@ -617,6 +624,9 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
             kotlin_serializer_expr(key, type_parameters),
             kotlin_serializer_expr(value, type_parameters)
         ),
+        FieldDefType::Range(kind, bound) => {
+            range_serializer(*kind, &kotlin_serializer_expr(bound, type_parameters))
+        }
         // None of these ever reaches a type parameter (see `field_reaches_type_parameter`), so
         // this arm is unreached in practice; it stays total rather than a wildcard.
         FieldDefType::Tuple(_)
@@ -741,6 +751,48 @@ fn tuple_wrapper_typename(elements: &[FieldDef], walked: bool) -> String {
     wrapper_name
 }
 
+/// The `@Serializable` data class a std range of `kind` is read and written through, declared
+/// once per item over the type of its bounds: its members are the bounds serde writes, under their
+/// keys, which the plugin reads and writes as that object.
+fn range_class(kind: RangeKind) -> String {
+    let members = kind
+        .members()
+        .iter()
+        .map(|member| format!("val {member}: Bound"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    KOTLIN_RANGES.with(|ranges| {
+        let mut written = ranges.borrow_mut();
+        if let Some((_, named)) = written.iter().find(|(declared, _)| *declared == members) {
+            return named.clone();
+        }
+        let index = KOTLIN_TUPLE_COUNTER.with(|counter| {
+            let next = counter.get() + 1;
+            counter.set(next);
+            next
+        });
+        let named = format!("KotlinRange{index}");
+        KOTLIN_TUPLE_AUX.with(|aux| {
+            aux.borrow_mut().push(format!(
+                "@Serializable data class {named}<Bound>({members})"
+            ));
+        });
+        written.push((members, named.clone()));
+        named
+    })
+}
+
+/// The Kotlin type of a std range of `kind` whose bounds are typed `held`.
+fn range_typename(kind: RangeKind, held: &str) -> String {
+    format!("{}<{held}>", range_class(kind))
+}
+
+/// The `KSerializer` of a std range of `kind`: the plugin's for its class, handed `held`, the
+/// serializer of its bounds.
+fn range_serializer(kind: RangeKind, held: &str) -> String {
+    format!("{}.serializer({held})", range_class(kind))
+}
+
 /// The `{ident}_kotlin` module ident an item's own `kotlin_definition()` publishes from.
 fn kotlin_module_ident(rust_ident: &str, span: proc_macro2::Span) -> Ident {
     Ident::new(&format!("{}_kotlin", to_snake_case(rust_ident)), span)
@@ -760,6 +812,7 @@ fn kotlin_module_tokens(
     kotlin_source: &str,
     defaults: &SerdeDefaults,
 ) -> TokenStream {
+    KOTLIN_RANGES.with(|ranges| ranges.borrow_mut().clear());
     let full_source = KOTLIN_TUPLE_AUX
         .with(RefCell::take)
         .into_iter()

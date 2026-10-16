@@ -37,6 +37,16 @@ fn swift_base(field: &FieldDef) -> String {
                 .join(", ");
             format!("({rendered})")
         }
+        FieldDefType::Range(kind, bound) => {
+            let held = swift_typename(bound);
+            let rendered = kind
+                .members()
+                .iter()
+                .map(|member| format!("{member}: {held}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("({rendered})")
+        }
         FieldDefType::SiblingType(name, generics) => {
             if let [element] = generics.as_slice()
                 && is_sequence_wrapper(name)

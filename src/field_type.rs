@@ -72,6 +72,20 @@ pub enum BoundKind {
     Text,
 }
 
+/// Which of the four std ranges a [`FieldDefType::Range`] is. serde writes each as the object of
+/// the bounds it holds, every bound of the one type the range is written with.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RangeKind {
+    /// `RangeFrom<T>`, written `{"start": T}`.
+    From,
+    /// `Range<T>`, written `{"start": T, "end": T}`.
+    HalfOpen,
+    /// `RangeInclusive<T>`, written `{"start": T, "end": T}`.
+    Inclusive,
+    /// `RangeTo<T>`, written `{"end": T}`.
+    To,
+}
+
 /// Classifies how an enum variant stores its data, driving the TypeScript/Zod generation strategy
 /// for discriminated union variants.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -125,6 +139,8 @@ pub enum FieldDefType {
     #[cfg(feature = "mongodb")]
     /// `MongoDB` `ObjectId` type - requires "`mongodb`" feature.
     ObjectId,
+    /// A std range, and the type each of its bounds is written as.
+    Range(RangeKind, Box<FieldDef>),
     /// A reference to another struct or enum: the Rust ident written at the reference, and its
     /// generic arguments if any.
     SiblingType(String, Vec<FieldDef>),
@@ -164,6 +180,38 @@ impl FieldDefType {
                 | Self::F32
                 | Self::F64
         )
+    }
+}
+
+impl RangeKind {
+    /// The members serde writes, in the order it writes them.
+    pub const fn members(self) -> &'static [&'static str] {
+        match self {
+            Self::From => &["start"],
+            Self::HalfOpen | Self::Inclusive => &["start", "end"],
+            Self::To => &["end"],
+        }
+    }
+
+    /// The name the type is declared under in `core::ops`.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::From => "RangeFrom",
+            Self::HalfOpen => "Range",
+            Self::Inclusive => "RangeInclusive",
+            Self::To => "RangeTo",
+        }
+    }
+
+    /// The kind a std range is named by, and `None` for any other name.
+    pub fn named(name: &str) -> Option<Self> {
+        match name {
+            "Range" => Some(Self::HalfOpen),
+            "RangeFrom" => Some(Self::From),
+            "RangeInclusive" => Some(Self::Inclusive),
+            "RangeTo" => Some(Self::To),
+            _ => None,
+        }
     }
 }
 
@@ -218,6 +266,7 @@ impl FieldDef {
             FieldDefType::Tuple(elements) => {
                 elements.iter().find_map(Self::parameter_or_argument_name)
             }
+            FieldDefType::Range(_, bound) => bound.parameter_or_argument_name(),
             FieldDefType::TypeParam(_)
             | FieldDefType::Unknown
             | FieldDefType::StringLiteral(_)
@@ -282,6 +331,7 @@ impl FieldDef {
     pub const fn composite_shape_name(&self) -> Option<&'static str> {
         match &self.field_type {
             FieldDefType::Map(_, _) => Some("a map"),
+            FieldDefType::Range(_, _) => Some("a range"),
             FieldDefType::Tuple(_) => Some("a tuple"),
             #[cfg(feature = "mongodb")]
             FieldDefType::ObjectId => None,
@@ -339,6 +389,7 @@ impl FieldDef {
             FieldDefType::Map(k, v) => {
                 k.contains_type_reference(type_name) || v.contains_type_reference(type_name)
             }
+            FieldDefType::Range(_, bound) => bound.contains_type_reference(type_name),
             FieldDefType::Tuple(elements) => elements
                 .iter()
                 .any(|e| e.contains_type_reference(type_name)),
@@ -427,6 +478,9 @@ impl FieldDef {
             }
             #[cfg(feature = "mongodb")]
             FieldDefType::ObjectId => ("ObjectId", Vec::new(), &[]),
+            FieldDefType::Range(kind, bound) => {
+                ("Range", vec![kind.name().to_owned()], from_ref(&**bound))
+            }
             // serde writes every std sequence as the array a `Vec` writes.
             FieldDefType::SiblingType(name, items)
                 if items.len() == 1
@@ -478,6 +532,7 @@ impl FieldDef {
             FieldDefType::DateTime => Some("chrono::DateTime"),
             FieldDefType::SiblingType(_, _)
             | FieldDefType::Map(_, _)
+            | FieldDefType::Range(_, _)
             | FieldDefType::Tuple(_)
             | FieldDefType::TypeParam(_)
             | FieldDefType::Unknown
@@ -665,6 +720,7 @@ impl FieldDef {
                 !is_sequence_wrapper(name) || generics.iter().any(Self::names_a_sibling_binding)
             }
             FieldDefType::Map(_, value) => value.names_a_sibling_binding(),
+            FieldDefType::Range(_, bound) => bound.names_a_sibling_binding(),
             FieldDefType::Tuple(elements) => elements.iter().any(Self::names_a_sibling_binding),
             FieldDefType::TypeParam(_)
             | FieldDefType::Unknown
@@ -705,6 +761,7 @@ impl FieldDef {
         match &mut self.field_type {
             FieldDefType::SiblingType(_, generics) => generics.iter_mut().collect(),
             FieldDefType::Map(key, value) => vec![key, value],
+            FieldDefType::Range(_, bound) => vec![bound],
             FieldDefType::Tuple(elements) => elements.iter_mut().collect(),
             // Leaf types hold no def.
             FieldDefType::TypeParam(_)
@@ -763,6 +820,7 @@ impl FieldDef {
             FieldDefType::TypeParam(name) => Some(name),
             FieldDefType::SiblingType(_, _)
             | FieldDefType::Map(_, _)
+            | FieldDefType::Range(_, _)
             | FieldDefType::Tuple(_)
             | FieldDefType::Unknown
             | FieldDefType::StringLiteral(_)
@@ -793,6 +851,20 @@ impl FieldDef {
         }
     }
 
+    /// The range the key of the first map this field reaches is written as, at any depth.
+    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    pub fn range_map_key(&self) -> Option<RangeKind> {
+        if let FieldDefType::Map(key, _) = &self.field_type
+            && let FieldDefType::Range(kind, _) = key.field_type
+        {
+            return Some(kind);
+        }
+        self.clone()
+            .nested_type_positions()
+            .into_iter()
+            .find_map(|nested| nested.range_map_key())
+    }
+
     /// The first name this field reaches, at any depth, that `refused` answers for. A name is only
     /// ever written where a type is, so the walk descends the positions holding written types and
     /// stops at every value the parser resolved to something of its own.
@@ -812,6 +884,7 @@ impl FieldDef {
             FieldDefType::Map(key, value) => key
                 .reached_name(refused)
                 .or_else(|| value.reached_name(refused)),
+            FieldDefType::Range(_, bound) => bound.reached_name(refused),
             FieldDefType::Tuple(elements) => elements
                 .iter()
                 .find_map(|element| element.reached_name(refused)),
@@ -858,6 +931,7 @@ impl FieldDef {
             FieldDefType::Map(key, value) => {
                 key.reaches_a_type_declared_later() || value.reaches_a_type_declared_later()
             }
+            FieldDefType::Range(_, bound) => bound.reaches_a_type_declared_later(),
             FieldDefType::Tuple(elements) => {
                 elements.iter().any(Self::reaches_a_type_declared_later)
             }
@@ -927,6 +1001,7 @@ impl FieldDef {
                 key.resolve_self_references(type_name, parameters);
                 value.resolve_self_references(type_name, parameters);
             }
+            FieldDefType::Range(_, bound) => bound.resolve_self_references(type_name, parameters),
             FieldDefType::Tuple(elements) => {
                 for element in elements.iter_mut() {
                     element.resolve_self_references(type_name, parameters);
@@ -986,6 +1061,10 @@ impl FieldDef {
             FieldDefType::Unknown => "unknown".to_owned(),
             // The declaration binds this name, so the field is written under it.
             FieldDefType::TypeParam(name) => name.clone(),
+            FieldDefType::Range(kind, bound) => {
+                let held = bound.typescript_slot_typename();
+                range_object(*kind, |member| format!("{member}: {held}"), "; ")
+            }
             FieldDefType::Tuple(lst) => {
                 let elements = lst
                     .iter()
@@ -1201,6 +1280,11 @@ impl FieldDef {
             // A `const` cannot be parameterised, so a parameter composes the argument the factory
             // binds for it.
             FieldDefType::TypeParam(name) => zod_factory_argument(name),
+            FieldDefType::Range(kind, bound) => {
+                let held = bound.zod_slot_type();
+                let members = range_object(*kind, |member| format!("{member}: {held}"), ", ");
+                format!("z.strictObject({members})")
+            }
             FieldDefType::Tuple(lst) => {
                 let elements = lst
                     .iter()
@@ -1314,6 +1398,8 @@ impl FieldDef {
             for element in elements {
                 element.zod_factory_calls(calls);
             }
+        } else if let FieldDefType::Range(_, bound) = &self.field_type {
+            bound.zod_factory_calls(calls);
         } else if let FieldDefType::SiblingType(name, arguments) = &self.field_type {
             let call = if let [element] = arguments.as_slice()
                 && is_sequence_wrapper(name)
@@ -1563,6 +1649,13 @@ impl FieldDef {
         };
         lookup_alias_info(name).map_or_else(Vec::new, |info| info.zod_union_members)
     }
+}
+
+/// The object literal `{ … }` of the members a range of `kind` writes, each as `member` spells it,
+/// joined by `separator`.
+fn range_object(kind: RangeKind, member: impl Fn(&str) -> String, separator: &str) -> String {
+    let members: Vec<String> = kind.members().iter().map(|name| member(name)).collect();
+    format!("{{ {} }}", members.join(separator))
 }
 
 /// `schema` inside one `z.preprocess(fn, …)` per function named, the first one written outermost,
@@ -1835,9 +1928,13 @@ fn get_field_def_from_type_path(
             #[cfg(feature = "jsonschema")]
             type_span: segment.ident.span(),
         },
-        PathArguments::AngleBracketed(args) => {
-            get_field_def_from_generic_type(&segment.ident, args, field_name, field_docs)
-        }
+        PathArguments::AngleBracketed(args) => get_field_def_from_generic_type(
+            &segment.ident,
+            args,
+            written_std_range(type_path),
+            field_name,
+            field_docs,
+        ),
         // Function pointer types are unsupported; fall back to `unknown`.
         PathArguments::Parenthesized(_) => FieldDef {
             name: field_name,
@@ -1857,10 +1954,12 @@ fn get_field_def_from_type_path(
     }
 }
 
-/// Builds a `FieldDef` for a named type written with generic arguments.
+/// Builds a `FieldDef` for a named type written with generic arguments. `range` is the std range
+/// the path writes, where it writes one.
 fn get_field_def_from_generic_type(
     type_ident: &Ident,
     args: &syn::AngleBracketedGenericArguments,
+    range: Option<RangeKind>,
     field_name: String,
     field_docs: &str,
 ) -> FieldDef {
@@ -1885,21 +1984,12 @@ fn get_field_def_from_generic_type(
         arg_types.truncate(arity);
     }
     if arg_types.is_empty() {
-        FieldDef {
-            name: field_name,
-            field_type: FieldDefType::SiblingType(ident.to_owned(), vec![]),
-            array_depth: 0,
-            array_lengths: Vec::new(),
-            docs: field_docs.to_owned(),
-            model_schema_prop_meta: None,
-            nullable_levels: Vec::new(),
-            absent_from_wire: false,
-            omits_value: false,
-            #[cfg(any(feature = "zod", feature = "jsonschema"))]
-            serde_default: None,
-            #[cfg(feature = "jsonschema")]
-            type_span: type_ident.span(),
-        }
+        written_def(
+            FieldDefType::SiblingType(ident.to_owned(), vec![]),
+            field_name,
+            field_docs,
+            type_ident,
+        )
     } else if let [element] = arg_types.as_slice()
         && let Some(collapsed) = collapsed_wrapper_def(ident, element, &field_name, field_docs)
     {
@@ -1930,39 +2020,82 @@ fn get_field_def_from_generic_type(
         }
     } else if arg_types.len() == 1 && is_datetime_generic_type(ident) {
         // The timezone type parameter says nothing about what is written.
-        FieldDef {
-            name: field_name,
-            field_type: datetime_field_type(),
-            array_depth: 0,
-            array_lengths: Vec::new(),
-            docs: field_docs.to_owned(),
-            model_schema_prop_meta: None,
-            nullable_levels: Vec::new(),
-            absent_from_wire: false,
-            omits_value: false,
-            #[cfg(any(feature = "zod", feature = "jsonschema"))]
-            serde_default: None,
-            #[cfg(feature = "jsonschema")]
-            type_span: type_ident.span(),
-        }
+        written_def(datetime_field_type(), field_name, field_docs, type_ident)
+    } else if let Some(kind) = range
+        && let [bound] = arg_types.as_slice()
+    {
+        let field_type = FieldDefType::Range(kind, Box::new(bound.clone()));
+        written_def(field_type, field_name, field_docs, type_ident)
     } else {
         log::trace!("Creating SiblingType - name: {ident}, arg_types: {arg_types:?}");
-        FieldDef {
-            name: field_name,
-            field_type: FieldDefType::SiblingType(ident.to_owned(), arg_types),
-            array_depth: 0,
-            array_lengths: Vec::new(),
-            docs: field_docs.to_owned(),
-            model_schema_prop_meta: None,
-            nullable_levels: Vec::new(),
-            absent_from_wire: false,
-            omits_value: false,
-            #[cfg(any(feature = "zod", feature = "jsonschema"))]
-            serde_default: None,
-            #[cfg(feature = "jsonschema")]
-            type_span: type_ident.span(),
-        }
+        let field_type = FieldDefType::SiblingType(ident.to_owned(), arg_types);
+        written_def(field_type, field_name, field_docs, type_ident)
     }
+}
+
+/// A def of `field_type` under no wrapper, its type written at `type_ident`.
+fn written_def(
+    field_type: FieldDefType,
+    field_name: String,
+    field_docs: &str,
+    type_ident: &Ident,
+) -> FieldDef {
+    #[cfg(not(feature = "jsonschema"))]
+    let _: &Ident = type_ident;
+    FieldDef {
+        name: field_name,
+        field_type,
+        array_depth: 0,
+        array_lengths: Vec::new(),
+        docs: field_docs.to_owned(),
+        model_schema_prop_meta: None,
+        nullable_levels: Vec::new(),
+        absent_from_wire: false,
+        omits_value: false,
+        #[cfg(any(feature = "zod", feature = "jsonschema"))]
+        serde_default: None,
+        #[cfg(feature = "jsonschema")]
+        type_span: type_ident.span(),
+    }
+}
+
+/// The std range `type_path` writes: one of the four names with one type argument, written in full
+/// under `core::ops` or `std::ops`, or under any other path but a name a `#[model_schema]` type of
+/// the crate's own was declared under above.
+pub fn written_std_range(type_path: &syn::TypePath) -> Option<RangeKind> {
+    if type_path.qself.is_some() {
+        return None;
+    }
+    let segment = type_path.path.segments.last()?;
+    let kind = RangeKind::named(&segment.ident.to_string())?;
+    let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+        return None;
+    };
+    let written = arguments
+        .args
+        .iter()
+        .filter(|argument| matches!(argument, GenericArgument::Type(_)))
+        .count();
+    (written == 1 && (names_std_ops(&type_path.path) || !is_declared_ident(kind.name())))
+        .then_some(kind)
+}
+
+/// Whether `path` is written in full under `core::ops` or `std::ops`, where it names the std type
+/// whatever the crate declares.
+pub fn names_std_ops(path: &syn::Path) -> bool {
+    let mut segments = path
+        .segments
+        .iter()
+        .map(|segment| segment.ident.to_string());
+    let (Some(root), Some(module), Some(_), None) = (
+        segments.next(),
+        segments.next(),
+        segments.next(),
+        segments.next(),
+    ) else {
+        return false;
+    };
+    matches!(root.as_str(), "core" | "std") && module == "ops"
 }
 
 /// The def a single-argument wrapper collapses onto, for the wrappers that collapse.

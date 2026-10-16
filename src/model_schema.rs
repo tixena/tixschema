@@ -7,6 +7,7 @@ extern crate alloc;
 pub mod checks;
 pub mod judged_read;
 pub mod preprocess;
+mod ranges;
 
 use alloc::borrow::ToOwned;
 use core::fmt::Write as _;
@@ -34,6 +35,8 @@ use syn::spanned::Spanned as _;
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use syn::Ident;
 
+#[cfg(any(feature = "serde", feature = "jsonschema"))]
+use crate::field_type::RangeKind;
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use crate::field_type::ZOD_SCHEMA_BOUND;
 #[cfg(feature = "zod")]
@@ -299,7 +302,6 @@ const INDEXMAP_NAMES: [(&str, &str, usize); 2] =
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 const WRITTEN_AS_ARRAY: &str = "a JSON array";
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 const WRITTEN_AS_OBJECT: &str = "a JSON object";
 
 /// One variant of a discriminated enum, carrying everything its union member is rendered from.
@@ -541,6 +543,8 @@ enum ConstraintWrap {
     Borrowed,
     Map,
     Optional,
+    /// A std range, on the walk alone: each bound it holds, under the key serde writes it under.
+    Range(RangeKind),
     Sequence,
     Transparent,
 }
@@ -1610,9 +1614,9 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // field written at the item's own name reads that answer back the way any other reference does.
     record_item(&item);
     record_item_functions(&item, &parsed_args);
-    // Whether a filling satisfies the bounds its parameter declares is a question about trait
-    // impls, which a proc macro cannot answer, so it is asked of the compiler.
-    let filling_bound_checks = default_types_bound_checks(&item, &parsed_args);
+    // Whether a filling satisfies the bounds its parameter declares, and whether a range written by
+    // its bare name is the std one, are asked of the compiler: no proc macro can answer either.
+    let filling_bound_checks = asked_of_the_compiler(&item, &parsed_args);
     // Held across the dispatch that consumes the item: a constrained brand written above left its
     // consult for whichever expansion registers the name.
     let registering = item_schema_ident(&item).cloned();
@@ -3550,6 +3554,14 @@ fn default_types_bound_checks(
     checks
 }
 
+/// The checks the compiler answers for `item`: each filling against the bounds its parameter
+/// declares, and each range written by its bare name against the std range.
+fn asked_of_the_compiler(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2::TokenStream> {
+    let mut checks = default_types_bound_checks(item, args);
+    checks.extend(ranges::identity_checks(item));
+    checks
+}
+
 /// The check one filling earns against the bounds its parameter declares alone, or `None` where it
 /// declares none such.
 fn filling_bound_check(
@@ -4379,6 +4391,7 @@ fn swift_refused_primitive_name(field_def: &FieldDef) -> Option<&'static str> {
         FieldDefType::SiblingType(_, arguments) => {
             arguments.iter().find_map(swift_refused_primitive_name)
         }
+        FieldDefType::Range(_, bound) => swift_refused_primitive_name(bound),
         FieldDefType::Tuple(elements) => elements.iter().find_map(swift_refused_primitive_name),
         FieldDefType::Boolean
         | FieldDefType::BooleanLiteral(_)
@@ -4459,7 +4472,9 @@ fn non_string_inner_shape(inner: &FieldDef) -> Option<&'static str> {
         FieldDefType::SiblingType(inner_name, arguments) => {
             instantiated_value_shape(inner_name, arguments)
         }
-        FieldDefType::Map(..) | FieldDefType::Tuple(..) => Some("container"),
+        FieldDefType::Map(..) | FieldDefType::Range(..) | FieldDefType::Tuple(..) => {
+            Some("container")
+        }
         FieldDefType::Boolean | FieldDefType::BooleanLiteral(_) => Some("boolean"),
         FieldDefType::U8
         | FieldDefType::U16
@@ -4541,6 +4556,7 @@ const fn scalar_json_type_keyword(field_type: &FieldDefType) -> Option<&'static 
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => None,
         FieldDefType::Map(..)
+        | FieldDefType::Range(..)
         | FieldDefType::SiblingType(..)
         | FieldDefType::Tuple(..)
         | FieldDefType::TypeParam(_)
@@ -7391,6 +7407,7 @@ fn branded_inner_is_composite(inner: &FieldDef) -> bool {
     }
     match &inner.field_type {
         FieldDefType::Map(..)
+        | FieldDefType::Range(..)
         | FieldDefType::Tuple(..)
         | FieldDefType::TypeParam(_)
         | FieldDefType::Unknown => true,
@@ -9999,6 +10016,7 @@ fn tagged_content(inner: &FieldDef) -> TaggedContent {
         | FieldDefType::NaiveTime => TaggedContent::Refused("a string"),
         FieldDefType::Tuple(_) => TaggedContent::Refused("a tuple"),
         FieldDefType::Map(..) => TaggedContent::Unnameable("a map"),
+        FieldDefType::Range(..) => TaggedContent::Unnameable("a range"),
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => TaggedContent::Unnameable("an ObjectId"),
         FieldDefType::TypeParam(_) => TaggedContent::Unnameable("a type parameter"),
@@ -10755,6 +10773,10 @@ fn field_json_schema_value(fld: &FieldDef) -> proc_macro2::TokenStream {
         },
         FieldDefType::Tuple(elements) => match tuple_json_schema_value(elements) {
             Ok(tuple_schema) => tuple_schema,
+            Err(rejection) => return member_rejection_value(&fld.name, &rejection),
+        },
+        FieldDefType::Range(kind, bound) => match range_json_schema_value(*kind, bound) {
+            Ok(range_schema) => range_schema,
             Err(rejection) => return member_rejection_value(&fld.name, &rejection),
         },
         // A parameter is the filling that reached it, and a value the expansion cannot name at all
@@ -11970,6 +11992,7 @@ const fn chrono_json_schema_format(field_type: &FieldDefType) -> Option<&'static
         | FieldDefType::Isize
         | FieldDefType::Map(..)
         | FieldDefType::NumberLiteral(_)
+        | FieldDefType::Range(..)
         | FieldDefType::SiblingType(..)
         | FieldDefType::String
         | FieldDefType::StringLiteral(_)
@@ -12044,6 +12067,7 @@ fn scalar_field_json_schema_item(fld: &FieldDef) -> Option<proc_macro2::TokenStr
         | FieldDefType::Unknown
         | FieldDefType::SiblingType(..)
         | FieldDefType::Map(..)
+        | FieldDefType::Range(..)
         | FieldDefType::Tuple(..) => return None,
     };
     Some(item_schema)
@@ -12311,6 +12335,26 @@ fn tuple_json_schema_value(
     tuple_json_schema_of(elements, build_tuple_element_json_schema)
 }
 
+/// The object a std range describes as, the form serde writes it in: each member it writes,
+/// required, holding the slot its bound fills. The rejection is the bound's, where the dispatch
+/// cannot render it.
+#[cfg(feature = "jsonschema")]
+fn range_json_schema_value(
+    kind: RangeKind,
+    bound: &FieldDef,
+) -> Result<proc_macro2::TokenStream, MapMemberRejection> {
+    let held = build_tuple_element_json_schema(bound)?;
+    let members = kind.members();
+    Ok(quote! {
+        serde_json::json!({
+            "type": "object",
+            "properties": { #(#members: #held),* },
+            "required": [#(#members),*],
+            "additionalProperties": false
+        })
+    })
+}
+
 /// [`tuple_json_schema_value`] for the slots of a tuple variant or of a tuple struct, each
 /// carrying its own bounds.
 #[cfg(feature = "jsonschema")]
@@ -12384,7 +12428,9 @@ fn map_key_path(key: &FieldDef) -> MapKeyPath<'_> {
             }
         }
         FieldDefType::Tuple(..) => MapKeyPath::Refused(unwritable_key(key, WRITTEN_AS_ARRAY)),
-        FieldDefType::Map(..) => MapKeyPath::Refused(unwritable_key(key, WRITTEN_AS_OBJECT)),
+        FieldDefType::Map(..) | FieldDefType::Range(..) => {
+            MapKeyPath::Refused(unwritable_key(key, WRITTEN_AS_OBJECT))
+        }
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => MapKeyPath::Refused(unwritable_key(key, WRITTEN_AS_OBJECT)),
         FieldDefType::SiblingType(..)
@@ -12464,6 +12510,7 @@ fn map_key_element_name(key: &FieldDef) -> String {
         FieldDefType::F32 => "f32".to_owned(),
         FieldDefType::F64 => "f64".to_owned(),
         FieldDefType::Map(..) => "HashMap<_, _>".to_owned(),
+        FieldDefType::Range(kind, _) => format!("{}<_>", kind.name()),
         FieldDefType::Tuple(..) => "(_, _)".to_owned(),
         FieldDefType::Unknown => "_".to_owned(),
         #[cfg(feature = "mongodb")]
@@ -12507,6 +12554,7 @@ fn map_key_rejection(fld: &FieldDef) -> Option<MapKeyRejection> {
             .or_else(|| map_key_rejection(key))
             .or_else(|| map_key_rejection(value)),
         FieldDefType::SiblingType(_, generics) => generics.iter().find_map(map_key_rejection),
+        FieldDefType::Range(_, bound) => map_key_rejection(bound),
         FieldDefType::Tuple(elements) => elements.iter().find_map(map_key_rejection),
         FieldDefType::TypeParam(_)
         | FieldDefType::Unknown
@@ -12567,7 +12615,6 @@ fn optional_map_key_message(subject: &str, inner_name: &str) -> String {
 
 /// What a key serde writes as neither a string nor anything it stringifies for the author is
 /// reported as, worded like its siblings above and carrying the same `subject`.
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 fn unwritable_map_key_message(subject: &str, key_name: &str, written_as: &str) -> String {
     format!(
         "{subject}: a map key must be a value serde writes as a string, which is what a JSON object key is — serde writes `{key_name}` as {written_as}, and refuses to serialize a map keyed by one at all"
@@ -12708,6 +12755,9 @@ fn build_map_member_item(value: &FieldDef) -> Result<MapMemberItem, MapMemberRej
         // A parameter is the filling that reached it, and a value the expansion cannot name at all
         // admits any value — the permissive empty schema, as in field position.
         FieldDefType::TypeParam(parameter) => MapMemberItem::Value(json_argument_value(parameter)),
+        FieldDefType::Range(kind, bound) => {
+            MapMemberItem::Value(range_json_schema_value(*kind, bound)?)
+        }
         FieldDefType::Unknown => MapMemberItem::Fragment(quote! { {} }),
         // The shared mapping renders every type named here except a tuple, which is the lone
         // `None`.
@@ -13145,6 +13195,24 @@ fn build_tuple_field_schema(
     }
 }
 
+/// Builds the JSON schema for a std range field.
+#[cfg(feature = "jsonschema")]
+fn build_range_field_schema(
+    fld: &FieldDef,
+    field_name_str: &str,
+    kind: RangeKind,
+    bound: &FieldDef,
+) -> proc_macro2::TokenStream {
+    let range_schema = match range_json_schema_value(kind, bound) {
+        Ok(range_schema) => range_schema,
+        Err(rejection) => return map_member_rejection_error(field_name_str, &rejection),
+    };
+    let schema = nullable_slot_json_schema_value(fld, arrayed_json_schema_value(fld, range_schema));
+    quote! {
+        properties.insert(#field_name_str.to_string(), #schema);
+    }
+}
+
 /// Builds the JSON schema for a field with no type of its own — one of the enclosing item's type
 /// parameters, or an opaque value: a `serde_json::Value`, a function pointer, or any other type the
 /// parser could not classify.
@@ -13213,6 +13281,9 @@ fn build_field_type_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2:
         }
         FieldDefType::Map(key, value) => build_map_field_schema(fld, key, value, field_name_str),
         FieldDefType::Tuple(lst) => build_tuple_field_schema(fld, field_name_str, lst),
+        FieldDefType::Range(kind, bound) => {
+            build_range_field_schema(fld, field_name_str, *kind, bound)
+        }
         // Named exhaustively rather than caught by a wildcard: a new variant must be given a
         // schema here, not silently routed to whatever the last arm happens to emit.
         FieldDefType::TypeParam(_) | FieldDefType::Unknown => {
@@ -13471,6 +13542,38 @@ fn walk_wraps(
                 }
             }
         }
+        // Reached by the nested walk alone, whose leaf writes the key of each bound, bound where
+        // a list writes an index.
+        ConstraintWrap::Range(kind) => {
+            let index = index_binding(depth);
+            let bounds: Vec<proc_macro2::TokenStream> = kind
+                .members()
+                .iter()
+                .map(|member| {
+                    let field = proc_macro2::Ident::new(member, proc_macro2::Span::call_site());
+                    let read = if matches!(kind, RangeKind::Inclusive) {
+                        quote! { #value.#field() }
+                    } else {
+                        quote! { &#value.#field }
+                    };
+                    quote! { (#member, #read) }
+                })
+                .collect();
+            if let [only] = bounds.as_slice() {
+                quote! {
+                    {
+                        let (#index, #next) = #only;
+                        #inner
+                    }
+                }
+            } else {
+                quote! {
+                    for (#index, #next) in [#(#bounds),*] {
+                        #inner
+                    }
+                }
+            }
+        }
         ConstraintWrap::Borrowed | ConstraintWrap::Transparent => quote! {
             let #next = &**#value;
             #inner
@@ -13554,7 +13657,9 @@ fn held_at(place: &[PlaceStep], wraps: &[ConstraintWrap], depth: usize) -> Vec<P
         let bound_at = depth.saturating_add(at);
         match *wrap {
             ConstraintWrap::Map => held.push(PlaceStep::Key(bound_at)),
-            ConstraintWrap::Sequence => held.push(PlaceStep::Index(bound_at)),
+            ConstraintWrap::Range(_) | ConstraintWrap::Sequence => {
+                held.push(PlaceStep::Index(bound_at));
+            }
             ConstraintWrap::Borrowed | ConstraintWrap::Optional | ConstraintWrap::Transparent => {}
         }
     }
@@ -14288,7 +14393,10 @@ fn list_hook_header(wraps: &[ConstraintWrap]) -> Option<ListHookHeader> {
     let mut held_to: Vec<proc_macro2::TokenStream> = Vec::new();
     for (depth, wrap) in wraps.iter().enumerate().rev() {
         match *wrap {
-            ConstraintWrap::Borrowed | ConstraintWrap::Map | ConstraintWrap::Sequence => {
+            ConstraintWrap::Borrowed
+            | ConstraintWrap::Map
+            | ConstraintWrap::Range(_)
+            | ConstraintWrap::Sequence => {
                 return None;
             }
             ConstraintWrap::Optional => read = quote! { ::core::option::Option<#read> },
@@ -14502,6 +14610,14 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
             let ident = segment.ident.to_string();
             let declared = matches!(held.field_type, FieldDefType::SiblingType(_, _));
             if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+                if let FieldDefType::Range(kind, bound) = &held.field_type
+                    && RangeKind::named(&ident) == Some(*kind)
+                {
+                    wraps.push(ConstraintWrap::Range(*kind));
+                    current = sole_type_argument(args)?;
+                    held = bound;
+                    continue;
+                }
                 if is_map_wrapper(&ident) {
                     let FieldDefType::Map(_, of_values) = &held.field_type else {
                         return None;
@@ -14985,7 +15101,7 @@ fn collect_field_guard_errors(
         .err()
         .map(|err| err.to_compile_error());
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    let map_key_error: Option<proc_macro2::TokenStream> = None;
+    let map_key_error = ranges::map_key_error(field, field_def, &label);
 
     #[cfg(feature = "kotlin")]
     let kotlin_width_error = check_kotlin_width_field(field, field_def, &label)
@@ -14994,12 +15110,18 @@ fn collect_field_guard_errors(
     #[cfg(not(feature = "kotlin"))]
     let kotlin_width_error: Option<proc_macro2::TokenStream> = None;
 
+    #[cfg(feature = "serde")]
+    let flattened_range_error = ranges::flattened_range_error(field, field_def, &label);
+    #[cfg(not(feature = "serde"))]
+    let flattened_range_error: Option<proc_macro2::TokenStream> = None;
+
     check_undescribable_std_field(field, field_def, &label)
         .err()
         .map(|err| err.to_compile_error())
         .into_iter()
         .chain(map_key_error)
         .chain(kotlin_width_error)
+        .chain(flattened_range_error)
         .chain(model_schema_prop_guard_errors(
             field,
             field_def,
@@ -15228,11 +15350,12 @@ fn check_fixed_shape_constraints(
             field,
             format!(
                 "model_schema: {label}: `{keys}` cannot apply to {shape} — a map renders its keys \
-                 and its values, a tuple renders each of its elements, and every surface builds \
-                 those from the members: the bound names no value here, and `model_schema_prop` \
-                 has no way to say which member it meant, so the constraint would reach neither \
-                 Zod, nor the JSON schema, nor the generated validator. Constrain the member \
-                 instead — declare its type as a branded newtype carrying the bound — or drop it."
+                 and its values, a tuple renders each of its elements, a range renders its start \
+                 and its end, and every surface builds those from the members: the bound names no \
+                 value here, and `model_schema_prop` has no way to say which member it meant, so \
+                 the constraint would reach neither Zod, nor the JSON schema, nor the generated \
+                 validator. Constrain the member instead — declare its type as a branded newtype \
+                 carrying the bound — or drop it."
             ),
         ));
     }
