@@ -1309,10 +1309,13 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
 
     let rule = container_rename_rule(&item_struct.attrs);
     let defaults = SerdeDefaults::of(item_struct);
-    let fields =
-        collect_kotlin_fields(&item_struct.fields, rule, &type_parameters, args, &|field| {
-            defaults.at(None, field)
-        });
+    let fields = collect_kotlin_fields(
+        &item_struct.fields,
+        rule,
+        &type_parameters,
+        args,
+        &|field| defaults.at(None, field),
+    );
     let generic_params = kotlin_generic_params(&item_struct.generics);
     let alias = ident_typealias(&rust_ident, &export_name, &generic_params);
     let flattened = fields.iter().any(|field| field.flatten);

@@ -7,19 +7,23 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
+#[cfg(feature = "zod")]
+use super::models::Quay;
 use super::models::{
-    AdjacentBerthing, Berthing, ExternalBerthing, Quay, UntaggedBerthing, VARIANT_CASES,
-    VARIANT_REPORT, north_dock, untagged_berthing_schema,
+    AdjacentBerthing, Berthing, ExternalBerthing, UntaggedBerthing, VARIANT_CASES, VARIANT_REPORT,
+    north_dock,
 };
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-use super::models::variant_report;
+use super::models::{untagged_berthing_schema, variant_report};
 
 /// The untagged enum under another name.
+#[cfg(feature = "zod")]
 #[model_schema()]
 pub type AliasedBerthing = UntaggedBerthing;
 
 /// An untagged enum one variant of which holds the untagged enum whose members are read as their
 /// defaults.
+#[cfg(feature = "zod")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(untagged)]
@@ -29,6 +33,7 @@ pub enum Anchorage {
 }
 
 /// A struct that flattens the untagged enum that holds the other.
+#[cfg(feature = "zod")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Mooring {
@@ -50,6 +55,7 @@ pub enum OptionalBerth {
 }
 
 /// A struct that flattens the alias of the untagged enum.
+#[cfg(feature = "zod")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Pier {
@@ -103,6 +109,7 @@ pub enum Tide {
 }
 
 /// An enum under no tag attribute with no unit variant, which a struct flattens.
+#[cfg(feature = "zod")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum Towage {
@@ -127,6 +134,7 @@ pub enum TriedThrough {
 }
 
 /// A struct that flattens the enum under no tag attribute.
+#[cfg(feature = "zod")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Wake {
@@ -246,8 +254,7 @@ fn the_members_no_refusal_reaches_read_as_before() {
         }
     );
     assert_eq!(
-        serde_json::from_str::<SkippedBerth>(r#"{"kind":"Docked","line":"l","pier":3}"#)
-            .unwrap(),
+        serde_json::from_str::<SkippedBerth>(r#"{"kind":"Docked","line":"l","pier":3}"#).unwrap(),
         SkippedBerth::Docked {
             dock: north_dock(),
             line: String::new(),
@@ -274,6 +281,15 @@ fn the_members_no_refusal_reaches_read_as_before() {
         })
         .unwrap(),
         r#"{"kind":"Docked","dock":"d","pier":3}"#
+    );
+}
+
+/// The enum none of whose members is read as a default, as serde writes it.
+#[test]
+fn the_enum_with_no_default_is_built_and_written_by_serde() {
+    assert_eq!(
+        serde_json::to_string(&[Tide::Ebbing { height: 2 }, Tide::Slack]).unwrap(),
+        r#"[{"kind":"Ebbing","height":2},{"kind":"Slack"}]"#
     );
 }
 
@@ -415,7 +431,10 @@ fn the_json_schema_states_the_default_of_each_member_of_a_variant() {
         serde_json::json!(["kind"]),
         "{internal}"
     );
-    assert_eq!(internal["oneOf"][2]["properties"]["dock"]["default"], "north");
+    assert_eq!(
+        internal["oneOf"][2]["properties"]["dock"]["default"],
+        "north"
+    );
 }
 
 /// No text of the defaults of the untagged enum reaches the Zod schema of a type that holds it,

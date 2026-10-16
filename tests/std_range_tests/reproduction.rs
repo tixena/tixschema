@@ -1,8 +1,8 @@
 //! The reproduction: a field of `Range<usize>`, with `Range` brought in by `use`. Swift and Kotlin
 //! refuse a `usize` wherever it is written, so the model is declared where neither is on.
 
+use alloc::collections::BTreeMap;
 use core::ops::Range;
-use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -40,7 +40,7 @@ fn a_range_of_usize_is_the_object_in_an_option_a_list_and_a_map() {
     for held in [true, false] {
         let passages = Passages {
             keyed: BTreeMap::from([("a".to_owned(), 1..2)]),
-            listed: vec![3..4],
+            listed: vec![3..4, 7..9],
             maybe: held.then_some(5..6),
         };
         let json = serde_json::to_value(&passages).unwrap();
@@ -67,7 +67,10 @@ fn a_range_of_usize_compiles_and_is_described_as_its_start_and_end() {
         value: "word".to_owned(),
     };
     let json = serde_json::to_value(&value).unwrap();
-    assert_eq!(json["span"], serde_json::json!({ "start": 8, "end": 13 }));
+    assert_eq!(
+        json["span"],
+        serde_json::json!({ "start": 8_usize, "end": 13_usize })
+    );
     assert_eq!(serde_json::from_value::<Text>(json).unwrap(), value);
     assert_eq!(
         Text::json_schema()["properties"]["span"]["required"],

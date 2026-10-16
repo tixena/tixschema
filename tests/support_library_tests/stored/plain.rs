@@ -29,7 +29,8 @@ fn a_plain_serde_type_in_a_stored_type_is_read_whole() {
                     if let parcel_schema::Issue::Invalid {
                         path,
                         expected: parcel_schema::Expected::Unknown,
-                        ..
+                        found: _found,
+                        reason: _reason,
                     } = issue
                     {
                         path.to_string()

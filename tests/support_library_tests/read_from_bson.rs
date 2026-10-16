@@ -13,6 +13,13 @@ pub struct Version {
 }
 
 /// Stored, holding a type that is not.
+#[cfg(any(
+    feature = "mongodb",
+    all(
+        feature = "bson",
+        any(feature = "typescript", feature = "zod", feature = "jsonschema")
+    )
+))]
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Record {

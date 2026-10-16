@@ -18,12 +18,12 @@ use serde::de::DeserializeOwned;
 use super::run_swift_read::normalized;
 use super::runtime::judged;
 use super::text_map_keys_models::{
-    AdjacentBulletin, AdjacentTidings, Almanac, Bulletin, Datebook, Ephemeris, Gazetteer,
-    Hourbook, Logsheet, Moorage, TaggedBulletin, TaggedTidings, Tidings, UntaggedBulletin,
-    UntaggedTidings, adjacent_bulletin_swift, adjacent_tidings_swift, almanac_swift,
-    bulletin_swift, datebook_swift, day, ephemeris_swift, gazetteer_swift, hour, hourbook_swift,
-    logsheet_swift, moment, moorage_swift, tagged_bulletin_swift, tagged_tidings_swift,
-    tidings_swift, untagged_bulletin_swift, untagged_tidings_swift,
+    AdjacentBulletin, AdjacentTidings, Almanac, Bulletin, Datebook, Ephemeris, Gazetteer, Hourbook,
+    Logsheet, Moorage, TaggedBulletin, TaggedTidings, Tidings, UntaggedBulletin, UntaggedTidings,
+    adjacent_bulletin_swift, adjacent_tidings_swift, almanac_swift, bulletin_swift, datebook_swift,
+    day, ephemeris_swift, gazetteer_swift, hour, hourbook_swift, logsheet_swift, moment,
+    moorage_swift, tagged_bulletin_swift, tagged_tidings_swift, tidings_swift,
+    untagged_bulletin_swift, untagged_tidings_swift,
 };
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -180,7 +180,11 @@ fn struct_and_brand_rows() -> Vec<Row> {
         ),
         read_row("a brand", "Datebook", &Datebook(days)),
         read_row("an empty brand", "Datebook", &Datebook(HashMap::new())),
-        read_row("a brand with a named member", "Hourbook", &Hourbook { hours }),
+        read_row(
+            "a brand with a named member",
+            "Hourbook",
+            &Hourbook { hours },
+        ),
         read_row(
             "a brand that declares a parameter",
             "Logsheet<String>",

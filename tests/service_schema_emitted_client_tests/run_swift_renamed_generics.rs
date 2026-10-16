@@ -14,10 +14,10 @@ use serde::de::DeserializeOwned;
 
 use super::renamed_generics_models::{
     AdjacentScroll, Catalog, Diptych, Folio, Leaves, Lectern, Library, Margin, Quire, Scroll,
-    Shelfmark, Spread, TaggedScroll, Tome, UntaggedScroll, Volume, adjacent_scroll_swift, catalog_swift,
-    diptych_swift, folio_swift, lectern_swift, leaves_swift, library_swift, margin_swift,
-    quire_swift, scroll_swift, shelfmark_swift, spread_swift, tagged_scroll_swift, tome_swift,
-    untagged_scroll_swift, volume_swift,
+    Shelfmark, Spread, TaggedScroll, Tome, UntaggedScroll, Volume, adjacent_scroll_swift,
+    catalog_swift, diptych_swift, folio_swift, leaves_swift, lectern_swift, library_swift,
+    margin_swift, quire_swift, scroll_swift, shelfmark_swift, spread_swift, tagged_scroll_swift,
+    tome_swift, untagged_scroll_swift, volume_swift,
 };
 use super::run_swift_read::normalized;
 use super::runtime::judged;
@@ -141,12 +141,7 @@ fn struct_rows() -> Vec<Row> {
             "Twofold",
             &Diptych(owned("a"), 1),
         ),
-        both(
-            "a brand",
-            "Shelfmark",
-            "CallNumber",
-            &Shelfmark(owned("a")),
-        ),
+        both("a brand", "Shelfmark", "CallNumber", &Shelfmark(owned("a"))),
     ]
     .into_iter()
     .flatten()

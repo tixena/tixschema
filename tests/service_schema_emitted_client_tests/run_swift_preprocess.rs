@@ -758,7 +758,11 @@ fn member_rows() -> Vec<MemberRow> {
             "Ferried",
             r#"{"payload":"  A  "}"#,
         ),
-        member_row::<Barged>("the one slot of a struct, a model", "Barged", &enveloped(" B ")),
+        member_row::<Barged>(
+            "the one slot of a struct, a model",
+            "Barged",
+            &enveloped(" B "),
+        ),
         member_row::<Barged>(
             "the one slot of a struct, a model broken",
             "Barged",

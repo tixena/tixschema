@@ -2450,12 +2450,7 @@ fn enum_dart_tokens(item_enum: &ItemEnum, args: &DartTypeArgs<'_>) -> TokenStrea
             &defaults,
         )
     };
-    dart_module_tokens(
-        &rust_ident,
-        item_enum.ident.span(),
-        &dart_source,
-        &defaults,
-    )
+    dart_module_tokens(&rust_ident, item_enum.ident.span(), &dart_source, &defaults)
 }
 
 /// One tagged/untagged variant's payload — see [`VariantPayload`]. A `TupleMultiple` payload is

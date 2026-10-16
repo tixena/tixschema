@@ -89,7 +89,9 @@ where
     let payload = written.replacen(FIRST_WRITTEN, NO_DATE, 1);
     let refused = serde_json::from_str::<Held>(&payload).err().unwrap();
     assert!(
-        refused.to_string().starts_with("input contains invalid characters"),
+        refused
+            .to_string()
+            .starts_with("input contains invalid characters"),
         "{refused}: {payload}"
     );
     Row {

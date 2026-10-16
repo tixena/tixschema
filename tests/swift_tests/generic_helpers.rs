@@ -475,8 +475,10 @@ fn a_brand_and_an_alias_name_the_helper_at_its_parameters() {
     );
     holds(
         &numbering_swift::swift_definition(),
-        &["public struct NumberingTypeKeyedMap<Stowed: Codable & Sendable>: Codable, Sendable { \
-           var storage: [UInt32: Stowed]; "],
+        &[
+            "public struct NumberingTypeKeyedMap<Stowed: Codable & Sendable>: Codable, Sendable { \
+           var storage: [UInt32: Stowed]; ",
+        ],
     );
 }
 

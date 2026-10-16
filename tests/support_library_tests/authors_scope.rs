@@ -37,6 +37,19 @@ fn the_author_keeps_their_filter() {
     );
 }
 
+#[test]
+fn a_stored_type_beside_the_authors_filter_reads_in_every_build() {
+    let read = filters::Invoice::from_value_with(json!({ "number": "INV-1" }), |_raw, _found| {
+        filters::invoice_schema::Verdict::Reject
+    });
+    assert_eq!(
+        read,
+        Ok(filters::Invoice {
+            number: "INV-1".to_owned()
+        })
+    );
+}
+
 #[cfg(feature = "mongodb")]
 #[test]
 fn the_schema_module_holds_the_librarys_filter() {

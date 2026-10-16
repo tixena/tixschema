@@ -9102,8 +9102,7 @@ fn collect_discriminated_variants(
     let mut variants: Vec<DiscriminatedVariant> = Vec::new();
     let mut enum_validation_fns: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut guard_errors: Vec<proc_macro2::TokenStream> = Vec::new();
-    let mut per_variant_checks: Vec<(proc_macro2::TokenStream, Vec<proc_macro2::TokenStream>)> =
-        Vec::new();
+    let mut per_variant_checks = Vec::new();
     let mut deferred_attrs: Vec<Vec<syn::Attribute>> = Vec::new();
     let enum_type_name = item_enum.ident.to_string();
     let enum_read_back = container_is_read_back(&item_enum.attrs);
@@ -9161,10 +9160,11 @@ fn collect_discriminated_variants(
                 guard_errors.extend(variant_flatten_guard_errors(field, &enum_type_name));
             }
 
+            let serde_default = default_at(&variant_ident, &field_ident_string(field));
             let (mut f_def, validation_fn, validate_body, field_guard_errors) =
                 process_field(&member_ctx, field, index, &mut deferred_attrs);
             guard_errors.extend(field_guard_errors);
-            hand_serde_default(&mut f_def, default_at(&variant_ident, &field_ident_string(field)));
+            hand_serde_default(&mut f_def, serde_default);
 
             if is_flatten {
                 let _: (&_, &_) = (&validation_fn, &validate_body);

@@ -16,19 +16,19 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-#[cfg(feature = "chrono")]
-use super::lone_slots_models::{
-    StowedStamp, Ticked, TickedMillis, stowed_stamp_swift, ticked_millis_swift, ticked_swift,
-};
 use super::lone_slots_models::{
     AdjacentStow, Bale, BalePair, Baled, Bales, BalesByName, BalesByNumber, Clipped, Count,
     LabelsByNumber, MaybeBale, Moniker, Sack, Sacked, Single, Stow, StowedByName, StowedByNumber,
-    StowedList, StowedMaybe, StowedPair, TaggedStow, Tote, UntaggedStow, Unskipped,
+    StowedList, StowedMaybe, StowedPair, TaggedStow, Tote, Unskipped, UntaggedStow,
     adjacent_stow_swift, bale_pair_swift, bale_swift, baled_swift, bales_by_name_swift,
     bales_by_number_swift, bales_swift, clipped_swift, count_swift, labels_by_number_swift,
     maybe_bale_swift, moniker_swift, sack_swift, sacked_swift, single_swift, stow_swift,
     stowed_by_name_swift, stowed_by_number_swift, stowed_list_swift, stowed_maybe_swift,
     stowed_pair_swift, tagged_stow_swift, tote_swift, unskipped_swift, untagged_stow_swift,
+};
+#[cfg(feature = "chrono")]
+use super::lone_slots_models::{
+    StowedStamp, Ticked, TickedMillis, stowed_stamp_swift, ticked_millis_swift, ticked_swift,
 };
 use super::run_swift_read::normalized;
 use super::runtime::judged;
@@ -191,7 +191,7 @@ fn date() -> DateTime<Utc> {
 
 /// The payloads of each struct of one slot that declares no parameter.
 fn plain_rows() -> Vec<Row> {
-    let mut rows = vec![
+    vec![
         read_row("a number", "Count", &Count(5)),
         read_row("a text", "Moniker", &Moniker("a".to_owned())),
         read_row("a model", "Baled", &Baled(bale("l"))),
@@ -250,18 +250,16 @@ fn plain_rows() -> Vec<Row> {
             "Clipped",
             Clipped(String::new(), 0)
         ),
-    ];
-    #[cfg(feature = "chrono")]
-    rows.extend([
+        #[cfg(feature = "chrono")]
         read_row("a date", "Ticked", &Ticked(date())),
+        #[cfg(feature = "chrono")]
         read_row("a date as a number", "TickedMillis", &TickedMillis(date())),
-    ]);
-    rows
+    ]
 }
 
 /// The payloads of each struct of one slot that declares a parameter.
 fn generic_rows() -> Vec<Row> {
-    let mut rows = vec![
+    vec![
         read_row("the parameter, a number", "Single<UInt32>", &Single(5_u32)),
         read_row(
             "the parameter, a text",
@@ -319,14 +317,13 @@ fn generic_rows() -> Vec<Row> {
             "StowedPair<String>",
             StowedPair((bale(""), "a".to_owned()))
         ),
-    ];
-    #[cfg(feature = "chrono")]
-    rows.push(read_row(
-        "a date beside the parameter",
-        "StowedStamp<String>",
-        &StowedStamp((date(), "a".to_owned())),
-    ));
-    rows
+        #[cfg(feature = "chrono")]
+        read_row(
+            "a date beside the parameter",
+            "StowedStamp<String>",
+            &StowedStamp((date(), "a".to_owned())),
+        ),
+    ]
 }
 
 /// [`Tote`] whose models are labelled `label` and whose count is `count`.
@@ -344,11 +341,7 @@ fn tote(label: &str, count: u32) -> Tote {
 fn holder_rows() -> Vec<Row> {
     let mut rows = vec![
         read_row("in a field and in a list", "Tote", &tote("l", 2)),
-        refused!(
-            "in a field and in a list, each broken",
-            "Tote",
-            tote("", 0)
-        ),
+        refused!("in a field and in a list, each broken", "Tote", tote("", 0)),
     ];
     rows.extend(stow_rows!(Stow, "Stow", "no tag attribute"));
     rows.extend(stow_rows!(
@@ -357,7 +350,11 @@ fn holder_rows() -> Vec<Row> {
         "a tag and a content key"
     ));
     rows.extend([
-        read_row("a number, untagged", "UntaggedStow", &UntaggedStow::Counted(Count(5))),
+        read_row(
+            "a number, untagged",
+            "UntaggedStow",
+            &UntaggedStow::Counted(Count(5)),
+        ),
         read_row(
             "a list of models, untagged",
             "UntaggedStow",

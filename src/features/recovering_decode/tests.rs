@@ -99,10 +99,12 @@ fn enum_recovering_decode(item: &syn::ItemEnum) -> RecoveringDecode {
 
 /// The items of both support libraries, as one module would hold them.
 fn module_items() -> proc_macro2::TokenStream {
-    let mut items = decode_with_library();
+    let decode_with = decode_with_library();
     #[cfg(feature = "mongodb")]
-    items.extend(mongodb_library());
-    items
+    let mongodb = mongodb_library();
+    #[cfg(not(feature = "mongodb"))]
+    let mongodb = proc_macro2::TokenStream::new();
+    quote::quote!(#decode_with #mongodb)
 }
 
 /// The names an item of `items` declares at their top, each with whether it is public.
@@ -2160,9 +2162,10 @@ fn every_type_the_flag_adds_is_a_name_read_past() {
     // The module of a type that lists "mongodb" holds every type of both libraries through the
     // re-export, beside the types written for it alone.
     let library_types = declared_types(module_items());
-    let mut reexported = DECODE_WITH_LIBRARY_NAMES.to_vec();
     #[cfg(feature = "mongodb")]
-    reexported.extend(MONGODB_LIBRARY_NAMES);
+    let reexported = [DECODE_WITH_LIBRARY_NAMES, MONGODB_LIBRARY_NAMES].concat();
+    #[cfg(not(feature = "mongodb"))]
+    let reexported = DECODE_WITH_LIBRARY_NAMES.to_vec();
     for library_type in &library_types {
         assert!(
             reexported.contains(&library_type.as_str()),
@@ -2265,12 +2268,7 @@ fn without_bson_the_decode_with_library_names_no_bson_path() {
 #[cfg(feature = "bson")]
 #[test]
 fn under_bson_the_decode_with_library_holds_what_reads_a_bson_value() {
-    for name in [
-        "bson_bound",
-        "bson_leaf",
-        "bson_remaining",
-        "same_bracket",
-    ] {
+    for name in ["bson_bound", "bson_leaf", "bson_remaining", "same_bracket"] {
         assert!(DECODE_WITH_LIBRARY_NAMES.contains(&name), "{name}");
     }
     let written = decode_with_library().to_string();

@@ -130,10 +130,7 @@ fn each_model_is_written_as_serde_writes_it() {
         read_back(&Tock(first(), 2)),
         r#"["2024-01-02T03:04:05.678Z",2]"#
     );
-    assert_eq!(
-        read_back(&Chimed(first())),
-        r#""2024-01-02T03:04:05.678Z""#
-    );
+    assert_eq!(read_back(&Chimed(first())), r#""2024-01-02T03:04:05.678Z""#);
 }
 
 #[test]

@@ -14,7 +14,7 @@ use tixschema::model_schema;
 use super::renamed_generics_models::{
     AdjacentScroll, Catalog, Diptych, Folio, Leaves, Lectern, Library, Margin, Quire, Scroll,
     Shelfmark, Spread, TaggedScroll, Tome, UntaggedScroll, Volume, adjacent_scroll_swift,
-    catalog_swift, diptych_swift, lectern_swift, leaves_swift, library_swift, margin_swift,
+    catalog_swift, diptych_swift, leaves_swift, lectern_swift, library_swift, margin_swift,
     quire_swift, scroll_swift, shelfmark_swift, spread_swift, tagged_scroll_swift, tome_swift,
     untagged_scroll_swift, volume_swift,
 };
@@ -252,8 +252,7 @@ fn a_renamed_brand_republishes_its_ident_under_the_bound() {
 }
 
 #[test]
-fn a_holder_declared_above_names_the_republished_ident_and_one_declared_below_the_published_name()
-{
+fn a_holder_declared_above_names_the_republished_ident_and_one_declared_below_the_published_name() {
     holds(
         &lectern_swift::swift_definition(),
         &[
