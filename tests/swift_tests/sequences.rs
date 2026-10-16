@@ -141,12 +141,14 @@ pub struct Queued(pub VecDeque<String>, pub u8);
 pub struct QueuedAsVec(pub Vec<String>, pub u8);
 
 /// A brand over a sequence, its items counted.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[model_schema(no_display, minLength = 1)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct Crew(pub HashSet<String>);
 
 /// [`Crew`] written with `Vec`.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[model_schema(no_display, minLength = 1)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
@@ -236,9 +238,7 @@ fn each_fixture_writes_the_json_its_twin_written_with_vec_writes() {
             pair: (texts(&["g"]), 1),
             spare: Some(BTreeSet::from([2])),
             stowed: (VecDeque::from([("h".to_owned(), buoy("i"))]), 2),
-            tether: Tether {
-                id: texts(&["j"]),
-            },
+            tether: Tether { id: texts(&["j"]) },
         }),
         read_back(&BundledAsVec {
             buoys: vec![buoy("a")],
@@ -250,9 +250,7 @@ fn each_fixture_writes_the_json_its_twin_written_with_vec_writes() {
             pair: (texts(&["g"]), 1),
             spare: Some(vec![2]),
             stowed: (vec![("h".to_owned(), buoy("i"))], 2),
-            tether: Tether {
-                id: texts(&["j"]),
-            },
+            tether: Tether { id: texts(&["j"]) },
         })
     );
     assert_eq!(
@@ -287,6 +285,7 @@ fn each_fixture_writes_the_json_its_twin_written_with_vec_writes() {
         read_back(&Queued(texts(&["a"]), 1)),
         read_back(&QueuedAsVec(texts(&["a"]), 1))
     );
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     assert_eq!(
         read_back(&Crew(texts(&["a"]))),
         read_back(&CrewAsVec(texts(&["a"])))
@@ -308,7 +307,8 @@ fn each_sequence_is_declared_an_array() {
         assert!(swift.contains(declared), "{declared} in: {swift}");
     }
     assert!(
-        swift.contains("self.binaryHeap = try container.decode([String].self, forKey: .binaryHeap)"),
+        swift
+            .contains("self.binaryHeap = try container.decode([String].self, forKey: .binaryHeap)"),
         "{swift}"
     );
 }
@@ -386,6 +386,7 @@ fn a_sequence_in_a_variant_a_slot_a_brand_and_an_alias_is_written_as_a_vec_is() 
             (queued_swift::swift_definition(), "Queued"),
             (queued_as_vec_swift::swift_definition(), "QueuedAsVec"),
         ),
+        #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
         (
             (crew_swift::swift_definition(), "Crew"),
             (crew_as_vec_swift::swift_definition(), "CrewAsVec"),

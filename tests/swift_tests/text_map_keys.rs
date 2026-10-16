@@ -12,12 +12,12 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::text_map_keys_models::{
-    AdjacentBulletin, AdjacentTidings, Almanac, Bulletin, Datebook, Ephemeris, Gazetteer,
-    Hourbook, Logsheet, Moorage, TaggedBulletin, TaggedTidings, Tidings, UntaggedBulletin,
-    UntaggedTidings, adjacent_bulletin_swift, adjacent_tidings_swift, almanac_swift,
-    bulletin_swift, datebook_swift, day, ephemeris_swift, gazetteer_swift, hour, hourbook_swift,
-    logsheet_swift, moment, tagged_bulletin_swift, tagged_tidings_swift, tidings_swift,
-    untagged_bulletin_swift, untagged_tidings_swift,
+    AdjacentBulletin, AdjacentTidings, Almanac, Bulletin, Datebook, Ephemeris, Gazetteer, Hourbook,
+    Logsheet, Moorage, TaggedBulletin, TaggedTidings, Tidings, UntaggedBulletin, UntaggedTidings,
+    adjacent_bulletin_swift, adjacent_tidings_swift, almanac_swift, bulletin_swift, datebook_swift,
+    day, ephemeris_swift, gazetteer_swift, hour, hourbook_swift, logsheet_swift, moment,
+    tagged_bulletin_swift, tagged_tidings_swift, tidings_swift, untagged_bulletin_swift,
+    untagged_tidings_swift,
 };
 
 /// How a wrapper binds a key it holds as its text, ahead of the entry it reads.

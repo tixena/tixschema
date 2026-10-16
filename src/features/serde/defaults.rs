@@ -221,10 +221,14 @@ impl SerdeDefaults {
         }
         let count = proc_macro2::Literal::usize_unsuffixed(self.members.len());
         let container = &self.container;
-        let entries = self.members.iter().enumerate().map(|(index, (_, _, value))| {
-            let at = placeholder(index);
-            quote! { (#at, #value) }
-        });
+        let entries = self
+            .members
+            .iter()
+            .enumerate()
+            .map(|(index, (_, _, value))| {
+                let at = placeholder(index);
+                quote! { (#at, #value) }
+            });
         quote! {
             impl #module::SerdeDefaults {
                 pub fn literals() -> [(&'static str, ::serde_json::Value); #count] {

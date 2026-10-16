@@ -6,8 +6,6 @@
 
 use super::run_swift_read::normalized;
 use super::runtime::judged;
-#[cfg(feature = "indexmap")]
-use super::serde_default_models::{indexed_fleet_swift, indexed_logbook_swift};
 use super::serde_default_models::{
     Bollard, CASES, Harbour, Marina, PREPROCESSED, PREPROCESSED_REPORT, REPORT, REQUIRED,
     REQUIRED_REPORT, VARIANT_CASES, VARIANT_REPORT, adjacent_berthing_swift, basin_swift,
@@ -16,6 +14,8 @@ use super::serde_default_models::{
     link_swift, logbook_swift, manifest_swift, marina_swift, pontoon_swift, preprocessed_values,
     quay_swift, read_values, untagged_berthing_swift, unwritten_defaults, wharf_swift,
 };
+#[cfg(feature = "indexmap")]
+use super::serde_default_models::{indexed_fleet_swift, indexed_logbook_swift};
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use super::serde_default_models::{report, variant_report};
 
@@ -256,7 +256,11 @@ fn each_payload_of_a_struct_that_declares_a_parameter_reads_in_swift_as_serde_re
 #[test]
 fn each_variant_payload_reads_in_swift_as_the_serde_read_reads_it() {
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-    assert_eq!(variant_report(), VARIANT_REPORT, "what the serde read answers");
+    assert_eq!(
+        variant_report(),
+        VARIANT_REPORT,
+        "what the serde read answers"
+    );
     let rows: Vec<String> = VARIANT_CASES
         .iter()
         .map(|(name, read_as, payload)| format!("row(\"{name}\", {read_as}.self, #\"{payload}\"#)"))

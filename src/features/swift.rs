@@ -739,7 +739,10 @@ fn swift_map_key_codec(key: &FieldDef) -> (Option<String>, String) {
         | FieldDefType::I64
         | FieldDefType::Isize => {
             let swift_type = swift_map_key_scalar(key);
-            (Some(format!("{swift_type}(wireKey)")), "String(key)".to_owned())
+            (
+                Some(format!("{swift_type}(wireKey)")),
+                "String(key)".to_owned(),
+            )
         }
         FieldDefType::Char
         | FieldDefType::String

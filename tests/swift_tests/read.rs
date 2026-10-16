@@ -8,17 +8,22 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+use crate::tests::flattened_extra_schema;
 use crate::tests::{
     FlattenedExtra, adjacent_tagged_swift, all_widths_swift, by_bool_swift, by_enum_swift,
     by_u32_swift, correlation_id_swift, envelope_swift, external_tagged_swift,
-    flattened_extra_schema, flattened_extra_swift, internal_tagged_swift, reserved_member_swift,
-    reserved_members_swift, status_swift, tuple_point_swift, untagged_swift, user_data_swift,
-    window_request_swift, with_flatten_swift, with_nullable_swift,
+    flattened_extra_swift, internal_tagged_swift, reserved_member_swift, reserved_members_swift,
+    status_swift, tuple_point_swift, untagged_swift, user_data_swift, window_request_swift,
+    with_flatten_swift, with_nullable_swift,
 };
 use crate::validate::{
-    Parcel, Slug, freight_swift, inspection_swift, manifest_swift, marker_swift, parcel_schema,
-    parcel_swift, pier_swift, reading_swift, routing_swift, sealed_slug_swift, sealed_swift,
-    slug_schema, slug_swift,
+    Parcel, freight_swift, inspection_swift, manifest_swift, parcel_swift, pier_swift,
+    reading_swift, sealed_swift,
+};
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+use crate::validate::{
+    Slug, marker_swift, parcel_schema, routing_swift, sealed_slug_swift, slug_schema, slug_swift,
 };
 
 /// What opens the read of a type alone.
@@ -136,6 +141,7 @@ pub enum Hauled {
 
 /// An untagged enum: a bound on a slot, a brand with a bound, a bound on a named member, a list
 /// of models and a model.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged, rename_all_fields = "camelCase")]
@@ -279,12 +285,15 @@ fn every_emitted_type_has_both_reads() {
         freight_swift::swift_definition(),
         inspection_swift::swift_definition(),
         internal_tagged_swift::swift_definition(),
+        #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
         marker_swift::swift_definition(),
         pier_swift::swift_definition(),
         reading_swift::swift_definition(),
         reserved_member_swift::swift_definition(),
         reserved_members_swift::swift_definition(),
+        #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
         routing_swift::swift_definition(),
+        #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
         sealed_slug_swift::swift_definition(),
         sealed_swift::swift_definition(),
         status_swift::swift_definition(),
@@ -300,6 +309,7 @@ fn every_emitted_type_has_both_reads() {
         hauled_swift::swift_definition(),
         idle_swift::swift_definition(),
         lifted_swift::swift_definition(),
+        #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
         sorted_swift::swift_definition(),
     ] {
         let declared = swift.matches("public struct ").count()
@@ -537,6 +547,7 @@ fn a_value_behind_a_type_parameter_is_read_as_it_was() {
 
 /// A brand reads the value it wraps as it did, then judges it. One with a bound answers for the
 /// bound alone, which is what chooses a variant of an untagged enum.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_brand_has_both_reads_and_answers_for_its_bound_alone() {
     let swift = slug_swift::swift_definition();
@@ -683,6 +694,7 @@ fn an_enum_reads_the_payload_of_its_variant_unjudged() {
 
 /// An untagged enum takes the first variant whose payload reads and whose own bounds hold: a
 /// member's, and that of a brand it holds. A check and a model a variant holds choose nothing.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
     let swift = sorted_swift::swift_definition();
@@ -883,12 +895,27 @@ fn every_read_enum_is_built_and_written_by_serde() {
             Hauled::Loose {
                 loose_label: "l".to_owned(),
             },
-            Hauled::Split("s".to_owned(), parcel.clone()),
+            Hauled::Split("s".to_owned(), parcel),
             Hauled::Unladen,
         ])
         .unwrap()[1],
         serde_json::json!({ "kind": "Loose", "held": { "looseLabel": "l" } })
     );
+    assert_eq!(Rating::High.validate(), Ok(()));
+    assert_eq!(
+        Rating::Low.validate(),
+        Err(vec!["a low rating is not carried".to_owned()])
+    );
+}
+
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn the_untagged_enum_that_holds_a_bounded_brand_is_built_and_written_by_serde() {
+    let parcel = Parcel {
+        fragile_item_codes: Vec::new(),
+        item_code_list: vec!["x".to_owned()],
+        label: "A".to_owned(),
+    };
     assert_eq!(
         serde_json::to_value([
             Sorted::Brief("abc".to_owned()),
@@ -900,10 +927,5 @@ fn every_read_enum_is_built_and_written_by_serde() {
         ])
         .unwrap()[5],
         "ABCDEF"
-    );
-    assert_eq!(Rating::High.validate(), Ok(()));
-    assert_eq!(
-        Rating::Low.validate(),
-        Err(vec!["a low rating is not carried".to_owned()])
     );
 }

@@ -13,18 +13,18 @@ use chrono::DateTime;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-#[cfg(feature = "chrono")]
-use super::lone_slots_models::{
-    StowedStamp, Ticked, TickedMillis, stowed_stamp_swift, ticked_millis_swift, ticked_swift,
-};
 use super::lone_slots_models::{
     AdjacentStow, Bale, BalePair, Baled, Bales, BalesByName, BalesByNumber, Clipped, Count,
     LabelsByNumber, MaybeBale, Moniker, Sack, Sacked, Single, Stow, StowedByName, StowedByNumber,
-    StowedList, StowedMaybe, StowedPair, TaggedStow, Tote, UntaggedStow, Unskipped,
+    StowedList, StowedMaybe, StowedPair, TaggedStow, Tote, Unskipped, UntaggedStow,
     bale_pair_swift, baled_swift, bales_by_name_swift, bales_by_number_swift, bales_swift,
     clipped_swift, count_swift, labels_by_number_swift, maybe_bale_swift, moniker_swift,
     sacked_swift, single_swift, stowed_by_name_swift, stowed_by_number_swift, stowed_list_swift,
     stowed_maybe_swift, stowed_pair_swift, unskipped_swift,
+};
+#[cfg(feature = "chrono")]
+use super::lone_slots_models::{
+    StowedStamp, Ticked, TickedMillis, stowed_stamp_swift, ticked_millis_swift, ticked_swift,
 };
 
 /// What opens the read of a type alone.

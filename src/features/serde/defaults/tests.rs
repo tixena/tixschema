@@ -132,8 +132,14 @@ fn a_member_left_out_of_what_serde_writes_is_refused_under_the_key_written() {
         }
     });
     assert_eq!(said.len(), 2, "{said:?}");
-    assert!(said[0].contains("beside `skip_serializing` is read"), "{said:?}");
-    assert!(said[1].contains("beside `skip_serializing_if` is read"), "{said:?}");
+    assert!(
+        said[0].contains("beside `skip_serializing` is read"),
+        "{said:?}"
+    );
+    assert!(
+        said[1].contains("beside `skip_serializing_if` is read"),
+        "{said:?}"
+    );
 }
 
 /// An enum that writes itself through `into` or `remote` is refused each member under a default,
@@ -158,7 +164,10 @@ fn an_enum_written_through_another_type_is_refused_each_default() {
             said[0].contains("needs the enum to derive `Serialize`, with no `into` or `remote`"),
             "{said:?}"
         );
-        assert_eq!(SerdeDefaults::of_enum(&item).index(Some("Docked"), "dock"), None);
+        assert_eq!(
+            SerdeDefaults::of_enum(&item).index(Some("Docked"), "dock"),
+            None
+        );
     }
 }
 

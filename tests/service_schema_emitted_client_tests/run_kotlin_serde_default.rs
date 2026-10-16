@@ -16,10 +16,10 @@ use super::serde_default_models::{
     preprocessed_values, quay_kotlin, read_values, untagged_berthing_kotlin, unwritten_defaults,
     wharf_kotlin,
 };
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-use super::serde_default_models::{report, variant_report};
 #[cfg(feature = "indexmap")]
 use super::serde_default_models::{indexed_fleet_kotlin, indexed_logbook_kotlin};
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+use super::serde_default_models::{report, variant_report};
 
 const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
      import kotlinx.serialization.json.*\n\
@@ -290,7 +290,11 @@ fn each_payload_of_a_struct_that_declares_a_parameter_reads_in_kotlin_as_serde_r
 #[test]
 fn each_variant_payload_reads_in_kotlin_as_the_serde_read_reads_it() {
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-    assert_eq!(variant_report(), VARIANT_REPORT, "what the serde read answers");
+    assert_eq!(
+        variant_report(),
+        VARIANT_REPORT,
+        "what the serde read answers"
+    );
     let mut main = String::from("fun main() {\n");
     for &(name, read_as, payload) in &VARIANT_CASES {
         let _ = writeln!(

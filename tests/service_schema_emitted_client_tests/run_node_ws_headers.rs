@@ -5,7 +5,7 @@
 //! transport encodes them.
 
 use super::runtime::{node_modules, ran_with_modules, stand_down_modules};
-use super::stamp_client_service_schema::CallError;
+use super::stamp_client_service_schema::{CallError, ServiceFaultKind};
 use super::stamp_ws_rpc_client::{FrameSession, FrameWriter, StampClientServiceClient, ping_frame};
 use super::stamp_ws_rpc_transport;
 use super::tests::{StampBackEnd, StampClientServiceSchema, StampError, StampReceipt};
@@ -560,4 +560,21 @@ fn the_rust_dispatcher_answers_the_rust_client_s_heartbeat_probe_with_its_pong()
         rust_answer(&StampBackEnd::default(), &ping_frame()),
         Some(stamp_ws_rpc_transport::pong_frame())
     );
+}
+
+#[test]
+fn closing_the_session_fails_a_stamp_still_waiting_with_a_transport_failure_fault() {
+    let (client, _sent) = rust_client();
+    let mut waiting = pin!(client.stamp("a".to_owned(), "acme".to_owned(), Some(7)));
+    assert!(poll_by_hand(waiting.as_mut()).is_pending());
+    client
+        .transport()
+        .close("the socket closed before the reply arrived");
+    let fault = match poll_by_hand(waiting.as_mut()) {
+        Poll::Ready(Err(CallError::Fault(fault))) => Some(fault),
+        Poll::Pending | Poll::Ready(Ok(_) | Err(CallError::Operation(_))) => None,
+    }
+    .unwrap();
+    assert_eq!(fault.kind(), ServiceFaultKind::TransportFailure);
+    assert_eq!(fault.detail(), "the socket closed before the reply arrived");
 }

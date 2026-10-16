@@ -51,18 +51,21 @@ pub struct Inspection {
     pub validate: String,
 }
 
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[model_schema(minLength = 2, maxLength = 8, pattern = "^[a-z]+$")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Slug(pub String);
 
 /// A brand over a brand, with a bound of its own.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[model_schema(maxLength = 6)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SealedSlug(pub Slug);
 
 /// A brand with a parameter, whose bound holds the declared default alone.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[model_schema(minLength = 2, default_types(IdType = String))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -81,11 +84,13 @@ pub struct Reading {
     pub spare: Option<u8>,
 }
 
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[model_schema()]
 pub type Heading = String;
 
 /// A bound on a field typed with a brand declared above, with an alias of a string, and with a
 /// brand declared below.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -98,6 +103,7 @@ pub struct Routing {
     pub unseen_code: LaterSlug,
 }
 
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -303,6 +309,7 @@ fn a_member_named_after_the_method_or_a_local_of_it_keeps_its_key() {
 
 /// A brand's bounds are on the value it wraps, under no place, and a length is counted in
 /// Unicode code points. A `$` is written `\z`, which ends the text where the `regex` crate's does.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_brand_runs_its_bounds_on_the_value_it_wraps() {
     let swift = slug_swift::swift_definition();
@@ -328,6 +335,7 @@ fn a_brand_runs_its_bounds_on_the_value_it_wraps() {
 
 /// A brand over a brand answers its text through the brand it holds, and measures its own bound
 /// on that text.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_brand_over_a_brand_answers_its_text_through_the_brand_it_holds() {
     let swift = sealed_slug_swift::swift_definition();
@@ -344,6 +352,7 @@ fn a_brand_over_a_brand_answers_its_text_through_the_brand_it_holds() {
     }
 }
 
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_brand_with_a_parameter_runs_its_bounds_at_its_declared_default() {
     let swift = marker_swift::swift_definition();
@@ -381,6 +390,7 @@ fn a_range_is_written_where_a_value_can_break_it() {
 
 /// A brand is measured through the member its wrapper answers its text with, declared above the
 /// field or below it, and an alias of a string declared above as the string it is.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
 fn a_bound_on_a_named_type_measures_the_string_it_holds() {
     let swift = routing_swift::swift_definition();
@@ -479,6 +489,7 @@ fn every_validated_fixture_is_built_and_written_by_serde() {
         serde_json::to_value(&manifest).unwrap()["parcelsByDock"]["north"]["label"],
         "A"
     );
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     assert_eq!(serde_json::to_value(Marker("ab".to_owned())).unwrap(), "ab");
     assert_eq!(
         serde_json::to_value(Reading {
@@ -489,6 +500,7 @@ fn every_validated_fixture_is_built_and_written_by_serde() {
         .unwrap(),
         serde_json::json!({ "age": 4_u32, "level": 1.5_f64 })
     );
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     assert_eq!(
         serde_json::to_value(Routing {
             seen_code: Slug("ab".to_owned()),
@@ -526,6 +538,7 @@ fn every_validated_fixture_is_built_and_written_by_serde() {
         serde_json::json!([{ "Named": { "quay": "q" } }, { "Tagged": "t" }])
     );
     assert_eq!(serde_json::to_value(Sealed("s".to_owned())).unwrap(), "s");
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     assert_eq!(
         serde_json::to_value(SealedSlug(Slug("ab".to_owned()))).unwrap(),
         "ab"

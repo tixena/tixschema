@@ -271,7 +271,7 @@ where
 /// The payloads of each struct of fields, in a type that declares a parameter and in one that
 /// declares none, and of a list of maps of dates.
 fn struct_rows() -> Vec<Row> {
-    let mut rows = vec![
+    vec![
         read_row("each shape as a field", "Pantry", &pantry(true)),
         payload_row::<Pantry>(
             "each shape as a field, no optional and no default",
@@ -293,18 +293,17 @@ fn struct_rows() -> Vec<Row> {
             "Pantry",
             &pantry(false),
         ),
-    ];
-    #[cfg(feature = "chrono")]
-    rows.push(read_row(
-        "a list of maps of dates",
-        "Timeline",
-        &Timeline {
-            by_name_lists: vec![HashMap::from([("n".to_owned(), date())])],
-            by_number_lists: vec![numbered(&date())],
-            maybe_by_name: Some(HashMap::from([("m".to_owned(), date())])),
-        },
-    ));
-    rows
+        #[cfg(feature = "chrono")]
+        read_row(
+            "a list of maps of dates",
+            "Timeline",
+            &Timeline {
+                by_name_lists: vec![HashMap::from([("n".to_owned(), date())])],
+                by_number_lists: vec![numbered(&date())],
+                maybe_by_name: Some(HashMap::from([("m".to_owned(), date())])),
+            },
+        ),
+    ]
 }
 
 /// The payloads of each tuple, tuple struct of several slots and map that holds the maps, in a

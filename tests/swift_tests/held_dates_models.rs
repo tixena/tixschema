@@ -140,7 +140,10 @@ pub struct Ticker(#[model_schema_prop(as_number)] pub DateTime<Utc>, pub u8);
 /// [`Ticker`] beside the parameter.
 #[model_schema(default_types(Stowed = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct StowedTicker<Stowed>(#[model_schema_prop(as_number)] pub DateTime<Utc>, pub Stowed);
+pub struct StowedTicker<Stowed>(
+    #[model_schema_prop(as_number)] pub DateTime<Utc>,
+    pub Stowed,
+);
 
 /// A date with a fraction of whole milliseconds, which chrono writes with three digits.
 pub const fn first() -> DateTime<Utc> {

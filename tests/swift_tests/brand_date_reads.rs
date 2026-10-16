@@ -21,6 +21,7 @@ const PARSED: &str = "try Self.swiftSchemaParseIso8601Date($0, codingPath: decod
 pub struct PlainLandfall(pub DateTime<Utc>);
 
 /// A brand over a list of dates, which counts them.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[model_schema(no_display, minLength = 1)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
@@ -67,11 +68,13 @@ fn holds(swift: &str, written: &[&str]) {
 #[test]
 fn each_brand_is_written_as_serde_writes_it() {
     let first = at(1_704_164_645_678);
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     let second = at(1_709_208_000_100);
     assert_eq!(
         read_back(&PlainLandfall(first)),
         r#""2024-01-02T03:04:05.678Z""#
     );
+    #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
     assert_eq!(
         read_back(&Landings(vec![first, second])),
         r#"["2024-01-02T03:04:05.678Z","2024-02-29T12:00:00.100Z"]"#
@@ -99,6 +102,7 @@ fn a_brand_calls_the_closure_that_reads_a_date_with_try() {
              codingPath: decoder.codingPath) }() }; "
                 .to_owned(),
         ),
+        #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
         (
             landings_swift::swift_definition(),
             format!(

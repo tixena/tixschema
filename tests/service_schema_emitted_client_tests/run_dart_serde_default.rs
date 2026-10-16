@@ -9,15 +9,15 @@ use super::run_dart_validate::{dart, module};
 use super::serde_default_models::{
     Bollard, CASES, Harbour, Marina, PREPROCESSED, PREPROCESSED_REPORT, REPORT, REQUIRED,
     REQUIRED_REPORT, VARIANT_CASES, VARIANT_REPORT, adjacent_berthing_dart, basin_dart,
-    berthing_dart, bollard_dart, config_dart, external_berthing_dart, filled_cases, filled_expected,
-    filled_report, fleet_dart, gangway_dart, harbour_dart, jetty_dart, link_dart, logbook_dart,
-    manifest_dart, marina_dart, pontoon_dart, preprocessed_values, quay_dart, read_values,
-    untagged_berthing_dart, unwritten_defaults, wharf_dart,
+    berthing_dart, bollard_dart, config_dart, external_berthing_dart, filled_cases,
+    filled_expected, filled_report, fleet_dart, gangway_dart, harbour_dart, jetty_dart, link_dart,
+    logbook_dart, manifest_dart, marina_dart, pontoon_dart, preprocessed_values, quay_dart,
+    read_values, untagged_berthing_dart, unwritten_defaults, wharf_dart,
 };
-#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-use super::serde_default_models::{report, variant_report};
 #[cfg(feature = "indexmap")]
 use super::serde_default_models::{indexed_fleet_dart, indexed_logbook_dart};
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+use super::serde_default_models::{report, variant_report};
 
 /// What prints a row as every side prints it: its name and the value read, written back, or each
 /// message of the refusal on a line of its own.
@@ -248,16 +248,16 @@ fn the_read_of_an_empty_collection_of_a_parameter_has_no_issue() {
 /// struct that holds the untagged one, the row printer, and a `main` that reads each payload with
 /// the `fromJson` of the type the table names.
 fn variant_source() -> String {
-    let rows = VARIANT_CASES.iter().fold(
-        String::new(),
-        |mut written, &(name, read_as, payload)| {
-            let _ = writeln!(
-                written,
-                "  row('{name}', () => {read_as}.fromJson(jsonDecode(r'{payload}')).toJson());"
-            );
-            written
-        },
-    );
+    let rows =
+        VARIANT_CASES
+            .iter()
+            .fold(String::new(), |mut written, &(name, read_as, payload)| {
+                let _ = writeln!(
+                    written,
+                    "  row('{name}', () => {read_as}.fromJson(jsonDecode(r'{payload}')).toJson());"
+                );
+                written
+            });
     module(
         &[
             berthing_dart::dart_definition(),
@@ -277,7 +277,11 @@ fn variant_source() -> String {
 #[test]
 fn each_variant_payload_reads_in_dart_as_the_serde_read_reads_it() {
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
-    assert_eq!(variant_report(), VARIANT_REPORT, "what the serde read answers");
+    assert_eq!(
+        variant_report(),
+        VARIANT_REPORT,
+        "what the serde read answers"
+    );
     let Some((ran, printed)) = dart("serde-default-variants", &[], &variant_source()) else {
         return;
     };
