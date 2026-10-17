@@ -840,6 +840,24 @@ impl FieldDef {
         }
     }
 
+    /// The std range or the std `Result` the key of the first map this field reaches is written
+    /// as, at any depth, by the name a refusal writes it under.
+    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
+    pub fn object_map_key(&self) -> Option<String> {
+        if let FieldDefType::Map(key, _) = &self.field_type {
+            if let FieldDefType::Range(kind, _) = key.field_type {
+                return Some(format!("{}<_>", kind.name()));
+            }
+            if matches!(key.field_type, FieldDefType::Result(_, _)) {
+                return Some("Result<_, _>".to_owned());
+            }
+        }
+        self.clone()
+            .nested_type_positions()
+            .into_iter()
+            .find_map(|nested| nested.object_map_key())
+    }
+
     /// The `?` a member written with an absent-able key carries, and nothing for one whose key is
     /// always written.
     pub fn optional_key_marker(&self) -> &'static str {
@@ -896,24 +914,6 @@ impl FieldDef {
             | FieldDefType::NaiveDateTime
             | FieldDefType::DateTime => None,
         }
-    }
-
-    /// The std range or the std `Result` the key of the first map this field reaches is written
-    /// as, at any depth, by the name a refusal writes it under.
-    #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    pub fn object_map_key(&self) -> Option<String> {
-        if let FieldDefType::Map(key, _) = &self.field_type {
-            if let FieldDefType::Range(kind, _) = key.field_type {
-                return Some(format!("{}<_>", kind.name()));
-            }
-            if matches!(key.field_type, FieldDefType::Result(_, _)) {
-                return Some("Result<_, _>".to_owned());
-            }
-        }
-        self.clone()
-            .nested_type_positions()
-            .into_iter()
-            .find_map(|nested| nested.object_map_key())
     }
 
     /// The first name this field reaches, at any depth, that `refused` answers for. A name is only
