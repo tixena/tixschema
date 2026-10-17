@@ -35,10 +35,10 @@ use syn::spanned::Spanned as _;
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use syn::Ident;
 
-#[cfg(any(feature = "serde", feature = "jsonschema"))]
-use crate::field_type::RangeKind;
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use crate::field_type::ZOD_SCHEMA_BOUND;
+#[cfg(any(feature = "serde", feature = "jsonschema"))]
+use crate::field_type::{RESULT_ARMS, RangeKind};
 #[cfg(feature = "zod")]
 use crate::field_type::{zod_check_wrap, zod_preprocess_wrap};
 use crate::{
@@ -162,7 +162,7 @@ use crate::field_type::is_ownership_wrapper;
 #[cfg(feature = "serde")]
 use crate::field_type::{
     is_interior_mutability_wrapper, is_map_wrapper, is_refused_sequence_wrapper,
-    is_transparent_wrapper,
+    is_transparent_wrapper, written_std_result,
 };
 
 use crate::features::model_schema_prop::{
@@ -552,6 +552,9 @@ enum ConstraintWrap {
 /// What the walk below a member ends on.
 #[cfg(feature = "serde")]
 enum HeldEnd {
+    /// A std `Result`: each arm that holds something the walk reaches, by the key serde writes it
+    /// under, with the walk below it.
+    Arms(Vec<(&'static str, HeldShape)>),
     /// A value of a declared type, whose own `validate()` is run.
     Declared,
     /// A tuple: each position that holds something the walk reaches, with the walk below it.
@@ -598,6 +601,7 @@ impl HeldShape {
             .iter()
             .any(|wrap| matches!(*wrap, ConstraintWrap::Map))
             || match &self.end {
+                HeldEnd::Arms(arms) => arms.iter().any(|(_, held)| held.walks_a_map()),
                 HeldEnd::Declared => false,
                 HeldEnd::Positions(positions) => {
                     positions.iter().any(|(_, held)| held.walks_a_map())
@@ -4392,6 +4396,9 @@ fn swift_refused_primitive_name(field_def: &FieldDef) -> Option<&'static str> {
             arguments.iter().find_map(swift_refused_primitive_name)
         }
         FieldDefType::Range(_, bound) => swift_refused_primitive_name(bound),
+        FieldDefType::Result(ok, err) => {
+            swift_refused_primitive_name(ok).or_else(|| swift_refused_primitive_name(err))
+        }
         FieldDefType::Tuple(elements) => elements.iter().find_map(swift_refused_primitive_name),
         FieldDefType::Boolean
         | FieldDefType::BooleanLiteral(_)
@@ -4472,9 +4479,10 @@ fn non_string_inner_shape(inner: &FieldDef) -> Option<&'static str> {
         FieldDefType::SiblingType(inner_name, arguments) => {
             instantiated_value_shape(inner_name, arguments)
         }
-        FieldDefType::Map(..) | FieldDefType::Range(..) | FieldDefType::Tuple(..) => {
-            Some("container")
-        }
+        FieldDefType::Map(..)
+        | FieldDefType::Range(..)
+        | FieldDefType::Result(..)
+        | FieldDefType::Tuple(..) => Some("container"),
         FieldDefType::Boolean | FieldDefType::BooleanLiteral(_) => Some("boolean"),
         FieldDefType::U8
         | FieldDefType::U16
@@ -4557,6 +4565,7 @@ const fn scalar_json_type_keyword(field_type: &FieldDefType) -> Option<&'static 
         FieldDefType::ObjectId => None,
         FieldDefType::Map(..)
         | FieldDefType::Range(..)
+        | FieldDefType::Result(..)
         | FieldDefType::SiblingType(..)
         | FieldDefType::Tuple(..)
         | FieldDefType::TypeParam(_)
@@ -7299,7 +7308,15 @@ fn branded_ts_type_and_generics(
     generic_params: &[String],
     inner_ty: &syn::Type,
 ) -> (String, String) {
-    let ts_inner_type = get_field_def("_inner", inner_ty, "").typescript_typename();
+    let inner = get_field_def("_inner", inner_ty, "");
+    let written = inner.typescript_typename();
+    // The brand is an intersection, which binds tighter than the union a `Result` is written as.
+    let ts_inner_type =
+        if matches!(inner.field_type, FieldDefType::Result(..)) && inner.array_depth == 0 {
+            format!("({written})")
+        } else {
+            written
+        };
     let ts_generics = if generic_params.is_empty() {
         String::new()
     } else {
@@ -7408,6 +7425,7 @@ fn branded_inner_is_composite(inner: &FieldDef) -> bool {
     match &inner.field_type {
         FieldDefType::Map(..)
         | FieldDefType::Range(..)
+        | FieldDefType::Result(..)
         | FieldDefType::Tuple(..)
         | FieldDefType::TypeParam(_)
         | FieldDefType::Unknown => true,
@@ -10017,6 +10035,7 @@ fn tagged_content(inner: &FieldDef) -> TaggedContent {
         FieldDefType::Tuple(_) => TaggedContent::Refused("a tuple"),
         FieldDefType::Map(..) => TaggedContent::Unnameable("a map"),
         FieldDefType::Range(..) => TaggedContent::Unnameable("a range"),
+        FieldDefType::Result(..) => TaggedContent::Unnameable("a result"),
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => TaggedContent::Unnameable("an ObjectId"),
         FieldDefType::TypeParam(_) => TaggedContent::Unnameable("a type parameter"),
@@ -10777,6 +10796,10 @@ fn field_json_schema_value(fld: &FieldDef) -> proc_macro2::TokenStream {
         },
         FieldDefType::Range(kind, bound) => match range_json_schema_value(*kind, bound) {
             Ok(range_schema) => range_schema,
+            Err(rejection) => return member_rejection_value(&fld.name, &rejection),
+        },
+        FieldDefType::Result(ok, err) => match result_json_schema_value(ok, err) {
+            Ok(result_schema) => result_schema,
             Err(rejection) => return member_rejection_value(&fld.name, &rejection),
         },
         // A parameter is the filling that reached it, and a value the expansion cannot name at all
@@ -11993,6 +12016,7 @@ const fn chrono_json_schema_format(field_type: &FieldDefType) -> Option<&'static
         | FieldDefType::Map(..)
         | FieldDefType::NumberLiteral(_)
         | FieldDefType::Range(..)
+        | FieldDefType::Result(..)
         | FieldDefType::SiblingType(..)
         | FieldDefType::String
         | FieldDefType::StringLiteral(_)
@@ -12068,6 +12092,7 @@ fn scalar_field_json_schema_item(fld: &FieldDef) -> Option<proc_macro2::TokenStr
         | FieldDefType::SiblingType(..)
         | FieldDefType::Map(..)
         | FieldDefType::Range(..)
+        | FieldDefType::Result(..)
         | FieldDefType::Tuple(..) => return None,
     };
     Some(item_schema)
@@ -12355,6 +12380,35 @@ fn range_json_schema_value(
     })
 }
 
+/// The objects a `Result` describes as, the form serde writes it in: one per arm, whose one key is
+/// the arm's name, required, holding what the arm holds, and `null` for an arm of `()`. The
+/// rejection is an arm's, where the dispatch cannot render it.
+#[cfg(feature = "jsonschema")]
+fn result_json_schema_value(
+    ok: &FieldDef,
+    err: &FieldDef,
+) -> Result<proc_macro2::TokenStream, MapMemberRejection> {
+    let mut arms = Vec::new();
+    for (key, held) in RESULT_ARMS.into_iter().zip([ok, err]) {
+        let value = if held.is_unit() {
+            quote! { serde_json::json!({ "type": "null" }) }
+        } else {
+            build_tuple_element_json_schema(held)?
+        };
+        arms.push(quote! {
+            {
+                "type": "object",
+                "properties": { #key: #value },
+                "required": [#key],
+                "additionalProperties": false
+            }
+        });
+    }
+    Ok(quote! {
+        serde_json::json!({ "oneOf": [#(#arms),*] })
+    })
+}
+
 /// [`tuple_json_schema_value`] for the slots of a tuple variant or of a tuple struct, each
 /// carrying its own bounds.
 #[cfg(feature = "jsonschema")]
@@ -12428,7 +12482,7 @@ fn map_key_path(key: &FieldDef) -> MapKeyPath<'_> {
             }
         }
         FieldDefType::Tuple(..) => MapKeyPath::Refused(unwritable_key(key, WRITTEN_AS_ARRAY)),
-        FieldDefType::Map(..) | FieldDefType::Range(..) => {
+        FieldDefType::Map(..) | FieldDefType::Range(..) | FieldDefType::Result(..) => {
             MapKeyPath::Refused(unwritable_key(key, WRITTEN_AS_OBJECT))
         }
         #[cfg(feature = "mongodb")]
@@ -12511,6 +12565,7 @@ fn map_key_element_name(key: &FieldDef) -> String {
         FieldDefType::F64 => "f64".to_owned(),
         FieldDefType::Map(..) => "HashMap<_, _>".to_owned(),
         FieldDefType::Range(kind, _) => format!("{}<_>", kind.name()),
+        FieldDefType::Result(..) => "Result<_, _>".to_owned(),
         FieldDefType::Tuple(..) => "(_, _)".to_owned(),
         FieldDefType::Unknown => "_".to_owned(),
         #[cfg(feature = "mongodb")]
@@ -12555,6 +12610,7 @@ fn map_key_rejection(fld: &FieldDef) -> Option<MapKeyRejection> {
             .or_else(|| map_key_rejection(value)),
         FieldDefType::SiblingType(_, generics) => generics.iter().find_map(map_key_rejection),
         FieldDefType::Range(_, bound) => map_key_rejection(bound),
+        FieldDefType::Result(ok, err) => map_key_rejection(ok).or_else(|| map_key_rejection(err)),
         FieldDefType::Tuple(elements) => elements.iter().find_map(map_key_rejection),
         FieldDefType::TypeParam(_)
         | FieldDefType::Unknown
@@ -12758,6 +12814,7 @@ fn build_map_member_item(value: &FieldDef) -> Result<MapMemberItem, MapMemberRej
         FieldDefType::Range(kind, bound) => {
             MapMemberItem::Value(range_json_schema_value(*kind, bound)?)
         }
+        FieldDefType::Result(ok, err) => MapMemberItem::Value(result_json_schema_value(ok, err)?),
         FieldDefType::Unknown => MapMemberItem::Fragment(quote! { {} }),
         // The shared mapping renders every type named here except a tuple, which is the lone
         // `None`.
@@ -13213,6 +13270,25 @@ fn build_range_field_schema(
     }
 }
 
+/// Builds the JSON schema for a std `Result` field.
+#[cfg(feature = "jsonschema")]
+fn build_result_field_schema(
+    fld: &FieldDef,
+    field_name_str: &str,
+    ok: &FieldDef,
+    err: &FieldDef,
+) -> proc_macro2::TokenStream {
+    let result_schema = match result_json_schema_value(ok, err) {
+        Ok(result_schema) => result_schema,
+        Err(rejection) => return map_member_rejection_error(field_name_str, &rejection),
+    };
+    let schema =
+        nullable_slot_json_schema_value(fld, arrayed_json_schema_value(fld, result_schema));
+    quote! {
+        properties.insert(#field_name_str.to_string(), #schema);
+    }
+}
+
 /// Builds the JSON schema for a field with no type of its own — one of the enclosing item's type
 /// parameters, or an opaque value: a `serde_json::Value`, a function pointer, or any other type the
 /// parser could not classify.
@@ -13284,6 +13360,7 @@ fn build_field_type_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2:
         FieldDefType::Range(kind, bound) => {
             build_range_field_schema(fld, field_name_str, *kind, bound)
         }
+        FieldDefType::Result(ok, err) => build_result_field_schema(fld, field_name_str, ok, err),
         // Named exhaustively rather than caught by a wildcard: a new variant must be given a
         // schema here, not silently routed to whatever the last arm happens to emit.
         FieldDefType::TypeParam(_) | FieldDefType::Unknown => {
@@ -13638,6 +13715,21 @@ fn held_walk(
                 quote! {
                     {
                         let #position = &#reached.#slot;
+                        #walk
+                    }
+                }
+            });
+            quote! { #(#walks)* }
+        }
+        HeldEnd::Arms(arms) => {
+            let held_by_arm = wrap_binding(below);
+            let walks = arms.iter().map(|(arm, of_arm)| {
+                let variant = proc_macro2::Ident::new(arm, proc_macro2::Span::call_site());
+                let mut held_under = held.clone();
+                held_under.push(PlaceStep::Written((*arm).to_owned()));
+                let walk = held_walk(of_arm, &held_by_arm, below.saturating_add(1), &held_under);
+                quote! {
+                    if let ::core::result::Result::#variant(#held_by_arm) = #reached {
                         #walk
                     }
                 }
@@ -14618,6 +14710,21 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
                     held = bound;
                     continue;
                 }
+                if let FieldDefType::Result(ok, err) = &held.field_type
+                    && let Some((ok_type, err_type)) = written_std_result(path)
+                {
+                    let arms: Vec<(&'static str, HeldShape)> = RESULT_ARMS
+                        .into_iter()
+                        .zip([(ok_type, &**ok), (err_type, &**err)])
+                        .filter_map(|(arm, (arm_type, arm_def))| {
+                            Some((arm, held_shape(arm_type, arm_def)?))
+                        })
+                        .collect();
+                    return (!arms.is_empty()).then_some(HeldShape {
+                        end: HeldEnd::Arms(arms),
+                        wraps,
+                    });
+                }
                 if is_map_wrapper(&ident) {
                     let FieldDefType::Map(_, of_values) = &held.field_type else {
                         return None;
@@ -15111,7 +15218,8 @@ fn collect_field_guard_errors(
     let kotlin_width_error: Option<proc_macro2::TokenStream> = None;
 
     #[cfg(feature = "serde")]
-    let flattened_range_error = ranges::flattened_range_error(field, field_def, &label);
+    let flattened_range_error = ranges::flattened_range_error(field, field_def, &label)
+        .or_else(|| ranges::flattened_result_error(field, field_def, &label));
     #[cfg(not(feature = "serde"))]
     let flattened_range_error: Option<proc_macro2::TokenStream> = None;
 
@@ -15351,7 +15459,8 @@ fn check_fixed_shape_constraints(
             format!(
                 "model_schema: {label}: `{keys}` cannot apply to {shape} — a map renders its keys \
                  and its values, a tuple renders each of its elements, a range renders its start \
-                 and its end, and every surface builds those from the members: the bound names no \
+                 and its end, a result renders the value of its arm, and every surface builds \
+                 those from the members: the bound names no \
                  value here, and `model_schema_prop` has no way to say which member it meant, so \
                  the constraint would reach neither Zod, nor the JSON schema, nor the generated \
                  validator. Constrain the member instead — declare its type as a branded newtype \

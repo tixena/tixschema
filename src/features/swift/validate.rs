@@ -11,10 +11,12 @@ use regex_syntax::ast::{
     AssertionKind, Ast, ClassSet, ClassSetItem, Literal, LiteralKind, SpecialLiteralKind,
 };
 
-use super::{SwiftTypeArgs, swift_full_real_type, swift_member};
+use super::{SwiftTypeArgs, result_case, swift_full_real_type, swift_member};
 use crate::bound_message::{Bound, swift_literal_text, swift_violation};
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
-use crate::field_type::{FieldDef, FieldDefType, RangeKind, get_field_def, is_sequence_wrapper};
+use crate::field_type::{
+    FieldDef, FieldDefType, RESULT_ARMS, RangeKind, get_field_def, is_sequence_wrapper,
+};
 
 /// The helpers a statement of `validate()` calls, each with the text that calls it.
 const HELPERS: [(&str, &str); 2] = [
@@ -353,6 +355,34 @@ pub(super) fn range_rules(owner: &str, kind: RangeKind, bound: &FieldDef) -> Vec
                     step: Some((*member).to_owned()),
                 },
             )
+        })
+        .collect()
+}
+
+/// What the arms of a `Result` add to its `validate()`: the value of the arm it holds, under the key
+/// serde writes that arm under.
+pub(super) fn result_rules(owner: &str, ok: &FieldDef, err: &FieldDef) -> Vec<String> {
+    RESULT_ARMS
+        .into_iter()
+        .zip([ok, err])
+        .filter(|(_, def)| !def.is_unit())
+        .filter_map(|(arm, def)| {
+            let rules = member_rules(
+                owner,
+                &Checked {
+                    access: "payload".to_owned(),
+                    def,
+                    runs_both: false,
+                    step: Some(arm.to_owned()),
+                },
+            );
+            (!rules.is_empty()).then(|| {
+                format!(
+                    "if case .{}(let payload) = self {{ {} }}",
+                    result_case(arm),
+                    rules.join("; ")
+                )
+            })
         })
         .collect()
 }
@@ -712,6 +742,7 @@ fn number_kind(leaf: &FieldDefType) -> Option<Number> {
         | FieldDefType::Map(_, _)
         | FieldDefType::NumberLiteral(_)
         | FieldDefType::Range(_, _)
+        | FieldDefType::Result(_, _)
         | FieldDefType::SiblingType(_, _)
         | FieldDefType::String
         | FieldDefType::StringLiteral(_)
@@ -843,6 +874,29 @@ fn held_walk(
             })
             .collect();
         return (!bounds.is_empty()).then(|| bounds.join("; "));
+    }
+    if let FieldDefType::Result(ok, err) = &def.field_type {
+        if matches!(walk, Walk::Rules) {
+            return (!result_rules(owner, ok, err).is_empty())
+                .then(|| reporting(owner, place, &format!("{value}.validate()")));
+        }
+        // What chooses a variant is asked of the arm the value holds, in place.
+        let arms: Vec<String> = RESULT_ARMS
+            .into_iter()
+            .zip([ok, err])
+            .filter(|(_, held)| !held.is_unit())
+            .filter_map(|(arm, held)| {
+                let named = bindings.next_held();
+                let mut at = place.to_vec();
+                at.push(Step::Written(arm.to_owned()));
+                let below = held_walk(walk, owner, held, &named, &at, bindings)?;
+                Some(format!(
+                    "if case .{}(let {named}) = {value} {{ {below} }}",
+                    result_case(arm)
+                ))
+            })
+            .collect();
+        return (!arms.is_empty()).then(|| arms.join("; "));
     }
     let FieldDefType::SiblingType(named, arguments) = &def.field_type else {
         return None;

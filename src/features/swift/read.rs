@@ -390,6 +390,7 @@ pub(super) fn unjudged(
                 .unwrap_or_else(|| held(source, &read_as, sink))
         }
         FieldDefType::Range(_, _)
+        | FieldDefType::Result(_, _)
         | FieldDefType::Tuple(_)
         | FieldDefType::TypeParam(_)
         | FieldDefType::Unknown

@@ -1,6 +1,6 @@
 //! Dart type and JSON-codec generation.
 
-use core::cell::RefCell;
+use core::cell::{Cell, RefCell};
 use core::fmt::Write as _;
 use std::collections::HashMap;
 
@@ -14,8 +14,9 @@ use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{brand_field, parse_serde_key_omission, struct_tag};
 use crate::field_type::{
-    FieldDef, FieldDefType, RangeKind, VariantKind, classify_variant, dart_from_json_argument,
-    dart_lower_camel, dart_to_json_argument, get_field_def, is_plain_enum, is_sequence_wrapper,
+    FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, classify_variant,
+    dart_from_json_argument, dart_lower_camel, dart_to_json_argument, get_field_def, is_plain_enum,
+    is_sequence_wrapper,
 };
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 use crate::utils::{
@@ -376,6 +377,16 @@ thread_local! {
     /// The name of each function the reads of the item being emitted call: what its `preprocess`
     /// names, and that of each of its members.
     static DART_CALLED: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+
+    /// The sealed class each shape of `Result` the item being emitted writes is declared as, by
+    /// which of its arms holds `()`, and the declaration written after the item's own source. Every
+    /// `Result` of one shape names one class.
+    static DART_RESULTS: RefCell<Vec<([bool; 2], String, String)>> =
+        const { RefCell::new(Vec::new()) };
+
+    /// How many classes of a `Result` have been named, never reset: every one lands in the same
+    /// consuming file, where no two may share a name.
+    static DART_RESULT_COUNTER: Cell<u32> = const { Cell::new(0) };
 }
 
 /// The Dart tokens `item` earns, given what `args` reads of its `#[model_schema(...)]`, handed
@@ -477,13 +488,23 @@ fn dart_module_tokens(
     dart_source: &str,
     defaults: &SerdeDefaults,
 ) -> TokenStream {
+    let classes: Vec<String> = DART_RESULTS
+        .with(RefCell::take)
+        .into_iter()
+        .map(|(_, _, declared)| declared)
+        .collect();
+    let full_source = if classes.is_empty() {
+        dart_source.to_owned()
+    } else {
+        format!("{dart_source}\n\n{}", classes.join("\n\n"))
+    };
     let module_ident = dart_module_ident(rust_ident, span);
     let holder = defaults.holder();
     if holder.is_empty() {
         return quote! {
             pub mod #module_ident {
                 pub fn dart_definition() -> ::std::string::String {
-                    #dart_source.to_owned()
+                    #full_source.to_owned()
                 }
             }
         };
@@ -500,7 +521,7 @@ fn dart_module_tokens(
             #holder
 
             pub fn dart_definition() -> ::std::string::String {
-                let mut #written = ::std::string::String::from(#dart_source);
+                let mut #written = ::std::string::String::from(#full_source);
                 #replaced
                 #written
             }
@@ -752,6 +773,7 @@ fn dart_base(field: &FieldDef) -> String {
                 .join(", ");
             format!("({{{rendered}}})")
         }
+        FieldDefType::Result(ok, err) => result_typename(ok, err),
         FieldDefType::SiblingType(name, generics) => {
             if let [element] = generics.as_slice()
                 && is_sequence_wrapper(name)
@@ -870,6 +892,7 @@ fn dart_map_key_decode(key: &FieldDef, expr: &str) -> String {
             | FieldDefType::SiblingType(_, _)
             | FieldDefType::Map(_, _)
             | FieldDefType::Range(_, _)
+            | FieldDefType::Result(_, _)
             | FieldDefType::Tuple(_)
             | FieldDefType::TypeParam(_)
             | FieldDefType::Unknown => dart_decode_expr(key, expr, Read::Judged),
@@ -918,6 +941,7 @@ fn dart_map_key_encode(key: &FieldDef, expr: &str) -> String {
             | FieldDefType::SiblingType(_, _)
             | FieldDefType::Map(_, _)
             | FieldDefType::Range(_, _)
+            | FieldDefType::Result(_, _)
             | FieldDefType::Tuple(_)
             | FieldDefType::TypeParam(_)
             | FieldDefType::Unknown => {
@@ -1013,6 +1037,7 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
             }
         }
         FieldDefType::Range(kind, bound) => range_decode(*kind, bound, expr, read),
+        FieldDefType::Result(ok, err) => result_decode(ok, err, expr, read),
         FieldDefType::SiblingType(name, generics) => {
             if let [element] = generics.as_slice()
                 && is_sequence_wrapper(name)
@@ -1109,6 +1134,115 @@ fn range_decode(kind: RangeKind, bound: &FieldDef, expr: &str, read: Read) -> St
          => {written}) => ({rendered}), final {object} => throw ArgumentError('Unknown key of a \
          {}: ${{{object}.keys}}') }}",
         kind.name()
+    )
+}
+
+/// The sealed class a `Result` of the arms `ok` and `err` is written through, declared once per
+/// item for each shape: generic over the type of each arm that holds a value, an arm of `()` being
+/// a subclass with no value.
+fn result_class(ok: &FieldDef, err: &FieldDef) -> String {
+    let shape = [ok.is_unit(), err.is_unit()];
+    DART_RESULTS.with(|results| {
+        let mut written = results.borrow_mut();
+        if let Some((_, named, _)) = written.iter().find(|(declared, _, _)| *declared == shape) {
+            return named.clone();
+        }
+        let index = DART_RESULT_COUNTER.with(|counter| {
+            let next = counter.get().saturating_add(1);
+            counter.set(next);
+            next
+        });
+        let named = format!("DartResult{index}");
+        let held: Vec<&str> = RESULT_ARMS
+            .into_iter()
+            .zip(shape)
+            .filter(|(_, unit)| !unit)
+            .map(|(arm, _)| arm)
+            .collect();
+        let generic_params = if held.is_empty() {
+            String::new()
+        } else {
+            format!("<{}>", held.join(", "))
+        };
+        let arms = RESULT_ARMS.into_iter().zip(shape).map(|(arm, unit)| {
+            let (constructor, value) = if unit {
+                (String::new(), String::new())
+            } else {
+                ("this.value".to_owned(), format!(" final {arm} value;"))
+            };
+            format!(
+                "class {named}{arm}{generic_params} extends {named}{generic_params} \
+                 {{ const {named}{arm}({constructor});{value} }}"
+            )
+        });
+        let declared = format!(
+            "sealed class {named}{generic_params} {{ const {named}(); }} {}",
+            arms.collect::<Vec<_>>().join(" ")
+        );
+        written.push((shape, named.clone(), declared));
+        named
+    })
+}
+
+/// The Dart type of a `Result` of the arms `ok` and `err`.
+fn result_typename(ok: &FieldDef, err: &FieldDef) -> String {
+    format!("{}{}", result_class(ok, err), result_arguments(ok, err))
+}
+
+/// The type arguments of the class of a `Result` of the arms `ok` and `err`: the type of each arm
+/// that holds a value.
+fn result_arguments(ok: &FieldDef, err: &FieldDef) -> String {
+    let held: Vec<String> = [ok, err]
+        .into_iter()
+        .filter(|arm| !arm.is_unit())
+        .map(dart_typename)
+        .collect();
+    if held.is_empty() {
+        String::new()
+    } else {
+        format!("<{}>", held.join(", "))
+    }
+}
+
+/// The `Result` the object `expr` holds: its one key names the arm, whose value is read as that
+/// arm is. An object of any other keys is refused, as serde refuses it, and so is a value under
+/// an arm of `()` other than `null`.
+fn result_decode(ok: &FieldDef, err: &FieldDef, expr: &str, read: Read) -> String {
+    let (class, arguments) = (result_class(ok, err), result_arguments(ok, err));
+    let object = declared("result");
+    let arms = RESULT_ARMS.into_iter().zip([ok, err]).map(|(arm, def)| {
+        let held = format!("{object}['{arm}']");
+        let named = format!("{object}.length == 1 && {object}.containsKey('{arm}')");
+        if def.is_unit() {
+            format!("final {object} when {named} && {held} == null => {class}{arm}{arguments}()")
+        } else {
+            let decoded = member_decode(def, &held, None, read.of_member(def));
+            format!("final {object} when {named} => {class}{arm}{arguments}({decoded})")
+        }
+    });
+    format!(
+        "switch ({expr} as Map<String, dynamic>) {{ {}, final {object} => throw \
+         ArgumentError('Not a Result: ${{{object}.keys}}') }}",
+        arms.collect::<Vec<_>>().join(", ")
+    )
+}
+
+/// The object the `Result` `expr` is written as: the key of its arm, over the arm's value, and
+/// over `null` for an arm of `()`.
+fn result_encode(ok: &FieldDef, err: &FieldDef, expr: &str) -> String {
+    let class = result_class(ok, err);
+    let held = declared("held");
+    let arms = RESULT_ARMS.into_iter().zip([ok, err]).map(|(arm, def)| {
+        if def.is_unit() {
+            format!("{class}{arm}() => <String, dynamic>{{'{arm}': null}}")
+        } else {
+            let encoded = dart_encode_expr(def, &held, true);
+            format!("{class}{arm}(value: final {held}) => <String, dynamic>{{'{arm}': {encoded}}}")
+        }
+    });
+    format!(
+        "switch ({expr}) {{ {} }}",
+        arms.collect::<Vec<_>>().join(", ")
     )
 }
 
@@ -1221,6 +1355,7 @@ fn dart_encode_at(field: &FieldDef, level: u8, expr: &str) -> String {
                 .join(", ");
             format!("<String, dynamic>{{{rendered}}}")
         }
+        FieldDefType::Result(ok, err) => result_encode(ok, err, expr),
         FieldDefType::SiblingType(name, generics) => {
             if let [element] = generics.as_slice()
                 && is_sequence_wrapper(name)
@@ -1496,6 +1631,7 @@ fn measured_elements(
         | FieldDefType::BooleanLiteral(_)
         | FieldDefType::Map(_, _)
         | FieldDefType::Range(_, _)
+        | FieldDefType::Result(_, _)
         | FieldDefType::Tuple(_)
         | FieldDefType::TypeParam(_)
         | FieldDefType::Unknown => Vec::new(),
@@ -1641,6 +1777,9 @@ fn held_at(
             }
             elements
         }
+        FieldDefType::Result(ok, err) => {
+            result_elements([ok, err], expr, place, depth, asked, helpers)
+        }
         FieldDefType::Boolean
         | FieldDefType::BooleanLiteral(_)
         | FieldDefType::Char
@@ -1669,6 +1808,39 @@ fn held_at(
         | FieldDefType::NaiveDateTime
         | FieldDefType::DateTime => Vec::new(),
     }
+}
+
+/// What the arms of the `Result` `expr` report of the value the one it holds holds, each message
+/// under the key serde writes the arm under.
+fn result_elements(
+    [ok, err]: [&FieldDef; 2],
+    expr: &str,
+    place: &[Step],
+    depth: usize,
+    asked: Asked,
+    helpers: &mut Helpers,
+) -> Vec<String> {
+    let class = result_class(ok, err);
+    let held = binder("held", depth);
+    let mut elements = Vec::new();
+    for (arm, def) in RESULT_ARMS.into_iter().zip([ok, err]) {
+        if def.is_unit() {
+            continue;
+        }
+        let inner = held_elements(
+            def,
+            &held,
+            &stepped(place, Step::Written(arm.to_owned())),
+            depth.saturating_add(1),
+            asked,
+            helpers,
+        );
+        elements.extend(guarded(
+            &format!("if ({expr} case {class}{arm}(value: final {held}))"),
+            inner,
+        ));
+    }
+    elements
 }
 
 /// What the value `field` holds at `expr` reports of itself, each message under `place`: the

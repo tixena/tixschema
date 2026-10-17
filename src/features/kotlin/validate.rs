@@ -12,10 +12,10 @@ use core::cell::RefCell;
 use core::mem;
 use std::collections::HashMap;
 
-use super::{kotlin_name, kotlin_template_text, kotlin_typename};
+use super::{kotlin_name, kotlin_template_text, kotlin_typename, result_class};
 use crate::bound_message::{Bound, kotlin_violation};
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
-use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
+use crate::field_type::{FieldDef, FieldDefType, RESULT_ARMS, is_sequence_wrapper};
 
 /// The list `validate()` collects its messages in.
 const VIOLATIONS: &str = "violations";
@@ -358,6 +358,21 @@ impl<'item> Rules<'item> {
                 let held = format!("{read}.{member}");
                 let under = stepped(place, member);
                 found.extend(self.held_statements(bound, &held, Some(&under), depth, asked));
+            }
+            found
+        } else if let FieldDefType::Result(ok, err) = &def.field_type {
+            let class = result_class(ok, err);
+            let held = bound_name("held", depth);
+            let mut found = Vec::new();
+            for (arm, held_def) in RESULT_ARMS.into_iter().zip([&**ok, &**err]) {
+                if held_def.is_unit() {
+                    continue;
+                }
+                let under = stepped(place, arm);
+                let inside = self.held_statements(held_def, &held, Some(&under), below, asked);
+                found.extend(wrapped(&inside, |inner| {
+                    format!("if ({read} is {class}{arm}) {{ val {held} = {read}.value; {inner} }}")
+                }));
             }
             found
         } else {

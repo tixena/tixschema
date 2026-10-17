@@ -46,6 +46,9 @@ use crate::features::serde::{
 #[cfg(feature = "serde")]
 use crate::features::serde::{SerdeFieldMeta, SerdeTypeMeta};
 
+/// The keys serde writes the two arms of a `Result` under, `Ok` first.
+pub const RESULT_ARMS: [&str; 2] = ["Ok", "Err"];
+
 /// The two strings serde writes a `bool` key as, in the order both surfaces state them so they
 /// cannot drift.
 const BOOLEAN_KEY_TYPESCRIPT: &str = "\"true\" | \"false\"";
@@ -84,6 +87,14 @@ pub enum RangeKind {
     Inclusive,
     /// `RangeTo<T>`, written `{"end": T}`.
     To,
+}
+
+/// The std type a path written with type arguments names, where it names one the field definition
+/// reads by its last name.
+#[derive(Clone, Copy)]
+enum StdType {
+    Range(RangeKind),
+    Result,
 }
 
 /// Classifies how an enum variant stores its data, driving the TypeScript/Zod generation strategy
@@ -141,6 +152,8 @@ pub enum FieldDefType {
     ObjectId,
     /// A std range, and the type each of its bounds is written as.
     Range(RangeKind, Box<FieldDef>),
+    /// `Result<T, E>`, written `{"Ok": T}` or `{"Err": E}`.
+    Result(Box<FieldDef>, Box<FieldDef>),
     /// A reference to another struct or enum: the Rust ident written at the reference, and its
     /// generic arguments if any.
     SiblingType(String, Vec<FieldDef>),
@@ -180,6 +193,15 @@ impl FieldDefType {
                 | Self::F32
                 | Self::F64
         )
+    }
+}
+
+impl StdType {
+    /// The std type `type_path` writes, where it writes a range or a `Result`.
+    fn of(type_path: &syn::TypePath) -> Option<Self> {
+        written_std_range(type_path)
+            .map(Self::Range)
+            .or_else(|| written_std_result(type_path).map(|_| Self::Result))
     }
 }
 
@@ -267,6 +289,9 @@ impl FieldDef {
                 elements.iter().find_map(Self::parameter_or_argument_name)
             }
             FieldDefType::Range(_, bound) => bound.parameter_or_argument_name(),
+            FieldDefType::Result(ok, err) => ok
+                .parameter_or_argument_name()
+                .or_else(|| err.parameter_or_argument_name()),
             FieldDefType::TypeParam(_)
             | FieldDefType::Unknown
             | FieldDefType::StringLiteral(_)
@@ -332,6 +357,7 @@ impl FieldDef {
         match &self.field_type {
             FieldDefType::Map(_, _) => Some("a map"),
             FieldDefType::Range(_, _) => Some("a range"),
+            FieldDefType::Result(_, _) => Some("a result"),
             FieldDefType::Tuple(_) => Some("a tuple"),
             #[cfg(feature = "mongodb")]
             FieldDefType::ObjectId => None,
@@ -390,6 +416,9 @@ impl FieldDef {
                 k.contains_type_reference(type_name) || v.contains_type_reference(type_name)
             }
             FieldDefType::Range(_, bound) => bound.contains_type_reference(type_name),
+            FieldDefType::Result(ok, err) => {
+                ok.contains_type_reference(type_name) || err.contains_type_reference(type_name)
+            }
             FieldDefType::Tuple(elements) => elements
                 .iter()
                 .any(|e| e.contains_type_reference(type_name)),
@@ -481,6 +510,11 @@ impl FieldDef {
             FieldDefType::Range(kind, bound) => {
                 ("Range", vec![kind.name().to_owned()], from_ref(&**bound))
             }
+            // An object naming neither arm is told as an externally tagged enum's tag naming none
+            // of its variants.
+            FieldDefType::Result(_, _) => {
+                ("Variants", RESULT_ARMS.map(str::to_owned).to_vec(), &[])
+            }
             // serde writes every std sequence as the array a `Vec` writes.
             FieldDefType::SiblingType(name, items)
                 if items.len() == 1
@@ -533,6 +567,7 @@ impl FieldDef {
             FieldDefType::SiblingType(_, _)
             | FieldDefType::Map(_, _)
             | FieldDefType::Range(_, _)
+            | FieldDefType::Result(_, _)
             | FieldDefType::Tuple(_)
             | FieldDefType::TypeParam(_)
             | FieldDefType::Unknown
@@ -620,6 +655,13 @@ impl FieldDef {
     /// in struct-field position, a `null` in a slot that cannot be dropped.
     pub fn is_optional(&self) -> bool {
         self.is_nullable_at(self.array_depth)
+    }
+
+    /// Whether the field is `()` itself, which serde writes as `null`.
+    pub const fn is_unit(&self) -> bool {
+        self.array_depth == 0
+            && self.nullable_levels.is_empty()
+            && matches!(&self.field_type, FieldDefType::Tuple(elements) if elements.is_empty())
     }
 
     /// Whether the field names a function its schema is written around, a `preprocess` or a
@@ -721,6 +763,9 @@ impl FieldDef {
             }
             FieldDefType::Map(_, value) => value.names_a_sibling_binding(),
             FieldDefType::Range(_, bound) => bound.names_a_sibling_binding(),
+            FieldDefType::Result(ok, err) => {
+                ok.names_a_sibling_binding() || err.names_a_sibling_binding()
+            }
             FieldDefType::Tuple(elements) => elements.iter().any(Self::names_a_sibling_binding),
             FieldDefType::TypeParam(_)
             | FieldDefType::Unknown
@@ -762,6 +807,7 @@ impl FieldDef {
             FieldDefType::SiblingType(_, generics) => generics.iter_mut().collect(),
             FieldDefType::Map(key, value) => vec![key, value],
             FieldDefType::Range(_, bound) => vec![bound],
+            FieldDefType::Result(ok, err) => vec![ok, err],
             FieldDefType::Tuple(elements) => elements.iter_mut().collect(),
             // Leaf types hold no def.
             FieldDefType::TypeParam(_)
@@ -821,6 +867,7 @@ impl FieldDef {
             FieldDefType::SiblingType(_, _)
             | FieldDefType::Map(_, _)
             | FieldDefType::Range(_, _)
+            | FieldDefType::Result(_, _)
             | FieldDefType::Tuple(_)
             | FieldDefType::Unknown
             | FieldDefType::StringLiteral(_)
@@ -851,18 +898,22 @@ impl FieldDef {
         }
     }
 
-    /// The range the key of the first map this field reaches is written as, at any depth.
+    /// The std range or the std `Result` the key of the first map this field reaches is written
+    /// as, at any depth, by the name a refusal writes it under.
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
-    pub fn range_map_key(&self) -> Option<RangeKind> {
-        if let FieldDefType::Map(key, _) = &self.field_type
-            && let FieldDefType::Range(kind, _) = key.field_type
-        {
-            return Some(kind);
+    pub fn object_map_key(&self) -> Option<String> {
+        if let FieldDefType::Map(key, _) = &self.field_type {
+            if let FieldDefType::Range(kind, _) = key.field_type {
+                return Some(format!("{}<_>", kind.name()));
+            }
+            if matches!(key.field_type, FieldDefType::Result(_, _)) {
+                return Some("Result<_, _>".to_owned());
+            }
         }
         self.clone()
             .nested_type_positions()
             .into_iter()
-            .find_map(|nested| nested.range_map_key())
+            .find_map(|nested| nested.object_map_key())
     }
 
     /// The first name this field reaches, at any depth, that `refused` answers for. A name is only
@@ -885,6 +936,9 @@ impl FieldDef {
                 .reached_name(refused)
                 .or_else(|| value.reached_name(refused)),
             FieldDefType::Range(_, bound) => bound.reached_name(refused),
+            FieldDefType::Result(ok, err) => ok
+                .reached_name(refused)
+                .or_else(|| err.reached_name(refused)),
             FieldDefType::Tuple(elements) => elements
                 .iter()
                 .find_map(|element| element.reached_name(refused)),
@@ -932,6 +986,9 @@ impl FieldDef {
                 key.reaches_a_type_declared_later() || value.reaches_a_type_declared_later()
             }
             FieldDefType::Range(_, bound) => bound.reaches_a_type_declared_later(),
+            FieldDefType::Result(ok, err) => {
+                ok.reaches_a_type_declared_later() || err.reaches_a_type_declared_later()
+            }
             FieldDefType::Tuple(elements) => {
                 elements.iter().any(Self::reaches_a_type_declared_later)
             }
@@ -1002,6 +1059,10 @@ impl FieldDef {
                 value.resolve_self_references(type_name, parameters);
             }
             FieldDefType::Range(_, bound) => bound.resolve_self_references(type_name, parameters),
+            FieldDefType::Result(ok, err) => {
+                ok.resolve_self_references(type_name, parameters);
+                err.resolve_self_references(type_name, parameters);
+            }
             FieldDefType::Tuple(elements) => {
                 for element in elements.iter_mut() {
                     element.resolve_self_references(type_name, parameters);
@@ -1065,6 +1126,7 @@ impl FieldDef {
                 let held = bound.typescript_slot_typename();
                 range_object(*kind, |member| format!("{member}: {held}"), "; ")
             }
+            FieldDefType::Result(ok, err) => typescript_result(ok, err),
             FieldDefType::Tuple(lst) => {
                 let elements = lst
                     .iter()
@@ -1285,6 +1347,17 @@ impl FieldDef {
                 let members = range_object(*kind, |member| format!("{member}: {held}"), ", ");
                 format!("z.strictObject({members})")
             }
+            FieldDefType::Result(ok, err) => {
+                let arms = result_union(ok, err, |arm, held| {
+                    let written = if held.is_unit() {
+                        "z.null()".to_owned()
+                    } else {
+                        held.zod_slot_type()
+                    };
+                    format!("z.strictObject({{ {arm}: {written} }})")
+                });
+                format!("z.union([{}])", arms.join(", "))
+            }
             FieldDefType::Tuple(lst) => {
                 let elements = lst
                     .iter()
@@ -1400,6 +1473,9 @@ impl FieldDef {
             }
         } else if let FieldDefType::Range(_, bound) = &self.field_type {
             bound.zod_factory_calls(calls);
+        } else if let FieldDefType::Result(ok, err) = &self.field_type {
+            ok.zod_factory_calls(calls);
+            err.zod_factory_calls(calls);
         } else if let FieldDefType::SiblingType(name, arguments) = &self.field_type {
             let call = if let [element] = arguments.as_slice()
                 && is_sequence_wrapper(name)
@@ -1649,6 +1725,30 @@ impl FieldDef {
         };
         lookup_alias_info(name).map_or_else(Vec::new, |info| info.zod_union_members)
     }
+}
+
+/// The TypeScript union of the two objects a `Result` of the arms `ok` and `err` is written as.
+fn typescript_result(ok: &FieldDef, err: &FieldDef) -> String {
+    result_union(ok, err, |arm, held| {
+        let written = if held.is_unit() {
+            "null".to_owned()
+        } else {
+            held.typescript_slot_typename()
+        };
+        format!("{{ {arm}: {written} }}")
+    })
+    .join(" | ")
+}
+
+/// The two objects a `Result` is written as, each as `arm` spells it from the key serde writes it
+/// under and the value it holds.
+fn result_union(
+    ok: &FieldDef,
+    err: &FieldDef,
+    arm: impl Fn(&str, &FieldDef) -> String,
+) -> [String; 2] {
+    let [ok_key, err_key] = RESULT_ARMS;
+    [arm(ok_key, ok), arm(err_key, err)]
 }
 
 /// The object literal `{ … }` of the members a range of `kind` writes, each as `member` spells it,
@@ -1931,7 +2031,7 @@ fn get_field_def_from_type_path(
         PathArguments::AngleBracketed(args) => get_field_def_from_generic_type(
             &segment.ident,
             args,
-            written_std_range(type_path),
+            StdType::of(type_path),
             field_name,
             field_docs,
         ),
@@ -1954,12 +2054,12 @@ fn get_field_def_from_type_path(
     }
 }
 
-/// Builds a `FieldDef` for a named type written with generic arguments. `range` is the std range
-/// the path writes, where it writes one.
+/// Builds a `FieldDef` for a named type written with generic arguments. `std` is the std range or
+/// the std `Result` the path writes, where it writes one.
 fn get_field_def_from_generic_type(
     type_ident: &Ident,
     args: &syn::AngleBracketedGenericArguments,
-    range: Option<RangeKind>,
+    std: Option<StdType>,
     field_name: String,
     field_docs: &str,
 ) -> FieldDef {
@@ -2021,10 +2121,15 @@ fn get_field_def_from_generic_type(
     } else if arg_types.len() == 1 && is_datetime_generic_type(ident) {
         // The timezone type parameter says nothing about what is written.
         written_def(datetime_field_type(), field_name, field_docs, type_ident)
-    } else if let Some(kind) = range
+    } else if let Some(StdType::Range(kind)) = std
         && let [bound] = arg_types.as_slice()
     {
         let field_type = FieldDefType::Range(kind, Box::new(bound.clone()));
+        written_def(field_type, field_name, field_docs, type_ident)
+    } else if matches!(std, Some(StdType::Result))
+        && let [ok, err] = arg_types.as_slice()
+    {
+        let field_type = FieldDefType::Result(Box::new(ok.clone()), Box::new(err.clone()));
         written_def(field_type, field_name, field_docs, type_ident)
     } else {
         log::trace!("Creating SiblingType - name: {ident}, arg_types: {arg_types:?}");
@@ -2080,14 +2185,52 @@ pub fn written_std_range(type_path: &syn::TypePath) -> Option<RangeKind> {
         .then_some(kind)
 }
 
+/// The two arms of the std `Result` `type_path` writes: `Result` with two type arguments, written
+/// in full under `core::result` or `std::result`, or under any other path but a name a
+/// `#[model_schema]` type of the crate's own was declared under above.
+pub fn written_std_result(type_path: &syn::TypePath) -> Option<(&Type, &Type)> {
+    if type_path.qself.is_some() {
+        return None;
+    }
+    let segment = type_path.path.segments.last()?;
+    if segment.ident != "Result" {
+        return None;
+    }
+    let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+        return None;
+    };
+    let mut written = arguments.args.iter().filter_map(|argument| {
+        if let GenericArgument::Type(ty) = argument {
+            Some(ty)
+        } else {
+            None
+        }
+    });
+    let (Some(ok), Some(err), None) = (written.next(), written.next(), written.next()) else {
+        return None;
+    };
+    (names_std_result(&type_path.path) || !is_declared_ident("Result")).then_some((ok, err))
+}
+
 /// Whether `path` is written in full under `core::ops` or `std::ops`, where it names the std type
 /// whatever the crate declares.
 pub fn names_std_ops(path: &syn::Path) -> bool {
+    written_in_std(path, "ops")
+}
+
+/// Whether `path` is written in full under `core::result` or `std::result`, where it names the
+/// std type whatever the crate declares.
+pub fn names_std_result(path: &syn::Path) -> bool {
+    written_in_std(path, "result")
+}
+
+/// Whether `path` is one name under `module` of `core` or `std`.
+fn written_in_std(path: &syn::Path, module: &str) -> bool {
     let mut segments = path
         .segments
         .iter()
         .map(|segment| segment.ident.to_string());
-    let (Some(root), Some(module), Some(_), None) = (
+    let (Some(root), Some(written), Some(_), None) = (
         segments.next(),
         segments.next(),
         segments.next(),
@@ -2095,7 +2238,7 @@ pub fn names_std_ops(path: &syn::Path) -> bool {
     ) else {
         return false;
     };
-    matches!(root.as_str(), "core" | "std") && module == "ops"
+    matches!(root.as_str(), "core" | "std") && written == module
 }
 
 /// The def a single-argument wrapper collapses onto, for the wrappers that collapse.

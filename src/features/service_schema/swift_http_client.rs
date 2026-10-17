@@ -1353,6 +1353,7 @@ fn swift_header_out_decode(ty: &Type, raw: &str) -> String {
         | FieldDefType::Map(_, _)
         | FieldDefType::NumberLiteral(_)
         | FieldDefType::Range(_, _)
+        | FieldDefType::Result(_, _)
         | FieldDefType::String
         | FieldDefType::StringLiteral(_)
         | FieldDefType::Tuple(_)

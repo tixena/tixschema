@@ -49,7 +49,9 @@ use crate::features::serde::{
 };
 use crate::field_type::is_ownership_wrapper;
 #[cfg(feature = "serde")]
-use crate::field_type::{RangeKind, is_map_wrapper, written_std_range};
+use crate::field_type::{
+    RESULT_ARMS, RangeKind, is_map_wrapper, written_std_range, written_std_result,
+};
 use crate::utils::{to_snake_case, written_names, written_type};
 
 /// The read the recovering decode of a type lists from, which every type under the flag has.
@@ -126,6 +128,14 @@ struct Corrects {
     payload: Ident,
 }
 
+/// One model a member holds, as its hook reads it: the model, and the name of the type the read
+/// writes where the member's type writes the model.
+#[cfg(feature = "serde")]
+struct HookLeaf {
+    held_as: String,
+    leaf: String,
+}
+
 /// The hook one member of the item being expanded reads the models it holds through. It is held
 /// as text: the item's read is written after its members are walked, and a token outlives no
 /// expansion. Each text writes `Self` where the member does: the item's name is written out as the
@@ -138,14 +148,12 @@ struct MemberHook {
     choosing: bool,
     /// Whether a missing key is read as the member's default, as it is with no hook.
     defaulted: bool,
-    /// The name of the type `read_as` writes where the member's type writes the model.
-    held_as: String,
     /// The member's place among those of its struct, or of its variant.
     index: usize,
-    /// The model the member holds.
-    leaf: String,
+    /// Each model the member holds, in the order its type writes them.
+    leaves: Vec<HookLeaf>,
     name: String,
-    /// The member's type with `held_as` written where it writes the model.
+    /// The member's type with each leaf's `held_as` written where it writes that model.
     read_as: String,
     /// The key a refusal raised below is answered under, where it is answered under one.
     renamed_under: Option<String>,
@@ -201,10 +209,20 @@ struct HookScope {
 }
 
 /// One hook as it is written: the member's texts with `Self` written out, and the parameters and
-/// bounds of the hook and of the type it reads the model as.
+/// bounds of the hook and of each type it reads a model as.
 #[cfg(feature = "serde")]
 struct HookWritten {
     back: TokenStream,
+    leaves: Vec<LeafWritten>,
+    parameters: Vec<Ident>,
+    predicates: Vec<TokenStream>,
+    read_as: TokenStream,
+    ty: TokenStream,
+}
+
+/// The type a hook reads one model as, as it is written.
+#[cfg(feature = "serde")]
+struct LeafWritten {
     held_as: Ident,
     leaf: TokenStream,
     /// The predicates the type the model is read as is declared under.
@@ -214,10 +232,6 @@ struct HookWritten {
     leaf_parameters: Vec<Ident>,
     /// The predicates its `Deserialize` is written under.
     leaf_predicates: Vec<TokenStream>,
-    parameters: Vec<Ident>,
-    predicates: Vec<TokenStream>,
-    read_as: TokenStream,
-    ty: TokenStream,
 }
 
 /// The read of a member's type with every model it holds read unjudged.
@@ -225,11 +239,10 @@ struct HookWritten {
 struct Reached {
     /// The member's value, built back from `held_0`, what `read_as` was read into.
     back: TokenStream,
-    leaf: syn::Type,
-    /// The member's type with the name it was asked for written where it writes `leaf`.
+    /// Each model, in the order the type writes them, and the name it was read as.
+    leaves: Vec<(syn::Type, Ident)>,
+    /// The member's type with the name each model was read as written where it writes it.
     read_as: syn::Type,
-    /// The wrappers `leaf` is held under, outermost first.
-    wraps: Vec<ConstraintWrap>,
 }
 
 #[cfg(feature = "serde")]
@@ -290,36 +303,20 @@ impl MemberHook {
         let name = corrects.hook_name(&self.name);
         let HookWritten {
             back,
-            held_as,
-            leaf,
-            leaf_bounds,
-            leaf_generics,
-            leaf_parameters,
-            leaf_predicates,
+            leaves,
             parameters,
             predicates,
             read_as,
             ty,
         } = scope.written(self)?;
-        let held_leaf = self.held_leaf(&leaf, &held_as, unjudged);
         let renamed = self.renamed_under.as_deref().map(|key| {
             let renaming = named_refusal(key);
             quote! { .map_err(#renaming) }
         });
-        let leaf_where = (!leaf_bounds.is_empty()).then(|| quote! { where #(#leaf_bounds),* });
-        let leaf_read_where =
-            (!leaf_predicates.is_empty()).then(|| quote! { where #(#leaf_predicates),* });
-        let held = quote! {
-            struct #held_as #leaf_generics (#leaf) #leaf_where;
-            impl<'de #(, #leaf_parameters)*> serde::Deserialize<'de> for #held_as #leaf_generics #leaf_read_where {
-                fn deserialize<#reader>(deserializer: #reader) -> ::core::result::Result<Self, #reader::Error>
-                where
-                    #reader: serde::Deserializer<'de>,
-                {
-                    #held_leaf
-                }
-            }
-        };
+        let held: TokenStream = leaves
+            .iter()
+            .map(|written| self.held_type(written, unjudged, reader))
+            .collect();
         let functions = corrects
             .named
             .of_member(self.variant.as_deref(), self.index);
@@ -366,6 +363,33 @@ impl MemberHook {
             let chosen = &held;
             chosen.#bound_alone().map_err(#refusal)?;
             ::core::result::Result::Ok(#held_as(held))
+        }
+    }
+
+    /// The type a model the member holds is read as, and its `Deserialize`.
+    fn held_type(&self, written: &LeafWritten, unjudged: &Ident, reader: &Ident) -> TokenStream {
+        let LeafWritten {
+            held_as,
+            leaf,
+            leaf_bounds,
+            leaf_generics,
+            leaf_parameters,
+            leaf_predicates,
+        } = written;
+        let held_leaf = self.held_leaf(leaf, held_as, unjudged);
+        let leaf_where = (!leaf_bounds.is_empty()).then(|| quote! { where #(#leaf_bounds),* });
+        let leaf_read_where =
+            (!leaf_predicates.is_empty()).then(|| quote! { where #(#leaf_predicates),* });
+        quote! {
+            struct #held_as #leaf_generics (#leaf) #leaf_where;
+            impl<'de #(, #leaf_parameters)*> serde::Deserialize<'de> for #held_as #leaf_generics #leaf_read_where {
+                fn deserialize<#reader>(deserializer: #reader) -> ::core::result::Result<Self, #reader::Error>
+                where
+                    #reader: serde::Deserializer<'de>,
+                {
+                    #held_leaf
+                }
+            }
         }
     }
 }
@@ -530,7 +554,7 @@ impl HookScope {
     /// ties a parameter the member names to one it does not, or to a lifetime of the item, or
     /// where the item is read at `'static`: the member is then read by its own `Deserialize`.
     fn written(&self, hook: &MemberHook) -> Option<HookWritten> {
-        let [ty, leaf, back] = [&hook.ty, &hook.leaf, &hook.back].map(|written| {
+        let [ty, back] = [&hook.ty, &hook.back].map(|written| {
             naming_the_type(
                 written.parse::<TokenStream>().unwrap_or_default(),
                 &self.named,
@@ -551,35 +575,50 @@ impl HookScope {
         if tied {
             return None;
         }
-        let leaf_parameters = self.named_by(&leaf)?;
-        // The member's type is written beside the type the hook reads the model as.
-        let held_as = unclaimed_parameter(HELD, &written_names(ty.clone()));
-        let leaf_idents = self.idents_of(&leaf_parameters);
-        let leaf_generics = if leaf_idents.is_empty() {
-            TokenStream::new()
-        } else {
-            quote! { <#(#leaf_idents),*> }
-        };
+        // The member's type is written beside the types the hook reads its models as.
+        let mut taken = written_names(ty.clone());
+        let mut leaves = Vec::new();
+        let mut renamed = Vec::new();
+        for held in &hook.leaves {
+            let leaf = naming_the_type(
+                held.leaf.parse::<TokenStream>().unwrap_or_default(),
+                &self.named,
+            );
+            let leaf_parameters = self.named_by(&leaf)?;
+            let held_as = unclaimed_parameter(HELD, &taken);
+            taken.push(held_as.to_string());
+            let leaf_idents = self.idents_of(&leaf_parameters);
+            let leaf_generics = if leaf_idents.is_empty() {
+                TokenStream::new()
+            } else {
+                quote! { <#(#leaf_idents),*> }
+            };
+            renamed.push((held.held_as.clone(), quote! { #held_as #leaf_generics }));
+            leaves.push(LeafWritten {
+                held_as,
+                leaf,
+                leaf_bounds: merged(
+                    self.declared
+                        .iter()
+                        .filter(|predicate| predicate.within(&leaf_parameters)),
+                ),
+                leaf_generics,
+                leaf_parameters: leaf_idents,
+                leaf_predicates: merged(
+                    every().filter(|predicate| predicate.within(&leaf_parameters)),
+                ),
+            });
+        }
         let read_as = naming_the_type(
-            word_written_as(
+            words_written_as(
                 hook.read_as.parse::<TokenStream>().unwrap_or_default(),
-                &hook.held_as,
-                &quote! { #held_as #leaf_generics },
+                &renamed,
             ),
             &self.named,
         );
         Some(HookWritten {
             back,
-            held_as,
-            leaf,
-            leaf_bounds: merged(
-                self.declared
-                    .iter()
-                    .filter(|predicate| predicate.within(&leaf_parameters)),
-            ),
-            leaf_generics,
-            leaf_parameters: leaf_idents,
-            leaf_predicates: merged(every().filter(|predicate| predicate.within(&leaf_parameters))),
+            leaves,
             parameters: self.idents_of(&parameters),
             predicates: merged(every().filter(|predicate| predicate.within(&parameters))),
             read_as,
@@ -739,34 +778,156 @@ fn reached(ty: &syn::Type, depth: usize, held_as: &Ident) -> Option<Reached> {
     let held = held_binding(depth);
     let itself = || Reached {
         back: quote! { #held.0 },
-        leaf: written.clone(),
+        leaves: vec![(written.clone(), held_as.clone())],
         read_as: syn::parse_quote! { #held_as },
-        wraps: Vec::new(),
     };
     let syn::PathArguments::AngleBracketed(arguments) = &last.arguments else {
         return matches!(last.arguments, syn::PathArguments::None).then(itself);
     };
-    let wrapper = last.ident.to_string();
-    let (wrap, position, held_type) = if is_map_wrapper(&wrapper) {
-        (ConstraintWrap::Map, 1, map_value_argument(arguments)?)
-    } else if let Some(kind) = written_std_range(named) {
-        (
+    let Some((wrap, position, held_type)) = wrapped_by(named, arguments) else {
+        // A declared type written with arguments is the model itself.
+        return (!reads_through(&last.ident.to_string())).then(itself);
+    };
+    let below = reached(held_type, depth.saturating_add(1), held_as)?;
+    Some(held_under(named, wrap, position, depth, below))
+}
+
+/// How a value of type `ty` is read with every model `validate()` walks to read unjudged, where
+/// the walk reads through `wraps` and ends on `end`: one model, or the arms of a `Result`. Each
+/// model is read as a type named after `taken`, the names written beside it, which it joins.
+/// `None` where `ty` writes another wrapper than the walk reads, or where the walk ends on a tuple.
+#[cfg(feature = "serde")]
+fn walked_read(
+    ty: &syn::Type,
+    depth: usize,
+    (wraps, end): (&[ConstraintWrap], &HeldEnd),
+    taken: &mut Vec<String>,
+) -> Option<Reached> {
+    let written = written_type(ty);
+    let syn::Type::Path(named) = written else {
+        return None;
+    };
+    let last = named.path.segments.last()?;
+    let held = held_binding(depth);
+    let Some((walked, rest)) = wraps.split_first() else {
+        return match end {
+            HeldEnd::Declared => {
+                if let syn::PathArguments::AngleBracketed(arguments) = &last.arguments
+                    && (wrapped_by(named, arguments).is_some()
+                        || written_std_result(named).is_some()
+                        || reads_through(&last.ident.to_string()))
+                {
+                    return None;
+                }
+                if matches!(last.arguments, syn::PathArguments::Parenthesized(_)) {
+                    return None;
+                }
+                let held_as = unclaimed_parameter(HELD, taken);
+                taken.push(held_as.to_string());
+                Some(Reached {
+                    back: quote! { #held.0 },
+                    leaves: vec![(written.clone(), held_as.clone())],
+                    read_as: syn::parse_quote! { #held_as },
+                })
+            }
+            HeldEnd::Arms(arms) => result_read(named, depth, arms, taken),
+            HeldEnd::Positions(_) => None,
+        };
+    };
+    let syn::PathArguments::AngleBracketed(arguments) = &last.arguments else {
+        return None;
+    };
+    let (wrap, position, held_type) = wrapped_by(named, arguments)?;
+    if wrap != *walked {
+        return None;
+    }
+    let below = walked_read(held_type, depth.saturating_add(1), (rest, end), taken)?;
+    Some(held_under(named, wrap, position, depth, below))
+}
+
+/// The std `Result` `named` read with the models `arms` walk to in either arm read unjudged, built
+/// back arm by arm. An arm no walk reaches is read as it is written.
+#[cfg(feature = "serde")]
+fn result_read(
+    named: &syn::TypePath,
+    depth: usize,
+    arms: &[(&'static str, super::HeldShape)],
+    taken: &mut Vec<String>,
+) -> Option<Reached> {
+    let arm_types: [&syn::Type; 2] = written_std_result(named)?.into();
+    let (held, inner) = (held_binding(depth), held_binding(depth.saturating_add(1)));
+    let mut back = quote! { #held };
+    let mut read_as = syn::Type::Path(named.clone());
+    let mut leaves = Vec::new();
+    for ((position, arm), arm_type) in RESULT_ARMS.into_iter().enumerate().zip(arm_types) {
+        let Some((_, shape)) = arms.iter().find(|(walked, _)| *walked == arm) else {
+            continue;
+        };
+        let below = walked_read(
+            arm_type,
+            depth.saturating_add(1),
+            (&shape.wraps, &shape.end),
+            taken,
+        )?;
+        let value = &below.back;
+        back = if position == 0 {
+            quote! { #back.map(|#inner| #value) }
+        } else {
+            quote! { #back.map_err(|#inner| #value) }
+        };
+        let syn::Type::Path(arguments_of) = &read_as else {
+            return None;
+        };
+        read_as = with_argument(arguments_of, position, &below.read_as);
+        leaves.extend(below.leaves);
+    }
+    Some(Reached {
+        back,
+        leaves,
+        read_as,
+    })
+}
+
+/// The wrapper `named` is, the position of the argument it holds a value of, and that argument,
+/// or `None` for a type that is no wrapper a hook reads through.
+#[cfg(feature = "serde")]
+fn wrapped_by<'ty>(
+    named: &'ty syn::TypePath,
+    arguments: &'ty syn::AngleBracketedGenericArguments,
+) -> Option<(ConstraintWrap, usize, &'ty syn::Type)> {
+    let wrapper = named.path.segments.last()?.ident.to_string();
+    if is_map_wrapper(&wrapper) {
+        return Some((ConstraintWrap::Map, 1, map_value_argument(arguments)?));
+    }
+    if let Some(kind) = written_std_range(named) {
+        return Some((
             ConstraintWrap::Range(kind),
             0,
             sole_type_argument(arguments)?,
-        )
-    } else {
-        let wrap = match wrapper.as_str() {
-            "Box" => ConstraintWrap::Transparent,
-            "Option" => ConstraintWrap::Optional,
-            "Vec" => ConstraintWrap::Sequence,
-            // A declared type written with arguments is the model itself.
-            _ => return (!reads_through(&wrapper)).then(itself),
-        };
-        (wrap, 0, sole_type_argument(arguments)?)
+        ));
+    }
+    let wrap = match wrapper.as_str() {
+        "Box" => ConstraintWrap::Transparent,
+        "Option" => ConstraintWrap::Optional,
+        "Vec" => ConstraintWrap::Sequence,
+        _ => return None,
     };
-    let below = reached(held_type, depth.saturating_add(1), held_as)?;
-    let (inner, value) = (held_binding(depth.saturating_add(1)), &below.back);
+    Some((wrap, 0, sole_type_argument(arguments)?))
+}
+
+/// The value of `named`, the wrapper `wrap` over its argument at `position`, read as `below`
+/// reads that argument and built back from it.
+#[cfg(feature = "serde")]
+fn held_under(
+    named: &syn::TypePath,
+    wrap: ConstraintWrap,
+    position: usize,
+    depth: usize,
+    below: Reached,
+) -> Reached {
+    let written = syn::Type::Path(named.clone());
+    let (held, inner) = (held_binding(depth), held_binding(depth.saturating_add(1)));
+    let value = &below.back;
     let back = match wrap {
         ConstraintWrap::Map => {
             let key = Ident::new(&format!("key_{depth}"), Span::call_site());
@@ -781,14 +942,11 @@ fn reached(ty: &syn::Type, depth: usize, held_as: &Ident) -> Option<Reached> {
             quote! { <#written>::new({ let #inner = *#held; #value }) }
         }
     };
-    let mut wraps = vec![wrap];
-    wraps.extend(below.wraps);
-    Some(Reached {
+    Reached {
         back,
-        leaf: below.leaf,
+        leaves: below.leaves,
         read_as: with_argument(named, position, &below.read_as),
-        wraps,
-    })
+    }
 }
 
 /// The range read as `held`, its bounds each read into `inner`, built back from what `value` makes
@@ -861,25 +1019,15 @@ pub(super) fn hook_member(field: &Field, shape: &super::HeldShape, place: &HookP
     if parse_serde_key_omission(&field.attrs).skips_deserializing
         || has_serde_read_hook(&field.attrs)
         || field.ty.to_token_stream().to_string().contains('\'')
-        || !matches!(shape.end, HeldEnd::Declared)
     {
         return false;
     }
-    // The hook writes the member's type beside the type it reads the model as.
-    let held_as = unclaimed_parameter(HELD, &written_names(field.ty.to_token_stream()));
-    let Some(read) = reached(&field.ty, 0, &held_as) else {
+    // The hook writes the member's type beside the types it reads the models as, and reads each
+    // model the walk reaches, through the wrappers the walk reads.
+    let mut taken = written_names(field.ty.to_token_stream());
+    let Some(read) = walked_read(&field.ty, 0, (&shape.wraps, &shape.end), &mut taken) else {
         return false;
     };
-    // The walk and the read are of one type, and reach the model through the same wrappers.
-    if read.wraps.len() != shape.wraps.len()
-        || read
-            .wraps
-            .iter()
-            .zip(&shape.wraps)
-            .any(|(read_through, walked)| read_through != walked)
-    {
-        return false;
-    }
     let declared_as = field.ident.as_ref().map_or_else(
         || place.index.to_string(),
         |member| member.unraw().to_string(),
@@ -896,9 +1044,15 @@ pub(super) fn hook_member(field: &Field, shape: &super::HeldShape, place: &HookP
             back: read.back.to_string(),
             choosing: place.choosing,
             defaulted,
-            held_as: held_as.to_string(),
             index: place.index,
-            leaf: read.leaf.to_token_stream().to_string(),
+            leaves: read
+                .leaves
+                .iter()
+                .map(|(leaf, held_as)| HookLeaf {
+                    held_as: held_as.to_string(),
+                    leaf: leaf.to_token_stream().to_string(),
+                })
+                .collect(),
             name,
             read_as: read.read_as.to_token_stream().to_string(),
             renamed_under: place.renamed_under.map(str::to_owned),
@@ -992,26 +1146,25 @@ fn generated(tokens: TokenStream) -> TokenStream {
 /// `tokens` with `named` written wherever they write `Self`, which a copy of the item would read
 /// as itself.
 fn naming_the_type(tokens: TokenStream, named: &TokenStream) -> TokenStream {
-    word_written_as(tokens, "Self", named)
+    words_written_as(tokens, &[("Self".to_owned(), named.clone())])
 }
 
-/// `tokens` with `written` wherever they write the word `word`.
-fn word_written_as(tokens: TokenStream, word: &str, written: &TokenStream) -> TokenStream {
+/// `tokens` with each word of `written` replaced by the tokens beside it, all in one pass.
+fn words_written_as(tokens: TokenStream, written: &[(String, TokenStream)]) -> TokenStream {
     tokens
         .into_iter()
         .flat_map(|token| match token {
             TokenTree::Group(group) => {
-                let mut inner = Group::new(
-                    group.delimiter(),
-                    word_written_as(group.stream(), word, written),
-                );
+                let mut inner =
+                    Group::new(group.delimiter(), words_written_as(group.stream(), written));
                 inner.set_span(group.span());
                 TokenStream::from(TokenTree::Group(inner))
             }
-            TokenTree::Ident(ident) if ident == word => written.clone(),
-            other @ (TokenTree::Ident(_) | TokenTree::Literal(_) | TokenTree::Punct(_)) => {
-                TokenStream::from(other)
-            }
+            TokenTree::Ident(ident) => written.iter().find(|(word, _)| ident == word).map_or_else(
+                || TokenStream::from(TokenTree::Ident(ident)),
+                |(_, replaced)| replaced.clone(),
+            ),
+            other @ (TokenTree::Literal(_) | TokenTree::Punct(_)) => TokenStream::from(other),
         })
         .collect()
 }
@@ -1841,20 +1994,25 @@ pub fn listed_reader(ty: &syn::Type, type_parameters: &[String]) -> Option<Token
     let read = reached(ty, 0, &held_as)?;
     let unjudged = listed();
     let fallback = held_fallback(&unclaimed_parameter(FALLBACK, &written), &unjudged);
-    let (leaf, read_as, back) = (&read.leaf, &read.read_as, &read.back);
+    let (read_as, back) = (&read.read_as, &read.back);
     let reader_type = unclaimed_parameter("D", &written);
-    Some(quote! {
-        |reader| {
-            #fallback
-            struct #held_as(#leaf);
-            impl<'de> serde::Deserialize<'de> for #held_as {
+    let held = read.leaves.iter().map(|(leaf, named)| {
+        quote! {
+            struct #named(#leaf);
+            impl<'de> serde::Deserialize<'de> for #named {
                 fn deserialize<#reader_type>(deserializer: #reader_type) -> ::core::result::Result<Self, #reader_type::Error>
                 where
                     #reader_type: serde::Deserializer<'de>,
                 {
-                    <#leaf>::#unjudged(deserializer).map(#held_as)
+                    <#leaf>::#unjudged(deserializer).map(#named)
                 }
             }
+        }
+    });
+    Some(quote! {
+        |reader| {
+            #fallback
+            #(#held)*
             <#read_as as serde::Deserialize>::deserialize(reader).map(|held_0| #back)
         }
     })
