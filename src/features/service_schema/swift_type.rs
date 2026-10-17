@@ -47,6 +47,16 @@ fn swift_base(field: &FieldDef) -> String {
                 .join(", ");
             format!("({rendered})")
         }
+        FieldDefType::Result(ok, err) => {
+            let [held_ok, held_err] = [ok, err].map(|arm| {
+                if arm.is_unit() {
+                    "Void".to_owned()
+                } else {
+                    swift_typename(arm)
+                }
+            });
+            format!("Result<{held_ok}, {held_err}>")
+        }
         FieldDefType::SiblingType(name, generics) => {
             if let [element] = generics.as_slice()
                 && is_sequence_wrapper(name)

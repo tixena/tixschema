@@ -25,6 +25,10 @@ mod ranged;
 #[path = "../std_range_tests/documents.rs"]
 mod documents;
 
+/// The models a std `Result` is written on, and the payloads serde writes and refuses.
+#[path = "../std_result_tests/models.rs"]
+mod resulted;
+
 #[cfg(feature = "chrono")]
 use chrono::{DateTime, Utc};
 #[cfg(feature = "jsonschema")]
@@ -533,6 +537,49 @@ for (const [name, schema, payload] of PAYLOADS) {
 console.log(printed.join("\n"));
 "#;
 
+/// Parses each payload of a `Result` through the schema of the type it is read as, the declared
+/// default of one that declares a parameter, and prints what each read answers: the value, or the
+/// refusal, with each issue under its path where the type judges a model it holds.
+const RESULTS_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+
+const schemas = {
+  Attempted: lib.Attempted$SchemaDefault,
+  Bureau: lib.Bureau$Schema,
+  Errand: lib.Errand$Schema,
+  Errata: lib.Errata$Schema,
+  Missive: lib.Missive$Schema,
+  Notebook: lib.Notebook$Schema,
+  Postbox: lib.Postbox$Schema,
+  Reply: lib.Reply$Schema,
+  Summary: lib.Summary$Schema,
+  Turn: lib.Turn$SchemaDefault,
+};
+const sorted = (value) =>
+  Array.isArray(value)
+    ? value.map(sorted)
+    : value !== null && typeof value === "object"
+      ? Object.fromEntries(
+          Object.keys(value)
+            .sort()
+            .map((key) => [key, sorted(value[key])]),
+        )
+      : value;
+const printed = [];
+for (const [name, schema, payload, judged] of PAYLOADS) {
+  const read = schemas[schema].safeParse(JSON.parse(payload));
+  if (read.success) {
+    printed.push(`${name}: read ${JSON.stringify(sorted(read.data))}`);
+    continue;
+  }
+  printed.push(`${name}: refused`);
+  if (judged) {
+    const said = read.error.issues.map((issue) => `    '${issue.path.join(".")}': ${issue.message}`);
+    printed.push(...said.sort());
+  }
+}
+console.log(printed.join("\n"));
+"#;
+
 /// Parses each payload of a struct that declares a parameter through the schema of its declared
 /// default, and each payload of `Harbour` that leaves out a key it requires.
 const FILLED_DRIVER: &str = r#"import * as lib from "./lib/index.js";
@@ -1014,6 +1061,16 @@ pub struct CodedCrate<CodeType> {
 #[cfg(feature = "jsonschema")]
 type RangedModel = (&'static str, fn(&str) -> bool, fn() -> serde_json::Value);
 
+/// The models the payloads of a `Result` are read as: the name, whether the type judges a model it
+/// holds, what serde's read prints, and the JSON Schema.
+#[cfg(feature = "jsonschema")]
+type ResultedModel = (
+    &'static str,
+    bool,
+    fn(&str, &str, bool) -> (bool, String),
+    fn() -> serde_json::Value,
+);
+
 fn bundle() -> String {
     [
         PREAMBLE.to_owned(),
@@ -1312,6 +1369,78 @@ fn ranges() -> String {
     .join("\n\n")
 }
 
+/// The types a std `Result` is written on: a bundle of its own, compiled with `tsc --strict` before
+/// it is loaded.
+fn results() -> String {
+    [
+        PREAMBLE.to_owned(),
+        resulted::Masthead::ts_definition(),
+        resulted::Masthead::zod_schema(),
+        resulted::Unparsed::ts_definition(),
+        resulted::Unparsed::zod_schema(),
+        resulted::Ballot::ts_definition(),
+        resulted::Ballot::zod_schema(),
+        resulted::Mailbag::<String>::ts_definition(),
+        resulted::Mailbag::<String>::zod_schema(),
+        resulted::Reply::ts_definition(),
+        resulted::Reply::zod_schema(),
+        resulted::Missive::ts_definition(),
+        resulted::Missive::zod_schema(),
+        resulted::Postbox::ts_definition(),
+        resulted::Postbox::zod_schema(),
+        resulted::Ruling::ts_definition(),
+        resulted::Ruling::zod_schema(),
+        resulted::settlement_schema::Schema::ts_definition(),
+        resulted::settlement_schema::Schema::zod_schema(),
+        resulted::Errand::ts_definition(),
+        resulted::Errand::zod_schema(),
+        resulted::Attempted::<u32>::ts_definition(),
+        resulted::Attempted::<u32>::zod_schema(),
+        resulted::Turn::<u32>::ts_definition(),
+        resulted::Turn::<u32>::zod_schema(),
+        resulted::Summary::ts_definition(),
+        resulted::Summary::zod_schema(),
+        resulted::Bureau::ts_definition(),
+        resulted::Bureau::zod_schema(),
+        resulted::Jacket::ts_definition(),
+        resulted::Jacket::zod_schema(),
+        resulted::Notebook::ts_definition(),
+        resulted::Notebook::zod_schema(),
+        resulted::Errata::ts_definition(),
+        resulted::Errata::zod_schema(),
+    ]
+    .join("\n\n")
+}
+
+/// What serde's read of `json` as a `T` prints, as the driver of the `Result`s prints the same
+/// payload: the value, with the keys of each object in order, or the refusal, with each message
+/// of `validate()` where the type judges a model it holds.
+#[cfg(feature = "jsonschema")]
+fn result_read<T>(name: &str, json: &str, judged: bool) -> (bool, String)
+where
+    T: DeserializeOwned,
+{
+    match serde_json::from_str::<T>(json) {
+        Ok(_) => {
+            let value: serde_json::Value = serde_json::from_str(json).unwrap();
+            (true, format!("{name}: read {}", sorted_keys(&value)))
+        }
+        Err(refused) => {
+            let mut said = vec![format!("{name}: refused")];
+            if judged {
+                let mut messages: Vec<String> = refused
+                    .to_string()
+                    .split("; ")
+                    .map(|message| format!("    {message}"))
+                    .collect();
+                messages.sort();
+                said.extend(messages);
+            }
+            (false, said.join("\n"))
+        }
+    }
+}
+
 /// Whether serde reads `json` as a `T`.
 #[cfg(feature = "jsonschema")]
 fn serde_reads<T>(json: &str) -> bool
@@ -1380,6 +1509,73 @@ fn ranged_models() -> Vec<RangedModel> {
             "Stride",
             serde_reads::<ranged::Stride<u32>>,
             ranged::Stride::<u32>::json_schema,
+        ),
+    ]
+}
+
+/// The models the payloads of a `Result` are read as.
+#[cfg(feature = "jsonschema")]
+fn resulted_models() -> Vec<ResultedModel> {
+    vec![
+        (
+            "Attempted",
+            false,
+            result_read::<resulted::Attempted<u32>>,
+            resulted::Attempted::<u32>::json_schema,
+        ),
+        (
+            "Bureau",
+            false,
+            result_read::<resulted::Bureau>,
+            resulted::Bureau::json_schema,
+        ),
+        (
+            "Errand",
+            false,
+            result_read::<resulted::Errand>,
+            resulted::Errand::json_schema,
+        ),
+        (
+            "Errata",
+            true,
+            result_read::<resulted::Errata>,
+            resulted::Errata::json_schema,
+        ),
+        (
+            "Missive",
+            true,
+            result_read::<resulted::Missive>,
+            resulted::Missive::json_schema,
+        ),
+        (
+            "Notebook",
+            true,
+            result_read::<resulted::Notebook>,
+            resulted::Notebook::json_schema,
+        ),
+        (
+            "Postbox",
+            false,
+            result_read::<resulted::Postbox>,
+            resulted::Postbox::json_schema,
+        ),
+        (
+            "Reply",
+            false,
+            result_read::<resulted::Reply>,
+            resulted::Reply::json_schema,
+        ),
+        (
+            "Summary",
+            false,
+            result_read::<resulted::Summary>,
+            resulted::Summary::json_schema,
+        ),
+        (
+            "Turn",
+            false,
+            result_read::<resulted::Turn<u32>>,
+            resulted::Turn::<u32>::json_schema,
         ),
     ]
 }
@@ -1916,6 +2112,47 @@ fn type_check_a_range_parses_under_zod_what_serde_writes() {
         .collect();
     let driver = RANGES_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
     let Some((printed, failed)) = loaded_from("ranges", &ranges(), &driver) else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        expected.join("\n"),
+        "the schemas do not read what a serde read reads:\n{failed}"
+    );
+}
+
+/// Every payload serde writes of a `Result` is parsed by the Zod schema of its type under `node`
+/// and admitted by the type's JSON Schema, and every payload serde refuses is refused by both: an
+/// object of both keys, of neither and of another key, a value under an arm of `()`, an arm of
+/// another type, and a model in an arm that breaks its bounds, each issue under its path.
+#[cfg(feature = "jsonschema")]
+#[test]
+fn type_check_a_result_parses_under_zod_what_serde_writes() {
+    let mut payloads = resulted::read_payloads();
+    payloads.extend(resulted::refused_payloads());
+    payloads.extend(resulted::judged_payloads());
+    let mut expected = Vec::new();
+    let mut listed: Vec<(&str, &str, &str, bool)> = Vec::new();
+    for payload in &payloads {
+        let (_, judged, read, document) = resulted_models()
+            .into_iter()
+            .find(|(named, _, _, _)| *named == payload.read_as)
+            .unwrap();
+        let (reads, printed) = read(payload.name, &payload.json, judged);
+        let value: serde_json::Value = serde_json::from_str(&payload.json).unwrap();
+        assert_eq!(
+            documents::admits(&document(), &value),
+            reads,
+            "the JSON Schema of {} and serde disagree on {}: {}",
+            payload.read_as,
+            payload.name,
+            payload.json
+        );
+        expected.push(printed);
+        listed.push((payload.name, payload.read_as, payload.json.as_str(), judged));
+    }
+    let driver = RESULTS_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
+    let Some((printed, failed)) = loaded_from("results", &results(), &driver) else {
         return;
     };
     assert_eq!(

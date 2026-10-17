@@ -329,6 +329,31 @@ mod run_swift_ranges;
 #[path = "service_schema_emitted_client_tests/run_kotlin_ranges.rs"]
 mod run_kotlin_ranges;
 
+/// The models a std `Result` is written on, and the payloads serde writes and refuses.
+#[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
+#[path = "std_result_tests/models.rs"]
+mod result_models;
+
+/// The payloads each client reads a `Result` from, and what the serde read prints of each.
+#[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
+#[path = "service_schema_emitted_client_tests/result_rows.rs"]
+mod result_rows;
+
+/// The std `Result`, read and written by the emitted Dart types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_results.rs"]
+mod run_dart_results;
+
+/// The std `Result`, read and written by the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_results.rs"]
+mod run_swift_results;
+
+/// The std `Result`, read and written by the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_results.rs"]
+mod run_kotlin_results;
+
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
 #[cfg(all(test, feature = "dart"))]

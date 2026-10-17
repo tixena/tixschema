@@ -34,8 +34,8 @@ use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{brand_field, parse_serde_key_omission, struct_tag};
 use crate::field_type::{
-    FieldDef, FieldDefType, RangeKind, VariantKind, classify_variant, get_field_def, is_plain_enum,
-    is_sequence_wrapper,
+    FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, classify_variant, get_field_def,
+    is_plain_enum, is_sequence_wrapper,
 };
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 use crate::utils::{
@@ -190,6 +190,10 @@ thread_local! {
     /// it declares, so every range of one kind names one class. Cleared with
     /// [`KOTLIN_TUPLE_AUX`].
     static KOTLIN_RANGES: RefCell<Vec<(String, String)>> = const { RefCell::new(Vec::new()) };
+    /// The sealed interface each shape of `Result` the item being expanded writes is declared as,
+    /// by which of its arms holds `()`, so every `Result` of one shape names one interface. Cleared
+    /// with [`KOTLIN_TUPLE_AUX`].
+    static KOTLIN_RESULTS: RefCell<Vec<([bool; 2], String)>> = const { RefCell::new(Vec::new()) };
 }
 
 /// The Kotlin tokens `item` earns, given what `#[model_schema(...)]` wrote on it. Dispatches on
@@ -218,6 +222,9 @@ pub fn kotlin_refused_width(field: &FieldDef) -> Option<&'static str> {
         }
         FieldDefType::Tuple(elements) => elements.iter().find_map(kotlin_refused_width),
         FieldDefType::Range(_, bound) => kotlin_refused_width(bound),
+        FieldDefType::Result(ok, err) => {
+            kotlin_refused_width(ok).or_else(|| kotlin_refused_width(err))
+        }
         FieldDefType::TypeParam(_)
         | FieldDefType::Unknown
         | FieldDefType::StringLiteral(_)
@@ -463,6 +470,7 @@ fn kotlin_base(field: &FieldDef) -> String {
         FieldDefType::TypeParam(name) => name.clone(),
         FieldDefType::Tuple(elements) => tuple_wrapper_typename(elements, false),
         FieldDefType::Range(kind, bound) => range_typename(*kind, &kotlin_typename(bound)),
+        FieldDefType::Result(ok, err) => result_typename(ok, err, kotlin_typename),
         FieldDefType::SiblingType(name, generics) => {
             if let [element] = generics.as_slice()
                 && is_sequence_wrapper(name)
@@ -553,6 +561,10 @@ fn field_reaches_type_parameter(field: &FieldDef, type_parameters: &[String]) ->
                 || field_reaches_type_parameter(value, type_parameters)
         }
         FieldDefType::Range(_, bound) => field_reaches_type_parameter(bound, type_parameters),
+        FieldDefType::Result(ok, err) => {
+            field_reaches_type_parameter(ok, type_parameters)
+                || field_reaches_type_parameter(err, type_parameters)
+        }
         FieldDefType::Tuple(_)
         | FieldDefType::Unknown
         | FieldDefType::StringLiteral(_)
@@ -626,6 +638,9 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
         ),
         FieldDefType::Range(kind, bound) => {
             range_serializer(*kind, &kotlin_serializer_expr(bound, type_parameters))
+        }
+        FieldDefType::Result(ok, err) => {
+            result_serializer(ok, err, |arm| kotlin_serializer_expr(arm, type_parameters))
         }
         // None of these ever reaches a type parameter (see `field_reaches_type_parameter`), so
         // this arm is unreached in practice; it stays total rather than a wildcard.
@@ -793,6 +808,169 @@ fn range_serializer(kind: RangeKind, held: &str) -> String {
     format!("{}.serializer({held})", range_class(kind))
 }
 
+/// The sealed interface a `Result` of the arms `ok` and `err` is read and written through, declared
+/// once per item for each shape, beside a class per arm and the serializer that reads and writes
+/// the object whose one key names the arm. It is generic over the type of each arm that holds a
+/// value; an arm of `()` is an object, written as `null`. Any other object is refused, as serde
+/// refuses it.
+fn result_class(ok: &FieldDef, err: &FieldDef) -> String {
+    let shape = [ok.is_unit(), err.is_unit()];
+    KOTLIN_RESULTS.with(|results| {
+        let mut written = results.borrow_mut();
+        if let Some((_, named)) = written.iter().find(|(declared, _)| *declared == shape) {
+            return named.clone();
+        }
+        let index = KOTLIN_TUPLE_COUNTER.with(|counter| {
+            let next = counter.get() + 1;
+            counter.set(next);
+            next
+        });
+        let named = format!("KotlinResult{index}");
+        KOTLIN_TUPLE_AUX.with(|aux| aux.borrow_mut().push(result_declarations(&named, shape)));
+        written.push((shape, named.clone()));
+        named
+    })
+}
+
+/// The declarations of the interface `named` of a `Result` whose arms hold `()` where `shape`
+/// says so: the interface, a class per arm, and its serializer. The serializer reads the object
+/// as the plugin reads a class, key by key, so a key no arm writes is refused as serde refuses it.
+fn result_declarations(named: &str, shape: [bool; 2]) -> String {
+    let held: Vec<&str> = RESULT_ARMS
+        .into_iter()
+        .zip(shape)
+        .filter(|(_, unit)| !unit)
+        .map(|(arm, _)| arm)
+        .collect();
+    let listed = |each: &dyn Fn(&str) -> String| {
+        if held.is_empty() {
+            String::new()
+        } else {
+            let written: Vec<String> = held.iter().map(|arm| each(arm)).collect();
+            format!("<{}>", written.join(", "))
+        }
+    };
+    let covariant = listed(&|arm| format!("out {arm}Value"));
+    let invariant = listed(&|arm| format!("{arm}Value"));
+    let serializer = format!("{named}Serializer");
+    let refusal = "throw SerializationException(\"Not one key, Ok or Err, of a Result\")";
+    let (mut arms, mut elements, mut writes, mut reads) =
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    for (index, (arm, unit)) in RESULT_ARMS.into_iter().zip(shape).enumerate() {
+        // Each arm is an instance of the interface whatever the other arm holds.
+        let arguments: Vec<String> = held
+            .iter()
+            .map(|other| {
+                if *other == arm {
+                    format!("{arm}Value")
+                } else {
+                    "Nothing".to_owned()
+                }
+            })
+            .collect();
+        let implemented = if arguments.is_empty() {
+            named.to_owned()
+        } else {
+            format!("{named}<{}>", arguments.join(", "))
+        };
+        let read_by = if unit {
+            "JsonNull.serializer()".to_owned()
+        } else {
+            format!("{}Serializer", arm.to_lowercase())
+        };
+        elements.push(format!(
+            "element(\"{arm}\", {read_by}.descriptor, isOptional = true)"
+        ));
+        if unit {
+            arms.push(format!("data object {named}{arm} : {implemented}"));
+            writes.push(format!(
+                "is {named}{arm} -> encodeSerializableElement(descriptor, {index}, {read_by}, JsonNull)"
+            ));
+            reads.push(format!(
+                "{index} -> {{ decodeSerializableElement(descriptor, {index}, {read_by}); {named}{arm} }}"
+            ));
+        } else {
+            arms.push(format!(
+                "data class {named}{arm}<out {arm}Value>(val value: {arm}Value) : {implemented}"
+            ));
+            writes.push(format!(
+                "is {named}{arm} -> encodeSerializableElement(descriptor, {index}, {read_by}, value.value)"
+            ));
+            reads.push(format!(
+                "{index} -> {named}{arm}(decodeSerializableElement(descriptor, {index}, {read_by}))"
+            ));
+        }
+    }
+    let opened = if held.is_empty() {
+        format!("object {serializer}")
+    } else {
+        let handed: Vec<String> = held
+            .iter()
+            .map(|arm| {
+                format!(
+                    "private val {}Serializer: KSerializer<{arm}Value>",
+                    arm.to_lowercase()
+                )
+            })
+            .collect();
+        format!("class {serializer}{invariant}({})", handed.join(", "))
+    };
+    let own = format!("{named}{invariant}");
+    format!(
+        "@Serializable(with = {serializer}::class) sealed interface {named}{covariant} {} \
+         {opened} : KSerializer<{own}> {{ \
+         override val descriptor: SerialDescriptor = buildClassSerialDescriptor(\"{named}\") {{ {} }}; \
+         override fun serialize(encoder: Encoder, value: {own}) = encoder.encodeStructure(descriptor) {{ \
+         when (value) {{ {} }} }}; \
+         override fun deserialize(decoder: Decoder): {own} = decoder.decodeStructure(descriptor) {{ \
+         var read: {own}? = null; \
+         while (true) {{ val index = decodeElementIndex(descriptor); \
+         if (index == CompositeDecoder.DECODE_DONE) break; if (read != null) {refusal}; \
+         read = when (index) {{ {}; else -> {refusal} }} }}; \
+         read ?: {refusal} }} }}",
+        arms.join(" "),
+        elements.join("; "),
+        writes.join("; "),
+        reads.join("; "),
+    )
+}
+
+/// The Kotlin type of a `Result` of the arms `ok` and `err`, each arm that holds a value typed as
+/// `typed` answers.
+fn result_typename(ok: &FieldDef, err: &FieldDef, typed: impl Fn(&FieldDef) -> String) -> String {
+    let held: Vec<String> = [ok, err]
+        .into_iter()
+        .filter(|arm| !arm.is_unit())
+        .map(typed)
+        .collect();
+    let class = result_class(ok, err);
+    if held.is_empty() {
+        class
+    } else {
+        format!("{class}<{}>", held.join(", "))
+    }
+}
+
+/// The `KSerializer` of a `Result` of the arms `ok` and `err`, handed the serializer `read_by`
+/// answers for each arm that holds a value.
+fn result_serializer(
+    ok: &FieldDef,
+    err: &FieldDef,
+    read_by: impl Fn(&FieldDef) -> String,
+) -> String {
+    let held: Vec<String> = [ok, err]
+        .into_iter()
+        .filter(|arm| !arm.is_unit())
+        .map(read_by)
+        .collect();
+    let serializer = format!("{}Serializer", result_class(ok, err));
+    if held.is_empty() {
+        serializer
+    } else {
+        format!("{serializer}({})", held.join(", "))
+    }
+}
+
 /// The `{ident}_kotlin` module ident an item's own `kotlin_definition()` publishes from.
 fn kotlin_module_ident(rust_ident: &str, span: proc_macro2::Span) -> Ident {
     Ident::new(&format!("{}_kotlin", to_snake_case(rust_ident)), span)
@@ -813,6 +991,7 @@ fn kotlin_module_tokens(
     defaults: &SerdeDefaults,
 ) -> TokenStream {
     KOTLIN_RANGES.with(|ranges| ranges.borrow_mut().clear());
+    KOTLIN_RESULTS.with(|results| results.borrow_mut().clear());
     let full_source = KOTLIN_TUPLE_AUX
         .with(RefCell::take)
         .into_iter()

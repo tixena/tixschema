@@ -542,6 +542,41 @@ Dart, Swift and Kotlin each read and write the object through a type of their ow
 
 A range is read by its last name. A `#[model_schema()]` type of the crate's own named `Range`, `RangeInclusive`, `RangeFrom` or `RangeTo`, declared above the type that holds it, keeps its name, and `core::ops::Range` or `std::ops::Range` written in full is the std range. A range written by its bare name earns a check beside the type that holds it, which fails the build with `E0308` where the name is another type. A range is refused as a map key, serde writing it as an object, and under `#[serde(flatten)]`, where serde writes its bounds among the members of the object that holds it. `pattern`, `minLength`, `maxLength`, `minimum` and `maximum` are refused on a range field: a bound on what a range holds goes on the type of its bounds, a branded newtype.
 
+### Results
+
+`Result<T, E>` describes as the object serde writes for it, the externally tagged form of an enum of two variants: `{"Ok": T}` or `{"Err": E}`. An arm of `()` is `null`, serde writing `Ok(())` as `{"Ok": null}`.
+
+```rust
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Reply {
+    pub outcome: Result<u32, String>,
+    pub stored: Result<(), String>,
+}
+```
+
+```typescript
+export type Reply = {
+  outcome: { Ok: number } | { Err: string };
+  stored: { Ok: null } | { Err: string };
+};
+```
+
+```typescript
+const Reply$RawSchema = z.strictObject({
+  outcome: z.union([z.strictObject({ Ok: z.number().int() }), z.strictObject({ Err: z.string() })]),
+  stored: z.union([z.strictObject({ Ok: z.null() }), z.strictObject({ Err: z.string() })]),
+});
+```
+
+The JSON Schema of a `Result` is a `oneOf` of the two objects, each with its one key `required` and `additionalProperties: false`. An arm is described as its type is anywhere else, and an arm of `()` as `{"type": "null"}`. An object of both keys, of neither or of another key is refused, as serde refuses it. A `Result` is that object wherever it is held: in an `Option`, a list, a map's value, a tuple's position, a type argument, the arm of another `Result`, a brand, an alias and a variant's slot. `()` outside an arm of a `Result` is described as it was.
+
+Dart, Swift and Kotlin each read and write the object through a type of their own, written for the field that holds the `Result`: Dart a sealed class, `DartResult{N}`, with an `Ok` and an `Err` subclass, Swift an enum of two cases named after the type and the field, `ReplyOutcomeResult`, and Kotlin a sealed interface, `KotlinResult{N}`, with a class per arm and a serializer of its own. `{N}` numbers the shapes an item writes, by which of the arms hold `()`. An arm of `()` is a case, a subclass or an object that holds no value. Each refuses an object of both keys, of neither or of another key, as serde does. None of them is named `Result`: Swift has its own, and Kotlin imports `kotlin.Result` into every file.
+
+`validate()` walks the arm the value holds, and reports under the key serde writes the arm under: a `frontmatter: Option<Result<Masthead, Unparsed>>`, `Masthead` holding a `title` under `minLength = 1`, whose `Ok` holds an empty title reports `'frontmatter.Ok.title': too short: minimum length is 1, got 0`, in Rust, Dart, Swift and Kotlin. The read reads a model in either arm unjudged, so the whole value is judged once, and each message is listed once. The [recovering decode](#recovering-decode-decode_with) walks into the arm, and lists an issue inside it at its full path, `frontmatter.Ok.title`. An object of both keys, of neither or of another key is one issue at the field. Under `mongodb` a `Result` field is a `Field` of the whole value.
+
+A `Result` is read by its last name with two type arguments: a `Result<T>` of one, an alias of the crate's own, is read as it was. A `#[model_schema()]` type of the crate's own named `Result`, declared above the type that holds it, keeps its name, and `core::result::Result` or `std::result::Result` written in full is the std `Result`. A `Result` written by its bare name earns a check beside the type that holds it, which fails the build with `E0308` where the name is another type. A `Result` is refused as a map key, serde writing it as an object, and under `#[serde(flatten)]`, where serde writes the key of its arm among the members of the object that holds it. `pattern`, `minLength`, `maxLength`, `minimum` and `maximum` are refused on a `Result` field: a bound on what an arm holds goes on the arm's own type. A brand over a `Result` is declared with `no_display`, a `Result` writing no text.
+
 ### Enums
 
 #### Plain Enums
@@ -6216,7 +6251,7 @@ The callback's types and the resolvers' are named through the flagged type's own
 - `Model(&'static str)`, a `#[model_schema]` type by its Rust name as the field's type writes it, and `TypeParam(&'static str)`, one of the type's own type parameters by its name;
 - `Array(Box<Expected>)`, `Optional(Box<Expected>)` and `Map(Box<Expected>)`, each carrying what it holds, a map the type of its values, and `Tuple(Vec<Expected>)`, carrying its positions in order: `Array(Model("Version"))`, `Optional(ObjectId)`, `Tuple([String, U32])`;
 - `Range(&'static str, Box<Expected>)`, a std range by the name it is declared under in `core::ops` and the type of its bounds: `Range("RangeInclusive", Box::new(U32))`;
-- `Variants(&'static [&'static str])`, the tag values a tagged enum accepts, for a tag naming none of them.
+- `Variants(&'static [&'static str])`, the tag values a tagged enum accepts, for a tag naming none of them, and the two arms of a `Result`, `Variants(["Ok", "Err"])`, for an object that names neither or both.
 
 `Path` is where an issue sits: `Path(pub Vec<Segment>)`, a `Segment` being `Key(String)` or `Index(usize)`. It displays as `versions[1].number`, and the empty path is the value itself. It carries the helpers a callback fixes the raw value through, each answering whether it did so:
 
@@ -6252,6 +6287,8 @@ Read as a struct holding `name: String` and `versions: Vec<Version>`, `{ "name":
 **A tuple struct and a tuple field** are walked by position, each position a `Segment::Index`. Read as `struct Pair(String, u32)`, `["a", "x"]` lists `Invalid` at `[1]`, expected `U32`, and `["a"]` lists `Missing` at `[1]`. A position the type does not declare is `Unknown`: serde refuses a JSON array longer than the tuple, so `["a", 1, true]` lists `Unknown` at `[2]` beside an `Undescribed`, and serde reads past the position in a BSON list, where the `Unknown` is the only issue. A field `spot: (String, u32)` holding `[5, 1]` lists `Invalid` at `spot[0]`, expected `String`.
 
 **A brand and a single-slot tuple struct** are read as the one value they hold, at the path they sit at, and the issue names what they hold. With `id` a brand over `String`, a struct holding `"id": 5` lists `Invalid` at `id`, expected `String`. The read a brand is listed from holds the value to the brand's own bound, wherever a schema surface writes one: a brand declared `minLength = 3` lists `"ab"` as `Invalid`, and a [check](#checks-check) the brand names is listed beside it, from the value read. Over another flagged type it is walked as that type, whatever shape that type has: with `pinned` a brand over `Version`, `"pinned": { "number": "3" }` lists `Invalid` at `pinned.number`, and with `owner` a brand over a brand over `String`, `"owner": 5` lists `Invalid` at `owner`, expected `String`.
+
+**A std `Result`** is walked as the externally tagged enum serde writes it as: an object whose one key, `Ok` or `Err`, names the arm, and what the arm holds is walked under that key. With `frontmatter: Option<Result<Headline, Garbled>>`, `"frontmatter": { "Ok": { "title": "" } }` lists `Invalid` at `frontmatter.Ok.title`, where `title` is under `minLength = 1`, and `"outcome": { "Ok": "seven" }` lists `Invalid` at `outcome.Ok`, expected `U32`. An object of both keys, of neither or of another key, and a value that is no object, is one `Invalid` at the field, expected `Variants(["Ok", "Err"])`. A `Result` an arm of which holds a value of one of the type's own parameters is read whole.
 
 **A unit struct** is the `{}` tixschema makes it write, in which no key is its own: read as `struct Ping;`, `{ "x": 1 }` lists `Unknown` at `x`.
 
@@ -7173,6 +7210,7 @@ A function is there for every key serde writes, and the kind it answers follows 
 | A list of lists | `ListField<Root, Vec<T>>`: each element is one whole list |
 | A tuple | `Field<Root, (A, B)>`: one whole value |
 | A std range: `Range<T>`, `RangeInclusive<T>`, `RangeFrom<T>`, `RangeTo<T>` | `Field<Root, Range<T>>`: one whole value |
+| A std `Result<T, E>` | `Field<Root, Result<T, E>>`: one whole value |
 | A field serde never writes, under `skip` or `skip_serializing` | No function |
 | A field with a hook that writes it: `with`, `serialize_with`, the one `as_number` adds | `Field`, or `OptionalField` for an `Option`, whose values are written through the hook |
 | A field serde writes and never reads back, under `skip_deserializing`, or reads through `deserialize_with` alone | One whole value, of the kind its `Option` or its list is |

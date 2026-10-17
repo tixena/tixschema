@@ -36,8 +36,8 @@ use crate::features::serde::{
     parse_serde_type_attributes, parse_written_renames, transparent_field,
 };
 use crate::field_type::{
-    FieldDefType, get_field_def, is_map_wrapper, is_refused_sequence_wrapper, is_sequence_wrapper,
-    is_transparent_wrapper,
+    FieldDefType, RESULT_ARMS, get_field_def, is_map_wrapper, is_refused_sequence_wrapper,
+    is_sequence_wrapper, is_transparent_wrapper, written_std_result,
 };
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use crate::model_schema::judged_read::bounded_listed_read;
@@ -297,9 +297,11 @@ impl<'item> Flattened<'item> {
             Step::Present(present) if matches!(present.step, Step::Model) => {
                 Self::Optional(present.ty, ty)
             }
-            Step::Items(_) | Step::Leaf(_) | Step::Positions(_) | Step::Present(_) => {
-                Self::Unwalked(Some(&field.ty))
-            }
+            Step::Arms(_, _)
+            | Step::Items(_)
+            | Step::Leaf(_)
+            | Step::Positions(_)
+            | Step::Present(_) => Self::Unwalked(Some(&field.ty)),
         }
     }
 
@@ -319,7 +321,8 @@ impl<'item> Flattened<'item> {
             }
             Self::Whole(walk) => Some(match &walk.step {
                 Step::Leaf(whole) => (whole.read.clone(), walk.ty),
-                Step::Entries(_)
+                Step::Arms(_, _)
+                | Step::Entries(_)
                 | Step::Items(_)
                 | Step::Model
                 | Step::Positions(_)
@@ -853,6 +856,8 @@ impl Source {
 
 /// How the value at one position of a field's type is walked.
 enum Step<'ty> {
+    /// A std `Result`: the walk of its `Ok` and that of its `Err`.
+    Arms(Box<Walk<'ty>>, Box<Walk<'ty>>),
     Entries(Box<Walk<'ty>>),
     Items(Box<Walk<'ty>>),
     Leaf(Whole),
@@ -964,6 +969,7 @@ impl Walker<'_> {
         let source = self.source;
         let path = path_expression(segments);
         match &walk.step {
+            Step::Arms(ok, err) => self.result_arms([ok, err], held, segments, depth, reported),
             Step::Entries(inner) => {
                 let (entries, key, item) = (
                     binding("entries", depth),
@@ -1509,7 +1515,11 @@ impl Walker<'_> {
             // No walk reaches any other value serde reads from the entries: every key counts as
             // its own, and serde's verdict is the read's.
             Step::Leaf(_) | Step::Present(_) if reads_entries(walk) => (any_key, false, every_key),
-            Step::Items(_) | Step::Leaf(_) | Step::Positions(_) | Step::Present(_) => return None,
+            Step::Arms(_, _)
+            | Step::Items(_)
+            | Step::Leaf(_)
+            | Step::Positions(_)
+            | Step::Present(_) => return None,
         };
         let (named, keyed) = (
             self.named_method(true, &asked),
@@ -1527,7 +1537,8 @@ impl Walker<'_> {
     fn held_methods(&self, walk: &Walk<'_>, validator: Option<&FieldValidator>) -> TokenStream {
         let found = Ident::new("found", Span::call_site());
         let walked = match &walk.step {
-            Step::Entries(_)
+            Step::Arms(_, _)
+            | Step::Entries(_)
             | Step::Items(_)
             | Step::Model
             | Step::Positions(_)
@@ -2103,6 +2114,54 @@ impl Walker<'_> {
         handed.held = remaining;
         handed.owned = false;
         bound
+    }
+
+    /// The arms a `Result` held under `held` is matched by: an object of one key, `Ok` or `Err`,
+    /// whose value is walked under that key as the arm holds it, and one issue for any other.
+    fn result_arms(
+        &self,
+        [ok, err]: [&Walk<'_>; 2],
+        held: &Ident,
+        segments: &[TokenStream],
+        depth: usize,
+        reported: &Type,
+    ) -> Vec<Arm> {
+        let path = path_expression(segments);
+        let (object, held_by_arm) = (binding("arms", depth), binding("arm", depth));
+        let expected = self.expected(reported);
+        let walked = RESULT_ARMS.into_iter().zip([ok, err]).map(|(arm, inner)| {
+            let each = self.statement(
+                inner,
+                &held_by_arm,
+                &under(
+                    segments,
+                    &quote! { ::core::result::Result::Ok(#arm.to_owned()) },
+                ),
+                depth,
+                None,
+            );
+            quote! {
+                if let (1, ::core::option::Option::Some(#held_by_arm)) = (#object.len(), #object.get(#arm)) {
+                    #each
+                } else
+            }
+        });
+        let refused = not_the_shape(
+            held,
+            &path,
+            &expected,
+            "not an object of one key, Ok or Err",
+        )
+        .body;
+        let matched = self.source.entries(&object);
+        vec![
+            Arm {
+                body: quote! {{ #(#walked)* { #refused; } }},
+                nothing: false,
+                pattern: quote! { #held @ #matched },
+            },
+            not_the_shape(held, &path, &expected, "not an object"),
+        ]
     }
 
     /// What every method listing the issues of one value takes, after its name.
@@ -3799,7 +3858,12 @@ fn member_walk<'item>(
     let through = match hooked {
         Some(Step::Leaf(whole)) => whole.read,
         Some(
-            Step::Entries(_) | Step::Items(_) | Step::Model | Step::Positions(_) | Step::Present(_),
+            Step::Arms(_, _)
+            | Step::Entries(_)
+            | Step::Items(_)
+            | Step::Model
+            | Step::Positions(_)
+            | Step::Present(_),
         )
         | None => own_reader(&member.ty),
     };
@@ -4151,6 +4215,18 @@ fn path_step<'ty>(type_path: &'ty TypePath, ty: &'ty Type, parameters: &[String]
     {
         return held_in(Step::Entries, walk_of(inner, parameters), ty, parameters);
     }
+    // serde writes a `Result` as the object whose one key names its arm, which is walked.
+    if let Some((ok_type, err_type)) = written_std_result(type_path) {
+        let (ok, err) = (walk_of(ok_type, parameters), walk_of(err_type, parameters));
+        return if ok.is_of_a_parameter() || err.is_of_a_parameter() {
+            plain_value(ty, parameters)
+        } else {
+            Walk {
+                step: Step::Arms(Box::new(ok), Box::new(err)),
+                ty,
+            }
+        };
+    }
     // serde writes the wrapper as the value it holds, so what is walked is that value.
     if is_transparent_wrapper(&name)
         && let Some(inner) = first
@@ -4202,7 +4278,7 @@ fn query_items() -> TokenStream {
 fn reads_entries(walk: &Walk<'_>) -> bool {
     match &walk.step {
         Step::Entries(_) | Step::Model => true,
-        Step::Items(_) | Step::Positions(_) => false,
+        Step::Arms(_, _) | Step::Items(_) | Step::Positions(_) => false,
         Step::Leaf(whole) => {
             whole.hooked || whole.parameterized || holds_any_value(walk.ty) || holds_an_id(walk.ty)
         }

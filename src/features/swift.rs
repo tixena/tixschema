@@ -18,8 +18,8 @@ use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{brand_field, parse_serde_key_omission, struct_tag};
 use crate::field_type::{
-    FieldDef, FieldDefType, RangeKind, VariantKind, classify_variant, get_field_def, is_plain_enum,
-    is_sequence_wrapper,
+    FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, classify_variant, get_field_def,
+    is_plain_enum, is_sequence_wrapper,
 };
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 use crate::utils::{
@@ -570,6 +570,10 @@ fn reach_parameters(def: &FieldDef, reached: &mut Vec<String>) {
             }
         }
         FieldDefType::Range(_, bound) => reach_parameters(bound, reached),
+        FieldDefType::Result(ok, err) => {
+            reach_parameters(ok, reached);
+            reach_parameters(err, reached);
+        }
         FieldDefType::Unknown
         | FieldDefType::StringLiteral(_)
         | FieldDefType::BooleanLiteral(_)
@@ -700,6 +704,7 @@ fn swift_map_key_scalar(key: &FieldDef) -> String {
         | FieldDefType::NumberLiteral(_)
         | FieldDefType::Map(_, _)
         | FieldDefType::Range(_, _)
+        | FieldDefType::Result(_, _)
         | FieldDefType::Tuple(_)
         | FieldDefType::U64
         | FieldDefType::F32
@@ -753,6 +758,7 @@ fn swift_map_key_codec(key: &FieldDef) -> (Option<String>, String) {
         | FieldDefType::NumberLiteral(_)
         | FieldDefType::Map(_, _)
         | FieldDefType::Range(_, _)
+        | FieldDefType::Result(_, _)
         | FieldDefType::Tuple(_)
         | FieldDefType::U64
         | FieldDefType::F32
@@ -920,6 +926,7 @@ fn swift_field_shape(field: &FieldDef, name_hint: &str, aux: &mut Vec<String>) -
         FieldDefType::TypeParam(name) => direct_shape(name.clone()),
         FieldDefType::Tuple(elements) => tuple_shape(elements, name_hint, aux),
         FieldDefType::Range(kind, bound) => range_shape(*kind, bound, name_hint, aux),
+        FieldDefType::Result(ok, err) => result_shape(ok, err, name_hint, aux),
         FieldDefType::SiblingType(name, generics) => sibling_shape(name, generics, name_hint, aux),
         FieldDefType::Map(key, value) => map_shape(key, value, name_hint, aux),
         FieldDefType::Boolean | FieldDefType::BooleanLiteral(_) => direct_shape("Bool".to_owned()),
@@ -1138,6 +1145,104 @@ fn range_shape(
     direct_shape(held_at(&struct_name, &generic_params))
 }
 
+/// The case of the enum written for a `Result` that holds the arm serde writes under `arm`.
+fn result_case(arm: &str) -> String {
+    arm.to_lowercase()
+}
+
+/// A `Result` leaf: an enum of its own, `{hint}Result`, of one case per arm, read from and written
+/// as the object whose one key names the arm, and walked by its `validate()` under that key. An
+/// arm of `()` is a case with no value, written as `null`. Any other object is refused, as serde
+/// refuses it. The enum declares the parameters its arms reach.
+fn result_shape(
+    ok: &FieldDef,
+    err: &FieldDef,
+    name_hint: &str,
+    aux: &mut Vec<String>,
+) -> SwiftFieldShape {
+    let enum_name = format!("{name_hint}Result");
+    let mut cases = String::new();
+    let mut reads = String::new();
+    let mut encodes = String::new();
+    let mut shapes = Vec::new();
+    let mut locals = read::Locals::default();
+    let refused = |said: &str| {
+        format!(
+            "throw DecodingError.typeMismatch(Self.self, DecodingError.Context(codingPath: \
+             decoder.codingPath, debugDescription: \"{said}\"))"
+        )
+    };
+    for (arm, def) in RESULT_ARMS.into_iter().zip([ok, err]) {
+        let case = result_case(arm);
+        let key = format!("SwiftSchemaAnyKey(stringValue: \"{arm}\")!");
+        if def.is_unit() {
+            write!(cases, "case {case}; ").unwrap();
+            write!(
+                reads,
+                "case \"{arm}\": guard try container.decodeNil(forKey: key) else {{ {} }}; \
+                 self = .{case}; ",
+                refused(&format!("Expected null under {arm}"))
+            )
+            .unwrap();
+            write!(
+                encodes,
+                "case .{case}: try container.encodeNil(forKey: {key}); "
+            )
+            .unwrap();
+            continue;
+        }
+        let hint = format!("{enum_name}{arm}");
+        let (held, slot) = slot_resolve(def, &hint, aux);
+        write!(cases, "case {case}({held}); ").unwrap();
+        let source = read::Source::Keyed {
+            container: "container".to_owned(),
+            key: "key".to_owned(),
+            presence: read::Presence::Known,
+        };
+        let sink = |read: &str| format!("self = .{case}({read})");
+        let read = if validate::walks(def, false) {
+            read::unjudged(def, &hint, &source, &sink, &mut locals)
+        } else {
+            slot.read(&held, &case, &source, &sink)
+        };
+        write!(reads, "case \"{arm}\": {read}; ").unwrap();
+        write!(
+            encodes,
+            "case .{case}(let payload): try container.encode({}, forKey: {key}); ",
+            slot.written("payload")
+        )
+        .unwrap();
+        shapes.push(slot.shape);
+    }
+    let generic_params = bounded_generic_params(&parameters_reached(&[ok, err]));
+    let both = read::both(
+        &format!(
+            "let container = try decoder.container(keyedBy: SwiftSchemaAnyKey.self); \
+             guard container.allKeys.count == 1, let key = container.allKeys.first else {{ {} }}; \
+             switch key.stringValue {{ {reads}default: {} }}",
+            refused("Not one key, Ok or Err, of a Result"),
+            refused("Not one key, Ok or Err, of a Result")
+        ),
+        &preprocess::Written {
+            named: &enum_name,
+            ..preprocess::Written::default()
+        },
+    );
+    aux.push(format!(
+        "public enum {enum_name}{generic_params}: Codable, Sendable {{ {cases}{both}\
+         public func encode(to encoder: Encoder) throws {{ \
+         var container = encoder.container(keyedBy: SwiftSchemaAnyKey.self); \
+         switch self {{ {encodes}}} }}; {} }};",
+        validate::method(&validate::result_rules(&enum_name, ok, err)),
+    ));
+    let held_shapes: Vec<&SwiftFieldShape> = shapes.iter().collect();
+    let helpers = datetime_helpers_for(&enum_name, &generic_params, &held_shapes);
+    if !helpers.is_empty() {
+        aux.push(helpers);
+    }
+    direct_shape(held_at(&enum_name, &generic_params))
+}
+
 /// A slot, a value serde writes with no key, as it is declared and read: its Swift type, and its
 /// shape. An `as_number` date is read and written as the `Int64` it is declared as, which is the
 /// number serde writes.
@@ -1177,7 +1282,10 @@ fn sibling_shape(
         .enumerate()
         .map(|(index, argument)| {
             let def = arrayed(argument.clone());
-            let hint = if matches!(def.field_type, FieldDefType::Range(..)) {
+            let hint = if matches!(
+                def.field_type,
+                FieldDefType::Range(..) | FieldDefType::Result(..)
+            ) {
                 format!("{name_hint}Argument{index}")
             } else {
                 format!("{class_name}Argument{index}")
@@ -1241,6 +1349,7 @@ fn map_keys(key: &FieldDef) -> MapKeys {
         | FieldDefType::NumberLiteral(_)
         | FieldDefType::Map(_, _)
         | FieldDefType::Range(_, _)
+        | FieldDefType::Result(_, _)
         | FieldDefType::Tuple(_)
         | FieldDefType::Boolean
         | FieldDefType::U8

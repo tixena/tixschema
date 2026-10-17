@@ -6,7 +6,8 @@
 use super::validate;
 use super::{
     kotlin_base, kotlin_serializer_expr, kotlin_serializer_param_name, kotlin_typename,
-    lookup_kotlin_name, range_serializer, range_typename, tuple_wrapper_typename,
+    lookup_kotlin_name, range_serializer, range_typename, result_serializer, result_typename,
+    tuple_wrapper_typename,
 };
 use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
 
@@ -42,6 +43,8 @@ fn annotated_base(field: &FieldDef) -> String {
         tuple_wrapper_typename(positions, true)
     } else if let FieldDefType::Range(kind, bound) = &field.field_type {
         range_typename(*kind, &annotated_typename(bound))
+    } else if let FieldDefType::Result(ok, err) = &field.field_type {
+        result_typename(ok, err, annotated_typename)
     } else {
         kotlin_base(&innermost(field))
     };
@@ -144,6 +147,10 @@ fn holds_an_unjudged(field: &FieldDef) -> bool {
         positions.iter().any(in_a_position)
     } else if let FieldDefType::Range(_, bound) = &field.field_type {
         validate::asks_the_held(bound) && holds_an_unjudged(bound)
+    } else if let FieldDefType::Result(ok, err) = &field.field_type {
+        [ok, err]
+            .into_iter()
+            .any(|arm| !arm.is_unit() && validate::asks_the_held(arm) && holds_an_unjudged(arm))
     } else {
         false
     }
@@ -387,6 +394,8 @@ fn unjudged_serializer(field: &FieldDef, type_parameters: &[String]) -> String {
         )
     } else if let FieldDefType::Range(kind, bound) = &field.field_type {
         range_serializer(*kind, &unjudged_serializer(bound, type_parameters))
+    } else if let FieldDefType::Result(ok, err) = &field.field_type {
+        result_serializer(ok, err, |arm| unjudged_serializer(arm, type_parameters))
     } else {
         kotlin_serializer_expr(&innermost(field), type_parameters)
     };

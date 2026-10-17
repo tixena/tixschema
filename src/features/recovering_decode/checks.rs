@@ -16,8 +16,8 @@ use crate::features::serde::{
     parse_written_renames, variant_steps,
 };
 use crate::field_type::{
-    FieldDefType, classify_variant, get_field_def, is_map_wrapper, is_ownership_wrapper,
-    is_refused_sequence_wrapper, is_sequence_wrapper,
+    FieldDefType, RESULT_ARMS, classify_variant, get_field_def, is_map_wrapper,
+    is_ownership_wrapper, is_refused_sequence_wrapper, is_sequence_wrapper, written_std_result,
 };
 use crate::model_schema::checks::{ItemChecks, member_calls};
 use crate::model_schema::{
@@ -519,6 +519,9 @@ fn held_messages(
         }
         return holds_a_model(written).then(|| asked(value, place));
     }
+    if let Some(arms) = written_std_result(type_path) {
+        return arm_messages(arms.into(), value, place, depth, aliases);
+    }
     let mut arguments = type_arguments(&last.arguments);
     let (first, second) = (arguments.next(), arguments.next());
     if name == "Option" {
@@ -558,6 +561,39 @@ fn held_messages(
         });
     }
     holds_a_model(written).then(|| asked(value, place))
+}
+
+/// [`held_messages`] for a `Result` of `arms` under `value`: the value of the arm it holds, under
+/// the key serde writes the arm under.
+fn arm_messages(
+    arms: [&Type; 2],
+    value: &Ident,
+    place: &[Step],
+    depth: usize,
+    aliases: usize,
+) -> Option<TokenStream> {
+    let item = binding("held", depth);
+    let walked: Vec<TokenStream> = RESULT_ARMS
+        .into_iter()
+        .zip(arms)
+        .filter_map(|(arm, arm_type)| {
+            let step = Step::Written(arm.to_owned());
+            let each = held_messages(
+                arm_type,
+                &item,
+                &under(place, step),
+                depth.saturating_add(1),
+                aliases,
+            )?;
+            let variant = Ident::new(arm, Span::call_site());
+            Some(quote! {
+                if let ::core::result::Result::#variant(#item) = #value {
+                    #each
+                }
+            })
+        })
+        .collect();
+    (!walked.is_empty()).then(|| quote! { #(#walked)* })
 }
 
 /// [`held_messages`] for a list of `of_items` under `value`: each item at its index.

@@ -1,6 +1,6 @@
-//! The std ranges an item writes: the check, beside the item, that a range written by its bare name
-//! is the std type every surface describes, and the refusal of a range as a map key in a build
-//! whose map key guard does not run.
+//! The std ranges and the std `Result` an item writes: the check, beside the item, that one
+//! written by its bare name is the std type every surface describes, the refusal of one under
+//! `#[serde(flatten)]`, and that of one as a map key in a build whose map key guard does not run.
 
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, quote_spanned};
@@ -8,7 +8,9 @@ use syn::spanned::Spanned as _;
 use syn::{Fields, GenericArgument, Item, PathArguments, Type, TypePath};
 
 use crate::features::serde::parse_serde_key_omission;
-use crate::field_type::{RangeKind, names_std_ops, written_std_range};
+use crate::field_type::{
+    RangeKind, names_std_ops, names_std_result, written_std_range, written_std_result,
+};
 use crate::utils::written_type;
 
 #[cfg(any(
@@ -28,9 +30,9 @@ use crate::field_type::FieldDef;
 #[cfg(feature = "serde")]
 use crate::field_type::FieldDefType;
 
-/// One check per std range `item` writes by a path other than `core::ops` and `std::ops`, in the
-/// members serde reads or writes: a function that hands the std range back as the type the path
-/// names, which fails with E0308 where the path names another type.
+/// One check per std range and std `Result` `item` writes by a path other than the std module that
+/// declares it, in the members serde reads or writes: a function that hands the std type back as
+/// the type the path names, which fails with E0308 where the path names another type.
 pub fn identity_checks(item: &Item) -> Vec<TokenStream> {
     let mut checks = Vec::new();
     for ty in described_types(item) {
@@ -73,6 +75,9 @@ fn collect(ty: &Type, checks: &mut Vec<TokenStream>) {
             && !names_std_ops(&path.path)
         {
             checks.extend(identity_check(path, kind));
+        }
+        if written_std_result(path).is_some() && !names_std_result(&path.path) {
+            checks.extend(result_identity_check(path));
         }
         if let Some(last) = path.path.segments.last()
             && let PathArguments::AngleBracketed(arguments) = &last.arguments
@@ -120,6 +125,51 @@ fn identity_check(path: &TypePath, kind: RangeKind) -> Option<TokenStream> {
     })
 }
 
+/// The check of the `Result` `path` writes: the std `Result` of two types of the function's own,
+/// handed back as `path` names it at those types.
+fn result_identity_check(path: &TypePath) -> Option<TokenStream> {
+    let (ok, err) = (
+        Ident::new("T", Span::call_site()),
+        Ident::new("E", Span::call_site()),
+    );
+    let mut named = path.clone();
+    named.path.segments.last_mut()?.arguments =
+        PathArguments::AngleBracketed(syn::parse_quote! { <#ok, #err> });
+    let mut unit = path.clone();
+    unit.path.segments.last_mut()?.arguments =
+        PathArguments::AngleBracketed(syn::parse_quote! { <(), ()> });
+    let held = quote_spanned! { path.span()=> held };
+    Some(quote! {
+        const _: fn(::core::result::Result<(), ()>) -> #unit = {
+            fn is_std_result<#ok, #err>(held: ::core::result::Result<#ok, #err>) -> #named {
+                #held
+            }
+            is_std_result::<(), ()>
+        };
+    })
+}
+
+/// Refuses a `Result` under `#[serde(flatten)]`: serde writes the key of its arm among the members
+/// of the object that holds it, which no surface describes.
+#[cfg(feature = "serde")]
+pub fn flattened_result_error(
+    field: &syn::Field,
+    field_def: &FieldDef,
+    label: &str,
+) -> Option<TokenStream> {
+    if !matches!(field_def.field_type, FieldDefType::Result(_, _))
+        || !parse_serde_field_attributes(&field.attrs).flatten
+    {
+        return None;
+    }
+    let message = format!(
+        "{label}: `#[serde(flatten)]` cannot hold a `Result<_, _>` — serde writes the key of its \
+         arm among the members of the object that holds it, beside the other fields, and no \
+         surface describes it there. Write the result under a key of its own."
+    );
+    Some(syn::Error::new_spanned(field, prefixed_guard_message(&message)).to_compile_error())
+}
+
 /// Refuses a range under `#[serde(flatten)]`: serde writes its bounds among the members of the
 /// object that holds it, which no surface describes.
 #[cfg(feature = "serde")]
@@ -143,12 +193,12 @@ pub fn flattened_range_error(
     Some(syn::Error::new_spanned(field, prefixed_guard_message(&message)).to_compile_error())
 }
 
-/// Refuses a field whose type reaches a map keyed by a std range, in the words of the map key
-/// guard, which a build with no schema surface does not run: serde writes a range as an object.
+/// Refuses a field whose type reaches a map keyed by a std range or a std `Result`, in the words of
+/// the map key guard, which a build with no schema surface does not run: serde writes either as an
+/// object.
 #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
 pub fn map_key_error(field: &syn::Field, field_def: &FieldDef, label: &str) -> Option<TokenStream> {
-    let kind = field_def.range_map_key()?;
-    let key_name = format!("{}<_>", kind.name());
+    let key_name = field_def.object_map_key()?;
     let message = unwritable_map_key_message(label, &key_name, WRITTEN_AS_OBJECT);
     Some(syn::Error::new_spanned(field, prefixed_guard_message(&message)).to_compile_error())
 }
