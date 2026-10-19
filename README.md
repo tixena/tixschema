@@ -6028,10 +6028,11 @@ The entry `"decode_with"` adds these methods. The types the callback and the res
 
 ### Opting in
 
-Write the `enable` list among the type's `#[model_schema(...)]` arguments. It takes two entries, `"decode_with"` and `"mongodb"`:
+Write the `enable` list among the type's `#[model_schema(...)]` arguments. It takes three entries, `"decode_with"`, `"mongodb"` and `"archie"`:
 
 - `#[model_schema(enable = ["decode_with"])]` gives the type the recovering decode of a JSON value, and, in a build with tixschema's `bson` feature on, of a BSON document. A type that is read and never stored lists this, whether it is read from a request or from a BSON document.
 - `#[model_schema(enable = ["decode_with", "mongodb"])]` gives it, under tixschema's `mongodb` feature, the [MongoDB layer](#mongodb-operations-and-typed-filters) as well. A type that is stored lists both. In a build without the `mongodb` feature the entry adds nothing and is accepted, so the declaration builds whatever features tixschema is built with.
+- `#[model_schema(enable = ["archie"])]` gives it, under tixschema's `archie` feature, the [conversions to and from archie's frontmatter `Value`](#archie-frontmatter-conversions-archie). It needs no other entry, and is written beside them in any order.
 
 A type without the list gains nothing: its expansion is what it was, with no method and no type added. This section calls a type that lists `"decode_with"` a flagged type, and the entry the flag. The crate that declares a flagged type writes [the initializers](#the-support-libraries) once, at its root.
 
@@ -6112,7 +6113,7 @@ The list is read in every build. Each of these is refused, spanned on what is wr
 |---------|-------------|
 | `decode_with`, `decode_with = true` or `decode_with = false`, the flag as it was written before the list | ``tixschema: `decode_with` is now an entry of the `enable` list: write `#[model_schema(enable = ["decode_with"])]` `` |
 | `enable = ["mongodb"]` | ``tixschema: `"mongodb"` requires `"decode_with"`: write `enable = ["decode_with", "mongodb"]` `` |
-| `enable = ["decode_wth"]`, an entry the list does not read | ``tixschema: unknown entry `"decode_wth"`; the entries are `"decode_with"` and `"mongodb"` `` |
+| `enable = ["decode_wth"]`, an entry the list does not read | ``tixschema: unknown entry `"decode_wth"`; the entries are `"archie"`, `"decode_with"` and `"mongodb"` `` |
 | `enable = ["decode_with", "decode_with"]` | ``tixschema: `"decode_with"` is written twice`` |
 | `enable = []` | ``tixschema: the list is empty; remove `enable` `` |
 | `enable = "decode_with"`, `enable = [decode_with]`, or any other form but a list of string literals | `` `model_schema` argument `enable` takes a list of string literals, written `enable = ["decode_with"]` or `enable = ["decode_with", "mongodb"]` `` |
@@ -6702,6 +6703,34 @@ What the pipe holds every read to:
 - **A resolver is `Sync`.** It is a function, or a closure that holds what it needs, taken by reference: `&[&customer_as_text, &counted]`. A closure that counts in a `Cell` or a `RefCell` is refused (`E0277`, `` `Cell<u32>` cannot be shared between threads safely``), and one that counts in an atomic or behind a `Mutex` is taken. It is what lets a read that waits for MongoDB hold its resolvers and still move to another thread.
 
 `from_value_piped` is the same read of a `serde_json::Value`. Its resolvers take `&mut serde_json::Value` and `&Issue<serde_json::Value>`, and repair through `set_in_value` and `remove_from_value`.
+
+## archie Frontmatter Conversions (`archie`)
+
+With tixschema's `archie` feature on, a type declared with `#[model_schema(enable = ["archie"])]` converts to archie's frontmatter `Value`, and is read back from one. Both go through serde, so a `Value` holds what serde writes for the type:
+
+```rust
+#[model_schema(enable = ["archie"])]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Note {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub due_on: Option<String>,
+    pub tags: Vec<String>,
+    #[model_schema_prop(minLength = 1)]
+    pub title: String,
+}
+
+let value: Value = (&note).try_into()?;  // { "tags": ["parser"], "title": "Notes" }
+let note = Note::try_from(&value)?;
+```
+
+- **The write** is `TryFrom<&Note> for archie_core::parser::ast::Value`, through `archie_core::value::to_value`. It fails only where a member's own `Serialize` returns an error, or where a map key is not text, a number or a boolean.
+- **The read** is `TryFrom<&Value> for Note`, through `archie_core::value::from_value`. It is the type's own read, so it refuses what [`validate()`](#a-read-refuses-what-validate-refuses) refuses: a `title` written `""` is refused with `'title': too short: minimum length is 1, got 0`. A date, a time and a date-time the frontmatter holds are read as the text chrono reads.
+- **Both errors** are `archie_core::value::ValueError`.
+- **A type with parameters** converts at any filling. Each impl is bounded on the type itself: the write on `Tagged<Id>: Serialize`, the read on `Tagged<Id>: DeserializeOwned`.
+- **The recovering decode needs no entry of its own.** archie's `Value` turns into a `serde_json::Value`, and `from_value_with` reads it: `Note::from_value_with((&value).into(), decide)`, for a type that also lists `"decode_with"`.
+- **A type alias is refused**, in every build: `` `enable = ["archie"]` cannot be written on a type alias: `Short` is another name for `String`, and the conversions would have to be written for that type. List it on the model types the alias reaches.``
+- **What your crate lists:** `archie-core`, under the name `archie_core`, and `serde`. Without the `archie` feature, the entry adds nothing.
 
 ## MongoDB Operations and Typed Filters
 
@@ -7663,7 +7692,7 @@ The checks that run the operations against a real collection are in `tests/mongo
 
 ## Feature Flags
 
-The crate uses optional features to control code generation and dependencies. Each feature is enabled or disabled on its own, with two exceptions: `mongodb` turns on `bson`, and `bson` turns on `serde`.
+The crate uses optional features to control code generation and dependencies. Each feature is enabled or disabled on its own, with three exceptions: `mongodb` turns on `bson`, and `bson` and `archie` turn on `serde`.
 
 | Feature | Default | Description |
 |---------|---------|-------------|
@@ -7677,6 +7706,7 @@ The crate uses optional features to control code generation and dependencies. Ea
 | `indexmap` | No | `indexmap` type support: `IndexMap` as a map and `IndexSet` as a list. See [The order of a map's keys](#the-order-of-a-maps-keys) |
 | `dart` | No | Dart type generation via `dart_definition()`, with a JSON `fromJson`/`toJson` codec whose read [calls each `preprocess`](#a-preprocess-in-the-dart-client) and [refuses what `validate()` refuses](#the-dart-read-refuses-what-validate-refuses), and a [`validate()`](#validate-in-dart) on every type |
 | `swift` | No | Swift type generation with a `Codable` codec, and a [`validate()`](#validate-in-the-swift-client) on every type, which [the read of each calls](#a-swift-read-refuses-what-validate-refuses) |
+| `archie` | No | `TryFrom` conversions to and from archie's frontmatter `Value` on types whose [`enable` list](#opting-in) holds `"archie"`. See [archie Frontmatter Conversions](#archie-frontmatter-conversions-archie); turns on `serde` |
 | `kotlin` | No | Kotlin type generation via `kotlin_definition()`, with `kotlinx.serialization` annotations, a [`validate()`](#validate-in-the-kotlin-client) on every type and [a read that refuses what it refuses](#the-read-in-the-kotlin-client). A consuming Kotlin build declares two runtime dependencies the emitted code names -- `org.jetbrains.kotlinx:kotlinx-serialization-json` for the JSON codec and `org.jetbrains.kotlinx:kotlinx-coroutines-core` for the transport's own reply correlation and heartbeat -- plus the Kotlin Gradle plugin `kotlin("plugin.serialization")` |
 
 Common configurations:
@@ -7686,7 +7716,7 @@ Common configurations:
 tixschema = "0.1.0"
 
 # All features including optional ones
-tixschema = { features = ["serde", "zod", "jsonschema", "typescript", "mongodb", "bson", "chrono", "indexmap", "dart", "swift", "kotlin"] }
+tixschema = { features = ["serde", "zod", "jsonschema", "typescript", "mongodb", "bson", "chrono", "indexmap", "dart", "swift", "kotlin", "archie"] }
 
 # Minimal (TypeScript only, no Zod or JSON Schema)
 tixschema = { default-features = false, features = ["typescript"] }
@@ -7697,7 +7727,7 @@ tixschema = { default-features = false, features = ["serde", "zod", "typescript"
 
 CI tests every combination of the feature sets (`web`, `mobile`, `mongo`) via `cargo-hack`; `just test` runs every combination of the plain features locally.
 
-The features say what tixschema can generate, and a type's [`enable` list](#opting-in) says what it generates for that type: the recovering decode for `"decode_with"`, from BSON as well under `bson`, and the MongoDB layer for `"mongodb"`, under `mongodb`. A crate whose types write the list writes [the initializers](#the-support-libraries) at its root, `tixschema::decode_with_foundation!();`, and `tixschema::mongodb_foundation!();` where a type lists `"mongodb"`. `mongodb_foundation!()` writes nothing in a build without `mongodb`, and `decode_with_foundation!()` nothing in a build without `serde`, so both calls stay whatever features the crate builds with.
+The features say what tixschema can generate, and a type's [`enable` list](#opting-in) says what it generates for that type: the recovering decode for `"decode_with"`, from BSON as well under `bson`, the MongoDB layer for `"mongodb"`, under `mongodb`, and the conversions to archie's frontmatter `Value` for `"archie"`, under `archie`. A crate whose types write the list writes [the initializers](#the-support-libraries) at its root, `tixschema::decode_with_foundation!();`, and `tixschema::mongodb_foundation!();` where a type lists `"mongodb"`. `mongodb_foundation!()` writes nothing in a build without `mongodb`, and `decode_with_foundation!()` nothing in a build without `serde`, so both calls stay whatever features the crate builds with.
 
 ### A member named after a word the client language reserves
 
