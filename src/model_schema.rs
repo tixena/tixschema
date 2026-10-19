@@ -75,6 +75,9 @@ use crate::utils::{
     zod_factory_argument,
 };
 
+#[cfg(feature = "archie")]
+use crate::features::archie;
+
 #[cfg(all(feature = "zod", feature = "mongodb"))]
 use crate::features::object_id::get_object_id_zod_schema_with;
 
@@ -744,6 +747,9 @@ struct DecodeWithParts {
 /// What an `enable = [...]` list turns on for a type.
 #[derive(Clone, Copy, Default)]
 pub struct Enabled {
+    /// `"archie"`: the conversions to and from archie's frontmatter `Value`, under the `archie`
+    /// feature.
+    pub archie: bool,
     /// `"decode_with"`: `from_value_with`, `from_value_piped` and their walkers, and under the
     /// `bson` feature `from_bson_with`, `from_bson_piped` and theirs.
     pub decode_with: bool,
@@ -1306,6 +1312,7 @@ fn enable_arg(meta: &Meta) -> syn::Result<Enabled> {
         };
         let entry_text = entry.value();
         let turned_on = match entry_text.as_str() {
+            "archie" => &mut enabled.archie,
             "decode_with" => &mut enabled.decode_with,
             "mongodb" => {
                 mongodb_entry = Some(entry);
@@ -1316,7 +1323,7 @@ fn enable_arg(meta: &Meta) -> syn::Result<Enabled> {
                     entry,
                     format!(
                         "tixschema: unknown entry `{entry_text:?}`; the entries are \
-                         `\"decode_with\"` and `\"mongodb\"`"
+                         `\"archie\"`, `\"decode_with\"` and `\"mongodb\"`"
                     ),
                 ));
             }
@@ -1596,12 +1603,12 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     if let Some(output) = preprocess_refusal_output(&item, &parsed_args) {
         return output;
     }
-    // `decode_with` generates methods on the type it is written on, so a shape that cannot carry
-    // them is refused here rather than left with plain serde.
+    // `decode_with` generates methods on the type it is written on, and `"archie"` impls for it, so
+    // a shape that cannot carry them is refused here rather than left with plain serde.
     if let Some(output) = guard_failure_output(
         &item,
         item_schema_ident(&item),
-        &decode_with_guard_errors(&item, &parsed_args),
+        &enable_guard_errors(&item, &parsed_args),
     ) {
         return output;
     }
@@ -1641,7 +1648,15 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 }
 
 /// The expansion of `item` by its shape, or the refusal of a string check its shape cannot carry.
+/// The item's expansion, and after it the conversions `enable = ["archie"]` writes beside the type.
 fn process_item(item: Item, args: &ModelSchemaArgs) -> TokenStream {
+    let archie = archie_conversions(&item, args);
+    let expanded = process_shape(item, args);
+    quote! { #expanded #archie }
+}
+
+/// The expansion of each shape an item can take.
+fn process_shape(item: Item, args: &ModelSchemaArgs) -> TokenStream {
     if let Item::Struct(item_struct) = item {
         string_check_refusal_output(&item_struct, args)
             .unwrap_or_else(|| process_struct(item_struct, args))
@@ -2878,6 +2893,51 @@ const fn decode_with_arm_refusals(_item: &Item) -> Vec<syn::Error> {
 
 /// The `compile_error!` tokens `decode_with` earns where it cannot be written: on an alias, on a
 /// type that borrows, and on an enum under a tag two of whose arms would take one name.
+/// The conversions `enable = ["archie"]` writes beside a type, under the `archie` feature.
+#[cfg(feature = "archie")]
+fn archie_conversions(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
+    if args.enable.archie {
+        archie::conversions(item)
+    } else {
+        TokenStream::new()
+    }
+}
+
+/// Nothing: without the `archie` feature, the entry adds nothing.
+#[cfg(not(feature = "archie"))]
+fn archie_conversions(_item: &Item, _args: &ModelSchemaArgs) -> TokenStream {
+    TokenStream::new()
+}
+
+/// The refusal of `enable = ["archie"]` on a type alias, in every build: the conversions are impls
+/// on the type the alias names, which the alias cannot be written for.
+fn archie_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2::TokenStream> {
+    let Item::Type(alias) = item else {
+        return Vec::new();
+    };
+    if !args.enable.archie {
+        return Vec::new();
+    }
+    let name = &alias.ident;
+    let target = written_spelling(&alias.ty);
+    let refusal = syn::Error::new_spanned(
+        &alias.ty,
+        format!(
+            "`enable = [\"archie\"]` cannot be written on a type alias: `{name}` is another name \
+             for `{target}`, and the conversions would have to be written for that type. List it \
+             on the model types the alias reaches."
+        ),
+    );
+    vec![attr_guard_error(&refusal, &item_label(item))]
+}
+
+/// What the `enable` list refuses on an item: the refusals of `"decode_with"`, then of `"archie"`.
+fn enable_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2::TokenStream> {
+    let mut errors = decode_with_guard_errors(item, args);
+    errors.extend(archie_guard_errors(item, args));
+    errors
+}
+
 fn decode_with_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2::TokenStream> {
     if !args.enable.decode_with {
         return Vec::new();

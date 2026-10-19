@@ -15,7 +15,7 @@ default = ["web"]
 
 web = ["tixschema/web", "serde", "zod", "jsonschema", "typescript"]
 mobile = ["tixschema/mobile", "serde", "dart", "swift", "kotlin"]
-mongo = ["tixschema/mongo", "mongodb", "chrono", "indexmap"]
+mongo = ["tixschema/mongo", "mongodb", "chrono", "indexmap", "archie"]
 
 serde = ["tixschema/serde"]
 zod = ["tixschema/zod"]
@@ -28,6 +28,7 @@ indexmap = ["tixschema/indexmap"]
 dart = ["tixschema/dart"]
 swift = ["tixschema/swift"]
 kotlin = ["tixschema/kotlin"]
+archie = ["tixschema/archie", "serde"]
 
 [dev-dependencies]
 tixschema = { path = "..", default-features = false }
