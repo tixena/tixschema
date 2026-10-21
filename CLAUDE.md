@@ -565,7 +565,9 @@ reads the merged meta as it reads a member's own. `process_field` asks it throug
   a named type (a brand included), a number, a map, a tuple and a type parameter are not. It is
   `constrained_shape`'s walk held to `ConstraintLeaf::Str` and `ConstraintLeaf::Path`, written
   apart because it is asked in a build without `serde`;
-  `the_reach_of_an_enums_check_is_the_constraint_walks` holds the two together.
+  `the_reach_of_an_enums_check_is_the_constraint_walks` holds the two together. A member that
+  carries a `literal` is not reached: `member_prop_meta` leaves its meta as written, so the enum's
+  check never sits beside a literal, which takes no other rule.
 - A field with a check of its own is held to both: the longer `minLength`, the shorter `maxLength`,
   and the enum's `pattern` in `ModelSchemaPropMeta::enum_pattern` beside the field's own, which
   `patterns()` yields in that order. Zod writes one `.check(z.regex(…))` each, `both_patterns_json`
@@ -658,6 +660,15 @@ numeric field (`u8`–`f64`), a string literal only on a `String` field — or t
 compile error naming both the literal's kind and the field's declared type. A numeric literal is
 stored as `f64` and rendered without a trailing `.0` on TypeScript and Zod; the JSON Schema `const`
 is always written under `"type": "number"`, never `"integer"`.
+
+A `literal` takes no other rule: it admits one value, so a rule beside it is always met or never
+met. `check_literal_alone`, called from `model_schema_prop_guard_errors` right after
+`check_literal_kind_match`, refuses a literal written beside `minLength`, `maxLength`, `pattern`,
+`minimum`, `maximum` or `check`, in every build, naming the field, the literal and each rule
+(`written_constraint_keys`, read before a list's lengths move into `min_items`/`max_items`, then
+`check`). `as`, `preprocess`, `ts_optional` and `nullable` hold the value to no rule and stay
+allowed beside it. `README.md`'s "Literal Values" section shows the refusal, and
+`a_literal_beside_a_rule_is_refused` holds the README to it.
 
 `ts_optional` is a bare flag (no value): it renders an `Option<T>` field as the optional TypeScript key `field?: T` instead of the default `field: T | undefined`. Zod and JSON Schema output are unchanged. It is only valid on `Option<T>` fields (non-`Option` is a compile error) and composes with `as = Type`. The member must also have a key for the flag to make optional, and `validate_ts_optional_flag` refuses both positions where it has none, in every build: a positional slot writes no key at all, and one a serde attribute takes off the wire in both directions (`skip`, or `skip_serializing` and `skip_deserializing` together) is described on no surface. An attribute that drops the key one way only (`skip_serializing_if`, `skip_serializing`) leaves the member standing, and the flag still decides its spelling.
 
