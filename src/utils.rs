@@ -603,6 +603,11 @@ thread_local! {
     /// The names of enums declared `#[serde(untagged)]`. Kept out of [`ALIAS_INFO`] for the same
     /// reason as [`WIRE_SCALARS`]: a service macro reads this in every build.
     static UNTAGGED_ENUMS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+    /// The names of brands and aliases serde writes as a number or a `bool`, which the `bson`
+    /// library refuses as a document key. Kept out of [`ALIAS_INFO`] for the same reason as
+    /// [`WIRE_SCALARS`]: a type that lists `"mongodb"` is refused a map keyed by one in every
+    /// build.
+    static BSON_REFUSED_KEYS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
 }
 
 #[cfg(feature = "serde")]
@@ -1052,6 +1057,19 @@ pub fn record_wire_scalar(rust_ident: &str) {
 /// below the item asking.
 pub fn is_recorded_wire_scalar(rust_ident: &str) -> bool {
     WIRE_SCALARS.with(|names| names.borrow().contains(rust_ident))
+}
+
+/// Records that `rust_ident` names a brand or an alias serde writes as a number or a `bool`.
+pub fn record_bson_refused_key(rust_ident: &str) {
+    BSON_REFUSED_KEYS.with(|names| {
+        names.borrow_mut().insert(rust_ident.to_owned());
+    });
+}
+
+/// Whether `rust_ident` named an item [`record_bson_refused_key`] has seen. `false` for a name
+/// declared below the item asking.
+pub fn is_recorded_bson_refused_key(rust_ident: &str) -> bool {
+    BSON_REFUSED_KEYS.with(|names| names.borrow().contains(rust_ident))
 }
 
 /// Records that `rust_ident` names an enum declared `#[serde(untagged)]`.

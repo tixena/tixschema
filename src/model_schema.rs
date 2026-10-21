@@ -153,19 +153,12 @@ use crate::features::serde::defaults::{holds_a_placeholder, substituted};
 #[cfg(feature = "serde")]
 use crate::field_type::{parse_serde_field_attributes, parse_serde_type_attributes};
 
-#[cfg(any(
-    feature = "typescript",
-    feature = "zod",
-    feature = "jsonschema",
-    feature = "serde"
-))]
-use crate::field_type::is_sequence_wrapper;
-
-use crate::field_type::is_ownership_wrapper;
 #[cfg(feature = "serde")]
 use crate::field_type::{
-    is_interior_mutability_wrapper, is_map_wrapper, is_refused_sequence_wrapper,
-    is_transparent_wrapper, written_std_result,
+    is_interior_mutability_wrapper, is_refused_sequence_wrapper, written_std_result,
+};
+use crate::field_type::{
+    is_map_wrapper, is_ownership_wrapper, is_sequence_wrapper, is_transparent_wrapper,
 };
 
 use crate::features::model_schema_prop::{
@@ -236,7 +229,8 @@ use crate::utils::record_ts_union_members;
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use crate::utils::register_alias_info;
 use crate::utils::{
-    is_recorded_untagged_enum, is_wire_scalar_type, record_untagged_enum, record_wire_scalar,
+    is_recorded_bson_refused_key, is_recorded_untagged_enum, is_wire_scalar_type,
+    record_bson_refused_key, record_untagged_enum, record_wire_scalar,
 };
 
 #[cfg(feature = "serde")]
@@ -272,6 +266,13 @@ const TYPE_CHECK: &str = "`model_schema` argument `check`";
 
 /// What a refusal of a `preprocess` written in `#[model_schema(...)]` opens with.
 const TYPE_PREPROCESS: &str = "`model_schema` argument `preprocess`";
+
+/// The types serde writes a key of as a number or a `bool`. The `bson` library refuses to write
+/// such a key, and reads a stored one back as text, which the type refuses.
+const BSON_REFUSED_KEY_TYPES: [&str; 15] = [
+    "bool", "f32", "f64", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64",
+    "u128", "usize",
+];
 
 /// What every plain-enum flatten diagnostic says about its own reach, so an author who fixes the
 /// one declaration named there knows what was and was not checked around it.
@@ -1528,9 +1529,9 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // An item's read holds the hooks of its own members alone.
     #[cfg(feature = "serde")]
     judged_read::forget_member_hooks();
-    // Read in every feature combination: a transport reads it whether or not a surface is on.
-    record_wire_scalar_item(&item);
-    record_untagged_enum_item(&item);
+    // Read in every feature combination: a transport, and a type that lists `"mongodb"` for the
+    // keys of its maps, read it whether or not a surface is on.
+    record_wire_form(&item);
     // A `default_types` declaration is read against the item's own parameters, which the parser
     // never sees, so both directions are answered here, ahead of every shape.
     if let Some(output) = guard_failure_output(
@@ -2891,8 +2892,6 @@ const fn decode_with_arm_refusals(_item: &Item) -> Vec<syn::Error> {
     Vec::new()
 }
 
-/// The `compile_error!` tokens `decode_with` earns where it cannot be written: on an alias, on a
-/// type that borrows, and on an enum under a tag two of whose arms would take one name.
 /// The conversions `enable = ["archie"]` writes beside a type, under the `archie` feature.
 #[cfg(feature = "archie")]
 fn archie_conversions(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
@@ -2938,6 +2937,9 @@ fn enable_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2::
     errors
 }
 
+/// The `compile_error!` tokens `decode_with` earns where it cannot be written: on an alias, on a
+/// type that borrows, and on an enum under a tag two of whose arms would take one name. With
+/// `"mongodb"` listed, also on a map whose key the `bson` library refuses.
 fn decode_with_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2::TokenStream> {
     if !args.enable.decode_with {
         return Vec::new();
@@ -2959,8 +2961,163 @@ fn decode_with_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_mac
     refusal
         .into_iter()
         .chain(decode_with_arm_refusals(item))
+        .chain(
+            args.enable
+                .mongodb
+                .then(|| mongodb_map_key_refusals(item))
+                .into_iter()
+                .flatten(),
+        )
         .map(|rejection| attr_guard_error(&rejection, &item_label(item)))
         .collect()
+}
+
+/// One refusal per map a member of `item` holds whose key the `bson` library refuses, spanned on
+/// the member: every member serde writes or reads, of a struct and of each variant of an enum.
+fn mongodb_map_key_refusals(item: &Item) -> Vec<syn::Error> {
+    let members: Vec<(Option<&syn::Ident>, &syn::Fields)> = if let Item::Struct(item_struct) = item
+    {
+        vec![(None, &item_struct.fields)]
+    } else if let Item::Enum(item_enum) = item {
+        item_enum
+            .variants
+            .iter()
+            .filter(|variant| !parse_serde_key_omission(&variant.attrs).absent_from_wire())
+            .map(|variant| (Some(&variant.ident), &variant.fields))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    members
+        .into_iter()
+        .flat_map(|(variant, fields)| {
+            fields
+                .iter()
+                .enumerate()
+                .filter(|(_, field)| !parse_serde_key_omission(&field.attrs).absent_from_wire())
+                .flat_map(move |(position, field)| {
+                    bson_refused_keys(&field.ty)
+                        .into_iter()
+                        .map(move |key| bson_refused_key_refusal(variant, position, field, key))
+                })
+        })
+        .collect()
+}
+
+/// The refusal of the map `field` holds under `key`, named by the field's ident or its position,
+/// behind the variant it is a member of.
+fn bson_refused_key_refusal(
+    variant: Option<&syn::Ident>,
+    position: usize,
+    field: &Field,
+    key: &syn::Type,
+) -> syn::Error {
+    let member = field.ident.as_ref().map_or_else(
+        || format!("field `{position}`"),
+        |ident| format!("field `{}`", ident.unraw()),
+    );
+    let named = variant.map_or_else(
+        || member.clone(),
+        |held_by| format!("variant `{}`, {member}", held_by.unraw()),
+    );
+    let message = format!(
+        "{named}: a map keyed by `{}` cannot be stored in MongoDB — BSON document keys are always \
+         text, and the `bson` library refuses to write this key and to read it back. Key the map \
+         by a `String`, or do not list \"mongodb\" in `enable`.",
+        written_spelling(key)
+    );
+    field.ident.as_ref().map_or_else(
+        || syn::Error::new_spanned(&field.ty, &message),
+        |ident| syn::Error::new(ident.span(), &message),
+    )
+}
+
+/// The key of each map `ty` holds, behind `Option`, a list, a tuple, a transparent wrapper and a
+/// map's value, that the `bson` library refuses.
+fn bson_refused_keys(ty: &syn::Type) -> Vec<&syn::Type> {
+    match written_type(ty) {
+        syn::Type::Array(array) => bson_refused_keys(&array.elem),
+        syn::Type::Slice(slice) => bson_refused_keys(&slice.elem),
+        syn::Type::Paren(paren) => bson_refused_keys(&paren.elem),
+        syn::Type::Tuple(tuple) => tuple.elems.iter().flat_map(bson_refused_keys).collect(),
+        syn::Type::Path(named) => {
+            let Some(last) = named.path.segments.last() else {
+                return Vec::new();
+            };
+            let held: Vec<&syn::Type> = type_arguments_of(&last.arguments).collect();
+            let name = last.ident.to_string();
+            if is_map_wrapper(&name) {
+                let [key, value, ..] = held.as_slice() else {
+                    return Vec::new();
+                };
+                is_bson_refused_key(key)
+                    .then_some(*key)
+                    .into_iter()
+                    .chain(bson_refused_keys(value))
+                    .collect()
+            } else if name == "Option"
+                || is_sequence_wrapper(&name)
+                || is_transparent_wrapper(&name)
+            {
+                held.first()
+                    .map_or_else(Vec::new, |inner| bson_refused_keys(inner))
+            } else {
+                Vec::new()
+            }
+        }
+        // A reference is refused to `"decode_with"` already, and none of the others is stored.
+        syn::Type::FnPtr(_)
+        | syn::Type::Group(_)
+        | syn::Type::ImplTrait(_)
+        | syn::Type::Infer(_)
+        | syn::Type::Macro(_)
+        | syn::Type::Never(_)
+        | syn::Type::Ptr(_)
+        | syn::Type::Reference(_)
+        | syn::Type::TraitObject(_)
+        | syn::Type::Verbatim(_)
+        | _ => Vec::new(),
+    }
+}
+
+/// Whether serde writes a key of type `key` as a number or a `bool`: one of
+/// [`BSON_REFUSED_KEY_TYPES`], or a brand or an alias over one declared above, under any `Box`,
+/// `Rc`, `Arc` and `Cow`.
+fn is_bson_refused_key(key: &syn::Type) -> bool {
+    let mut current = written_type(key);
+    loop {
+        let syn::Type::Path(named) = current else {
+            return false;
+        };
+        let Some(last) = named.path.segments.last() else {
+            return false;
+        };
+        let name = last.ident.to_string();
+        if !is_ownership_wrapper(&name) {
+            return BSON_REFUSED_KEY_TYPES.contains(&name.as_str())
+                || is_recorded_bson_refused_key(&name);
+        }
+        let Some(inner) = type_arguments_of(&last.arguments).next() else {
+            return false;
+        };
+        current = written_type(inner);
+    }
+}
+
+/// The type arguments a path segment is written with, its lifetimes and consts left out.
+fn type_arguments_of(arguments: &syn::PathArguments) -> impl Iterator<Item = &syn::Type> {
+    let written = if let syn::PathArguments::AngleBracketed(angled) = arguments {
+        Some(angled.args.iter())
+    } else {
+        None
+    };
+    written.into_iter().flatten().filter_map(|argument| {
+        if let syn::GenericArgument::Type(ty) = argument {
+            Some(ty)
+        } else {
+            None
+        }
+    })
 }
 
 /// What `item` is replaced by where the read of it cannot call a `preprocess` it names: the item
@@ -5301,6 +5458,14 @@ fn alias_string_check_refusal_output(
     guard_failure_output(item_type, Some(name), &[error])
 }
 
+/// Records what serde writes `item` as, for the expansions after it in every build: a bare wire
+/// scalar, an untagged enum, and a map key the `bson` library refuses.
+fn record_wire_form(item: &Item) {
+    record_wire_scalar_item(item);
+    record_untagged_enum_item(item);
+    record_bson_refused_key_item(item);
+}
+
 /// Records `item` where serde writes it as a bare wire scalar rather than an object: a
 /// `#[serde(transparent)]` single-slot tuple struct over one, and an alias of one.
 fn record_wire_scalar_item(item: &Item) {
@@ -5326,6 +5491,17 @@ fn record_untagged_enum_item(item: &Item) {
         && is_recorded_untagged_enum(&item_type.ty)
     {
         record_untagged_enum(&item_type.ident.to_string());
+    }
+}
+
+/// Records `item` where it is a brand or an alias whose value is a key the `bson` library refuses:
+/// a number or a `bool`, or another such brand or alias.
+fn record_bson_refused_key_item(item: &Item) {
+    let Some((name, inner)) = wire_scalar_candidate(item) else {
+        return;
+    };
+    if is_bson_refused_key(inner) {
+        record_bson_refused_key(&name.to_string());
     }
 }
 

@@ -1,0 +1,5 @@
+error: model_schema: type `Roster`: field `by_number`: a map keyed by `u32` cannot be stored in MongoDB — BSON document keys are always text, and the `bson` library refuses to write this key and to read it back. Key the map by a `String`, or do not list "mongodb" in `enable`.
+  --> tests/foundation_refusals/number_keyed_map_with_mongodb.rs:17:9
+   |
+17 |     pub by_number: HashMap<u32, String>,
+   |         ^^^^^^^^^

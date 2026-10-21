@@ -2,7 +2,6 @@
 //! under options, rows a resolver repairs, what each failure is told as, and a query run on the
 //! driver itself.
 
-use core::iter::once;
 use std::collections::HashMap;
 
 use bson::oid::ObjectId;
@@ -209,13 +208,20 @@ fn whole_number_as_text(raw: &mut Document, issue: &Issue<Bson>) -> Resolution {
     }
 }";
 
-/// The type the README declares with a map whose keys are numbers, character for character.
+/// The type the README declares with a map whose keys are numbers, character for character. It
+/// does not build: the case of [`REFUSED_ROSTER`] declares it.
 const DECLARED_ROSTER: &str = r#"#[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Roster {
     pub by_number: HashMap<u32, String>,
 }"#;
+
+/// The crate that holds the README's `Roster` to the error it does not build with, and that error.
+const REFUSED_ROSTER: [&str; 2] = [
+    include_str!("../../foundation_refusals/number_keyed_map_with_mongodb.rs"),
+    include_str!("../../foundation_refusals/number_keyed_map_with_mongodb.stderr"),
+];
 
 /// How the README says each failure opens: MongoDB's, an unreadable row's, an unwritable value's.
 const SHOWN_OPENINGS: [&str; 3] = [
@@ -224,21 +230,12 @@ const SHOWN_OPENINGS: [&str; 3] = [
     "a value could not be written as BSON: ",
 ];
 
-/// The JSON the README shows a roster written as.
-const SHOWN_ROSTER_AS_JSON: &str = r#"{"byNumber":{"7":"seven"}}"#;
+/// What the README says of a type that lists `"decode_with"` alone and holds a map keyed by a
+/// number.
+const SHOWN_ROSTER_OF_DECODE_WITH: &str = "**A type that lists `\"decode_with\"` alone builds with such a map** and reads it from JSON. Its `from_bson_piped` refuses a stored row that holds the map, with one `Undescribed` issue.";
 
-/// What the README shows a stored roster told as, under version 2 of the `bson` library and
-/// under version 3.
-const SHOWN_ROSTER_UNREADABLE: [&str; 2] = [
-    r#"the row without an _id does not read as expected: undescribed: invalid type: string "7", expected u32"#,
-    r#"the row without an _id does not read as expected: undescribed: BSON error. Kind: A deserialization-related error occurred. Message: invalid type: string "7", expected u32."#,
-];
-
-/// What the README shows a roster that cannot be written told as, under each major version.
-const SHOWN_ROSTER_UNWRITABLE: [&str; 2] = [
-    "a value could not be written as BSON: Invalid map key type: 7",
-    "a value could not be written as BSON: BSON error. Kind: A serialization error occurred. Message: invalid document key type: int64.",
-];
+/// What the README says of the keys serde writes as text.
+const SHOWN_TEXT_KEYS: &str = "**A key serde writes as text is stored as that text and read back**: a `String`, a `char`, a `chrono` date or time, a plain enum, and a brand over a `String`.";
 
 /// The README's table of what a refused row is told by, for each `_id` a row may hold.
 const SHOWN_ROW_IDS: [&str; 5] = [
@@ -272,11 +269,46 @@ pub struct Billed {
     pub total: f64,
 }
 
+/// A map keyed by `chrono` dates and times, each written as its text.
+#[cfg(feature = "chrono")]
 #[model_schema(enable = ["decode_with", "mongodb"])]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct DatedRoster {
+    pub dates: HashMap<chrono::NaiveDate, String>,
+    pub moments: HashMap<chrono::DateTime<chrono::Utc>, String>,
+    pub times: HashMap<chrono::NaiveTime, String>,
+}
+
+/// The README's `Roster`, listing `"decode_with"` alone, which builds.
+#[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Roster {
+pub struct NumberedRoster {
     pub by_number: HashMap<u32, String>,
+}
+
+/// A plain enum a map is keyed by.
+#[model_schema()]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Hash, Serialize)]
+pub enum Shift {
+    Early,
+    Late,
+}
+
+/// A brand over a `String` a map is keyed by.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash, Serialize)]
+#[serde(transparent)]
+pub struct Station(pub String);
+
+/// Maps keyed by what serde writes as text, each stored as that text.
+#[model_schema(enable = ["decode_with", "mongodb"])]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct TextKeyedRoster {
+    pub initials: HashMap<char, String>,
+    pub names: HashMap<String, String>,
+    pub shifts: HashMap<Shift, String>,
+    pub stations: HashMap<Station, String>,
 }
 
 /// What each customer was billed, by an aggregation run on the driver itself. Each row it
@@ -471,7 +503,7 @@ fn the_readme_declares_the_operations_that_compile_here() {
         .into_iter()
         .chain(DECLARED_OPERATIONS)
         .chain(DECLARED_UNDECLARED_ID)
-        .chain([DECLARED_IMPORT, DECLARED_RESOLVER, DECLARED_ROSTER])
+        .chain([DECLARED_IMPORT, DECLARED_RESOLVER])
     {
         assert_declared_and_documented(source, pinned);
     }
@@ -544,38 +576,88 @@ fn the_readme_shows_the_id_a_refused_row_is_told_by() {
     assert_documented(&SHOWN_ROW_IDS.join("\n"));
 }
 
-/// A map whose keys are numbers is written and read as JSON, and is neither as BSON.
+/// The `Roster` the README declares is the case that does not build, and the error it shows is
+/// the one that case is held to.
 #[test]
-fn the_readme_shows_what_a_map_keyed_by_a_number_is_told_as() {
-    let roster = Roster {
+fn the_readme_shows_the_error_a_map_keyed_by_a_number_does_not_build_with() {
+    let [case, errors] = REFUSED_ROSTER;
+    assert!(
+        case.contains(DECLARED_ROSTER),
+        "the README's `Roster` is no longer the case that does not build:\n{DECLARED_ROSTER}"
+    );
+    assert_documented(DECLARED_ROSTER);
+    let error = errors.lines().next().unwrap();
+    assert!(error.starts_with("error: model_schema: "), "got: {error}");
+    assert_documented(&format!("```text\n{error}\n```"));
+}
+
+/// The README's `Roster` listing `"decode_with"` alone builds, reads its map from JSON, and is
+/// refused the row MongoDB would store for it.
+#[test]
+fn the_readme_shows_what_a_type_that_lists_decode_with_alone_makes_of_a_map_keyed_by_a_number() {
+    let roster = NumberedRoster {
         by_number: HashMap::from([(7, "seven".to_owned())]),
     };
     let as_json = serde_json::to_value(&roster).unwrap();
-    assert_eq!(as_json.to_string(), SHOWN_ROSTER_AS_JSON);
-    let from_json = Roster::from_value_piped(as_json, &[]).unwrap();
+    let from_json = NumberedRoster::from_value_piped(as_json, &[]).unwrap();
     assert_eq!(from_json.by_number, roster.by_number);
-
-    let unwritable = roster.mongo_written_row().unwrap_err();
+    let refused =
+        NumberedRoster::from_bson_piped(doc! { "byNumber": { "7": "seven" } }, &[]).unwrap_err();
     assert!(
-        matches!(unwritable, roster_schema::OperationError::Unwritable(_)),
-        "got: {unwritable:?}"
+        matches!(
+            refused.issues.as_slice(),
+            [numbered_roster_schema::Issue::Undescribed { reason: _reason }]
+        ),
+        "got: {:?}",
+        refused.issues
     );
+    assert_documented(SHOWN_ROSTER_OF_DECODE_WITH);
+}
+
+/// A map keyed by what serde writes as text is stored as that text and read back.
+#[test]
+fn the_readme_shows_the_keys_a_row_stores_as_their_text() {
+    let roster = TextKeyedRoster {
+        initials: HashMap::from([('m', "Moca".to_owned())]),
+        names: HashMap::from([("Acme".to_owned(), "Moca".to_owned())]),
+        shifts: HashMap::from([(Shift::Late, "Moca".to_owned())]),
+        stations: HashMap::from([(Station("north".to_owned()), "Moca".to_owned())]),
+    };
+    let row = roster.mongo_written_row().unwrap();
     assert_eq!(
-        unwritable.to_string(),
-        under_this_major(SHOWN_ROSTER_UNWRITABLE)
+        row,
+        doc! {
+            "initials": { "m": "Moca" },
+            "names": { "Acme": "Moca" },
+            "shifts": { "Late": "Moca" },
+            "stations": { "north": "Moca" },
+        }
     );
-    let stored_roster = doc! { "byNumber": { "7": "seven" } };
-    let refused = Roster::mongo_read_row(stored_roster, &[]).unwrap_err();
+    assert_eq!(TextKeyedRoster::mongo_read_row(row, &[]).unwrap(), roster);
+    assert_documented(SHOWN_TEXT_KEYS);
+}
+
+/// A map keyed by a `chrono` date or time is stored as its text and read back.
+#[cfg(feature = "chrono")]
+#[test]
+fn a_map_keyed_by_a_chrono_date_or_time_stores_its_text() {
+    let date = chrono::NaiveDate::from_ymd_opt(2026, 10, 21).unwrap();
+    let time = chrono::NaiveTime::from_hms_opt(17, 40, 0).unwrap();
+    let roster = DatedRoster {
+        dates: HashMap::from([(date, "Moca".to_owned())]),
+        moments: HashMap::from([(date.and_time(time).and_utc(), "Moca".to_owned())]),
+        times: HashMap::from([(time, "Moca".to_owned())]),
+    };
+    let row = roster.mongo_written_row().unwrap();
     assert_eq!(
-        refused.to_string(),
-        under_this_major(SHOWN_ROSTER_UNREADABLE)
+        row,
+        doc! {
+            "dates": { "2026-10-21": "Moca" },
+            "moments": { "2026-10-21T17:40:00Z": "Moca" },
+            "times": { "17:40:00": "Moca" },
+        }
     );
-    for shown in once(SHOWN_ROSTER_AS_JSON)
-        .chain(SHOWN_ROSTER_UNWRITABLE)
-        .chain(SHOWN_ROSTER_UNREADABLE)
-    {
-        assert_documented(shown);
-    }
+    assert_eq!(DatedRoster::mongo_read_row(row, &[]).unwrap(), roster);
 }
 
 #[tokio::test]

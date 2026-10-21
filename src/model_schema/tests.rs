@@ -8590,6 +8590,199 @@ fn an_enum_without_decode_with_keeps_a_name_two_arm_functions_would_take() {
     }
 }
 
+/// What a type that lists `"mongodb"` is refused for the map `named` holds, keyed by `key`.
+fn bson_refused_key_message(named: &str, key: &str) -> String {
+    format!(
+        "{named}: a map keyed by `{key}` cannot be stored in MongoDB — BSON document keys are \
+         always text, and the `bson` library refuses to write this key and to read it back. Key \
+         the map by a `String`, or do not list \"mongodb\" in `enable`."
+    )
+}
+
+/// The refusals of each map `source` holds whose key the `bson` library refuses.
+fn bson_refused_key_messages(source: &str) -> Vec<String> {
+    let item: syn::Item = syn::parse_str(source).unwrap();
+    super::mongodb_map_key_refusals(&item)
+        .iter()
+        .map(ToString::to_string)
+        .collect()
+}
+
+#[test]
+fn a_map_keyed_by_a_number_or_a_bool_is_refused_wherever_a_field_holds_it() {
+    for (written, key) in [
+        ("HashMap<u32, String>", "u32"),
+        ("HashMap<i64, String>", "i64"),
+        ("HashMap<f64, String>", "f64"),
+        ("BTreeMap<bool, u32>", "bool"),
+        ("Option<HashMap<u8, String>>", "u8"),
+        ("Vec<BTreeMap<bool, u32>>", "bool"),
+        ("Option<Vec<BTreeMap<bool, u32>>>", "bool"),
+        ("Box<HashMap<usize, String>>", "usize"),
+        ("[HashMap<u16, String>; 2]", "u16"),
+        ("(String, HashMap<i8, String>)", "i8"),
+        ("HashMap<String, BTreeMap<i32, String>>", "i32"),
+        ("HashMap<Box<u64>, String>", "Box<u64>"),
+        ("std::collections::HashMap<u128, String>", "u128"),
+    ] {
+        assert_eq!(
+            bson_refused_key_messages(&format!("pub struct Roster {{ pub by_number: {written} }}")),
+            [bson_refused_key_message("field `by_number`", key)],
+            "for {written}"
+        );
+    }
+}
+
+#[test]
+fn each_map_a_field_holds_under_a_refused_key_is_refused_once() {
+    assert_eq!(
+        bson_refused_key_messages(
+            "pub struct Roster { pub by_number: HashMap<u32, BTreeMap<bool, String>> }"
+        ),
+        [
+            bson_refused_key_message("field `by_number`", "u32"),
+            bson_refused_key_message("field `by_number`", "bool"),
+        ]
+    );
+}
+
+#[test]
+fn a_map_in_a_slot_or_in_a_variants_member_is_refused_under_its_name() {
+    assert_eq!(
+        bson_refused_key_messages("pub struct Pair(pub String, pub HashMap<u32, String>);"),
+        [bson_refused_key_message("field `1`", "u32")]
+    );
+    assert_eq!(
+        bson_refused_key_messages(
+            "pub enum Lineup { Numbered { by_number: HashMap<u32, String> }, \
+             Flagged(String, BTreeMap<bool, String>), Empty }"
+        ),
+        [
+            bson_refused_key_message("variant `Numbered`, field `by_number`", "u32"),
+            bson_refused_key_message("variant `Flagged`, field `1`", "bool"),
+        ]
+    );
+}
+
+/// A key serde writes as text, which both majors of the `bson` library store and read back, is
+/// not refused: a `String`, a `char`, a `chrono` date or time, and a name the expansion knows no
+/// number of.
+#[test]
+fn a_map_keyed_by_what_serde_writes_as_text_is_not_refused() {
+    for written in [
+        "HashMap<String, u32>",
+        "HashMap<char, String>",
+        "BTreeMap<chrono::NaiveDate, String>",
+        "BTreeMap<NaiveTime, String>",
+        "BTreeMap<NaiveDateTime, String>",
+        "BTreeMap<DateTime<Utc>, String>",
+        "HashMap<Slot, String>",
+        "HashMap<KeyType, String>",
+        "serde_json::Map<String, serde_json::Value>",
+        "Vec<u32>",
+        "Option<u64>",
+    ] {
+        assert_eq!(
+            bson_refused_key_messages(&format!(
+                "pub struct Roster<KeyType> {{ pub by_number: {written} }}"
+            )),
+            Vec::<String>::new(),
+            "for {written}"
+        );
+    }
+}
+
+#[test]
+fn a_member_serde_neither_writes_nor_reads_is_not_refused() {
+    assert_eq!(
+        bson_refused_key_messages(
+            "pub struct Roster { #[serde(skip)] pub by_number: HashMap<u32, String>, \
+             #[serde(skip_serializing, skip_deserializing)] pub by_flag: HashMap<bool, String> }"
+        ),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        bson_refused_key_messages(
+            "pub enum Lineup { #[serde(skip)] Numbered { by_number: HashMap<u32, String> }, Empty }"
+        ),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        bson_refused_key_messages(
+            "pub struct Roster { #[serde(skip_serializing)] pub by_number: HashMap<u32, String> }"
+        ),
+        [bson_refused_key_message("field `by_number`", "u32")]
+    );
+}
+
+/// A brand or an alias declared above over a number or a `bool` is refused as the number is, and
+/// one over a `String` is not.
+#[test]
+fn a_map_keyed_by_a_brand_or_an_alias_over_a_number_is_refused() {
+    for declared in [
+        "#[serde(transparent)] pub struct Count(pub u32);",
+        "#[serde(transparent)] pub struct Ordinal { pub value: i64 }",
+        "pub type Tally = Count;",
+        "#[serde(transparent)] pub struct Flag(pub Box<bool>);",
+        "#[serde(transparent)] pub struct Label(pub String);",
+    ] {
+        super::record_bson_refused_key_item(&syn::parse_str(declared).unwrap());
+    }
+    for (key, refused) in [
+        ("Count", true),
+        ("Ordinal", true),
+        ("Tally", true),
+        ("Flag", true),
+        ("Label", false),
+    ] {
+        let expected: Vec<String> = refused
+            .then(|| bson_refused_key_message("field `by_key`", key))
+            .into_iter()
+            .collect();
+        assert_eq!(
+            bson_refused_key_messages(&format!(
+                "pub struct Roster {{ pub by_key: HashMap<{key}, String> }}"
+            )),
+            expected,
+            "for {key}"
+        );
+    }
+}
+
+/// The refusal is spanned on the field, and raised only where the type lists `"mongodb"`.
+#[test]
+fn a_map_keyed_by_a_number_is_refused_only_where_mongodb_is_listed() {
+    let item: syn::Item =
+        syn::parse_str("pub struct Roster { pub by_number: HashMap<u32, String> }").unwrap();
+    let listed = |written: &str| {
+        super::decode_with_guard_errors(
+            &item,
+            &super::parse_model_schema_args(syn::parse_str(written).unwrap()),
+        )
+    };
+    let refusals = listed("enable = [\"decode_with\", \"mongodb\"]");
+    let located: Vec<String> = refusals.iter().flat_map(located_source_texts).collect();
+    assert_eq!(refusals.len(), 1);
+    assert!(
+        !located.is_empty() && located.iter().all(|text| text == "by_number"),
+        "got: {located:?}"
+    );
+    assert!(listed("enable = [\"decode_with\"]").is_empty());
+    assert!(listed("").is_empty());
+
+    let source = "pub struct Roster { pub by_number: HashMap<u32, String> }";
+    let refused = expansion_under("enable = [\"decode_with\", \"mongodb\"]", source);
+    assert!(
+        refused.contains(&format!(
+            "model_schema: type `Roster`: {}",
+            bson_refused_key_message("field `by_number`", "u32").replace('"', "\\\"")
+        )),
+        "got: {refused}"
+    );
+    let built = expansion_under("enable = [\"decode_with\"]", source);
+    assert!(!built.contains("compile_error"), "got: {built}");
+}
+
 #[test]
 fn an_item_without_decode_with_expands_as_it_did() {
     for source in [
