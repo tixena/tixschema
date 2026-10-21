@@ -733,10 +733,13 @@ enum MapKeyRejection {
     },
 }
 
-/// A std type this crate describes no schema for that a written type reaches, at any depth. Every
+/// A type this crate describes no schema for that a written type reaches, at any depth. Every
 /// position that reads a written type asks this, and each spans and names its own subject.
 #[derive(Debug)]
 enum UndescribableStd<'name> {
+    /// `serde_json::Value` and `serde_json::Map`: any JSON value, which no target can describe.
+    /// Asked of every member and filling of an item, ahead of every shape ([`any_json_errors`]).
+    AnyJson(&'name str),
     /// `OsString`/`OsStr`: serde writes an externally tagged enum naming the target platform.
     PlatformString(&'name str),
     /// `LinkedList`: serde writes the array a `Vec` writes, and the covered spelling is that one.
@@ -1659,6 +1662,10 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // Read in every feature combination: a transport, and a type that lists `"mongodb"` for the
     // keys of its maps, read it whether or not a surface is on.
     record_wire_form(&item);
+    // A member that holds any JSON value is no shape a target can describe, in any build.
+    if let Some(output) = refused_item_output(&item, &any_json_errors(&item, &parsed_args)) {
+        return output;
+    }
     // A `default_types` declaration is read against the item's own parameters, which the parser
     // never sees, so both directions are answered here, ahead of every shape.
     if let Some(output) =
@@ -4525,6 +4532,74 @@ fn indexmap_feature_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
 #[cfg(feature = "indexmap")]
 const fn indexmap_feature_errors(_item: &Item) -> Vec<proc_macro2::TokenStream> {
     Vec::new()
+}
+
+/// The `compile_error!` tokens of [`any_json_rejections`].
+fn any_json_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2::TokenStream> {
+    any_json_rejections(item, args)
+        .iter()
+        .map(syn::Error::to_compile_error)
+        .collect()
+}
+
+/// The refusal an item earns for each member, alias target and `default_types` filling that
+/// reaches `serde_json::Value` or `serde_json::Map`, each spanned on the type as written. Asked
+/// ahead of every shape, so every build refuses it. A name the item declares as a type parameter,
+/// the item's own and one the crate declared a type under are that type.
+fn any_json_rejections(item: &Item, args: &ModelSchemaArgs) -> Vec<syn::Error> {
+    let mut written: Vec<(String, &syn::Type)> = Vec::new();
+    let (ident, generics) =
+        if let Item::Struct(item_struct) = item {
+            written.extend(
+                item_struct.fields.iter().enumerate().map(|(index, field)| {
+                    (preprocess::member_label(None, index, field), &field.ty)
+                }),
+            );
+            (&item_struct.ident, &item_struct.generics)
+        } else if let Item::Enum(item_enum) = item {
+            for variant in &item_enum.variants {
+                written.extend(variant.fields.iter().enumerate().map(|(index, field)| {
+                    (
+                        preprocess::member_label(Some(variant), index, field),
+                        &field.ty,
+                    )
+                }));
+            }
+            (&item_enum.ident, &item_enum.generics)
+        } else if let Item::Type(item_type) = item {
+            written.push(("the type it names".to_owned(), &item_type.ty));
+            (&item_type.ident, &item_type.generics)
+        } else {
+            return Vec::new();
+        };
+    written.extend(
+        args.default_types
+            .iter()
+            .map(|(name, filling)| (format!("`default_types` entry `{name}`"), filling)),
+    );
+    let own = ident.to_string();
+    let parameters: Vec<String> = generics
+        .type_params()
+        .map(|parameter| parameter.ident.to_string())
+        .collect();
+    let kept = |name: &str| {
+        name == own
+            || parameters.iter().any(|parameter| parameter == name)
+            || is_declared_ident(name)
+    };
+    let label = item_label(item);
+    written
+        .into_iter()
+        .filter_map(|(subject, ty)| {
+            let reached = get_field_def("", ty, "");
+            let rejection = UndescribableStd::AnyJson(reached.any_json_name(kept)?);
+            let message = undescribable_std_message(&subject, &rejection);
+            Some(syn::Error::new_spanned(
+                ty,
+                prefixed_guard_message(&format!("{label}: {message}")),
+            ))
+        })
+        .collect()
 }
 
 /// Every name of [`INDEXMAP_NAMES`] `written` holds at any depth, written with the type arguments
@@ -13389,6 +13464,7 @@ fn map_key_element_name(key: &FieldDef) -> String {
         FieldDefType::Range(kind, _) => format!("{}<_>", kind.name()),
         FieldDefType::Result(..) => "Result<_, _>".to_owned(),
         FieldDefType::Tuple(..) => "(_, _)".to_owned(),
+        // A type written as no path, a function pointer or a macro among them.
         FieldDefType::Unknown => "_".to_owned(),
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => "ObjectId".to_owned(),
@@ -13637,6 +13713,7 @@ fn build_map_member_item(value: &FieldDef) -> Result<MapMemberItem, MapMemberRej
             MapMemberItem::Value(range_json_schema_value(*kind, bound)?)
         }
         FieldDefType::Result(ok, err) => MapMemberItem::Value(result_json_schema_value(ok, err)?),
+        // A type written as no path, a function pointer or a macro among them.
         FieldDefType::Unknown => MapMemberItem::Fragment(quote! { {} }),
         // The shared mapping renders every type named here except a tuple, which is the lone
         // `None`.
@@ -14112,8 +14189,7 @@ fn build_result_field_schema(
 }
 
 /// Builds the JSON schema for a field with no type of its own — one of the enclosing item's type
-/// parameters, or an opaque value: a `serde_json::Value`, a function pointer, or any other type the
-/// parser could not classify.
+/// parameters, or an opaque value: a function pointer, or any other type written as no path.
 #[cfg(feature = "jsonschema")]
 fn build_unknown_field_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2::TokenStream {
     log::trace!("Unknown => field_name: {field_name_str}, fld: {fld:?}");
@@ -16524,6 +16600,11 @@ fn undescribable_std_rejection(written: &FieldDef) -> Option<UndescribableStd<'_
 /// which is all that differs between the positions.
 fn undescribable_std_message(subject: &str, rejection: &UndescribableStd<'_>) -> String {
     match *rejection {
+        UndescribableStd::AnyJson(name) => format!(
+            "{subject} reaches `serde_json::{name}`, which holds any JSON value, so no target can \
+             describe it. Declare the shape that value takes as a type of its own, and write that \
+             type in its place."
+        ),
         UndescribableStd::PlatformString(name) => format!(
             "{subject} reaches `{name}`, which serde writes as an externally tagged enum naming \
              the target platform (`{{\"Unix\":[u8, ...]}}` or `{{\"Windows\":[u16, ...]}}`), not a \

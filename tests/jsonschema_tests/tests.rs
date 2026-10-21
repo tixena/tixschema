@@ -79,23 +79,6 @@ struct MapFields {
 
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone)]
-struct OpaqueFields {
-    name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    optional_payload: Option<serde_json::Value>,
-    payload: serde_json::Value,
-    payloads: Vec<serde_json::Value>,
-}
-
-#[model_schema()]
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct OpaqueValueMaps {
-    payload_lists: HashMap<String, Vec<serde_json::Value>>,
-    payloads: HashMap<String, serde_json::Value>,
-}
-
-#[model_schema()]
-#[derive(Serialize, Deserialize, Debug, Clone)]
 struct OptionalFields {
     #[serde(skip_serializing_if = "Option::is_none")]
     optional_bool: Option<bool>,
@@ -232,48 +215,6 @@ fn test_hashmap_generates_object_with_additional_properties() {
     assert_eq!(
         properties["counts"]["additionalProperties"]["type"],
         "integer"
-    );
-}
-
-#[test]
-fn test_opaque_value_fields_generate_permissive_schemas() {
-    let schema = OpaqueFields::json_schema();
-
-    let properties = schema["properties"].as_object().unwrap();
-
-    // An opaque field carries no type name, so it admits any value.
-    assert_eq!(properties["payload"], serde_json::json!({}));
-    assert_eq!(
-        properties["optional_payload"],
-        serde_json::json!({ "anyOf": [{}, { "type": "null" }] })
-    );
-
-    assert_eq!(properties["payloads"]["type"], "array");
-    assert_eq!(properties["payloads"]["items"], serde_json::json!({}));
-
-    let required = schema["required"].as_array().unwrap();
-    assert!(required.contains(&Value::String("payload".to_owned())));
-    assert!(required.contains(&Value::String("payloads".to_owned())));
-    assert!(!required.contains(&Value::String("optional_payload".to_owned())));
-}
-
-#[test]
-fn test_opaque_map_values_generate_permissive_schemas() {
-    let schema = OpaqueValueMaps::json_schema();
-
-    let properties = schema["properties"].as_object().unwrap();
-
-    // An opaque value carries no type name here either, so every member admits any value.
-    assert_eq!(properties["payloads"]["type"], "object");
-    assert_eq!(
-        properties["payloads"]["additionalProperties"],
-        serde_json::json!({})
-    );
-
-    assert_eq!(properties["payload_lists"]["type"], "object");
-    assert_eq!(
-        properties["payload_lists"]["additionalProperties"],
-        serde_json::json!({ "type": "array", "items": {} })
     );
 }
 

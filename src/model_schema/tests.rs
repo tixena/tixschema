@@ -1352,21 +1352,6 @@ fn untagged_member_holding_a_tuple_renders_the_arity_bounds() {
 
 #[cfg(all(feature = "serde", feature = "jsonschema"))]
 #[test]
-fn untagged_member_holding_an_opaque_value_stays_permissive() {
-    let values = untagged_member_values(syn::parse_quote! {
-        enum Untagged {
-            Raw { raw: serde_json::Value },
-        }
-    });
-    assert!(
-        values[0].contains("serde_json :: json ! ({ })"),
-        "got: {}",
-        values[0]
-    );
-}
-
-#[cfg(all(feature = "serde", feature = "jsonschema"))]
-#[test]
 fn untagged_member_holding_an_unsupported_map_value_emits_only_the_compile_error() {
     let values = untagged_member_values(syn::parse_quote! {
         enum Untagged {
@@ -2380,6 +2365,235 @@ fn a_field_reaching_both_is_named_by_its_platform_string() {
     .unwrap();
     assert!(message.contains("`OsString`"), "got: {message}");
     assert!(message.contains("externally tagged"), "got: {message}");
+}
+
+/// The refusals [`super::any_json_rejections`] answers for `source` under
+/// `#[model_schema(args)]`, each as its message beside the text it is spanned on.
+fn any_json_refusals(args: &str, source: &str) -> Vec<(String, Option<String>)> {
+    let item: syn::Item = syn::parse_str(source).unwrap();
+    let parsed = super::parse_model_schema_args(syn::parse_str(args).unwrap());
+    assert!(parsed.arg_rejection.is_none(), "for {args}");
+    super::any_json_rejections(&item, &parsed)
+        .iter()
+        .map(|refusal| (refusal.to_string(), refusal.span().source_text()))
+        .collect()
+}
+
+/// The sentence a refusal of a JSON value states after its subject.
+fn any_json_sentence(subject: &str, name: &str) -> String {
+    format!(
+        "model_schema: {subject} reaches `serde_json::{name}`, which holds any JSON value, so no \
+         target can describe it. Declare the shape that value takes as a type of its own, and \
+         write that type in its place."
+    )
+}
+
+#[test]
+fn a_field_typed_a_json_value_is_refused_naming_the_field() {
+    assert_eq!(
+        any_json_refusals(
+            "",
+            "pub struct Holding { pub count: u8, pub v: serde_json::Value }"
+        ),
+        [(
+            any_json_sentence("type `Holding`: field `v`", "Value"),
+            Some("serde_json::Value".to_owned())
+        )]
+    );
+}
+
+#[test]
+fn a_json_value_is_refused_at_any_depth_of_a_field() {
+    for written in [
+        "Value",
+        "Option<Vec<HashMap<String, Value>>>",
+        "(u32, Value)",
+        "Box<Value>",
+        "[Value; 2]",
+        "Vec<Option<Value>>",
+        "BTreeMap<String, Value>",
+        "Wrapper<Value>",
+        "Result<u8, Value>",
+    ] {
+        let refusals = any_json_refusals("", &format!("pub struct Holding {{ pub v: {written} }}"));
+        assert_eq!(
+            refusals,
+            [(
+                any_json_sentence("type `Holding`: field `v`", "Value"),
+                Some(written.to_owned())
+            )],
+            "for {written}"
+        );
+    }
+}
+
+#[test]
+fn a_json_map_is_refused_by_its_own_name() {
+    for written in [
+        "serde_json::Map<String, Value>",
+        "Map<String, u8>",
+        "Option<Map<String, String>>",
+    ] {
+        let refusals = any_json_refusals("", &format!("pub struct Holding {{ pub v: {written} }}"));
+        assert_eq!(
+            refusals,
+            [(
+                any_json_sentence("type `Holding`: field `v`", "Map"),
+                Some(written.to_owned())
+            )],
+            "for {written}"
+        );
+    }
+}
+
+#[test]
+fn every_member_of_an_enum_that_holds_a_json_value_is_refused_by_its_place() {
+    let refusals = any_json_refusals(
+        "",
+        "pub enum Holding { Named { kept: u8, v: Value }, Lone(Value), Pair(u8, Map<String, u8>), \
+         Empty }",
+    );
+    assert_eq!(
+        refusals,
+        [
+            (
+                any_json_sentence("type `Holding`: field `v` of variant `Named`", "Value"),
+                Some("Value".to_owned())
+            ),
+            (
+                any_json_sentence("type `Holding`: slot 0 of variant `Lone`", "Value"),
+                Some("Value".to_owned())
+            ),
+            (
+                any_json_sentence("type `Holding`: slot 1 of variant `Pair`", "Map"),
+                Some("Map<String, u8>".to_owned())
+            ),
+        ]
+    );
+}
+
+#[test]
+fn a_slot_a_brand_and_a_flattened_member_holding_a_json_value_are_refused() {
+    for (source, subject, spanned) in [
+        (
+            "pub struct Holding(pub u8, pub Value);",
+            "type `Holding`: slot 1",
+            "Value",
+        ),
+        (
+            "#[serde(transparent)] pub struct Holding(pub serde_json::Value);",
+            "type `Holding`: slot 0",
+            "serde_json::Value",
+        ),
+        (
+            "#[serde(transparent)] pub struct Holding { pub raw: Value }",
+            "type `Holding`: field `raw`",
+            "Value",
+        ),
+        (
+            "pub struct Holding { pub count: u8, #[serde(flatten)] pub rest: HashMap<String, \
+             Value> }",
+            "type `Holding`: field `rest`",
+            "HashMap<String, Value>",
+        ),
+    ] {
+        assert_eq!(
+            any_json_refusals("", source),
+            [(
+                any_json_sentence(subject, "Value"),
+                Some(spanned.to_owned())
+            )],
+            "for {source}"
+        );
+    }
+    assert_eq!(
+        any_json_refusals(
+            "",
+            "pub struct Holding { pub count: u8, #[serde(flatten)] pub rest: Map<String, Value> }"
+        ),
+        [(
+            any_json_sentence("type `Holding`: field `rest`", "Map"),
+            Some("Map<String, Value>".to_owned())
+        )]
+    );
+}
+
+#[test]
+fn an_alias_and_a_default_filling_of_a_json_value_are_refused() {
+    assert_eq!(
+        any_json_refusals("", "pub type Raw = serde_json::Value;"),
+        [(
+            any_json_sentence("type `Raw`: the type it names", "Value"),
+            Some("serde_json::Value".to_owned())
+        )]
+    );
+    assert_eq!(
+        any_json_refusals("", "pub type Raw = Vec<Map<String, u8>>;"),
+        [(
+            any_json_sentence("type `Raw`: the type it names", "Map"),
+            Some("Vec<Map<String, u8>>".to_owned())
+        )]
+    );
+    assert_eq!(
+        any_json_refusals(
+            "default_types(HeldType = Value)",
+            "pub struct Probe<HeldType> { pub held: HeldType }"
+        ),
+        [(
+            any_json_sentence("type `Probe`: `default_types` entry `HeldType`", "Value"),
+            Some("Value".to_owned())
+        )]
+    );
+}
+
+/// A parameter, the item itself and a type the crate declared are what their names name.
+#[test]
+fn a_name_the_item_or_the_crate_declares_is_no_json_value() {
+    for source in [
+        "pub struct Pair<Key, Value> { pub key: Key, pub value: Value }",
+        "pub struct Value { pub children: Vec<Value> }",
+        "pub enum Map { Leaf(u8), Nested(Box<Map>) }",
+        "pub struct Holding { pub count: u8, pub ratio: f64 }",
+    ] {
+        assert_eq!(any_json_refusals("", source), [], "for {source}");
+    }
+    assert!(super::claim_published_name("Value", "Value").is_none());
+    assert_eq!(
+        any_json_refusals("", "pub struct Holding { pub v: Option<Value> }"),
+        []
+    );
+}
+
+/// The README quotes the refusal as the build answers it: in its own section and in the list of
+/// what an upgrade asks of a crate.
+#[test]
+fn the_readme_states_the_refusal_of_a_json_value_as_the_build_answers_it() {
+    let refusals = any_json_refusals("", "pub struct Holding { pub v: serde_json::Value }");
+    assert_eq!(refusals.len(), 1, "got: {refusals:?}");
+    let answered = format!("error: {}", refusals[0].0);
+    assert_eq!(
+        include_str!("../../README.md").matches(&answered).count(),
+        2,
+        "the README no longer quotes: {answered}"
+    );
+}
+
+/// The item is refused ahead of every shape, with one refusal for each position and nothing of
+/// the item's own expansion beside them.
+#[test]
+fn an_item_holding_a_json_value_expands_to_its_refusals_alone() {
+    let expanded = super::exec_model_schema(
+        proc_macro2::TokenStream::new(),
+        syn::parse_str("pub struct Holding { pub v: serde_json::Value, pub w: Vec<Value> }")
+            .unwrap(),
+    );
+    let written = expanded.to_string();
+    assert_eq!(
+        identifiers_named(expanded, "compile_error"),
+        2,
+        "got: {written}"
+    );
+    assert!(!written.contains("impl Holding"), "got: {written}");
 }
 
 /// Runs the field walk the way [`super::process_field`] does and renders the map-key guard failure
@@ -4330,7 +4544,7 @@ fn a_bound_of_the_wrong_kind_is_named_without_the_keys_beside_it() {
 }
 
 #[test]
-fn a_range_on_a_bool_a_char_or_a_value_field_is_refused() {
+fn a_range_on_a_bool_or_a_char_field_is_refused() {
     for (constraint, field_type, refused, written) in [
         (
             quote::quote! { minimum = 5 },
@@ -4355,12 +4569,6 @@ fn a_range_on_a_bool_a_char_or_a_value_field_is_refused() {
             quote::quote! { Box<char> },
             "`maximum` cannot apply to a `Box<char>` field",
             "writes one character",
-        ),
-        (
-            quote::quote! { minimum = 1, maximum = 9 },
-            quote::quote! { serde_json::Value },
-            "`minimum`, `maximum` cannot apply to a `serde_json::Value` field",
-            "writes a value no range measures",
         ),
     ] {
         let errors = field_prop_guard_errors(&syn::parse_quote! {
@@ -4962,7 +5170,6 @@ fn the_constraint_docs_are_silent_for_a_bound_of_the_wrong_kind() {
         quote::quote! { #[model_schema_prop(minimum = 5, maximum = 9)] counts: Vec<f64> },
         quote::quote! { #[model_schema_prop(minimum = 5)] flag: bool },
         quote::quote! { #[model_schema_prop(maximum = 5)] letter: char },
-        quote::quote! { #[model_schema_prop(minimum = 1, maximum = 9)] held: serde_json::Value },
     ] {
         let docs = field_docs_after_meta(&syn::parse_quote! {
             struct Report {
@@ -6347,7 +6554,6 @@ fn string_constraints_over_a_non_string_inner_are_rejected() {
         ("RefCell<Vec<String>>", "container"),
         ("HashMap<String, String>", "container"),
         ("(String, String)", "container"),
-        ("serde_json::Value", "opaque"),
     ] {
         let ty: syn::Type = syn::parse_str(inner).unwrap();
         let errors = branded_errors_with(
@@ -6603,7 +6809,6 @@ fn a_brand_records_the_value_surface_its_inner_publishes() {
     for (inner, expected) in [
         ("String", None),
         ("PathBuf", None),
-        ("serde_json::Value", Some("opaque")),
         ("u32", Some("numeric")),
         ("bool", Some("boolean")),
         ("Vec<String>", Some("container")),
@@ -6673,7 +6878,6 @@ fn string_constraints_over_a_parameter_publisher_read_the_argument_written_for_i
         ("PublishesItsParameter<u32>", "numeric"),
         ("PublishesItsParameter<bool>", "boolean"),
         ("PublishesItsParameter<Vec<String>>", "container"),
-        ("PublishesItsParameter<serde_json::Value>", "opaque"),
     ] {
         let errors = brand_over_named_inner_errors(inner);
         assert_eq!(errors.len(), 1, "for {inner}, got: {errors:?}");
@@ -6978,7 +7182,6 @@ fn an_unconstrained_brand_over_a_non_string_inner_passes() {
         "Vec<String>",
         "BTreeSet<String>",
         "VecDeque<String>",
-        "serde_json::Value",
     ] {
         let ty: syn::Type = syn::parse_str(inner).unwrap();
         let errors = branded_errors(&syn::parse_quote! {
@@ -8999,7 +9202,6 @@ fn a_map_keyed_by_what_serde_writes_as_text_is_not_refused() {
         "BTreeMap<DateTime<Utc>, String>",
         "HashMap<Slot, String>",
         "HashMap<KeyType, String>",
-        "serde_json::Map<String, serde_json::Value>",
         "Vec<u32>",
         "Option<u64>",
     ] {
@@ -11449,14 +11651,13 @@ fn a_const_that_reaches_no_argument_list_earns_no_refusal() {
 }
 
 /// The name is claimed as the item is expanded, in every build: no surface has to be on for a
-/// field written after it to hold the type.
+/// field written after it to hold the type, where `serde_json`'s map is refused.
 #[test]
 fn a_type_the_crate_declares_as_map_is_what_a_field_written_after_it_holds() {
+    let holder = "pub struct Holder { pub held: Map<String, u32> }";
+    let refused = expansion_under("", holder);
+    assert!(refused.contains("`serde_json::Map`"), "got: {refused}");
     let written: syn::Type = syn::parse_str("Map<String, u32>").unwrap();
-    assert!(matches!(
-        get_field_def("held", &written, "").field_type,
-        FieldDefType::Map(..)
-    ));
     let expansion = expansion_under(
         "default_types(K = String, V = u32)",
         "pub struct Map<K, V> { pub key: K, pub value: V }",
@@ -11470,6 +11671,8 @@ fn a_type_the_crate_declares_as_map_is_what_a_field_written_after_it_holds() {
         ),
         "got: {held:?}"
     );
+    let after = expansion_under("", holder);
+    assert!(!after.contains("serde_json::Map"), "got: {after}");
 }
 
 /// The `compile_error!` tokens `source` earns for the names the `indexmap` feature reads. Parsed
@@ -13273,13 +13476,12 @@ fn every_sequence_wrapper_describes_as_the_vec_of_its_element_in_an_untagged_mem
 /// level, so each holds exactly the tokens its arm emits before the array wrap sees them.
 #[cfg(all(feature = "jsonschema", feature = "serde"))]
 fn untagged_member_dispatch_values() -> Vec<(&'static str, super::FieldDef)> {
-    let parsed: [(&'static str, syn::Type); 6] = [
+    let parsed: [(&'static str, syn::Type); 5] = [
         ("MetricTag", syn::parse_quote!(MetricTag)),
         ("String", syn::parse_quote!(String)),
         ("u32", syn::parse_quote!(u32)),
         ("f64", syn::parse_quote!(f64)),
         ("bool", syn::parse_quote!(bool)),
-        ("serde_json::Value", syn::parse_quote!(serde_json::Value)),
     ];
     let mut values: Vec<(&'static str, super::FieldDef)> = parsed
         .iter()
@@ -16275,21 +16477,6 @@ fn a_flattened_map_is_merged_as_a_map_handed_none_of_the_withheld_keys() {
     );
     assert_eq!(
         by_number.value.to_string(),
-        "serde_json :: json ! ({ \"type\" : \"object\" })"
-    );
-}
-
-#[cfg(feature = "jsonschema")]
-#[test]
-fn a_flatten_source_with_no_name_of_its_own_keeps_the_placeholder() {
-    let ty: syn::Type = syn::parse_str("serde_json::Value").unwrap();
-    let held = super::get_field_def("held", &ty, "");
-
-    let source = super::flatten_merged_source(&held, &[]);
-
-    assert_eq!(source.label, "held");
-    assert_eq!(
-        source.value.to_string(),
         "serde_json :: json ! ({ \"type\" : \"object\" })"
     );
 }

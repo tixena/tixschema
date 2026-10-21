@@ -1295,11 +1295,6 @@ mod branded_composite_inner_tests {
     #[model_schema(no_display)]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct Payload(pub serde_json::Value);
-
-    #[model_schema(no_display)]
-    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-    #[serde(transparent)]
     pub struct SparseLabels(pub Vec<Option<String>>);
 
     #[model_schema(no_display)]
@@ -1349,10 +1344,6 @@ mod branded_composite_inner_tests {
             (
                 serde_json::to_string(&ByteQuad([1, 2, 3, 4])).unwrap(),
                 "[1,2,3,4]",
-            ),
-            (
-                serde_json::to_string(&Payload(serde_json::json!({ "x": 1_u32 }))).unwrap(),
-                r#"{"x":1}"#,
             ),
             (
                 serde_json::to_string(&SparseLabels(vec![Some("a".to_owned()), None])).unwrap(),
@@ -1484,24 +1475,6 @@ mod branded_composite_inner_tests {
             "Got:\n{}",
             ByteQuad::zod_schema()
         );
-    }
-
-    #[test]
-    fn an_opaque_brand_admits_any_value() {
-        assert_eq!(
-            Payload::ts_definition(),
-            r#"export type Payload = unknown & $brand<"Payload">;"#
-        );
-        let zod = Payload::zod_schema();
-        assert!(
-            zod.contains(r#"const Payload$RawSchema = z.unknown().brand<"Payload">()"#),
-            "Got:\n{zod}"
-        );
-        assert!(
-            zod.contains("Payload$Schema: typeof Payload$RawSchema"),
-            "Got:\n{zod}"
-        );
-        assert_eq!(Payload::json_schema(), serde_json::json!({}));
     }
 
     #[test]

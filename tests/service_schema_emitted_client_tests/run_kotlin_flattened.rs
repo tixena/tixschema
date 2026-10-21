@@ -72,14 +72,14 @@ const OPTIONAL_ROWS: [Row; 3] = [
     },
 ];
 
-/// The payload of a map flattened ahead of a flattened struct.
-const HITCHING: &str = r#"{"label":"n","north":2}"#;
+/// The payload of a map of text flattened ahead of a flattened struct.
+const HITCHING: &str = r#"{"label":"n","north":"2"}"#;
 
 /// What prints what [`HITCHING`] reads as: each member, and the object written back.
 const HITCHING_MAIN: &str = r#"
 fun main() {
     val read = Json.decodeFromString(Hitching.serializer(), """PAYLOAD""")
-    println("extra: " + Json.encodeToString(MapSerializer(String.serializer(), JsonElement.serializer()), read.extra))
+    println("extra: " + Json.encodeToString(MapSerializer(String.serializer(), String.serializer()), read.extra))
     println("labelling: " + Json.encodeToString(Labelling.serializer(), read.labelling))
     println("written: " + Json.encodeToString(Hitching.serializer(), read))
 }
@@ -202,7 +202,7 @@ fn an_optional_member_beside_a_flattened_one_is_written_in_kotlin_as_serde_write
 fn a_map_flattened_ahead_of_a_struct_reads_in_kotlin_the_keys_serde_hands_it() {
     let read: Hitching = serde_json::from_str(HITCHING).unwrap();
     let written = serde_json::to_string(&read).unwrap();
-    assert_eq!(written, r#"{"label":"n","north":2,"label":"n"}"#);
+    assert_eq!(written, r#"{"label":"n","north":"2","label":"n"}"#);
     assert!(
         serde_json::from_str::<Hitching>(&written)
             .unwrap_err()
@@ -218,8 +218,8 @@ fn a_map_flattened_ahead_of_a_struct_reads_in_kotlin_the_keys_serde_hands_it() {
     );
     assert_eq!(
         expected,
-        "extra: {\"label\":\"n\",\"north\":2}\nlabelling: {\"label\":\"n\"}\n\
-         written: {\"label\":\"n\",\"north\":2}\n"
+        "extra: {\"label\":\"n\",\"north\":\"2\"}\nlabelling: {\"label\":\"n\"}\n\
+         written: {\"label\":\"n\",\"north\":\"2\"}\n"
     );
     let source = [
         KOTLIN_IMPORTS.to_owned(),

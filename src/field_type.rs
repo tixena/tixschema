@@ -169,7 +169,9 @@ pub enum FieldDefType {
     U32,
     U64,
     U8,
-    /// Unknown or unsupported type - generates 'unknown' in TS/Zod.
+    /// A type no surface can name, described as any value: one written as no path (a function
+    /// pointer, a trait object, a macro), a path with parenthesized arguments, and in Dart an
+    /// opaque type parameter.
     Unknown,
     Usize,
 }
@@ -277,6 +279,16 @@ impl PartialEq for FieldDef {
 }
 
 impl FieldDef {
+    /// The first `serde_json` type that holds any JSON value, `Value` or `Map`, this field reaches
+    /// at any depth, read by its last name. `kept` answers for a name that is some other type: one
+    /// the crate declared, or one of the item's own.
+    pub fn any_json_name<F>(&self, kept: F) -> Option<&str>
+    where
+        F: Fn(&str) -> bool + Copy,
+    {
+        self.reached_name(|name| matches!(name, "Value" | "Map") && !kept(name))
+    }
+
     /// The enclosing item's own type parameter this field reaches *below* its own position — the
     /// `T` a `Later<T>` hands to the type it names, and the same `T` inside a tuple or a map.
     #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
@@ -1197,6 +1209,7 @@ impl FieldDef {
     /// the position it sits in decides between `| undefined` and `| null`.
     fn typescript_base(&self) -> String {
         let result = match &self.field_type {
+            // A type written as no path, a function pointer or a macro among them.
             FieldDefType::Unknown => "unknown".to_owned(),
             // The declaration binds this name, so the field is written under it.
             FieldDefType::TypeParam(name) => name.clone(),
@@ -1440,6 +1453,7 @@ impl FieldDef {
     #[cfg(feature = "zod")]
     fn zod_array_base(&self) -> String {
         let result = match &self.field_type {
+            // A type written as no path, a function pointer or a macro among them.
             FieldDefType::Unknown => "z.unknown()".to_owned(),
             // A `const` cannot be parameterised, so a parameter composes the argument the factory
             // binds for it.
@@ -2048,7 +2062,6 @@ pub fn is_map_wrapper(name: &str) -> bool {
         // A name of another crate's, unless this crate declared a type of its own under it.
         #[cfg(feature = "indexmap")]
         "IndexMap" => !is_declared_ident(name),
-        "Map" => !is_declared_ident(name),
         _ => false,
     }
 }
@@ -2502,7 +2515,6 @@ fn get_field_def_type_or_sibling(t_name: &str) -> FieldDefType {
         // `str` and `Path` are the borrowed forms of `String` and `PathBuf`, and each writes the
         // same JSON string its owned form does.
         "String" | "PathBuf" | "str" | "Path" => FieldDefType::String,
-        "Value" => FieldDefType::Unknown,
         "u8" => FieldDefType::U8,
         "u16" => FieldDefType::U16,
         "u32" => FieldDefType::U32,

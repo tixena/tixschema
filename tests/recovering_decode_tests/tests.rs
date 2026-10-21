@@ -250,13 +250,6 @@ struct Tally {
 
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Shelf {
-    payload: Value,
-    title: String,
-}
-
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Node {
     children: Vec<Self>,
     label: String,
@@ -1050,22 +1043,6 @@ fn an_optional_list_holding_neither_a_list_nor_null_names_the_option() {
         lines(&read.unwrap_err()),
         ["marks: invalid: expected Optional(Array(I32)), found String(\"none\"): not an array"]
     );
-}
-
-#[test]
-fn a_json_value_field_holds_anything_and_is_never_listed() {
-    for payload in [json!(null), json!([1_i32, "two", null]), json!({ "a": {} })] {
-        let mut calls = 0_u32;
-        let read = Shelf::from_value_with(
-            json!({ "payload": payload, "title": "t" }),
-            |_raw, _found| {
-                calls += 1;
-                shelf_schema::Verdict::Reject
-            },
-        );
-        read.unwrap();
-        assert_eq!(calls, 0);
-    }
 }
 
 #[test]

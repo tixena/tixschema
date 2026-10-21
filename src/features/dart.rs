@@ -801,6 +801,7 @@ fn has_as_number(field: &FieldDef) -> bool {
 /// [`FieldDef::is_nullable_at`] says so. Mirrors `typescript_base`.
 fn dart_base(field: &FieldDef) -> String {
     let scalar = match &field.field_type {
+        // An opaque type parameter (`FieldDef::opaque_parameters`), and a type written as no path.
         FieldDefType::Unknown => "dynamic".to_owned(),
         FieldDefType::TypeParam(name) => name.clone(),
         FieldDefType::Tuple(elements) => {
@@ -1066,6 +1067,7 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
         return format!("({expr} as List<dynamic>).map({mapper}).toList()");
     }
     match &field.field_type {
+        // An opaque type parameter (`FieldDef::opaque_parameters`), and a type written as no path.
         FieldDefType::Unknown => expr.to_owned(),
         FieldDefType::TypeParam(name) => format!("{}({expr})", from_json_argument(name)),
         FieldDefType::Tuple(elements) => {
@@ -1398,6 +1400,7 @@ fn dart_encode_at(field: &FieldDef, level: u8, expr: &str) -> String {
         return format!("{expr}.map({mapper}).toList()");
     }
     match &field.field_type {
+        // An opaque type parameter (`FieldDef::opaque_parameters`), and a type written as no path.
         FieldDefType::Unknown => expr.to_owned(),
         FieldDefType::TypeParam(name) => format!("{}({expr})", dart_to_json_argument(name)),
         FieldDefType::Tuple(elements) => {
@@ -2592,7 +2595,11 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
     let rule = container_rename_rule(&item_struct.attrs);
     record_taken_keys(
         &rust_ident,
-        Taken::Keys(keys_taken_when_flattened(&item_struct.fields, rule, args.preprocess)),
+        Taken::Keys(keys_taken_when_flattened(
+            &item_struct.fields,
+            rule,
+            args.preprocess,
+        )),
     );
     let defaults = SerdeDefaults::of(item_struct);
     let fields = collect_dart_fields(

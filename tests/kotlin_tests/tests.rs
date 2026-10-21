@@ -852,11 +852,11 @@ fn test_flatten_map_beside_no_member_of_its_own() {
 #[test]
 fn every_flattened_map_fixture_is_read_as_serde_reads_it() {
     assert_eq!(
-        serde_json::from_str::<Hitching>(r#"{"label":"n","north":2}"#).unwrap(),
+        serde_json::from_str::<Hitching>(r#"{"label":"n","north":"2"}"#).unwrap(),
         Hitching {
             extra: BTreeMap::from([
-                ("label".to_owned(), serde_json::json!("n")),
-                ("north".to_owned(), serde_json::json!(2_u8)),
+                ("label".to_owned(), "n".to_owned()),
+                ("north".to_owned(), "2".to_owned()),
             ]),
             labelling: Labelling {
                 label: "n".to_owned()
@@ -882,12 +882,12 @@ fn a_flattened_map_is_read_and_written_at_its_place() {
     let hitching = hitching_kotlin::kotlin_definition();
     for held in [
         "buildJsonObject { value.extra.forEach { (k, v) -> put(k, \
-         output.json.encodeToJsonElement(serializer<JsonElement>(), v)) }; \
+         output.json.encodeToJsonElement(serializer<String>(), v)) }; \
          output.json.encodeToJsonElement(LabellingUnjudged, value.labelling).jsonObject\
          .forEach { (k, v) -> put(k, v) } }",
         "val obj = input.decodeJsonElement().jsonObject; val extraConsumedKeys = setOf<String>(); \
          val extra = obj.filterKeys { it !in extraConsumedKeys }.mapValues { (_, v) -> \
-         input.json.decodeFromJsonElement(serializer<JsonElement>(), v) }; val labellingKeys = \
+         input.json.decodeFromJsonElement(serializer<String>(), v) }; val labellingKeys = \
          (LabellingUnjudged).descriptor.elementNames.toSet(); val labelling = \
          lenient.decodeFromJsonElement(LabellingUnjudged, obj); return Hitching(extra = extra, \
          labelling = labelling) }",

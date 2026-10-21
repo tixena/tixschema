@@ -13,7 +13,7 @@ use core::time::Duration;
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value, json};
+use serde_json::json;
 use tixschema::model_schema;
 
 use self::declared::{Counts, Marks, Versions};
@@ -44,8 +44,8 @@ macro_rules! read_counting {
     };
 }
 
-/// A plain alias of a JSON map, which no `#[model_schema]` is written on.
-pub type Properties = Map<String, Value>;
+/// A plain alias of a map, which no `#[model_schema]` is written on.
+pub type Properties = HashMap<String, u8>;
 
 /// An alias that takes a parameter: what it names depends on what fills it.
 #[model_schema(default_types(T = i32))]
@@ -186,7 +186,7 @@ fn a_model_type_inside_an_alias_is_walked_by_its_own_walker() {
 #[test]
 fn an_alias_tixschema_never_sees_is_read_whole() {
     let mut calls = 0_u32;
-    let any = json!({ "properties": { "a": 5_i32, "b": [true, { "c": null }] } });
+    let any = json!({ "properties": { "a": 5_u8, "b": 7_u8 } });
     read_counting!(Page, page_schema, any, calls).unwrap();
     read_counting!(Page, page_schema, json!({ "properties": {} }), calls).unwrap();
     assert_eq!(calls, 0);
@@ -202,15 +202,12 @@ fn an_alias_tixschema_never_sees_is_read_whole() {
 #[test]
 fn a_flattened_alias_tixschema_never_sees_takes_every_other_key() {
     let mut calls = 0_u32;
-    let stored = json!({ "a": 1_i32, "b": [true], "name": "n" });
+    let stored = json!({ "a": 1_u8, "b": 2_u8, "name": "n" });
     assert_eq!(
         read_counting!(Block, block_schema, stored, calls),
         Ok(Block {
             name: "n".to_owned(),
-            properties: Map::from_iter([
-                ("a".to_owned(), json!(1_i32)),
-                ("b".to_owned(), json!([true])),
-            ]),
+            properties: HashMap::from([("a".to_owned(), 1), ("b".to_owned(), 2)]),
         })
     );
     assert_eq!(calls, 0);

@@ -27,6 +27,7 @@ fn swift_typename(field: &FieldDef) -> String {
 
 fn swift_base(field: &FieldDef) -> String {
     let scalar = match &field.field_type {
+        // A type written as no path, a function pointer or a macro among them.
         FieldDefType::Unknown => "any Sendable".to_owned(),
         FieldDefType::TypeParam(name) => name.clone(),
         FieldDefType::Tuple(elements) => {

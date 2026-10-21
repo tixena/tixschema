@@ -499,8 +499,8 @@ export const Document$Schema: ZodType<Document> = Document$RawSchema.meta({
 ///
 /// A named inner is judged by what that name publishes, since that is the schema the checks are
 /// appended to: `#[model_schema(minLength = 3)] struct Outer(pub Blob);` over
-/// `#[serde(transparent)] struct Blob(pub serde_json::Value);` is refused for the same reason the
-/// opaque inner spelled directly is. That answer comes from the named type's own expansion, so a
+/// `#[serde(transparent)] struct Blob(pub u64);` is refused for the same reason the numeric inner
+/// spelled directly is. That answer comes from the named type's own expansion, so a
 /// brand written above the type it names is not refused where it stands — the type it names has not
 /// been read yet, and at that point a name declared below and a type this crate never expands are
 /// the same silence. The consult is kept instead, and the named type's own expansion answers it:

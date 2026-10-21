@@ -1472,10 +1472,10 @@ impl Walker<'_> {
                 let walked = self.entries_walk(values, &object, &[], None);
                 (any_key, true, quote! { #walked #every_key })
             }
-            // A hook reads whatever it asks for, and a value of a parameter's type and a JSON value
-            // are whatever fills them, an object among it.
+            // A hook reads whatever it asks for, and a value of a parameter's type is whatever
+            // fills it, an object among it.
             Step::Leaf(whole)
-                if (whole.hooked || whole.parameterized || holds_any_value(walk.ty))
+                if (whole.hooked || whole.parameterized)
                     && !get_field_def("", walk.ty, "").is_optional() =>
             {
                 let (whole_object, read) = (
@@ -3771,13 +3771,6 @@ fn holds_an_id(ty: &Type) -> bool {
             .is_some_and(|(member, _, _)| *member == "ObjectId")
 }
 
-/// Whether `ty` is written as a type that holds any value, an object among them: a JSON value,
-/// or an `Option` of one.
-fn holds_any_value(ty: &Type) -> bool {
-    let def = get_field_def("", ty, "");
-    def.array_depth == 0 && matches!(def.field_type, FieldDefType::Unknown)
-}
-
 /// The functions a field is read and written back through when its author's serde attributes
 /// name any, and `None` for a field its own type reads.
 fn hooked_leaf(
@@ -4285,9 +4278,7 @@ fn reads_entries(walk: &Walk<'_>) -> bool {
     match &walk.step {
         Step::Entries(_) | Step::Model => true,
         Step::Arms(_, _) | Step::Items(_) | Step::Positions(_) => false,
-        Step::Leaf(whole) => {
-            whole.hooked || whole.parameterized || holds_any_value(walk.ty) || holds_an_id(walk.ty)
-        }
+        Step::Leaf(whole) => whole.hooked || whole.parameterized || holds_an_id(walk.ty),
         Step::Present(present) => reads_entries(present),
     }
 }

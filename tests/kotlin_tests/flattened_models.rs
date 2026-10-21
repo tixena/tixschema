@@ -33,13 +33,13 @@ pub struct Knotting {
     pub rest: HashMap<String, u8>,
 }
 
-/// A map flattened ahead of a flattened struct, where serde hands it every key, the struct's among
-/// them.
+/// A map of text flattened ahead of a flattened struct, where serde hands it every key, the
+/// struct's among them.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Hitching {
     #[serde(flatten)]
-    pub extra: BTreeMap<String, serde_json::Value>,
+    pub extra: BTreeMap<String, String>,
     #[serde(flatten)]
     pub labelling: Labelling,
 }

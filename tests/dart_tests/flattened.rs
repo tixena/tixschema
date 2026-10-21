@@ -5,8 +5,8 @@
 
 use super::flattened_models::{
     belaying_dart, clamping_dart, coupling_dart, doubling_dart, fastening_dart, hoisting_dart,
-    kedging_dart, lacing_dart, loading_dart, loosening_dart, mousing_dart, pairing_dart,
-    rigging_dart, shoring_dart, stowing_dart, tethering_dart, trimming_dart, twin_dart,
+    kedging_dart, lacing_dart, loading_dart, mousing_dart, pairing_dart, rigging_dart,
+    shoring_dart, stowing_dart, tethering_dart, trimming_dart, twin_dart,
 };
 
 /// The read of a map of `u8` values from the object `source` names.
@@ -17,11 +17,11 @@ fn counts_from(source: &str) -> String {
     )
 }
 
-/// The read of a map of JSON values from the object `source` names.
-fn values_from(source: &str) -> String {
+/// The read of a map of `Stowage` values from the object `source` names.
+fn stowages_from(source: &str) -> String {
     format!(
-        "Map<String, dynamic>.fromEntries(({source} as Map<String, dynamic>).entries.map((e) => \
-         MapEntry(e.key as String, e.value)))"
+        "Map<String, Stowage>.fromEntries(({source} as Map<String, dynamic>).entries.map((e) => \
+         MapEntry(e.key as String, Stowage.fromJsonUnjudged(e.value))))"
     )
 }
 
@@ -33,11 +33,11 @@ fn without_first(source: &str, names: &str) -> String {
     )
 }
 
-/// The `toJson` entry of the flattened map `member`.
-fn map_written(member: &str) -> String {
+/// The `toJson` entry of the flattened map `member`, each value written by `value`.
+fn map_written(member: &str, value: &str) -> String {
     format!(
         "...(Map<String, dynamic>.fromEntries(({member}).entries.map((e) => MapEntry((e.key) as \
-         String, e.value))) as Map<String, dynamic>),"
+         String, {value}))) as Map<String, dynamic>),"
     )
 }
 
@@ -105,14 +105,14 @@ fn a_map_ahead_of_every_flattened_struct_is_read_from_every_key() {
         &hoisting,
         &format!(
             "Hoisting(extra: {},marking: Marking.fromJsonUnjudged(json),);",
-            values_from("json")
+            stowages_from("json")
         ),
     );
     assert_written(
         &hoisting,
         &format!(
             "toJson() => {{ {}...((marking).toJson() as Map<String, dynamic>), }};",
-            map_written("extra")
+            map_written("extra", "(e.value).toJson()")
         ),
     );
     let stowing = stowing_dart::dart_definition();
@@ -128,8 +128,8 @@ fn a_map_ahead_of_every_flattened_struct_is_read_from_every_key() {
         &stowing,
         &format!(
             "toJson() => {{ {}{} }};",
-            map_written("first"),
-            map_written("second")
+            map_written("first", "e.value"),
+            map_written("second", "e.value")
         ),
     );
 }
@@ -142,28 +142,28 @@ fn a_map_after_a_member_that_takes_no_key_is_read_from_every_key() {
         &lacing_dart::dart_definition(),
         &format!(
             "Lacing(issued: Ticketing.fromJsonUnjudged(json),rest: {},);",
-            values_from("json")
+            stowages_from("json")
         ),
     );
     assert_written(
         &rigging_dart::dart_definition(),
         &format!(
             "Rigging(marking: Marking.fromJsonUnjudged(asGiven(json)),rest: {},);",
-            values_from("json")
+            stowages_from("json")
         ),
     );
     assert_written(
         &belaying_dart::dart_definition(),
         &format!(
             "Belaying(bracing: Bracing.fromJsonUnjudged(json),rest: {},);",
-            values_from("json")
+            stowages_from("json")
         ),
     );
 }
 
-/// A struct with a flattened map, a member that names a function, a JSON value and a struct that
-/// reads the same key, each flattened after a struct, are read without the keys the struct took.
-/// The struct is read as it was.
+/// A struct with a flattened map, a member that names a function and a struct that reads the same
+/// key, each flattened after a struct, are read without the keys the struct took. The struct is
+/// read as it was.
 #[test]
 fn a_member_after_a_flattened_struct_is_read_without_the_keys_the_struct_took() {
     assert_written(
@@ -175,10 +175,6 @@ fn a_member_after_a_flattened_struct_is_read_without_the_keys_the_struct_took() 
         &twin_dart::dart_definition(),
         "Twin(marking: Marking.fromJsonUnjudged(json),other: \
          Keying.fromJsonUnjudged(withItsKeys(({...json}..remove('label')))),);",
-    );
-    assert_written(
-        &loosening_dart::dart_definition(),
-        "Loosening(marking: Marking.fromJsonUnjudged(json),rest: ({...json}..remove('label')),);",
     );
     assert_written(
         &doubling_dart::dart_definition(),
@@ -196,14 +192,14 @@ fn a_map_after_a_flattened_externally_tagged_enum_is_read_without_the_variants_e
         &loading_dart::dart_definition(),
         &format!(
             "Loading(hatching: Hatching.fromJsonUnjudged(json),rest: {},);",
-            values_from(&without_first("json", "'Bay', 'Dock', 'Quay'"))
+            stowages_from(&without_first("json", "'Bay', 'Dock', 'Quay'"))
         ),
     );
     assert_written(
         &kedging_dart::dart_definition(),
         &format!(
             "Kedging(kedge: Warping.fromJsonUnjudged(json),rest: {},);",
-            values_from(&without_first("json", "'pier', 'open_bay'"))
+            stowages_from(&without_first("json", "'pier', 'open_bay'"))
         ),
     );
 }
@@ -218,7 +214,7 @@ fn a_member_after_a_flattened_externally_tagged_enum_is_read_without_the_variant
         &format!(
             "Trimming(hatching: Hatching.fromJsonUnjudged(json),marking: \
              Marking.fromJsonUnjudged({after_the_enum}),rest: {},);",
-            values_from(&format!("({{...{after_the_enum}}}..remove('label'))"))
+            stowages_from(&format!("({{...{after_the_enum}}}..remove('label'))"))
         ),
     );
 }
@@ -231,14 +227,14 @@ fn a_map_after_an_enum_read_as_a_map_is_read_from_every_key() {
         &mousing_dart::dart_definition(),
         &format!(
             "Mousing(frapping: Frapping.fromJsonUnjudged(json),rest: {},);",
-            values_from("json")
+            stowages_from("json")
         ),
     );
     assert_written(
         &shoring_dart::dart_definition(),
         &format!(
             "Shoring(chocking: Chocking.fromJsonUnjudged(json),rest: {},);",
-            values_from("json")
+            stowages_from("json")
         ),
     );
 }

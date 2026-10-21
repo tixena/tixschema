@@ -1015,6 +1015,7 @@ fn tuple_struct(
 /// when the leaf needs one of its own.
 fn swift_field_shape(field: &FieldDef, name_hint: &str, aux: &mut Vec<String>) -> SwiftFieldShape {
     match &field.field_type {
+        // A type written as no path, a function pointer or a macro among them.
         FieldDefType::Unknown => direct_shape("String".to_owned()),
         FieldDefType::TypeParam(name) => direct_shape(name.clone()),
         FieldDefType::Tuple(elements) => tuple_shape(elements, name_hint, aux),

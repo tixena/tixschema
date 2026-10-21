@@ -328,7 +328,7 @@ pub struct UserWithCollections {
 }
 ```
 
-`HashMap<K, V>` and `BTreeMap<K, V>` are both read as maps, and so are `serde_json::Map<String, Value>` and, under the [`indexmap` feature](#feature-flags), `indexmap::IndexMap<K, V>`: [The order of a map's keys](#the-order-of-a-maps-keys) says what sets the four apart. The key decides what the map describes as. A `String` key is the open case: any string is a key, so the JSON schema puts the value's schema under `"additionalProperties"`, TypeScript writes `Partial<Record<string, V>>`, and Zod writes `z.record(z.string(), V)`.
+`HashMap<K, V>` and `BTreeMap<K, V>` are both read as maps, and so is `indexmap::IndexMap<K, V>`, under the [`indexmap` feature](#feature-flags): [The order of a map's keys](#the-order-of-a-maps-keys) says what sets the three apart. `serde_json::Map` is refused, as [A JSON value is no member](#a-json-value-is-no-member) says. The key decides what the map describes as. A `String` key is the open case: any string is a key, so the JSON schema puts the value's schema under `"additionalProperties"`, TypeScript writes `Partial<Record<string, V>>`, and Zod writes `z.record(z.string(), V)`.
 
 A key written as a plain `#[model_schema()]` enum is the narrowed case: the enum's members become the object's properties and nothing else is allowed, so the JSON schema lists each member with the value's schema and closes the object with `"additionalProperties": false`, while TypeScript and Zod name the enum itself as the key type — `Partial<Record<Slot, V>>` and `z.partialRecord(Slot$Schema, V)`. Zod's constructor is `z.partialRecord` because `z.record` over a key whose schema enumerates its members demands every one of them, while a `HashMap` holds any subset and serde writes the subset; a key outside the enumeration is refused either way. The members are named as serde writes them, so a `#[serde(rename_all = "...")]` on the enum renames the properties too. This holds wherever the enum is declared relative to the type that writes the map, and through a `#[model_schema()]` alias of one.
 
@@ -426,16 +426,15 @@ The key position is the one place TypeScript stops rendering a parameter as itse
 
 #### The order of a map's keys
 
-A JSON object is written with its keys in an order. The four maps describe as the same object on every surface, and each does its own thing with that order in Rust:
+A JSON object is written with its keys in an order. The three maps describe as the same object on every surface, and each does its own thing with that order in Rust:
 
 | The map | The order of its keys |
 |---|---|
 | `HashMap<K, V>` | none |
 | `BTreeMap<K, V>` | sorted |
 | `IndexMap<K, V>` | as read |
-| `serde_json::Map<String, Value>` | as read where the crate's `serde_json` has `preserve_order` on, sorted where it is off |
 
-`indexmap::IndexMap<K, V>` and the list beside it, `indexmap::IndexSet<T>`, are read under the `indexmap` feature. The feature adds no dependency to tixschema: the generated code names the types of the crate that declares them, so that crate lists `indexmap` itself, with its `serde` feature. `serde_json::Map` is read under no feature.
+`indexmap::IndexMap<K, V>` and the list beside it, `indexmap::IndexSet<T>`, are read under the `indexmap` feature. The feature adds no dependency to tixschema: the generated code names the types of the crate that declares them, so that crate lists `indexmap` itself, with its `serde` feature.
 
 ```toml
 tixschema = { version = "0.1.0", features = ["indexmap"] }
@@ -450,14 +449,13 @@ use indexmap::{IndexMap, IndexSet};
 pub struct Document {
     pub data: IndexMap<String, String>,
     pub labels: IndexSet<String>,
-    pub raw: serde_json::Map<String, serde_json::Value>,
 }
 
 let read: Document =
-    serde_json::from_str(r#"{"data":{"zeta":"1","alpha":"2"},"labels":["b","a"],"raw":{}}"#)?;
+    serde_json::from_str(r#"{"data":{"zeta":"1","alpha":"2"},"labels":["b","a"]}"#)?;
 assert_eq!(
     serde_json::to_string(&read)?,
-    r#"{"data":{"zeta":"1","alpha":"2"},"labels":["b","a"],"raw":{}}"#
+    r#"{"data":{"zeta":"1","alpha":"2"},"labels":["b","a"]}"#
 );
 ```
 
@@ -465,17 +463,16 @@ assert_eq!(
 export type Document = {
   data: Partial<Record<string, string>>;
   labels: Array<string>;
-  raw: Partial<Record<string, unknown>>;
 };
 ```
 
-Every surface writes for each of the three what it writes for its std twin: for `IndexMap<K, V>` what a `HashMap<K, V>` gives, for `IndexSet<T>` what a `HashSet<T>` gives, and for `serde_json::Map<String, Value>` what a `HashMap<String, serde_json::Value>` gives. That holds for TypeScript, Zod, the JSON Schema, Dart, Swift and Kotlin, and under whatever holds the field: an `Option`, a `Vec`, another map. A key is held to the rules above, so `IndexMap<Slot, V>` over a plain enum is `Partial<Record<Slot, V>>` and `z.partialRecord(Slot$Schema, V)`. A hasher written as a further argument, `IndexMap<K, V, S>` or `IndexSet<T, S>`, says nothing about the wire. A `minLength` or a `maxLength` written on an `IndexSet` field counts its items, as on any list ([List Length](#list-length-minlength-maxlength)).
+Every surface writes for each of the two what it writes for its std twin: for `IndexMap<K, V>` what a `HashMap<K, V>` gives, and for `IndexSet<T>` what a `HashSet<T>` gives. That holds for TypeScript, Zod, the JSON Schema, Dart, Swift and Kotlin, and under whatever holds the field: an `Option`, a `Vec`, another map. A key is held to the rules above, so `IndexMap<Slot, V>` over a plain enum is `Partial<Record<Slot, V>>` and `z.partialRecord(Slot$Schema, V)`. A hasher written as a further argument, `IndexMap<K, V, S>` or `IndexSet<T, S>`, says nothing about the wire. A `minLength` or a `maxLength` written on an `IndexSet` field counts its items, as on any list ([List Length](#list-length-minlength-maxlength)).
 
-The order is the Rust type's. A schema describes an object and states no order, and each generated client holds the map in its language's own: a Dart `Map` and a Kotlin `Map` keep the order of the document. A Swift client holds every map as a dictionary, which has no order, and `JSONEncoder` writes the keys of every object in hash order: a Swift client neither keeps nor writes the order of an `IndexMap` or a `serde_json::Map`.
+The order is the Rust type's. A schema describes an object and states no order, and each generated client holds the map in its language's own: a Dart `Map` and a Kotlin `Map` keep the order of the document. A Swift client holds every map as a dictionary, which has no order, and `JSONEncoder` writes the keys of every object in hash order: a Swift client neither keeps nor writes the order of an `IndexMap`.
 
-The [recovering decode](#recovering-decode-decode_with) walks each of these maps entry by entry, each issue at its key's path, and an `IndexSet` item by item. Its second read is serde's, so an `IndexMap` field is filled in the order of the source: a `bson` document keeps the order the row stored, and a `serde_json::Value` holds its keys as the table says of `serde_json::Map`. Under `mongodb` a map has no typed path, whichever of the four it is, and an `IndexSet` field is a `ListField`.
+The [recovering decode](#recovering-decode-decode_with) walks each of these maps entry by entry, each issue at its key's path, and an `IndexSet` item by item. Its second read is serde's, so an `IndexMap` field is filled in the order of the source: a `bson` document keeps the order the row stored, and a `serde_json::Value` holds its keys in the order of the crate's `serde_json`, as read where its `preserve_order` feature is on and sorted where it is off. Under `mongodb` a map has no typed path, whichever of the three it is, and an `IndexSet` field is a `ListField`.
 
-`Map` is read by its last name, as `Value` is: a field written `Map<K, V>` is `serde_json`'s map. A `#[model_schema()]` type of the crate's own named `IndexMap`, `IndexSet` or `Map`, declared above the type that holds it, keeps its name: a field written with that name is that type, with the `indexmap` feature on or off. With the feature off, any other type written `IndexMap<K, V>` or `IndexSet<T>` is refused with the feature named. See [`IndexMap` or `IndexSet` Without the Feature](#indexmap-or-indexset-without-the-feature).
+A `#[model_schema()]` type of the crate's own named `IndexMap` or `IndexSet`, declared above the type that holds it, keeps its name: a field written with that name is that type, with the `indexmap` feature on or off. With the feature off, any other type written `IndexMap<K, V>` or `IndexSet<T>` is refused with the feature named. See [`IndexMap` or `IndexSet` Without the Feature](#indexmap-or-indexset-without-the-feature).
 
 #### A set holds each item once
 
@@ -494,6 +491,30 @@ The [recovering decode](#recovering-decode-decode_with) walks each of these maps
 - **Zod checks a repeat after the set's count, and a client's `validate()` ahead of it.**
 - **A set chooses no variant of an untagged enum by a repeat.** serde reads the payload, so each surface chooses the variant serde chooses, and then refuses the repeat under that variant's place.
 - **Rust's `validate()` answers nothing of a repeat**: a Rust set never holds one, so each client agrees with Rust on every value Rust holds.
+
+### A JSON value is no member
+
+A member that holds `serde_json::Value` or `serde_json::Map` stops the build. Either holds any JSON value, and no target can describe one: a schema would admit anything, and a client would read the value as a type of its language's that holds anything, or as none. The refusal is a compile error at expansion, in every build, one for each place the item writes it:
+
+- a field, a slot of a tuple struct, and a member or a slot of a variant, flattened or not;
+- the value under an `Option`, a list, a map's key or value, a tuple, a `Result` and a type argument, at any depth: `Option<Vec<HashMap<String, Value>>>`, `(u32, Value)`, `Wrapper<Value>`;
+- the type an alias names, the value a brand holds, and a `default_types` filling.
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+pub struct Holding {
+    pub v: serde_json::Value,
+}
+```
+
+```text
+error: model_schema: type `Holding`: field `v` reaches `serde_json::Value`, which holds any JSON value, so no target can describe it. Declare the shape that value takes as a type of its own, and write that type in its place.
+```
+
+The two names are read by their last segment, so a `Value` or a `Map` brought into scope with `use serde_json::{Map, Value};` is refused as well. A type the crate declares with `#[model_schema()]` under either name, above the type that names it, is that type, and so is one of the item's own type parameters and the item itself.
+
+The functions tixschema writes that take or answer a `serde_json::Value` are unchanged: the function a [`preprocess`](#preprocessing-preprocess) names, `from_value_with` and `from_value_piped`, `schema_examples()`, and the archie conversions.
 
 ### Pointers and Borrowed Values
 
@@ -1699,11 +1720,9 @@ NameConfig(Vec::new()).validate();
 
 `serde_json::from_str::<NameConfig>("[]")` is refused with the same sentence, the Zod schema is `z.array(Part$Schema).min(1, { error: ... }).brand<"NameConfig">()`, and the JSON Schema writes `"minItems": 1` on the array. The list is written itself or behind `Box`, `Rc`, `Arc` or `Cow`. The brand may declare type parameters (`struct Batch<T>(pub Vec<T>)`), and the count holds whatever fills them. Such a brand passes `no_display`, a list having no `Display` to delegate to. `pattern` on a brand over a list is refused: a list has no text, and a rule for each item goes on the item's own type.
 
-**A named inner is judged by what the named type publishes**, not by the fact that it is a name. The brand appends its checks to that type's own schema binding — `Inner$Schema.min(3, ...)` — so a name whose schema is an object, a union, a `z.enum`, a number or `z.unknown()` is rejected exactly as the same shape spelled directly is, and the refusal names both the brand and the inner. A name whose schema is an array is rejected too: only a list written on the brand itself is counted. A brand over `serde_json::Value` is opaque, and so is a brand over that brand.
+**A named inner is judged by what the named type publishes**, not by the fact that it is a name. The brand appends its checks to that type's own schema binding — `Inner$Schema.min(3, ...)` — so a name whose schema is an object, a union, a `z.enum`, a number or `z.unknown()` is rejected exactly as the same shape spelled directly is, and the refusal names both the brand and the inner. A name whose schema is an array is rejected too: only a list written on the brand itself is counted.
 
 That answer comes from the type's own expansion, so it is only available once that expansion has run: a brand written **above** the type it names, or over a type this crate never expands at all, is admitted with the emission it has always had. Declaration order is not a diagnostic — moving a declaration must not turn a compiling program into a rejected one — so keep a constrained brand below the type it constrains if you want the check.
-
-An opaque inner is `serde_json::Value`, which both validating surfaces read as the opaque value (see [Type Parameters](#type-parameters)) and which the checks are refused against outright — there is nothing there for them to attach to.
 
 **One of the brand's own type parameters is different: it reads its declared default instead of being refused.** A bare parameter is not itself a type the checks could measure, but `#[model_schema]` already requires (for `jsonschema`) or defaults (elsewhere) a concrete filling for every parameter — see [Declaring the default type](#declaring-the-default-type) — and that filling is exactly as concrete as a named type's own schema. So the guard asks the same question of the declared default it asks of a named inner: a string-shaped default carries the checks, a non-string one is refused in its place. The checks land once, on `$SchemaDefault`'s argument for that parameter; the factory itself stays unconstrained, so a caller filling the parameter with something else — an `ObjectId` schema, say — is never held to bounds meant for the default:
 
@@ -3388,7 +3407,7 @@ pub struct GroupTag {
 
 The bound reaches the brand through the wrappers it reaches a `String` through -- `Option`, `Box`/`Rc`/`Arc`/`Cow` -- and whether the brand is declared above the field's type or below it. On a list of the brand it counts the list, as on [every list](#list-length-minlength-maxlength). The validator measures the text the brand publishes for it: `model_schema_bound_text()`, a method `#[model_schema]` adds to every brand whose inner is a `String`, a `str`, a `PathBuf` or a `Path`, directly or behind `Box`/`Rc`/`Arc`/`Cow`. A `#[model_schema]` alias of a `String` or a `PathBuf` that takes no parameter is measured as the type it names.
 
-A length or a pattern on a field typed with anything else is a compile error at the field, because no surface has a string to measure there: a struct, an enum, a brand over a number, a `bool`, a `char`, a `serde_json::Value`.
+A length or a pattern on a field typed with anything else is a compile error at the field, because no surface has a string to measure there: a struct, an enum, a brand over a number, a `bool`, a `char`.
 
 ```text
 error[E0277]: model_schema: field `latest`: `minLength` cannot apply to `Version`
@@ -3530,7 +3549,7 @@ A length or a pattern is measured on a string, a range on a number, and a length
 |---|---|---|
 | `minLength`, `maxLength`, `pattern` | a number: `u8` to `u64`, `i8` to `i64`, `usize`, `isize`, `f32`, `f64` | Refused |
 | `minimum`, `maximum` | a string: `String`, `str`, `PathBuf`, `Path` | Refused |
-| `minimum`, `maximum` | a `bool`, a `char`, and a value every surface describes as unknown, `serde_json::Value` among them | Refused |
+| `minimum`, `maximum` | a `bool`, a `char`, and a value every surface describes as unknown | Refused |
 | `pattern`, `minimum`, `maximum` | a list | Refused |
 | `minLength`, `maxLength`, `pattern` | a string, one read through a reference included | Enforced by Zod, the JSON Schema and `validate()` |
 | `minimum`, `maximum` | a number | Enforced by Zod, the JSON Schema and `validate()` |
@@ -4156,8 +4175,9 @@ Rust, Dart, Swift and Kotlin print them from the `validate()` of each value, and
 
 #### What an upgrade asks of your crate
 
-Four rules meet a crate that upgrades. Each is stated with what a build or a read answers:
+Five rules meet a crate that upgrades. Each is stated with what a build or a read answers:
 
+- **A member that holds `serde_json::Value` or `serde_json::Map` stops the build**, at any depth: a `pub v: serde_json::Value` on `Holding` answers ``error: model_schema: type `Holding`: field `v` reaches `serde_json::Value`, which holds any JSON value, so no target can describe it. Declare the shape that value takes as a type of its own, and write that type in its place.`` See [A JSON value is no member](#a-json-value-is-no-member).
 - **Every language the crate builds for calls the function a `preprocess` names**, on a field and on a type. A build stops until a function under that name is in scope in that language:
 
   | | The build answers |
@@ -4635,7 +4655,7 @@ Terminal with no spareParcel key, all good: read
 - **A plain enum judges where it names a check**, and carries `fromJsonUnjudged` in every case.
 - **`toJson` judges nothing**, and is the text it was: a broken value built in code is written as it is.
 - **A struct's member under `#[serde(skip_serializing)]` is read, and `toJson` writes no key for it**, as serde writes none. A member under `skip_serializing_if` is written wherever it holds a value: `toJson` cannot call the Rust function, so under any function but `Option::is_none`, `Vec::is_empty` say, it writes the key where serde leaves it out.
-- **A `#[serde(flatten)]` member is read at its place, in the order declared**, as serde reads it: from the object without the keys the holder's own members take and the entries each member flattened ahead of it took. A map, a `serde_json::Value`, a struct with a `#[serde(flatten)]` member of its own and the function a flattened member names are each handed that object, and a struct that reads a key a struct flattened ahead of it took is refused, as serde refuses it with `missing field`. A struct takes the keys it reads, and a map and a JSON value take none, so two maps are read from the same keys, and a map flattened ahead of a struct holds the struct's keys too. A struct that names a [`preprocess`](#a-preprocess-in-the-dart-client) on itself, a flattened member that names one and a struct with a `#[serde(flatten)]` member of its own take no key, as serde reads each. A struct declared below its holder, or in another crate, is not known to take any: a member flattened after it is read from its keys as well, where serde reads it without them. `toJson` writes each flattened member at its place, and a key two of them hold is written once, with the last value, where serde writes it twice.
+- **A `#[serde(flatten)]` member is read at its place, in the order declared**, as serde reads it: from the object without the keys the holder's own members take and the entries each member flattened ahead of it took. A map, a struct with a `#[serde(flatten)]` member of its own and the function a flattened member names are each handed that object, and a struct that reads a key a struct flattened ahead of it took is refused, as serde refuses it with `missing field`. A struct takes the keys it reads, and a map takes none, so two maps are read from the same keys, and a map flattened ahead of a struct holds the struct's keys too. A struct that names a [`preprocess`](#a-preprocess-in-the-dart-client) on itself, a flattened member that names one and a struct with a `#[serde(flatten)]` member of its own take no key, as serde reads each. A struct declared below its holder, or in another crate, is not known to take any: a member flattened after it is read from its keys as well, where serde reads it without them. `toJson` writes each flattened member at its place, and a key two of them hold is written once, with the last value, where serde writes it twice.
 - **A flattened externally tagged enum takes one entry**, as serde reads it: the first, in the object's order, under the name a variant is read under, its `rename` or the enum's `rename_all` included, or an alias of one. With `enum Hatching { Bay { label: String }, Dock { label: String } }` flattened ahead of a map, `{"Bay":{"label":"n"},"Dock":{"label":"s"},"north":2}` reads `Bay`, and the map holds `Dock` and `north`. An enum under a tag key alone and an untagged enum take no key, as serde reads each, and so does an enum that names a `preprocess` on itself. An enum under a tag and a content key is not known to take any: a map flattened after it holds the tag and the content, where serde reads it without them. The enum itself is read from the first entry it is handed, so an entry ahead of its variant's is refused, and a variant's entry under an `alias` is refused, where serde reads both.
 - **A field named `fromJsonUnjudged` keeps its name**, Dart taking a field and a constructor under one. A member of a plain enum under that name is `fromJsonUnjudged_`, the enum having the function, and keeps the value serde writes.
 - **The service clients read a reply through `fromJson`**, so a reply that breaks a rule is the fault each client answers for a reply it cannot read, with the messages in its `detail`: `undeserializablePayload` from the HTTP client, and `failedValidation` from the WebSocket client.
@@ -6340,7 +6360,7 @@ The walker reads each type in the form serde writes it. A type held in another f
 
 Read as a struct holding `name: String` and `versions: Vec<Version>`, `{ "name": "Loan", "versions": [{ "number": 1 }, { "number": "2" }], "legacyField": true }` lists `Invalid` at `versions[1].number`, expected `I32`, and `Unknown` at `legacyField`.
 
-**A plain value inside a list or a map** is read on its own, at its own path, with its own expected type. Read as a struct holding `tags: Vec<ObjectId>`, `owners: HashMap<String, ObjectId>` and `counts: Vec<i32>`, an id held as text is `Mistyped` at `tags[1]` and at `owners.alice`, each expecting `ObjectId`, and a number held as text is `Invalid` at `counts[1]`, expecting `I32`. A field holding something other than the list or the map it is written as is one `Invalid` at the field. An optional plain value is read whole at its field, expecting `Optional(ObjectId)`. A field typed `serde_json::Value` holds any value and is never listed.
+**A plain value inside a list or a map** is read on its own, at its own path, with its own expected type. Read as a struct holding `tags: Vec<ObjectId>`, `owners: HashMap<String, ObjectId>` and `counts: Vec<i32>`, an id held as text is `Mistyped` at `tags[1]` and at `owners.alice`, each expecting `ObjectId`, and a number held as text is `Invalid` at `counts[1]`, expecting `I32`. A field holding something other than the list or the map it is written as is one `Invalid` at the field. An optional plain value is read whole at its field, expecting `Optional(ObjectId)`.
 
 **A tuple struct and a tuple field** are walked by position, each position a `Segment::Index`. Read as `struct Pair(String, u32)`, `["a", "x"]` lists `Invalid` at `[1]`, expected `U32`, and `["a"]` lists `Missing` at `[1]`. A position the type does not declare is `Unknown`: serde refuses a JSON array longer than the tuple, so `["a", 1, true]` lists `Unknown` at `[2]` beside an `Undescribed`, and serde reads past the position in a BSON list, where the `Unknown` is the only issue. A field `spot: (String, u32)` holding `[5, 1]` lists `Invalid` at `spot[0]`, expected `String`.
 
@@ -6412,7 +6432,7 @@ The error is reported at the `#[model_schema(...)]` of the type that names the u
 - **A model type filling a type parameter needs no flag.** It is read as one value, so `Page<Plain>` reads with no flag on `Plain`.
 - **A field typed with an alias of a flagged model type is walked**, the alias being that type: with `#[model_schema()] type EntryAlias = Entry;`, a field `featured: EntryAlias` lists an issue at `featured.name`.
 - **A field typed with an alias of a list or a map is walked as that list or map**, where `#[model_schema]` is written on the alias and the alias is declared above the type that names it. With `#[model_schema()] pub type Versions = Vec<Version>;` and a field `all: Versions`, `{ "all": [{ "number": 1 }, { "number": "2" }] }` lists `Invalid` at `all[1].number`, and with `#[model_schema()] pub type Counts = HashMap<String, i32>;` and a field `counts: Counts`, `{ "counts": { "a": "x", "b": 2 } }` lists `Invalid` at `counts.a`, expected `I32`. The field publishes under the alias's name on every schema surface, as it does without the flag. The alias may be declared in another module: what it holds is reached from the field's own type, so nothing the alias is written with has to be in scope beside the field. An alias that takes a type parameter, and one declared below the type that names it, are read whole, as the next point says.
-- **A field of a type tixschema has not seen is read whole.** A name `#[model_schema]` was not written on above the flagged type may be a `type` alias with no `#[model_schema]`, a type from another crate, or a model type declared below, and tixschema cannot tell which. So the walker asks the type for its walker, and where the type has none it reads the value whole, with the type's own `Deserialize`: a value serde refuses is one `Invalid` at the field, expected `Unknown`, and flattened, the field takes every key nothing else declares. With `pub type Properties = serde_json::Map<String, Value>;` and a field `properties: Properties`, any object reads with no issue and `{ "properties": 5 }` lists `Invalid` at `properties`. A flagged model type declared below is walked by its own walker all the same. An unflagged one declared below is read whole, where one declared above fails the build. A field `timeout: Duration`, `Duration` being `std::time::Duration`, is read whole too; the `duration_schema` error the same field earns wherever a schema surface is on is no part of the flag and is unchanged.
+- **A field of a type tixschema has not seen is read whole.** A name `#[model_schema]` was not written on above the flagged type may be a `type` alias with no `#[model_schema]`, a type from another crate, or a model type declared below, and tixschema cannot tell which. So the walker asks the type for its walker, and where the type has none it reads the value whole, with the type's own `Deserialize`: a value serde refuses is one `Invalid` at the field, expected `Unknown`, and flattened, the field takes every key nothing else declares. With `pub type Properties = HashMap<String, u8>;` and a field `properties: Properties`, `{ "properties": { "a": 5 } }` reads with no issue and `{ "properties": 5 }` lists `Invalid` at `properties`. A flagged model type declared below is walked by its own walker all the same. An unflagged one declared below is read whole, where one declared above fails the build. A field `timeout: Duration`, `Duration` being `std::time::Duration`, is read whole too; the `duration_schema` error the same field earns wherever a schema surface is on is no part of the flag and is unchanged.
 
 ### What is refused
 
@@ -8050,7 +8070,7 @@ The JSON Schema lists `kind` in `required` as `{"type": "string", "const": "Tagg
 
 2. **Type References**: Nested types reference each other by the name the referenced type publishes -- its Rust ident, or its `name` override.
 
-3. **Map Keys**: `HashMap`, `BTreeMap`, `serde_json::Map` and, under the `indexmap` feature, `IndexMap` are the maps that are supported, and the key decides what the map describes as: a `String` key gives an object open to any string key, and a plain `#[model_schema()]` enum key gives one closed to the enum's members. A brand and a `#[model_schema()]` alias answer by their inner and their target, keeping their own name on the TypeScript and Zod surfaces. A key path proved to be one serde writes as no key at all, and any sequence-wrapped key, is refused at expansion; every other key describes as an open object. See [Collections and Maps](#collections-and-maps).
+3. **Map Keys**: `HashMap`, `BTreeMap` and, under the `indexmap` feature, `IndexMap` are the maps that are supported, and the key decides what the map describes as: a `String` key gives an object open to any string key, and a plain `#[model_schema()]` enum key gives one closed to the enum's members. A brand and a `#[model_schema()]` alias answer by their inner and their target, keeping their own name on the TypeScript and Zod surfaces. A key path proved to be one serde writes as no key at all, and any sequence-wrapped key, is refused at expansion; every other key describes as an open object. See [Collections and Maps](#collections-and-maps).
 
 4. **Array Types**: `Vec<T>` becomes `Array<T>` in TypeScript, one `Array<...>` per level written — `Vec<Vec<T>>` is `Array<Array<T>>`.
 
@@ -8060,7 +8080,7 @@ The JSON Schema lists `kind` in `required` as `{"type": "string", "const": "Tagg
 
 7. **Doc Comments**: Rust doc comments on types and fields are carried through to the generated TypeScript as JSDoc comments.
 
-8. **Built-in Type Mappings**: Besides the primitives, `String` and `std::path::PathBuf` both map to `string` (`z.string()`), and `serde_json::Value` maps to `unknown` (`z.unknown()`). MongoDB `ObjectId` and the `chrono` date/time types are supported behind their respective feature flags.
+8. **Built-in Type Mappings**: Besides the primitives, `String` and `std::path::PathBuf` both map to `string` (`z.string()`). MongoDB `ObjectId` and the `chrono` date/time types are supported behind their respective feature flags. A member that holds `serde_json::Value` or `serde_json::Map` stops the build: see [A JSON value is no member](#a-json-value-is-no-member).
 
 ## Error Handling & Troubleshooting
 

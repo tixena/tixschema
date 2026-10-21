@@ -1,10 +1,10 @@
 //! A map flattened after a struct, beside a member of its holder's own and in a variant under a
 //! tag key, a map that is the one flattened member, a map flattened ahead of a struct, two
 //! flattened maps, a map flattened after a member that takes none of the keys it reads, and, after
-//! a struct, a struct with a flattened map, a member that names a function, a JSON value and a
-//! struct that reads the same key, and a map flattened after an externally tagged enum, after an
-//! enum under a tag key and after an untagged one, each read and written back by the emitted Dart
-//! types under the Dart VM, against what serde reads and writes back.
+//! a struct, a struct with a flattened map, a member that names a function and a struct that reads
+//! the same key, and a map flattened after an externally tagged enum, after an enum under a tag key
+//! and after an untagged one, each read and written back by the emitted Dart types under the Dart
+//! VM, against what serde reads and writes back.
 
 #![cfg(feature = "dart")]
 
@@ -15,13 +15,12 @@ use serde::{Deserialize, Serialize};
 
 use super::dart_flattened_models::{
     Belaying, CLAMPING, Clamping, Coupling, Doubling, FASTENING, Fastening, Hoisting, KEDGING,
-    Kedging, LOADING, Lacing, Loading, Loosening, MOUSING, Mousing, PAYLOAD, Pairing, Rigging,
-    STOWING, Shoring, Stowing, TETHERING, TRIMMING, Tethering, Trimming, Twin, belaying_dart,
-    bracing_dart, chocking_dart, clamping_dart, coupling_dart, doubling_dart, fastening_dart,
-    frapping_dart, hatching_dart, hoisting_dart, kedging_dart, keying_dart, lacing_dart,
-    loading_dart, loosening_dart, marking_dart, mousing_dart, pairing_dart, rigging_dart,
-    shoring_dart, spare_dart, stowing_dart, tethering_dart, ticketing_dart, trimming_dart,
-    twin_dart, warping_dart,
+    Kedging, LOADING, Lacing, Loading, MOUSING, Mousing, PAYLOAD, Pairing, Rigging, STOWING,
+    Shoring, Stowing, TETHERING, TRIMMING, Tethering, Trimming, Twin, belaying_dart, bracing_dart,
+    chocking_dart, clamping_dart, coupling_dart, doubling_dart, fastening_dart, frapping_dart,
+    hatching_dart, hoisting_dart, kedging_dart, keying_dart, lacing_dart, loading_dart,
+    marking_dart, mousing_dart, pairing_dart, rigging_dart, shoring_dart, spare_dart, stowage_dart,
+    stowing_dart, tethering_dart, ticketing_dart, trimming_dart, twin_dart, warping_dart,
 };
 use super::run_dart_validate::{dart, module};
 
@@ -82,8 +81,6 @@ void main() {
   print('pairing: ${jsonEncode(pairing.spare.rest)} ${jsonEncode(pairing.toJson())}');
   final twin = Twin.fromJson(jsonDecode(r'PAYLOAD'));
   print('twin: ${jsonEncode(twin.other.keys)} ${jsonEncode(twin.toJson())}');
-  final loosening = Loosening.fromJson(jsonDecode(r'PAYLOAD'));
-  print('loosening: ${jsonEncode(loosening.rest)} ${jsonEncode(loosening.toJson())}');
   try {
     Doubling.fromJson(jsonDecode(r'PAYLOAD'));
     print('doubling: read');
@@ -275,6 +272,7 @@ fn a_map_ahead_of_a_struct_and_two_maps_read_and_write_in_dart_as_serde_does() {
         "flattened-ahead",
         &[
             marking_dart::dart_definition(),
+            stowage_dart::dart_definition(),
             hoisting_dart::dart_definition(),
             stowing_dart::dart_definition(),
         ],
@@ -312,6 +310,7 @@ fn a_map_after_a_member_that_takes_no_key_reads_in_dart_every_key() {
         "flattened-after-no-key",
         &[
             marking_dart::dart_definition(),
+            stowage_dart::dart_definition(),
             ticketing_dart::dart_definition(),
             bracing_dart::dart_definition(),
             lacing_dart::dart_definition(),
@@ -325,45 +324,41 @@ fn a_map_after_a_member_that_takes_no_key_reads_in_dart_every_key() {
     assert_eq!(printed, expected);
 }
 
-/// A struct with a flattened map, a member that names a function and a JSON value, each flattened
-/// after a struct, are handed the keys the struct did not take, and each holder is written back as
-/// serde writes it back. A struct after a struct that reads the same key is refused, as serde
+/// A struct with a flattened map and a member that names a function, each flattened after a
+/// struct, are handed the keys the struct did not take, and each holder is written back as serde
+/// writes it back. A struct after a struct that reads the same key is refused, as serde
 /// refuses it.
 #[test]
 fn a_member_after_a_flattened_struct_reads_in_dart_the_keys_serde_hands_it() {
     let pairing: Pairing = serde_json::from_str(PAYLOAD).unwrap();
     let twin: Twin = serde_json::from_str(PAYLOAD).unwrap();
-    let loosening: Loosening = serde_json::from_str(PAYLOAD).unwrap();
     let doubling = if serde_json::from_str::<Doubling>(PAYLOAD).is_ok() {
         "read"
     } else {
         "refused"
     };
     let expected = format!(
-        "pairing: {} {}\ntwin: {} {}\nloosening: {} {}\ndoubling: {doubling}\n",
+        "pairing: {} {}\ntwin: {} {}\ndoubling: {doubling}\n",
         written(&pairing.spare.rest),
         written(&pairing),
         written(&twin.other.keys),
         written(&twin),
-        written(&loosening.rest),
-        written(&loosening),
     );
     assert_eq!(
         expected,
         "pairing: {\"north\":2} {\"label\":\"n\",\"north\":2}\n\
          twin: [\"north\"] {\"label\":\"n\",\"keys\":[\"north\"]}\n\
-         loosening: {\"north\":2} {\"label\":\"n\",\"north\":2}\n\
          doubling: refused\n"
     );
     let Some(printed) = printed(
         "flattened-after-a-struct-a-member",
         &[
             marking_dart::dart_definition(),
+            stowage_dart::dart_definition(),
             spare_dart::dart_definition(),
             pairing_dart::dart_definition(),
             keying_dart::dart_definition(),
             twin_dart::dart_definition(),
-            loosening_dart::dart_definition(),
             doubling_dart::dart_definition(),
         ],
         AFTER_A_STRUCT_A_MEMBER,
@@ -452,6 +447,7 @@ fn a_map_after_a_flattened_enum_reads_in_dart_the_entries_serde_hands_it() {
         "flattened-after-an-enum",
         &[
             marking_dart::dart_definition(),
+            stowage_dart::dart_definition(),
             hatching_dart::dart_definition(),
             loading_dart::dart_definition(),
             warping_dart::dart_definition(),
