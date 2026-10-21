@@ -3248,14 +3248,14 @@ fn filled_in(described: &str, arguments: &[&syn::Type]) -> String {
 
 /// Whether serde writes a key of type `key` as a number or a `bool`: one of
 /// [`BSON_REFUSED_KEY_TYPES`], or a brand or an alias over one declared above, or filled at one
-/// where its value is its own parameter, under any `Box`, `Rc`, `Arc` and `Cow`.
+/// where its value reaches its own parameter, under any `Box`, `Rc`, `Arc` and `Cow`.
 fn is_bson_refused_key(key: &syn::Type) -> bool {
     KeyAsked::Refused.holds(key)
 }
 
 /// Whether the key serde writes for a value of type `key` is one `named` answers for by its last
 /// name, under any `Box`, `Rc`, `Arc` and `Cow`, and through a brand or an alias declared above
-/// whose value is its own parameter, at what fills it.
+/// whose value reaches its own parameter, at what fills it.
 fn written_key_is(key: &syn::Type, named: &dyn Fn(&str) -> bool) -> bool {
     let mut current = written_type(key);
     loop {
@@ -5731,8 +5731,8 @@ fn record_untagged_enum_item(item: &Item) {
 }
 
 /// Records `item` where it is a brand or an alias whose value is a key the `bson` library refuses:
-/// a number or a `bool`, or another such brand or alias. One whose value is its own bare type
-/// parameter is recorded with the parameter's position instead.
+/// a number or a `bool`, or another such brand or alias. One whose value reaches one of its own
+/// type parameters is recorded with the parameter's position instead.
 fn record_bson_refused_key_item(item: &Item) {
     let Some((name, inner)) = wire_scalar_candidate(item) else {
         return;
@@ -5746,8 +5746,9 @@ fn record_bson_refused_key_item(item: &Item) {
     }
 }
 
-/// The position among `item`'s type parameters of the one `inner` names, where `inner` is that
-/// parameter's bare name.
+/// The position among `item`'s type parameters of the one `inner` reaches: written as that
+/// parameter's bare name, under any `Box`, `Rc`, `Arc` and `Cow`, and through a brand or an alias
+/// declared above at the position its own value reaches.
 fn forwarded_parameter_position(item: &Item, inner: &syn::Type) -> Option<usize> {
     let syn::Type::Path(named) = written_type(inner) else {
         return None;
@@ -5755,10 +5756,19 @@ fn forwarded_parameter_position(item: &Item, inner: &syn::Type) -> Option<usize>
     if named.qself.is_some() {
         return None;
     }
-    let parameter = named.path.get_ident()?;
-    item_generics(item)?
-        .type_params()
-        .position(|declared| declared.ident == *parameter)
+    if let Some(parameter) = named.path.get_ident() {
+        return item_generics(item)?
+            .type_params()
+            .position(|declared| declared.ident == *parameter);
+    }
+    let last = named.path.segments.last()?;
+    let name = last.ident.to_string();
+    let at = if is_ownership_wrapper(&name) {
+        0
+    } else {
+        forwarded_key_parameter(&name)?
+    };
+    forwarded_parameter_position(item, type_arguments_of(&last.arguments).nth(at)?)
 }
 
 /// Records `item` where it is a struct, an enum or an alias that holds a map whose key the `bson`
