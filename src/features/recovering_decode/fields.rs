@@ -7,9 +7,10 @@ use core::iter::{once, repeat_with};
 use proc_macro2::{Group, Ident, Spacing, Span, TokenStream, TokenTree};
 use quote::{ToTokens as _, format_ident, quote};
 use syn::ext::IdentExt as _;
+use syn::punctuated::Punctuated;
 use syn::{
-    Field, Fields, FieldsNamed, FieldsUnnamed, GenericParam, Generics, ItemEnum, ItemStruct, Type,
-    TypeParamBound, Variant, WherePredicate, parse_quote,
+    Field, Fields, FieldsNamed, FieldsUnnamed, GenericParam, Generics, ItemEnum, ItemStruct, Token,
+    Type, TypeParamBound, Variant, WherePredicate, parse_quote,
 };
 
 use super::aliases::PRIMITIVES;
@@ -841,6 +842,13 @@ impl Own<'_> {
                 .iter()
                 .all(|written| !self.parameters.contains(written) || kept(written))
         };
+        let kept_bounds = |bounds: &Punctuated<TypeParamBound, Token![+]>| {
+            bounds
+                .iter()
+                .filter(|bound| names_only_kept(bound.to_token_stream()))
+                .cloned()
+                .collect::<Punctuated<_, _>>()
+        };
         let mut declared = Generics::default();
         let root = &self.root;
         declared.params.push(parse_quote!(#root));
@@ -849,12 +857,7 @@ impl Own<'_> {
                 GenericParam::Const(constant) => (&constant.ident, parameter.clone()),
                 GenericParam::Type(ty) => {
                     let mut held = ty.clone();
-                    held.bounds = ty
-                        .bounds
-                        .iter()
-                        .filter(|bound| names_only_kept(bound.to_token_stream()))
-                        .cloned()
-                        .collect();
+                    held.bounds = kept_bounds(&ty.bounds);
                     if held.bounds.is_empty() {
                         held.colon_token = None;
                     }
@@ -873,11 +876,24 @@ impl Own<'_> {
             .iter()
             .flat_map(|clause| &clause.predicates);
         for predicate in bounds {
-            if names_only_kept(predicate.to_token_stream()) {
-                let scoped = self.naming_itself(predicate.to_token_stream());
-                declared.make_where_clause().predicates.push(
-                    syn::parse2::<WherePredicate>(scoped).unwrap_or_else(|_| predicate.clone()),
-                );
+            // A predicate on a type that names a left-out parameter cannot be written at all, and
+            // one whose every bound names such a parameter is left with nothing to declare.
+            let kept_predicate = if let WherePredicate::Type(typed) = predicate {
+                let (lifetimes, bounded_ty) = (&typed.lifetimes, &typed.bounded_ty);
+                let mut held = typed.clone();
+                held.bounds = kept_bounds(&typed.bounds);
+                let emptied = held.bounds.is_empty() && !typed.bounds.is_empty();
+                (names_only_kept(quote! { #lifetimes #bounded_ty }) && !emptied)
+                    .then_some(WherePredicate::Type(held))
+            } else {
+                names_only_kept(predicate.to_token_stream()).then(|| predicate.clone())
+            };
+            if let Some(written) = kept_predicate {
+                let scoped = self.naming_itself(written.to_token_stream());
+                declared
+                    .make_where_clause()
+                    .predicates
+                    .push(syn::parse2::<WherePredicate>(scoped).unwrap_or(written));
             }
         }
         declared

@@ -183,6 +183,21 @@ impl Tr<u8> for String {}
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Linked<A: Tr<B>, B>(pub A, #[serde(skip)] pub PhantomData<B>, pub u32);
 
+/// What [`WhereLinked`] holds in its first slot, well formed only where its parameter is `Clone`.
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(C = String))]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Cloned<C: Clone> {
+    pub value: C,
+}
+
+/// A tuple whose slots name `A` alone, under one `where` predicate that joins a bound naming `B`
+/// with the bound its first slot needs.
+#[model_schema(enable = ["decode_with", "mongodb"], default_types(A = String, B = u8))]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct WhereLinked<A, B>(pub Cloned<A>, #[serde(skip)] pub PhantomData<B>, pub u32)
+where
+    A: Tr<B> + Clone;
+
 fn moca() -> Stop {
     Stop {
         city: "Moca".to_owned(),
@@ -621,4 +636,25 @@ fn a_bound_naming_a_parameter_no_slot_names_leaves_the_slots_paths_as_they_are()
         .serialize(bson::Serializer::new())
         .unwrap();
     assert_eq!(shown_value(&stored), r#"["C-1", Int64(3)]"#);
+}
+
+/// The bound a slot needs is kept from a `where` predicate that also names `B`.
+#[test]
+fn a_where_predicate_naming_a_parameter_no_slot_names_keeps_the_bound_a_slot_needs() {
+    let linked = WhereLinked::<String, u8>::MONGO_FIELDS;
+    assert_eq!(
+        shown(
+            linked.0.nest(
+                Cloned::<String>::MONGO_FIELDS
+                    .value()
+                    .eq("C-1".to_owned())
+                    .unwrap()
+            )
+        ),
+        r#"{ "0.value": { "$eq": "C-1" } }"#
+    );
+    assert_eq!(
+        shown(linked.2.gt(3_u32).unwrap()),
+        r#"{ "1": { "$gt": Int64(3) } }"#
+    );
 }
