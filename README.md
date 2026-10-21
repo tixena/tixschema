@@ -922,10 +922,10 @@ error: model_schema: type `Size`: variant `Xxxxl` is written `Xxxxl`, which brea
 
 The name of a variant that carries data is not checked, and an enum whose names all fit publishes exactly what it publishes with no check written.
 
-**A check that reaches nothing is refused.** An enum with no unit variant and no field written as a string or a path leaves the check nothing to hold, so `#[model_schema(minLength = 1)]` on `enum Shape { Circle { r: u32 } }` is a compile error rather than a check dropped in silence:
+**A check that reaches nothing is refused.** An enum with no unit variant and no field written as a string or a path that carries no `literal` leaves the check nothing to hold, so `#[model_schema(minLength = 1)]` on `enum Shape { Circle { r: u32 } }` is a compile error rather than a check dropped in silence, and so is the same check on `enum Shape { Fixed { #[model_schema_prop(literal = "x")] word: String } }`:
 
 ```text
-error: model_schema: type `Shape`: `minLength` reaches nothing here: an enum's check holds each variant written with no data and each field written as a string or a path, and `Shape` has neither
+error: model_schema: type `Shape`: `minLength` reaches nothing here: an enum's check holds each variant written with no data and each field written as a string or a path that carries no `literal`, and `Shape` has neither
 ```
 
 ### Intersection Types (`#[serde(flatten)]`)

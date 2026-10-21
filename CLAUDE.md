@@ -574,8 +574,11 @@ reads the merged meta as it reads a member's own. `process_field` asks it throug
   `constrained_shape`'s walk held to `ConstraintLeaf::Str` and `ConstraintLeaf::Path`, written
   apart because it is asked in a build without `serde`;
   `the_reach_of_an_enums_check_is_the_constraint_walks` holds the two together. A member that
-  carries a `literal` is not reached: `member_prop_meta` leaves its meta as written, so the enum's
-  check never sits beside a literal, which takes no other rule.
+  carries a `literal` is not reached: the enum's check never sits beside a literal, which takes no
+  other rule. `reached_by_enums_check` is the one question, `written_as_text` and no `literal`:
+  `member_prop_meta` asks it before it holds a member to the enum's check, and
+  `enum_check_reaches_nothing` asks it of every field, so the refusal and the surfaces cannot
+  drift.
 - A field with a check of its own is held to both: the longer `minLength`, the shorter `maxLength`,
   and the enum's `pattern` in `ModelSchemaPropMeta::enum_pattern` beside the field's own, which
   `patterns()` yields in that order. Zod writes one `.check(z.regex(…))` each, `both_patterns_json`
@@ -585,8 +588,8 @@ reads the merged meta as it reads a member's own. `process_field` asks it throug
 - `enum_string_check_refusal_output` answers at `process_item`, ahead of every enum shape and in
   every build, so an enum's `pattern` is judged in every build as a field's is. It refuses a
   `pattern` no surface reads, a check that reaches nothing (`enum_check_reaches_nothing`: no
-  variant written with no data and no reached field), and each name of a unit variant that breaks
-  the check (`unit_variant_name_errors`).
+  variant written with no data and no field `reached_by_enums_check` answers true for), and each
+  name of a unit variant that breaks the check (`unit_variant_name_errors`).
 - A unit variant is one `variant_wire_kind` publishes as a unit. `variant_wire_names` lists the name
   serde writes for it, then the name it reads and each `alias` where they differ, and
   `checks_broken_by` measures each as the validator measures a value. An untagged enum writes such
