@@ -1,23 +1,33 @@
 //! An enum with a variant of several slots, read and written by the emitted Kotlin types compiled
 //! with `-Werror` under each tagging serde accepts for one, and the untagged enum that writes the
 //! same slots from a tuple: each payload is written back as the serde read writes it back. So is
-//! a tuple in each place a writer names its wrapper more than once.
+//! a tuple in each place a writer names its wrapper more than once, and a tuple holding a model
+//! `validate()` walks to, which a payload that breaks the model's bound is refused for at the
+//! holder's path.
 
 #![cfg(feature = "kotlin")]
 
 use core::fmt::Write as _;
+#[cfg(all(
+    not(feature = "jsonschema"),
+    any(feature = "typescript", feature = "zod")
+))]
+use std::collections::HashMap;
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::runtime::ran_kotlin;
 use super::tuple_variants_models::{
-    Bundling, Crating, Palleting, Piling, Racking, Stacking, Strapping, bundling_kotlin,
-    crating_kotlin, labelling_kotlin, palleting_kotlin, piling_kotlin, racking_kotlin,
-    stacking_kotlin, strapping_kotlin,
+    Banding, Bundling, Crating, Palleting, Piling, Racking, Stacking, Strapping, Wrapping,
+    banding_kotlin, bundling_kotlin, crating_kotlin, labelling_kotlin, palleting_kotlin,
+    piling_kotlin, racking_kotlin, stacking_kotlin, stencil_kotlin, strapping_kotlin,
+    wrapping_kotlin,
 };
 #[cfg(not(feature = "jsonschema"))]
-use super::tuple_variants_models::{Tallying, tallying_kotlin};
+use super::tuple_variants_models::{Binning, Tallying, binning_kotlin, tallying_kotlin};
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+use super::tuple_variants_models::{Labelling, Stencil};
 
 const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
      import kotlinx.serialization.json.*\n\
@@ -98,17 +108,67 @@ const NAMED_TWICE: [Row; 5] = [
     },
 ];
 
-/// What prints a row: the value read, written back with every member, as serde writes it.
+/// A tuple holding a model `validate()` walks to, in each place a writer reads the tuple by a
+/// wrapper of its own: a payload that holds the model whole, and one that breaks its bound.
+const HOLDING_A_MODEL: [Row; 5] = [
+    Row {
+        json: r#"{"pair":[{"code":"north"},2]}"#,
+        name: "a tuple holding a model with a default, its key held",
+        read_as: "Wrapping",
+        written: written_back::<Wrapping>,
+    },
+    Row {
+        json: r#"{"pair":[{"code":""},2]}"#,
+        name: "a tuple holding a broken model with a default",
+        read_as: "Wrapping",
+        written: refused_at_the_pair,
+    },
+    Row {
+        json: "{}",
+        name: "a tuple holding a model with a default, its key left out",
+        read_as: "Wrapping",
+        written: refused_at_the_pair,
+    },
+    Row {
+        json: r#"{"label":"north","pair":[{"code":"north"},2]}"#,
+        name: "a tuple holding a model beside a flattened member",
+        read_as: "Banding",
+        written: written_back::<Banding>,
+    },
+    Row {
+        json: r#"{"label":"north","pair":[{"code":""},2]}"#,
+        name: "a tuple holding a broken model beside a flattened member",
+        read_as: "Banding",
+        written: refused_at_the_pair,
+    },
+];
+
+/// What the holder's `validate()` answers of a pair whose model breaks its bound, as the model's
+/// default does, its code being empty.
+const PAIR_REFUSED: &str = "'pair.0.code': too short: minimum length is 1, got 0";
+
+/// What the holder's `validate()` answers of a map of pairs, in a variant's one slot, whose model
+/// breaks its bound under the key `north`.
+#[cfg(not(feature = "jsonschema"))]
+const COUNT_REFUSED: &str = "'held.north.0.code': too short: minimum length is 1, got 0";
+
+/// What prints a row: the value read, written back with every member, as serde writes it, or
+/// what the type's own serializer refused it with.
 const TOLD: &str = r#"
 val everyMember = Json { encodeDefaults = true }
 
 fun <T> row(name: String, serializer: KSerializer<T>, payload: String) {
-    val read = Json.decodeFromString(serializer, payload)
-    println("$name: ${everyMember.encodeToString(serializer, read)}")
+    try {
+        val read = Json.decodeFromString(serializer, payload)
+        println("$name: ${everyMember.encodeToString(serializer, read)}")
+    } catch (refused: SerializationException) {
+        println("$name: refused: ${refused.message}")
+    }
 }
 "#;
 
-/// A payload, the type it is read as, and what the serde read of it writes back.
+/// A payload, the type it is read as, and what the read of it prints: what serde writes back of
+/// it, or the refusal of it.
 struct Row {
     json: &'static str,
     name: &'static str,
@@ -150,6 +210,17 @@ where
 {
     let read: T = serde_json::from_str(json).unwrap();
     serde_json::to_string(&read).unwrap()
+}
+
+/// What a row refused with [`PAIR_REFUSED`] prints.
+fn refused_at_the_pair(_json: &str) -> String {
+    format!("refused: {PAIR_REFUSED}")
+}
+
+/// What a row refused with [`COUNT_REFUSED`] prints.
+#[cfg(not(feature = "jsonschema"))]
+fn refused_at_the_count(_json: &str) -> String {
+    format!("refused: {COUNT_REFUSED}")
 }
 
 /// Each variant of several slots, and the variant beside it, read from the payload serde writes
@@ -215,4 +286,97 @@ fn a_map_of_tuples_in_a_variant_reads_and_writes_in_kotlin_as_serde_does() {
         return;
     };
     assert_eq!(printed, expected);
+}
+
+/// A tuple holding a model `validate()` walks to: the wrapper reads the model unjudged, so a
+/// payload that holds the model whole is written back as serde writes it back, and one that
+/// breaks its bound is refused by the holder's own serializer at the holder's path.
+#[test]
+fn a_tuple_holding_a_model_is_refused_at_the_holders_path_in_kotlin() {
+    let expected = expected(&HOLDING_A_MODEL);
+    assert!(
+        expected.contains(
+            "a tuple holding a broken model beside a flattened member: refused: \
+             'pair.0.code': too short: minimum length is 1, got 0"
+        ),
+        "{expected}"
+    );
+    let definitions = vec![
+        stencil_kotlin::kotlin_definition(),
+        labelling_kotlin::kotlin_definition(),
+        wrapping_kotlin::kotlin_definition(),
+        banding_kotlin::kotlin_definition(),
+    ];
+    let Some(printed) = printed(&HOLDING_A_MODEL, definitions) else {
+        return;
+    };
+    assert_eq!(printed, expected);
+}
+
+/// A map of tuples holding a model in a variant's one slot, read and written back as serde does,
+/// and refused at the variant's path where the model breaks its bound.
+#[cfg(not(feature = "jsonschema"))]
+#[test]
+fn a_map_of_tuples_holding_a_model_in_a_variant_is_refused_at_the_variants_path_in_kotlin() {
+    let rows = [
+        Row {
+            json: r#"{"kind":"Counts","held":{"north":[{"code":"north"},2]}}"#,
+            name: "a map of tuples holding a model under a tag and a content key",
+            read_as: "Binning",
+            written: written_back::<Binning>,
+        },
+        Row {
+            json: r#"{"kind":"Counts","held":{"north":[{"code":""},2]}}"#,
+            name: "a map of tuples holding a broken model under a tag and a content key",
+            read_as: "Binning",
+            written: refused_at_the_count,
+        },
+    ];
+    let expected = expected(&rows);
+    assert!(
+        expected
+            .contains(r#"a content key: {"kind":"Counts","held":{"north":[{"code":"north"},2]}}"#),
+        "{expected}"
+    );
+    let definitions = vec![
+        stencil_kotlin::kotlin_definition(),
+        binning_kotlin::kotlin_definition(),
+    ];
+    let Some(printed) = printed(&rows, definitions) else {
+        return;
+    };
+    assert_eq!(printed, expected);
+}
+
+/// The refusals the Kotlin rows above are held to are what the holder's `validate()` answers in
+/// Rust, the read of a payload that leaves the key out included.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn the_refusals_held_here_are_what_the_holders_validate_answers() {
+    let broken = || (Stencil::default(), 2);
+    assert_eq!(
+        Wrapping { pair: broken() }.validate(),
+        Err(vec![PAIR_REFUSED.to_owned()])
+    );
+    assert_eq!(
+        Banding {
+            labelling: Labelling {
+                label: "north".to_owned()
+            },
+            pair: broken()
+        }
+        .validate(),
+        Err(vec![PAIR_REFUSED.to_owned()])
+    );
+    assert_eq!(
+        serde_json::from_str::<Wrapping>("{}")
+            .unwrap_err()
+            .to_string(),
+        PAIR_REFUSED
+    );
+    #[cfg(not(feature = "jsonschema"))]
+    assert_eq!(
+        Binning::Counts(HashMap::from([("north".to_owned(), broken())])).validate(),
+        Err(vec![COUNT_REFUSED.to_owned()])
+    );
 }

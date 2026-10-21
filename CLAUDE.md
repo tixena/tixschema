@@ -910,14 +910,19 @@ the consumer's view; this is what a change has to keep.
   read by their own serializer and judge themselves as they are read: an annotation names a class,
   and no fallback stands in for one. Rust reads a model declared below unjudged, so the two differ
   there, and `run_kotlin_read.rs` pins the Kotlin text.
-- **A tuple a `validate()` walks reads its positions unjudged.** `tuple_wrapper_typename` takes
-  `walked`: `annotated_base` asks for the wrapper of a walked member, and `kotlin_base` for every
-  other. One wrapper is written per tuple shape per item, and a walked and an unwalked read are
-  two shapes where a position holds a model, so `plugin_read` asks a type's name once where
-  `property_declaration` asked it once. A serializer that reads a tuple its holder has declared
-  names the wrapper of that declaration (`read::declared_serializer`): the lone value of a tagged
-  variant, a variant of several slots among them, is read by the type `variant_subclass` declared
-  it with.
+- **A tuple a `validate()` walks reads its positions unjudged, by its walked wrapper wherever the
+  emitter reads it.** `tuple_wrapper_typename` takes `walked`: `annotated_base` and
+  `unjudged_serializer` ask for the wrapper of a walked tuple, at any depth of the member, and
+  `kotlin_base` for every other. One wrapper is written per tuple shape per item, and a walked and
+  an unwalked read are two shapes where a position holds a model, so a member is declared with the
+  wrapper its read names. `plugin_read` declares what the plugin reads. Where the emitter writes
+  the read through `member_serializer`, `read::declared_typename` declares the member: a member of
+  a struct with a flattened member, a slot of a tuple struct and a member a serializer of its own
+  reads (`read_whole`). The wrapper of a walked tuple declares each position with
+  `read::position_typename`, the type `position_serializer` reads. A serializer that reads a tuple
+  its holder has declared names the wrapper of that declaration (`read::declared_serializer`): the
+  lone value of a tagged variant, a variant of several slots among them, is read by the type
+  `variant_subclass` declared it with.
 - **An untagged enum takes the first variant whose bounds hold.** `Rules::choosing` collects, per
   variant, each member's own bound and `kotlinSchemaBound()` of each brand it holds
   (`Asked::Bound`), and writes them into the variant's own `kotlinSchemaBound()`, which the chain

@@ -1,19 +1,24 @@
 //! An enum with a variant of several slots: the subclass declares its slots with one tuple
 //! wrapper, and the enum's serializer writes and reads the slots by that wrapper. A tuple a writer
-//! names more than once is declared and read by one wrapper per shape in the item.
+//! names more than once is declared and read by one wrapper per shape in the item, and a tuple
+//! holding a model `validate()` walks to is declared and read by the wrapper that reads the model
+//! unjudged.
 
 #[cfg(not(feature = "jsonschema"))]
 use std::collections::HashMap;
 
+#[cfg(all(feature = "serde", not(feature = "jsonschema")))]
+use super::tuple_variants_models::binning_kotlin;
 use super::tuple_variants_models::{
-    Bundling, Crating, Labelling, Palleting, Piling, Racking, Stacking, Strapping, crating_kotlin,
-    palleting_kotlin, stacking_kotlin,
+    Banding, Bundling, Crating, Labelling, Palleting, Piling, Racking, Stacking, Stencil,
+    Strapping, Wrapping, crating_kotlin, palleting_kotlin, stacking_kotlin,
 };
 #[cfg(not(feature = "jsonschema"))]
-use super::tuple_variants_models::{Tallying, tallying_kotlin};
+use super::tuple_variants_models::{Binning, Tallying, tallying_kotlin};
 #[cfg(feature = "serde")]
 use super::tuple_variants_models::{
-    bundling_kotlin, piling_kotlin, racking_kotlin, strapping_kotlin,
+    banding_kotlin, bundling_kotlin, piling_kotlin, racking_kotlin, strapping_kotlin,
+    wrapping_kotlin,
 };
 
 /// The payload each type below writes and reads.
@@ -62,6 +67,36 @@ fn every_fixture_is_written_as_serde_writes_it() {
         serde_json::to_string(&Crating { pair: ((1, 2), 3) }).unwrap(),
         r#"{"pair":[[1,2],3]}"#
     );
+    assert_eq!(
+        serde_json::to_string(&Wrapping { pair: (north(), 2) }).unwrap(),
+        r#"{"pair":[{"code":"north"},2]}"#
+    );
+    assert_eq!(
+        serde_json::to_string(&Banding {
+            labelling: Labelling {
+                label: "north".to_owned()
+            },
+            pair: (north(), 2)
+        })
+        .unwrap(),
+        r#"{"label":"north","pair":[{"code":"north"},2]}"#
+    );
+    #[cfg(not(feature = "jsonschema"))]
+    assert_eq!(
+        serde_json::to_string(&Binning::Counts(HashMap::from([(
+            "north".to_owned(),
+            (north(), 2)
+        )])))
+        .unwrap(),
+        r#"{"kind":"Counts","held":{"north":[{"code":"north"},2]}}"#
+    );
+}
+
+/// A model whose code holds its bound.
+fn north() -> Stencil {
+    Stencil {
+        code: "north".to_owned(),
+    }
 }
 
 /// The tuple wrappers `definition` declares, in the order declared, after asserting that each
@@ -271,4 +306,81 @@ fn a_tuple_in_a_position_of_a_tuple_is_declared_and_read_by_one_wrapper() {
     ] {
         assert!(crating.contains(&held), "no `{held}` in: {crating}");
     }
+}
+
+/// The wrapper `definition` declares, after asserting it declares one, and that the wrapper reads
+/// the model of its first position unjudged.
+#[cfg(feature = "serde")]
+fn the_walked_wrapper(definition: &str) -> String {
+    let [wrapper] = declared_wrappers(definition).try_into().unwrap();
+    for held in [
+        format!("data class {wrapper}(val slot0: Stencil, val slot1: UByte)"),
+        "add(output.json.encodeToJsonElement(StencilUnjudged, value.slot0))".to_owned(),
+        "input.json.decodeFromJsonElement(StencilUnjudged, array[0])".to_owned(),
+    ] {
+        assert!(definition.contains(&held), "no `{held}` in: {definition}");
+    }
+    wrapper
+}
+
+/// A tuple holding a model, read as its default: the property is declared, and its default read,
+/// by the one wrapper that reads the model unjudged.
+#[cfg(feature = "serde")]
+#[test]
+fn a_tuple_holding_a_model_read_as_its_default_is_declared_and_read_by_one_wrapper() {
+    let wrapping = wrapping_kotlin::kotlin_definition();
+    let wrapper = the_walked_wrapper(&wrapping);
+    let default = r#""[{\"code\":\"\"},0]""#;
+    assert!(
+        wrapping.contains(&format!(
+            "data class Wrapping(val pair: {wrapper} = \
+             Json.decodeFromString(serializer<{wrapper}>(), {default}))"
+        )),
+        "got: {wrapping}"
+    );
+}
+
+/// A tuple holding a model beside a flattened member: the property is declared, and the holder's
+/// serializer writes and reads it, by the one wrapper that reads the model unjudged.
+#[cfg(feature = "serde")]
+#[test]
+fn a_tuple_holding_a_model_beside_a_flattened_member_is_declared_and_read_by_one_wrapper() {
+    let banding = banding_kotlin::kotlin_definition();
+    let wrapper = the_walked_wrapper(&banding);
+    for held in [
+        format!("data class Banding(val labelling: Labelling, val pair: {wrapper})"),
+        format!(
+            "put(\"pair\", output.json.encodeToJsonElement(serializer<{wrapper}>(), value.pair))"
+        ),
+        format!(
+            "val pair = input.json.decodeFromJsonElement(serializer<{wrapper}>(), \
+             obj.getValue(\"pair\"))"
+        ),
+    ] {
+        assert!(banding.contains(&held), "no `{held}` in: {banding}");
+    }
+}
+
+/// A map of tuples holding a model in a variant's one slot: the subclass declares it, and the
+/// enum's serializer writes and reads it, by the one wrapper that reads the model unjudged.
+#[cfg(all(feature = "serde", not(feature = "jsonschema")))]
+#[test]
+fn a_map_of_tuples_holding_a_model_in_a_variant_is_declared_and_read_by_one_wrapper() {
+    let binning = binning_kotlin::kotlin_definition();
+    let wrapper = the_walked_wrapper(&binning);
+    assert!(
+        binning.contains(&format!(
+            "data class BinningCounts(val value: Map<String, {wrapper}>)"
+        )),
+        "got: {binning}"
+    );
+    assert_eq!(
+        binning
+            .matches(&format!(
+                "MapSerializer(serializer<String>(), serializer<{wrapper}>())"
+            ))
+            .count(),
+        2,
+        "got: {binning}"
+    );
 }

@@ -2,7 +2,8 @@
 //! `service_schema_emitted_client_tests/run_kotlin_tuple_variants.rs`: an enum with a variant of
 //! several slots, under each tagging serde accepts for one, and the untagged enum that writes the
 //! same slots from a tuple in its variant's one slot. Beside them, a tuple in each place a writer
-//! names its wrapper more than once.
+//! names its wrapper more than once, and a tuple holding a model `validate()` walks to in each
+//! place a writer reads the tuple by a wrapper of its own.
 
 #[cfg(not(feature = "jsonschema"))]
 use std::collections::HashMap;
@@ -82,4 +83,39 @@ pub struct Palleting(pub (u32, u8), pub u8);
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Crating {
     pub pair: ((u32, u8), u8),
+}
+
+/// A model a tuple holds, with a bound `validate()` walks to.
+#[model_schema()]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Stencil {
+    #[model_schema_prop(minLength = 1)]
+    pub code: String,
+}
+
+/// A tuple holding a model, read as its default where the payload leaves its key out.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Wrapping {
+    #[serde(default)]
+    pub pair: (Stencil, u8),
+}
+
+/// A tuple holding a model, beside a flattened member.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Banding {
+    #[serde(flatten)]
+    pub labelling: Labelling,
+    pub pair: (Stencil, u8),
+}
+
+/// A map of tuples holding a model in a variant's one slot, under a tag and a content key. A JSON
+/// Schema refuses a tuple as a map value.
+#[cfg(not(feature = "jsonschema"))]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "held")]
+pub enum Binning {
+    Counts(HashMap<String, (Stencil, u8)>),
 }
