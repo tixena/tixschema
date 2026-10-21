@@ -33,6 +33,10 @@ mod resulted;
 #[path = "../set_tests/models.rs"]
 mod sets;
 
+/// The models a map is flattened into, and the payloads serde reads and refuses for them.
+#[path = "../flatten_tests/maps.rs"]
+mod flattened_maps;
+
 #[cfg(feature = "chrono")]
 use chrono::{DateTime, Utc};
 #[cfg(feature = "jsonschema")]
@@ -545,6 +549,27 @@ console.log(printed.join("\n"));
 /// default of one that declares a parameter, and prints what each read answers: `read`, or the
 /// refusal with each issue under its path.
 const SETS_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+
+const printed = [];
+for (const [name, schema, payload] of PAYLOADS) {
+  const read = lib[schema].safeParse(JSON.parse(payload));
+  if (read.success) {
+    printed.push(`${name}: read`);
+  } else {
+    printed.push(`${name}: refused`);
+    for (const issue of read.error.issues) {
+      const place = issue.path.length === 0 ? "" : `'${issue.path.join(".")}': `;
+      printed.push(`    ${place}${issue.message}`);
+    }
+  }
+}
+console.log(printed.join("\n"));
+"#;
+
+/// Parses each payload of a flattened map through the schema of the type it is read as, the
+/// declared default of one that declares a parameter, and prints what each read answers: `read`,
+/// or the refusal with each issue under its path.
+const FLATTENED_MAPS_DRIVER: &str = r#"import * as lib from "./lib/index.js";
 
 const printed = [];
 for (const [name, schema, payload] of PAYLOADS) {
@@ -1468,6 +1493,63 @@ fn sets() -> String {
     .join("\n\n")
 }
 
+/// The types a map is flattened into: a bundle of its own, compiled with `tsc --strict` before it
+/// is loaded.
+fn flattened_maps() -> String {
+    [
+        PREAMBLE.to_owned(),
+        flattened_maps::Marking::ts_definition(),
+        flattened_maps::Marking::zod_schema(),
+        flattened_maps::Stocktake::ts_definition(),
+        flattened_maps::Stocktake::zod_schema(),
+        flattened_maps::TaggedStocktake::ts_definition(),
+        flattened_maps::TaggedStocktake::zod_schema(),
+        flattened_maps::Stowing::ts_definition(),
+        flattened_maps::Stowing::zod_schema(),
+        flattened_maps::Trussing::ts_definition(),
+        flattened_maps::Trussing::zod_schema(),
+        flattened_maps::Ballast::ts_definition(),
+        flattened_maps::Ballast::zod_schema(),
+        flattened_maps::Dunnage::ts_definition(),
+        flattened_maps::Dunnage::zod_schema(),
+        flattened_maps::Tiers::ts_definition(),
+        flattened_maps::Tiers::zod_schema(),
+        flattened_maps::Enclosure::ts_definition(),
+        flattened_maps::Enclosure::zod_schema(),
+        flattened_maps::Sheeting::ts_definition(),
+        flattened_maps::Sheeting::zod_schema(),
+        flattened_maps::marking_alias_schema::Schema::ts_definition(),
+        flattened_maps::marking_alias_schema::Schema::zod_schema(),
+        flattened_maps::Cording::ts_definition(),
+        flattened_maps::Cording::zod_schema(),
+        flattened_maps::Rigging::ts_definition(),
+        flattened_maps::Rigging::zod_schema(),
+        flattened_maps::Landing::ts_definition(),
+        flattened_maps::Landing::zod_schema(),
+        flattened_maps::Pigeonhole::ts_definition(),
+        flattened_maps::Pigeonhole::zod_schema(),
+        flattened_maps::Winch::ts_definition(),
+        flattened_maps::Winch::zod_schema(),
+        flattened_maps::Davit::ts_definition(),
+        flattened_maps::Davit::zod_schema(),
+        flattened_maps::ShelfCode::ts_definition(),
+        flattened_maps::ShelfCode::zod_schema(),
+        flattened_maps::Shelflist::ts_definition(),
+        flattened_maps::Shelflist::zod_schema(),
+        flattened_maps::Billing::<String>::ts_definition(),
+        flattened_maps::Billing::<String>::zod_schema(),
+        flattened_maps::Hatchway::ts_definition(),
+        flattened_maps::Hatchway::zod_schema(),
+        flattened_maps::Compartment::ts_definition(),
+        flattened_maps::Compartment::zod_schema(),
+        flattened_maps::Bulkhead::ts_definition(),
+        flattened_maps::Bulkhead::zod_schema(),
+        flattened_maps::Scuttle::ts_definition(),
+        flattened_maps::Scuttle::zod_schema(),
+    ]
+    .join("\n\n")
+}
+
 /// What serde's read of `json` as a `T` prints, as the driver of the `Result`s prints the same
 /// payload: the value, with the keys of each object in order, or the refusal, with each message
 /// of `validate()` where the type judges a model it holds.
@@ -2247,5 +2329,40 @@ fn type_check_a_set_refuses_a_repeat_under_zod() {
         format!("{printed}\n"),
         sets::PRINTED,
         "the schemas do not refuse a repeat:\n{failed}"
+    );
+}
+
+/// Every payload serde reads with a map flattened into its object is read by the Zod schema of its
+/// type under `node`, and one with a count of the wrong type is refused under the count's key:
+/// serde hands a flattened map no key a member of the object or a member flattened ahead of the
+/// map took.
+#[test]
+fn type_check_a_flattened_map_reads_under_zod_what_serde_reads() {
+    flattened_maps::assert_serde_reads_what_zod_reads();
+    let listed: Vec<(&str, String, &str)> = flattened_maps::PAYLOADS
+        .iter()
+        .map(|payload| {
+            // The one model that declares a parameter is read at its declared default.
+            let binding = if payload.read_as == "Billing" {
+                "SchemaDefault"
+            } else {
+                "Schema"
+            };
+            (
+                payload.name,
+                format!("{}${binding}", payload.read_as),
+                payload.json,
+            )
+        })
+        .collect();
+    let driver =
+        FLATTENED_MAPS_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
+    let Some((printed, failed)) = loaded_from("flattened-maps", &flattened_maps(), &driver) else {
+        return;
+    };
+    assert_eq!(
+        format!("{printed}\n"),
+        flattened_maps::PRINTED,
+        "the schemas do not read what serde reads:\n{failed}"
     );
 }
