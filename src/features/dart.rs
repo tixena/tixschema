@@ -389,7 +389,7 @@ thread_local! {
     static DART_FIELDS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
 
     /// The keys serde takes off its holder's object for each struct a class has been emitted for,
-    /// read flattened: what serde hands no map flattened after it.
+    /// read flattened: what serde hands no member flattened after it.
     static DART_TAKEN_KEYS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
 
     /// The name of each function the reads of the item being emitted call: what its `preprocess`
@@ -2389,10 +2389,10 @@ fn generic_codec(parameters: &[String]) -> GenericCodec {
 
 /// The arguments the constructor of a class is read with from the object `json` names: each
 /// member from its key, where the payload holds it for a member that names a function, and a
-/// flattened one from the keys neither `tag_key` nor another member takes. A flattened map is
-/// read at its place, without the keys each member flattened ahead of it took as well.
+/// flattened one at its place, from the keys neither `tag_key`, a member of the holder's own nor a
+/// member flattened ahead of it takes.
 fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>) -> String {
-    let taken: Vec<&str> = tag_key
+    let mut taken_ahead: Vec<String> = tag_key
         .into_iter()
         .chain(
             fields
@@ -2400,16 +2400,12 @@ fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>
                 .filter(|field| !field.flatten)
                 .map(|field| field.wire_name.as_str()),
         )
+        .map(str::to_owned)
         .collect();
-    let mut taken_ahead: Vec<String> = taken.iter().map(|&key| key.to_owned()).collect();
     fields.iter().fold(String::new(), |mut acc, field| {
         let decode = if field.flatten {
-            let handed = if matches!(field.field_def.field_type, FieldDefType::Map(..)) {
-                let keys: Vec<&str> = taken_ahead.iter().map(String::as_str).collect();
-                without(json, &keys)
-            } else {
-                without(json, &taken)
-            };
+            let keys: Vec<&str> = taken_ahead.iter().map(String::as_str).collect();
+            let handed = without(json, &keys);
             for key in keys_taken_by(&field.field_def) {
                 if !taken_ahead.contains(&key) {
                     taken_ahead.push(key);

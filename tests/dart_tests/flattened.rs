@@ -1,11 +1,12 @@
-//! What the Dart emitter reads of a flattened map: the object at its place, without the keys the
-//! holder's own members take and those each member flattened ahead of it took, as serde hands it.
-//! `toJson` writes each flattened member at its place. The reads are run under the Dart SDK in
+//! What the Dart emitter reads of a flattened member: the object at its place, without the keys
+//! the holder's own members take and those each member flattened ahead of it took, as serde hands
+//! it. `toJson` writes each flattened member at its place. The reads are run under the Dart SDK in
 //! `tests/service_schema_emitted_client_tests/run_dart_flattened.rs`.
 
 use super::flattened_models::{
-    belaying_dart, clamping_dart, coupling_dart, fastening_dart, hoisting_dart, lacing_dart,
-    rigging_dart, stowing_dart, tethering_dart,
+    belaying_dart, clamping_dart, coupling_dart, doubling_dart, fastening_dart, hoisting_dart,
+    lacing_dart, loosening_dart, pairing_dart, rigging_dart, stowing_dart, tethering_dart,
+    twin_dart,
 };
 
 /// The read of a map of `u8` values from the object `source` names.
@@ -149,5 +150,31 @@ fn a_map_after_a_member_that_takes_no_key_is_read_from_every_key() {
             "Belaying(bracing: Bracing.fromJsonUnjudged(json),rest: {},);",
             values_from("json")
         ),
+    );
+}
+
+/// A struct with a flattened map, a member that names a function, a JSON value and a struct that
+/// reads the same key, each flattened after a struct, are read without the keys the struct took.
+/// The struct is read as it was.
+#[test]
+fn a_member_after_a_flattened_struct_is_read_without_the_keys_the_struct_took() {
+    assert_written(
+        &pairing_dart::dart_definition(),
+        "Pairing(marking: Marking.fromJsonUnjudged(json),spare: \
+         Spare.fromJsonUnjudged(({...json}..remove('label'))),);",
+    );
+    assert_written(
+        &twin_dart::dart_definition(),
+        "Twin(marking: Marking.fromJsonUnjudged(json),other: \
+         Keying.fromJsonUnjudged(withItsKeys(({...json}..remove('label')))),);",
+    );
+    assert_written(
+        &loosening_dart::dart_definition(),
+        "Loosening(marking: Marking.fromJsonUnjudged(json),rest: ({...json}..remove('label')),);",
+    );
+    assert_written(
+        &doubling_dart::dart_definition(),
+        "Doubling(marking: Marking.fromJsonUnjudged(json),twice: \
+         Marking.fromJsonUnjudged(({...json}..remove('label'))),);",
     );
 }

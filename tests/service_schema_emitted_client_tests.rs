@@ -400,13 +400,13 @@ mod flattened_models;
 mod run_kotlin_flattened;
 
 /// A map flattened after a struct, ahead of one, beside another map and after a member that
-/// takes none of the keys it reads.
+/// takes none of the keys it reads, and a member of each other kind flattened after a struct.
 #[cfg(test)]
 #[cfg(feature = "dart")]
 #[path = "dart_tests/flattened_models.rs"]
 mod dart_flattened_models;
 
-/// Those maps, read and written back by the emitted Dart types.
+/// Those members, read and written back by the emitted Dart types.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_dart_flattened.rs"]
 mod run_dart_flattened;

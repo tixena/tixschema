@@ -1,8 +1,9 @@
 //! A map flattened after a struct, beside a member of its holder's own and in a variant under a
 //! tag key, a map that is the one flattened member, a map flattened ahead of a struct, two
-//! flattened maps, and a map flattened after a member that takes none of the keys it reads, each
-//! read and written back by the emitted Dart types under the Dart VM, against what serde reads and
-//! writes back.
+//! flattened maps, a map flattened after a member that takes none of the keys it reads, and, after
+//! a struct, a struct with a flattened map, a member that names a function, a JSON value and a
+//! struct that reads the same key, each read and written back by the emitted Dart types under the
+//! Dart VM, against what serde reads and writes back.
 
 #![cfg(feature = "dart")]
 
@@ -11,15 +12,20 @@ use alloc::collections::BTreeMap;
 use serde::Serialize;
 
 use super::dart_flattened_models::{
-    Belaying, CLAMPING, Clamping, Coupling, FASTENING, Fastening, Hoisting, Lacing, PAYLOAD,
-    Rigging, STOWING, Stowing, TETHERING, Tethering, belaying_dart, bracing_dart, clamping_dart,
-    coupling_dart, fastening_dart, hoisting_dart, lacing_dart, marking_dart, rigging_dart,
-    stowing_dart, tethering_dart, ticketing_dart,
+    Belaying, CLAMPING, Clamping, Coupling, Doubling, FASTENING, Fastening, Hoisting, Lacing,
+    Loosening, PAYLOAD, Pairing, Rigging, STOWING, Stowing, TETHERING, Tethering, Twin,
+    belaying_dart, bracing_dart, clamping_dart, coupling_dart, doubling_dart, fastening_dart,
+    hoisting_dart, keying_dart, lacing_dart, loosening_dart, marking_dart, pairing_dart,
+    rigging_dart, spare_dart, stowing_dart, tethering_dart, ticketing_dart, twin_dart,
 };
 use super::run_dart_validate::{dart, module};
 
 /// The function the models name, which answers the payload as it was handed.
 const AS_GIVEN: &str = "dynamic asGiven(dynamic payload) => payload;";
+
+/// The function [`Twin`] names, which answers the keys of the object it is handed.
+const WITH_ITS_KEYS: &str = "dynamic withItsKeys(dynamic payload) => \
+     {'keys': (payload as Map<String, dynamic>).keys.toList()};";
 
 /// What prints the map each holder read after a struct, and what it writes back.
 const AFTER_A_STRUCT: &str = "
@@ -63,6 +69,25 @@ void main() {
 }
 ";
 
+/// What prints the member each holder read after a struct and what it writes back, and whether a
+/// struct after a struct that reads the same key is read.
+const AFTER_A_STRUCT_A_MEMBER: &str = "
+void main() {
+  final pairing = Pairing.fromJson(jsonDecode(r'PAYLOAD'));
+  print('pairing: ${jsonEncode(pairing.spare.rest)} ${jsonEncode(pairing.toJson())}');
+  final twin = Twin.fromJson(jsonDecode(r'PAYLOAD'));
+  print('twin: ${jsonEncode(twin.other.keys)} ${jsonEncode(twin.toJson())}');
+  final loosening = Loosening.fromJson(jsonDecode(r'PAYLOAD'));
+  print('loosening: ${jsonEncode(loosening.rest)} ${jsonEncode(loosening.toJson())}');
+  try {
+    Doubling.fromJson(jsonDecode(r'PAYLOAD'));
+    print('doubling: read');
+  } catch (_) {
+    print('doubling: refused');
+  }
+}
+";
+
 /// The text of `value` as serde writes it.
 fn written<T>(value: &T) -> String
 where
@@ -90,7 +115,11 @@ fn with_payloads(main: &str) -> String {
 
 /// What the Dart VM prints of `main` over the emitted definitions, or `None` where it is missing.
 fn printed(named: &str, definitions: &[String], main: &str) -> Option<String> {
-    let source = module(definitions, &[AS_GIVEN], &with_payloads(main));
+    let source = module(
+        definitions,
+        &[AS_GIVEN, WITH_ITS_KEYS],
+        &with_payloads(main),
+    );
     let (ran, printed) = dart(named, &[], &source)?;
     assert!(ran, "{printed}");
     Some(printed)
@@ -223,6 +252,54 @@ fn a_map_after_a_member_that_takes_no_key_reads_in_dart_every_key() {
             belaying_dart::dart_definition(),
         ],
         AFTER_NO_KEY,
+    ) else {
+        return;
+    };
+    assert_eq!(printed, expected);
+}
+
+/// A struct with a flattened map, a member that names a function and a JSON value, each flattened
+/// after a struct, are handed the keys the struct did not take, and each holder is written back as
+/// serde writes it back. A struct after a struct that reads the same key is refused, as serde
+/// refuses it.
+#[test]
+fn a_member_after_a_flattened_struct_reads_in_dart_the_keys_serde_hands_it() {
+    let pairing: Pairing = serde_json::from_str(PAYLOAD).unwrap();
+    let twin: Twin = serde_json::from_str(PAYLOAD).unwrap();
+    let loosening: Loosening = serde_json::from_str(PAYLOAD).unwrap();
+    let doubling = if serde_json::from_str::<Doubling>(PAYLOAD).is_ok() {
+        "read"
+    } else {
+        "refused"
+    };
+    let expected = format!(
+        "pairing: {} {}\ntwin: {} {}\nloosening: {} {}\ndoubling: {doubling}\n",
+        written(&pairing.spare.rest),
+        written(&pairing),
+        written(&twin.other.keys),
+        written(&twin),
+        written(&loosening.rest),
+        written(&loosening),
+    );
+    assert_eq!(
+        expected,
+        "pairing: {\"north\":2} {\"label\":\"n\",\"north\":2}\n\
+         twin: [\"north\"] {\"label\":\"n\",\"keys\":[\"north\"]}\n\
+         loosening: {\"north\":2} {\"label\":\"n\",\"north\":2}\n\
+         doubling: refused\n"
+    );
+    let Some(printed) = printed(
+        "flattened-after-a-struct-a-member",
+        &[
+            marking_dart::dart_definition(),
+            spare_dart::dart_definition(),
+            pairing_dart::dart_definition(),
+            keying_dart::dart_definition(),
+            twin_dart::dart_definition(),
+            loosening_dart::dart_definition(),
+            doubling_dart::dart_definition(),
+        ],
+        AFTER_A_STRUCT_A_MEMBER,
     ) else {
         return;
     };

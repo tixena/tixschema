@@ -1,10 +1,11 @@
 //! The models of the flattened Dart reads `dart_tests/flattened.rs` pins and
 //! `service_schema_emitted_client_tests/run_dart_flattened.rs` runs: a map flattened after a
 //! struct, beside a member of its holder's own and in a variant under a tag key, a map that is the
-//! one flattened member, a map flattened ahead of a struct, two flattened maps, and a map
-//! flattened after a member that takes none of the keys it reads. serde reads the members in the
-//! order declared: a struct takes the keys it reads, and a map is handed every key no member ahead
-//! of it took.
+//! one flattened member, a map flattened ahead of a struct, two flattened maps, a map flattened
+//! after a member that takes none of the keys it reads, and, after a struct, a struct with a
+//! flattened map, a member that names a function, a JSON value and a struct that reads the same
+//! key. serde reads the members in the order declared: a struct takes the keys it reads, and every
+//! flattened member is handed every key no member ahead of it took.
 
 use alloc::collections::BTreeMap;
 
@@ -145,9 +146,80 @@ pub enum Tethering {
     },
 }
 
+/// A struct with a flattened map of its own, which serde reads as a map and so takes no key.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Spare {
+    #[serde(flatten)]
+    pub rest: BTreeMap<String, Value>,
+}
+
+/// A struct flattened after a struct, where serde hands it the keys the first did not take.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Pairing {
+    #[serde(flatten)]
+    pub marking: Marking,
+    #[serde(flatten)]
+    pub spare: Spare,
+}
+
+/// The keys a function was handed, which [`Twin`] reads its member from.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Keying {
+    pub keys: Vec<String>,
+}
+
+/// A member that names a function flattened after a struct, where serde hands the function the
+/// keys the struct did not take.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Twin {
+    #[serde(flatten)]
+    pub marking: Marking,
+    #[model_schema_prop(preprocess = ["withItsKeys"])]
+    #[serde(flatten)]
+    pub other: Keying,
+}
+
+/// A JSON value flattened after a struct, which serde reads as a map of the keys the struct did not
+/// take.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Loosening {
+    #[serde(flatten)]
+    pub marking: Marking,
+    #[serde(flatten)]
+    pub rest: Value,
+}
+
+/// A struct flattened after a struct that reads the same key, where serde hands the second the
+/// object without it and refuses the payload.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Doubling {
+    #[serde(flatten)]
+    pub marking: Marking,
+    #[serde(flatten)]
+    pub twice: Marking,
+}
+
 /// The payload as it was handed.
 const fn as_given(payload: Value) -> Value {
     payload
+}
+
+/// The keys of the object `payload`, under `keys`.
+fn with_its_keys(payload: Value) -> Value {
+    let Value::Object(object) = payload else {
+        return payload;
+    };
+    let keys: Vec<Value> = object
+        .into_iter()
+        .map(|(key, _)| Value::String(key))
+        .collect();
+    serde_json::json!({ "keys": keys })
 }
 
 /// The text of `value` as serde writes it.
@@ -184,5 +256,26 @@ fn serde_hands_a_flattened_map_the_keys_no_member_ahead_of_it_took() {
     assert_eq!(
         written(&stowing),
         r#"{"north":2,"south":3,"north":2,"south":3}"#
+    );
+}
+
+/// A struct with a flattened map, a member that names a function and a JSON value, each after a
+/// struct, are handed the keys the struct did not take, and a struct after a struct that reads the
+/// same key is refused.
+#[test]
+fn serde_hands_a_flattened_member_the_keys_no_struct_ahead_of_it_took() {
+    let pairing: Pairing = serde_json::from_str(PAYLOAD).unwrap();
+    assert_eq!(written(&pairing.spare.rest), r#"{"north":2}"#);
+    assert_eq!(written(&pairing), PAYLOAD);
+    let twin: Twin = serde_json::from_str(PAYLOAD).unwrap();
+    assert_eq!(twin.other.keys, ["north"]);
+    assert_eq!(written(&twin), r#"{"label":"n","keys":["north"]}"#);
+    let loosening: Loosening = serde_json::from_str(PAYLOAD).unwrap();
+    assert_eq!(written(&loosening.rest), r#"{"north":2}"#);
+    assert_eq!(written(&loosening), PAYLOAD);
+    let refused = serde_json::from_str::<Doubling>(PAYLOAD).unwrap_err();
+    assert_eq!(
+        refused.to_string(),
+        "missing field `label` at line 1 column 23"
     );
 }
