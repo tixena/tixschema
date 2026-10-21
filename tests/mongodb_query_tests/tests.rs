@@ -4,6 +4,7 @@
 //! runs against both.
 
 mod arms;
+mod function_body;
 mod hooked;
 mod nested;
 // A build that describes a type refuses a renaming whose two directions name two keys.

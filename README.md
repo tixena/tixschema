@@ -7677,7 +7677,7 @@ The function fails with `billed_schema::OperationError`, the crate's one `Operat
 
 ### Limits
 
-- **A type that lists `"mongodb"` and a type it holds, declared in one function body, do not build under the `mongodb` feature.** A module written inside a function reaches none of that function's items, and the outer type's struct of paths names the inner type: ``error[E0425]: cannot find type `Inner` in module `super` ``. A flagged type alone in a function body builds, a struct of standard types and a type serde writes as one value alike. Declare the inner type at module level, as [Function-Local Types](#function-local-types) says for the schema surfaces.
+- **A type that holds a type declared in the same function body does not build with the `jsonschema` feature on.** Its JSON Schema names the held type's schema module, which no module beside the holder reaches: ``error[E0433]: cannot find module or crate `inner_schema` in this scope``. Declare the held type at module level in such a build, as [Function-Local Types](#function-local-types) says.
 - **An operation is a function of the type itself, under its own name.** A type that lists `"mongodb"` and already has a function of its own called `find_one`, `find_one_with`, `find`, `find_with`, `count`, `insert_one`, `update_one`, `update_many`, `delete_one` or `delete_many` builds without the `mongodb` feature and stops building with it. For a type with a `count` of its own: ``error[E0592]: duplicate definitions with name `count` ``.
 - **A slot of a tuple struct under `skip_serializing_if` moves the positions after it.** The paths are written for a value that holds every slot. With `pair` a field typed with `Pair`, a tuple struct of an `Option<u32>` under `skip_serializing_if` and then a `String`, `Pair::MONGO_FIELDS.1` nested under `paths.pair()` writes the key `pair.1`, and a value whose first slot is `None` is stored as `{ "pair": ["x"] }`, its text at position `0`.
 
@@ -8203,8 +8203,6 @@ fn builds_the_schema() {
     }
 }
 ```
-
-With the `mongodb` feature on, a `#[model_schema(enable = ["decode_with", "mongodb"])]` type and a type it holds, declared in one function body, fail to build as well, and in a build with no schema surface too: [Limits](#limits) has the two errors.
 
 #### Missing Derives
 
