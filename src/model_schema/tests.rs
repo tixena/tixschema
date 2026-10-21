@@ -8764,6 +8764,180 @@ fn a_map_keyed_by_a_brand_or_an_alias_over_a_number_is_refused() {
     }
 }
 
+/// What a type that lists `"mongodb"` is refused for the member `named`, which holds `model`, a
+/// model declared above that holds the map `described` says.
+fn held_bson_refused_key_message(named: &str, model: &str, described: &str) -> String {
+    format!(
+        "{named}: `{model}` holds a map that cannot be stored in MongoDB ({described}) — BSON \
+         document keys are always text, and the `bson` library refuses to write this key and to \
+         read it back. Key that map by a `String`, or do not list \"mongodb\" in `enable`."
+    )
+}
+
+/// Records each of `declared` as its expansion records it for the items below it.
+fn record_declared_above(declared: &[&str]) {
+    for source in declared {
+        super::record_wire_form(&syn::parse_str(source).unwrap());
+    }
+}
+
+/// A model declared above that holds a map keyed by a number is refused where it is held, as
+/// itself and behind an `Option`, a list, a map's value and a wrapper.
+#[test]
+fn a_model_declared_above_that_holds_a_map_keyed_by_a_number_is_refused_where_it_is_held() {
+    record_declared_above(&[
+        "pub struct Seating { pub label: String, pub by_number: HashMap<u32, String> }",
+    ]);
+    for written in [
+        "Seating",
+        "Option<Seating>",
+        "Vec<Seating>",
+        "HashMap<String, Seating>",
+        "Box<Seating>",
+        "Option<Vec<Seating>>",
+        "(String, Seating)",
+    ] {
+        assert_eq!(
+            bson_refused_key_messages(&format!("pub struct Venue {{ pub seating: {written} }}")),
+            [held_bson_refused_key_message(
+                "field `seating`",
+                "Seating",
+                "field `by_number`, a map keyed by `u32`"
+            )],
+            "for {written}"
+        );
+    }
+    assert_eq!(
+        bson_refused_key_messages(
+            "pub enum Booking { Open { seating: Seating }, Closed(String, Vec<Seating>) }"
+        ),
+        [
+            held_bson_refused_key_message(
+                "variant `Open`, field `seating`",
+                "Seating",
+                "field `by_number`, a map keyed by `u32`"
+            ),
+            held_bson_refused_key_message(
+                "variant `Closed`, field `1`",
+                "Seating",
+                "field `by_number`, a map keyed by `u32`"
+            ),
+        ]
+    );
+}
+
+/// A model held two levels down is refused at the holder, with each member on the way to the map.
+#[test]
+fn a_model_held_two_levels_down_is_refused_with_the_way_to_its_map() {
+    record_declared_above(&[
+        "pub struct Seating { pub by_number: HashMap<u32, String> }",
+        "pub struct Floor { pub level: u8, pub seating: Seating }",
+    ]);
+    for written in ["Floor", "Option<Vec<Floor>>"] {
+        assert_eq!(
+            bson_refused_key_messages(&format!("pub struct Venue {{ pub floor: {written} }}")),
+            [held_bson_refused_key_message(
+                "field `floor`",
+                "Floor",
+                "field `seating`, which holds `Seating` with field `by_number`, a map keyed by `u32`"
+            )],
+            "for {written}"
+        );
+    }
+}
+
+/// An enum declared above is a held model as a struct is, its map named behind its variant.
+#[test]
+fn an_enum_declared_above_that_holds_a_map_keyed_by_a_bool_is_refused_where_it_is_held() {
+    record_declared_above(&[
+        "pub enum Lineup { Named { by_name: HashMap<String, String> }, \
+         Flagged(BTreeMap<bool, String>), Empty }",
+    ]);
+    assert_eq!(
+        bson_refused_key_messages("pub struct Venue { pub lineup: Option<Lineup> }"),
+        [held_bson_refused_key_message(
+            "field `lineup`",
+            "Lineup",
+            "variant `Flagged`, field `0`, a map keyed by `bool`"
+        )]
+    );
+}
+
+/// A held model is refused once, with the first map it holds under a refused key.
+#[test]
+fn a_held_model_is_refused_once_with_its_first_map() {
+    record_declared_above(
+        &["pub struct Seating { pub by_number: HashMap<u32, String>, \
+         pub by_flag: BTreeMap<bool, String> }"],
+    );
+    assert_eq!(
+        bson_refused_key_messages("pub struct Venue { pub seating: Seating }"),
+        [held_bson_refused_key_message(
+            "field `seating`",
+            "Seating",
+            "field `by_number`, a map keyed by `u32`"
+        )]
+    );
+}
+
+/// A model whose maps are keyed by text, one whose map serde neither writes nor reads, one not
+/// declared above, and a member serde neither writes nor reads, are not refused. A model that
+/// holds itself is refused for its own map alone.
+#[test]
+fn a_held_model_with_no_refused_map_is_not_refused() {
+    record_declared_above(&[
+        "pub struct Labels { pub by_name: HashMap<String, String> }",
+        "pub struct Hidden { #[serde(skip)] pub by_number: HashMap<u32, String> }",
+        "pub struct Seating { pub by_number: HashMap<u32, String> }",
+        "pub struct Node { pub by_number: HashMap<u32, String>, pub children: Vec<Node> }",
+    ]);
+    for written in ["Labels", "Option<Hidden>", "Vec<Unseen>"] {
+        assert_eq!(
+            bson_refused_key_messages(&format!("pub struct Venue {{ pub held: {written} }}")),
+            Vec::<String>::new(),
+            "for {written}"
+        );
+    }
+    assert_eq!(
+        bson_refused_key_messages("pub struct Venue { #[serde(skip)] pub seating: Seating }"),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        bson_refused_key_messages(
+            "pub struct Node { pub by_number: HashMap<u32, String>, pub children: Vec<Node> }"
+        ),
+        [bson_refused_key_message("field `by_number`", "u32")]
+    );
+}
+
+/// A model is recorded as its expansion runs, whatever its `enable` list, and refused only in a
+/// holder that lists `"mongodb"`.
+#[test]
+fn a_held_model_is_refused_only_where_its_holder_lists_mongodb() {
+    let seating = "pub struct Seating { pub by_number: HashMap<u32, String> }";
+    let built = expansion_under("enable = [\"decode_with\"]", seating);
+    assert!(!built.contains("compile_error"), "got: {built}");
+
+    let venue = "pub struct Venue { pub seating: Seating }";
+    let refused = expansion_under("enable = [\"decode_with\", \"mongodb\"]", venue);
+    assert!(
+        refused.contains(&format!(
+            "model_schema: type `Venue`: {}",
+            held_bson_refused_key_message(
+                "field `seating`",
+                "Seating",
+                "field `by_number`, a map keyed by `u32`"
+            )
+            .replace('"', "\\\"")
+        )),
+        "got: {refused}"
+    );
+    for listed in ["enable = [\"decode_with\"]", ""] {
+        let held = expansion_under(listed, venue);
+        assert!(!held.contains("compile_error"), "for {listed}, got: {held}");
+    }
+}
+
 /// The refusal is spanned on the field, and raised only where the type lists `"mongodb"`.
 #[test]
 fn a_map_keyed_by_a_number_is_refused_only_where_mongodb_is_listed() {

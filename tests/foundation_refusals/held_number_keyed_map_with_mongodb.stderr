@@ -1,0 +1,5 @@
+error: model_schema: type `Venue`: field `seating`: `Seating` holds a map that cannot be stored in MongoDB (field `by_number`, a map keyed by `u32`) — BSON document keys are always text, and the `bson` library refuses to write this key and to read it back. Key that map by a `String`, or do not list "mongodb" in `enable`.
+  --> tests/foundation_refusals/held_number_keyed_map_with_mongodb.rs:22:9
+   |
+22 |     pub seating: Seating,
+   |         ^^^^^^^

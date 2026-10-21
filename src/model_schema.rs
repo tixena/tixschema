@@ -229,8 +229,9 @@ use crate::utils::record_ts_union_members;
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use crate::utils::register_alias_info;
 use crate::utils::{
-    is_recorded_bson_refused_key, is_recorded_untagged_enum, is_wire_scalar_type,
-    record_bson_refused_key, record_untagged_enum, record_wire_scalar,
+    bson_refused_holder, is_recorded_bson_refused_key, is_recorded_untagged_enum,
+    is_wire_scalar_type, record_bson_refused_holder, record_bson_refused_key, record_untagged_enum,
+    record_wire_scalar,
 };
 
 #[cfg(feature = "serde")]
@@ -723,6 +724,22 @@ enum UndescribableStd<'name> {
     Wrapper(&'name str),
 }
 
+/// Where a member reaches a map whose key the `bson` library refuses.
+enum RefusedKey<'key> {
+    /// A model declared above that holds such a map.
+    Held(HeldMap),
+    /// A map the member's own type writes, under this key.
+    Written(&'key syn::Type),
+}
+
+/// A model declared above that holds a map whose key the `bson` library refuses.
+struct HeldMap {
+    /// The map, after the member of the model that holds it.
+    described: String,
+    /// The model's name.
+    model: String,
+}
+
 /// What a newtype variant's inner value is when the tag is written beside it rather than around
 /// it.
 #[cfg(feature = "serde")]
@@ -1119,6 +1136,16 @@ impl MapMemberItem {
 impl ModelSchemaArgs {
     const fn has_string_constraints(&self) -> bool {
         self.pattern.is_some() || self.min_length.is_some() || self.max_length.is_some()
+    }
+}
+
+impl RefusedKey<'_> {
+    /// What the member holds, after its name.
+    fn described(&self) -> String {
+        match self {
+            Self::Held(held) => format!("which holds `{}` with {}", held.model, held.described),
+            Self::Written(key) => format!("a map keyed by `{}`", written_spelling(key)),
+        }
     }
 }
 
@@ -2972,9 +2999,21 @@ fn decode_with_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_mac
         .collect()
 }
 
-/// One refusal per map a member of `item` holds whose key the `bson` library refuses, spanned on
-/// the member: every member serde writes or reads, of a struct and of each variant of an enum.
+/// One refusal per map a member of `item` holds whose key the `bson` library refuses, or per model
+/// declared above that holds one, spanned on the member.
 fn mongodb_map_key_refusals(item: &Item) -> Vec<syn::Error> {
+    bson_refused_maps(item)
+        .iter()
+        .map(|(variant, position, field, key)| {
+            bson_refused_key_refusal(*variant, *position, field, key)
+        })
+        .collect()
+}
+
+/// Each map a member of `item` holds whose key the `bson` library refuses, beside the member:
+/// every member serde writes or reads, of a struct and of each variant of an enum. A member that
+/// holds the item itself reaches no map the item's own members do not.
+fn bson_refused_maps(item: &Item) -> Vec<(Option<&syn::Ident>, usize, &Field, RefusedKey<'_>)> {
     let members: Vec<(Option<&syn::Ident>, &syn::Fields)> = if let Item::Struct(item_struct) = item
     {
         vec![(None, &item_struct.fields)]
@@ -2988,6 +3027,7 @@ fn mongodb_map_key_refusals(item: &Item) -> Vec<syn::Error> {
     } else {
         Vec::new()
     };
+    let own = item_schema_ident(item).map(ToString::to_string);
     members
         .into_iter()
         .flat_map(|(variant, fields)| {
@@ -2998,34 +3038,50 @@ fn mongodb_map_key_refusals(item: &Item) -> Vec<syn::Error> {
                 .flat_map(move |(position, field)| {
                     bson_refused_keys(&field.ty)
                         .into_iter()
-                        .map(move |key| bson_refused_key_refusal(variant, position, field, key))
+                        .map(move |key| (variant, position, field, key))
                 })
         })
+        .filter(
+            |(.., key)| !matches!(key, RefusedKey::Held(held) if own.as_ref() == Some(&held.model)),
+        )
         .collect()
 }
 
-/// The refusal of the map `field` holds under `key`, named by the field's ident or its position,
-/// behind the variant it is a member of.
-fn bson_refused_key_refusal(
-    variant: Option<&syn::Ident>,
-    position: usize,
-    field: &Field,
-    key: &syn::Type,
-) -> syn::Error {
+/// A member named by its ident or its position, behind the variant it is a member of.
+fn refused_member_named(variant: Option<&syn::Ident>, position: usize, field: &Field) -> String {
     let member = field.ident.as_ref().map_or_else(
         || format!("field `{position}`"),
         |ident| format!("field `{}`", ident.unraw()),
     );
-    let named = variant.map_or_else(
+    variant.map_or_else(
         || member.clone(),
         |held_by| format!("variant `{}`, {member}", held_by.unraw()),
-    );
-    let message = format!(
-        "{named}: a map keyed by `{}` cannot be stored in MongoDB — BSON document keys are always \
-         text, and the `bson` library refuses to write this key and to read it back. Key the map \
-         by a `String`, or do not list \"mongodb\" in `enable`.",
-        written_spelling(key)
-    );
+    )
+}
+
+/// The refusal of the map `field` reaches through `key`, named by the field's ident or its
+/// position, behind the variant it is a member of.
+fn bson_refused_key_refusal(
+    variant: Option<&syn::Ident>,
+    position: usize,
+    field: &Field,
+    key: &RefusedKey<'_>,
+) -> syn::Error {
+    let named = refused_member_named(variant, position, field);
+    let message = match key {
+        RefusedKey::Held(held) => format!(
+            "{named}: `{}` holds a map that cannot be stored in MongoDB ({}) — BSON document \
+             keys are always text, and the `bson` library refuses to write this key and to read \
+             it back. Key that map by a `String`, or do not list \"mongodb\" in `enable`.",
+            held.model, held.described
+        ),
+        RefusedKey::Written(written) => format!(
+            "{named}: a map keyed by `{}` cannot be stored in MongoDB — BSON document keys are \
+             always text, and the `bson` library refuses to write this key and to read it back. \
+             Key the map by a `String`, or do not list \"mongodb\" in `enable`.",
+            written_spelling(written)
+        ),
+    };
     field.ident.as_ref().map_or_else(
         || syn::Error::new_spanned(&field.ty, &message),
         |ident| syn::Error::new(ident.span(), &message),
@@ -3033,8 +3089,8 @@ fn bson_refused_key_refusal(
 }
 
 /// The key of each map `ty` holds, behind `Option`, a list, a tuple, a transparent wrapper and a
-/// map's value, that the `bson` library refuses.
-fn bson_refused_keys(ty: &syn::Type) -> Vec<&syn::Type> {
+/// map's value, that the `bson` library refuses, and each model declared above that holds one.
+fn bson_refused_keys(ty: &syn::Type) -> Vec<RefusedKey<'_>> {
     match written_type(ty) {
         syn::Type::Array(array) => bson_refused_keys(&array.elem),
         syn::Type::Slice(slice) => bson_refused_keys(&slice.elem),
@@ -3051,7 +3107,7 @@ fn bson_refused_keys(ty: &syn::Type) -> Vec<&syn::Type> {
                     return Vec::new();
                 };
                 is_bson_refused_key(key)
-                    .then_some(*key)
+                    .then_some(RefusedKey::Written(key))
                     .into_iter()
                     .chain(bson_refused_keys(value))
                     .collect()
@@ -3061,6 +3117,11 @@ fn bson_refused_keys(ty: &syn::Type) -> Vec<&syn::Type> {
             {
                 held.first()
                     .map_or_else(Vec::new, |inner| bson_refused_keys(inner))
+            } else if let Some(described) = bson_refused_holder(&name) {
+                vec![RefusedKey::Held(HeldMap {
+                    described,
+                    model: name,
+                })]
             } else {
                 Vec::new()
             }
@@ -5457,11 +5518,13 @@ fn alias_string_check_refusal_output(
 }
 
 /// Records what serde writes `item` as, for the expansions after it in every build: a bare wire
-/// scalar, an untagged enum, and a map key the `bson` library refuses.
+/// scalar, an untagged enum, a map key the `bson` library refuses, and a model that holds a map
+/// under such a key.
 fn record_wire_form(item: &Item) {
     record_wire_scalar_item(item);
     record_untagged_enum_item(item);
     record_bson_refused_key_item(item);
+    record_bson_refused_holder_item(item);
 }
 
 /// Records `item` where serde writes it as a bare wire scalar rather than an object: a
@@ -5501,6 +5564,26 @@ fn record_bson_refused_key_item(item: &Item) {
     if is_bson_refused_key(inner) {
         record_bson_refused_key(&name.to_string());
     }
+}
+
+/// Records `item` where it is a struct or an enum that holds a map whose key the `bson` library
+/// refuses, with the first such map, whatever its `enable` list: a holder that lists `"mongodb"`
+/// is the one refused.
+fn record_bson_refused_holder_item(item: &Item) {
+    let (Some(ident), Some((variant, position, field, key))) = (
+        item_schema_ident(item),
+        bson_refused_maps(item).into_iter().next(),
+    ) else {
+        return;
+    };
+    record_bson_refused_holder(
+        &ident.to_string(),
+        &format!(
+            "{}, {}",
+            refused_member_named(variant, position, field),
+            key.described()
+        ),
+    );
 }
 
 /// The name and inner type of the two shapes that can publish a bare scalar under their own name.

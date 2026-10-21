@@ -7663,6 +7663,7 @@ error: model_schema: type `Roster`: field `by_number`: a map keyed by `u32` cann
 
 - **The keys refused** are the integer types, `f32`, `f64` and `bool`, and a brand or an alias declared above over one of them, each also under `Box`, `Rc`, `Arc` and `Cow`. The error names the field and the key, once for each such map the field holds.
 - **The map is found in every member serde writes or reads**, of a struct and of each variant of an enum, behind an `Option`, a list, a tuple, a wrapper and another map's value: a field written `Option<Vec<BTreeMap<bool, u32>>>` is refused as `by_number` is. A member under `#[serde(skip)]` is not.
+- **A model declared above is looked into.** A member that holds a `#[model_schema]` struct or enum declared above the type, behind the same `Option`, list, tuple, wrapper and map's value, is refused where that model holds such a map, at any depth and whatever the model's own `enable` list. The error names the member, the model, and the first such map the model holds. A model declared below the type, or of another crate, is not looked into.
 - **A key serde writes as text is stored as that text and read back**: a `String`, a `char`, a `chrono` date or time, a plain enum, and a brand over a `String`. A key the expansion cannot see into, a type of another crate or a brand declared below the type, is not refused.
 - **A type that lists `"decode_with"` alone builds with such a map** and reads it from JSON. Its `from_bson_piped` refuses a stored row that holds the map, with one `Undescribed` issue.
 
