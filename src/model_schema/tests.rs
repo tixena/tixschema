@@ -8021,10 +8021,10 @@ fn a_type_declared_above_is_held_by_how_serde_writes_it() {
          pub keyed: HeldKeyed, pub keyeds: Vec<HeldKeyed> }",
     );
     for emitted in [
-        "pub const fn brand (& self) -> self :: Field < Root , super :: HeldBrand > {",
-        "pub const fn brands (& self) -> self :: ListField < Root , super :: HeldBrand > {",
-        "pub const fn keyed (& self) -> self :: Model < Root , super :: HeldKeyed > {",
-        "pub const fn keyeds (& self) -> self :: ModelList < Root , super :: HeldKeyed > {",
+        "pub const fn brand (& self) -> held_by_schema :: Field < Root , HeldBrand > {",
+        "pub const fn brands (& self) -> held_by_schema :: ListField < Root , HeldBrand > {",
+        "pub const fn keyed (& self) -> held_by_schema :: Model < Root , HeldKeyed > {",
+        "pub const fn keyeds (& self) -> held_by_schema :: ModelList < Root , HeldKeyed > {",
     ] {
         assert!(
             expanded.contains(emitted),

@@ -2197,16 +2197,32 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   each key under the path's own (`nested_filter`, `nested_update`, `nested_key`). No expansion
   names another type's module: a flattened model and a variant that holds one at the enum's own
   level are a `Nested<Root, N>` at the key they are written under.
-- **A function that calls a hook is written beside the type.** A hooked path writes through
-  `mongo_write_{field}`, a function of the type's own that calls the hook as the attribute
-  writes it. The schema module cannot name a type declared inside a function, so `of_functions`
-  puts every function whose path calls one (`Built::calls_a_hook`) in an `impl` of the struct of
-  paths beside the type (`TypedPaths::beside`), and the rest in the module. In that `impl`
-  `Self` is the struct of paths, so `Own::scoped` at no depth writes the type's own name
-  wherever its author wrote `Self` (`Own::naming_itself`): in the value of the path,
-  `children: Vec<Self>` on `Node` being a `Field<Root, Vec<Node>>`, and in a bound of the
-  type's own, which the arm functions of an enum under a tag are written under as well.
-  `mongo_write_{field}` is in the type's own `impl` and keeps `Self` as written.
+- **Every `impl` of a struct of paths is written beside the type, and the schema module and
+  `mongo_members` name no type, trait or bound of the author's.** A module written inside a
+  function body reaches none of that function's items, so the two modules hold declarations
+  only, under the parameters `Own::bare` writes: the row type, then the type's own with no bound
+  but `?Sized`, no default and no `where` clause.
+  - `of_functions` declares a struct of functions in its module and writes its one `impl` beside
+    the type (`TypedPaths::beside`), under `Own::writing`: every member's function, the
+    `is_{variant}` asks, and the arm functions of an enum under a tag.
+  - A tuple's slots keep their positions. `of_slots` declares a trait beside the struct, with one
+    associated type per slot (`Slot0`, `Slot1`, ..): `MongoSlots` for `MongoFields`, and for a
+    struct of `mongo_members` `{Struct}Slots`, under a name the item does not write. The struct
+    reads each slot as `<() as Trait<..>>::SlotN` and declares `where (): Trait<..>`, and the
+    `impl` of the trait for `()` beside the type fills each slot under the author's bounds
+    (`Own::declared`), so a slot whose type needs a bound to be well formed builds. The
+    `MongoFields` `Own::keeping` writes repeats the predicate of the `Members` it holds.
+  - `Own::keeping` and `Own::whole` keep `built`, `Deref` and `regex` in the module: they name
+    only the module's own items, under the bare parameters.
+  - A hooked path writes through `mongo_write_{field}`, a function of the type's own that calls
+    the hook as the attribute writes it. In an `impl` beside the type `Self` is the struct of
+    paths, so `Own::naming_itself` writes the type's own name wherever its author wrote `Self`:
+    in the value of a path, `children: Vec<Self>` on `Node` being a `Field<Root, Vec<Node>>`,
+    and in a bound of the type's own. `mongo_write_{field}` is in the type's own `impl` and
+    keeps `Self` as written.
+  - `tests/mongodb_query_tests/function_body.rs` declares each shape inside a test function, a
+    holder of a type declared there under `not(feature = "jsonschema")`, whose JSON Schema
+    names the held type's module.
 - **A type serde writes as one value is one path.** `written_as_one_value`, recorded as
   `Declared::OneValue`: its `MongoFields<Root, .., Whole>` holds the path at the empty key and
   dereferences to it, the path type being a parameter the type's own `impl` writes, so its module
@@ -2230,9 +2246,9 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   `<tag>__<value>`, each side through `snake_form`. `written_variants` beside it is where a
   variant's written name and the stem of its `is_{stem}` are read, for every enum: `fields.rs`
   computes neither.
-  - `Emitter::arms` writes the functions in an `impl` of the struct of paths **beside the
-    type**, as a hooked path's function is, so the model an arm holds is named as its author
-    wrote it and an enum declared inside a function builds. `Own::naming_itself` writes `Self`
+  - `Emitter::arms` writes the functions into the `impl` of the struct of paths **beside the
+    type**, with its other functions, so the model an arm holds is named as its author wrote it
+    and an enum declared inside a function builds. `Own::naming_itself` writes `Self`
     as the enum there. Each is a `const fn` that answers `ArmFilter<Root, M>`.
   - `ArmFilter` (`query.rs`, in the MongoDB library) holds the tag, the value, the arm's
     place and the conditions, and no document until it is turned into one. The place is
@@ -2304,7 +2320,7 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   type that lists both entries holds, the ones it re-exports and the ones written for it alone, the
   ones `mongodb` adds under their own `cfg`: `reading_the_authors_scope` reads past those names, and
   `every_type_the_flag_adds_is_a_name_read_past` holds the list to the libraries and to what the
-  module of a struct and that of an enum under a tag declare.
+  module of a struct, that of a tuple struct and that of an enum under a tag declare.
   `every_added_method_but_the_entry_point_carries_the_flags_name` is every method the flag adds to
   the type, and `OPERATIONS` in `recovering_decode/tests.rs` is what
   `mongodb` adds to it. A name a library, a module or a type gains joins its list in the same

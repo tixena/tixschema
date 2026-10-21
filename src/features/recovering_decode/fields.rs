@@ -9,7 +9,7 @@ use quote::{ToTokens as _, format_ident, quote};
 use syn::ext::IdentExt as _;
 use syn::{
     Field, Fields, FieldsNamed, FieldsUnnamed, GenericParam, Generics, ItemEnum, ItemStruct, Type,
-    Variant, WherePredicate, parse_quote,
+    TypeParamBound, Variant, WherePredicate, parse_quote,
 };
 
 use super::aliases::PRIMITIVES;
@@ -120,30 +120,9 @@ enum Built {
 }
 
 impl Built {
-    /// Whether the expression names a function of the type's own, which calls a field's hook.
-    fn calls_a_hook(&self) -> bool {
-        if let Self::Held {
-            named: _named,
-            slots,
-        } = self
-        {
-            slots.iter().flatten().any(Self::calls_a_hook)
-        } else {
-            matches!(
-                self,
-                Self::Hooked {
-                    key: _key,
-                    kind: _kind,
-                    writer: _writer,
-                }
-            )
-        }
-    }
-
-    /// The expression, as a module `depth` below the flagged type writes it, and as the type's
-    /// own scope does at no depth.
-    fn written(&self, own: &Own<'_>, depth: usize) -> TokenStream {
-        let kinds = own.kinds(depth);
+    /// The expression, as the type's own scope writes it.
+    fn written(&self, own: &Own<'_>) -> TokenStream {
+        let kinds = own.kinds(0);
         let path = |key: &String| {
             if key.is_empty() {
                 quote! { #kinds MongoPath::ROOT }
@@ -159,11 +138,11 @@ impl Built {
                 named,
                 slots: Some(slots),
             } => {
-                let each = slots.iter().map(|slot| slot.written(own, depth));
+                let each = slots.iter().map(|slot| slot.written(own));
                 quote! { #kinds mongo_members::#named(#(#each),*) }
             }
             Self::Hooked { key, kind, writer } => {
-                let (at, itself) = (path(key), own.itself(depth));
+                let (at, itself) = (path(key), own.itself(0));
                 quote! { #kinds #kind::hooked(#at, <#itself>::#writer) }
             }
             Self::Nested { key } => {
@@ -180,19 +159,23 @@ impl Built {
 }
 
 /// The paths of one type, as they are gathered: what is written beside the type, what
-/// `mongo_members` holds, and what the type's `impl` gains beside the const that holds them.
+/// `mongo_members` holds under the names each struct takes there, and what the type's `impl`
+/// gains beside the const that holds them.
 struct Emitter<'item> {
     beside: Vec<TokenStream>,
-    held: Vec<(String, TokenStream)>,
+    held: Vec<(Vec<String>, TokenStream)>,
     own: Own<'item>,
     writers: Vec<(String, TokenStream)>,
+    /// Every name the type's item writes.
+    written: &'item [String],
 }
 
 impl<'item> Emitter<'item> {
-    /// The arms of an enum serde writes under `tag`: `Arm` for its schema module, and beside the
-    /// type one function per arm of its struct of paths, where the model an arm holds is named as
-    /// its author wrote it. An arm whose function would be no identifier has neither.
-    fn arms(&mut self, tag: &str, arms: &[TagArm<'_>], put: &Put<'_>) -> TokenStream {
+    /// The arms of an enum serde writes under `tag`: one function per arm of its struct of paths,
+    /// for the `impl` beside the type, where the model an arm holds is named as its author wrote
+    /// it, and `Arm` for its schema module. An arm whose function would be no identifier has
+    /// neither.
+    fn arms(&self, tag: &str, arms: &[TagArm<'_>], put: &Put<'_>) -> (TokenStream, TokenStream) {
         let own = &self.own;
         let (kinds, root) = (own.kinds(0), &own.root);
         let place = if let Put::Under(content) = put {
@@ -205,7 +188,7 @@ impl<'item> Emitter<'item> {
             .filter_map(|arm| Some((function_ident(&arm.function)?, arm)))
             .collect();
         if named.is_empty() {
-            return TokenStream::new();
+            return (TokenStream::new(), TokenStream::new());
         }
         let functions = named.iter().map(|(function, arm)| {
             let value = &arm.value;
@@ -229,13 +212,6 @@ impl<'item> Emitter<'item> {
                 }
             }
         });
-        let writing = own.writing(&own.declared(0, None), 0);
-        let (impl_generics, type_generics, bounds) = writing.split_for_impl();
-        self.beside.push(quote! {
-            impl #impl_generics #kinds MongoFields #type_generics #bounds {
-                #(#functions)*
-            }
-        });
         let told = format!(
             "The arms of `{}`, one per variant serde writes.",
             own.name.unraw()
@@ -245,14 +221,17 @@ impl<'item> Emitter<'item> {
             name.set_span(Span::call_site());
             name
         });
-        quote! {
-            #[doc = #told]
-            #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-            #[non_exhaustive]
-            pub enum Arm {
-                #(#each,)*
-            }
-        }
+        (
+            quote! { #(#functions)* },
+            quote! {
+                #[doc = #told]
+                #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+                #[non_exhaustive]
+                pub enum Arm {
+                    #(#each,)*
+                }
+            },
+        )
     }
 
     /// What one variant holds, where serde writes it, as one member. `None` for a variant with no
@@ -306,7 +285,7 @@ impl<'item> Emitter<'item> {
             TokenStream::new()
         };
         let members = (!self.held.is_empty()).then(|| {
-            let held = self.held.iter().map(|(_named, written)| written);
+            let held = self.held.iter().map(|(_claimed, written)| written);
             quote! {
                 /// The structs of paths a function of `MongoFields` answers: one per variant, and
                 /// per tuple, with paths of its own.
@@ -387,30 +366,45 @@ impl<'item> Emitter<'item> {
         let own = &self.own;
         // A struct named as a prelude type or as a parameter would be read in its place by every
         // member beside it that names one.
-        let taken: Vec<String> = self
+        let mut taken: Vec<String> = self
             .held
             .iter()
-            .map(|(named, _)| named.clone())
+            .flat_map(|(named, _)| named.iter().cloned())
             .chain(PRELUDE.map(str::to_owned))
             .chain(own.parameters.iter().cloned())
             .collect();
         let name = Ident::new(&unclaimed(base, &taken), Span::call_site());
-        let (arguments, written, slots) = match members {
+        let mut claimed = vec![name.to_string()];
+        let (arguments, written, slots, slotted) = match members {
             // A function may name the type itself, to reach a hook: every parameter is declared.
             Members::Named(functions) => {
-                let (written, beside) = of_functions(&name, &functions, told, own, None);
+                let (written, beside) =
+                    of_functions(&name, &functions, told, own, None, IN_MEMBERS);
                 self.beside.extend(beside);
-                (own.arguments(), written, None)
+                (own.arguments(), written, None, None)
             }
             Members::Positional(slots) => {
+                // The trait takes no name the item writes, so no variant's struct moves for it.
+                taken.extend(claimed.iter().chain(self.written).cloned());
+                let slotted = Ident::new(
+                    &unclaimed(&format!("{name}Slots"), &taken),
+                    Span::call_site(),
+                );
+                claimed.push(slotted.to_string());
                 let used = own.used(&slots);
-                let generics = own.declared(IN_MEMBERS, Some(&used));
-                let written = of_slots(&name, &slots, &generics, told, own, IN_MEMBERS);
+                let (written, beside) =
+                    of_slots(&name, &slotted, &slots, Some(&used), told, own, IN_MEMBERS);
+                self.beside.push(beside);
                 let built = slots.into_iter().map(|slot| slot.built).collect();
-                (own.arguments_among(&used), written, Some(built))
+                (
+                    own.arguments_among(&used),
+                    written,
+                    Some(built),
+                    Some(slotted),
+                )
             }
         };
-        self.held.push((name.to_string(), written));
+        self.held.push((claimed, written));
         Some(Member {
             built: Built::Held {
                 named: name.clone(),
@@ -419,6 +413,7 @@ impl<'item> Emitter<'item> {
             shown: Shown::Held {
                 arguments,
                 named: name,
+                slotted,
             },
             told: told.to_owned(),
         })
@@ -533,7 +528,8 @@ impl<'item> Emitter<'item> {
                 let own = &self.own;
                 let module = &own.module;
                 let told = format!("{} It holds no path.", own.told());
-                let (declared, beside) = of_functions(&named, &functions, &told, own, asked);
+                let (declared, beside) =
+                    of_functions(&named, &functions, &told, own, asked, IN_MODULE);
                 self.beside.extend(beside);
                 return (
                     declared,
@@ -555,12 +551,12 @@ impl<'item> Emitter<'item> {
             .all(|slot| matches!(slot.shown, Shown::Skipped));
         if unused.is_empty() && !none {
             let own = &self.own;
-            let (module, generics) = (&own.module, own.declared(IN_MODULE, None));
-            let each = slots.iter().map(|slot| slot.built.written(own, 0));
-            return (
-                of_slots(&named, &slots, &generics, &own.told(), own, IN_MODULE),
-                quote! { #module::MongoFields(#(#each),*) },
-            );
+            let (module, slotted) = (&own.module, Ident::new("MongoSlots", Span::call_site()));
+            let each = slots.iter().map(|slot| slot.built.written(own));
+            let (declared, beside) =
+                of_slots(&named, &slotted, &slots, None, &own.told(), own, IN_MODULE);
+            self.beside.push(beside);
+            return (declared, quote! { #module::MongoFields(#(#each),*) });
         }
         let told = format!(
             "The paths `MongoFields` holds for `{}`, which it dereferences to.",
@@ -602,7 +598,7 @@ impl<'item> Emitter<'item> {
         self.own.typed(&field.ty, place, read && hooked.is_none())
     }
 
-    fn new(name: &'item Ident, generics: &'item Generics, written: &[String]) -> Self {
+    fn new(name: &'item Ident, generics: &'item Generics, written: &'item [String]) -> Self {
         let module_name = ident_schema_module_name(&name.to_string());
         let named = |kept: fn(&GenericParam) -> Option<&Ident>| -> Vec<String> {
             generics
@@ -634,6 +630,7 @@ impl<'item> Emitter<'item> {
                 whole: unclaimed_parameter("Whole", written),
             },
             writers: Vec::new(),
+            written,
         }
     }
 
@@ -799,9 +796,43 @@ impl Own<'_> {
         quote! { #(, #each)* }
     }
 
-    /// The parameters a struct of paths declares a module `depth` below the type: the row type,
-    /// then the type's own with their bounds, or those of them `used` names.
-    fn declared(&self, depth: usize, used: Option<&[String]>) -> Generics {
+    /// The parameters a struct of paths declares in a module below the type: the row type, then
+    /// the type's own, or those of them `used` names, with no bound but `?Sized`. A trait of the
+    /// author's is not reached from there where the type is declared in a function.
+    fn bare(&self, used: Option<&[String]>) -> Generics {
+        let mut declared = Generics::default();
+        let root = &self.root;
+        declared.params.push(parse_quote!(#root));
+        for parameter in &self.generics.params {
+            let (named, bare): (&Ident, GenericParam) = match parameter {
+                GenericParam::Const(constant) => {
+                    let (ident, ty) = (&constant.ident, &constant.ty);
+                    (ident, parse_quote!(const #ident: #ty))
+                }
+                GenericParam::Type(ty) => {
+                    let ident = &ty.ident;
+                    let unsized_bound = ty.bounds.iter().any(|bound| {
+                        matches!(bound, TypeParamBound::Trait(trait_bound) if trait_bound.maybe.is_some())
+                    });
+                    let bare = if unsized_bound {
+                        parse_quote!(#ident: ?::core::marker::Sized)
+                    } else {
+                        parse_quote!(#ident)
+                    };
+                    (ident, bare)
+                }
+                GenericParam::Lifetime(_) => continue,
+            };
+            if used.is_none_or(|names| names.contains(&named.unraw().to_string())) {
+                declared.params.push(bare);
+            }
+        }
+        declared
+    }
+
+    /// The parameters an `impl` beside the type declares: the row type, then the type's own with
+    /// the bounds their author wrote, or those of them `used` names.
+    fn declared(&self, used: Option<&[String]>) -> Generics {
         let kept = |named: &String| used.is_none_or(|names| names.contains(named));
         let mut declared = Generics::default();
         let root = &self.root;
@@ -813,7 +844,7 @@ impl Own<'_> {
                 GenericParam::Lifetime(_) => continue,
             };
             if kept(&named.unraw().to_string()) {
-                let scoped = self.scoped(parameter.to_token_stream(), depth);
+                let scoped = self.naming_itself(parameter.to_token_stream());
                 declared
                     .params
                     .push(syn::parse2(scoped).unwrap_or_else(|_| parameter.clone()));
@@ -830,7 +861,7 @@ impl Own<'_> {
                 .iter()
                 .all(|written| !self.parameters.contains(written) || kept(written));
             if names_only_kept {
-                let scoped = self.scoped(predicate.to_token_stream(), depth);
+                let scoped = self.naming_itself(predicate.to_token_stream());
                 declared.make_where_clause().predicates.push(
                     syn::parse2::<WherePredicate>(scoped).unwrap_or_else(|_| predicate.clone()),
                 );
@@ -850,7 +881,19 @@ impl Own<'_> {
     /// parameters no slot names, beside `inner`, the struct of its slots, which it dereferences
     /// to. With it, what the type's own const holds as it.
     fn keeping(&self, inner: Option<&Member>, marked: &[Ident]) -> (TokenStream, TokenStream) {
-        let (module, generics) = (&self.module, self.declared(IN_MODULE, None));
+        let (module, mut generics) = (&self.module, self.bare(None));
+        if let Some(Shown::Held {
+            arguments,
+            named: _named,
+            slotted: Some(slotted),
+        }) = inner.map(|member| &member.shown)
+        {
+            let root = &self.root;
+            generics
+                .make_where_clause()
+                .predicates
+                .push(parse_quote!((): self::mongo_members::#slotted<#root #arguments>));
+        }
         let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
         let members = inner.map(|member| member.shown.written(self, IN_MODULE));
         let (members_field, members_handed, members_kept) =
@@ -904,7 +947,7 @@ impl Own<'_> {
 
             #reached
         };
-        let built = inner.map(|member| member.built.written(self, 0));
+        let built = inner.map(|member| member.built.written(self));
         (declared, quote! { #module::MongoFields::built(#built) })
     }
 
@@ -1194,7 +1237,7 @@ impl Own<'_> {
     fn whole(&self, text: bool) -> (TokenStream, TokenStream) {
         let (module, root, whole, value) = (&self.module, &self.root, &self.whole, &self.value);
         let arguments = self.arguments();
-        let own = self.declared(IN_MODULE, None);
+        let own = self.bare(None);
         let mut generics = own.clone();
         generics.params.push(parse_quote!(#whole));
         let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
@@ -1256,13 +1299,13 @@ impl Own<'_> {
         )
     }
 
-    /// `declared`, the parameters a struct of functions declares a module `depth` below the
-    /// type, under what the type's own `impl` of its paths is under: `Serialize` for itself and
-    /// for each of its type parameters, which a path writes a value with.
-    fn writing(&self, declared: &Generics, depth: usize) -> Generics {
-        let mut bounded = declared.clone();
+    /// The parameters an `impl` of a struct of functions beside the type declares, under what the
+    /// type's own `impl` of its paths is under: `Serialize` for itself and for each of its type
+    /// parameters, which a path writes a value with.
+    fn writing(&self) -> Generics {
+        let mut bounded = self.declared(None);
         if !self.type_parameters.is_empty() {
-            let itself = self.itself(depth);
+            let itself = self.itself(0);
             bounded
                 .make_where_clause()
                 .predicates
@@ -1327,10 +1370,12 @@ enum Put<'tagging> {
 
 /// The type of one member, which each module that declares it writes from where it sits.
 enum Shown {
-    /// A struct of `mongo_members`: its name, and what it is written with after the row type.
+    /// A struct of `mongo_members`: its name, what it is written with after the row type, and
+    /// the trait its slots are read through where it is a tuple, which naming it asks to hold.
     Held {
         arguments: TokenStream,
         named: Ident,
+        slotted: Option<Ident>,
     },
     /// One of the module's path kinds over a value of the author's: `Field<Root, V>`, and
     /// `Field<Root, V, N>` where the value wraps the model `nest` reaches.
@@ -1350,7 +1395,11 @@ impl Shown {
     fn written(&self, own: &Own<'_>, depth: usize) -> TokenStream {
         let (root, kinds) = (&own.root, own.kinds(depth));
         match self {
-            Self::Held { arguments, named } => {
+            Self::Held {
+                arguments,
+                named,
+                slotted: _slotted,
+            } => {
                 if depth == IN_MEMBERS {
                     quote! { self::#named<#root #arguments> }
                 } else {
@@ -1484,10 +1533,13 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
         members.push((member_ident(&name), member));
         taken.push(name);
     }
-    let (mut declared, built) = emitter.laid_out(Members::Named(members), asked.as_ref());
-    if let Some((tag, arms)) = tag_arms(item) {
-        declared.extend(emitter.arms(&tag, &arms, &put));
-    }
+    let (arm_functions, arm_enum) = tag_arms(item)
+        .map(|(tag, arms)| emitter.arms(&tag, &arms, &put))
+        .unzip();
+    let more =
+        (asked.is_some() || arm_functions.is_some()).then(|| quote! { #asked #arm_functions });
+    let (mut declared, built) = emitter.laid_out(Members::Named(members), more.as_ref());
+    declared.extend(arm_enum);
     emitter.emitted(&declared, &built, false)
 }
 
@@ -1886,7 +1938,7 @@ fn arm_model(variant: &Variant) -> Option<&Type> {
 /// The `is_{variant}` methods of an enum's struct of paths, by what names a variant in the form
 /// serde writes the enum in: each reads the key that names it as the enum's own level writes it.
 fn asked(by: &Named<'_>, asks: &[Ask], own: &Own<'_>) -> TokenStream {
-    let root = &own.root;
+    let (root, kinds) = (&own.root, own.kinds(0));
     let each = asks.iter().map(|ask| {
         let named = format_ident!("is_{}", ask.stem);
         let told = format!(
@@ -1896,19 +1948,19 @@ fn asked(by: &Named<'_>, asks: &[Ask], own: &Own<'_>) -> TokenStream {
         let name = &ask.name;
         let body = match by {
             Named::ByItsKey if ask.holds => {
-                quote! { self::Filter::held(#name, "$exists", bson::Bson::Boolean(true)) }
+                quote! { #kinds Filter::held(#name, "$exists", bson::Bson::Boolean(true)) }
             }
             Named::ByItsKey => {
-                quote! { self::Filter::held("", "$eq", bson::Bson::String(#name.to_owned())) }
+                quote! { #kinds Filter::held("", "$eq", bson::Bson::String(#name.to_owned())) }
             }
             Named::ByTag(tag) => {
-                quote! { self::Filter::held(#tag, "$eq", bson::Bson::String(#name.to_owned())) }
+                quote! { #kinds Filter::held(#tag, "$eq", bson::Bson::String(#name.to_owned())) }
             }
         };
         quote! {
             #[doc = #told]
             #[must_use]
-            pub fn #named(&self) -> self::Filter<#root> {
+            pub fn #named(&self) -> #kinds Filter<#root> {
                 #body
             }
         }
@@ -1986,105 +2038,121 @@ fn member_ident(name: &str) -> Ident {
     }
 }
 
-/// A struct `named` that holds no path, told as `told`, with one function per member of `members`
-/// that answers the member's path, and `more` beside them. It carries no function to be built
-/// with, whose name a member's could meet: its one member is a public marker, which whoever
-/// builds the struct writes. With it, the `impl` written beside the type for the functions that
-/// call a hook: a function of the type's own, which the schema module cannot name where the
-/// type is declared inside a function.
+/// A struct `named` that holds no path, told as `told`, as the module `depth` below the type
+/// declares it, and the `impl` beside the type with one function per member of `members` that
+/// answers the member's path, and `more` beside them. It carries no function to be built with,
+/// whose name a member's could meet: its one member is a public marker, which whoever builds the
+/// struct writes.
 fn of_functions(
     named: &Ident,
     members: &[(Ident, Member)],
     told: &str,
     own: &Own<'_>,
     more: Option<&TokenStream>,
+    depth: usize,
 ) -> (TokenStream, Option<TokenStream>) {
-    let depth = if named == "MongoFields" {
-        IN_MODULE
-    } else {
-        IN_MEMBERS
-    };
-    let function = |(name, member): &(Ident, Member), from: usize| {
-        let (of, answered, built) = (
-            &member.told,
-            member.shown.written(own, from),
-            member.built.written(own, from),
-        );
-        quote! {
-            #[doc = #of]
-            #[must_use]
-            pub const fn #name(&self) -> #answered {
-                #built
-            }
-        }
-    };
-    let (hooked, plain): (Vec<_>, Vec<_>) = members
-        .iter()
-        .partition(|(_name, member)| member.built.calls_a_hook());
-    let generics = own.declared(depth, None);
-    let where_clause = &generics.where_clause;
+    let generics = own.bare(None);
     let marked = generics.type_params().map(|parameter| &parameter.ident);
     let shown = shown_as(named, &generics);
-    let answering = (!plain.is_empty() || more.is_some()).then(|| {
-        let functions = plain.iter().map(|member| function(member, depth));
-        let writing = own.writing(&generics, depth);
+    let beside = (!members.is_empty() || more.is_some()).then(|| {
+        let functions = members.iter().map(|(name, member)| {
+            let (of, answered, built) = (
+                &member.told,
+                member.shown.written(own, 0),
+                member.built.written(own),
+            );
+            quote! {
+                #[doc = #of]
+                #[must_use]
+                pub const fn #name(&self) -> #answered {
+                    #built
+                }
+            }
+        });
+        let writing = own.writing();
         let (impl_generics, type_generics, bounds) = writing.split_for_impl();
+        let (kinds, within) = (own.kinds(0), within(depth));
         quote! {
-            impl #impl_generics #named #type_generics #bounds {
+            impl #impl_generics #kinds #within #named #type_generics #bounds {
                 #(#functions)*
 
                 #more
             }
         }
     });
-    let beside = (!hooked.is_empty()).then(|| {
-        let functions = hooked.iter().map(|member| function(member, 0));
-        let writing = own.writing(&own.declared(0, None), 0);
-        let (impl_generics, type_generics, bounds) = writing.split_for_impl();
-        let kinds = own.kinds(0);
-        let within = (depth == IN_MEMBERS).then(|| quote! { mongo_members:: });
-        quote! {
-            impl #impl_generics #kinds #within #named #type_generics #bounds {
-                #(#functions)*
-            }
-        }
-    });
     let declared = quote! {
         #[doc = #told]
         #[non_exhaustive]
-        pub struct #named #generics #where_clause {
+        pub struct #named #generics {
             /// The row the paths are of, and what the type is written with: no path is held.
             pub row: ::core::marker::PhantomData<fn() -> (#(#marked,)*)>,
         }
 
         #shown
-
-        #answering
     };
     (declared, beside)
 }
 
 /// A tuple struct `named` whose every member is one of `slots`, each one public, under the
-/// parameters `generics` declares, told as `told`, as a module `depth` below the type declares
-/// it.
+/// parameters `used` names, told as `told`, as the module `depth` below the type declares it.
+/// Each slot's type is read through `slotted`, a trait the module declares, and with it is the
+/// `impl` of that trait beside the type, where every name the slots' types write resolves.
 fn of_slots(
     named: &Ident,
+    slotted: &Ident,
     slots: &[Member],
-    generics: &Generics,
+    used: Option<&[String]>,
     told: &str,
     own: &Own<'_>,
     depth: usize,
-) -> TokenStream {
+) -> (TokenStream, TokenStream) {
+    let declared = own.bare(used);
+    let (_, arguments, _) = declared.split_for_impl();
+    let filled = quote! { self::#slotted #arguments };
+    let mut generics = declared.clone();
+    // The impl beside the type may be under the author's bounds, which the struct cannot name.
+    generics
+        .make_where_clause()
+        .predicates
+        .push(parse_quote!((): #filled));
     let where_clause = &generics.where_clause;
-    let shown = shown_as(named, generics);
-    let each = slots.iter().map(|slot| slot.shown.written(own, depth));
-    quote! {
+    let shown = shown_as(named, &generics);
+    let positions: Vec<Ident> = (0..slots.len())
+        .map(|position| format_ident!("Slot{position}"))
+        .collect();
+    let each = positions
+        .iter()
+        .map(|position| quote! { <() as #filled>::#position });
+    let told_each = (0..slots.len()).map(|position| format!("The path of slot {position}."));
+    let told_trait = format!(
+        "The type of each slot of `{}`, written beside the type where every name it holds resolves.",
+        named.unraw()
+    );
+    let module_items = quote! {
+        #[doc = #told_trait]
+        pub trait #slotted #declared {
+            #(
+                #[doc = #told_each]
+                type #positions;
+            )*
+        }
+
         #[doc = #told]
         #[non_exhaustive]
         pub struct #named #generics (#(pub #each),*) #where_clause;
 
         #shown
-    }
+    };
+    let beside_generics = own.declared(used);
+    let (impl_generics, type_generics, bounds) = beside_generics.split_for_impl();
+    let (kinds, within) = (own.kinds(0), within(depth));
+    let values = slots.iter().map(|slot| slot.shown.written(own, 0));
+    let beside = quote! {
+        impl #impl_generics #kinds #within #slotted #type_generics for () #bounds {
+            #(type #positions = #values;)*
+        }
+    };
+    (module_items, beside)
 }
 
 /// The model `nest` reaches under a value of type `value`, where that is not `value` itself:
@@ -2149,6 +2217,12 @@ fn through_wrappers(ty: &Type) -> (&Type, bool) {
         inner = written_type(held_type);
         wrapped = true;
     }
+}
+
+/// The module of a struct of paths `depth` below the type, after the path of the schema module:
+/// `mongo_members::`, or nothing for the schema module itself.
+fn within(depth: usize) -> Option<TokenStream> {
+    (depth == IN_MEMBERS).then(|| quote! { mongo_members:: })
 }
 
 /// Whether serde writes `variant` as an object under its name. One that holds nothing is written

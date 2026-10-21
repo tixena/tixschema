@@ -60,7 +60,7 @@ const ADDED_TYPE_COUNT: usize = 15;
     any(feature = "typescript", feature = "zod", feature = "jsonschema"),
     feature = "mongodb"
 ))]
-const ADDED_TYPE_COUNT: usize = 36;
+const ADDED_TYPE_COUNT: usize = 37;
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
@@ -96,6 +96,8 @@ const ADDED_TYPE_NAMES: [&str; ADDED_TYPE_COUNT] = [
     "MongoFields",
     #[cfg(feature = "mongodb")]
     "MongoPath",
+    #[cfg(feature = "mongodb")]
+    "MongoSlots",
     #[cfg(feature = "mongodb")]
     "Nested",
     #[cfg(feature = "mongodb")]
