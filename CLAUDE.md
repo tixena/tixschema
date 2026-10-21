@@ -2341,13 +2341,14 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
     functions (`written_and_read_by_the_author`, in every build: `with`, or `serialize_with` with
     `deserialize_with`), for a map and a held model alike. One under either of the two alone is
     not.
-  - A held model is looked into through `BSON_REFUSED_HOLDERS`, each struct and enum that holds
-    such a map at any depth to a description of the first one. It is written in every build at
-    `exec_model_schema` (`record_bson_refused_holder_item`), whatever the model's `enable` list,
-    from the walk `bson_refused_maps` makes, the one `mongodb_map_key_refusals` makes. The
-    refusal names the holder's member, the model and that map. A member that holds the item
-    itself is read past, its maps being the item's own. A model declared below, or of another
-    crate, is not looked into.
+  - A held model is looked into through `BSON_REFUSED_HOLDERS`, each struct, enum and alias that
+    holds such a map at any depth to a description of the first one. It is written in every build
+    at `exec_model_schema` (`record_bson_refused_holder_item`), whatever the model's `enable`
+    list: for a struct and an enum from the walk `bson_refused_maps` makes, the one
+    `mongodb_map_key_refusals` makes, and for an alias from `bson_refused_keys` over the type it
+    names, described by `RefusedKey::described`. The refusal names the holder's member, the model
+    or the alias, and that map. A member that holds the item itself is read past, its maps being
+    the item's own. A model or an alias declared below, or of another crate, is not looked into.
   - `is_bson_refused_key` answers for a key, read under `Box`, `Rc`, `Arc` and `Cow`: one of
     `BSON_REFUSED_KEY_TYPES`, or a name `BSON_REFUSED_KEYS` holds. That registry is written in
     every build at `exec_model_schema` (`record_bson_refused_key_item`), for a brand or an alias
@@ -2355,8 +2356,8 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
     another crate, is not refused.
   - `tests/foundation_refusals/number_keyed_map_with_mongodb.rs` holds the README's `Roster` to
     the error, `held_number_keyed_map_with_mongodb.rs` beside it a held model's, the unit tests
-    in `src/model_schema/tests.rs` each position, each key, each held model and each member read
-    past, and
+    in `src/model_schema/tests.rs` each position, each key, each held model, each held alias and
+    each member read past, and
     `tests/mongodb_operation_tests/readme/operations.rs` the README's text: the declaration and
     the error, the keys stored as their text, and a type that lists `"decode_with"` alone.
 - **A path is under the name serde writes.** `parse_written_renames` reads `rename`, `rename_all`
