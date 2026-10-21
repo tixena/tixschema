@@ -206,9 +206,9 @@ use crate::utils::get_struct_docs;
 ))]
 use crate::utils::ident_schema_module_name;
 
-#[cfg(not(feature = "indexmap"))]
-use crate::utils::is_declared_ident;
-use crate::utils::{claim_published_name, compute_alias_export_name, compute_item_export_name};
+use crate::utils::{
+    claim_published_name, compute_alias_export_name, compute_item_export_name, is_declared_ident,
+};
 
 #[cfg(feature = "typescript")]
 use crate::utils::get_item_docs;
@@ -233,10 +233,10 @@ use crate::utils::record_ts_union_members;
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 use crate::utils::register_alias_info;
 use crate::utils::{
-    bson_refused_holder, forwarded_key_parameter, is_recorded_bson_refused_key,
+    bson_refused_holder, forwarded_key_maps, forwarded_key_parameter, is_recorded_bson_refused_key,
     is_recorded_untagged_enum, is_wire_scalar_type, record_bson_refused_holder,
-    record_bson_refused_key, record_forwarded_key_parameter, record_untagged_enum,
-    record_wire_scalar,
+    record_bson_refused_key, record_forwarded_key_maps, record_forwarded_key_parameter,
+    record_untagged_enum, record_wire_scalar,
 };
 
 #[cfg(feature = "serde")]
@@ -279,6 +279,12 @@ const BSON_REFUSED_KEY_TYPES: [&str; 15] = [
     "bool", "f32", "f64", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64",
     "u128", "usize",
 ];
+
+/// What a [`parameter_placeholder`] opens with, ahead of the position.
+const PLACEHOLDER_OPENS: &str = "__tixschema_parameter_";
+
+/// What a [`parameter_placeholder`] closes with, after the position.
+const PLACEHOLDER_CLOSES: &str = "__";
 
 /// What every plain-enum flatten diagnostic says about its own reach, so an author who fixes the
 /// one declaration named there knows what was and was not checked around it.
@@ -736,7 +742,8 @@ enum UndescribableStd<'name> {
     Wrapper(&'name str),
 }
 
-/// Where a member reaches a map whose key the `bson` library refuses.
+/// Where a member reaches a map under the key a walk asks for: one the `bson` library refuses, or
+/// one of the holder's own type parameters.
 enum RefusedKey<'key> {
     /// A model or an alias declared above that holds such a map.
     Held(HeldMap),
@@ -744,12 +751,23 @@ enum RefusedKey<'key> {
     Written(&'key syn::Type),
 }
 
-/// A model or an alias declared above that holds a map whose key the `bson` library refuses.
+/// A model or an alias declared above that holds a map under the key a walk asks for.
 struct HeldMap {
     /// The map, after the member that holds it where a model holds it.
     described: String,
-    /// The model's or the alias's name.
+    /// The model's or the alias's name, written with its arguments where they put the map in its
+    /// row.
     model: String,
+}
+
+/// What a walk for the maps a type holds asks of each key.
+#[derive(Clone, Copy)]
+enum KeyAsked {
+    /// The holder's own type parameter at this position, written as [`parameter_placeholder`]
+    /// spells it.
+    Parameter(usize),
+    /// A key the `bson` library refuses.
+    Refused,
 }
 
 /// What a newtype variant's inner value is when the tag is written beside it rather than around
@@ -1158,6 +1176,28 @@ impl RefusedKey<'_> {
             Self::Held(held) => format!("which holds `{}` with {}", held.model, held.described),
             Self::Written(key) => format!("a map keyed by `{}`", written_spelling(key)),
         }
+    }
+}
+
+impl KeyAsked {
+    /// The first map the model or the alias `name` holds of its own under the key asked for, as
+    /// its expansion recorded it. No map a model keys by its own type parameters is keyed by its
+    /// holder's.
+    fn held_by(self, name: &str) -> Option<String> {
+        match self {
+            Self::Parameter(_) => None,
+            Self::Refused => bson_refused_holder(name),
+        }
+    }
+
+    /// Whether serde writes a key of type `key` as the key asked for.
+    fn holds(self, key: &syn::Type) -> bool {
+        written_key_is(key, &|name| match self {
+            Self::Parameter(at) => name == parameter_placeholder(at),
+            Self::Refused => {
+                BSON_REFUSED_KEY_TYPES.contains(&name) || is_recorded_bson_refused_key(name)
+            }
+        })
     }
 }
 
@@ -2977,7 +3017,7 @@ fn decode_with_guard_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_mac
 /// One refusal per map a member of `item` holds whose key the `bson` library refuses, or per model
 /// or alias declared above that holds one, spanned on the member.
 fn mongodb_map_key_refusals(item: &Item) -> Vec<syn::Error> {
-    bson_refused_maps(item)
+    bson_refused_maps(item, KeyAsked::Refused)
         .iter()
         .map(|(variant, position, field, key)| {
             bson_refused_key_refusal(*variant, *position, field, key)
@@ -2985,11 +3025,14 @@ fn mongodb_map_key_refusals(item: &Item) -> Vec<syn::Error> {
         .collect()
 }
 
-/// Each map a member of `item` holds whose key the `bson` library refuses, beside the member:
-/// every member serde writes or reads itself, of a struct and of each variant of an enum serde
-/// writes or reads itself. A member that holds the item itself reaches no map the item's own
-/// members do not.
-fn bson_refused_maps(item: &Item) -> Vec<(Option<&syn::Ident>, usize, &Field, RefusedKey<'_>)> {
+/// Each map a member of `item` holds under the key `asked`, beside the member: every member serde
+/// writes or reads itself, of a struct and of each variant of an enum serde writes or reads
+/// itself. A member that holds the item itself reaches no map of its own the item's own members
+/// do not.
+fn bson_refused_maps(
+    item: &Item,
+    asked: KeyAsked,
+) -> Vec<(Option<&syn::Ident>, usize, &Field, RefusedKey<'_>)> {
     let members: Vec<(Option<&syn::Ident>, &syn::Fields)> = if let Item::Struct(item_struct) = item
     {
         vec![(None, &item_struct.fields)]
@@ -3018,7 +3061,7 @@ fn bson_refused_maps(item: &Item) -> Vec<(Option<&syn::Ident>, usize, &Field, Re
                         && !written_and_read_by_the_author(&field.attrs)
                 })
                 .flat_map(move |(position, field)| {
-                    bson_refused_keys(&field.ty)
+                    bson_refused_keys(&field.ty, asked)
                         .into_iter()
                         .map(move |key| (variant, position, field, key))
                 })
@@ -3027,6 +3070,19 @@ fn bson_refused_maps(item: &Item) -> Vec<(Option<&syn::Ident>, usize, &Field, Re
             |(.., key)| !matches!(key, RefusedKey::Held(held) if own.as_ref() == Some(&held.model)),
         )
         .collect()
+}
+
+/// The first of `maps`, after the member that holds it.
+fn first_map_described(
+    maps: &[(Option<&syn::Ident>, usize, &Field, RefusedKey<'_>)],
+) -> Option<String> {
+    maps.first().map(|(variant, position, field, key)| {
+        format!(
+            "{}, {}",
+            refused_member_named(*variant, *position, field),
+            key.described()
+        )
+    })
 }
 
 /// A member named by its ident or its position, behind the variant it is a member of.
@@ -3070,15 +3126,18 @@ fn bson_refused_key_refusal(
     )
 }
 
-/// The key of each map `ty` holds, behind `Option`, a list, a tuple, a transparent wrapper and a
-/// map's value, that the `bson` library refuses, and each model or alias declared above that
-/// holds one.
-fn bson_refused_keys(ty: &syn::Type) -> Vec<RefusedKey<'_>> {
+/// The key of each map `ty` holds under the key `asked`, behind `Option`, a list, a tuple, a
+/// transparent wrapper and a map's value, and each model or alias declared above that holds one.
+fn bson_refused_keys(ty: &syn::Type, asked: KeyAsked) -> Vec<RefusedKey<'_>> {
     match written_type(ty) {
-        syn::Type::Array(array) => bson_refused_keys(&array.elem),
-        syn::Type::Slice(slice) => bson_refused_keys(&slice.elem),
-        syn::Type::Paren(paren) => bson_refused_keys(&paren.elem),
-        syn::Type::Tuple(tuple) => tuple.elems.iter().flat_map(bson_refused_keys).collect(),
+        syn::Type::Array(array) => bson_refused_keys(&array.elem, asked),
+        syn::Type::Slice(slice) => bson_refused_keys(&slice.elem, asked),
+        syn::Type::Paren(paren) => bson_refused_keys(&paren.elem, asked),
+        syn::Type::Tuple(tuple) => tuple
+            .elems
+            .iter()
+            .flat_map(|elem| bson_refused_keys(elem, asked))
+            .collect(),
         syn::Type::Path(named) => {
             let Some(last) = named.path.segments.last() else {
                 return Vec::new();
@@ -3089,24 +3148,23 @@ fn bson_refused_keys(ty: &syn::Type) -> Vec<RefusedKey<'_>> {
                 let [key, value, ..] = held.as_slice() else {
                     return Vec::new();
                 };
-                is_bson_refused_key(key)
+                asked
+                    .holds(key)
                     .then_some(RefusedKey::Written(key))
                     .into_iter()
-                    .chain(bson_refused_keys(value))
+                    .chain(bson_refused_keys(value, asked))
                     .collect()
             } else if name == "Option"
                 || is_sequence_wrapper(&name)
                 || is_transparent_wrapper(&name)
             {
                 held.first()
-                    .map_or_else(Vec::new, |inner| bson_refused_keys(inner))
-            } else if let Some(described) = bson_refused_holder(&name) {
-                vec![RefusedKey::Held(HeldMap {
-                    described,
-                    model: name,
-                })]
+                    .map_or_else(Vec::new, |inner| bson_refused_keys(inner, asked))
             } else {
-                Vec::new()
+                held_model_maps(named, &name, &held, asked)
+                    .into_iter()
+                    .map(RefusedKey::Held)
+                    .collect()
             }
         }
         // A reference is refused to `"decode_with"` already, and none of the others is stored.
@@ -3124,16 +3182,87 @@ fn bson_refused_keys(ty: &syn::Type) -> Vec<RefusedKey<'_>> {
     }
 }
 
+/// The maps the model or the alias `name`, written as `written` with the type arguments `held`,
+/// holds under the key `asked`. One of its own: the first its expansion recorded, else the first
+/// it keys by its type parameter at a position whose argument is such a key. Then, where it is
+/// declared above, each map its arguments hold, every argument being read as one it writes into
+/// its row.
+fn held_model_maps(
+    written: &syn::TypePath,
+    name: &str,
+    held: &[&syn::Type],
+    asked: KeyAsked,
+) -> Vec<HeldMap> {
+    let own = asked
+        .held_by(name)
+        .map(|described| HeldMap {
+            described,
+            model: name.to_owned(),
+        })
+        .or_else(|| {
+            forwarded_key_maps(name)
+                .into_iter()
+                .find_map(|(at, described)| {
+                    asked.holds(held.get(at)?).then(|| HeldMap {
+                        described: filled_in(&described, held),
+                        model: written_spelling(written),
+                    })
+                })
+        });
+    let in_arguments: Vec<HeldMap> = if held.is_empty() || !is_declared_ident(name) {
+        Vec::new()
+    } else {
+        held.iter()
+            .flat_map(|argument| bson_refused_keys(argument, asked))
+            .map(|key| HeldMap {
+                described: key.described(),
+                model: written_spelling(written),
+            })
+            .collect()
+    };
+    own.into_iter().chain(in_arguments).collect()
+}
+
+/// What a struct's or an enum's own type parameter at position `at` is spelled as while the maps
+/// it keys are recorded. [`filled_in`] writes the argument a holder fills it with in its place.
+fn parameter_placeholder(at: usize) -> String {
+    format!("{PLACEHOLDER_OPENS}{at}{PLACEHOLDER_CLOSES}")
+}
+
+/// `described` with each [`parameter_placeholder`] in it replaced by the argument at its position
+/// among `arguments`, spelled as written, and by `_` where none is written there.
+fn filled_in(described: &str, arguments: &[&syn::Type]) -> String {
+    let mut pieces = described.split(PLACEHOLDER_OPENS);
+    let mut filled = pieces.next().unwrap_or_default().to_owned();
+    for piece in pieces {
+        let (written_at, rest) = piece.split_once(PLACEHOLDER_CLOSES).unwrap_or((piece, ""));
+        let argument = written_at
+            .parse::<usize>()
+            .ok()
+            .and_then(|at| arguments.get(at));
+        filled.push_str(&argument.map_or_else(|| "_".to_owned(), written_spelling));
+        filled.push_str(rest);
+    }
+    filled
+}
+
 /// Whether serde writes a key of type `key` as a number or a `bool`: one of
 /// [`BSON_REFUSED_KEY_TYPES`], or a brand or an alias over one declared above, or filled at one
 /// where its value is its own parameter, under any `Box`, `Rc`, `Arc` and `Cow`.
 fn is_bson_refused_key(key: &syn::Type) -> bool {
+    KeyAsked::Refused.holds(key)
+}
+
+/// Whether the key serde writes for a value of type `key` is one `named` answers for by its last
+/// name, under any `Box`, `Rc`, `Arc` and `Cow`, and through a brand or an alias declared above
+/// whose value is its own parameter, at what fills it.
+fn written_key_is(key: &syn::Type, named: &dyn Fn(&str) -> bool) -> bool {
     let mut current = written_type(key);
     loop {
-        let syn::Type::Path(named) = current else {
+        let syn::Type::Path(path) = current else {
             return false;
         };
-        let Some(last) = named.path.segments.last() else {
+        let Some(last) = path.path.segments.last() else {
             return false;
         };
         let name = last.ident.to_string();
@@ -3141,10 +3270,9 @@ fn is_bson_refused_key(key: &syn::Type) -> bool {
             if let Some(at) = forwarded_key_parameter(&name)
                 && let Some(filled) = type_arguments_of(&last.arguments).nth(at)
             {
-                return is_bson_refused_key(filled);
+                return written_key_is(filled, named);
             }
-            return BSON_REFUSED_KEY_TYPES.contains(&name.as_str())
-                || is_recorded_bson_refused_key(&name);
+            return named(&name);
         }
         let Some(inner) = type_arguments_of(&last.arguments).next() else {
             return false;
@@ -5563,13 +5691,14 @@ fn alias_string_check_refusal_output(
 }
 
 /// Records what serde writes `item` as, for the expansions after it in every build: a bare wire
-/// scalar, an untagged enum, a map key the `bson` library refuses, and a model or an alias that
-/// holds a map under such a key.
+/// scalar, an untagged enum, a map key the `bson` library refuses, a model or an alias that holds
+/// a map under such a key, and a model that keys a map by its own type parameters.
 fn record_wire_form(item: &Item) {
     record_wire_scalar_item(item);
     record_untagged_enum_item(item);
     record_bson_refused_key_item(item);
     record_bson_refused_holder_item(item);
+    record_forwarded_key_maps_item(item);
 }
 
 /// Records `item` where serde writes it as a bare wire scalar rather than an object: a
@@ -5636,23 +5765,93 @@ fn forwarded_parameter_position(item: &Item, inner: &syn::Type) -> Option<usize>
 /// `"mongodb"` is the one refused.
 fn record_bson_refused_holder_item(item: &Item) {
     let first_map = if let Item::Type(item_type) = item {
-        bson_refused_keys(&item_type.ty)
+        bson_refused_keys(&item_type.ty, KeyAsked::Refused)
             .first()
             .map(RefusedKey::described)
     } else {
-        bson_refused_maps(item)
-            .first()
-            .map(|(variant, position, field, key)| {
-                format!(
-                    "{}, {}",
-                    refused_member_named(*variant, *position, field),
-                    key.described()
-                )
-            })
+        first_map_described(&bson_refused_maps(item, KeyAsked::Refused))
     };
     if let (Some(ident), Some(described)) = (item_schema_ident(item), first_map) {
         record_bson_refused_holder(&ident.to_string(), &described);
     }
+}
+
+/// Records `item` where it is a struct or an enum that keys a map by one of its own type
+/// parameters, with the position of each such parameter and the first map it keys, every
+/// parameter spelled as [`parameter_placeholder`] writes it.
+fn record_forwarded_key_maps_item(item: &Item) {
+    let (Some(ident), Some(generics)) = (item_schema_ident(item), item_generics(item)) else {
+        return;
+    };
+    let parameters: Vec<&syn::Ident> = generics
+        .type_params()
+        .map(|declared| &declared.ident)
+        .collect();
+    if parameters.is_empty() {
+        return;
+    }
+    let placed = with_parameters_placed(item, &parameters);
+    let maps: Vec<(usize, String)> = (0..parameters.len())
+        .filter_map(|at| {
+            first_map_described(&bson_refused_maps(&placed, KeyAsked::Parameter(at)))
+                .map(|described| (at, described))
+        })
+        .collect();
+    if !maps.is_empty() {
+        record_forwarded_key_maps(&ident.to_string(), maps);
+    }
+}
+
+/// `item` with each of `parameters` its members' types write spelled as the
+/// [`parameter_placeholder`] of its position.
+fn with_parameters_placed(item: &Item, parameters: &[&syn::Ident]) -> Item {
+    let mut placed = item.clone();
+    let fields: Vec<&mut Field> = if let Item::Struct(item_struct) = &mut placed {
+        item_struct.fields.iter_mut().collect()
+    } else if let Item::Enum(item_enum) = &mut placed {
+        item_enum
+            .variants
+            .iter_mut()
+            .flat_map(|variant| variant.fields.iter_mut())
+            .collect()
+    } else {
+        Vec::new()
+    };
+    for field in fields {
+        if let Ok(written) = syn::parse2(placed_tokens(
+            quote::ToTokens::to_token_stream(&field.ty),
+            parameters,
+        )) {
+            field.ty = written;
+        }
+    }
+    placed
+}
+
+/// `tokens` with each ident among `parameters` spelled as the [`parameter_placeholder`] of its
+/// position.
+fn placed_tokens(tokens: TokenStream, parameters: &[&syn::Ident]) -> TokenStream {
+    tokens
+        .into_iter()
+        .map(|tree| match tree {
+            proc_macro2::TokenTree::Ident(ident) => {
+                let placeholder = parameters
+                    .iter()
+                    .position(|parameter| *parameter == &ident)
+                    .map(|at| proc_macro2::Ident::new(&parameter_placeholder(at), ident.span()));
+                proc_macro2::TokenTree::Ident(placeholder.unwrap_or(ident))
+            }
+            proc_macro2::TokenTree::Group(group) => {
+                let mut placed = proc_macro2::Group::new(
+                    group.delimiter(),
+                    placed_tokens(group.stream(), parameters),
+                );
+                placed.set_span(group.span());
+                proc_macro2::TokenTree::Group(placed)
+            }
+            proc_macro2::TokenTree::Punct(_) | proc_macro2::TokenTree::Literal(_) => tree,
+        })
+        .collect()
 }
 
 /// The name and inner type of the two shapes that can publish a bare scalar under their own name.
