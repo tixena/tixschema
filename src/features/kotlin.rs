@@ -1368,7 +1368,12 @@ fn flatten_plan(fields: &[KotlinField], type_parameters: &[String]) -> FlattenPl
         .filter(|field| !field.flatten)
         .map(|field| format!("\"{}\"", field.wire_name))
         .collect();
-    let own_literal = format!("setOf({})", own_wire_keys.join(", "));
+    // Kotlin infers no element type from an empty `setOf()`.
+    let own_literal = if own_wire_keys.is_empty() {
+        "setOf<String>()".to_owned()
+    } else {
+        format!("setOf({})", own_wire_keys.join(", "))
+    };
     // What serde hands a flattened member: the object without the keys the holder's own members
     // take, and without those a member flattened ahead of it took as it was read.
     let mut taken = if own_wire_keys.is_empty() {
