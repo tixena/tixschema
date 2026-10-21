@@ -278,3 +278,114 @@ mod a_bound_on_a_borrowed_str {
         assert_eq!(kept, Trimmed::Text { text: "alice" });
     }
 }
+
+/// An owned member of an untagged enum with a bound and a reader of its author's own: that reader
+/// reads it, and the read holds it to the bound once the value is read, as a borrowed one is.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+mod a_bound_beside_a_reader_of_the_authors_own {
+    mod trimmed_text {
+        use serde::{Deserializer, Serializer};
+
+        pub fn deserialize<'de, D>(deserializer: D) -> Result<String, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            super::trimmed(deserializer)
+        }
+
+        pub fn serialize<S>(text: &str, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            serializer.serialize_str(text)
+        }
+    }
+
+    use serde::{Deserialize, Deserializer, Serialize};
+    use tixschema::model_schema;
+
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(untagged)]
+    pub enum Nickname {
+        Long {
+            #[model_schema_prop(minLength = 3)]
+            #[serde(deserialize_with = "trimmed")]
+            v: String,
+        },
+        Other {
+            n: u32,
+        },
+    }
+
+    #[model_schema()]
+    #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(untagged)]
+    pub enum NicknameWith {
+        Long {
+            #[model_schema_prop(minLength = 3)]
+            #[serde(with = "trimmed_text")]
+            v: String,
+        },
+        Other {
+            n: u32,
+        },
+    }
+
+    fn trimmed<'de, D>(deserializer: D) -> Result<String, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        String::deserialize(deserializer).map(|text| text.trim().to_owned())
+    }
+
+    #[test]
+    fn an_untagged_owned_member_is_read_by_the_deserialize_with_its_author_wrote() {
+        let kept: Nickname = serde_json::from_str(r#"{"v":" alice "}"#).unwrap();
+        assert_eq!(
+            kept,
+            Nickname::Long {
+                v: "alice".to_owned()
+            }
+        );
+
+        // `got 1`: the author's reader trimmed the text before the read held it to its bound.
+        let broken = Nickname::Long { v: "a".to_owned() };
+        assert_eq!(
+            broken.validate().unwrap_err(),
+            vec!["'v': too short: minimum length is 3, got 1"]
+        );
+        assert_eq!(
+            serde_json::from_str::<Nickname>(r#"{"v":" a "}"#)
+                .unwrap_err()
+                .to_string(),
+            broken.validate().unwrap_err().join("; ")
+        );
+    }
+
+    #[test]
+    fn an_untagged_owned_member_is_read_by_the_with_its_author_wrote() {
+        let kept: NicknameWith = serde_json::from_str(r#"{"v":" alice "}"#).unwrap();
+        assert_eq!(
+            kept,
+            NicknameWith::Long {
+                v: "alice".to_owned()
+            }
+        );
+
+        let broken = NicknameWith::Long { v: "a".to_owned() };
+        assert_eq!(
+            broken.validate().unwrap_err(),
+            vec!["'v': too short: minimum length is 3, got 1"]
+        );
+        assert_eq!(
+            serde_json::from_str::<NicknameWith>(r#"{"v":" a "}"#)
+                .unwrap_err()
+                .to_string(),
+            broken.validate().unwrap_err().join("; ")
+        );
+    }
+}

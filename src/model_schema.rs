@@ -16546,9 +16546,12 @@ fn generate_field_validation(
     if gate == ConstraintGate::Validator {
         record_field_validator(module_name, helper_stem, member.reported.as_deref());
     }
-    // A borrow publishes no hook, so nothing is hung on one: its bound is the validator's alone,
-    // an untagged member included.
-    if gate == ConstraintGate::Deserializer && !ends_on_a_borrow(&shape.wraps) {
+    // A borrow publishes no hook, and a member its author reads through a function of their own
+    // keeps that one: serde admits one reader per field. Its bound is the validator's alone.
+    if gate == ConstraintGate::Deserializer
+        && !ends_on_a_borrow(&shape.wraps)
+        && !has_serde_read_hook(&field.attrs)
+    {
         let deserialize_with_path = format!("{module_name}::deserialize_{helper_stem}");
         let path_lit = syn::LitStr::new(&deserialize_with_path, proc_macro2::Span::call_site());
         injected_attrs.push(syn::parse_quote! {

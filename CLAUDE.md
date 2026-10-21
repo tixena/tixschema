@@ -512,9 +512,11 @@ their owned types are, and a borrowed list is counted as an owned one is. `const
 each reference as `ConstraintWrap::Borrowed`, at any depth, and the walk reads through it with
 `&**`. A field read through a reference publishes its validator and no `deserialize_{field}` hook
 (`ends_on_a_borrow`, which asks whether any wrapper of the walk is a reference), and
-`generate_field_validation` hangs nothing on one. A borrowed member of an untagged enum is
-therefore the one constrained member the read does not check: it is read as it is with no bound
-written, and `validate()` answers for the bound. A reference to a type a bound is refused on is
+`generate_field_validation` hangs nothing on one, nor on a member its author reads through a
+`deserialize_with` or a `with` of their own (`has_serde_read_hook`), serde admitting one reader per
+field. A borrowed member of an untagged enum and one read by its author's reader are therefore the
+constrained members the read does not check: each is read with no bound written, and `validate()`
+answers for the bound. A reference to a type a bound is refused on is
 refused the same way: a length on a `&'a bool` is the E0277 a length on a `bool` is
 (`tests/bound_text_refusals.rs`), and `blocking_interior_mutability_wrapper` retraces the walk
 through a reference, so a bound on a `&'a RefCell<String>` is refused at expansion, naming the
@@ -799,7 +801,7 @@ the path an issue of the Zod schema holds, and the one the recovering decode lis
 
 The macro also generates into the type's schema module:
 - `validate_{field}_value(&FieldType) -> Result<(), String>` — pure static validator per field
-- `deserialize_{variant}_{field}(D) -> Result<FieldType, E>` — serde hook that calls the static validator, generated only for a member of an untagged enum, the one position where a member's check runs as the member is read
+- `deserialize_{variant}_{field}(D) -> Result<FieldType, E>` — serde hook that calls the static validator, generated only for a member of an untagged enum, the one position where a member's check runs as the member is read, and hung on no member its author reads through a `deserialize_with` or a `with` of their own
 - A tuple variant's slot writes its declaration index where a named member writes `{field}`: `validate_other_0_value` and `deserialize_other_0` for the lone slot of `Other`
 
 #### The Kotlin client's `validate()`
