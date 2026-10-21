@@ -1346,6 +1346,17 @@ consumer's view; this is what a change has to keep.
   `class_body_parts` writes no entry for it, a variant with named members sharing it. A member
   under `skip_serializing_if` is written wherever it holds a value: no client calls the Rust
   function, and the README states the limit.
+- **A flattened map is read at its place, in the order declared**, as serde reads it
+  (`constructor_arguments`): from the object without the keys the holder's own members take and
+  those each member flattened ahead of it took, and it takes none itself, so two maps are handed
+  the same keys. A flattened struct keeps its read. What one takes is `keys_taken_by`: the keys
+  `struct_dart_tokens` records for its type in `DART_TAKEN_KEYS` (`taken_keys`), serde's own
+  list of the name and each alias of every member it reads, and none for a member that names a
+  function. A struct that names a `preprocess` on itself is read by serde as a value, and one
+  with a flattened member of its own as a map: each records none. A type the emitter has not
+  written takes none, so a map after a struct declared below its holder holds the struct's keys,
+  and the README states the limit. `toJson` writes each flattened member at its place: a key two
+  of them hold is written once, with the last value, where serde writes it twice.
 - **`fromJsonUnjudged` is a taken name of a plain enum** (`DART_ENUM_NAMES_TAKEN`), which holds
   it as a static function. It is not in `DART_FIELD_NAMES_TAKEN`: Dart takes a field and a
   constructor under one name, so such a field is emitted as it was.
@@ -1356,6 +1367,9 @@ consumer's view; this is what a change has to keep.
   SDK: the sample beside what the Rust read answers, every case of `run_dart_validate.rs` read
   with `fromJson` and held to what its `validate()` answers, an untagged enum beside the variant
   serde takes, a reply that breaks a rule through both clients, and the README's section.
+  `tests/dart_tests/flattened.rs` pins the read of a flattened map at each place, over the models
+  of `tests/dart_tests/flattened_models.rs`, which also pin what serde reads of each, and
+  `run_dart_flattened.rs` reads and writes each back under the Dart SDK, against serde.
 
 #### A `preprocess` in the Dart read
 
