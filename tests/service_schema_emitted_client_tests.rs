@@ -387,13 +387,14 @@ mod tuple_variants_models;
 mod run_kotlin_tuple_variants;
 
 /// A struct whose members are all flattened, one of them a map, and its twin with a member of its
-/// own. Declared after the module that declares the member both flatten.
+/// own, and an optional member beside a flattened one with its twin under `nullable`. Declared
+/// after the module that declares the member they flatten.
 #[cfg(all(test, feature = "kotlin"))]
 #[path = "kotlin_tests/flattened_models.rs"]
 mod flattened_models;
 
-/// A struct whose members are all flattened, one of them a map, read and written by the emitted
-/// Kotlin types.
+/// A struct whose members are all flattened, one of them a map, and an optional member beside a
+/// flattened one, read and written by the emitted Kotlin types.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_flattened.rs"]
 mod run_kotlin_flattened;

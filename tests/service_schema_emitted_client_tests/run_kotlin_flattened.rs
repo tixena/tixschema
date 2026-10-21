@@ -1,6 +1,7 @@
 //! A struct whose members are all flattened, one of them a map, read and written by the emitted
-//! Kotlin types compiled with `-Werror`, beside its twin with a member of its own: each payload is
-//! written back as the serde read writes it back.
+//! Kotlin types compiled with `-Werror`, beside its twin with a member of its own, and an optional
+//! member beside a flattened one, beside its twin under `nullable`: each payload is written back
+//! as the serde read writes it back.
 
 #![cfg(feature = "kotlin")]
 
@@ -9,7 +10,10 @@ use core::fmt::Write as _;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use super::flattened_models::{Knotting, Netting, knotting_kotlin, netting_kotlin};
+use super::flattened_models::{
+    Knotting, Netting, Seizing, Splicing, knotting_kotlin, netting_kotlin, seizing_kotlin,
+    splicing_kotlin,
+};
 use super::runtime::ran_kotlin;
 use super::tuple_variants_models::labelling_kotlin;
 
@@ -43,6 +47,29 @@ const ROWS: [Row; 2] = [
     },
 ];
 
+/// An optional member beside a flattened one, absent and present, and its twin under `nullable`
+/// with the key absent.
+const OPTIONAL_ROWS: [Row; 3] = [
+    Row {
+        json: r#"{"label":"north"}"#,
+        name: "an absent optional member beside a flattened one",
+        read_as: "Splicing",
+        written: written_back::<Splicing>,
+    },
+    Row {
+        json: r#"{"label":"north","spare":3}"#,
+        name: "a present optional member beside a flattened one",
+        read_as: "Splicing",
+        written: written_back::<Splicing>,
+    },
+    Row {
+        json: r#"{"label":"north"}"#,
+        name: "an absent nullable member beside a flattened one",
+        read_as: "Seizing",
+        written: written_back::<Seizing>,
+    },
+];
+
 /// A payload, the type it is read as, and what serde writes back of it.
 struct Row {
     json: &'static str,
@@ -60,12 +87,12 @@ where
     serde_json::to_string(&read).unwrap()
 }
 
-/// Each struct read from its payload and written back as serde writes it back.
-#[test]
-fn a_struct_of_flattened_members_reads_and_writes_in_kotlin_as_serde_does() {
+/// What serde writes back of each row, one line each, and the `main` that prints the same of each
+/// in Kotlin.
+fn expected_and_main(rows: &[Row]) -> (String, String) {
     let mut expected = String::new();
     let mut main = String::from("fun main() {\n");
-    for row in &ROWS {
+    for row in rows {
         let _ = writeln!(expected, "{}: {}", row.name, (row.written)(row.json));
         let _ = writeln!(
             main,
@@ -74,6 +101,13 @@ fn a_struct_of_flattened_members_reads_and_writes_in_kotlin_as_serde_does() {
         );
     }
     main.push_str("}\n");
+    (expected, main)
+}
+
+/// Each struct read from its payload and written back as serde writes it back.
+#[test]
+fn a_struct_of_flattened_members_reads_and_writes_in_kotlin_as_serde_does() {
+    let (expected, main) = expected_and_main(&ROWS);
     assert!(
         expected.contains(r#"every member flattened, one of them a map: {"label":"n","north":2}"#),
         "{expected}"
@@ -83,6 +117,31 @@ fn a_struct_of_flattened_members_reads_and_writes_in_kotlin_as_serde_does() {
         labelling_kotlin::kotlin_definition(),
         netting_kotlin::kotlin_definition(),
         knotting_kotlin::kotlin_definition(),
+        TOLD.to_owned(),
+        main,
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
+        return;
+    };
+    assert_eq!(printed, expected);
+}
+
+/// An optional member beside a flattened one is left out where it holds no value, as serde leaves
+/// it out, and one under `nullable` is written as `null`.
+#[test]
+fn an_optional_member_beside_a_flattened_one_is_written_in_kotlin_as_serde_writes_it() {
+    let (expected, main) = expected_and_main(&OPTIONAL_ROWS);
+    assert_eq!(
+        expected,
+        "an absent optional member beside a flattened one: {\"label\":\"north\"}\n\
+         a present optional member beside a flattened one: {\"label\":\"north\",\"spare\":3}\n\
+         an absent nullable member beside a flattened one: {\"label\":\"north\",\"spare\":null}\n"
+    );
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        labelling_kotlin::kotlin_definition(),
+        splicing_kotlin::kotlin_definition(),
+        seizing_kotlin::kotlin_definition(),
         TOLD.to_owned(),
         main,
     ];

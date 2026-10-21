@@ -1264,13 +1264,19 @@ fn flatten_base_field(field_def: &FieldDef) -> FieldDef {
 
 /// One non-flattened field's own `serialize`/`deserialize` statements and constructor argument —
 /// the branch [`flatten_plan`] takes for every field that is not itself `#[serde(flatten)]`. The
-/// payload under the field's key is read as the field's own `preprocess` corrects it.
+/// payload under the field's key is read as the field's own `preprocess` corrects it. An optional
+/// member's key is left out where it holds no value, as serde leaves it out, but under `nullable`.
 fn own_field_plan(field: &KotlinField, prop: &str, type_parameters: &[String]) -> (String, String) {
     let field_serializer = read::member_serializer(&field.field_def, type_parameters);
-    let serialize = format!(
+    let put = format!(
         "put(\"{}\", output.json.encodeToJsonElement({field_serializer}, value.{prop}))",
         field.wire_name
     );
+    let serialize = if field.field_def.is_optional() && !is_nullable_flag(&field.field_def) {
+        format!("if (value.{prop} != null) {put}")
+    } else {
+        put
+    };
     let functions = preprocess::of(&field.field_def);
     let decode_expr = if field.field_def.is_optional() {
         format!(
