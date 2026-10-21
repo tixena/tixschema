@@ -713,10 +713,17 @@ fn kotlin_subclass_serializer_expr(subclass_name: &str, type_parameters: &[Strin
 /// collide. `walked` says the tuple is held where a `validate()` walks its positions, so a model
 /// in one is read unjudged, which makes it a shape of its own.
 fn tuple_wrapper_typename(elements: &[FieldDef], walked: bool) -> String {
+    let declared_by = |element: &FieldDef| {
+        if walked {
+            read::position_typename(element)
+        } else {
+            kotlin_typename(element)
+        }
+    };
     let params = elements
         .iter()
         .enumerate()
-        .map(|(slot, element)| format!("val slot{slot}: {}", kotlin_typename(element)))
+        .map(|(slot, element)| format!("val slot{slot}: {}", declared_by(element)))
         .collect::<Vec<_>>()
         .join(", ");
     let read_by = |element: &FieldDef| {
@@ -1194,7 +1201,8 @@ fn kotlin_nothing_generic_args(generics: &syn::Generics) -> String {
 /// field whose key may be absent — a bare `Option<T>` without `#[model_schema_prop(nullable)]`.
 /// `plugin` is the class where the plugin writes its serializer, which reads the member by the
 /// serializer the property names for it: a model's unjudged one, or the one that calls the
-/// member's own `preprocess`.
+/// member's own `preprocess`. Without it, the member is declared as the emitter's own serializer
+/// reads it ([`read::declared_typename`]).
 fn property_declaration(field: &KotlinField, plugin: Option<&Plugin<'_>>) -> String {
     let prop_name = kotlin_property_name(&field.rust_name);
     let annotation = if kotlin_bare(&prop_name) == field.wire_name {
@@ -1203,7 +1211,7 @@ fn property_declaration(field: &KotlinField, plugin: Option<&Plugin<'_>>) -> Str
         format!("@SerialName(\"{}\") ", field.wire_name)
     };
     let (unjudged, ty) = plugin.map_or_else(
-        || (String::new(), kotlin_typename(&field.field_def)),
+        || (String::new(), read::declared_typename(&field.field_def)),
         |reader| reader.declared(&field.rust_name, &field.field_def),
     );
     let default = field.default_at.as_ref().map_or_else(
@@ -1696,7 +1704,7 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
     let params = slots
         .iter()
         .enumerate()
-        .map(|(slot, element)| format!("val slot{slot}: {}", kotlin_typename(element)))
+        .map(|(slot, element)| format!("val slot{slot}: {}", read::declared_typename(element)))
         .collect::<Vec<_>>()
         .join(", ");
     let encode_entries = slots

@@ -18,18 +18,19 @@ const COMPOSED: &str = ": Any";
 /// What opts a declaration into `@KeepGeneratedSerializer` and the serializer it keeps.
 const OPTED_IN: &str = "@OptIn(ExperimentalSerializationApi::class)";
 
-/// The Kotlin type of `field`, each model it holds annotated with its unjudged serializer where it
-/// is written: inside each level of a list, a nullable and the values of a map. A tuple is the
-/// wrapper class whose serializer reads the model of a position unjudged.
-fn annotated_base(field: &FieldDef) -> String {
+/// The Kotlin type of `field` where each model it holds is read unjudged: a tuple is the wrapper
+/// class whose serializer reads the model of a position unjudged. `annotated` writes each model's
+/// unjudged serializer where the model is written, inside each level of a list, a nullable and the
+/// values of a map, for the plugin to read it by.
+fn annotated_base(field: &FieldDef, annotated: bool) -> String {
     let scalar = if let FieldDefType::SiblingType(name, arguments) = &field.field_type {
         if let [element] = arguments.as_slice()
             && is_sequence_wrapper(name)
         {
-            return annotated_base(&field.collection_element_field(element));
+            return annotated_base(&field.collection_element_field(element), annotated);
         }
         let written = kotlin_base(&innermost(field));
-        unjudged_of(name).map_or_else(
+        unjudged_of(name).filter(|_| annotated).map_or_else(
             || written.clone(),
             |unjudged| format!("@Serializable(with = {unjudged}::class) {written}"),
         )
@@ -37,14 +38,14 @@ fn annotated_base(field: &FieldDef) -> String {
         format!(
             "Map<{}, {}>",
             kotlin_typename(key),
-            annotated_typename(value)
+            annotated_typename(value, annotated)
         )
     } else if let FieldDefType::Tuple(positions) = &field.field_type {
         tuple_wrapper_typename(positions, true)
     } else if let FieldDefType::Range(kind, bound) = &field.field_type {
-        range_typename(*kind, &annotated_typename(bound))
+        range_typename(*kind, &annotated_typename(bound, annotated))
     } else if let FieldDefType::Result(ok, err) = &field.field_type {
-        result_typename(ok, err, annotated_typename)
+        result_typename(ok, err, |arm| annotated_typename(arm, annotated))
     } else {
         kotlin_base(&innermost(field))
     };
@@ -59,8 +60,8 @@ fn annotated_base(field: &FieldDef) -> String {
 }
 
 /// [`annotated_base`] with the `?` an optional `field` carries.
-fn annotated_typename(field: &FieldDef) -> String {
-    let base = annotated_base(field);
+fn annotated_typename(field: &FieldDef, annotated: bool) -> String {
+    let base = annotated_base(field, annotated);
     if field.is_optional() {
         format!("{base}?")
     } else {
@@ -247,6 +248,17 @@ pub fn declared_serializer(field: &FieldDef, declared: &str, type_parameters: &[
     }
 }
 
+/// The Kotlin type the member typed `field` is declared with where a serializer the emitter writes
+/// reads it by [`member_serializer`]: each tuple that serializer reads by its walked wrapper is
+/// named by it.
+pub fn declared_typename(field: &FieldDef) -> String {
+    if validate::asks_the_held(field) && holds_an_unjudged(field) {
+        annotated_typename(field, false)
+    } else {
+        kotlin_typename(field)
+    }
+}
+
 /// A reference to the `KSerializer` a serializer the emitter writes reads the member typed
 /// `field` with.
 pub fn member_serializer(field: &FieldDef, type_parameters: &[String]) -> String {
@@ -273,6 +285,16 @@ pub fn position_serializer(field: &FieldDef) -> String {
     }
 }
 
+/// The Kotlin type the wrapper of a tuple a `validate()` walks declares the position typed `field`
+/// with: the type [`position_serializer`] reads.
+pub fn position_typename(field: &FieldDef) -> String {
+    if in_a_position(field) {
+        annotated_typename(field, false)
+    } else {
+        kotlin_typename(field)
+    }
+}
+
 /// How the member typed `field` is declared where the plugin reads it: the annotation that names
 /// an unjudged serializer on the property, and the type, which names one inside a list and a map.
 /// A model is read unjudged where `validate()` asks it for what it reports, and nowhere else.
@@ -289,17 +311,13 @@ pub fn plugin_read(field: &FieldDef) -> (String, String) {
             kotlin_typename(field),
         );
     }
-    (String::new(), annotated_typename(field))
+    (String::new(), annotated_typename(field, true))
 }
 
 /// The Kotlin type the member typed `field` is declared with where a serializer of its own reads
 /// it, and the serializer it is read with behind that one.
 pub fn read_whole(field: &FieldDef, type_parameters: &[String]) -> (String, String) {
-    let ty = if matches!(field.field_type, FieldDefType::Tuple(_)) {
-        plugin_read(field).1
-    } else {
-        kotlin_typename(field)
-    };
+    let ty = declared_typename(field);
     let read_by = declared_serializer(field, &ty, type_parameters);
     (ty, read_by)
 }
@@ -398,6 +416,8 @@ fn unjudged_serializer(field: &FieldDef, type_parameters: &[String]) -> String {
             kotlin_serializer_expr(key, type_parameters),
             unjudged_serializer(value, type_parameters)
         )
+    } else if let FieldDefType::Tuple(positions) = &field.field_type {
+        format!("serializer<{}>()", tuple_wrapper_typename(positions, true))
     } else if let FieldDefType::Range(kind, bound) = &field.field_type {
         range_serializer(*kind, &unjudged_serializer(bound, type_parameters))
     } else if let FieldDefType::Result(ok, err) = &field.field_type {
