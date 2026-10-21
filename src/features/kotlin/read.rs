@@ -237,6 +237,16 @@ pub fn kept_plain(export_name: &str) -> String {
     )
 }
 
+/// [`member_serializer`] of a member already declared `declared`: a tuple is read by the wrapper
+/// that declaration names, each ask of a tuple's name queuing another wrapper.
+pub fn declared_serializer(field: &FieldDef, declared: &str, type_parameters: &[String]) -> String {
+    if matches!(field.field_type, FieldDefType::Tuple(_)) {
+        format!("serializer<{declared}>()")
+    } else {
+        member_serializer(field, type_parameters)
+    }
+}
+
 /// A reference to the `KSerializer` a serializer the emitter writes reads the member typed
 /// `field` with.
 pub fn member_serializer(field: &FieldDef, type_parameters: &[String]) -> String {
@@ -285,17 +295,13 @@ pub fn plugin_read(field: &FieldDef) -> (String, String) {
 /// The Kotlin type the member typed `field` is declared with where a serializer of its own reads
 /// it, and the serializer it is read with behind that one.
 pub fn read_whole(field: &FieldDef, type_parameters: &[String]) -> (String, String) {
-    if matches!(field.field_type, FieldDefType::Tuple(_)) {
-        // Each ask of a tuple's name queues another wrapper, so the name is asked once.
-        let (_, ty) = plugin_read(field);
-        let read_by = format!("serializer<{ty}>()");
-        (ty, read_by)
+    let ty = if matches!(field.field_type, FieldDefType::Tuple(_)) {
+        plugin_read(field).1
     } else {
-        (
-            kotlin_typename(field),
-            member_serializer(field, type_parameters),
-        )
-    }
+        kotlin_typename(field)
+    };
+    let read_by = declared_serializer(field, &ty, type_parameters);
+    (ty, read_by)
 }
 
 /// What a serializer that corrects its payload overrides: `correction` is the Kotlin expression

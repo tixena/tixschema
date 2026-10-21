@@ -374,6 +374,16 @@ mod run_swift_sets;
 #[path = "service_schema_emitted_client_tests/run_kotlin_sets.rs"]
 mod run_kotlin_sets;
 
+/// The models an enum with a variant of several slots is written on, under each tagging.
+#[cfg(all(test, feature = "kotlin"))]
+#[path = "kotlin_tests/tuple_variants_models.rs"]
+mod tuple_variants_models;
+
+/// An enum with a variant of several slots, read and written by the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_tuple_variants.rs"]
+mod run_kotlin_tuple_variants;
+
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
 #[cfg(all(test, feature = "dart"))]

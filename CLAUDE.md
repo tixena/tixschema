@@ -908,7 +908,10 @@ the consumer's view; this is what a change has to keep.
 - **A tuple a `validate()` walks reads its positions unjudged.** `tuple_wrapper_typename` takes
   `walked`: `annotated_base` asks for the wrapper of a walked member, and `kotlin_base` for every
   other. Each call still queues one wrapper, so `plugin_read` asks a type's name once where
-  `property_declaration` asked it once.
+  `property_declaration` asked it once. A serializer that reads a tuple its holder has declared
+  names the wrapper of that declaration (`read::declared_serializer`): the lone value of a tagged
+  variant, a variant of several slots among them, is read by the type `variant_subclass` declared
+  it with.
 - **An untagged enum takes the first variant whose bounds hold.** `Rules::choosing` collects, per
   variant, each member's own bound and `kotlinSchemaBound()` of each brand it holds
   (`Asked::Bound`), and writes them into the variant's own `kotlinSchemaBound()`, which the chain
