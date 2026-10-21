@@ -5308,7 +5308,8 @@ fn enum_string_check_errors(
     }
     let refusal = format!(
         "`{check}` reaches nothing here: an enum's check holds each variant written with no data \
-         and each field written as a string or a path, and `{name}` has neither"
+         and each field written as a string or a path that carries no `literal`, and `{name}` has \
+         neither"
     );
     vec![
         syn::Error::new(
@@ -5320,14 +5321,11 @@ fn enum_string_check_errors(
 }
 
 /// Whether an enum's string check has nothing to hold: no variant written with no data, and no
-/// field written as a string or a path.
+/// field the check reaches.
 fn enum_check_reaches_nothing(item_enum: &syn::ItemEnum) -> bool {
     !item_enum.variants.iter().any(|variant| {
         matches!(variant_wire_kind(variant), VariantKind::Unit)
-            || variant
-                .fields
-                .iter()
-                .any(|member| written_as_text(&member.ty))
+            || variant.fields.iter().any(reached_by_enums_check)
     })
 }
 
@@ -16014,13 +16012,20 @@ fn written_as_text(ty: &syn::Type) -> bool {
     }
 }
 
+/// Whether an enum's own string check reaches `field`: written as a string or a path, and carrying
+/// no `literal`, which takes no other rule.
+fn reached_by_enums_check(field: &Field) -> bool {
+    written_as_text(&field.ty)
+        && parse_model_schema_prop_attributes(&field.attrs)
+            .literal
+            .is_none()
+}
+
 /// A member's own `model_schema_prop`, held to the string check of the enum around it where that
 /// check reaches the member: the longer `minLength`, the shorter `maxLength`, and both patterns.
-/// A member that carries a `literal` is not reached: a literal takes no other rule.
 fn member_prop_meta(field: &Field, enum_args: Option<&ModelSchemaArgs>) -> ModelSchemaPropMeta {
     let mut meta = parse_model_schema_prop_attributes(&field.attrs);
-    let Some(args) = enum_args.filter(|_| meta.literal.is_none() && written_as_text(&field.ty))
-    else {
+    let Some(args) = enum_args.filter(|_| reached_by_enums_check(field)) else {
         return meta;
     };
     meta.min_length = meta.min_length.max(args.min_length);

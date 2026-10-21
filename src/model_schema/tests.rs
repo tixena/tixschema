@@ -7691,6 +7691,10 @@ fn an_enums_string_check_that_reaches_nothing_is_refused() {
             "pub enum Shape { Listed(Vec<String>), Named { label: Label }, Sized(u32) }",
             "#[serde(tag = \"kind\")] pub enum Shape { Circle { r: u32 } }",
             "#[serde(untagged)] pub enum Shape { Count(u32), Named(Label) }",
+            "pub enum Shape { Fixed { #[model_schema_prop(literal = \"x\")] word: String } }",
+            "#[serde(tag = \"kind\")] pub enum Shape { Fixed { #[model_schema_prop(literal = \
+             \"x\")] word: String } }",
+            "pub enum Shape { Fixed(#[model_schema_prop(literal = \"x\")] String) }",
         ] {
             let expanded = expansion_under(args, source);
             assert_eq!(
@@ -7701,8 +7705,8 @@ fn an_enums_string_check_that_reaches_nothing_is_refused() {
             assert!(
                 expanded.contains(&format!(
                     "type `Shape`: `{check}` reaches nothing here: an enum's check holds each \
-                     variant written with no data and each field written as a string or a path, \
-                     and `Shape` has neither"
+                     variant written with no data and each field written as a string or a path \
+                     that carries no `literal`, and `Shape` has neither"
                 )),
                 "got: {expanded}"
             );
@@ -7712,10 +7716,19 @@ fn an_enums_string_check_that_reaches_nothing_is_refused() {
         include_str!("../../README.md").contains(
             "error: model_schema: type `Shape`: `minLength` reaches nothing here: an enum's check \
              holds each variant written with no data and each field written as a string or a \
-             path, and `Shape` has neither\n"
+             path that carries no `literal`, and `Shape` has neither\n"
         ),
         "the README no longer shows the refusal"
     );
+}
+
+#[test]
+fn an_enums_check_beside_a_literal_field_holds_the_unit_variants_name() {
+    let expanded = expansion_under(
+        "maxLength = 9",
+        "pub enum Shape { Empty, Fixed { #[model_schema_prop(literal = \"x\")] word: String } }",
+    );
+    assert!(!expanded.contains("compile_error"), "got: {expanded}");
 }
 
 #[test]
