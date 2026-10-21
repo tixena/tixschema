@@ -3,6 +3,7 @@
 //! Each `#[model_schema]` item earns `kotlin_definition()` inside a `{snake_case}_kotlin` module
 //! beside it (never a direct inherent `impl` — see `features::kotlin::kotlin_module_tokens`).
 
+use alloc::collections::BTreeMap;
 use std::collections::HashMap;
 
 #[cfg(feature = "mongodb")]
@@ -11,9 +12,12 @@ use serde::{Deserialize, Serialize};
 
 use tixschema::model_schema;
 
-use super::flattened_models::{Knotting, Netting, Seizing, Splicing};
+use super::flattened_models::{Hitching, Knotting, Netting, Seizing, Splicing, Whipping};
 #[cfg(feature = "serde")]
-use super::flattened_models::{knotting_kotlin, netting_kotlin, seizing_kotlin, splicing_kotlin};
+use super::flattened_models::{
+    hitching_kotlin, knotting_kotlin, netting_kotlin, seizing_kotlin, splicing_kotlin,
+    whipping_kotlin,
+};
 use super::read::{kept, serializers};
 use super::tuple_variants_models::Labelling;
 
@@ -841,6 +845,69 @@ fn test_flatten_map_beside_no_member_of_its_own() {
         knotting.contains("val restConsumedKeys = setOf(\"note\") + labellingKeys;"),
         "got: {knotting}"
     );
+}
+
+/// What serde hands a flattened map: every key no member ahead of it took, so a map ahead of a
+/// flattened struct holds the struct's keys too, and each of two maps holds the same keys.
+#[test]
+fn every_flattened_map_fixture_is_read_as_serde_reads_it() {
+    assert_eq!(
+        serde_json::from_str::<Hitching>(r#"{"label":"n","north":2}"#).unwrap(),
+        Hitching {
+            extra: BTreeMap::from([
+                ("label".to_owned(), serde_json::json!("n")),
+                ("north".to_owned(), serde_json::json!(2_u8)),
+            ]),
+            labelling: Labelling {
+                label: "n".to_owned()
+            },
+        }
+    );
+    let counts = || BTreeMap::from([("north".to_owned(), 2), ("south".to_owned(), 3)]);
+    assert_eq!(
+        serde_json::from_str::<Whipping>(r#"{"north":2,"south":3}"#).unwrap(),
+        Whipping {
+            first: counts(),
+            second: counts(),
+        }
+    );
+}
+
+/// A flattened map is read at its place among the members, without the keys the members ahead of
+/// it took, and written at its place: ahead of a flattened struct it takes no key away, and each
+/// of two maps is read and written apart.
+#[test]
+#[cfg(feature = "serde")]
+fn a_flattened_map_is_read_and_written_at_its_place() {
+    let hitching = hitching_kotlin::kotlin_definition();
+    for held in [
+        "buildJsonObject { value.extra.forEach { (k, v) -> put(k, \
+         output.json.encodeToJsonElement(serializer<JsonElement>(), v)) }; \
+         output.json.encodeToJsonElement(LabellingUnjudged, value.labelling).jsonObject\
+         .forEach { (k, v) -> put(k, v) } }",
+        "val obj = input.decodeJsonElement().jsonObject; val extraConsumedKeys = setOf<String>(); \
+         val extra = obj.filterKeys { it !in extraConsumedKeys }.mapValues { (_, v) -> \
+         input.json.decodeFromJsonElement(serializer<JsonElement>(), v) }; val labellingKeys = \
+         (LabellingUnjudged).descriptor.elementNames.toSet(); val labelling = \
+         lenient.decodeFromJsonElement(LabellingUnjudged, obj); return Hitching(extra = extra, \
+         labelling = labelling) }",
+    ] {
+        assert!(hitching.contains(held), "no `{held}` in: {hitching}");
+    }
+    let whipping = whipping_kotlin::kotlin_definition();
+    for held in [
+        "buildJsonObject { value.first.forEach { (k, v) -> put(k, \
+         output.json.encodeToJsonElement(serializer<UByte>(), v)) }; value.second.forEach { (k, \
+         v) -> put(k, output.json.encodeToJsonElement(serializer<UByte>(), v)) } }",
+        "val obj = input.decodeJsonElement().jsonObject; val firstConsumedKeys = setOf<String>(); \
+         val first = obj.filterKeys { it !in firstConsumedKeys }.mapValues { (_, v) -> \
+         input.json.decodeFromJsonElement(serializer<UByte>(), v) }; val secondConsumedKeys = \
+         setOf<String>(); val second = obj.filterKeys { it !in secondConsumedKeys }.mapValues { \
+         (_, v) -> input.json.decodeFromJsonElement(serializer<UByte>(), v) }; return \
+         Whipping(first = first, second = second) }",
+    ] {
+        assert!(whipping.contains(held), "no `{held}` in: {whipping}");
+    }
 }
 
 /// An optional member beside a flattened one is written only where it holds a value, and one

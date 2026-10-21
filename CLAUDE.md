@@ -998,6 +998,12 @@ say so.
   without those a member flattened ahead of it took. `HANDED` notes, per type the emitter wrote,
   whether it hands its object to a function, its own or one of a member it flattens. A type
   known to hand it to none is read from the whole object, as before, and takes its own keys.
+- **A flattened map is read at its place, in the order declared**, as serde reads it: from the
+  object without the keys the holder's own members take and those each member flattened ahead
+  of it took, and it takes none itself, so two maps are handed the same keys. A member a
+  function reads takes no key (`preprocess::takes_no_key`), and a type the emitter has not
+  written takes its own. Each map is written at its place: a key two members write is held once,
+  with the last value, where serde writes it twice.
 - **The path of a refusal below a function starts at the value the function answered**: a
   member and a type that name one are each read from a JSON value of their own. A list or an
   object where a text or a number is read is thrown by `kotlinx.serialization` 1.11.0 as

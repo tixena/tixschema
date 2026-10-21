@@ -124,6 +124,15 @@ pub fn serializers() -> Vec<String> {
     SERIALIZERS.with(RefCell::take)
 }
 
+/// Whether a member typed `def`, flattened into its holder, takes none of the keys it reads, which
+/// serde leaves to a map flattened after it: a member that names a function, and one whose type is
+/// known to hand its object to one.
+pub fn takes_no_key(def: &FieldDef) -> bool {
+    !of(def).is_empty()
+        || matches!(&def.field_type, FieldDefType::SiblingType(name, _)
+            if HANDED.with(|noted| noted.borrow().get(name).copied() == Some(true)))
+}
+
 /// Whether a member typed `def`, flattened into its holder, is handed the keys the holder's own
 /// members do not take, as a serde read hands them: a member that names a function, and one
 /// whose type is not known to hand its object to none.
