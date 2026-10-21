@@ -158,11 +158,10 @@ use crate::features::serde::defaults::{holds_a_placeholder, substituted};
 use crate::field_type::{parse_serde_field_attributes, parse_serde_type_attributes};
 
 #[cfg(feature = "serde")]
-use crate::field_type::{
-    is_interior_mutability_wrapper, is_refused_sequence_wrapper, written_std_result,
-};
+use crate::field_type::{is_interior_mutability_wrapper, is_refused_sequence_wrapper};
 use crate::field_type::{
     is_map_wrapper, is_ownership_wrapper, is_sequence_wrapper, is_transparent_wrapper,
+    written_std_range, written_std_result,
 };
 
 use crate::features::model_schema_prop::{
@@ -3127,7 +3126,8 @@ fn bson_refused_key_refusal(
 }
 
 /// The key of each map `ty` holds under the key `asked`, behind `Option`, a list, a tuple, a
-/// transparent wrapper and a map's value, and each model or alias declared above that holds one.
+/// transparent wrapper, a map's value, either arm of a std `Result` and the bound of a std range,
+/// and each model or alias declared above that holds one.
 fn bson_refused_keys(ty: &syn::Type, asked: KeyAsked) -> Vec<RefusedKey<'_>> {
     match written_type(ty) {
         syn::Type::Array(array) => bson_refused_keys(&array.elem, asked),
@@ -3157,9 +3157,15 @@ fn bson_refused_keys(ty: &syn::Type, asked: KeyAsked) -> Vec<RefusedKey<'_>> {
             } else if name == "Option"
                 || is_sequence_wrapper(&name)
                 || is_transparent_wrapper(&name)
+                || written_std_range(named).is_some()
             {
                 held.first()
                     .map_or_else(Vec::new, |inner| bson_refused_keys(inner, asked))
+            } else if let Some((ok, err)) = written_std_result(named) {
+                bson_refused_keys(ok, asked)
+                    .into_iter()
+                    .chain(bson_refused_keys(err, asked))
+                    .collect()
             } else {
                 held_model_maps(named, &name, &held, asked)
                     .into_iter()

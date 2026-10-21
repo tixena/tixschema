@@ -2379,8 +2379,11 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   map, in every build, spanned on the member's ident (a slot's type) and naming the member, behind
   its variant in an enum, and the key as written.
   - `bson_refused_keys` finds each map (`is_map_wrapper`) a member serde writes or reads holds,
-    behind `Option`, a list, a tuple, a transparent wrapper and a map's value, and each model
-    declared above that holds one (`RefusedKey::Held`). A member or a variant under `skip`
+    behind `Option`, a list, a tuple, a transparent wrapper, a map's value, both arms of a std
+    `Result` (`written_std_result`, the `Ok` first) and the bound of a std range
+    (`written_std_range`), and each model declared above that holds one (`RefusedKey::Held`).
+    The two seams leave a type of the crate's own declared above under a std name to
+    `held_model_maps`, the model it is. A member or a variant under `skip`
     (`absent_from_wire`) is read past, and so is a member or a variant written and read by its
     author's functions (`written_and_read_by_the_author`, in every build: `with`, or
     `serialize_with` with `deserialize_with`), for a map and a held model alike, so an enum whose

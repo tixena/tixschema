@@ -8907,6 +8907,84 @@ fn a_map_in_a_slot_or_in_a_variants_member_is_refused_under_its_name() {
     );
 }
 
+/// A map in either arm of a std `Result`, or in the bound of a std range, is refused as one the
+/// field holds itself, behind whatever holds the `Result` or the range.
+#[test]
+fn a_map_in_either_arm_of_a_result_or_in_the_bound_of_a_range_is_refused() {
+    for (written, key) in [
+        ("Result<HashMap<u32, String>, String>", "u32"),
+        ("Result<String, BTreeMap<bool, u8>>", "bool"),
+        ("Option<Result<Vec<HashMap<i64, String>>, String>>", "i64"),
+        ("std::result::Result<HashMap<u32, String>, String>", "u32"),
+        (
+            "core::result::Result<String, Box<HashMap<u8, String>>>",
+            "u8",
+        ),
+        (
+            "Vec<Result<HashMap<String, BTreeMap<i16, String>>, String>>",
+            "i16",
+        ),
+        ("Range<HashMap<u32, String>>", "u32"),
+        ("RangeInclusive<BTreeMap<bool, String>>", "bool"),
+        ("RangeFrom<Vec<HashMap<u8, String>>>", "u8"),
+        ("std::ops::RangeTo<HashMap<i32, String>>", "i32"),
+        ("Result<Range<HashMap<u64, String>>, String>", "u64"),
+    ] {
+        assert_eq!(
+            bson_refused_key_messages(&format!("pub struct Arena {{ pub outcome: {written} }}")),
+            [bson_refused_key_message("field `outcome`", key)],
+            "for {written}"
+        );
+    }
+}
+
+#[test]
+fn each_arm_of_a_result_is_refused_for_its_own_map_the_oks_first() {
+    assert_eq!(
+        bson_refused_key_messages(
+            "pub struct Arena { pub outcome: Result<BTreeMap<bool, String>, HashMap<u32, String>> }"
+        ),
+        [
+            bson_refused_key_message("field `outcome`", "bool"),
+            bson_refused_key_message("field `outcome`", "u32"),
+        ]
+    );
+}
+
+/// A `Result` or a range that holds no map keyed by a number or a `bool` is not refused, a number
+/// in an arm or as a bound being no map.
+#[test]
+fn a_result_or_a_range_that_holds_no_refused_map_is_not_refused() {
+    for written in [
+        "Result<HashMap<String, String>, String>",
+        "Result<u32, bool>",
+        "RangeInclusive<u32>",
+        "Range<u64>",
+        "Option<RangeFrom<HashMap<String, u32>>>",
+    ] {
+        assert_eq!(
+            bson_refused_key_messages(&format!("pub struct Arena {{ pub outcome: {written} }}")),
+            Vec::<String>::new(),
+            "for {written}"
+        );
+    }
+}
+
+/// A type that lists `"mongodb"` and holds a map in an arm of a `Result` fails its expansion
+/// naming the field and the key.
+#[test]
+fn a_map_in_an_arm_of_a_result_fails_the_expansion_of_a_type_that_lists_mongodb() {
+    let source = "pub struct Arena { pub outcome: Result<HashMap<u32, String>, String> }";
+    let refused = expansion_under("enable = [\"decode_with\", \"mongodb\"]", source);
+    assert!(
+        refused.contains(&format!(
+            "model_schema: type `Arena`: {}",
+            bson_refused_key_message("field `outcome`", "u32").replace('"', "\\\"")
+        )),
+        "got: {refused}"
+    );
+}
+
 /// A key serde writes as text, which both majors of the `bson` library store and read back, is
 /// not refused: a `String`, a `char`, a `chrono` date or time, and a name the expansion knows no
 /// number of.
@@ -9600,6 +9678,106 @@ fn a_model_held_with_an_argument_that_holds_a_map_keyed_by_a_number_is_refused()
             "for {written}"
         );
     }
+}
+
+/// A model or an alias declared above that holds a map in an arm of a `Result` is refused where it
+/// is held, and so is a model that keys such a map by its own parameter, filled at a number.
+#[test]
+fn a_model_declared_above_that_holds_a_map_in_a_result_is_refused_where_it_is_held() {
+    declare_above(&[
+        "pub struct Verdict { pub outcome: Result<HashMap<u32, String>, String> }",
+        "pub type Outcome = Result<String, BTreeMap<bool, String>>;",
+        "pub struct Verdicts<Key> { pub outcome: Result<String, HashMap<Key, String>> }",
+    ]);
+    for (written, model, described) in [
+        (
+            "Verdict",
+            "Verdict",
+            "field `outcome`, a map keyed by `u32`",
+        ),
+        (
+            "Option<Vec<Verdict>>",
+            "Verdict",
+            "field `outcome`, a map keyed by `u32`",
+        ),
+        ("Outcome", "Outcome", "a map keyed by `bool`"),
+        (
+            "Verdicts<u8>",
+            "Verdicts<u8>",
+            "field `outcome`, a map keyed by `u8`",
+        ),
+    ] {
+        assert_eq!(
+            bson_refused_key_messages(&format!("pub struct Arena {{ pub held: {written} }}")),
+            [held_bson_refused_key_message(
+                "field `held`",
+                model,
+                described
+            )],
+            "for {written}"
+        );
+    }
+    assert_eq!(
+        bson_refused_key_messages("pub struct Arena { pub held: Verdicts<String> }"),
+        Vec::<String>::new()
+    );
+}
+
+/// A type of the crate's own named `Result` declared above is read as the model it is, at the
+/// arguments it is held with, and the std `Result` written in full is still read as the std type.
+#[test]
+fn a_type_of_the_crates_own_named_result_is_read_as_the_model_it_is() {
+    declare_above(&["pub struct Result<Key, Value> { pub by_key: HashMap<Key, Value> }"]);
+    assert_eq!(
+        bson_refused_key_messages("pub struct Arena { pub held: Result<u32, String> }"),
+        [held_bson_refused_key_message(
+            "field `held`",
+            "Result<u32, String>",
+            "field `by_key`, a map keyed by `u32`"
+        )]
+    );
+    assert_eq!(
+        bson_refused_key_messages(
+            "pub struct Arena { pub held: std::result::Result<HashMap<u32, String>, String> }"
+        ),
+        [bson_refused_key_message("field `held`", "u32")]
+    );
+}
+
+/// A type of the crate's own named `Result` with one type parameter it keys no map by builds
+/// where it is held at a number.
+#[test]
+fn a_type_of_the_crates_own_named_result_keying_no_map_is_not_refused() {
+    declare_above(&["pub struct Result<Held> { pub held: Held }"]);
+    assert_eq!(
+        bson_refused_key_messages("pub struct Arena { pub held: Result<u32> }"),
+        Vec::<String>::new()
+    );
+}
+
+/// A type of the crate's own named after a range declared above is read as the model it is, and
+/// the std range written in full is still read as the std type.
+#[test]
+fn a_type_of_the_crates_own_named_after_a_range_is_read_as_the_model_it_is() {
+    declare_above(&["pub struct Range<Key> { pub by_key: HashMap<Key, String> }"]);
+    assert_eq!(
+        bson_refused_key_messages("pub struct Arena { pub held: Range<u32> }"),
+        [held_bson_refused_key_message(
+            "field `held`",
+            "Range<u32>",
+            "field `by_key`, a map keyed by `u32`"
+        )]
+    );
+    assert_eq!(
+        bson_refused_key_messages("pub struct Arena { pub held: Range<String> }"),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        bson_refused_key_messages(
+            "pub struct Arena { pub held: std::ops::Range<HashMap<u32, String>> }"
+        ),
+        [bson_refused_key_message("field `held`", "u32")]
+    );
 }
 
 /// A model that keys a map by its own type parameter, and one whose argument holds a map keyed by
