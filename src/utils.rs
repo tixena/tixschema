@@ -608,14 +608,25 @@ thread_local! {
     /// [`WIRE_SCALARS`]: a type that lists `"mongodb"` is refused a map keyed by one in every
     /// build.
     static BSON_REFUSED_KEYS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
-    /// The names of brands and aliases whose value is one of their own bare type parameters, each
-    /// to that parameter's position among the item's type parameters. Kept out of [`ALIAS_INFO`]
-    /// for the same reason as [`BSON_REFUSED_KEYS`].
-    static FORWARDED_KEY_PARAMETERS: RefCell<HashMap<String, usize>> = RefCell::new(HashMap::new());
+    /// The names of items whose own type parameters reach a map key, each to where they reach it:
+    /// a brand or an alias whose value is one of its bare type parameters, and a struct or an
+    /// enum that keys a map by its type parameters. Kept out of [`ALIAS_INFO`] for the same
+    /// reason as [`BSON_REFUSED_KEYS`].
+    static FORWARDED_KEY_PARAMETERS: RefCell<HashMap<String, ForwardedKey>> =
+        RefCell::new(HashMap::new());
     /// The names of structs, enums and aliases that hold a map whose key the `bson` library
     /// refuses, each to a description of the first such map. Kept out of [`ALIAS_INFO`] for the
     /// same reason as [`BSON_REFUSED_KEYS`].
     static BSON_REFUSED_HOLDERS: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+}
+
+/// Where an item's own type parameters reach a map key, as [`FORWARDED_KEY_PARAMETERS`] holds it.
+enum ForwardedKey {
+    /// A struct or an enum that keys a map by its type parameter at each position, beside a
+    /// description of the first such map.
+    Maps(Vec<(usize, String)>),
+    /// A brand or an alias whose value is its type parameter at this position.
+    Value(usize),
 }
 
 #[cfg(feature = "serde")]
@@ -1084,14 +1095,38 @@ pub fn is_recorded_bson_refused_key(rust_ident: &str) -> bool {
 /// `position`.
 pub fn record_forwarded_key_parameter(rust_ident: &str, position: usize) {
     FORWARDED_KEY_PARAMETERS.with(|names| {
-        names.borrow_mut().insert(rust_ident.to_owned(), position);
+        names
+            .borrow_mut()
+            .insert(rust_ident.to_owned(), ForwardedKey::Value(position));
     });
 }
 
 /// The position [`record_forwarded_key_parameter`] recorded for `rust_ident`. `None` for a name
 /// declared below the item asking.
 pub fn forwarded_key_parameter(rust_ident: &str) -> Option<usize> {
-    FORWARDED_KEY_PARAMETERS.with(|names| names.borrow().get(rust_ident).copied())
+    FORWARDED_KEY_PARAMETERS.with(|names| match names.borrow().get(rust_ident) {
+        Some(ForwardedKey::Value(position)) => Some(*position),
+        Some(ForwardedKey::Maps(_)) | None => None,
+    })
+}
+
+/// Records that `rust_ident` names a struct or an enum that keys a map by its type parameter at
+/// each position of `maps`, beside a description of the first such map.
+pub fn record_forwarded_key_maps(rust_ident: &str, maps: Vec<(usize, String)>) {
+    FORWARDED_KEY_PARAMETERS.with(|names| {
+        names
+            .borrow_mut()
+            .insert(rust_ident.to_owned(), ForwardedKey::Maps(maps));
+    });
+}
+
+/// What [`record_forwarded_key_maps`] recorded for `rust_ident`. Empty for a name declared below
+/// the item asking.
+pub fn forwarded_key_maps(rust_ident: &str) -> Vec<(usize, String)> {
+    FORWARDED_KEY_PARAMETERS.with(|names| match names.borrow().get(rust_ident) {
+        Some(ForwardedKey::Maps(maps)) => maps.clone(),
+        Some(ForwardedKey::Value(_)) | None => Vec::new(),
+    })
 }
 
 /// Records that `rust_ident` names a struct, an enum or an alias that holds a map whose key the

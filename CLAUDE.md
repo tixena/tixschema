@@ -2389,10 +2389,26 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
     key written with its name is answered for the argument at that position: `Ordinal<u32>` is
     refused, `Ordinal<String>` and a bare `Ordinal` are not. A name declared below, or of another
     crate, is not refused.
+  - A held model is read at the arguments it is written with (`held_model_maps`). A walk asks one
+    thing of each key (`KeyAsked`): `Refused`, or `Parameter(at)`, the holder's own type
+    parameter at that position. `FORWARDED_KEY_PARAMETERS` also holds, for each struct and enum
+    that keys a map by its own type parameters, the position of each such parameter and the first
+    map it keys, written in every build at `exec_model_schema`
+    (`record_forwarded_key_maps_item`): `bson_refused_maps` asks `Parameter(at)` of a copy of the
+    item whose members spell each parameter as its `parameter_placeholder`
+    (`with_parameters_placed`), and `filled_in` writes a holder's arguments in their place in one
+    pass, so the map is named at what fills each parameter on the way. A held model whose
+    argument at such a position is the key a walk asks for, and that holds no such map of its own
+    (`BSON_REFUSED_HOLDERS`), is one `RefusedKey::Held` named as written (`Keyed<u32>`). A model
+    `is_declared_ident` answers for has each type argument walked as the member's own type, and
+    each map found there is a `RefusedKey::Held` named as written. Every argument is read as one
+    the model writes into its row: a map an argument holds is refused even where the model holds
+    that argument only in a `PhantomData` or in a member serde never writes, an assumption the
+    owner reviews. A model declared below, or of another crate, is not read at its arguments.
   - `tests/foundation_refusals/number_keyed_map_with_mongodb.rs` holds the README's `Roster` to
     the error, `held_number_keyed_map_with_mongodb.rs` beside it a held model's, the unit tests
-    in `src/model_schema/tests.rs` each position, each key, each held model, each held alias and
-    each member and variant read past, and
+    in `src/model_schema/tests.rs` each position, each key, each held model, each held alias,
+    each generic model read at its arguments and each member and variant read past, and
     `tests/mongodb_operation_tests/readme/operations.rs` the README's text: the declaration and
     the error, the keys stored as their text, and a type that lists `"decode_with"` alone.
 - **A path is under the name serde writes.** `parse_written_renames` reads `rename`, `rename_all`

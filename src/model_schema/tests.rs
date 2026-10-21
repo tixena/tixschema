@@ -9462,6 +9462,218 @@ fn a_held_model_is_refused_only_where_its_holder_lists_mongodb() {
     }
 }
 
+/// Records each of `declared` as its expansion records it, and claims the name it publishes, for
+/// the items below it.
+fn declare_above(declared: &[&str]) {
+    for source in declared {
+        let item: syn::Item = syn::parse_str(source).unwrap();
+        super::record_wire_form(&item);
+        let ident = super::item_schema_ident(&item).unwrap().to_string();
+        assert!(super::claim_published_name(&ident, &ident).is_none());
+    }
+}
+
+/// A model declared above that keys a map by its own type parameter is refused where it is held
+/// with a number or a `bool` in that place, as itself and behind an `Option` and a list, naming
+/// the model as written and the map. Held with a `String` there, or with no argument, it is not.
+#[test]
+fn a_model_keyed_by_its_own_parameter_is_refused_where_it_is_held_filled_at_a_number() {
+    declare_above(&[
+        "pub struct Keyed<KeyType> { pub label: String, pub by_key: HashMap<KeyType, String> }",
+    ]);
+    for (written, model, key) in [
+        ("Keyed<u32>", "Keyed<u32>", "u32"),
+        ("Keyed<bool>", "Keyed<bool>", "bool"),
+        ("Option<Vec<Keyed<i64>>>", "Keyed<i64>", "i64"),
+        ("Box<Keyed<Box<u8>>>", "Keyed<Box<u8>>", "Box<u8>"),
+    ] {
+        assert_eq!(
+            bson_refused_key_messages(&format!("pub struct Arena {{ pub keyed: {written} }}")),
+            [held_bson_refused_key_message(
+                "field `keyed`",
+                model,
+                &format!("field `by_key`, a map keyed by `{key}`")
+            )],
+            "for {written}"
+        );
+    }
+    for written in ["Keyed<String>", "Vec<Keyed<char>>", "Keyed"] {
+        assert_eq!(
+            bson_refused_key_messages(&format!("pub struct Arena {{ pub keyed: {written} }}")),
+            Vec::<String>::new(),
+            "for {written}"
+        );
+    }
+}
+
+/// A model declared above is refused where an argument it is held with holds a map keyed by a
+/// number, naming the model as written and the map, and not where the map is keyed by a `String`.
+#[test]
+fn a_model_held_with_an_argument_that_holds_a_map_keyed_by_a_number_is_refused() {
+    declare_above(&["pub struct Wrapper<Held> { pub held: Held }"]);
+    for (written, model, key) in [
+        (
+            "Wrapper<HashMap<u32, String>>",
+            "Wrapper<HashMap<u32, String>>",
+            "u32",
+        ),
+        (
+            "Option<Wrapper<Vec<BTreeMap<bool, String>>>>",
+            "Wrapper<Vec<BTreeMap<bool, String>>>",
+            "bool",
+        ),
+    ] {
+        assert_eq!(
+            bson_refused_key_messages(&format!("pub struct Arena {{ pub wrapped: {written} }}")),
+            [held_bson_refused_key_message(
+                "field `wrapped`",
+                model,
+                &format!("a map keyed by `{key}`")
+            )],
+            "for {written}"
+        );
+    }
+    for written in ["Wrapper<HashMap<String, String>>", "Wrapper<Vec<u32>>"] {
+        assert_eq!(
+            bson_refused_key_messages(&format!("pub struct Arena {{ pub wrapped: {written} }}")),
+            Vec::<String>::new(),
+            "for {written}"
+        );
+    }
+}
+
+/// A model that keys a map by its own type parameter, and one whose argument holds a map keyed by
+/// a number, declared below the type that holds them have not expanded when the holder does, and
+/// are not refused there. Declared above, they are.
+#[test]
+fn a_generic_model_declared_below_is_not_refused() {
+    let arena =
+        "pub struct Arena { pub keyed: Keyed<u32>, pub wrapped: Wrapper<HashMap<u32, String>> }";
+    assert_eq!(bson_refused_key_messages(arena), Vec::<String>::new());
+    declare_above(&[
+        "pub struct Keyed<KeyType> { pub by_key: HashMap<KeyType, String> }",
+        "pub struct Wrapper<Held> { pub held: Held }",
+    ]);
+    assert_eq!(
+        bson_refused_key_messages(arena),
+        [
+            held_bson_refused_key_message(
+                "field `keyed`",
+                "Keyed<u32>",
+                "field `by_key`, a map keyed by `u32`"
+            ),
+            held_bson_refused_key_message(
+                "field `wrapped`",
+                "Wrapper<HashMap<u32, String>>",
+                "a map keyed by `u32`"
+            ),
+        ]
+    );
+}
+
+/// A model that hands its own parameter on to a model keyed by it keys that map by the parameter
+/// too, and the map is named with what fills each parameter on the way, in a variant as in a
+/// struct.
+#[test]
+fn a_parameter_handed_on_to_a_keyed_model_is_refused_where_a_number_fills_it() {
+    declare_above(&[
+        "pub struct Pair<First, Second> { pub by_first: HashMap<First, String>, \
+         pub by_second: BTreeMap<Second, String> }",
+        "pub struct Swapped<Left, Right> { pub label: String, pub pair: Option<Pair<Right, Left>> }",
+        "pub enum Lineup<Seat> { Seated { pair: Pair<String, Seat> }, Empty }",
+    ]);
+    assert_eq!(
+        bson_refused_key_messages("pub struct Arena { pub swapped: Swapped<String, u8> }"),
+        [held_bson_refused_key_message(
+            "field `swapped`",
+            "Swapped<String, u8>",
+            "field `pair`, which holds `Pair<u8, String>` with field `by_first`, a map keyed by `u8`"
+        )]
+    );
+    assert_eq!(
+        bson_refused_key_messages("pub struct Arena { pub lineup: Lineup<bool> }"),
+        [held_bson_refused_key_message(
+            "field `lineup`",
+            "Lineup<bool>",
+            "variant `Seated`, field `pair`, which holds `Pair<String, bool>` with field \
+             `by_second`, a map keyed by `bool`"
+        )]
+    );
+    assert_eq!(
+        bson_refused_key_messages(
+            "pub struct Arena { pub swapped: Swapped<String, char>, pub lineup: Lineup<String> }"
+        ),
+        Vec::<String>::new()
+    );
+}
+
+/// Every argument of a model declared above is read as one it writes into its row: one held only
+/// in a `PhantomData` is refused as one held in a member.
+#[test]
+fn an_argument_held_only_in_phantom_data_is_read_as_written_into_the_row() {
+    declare_above(&[
+        "pub struct Tagged<Marked> { pub label: String, pub marker: PhantomData<Marked> }",
+    ]);
+    assert_eq!(
+        bson_refused_key_messages("pub struct Arena { pub tagged: Tagged<HashMap<u32, String>> }"),
+        [held_bson_refused_key_message(
+            "field `tagged`",
+            "Tagged<HashMap<u32, String>>",
+            "a map keyed by `u32`"
+        )]
+    );
+}
+
+/// A holder that lists `"mongodb"` fails naming the field, the model as written and the map, and
+/// one that holds the same models filled at a `String` builds.
+#[test]
+fn a_holder_of_a_generic_model_filled_at_a_number_fails_where_it_lists_mongodb() {
+    for (args, source) in [
+        (
+            "enable = [\"decode_with\"], default_types(KeyType = String)",
+            "pub struct Keyed<KeyType> { pub by_key: HashMap<KeyType, String> }",
+        ),
+        (
+            "enable = [\"decode_with\"], default_types(Held = String)",
+            "pub struct Wrapper<Held> { pub held: Held }",
+        ),
+    ] {
+        let built = expansion_under(args, source);
+        assert!(!built.contains("compile_error"), "got: {built}");
+    }
+    let stored = "enable = [\"decode_with\", \"mongodb\"]";
+    let refused = expansion_under(
+        stored,
+        "pub struct Arena { pub keyed: Keyed<u32>, pub wrapped: Wrapper<HashMap<u32, String>> }",
+    );
+    for (named, model, described) in [
+        (
+            "field `keyed`",
+            "Keyed<u32>",
+            "field `by_key`, a map keyed by `u32`",
+        ),
+        (
+            "field `wrapped`",
+            "Wrapper<HashMap<u32, String>>",
+            "a map keyed by `u32`",
+        ),
+    ] {
+        assert!(
+            refused.contains(&format!(
+                "model_schema: type `Arena`: {}",
+                held_bson_refused_key_message(named, model, described).replace('"', "\\\"")
+            )),
+            "for {named}, got: {refused}"
+        );
+    }
+    let built = expansion_under(
+        stored,
+        "pub struct Stands { pub keyed: Keyed<String>, \
+         pub wrapped: Wrapper<HashMap<String, String>> }",
+    );
+    assert!(!built.contains("compile_error"), "got: {built}");
+}
+
 /// The refusal is spanned on the field, and raised only where the type lists `"mongodb"`.
 #[test]
 fn a_map_keyed_by_a_number_is_refused_only_where_mongodb_is_listed() {
