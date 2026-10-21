@@ -856,7 +856,7 @@ ContentKind::Other("a".repeat(21)).validate();
 
 The enum's check is the same check written in `#[model_schema_prop(...)]` on each field it reaches, and it is enforced exactly where that field's own check is, on every enum Serde writes: plain, externally, internally and adjacently tagged, and `#[serde(untagged)]`.
 
-- **Reached:** a field of any variant, a named member or a slot, written as a string or a path itself -- `String`, `&str`, `PathBuf` -- under `Option` and the transparent wrappers `Box`, `Rc`, `Arc` and `Cow`.
+- **Reached:** a field of any variant, a named member or a slot, written as a string or a path itself -- `String`, `&str`, `PathBuf` -- under `Option`, the transparent wrappers `Box`, `Rc`, `Arc` and `Cow`, and any reference.
 - **Not reached:** the items of a list, so a field written `Vec<String>` is held to nothing; a field typed with a named type, a brand included, which carries its own check; a number, a `bool`, a map and a tuple; a field typed with one of the enum's own type parameters; and a field that carries a [`literal`](#literal-values), which takes no other rule.
 - **A member of an untagged enum** is checked by the read, which is what chooses the variant, and by `validate()`, the Zod schema and the JSON Schema.
 - **A member of a tagged enum** is checked by `validate()`, which the enum's own read runs on the value it read, and by the Zod schema, the JSON Schema and the [recovering decode](#recovering-decode-decode_with). See [Where a constraint is checked](#where-a-constraint-is-checked).
@@ -3332,6 +3332,8 @@ Greeting { name: "al" }.validate();
 // Err(["'name': too short: minimum length is 3, got 2"])
 ```
 
+`validate()` reads through every reference, whatever it borrows, as the Zod schema and the JSON Schema do. A bound on a `&'a String`, a `&'a u32`, a `&'a [String]`, an `Option<&'a String>` or a `&'a Option<String>` field holds the value it borrows, and `validate()` answers it in the words the owned field gets. A bound refused on the owned type is refused on a reference to it: a length on a `&'a bool` fails to build with the error a length on a `bool` gives, and a bound on a `&'a RefCell<String>` is refused at expansion, naming `RefCell`.
+
 #### A field typed with a branded string
 
 A field typed with a [branded newtype](#branded-newtypes) over a string carries the same three constraints, and the bound holds that field alone. The brand keeps none, so another field of the same type reads any value:
@@ -3502,7 +3504,7 @@ A length or a pattern is measured on a string, a range on a number, and a length
 | `minimum`, `maximum` | a string: `String`, `str`, `PathBuf`, `Path` | Refused |
 | `minimum`, `maximum` | a `bool`, a `char`, and a value every surface describes as unknown, `serde_json::Value` among them | Refused |
 | `pattern`, `minimum`, `maximum` | a list | Refused |
-| `minLength`, `maxLength`, `pattern` | a string, a borrowed `&'a str` included | Enforced by Zod, the JSON Schema and `validate()` |
+| `minLength`, `maxLength`, `pattern` | a string, one read through a reference included | Enforced by Zod, the JSON Schema and `validate()` |
 | `minimum`, `maximum` | a number | Enforced by Zod, the JSON Schema and `validate()` |
 | `minLength`, `maxLength` | a list | Enforced by Zod, the JSON Schema and `validate()`: they [count its items](#list-length-minlength-maxlength) |
 
@@ -3553,7 +3555,7 @@ match reg.validate() {
 
 The macro also generates into the type's schema module:
 - `validate_{field}_value(&FieldType) -> Result<(), Vec<String>>` -- pure static validator per field, answering every bound the value broke in the order they were declared
-- `deserialize_{field}(D) -> Result<FieldType, E>` -- serde hook that calls the static validator; a borrowed `&str` field and a borrowed list get none
+- `deserialize_{field}(D) -> Result<FieldType, E>` -- serde hook that calls the static validator; a field read through a reference gets none
 
 A constrained field of an enum variant is named for its variant too -- `validate_{variant}_{field}_value` and `deserialize_{variant}_{field}`, with `{variant}` in `snake_case`. One schema module holds every variant's helpers, and a field name is unique only within the variant that declares it, so two variants naming one field carry their own constraints.
 
@@ -3792,7 +3794,7 @@ A struct of one slot is written as that slot's value, so its check is reported u
 
 #### Constraints under `Option` and wrappers
 
-A constraint describes the field's own value. `validate()` therefore reaches through everything that holds one value -- an `Option`, a transparent wrapper (`Box`, `Rc`, `Arc`, `Cow`), and the reference of a borrowed `&str` or of a borrowed list -- and checks the value under them, which is the same place the Zod, TypeScript and JSON Schema surfaces put the bound. A list is a value of its own: the walk stops at it, and [its length](#list-length-minlength-maxlength) is what a key written on it measures.
+A constraint describes the field's own value. `validate()` therefore reaches through everything that holds one value -- an `Option`, a transparent wrapper (`Box`, `Rc`, `Arc`, `Cow`), and every reference, whatever it borrows -- and checks the value under them, which is the same place the Zod, TypeScript and JSON Schema surfaces put the bound. A list is a value of its own: the walk stops at it, and [its length](#list-length-minlength-maxlength) is what a key written on it measures.
 
 ```rust
 #[model_schema()]
@@ -3932,9 +3934,9 @@ error: model_schema: type `Sealed`: `#[serde(try_from = ...)]` puts a conversion
 
 #### What is checked while the members are read
 
-A field still generates both helpers into its schema module: `validate_{field}_value()`, which `validate()` calls, and `deserialize_{field}`, a serde hook an author may hang on a field of their own accord. A borrowed `&str` field and a borrowed list generate the validator alone. Two positions are checked while the members are read, ahead of the type's `validate()`, and both have to be:
+A field still generates both helpers into its schema module: `validate_{field}_value()`, which `validate()` calls, and `deserialize_{field}`, a serde hook an author may hang on a field of their own accord. A field read through a reference generates the validator alone. Two positions are checked while the members are read, ahead of the type's `validate()`, and both have to be:
 
-- **A member of an `#[serde(untagged)]` enum**, a struct variant's named member and a newtype variant's slot alike, where whether the member is admissible is what chooses which variant the payload is. The check is part of reading the value rather than part of judging it -- exactly as it is under `anyOf` and `z.union` on the two schema surfaces the same type publishes -- and `validate()` cannot stand in for it, since by the time it runs the variant has already been chosen. A wrapped member's hook deserializes the member's own declared type and then runs the same walk `validate()` runs over it; the two differ in that `validate()` answers with every violation in the instance while a `Deserializer` answers with one line, so the read stops at the first value that broke a bound and hands serde that value's violations joined by `; `. A borrowed `&str` member and a borrowed list are the constrained members that choose no variant: each is read as it is with no bound written, the first variant whose shape fits taking the payload, and the enum's read then refuses the value where it breaks the bound.
+- **A member of an `#[serde(untagged)]` enum**, a struct variant's named member and a newtype variant's slot alike, where whether the member is admissible is what chooses which variant the payload is. The check is part of reading the value rather than part of judging it -- exactly as it is under `anyOf` and `z.union` on the two schema surfaces the same type publishes -- and `validate()` cannot stand in for it, since by the time it runs the variant has already been chosen. A wrapped member's hook deserializes the member's own declared type and then runs the same walk `validate()` runs over it; the two differ in that `validate()` answers with every violation in the instance while a `Deserializer` answers with one line, so the read stops at the first value that broke a bound and hands serde that value's violations joined by `; `. A member read through a reference, a borrowed `&str` or a borrowed list among them, is the constrained member that chooses no variant: each is read as it is with no bound written, the first variant whose shape fits taking the payload, and the enum's read then refuses the value where it breaks the bound.
 - **A constrained brand held by a member of an `#[serde(untagged)]` enum**, where the same reasoning applies: the member is held to the brand's `pattern`, `minLength` and `maxLength` as it is read, so a value the brand's bound refuses takes that variant out of the running. A [check](#checks-check) the brand names chooses no variant, as no check does: the variant is chosen first, and the enum's read then refuses the value with the check's messages. Held anywhere else, a brand is read with no judgement, as a model is, and the holder's `validate()` judges it.
 
 The [recovering decode](#recovering-decode-decode_with) lists what a plain read refuses. `from_value_with` and `from_value_piped`, `from_bson_with` and `from_bson_piped` read with the type's read alone, run each field's validator on the value serde read, and the validator of each slot of a tuple struct and of a tagged tuple variant, and list every violation as an issue of its own, which is what lets a callback or a resolver repair a stored value. The [MongoDB reads](#rows-that-do-not-read-as-the-type) of a type that lists `"mongodb"` read each row the same way, so a row that breaks a bound is refused until a resolver repairs it. See [What each shape reports](#what-each-shape-reports). A [service's dispatcher](#service-validation) reads a request with the read alone as well and calls `validate()` next, so a broken bound is a `failed-validation` fault with its field.

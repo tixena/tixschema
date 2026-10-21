@@ -329,7 +329,7 @@ const TEXT_REACH: [(&str, bool); 24] = [
     ("HashMap<String, String>", false),
     ("(String, String)", false),
     ("RefCell<String>", false),
-    ("&'a String", false),
+    ("&'a String", true),
     ("KnownKind", false),
     ("Slug<String>", false),
     ("T", false),
@@ -12697,6 +12697,8 @@ fn a_constraint_under_an_interior_mutability_wrapper_names_the_wrapper() {
         ("Cell<u32>", "Cell"),
         ("Mutex<String>", "Mutex"),
         ("RwLock<String>", "RwLock"),
+        ("&'a RefCell<String>", "RefCell"),
+        ("Option<&'a Mutex<String>>", "Mutex"),
     ] {
         let ty: syn::Type = syn::parse_str(spelling).unwrap();
         let item: syn::ItemStruct = syn::parse_quote! {
@@ -12943,6 +12945,89 @@ fn a_borrowed_str_member_is_hung_with_no_hook() {
     );
 }
 
+/// A member read through a reference, whatever it borrows, publishes its validator and is hung
+/// with no hook.
+#[cfg(feature = "serde")]
+#[test]
+fn a_member_read_through_any_reference_is_hung_with_no_hook() {
+    let min_length = ModelSchemaPropMeta {
+        min_length: Some(3),
+        ..ModelSchemaPropMeta::default()
+    };
+    let minimum = ModelSchemaPropMeta {
+        minimum: Some(5.0_f64),
+        ..ModelSchemaPropMeta::default()
+    };
+
+    for (field, constraint) in [
+        (quote::quote! { note: &'a String }, &min_length),
+        (quote::quote! { note: &'a Option<String> }, &min_length),
+        (quote::quote! { note: Option<&'a Box<String>> }, &min_length),
+        (quote::quote! { note: &'a &'a str }, &min_length),
+        (quote::quote! { note: &'a Path }, &min_length),
+        (quote::quote! { count: &'a u32 }, &minimum),
+        (quote::quote! { count: &'a Option<u32> }, &minimum),
+        (quote::quote! { count: Option<&'a f64> }, &minimum),
+    ] {
+        let borrowed: syn::ItemStruct = syn::parse_quote! { struct Probe<'a> { #field } };
+        for gate in [ConstraintGate::Deserializer, ConstraintGate::Validator] {
+            assert_eq!(
+                generated_field_validation(&borrowed, constraint, gate),
+                (true, true, None, 0),
+                "for {field} under {gate:?}"
+            );
+        }
+    }
+}
+
+/// The validator of a value read through a reference is the owned value's, and no hook is
+/// written beside it.
+#[cfg(feature = "serde")]
+#[test]
+fn a_value_read_through_any_reference_publishes_its_validator_and_no_hook() {
+    for spelling in [
+        "&'a String",
+        "&'static String",
+        "&'a Option<String>",
+        "Option<&'a Box<String>>",
+    ] {
+        let module = emitted_string_module(spelling);
+        assert!(
+            module.starts_with("pub fn validate_field_value (value : & str)"),
+            "for {spelling}: {module}"
+        );
+        assert!(
+            !module.contains("deserialize_field"),
+            "a hook was emitted for {spelling}: {module}"
+        );
+    }
+
+    let minimum = ModelSchemaPropMeta {
+        minimum: Some(5.0_f64),
+        ..ModelSchemaPropMeta::default()
+    };
+    for spelling in ["&'a u32", "&'static u32", "&'a Option<u32>"] {
+        let ty: syn::Type = syn::parse_str(spelling).unwrap();
+        let module = generate_numeric_validation_code(
+            &checked_struct_field(),
+            "u32",
+            &minimum,
+            &constrained_shape(&ty).unwrap(),
+            &ty,
+        )
+        .module_items
+        .to_string();
+        assert!(
+            module.starts_with("pub fn validate_field_value (value : & u32)"),
+            "for {spelling}: {module}"
+        );
+        assert!(
+            !module.contains("deserialize_field"),
+            "a hook was emitted for {spelling}: {module}"
+        );
+    }
+}
+
 #[cfg(feature = "serde")]
 #[test]
 fn only_an_outermost_option_without_a_default_gets_one_injected() {
@@ -12999,24 +13084,32 @@ fn a_field_without_a_constrainable_value_has_no_shape() {
     }
 }
 
-/// `str` and a list are the borrows a bound is read through.
+/// A bound is read through every reference, to whatever it borrows.
 #[cfg(feature = "serde")]
 #[test]
-fn a_reference_to_anything_but_str_or_a_list_has_no_shape() {
-    for spelling in [
-        "&'a String",
-        "&'a Option<Vec<String>>",
-        "&'a u32",
-        "&'a Path",
-        "&'a Slug",
-        "&'a &'a str",
-        "Option<&'a String>",
+fn every_reference_is_read_through_to_what_it_borrows() {
+    use super::ConstraintWrap::{Borrowed, Optional};
+
+    for (spelling, leaf, wraps) in [
+        ("&'a String", "str", vec![Borrowed]),
+        ("&'a Option<Vec<String>>", "list", vec![Borrowed, Optional]),
+        ("&'a u32", "u32", vec![Borrowed]),
+        ("&'a Path", "path", vec![Borrowed]),
+        ("&'a Slug", "Slug", vec![Borrowed]),
+        ("&'a &'a str", "str", vec![Borrowed, Borrowed]),
+        ("Option<&'a String>", "str", vec![Optional, Borrowed]),
     ] {
         let ty: syn::Type = syn::parse_str(spelling).unwrap();
-        assert!(
-            constrained_shape(&ty).is_none(),
-            "spelling {spelling} should reach no constrainable value"
-        );
+        let shape = constrained_shape(&ty).unwrap();
+        let reached = match shape.leaf {
+            ConstraintLeaf::List => "list".to_owned(),
+            ConstraintLeaf::Named(named) => quote::ToTokens::to_token_stream(&named).to_string(),
+            ConstraintLeaf::Number(number) => number.to_owned(),
+            ConstraintLeaf::Path => "path".to_owned(),
+            ConstraintLeaf::Str => "str".to_owned(),
+        };
+        assert_eq!(reached, leaf, "for {spelling}");
+        assert!(shape.wraps == wraps, "for {spelling}");
     }
 }
 

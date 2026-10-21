@@ -7,6 +7,10 @@ extern crate alloc;
 mod borrowed_text;
 
 #[cfg(test)]
+#[path = "validation_tests/borrowed_values.rs"]
+mod borrowed_values;
+
+#[cfg(test)]
 #[path = "validation_tests/declared_by_macro.rs"]
 mod declared_by_macro;
 
