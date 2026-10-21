@@ -6165,6 +6165,29 @@ fn a_struct_of_paths_carries_the_types_own_parameters_and_never_mixes_what_it_ke
     );
 }
 
+/// The `impl` of the slots declares no parameter no slot names, so a bound naming one is left
+/// out, and every other bound of the parameter it is on is kept.
+#[cfg(feature = "mongodb")]
+#[test]
+fn the_impl_of_the_slots_keeps_no_bound_that_names_a_parameter_no_slot_names() {
+    for (source, header) in [
+        (
+            "pub struct Row<A: Tr<B>, B>(pub A, #[serde(skip)] pub PhantomData<B>, pub u16);",
+            "impl<Root,A>row_schema::mongo_members::MembersSlots<Root,A>for()",
+        ),
+        (
+            "pub struct Row<A: Tr<B> + Clone, B>(pub A, #[serde(skip)] pub PhantomData<B>, pub u16);",
+            "impl<Root,A:Clone>row_schema::mongo_members::MembersSlots<Root,A>for()",
+        ),
+    ] {
+        let (_module, on_the_type) = typed_paths_of(source, &[]);
+        assert!(
+            on_the_type.contains(header) && !on_the_type.contains("Tr<B>"),
+            "missing `{header}`, or found `Tr<B>`, in: {on_the_type}"
+        );
+    }
+}
+
 #[cfg(feature = "mongodb")]
 #[test]
 fn an_enums_paths_are_where_its_form_writes_what_each_variant_holds() {

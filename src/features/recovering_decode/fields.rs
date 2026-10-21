@@ -831,23 +831,40 @@ impl Own<'_> {
     }
 
     /// The parameters an `impl` beside the type declares: the row type, then the type's own with
-    /// the bounds their author wrote, or those of them `used` names.
+    /// the bounds their author wrote, or those of them `used` names, under every bound that names
+    /// no parameter it leaves out.
     fn declared(&self, used: Option<&[String]>) -> Generics {
         let kept = |named: &String| used.is_none_or(|names| names.contains(named));
+        // A bound that names a parameter the `impl` does not declare is none of its own.
+        let names_only_kept = |tokens: TokenStream| {
+            written_names(tokens)
+                .iter()
+                .all(|written| !self.parameters.contains(written) || kept(written))
+        };
         let mut declared = Generics::default();
         let root = &self.root;
         declared.params.push(parse_quote!(#root));
         for parameter in &self.generics.params {
-            let named = match parameter {
-                GenericParam::Const(constant) => &constant.ident,
-                GenericParam::Type(ty) => &ty.ident,
+            let (named, written) = match parameter {
+                GenericParam::Const(constant) => (&constant.ident, parameter.clone()),
+                GenericParam::Type(ty) => {
+                    let mut held = ty.clone();
+                    held.bounds = ty
+                        .bounds
+                        .iter()
+                        .filter(|bound| names_only_kept(bound.to_token_stream()))
+                        .cloned()
+                        .collect();
+                    if held.bounds.is_empty() {
+                        held.colon_token = None;
+                    }
+                    (&ty.ident, GenericParam::Type(held))
+                }
                 GenericParam::Lifetime(_) => continue,
             };
             if kept(&named.unraw().to_string()) {
-                let scoped = self.naming_itself(parameter.to_token_stream());
-                declared
-                    .params
-                    .push(syn::parse2(scoped).unwrap_or_else(|_| parameter.clone()));
+                let scoped = self.naming_itself(written.to_token_stream());
+                declared.params.push(syn::parse2(scoped).unwrap_or(written));
             }
         }
         let bounds = self
@@ -856,11 +873,7 @@ impl Own<'_> {
             .iter()
             .flat_map(|clause| &clause.predicates);
         for predicate in bounds {
-            // A bound that names a parameter the struct does not declare is none of its own.
-            let names_only_kept = written_names(predicate.to_token_stream())
-                .iter()
-                .all(|written| !self.parameters.contains(written) || kept(written));
-            if names_only_kept {
+            if names_only_kept(predicate.to_token_stream()) {
                 let scoped = self.naming_itself(predicate.to_token_stream());
                 declared.make_where_clause().predicates.push(
                     syn::parse2::<WherePredicate>(scoped).unwrap_or_else(|_| predicate.clone()),
