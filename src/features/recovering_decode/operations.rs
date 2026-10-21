@@ -34,8 +34,83 @@ fn awaited(
     }
 }
 
-/// `OperationError`, with what makes it an error and what turns the error a typed filter or
-/// update fails with into it.
+/// `OperationError`, with what makes it an error. Nothing converts into it: a function that
+/// answers it turns each error it meets by name, `.map_err(OperationError::Unwritable)` for a
+/// filter or an update and `.map_err(OperationError::Database)` for a call made on the driver
+/// itself. With `?` alone neither builds:
+///
+/// ```rust,compile_fail
+/// # extern crate bson2 as bson;
+/// use bson::Document;
+/// use mongodb::Collection;
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// use invoice_schema::{Filter, OperationError};
+///
+/// tixschema::decode_with_foundation!();
+/// tixschema::mongodb_foundation!();
+///
+/// #[model_schema(enable = ["decode_with", "mongodb"])]
+/// #[derive(Debug, Deserialize, Serialize)]
+/// pub struct Invoice {
+///     pub total: f64,
+/// }
+///
+/// /// A filter, which the `bson` library may refuse to write.
+/// pub fn costly() -> Result<Filter<Invoice>, OperationError> {
+///     Ok(Invoice::MONGO_FIELDS.total().gt(1.0)?)
+/// }
+///
+/// /// A call made on the driver itself.
+/// pub async fn stored(invoices: &Collection<Document>) -> Result<u64, OperationError> {
+///     Ok(invoices.estimated_document_count().await?)
+/// }
+///
+/// fn main() {}
+/// ```
+///
+/// A `compile_fail` doctest asserts only that some error was raised, so it was compiled
+/// standalone as an ordinary test file. It earned two errors, one per `?`, verbatim:
+///
+/// ```text
+/// error[E0277]: `?` couldn't convert the error to `OperationError`
+///   --> tests/zz_neither.rs:25:49
+///    |
+/// 25 |     Ok(invoices.estimated_document_count().await?)
+///    |        -----------------------------------------^ the trait `From<mongodb::error::Error>` is not implemented for `OperationError`
+///    |        |
+///    |        this can't be annotated with `?` because it has type `Result<_, mongodb::error::Error>`
+///    |
+/// note: `OperationError` needs to implement `From<mongodb::error::Error>`
+///   --> tests/zz_neither.rs:10:1
+///    |
+/// 10 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///    = note: the question mark operation (`?`) implicitly performs a conversion on the error value using the `From` trait
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` (in Nightly builds, run with -Z macro-backtrace for more info)
+///
+/// error[E0277]: `?` couldn't convert the error to `OperationError`
+///   --> tests/zz_neither.rs:20:45
+///    |
+/// 19 | pub fn costly() -> Result<Filter<Invoice>, OperationError> {
+///    |                    --------------------------------------- expected `OperationError` because of this
+/// 20 |     Ok(Invoice::MONGO_FIELDS.total().gt(1.0)?)
+///    |                                      -------^ the trait `From<bson::ser::Error>` is not implemented for `OperationError`
+///    |                                      |
+///    |                                      this can't be annotated with `?` because it has type `Result<_, bson::ser::Error>`
+///    |
+/// note: `OperationError` needs to implement `From<bson::ser::Error>`
+///   --> tests/zz_neither.rs:10:1
+///    |
+/// 10 | tixschema::mongodb_foundation!();
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///    = note: the question mark operation (`?`) implicitly performs a conversion on the error value using the `From` trait
+///    = note: this error originates in the macro `tixschema::mongodb_foundation` (in Nightly builds, run with -Z macro-backtrace for more info)
+///
+/// For more information about this error, try `rustc --explain E0277`.
+/// error: could not compile `operation_probe` (test "zz_neither") due to 2 previous errors
+/// ```
 pub fn error_items() -> TokenStream {
     quote! {
         /// Why an operation on a flagged type failed.
@@ -70,18 +145,6 @@ pub fn error_items() -> TokenStream {
                     Self::Unreadable { .. } => ::core::option::Option::None,
                     Self::Unwritable(refused) => ::core::option::Option::Some(refused),
                 }
-            }
-        }
-
-        // `E` is `WriteError`, named by a bound: an `impl` for the alias itself is refused beside
-        // the standard `From<T> for T`, and the first bound is what tells this one from it.
-        impl<E> ::core::convert::From<E> for OperationError
-        where
-            E: ::serde::ser::Error,
-            bson::Serializer: ::serde::Serializer<Error = E>,
-        {
-            fn from(refused: E) -> Self {
-                Self::Unwritable(refused)
             }
         }
     }
@@ -185,12 +248,13 @@ fn read_futures() -> TokenStream {
 ///     invoices: &Collection<Document>,
 /// ) -> Result<(Vec<Invoice>, u64), OperationError> {
 ///     let paths = Invoice::MONGO_FIELDS;
-///     let largest = Invoice::find(invoices, paths.paid().eq(false)?)
+///     let unpaid = || paths.paid().eq(false).map_err(OperationError::Unwritable);
+///     let largest = Invoice::find(invoices, unpaid()?)
 ///         .sort(doc! { "total": -1 })
 ///         .limit(2)
 ///         .await?;
-///     let unpaid = Invoice::count(invoices, paths.paid().eq(false)?).await?;
-///     Ok((largest, unpaid))
+///     let how_many = Invoice::count(invoices, unpaid()?).await?;
+///     Ok((largest, how_many))
 /// }
 ///
 /// fn main() {}
@@ -293,7 +357,10 @@ pub fn read_items() -> TokenStream {
 /// pub async fn of_acme(
 ///     invoices: &Collection<Document>,
 /// ) -> Result<Option<Invoice>, OperationError> {
-///     let named = Customer::MONGO_FIELDS.name().eq("Acme".to_owned())?;
+///     let named = Customer::MONGO_FIELDS
+///         .name()
+///         .eq("Acme".to_owned())
+///         .map_err(OperationError::Unwritable)?;
 ///     Invoice::find_one(invoices, Invoice::MONGO_FIELDS.customer().nest(named)).await
 /// }
 ///
@@ -477,8 +544,11 @@ fn sent(option: &str) -> TokenStream {
 ///     let paths = Invoice::MONGO_FIELDS;
 ///     Invoice::update_one(
 ///         invoices,
-///         paths.number().eq("INV-0042".to_owned())?,
-///         paths.paid().set(true)?,
+///         paths
+///             .number()
+///             .eq("INV-0042".to_owned())
+///             .map_err(OperationError::Unwritable)?,
+///         paths.paid().set(true).map_err(OperationError::Unwritable)?,
 ///     )
 ///     .await
 /// }
@@ -488,9 +558,9 @@ fn sent(option: &str) -> TokenStream {
 ///
 /// The run below is that one with the filter and the update in each other's place, and nothing
 /// else changed. A `compile_fail` doctest asserts only that some error was raised, so it was
-/// compiled standalone as an ordinary test file. It earned six errors: the two under it, one per
-/// argument, verbatim, and each of them twice more in the same words, against the call as a whole
-/// and against its `.await`.
+/// compiled standalone as an ordinary test file. It earned six errors, verbatim under it: one per
+/// argument, and each of them twice more in the same words, against the call as a whole and
+/// against its `.await`.
 ///
 /// ```rust,compile_fail
 /// # extern crate bson2 as bson;
@@ -516,8 +586,11 @@ fn sent(option: &str) -> TokenStream {
 ///     let paths = Invoice::MONGO_FIELDS;
 ///     Invoice::update_one(
 ///         invoices,
-///         paths.paid().set(true)?,
-///         paths.number().eq("INV-0042".to_owned())?,
+///         paths.paid().set(true).map_err(OperationError::Unwritable)?,
+///         paths
+///             .number()
+///             .eq("INV-0042".to_owned())
+///             .map_err(OperationError::Unwritable)?,
 ///     )
 ///     .await
 /// }
@@ -532,8 +605,8 @@ fn sent(option: &str) -> TokenStream {
 /// 22 |     Invoice::update_one(
 ///    |     ------------------- required by a bound introduced by this call
 /// 23 |         invoices,
-/// 24 |         paths.paid().set(true)?,
-///    |         ^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+/// 24 |         paths.paid().set(true).map_err(OperationError::Unwritable)?,
+///    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
 ///    |
 /// help: the trait `AsRef<PhantomData<Invoice>>` is not implemented for `__tixschema_mongodb::Update<Invoice>`
 ///       but trait `AsRef<PhantomData<fn(Invoice) -> Invoice>>` is implemented for it
@@ -552,11 +625,14 @@ fn sent(option: &str) -> TokenStream {
 /// error[E0277]: the trait bound `__tixschema_mongodb::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied
 ///   --> tests/zz_probe.rs:25:9
 ///    |
-/// 22 |     Invoice::update_one(
-///    |     ------------------- required by a bound introduced by this call
+/// 22 |       Invoice::update_one(
+///    |       ------------------- required by a bound introduced by this call
 /// ...
-/// 25 |         paths.number().eq("INV-0042".to_owned())?,
-///    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+/// 25 | /         paths
+/// 26 | |             .number()
+/// 27 | |             .eq("INV-0042".to_owned())
+/// 28 | |             .map_err(OperationError::Unwritable)?,
+///    | |_________________________________________________^ unsatisfied trait bound
 ///    |
 /// help: the trait `AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not implemented for `__tixschema_mongodb::Filter<Invoice>`
 ///       but trait `AsRef<PhantomData<Invoice>>` is implemented for it
@@ -577,9 +653,11 @@ fn sent(option: &str) -> TokenStream {
 ///    |
 /// 22 | /     Invoice::update_one(
 /// 23 | |         invoices,
-/// 24 | |         paths.paid().set(true)?,
-/// 25 | |         paths.number().eq("INV-0042".to_owned())?,
-/// 26 | |     )
+/// 24 | |         paths.paid().set(true).map_err(OperationError::Unwritable)?,
+/// 25 | |         paths
+/// ...  |
+/// 28 | |             .map_err(OperationError::Unwritable)?,
+/// 29 | |     )
 ///    | |_____^ unsatisfied trait bound
 ///    |
 /// help: the trait `AsRef<PhantomData<Invoice>>` is not implemented for `__tixschema_mongodb::Update<Invoice>`
@@ -601,9 +679,11 @@ fn sent(option: &str) -> TokenStream {
 ///    |
 /// 22 | /     Invoice::update_one(
 /// 23 | |         invoices,
-/// 24 | |         paths.paid().set(true)?,
-/// 25 | |         paths.number().eq("INV-0042".to_owned())?,
-/// 26 | |     )
+/// 24 | |         paths.paid().set(true).map_err(OperationError::Unwritable)?,
+/// 25 | |         paths
+/// ...  |
+/// 28 | |             .map_err(OperationError::Unwritable)?,
+/// 29 | |     )
 ///    | |_____^ unsatisfied trait bound
 ///    |
 /// help: the trait `AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not implemented for `__tixschema_mongodb::Filter<Invoice>`
@@ -621,9 +701,9 @@ fn sent(option: &str) -> TokenStream {
 ///    = note: this error originates in the macro `tixschema::mongodb_foundation` which comes from the expansion of the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error[E0277]: the trait bound `__tixschema_mongodb::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied
-///   --> tests/zz_probe.rs:27:6
+///   --> tests/zz_probe.rs:30:6
 ///    |
-/// 27 |     .await
+/// 30 |     .await
 ///    |      ^^^^^ unsatisfied trait bound
 ///    |
 /// help: the trait `AsRef<PhantomData<Invoice>>` is not implemented for `__tixschema_mongodb::Update<Invoice>`
@@ -641,9 +721,9 @@ fn sent(option: &str) -> TokenStream {
 ///    = note: this error originates in the macro `tixschema::mongodb_foundation` which comes from the expansion of the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
 /// error[E0277]: the trait bound `__tixschema_mongodb::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied
-///   --> tests/zz_probe.rs:27:6
+///   --> tests/zz_probe.rs:30:6
 ///    |
-/// 27 |     .await
+/// 30 |     .await
 ///    |      ^^^^^ unsatisfied trait bound
 ///    |
 /// help: the trait `AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not implemented for `__tixschema_mongodb::Filter<Invoice>`
@@ -660,7 +740,8 @@ fn sent(option: &str) -> TokenStream {
 ///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Invoice::update_one`
 ///    = note: this error originates in the macro `tixschema::mongodb_foundation` which comes from the expansion of the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
 ///
-/// error: could not compile `tixschema` (test "zz_probe") due to 6 previous errors
+/// For more information about this error, try `rustc --explain E0277`.
+/// error: could not compile `operation_probe` (test "zz_probe") due to 6 previous errors
 /// ```
 fn write_methods(module: &Ident, filter: &Ident, update: &Ident) -> TokenStream {
     let over_these_rows = over_these_rows(filter);

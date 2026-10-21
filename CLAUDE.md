@@ -2301,8 +2301,8 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   the driver's serde, and many rows are read with the cursor's own `advance` and
   `deserialize_current`, so a consumer lists no `futures`. `WriteError` is
   `<bson::Serializer as serde::Serializer>::Error`, one path under both majors. `OperationError`
-  converts from it through an `impl` bounded on that path; no `From` of the driver's error can
-  stand beside that one, so `Database` is built by name.
+  converts from neither error, and the generated operations and every example build each member
+  by name.
 - **A read answers `Read`, never a future of its own.** `find_one`, `find`, `count` and the two
   that take resolvers answer `{type}_schema::Read<'c, T, O>`, which holds the function that reads
   one row, so the module names no type of its author's. It takes the five options, and

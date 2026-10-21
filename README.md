@@ -7088,7 +7088,7 @@ fn couriered(depot: &str, courier: &str) -> Result<booking_schema::Filter<Bookin
 | Written | The document it builds |
 |---------|------------------------|
 | `couriered("SDQ-1", "Acme Freight")?` | `{ "$and": [{ "type": { "$eq": "by-courier" } }, { "name": { "$eq": "Acme Freight" } }, { "depotCode": { "$eq": "SDQ-1" } }] }` |
-| `Booking::count(&collection, couriered("SDQ-1", "Acme Freight")?).await?` | the count of those rows |
+| `Booking::count(&collection, couriered("SDQ-1", "Acme Freight").map_err(booking_schema::OperationError::Unwritable)?).await?` | the count of those rows |
 
 `collection` is a `mongodb::Collection<bson::Document>` of bookings. `Booking` flattens the enum, so `nest` writes the tag and the condition among the row's own keys. Where a row holds the enum under a key, `nest` writes both under that key. With the model in another crate nothing changes: `Courier::MONGO_FIELDS` is that crate's, and `and` takes its filter by the two standard traits ([Filters and updates](#filters-and-updates)).
 
@@ -7380,8 +7380,18 @@ async fn every_operation(
     invoice: &Invoice,
 ) -> Result<(), OperationError> {
     let paths = Invoice::MONGO_FIELDS;
-    let drafts = || paths.status().eq(InvoiceStatus::Draft);
-    let voided = || paths.total().set(0.0_f64);
+    let drafts = || {
+        paths
+            .status()
+            .eq(InvoiceStatus::Draft)
+            .map_err(OperationError::Unwritable)
+    };
+    let voided = || {
+        paths
+            .total()
+            .set(0.0_f64)
+            .map_err(OperationError::Unwritable)
+    };
     let resolvers: [Resolver<'_, Document, Bson>; 1] = [&whole_number_as_text];
 
     let _stored: InsertOneResult = invoice.insert_one(invoices).await?;
@@ -7402,7 +7412,7 @@ async fn every_operation(
 `whole_number_as_text` is the resolver of [Resolvers](#resolvers), written there against another `Invoice` and here against this one: the same text, over `invoice_schema::Issue`.
 
 - **A filter is any filter over the type's rows**, whichever module's `Filter` it is. A filter over another type's rows and an update are refused, by the bound a filter joins another under.
-- **A filter and an update cannot change places.** `Invoice::update_one(invoices, paths.status().set(InvoiceStatus::Paid)?, paths.number().eq("INV-0042".to_owned())?)` does not compile: ``error[E0277]: the trait bound `__tixschema_mongodb::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied`` for the update handed as the filter, and ``error[E0277]: the trait bound `__tixschema_mongodb::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied`` for the filter handed as the update.
+- **A filter and an update cannot change places.** `Invoice::update_one(invoices, paths.status().set(InvoiceStatus::Paid).map_err(OperationError::Unwritable)?, paths.number().eq("INV-0042".to_owned()).map_err(OperationError::Unwritable)?)` does not compile: ``error[E0277]: the trait bound `__tixschema_mongodb::Update<Invoice>: AsRef<PhantomData<Invoice>>` is not satisfied`` for the update handed as the filter, and ``error[E0277]: the trait bound `__tixschema_mongodb::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied`` for the filter handed as the update.
 - **A read of many rows fails as a whole.** The rows are read one at a time as the driver hands them over, and the first that does not read ends the read with that row's `_id` and its issues. No row is answered.
 - **`insert_one` writes the row when it is called**, before anything is awaited. A value BSON cannot hold, and a type serde writes as anything but a document, a plain enum or a brand, answer `OperationError::Unwritable` without MongoDB being asked anything. What is awaited holds no borrow of the value.
 - **The updates and the deletes answer what the driver answers**: `UpdateResult` with its `matched_count`, `modified_count` and `upserted_id`, `DeleteResult` with its `deleted_count`, and `InsertOneResult` with the `inserted_id` of the row.
@@ -7426,6 +7436,7 @@ async fn largest_unpaid(
             .eq(customer.to_owned())
             .map(|named| paths.customer().nest(named))
             .map(|of_customer| of_customer.and(paths.paid_at().exists(false)))
+            .map_err(OperationError::Unwritable)
     };
     let largest = Invoice::find_with(invoices, unpaid()?, &[&whole_number_as_text])
         .sort(doc! { "total": -1_i32 })
@@ -7525,7 +7536,10 @@ async fn customer_named(
     customers: &Collection<Document>,
     name: &str,
 ) -> Result<Option<Customer>, customer_schema::OperationError> {
-    let named = Customer::MONGO_FIELDS.name().eq(name.to_owned())?;
+    let named = Customer::MONGO_FIELDS
+        .name()
+        .eq(name.to_owned())
+        .map_err(customer_schema::OperationError::Unwritable)?;
     Customer::find_one_with(customers, named, &[&id_dropped]).await
 }
 ```
@@ -7559,8 +7573,7 @@ Every operation fails with `OperationError`, which the crate's MongoDB [support 
 | no `_id` | `without an _id` |
 
 - **`issues` holds the issues no resolver settled**, as the crate's `Issue<bson::Bson>`, in the order they were found. The line of a value serde refuses ends in the `bson` library's own wording, which differs between its major versions, and the line of a value that breaks a bound ends in the bound's own sentence, the same under both: match on the member, the path, `expected` and `found`.
-- **`?` turns a `WriteError` into `OperationError`**, so a filter or an update is built with `?` inside a function that answers `OperationError`, as every example of this section does.
-- **`?` does not turn the driver's own error into it.** A call made on the driver itself is turned by name, `.map_err(OperationError::Database)`; with `?` alone it is ``error[E0277]: `?` couldn't convert the error``.
+- **`?` converts neither error into it.** A filter or an update the `bson` library could not write is turned by name, `.map_err(OperationError::Unwritable)`, and a call made on the driver itself by `.map_err(OperationError::Database)`, as the examples of this section do. With `?` alone, either is ``error[E0277]: `?` couldn't convert the error to `OperationError` ``.
 - **It is an error like any other**: `Debug`, `Display`, `std::error::Error`, `Send`, `Sync` and `'static`. `source()` is the driver's error for `Database` and the `bson` library's for `Unwritable`, and `Unreadable` has none. It is `#[non_exhaustive]`, as each type the flag adds is.
 
 ### What a row stores

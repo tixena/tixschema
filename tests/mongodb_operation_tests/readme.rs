@@ -26,7 +26,7 @@ use tixschema::model_schema;
 
 /// The compiler errors the README quotes, each beside the file whose doc comments record it under
 /// the run that earned it.
-const QUOTED_ERRORS: [(&str, &str); 15] = [
+const QUOTED_ERRORS: [(&str, &str); 16] = [
     (
         QUERY_EMITTER,
         "error[E0599]: no method named `unset` found for struct `__tixschema_mongodb::Field<Root, V, N>` in the current scope",
@@ -80,6 +80,10 @@ const QUOTED_ERRORS: [(&str, &str); 15] = [
     (
         OPERATIONS_EMITTER,
         "error[E0277]: the trait bound `__tixschema_mongodb::Filter<Invoice>: AsRef<PhantomData<fn(Invoice) -> Invoice>>` is not satisfied",
+    ),
+    (
+        OPERATIONS_EMITTER,
+        "error[E0277]: `?` couldn't convert the error to `OperationError`",
     ),
 ];
 
