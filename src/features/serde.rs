@@ -210,6 +210,35 @@ pub fn parse_serde_key_omission(attrs: &[Attribute]) -> SerdeKeyOmission {
     omission
 }
 
+/// Whether serde writes and reads the member through functions of its author's alone: under
+/// `with`, or under both `serialize_with` and `deserialize_with`. Read in every build, as
+/// [`parse_serde_key_omission`] is.
+pub fn written_and_read_by_the_author(attrs: &[Attribute]) -> bool {
+    let (mut with, mut serialize_with, mut deserialize_with) = (false, false, false);
+    for attr in attrs {
+        if !attr.path().is_ident("serde") {
+            continue;
+        }
+        attr.parse_nested_meta(|nested| {
+            if nested.path.is_ident("with") {
+                with = true;
+            } else if nested.path.is_ident("serialize_with") {
+                serialize_with = true;
+            } else if nested.path.is_ident("deserialize_with") {
+                deserialize_with = true;
+            } else {
+                // Every other serde key is someone else's business.
+            }
+            consume_unread_value(&nested)?;
+            Ok(())
+        })
+        .unwrap_or_else(|e| {
+            log::trace!("Failed to parse serde hook attribute: {e}");
+        });
+    }
+    with || (serialize_with && deserialize_with)
+}
+
 /// Consumes the value of a `key = value` or the group of a `key(...)` list the walk had no use
 /// for, so an unread value doesn't end the walk early and drop every attribute written after it.
 /// The list is consumed whole rather than parsed. `bound(...)` is the one list form worth naming

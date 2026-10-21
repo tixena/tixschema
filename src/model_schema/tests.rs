@@ -8730,6 +8730,78 @@ fn a_member_serde_neither_writes_nor_reads_is_not_refused() {
     );
 }
 
+/// A member its author's functions write and read, under `with` or under both `serialize_with`
+/// and `deserialize_with`, is not refused, in a struct, in a slot and in a variant.
+#[test]
+fn a_member_written_and_read_by_its_authors_functions_is_not_refused() {
+    for source in [
+        "pub struct Roster { #[serde(with = \"keys_as_text\")] pub by_number: HashMap<u32, String> }",
+        "pub struct Roster { #[serde(serialize_with = \"keys_written\", \
+         deserialize_with = \"keys_read\")] pub by_number: HashMap<u32, String> }",
+        "pub struct Roster { #[serde(serialize_with = \"keys_written\")] \
+         #[serde(deserialize_with = \"keys_read\")] pub by_flag: BTreeMap<bool, String> }",
+        "pub struct Pair(pub String, #[serde(with = \"keys_as_text\")] pub HashMap<u32, String>);",
+        "pub enum Lineup { Numbered { #[serde(with = \"keys_as_text\")] by_number: \
+         HashMap<u32, String> }, Empty }",
+    ] {
+        assert_eq!(
+            bson_refused_key_messages(source),
+            Vec::<String>::new(),
+            "for {source}"
+        );
+    }
+}
+
+/// A member whose map serde still writes or reads itself, under `serialize_with` or
+/// `deserialize_with` alone, is refused as before.
+#[test]
+fn a_member_one_of_whose_directions_is_serdes_own_is_refused() {
+    for hook in [
+        "serialize_with = \"keys_written\"",
+        "deserialize_with = \"keys_read\"",
+    ] {
+        assert_eq!(
+            bson_refused_key_messages(&format!(
+                "pub struct Roster {{ #[serde({hook})] pub by_number: HashMap<u32, String> }}"
+            )),
+            [bson_refused_key_message("field `by_number`", "u32")],
+            "for {hook}"
+        );
+    }
+}
+
+/// A held model is read past where its author's functions write and read the member that holds
+/// it, and a model whose one such map they write and read is not refused where it is held.
+#[test]
+fn a_held_model_behind_its_authors_functions_is_not_refused() {
+    record_declared_above(&[
+        "pub struct Seating { pub by_number: HashMap<u32, String> }",
+        "pub struct Booked { #[serde(with = \"keys_as_text\")] pub by_number: HashMap<u32, String> }",
+    ]);
+    for source in [
+        "pub struct Venue { #[serde(with = \"seating_as_text\")] pub seating: Seating }",
+        "pub struct Venue { #[serde(serialize_with = \"seating_written\", \
+         deserialize_with = \"seating_read\")] pub seating: Vec<Seating> }",
+        "pub struct Venue { pub booked: Booked }",
+    ] {
+        assert_eq!(
+            bson_refused_key_messages(source),
+            Vec::<String>::new(),
+            "for {source}"
+        );
+    }
+    assert_eq!(
+        bson_refused_key_messages(
+            "pub struct Venue { #[serde(serialize_with = \"seating_written\")] pub seating: Seating }"
+        ),
+        [held_bson_refused_key_message(
+            "field `seating`",
+            "Seating",
+            "field `by_number`, a map keyed by `u32`"
+        )]
+    );
+}
+
 /// A brand or an alias declared above over a number or a `bool` is refused as the number is, and
 /// one over a `String` is not.
 #[test]
