@@ -1,5 +1,6 @@
 //! A bound on a field reached through a reference is held by `validate()` as one on the owned
-//! field is, whatever the reference borrows.
+//! field is, whatever the reference borrows, and a model held behind a reference is walked as the
+//! owned model is.
 
 /// One declaration with its values borrowed and one with them owned, under the same bounds.
 #[cfg(all(
@@ -170,5 +171,131 @@ mod a_bound_behind_any_reference {
         );
 
         LentHandle::Long { text: &NAME }.validate().unwrap();
+    }
+}
+
+/// A model held behind each reference, and the same model held owned.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "typescript", feature = "zod", feature = "jsonschema")
+))]
+mod a_model_behind_any_reference {
+    use std::sync::LazyLock;
+
+    use serde::Serialize;
+    use tixschema::model_schema;
+
+    static BLANK: Stamp = Stamp {
+        code: String::new(),
+    };
+    static KEPT: LazyLock<Stamp> = LazyLock::new(|| Stamp {
+        code: "abc".to_owned(),
+    });
+    static NOTED_BLANK: Option<Stamp> = Some(Stamp {
+        code: String::new(),
+    });
+    static NOTED_NONE: Option<Stamp> = None;
+    static SECOND_BLANK: LazyLock<Vec<Stamp>> = LazyLock::new(|| vec![KEPT.clone(), BLANK.clone()]);
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Serialize)]
+    pub struct Stamp {
+        #[model_schema_prop(minLength = 3)]
+        pub code: String,
+    }
+
+    #[model_schema()]
+    #[derive(Debug, Serialize)]
+    pub struct LentStamps {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub maybe: Option<&'static Stamp>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub noted: &'static Option<Stamp>,
+        pub stamp: &'static Stamp,
+        pub stamps: &'static [Stamp],
+    }
+
+    #[model_schema()]
+    #[derive(Debug, Serialize)]
+    pub struct OwnedStamps {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub maybe: Option<Stamp>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub noted: Option<Stamp>,
+        pub stamp: Stamp,
+        pub stamps: Vec<Stamp>,
+    }
+
+    fn kept() -> LentStamps {
+        LentStamps {
+            maybe: None,
+            noted: &NOTED_NONE,
+            stamp: &KEPT,
+            stamps: &[],
+        }
+    }
+
+    #[test]
+    fn validate_walks_a_model_behind_each_reference_as_it_walks_the_owned_one() {
+        let lent = LentStamps {
+            maybe: Some(&BLANK),
+            noted: &NOTED_BLANK,
+            stamp: &BLANK,
+            stamps: &SECOND_BLANK,
+        };
+        let owned = OwnedStamps {
+            maybe: Some(BLANK.clone()),
+            noted: NOTED_BLANK.clone(),
+            stamp: BLANK.clone(),
+            stamps: SECOND_BLANK.clone(),
+        };
+        assert_eq!(
+            lent.validate().unwrap_err(),
+            vec![
+                "'maybe.code': too short: minimum length is 3, got 0",
+                "'noted.code': too short: minimum length is 3, got 0",
+                "'stamp.code': too short: minimum length is 3, got 0",
+                "'stamps.1.code': too short: minimum length is 3, got 0",
+            ]
+        );
+        assert_eq!(lent.validate(), owned.validate());
+    }
+
+    #[test]
+    fn a_model_behind_an_optional_reference_is_walked_where_one_is_held() {
+        kept().validate().unwrap();
+        LentStamps {
+            maybe: Some(&KEPT),
+            ..kept()
+        }
+        .validate()
+        .unwrap();
+        assert_eq!(
+            LentStamps {
+                maybe: Some(&BLANK),
+                ..kept()
+            }
+            .validate(),
+            OwnedStamps {
+                maybe: Some(BLANK.clone()),
+                noted: None,
+                stamp: KEPT.clone(),
+                stamps: Vec::new(),
+            }
+            .validate()
+        );
+    }
+
+    #[test]
+    fn a_model_in_a_borrowed_list_is_named_by_its_index() {
+        assert_eq!(
+            LentStamps {
+                stamps: &SECOND_BLANK,
+                ..kept()
+            }
+            .validate()
+            .unwrap_err(),
+            vec!["'stamps.1.code': too short: minimum length is 3, got 0"]
+        );
     }
 }

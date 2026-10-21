@@ -13334,6 +13334,112 @@ fn every_reference_is_read_through_to_what_it_borrows() {
     }
 }
 
+/// A held model is walked through every reference, by both walks, to what the owned spelling
+/// walks to.
+#[cfg(feature = "serde")]
+#[test]
+fn a_held_model_is_walked_through_every_reference() {
+    use super::ConstraintWrap::{Borrowed, Optional, Sequence};
+
+    for (spelling, wraps) in [
+        ("&'a Stamp", vec![Borrowed]),
+        ("Option<&'a Stamp>", vec![Optional, Borrowed]),
+        ("&'a [Stamp]", vec![Borrowed, Sequence]),
+        ("&'a Option<Stamp>", vec![Borrowed, Optional]),
+        ("&'a &'a Vec<Stamp>", vec![Borrowed, Borrowed, Sequence]),
+    ] {
+        let ty: syn::Type = syn::parse_str(spelling).unwrap();
+        let def = get_field_def("", &ty, "");
+        assert!(
+            super::nested_shape(&ty).unwrap() == wraps,
+            "the nested walk, for {spelling}"
+        );
+        let held = super::held_shape(&ty, &def).unwrap();
+        assert!(
+            matches!(held.end, super::HeldEnd::Declared),
+            "for {spelling}"
+        );
+        assert!(held.wraps == wraps, "the held walk, for {spelling}");
+    }
+}
+
+/// A field read through a reference is given no hook: serde reads no reference to a model.
+#[cfg(feature = "serde")]
+#[test]
+fn a_field_read_through_a_reference_is_given_no_read_hook() {
+    let steps = [vec!["stamp".to_owned()]];
+    let ctx = FieldContext {
+        container_defaulted: false,
+        container_read_back: true,
+        enum_args: None,
+        member_steps: &steps,
+        rename_all: None,
+        schema_module_name: Some("probe_schema"),
+        type_name: "Probe",
+        type_parameters: &[],
+        variant_ident: None,
+    };
+    let named_below = |spelling: &str| {
+        let field: syn::Field =
+            syn::parse_str::<syn::FieldsNamed>(&format!("{{ stamp: {spelling} }}"))
+                .unwrap()
+                .named
+                .into_iter()
+                .next()
+                .unwrap();
+        let def = get_field_def("stamp", &field.ty, "");
+        super::named_below(&field, &def, &ctx)
+    };
+    assert!(named_below("Stamp").is_some());
+    assert!(named_below("Option<Stamp>").is_some());
+    // A type that names a lifetime is refused on that alone; the spellings with none are refused
+    // for the reference.
+    for spelling in ["&'a Stamp", "Option<&'a Stamp>", "&Stamp", "Option<&Stamp>"] {
+        assert!(named_below(spelling).is_none(), "for {spelling}");
+    }
+
+    let mut item: syn::ItemStruct = syn::parse_quote! {
+        #[derive(serde::Deserialize, serde::Serialize)]
+        struct Probe<'a> {
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            maybe: Option<&'a Stamp>,
+            stamp: &'a Stamp,
+        }
+    };
+    let collected = super::collect_struct_fields(
+        &mut item.fields,
+        None,
+        Some("probe_schema"),
+        "Probe",
+        &item.generics.clone(),
+        &super::StructContainer {
+            defaulted: false,
+            read_back: true,
+            serde_default: &|_| None,
+        },
+    );
+    assert!(collected.4.is_empty(), "got: {:?}", collected.4);
+    let attrs = walked_field_attrs(item.fields.iter());
+    assert!(!attrs.contains("deserialize_with"), "got: {attrs}");
+    assert!(
+        collected.2.is_empty(),
+        "got: {:?}",
+        collected
+            .2
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+    );
+    let walked = collected
+        .3
+        .iter()
+        .map(ToString::to_string)
+        .collect::<String>();
+    assert_eq!(walked.matches(". validate ()").count(), 2, "got: {walked}");
+    let read = super::judged_read::of_struct(&mut item, true).to_string();
+    assert!(!read.contains("read_unjudged_"), "got: {read}");
+}
+
 #[cfg(feature = "serde")]
 #[test]
 fn a_field_typed_with_a_named_type_ends_on_that_type() {

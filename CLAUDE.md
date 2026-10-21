@@ -775,7 +775,8 @@ the path an issue of the Zod schema holds, and the one the recovering decode lis
 `README.md`'s "A model held in a map, in a slot or in a tuple" section is the consumer's view:
 
 - `held_shape` reads the member's type against its def: through `Option`, the transparent
-  wrappers and each level of a list, into a map's values (`ConstraintWrap::Map`, which
+  wrappers, every reference (`ConstraintWrap::Borrowed`) and each level of a list, as
+  `nested_shape` does, into a map's values (`ConstraintWrap::Map`, which
   `is_map_wrapper` decides) and into each position of a tuple written as a type
   (`HeldEnd::Positions`). `held_walk` writes the walk and `nested_leaf` the call. A walk that
   ends on no declared type is `None` and adds no token: a primitive, one of the item's own
@@ -788,7 +789,8 @@ the path an issue of the Zod schema holds, and the one the recovering decode lis
   read. A set, a deque and a heap are described as a declared type is, so a field written
   `HashSet<String>` is walked to its strings, and its type publishes a `validate()` that reports
   nothing. `named_read_hook` is hung by `reachable_nested_shape` alone: on no map and no tuple,
-  and on no member the type's unjudged read reaches (`member_read_hook`).
+  on no member read through a reference (`named_below`, as `ends_on_a_borrow` says for a
+  member's own bound), and on no member the type's unjudged read reaches (`member_read_hook`).
 - A map's key is the text serde writes for it. `written_key_items` declares `MapKey` in the walk's
   block: its `Display` hands the key's own `Serialize` the `Formatter`, serde's serializer for
   which (in serde from 1.0.108) writes a string, a number, a `bool`, a `char`, a unit variant's

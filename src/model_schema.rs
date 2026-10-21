@@ -14873,14 +14873,17 @@ fn constrained_shape(ty: &syn::Type) -> Option<ConstrainedShape> {
 }
 
 /// Reads a field's type down to the value whose own type would publish the validator, collecting
-/// the wrappers it is reached through, each level of a list among them.
+/// the wrappers it is reached through, each level of a list and each reference among them.
 #[cfg(feature = "serde")]
 fn nested_shape(ty: &syn::Type) -> Option<Vec<ConstraintWrap>> {
     let mut wraps = Vec::new();
     let mut current = ty;
     loop {
         current = written_type(current);
-        if let syn::Type::Array(array) = current {
+        if let syn::Type::Reference(reference) = current {
+            wraps.push(ConstraintWrap::Borrowed);
+            current = &reference.elem;
+        } else if let syn::Type::Array(array) = current {
             wraps.push(ConstraintWrap::Sequence);
             current = &array.elem;
         } else if let syn::Type::Slice(slice) = current {
@@ -14907,8 +14910,8 @@ fn nested_shape(ty: &syn::Type) -> Option<Vec<ConstraintWrap>> {
 }
 
 /// Reads a member's type down to every value whose own type would publish the validator, against
-/// what `def` says the type holds: through each level of a list, to a map's values and to each
-/// position of a tuple. `None` where it holds no declared type.
+/// what `def` says the type holds: through every reference and each level of a list, to a map's
+/// values and to each position of a tuple. `None` where it holds no declared type.
 #[cfg(feature = "serde")]
 fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
     let mut wraps = Vec::new();
@@ -14916,7 +14919,10 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
     let mut held = def;
     loop {
         current = written_type(current);
-        if let syn::Type::Array(array) = current {
+        if let syn::Type::Reference(reference) = current {
+            wraps.push(ConstraintWrap::Borrowed);
+            current = &reference.elem;
+        } else if let syn::Type::Array(array) = current {
             wraps.push(ConstraintWrap::Sequence);
             current = &array.elem;
         } else if let syn::Type::Slice(slice) = current {
@@ -16192,7 +16198,8 @@ fn process_field(
 }
 
 /// The wrapper chain a field's own type is reached through, where the field is a reference to a
-/// declared type under an `Option`, a list and the transparent wrappers, and `None` for any other.
+/// declared type under an `Option`, a list, the transparent wrappers and every borrow, and `None`
+/// for any other.
 ///
 /// Which types are is the crate's own answer rather than a second list: every leaf a surface
 /// renders itself — a primitive, a date, an `ObjectId`, a map, a tuple, one of the item's own
@@ -16242,7 +16249,8 @@ fn slot_nested_validate_body(
 }
 
 /// The wrappers a named field's own type is reached through, where a refusal it raises as it is
-/// read is answered under the field's key, and `None` for every field it is answered as it is.
+/// read is answered under the field's key, and `None` for every field it is answered as it is. A
+/// field read through a reference has no hook: serde reads no reference to a model.
 #[cfg(feature = "serde")]
 fn named_below(
     field: &Field,
@@ -16261,7 +16269,7 @@ fn named_below(
     if serde_meta.skip || has_serde_read_hook(&field.attrs) {
         return None;
     }
-    reachable_nested_shape(field, field_def)
+    reachable_nested_shape(field, field_def).filter(|wraps| !ends_on_a_borrow(wraps))
 }
 
 /// Gives a member of a struct, or of a tagged variant, the hook that reads the models it holds
