@@ -1,5 +1,7 @@
 //! The test binary of `dart_tests/`.
 
+extern crate alloc;
+
 #[cfg(test)]
 #[cfg(feature = "dart")]
 #[path = "dart_tests/tests.rs"]
@@ -40,3 +42,16 @@ mod unwritten_models;
 #[cfg(feature = "dart")]
 #[path = "dart_tests/unwritten.rs"]
 mod unwritten;
+
+/// A map flattened after a struct, ahead of one, beside another map and after a member that
+/// takes none of the keys it reads.
+#[cfg(test)]
+#[cfg(all(feature = "dart", feature = "serde"))]
+#[path = "dart_tests/flattened_models.rs"]
+mod flattened_models;
+
+/// What the Dart emitter reads of a flattened map, at its place among the flattened members.
+#[cfg(test)]
+#[cfg(all(feature = "dart", feature = "serde"))]
+#[path = "dart_tests/flattened.rs"]
+mod flattened;

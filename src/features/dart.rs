@@ -27,6 +27,9 @@ use crate::utils::{
 };
 
 #[cfg(feature = "serde")]
+use core::iter::once;
+
+#[cfg(feature = "serde")]
 use crate::features::serde::{parse_serde_field_attributes, parse_serde_type_attributes};
 
 /// The helper a type's `validate()` reads the text of a named type with: a string as it is, and a
@@ -385,6 +388,10 @@ thread_local! {
     /// client reading one member off a declared message needs to name it as the class does.
     static DART_FIELDS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
 
+    /// The keys serde takes off its holder's object for each struct a class has been emitted for,
+    /// read flattened: what serde hands no map flattened after it.
+    static DART_TAKEN_KEYS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
+
     /// The name of each function the reads of the item being emitted call: what its `preprocess`
     /// names, and that of each of its members.
     static DART_CALLED: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
@@ -637,6 +644,61 @@ pub fn record_dart_fields(rust_ident: &str, fields: Vec<String>) {
     DART_FIELDS.with(|recorded| {
         recorded.borrow_mut().insert(rust_ident.to_owned(), fields);
     });
+}
+
+/// Records `keys`, those serde takes for the struct `rust_ident` flattened into a holder, for a
+/// holder emitted after it.
+fn record_taken_keys(rust_ident: &str, keys: Vec<String>) {
+    DART_TAKEN_KEYS.with(|recorded| {
+        recorded.borrow_mut().insert(rust_ident.to_owned(), keys);
+    });
+}
+
+/// The keys serde takes off a holder's object for a struct of `fields` flattened into it: the
+/// name each member it reads is read under, and each alias. A struct with a flattened member of
+/// its own is read as a map, and one that names a function on itself as a value: neither takes a
+/// key.
+#[cfg(feature = "serde")]
+fn taken_keys(fields: &Fields, rule: RenameRule, preprocess: &[FunctionName]) -> Vec<String> {
+    let members: Vec<_> = fields
+        .iter()
+        .map(|field| (field, parse_serde_field_attributes(&field.attrs)))
+        .collect();
+    if !preprocess.is_empty() || members.iter().any(|(_, meta)| meta.flatten) {
+        return Vec::new();
+    }
+    members
+        .into_iter()
+        .filter(|(field, _)| !parse_serde_key_omission(&field.attrs).skips_deserializing)
+        .filter_map(|(field, meta)| {
+            let name = field.ident.as_ref()?.unraw().to_string();
+            let read_as = wire_field_name(&name, meta.rename.as_deref(), rule);
+            Some(once(read_as).chain(meta.aliases))
+        })
+        .flatten()
+        .collect()
+}
+
+#[cfg(not(feature = "serde"))]
+const fn taken_keys(
+    _fields: &Fields,
+    _rule: RenameRule,
+    _preprocess: &[FunctionName],
+) -> Vec<String> {
+    Vec::new()
+}
+
+/// The keys a member typed `def`, flattened into its holder, takes off the object serde hands it:
+/// those of a struct whose class was emitted above, and none for a member that names a function,
+/// which reads it as a value.
+fn keys_taken_by(def: &FieldDef) -> Vec<String> {
+    if !member_functions(def).is_empty() {
+        return Vec::new();
+    }
+    let FieldDefType::SiblingType(name, _) = &def.field_type else {
+        return Vec::new();
+    };
+    DART_TAKEN_KEYS.with(|recorded| recorded.borrow().get(name).cloned().unwrap_or_default())
 }
 
 /// `name` as a method or a parameter of an emitted client, moved off a reserved word and off
@@ -2327,7 +2389,8 @@ fn generic_codec(parameters: &[String]) -> GenericCodec {
 
 /// The arguments the constructor of a class is read with from the object `json` names: each
 /// member from its key, where the payload holds it for a member that names a function, and a
-/// flattened one from the keys neither `tag_key` nor another member takes.
+/// flattened one from the keys neither `tag_key` nor another member takes. A flattened map is
+/// read at its place, without the keys each member flattened ahead of it took as well.
 fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>) -> String {
     let taken: Vec<&str> = tag_key
         .into_iter()
@@ -2338,15 +2401,22 @@ fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>
                 .map(|field| field.wire_name.as_str()),
         )
         .collect();
+    let mut taken_ahead: Vec<String> = taken.iter().map(|&key| key.to_owned()).collect();
     fields.iter().fold(String::new(), |mut acc, field| {
         let decode = if field.flatten {
+            let handed = if matches!(field.field_def.field_type, FieldDefType::Map(..)) {
+                let keys: Vec<&str> = taken_ahead.iter().map(String::as_str).collect();
+                without(json, &keys)
+            } else {
+                without(json, &taken)
+            };
+            for key in keys_taken_by(&field.field_def) {
+                if !taken_ahead.contains(&key) {
+                    taken_ahead.push(key);
+                }
+            }
             // A flattened member is walked whatever it writes.
-            member_decode(
-                &field.field_def,
-                &without(json, &taken),
-                None,
-                Read::Unjudged,
-            )
+            member_decode(&field.field_def, &handed, None, Read::Unjudged)
         } else {
             let read = Read::Unjudged.of_member(&field.field_def);
             let held = format!("{json}.containsKey('{}')", field.wire_name);
@@ -2520,6 +2590,10 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
     );
 
     let rule = container_rename_rule(&item_struct.attrs);
+    record_taken_keys(
+        &rust_ident,
+        taken_keys(&item_struct.fields, rule, args.preprocess),
+    );
     let defaults = SerdeDefaults::of(item_struct);
     let fields = collect_dart_fields(
         &item_struct.fields,
