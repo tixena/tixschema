@@ -6166,7 +6166,8 @@ fn a_struct_of_paths_carries_the_types_own_parameters_and_never_mixes_what_it_ke
 }
 
 /// The `impl` of the slots declares no parameter no slot names, so a bound naming one is left
-/// out, and every other bound of the parameter it is on is kept.
+/// out, inline or in a `where` predicate, and every other bound beside it is kept. A predicate on
+/// a type naming one is left out whole.
 #[cfg(feature = "mongodb")]
 #[test]
 fn the_impl_of_the_slots_keeps_no_bound_that_names_a_parameter_no_slot_names() {
@@ -6179,11 +6180,25 @@ fn the_impl_of_the_slots_keeps_no_bound_that_names_a_parameter_no_slot_names() {
             "pub struct Row<A: Tr<B> + Clone, B>(pub A, #[serde(skip)] pub PhantomData<B>, pub u16);",
             "impl<Root,A:Clone>row_schema::mongo_members::MembersSlots<Root,A>for()",
         ),
+        (
+            "pub struct Row<A, B>(pub A, #[serde(skip)] pub PhantomData<B>, pub u16) where A: Tr<B> + Clone;",
+            "impl<Root,A>row_schema::mongo_members::MembersSlots<Root,A>for()whereA:Clone{",
+        ),
+        (
+            "pub struct Row<A, B>(pub A, #[serde(skip)] pub PhantomData<B>, pub u16) where A: Tr<B>;",
+            "impl<Root,A>row_schema::mongo_members::MembersSlots<Root,A>for(){",
+        ),
+        (
+            "pub struct Row<A, B>(pub A, #[serde(skip)] pub PhantomData<B>, pub u16) where Vec<B>: Clone;",
+            "impl<Root,A>row_schema::mongo_members::MembersSlots<Root,A>for(){",
+        ),
     ] {
         let (_module, on_the_type) = typed_paths_of(source, &[]);
         assert!(
-            on_the_type.contains(header) && !on_the_type.contains("Tr<B>"),
-            "missing `{header}`, or found `Tr<B>`, in: {on_the_type}"
+            on_the_type.contains(header)
+                && !on_the_type.contains("Tr<B>")
+                && !on_the_type.contains("Vec<B>"),
+            "missing `{header}`, or found `Tr<B>` or `Vec<B>`, in: {on_the_type}"
         );
     }
 }
