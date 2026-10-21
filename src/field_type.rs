@@ -25,8 +25,8 @@ use crate::bound_message::{Bound, zod_error_arg, zod_repeat_check};
 use crate::features::serde::defaults::{holds_a_placeholder, placeholder};
 #[cfg(feature = "zod")]
 use crate::utils::{
-    ZodUnionMember, escape_js_regex_literal, names_a_zod_preprocess, publishes_zod_factory,
-    zod_factory_argument,
+    AliasKind, ZodUnionMember, escape_js_regex_literal, names_a_zod_preprocess,
+    publishes_zod_factory, zod_factory_argument,
 };
 
 #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
@@ -730,6 +730,17 @@ impl FieldDef {
         } else {
             self.omits_value
         }
+    }
+
+    /// Whether a record keyed by this field's schema reads any name as a key, a member's among
+    /// them: a string, a `char`, a type parameter, and a name serde writes as a bare string.
+    #[cfg(feature = "zod")]
+    fn keys_by_any_name(&self) -> bool {
+        self.parameter_shape_name().is_some()
+            || matches!(self.field_type, FieldDefType::String | FieldDefType::Char)
+            || matches!(&self.field_type, FieldDefType::SiblingType(name, _)
+                if self.map_key_wire() == MapKeyWire::Named
+                    && lookup_alias_info(name).is_some_and(|info| info.kind == AliasKind::StringWire))
     }
 
     /// The form serde writes this key in, wherever that form is not what the key's own type spells
@@ -1653,10 +1664,31 @@ impl FieldDef {
 
     /// The same value on the Zod surface, for the same reason: what a merged source validates, with
     /// the outermost `Option` left to whatever assembles the merge. See
-    /// [`Self::typescript_merged_typename`].
+    /// [`Self::typescript_merged_typename`]. serde hands a flattened map no key of `taken`, which
+    /// the members that take them answer for, so its record refuses each as a key.
     #[cfg(feature = "zod")]
-    pub fn zod_merged_schema(&self) -> String {
-        self.zod_base()
+    pub fn zod_merged_schema(&self, taken: &[String]) -> String {
+        let FieldDefType::Map(key, value) = &self.field_type else {
+            return self.zod_base();
+        };
+        if self.array_depth > 0 || taken.is_empty() || !key.keys_by_any_name() {
+            return self.zod_base();
+        }
+        let names = taken
+            .iter()
+            .map(|name| format!("\"{}\"", name.replace('\\', "\\\\").replace('"', "\\\"")))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let key_schema = if key.parameter_shape_name().is_some() {
+            "z.string()".to_owned()
+        } else {
+            key.zod_type()
+        };
+        let record = format!(
+            "z.record({key_schema}.refine((key) => ![{names}].includes(key)), {})",
+            value.zod_slot_type()
+        );
+        self.zod_preprocess_wrap(zod_check_wrap(record, self.checks()))
     }
 
     /// The field's length and pattern bounds as one `.check(…)` written onto a named type's

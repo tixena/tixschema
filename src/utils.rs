@@ -234,6 +234,12 @@ pub struct ShapeQuestion {
 #[derive(Clone)]
 pub struct AliasInfo {
     pub export_name: String,
+    /// The keys serde takes from the object an item is flattened into, which no map flattened after
+    /// it is handed: a struct's members where its derive reads it, an externally tagged enum's
+    /// variant names, an adjacently tagged enum's tag and content, what an alias or a brand names
+    /// takes, and none for every other item.
+    #[cfg(all(feature = "serde", feature = "zod"))]
+    pub flatten_taken: Vec<String>,
     /// What an externally tagged enum's variants are spelled as where an object flattens the enum
     /// itself, one per variant in the order the union writes them, and empty for every other item.
     #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
@@ -869,6 +875,8 @@ pub fn register_alias_info(
             rust_ident.to_owned(),
             AliasInfo {
                 export_name: export_name.to_owned(),
+                #[cfg(all(feature = "serde", feature = "zod"))]
+                flatten_taken: Vec::new(),
                 #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
                 flatten_variants: Vec::new(),
                 key_wire: MapKeyWire::Named,
@@ -949,6 +957,17 @@ pub fn record_flatten_variants(rust_ident: &str, variants: &[FlattenVariant]) {
     ALIAS_INFO.with(|map| {
         if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
             info.flatten_variants = variants.to_vec();
+        }
+    });
+}
+
+/// Records the keys an item takes from the object it is flattened into, on the entry that item
+/// has already registered.
+#[cfg(all(feature = "serde", feature = "zod"))]
+pub fn record_flatten_taken(rust_ident: &str, keys: Vec<String>) {
+    ALIAS_INFO.with(|map| {
+        if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
+            info.flatten_taken = keys;
         }
     });
 }
