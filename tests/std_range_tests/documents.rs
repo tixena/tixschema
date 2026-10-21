@@ -19,6 +19,9 @@ pub fn admits(document: &Value, value: &Value) -> bool {
 /// Why `document` refuses `value`, and `None` where it admits it. A key no member declares is
 /// told apart where it is the only thing refused.
 pub fn refusal(document: &Value, value: &Value) -> Option<Refusal> {
+    if let Value::Bool(admitted) = *document {
+        return (!admitted).then_some(Refusal::Written);
+    }
     let admitting = |keyword: &str| {
         document
             .get(keyword)
