@@ -9045,6 +9045,44 @@ fn a_map_keyed_by_a_brand_or_an_alias_over_a_number_is_refused() {
     }
 }
 
+/// A generic brand or alias declared above whose value is its own parameter is refused where the
+/// parameter is filled at a number or a `bool`, and not where it is filled at a `String` or
+/// written with no argument.
+#[test]
+fn a_map_keyed_by_a_generic_brand_or_an_alias_filled_at_a_number_is_refused() {
+    for declared in [
+        "#[serde(transparent)] pub struct Ordinal<IdType>(pub IdType);",
+        "pub type Slot<T> = T;",
+        "#[serde(transparent)] pub struct Seat<Row, Place> { pub place: Place, \
+         pub row: PhantomData<Row> }",
+    ] {
+        super::record_bson_refused_key_item(&syn::parse_str(declared).unwrap());
+    }
+    for (key, refused) in [
+        ("Ordinal<u32>", true),
+        ("Ordinal<bool>", true),
+        ("Ordinal<Ordinal<u32>>", true),
+        ("Ordinal<String>", false),
+        ("Ordinal", false),
+        ("Slot<u16>", true),
+        ("Slot<String>", false),
+        ("Seat<String, u8>", true),
+        ("Seat<u8, String>", false),
+    ] {
+        let expected: Vec<String> = refused
+            .then(|| bson_refused_key_message("field `by_key`", key))
+            .into_iter()
+            .collect();
+        assert_eq!(
+            bson_refused_key_messages(&format!(
+                "pub struct Roster {{ pub by_key: HashMap<{key}, String> }}"
+            )),
+            expected,
+            "for {key}"
+        );
+    }
+}
+
 /// What a type that lists `"mongodb"` is refused for the member `named`, which holds `model`, a
 /// model declared above that holds the map `described` says.
 fn held_bson_refused_key_message(named: &str, model: &str, described: &str) -> String {
