@@ -624,6 +624,43 @@ pub const fn keys_taken_when_flattened(
     Vec::new()
 }
 
+/// The names serde reads the variant of an externally tagged enum flattened into a holder under:
+/// the name each variant it reads is read under, and each alias, its `VARIANTS`. serde takes the
+/// first entry of the holder's object, in its order, under one of them. An enum under a tag key, an
+/// untagged one and one that names a function on itself (`preprocess`) answer none.
+#[cfg(all(feature = "serde", any(feature = "dart", feature = "swift")))]
+pub fn variant_names_when_flattened(
+    item_enum: &ItemEnum,
+    preprocess: &[FunctionName],
+) -> Vec<String> {
+    if !preprocess.is_empty()
+        || !matches!(Tagging::of(item_enum), Tagging::External | Tagging::Plain)
+    {
+        return Vec::new();
+    }
+    let rule = resolve_rename_rule(parse_read_renames(&item_enum.attrs).rename_all.as_deref());
+    item_enum
+        .variants
+        .iter()
+        .filter(|variant| !parse_serde_key_omission(&variant.attrs).skips_deserializing)
+        .flat_map(|variant| {
+            let read_as = parse_read_renames(&variant.attrs)
+                .rename
+                .unwrap_or_else(|| rule.apply_to_variant(&variant.ident.unraw().to_string()));
+            once(read_as).chain(parse_serde_field_attributes(&variant.attrs).aliases)
+        })
+        .collect()
+}
+
+/// Without `serde` no member is flattened, so no enum takes an entry.
+#[cfg(all(not(feature = "serde"), any(feature = "dart", feature = "swift")))]
+pub const fn variant_names_when_flattened(
+    _item_enum: &ItemEnum,
+    _preprocess: &[FunctionName],
+) -> Vec<String> {
+    Vec::new()
+}
+
 /// The field serde's derive in `direction` takes a `#[serde(transparent)]` struct as the value of,
 /// named or a slot: the one that derive does not skip, that is not written `PhantomData` and, read,
 /// that has no `default`. `None` for any other count, which that derive refuses.

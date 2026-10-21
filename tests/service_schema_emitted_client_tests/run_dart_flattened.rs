@@ -2,21 +2,26 @@
 //! tag key, a map that is the one flattened member, a map flattened ahead of a struct, two
 //! flattened maps, a map flattened after a member that takes none of the keys it reads, and, after
 //! a struct, a struct with a flattened map, a member that names a function, a JSON value and a
-//! struct that reads the same key, each read and written back by the emitted Dart types under the
-//! Dart VM, against what serde reads and writes back.
+//! struct that reads the same key, and a map flattened after an externally tagged enum, after an
+//! enum under a tag key and after an untagged one, each read and written back by the emitted Dart
+//! types under the Dart VM, against what serde reads and writes back.
 
 #![cfg(feature = "dart")]
 
 use alloc::collections::BTreeMap;
+use core::fmt::Write as _;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::dart_flattened_models::{
-    Belaying, CLAMPING, Clamping, Coupling, Doubling, FASTENING, Fastening, Hoisting, Lacing,
-    Loosening, PAYLOAD, Pairing, Rigging, STOWING, Stowing, TETHERING, Tethering, Twin,
-    belaying_dart, bracing_dart, clamping_dart, coupling_dart, doubling_dart, fastening_dart,
-    hoisting_dart, keying_dart, lacing_dart, loosening_dart, marking_dart, pairing_dart,
-    rigging_dart, spare_dart, stowing_dart, tethering_dart, ticketing_dart, twin_dart,
+    Belaying, CLAMPING, Clamping, Coupling, Doubling, FASTENING, Fastening, Hoisting, KEDGING,
+    Kedging, LOADING, Lacing, Loading, Loosening, MOUSING, Mousing, PAYLOAD, Pairing, Rigging,
+    STOWING, Shoring, Stowing, TETHERING, TRIMMING, Tethering, Trimming, Twin, belaying_dart,
+    bracing_dart, chocking_dart, clamping_dart, coupling_dart, doubling_dart, fastening_dart,
+    frapping_dart, hatching_dart, hoisting_dart, kedging_dart, keying_dart, lacing_dart,
+    loading_dart, loosening_dart, marking_dart, mousing_dart, pairing_dart, rigging_dart,
+    shoring_dart, spare_dart, stowing_dart, tethering_dart, ticketing_dart, trimming_dart,
+    twin_dart, warping_dart,
 };
 use super::run_dart_validate::{dart, module};
 
@@ -88,6 +93,47 @@ void main() {
 }
 ";
 
+/// What prints each holder of a flattened enum read from each of its payloads: the enum, each
+/// member after it and the holder written back, or that the read is refused.
+const AFTER_AN_ENUM: &str = "
+String row(String Function() read) {
+  try {
+    return read();
+  } catch (_) {
+    return 'refused';
+  }
+}
+
+String loaded(String payload) {
+  final loading = Loading.fromJson(jsonDecode(payload));
+  return '${jsonEncode(loading.hatching.toJson())} ${jsonEncode(loading.rest)} ${jsonEncode(loading.toJson())}';
+}
+
+String kedged(String payload) {
+  final kedging = Kedging.fromJson(jsonDecode(payload));
+  return '${jsonEncode(kedging.kedge.toJson())} ${jsonEncode(kedging.rest)} ${jsonEncode(kedging.toJson())}';
+}
+
+void main() {
+  for (final payload in LOADING) {
+    print('loading: ${row(() => loaded(payload))}');
+  }
+  for (final payload in KEDGING) {
+    print('kedging: ${row(() => kedged(payload))}');
+  }
+  final trimming = Trimming.fromJson(jsonDecode(r'TRIMMING'));
+  print('trimming: ${jsonEncode(trimming.marking.toJson())} ${jsonEncode(trimming.rest)} ${jsonEncode(trimming.toJson())}');
+  final mousing = Mousing.fromJson(jsonDecode(r'MOUSING'));
+  print('mousing: ${jsonEncode(mousing.rest)} ${jsonEncode(mousing.toJson())}');
+  final shoring = Shoring.fromJson(jsonDecode(r'PAYLOAD'));
+  print('shoring: ${jsonEncode(shoring.rest)} ${jsonEncode(shoring.toJson())}');
+}
+";
+
+/// The payload of [`LOADING`] that holds a variant's entry under its alias: Dart reads no variant
+/// under an alias, and refuses what serde reads.
+const UNDER_AN_ALIAS: usize = 3;
+
 /// The text of `value` as serde writes it.
 fn written<T>(value: &T) -> String
 where
@@ -104,6 +150,15 @@ fn each_key_once(text: &str) -> String {
         .to_string()
 }
 
+/// `payloads` as a Dart list of raw strings.
+fn listed(payloads: &[&str]) -> String {
+    let raw: Vec<String> = payloads
+        .iter()
+        .map(|payload| format!("r'{payload}'"))
+        .collect();
+    format!("[{}]", raw.join(", "))
+}
+
 /// `main` with each payload written in.
 fn with_payloads(main: &str) -> String {
     main.replace("PAYLOAD", PAYLOAD)
@@ -111,6 +166,18 @@ fn with_payloads(main: &str) -> String {
         .replace("TETHERING", TETHERING)
         .replace("FASTENING", FASTENING)
         .replace("STOWING", STOWING)
+        .replace("LOADING", &listed(&LOADING))
+        .replace("KEDGING", &listed(&KEDGING))
+        .replace("TRIMMING", TRIMMING)
+        .replace("MOUSING", MOUSING)
+}
+
+/// What serde reads of `payload` as `T`, through `parts`, or that it refuses it.
+fn read_of<T>(payload: &str, parts: fn(&T) -> String) -> String
+where
+    T: for<'de> Deserialize<'de>,
+{
+    serde_json::from_str::<T>(payload).map_or_else(|_| "refused".to_owned(), |read| parts(&read))
 }
 
 /// What the Dart VM prints of `main` over the emitted definitions, or `None` where it is missing.
@@ -304,4 +371,100 @@ fn a_member_after_a_flattened_struct_reads_in_dart_the_keys_serde_hands_it() {
         return;
     };
     assert_eq!(printed, expected);
+}
+
+/// A map flattened after an externally tagged enum is handed every entry but the first under a
+/// variant's name, and a struct after the enum every entry but that one, as serde hands them,
+/// whichever variant's entry comes first. A map after an enum under a tag key alone, or after an
+/// untagged one, is handed every key. Each holder is written back as serde writes it back.
+#[test]
+fn a_map_after_a_flattened_enum_reads_in_dart_the_entries_serde_hands_it() {
+    let loaded: Vec<String> = LOADING
+        .iter()
+        .map(|payload| {
+            read_of(payload, |loading: &Loading| {
+                format!(
+                    "{} {} {}",
+                    written(&loading.hatching),
+                    written(&loading.rest),
+                    written(loading)
+                )
+            })
+        })
+        .collect();
+    let kedged: Vec<String> = KEDGING
+        .iter()
+        .map(|payload| {
+            read_of(payload, |kedging: &Kedging| {
+                format!(
+                    "{} {} {}",
+                    written(&kedging.kedge),
+                    written(&kedging.rest),
+                    written(kedging)
+                )
+            })
+        })
+        .collect();
+    let trimming: Trimming = serde_json::from_str(TRIMMING).unwrap();
+    let mousing: Mousing = serde_json::from_str(MOUSING).unwrap();
+    let shoring: Shoring = serde_json::from_str(PAYLOAD).unwrap();
+    let rows = |named: &str, read: &[String]| {
+        read.iter().fold(String::new(), |mut acc, row| {
+            writeln!(acc, "{named}: {row}").unwrap();
+            acc
+        })
+    };
+    let after_loading = format!(
+        "{}trimming: {} {} {}\nmousing: {} {}\nshoring: {} {}\n",
+        rows("kedging", &kedged),
+        written(&trimming.marking),
+        written(&trimming.rest),
+        written(&trimming),
+        written(&mousing.rest),
+        each_key_once(&written(&mousing)),
+        written(&shoring.rest),
+        each_key_once(&written(&shoring)),
+    );
+    let expected = format!("{}{after_loading}", rows("loading", &loaded));
+    assert_eq!(
+        expected,
+        "loading: {\"Bay\":{\"label\":\"n\"}} {\"north\":2} {\"Bay\":{\"label\":\"n\"},\"north\":2}\n\
+         loading: {\"Bay\":{\"label\":\"n\"}} {\"Dock\":{\"label\":\"s\"},\"north\":2} \
+         {\"Bay\":{\"label\":\"n\"},\"Dock\":{\"label\":\"s\"},\"north\":2}\n\
+         loading: {\"Dock\":{\"label\":\"s\"}} {\"Bay\":{\"label\":\"n\"},\"north\":2} \
+         {\"Dock\":{\"label\":\"s\"},\"Bay\":{\"label\":\"n\"},\"north\":2}\n\
+         loading: {\"Dock\":{\"label\":\"s\"}} {\"north\":2} {\"Dock\":{\"label\":\"s\"},\"north\":2}\n\
+         loading: {\"Bay\":{\"label\":\"n\"}} {\"Quay\":{\"label\":\"s\"},\"north\":2} \
+         {\"Bay\":{\"label\":\"n\"},\"Quay\":{\"label\":\"s\"},\"north\":2}\n\
+         kedging: {\"pier\":{\"label\":\"n\"}} {\"north\":2} {\"pier\":{\"label\":\"n\"},\"north\":2}\n\
+         kedging: {\"open_bay\":{\"label\":\"n\"}} {\"north\":2} \
+         {\"open_bay\":{\"label\":\"n\"},\"north\":2}\n\
+         kedging: refused\n\
+         trimming: {\"label\":\"m\"} {\"north\":2} {\"Bay\":{\"label\":\"n\"},\"label\":\"m\",\"north\":2}\n\
+         mousing: {\"kind\":\"Rope\",\"label\":\"n\",\"north\":2} \
+         {\"kind\":\"Rope\",\"label\":\"n\",\"north\":2}\n\
+         shoring: {\"label\":\"n\",\"north\":2} {\"label\":\"n\",\"north\":2}\n"
+    );
+    let mut in_dart = loaded;
+    in_dart[UNDER_AN_ALIAS] = "refused".to_owned();
+    let expected_in_dart = format!("{}{after_loading}", rows("loading", &in_dart));
+    let Some(printed) = printed(
+        "flattened-after-an-enum",
+        &[
+            marking_dart::dart_definition(),
+            hatching_dart::dart_definition(),
+            loading_dart::dart_definition(),
+            warping_dart::dart_definition(),
+            kedging_dart::dart_definition(),
+            trimming_dart::dart_definition(),
+            frapping_dart::dart_definition(),
+            mousing_dart::dart_definition(),
+            chocking_dart::dart_definition(),
+            shoring_dart::dart_definition(),
+        ],
+        AFTER_AN_ENUM,
+    ) else {
+        return;
+    };
+    assert_eq!(printed, expected_in_dart);
 }
