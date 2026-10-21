@@ -1,6 +1,6 @@
 //! A bound written on a field is the recovering read's to list. serde reads a value that breaks
-//! one, so the walker runs the field's validator on what it read: one issue per violation, at the
-//! value, which is what a callback repairs a stored value by.
+//! one, so the walker runs the field's validator on what it read: one issue at the value, its
+//! reason every violation joined by `; `, which is what a callback repairs a stored value by.
 //!
 //! A validator is published only where a schema surface is on, so a build with none lists nothing.
 
@@ -73,6 +73,10 @@ enum BoundedSlots {
     Pair(
         #[model_schema_prop(minLength = 2)] String,
         #[model_schema_prop(minimum = 1)] u32,
+    ),
+    Titled(
+        #[model_schema_prop(maxLength = 3, pattern = "^[a-z]+$")] String,
+        u32,
     ),
 }
 
@@ -221,7 +225,7 @@ fn rejected(
 
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
-fn a_broken_bound_is_listed_at_its_value_once_per_violation() {
+fn a_broken_bound_is_listed_once_at_its_value() {
     let (read, calls) = rejected(broken());
     assert_eq!(
         lines(&read.unwrap_err()),
@@ -727,10 +731,11 @@ fn a_callback_that_removes_what_breaks_a_bound_recovers_the_read() {
     );
 }
 
-/// A title that breaks two bounds is two issues at one path, alike but for the reason.
+/// A title that breaks two bounds is one issue at its path, its reason both violations joined by
+/// `; `, and one repair of the value settles the read.
 #[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
 #[test]
-fn two_bounds_broken_by_one_value_are_repaired_once_at_its_path() {
+fn a_value_that_breaks_two_bounds_is_one_issue_at_its_path() {
     use bounded_group_schema::{Issue, Verdict};
 
     let stored = || json!({ "level": 1_u32, "source": "Items", "tags": ["ok"], "title": "LONG" });
@@ -739,9 +744,7 @@ fn two_bounds_broken_by_one_value_are_repaired_once_at_its_path() {
         lines(&listed.unwrap_err()),
         [
             "title: invalid: expected String, found String(\"LONG\"): too long: maximum length is \
-             3, got 4",
-            "title: invalid: expected String, found String(\"LONG\"): does not match pattern \
-             '^[a-z]+$'",
+             3, got 4; does not match pattern '^[a-z]+$'"
         ]
     );
 
@@ -753,7 +756,6 @@ fn two_bounds_broken_by_one_value_are_repaired_once_at_its_path() {
                 found: _found,
                 reason: _reason,
             },
-            _pattern,
         ] = found
         else {
             return Verdict::Reject;
@@ -762,8 +764,17 @@ fn two_bounds_broken_by_one_value_are_repaired_once_at_its_path() {
         Verdict::Fixed
     });
     assert_eq!(set_once.unwrap().title, "aa");
+}
 
-    let set_for_each = BoundedGroup::from_value_with(stored(), |raw, found| {
+/// A slot of a tuple variant that breaks two bounds is one issue, so a callback that removes the
+/// value at each issue's path takes that slot out of the array alone.
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn a_slot_that_breaks_two_bounds_is_removed_alone() {
+    use bounded_slots_schema::{Issue, Verdict};
+
+    let mut left = Value::Null;
+    let read = BoundedSlots::from_value_with(json!({ "Titled": ["LONG", 1_u32] }), |raw, found| {
         for issue in found {
             if let Issue::Invalid {
                 path,
@@ -772,12 +783,20 @@ fn two_bounds_broken_by_one_value_are_repaired_once_at_its_path() {
                 reason: _reason,
             } = issue
             {
-                path.set_in_value(raw, json!("ok"));
+                path.remove_from_value(raw);
             }
         }
-        Verdict::Fixed
+        left = raw.clone();
+        Verdict::Reject
     });
-    assert_eq!(set_for_each.unwrap().title, "ok");
+    assert_eq!(
+        lines(&read.unwrap_err()),
+        [
+            "Titled[0]: invalid: expected String, found String(\"LONG\"): too long: maximum \
+             length is 3, got 4; does not match pattern '^[a-z]+$'"
+        ]
+    );
+    assert_eq!(left, json!({ "Titled": [1_u32] }));
 }
 
 #[test]

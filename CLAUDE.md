@@ -408,7 +408,7 @@ the key or without it, as serde does.
 
 ### 7. Field Validation Attributes (`#[model_schema_prop(...)]`)
 
-All validation constraints generate checks in **Zod, JSON Schema, Rust, Dart, Swift and Kotlin**. In Rust the check runs in `validate()`, which the type's own `Deserialize` calls on the value it read, so a serde read refuses what `validate()` refuses ("A read refuses what `validate()` refuses", below), and in the recovering decode of a type whose `enable` list holds `"decode_with"`, which lists each violation as an issue. While the members are still being read it runs in one position only: a member of an untagged enum, where the check decides which variant the payload is. In Dart, Swift and Kotlin the check runs in the `validate()` every emitted type carries, which the type's read calls on the value it read: `fromJson`, `init(from:)` and `{Type}Serializer`.
+All validation constraints generate checks in **Zod, JSON Schema, Rust, Dart, Swift and Kotlin**. In Rust the check runs in `validate()`, which the type's own `Deserialize` calls on the value it read, so a serde read refuses what `validate()` refuses ("A read refuses what `validate()` refuses", below), and in the recovering decode of a type whose `enable` list holds `"decode_with"`, which lists the violations of each value as one issue. While the members are still being read it runs in one position only: a member of an untagged enum, where the check decides which variant the payload is. In Dart, Swift and Kotlin the check runs in the `validate()` every emitted type carries, which the type's read calls on the value it read: `fromJson`, `init(from:)` and `{Type}Serializer`.
 
 A function a `preprocess` names is called by the read alone of each language, ahead of the value, so the read that judges calls it too: `model_schema_read_unjudged` in Rust, `z.preprocess(fn, ...)` in the Zod schema, `fromJsonUnjudged` in Dart, `init(swiftSchemaUnjudged:)` in Swift and `{Type}Unjudged` in Kotlin. A function a `check` names is called by `validate()` in the four that have one, and by one `.check(...)` on the Zod schema. Rust calls the snake case of a name, and every other language the name as written:
 
@@ -2142,10 +2142,11 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   stem, with the name the validator writes in front of a violation, an `Option`), `walked_field`
   reads it back (`recorded_validator`, into `FieldValidator::named`), and `Walker::bounded` writes
   one `{source}_bound` call beside the read of each value the bound reaches: the validator run on
-  what serde read, one `Invalid` per violation, that name taken off the sentence. The name is
-  the steps serde writes on the way to the field, read from the registry and computed nowhere
-  else, so the two cannot drift, and the validator of a value serde writes itself, the one slot
-  of a struct and of a variant under a tag alone, writes none: its sentence is listed as it is.
+  what serde read, one `Invalid` per value, its violations joined by `; `, that name taken off
+  each sentence. The name is the steps serde writes on the way to the field, read from the
+  registry and computed nowhere else, so the two cannot drift, and the validator of a value
+  serde writes itself, the one slot of a struct and of a variant under a tag alone, writes none:
+  its sentence is listed as it is.
   `recovering_bound_check` builds the closure from the walk's own type at
   that position. A list is that position: the arm
   that walks its items hands them no validator, and holds the list read whole (`read_as_a_list`)

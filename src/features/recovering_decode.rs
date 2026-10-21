@@ -1100,8 +1100,8 @@ impl Walker<'_> {
     }
 
     /// `listed` followed by what holds the value under `held`, read through `read` as `ty`, to the
-    /// bound `validator` checks: one `Invalid` per violation, at the value. `listed` alone where
-    /// the field has no validator, or its bound reaches nothing of `ty`.
+    /// bound `validator` checks: one `Invalid` at the value, its violations joined. `listed` alone
+    /// where the field has no validator, or its bound reaches nothing of `ty`.
     fn bounded(
         &self,
         listed: &TokenStream,
@@ -1733,8 +1733,8 @@ impl Walker<'_> {
     }
 
     /// What holds `found`, read whole with the type's own reader, to the bound `validator` checks
-    /// on its one slot, typed `ty`: one `Invalid` per violation, at the value. Nothing where the
-    /// slot has no validator, or its bound reaches nothing of `ty`.
+    /// on its one slot, typed `ty`: one `Invalid` at the value, its violations joined. Nothing
+    /// where the slot has no validator, or its bound reaches nothing of `ty`.
     fn lone_slot_bound(&self, validator: Option<&FieldValidator>, ty: &Type) -> TokenStream {
         let (module, bound) = (self.module, self.source.bound());
         let Some(check) = self.bound_check(validator, ty) else {
@@ -2976,8 +2976,9 @@ fn asks_one_of(bound: &TypeParamBound, asked: &[String]) -> bool {
 /// `value_bound`: what holds a JSON value serde read to the bound its field declares.
 fn bound_items() -> TokenStream {
     quote! {
-        /// What a field's bound refuses of one JSON value `read` reads: an issue per violation
-        /// `check` answers, and none where the value does not read.
+        /// What a field's bound refuses of one JSON value `read` reads: one issue whose reason is
+        /// every violation `check` answers, joined by `; `, and none where the value keeps the
+        /// bound or does not read.
         pub fn value_bound<'a, T, I, R, C>(
             held: &'a serde_json::Value,
             read: R,
@@ -2993,10 +2994,11 @@ fn bound_items() -> TokenStream {
             let ::core::result::Result::Ok(read) = read(held) else {
                 return ::std::vec::Vec::new();
             };
-            check(&read)
-                .into_iter()
-                .map(|reason| issue("Invalid", path.clone(), expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::Some(reason), ::std::vec::Vec::new()))
-                .collect()
+            let violations = check(&read);
+            if violations.is_empty() {
+                return ::std::vec::Vec::new();
+            }
+            ::std::vec![issue("Invalid", path, expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::Some(violations.join("; ")), ::std::vec::Vec::new())]
         }
     }
 }
@@ -3005,8 +3007,9 @@ fn bound_items() -> TokenStream {
 #[cfg(feature = "bson")]
 fn bson_bound_items() -> TokenStream {
     quote! {
-        /// What a field's bound refuses of one BSON value `read` reads: an issue per violation
-        /// `check` answers, and none where the value does not read.
+        /// What a field's bound refuses of one BSON value `read` reads: one issue whose reason is
+        /// every violation `check` answers, joined by `; `, and none where the value keeps the
+        /// bound or does not read.
         pub fn bson_bound<T, I, E, R, C>(
             held: &bson::Bson,
             read: R,
@@ -3022,10 +3025,11 @@ fn bson_bound_items() -> TokenStream {
             let ::core::result::Result::Ok(read) = read(bson::Deserializer::new(held.clone())) else {
                 return ::std::vec::Vec::new();
             };
-            check(&read)
-                .into_iter()
-                .map(|reason| issue("Invalid", path.clone(), expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::Some(reason), ::std::vec::Vec::new()))
-                .collect()
+            let violations = check(&read);
+            if violations.is_empty() {
+                return ::std::vec::Vec::new();
+            }
+            ::std::vec![issue("Invalid", path, expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::Some(violations.join("; ")), ::std::vec::Vec::new())]
         }
     }
 }
