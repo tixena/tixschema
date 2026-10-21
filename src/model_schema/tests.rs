@@ -7484,6 +7484,203 @@ fn expansion_under(args: &str, source: &str) -> String {
     .to_string()
 }
 
+/// How many times `tokens` write `name` as an identifier, the text of a literal aside.
+fn identifiers_named(tokens: proc_macro2::TokenStream, name: &str) -> usize {
+    tokens
+        .into_iter()
+        .map(|tree| match tree {
+            proc_macro2::TokenTree::Ident(ident) => usize::from(ident == name),
+            proc_macro2::TokenTree::Group(group) => identifiers_named(group.stream(), name),
+            proc_macro2::TokenTree::Punct(_) | proc_macro2::TokenTree::Literal(_) => 0,
+        })
+        .sum()
+}
+
+/// Holds the expansion of `source` under `#[model_schema(args)]` to one `compile_error!`, which
+/// says `refusal`, and to no `#[model_schema_prop]` left for rustc to report beside it.
+fn assert_refused_without_member_keys(args: &str, source: &str, refusal: &str) {
+    let expanded = super::exec_model_schema(
+        syn::parse_str(args).unwrap(),
+        syn::parse_str(source).unwrap(),
+    );
+    let written = expanded.to_string();
+    assert!(written.contains(refusal), "for {source}, got: {written}");
+    assert_eq!(
+        identifiers_named(expanded.clone(), "compile_error"),
+        1,
+        "for {source}, got: {written}"
+    );
+    assert_eq!(
+        identifiers_named(expanded, "model_schema_prop"),
+        0,
+        "for {source}, got: {written}"
+    );
+}
+
+#[test]
+fn an_item_refused_before_its_members_are_walked_is_re_emitted_without_their_keys() {
+    for (args, source, refusal) in [
+        (
+            "unread = 1",
+            "pub struct Label { #[model_schema_prop(maxLength = 9)] pub text: String }",
+            "type `Label`: unknown `model_schema` argument `unread`",
+        ),
+        (
+            "default_types(IdType = String)",
+            "pub struct Label { #[model_schema_prop(maxLength = 9)] pub text: String }",
+            "`default_types` entry `IdType` names a type parameter, but this item declares none",
+        ),
+        (
+            "",
+            "pub enum Size { Empty(), Named { #[model_schema_prop(maxLength = 9)] label: String } }",
+            "variant `Empty`: `Empty()` is a tuple variant with no field",
+        ),
+        (
+            "enable = [\"decode_with\"]",
+            "pub struct Label<'text> { #[model_schema_prop(maxLength = 9)] pub text: String, pub \
+             held: &'text str }",
+            "cannot be written on a type that borrows",
+        ),
+        (
+            "minLength = 1",
+            "pub struct Label { #[model_schema_prop(maxLength = 9)] pub text: String }",
+            "type `Label`: `minLength` is supported only on a branded newtype",
+        ),
+        (
+            "minLength = 2",
+            "pub enum Size { S, Named { #[model_schema_prop(maxLength = 9)] label: String } }",
+            "type `Size`: variant `S` is written `S`, which breaks `minLength = 2` written on the \
+             enum",
+        ),
+        (
+            "minLength = 1",
+            "pub enum Shape { Circle { #[model_schema_prop(minimum = 1)] r: u32 } }",
+            "type `Shape`: `minLength` reaches nothing here",
+        ),
+        (
+            "minLength = 2",
+            "pub enum Shape { Fixed { #[model_schema_prop(literal = \"x\")] word: String } }",
+            "type `Shape`: `minLength` reaches nothing here",
+        ),
+    ] {
+        assert_refused_without_member_keys(args, source, refusal);
+    }
+}
+
+#[test]
+fn an_item_refused_for_a_name_another_publishes_is_re_emitted_without_its_members_keys() {
+    let first = expansion_under(
+        "name = \"Parcel\"",
+        "pub struct FirstParcel { pub text: String }",
+    );
+    assert!(!first.contains("compile_error"), "got: {first}");
+    assert_refused_without_member_keys(
+        "name = \"Parcel\"",
+        "pub struct SecondParcel { #[model_schema_prop(maxLength = 9)] pub text: String }",
+        "type `SecondParcel` publishes as `Parcel`, which type `FirstParcel` already publishes as",
+    );
+}
+
+#[cfg(all(
+    feature = "serde",
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "jsonschema",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
+))]
+#[test]
+fn an_item_refused_for_a_serde_attribute_is_re_emitted_without_its_members_keys() {
+    assert_refused_without_member_keys(
+        "",
+        "pub struct Label { #[model_schema_prop(maxLength = 9)] #[serde(rename(serialize = \
+         \"label\", deserialize = \"text\"))] pub text: String }",
+        "field `text`: serde `rename` names `label` when serializing and `text` when deserializing",
+    );
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn an_item_refused_for_an_example_beside_a_const_is_re_emitted_without_its_members_keys() {
+    assert_refused_without_member_keys(
+        "",
+        &format!(
+            "{EXAMPLE_DOC_BLOCK}pub struct Label<const SLOTS: usize> {{ \
+             #[model_schema_prop(maxLength = 9)] pub text: String }}"
+        ),
+        "type `Label`: `#[model_schema]` cannot build a `schema_example()` for an item that \
+         declares a const parameter",
+    );
+}
+
+#[cfg(any(feature = "typescript", feature = "jsonschema"))]
+#[test]
+fn an_item_refused_for_a_const_argument_is_re_emitted_without_its_members_keys() {
+    assert_refused_without_member_keys(
+        "",
+        "pub struct Label<const SLOTS: usize> { #[model_schema_prop(maxLength = 9)] pub text: \
+         String, pub slots: Slots<SLOTS> }",
+        "type `Label`: `#[model_schema]` cannot render the const parameter `SLOTS` as a type \
+         argument",
+    );
+}
+
+#[cfg(not(feature = "indexmap"))]
+#[test]
+fn an_item_refused_for_a_name_the_indexmap_feature_reads_is_re_emitted_without_its_members_keys() {
+    assert_refused_without_member_keys(
+        "",
+        "pub struct Label { #[model_schema_prop(maxLength = 9)] pub text: String, pub counts: \
+         IndexMap<String, u32> }",
+        "`IndexMap` is read as a map under tixschema's `indexmap` feature",
+    );
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_shape_refused_before_its_members_are_walked_is_re_emitted_without_their_keys() {
+    for (source, refusal) in [
+        (
+            "#[cfg_attr(feature = \"wire\", serde(rename_all = \"camelCase\"))] pub struct Label \
+             { #[model_schema_prop(maxLength = 9)] pub text: String }",
+            "type `Label`: cfg_attr-wrapped serde attribute is invisible to model_schema",
+        ),
+        (
+            "#[cfg_attr(feature = \"wire\", serde(rename_all = \"camelCase\"))] pub enum Size { \
+             Named { #[model_schema_prop(maxLength = 9)] label: String } }",
+            "type `Size`: cfg_attr-wrapped serde attribute is invisible to model_schema",
+        ),
+        (
+            "#[serde(tag = \"kind\", content = \"data\")] pub enum Size { Gone(#[serde(skip)] \
+             u32), Named { #[model_schema_prop(maxLength = 9)] label: String } }",
+            "variant `Gone` of enum `Size` declares one slot and takes it off the wire in both \
+             directions",
+        ),
+        (
+            "#[serde(tag = \"kind\")] pub enum Size { Pair(u32, u32), Named { \
+             #[model_schema_prop(maxLength = 9)] label: String } }",
+            "variant `Pair` of internally tagged enum `Size` is a tuple variant",
+        ),
+    ] {
+        assert_refused_without_member_keys("", source, refusal);
+    }
+}
+
+#[cfg(any(feature = "typescript", feature = "zod", feature = "jsonschema"))]
+#[test]
+fn a_brand_refused_by_its_guards_is_re_emitted_without_its_members_keys() {
+    assert_refused_without_member_keys(
+        "",
+        "#[serde(transparent)] pub struct Label { pub text: Option<String>, \
+         #[model_schema_prop(maxLength = 9)] #[serde(skip)] marker: \
+         ::core::marker::PhantomData<u8> }",
+        "branded newtype `Label` wraps an `Option`, which has no representable schema",
+    );
+}
+
 #[test]
 fn a_string_check_on_a_struct_that_is_no_brand_is_refused() {
     for (args, check) in [

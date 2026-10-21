@@ -16,7 +16,7 @@ use syn::{Attribute, Field, Item, ItemType};
 use super::checks::located;
 #[cfg(feature = "serde")]
 use super::judged_read::unclaimed_parameter;
-use super::{declaration_attrs, guard_failure_output, prefixed_guard_message, written_spelling};
+use super::{guard_failure_output, prefixed_guard_message, written_spelling};
 use crate::features::model_schema_prop::{FunctionName, parse_model_schema_prop_attributes};
 use crate::features::serde::read_bounds::borrows;
 use crate::features::serde::{derives_deserialize, parse_serde_key_omission, read_hook};
@@ -290,26 +290,6 @@ pub fn refusals(item: &Item, own: &[FunctionName]) -> Vec<syn::Error> {
         }
     }
     refused
-}
-
-/// `item` with every `#[model_schema_prop]` taken off its members: what an item refused here is
-/// emitted as, the attribute being one rustc reports as nonexistent wherever a copy survives.
-pub fn without_member_keys(item: &Item) -> Item {
-    let mut stripped = item.clone();
-    if let Item::Struct(item_struct) = &mut stripped {
-        for field in &mut item_struct.fields {
-            field.attrs = declaration_attrs(field);
-        }
-    } else if let Item::Enum(item_enum) = &mut stripped {
-        for variant in &mut item_enum.variants {
-            for field in &mut variant.fields {
-                field.attrs = declaration_attrs(field);
-            }
-        }
-    } else {
-        // An alias has no member.
-    }
-    stripped
 }
 
 /// The refusal of a `preprocess` written on a type alias: an alias is another name for its

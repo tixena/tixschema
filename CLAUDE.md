@@ -589,7 +589,10 @@ reads the merged meta as it reads a member's own. `process_field` asks it throug
   every build, so an enum's `pattern` is judged in every build as a field's is. It refuses a
   `pattern` no surface reads, a check that reaches nothing (`enum_check_reaches_nothing`: no
   variant written with no data and no field `reached_by_enums_check` answers true for), and each
-  name of a unit variant that breaks the check (`unit_variant_name_errors`).
+  name of a unit variant that breaks the check (`unit_variant_name_errors`). The refused enum is
+  re-emitted without its members' `#[model_schema_prop]` (`without_member_keys`, through
+  `refused_item_output`, which every refusal raised before the members are walked goes through),
+  so the refusal is the only error rustc reports for it.
 - A unit variant is one `variant_wire_kind` publishes as a unit. `variant_wire_names` lists the name
   serde writes for it, then the name it reads and each `alias` where they differ, and
   `checks_broken_by` measures each as the validator measures a value. An untagged enum writes such
@@ -1769,7 +1772,7 @@ has to keep.
   member; a member under `skip_serializing` or `skip_serializing_if` that is not an `Option`; and
   every such member of an enum that derives `Deserialize` and not `Serialize`, or names `into` or
   `remote`. `serde_attribute_guard_errors` joins them to `rename_direction_guard_errors`, and
-  `exec_model_schema` raises the two through one `guard_failure_output`, every refusal of the item
+  `exec_model_schema` raises the two through one `refused_item_output`, every refusal of the item
   in one expansion, under the rename guard's gate: `serde` with any
   of `typescript`, `zod`, `jsonschema`, `dart`, `swift` and `kotlin`. An `Option`, a member under
   `skip` or `skip_deserializing`, and an enum that derives no `Deserialize` or reads itself

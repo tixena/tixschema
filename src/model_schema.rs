@@ -1546,11 +1546,8 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // An argument the parser refused describes a surface no expansion below can honour, so the
     // item is refused before it is dispatched to its shape.
     if let Some(rejection) = parsed_args.arg_rejection.as_ref()
-        && let Some(output) = guard_failure_output(
-            &item,
-            item_schema_ident(&item),
-            &[attr_guard_error(rejection, &item_label(&item))],
-        )
+        && let Some(output) =
+            refused_item_output(&item, &[attr_guard_error(rejection, &item_label(&item))])
     {
         return output;
     }
@@ -1562,70 +1559,41 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     record_wire_form(&item);
     // A `default_types` declaration is read against the item's own parameters, which the parser
     // never sees, so both directions are answered here, ahead of every shape.
-    if let Some(output) = guard_failure_output(
-        &item,
-        item_schema_ident(&item),
-        &default_types_guard_errors(&item, &parsed_args),
-    ) {
+    if let Some(output) =
+        refused_item_output(&item, &default_types_guard_errors(&item, &parsed_args))
+    {
         return output;
     }
     // A list-form serde rename whose two directions name two keys is refused here, at the one seam
     // a container, a variant and a member are all reachable from.
     // A default of a variant's member that no target but Rust reads as serde does is refused
     // beside it, every such member of the item at once.
-    if let Some(output) = guard_failure_output(
-        &item,
-        item_schema_ident(&item),
-        &serde_attribute_guard_errors(&item),
-    ) {
+    if let Some(output) = refused_item_output(&item, &serde_attribute_guard_errors(&item)) {
         return output;
     }
     // `Foo()` and `Foo` are two wire shapes to serde and one to every surface, in every feature
     // combination, so it is refused here, ahead of every shape.
-    if let Some(output) = guard_failure_output(
-        &item,
-        item_schema_ident(&item),
-        &empty_tuple_variant_errors(&item),
-    ) {
+    if let Some(output) = refused_item_output(&item, &empty_tuple_variant_errors(&item)) {
         return output;
     }
     // A doc example is compiled at one instantiation, and a const parameter takes no filling, so an
     // item writing both is refused here, ahead of every shape.
-    if let Some(output) = guard_failure_output(
-        &item,
-        item_schema_ident(&item),
-        &const_parameter_example_errors(&item),
-    ) {
+    if let Some(output) = refused_item_output(&item, &const_parameter_example_errors(&item)) {
         return output;
     }
     // A const handed to a written type as an argument stands where a type belongs, and no surface
     // can spell it: refused here, ahead of every shape.
-    if let Some(output) = guard_failure_output(
-        &item,
-        item_schema_ident(&item),
-        &const_parameter_argument_errors(&item),
-    ) {
+    if let Some(output) = refused_item_output(&item, &const_parameter_argument_errors(&item)) {
         return output;
     }
     // A name the `indexmap` feature reads is no type this build describes, so it is refused here,
     // ahead of every shape, with the feature named.
-    if let Some(output) = guard_failure_output(
-        &item,
-        item_schema_ident(&item),
-        &indexmap_feature_errors(&item),
-    ) {
+    if let Some(output) = refused_item_output(&item, &indexmap_feature_errors(&item)) {
         return output;
     }
     // No key written on a brand's slot reaches a surface, so it is refused here, at the seam every
     // build shares. The item is re-emitted with the attribute taken off.
-    let brand_slot_errors = branded_slot_prop_errors(&item);
-    if !brand_slot_errors.is_empty()
-        && let Some(output) = guard_failure_output(
-            &item_without_slot_props(&item),
-            item_schema_ident(&item),
-            &brand_slot_errors,
-        )
-    {
+    if let Some(output) = refused_item_output(&item, &branded_slot_prop_errors(&item)) {
         return output;
     }
     // A `preprocess` the read of the item cannot call is refused here, in every build.
@@ -1634,20 +1602,14 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     }
     // `decode_with` generates methods on the type it is written on, and `"archie"` impls for it, so
     // a shape that cannot carry them is refused here rather than left with plain serde.
-    if let Some(output) = guard_failure_output(
-        &item,
-        item_schema_ident(&item),
-        &enable_guard_errors(&item, &parsed_args),
-    ) {
+    if let Some(output) = refused_item_output(&item, &enable_guard_errors(&item, &parsed_args)) {
         return output;
     }
     // A name another declaration already publishes is refused here, after every guard that refuses
     // the item outright: one that publishes nothing claims nothing.
-    if let Some(output) = guard_failure_output(
-        &item,
-        item_schema_ident(&item),
-        &published_name_collision_errors(&item, &parsed_args),
-    ) {
+    if let Some(output) =
+        refused_item_output(&item, &published_name_collision_errors(&item, &parsed_args))
+    {
         return output;
     }
     // Which Zod binding this item publishes turns on whether it declares type parameters, and a
@@ -3193,11 +3155,7 @@ fn preprocess_refusal_output(item: &Item, args: &ModelSchemaArgs) -> Option<Toke
         .iter()
         .map(|rejection| attr_guard_error(rejection, &item_label(item)))
         .collect();
-    guard_failure_output(
-        &preprocess::without_member_keys(item),
-        item_schema_ident(item),
-        &refusals,
-    )
+    refused_item_output(item, &refusals)
 }
 
 /// Records the functions an item names for the parts of its expansion written apart: its checks,
@@ -4358,19 +4316,6 @@ fn branded_slot_prop_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
         .collect()
 }
 
-/// The item with every `#[model_schema_prop]` taken off its slots — what a refused brand is
-/// re-emitted as, the attribute being this crate's own and one rustc reports as nonexistent
-/// wherever a copy survives.
-fn item_without_slot_props(item: &Item) -> Item {
-    let mut stripped = item.clone();
-    if let Item::Struct(item_struct) = &mut stripped {
-        for slot in &mut item_struct.fields {
-            slot.attrs = declaration_attrs(slot);
-        }
-    }
-    stripped
-}
-
 /// The `compile_error!` tokens for every `cfg_attr`-wrapped serde attribute an enum carries: on the
 /// type (tagging, variant casing) and on each variant (`rename`). Collected before the enum is
 /// dispatched, since all three shapes read those same attributes.
@@ -5110,6 +5055,42 @@ fn declaration_attrs(field: &Field) -> Vec<syn::Attribute> {
         .collect()
 }
 
+/// `item` with every `#[model_schema_prop]` taken off its members: what a refused item is
+/// emitted as, the attribute being one rustc reports as nonexistent wherever a copy survives.
+fn without_member_keys(item: &Item) -> Item {
+    let mut stripped = item.clone();
+    if let Item::Struct(item_struct) = &mut stripped {
+        for field in &mut item_struct.fields {
+            field.attrs = declaration_attrs(field);
+        }
+    } else if let Item::Enum(item_enum) = &mut stripped {
+        for variant in &mut item_enum.variants {
+            for field in &mut variant.fields {
+                field.attrs = declaration_attrs(field);
+            }
+        }
+    } else {
+        // An alias has no member.
+    }
+    stripped
+}
+
+/// [`guard_failure_output`] for an item refused before its members are walked: the item is
+/// re-emitted [`without_member_keys`].
+fn refused_item_output(
+    item: &Item,
+    guard_errors: &[proc_macro2::TokenStream],
+) -> Option<TokenStream> {
+    if guard_errors.is_empty() {
+        return None;
+    }
+    guard_failure_output(
+        &without_member_keys(item),
+        item_schema_ident(item),
+        guard_errors,
+    )
+}
+
 /// Writes the serde attributes generation held back onto the fields they were generated for.
 fn apply_deferred_field_attrs<'field>(
     fields: impl Iterator<Item = &'field mut Field>,
@@ -5331,7 +5312,7 @@ fn string_check_refusal_output(
         prefixed_guard_message(&format!("type `{}`: {refusal}", item_struct.ident)),
     )
     .to_compile_error();
-    guard_failure_output(item_struct, Some(&item_struct.ident), &[error])
+    refused_item_output(&Item::Struct(item_struct.clone()), &[error])
 }
 
 /// What a type-level string check is told on a declared type that is no brand.
@@ -5348,9 +5329,8 @@ fn enum_string_check_refusal_output(
     item_enum: &syn::ItemEnum,
     args: &ModelSchemaArgs,
 ) -> Option<TokenStream> {
-    guard_failure_output(
-        item_enum,
-        Some(&item_enum.ident),
+    refused_item_output(
+        &Item::Enum(item_enum.clone()),
         &enum_string_check_errors(item_enum, args),
     )
 }
@@ -5681,11 +5661,8 @@ fn struct_cfg_attr_guard_output(
     rejection: Option<&syn::Error>,
 ) -> Option<TokenStream> {
     let ident = &item_struct.ident;
-    guard_failure_output(
-        item_struct,
-        Some(ident),
-        &[cfg_attr_guard_error(rejection?, &format!("type `{ident}`"))],
-    )
+    let error = cfg_attr_guard_error(rejection?, &format!("type `{ident}`"));
+    refused_item_output(&Item::Struct(item_struct.clone()), &[error])
 }
 /// The struct's own `rename_all`, or the `cfg_attr` refusal that pre-empts reading anything.
 #[cfg(feature = "serde")]
@@ -8240,9 +8217,8 @@ fn branded_guard_failure_output(
     item_struct: &syn::ItemStruct,
     args: &ModelSchemaArgs,
 ) -> Option<TokenStream> {
-    guard_failure_output(
-        item_struct,
-        Some(&item_struct.ident),
+    refused_item_output(
+        &Item::Struct(item_struct.clone()),
         &branded_guard_errors(item_struct, args),
     )
 }
@@ -8586,9 +8562,8 @@ fn process_enum(item_enum: syn::ItemEnum, args: &ModelSchemaArgs) -> TokenStream
     let serde_type_meta = parse_serde_type_attributes(&item_enum.attrs);
 
     #[cfg(feature = "serde")]
-    if let Some(output) = guard_failure_output(
-        &item_enum,
-        Some(&item_enum.ident),
+    if let Some(output) = refused_item_output(
+        &Item::Enum(item_enum.clone()),
         &enum_cfg_attr_guard_errors(&item_enum, &serde_type_meta),
     ) {
         return output;
@@ -9677,9 +9652,8 @@ fn process_discriminated_enum(
     // Read before the walk, which rewrites the very attributes the collapse is read off, and
     // returned before it so no held-back attribute is written onto an item the guard refuses.
     #[cfg(feature = "serde")]
-    if let Some(output) = guard_failure_output(
-        &item_enum,
-        Some(&item_enum.ident),
+    if let Some(output) = refused_item_output(
+        &Item::Enum(item_enum.clone()),
         &adjacent_collapsed_slot_guard_errors(&item_enum, tag_name, content_name),
     ) {
         return output;
@@ -10622,9 +10596,8 @@ fn process_internally_tagged_enum(
     #[cfg(not(any(feature = "typescript", feature = "zod", feature = "jsonschema")))]
     let enum_module_name_opt = None;
 
-    if let Some(output) = guard_failure_output(
-        &item_enum,
-        Some(&item_enum.ident),
+    if let Some(output) = refused_item_output(
+        &Item::Enum(item_enum.clone()),
         &internally_tagged_guard_errors(&item_enum, tag_name),
     ) {
         return output;
