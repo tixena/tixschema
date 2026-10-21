@@ -1,5 +1,5 @@
-//! Tests of the order-keeping maps and the list beside them: `IndexMap`, `IndexSet` and
-//! `serde_json::Map`, each held to what its std twin gives on every surface.
+//! Tests of the order-keeping map and the list beside it: `IndexMap` and `IndexSet`, each held to
+//! what its std twin gives on every surface.
 
 #[cfg(all(
     feature = "serde",
@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use tixschema::model_schema;
 
-const DOCUMENT: &str = r#"{"data":{"zeta":"1","alpha":"2"},"labels":["b","a"],"raw":{}}"#;
+const DOCUMENT: &str = r#"{"data":{"zeta":"1","alpha":"2"},"labels":["b","a"]}"#;
 
 /// [`Document`] as the README declares it, character for character.
 const README_DECLARATION: &str = "#[model_schema()]
@@ -23,7 +23,6 @@ const README_DECLARATION: &str = "#[model_schema()]
 pub struct Document {
     pub data: IndexMap<String, String>,
     pub labels: IndexSet<String>,
-    pub raw: serde_json::Map<String, serde_json::Value>,
 }";
 
 const NESTED: &str = r#"{"by_group":{"odd":[3,1]},"hashed":{"zeta":1,"alpha":2},"listed":[{"zeta":1,"alpha":2}],"optional":{"zeta":1,"alpha":2},"tagged":[9,4]}"#;
@@ -35,7 +34,6 @@ const SLOTTED: &str = r#"{"counts":{"Opening":2,"Closing":1}}"#;
 pub struct Document {
     pub data: IndexMap<String, String>,
     pub labels: IndexSet<String>,
-    pub raw: serde_json::Map<String, serde_json::Value>,
 }
 
 // `Document` written with the std types every surface already reads. A `//` comment: a doc
@@ -45,7 +43,6 @@ pub struct Document {
 pub struct DocumentTwin {
     pub data: HashMap<String, String>,
     pub labels: HashSet<String>,
-    pub raw: HashMap<String, serde_json::Value>,
 }
 
 // Each type under what a field may hold it in, and each written with a hasher of its own.
@@ -141,7 +138,6 @@ fn what_each_type_writes_its_std_twin_reads() {
     let document: DocumentTwin = serde_json::from_str(DOCUMENT).unwrap();
     assert_eq!(document.data.len(), 2);
     assert_eq!(document.labels.len(), 2);
-    assert!(document.raw.is_empty());
     let back: Document = serde_json::from_str(&serde_json::to_string(&document).unwrap()).unwrap();
     assert_eq!(back.data.get("zeta").map(String::as_str), Some("1"));
 
@@ -166,7 +162,6 @@ fn typescript_writes_each_as_its_std_twin() {
     for line in [
         "  data: Partial<Record<string, string>>;",
         "  labels: Array<string>;",
-        "  raw: Partial<Record<string, unknown>>;",
     ] {
         assert!(document.contains(line), "missing `{line}` in: {document}");
         assert!(
@@ -196,7 +191,6 @@ fn zod_writes_each_as_its_std_twin() {
     for member in [
         "data: z.record(z.string(), z.string()),",
         "labels: z.array(z.string()).check((ctx) => {",
-        "raw: z.record(z.string(), z.unknown()),",
     ] {
         assert!(
             document.contains(member),

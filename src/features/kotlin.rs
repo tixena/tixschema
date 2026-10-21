@@ -476,6 +476,7 @@ fn collect_kotlin_fields(
 /// [`FieldDef::is_nullable_at`] says so. Mirrors `dart_base`.
 fn kotlin_base(field: &FieldDef) -> String {
     let scalar = match &field.field_type {
+        // A type written as no path, a function pointer or a macro among them.
         FieldDefType::Unknown => "JsonElement".to_owned(),
         FieldDefType::TypeParam(name) => name.clone(),
         FieldDefType::Tuple(elements) => tuple_wrapper_typename(elements, false),

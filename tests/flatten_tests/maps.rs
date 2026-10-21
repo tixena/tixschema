@@ -8,7 +8,6 @@ use std::collections::HashMap;
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use tixschema::model_schema;
 
 /// Every payload, one that serde reads and one with a count that is no number for each place a
@@ -25,7 +24,7 @@ pub const PAYLOADS: [Payload; 28] = [
         read_as: "Stocktake",
     },
     Payload {
-        json: r#"{"kind":"TaggedStocktake","note":"a","north":2}"#,
+        json: r#"{"kind":"TaggedStocktake","note":"a","north":"2"}"#,
         name: "beside a member and its holder's tag",
         read_as: "TaggedStocktake",
     },
@@ -55,8 +54,8 @@ pub const PAYLOADS: [Payload; 28] = [
         read_as: "Ballast",
     },
     Payload {
-        json: r#"{"label":"n","north":2}"#,
-        name: "ahead of a struct, of any value",
+        json: r#"{"label":"n","north":"2"}"#,
+        name: "ahead of a struct, of text",
         read_as: "Dunnage",
     },
     Payload {
@@ -192,7 +191,7 @@ after a struct and beside a member, a count of text: refused
     'north': Invalid input: expected number, received string
 ahead of a struct: refused
     'label': Invalid input: expected number, received string
-ahead of a struct, of any value: read
+ahead of a struct, of text: read
 two maps: read
 two maps, a count of text: refused
     'south': Invalid input: expected number, received string
@@ -238,13 +237,14 @@ pub struct Stocktake {
     pub note: String,
 }
 
-/// A map beside a member of a struct written under its own tag, which serde hands the map.
+/// A map beside a member of a struct written under its own tag, which serde hands the map: its
+/// values are text, as the tag is.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub struct TaggedStocktake {
     #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
+    pub extra: BTreeMap<String, String>,
     pub note: String,
 }
 
@@ -279,12 +279,12 @@ pub struct Ballast {
     pub marking: Marking,
 }
 
-/// [`Ballast`] with a map of any value.
+/// [`Ballast`] with a map of text, which reads the struct's keys as well.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Dunnage {
     #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
+    pub extra: BTreeMap<String, String>,
     #[serde(flatten)]
     pub marking: Marking,
 }

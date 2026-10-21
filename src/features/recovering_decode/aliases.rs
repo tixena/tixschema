@@ -250,10 +250,10 @@ fn map_of_two(name: &str) -> Option<TokenStream> {
         return None;
     }
     let ident = Ident::new(name, Span::call_site());
-    Some(match name {
-        "IndexMap" => quote! { indexmap::IndexMap },
-        "Map" => quote! { serde_json::Map },
-        _ => quote! { ::std::collections::#ident },
+    Some(if name == "IndexMap" {
+        quote! { indexmap::IndexMap }
+    } else {
+        quote! { ::std::collections::#ident }
     })
 }
 

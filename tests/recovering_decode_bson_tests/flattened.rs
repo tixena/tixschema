@@ -806,23 +806,6 @@ struct Tucked<T> {
     id: String,
 }
 
-/// A flattened JSON value, which holds whatever entries are left.
-#[model_schema(enable = ["decode_with", "mongodb"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct OpenEnded {
-    id: String,
-    #[serde(flatten)]
-    rest: serde_json::Value,
-}
-
-#[model_schema(enable = ["decode_with", "mongodb"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct MaybeOpenEnded {
-    id: String,
-    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
-    rest: Option<serde_json::Value>,
-}
-
 /// A flattened `Option` of a map.
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -844,9 +827,7 @@ flagged! {
     MapThroughHook => map_through_hook_schema,
     MaybeCounted => maybe_counted_schema,
     MaybeId => maybe_id_schema,
-    MaybeOpenEnded => maybe_open_ended_schema,
     NeverRead => never_read_schema,
-    OpenEnded => open_ended_schema,
     Pocket => pocket_schema,
     ThroughHook => through_hook_schema,
     Tucked<Body> => tucked_schema,
@@ -2334,18 +2315,6 @@ fn every_kind_of_flattened_field_reads_what_serde_wrote_with_no_call() {
         ahead: Version { number: 3_i32 },
         counts: counts(),
         id: "i".to_owned(),
-    });
-    reads_what_serde_wrote(&OpenEnded {
-        id: "i".to_owned(),
-        rest: serde_json::json!({ "a": 1_i32, "b": "x" }),
-    });
-    reads_what_serde_wrote(&MaybeOpenEnded {
-        id: "i".to_owned(),
-        rest: Some(serde_json::json!({ "a": 1_i32 })),
-    });
-    reads_what_serde_wrote(&MaybeOpenEnded {
-        id: "i".to_owned(),
-        rest: None,
     });
     reads_what_serde_wrote(&NeverRead {
         id: "i".to_owned(),

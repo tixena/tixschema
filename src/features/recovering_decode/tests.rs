@@ -4373,10 +4373,6 @@ fn every_struct_shape_answers_whether_an_object_names_a_value_of_it() {
             "! object . is_empty ()",
         ),
         (
-            "pub struct Anything(pub serde_json::Value);",
-            "! object . is_empty ()",
-        ),
-        (
             "pub struct Stamp(#[serde(deserialize_with = \"lenient\")] pub Inner);",
             "! object . is_empty ()",
         ),
@@ -4618,13 +4614,6 @@ fn a_single_slot_struct_serde_flattens_walks_what_it_holds_as_a_flattened_field_
              path . to_vec () , & [(\"TypeParam\" , & [\"T\"] , 0)] , issue) . filter (| _ | ! \
              wrap_schema :: reads_an_option :: < Self , _ > (Self :: decode_with_read_unjudged , & wrap_schema :: Asked :: default ()))) ; object . keys () . map \
              (:: std :: string :: String :: as_str) . collect () }",
-        ),
-        (
-            "pub struct Anything(pub serde_json::Value);",
-            "-> :: std :: vec :: Vec < & 'a str > { let found = & serde_json :: Value :: Object \
-             (object . clone ()) ; out . extend (anything_schema :: value_leaf (found , Self :: decode_with_read_unjudged , | _ | :: core :: option :: Option :: None \
-             , path . to_vec () , & [(\"Unknown\" , & [] , 0)] , issue)) ; object . keys () . \
-             map (:: std :: string :: String :: as_str) . collect () }",
         ),
         (
             "pub struct Maybe(pub Option<HashMap<String, i32>>);",
@@ -4950,21 +4939,7 @@ fn a_flattened_value_read_whole_is_not_written_back_and_an_option_not_seen_is_ab
         cfg!(feature = "bson"),
         "got: {hooked}"
     );
-    let open = type_impl_of(
-        "pub struct Open { pub id: String, #[serde(flatten)] pub rest: serde_json::Value }",
-    );
-    assert!(
-        open.contains(
-            "< serde_json :: Value as serde :: Deserialize > :: deserialize , | _ | :: core :: \
-             option :: Option :: None , path . to_vec () , & [(\"Unknown\" , & [] , 0)] , \
-             issue)) ;"
-        ),
-        "got: {open}"
-    );
-    assert!(!open.contains("reads_an_option"), "got: {open}");
-    for emitted in [hooked, open] {
-        assert!(!emitted.contains("_left"), "got: {emitted}");
-    }
+    assert!(!hooked.contains("_left"), "got: {hooked}");
 }
 
 #[test]
@@ -5247,25 +5222,6 @@ fn a_field_typed_with_an_alias_seen_above_is_walked_as_the_type_the_alias_names(
     }
 }
 
-/// A map of another crate is written out again under the name its crate is listed by.
-#[test]
-fn an_alias_of_a_json_object_is_walked_as_the_map_serde_json_declares() {
-    record_declared(
-        "RawObject",
-        Declared::Alias("serde_json :: Map < String , serde_json :: Value >".to_owned()),
-    );
-    let item: syn::ItemStruct =
-        syn::parse_str("pub struct Dossier { pub raw: RawObject }").unwrap();
-    let added = super::struct_recovering_decode(&item, true);
-    let (walker, module) = (added.type_impl.to_string(), added.schema_module.to_string());
-    let written = "const _ : fn (RawObject) -> serde_json :: Map < :: std :: string :: String , \
-                   dossier_schema :: decode_with_at0 :: Value > = | held | held ;";
-    assert!(walker.contains(written), "missing `{written}` in: {walker}");
-    let reached = "pub mod decode_with_at0 { pub type Value = << super :: super :: RawObject as \
-                   :: core :: iter :: IntoIterator > :: Item as super :: EntryOf > :: Value ; }";
-    assert!(module.contains(reached), "missing `{reached}` in: {module}");
-}
-
 #[cfg(feature = "indexmap")]
 #[test]
 fn an_alias_of_an_index_map_or_an_index_set_is_walked_as_the_type_indexmap_declares() {
@@ -5511,7 +5467,6 @@ fn a_key_serde_never_writes_and_a_map_have_no_function() {
         "#[serde(skip_serializing)] pub a: u8",
         "pub a: HashMap<String, Inner>",
         "pub a: BTreeMap<String, u8>",
-        "pub a: serde_json::Map<String, serde_json::Value>",
         #[cfg(feature = "indexmap")]
         "pub a: IndexMap<String, Inner>",
         #[cfg(feature = "indexmap")]

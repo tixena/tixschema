@@ -662,19 +662,6 @@ struct Pouch {
     title: String,
 }
 
-/// A single-slot struct over whatever a JSON value holds.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Anything(Value);
-
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Crate {
-    #[serde(flatten)]
-    anything: Anything,
-    title: String,
-}
-
 /// A flattened generic brand filled with a map.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -811,23 +798,6 @@ struct Unpicked {
     id: String,
 }
 
-/// A flattened JSON value, which holds whatever entries are left.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct OpenEnded {
-    id: String,
-    #[serde(flatten)]
-    rest: Value,
-}
-
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct MaybeOpenEnded {
-    id: String,
-    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
-    rest: Option<Value>,
-}
-
 /// A flattened `Option` of a map.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -952,7 +922,6 @@ flagged! {
     Crated => crated_schema,
     Optioned => optioned_schema,
     Pouch => pouch_schema,
-    Crate => crate_schema,
     Basket => basket_schema,
     Parcel<Plain> => parcel_schema,
     Wrapping => wrapping_schema,
@@ -973,8 +942,6 @@ flagged! {
     ThroughHook => through_hook_schema,
     MapThroughHook => map_through_hook_schema,
     HookAhead => hook_ahead_schema,
-    OpenEnded => open_ended_schema,
-    MaybeOpenEnded => maybe_open_ended_schema,
     MaybeCounted => maybe_counted_schema,
 }
 
@@ -1532,13 +1499,10 @@ fn a_key_no_flattened_struct_declares_is_unknown_once_beside_two_of_them() {
 }
 
 #[test]
-fn a_flattened_single_slot_struct_over_an_optional_map_or_a_json_value_claims_what_serde_reads() {
+fn a_flattened_single_slot_struct_over_an_optional_map_claims_what_serde_reads() {
     let counted = json!({ "a": 1_i32, "title": "t" });
     assert!(agrees::<Pouch>(&counted));
     assert!(agrees::<Pouch>(&json!({ "title": "t" })));
-    assert!(agrees::<Crate>(
-        &json!({ "a": 1_i32, "b": "x", "title": "t" })
-    ));
     assert!(agrees::<Basket>(&json!({ "a": 1_i32, "id": "i" })));
     assert!(agrees::<Deeper>(&json!({ "name": "n", "number": 3_i32 })));
     assert!(agrees::<Deeper>(&json!({ "name": "n" })));
@@ -1682,12 +1646,6 @@ fn every_kind_of_flattened_field_reads_what_serde_wrote_with_no_call() {
     assert!(agrees::<Letter<HashMap<String, i32>>>(
         &json!({ "a": 1_i32, "id": "i" })
     ));
-
-    assert!(agrees::<OpenEnded>(
-        &json!({ "a": 1_i32, "b": "x", "id": "i" })
-    ));
-    assert!(agrees::<MaybeOpenEnded>(&json!({ "a": 1_i32, "id": "i" })));
-    assert!(agrees::<MaybeOpenEnded>(&json!({ "id": "i" })));
 }
 
 #[test]

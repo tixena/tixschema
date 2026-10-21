@@ -193,6 +193,11 @@ item, computed expression) records nothing and describes as an unbounded array.
 - Complex: `SiblingType` (custom types), `Map` (HashMap), `Tuple`, `Range` (a std range, its `RangeKind` and its bound), `Result` (a std `Result`, its `Ok` and its `Err`)
 - Special: `ObjectId` (MongoDB, feature-gated), `StringLiteral`, `TypeParam`, `Unknown`
 
+`Unknown` is a type no surface can name: one written as no path (a function pointer, a trait
+object, a macro in type position), a path with parenthesized arguments, and, in Dart alone, an
+opaque type parameter (`opaque_parameters`). Every surface describes it as any value. A
+`serde_json::Value` is never one: it is refused before any field is read (section 4).
+
 `TypeParam` is one of the enclosing item's own type parameters, which `erase_type_parameters`
 rewrites a written name into. The three surfaces answer for it differently: TypeScript renders the
 name it was written with, JSON Schema describes it as `{}`, and Zod composes the argument the
@@ -288,13 +293,13 @@ pub struct BadMapKey {
 ```
 
 `is_map_wrapper` in `src/field_type.rs` is the one seam that says which names are a map: `HashMap`,
-`BTreeMap`, `IndexMap` under the `indexmap` feature, and `Map`, which is `serde_json`'s, read by its
-last name as `Value` is. The field definition, the constraint walk, the walk `validate()` makes to
-what a member holds, the recovering decode's walker and its rewriting of an alias, and the MongoDB
-paths all ask it, as they ask `is_sequence_wrapper` for a list, which takes `IndexSet` under the
-same feature. `IndexMap`, `IndexSet` and `Map` are names of another crate's, so the two functions
-ask `is_declared_ident` for the three: a type the crate declared under one of them above keeps the
-name, with the feature on or off.
+`BTreeMap`, and `IndexMap` under the `indexmap` feature. The field definition, the constraint walk,
+the walk `validate()` makes to what a member holds, the recovering decode's walker and its
+rewriting of an alias, and the MongoDB paths all ask it, as they ask `is_sequence_wrapper` for a
+list, which takes `IndexSet` under the same feature. `IndexMap` and `IndexSet` are names of another
+crate's, so the two functions ask `is_declared_ident` for both: a type the crate declared under one
+of them above keeps the name, with the feature on or off. `serde_json::Map` is no map: a member
+that holds one is refused (section 4).
 `is_declared_ident` reads the published names, the one registry every build writes. A key is held
 to the rules of this section whichever of those maps it is written in.
 
@@ -344,6 +349,20 @@ unaffected at every position: a stringified key describes as `{"type": "object",
 - `#[serde(untagged)]` enum → TypeScript union (`A | B`), Zod `z.union([...])`, JSON Schema `anyOf`
 - A member of a struct or of an enum's variant under `#[serde(default)]` → the TypeScript member unchanged, Zod `T.prefault(<json>)`, JSON Schema `"default": <json>` with the key left out of `required`, and each client reading the JSON of the default where the key is left out (section 13)
 - Type parameter → TypeScript parameter (`X<IdType>`), Zod `X$SchemaFactory(idType)` (memoized, one cache level per parameter) plus `X$SchemaDefault` — that same factory called at the item's own declared `default_types`, checks included — JSON Schema the document of whatever fills it — `default_types(...)` where the type stands alone, the reference site's arguments where a field embeds it. A lifetime is dropped on every surface, a borrowed value writing what its owned form writes; a const renders as an array length only, and is refused where it is handed to a written type as an argument
+- `serde_json::Value` and `serde_json::Map` → refused, in every build: a compile error at
+  expansion naming the place, ``model_schema: type `Holding`: field `v` reaches
+  `serde_json::Value`, which holds any JSON value, so no target can describe it.`` and the rewrite
+  to make. No target describes either, and none keeps code for them. `any_json_errors` asks it at
+  `exec_model_schema`, ahead of every shape, of each member (a field, a slot, a variant's member),
+  the type an alias names and each `default_types` filling, and refuses through
+  `UndescribableStd::AnyJson`, the arm beside the std types `undescribable_std_rejection` refuses
+  (`OsString`, the cells and locks, `LinkedList`). Those are asked at each position under a schema
+  surface; this one is asked once, ungated, because no build may describe it.
+  `FieldDef::any_json_name` reads the two names by their last segment through `reached_name`, at
+  any depth, and keeps a name the crate declared (`is_declared_ident`), one of the item's own type
+  parameters and the item's own. tixschema's own APIs that take or answer a `serde_json::Value` (a
+  `preprocess` function, `from_value_with`, `from_value_piped`, `schema_examples()`, the archie
+  conversions) are untouched
 
 ### 5. Zod v4 Requirements
 
@@ -499,8 +518,8 @@ gets, at the field. Zod writes the checks as one `.check(…)` on the named sche
 type and a length on one written with arguments, in every build.
 
 A bound of the wrong kind is refused there as well, by `check_bound_kind`, in every build: a length
-or a pattern on a numeric field, a range on a string, a `bool`, a `char` or a `serde_json::Value`
-field (`FieldDefType::Unknown`, any type every surface describes as unknown), and a pattern or a
+or a pattern on a numeric field, a range on a string, a `bool`, a `char` or a field of a type every
+surface describes as unknown (`FieldDefType::Unknown`), and a pattern or a
 range on a list, under `Option` and any transparent wrapper, naming the field and only the keys of
 the wrong kind. The refusal of a range says what the field writes, and only a string's names the
 keys that bound it. `FieldDef::unmeasured_bound` is the one question the refusal

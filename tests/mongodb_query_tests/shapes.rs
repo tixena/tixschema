@@ -116,7 +116,6 @@ struct Catalogued {
     labels: IndexSet<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     more: Option<IndexSet<u32>>,
-    raw: serde_json::Map<String, serde_json::Value>,
 }
 
 /// A variant holding several values, written as an array under the variant's name: here a name
@@ -445,7 +444,7 @@ fn a_shape_no_path_kind_covers_is_one_whole_value() {
     );
 }
 
-/// `byCity` and `raw` are maps: the struct of paths has no function for either.
+/// `byCity` is a map: the struct of paths has no function for it.
 #[cfg(feature = "indexmap")]
 #[test]
 fn an_index_set_is_a_list_and_an_order_keeping_map_is_written_with_its_row() {
@@ -480,13 +479,12 @@ fn an_index_set_is_a_list_and_an_order_keeping_map_is_written_with_its_row() {
         by_city: IndexMap::from([("Moca".to_owned(), moca()), ("Azua".to_owned(), moca())]),
         labels: IndexSet::from(["b".to_owned(), "a".to_owned()]),
         more: None,
-        raw: serde_json::Map::from_iter([("seen".to_owned(), serde_json::Value::Bool(true))]),
     }
     .serialize(bson::Serializer::new())
     .unwrap();
     assert_eq!(
         shown(stored.as_document().unwrap().clone()),
-        r#"{ "byCity": { "Moca": { "city": "Moca", "postalCode": "56000" }, "Azua": { "city": "Moca", "postalCode": "56000" } }, "labels": ["b", "a"], "raw": { "seen": true } }"#
+        r#"{ "byCity": { "Moca": { "city": "Moca", "postalCode": "56000" }, "Azua": { "city": "Moca", "postalCode": "56000" } }, "labels": ["b", "a"] }"#
     );
 }
 
