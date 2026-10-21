@@ -1904,6 +1904,8 @@ fn variant_payload(
 /// `@JvmInline value class` for a scalar `Value` payload — the bare wire form an untagged member
 /// needs — while a tagged form wraps it in an ordinary `data class` property instead. The plugin
 /// writes the subclass's serializer, `plugin`, which reads a model the variant holds unjudged.
+/// Beside the declaration, the type a `Value` payload's property is declared with: each ask of a
+/// tuple's name queues another wrapper, so the enum's serializer reads the value by this one.
 fn variant_subclass(
     export_name: &str,
     plugin: &Plugin<'_>,
@@ -1912,22 +1914,24 @@ fn variant_subclass(
     serial_name: Option<&str>,
     bare_value: bool,
     payload: &VariantPayload,
-) -> String {
+) -> (String, Option<String>) {
     let subclass_name = plugin.owner;
     let annotation =
         serial_name.map_or_else(String::new, |wire| format!("@SerialName(\"{wire}\") "));
     match payload {
-        VariantPayload::Unit => {
+        VariantPayload::Unit => (
             format!(
                 "{annotation}@Serializable data object {subclass_name} : {export_name}{nothing_generic_args}"
-            )
-        }
-        VariantPayload::Named(fields) => {
+            ),
+            None,
+        ),
+        VariantPayload::Named(fields) => (
             format!(
                 "{annotation}@Serializable data class {subclass_name}{generic_params}({}) : {export_name}{generic_params}",
                 data_class_params(fields, Some(plugin))
-            )
-        }
+            ),
+            None,
+        ),
         VariantPayload::Value(field_def) => {
             let (unjudged, held) = read::plugin_read(field_def);
             let class = if bare_value {
@@ -1935,8 +1939,11 @@ fn variant_subclass(
             } else {
                 "@Serializable data class"
             };
-            format!(
-                "{annotation}{class} {subclass_name}{generic_params}({unjudged}val value: {held}) : {export_name}{generic_params}"
+            (
+                format!(
+                    "{annotation}{class} {subclass_name}{generic_params}({unjudged}val value: {held}) : {export_name}{generic_params}"
+                ),
+                Some(held),
             )
         }
     }
@@ -1986,18 +1993,18 @@ fn dispatched_tagged_variant(
         owner: &subclass_name,
         type_parameters: ctx.type_parameters,
     };
+    let (declaration, declared) = variant_subclass(
+        ctx.export_name,
+        &plugin,
+        ctx.generic_params,
+        ctx.nothing_generic_args,
+        // Under a tag alone the subclass is named by its tag.
+        beside_the_tag.then_some(wire_tag.as_str()),
+        false,
+        &payload,
+    );
     let subclass = format!(
-        "{} {}",
-        variant_subclass(
-            ctx.export_name,
-            &plugin,
-            ctx.generic_params,
-            ctx.nothing_generic_args,
-            // Under a tag alone the subclass is named by its tag.
-            beside_the_tag.then_some(wire_tag.as_str()),
-            false,
-            &payload,
-        ),
+        "{declaration} {}",
         variant_body(&payload, ctx.tagging, &wire_tag, ctx.serializable, ctx.args)
     );
 
@@ -2011,21 +2018,22 @@ fn dispatched_tagged_variant(
         Tagging::Unwrapped => format!("JsonObject(obj - \"{tag_key}\")"),
     };
     let own = || kotlin_subclass_serializer_expr(&subclass_name, ctx.type_parameters);
-    let (content_expr, decode_expr) = match &payload {
-        VariantPayload::Unit => (None, subclass_name.clone()),
-        VariantPayload::Value(field_def) if !beside_the_tag => (
-            Some(format!(
-                "output.json.encodeToJsonElement({}, value.value)",
-                read::member_serializer(field_def, ctx.type_parameters)
-            )),
-            format!(
-                "{subclass_name}(input.json.decodeFromJsonElement({}, {}))",
-                read::member_serializer(field_def, ctx.type_parameters),
-                preprocess::corrected(preprocess::of(field_def), &data)
-            ),
-        ),
+    let (content_expr, decode_expr) = match (&payload, &declared) {
+        (VariantPayload::Unit, _) => (None, subclass_name.clone()),
+        (VariantPayload::Value(field_def), Some(held)) if !beside_the_tag => {
+            let read_by = read::declared_serializer(field_def, held, ctx.type_parameters);
+            (
+                Some(format!(
+                    "output.json.encodeToJsonElement({read_by}, value.value)"
+                )),
+                format!(
+                    "{subclass_name}(input.json.decodeFromJsonElement({read_by}, {}))",
+                    preprocess::corrected(preprocess::of(field_def), &data)
+                ),
+            )
+        }
         // Under a tag alone a variant is its subclass's own object, a lone slot included.
-        VariantPayload::Named(_) | VariantPayload::Value(_) => (
+        (VariantPayload::Named(_) | VariantPayload::Value(_), _) => (
             Some(format!("output.json.encodeToJsonElement({}, value)", own())),
             format!(
                 "input.json.decodeFromJsonElement({}, {})",
@@ -2198,17 +2206,17 @@ fn untagged_enum_kotlin_source(
             owner: &subclass_name,
             type_parameters: &type_parameters,
         };
+        let (declaration, _) = variant_subclass(
+            export_name,
+            &plugin,
+            &generic_params,
+            &nothing_generic_args,
+            None,
+            bare_value,
+            &payload,
+        );
         subclasses.push(format!(
-            "{} {{ {} }}",
-            variant_subclass(
-                export_name,
-                &plugin,
-                &generic_params,
-                &nothing_generic_args,
-                None,
-                bare_value,
-                &payload,
-            ),
+            "{declaration} {{ {} }}",
             rules.written("override ")
         ));
         let subclass_serializer = kotlin_subclass_serializer_expr(&subclass_name, &type_parameters);

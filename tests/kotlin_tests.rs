@@ -21,3 +21,15 @@ mod read;
 #[cfg(feature = "kotlin")]
 #[path = "kotlin_tests/preprocess.rs"]
 mod preprocess;
+
+/// The models an enum with a variant of several slots is written on, under each tagging.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "kotlin_tests/tuple_variants_models.rs"]
+mod tuple_variants_models;
+
+/// An enum with a variant of several slots, its slots written and read by one tuple wrapper.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "kotlin_tests/tuple_variants.rs"]
+mod tuple_variants;
