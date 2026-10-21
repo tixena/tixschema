@@ -307,7 +307,7 @@ These build as they did, since no surface reads the member otherwise than serde 
 
 ### Collections and Maps
 
-`Vec<T>` becomes `Array<T>`, and so does every other std wrapper serde writes as a JSON array of its element: `VecDeque<T>`, `BinaryHeap<T>`, `HashSet<T>`, and `BTreeSet<T>`. Under the [`indexmap` feature](#feature-flags), `indexmap::IndexSet<T>` is one more. Each is that array on the wire, so each is typed and validated as that array — the element decides what the array holds. Nesting is kept at whatever depth it is written: a `Vec<Vec<T>>` (or `HashSet<Vec<T>>`, or any other mix of those wrappers) writes an array of arrays, so it becomes `Array<Array<T>>`, `z.array(z.array(...))`, and a JSON schema whose `items` is itself an array.
+`Vec<T>` becomes `Array<T>`, and so does every other std wrapper serde writes as a JSON array of its element: `VecDeque<T>`, `BinaryHeap<T>`, `HashSet<T>`, and `BTreeSet<T>`. Under the [`indexmap` feature](#feature-flags), `indexmap::IndexSet<T>` is one more. Each is that array on the wire, so each is typed and validated as that array — the element decides what the array holds. A set is that array with its items distinct: see [A set holds each item once](#a-set-holds-each-item-once). Nesting is kept at whatever depth it is written: a `Vec<Vec<T>>` (or `HashSet<Vec<T>>`, or any other mix of those wrappers) writes an array of arrays, so it becomes `Array<Array<T>>`, `z.array(z.array(...))`, and a JSON schema whose `items` is itself an array.
 
 `LinkedList<T>` is the one std sequence left out. It writes that same array, so the covered spellings already describe every wire form it has, and a type written with one is refused at compile time with the rewrite named: use `Vec<T>`, or `VecDeque<T>` where values are pushed at both ends.
 
@@ -476,6 +476,24 @@ The order is the Rust type's. A schema describes an object and states no order, 
 The [recovering decode](#recovering-decode-decode_with) walks each of these maps entry by entry, each issue at its key's path, and an `IndexSet` item by item. Its second read is serde's, so an `IndexMap` field is filled in the order of the source: a `bson` document keeps the order the row stored, and a `serde_json::Value` holds its keys as the table says of `serde_json::Map`. Under `mongodb` a map has no typed path, whichever of the four it is, and an `IndexSet` field is a `ListField`.
 
 `Map` is read by its last name, as `Value` is: a field written `Map<K, V>` is `serde_json`'s map. A `#[model_schema()]` type of the crate's own named `IndexMap`, `IndexSet` or `Map`, declared above the type that holds it, keeps its name: a field written with that name is that type, with the `indexmap` feature on or off. With the feature off, any other type written `IndexMap<K, V>` or `IndexSet<T>` is refused with the feature named. See [`IndexMap` or `IndexSet` Without the Feature](#indexmap-or-indexset-without-the-feature).
+
+#### A set holds each item once
+
+`HashSet<T>`, `BTreeSet<T>` and, under the `indexmap` feature, `IndexSet<T>` are arrays whose items are distinct. serde reads a payload that repeats an item and keeps the item once: `{"tags":["a","a"]}` is read as the set of the one `"a"`, and a `minLength` written on the set counts what is left. Every other surface refuses the repeat:
+
+| Surface | `{"tags":["a","a"]}`, read as a `HashSet<String>` field |
+|---|---|
+| Rust | reads `{"a"}` |
+| JSON Schema | refuses it: the set's array writes `"uniqueItems": true` |
+| Zod | refuses it with `repeats an item: a set holds each item once`, at the path `["tags"]` |
+| Dart, Swift and Kotlin | `validate()` answers `'tags': repeats an item: a set holds each item once`, so the read refuses it |
+| TypeScript | `Array<string>`, as a list writes it |
+
+- **Two items are one where they write one JSON text.** Zod compares the items it parsed, an object's keys in the order its schema declares them. Dart compares the JSON its codec writes for each item, Swift the JSON `JSONEncoder` writes with sorted keys, and Kotlin the values themselves, the emitted types comparing by value. So two objects that write their members in another order are one item on every surface.
+- **The rule holds at every depth**: a set in a list, in an `Option`, as a map's value, in a slot, as a variant's member, under a brand, and a list in a set. Each repeat is reported under the place of its set: `'grid.1'` for the second set of a `Vec<HashSet<u32>>`, `'keyed.k'` for the set a map holds under `k`.
+- **Zod checks a repeat after the set's count, and a client's `validate()` ahead of it.**
+- **A set chooses no variant of an untagged enum by a repeat.** serde reads the payload, so each surface chooses the variant serde chooses, and then refuses the repeat under that variant's place.
+- **Rust's `validate()` answers nothing of a repeat**: a Rust set never holds one, so each client agrees with Rust on every value Rust holds.
 
 ### Pointers and Borrowed Values
 
@@ -4508,9 +4526,10 @@ Error: The method 'withinParcel' isn't defined for the type 'Parcel'.
 | `minimum`, `maximum` | `value < N`, `value > N` |
 | `pattern`, and the second pattern [an enum's own check](#a-check-written-on-the-enum) adds | `RegExp("...").hasMatch(value)`, a match anywhere in the string |
 | `check` on a field and on a type | a call of the function under that name |
+| a `HashSet`, a `BTreeSet` or an `IndexSet`, with no key | `_repeats(value)`, ahead of the set's count: two items are one where the JSON the codec writes for each is one text, and the message is [`repeats an item: a set holds each item once`](#a-set-holds-each-item-once) |
 
 - **The sentence is the one Rust and Zod write**, from the same source. A whole number is quoted back without `.0`: `too large: maximum is 3, got 4` for a `double` holding `4.0`.
-- **The order is Rust's**: each member as declared, its bounds, then what the value it holds reports, then its checks, and the type's own checks last.
+- **The order is Rust's**: each member as declared, its bounds, then what the value it holds reports, then its checks, and the type's own checks last. The repeat of a set, which Rust never reports, runs ahead of the set's count.
 - **An optional member is measured where it holds a value.** A member typed with a branded string is measured on the text the wrapper holds.
 - **A holder runs the `validate()` of what it holds**, through an optional, each level of a list, a map's values and the positions of a tuple, and writes the place in front: `'parcelList.1.fragileItemCodes.1'`, `'parcelsByDock.north.label'`. An entry of a map is named by the text its key is written as, in the order the map holds its keys. A value behind one of the type's own parameters is not reached, as in Rust.
 - **A brand runs its own string check on the value it wraps**, under no place. A brand over one of its own parameters holds its declared default and no other filling: `if (value case final String held) ...`. A brand over a list counts its items at every filling.
@@ -4698,6 +4717,7 @@ The `validate()` of the parcel `{"label":"","itemCodeList":["x","x"],"fragileIte
 | `minLength`, `maxLength` | a list | `value.size` |
 | `minimum`, `maximum` | a number | `value < 1u`, `value > 120.0`: a comparison in the number's own type |
 | `pattern`, and the second pattern an enum writes | a string | `Regex("...").containsMatchIn(value)`: a match anywhere |
+| none | a `HashSet`, a `BTreeSet` or an `IndexSet` | `value.toSet().size != value.size`, ahead of the set's count: two equal items repeat one, and the message is [`repeats an item: a set holds each item once`](#a-set-holds-each-item-once) |
 
 - **A length is counted in Unicode code points**, so `"é"` and a character outside the Basic Multilingual Plane each count one. The Rust validator counts the bytes of the UTF-8 text (`len()`) and the Zod schema counts UTF-16 code units (`length`), so the three agree on ASCII text and can differ on any other.
 - **A nullable member is measured only where it holds a value**: `spareLabel?.let { held -> ... }`.
@@ -4998,6 +5018,7 @@ A type with no rule, which holds no type that has one, declares `public func val
 | `minimum`, `maximum` | `value < N`, `value > N` |
 | `pattern`, and an enum's own beside a field's | `value.range(of: "...", options: .regularExpression) == nil`: a match anywhere in the string |
 | `check = ["withinParcel"]` | `withinParcel(value)`, the Swift function of that name |
+| a `HashSet`, a `BTreeSet` or an `IndexSet`, with no key | `Parcel.swiftSchemaRepeats(value)`, ahead of the set's count: two items are one where `JSONEncoder` with sorted keys writes one text for both, and the message is [`repeats an item: a set holds each item once`](#a-set-holds-each-item-once) |
 
 - **The unit of a length is the Unicode code point**: `"é"` counts 1, `"e\u{301}"` 2, and a character outside the Basic Multilingual Plane 1. The Rust `validate()` measures a string with `len()`, its bytes in UTF-8, so the two agree on ASCII text and differ beyond it.
 - **A whole float is quoted back without `.0`**, as Rust writes it: `2.0` reads `got 2`.

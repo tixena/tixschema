@@ -20,7 +20,7 @@ use crate::features::model_schema_prop::ModelSchemaPropMeta;
 use crate::utils::{MapKeyWire, is_declared_ident, lookup_alias_info, written_type};
 
 #[cfg(feature = "zod")]
-use crate::bound_message::{Bound, zod_error_arg};
+use crate::bound_message::{Bound, zod_error_arg, zod_repeat_check};
 #[cfg(feature = "zod")]
 use crate::features::serde::defaults::{holds_a_placeholder, placeholder};
 #[cfg(feature = "zod")]
@@ -258,17 +258,20 @@ pub struct FieldDef {
     /// whose default is written as JSON.
     #[cfg(any(feature = "zod", feature = "jsonschema"))]
     pub serde_default: Option<usize>,
+    /// The array levels written as a set, numbered as `array_lengths` numbers them.
+    pub set_levels: Vec<u8>,
     #[cfg(feature = "jsonschema")]
     pub type_span: Span,
 }
 
 /// Two field defs are equal when they describe the same value on every surface: the same type, the
-/// same array levels, the same fixed lengths and the same nullable levels.
+/// same array levels, the same fixed lengths, the same nullable levels and the same set levels.
 impl PartialEq for FieldDef {
     fn eq(&self, other: &Self) -> bool {
         self.array_depth == other.array_depth
             && self.array_lengths == other.array_lengths
             && self.nullable_levels == other.nullable_levels
+            && self.set_levels == other.set_levels
             && self.field_type == other.field_type
     }
 }
@@ -335,12 +338,19 @@ impl FieldDef {
     pub fn collection_element_field(&self, element: &Self) -> Self {
         let mut arrayed = element.clone();
         arrayed.name.clone_from(&self.name);
+        let own_level = element.array_depth;
         arrayed.array_depth = element.array_depth.saturating_add(1);
+        if matches!(&self.field_type, FieldDefType::SiblingType(name, _) if is_set_wrapper(name)) {
+            arrayed.mark_set_at(own_level);
+        }
         for level in &self.nullable_levels {
             arrayed.mark_nullable_at(level.saturating_add(arrayed.array_depth));
         }
         for &(level, length) in &self.array_lengths {
             arrayed.mark_fixed_length_at(level.saturating_add(arrayed.array_depth), length);
+        }
+        for level in &self.set_levels {
+            arrayed.mark_set_at(level.saturating_add(arrayed.array_depth));
         }
         arrayed.array_depth = arrayed.array_depth.saturating_add(self.array_depth);
         arrayed
@@ -657,6 +667,26 @@ impl FieldDef {
         self.is_nullable_at(self.array_depth)
     }
 
+    /// Whether the field's own value, under its own `Option`, is a set.
+    #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+    pub fn is_set(&self) -> bool {
+        self.own_level()
+            .is_some_and(|leveled| leveled.is_set_at(leveled.array_depth.saturating_sub(1)))
+    }
+
+    /// Whether the array at level `level` was written as a set, levels numbered as
+    /// `array_lengths` numbers them: level 0 is the array that holds what `field_type` names.
+    #[cfg(any(
+        feature = "jsonschema",
+        feature = "zod",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    ))]
+    pub fn is_set_at(&self, level: u8) -> bool {
+        self.set_levels.contains(&level)
+    }
+
     /// Whether the field is `()` itself, which serde writes as `null`.
     pub const fn is_unit(&self) -> bool {
         self.array_depth == 0
@@ -738,6 +768,12 @@ impl FieldDef {
     fn mark_nullable_at(&mut self, level: u8) {
         if !self.nullable_levels.contains(&level) {
             self.nullable_levels.push(level);
+        }
+    }
+
+    fn mark_set_at(&mut self, level: u8) {
+        if !self.set_levels.contains(&level) {
+            self.set_levels.push(level);
         }
     }
 
@@ -858,6 +894,20 @@ impl FieldDef {
             .find_map(|nested| nested.object_map_key())
     }
 
+    /// Reads each of the enclosing item's own type parameters this field reaches, at any depth, as
+    /// a value no surface describes: what such a value writes is then its own, read with no
+    /// converter of the codec's.
+    #[cfg(feature = "dart")]
+    pub fn opaque_parameters(&mut self) {
+        if matches!(self.field_type, FieldDefType::TypeParam(_)) {
+            self.field_type = FieldDefType::Unknown;
+            return;
+        }
+        for nested in self.nested_type_positions() {
+            nested.opaque_parameters();
+        }
+    }
+
     /// The `?` a member written with an absent-able key carries, and nothing for one whose key is
     /// always written.
     pub fn optional_key_marker(&self) -> &'static str {
@@ -867,6 +917,22 @@ impl FieldDef {
     /// The name of the first `OsString`/`OsStr` this field reaches, at any depth.
     pub fn os_string_name(&self) -> Option<&str> {
         self.reached_name(|name| matches!(name, "OsString" | "OsStr"))
+    }
+
+    /// The field written with its own value as an array level of its own, a sequence wrapper's
+    /// level among its element's, or `None` where its own value is no array.
+    #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+    fn own_level(&self) -> Option<Self> {
+        if self.array_depth > 0 {
+            return Some(self.clone());
+        }
+        if let FieldDefType::SiblingType(name, arguments) = &self.field_type
+            && let [element] = arguments.as_slice()
+            && is_sequence_wrapper(name)
+        {
+            return Some(self.collection_element_field(element));
+        }
+        None
     }
 
     /// The parameter this field is or reaches, which is what a nested position is asked for: below
@@ -1046,6 +1112,7 @@ impl FieldDef {
                         omits_value: false,
                         #[cfg(any(feature = "zod", feature = "jsonschema"))]
                         serde_default: None,
+                        set_levels: Vec::new(),
                         #[cfg(feature = "jsonschema")]
                         type_span: Span::call_site(),
                     }));
@@ -1336,12 +1403,29 @@ impl FieldDef {
         value.array_depth = 0;
         value.array_lengths.clear();
         value.nullable_levels.clear();
+        value.set_levels.clear();
         value
+    }
+
+    /// The field with its own set read as a plain list: what a walk below the set reads, the set's
+    /// own repeat being asked ahead of its count. The field as it is where its own value is no
+    /// set.
+    #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+    pub fn without_own_set(&self) -> Self {
+        match self.own_level() {
+            Some(mut leveled) if leveled.is_set_at(leveled.array_depth.saturating_sub(1)) => {
+                let own = leveled.array_depth.saturating_sub(1);
+                leveled.set_levels.retain(|&level| level != own);
+                leveled
+            }
+            Some(_) | None => self.clone(),
+        }
     }
 
     /// The type match plus one `z.array(…)` per array level, each carrying the `z.nullable(…)` of
     /// the level it wraps and the `.length(N)` of a level written as a fixed-size `[T; N]`, before
-    /// the preprocess wrap. The outermost level carries the count the field's own keys hold it to.
+    /// the preprocess wrap. The outermost level carries the count the field's own keys hold it to,
+    /// and a level written as a set the check that refuses a repeat, after the count.
     #[cfg(feature = "zod")]
     fn zod_array_base(&self) -> String {
         let result = match &self.field_type {
@@ -1435,21 +1519,32 @@ impl FieldDef {
             }
         };
         (0..self.array_depth).fold(result, |wrapped, level| {
-            let item = if self.is_nullable_at(level) {
-                format!("z.nullable({wrapped})")
-            } else {
-                wrapped
-            };
-            let bound = self
-                .fixed_length_at(level)
-                .map_or_else(String::new, |length| format!(".length({length})"));
-            let counted = if level.saturating_add(1) == self.array_depth {
-                self.zod_item_count_checks()
-            } else {
-                String::new()
-            };
-            format!("z.array({item}){bound}{counted}")
+            self.zod_array_level(wrapped, level)
         })
+    }
+
+    /// The `z.array(…)` of array level `level` around `wrapped`, the schema of what it holds.
+    #[cfg(feature = "zod")]
+    fn zod_array_level(&self, wrapped: String, level: u8) -> String {
+        let item = if self.is_nullable_at(level) {
+            format!("z.nullable({wrapped})")
+        } else {
+            wrapped
+        };
+        let bound = self
+            .fixed_length_at(level)
+            .map_or_else(String::new, |length| format!(".length({length})"));
+        let counted = if level.saturating_add(1) == self.array_depth {
+            self.zod_item_count_checks()
+        } else {
+            String::new()
+        };
+        let distinct = if self.is_set_at(level) {
+            zod_repeat_check()
+        } else {
+            String::new()
+        };
+        format!("z.array({item}){bound}{counted}{distinct}")
     }
 
     /// Builds the Zod schema before the struct-field optional wrap: the type match, the
@@ -1903,6 +1998,16 @@ pub fn is_sequence_wrapper(name: &str) -> bool {
     }
 }
 
+/// The sequences whose items serde reads as distinct: a repeat in the payload is kept once.
+pub fn is_set_wrapper(name: &str) -> bool {
+    match name {
+        "BTreeSet" | "HashSet" => true,
+        #[cfg(feature = "indexmap")]
+        "IndexSet" => !is_declared_ident(name),
+        _ => false,
+    }
+}
+
 /// The one list of maps the crate reads as a map: each is an object on the wire, written from
 /// its two leading type arguments.
 pub fn is_map_wrapper(name: &str) -> bool {
@@ -2012,6 +2117,7 @@ fn get_field_def_from_type_path(
             omits_value: false,
             #[cfg(any(feature = "zod", feature = "jsonschema"))]
             serde_default: None,
+            set_levels: Vec::new(),
             #[cfg(feature = "jsonschema")]
             type_span: type_path.span(),
         };
@@ -2030,6 +2136,7 @@ fn get_field_def_from_type_path(
             omits_value: false,
             #[cfg(any(feature = "zod", feature = "jsonschema"))]
             serde_default: None,
+            set_levels: Vec::new(),
             // The name segment, not the whole path: it is what a generated module is named after,
             // so a reference the module cannot resolve is blamed on the name it was built from.
             #[cfg(feature = "jsonschema")]
@@ -2055,6 +2162,7 @@ fn get_field_def_from_type_path(
             omits_value: false,
             #[cfg(any(feature = "zod", feature = "jsonschema"))]
             serde_default: None,
+            set_levels: Vec::new(),
             #[cfg(feature = "jsonschema")]
             type_span: segment.ident.span(),
         },
@@ -2122,6 +2230,7 @@ fn get_field_def_from_generic_type(
             omits_value: false,
             #[cfg(any(feature = "zod", feature = "jsonschema"))]
             serde_default: None,
+            set_levels: Vec::new(),
             #[cfg(feature = "jsonschema")]
             type_span: type_ident.span(),
         }
@@ -2166,6 +2275,7 @@ fn written_def(
         omits_value: false,
         #[cfg(any(feature = "zod", feature = "jsonschema"))]
         serde_default: None,
+        set_levels: Vec::new(),
         #[cfg(feature = "jsonschema")]
         type_span: type_ident.span(),
     }
@@ -2325,6 +2435,7 @@ pub fn get_field_def(name: &str, ty: &Type, field_docs: &str) -> FieldDef {
             omits_value: false,
             #[cfg(any(feature = "zod", feature = "jsonschema"))]
             serde_default: None,
+            set_levels: Vec::new(),
             #[cfg(feature = "jsonschema")]
             type_span: written.span(),
         }
@@ -2341,6 +2452,7 @@ pub fn get_field_def(name: &str, ty: &Type, field_docs: &str) -> FieldDef {
             omits_value: false,
             #[cfg(any(feature = "zod", feature = "jsonschema"))]
             serde_default: None,
+            set_levels: Vec::new(),
             #[cfg(feature = "jsonschema")]
             type_span: written.span(),
         }

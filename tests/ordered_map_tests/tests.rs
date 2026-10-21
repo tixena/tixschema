@@ -195,7 +195,7 @@ fn zod_writes_each_as_its_std_twin() {
     let document = Document::zod_schema();
     for member in [
         "data: z.record(z.string(), z.string()),",
-        "labels: z.array(z.string()),",
+        "labels: z.array(z.string()).check((ctx) => {",
         "raw: z.record(z.string(), z.unknown()),",
     ] {
         assert!(

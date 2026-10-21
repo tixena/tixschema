@@ -6,6 +6,8 @@ use super::{FieldDef, FieldDefType};
 use crate::utils::claim_published_name;
 
 #[cfg(feature = "zod")]
+use crate::bound_message::zod_repeat_check;
+#[cfg(feature = "zod")]
 use crate::features::model_schema_prop::ModelSchemaPropMeta;
 #[cfg(feature = "zod")]
 use crate::utils::{AliasKind, register_alias_info};
@@ -27,6 +29,7 @@ fn field(field_type: FieldDefType) -> FieldDef {
         omits_value: false,
         #[cfg(any(feature = "zod", feature = "jsonschema"))]
         serde_default: None,
+        set_levels: Vec::new(),
         #[cfg(feature = "jsonschema")]
         type_span: proc_macro2::Span::call_site(),
     }
@@ -41,6 +44,17 @@ fn normalized_sequence(spelling: &str) -> Option<FieldDef> {
         return None;
     };
     Some(parsed.collection_element_field(generics.first()?))
+}
+
+/// What the Zod array of `wrapper`'s own level ends with: the repeat check of a set, and nothing
+/// for any other wrapper.
+#[cfg(feature = "zod")]
+fn repeat_check_of(wrapper: &str) -> String {
+    if super::is_set_wrapper(wrapper) {
+        zod_repeat_check()
+    } else {
+        String::new()
+    }
 }
 
 fn sequence_of(wrapper: &str, element: FieldDefType) -> FieldDef {
@@ -79,14 +93,15 @@ fn test_sequence_wrappers_render_as_typescript_arrays() {
 #[cfg(feature = "zod")]
 fn test_sequence_wrappers_render_as_zod_arrays() {
     for wrapper in SEQUENCE_WRAPPERS {
+        let distinct = repeat_check_of(wrapper);
         assert_eq!(
             sequence_of(wrapper, FieldDefType::U32).zod_type(),
-            "z.array(z.number().int())",
+            format!("z.array(z.number().int()){distinct}"),
             "for: {wrapper}"
         );
         assert_eq!(
             sequence_of(wrapper, FieldDefType::String).zod_type(),
-            "z.array(z.string())",
+            format!("z.array(z.string()){distinct}"),
             "for: {wrapper}"
         );
         assert_eq!(
@@ -95,7 +110,7 @@ fn test_sequence_wrappers_render_as_zod_arrays() {
                 FieldDefType::SiblingType("MetricTag".to_owned(), vec![])
             )
             .zod_type(),
-            "z.array(MetricTag$Schema)",
+            format!("z.array(MetricTag$Schema){distinct}"),
             "for: {wrapper}"
         );
     }
@@ -126,7 +141,7 @@ fn a_named_type_takes_a_fields_length_and_pattern_as_one_check() {
             vec![field(named())]
         ))
         .zod_type(),
-        format!("z.array({checked})")
+        format!("z.array({checked}){}", repeat_check_of("HashSet"))
     );
     assert_eq!(field(named()).zod_type(), "MetricTag$Schema");
 }
@@ -143,7 +158,7 @@ fn test_sequence_in_a_slot_renders_as_the_array_it_writes() {
         #[cfg(feature = "zod")]
         assert_eq!(
             sequence.zod_slot_type(),
-            "z.array(z.string())",
+            format!("z.array(z.string()){}", repeat_check_of(wrapper)),
             "for: {wrapper}"
         );
 
@@ -157,7 +172,10 @@ fn test_sequence_in_a_slot_renders_as_the_array_it_writes() {
         #[cfg(feature = "zod")]
         assert_eq!(
             optional.zod_slot_type(),
-            "z.nullable(z.array(z.string()))",
+            format!(
+                "z.nullable(z.array(z.string()){})",
+                repeat_check_of(wrapper)
+            ),
             "for: {wrapper}"
         );
     }
@@ -176,7 +194,10 @@ fn test_sequence_within_an_array_field_nests_both_wraps() {
         #[cfg(feature = "zod")]
         assert_eq!(
             nested.zod_type(),
-            "z.array(z.array(z.number().int()))",
+            format!(
+                "z.array(z.array(z.number().int()){})",
+                repeat_check_of(wrapper)
+            ),
             "for: {wrapper}"
         );
     }
@@ -190,7 +211,11 @@ fn test_optional_sequence_field_keeps_the_field_level_optionality() {
     #[cfg(feature = "zod")]
     assert_eq!(
         optional.zod_type(),
-        "z.union([z.null().transform(() => undefined), z.array(z.string()), z.undefined()]).prefault(undefined)"
+        format!(
+            "z.union([z.null().transform(() => undefined), z.array(z.string()){}, \
+             z.undefined()]).prefault(undefined)",
+            repeat_check_of("HashSet")
+        )
     );
 }
 
@@ -208,7 +233,10 @@ fn test_an_array_element_within_a_sequence_nests_both_wraps() {
         #[cfg(feature = "zod")]
         assert_eq!(
             nested.zod_type(),
-            "z.array(z.array(z.number().int()))",
+            format!(
+                "z.array(z.array(z.number().int())){}",
+                repeat_check_of(wrapper)
+            ),
             "for: {wrapper}"
         );
     }
@@ -305,6 +333,53 @@ fn test_the_covered_sequence_wrappers_are_exactly_the_recorded_list() {
         super::is_sequence_wrapper("IndexSet"),
         cfg!(feature = "indexmap")
     );
+}
+
+#[test]
+fn the_sets_are_exactly_the_recorded_list() {
+    for name in ["BTreeSet", "HashSet"] {
+        assert!(super::is_set_wrapper(name), "for: {name}");
+    }
+    for name in [
+        "BinaryHeap",
+        "Vec",
+        "VecDeque",
+        "LinkedList",
+        "HashMap",
+        "Option",
+    ] {
+        assert!(!super::is_set_wrapper(name), "for: {name}");
+    }
+    assert_eq!(
+        super::is_set_wrapper("IndexSet"),
+        cfg!(feature = "indexmap")
+    );
+}
+
+#[test]
+fn each_level_written_as_a_set_is_recorded_where_its_array_is() {
+    for (spelling, array_depth, set_levels, nullable_levels) in [
+        ("HashSet<String>", 1_u8, &[0_u8] as &[u8], &[] as &[u8]),
+        ("Vec<HashSet<String>>", 2, &[0], &[]),
+        ("HashSet<Vec<String>>", 2, &[1], &[]),
+        ("Option<BTreeSet<u32>>", 1, &[0], &[1]),
+        ("BTreeSet<BTreeSet<u32>>", 2, &[0, 1], &[]),
+        ("VecDeque<u32>", 1, &[], &[]),
+    ] {
+        let ty: syn::Type = syn::parse_str(spelling).unwrap();
+        let mut leveled = super::get_field_def("items", &ty, "");
+        while let FieldDefType::SiblingType(name, arguments) = &leveled.field_type
+            && let [element] = arguments.as_slice()
+            && super::is_sequence_wrapper(name)
+        {
+            leveled = leveled.collection_element_field(element);
+        }
+        assert_eq!(leveled.array_depth, array_depth, "for: {spelling}");
+        let mut recorded = leveled.set_levels.clone();
+        recorded.sort_unstable();
+        assert_eq!(recorded, set_levels, "for: {spelling}");
+        assert_eq!(leveled.nullable_levels, nullable_levels, "for: {spelling}");
+    }
 }
 
 #[test]
@@ -619,7 +694,11 @@ fn test_a_covered_wrapper_records_its_element_option_where_the_vec_spelling_does
             "for: {wrapper}"
         );
         #[cfg(feature = "zod")]
-        assert_eq!(parsed.zod_type(), expected.zod_type(), "for: {wrapper}");
+        assert_eq!(
+            parsed.zod_type(),
+            format!("{}{}", expected.zod_type(), repeat_check_of(wrapper)),
+            "for: {wrapper}"
+        );
     }
 }
 

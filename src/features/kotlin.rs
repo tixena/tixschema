@@ -1892,6 +1892,7 @@ fn variant_payload(
                 omits_value: false,
                 #[cfg(any(feature = "zod", feature = "jsonschema"))]
                 serde_default: None,
+                set_levels: Vec::new(),
                 #[cfg(feature = "jsonschema")]
                 type_span: proc_macro2::Span::call_site(),
             }))

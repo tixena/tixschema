@@ -13,7 +13,7 @@ use core::mem;
 use std::collections::HashMap;
 
 use super::{kotlin_name, kotlin_template_text, kotlin_typename, result_class};
-use crate::bound_message::{Bound, kotlin_violation};
+use crate::bound_message::{Bound, kotlin_repeated, kotlin_violation};
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::field_type::{FieldDef, FieldDefType, RESULT_ARMS, is_sequence_wrapper};
 
@@ -215,9 +215,9 @@ impl<'item> Rules<'item> {
         !self.bounds.is_empty()
     }
 
-    /// What a brand's own bounds add, over the value it holds and under no place. `default` is
-    /// the type declared for the parameter a brand holds bare: the bounds run where the value is
-    /// of that type, and at no other filling.
+    /// What a brand's own bounds add, over the value it holds and under no place, after the repeat
+    /// of a set it holds. `default` is the type declared for the parameter a brand holds bare: the
+    /// bounds run where the value is of that type, and at no other filling.
     pub fn brand(&mut self, member: &Member<'_>, default: Option<&FieldDef>) {
         let bounds = if let Some(declared) = default {
             self.default_statements(member, declared)
@@ -227,6 +227,9 @@ impl<'item> Rules<'item> {
             behind(member, &read, &bound)
         };
         self.bounds.extend(bounds.iter().cloned());
+        let (held, read) = presented(member);
+        let repeat = own_repeat_statements(&held, &read, member.place.as_deref());
+        self.statements.extend(behind(member, &read, &repeat));
         self.statements.extend(bounds);
     }
 
@@ -291,8 +294,9 @@ impl<'item> Rules<'item> {
     }
 
     /// What the value `read` holds answers `asked`: each value of a declared type under it,
-    /// through a nullable, each level of a list, a map's values and a tuple's positions. `depth`
-    /// numbers the names the walk binds.
+    /// through a nullable, each level of a list, a map's values and a tuple's positions, and the
+    /// repeat of each set it reaches where every message is asked. `depth` numbers the names the
+    /// walk binds.
     fn held_statements(
         &mut self,
         def: &FieldDef,
@@ -310,12 +314,18 @@ impl<'item> Rules<'item> {
             });
         }
         if def.array_depth > 0 {
+            let mut found = if matches!(asked, Asked::Report) {
+                own_repeat_statements(def, read, place)
+            } else {
+                Vec::new()
+            };
             let (index, held) = (bound_name("index", depth), bound_name("held", depth));
             let at = stepped(place, &format!("${index}"));
             let inside = self.held_statements(&item_of(def), &held, Some(&at), below, asked);
-            return wrapped(&inside, |inner| {
+            found.extend(wrapped(&inside, |inner| {
                 format!("{read}.forEachIndexed {{ {index}, {held} -> {inner} }}")
-            });
+            }));
+            return found;
         }
         if let FieldDefType::SiblingType(name, arguments) = &def.field_type {
             if let [element] = arguments.as_slice()
@@ -398,24 +408,27 @@ impl<'item> Rules<'item> {
         }
     }
 
-    /// What `member` adds: its bounds, what the value it holds reports where no bound of its own
-    /// stands in for that, then the checks it names. Where the bounds choose a variant, they are
-    /// the member's own and those of each brand it holds.
+    /// What `member` adds: the repeat of a set it is, its bounds, what the value it holds reports
+    /// where no bound of its own stands in for that, then the checks it names. Where the bounds
+    /// choose a variant, they are the member's own and those of each brand it holds.
     pub fn member(&mut self, member: &Member<'_>) {
         let (held, read) = presented(member);
         let place = member.place.as_deref();
         let depth = usize::from(member.def.is_optional());
-        let mut statements = self.bound_statements(member, &held, &read);
-        let asks_the_held = statements.is_empty() || held.is_list();
+        let bounds = self.bound_statements(member, &held, &read);
+        let asks_the_held = bounds.is_empty() || held.is_list();
         if self.chooses {
-            let mut choosing = statements.clone();
+            let mut choosing = bounds.clone();
             if asks_the_held {
                 choosing.extend(self.held_statements(&held, &read, place, depth, Asked::Bound));
             }
             self.bounds.extend(behind(member, &read, &choosing));
         }
+        let mut statements = own_repeat_statements(&held, &read, place);
+        statements.extend(bounds);
         if asks_the_held {
-            statements.extend(self.held_statements(&held, &read, place, depth, Asked::Report));
+            let listed = held.without_own_set();
+            statements.extend(self.held_statements(&listed, &read, place, depth, Asked::Report));
         }
         statements.extend(self.check_statements(member, &read));
         self.statements.extend(behind(member, &read, &statements));
@@ -622,7 +635,21 @@ fn count_statements(meta: &ModelSchemaPropMeta, read: &str, place: Option<&str>)
 fn item_of(def: &FieldDef) -> FieldDef {
     let mut item = def.clone();
     item.array_depth = def.array_depth.saturating_sub(1);
+    item.set_levels.retain(|level| *level < item.array_depth);
     item
+}
+
+/// What the value `read`, typed `def`, adds where its own value is a set that repeats an item,
+/// under `place`: two items are one where they are equal, as the emitted types compare by value.
+fn own_repeat_statements(def: &FieldDef, read: &str, place: Option<&str>) -> Vec<String> {
+    if def.is_set() {
+        vec![format!(
+            "if ({read}.toSet().size != {read}.size) {VIOLATIONS}.add({})",
+            kotlin_repeated(place)
+        )]
+    } else {
+        Vec::new()
+    }
 }
 
 /// `pattern` as the JVM's regular expressions read what the `regex` crate reads in it: `$` as

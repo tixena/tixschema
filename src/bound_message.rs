@@ -12,6 +12,16 @@ use crate::utils::escape_js_double_quoted;
 #[cfg(feature = "serde")]
 use quote::quote;
 
+/// What every surface but Rust answers for a set whose payload repeats an item: Rust's read keeps
+/// one item of it.
+#[cfg(any(
+    feature = "zod",
+    feature = "dart",
+    feature = "kotlin",
+    feature = "swift"
+))]
+pub const REPEATED_ITEM: &str = "repeats an item: a set holds each item once";
+
 /// Every stem a violated bound's sentence can begin with. A refusal that reaches a reader as text
 /// is this crate's own only if it opens with one of these.
 #[cfg(feature = "serde")]
@@ -148,6 +158,14 @@ pub fn kotlin_violation(bound: Bound<'_>, place: Option<&str>, observed: &str) -
     }
 }
 
+/// The Kotlin string a generated `validate()` reports a set that repeats an item with, under
+/// `place`, already written as the text of a Kotlin string.
+#[cfg(feature = "kotlin")]
+pub fn kotlin_repeated(place: Option<&str>) -> String {
+    let lead = place.map_or_else(String::new, |named| format!("'{named}': "));
+    format!("\"{lead}{}\"", kotlin_template_text(REPEATED_ITEM))
+}
+
 /// The parameter object a generated Zod check carries for `bound`, which is what makes it report
 /// the sentence [`rust_violation`] writes instead of zod's own.
 ///
@@ -172,6 +190,28 @@ pub fn zod_error_arg(bound: Bound<'_>) -> String {
         }
         None => format!("{{ error: \"{}\" }}", escape_js_double_quoted(&stated)),
     }
+}
+
+/// The check a set's Zod array is written with: an array whose parsed items write one JSON text
+/// twice is refused with [`REPEATED_ITEM`]. The issue carries `continue: true`, as each issue a
+/// written check copies does.
+#[cfg(feature = "zod")]
+pub fn zod_repeat_check() -> String {
+    format!(
+        ".check((ctx) => {{\n  const seen = new Set<string>();\n  for (const item of ctx.value) \
+         {{\n    const text = JSON.stringify(item);\n    if (seen.has(text)) {{\n      \
+         ctx.issues.push({{ code: \"custom\", message: \"{}\", input: ctx.value, continue: true \
+         }});\n      return;\n    }}\n    seen.add(text);\n  }}\n}})",
+        escape_js_double_quoted(REPEATED_ITEM)
+    )
+}
+
+/// The Dart string a generated `validate()` lists for a set that repeats an item, under `place`
+/// as a Dart string holds it between two `"`.
+#[cfg(feature = "dart")]
+pub fn dart_repeated(place: Option<&str>) -> String {
+    let led = place.map_or_else(String::new, |named| format!("'{named}': "));
+    format!("\"{led}{}\"", dart_escaped(REPEATED_ITEM, '"'))
 }
 
 /// The Dart string a generated `validate()` lists for `bound`: the sentence [`rust_violation`]
@@ -208,6 +248,18 @@ pub fn swift_literal_text(text: &str) -> String {
         }
     }
     written
+}
+
+/// The Swift string literal a generated `validate()` appends to its report for a set that repeats
+/// an item. `place` is already the text of a Swift string literal, an index or a key interpolated
+/// into it.
+#[cfg(feature = "swift")]
+pub fn swift_repeated(place: Option<&str>) -> String {
+    let stated = swift_literal_text(REPEATED_ITEM);
+    place.map_or_else(
+        || format!("\"{stated}\""),
+        |under| format!("\"'{under}': {stated}\""),
+    )
 }
 
 /// The Swift string literal a generated `validate()` appends to its report for `bound`: the

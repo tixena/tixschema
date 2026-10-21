@@ -9,7 +9,7 @@ use quote::quote;
 use syn::ext::IdentExt as _;
 use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 
-use crate::bound_message::{Bound, dart_violation};
+use crate::bound_message::{Bound, dart_repeated, dart_violation};
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{brand_field, parse_serde_key_omission, struct_tag};
@@ -79,6 +79,12 @@ const HELD_BOUND_HELPER: &str = "static List<String> _heldBound(Object held) { t
 /// Rust and Zod write it.
 const NUMBER_HELPER: &str = "static String _number(double value) => value == \
      value.truncateToDouble() ? value.toStringAsFixed(0) : value.toString();";
+
+/// The helper a type's `validate()` asks whether a set repeats an item with: two items are one
+/// where they write one JSON text.
+const REPEATS_HELPER: &str = "static bool _repeats(Iterable<Object?> items) { final seen = \
+     <String>{}; for (final item in items) { if (!seen.add(jsonEncode(item))) return true; } \
+     return false; }";
 
 /// The helper a type's `validate()` writes a place in front of a message with: into the place the
 /// message already names, or ahead of one that names none.
@@ -221,6 +227,7 @@ enum Helper {
     BoundText,
     HeldBound,
     Number,
+    Repeats,
     Under,
 }
 
@@ -1042,8 +1049,10 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
             if let [element] = generics.as_slice()
                 && is_sequence_wrapper(name)
             {
+                // The field's own levels are walked already: what is left is the wrapper's.
                 let combined = field.collection_element_field(element);
-                return dart_decode_at(&combined, combined.array_depth, expr, read);
+                let wrapped = combined.array_depth.saturating_sub(field.array_depth);
+                return dart_decode_at(&combined, wrapped, expr, read);
             }
             let class_name = lookup_dart_name(name).unwrap_or_else(|| name.clone());
             let constructor = read.constructor();
@@ -1360,8 +1369,10 @@ fn dart_encode_at(field: &FieldDef, level: u8, expr: &str) -> String {
             if let [element] = generics.as_slice()
                 && is_sequence_wrapper(name)
             {
+                // The field's own levels are walked already: what is left is the wrapper's.
                 let combined = field.collection_element_field(element);
-                return dart_encode_at(&combined, combined.array_depth, expr);
+                let wrapped = combined.array_depth.saturating_sub(field.array_depth);
+                return dart_encode_at(&combined, wrapped, expr);
             }
             if generics.is_empty() {
                 format!("({expr}).toJson()")
@@ -1697,19 +1708,78 @@ where
     guarded(&walked, inner)
 }
 
-/// [`held_elements`] below the optional `field` may be: `level` list levels are still to walk,
-/// and at none the value is what `field_type` names.
-fn held_at(
+/// What the set `expr` adds where it repeats an item, led by `place`. `level` is the set's own
+/// list level of `field`, and its items are compared by the JSON the codec writes for each. A
+/// value of a type parameter writes its own JSON: the converter of the parameter is the codec's.
+fn repeat_elements(
     field: &FieldDef,
     level: u8,
+    expr: &str,
+    place: &[Step],
+    helpers: &mut Helpers,
+) -> Vec<String> {
+    let item_level = level.saturating_sub(1);
+    let mut opaque = field.clone();
+    opaque.opaque_parameters();
+    let written = dart_encode_at(&opaque, item_level, "e");
+    let items = if written == "e" {
+        expr.to_owned()
+    } else if field.is_nullable_at(item_level) {
+        format!("{expr}.map((e) => (e == null ? null : {written}))")
+    } else {
+        format!("{expr}.map((e) => {written})")
+    };
+    helpers.call(Helper::Repeats);
+    let named = (!place.is_empty()).then(|| dart_place(place, '"'));
+    vec![format!(
+        "if (_repeats({items})) {}",
+        dart_repeated(named.as_deref())
+    )]
+}
+
+/// What the member `field` adds where its own value is a set that repeats an item, at `expr`,
+/// where it holds a value.
+fn own_repeat_elements(
+    field: &FieldDef,
+    expr: &str,
+    place: &[Step],
+    depth: usize,
+    helpers: &mut Helpers,
+) -> Vec<String> {
+    if !field.is_set() {
+        return Vec::new();
+    }
+    let listed = field.without_own_set();
+    let (value, guard, _) = present(field, expr, depth);
+    let repeated = repeat_elements(&listed, listed.array_depth, &value, place, helpers);
+    match guard {
+        Some(held) => guarded(&held, repeated),
+        None => repeated,
+    }
+}
+
+/// [`held_at`] at the list `expr`, whose items are at level `inner_level` of `field`: the repeat
+/// of a set where every message is asked, then what each item reports.
+fn listed_at(
+    field: &FieldDef,
+    inner_level: u8,
     expr: &str,
     place: &[Step],
     depth: usize,
     asked: Asked,
     helpers: &mut Helpers,
 ) -> Vec<String> {
-    if let Some(inner_level) = level.checked_sub(1) {
-        return item_elements(expr, place, depth, asked, |item, within, below| {
+    let mut elements = if matches!(asked, Asked::Rules) && field.is_set_at(inner_level) {
+        repeat_elements(field, inner_level.saturating_add(1), expr, place, helpers)
+    } else {
+        Vec::new()
+    };
+    elements.extend(item_elements(
+        expr,
+        place,
+        depth,
+        asked,
+        |item, within, below| {
             if field.is_nullable_at(inner_level) {
                 let held = binder("held", below);
                 let inner = held_at(
@@ -1725,16 +1795,34 @@ fn held_at(
             } else {
                 held_at(field, inner_level, item, within, below, asked, helpers)
             }
-        });
+        },
+    ));
+    elements
+}
+
+/// [`held_elements`] below the optional `field` may be: `level` list levels are still to walk,
+/// and at none the value is what `field_type` names.
+fn held_at(
+    field: &FieldDef,
+    level: u8,
+    expr: &str,
+    place: &[Step],
+    depth: usize,
+    asked: Asked,
+    helpers: &mut Helpers,
+) -> Vec<String> {
+    if let Some(inner_level) = level.checked_sub(1) {
+        return listed_at(field, inner_level, expr, place, depth, asked, helpers);
     }
     match &field.field_type {
         FieldDefType::SiblingType(name, arguments) => {
             if let [element] = arguments.as_slice()
                 && is_sequence_wrapper(name)
             {
-                return item_elements(expr, place, depth, asked, |item, within, below| {
-                    held_elements(element, item, within, below, asked, helpers)
-                });
+                // The field's own levels are walked already: what is left is the wrapper's.
+                let combined = field.collection_element_field(element);
+                let wrapped = combined.array_depth.saturating_sub(field.array_depth);
+                return held_at(&combined, wrapped, expr, place, depth, asked, helpers);
             }
             vec![match asked {
                 Asked::Bound => {
@@ -1919,8 +2007,9 @@ fn walks_what_it_holds(field: &FieldDef) -> bool {
 }
 
 /// What a member adds, in the order Rust's `validate()` runs it: its own bounds, what the value
-/// it holds reports where the member writes no bound or is a list, then its checks. Where a
-/// bound is `asked`, the bounds name no place and no check is called.
+/// it holds reports where the member writes no bound or is a list, then its checks. A set that
+/// repeats an item is reported ahead of its count. Where a bound is `asked`, the bounds name no
+/// place, and no repeat and no check is asked.
 fn member_elements(
     field: &FieldDef,
     expr: &str,
@@ -1933,9 +2022,16 @@ fn member_elements(
         Asked::Bound => &[],
         Asked::Rules => place,
     };
-    let mut elements = own_bound_elements(field, expr, named, depth, helpers);
+    let (mut elements, walked) = match asked {
+        Asked::Bound => (Vec::new(), field.clone()),
+        Asked::Rules => (
+            own_repeat_elements(field, expr, place, depth, helpers),
+            field.without_own_set(),
+        ),
+    };
+    elements.extend(own_bound_elements(field, expr, named, depth, helpers));
     if walks_what_it_holds(field) {
-        elements.extend(held_elements(field, expr, place, depth, asked, helpers));
+        elements.extend(held_elements(&walked, expr, place, depth, asked, helpers));
     }
     if matches!(asked, Asked::Rules) {
         elements.extend(check_elements(field, expr, place, depth, helpers));
@@ -2031,6 +2127,7 @@ fn validate_members(rules: &[String], helpers: &Helpers, overrides: bool) -> Str
         (helpers.calls(Helper::Under), UNDER_HELPER),
         (helpers.calls(Helper::BoundText), BOUND_TEXT_HELPER),
         (helpers.calls(Helper::Number), NUMBER_HELPER),
+        (helpers.calls(Helper::Repeats), REPEATS_HELPER),
     ] {
         if called {
             written.push(' ');
@@ -2052,10 +2149,11 @@ fn declared_default(parameter: &str, default_types: &[(Ident, syn::Type)]) -> Fi
         )
 }
 
-/// A brand's `validate()`: its string check over the value it wraps, under no place, then the
-/// checks it names. A brand over one of its own parameters holds the declared default of that
-/// parameter and no other filling. A brand that carries a bound writes `validateBound()` ahead of
-/// it, the bound alone, which a variant of an untagged enum that holds the brand is chosen by.
+/// A brand's `validate()`: a repeat of the set it wraps and its string check over the value, under
+/// no place, then the checks it names. A brand over one of its own parameters holds the declared
+/// default of that parameter and no other filling. A brand that carries a bound writes
+/// `validateBound()` ahead of it, the bound alone, which a variant of an untagged enum that holds
+/// the brand is chosen by.
 fn brand_validate(value_field: &FieldDef, args: &DartTypeArgs<'_>) -> String {
     let mut helpers = Helpers::default();
     let bounds = Bounds {
@@ -2085,6 +2183,9 @@ fn brand_validate(value_field: &FieldDef, args: &DartTypeArgs<'_>) -> String {
             rules.join(", ")
         )
     });
+    let mut repeated = own_repeat_elements(value_field, "value", &[], 0, &mut helpers);
+    repeated.append(&mut rules);
+    rules = repeated;
     rules.extend(own_check_elements(args.check));
     format!(
         "{}{}",
@@ -2548,6 +2649,7 @@ fn tuple_struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -
         omits_value: false,
         #[cfg(any(feature = "zod", feature = "jsonschema"))]
         serde_default: None,
+        set_levels: Vec::new(),
         #[cfg(feature = "jsonschema")]
         type_span: proc_macro2::Span::call_site(),
     };
@@ -2678,6 +2780,7 @@ fn variant_payload(
                 omits_value: false,
                 #[cfg(any(feature = "zod", feature = "jsonschema"))]
                 serde_default: None,
+                set_levels: Vec::new(),
                 #[cfg(feature = "jsonschema")]
                 type_span: proc_macro2::Span::call_site(),
             }))

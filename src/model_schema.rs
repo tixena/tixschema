@@ -12175,7 +12175,7 @@ fn write_tuple_multiple_variant_fields(
 }
 
 /// Arrays `item_schema` once per array level the field carries, and hands it back untouched when
-/// the field carries none.
+/// the field carries none. A level written as a set holds distinct items.
 #[cfg(feature = "jsonschema")]
 fn arrayed_json_schema_value(
     fld: &FieldDef,
@@ -12187,8 +12187,11 @@ fn arrayed_json_schema_value(
         } else {
             level_schema
         };
+        let distinct = fld
+            .is_set_at(level)
+            .then(|| quote! { , "uniqueItems": true });
         let bounds = array_length_json_schema_bounds(fld, level);
-        quote! { serde_json::json!({ "type": "array", "items": #items #bounds }) }
+        quote! { serde_json::json!({ "type": "array", "items": #items #distinct #bounds }) }
     })
 }
 
@@ -12205,8 +12208,11 @@ fn arrayed_json_schema_fragment(
         } else {
             level_schema
         };
+        let distinct = fld
+            .is_set_at(level)
+            .then(|| quote! { , "uniqueItems": true });
         let bounds = array_length_json_schema_bounds(fld, level);
-        quote! { { "type": "array", "items": #items #bounds } }
+        quote! { { "type": "array", "items": #items #distinct #bounds } }
     })
 }
 

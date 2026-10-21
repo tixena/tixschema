@@ -808,7 +808,10 @@ mod zod {
     #[test]
     fn a_set_is_still_read_as_the_collection_it_is() {
         let zod = FolderTree::<String>::zod_schema();
-        assert!(zod.contains("labels: z.array(z.string()),"), "Got: {zod}");
+        assert!(
+            zod.contains("labels: z.array(z.string()).check((ctx) => {"),
+            "Got: {zod}"
+        );
         assert!(
             zod.contains("many: z.array(EcmDocument$SchemaFactory(idType, z.number())),"),
             "Got: {zod}"

@@ -354,6 +354,26 @@ mod run_swift_results;
 #[path = "service_schema_emitted_client_tests/run_kotlin_results.rs"]
 mod run_kotlin_results;
 
+/// The models a set is written on, and the payloads that repeat an item of one.
+#[cfg(all(test, any(feature = "dart", feature = "swift", feature = "kotlin")))]
+#[path = "set_tests/models.rs"]
+mod set_models;
+
+/// A set that repeats an item, refused by the read of the emitted Dart types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_sets.rs"]
+mod run_dart_sets;
+
+/// A set that repeats an item, refused by the read of the emitted Swift types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_sets.rs"]
+mod run_swift_sets;
+
+/// A set that repeats an item, refused by the read of the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_sets.rs"]
+mod run_kotlin_sets;
+
 // The transport's expansion reaches each service through `$crate`, which is this binary's root:
 // every trait and its schema module are named here for it to resolve.
 #[cfg(all(test, feature = "dart"))]

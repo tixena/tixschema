@@ -32,6 +32,8 @@ use super::{WireLeaf, flatten_edge_guard_error, record_wire_leaves, record_zod_u
 
 #[cfg(feature = "zod")]
 use super::{MergedOperand, SourceAbsence};
+#[cfg(feature = "jsonschema")]
+use crate::field_type::is_set_wrapper;
 #[cfg(feature = "serde")]
 use crate::foundation::{exec_decode_with_foundation, exec_mongodb_foundation};
 
@@ -11882,21 +11884,28 @@ fn wrapped_u32_value(wrapper: &str) -> super::FieldDef {
         omits_value: false,
         #[cfg(any(feature = "zod", feature = "jsonschema"))]
         serde_default: None,
+        set_levels: Vec::new(),
         type_span: proc_macro2::Span::call_site(),
     }
 }
 
-/// The `Vec<u32>` value every wrapper spelling of the same thing is held against.
+/// The `Vec<u32>` value every wrapper spelling of the same thing is held against, its one level
+/// written as a set where `wrapper` is one.
 #[cfg(feature = "jsonschema")]
-fn parsed_u32_vec_value() -> super::FieldDef {
-    super::get_field_def("items", &syn::parse_quote!(Vec<u32>), "")
+fn parsed_u32_vec_value_as(wrapper: &str) -> super::FieldDef {
+    let mut parsed = super::get_field_def("items", &syn::parse_quote!(Vec<u32>), "");
+    if is_set_wrapper(wrapper) {
+        parsed.set_levels = vec![0];
+    }
+    parsed
 }
 
 #[cfg(feature = "jsonschema")]
 #[test]
 fn every_sequence_wrapper_describes_as_the_vec_of_its_element() {
-    let expected = super::build_field_type_schema(&parsed_u32_vec_value(), "items").to_string();
     for wrapper in SEQUENCE_WRAPPERS {
+        let expected =
+            super::build_field_type_schema(&parsed_u32_vec_value_as(wrapper), "items").to_string();
         assert_eq!(
             super::build_field_type_schema(&wrapped_u32_value(wrapper), "items").to_string(),
             expected,
@@ -11908,24 +11917,37 @@ fn every_sequence_wrapper_describes_as_the_vec_of_its_element() {
 #[cfg(feature = "jsonschema")]
 #[test]
 fn every_sequence_wrapper_describes_as_the_vec_of_its_element_in_a_slot() {
-    let parsed = parsed_u32_vec_value();
-    let expected_member = super::build_map_member_schema(&parsed).unwrap().to_string();
-    let expected_element = super::build_tuple_element_json_schema(&parsed)
-        .unwrap()
-        .to_string();
     for wrapper in SEQUENCE_WRAPPERS {
+        let parsed = parsed_u32_vec_value_as(wrapper);
         let value = wrapped_u32_value(wrapper);
         assert_eq!(
             super::build_map_member_schema(&value).unwrap().to_string(),
-            expected_member,
+            super::build_map_member_schema(&parsed).unwrap().to_string(),
             "for: {wrapper}"
         );
         assert_eq!(
             super::build_tuple_element_json_schema(&value)
                 .unwrap()
                 .to_string(),
-            expected_element,
+            super::build_tuple_element_json_schema(&parsed)
+                .unwrap()
+                .to_string(),
             "for: {wrapper}"
+        );
+    }
+}
+
+#[cfg(feature = "jsonschema")]
+#[test]
+fn a_set_writes_unique_items_at_its_own_level_alone() {
+    let distinct = r#""uniqueItems" : true"#;
+    for wrapper in SEQUENCE_WRAPPERS {
+        let written =
+            super::build_field_type_schema(&wrapped_u32_value(wrapper), "items").to_string();
+        assert_eq!(
+            written.matches(distinct).count(),
+            usize::from(is_set_wrapper(wrapper)),
+            "for: {wrapper}, got: {written}"
         );
     }
 }
@@ -11933,11 +11955,10 @@ fn every_sequence_wrapper_describes_as_the_vec_of_its_element_in_a_slot() {
 #[cfg(all(feature = "jsonschema", feature = "serde"))]
 #[test]
 fn every_sequence_wrapper_describes_as_the_vec_of_its_element_in_an_untagged_member() {
-    let expected = super::field_json_schema_value(&parsed_u32_vec_value()).to_string();
     for wrapper in SEQUENCE_WRAPPERS {
         assert_eq!(
             super::field_json_schema_value(&wrapped_u32_value(wrapper)).to_string(),
-            expected,
+            super::field_json_schema_value(&parsed_u32_vec_value_as(wrapper)).to_string(),
             "for: {wrapper}"
         );
     }
@@ -12217,9 +12238,16 @@ fn a_sequence_wrapped_map_field_describes_as_the_array_of_the_map_it_holds() {
         ),
     ] {
         let item = inserted_field_value(map_type);
+        let distinct = if wrapped_type.starts_with("BTreeSet") {
+            r#" , "uniqueItems" : true"#
+        } else {
+            ""
+        };
         assert_eq!(
             inserted_field_value(wrapped_type),
-            format!(r#"serde_json :: json ! ({{ "type" : "array" , "items" : {item} }})"#),
+            format!(
+                r#"serde_json :: json ! ({{ "type" : "array" , "items" : {item}{distinct} }})"#
+            ),
             "for {wrapped_type}"
         );
     }
@@ -12312,7 +12340,7 @@ fn an_object_id_tuple_element_spells_the_one_oid_object() {
 fn an_optional_sequence_wrapper_member_stays_nullable() {
     let mut optional_set = wrapped_u32_value("HashSet");
     optional_set.nullable_levels = vec![optional_set.array_depth];
-    let mut optional_vec = parsed_u32_vec_value();
+    let mut optional_vec = parsed_u32_vec_value_as("HashSet");
     optional_vec.nullable_levels = vec![optional_vec.array_depth];
     assert_eq!(
         super::build_map_member_schema(&optional_set)

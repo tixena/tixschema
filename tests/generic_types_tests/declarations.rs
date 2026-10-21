@@ -29,6 +29,10 @@ mod documents;
 #[path = "../std_result_tests/models.rs"]
 mod resulted;
 
+/// The models a set is written on, and the payloads that repeat an item of one.
+#[path = "../set_tests/models.rs"]
+mod sets;
+
 #[cfg(feature = "chrono")]
 use chrono::{DateTime, Utc};
 #[cfg(feature = "jsonschema")]
@@ -532,6 +536,27 @@ for (const [name, schema, payload] of PAYLOADS) {
     printed.push(`${name}: refused for a key it does not declare`);
   } else {
     printed.push(`${name}: refused`);
+  }
+}
+console.log(printed.join("\n"));
+"#;
+
+/// Parses each payload of the sets through the schema of the type it is read as, the declared
+/// default of one that declares a parameter, and prints what each read answers: `read`, or the
+/// refusal with each issue under its path.
+const SETS_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+
+const printed = [];
+for (const [name, schema, payload] of PAYLOADS) {
+  const read = lib[schema].safeParse(JSON.parse(payload));
+  if (read.success) {
+    printed.push(`${name}: read`);
+  } else {
+    printed.push(`${name}: refused`);
+    for (const issue of read.error.issues) {
+      const place = issue.path.length === 0 ? "" : `'${issue.path.join(".")}': `;
+      printed.push(`    ${place}${issue.message}`);
+    }
   }
 }
 console.log(printed.join("\n"));
@@ -1412,6 +1437,37 @@ fn results() -> String {
     .join("\n\n")
 }
 
+/// The types a set is written on: a bundle of its own, compiled with `tsc --strict` before it is
+/// loaded.
+fn sets() -> String {
+    [
+        PREAMBLE.to_owned(),
+        sets::Point::ts_definition(),
+        sets::Point::zod_schema(),
+        sets::Ticket::ts_definition(),
+        sets::Ticket::zod_schema(),
+        sets::Folder::ts_definition(),
+        sets::Folder::zod_schema(),
+        sets::EveryList::ts_definition(),
+        sets::EveryList::zod_schema(),
+        sets::Nesting::ts_definition(),
+        sets::Nesting::zod_schema(),
+        sets::Lanyard::ts_definition(),
+        sets::Lanyard::zod_schema(),
+        sets::Pouch::ts_definition(),
+        sets::Pouch::zod_schema(),
+        sets::Shelving::ts_definition(),
+        sets::Shelving::zod_schema(),
+        sets::Sorting::ts_definition(),
+        sets::Sorting::zod_schema(),
+        sets::Coin::<String>::ts_definition(),
+        sets::Coin::<String>::zod_schema(),
+        sets::Wallet::<String>::ts_definition(),
+        sets::Wallet::<String>::zod_schema(),
+    ]
+    .join("\n\n")
+}
+
 /// What serde's read of `json` as a `T` prints, as the driver of the `Result`s prints the same
 /// payload: the value, with the keys of each object in order, or the refusal, with each message
 /// of `validate()` where the type judges a model it holds.
@@ -2159,5 +2215,37 @@ fn type_check_a_result_parses_under_zod_what_serde_writes() {
         printed,
         expected.join("\n"),
         "the schemas do not read what a serde read reads:\n{failed}"
+    );
+}
+
+/// Every payload that repeats an item of a set is refused by the Zod schema of its type under
+/// `node`, each set under its path, in every place a set is held, where Rust's read keeps one item
+/// of it.
+#[test]
+fn type_check_a_set_refuses_a_repeat_under_zod() {
+    sets::assert_rust_keeps_one_item();
+    let listed: Vec<(&str, String, &str)> = sets::PAYLOADS
+        .iter()
+        .map(|payload| {
+            let binding = if sets::declares_a_parameter(payload.read_as) {
+                "SchemaDefault"
+            } else {
+                "Schema"
+            };
+            (
+                payload.name,
+                format!("{}${binding}", payload.read_as),
+                payload.json,
+            )
+        })
+        .collect();
+    let driver = SETS_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
+    let Some((printed, failed)) = loaded_from("sets", &sets(), &driver) else {
+        return;
+    };
+    assert_eq!(
+        format!("{printed}\n"),
+        sets::PRINTED,
+        "the schemas do not refuse a repeat:\n{failed}"
     );
 }

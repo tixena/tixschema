@@ -12,16 +12,17 @@ use regex_syntax::ast::{
 };
 
 use super::{SwiftTypeArgs, result_case, swift_full_real_type, swift_member};
-use crate::bound_message::{Bound, swift_literal_text, swift_violation};
+use crate::bound_message::{Bound, swift_literal_text, swift_repeated, swift_violation};
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, get_field_def, is_sequence_wrapper,
 };
 
 /// The helpers a statement of `validate()` calls, each with the text that calls it.
-const HELPERS: [(&str, &str); 2] = [
+const HELPERS: [(&str, &str); 3] = [
     ("swiftSchemaUnder(", UNDER_HELPER),
     ("swiftSchemaPlain(", PLAIN_HELPER),
+    ("swiftSchemaRepeats(", REPEATS_HELPER),
 ];
 
 /// What a float is quoted back with, written into each type that measures one: a whole float
@@ -29,6 +30,13 @@ const HELPERS: [(&str, &str); 2] = [
 const PLAIN_HELPER: &str = "private static func swiftSchemaPlain<Number: BinaryFloatingPoint>(_ value: Number) -> String { \
      let written = \"\\(value)\"; \
      return written.hasSuffix(\".0\") ? String(written.dropLast(2)) : written }";
+
+/// What asks whether a set repeats an item, written into each type that holds a set: two items
+/// are one where they write one JSON text, their keys sorted.
+const REPEATS_HELPER: &str = "private static func swiftSchemaRepeats<Item: Encodable>(_ items: [Item]) -> Bool { \
+     let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]; var seen = Set<Data>(); \
+     for item in items { if let written = try? encoder.encode([item]), !seen.insert(written).inserted { return true } }; \
+     return false }";
 
 /// The locals `validate()` writes. A property named after one is read through `self`.
 const TAKEN_BY_VALIDATE: [&str; 4] = ["errors", "held", "index", "key"];
@@ -105,6 +113,8 @@ pub(super) enum Text {
 enum Walk {
     /// The bound of a brand alone, which chooses a variant of an untagged enum.
     Bound,
+    /// Its `validate()`, and the repeat of each set the walk reaches.
+    Reported,
     /// Its `validate()`.
     Rules,
 }
@@ -411,19 +421,22 @@ pub(super) fn tuple_struct_rules(owner: &str, slots: &[FieldDef]) -> Vec<String>
     }
 }
 
-/// What a member adds to `validate()`: its bounds, what the value it holds reports, then the
-/// checks it names. A bound of the member's own stands in place of what its type declares, but on
-/// a list, which is counted and walked.
+/// What a member adds to `validate()`: the repeat of a set it is, its bounds, what the value it
+/// holds reports, then the checks it names. A bound of the member's own stands in place of what its
+/// type declares, but on a list, which is counted and walked.
 pub(super) fn member_rules(owner: &str, member: &Checked<'_>) -> Vec<String> {
     let meta = member.def.model_schema_prop_meta.as_ref();
-    let mut rules = meta.map_or_else(Vec::new, |written| bound_rules(owner, member, written));
-    if walked(member, &rules) {
+    let bounds = meta.map_or_else(Vec::new, |written| bound_rules(owner, member, written));
+    let mut rules = own_repeat_rules(owner, member);
+    let walks_below = walked(member, &bounds);
+    rules.extend(bounds);
+    if walks_below {
         let place = written_step(member.step.as_deref());
         let mut bindings = Bindings::default();
         rules.extend(held_walk(
-            Walk::Rules,
+            Walk::Reported,
             owner,
-            member.def,
+            &member.def.without_own_set(),
             &member.access,
             &place,
             &mut bindings,
@@ -433,6 +446,31 @@ pub(super) fn member_rules(owner: &str, member: &Checked<'_>) -> Vec<String> {
         rules.extend(check_rules(owner, member, &written.check));
     }
     rules
+}
+
+/// What a member that is a set adds where it repeats an item, on the value it holds under an
+/// `Option`, under the member's step.
+pub(super) fn own_repeat_rules(owner: &str, member: &Checked<'_>) -> Vec<String> {
+    if !member.def.is_set() {
+        return Vec::new();
+    }
+    let place = written_step(member.step.as_deref());
+    if member.def.is_optional() {
+        return vec![format!(
+            "if let held = {} {{ {} }}",
+            member.access,
+            repeated(owner, "held", &place)
+        )];
+    }
+    vec![repeated(owner, &member.access, &place)]
+}
+
+/// The statement that reports the set `value` where it repeats an item, under `place`.
+fn repeated(owner: &str, value: &str, place: &[Step]) -> String {
+    broken(
+        &format!("{owner}.swiftSchemaRepeats({value})"),
+        &swift_repeated(place_text(place).as_deref()),
+    )
 }
 
 /// A brand's own bounds on the value it holds. A bare parameter is measured where the value is of
@@ -808,6 +846,7 @@ pub(super) fn item_of(def: &FieldDef) -> FieldDef {
     item.array_depth = def.array_depth.saturating_sub(1);
     item.nullable_levels
         .retain(|level| *level <= item.array_depth);
+    item.set_levels.retain(|level| *level < item.array_depth);
     item
 }
 
@@ -829,13 +868,18 @@ fn held_walk(
         return Some(format!("if let {held} = {value} {{ {below} }}"));
     }
     if def.array_depth > 0 {
+        let repeat = (matches!(walk, Walk::Reported)
+            && def.is_set_at(def.array_depth.saturating_sub(1)))
+        .then(|| repeated(owner, value, place));
         let (index, held) = (bindings.next_index(), bindings.next_held());
         let mut at = place.to_vec();
         at.push(Step::Read(index.clone()));
-        let below = held_walk(walk, owner, &item_of(def), &held, &at, bindings)?;
-        return Some(format!(
-            "for ({index}, {held}) in {value}.enumerated() {{ {below} }}"
-        ));
+        let below = held_walk(walk, owner, &item_of(def), &held, &at, bindings)
+            .map(|inner| format!("for ({index}, {held}) in {value}.enumerated() {{ {inner} }}"));
+        return match (repeat, below) {
+            (Some(asked), Some(walked)) => Some(format!("{asked}; {walked}")),
+            (asked, walked) => asked.or(walked),
+        };
     }
     if let FieldDefType::Map(key, entry) = &def.field_type {
         let (named, held) = (bindings.next_key(), bindings.next_held());
@@ -848,11 +892,11 @@ fn held_walk(
         ));
     }
     if let FieldDefType::Tuple(slots) = &def.field_type {
-        return (matches!(walk, Walk::Rules) && !slot_rules(owner, slots).is_empty())
+        return (!matches!(walk, Walk::Bound) && !slot_rules(owner, slots).is_empty())
             .then(|| reporting(owner, place, &format!("{value}.validate()")));
     }
     if let FieldDefType::Range(kind, bound) = &def.field_type {
-        if matches!(walk, Walk::Rules) {
+        if !matches!(walk, Walk::Bound) {
             return (!range_rules(owner, *kind, bound).is_empty())
                 .then(|| reporting(owner, place, &format!("{value}.validate()")));
         }
@@ -876,7 +920,7 @@ fn held_walk(
         return (!bounds.is_empty()).then(|| bounds.join("; "));
     }
     if let FieldDefType::Result(ok, err) = &def.field_type {
-        if matches!(walk, Walk::Rules) {
+        if !matches!(walk, Walk::Bound) {
             return (!result_rules(owner, ok, err).is_empty())
                 .then(|| reporting(owner, place, &format!("{value}.validate()")));
         }
@@ -915,7 +959,7 @@ fn held_walk(
     }
     let (asked, answers) = match walk {
         Walk::Bound => ("swiftSchemaValidateBound", bounded(named)),
-        Walk::Rules => ("validate", validates(named)),
+        Walk::Reported | Walk::Rules => ("validate", validates(named)),
     };
     answers.then(|| reporting(owner, place, &format!("{value}.{asked}()")))
 }
