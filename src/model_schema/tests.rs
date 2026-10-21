@@ -8979,6 +8979,87 @@ fn a_member_one_of_whose_directions_is_serdes_own_is_refused() {
     }
 }
 
+/// A variant its author's functions write and read, under `with` or under both `serialize_with`
+/// and `deserialize_with`, is not refused for what its members hold, and the variants beside it
+/// still are.
+#[test]
+fn a_variant_written_and_read_by_its_authors_functions_is_not_refused() {
+    for hooks in [
+        "#[serde(with = \"numbered_as_text\")]",
+        "#[serde(serialize_with = \"numbered_written\", deserialize_with = \"numbered_read\")]",
+        "#[serde(serialize_with = \"numbered_written\")] \
+         #[serde(deserialize_with = \"numbered_read\")]",
+    ] {
+        for variant in [
+            "Numbered(HashMap<u32, String>)",
+            "Numbered(String, BTreeMap<bool, String>)",
+            "Numbered { by_number: HashMap<u32, String> }",
+        ] {
+            let source = format!("pub enum Lineup {{ {hooks} {variant}, Empty }}");
+            assert_eq!(
+                bson_refused_key_messages(&source),
+                Vec::<String>::new(),
+                "for {source}"
+            );
+        }
+    }
+    assert_eq!(
+        bson_refused_key_messages(
+            "pub enum Lineup { #[serde(with = \"numbered_as_text\")] \
+             Numbered(HashMap<u32, String>), Flagged(BTreeMap<bool, String>) }"
+        ),
+        [bson_refused_key_message(
+            "variant `Flagged`, field `0`",
+            "bool"
+        )]
+    );
+}
+
+/// A variant whose members serde still writes or reads itself, under `serialize_with` or
+/// `deserialize_with` alone, is refused as before.
+#[test]
+fn a_variant_one_of_whose_directions_is_serdes_own_is_refused() {
+    for hook in [
+        "serialize_with = \"numbered_written\"",
+        "deserialize_with = \"numbered_read\"",
+    ] {
+        assert_eq!(
+            bson_refused_key_messages(&format!(
+                "pub enum Lineup {{ #[serde({hook})] Numbered(HashMap<u32, String>), Empty }}"
+            )),
+            [bson_refused_key_message(
+                "variant `Numbered`, field `0`",
+                "u32"
+            )],
+            "for {hook}"
+        );
+    }
+}
+
+/// An enum whose one such map is in a variant its author's functions write and read is not
+/// refused where it is held, and one whose variant has one of the two functions alone is.
+#[test]
+fn a_held_enum_whose_map_is_in_a_variant_behind_its_authors_functions_is_not_refused() {
+    record_declared_above(&[
+        "pub enum Lineup { #[serde(with = \"numbered_as_text\")] \
+         Numbered(HashMap<u32, String>), Empty }",
+        "pub enum Seating { #[serde(serialize_with = \"numbered_written\")] \
+         Numbered(HashMap<u32, String>), Empty }",
+    ]);
+    assert_eq!(
+        bson_refused_key_messages("pub struct Venue { pub lineup: Option<Lineup> }"),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        bson_refused_key_messages("pub struct Venue { pub seating: Seating }"),
+        [held_bson_refused_key_message(
+            "field `seating`",
+            "Seating",
+            "variant `Numbered`, field `0`, a map keyed by `u32`"
+        )]
+    );
+}
+
 /// A held model is read past where its author's functions write and read the member that holds
 /// it, and a model whose one such map they write and read is not refused where it is held.
 #[test]

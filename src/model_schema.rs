@@ -2985,8 +2985,9 @@ fn mongodb_map_key_refusals(item: &Item) -> Vec<syn::Error> {
 }
 
 /// Each map a member of `item` holds whose key the `bson` library refuses, beside the member:
-/// every member serde writes or reads itself, of a struct and of each variant of an enum. A member
-/// that holds the item itself reaches no map the item's own members do not.
+/// every member serde writes or reads itself, of a struct and of each variant of an enum serde
+/// writes or reads itself. A member that holds the item itself reaches no map the item's own
+/// members do not.
 fn bson_refused_maps(item: &Item) -> Vec<(Option<&syn::Ident>, usize, &Field, RefusedKey<'_>)> {
     let members: Vec<(Option<&syn::Ident>, &syn::Fields)> = if let Item::Struct(item_struct) = item
     {
@@ -2995,7 +2996,10 @@ fn bson_refused_maps(item: &Item) -> Vec<(Option<&syn::Ident>, usize, &Field, Re
         item_enum
             .variants
             .iter()
-            .filter(|variant| !parse_serde_key_omission(&variant.attrs).absent_from_wire())
+            .filter(|variant| {
+                !parse_serde_key_omission(&variant.attrs).absent_from_wire()
+                    && !written_and_read_by_the_author(&variant.attrs)
+            })
             .map(|variant| (Some(&variant.ident), &variant.fields))
             .collect()
     } else {
