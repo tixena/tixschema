@@ -80,8 +80,18 @@ async fn every_operation(
     invoice: &Invoice,
 ) -> Result<(), OperationError> {
     let paths = Invoice::MONGO_FIELDS;
-    let drafts = || paths.status().eq(InvoiceStatus::Draft);
-    let voided = || paths.total().set(0.0_f64);
+    let drafts = || {
+        paths
+            .status()
+            .eq(InvoiceStatus::Draft)
+            .map_err(OperationError::Unwritable)
+    };
+    let voided = || {
+        paths
+            .total()
+            .set(0.0_f64)
+            .map_err(OperationError::Unwritable)
+    };
     let resolvers: [Resolver<'_, Document, Bson>; 1] = [&whole_number_as_text];
 
     let _stored: InsertOneResult = invoice.insert_one(invoices).await?;
@@ -110,6 +120,7 @@ async fn largest_unpaid(
             .eq(customer.to_owned())
             .map(|named| paths.customer().nest(named))
             .map(|of_customer| of_customer.and(paths.paid_at().exists(false)))
+            .map_err(OperationError::Unwritable)
     };
     let largest = Invoice::find_with(invoices, unpaid()?, &[&whole_number_as_text])
         .sort(doc! { "total": -1_i32 })
@@ -165,7 +176,10 @@ async fn customer_named(
     customers: &Collection<Document>,
     name: &str,
 ) -> Result<Option<Customer>, customer_schema::OperationError> {
-    let named = Customer::MONGO_FIELDS.name().eq(name.to_owned())?;
+    let named = Customer::MONGO_FIELDS
+        .name()
+        .eq(name.to_owned())
+        .map_err(customer_schema::OperationError::Unwritable)?;
     Customer::find_one_with(customers, named, &[&id_dropped]).await
 }",
 ];
@@ -311,7 +325,10 @@ async fn customer_named(
     customers: &Collection<Document>,
     name: &str,
 ) -> Result<Option<Customer>, customer_schema::OperationError> {
-    let named = Customer::MONGO_FIELDS.name().eq(name.to_owned())?;
+    let named = Customer::MONGO_FIELDS
+        .name()
+        .eq(name.to_owned())
+        .map_err(customer_schema::OperationError::Unwritable)?;
     Customer::find_one_with(customers, named, &[&id_dropped]).await
 }
 
@@ -321,8 +338,18 @@ async fn every_operation(
     invoice: &Invoice,
 ) -> Result<(), OperationError> {
     let paths = Invoice::MONGO_FIELDS;
-    let drafts = || paths.status().eq(InvoiceStatus::Draft);
-    let voided = || paths.total().set(0.0_f64);
+    let drafts = || {
+        paths
+            .status()
+            .eq(InvoiceStatus::Draft)
+            .map_err(OperationError::Unwritable)
+    };
+    let voided = || {
+        paths
+            .total()
+            .set(0.0_f64)
+            .map_err(OperationError::Unwritable)
+    };
     let resolvers: [Resolver<'_, Document, Bson>; 1] = [&whole_number_as_text];
 
     let _stored: InsertOneResult = invoice.insert_one(invoices).await?;
@@ -373,6 +400,7 @@ async fn largest_unpaid(
             .eq(customer.to_owned())
             .map(|named| paths.customer().nest(named))
             .map(|of_customer| of_customer.and(paths.paid_at().exists(false)))
+            .map_err(OperationError::Unwritable)
     };
     let largest = Invoice::find_with(invoices, unpaid()?, &[&whole_number_as_text])
         .sort(doc! { "total": -1_i32 })
@@ -556,7 +584,7 @@ async fn the_readme_shows_how_each_failure_opens() {
     let failures = [
         OperationError::Database(unreachable),
         Invoice::mongo_read_row(doc! { "_id": row_id() }, &[]).unwrap_err(),
-        OperationError::from(u64::MAX.serialize(bson::Serializer::new()).unwrap_err()),
+        OperationError::Unwritable(u64::MAX.serialize(bson::Serializer::new()).unwrap_err()),
     ];
     for (failure, opens) in failures.iter().zip(SHOWN_OPENINGS) {
         let told = failure.to_string();

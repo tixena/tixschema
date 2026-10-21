@@ -1644,11 +1644,7 @@ fn the_operation_error_is_declared_under_mongodb_alone() {
         );
         assert_eq!(
             implemented,
-            [
-                ":: core :: fmt :: Display",
-                ":: std :: error :: Error",
-                ":: core :: convert :: From < E >",
-            ]
+            [":: core :: fmt :: Display", ":: std :: error :: Error"]
         );
     } else {
         assert!(declared.is_empty(), "got: {declared:?}");
@@ -1672,16 +1668,13 @@ fn the_operation_error_tells_each_failure_and_answers_its_source() {
          'static) > { match self { Self :: Database (refused) => :: core :: option :: Option :: \
          Some (refused) , Self :: Unreadable { .. } => :: core :: option :: Option :: None , Self \
          :: Unwritable (refused) => :: core :: option :: Option :: Some (refused) , } }",
-        "impl < E > :: core :: convert :: From < E > for OperationError where E : :: serde :: ser \
-         :: Error , bson :: Serializer : :: serde :: Serializer < Error = E > , { fn from \
-         (refused : E) -> Self { Self :: Unwritable (refused) } }",
     ] {
         assert!(
             emitted.contains(written),
             "missing `{written}` in: {emitted}"
         );
     }
-    assert_eq!(emitted.matches("From <").count(), 1, "got: {emitted}");
+    assert!(!emitted.contains("From <"), "got: {emitted}");
 }
 
 #[cfg(feature = "mongodb")]

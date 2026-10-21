@@ -168,9 +168,9 @@ fn surcharged(by: f64) -> Result<Update<Invoice>, WriteError> {
 const DECLARED_CONST: &str =
     "const TOTAL: invoice_schema::Field<Invoice, f64> = Invoice::MONGO_FIELDS.total();";
 
-/// The call the README counts the rows of an arm with, character for character.
-const DECLARED_COUNT: &str =
-    r#"Booking::count(&collection, couriered("SDQ-1", "Acme Freight")?).await?"#;
+/// The call the README counts the rows of an arm with, which `counted` makes with no regard for
+/// spacing.
+const DECLARED_COUNT: &str = r#"Booking::count(&collection, couriered("SDQ-1", "Acme Freight").map_err(booking_schema::OperationError::Unwritable)?).await?"#;
 
 /// The line the README brings the query types into scope with.
 const DECLARED_IMPORT: &str = "use invoice_schema::{Filter, Update, WriteError};";
@@ -321,7 +321,11 @@ fn cells(line: &str) -> Option<Vec<&str>> {
 /// The call the README counts the rows of an arm with, held to compiling. It is never run.
 async fn counted(database: &Database) -> Result<u64, booking_schema::OperationError> {
     let collection = database.collection("bookings");
-    let how_many = Booking::count(&collection, couriered("SDQ-1", "Acme Freight")?).await?;
+    let how_many = Booking::count(
+        &collection,
+        couriered("SDQ-1", "Acme Freight").map_err(booking_schema::OperationError::Unwritable)?,
+    )
+    .await?;
     Ok(how_many)
 }
 
@@ -617,10 +621,20 @@ fn the_readme_declares_the_builders_that_compile_here() {
         .into_iter()
         .chain(DECLARED_UNSEEN)
         .chain(DECLARED_ARMS)
-        .chain([DECLARED_IMPORT, DECLARED_COUNT])
+        .chain([DECLARED_IMPORT])
     {
         assert_declared_and_documented(source, pinned);
     }
+    // rustfmt lays the call in `counted` over several lines, with a comma after its last argument.
+    assert_eq!(
+        squeezed(source)
+            .replace(",)", ")")
+            .matches(&squeezed(DECLARED_COUNT))
+            .count(),
+        2,
+        "`counted` no longer makes the call the README counts the rows of an arm with"
+    );
+    assert_documented(DECLARED_COUNT);
 }
 
 #[test]

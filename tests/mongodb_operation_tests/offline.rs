@@ -195,10 +195,10 @@ fn numbered() -> Filter<Invoice> {
         .unwrap()
 }
 
-/// A filter over a `u64` at its largest, which BSON has no type for, refused through `?`.
+/// A filter over a `u64` at its largest, which BSON has no type for, refused as `Unwritable`.
 fn over_the_limit() -> Result<Filter<Invoice>, OperationError> {
     let limit: Field<Invoice, u64> = Field::plain(MongoPath::at("limit"));
-    Ok(limit.eq(u64::MAX)?)
+    limit.eq(u64::MAX).map_err(OperationError::Unwritable)
 }
 
 const fn sendable<T>(_held: &T)
