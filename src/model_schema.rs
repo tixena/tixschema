@@ -15433,8 +15433,23 @@ fn item_rule_advice(prop_meta: &ModelSchemaPropMeta) -> String {
     }
 }
 
+/// What a field refused a range writes, as the refusal names it, and the keys that bound it where
+/// any does.
+const fn unranged_value(field_type: &FieldDefType) -> (&'static str, Option<&'static str>) {
+    if matches!(field_type, FieldDefType::String) {
+        ("a string", Some("`minLength`, `maxLength` or `pattern`"))
+    } else if matches!(field_type, FieldDefType::Boolean) {
+        ("a boolean", None)
+    } else if matches!(field_type, FieldDefType::Char) {
+        ("one character", None)
+    } else {
+        ("a value no range measures", None)
+    }
+}
+
 /// Rejects a bound of the kind the field's own value is not measured by: a length or a pattern on
-/// a number, a range on a string, a pattern or a range on a list.
+/// a number, a range on a string, a boolean, a character or a value no range measures, a pattern
+/// or a range on a list.
 fn check_bound_kind(
     field: &Field,
     field_def: &FieldDef,
@@ -15451,11 +15466,10 @@ fn check_bound_kind(
     let keys = misplaced.join("`, `");
     let declared = written_spelling(&field.ty);
     let (measured, written, kept) = match kind {
-        BoundKind::Range => (
-            "a range is measured on a number",
-            "a string",
-            "`minLength`, `maxLength` or `pattern`",
-        ),
+        BoundKind::Range => {
+            let (written, kept) = unranged_value(&field_def.field_type);
+            ("a range is measured on a number", written, kept)
+        }
         BoundKind::Scalar => {
             let advice = item_rule_advice(prop_meta);
             return Err(syn::Error::new_spanned(
@@ -15471,15 +15485,19 @@ fn check_bound_kind(
         BoundKind::Text => (
             "a length or a pattern is measured on a string",
             "a number",
-            "`minimum` or `maximum`",
+            Some("`minimum` or `maximum`"),
         ),
     };
+    let advice = kept.map_or_else(
+        || "Drop it.".to_owned(),
+        |bounding| format!("Bound {written} with {bounding}, or drop it."),
+    );
     Err(syn::Error::new_spanned(
         field,
         format!(
             "model_schema: {label}: `{keys}` cannot apply to a `{declared}` field — {measured}, \
              and this field writes {written}: the constraint would reach neither Zod, nor the \
-             JSON schema, nor the generated validator. Bound {written} with {kept}, or drop it."
+             JSON schema, nor the generated validator. {advice}"
         ),
     ))
 }

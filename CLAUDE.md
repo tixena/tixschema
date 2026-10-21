@@ -498,8 +498,11 @@ gets, at the field. Zod writes the checks as one `.check(…)` on the named sche
 type and a length on one written with arguments, in every build.
 
 A bound of the wrong kind is refused there as well, by `check_bound_kind`, in every build: a length
-or a pattern on a numeric field, a range on a string field, and a pattern or a range on a list,
-under `Option` and any transparent wrapper, naming the field and only the keys of the wrong kind. `FieldDef::unmeasured_bound` is the one question the refusal
+or a pattern on a numeric field, a range on a string, a `bool`, a `char` or a `serde_json::Value`
+field (`FieldDefType::Unknown`, any type every surface describes as unknown), and a pattern or a
+range on a list, under `Option` and any transparent wrapper, naming the field and only the keys of
+the wrong kind. The refusal of a range says what the field writes, and only a string's names the
+keys that bound it. `FieldDef::unmeasured_bound` is the one question the refusal
 and `apply_constraint_docs` are both written from, so the TypeScript comment states no bound the
 refusal turned away.
 
